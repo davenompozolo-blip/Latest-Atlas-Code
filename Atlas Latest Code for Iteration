@@ -47,13 +47,30 @@ for pkg in packages:
 
 print("✅ Dependencies installed!")
 
-# ============================================================================
-# NGROK SETUP
-# ============================================================================
-print("\n📡 Setting up ngrok tunnel...")
-from pyngrok import ngrok
+import streamlit as st
+import pandas as pd
 
-ngrok.set_auth_token("3560NW1Q6pfr5LKXYCFxvt6JnAI_39PX8PaW3aGqhTTr2yo2M")
+st.set_page_config(page_title="Atlas Terminal Dashboard", layout="wide")
+
+st.title("Atlas Terminal Dashboard")
+st.markdown("Upload your Atlas workbook to start using the dashboard.")
+
+# --- File uploader ---
+uploaded_file = st.file_uploader("Upload your Atlas workbook", type="xlsx")
+
+if uploaded_file is not None:
+    # Read uploaded Excel file into a dataframe
+    df = pd.read_excel(uploaded_file)
+    st.success(f"Workbook loaded! Rows: {len(df)}")
+    
+    # Example dashboard content
+    st.subheader("Preview of uploaded data")
+    st.dataframe(df.head())
+
+    # Add your dashboard logic here using df
+else:
+    st.info("Waiting for you to upload the Atlas workbook...")
+
 
 # ============================================================================
 # WRITE COMPLETE APP CODE - v9.1 WITH VALUATION HOUSE
