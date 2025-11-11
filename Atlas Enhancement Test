@@ -2997,15 +2997,6 @@ def main():
             st.info("Comprehensive stress testing scenarios...")
     
     # Continue with remaining pages...
-
-"""
-ATLAS TERMINAL v9.3 EXCELLENCE EDITION - PART 2 CONTINUED
-Remaining Page Implementations
-
-PASTE THIS BELOW PART 2 (INCOMPLETE) TO COMPLETE THE APP!
-Replace the last "if __name__ == '__main__':" section with this complete version.
-"""
-
     # ========================================================================
     # PERFORMANCE SUITE
     # ========================================================================
