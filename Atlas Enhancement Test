@@ -1,0 +1,1216 @@
+#!/usr/bin/env python3
+"""
+ATLAS TERMINAL v9.3 EXCELLENCE EDITION - PART 1 OF 2
+Complete Portfolio Analytics + Valuation House - Excellence Optimized
+
+ENHANCED IN v9.3:
+✅ Home Page: Top Contributors/Detractors + Enhanced Dashboard
+✅ Market Watch: COMPLETE REVAMP (Crypto, Bonds, Spreads, Expanded Universe)
+✅ Chart Theming: ALL charts blend seamlessly with dark background
+✅ Portfolio Deep Dive: Enhanced visuals + Fixed Nov 2024 columns
+✅ Valuation House: Analyst-grade fixes (scaling D&A/CapEx, Smart Assumptions, Editable Projections)
+✅ ALL original features preserved and enhanced
+
+THIS IS PART 1 - Contains all imports, functions, calculations, and setup
+COPY PART 2 BELOW THIS FILE TO COMPLETE THE APP
+"""
+
+import pickle
+import warnings
+import re
+import time
+import io
+import json
+import random
+from datetime import datetime, timedelta, date
+from pathlib import Path
+from collections import Counter, defaultdict
+import numpy as np
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import streamlit as st
+import yfinance as yf
+from scipy import stats
+from scipy.optimize import minimize
+import networkx as nx
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+from sklearn.linear_model import LinearRegression
+
+warnings.filterwarnings("ignore")
+
+# ============================================================================
+# HELPER FUNCTIONS FOR VALIDATION
+# ============================================================================
+def is_valid_series(series):
+    """Safely check if a pandas Series has valid data"""
+    return series is not None and isinstance(series, pd.Series) and not series.empty
+
+def is_valid_dataframe(df):
+    """Safely check if a pandas DataFrame has valid data"""
+    return df is not None and isinstance(df, pd.DataFrame) and not df.empty
+
+# ============================================================================
+# PAGE CONFIG
+# ============================================================================
+st.set_page_config(
+    page_title="ATLAS Terminal v9.3 EXCELLENCE",
+    page_icon="🔥",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# ============================================================================
+# PROFESSIONAL THEME SYSTEM - ENHANCED FOR SEAMLESS CHARTS
+# ============================================================================
+
+COLORS = {
+    "background": "#000000",
+    "card_background": "#0a1929",
+    "card_background_alt": "#050f17",
+    "neon_blue": "#00d4ff",
+    "electric_blue": "#0080ff",
+    "teal": "#00ffcc",
+    "cyan": "#00ffff",
+    "success": "#00ff88",
+    "warning": "#ffaa00",
+    "danger": "#ff0044",
+    "info": "#00d4ff",
+    "purple": "#b794f6",
+    "pink": "#ff00ff",
+    "orange": "#ff6b00",
+    "chart_primary": "#00d4ff",
+    "chart_secondary": "#0080ff",
+    "chart_accent": "#00ffcc",
+    "chart_grid": "#1a3a52",
+    "text_primary": "#ffffff",
+    "text_secondary": "#b0c4de",
+    "text_muted": "#6c8ca8",
+    "border": "#00d4ff",
+    "shadow": "rgba(0, 212, 255, 0.3)",
+    "shadow_strong": "rgba(0, 212, 255, 0.6)",
+    "gain_bg": "rgba(0, 255, 136, 0.15)",
+    "gain_text": "#00ff88",
+    "loss_bg": "rgba(255, 0, 68, 0.15)",
+    "loss_text": "#ff0044",
+}
+
+# ============================================================================
+# CHART THEME CONFIGURATION - SEAMLESS DARK MODE
+# ============================================================================
+CHART_THEME = {
+    'paper_bgcolor': 'rgba(0, 0, 0, 0)',  # Transparent background
+    'plot_bgcolor': 'rgba(10, 25, 41, 0.3)',  # Semi-transparent plot area
+    'font': {'color': COLORS['text_primary'], 'family': 'Inter, sans-serif'},
+    'xaxis': {
+        'gridcolor': COLORS['chart_grid'],
+        'linecolor': COLORS['chart_grid'],
+        'zerolinecolor': COLORS['chart_grid']
+    },
+    'yaxis': {
+        'gridcolor': COLORS['chart_grid'],
+        'linecolor': COLORS['chart_grid'],
+        'zerolinecolor': COLORS['chart_grid']
+    }
+}
+
+def apply_chart_theme(fig):
+    """Apply seamless dark theme to any Plotly figure"""
+    fig.update_layout(
+        paper_bgcolor='rgba(0, 0, 0, 0)',
+        plot_bgcolor='rgba(10, 25, 41, 0.3)',
+        font=dict(color=COLORS['text_primary'], family='Inter, sans-serif'),
+        xaxis=dict(
+            gridcolor=COLORS['chart_grid'],
+            linecolor=COLORS['chart_grid'],
+            zerolinecolor=COLORS['chart_grid']
+        ),
+        yaxis=dict(
+            gridcolor=COLORS['chart_grid'],
+            linecolor=COLORS['chart_grid'],
+            zerolinecolor=COLORS['chart_grid']
+        )
+    )
+    return fig
+
+COLORSCALES = {
+    "viridis": px.colors.sequential.Viridis,
+    "plasma": px.colors.sequential.Plasma,
+    "turbo": px.colors.sequential.Turbo,
+    "rdylgn": px.colors.diverging.RdYlGn,
+    "spectral": px.colors.diverging.Spectral,
+}
+
+# ============================================================================
+# ENHANCED CSS
+# ============================================================================
+st.markdown(f"""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+
+    * {{
+        font-family: 'Inter', 'Segoe UI', sans-serif !important;
+    }}
+
+    @keyframes pulseGreen {{
+        0% {{ background-color: {COLORS['gain_bg']}; transform: scale(1); }}
+        50% {{ background-color: rgba(0, 255, 136, 0.25); transform: scale(1.02); }}
+        100% {{ background-color: {COLORS['gain_bg']}; transform: scale(1); }}
+    }}
+
+    @keyframes pulseRed {{
+        0% {{ background-color: {COLORS['loss_bg']}; transform: scale(1); }}
+        50% {{ background-color: rgba(255, 0, 68, 0.25); transform: scale(1.02); }}
+        100% {{ background-color: {COLORS['loss_bg']}; transform: scale(1); }}
+    }}
+
+    .main {{
+        background: linear-gradient(135deg, #000000 0%, #0a1929 100%);
+        color: {COLORS['text_primary']};
+    }}
+
+    h1 {{
+        background: linear-gradient(90deg, #00d4ff, #00ff88, #00d4ff);
+        background-clip: text;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        text-shadow: 0 0 40px rgba(0,212,255,0.8);
+        font-family: 'Inter', sans-serif !important;
+        font-weight: 700 !important;
+        font-size: 3.5em !important;
+        text-align: center;
+        animation: glow 2s ease-in-out infinite alternate;
+    }}
+
+    @keyframes glow {{
+        from {{ text-shadow: 0 0 20px rgba(0,212,255,0.5); }}
+        to {{ text-shadow: 0 0 30px rgba(0,212,255,1), 0 0 40px rgba(0,255,136,0.5); }}
+    }}
+
+    div[data-testid="stDataFrame"] tbody tr:hover {{
+        background: linear-gradient(90deg, rgba(0, 212, 255, 0.2) 0%, rgba(0, 212, 255, 0.1) 100%) !important;
+        transform: scale(1.02) translateX(5px);
+        box-shadow: 0 5px 20px rgba(0, 212, 255, 0.3);
+        border-left: 3px solid {COLORS['neon_blue']};
+    }}
+
+    div[data-testid="stDataFrame"] thead th {{
+        background: linear-gradient(135deg, {COLORS['neon_blue']} 0%, {COLORS['electric_blue']} 100%) !important;
+        color: {COLORS['background']} !important;
+        font-weight: 700 !important;
+        font-size: 14px !important;
+        text-transform: uppercase !important;
+    }}
+
+    div[data-testid="stMetric"] {{
+        background: linear-gradient(135deg, {COLORS['card_background']} 0%, {COLORS['card_background_alt']} 100%);
+        border: 2px solid {COLORS['neon_blue']};
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 0 30px {COLORS['shadow']};
+        transition: all 0.3s ease;
+    }}
+
+    div[data-testid="stMetric"]:hover {{
+        transform: translateY(-5px) scale(1.02);
+        box-shadow: 0 10px 40px {COLORS['shadow_strong']};
+    }}
+    
+    .stSlider {{
+        padding: 10px 0px;
+    }}
+</style>
+""", unsafe_allow_html=True)
+
+# ============================================================================
+# CONSTANTS & CONFIG
+# ============================================================================
+CACHE_DIR = Path.home() / ".atlas_cache"
+CACHE_DIR.mkdir(exist_ok=True)
+PORTFOLIO_CACHE = CACHE_DIR / "portfolio.pkl"
+TRADE_HISTORY_CACHE = CACHE_DIR / "trade_history.pkl"
+ACCOUNT_HISTORY_CACHE = CACHE_DIR / "account_history.pkl"
+
+RISK_FREE_RATE = 0.045
+MARKET_RETURN = 0.10
+
+# ============================================================================
+# EXPANDED MARKET WATCH UNIVERSE - EXCELLENCE EDITION
+# ============================================================================
+
+# Global Market Indices
+GLOBAL_INDICES = {
+    "^GSPC": {"name": "S&P 500", "region": "US"},
+    "^NDX": {"name": "Nasdaq 100", "region": "US"},
+    "^DJI": {"name": "Dow Jones", "region": "US"},
+    "^RUT": {"name": "Russell 2000", "region": "US"},
+    "^FTSE": {"name": "FTSE 100", "region": "UK"},
+    "^GDAXI": {"name": "DAX", "region": "Germany"},
+    "^FCHI": {"name": "CAC 40", "region": "France"},
+    "^STOXX50E": {"name": "Euro Stoxx 50", "region": "Europe"},
+    "^N225": {"name": "Nikkei 225", "region": "Japan"},
+    "^HSI": {"name": "Hang Seng", "region": "Hong Kong"},
+    "000001.SS": {"name": "Shanghai Composite", "region": "China"},
+    "^BSESN": {"name": "BSE Sensex", "region": "India"},
+    "^BVSP": {"name": "Bovespa", "region": "Brazil"},
+    "^AXJO": {"name": "ASX 200", "region": "Australia"},
+    "^GSPTSE": {"name": "TSX Composite", "region": "Canada"}
+}
+
+# EXPANDED: Major Cryptocurrencies
+CRYPTOCURRENCIES = {
+    "BTC-USD": {"name": "Bitcoin", "category": "Crypto"},
+    "ETH-USD": {"name": "Ethereum", "category": "Crypto"},
+    "BNB-USD": {"name": "Binance Coin", "category": "Crypto"},
+    "XRP-USD": {"name": "Ripple", "category": "Crypto"},
+    "ADA-USD": {"name": "Cardano", "category": "Crypto"},
+    "SOL-USD": {"name": "Solana", "category": "Crypto"},
+    "DOGE-USD": {"name": "Dogecoin", "category": "Crypto"},
+    "MATIC-USD": {"name": "Polygon", "category": "Crypto"},
+    "DOT-USD": {"name": "Polkadot", "category": "Crypto"},
+    "AVAX-USD": {"name": "Avalanche", "category": "Crypto"}
+}
+
+# EXPANDED: Bond Yields and Rates
+BOND_YIELDS = {
+    "^TNX": {"name": "US 10Y Treasury", "category": "Government Bonds"},
+    "^TYX": {"name": "US 30Y Treasury", "category": "Government Bonds"},
+    "^FVX": {"name": "US 5Y Treasury", "category": "Government Bonds"},
+    "^IRX": {"name": "US 13W Treasury", "category": "Government Bonds"},
+}
+
+# NEW: Credit Spreads (using ETF proxies)
+CREDIT_SPREADS = {
+    "LQD": {"name": "Investment Grade Credit", "category": "Credit"},
+    "HYG": {"name": "High Yield Credit", "category": "Credit"},
+    "EMB": {"name": "Emerging Market Bonds", "category": "Credit"},
+    "TIP": {"name": "TIPS (Inflation-Protected)", "category": "Government Bonds"},
+    "MBB": {"name": "Mortgage-Backed Securities", "category": "Credit"},
+}
+
+# EXPANDED: Commodities
+COMMODITIES = {
+    "GC=F": {"name": "Gold", "category": "Precious Metals"},
+    "SI=F": {"name": "Silver", "category": "Precious Metals"},
+    "PL=F": {"name": "Platinum", "category": "Precious Metals"},
+    "PA=F": {"name": "Palladium", "category": "Precious Metals"},
+    "CL=F": {"name": "Crude Oil WTI", "category": "Energy"},
+    "BZ=F": {"name": "Brent Crude", "category": "Energy"},
+    "NG=F": {"name": "Natural Gas", "category": "Energy"},
+    "RB=F": {"name": "Gasoline", "category": "Energy"},
+    "HG=F": {"name": "Copper", "category": "Industrial Metals"},
+    "ALI=F": {"name": "Aluminum", "category": "Industrial Metals"},
+    "ZC=F": {"name": "Corn", "category": "Agriculture"},
+    "ZW=F": {"name": "Wheat", "category": "Agriculture"},
+    "ZS=F": {"name": "Soybeans", "category": "Agriculture"},
+    "KC=F": {"name": "Coffee", "category": "Agriculture"},
+    "SB=F": {"name": "Sugar", "category": "Agriculture"},
+    "CC=F": {"name": "Cocoa", "category": "Agriculture"},
+    "LE=F": {"name": "Live Cattle", "category": "Livestock"},
+    "GF=F": {"name": "Feeder Cattle", "category": "Livestock"}
+}
+
+# EXPANDED: Popular Stocks (diverse selection)
+POPULAR_STOCKS = {
+    # Mega Cap Tech
+    "AAPL": {"name": "Apple", "sector": "Technology", "category": "Mega Cap Tech"},
+    "MSFT": {"name": "Microsoft", "sector": "Technology", "category": "Mega Cap Tech"},
+    "GOOGL": {"name": "Alphabet", "sector": "Technology", "category": "Mega Cap Tech"},
+    "AMZN": {"name": "Amazon", "sector": "Consumer Cyclical", "category": "Mega Cap Tech"},
+    "NVDA": {"name": "NVIDIA", "sector": "Technology", "category": "Mega Cap Tech"},
+    "META": {"name": "Meta", "sector": "Technology", "category": "Mega Cap Tech"},
+    "TSLA": {"name": "Tesla", "sector": "Consumer Cyclical", "category": "Mega Cap Tech"},
+    
+    # Financials
+    "JPM": {"name": "JPMorgan", "sector": "Financial Services", "category": "Financials"},
+    "BAC": {"name": "Bank of America", "sector": "Financial Services", "category": "Financials"},
+    "GS": {"name": "Goldman Sachs", "sector": "Financial Services", "category": "Financials"},
+    "MS": {"name": "Morgan Stanley", "sector": "Financial Services", "category": "Financials"},
+    
+    # Healthcare
+    "JNJ": {"name": "Johnson & Johnson", "sector": "Healthcare", "category": "Healthcare"},
+    "UNH": {"name": "UnitedHealth", "sector": "Healthcare", "category": "Healthcare"},
+    "PFE": {"name": "Pfizer", "sector": "Healthcare", "category": "Healthcare"},
+    
+    # Consumer
+    "WMT": {"name": "Walmart", "sector": "Consumer Defensive", "category": "Consumer"},
+    "PG": {"name": "Procter & Gamble", "sector": "Consumer Defensive", "category": "Consumer"},
+    "KO": {"name": "Coca-Cola", "sector": "Consumer Defensive", "category": "Consumer"},
+    
+    # Energy
+    "XOM": {"name": "Exxon Mobil", "sector": "Energy", "category": "Energy"},
+    "CVX": {"name": "Chevron", "sector": "Energy", "category": "Energy"},
+}
+
+# EXPANDED: Popular ETFs (now includes thematic and sector)
+POPULAR_ETFS = {
+    # Broad Market
+    "SPY": {"name": "SPDR S&P 500", "category": "Broad Market", "avg_volume": 70000000},
+    "QQQ": {"name": "Invesco QQQ", "category": "Broad Market", "avg_volume": 40000000},
+    "IWM": {"name": "Russell 2000", "category": "Broad Market", "avg_volume": 30000000},
+    "VTI": {"name": "Total Stock Market", "category": "Broad Market", "avg_volume": 5000000},
+    
+    # Sector SPDRs
+    "XLK": {"name": "Technology Select", "category": "Sector", "avg_volume": 15000000},
+    "XLF": {"name": "Financial Select", "category": "Sector", "avg_volume": 50000000},
+    "XLV": {"name": "Health Care Select", "category": "Sector", "avg_volume": 10000000},
+    "XLE": {"name": "Energy Select", "category": "Sector", "avg_volume": 20000000},
+    "XLI": {"name": "Industrial Select", "category": "Sector", "avg_volume": 12000000},
+    "XLY": {"name": "Consumer Discretionary", "category": "Sector", "avg_volume": 8000000},
+    "XLP": {"name": "Consumer Staples", "category": "Sector", "avg_volume": 10000000},
+    "XLU": {"name": "Utilities Select", "category": "Sector", "avg_volume": 12000000},
+    "XLRE": {"name": "Real Estate Select", "category": "Sector", "avg_volume": 5000000},
+    
+    # Thematic
+    "ARKK": {"name": "ARK Innovation", "category": "Thematic", "avg_volume": 8000000},
+    "ARKQ": {"name": "ARK Autonomous Tech", "category": "Thematic", "avg_volume": 2000000},
+    "ARKW": {"name": "ARK Next Gen Internet", "category": "Thematic", "avg_volume": 1500000},
+    "ICLN": {"name": "Clean Energy", "category": "Thematic", "avg_volume": 5000000},
+    "TAN": {"name": "Solar Energy", "category": "Thematic", "avg_volume": 1500000},
+    "HACK": {"name": "Cybersecurity", "category": "Thematic", "avg_volume": 800000},
+    "ROBO": {"name": "Robotics & AI", "category": "Thematic", "avg_volume": 500000},
+    "FINX": {"name": "FinTech", "category": "Thematic", "avg_volume": 300000},
+    
+    # International
+    "EEM": {"name": "Emerging Markets", "category": "International", "avg_volume": 25000000},
+    "EFA": {"name": "EAFE", "category": "International", "avg_volume": 15000000},
+    "VWO": {"name": "FTSE Emerging Markets", "category": "International", "avg_volume": 10000000},
+    "FXI": {"name": "China Large-Cap", "category": "International", "avg_volume": 20000000},
+}
+
+# Factor definitions
+FACTOR_DEFINITIONS = {
+    "Market": {"description": "Market risk premium", "benchmark": "SPY"},
+    "Size": {"description": "Small cap minus large cap", "benchmark": "IWM"},
+    "Value": {"description": "Value minus growth", "benchmark": "IWD"},
+    "Momentum": {"description": "Winners minus losers", "benchmark": "MTUM"},
+    "Quality": {"description": "High quality minus low quality", "benchmark": "QUAL"},
+    "Volatility": {"description": "Low vol minus high vol", "benchmark": "USMV"}
+}
+
+# ETF sectors
+ETF_SECTORS = {
+    "QQQ": "Technology", "XLK": "Technology", "VGT": "Technology",
+    "XLF": "Financial Services", "KRE": "Financial Services",
+    "XLV": "Healthcare", "IBB": "Healthcare", "XBI": "Healthcare",
+    "XLE": "Energy", "XOP": "Energy", "USO": "Energy",
+    "XLB": "Basic Materials", "GDX": "Basic Materials",
+    "XLY": "Consumer Cyclical", "XLP": "Consumer Defensive",
+    "XLI": "Industrials", "IYT": "Industrials",
+    "VNQ": "Real Estate", "XLRE": "Real Estate",
+    "XLU": "Utilities",
+    "SPY": "Broad Market", "VOO": "Broad Market", "VTI": "Broad Market"
+}
+
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+def format_percentage(value, decimals=2):
+    if pd.isna(value) or value is None:
+        return "N/A"
+    return f"{value:.{decimals}f}%"
+
+def format_currency(value):
+    if pd.isna(value) or value is None:
+        return "N/A"
+    return f"${value:,.2f}"
+
+def format_large_number(value):
+    """Format large numbers with B/M/K suffix"""
+    if pd.isna(value) or value is None:
+        return "N/A"
+    if abs(value) >= 1e9:
+        return f"${value/1e9:.2f}B"
+    elif abs(value) >= 1e6:
+        return f"${value/1e6:.2f}M"
+    elif abs(value) >= 1e3:
+        return f"${value/1e3:.2f}K"
+    return f"${value:.2f}"
+
+def add_arrow_indicator(value):
+    try:
+        val = float(str(value).replace('%', '').replace('$', '').replace(',', ''))
+        if val > 0:
+            return f"▲ {value}"
+        elif val < 0:
+            return f"▼ {value}"
+        return f"─ {value}"
+    except:
+        return value
+
+# ============================================================================
+# DATA FUNCTIONS
+# ============================================================================
+
+def save_portfolio_data(data):
+    with open(PORTFOLIO_CACHE, "wb") as f:
+        pickle.dump(data, f)
+
+def load_portfolio_data():
+    if PORTFOLIO_CACHE.exists():
+        with open(PORTFOLIO_CACHE, "rb") as f:
+            return pickle.load(f)
+    return []
+
+def save_trade_history(df):
+    with open(TRADE_HISTORY_CACHE, "wb") as f:
+        pickle.dump(df, f)
+
+def load_trade_history():
+    if TRADE_HISTORY_CACHE.exists():
+        with open(TRADE_HISTORY_CACHE, "rb") as f:
+            return pickle.load(f)
+    return None
+
+def save_account_history(df):
+    with open(ACCOUNT_HISTORY_CACHE, "wb") as f:
+        pickle.dump(df, f)
+
+def load_account_history():
+    if ACCOUNT_HISTORY_CACHE.exists():
+        with open(ACCOUNT_HISTORY_CACHE, "rb") as f:
+            return pickle.load(f)
+    return None
+
+def get_leverage_info():
+    account_df = load_account_history()
+    if account_df is not None:
+        latest_cash = account_df.get('Cash Balance', account_df.get('Cash', pd.Series([0]))).iloc[-1]
+        
+        if isinstance(latest_cash, str):
+            latest_cash = latest_cash.replace('$', '').replace(',', '')
+            if '(' in latest_cash and ')' in latest_cash:
+                latest_cash = '-' + latest_cash.replace('(', '').replace(')', '')
+            try:
+                latest_cash = float(latest_cash)
+            except:
+                latest_cash = 0
+        
+        latest_margin = 0
+        
+        if 'Margin Used' in account_df.columns:
+            latest_margin = account_df['Margin Used'].iloc[-1]
+            if isinstance(latest_margin, str):
+                latest_margin = latest_margin.replace('$', '').replace(',', '')
+                if '(' in latest_margin and ')' in latest_margin:
+                    latest_margin = '-' + latest_margin.replace('(', '').replace(')', '')
+                try:
+                    latest_margin = float(latest_margin)
+                except:
+                    latest_margin = 0
+        
+        if latest_cash < 0:
+            latest_margin = abs(latest_cash)
+            
+        total_value = 0
+        if 'Total Value' in account_df.columns:
+            total_value = account_df['Total Value'].iloc[-1]
+            if isinstance(total_value, str):
+                total_value = total_value.replace('$', '').replace(',', '')
+                if '(' in total_value and ')' in total_value:
+                    total_value = '-' + total_value.replace('(', '').replace(')', '')
+                try:
+                    total_value = float(total_value)
+                except:
+                    total_value = abs(latest_cash) + latest_margin
+        else:
+            total_value = abs(latest_cash) + latest_margin
+            
+        leverage_ratio = (total_value / (total_value - latest_margin)) if (total_value - latest_margin) > 0 else 1
+        
+        return {
+            'margin_used': latest_margin,
+            'cash_balance': latest_cash,
+            'leverage_ratio': leverage_ratio,
+            'total_value': total_value
+        }
+    return None
+
+@st.cache_data(ttl=300)
+def fetch_market_data(ticker):
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        hist = stock.history(period="5d")
+        if hist.empty:
+            return None
+        
+        current_price = hist['Close'].iloc[-1]
+        prev_close = hist['Close'].iloc[-2] if len(hist) > 1 else current_price
+        daily_change = current_price - prev_close
+        daily_change_pct = (daily_change / prev_close * 100) if prev_close else 0
+        
+        five_day_return = ((current_price / hist['Close'].iloc[0]) - 1) * 100 if len(hist) >= 5 else 0
+        
+        company_name = info.get('longName', info.get('shortName', ticker))
+        
+        return {
+            "price": current_price,
+            "daily_change": daily_change,
+            "daily_change_pct": daily_change_pct,
+            "five_day_return": five_day_return,
+            "volume": info.get('volume', 0),
+            "avg_volume": info.get('averageVolume', 0),
+            "sector": info.get('sector', 'Unknown'),
+            "beta": info.get('beta', None),
+            "market_cap": info.get('marketCap', 0),
+            "company_name": company_name,
+            "52_week_high": info.get('fiftyTwoWeekHigh', None),
+            "52_week_low": info.get('fiftyTwoWeekLow', None)
+        }
+    except:
+        return None
+
+def is_option_ticker(ticker):
+    if len(ticker) <= 6:
+        return False
+    has_year = any(str(y) in ticker for y in range(2020, 2030))
+    has_strike = any(c.isdigit() for c in ticker[6:])
+    has_type = ticker[-1] in ['C', 'P'] or 'C' in ticker[6:] or 'P' in ticker[6:]
+    return has_year and has_strike and has_type
+
+def classify_ticker_sector(ticker, default_sector):
+    if pd.notna(default_sector) and default_sector != "Unknown":
+        return default_sector
+    
+    if ticker in ETF_SECTORS:
+        return ETF_SECTORS[ticker]
+    
+    return "Other"
+
+@st.cache_data(ttl=600)
+def fetch_historical_data(ticker, start_date, end_date):
+    try:
+        stock = yf.Ticker(ticker)
+        hist = stock.history(start=start_date, end=end_date)
+        if not hist.empty:
+            return hist
+    except:
+        pass
+    return None
+
+@st.cache_data(ttl=3600)
+def fetch_analyst_data(ticker):
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        
+        rating = info.get('recommendationKey', 'none')
+        if rating == 'none' or rating is None:
+            rating = "No Coverage"
+        
+        return {
+            'rating': rating.upper() if rating != "No Coverage" else rating,
+            'target_price': info.get('targetMeanPrice'),
+            'num_analysts': info.get('numberOfAnalystOpinions', 0),
+            'success': True
+        }
+    except:
+        return {'success': False, 'rating': 'No Coverage', 'target_price': None}
+
+# ============================================================================
+# VALUATION HOUSE - ENHANCED WITH SMART ASSUMPTIONS
+# ============================================================================
+
+@st.cache_data(ttl=3600)
+def fetch_company_financials(ticker):
+    """Fetch comprehensive financial data for valuation"""
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        
+        # Basic company info
+        company_data = {
+            'ticker': ticker,
+            'name': info.get('longName', ticker),
+            'sector': info.get('sector', 'Unknown'),
+            'industry': info.get('industry', 'Unknown'),
+            'current_price': info.get('currentPrice', 0),
+            'market_cap': info.get('marketCap', 0),
+            'shares_outstanding': info.get('sharesOutstanding', 0),
+            'beta': info.get('beta', 1.0),
+            'forward_pe': info.get('forwardPE'),
+            'trailing_pe': info.get('trailingPE'),
+        }
+        
+        # Financial statements
+        income_stmt = stock.income_stmt
+        balance_sheet = stock.balance_sheet
+        cash_flow = stock.cash_flow
+        
+        # Parse financials (most recent 3 years)
+        financials = {}
+        
+        if not income_stmt.empty:
+            # Get most recent year
+            latest_col = income_stmt.columns[0]
+            
+            financials['revenue'] = income_stmt.loc['Total Revenue', latest_col] if 'Total Revenue' in income_stmt.index else 0
+            financials['ebit'] = income_stmt.loc['EBIT', latest_col] if 'EBIT' in income_stmt.index else 0
+            financials['net_income'] = income_stmt.loc['Net Income', latest_col] if 'Net Income' in income_stmt.index else 0
+            financials['tax_expense'] = income_stmt.loc['Tax Provision', latest_col] if 'Tax Provision' in income_stmt.index else 0
+            
+            # Calculate tax rate
+            if financials['ebit'] != 0:
+                financials['tax_rate'] = abs(financials['tax_expense'] / financials['ebit'])
+            else:
+                financials['tax_rate'] = 0.21  # Default US corporate tax rate
+                
+        if not balance_sheet.empty:
+            latest_col = balance_sheet.columns[0]
+            
+            financials['total_debt'] = balance_sheet.loc['Total Debt', latest_col] if 'Total Debt' in balance_sheet.index else 0
+            financials['cash'] = balance_sheet.loc['Cash And Cash Equivalents', latest_col] if 'Cash And Cash Equivalents' in balance_sheet.index else 0
+            financials['total_equity'] = balance_sheet.loc['Total Equity Gross Minority Interest', latest_col] if 'Total Equity Gross Minority Interest' in balance_sheet.index else 0
+            
+        if not cash_flow.empty:
+            latest_col = cash_flow.columns[0]
+            
+            financials['capex'] = abs(cash_flow.loc['Capital Expenditure', latest_col]) if 'Capital Expenditure' in cash_flow.index else 0
+            financials['depreciation'] = cash_flow.loc['Depreciation And Amortization', latest_col] if 'Depreciation And Amortization' in cash_flow.index else 0
+            financials['operating_cf'] = cash_flow.loc['Operating Cash Flow', latest_col] if 'Operating Cash Flow' in cash_flow.index else 0
+        
+        # Calculate working capital change (simplified)
+        financials['change_wc'] = 0  # User can adjust
+        
+        return {
+            'company': company_data,
+            'financials': financials,
+            'success': True
+        }
+        
+    except Exception as e:
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+def calculate_smart_assumptions(company_data, financials):
+    """
+    NEW: Calculate realistic, economically grounded assumptions
+    based on company fundamentals, sector averages, and economic reality
+    """
+    sector = company_data.get('sector', 'Unknown')
+    revenue = financials.get('revenue', 0)
+    ebit = financials.get('ebit', 0)
+    
+    # Smart revenue growth (based on sector and size)
+    sector_growth_rates = {
+        'Technology': 0.08,
+        'Healthcare': 0.06,
+        'Financial Services': 0.05,
+        'Consumer Cyclical': 0.04,
+        'Consumer Defensive': 0.03,
+        'Energy': 0.03,
+        'Industrials': 0.04,
+        'Basic Materials': 0.03,
+        'Real Estate': 0.03,
+        'Utilities': 0.02,
+        'Communication Services': 0.05,
+        'Unknown': 0.04
+    }
+    
+    base_growth = sector_growth_rates.get(sector, 0.04)
+    
+    # Adjust for company size (larger = slower growth)
+    market_cap = company_data.get('market_cap', 0)
+    if market_cap > 500e9:  # Mega cap
+        size_adjustment = -0.02
+    elif market_cap > 100e9:  # Large cap
+        size_adjustment = -0.01
+    elif market_cap > 10e9:  # Mid cap
+        size_adjustment = 0
+    else:  # Small cap
+        size_adjustment = 0.01
+    
+    smart_revenue_growth = base_growth + size_adjustment
+    
+    # Smart EBIT margin (sector averages)
+    sector_ebit_margins = {
+        'Technology': 0.25,
+        'Healthcare': 0.20,
+        'Financial Services': 0.30,
+        'Consumer Cyclical': 0.10,
+        'Consumer Defensive': 0.08,
+        'Energy': 0.15,
+        'Industrials': 0.12,
+        'Basic Materials': 0.15,
+        'Real Estate': 0.40,
+        'Utilities': 0.20,
+        'Communication Services': 0.18,
+        'Unknown': 0.15
+    }
+    
+    smart_ebit_margin = sector_ebit_margins.get(sector, 0.15)
+    
+    # Smart CapEx (as % of revenue, sector-based)
+    sector_capex_rates = {
+        'Technology': 0.03,
+        'Healthcare': 0.04,
+        'Financial Services': 0.02,
+        'Consumer Cyclical': 0.05,
+        'Consumer Defensive': 0.04,
+        'Energy': 0.12,
+        'Industrials': 0.06,
+        'Basic Materials': 0.10,
+        'Real Estate': 0.08,
+        'Utilities': 0.15,
+        'Communication Services': 0.07,
+        'Unknown': 0.05
+    }
+    
+    smart_capex_pct = sector_capex_rates.get(sector, 0.05)
+    
+    # Smart Depreciation (typically 60-80% of CapEx for mature companies)
+    smart_depreciation_pct = smart_capex_pct * 0.7
+    
+    # Smart Terminal Growth (conservative)
+    smart_terminal_growth = 0.025  # Long-term GDP growth
+    
+    # Smart Tax Rate (based on geography and sector)
+    smart_tax_rate = 0.21  # US corporate rate
+    
+    return {
+        'revenue_growth': smart_revenue_growth,
+        'ebit_margin': smart_ebit_margin,
+        'capex_pct': smart_capex_pct,
+        'depreciation_pct': smart_depreciation_pct,
+        'terminal_growth': smart_terminal_growth,
+        'tax_rate': smart_tax_rate,
+        'wc_change': 0,  # Assume neutral
+        'forecast_years': 5
+    }
+
+def calculate_wacc(cost_equity, cost_debt, tax_rate, debt, equity):
+    """Calculate Weighted Average Cost of Capital"""
+    total_value = debt + equity
+    if total_value == 0:
+        return cost_equity
+    
+    weight_equity = equity / total_value
+    weight_debt = debt / total_value
+    
+    wacc = (cost_equity * weight_equity) + (cost_debt * (1 - tax_rate) * weight_debt)
+    return wacc
+
+def calculate_cost_of_equity(risk_free_rate, beta, market_risk_premium):
+    """Calculate Cost of Equity using CAPM"""
+    return risk_free_rate + (beta * market_risk_premium)
+
+def calculate_terminal_value(final_fcf, discount_rate, terminal_growth):
+    """Calculate Terminal Value using Gordon Growth Model"""
+    if discount_rate <= terminal_growth:
+        return 0
+    return final_fcf * (1 + terminal_growth) / (discount_rate - terminal_growth)
+
+def project_fcff_enhanced(base_revenue, base_ebit, revenue_growth, ebit_margin, tax_rate, 
+                         depreciation_pct, capex_pct, change_wc, forecast_years):
+    """
+    ENHANCED: Project FCFF with D&A and CapEx scaling with revenue
+    """
+    projections = []
+    
+    current_revenue = base_revenue
+    
+    for year in range(1, forecast_years + 1):
+        # Grow revenue
+        current_revenue = current_revenue * (1 + revenue_growth)
+        
+        # Calculate EBIT based on margin
+        current_ebit = current_revenue * ebit_margin
+        
+        # Calculate NOPAT
+        nopat = current_ebit * (1 - tax_rate)
+        
+        # FIXED: Scale D&A and CapEx with revenue
+        depreciation = current_revenue * depreciation_pct
+        capex = current_revenue * capex_pct
+        
+        # Calculate FCFF
+        fcff = nopat + depreciation - capex - change_wc
+        
+        projections.append({
+            'year': year,
+            'revenue': current_revenue,
+            'ebit': current_ebit,
+            'nopat': nopat,
+            'depreciation': depreciation,
+            'capex': capex,
+            'change_wc': change_wc,
+            'fcff': fcff
+        })
+    
+    return projections
+
+def project_fcfe_enhanced(base_revenue, base_net_income, revenue_growth, tax_rate, 
+                         depreciation_pct, capex_pct, change_wc, net_borrowing, forecast_years):
+    """
+    ENHANCED: Project FCFE with D&A and CapEx scaling with revenue
+    """
+    projections = []
+    
+    current_revenue = base_revenue
+    current_ni = base_net_income
+    
+    # Calculate initial NI margin
+    ni_margin = current_ni / current_revenue if current_revenue > 0 else 0
+    
+    for year in range(1, forecast_years + 1):
+        # Grow revenue
+        current_revenue = current_revenue * (1 + revenue_growth)
+        
+        # Grow net income
+        current_ni = current_revenue * ni_margin
+        
+        # FIXED: Scale D&A and CapEx with revenue
+        depreciation = current_revenue * depreciation_pct
+        capex = current_revenue * capex_pct
+        
+        # Calculate FCFE
+        fcfe = current_ni + depreciation - capex - change_wc + net_borrowing
+        
+        projections.append({
+            'year': year,
+            'revenue': current_revenue,
+            'net_income': current_ni,
+            'depreciation': depreciation,
+            'capex': capex,
+            'change_wc': change_wc,
+            'net_borrowing': net_borrowing,
+            'fcfe': fcfe
+        })
+    
+    return projections
+
+def calculate_dcf_value(projections, discount_rate, terminal_value, shares_outstanding, 
+                       net_debt=0, method='FCFF'):
+    """Calculate DCF valuation"""
+    # Discount projected cash flows
+    pv_cash_flows = []
+    total_pv = 0
+    
+    for proj in projections:
+        year = proj['year']
+        cf = proj['fcff'] if method == 'FCFF' else proj['fcfe']
+        pv = cf / ((1 + discount_rate) ** year)
+        pv_cash_flows.append(pv)
+        total_pv += pv
+    
+    # Discount terminal value
+    pv_terminal = terminal_value / ((1 + discount_rate) ** len(projections))
+    
+    # Calculate enterprise/equity value
+    enterprise_value = total_pv + pv_terminal
+    
+    if method == 'FCFF':
+        # For FCFF, subtract net debt to get equity value
+        equity_value = enterprise_value - net_debt
+    else:
+        # For FCFE, enterprise value IS equity value
+        equity_value = enterprise_value
+    
+    # Calculate per share value
+    intrinsic_value_per_share = equity_value / shares_outstanding if shares_outstanding > 0 else 0
+    
+    return {
+        'pv_cash_flows': pv_cash_flows,
+        'total_pv_cash_flows': total_pv,
+        'terminal_value': terminal_value,
+        'pv_terminal': pv_terminal,
+        'enterprise_value': enterprise_value,
+        'equity_value': equity_value,
+        'intrinsic_value_per_share': intrinsic_value_per_share
+    }
+
+# ============================================================================
+# PHOENIX PARSER
+# ============================================================================
+
+def parse_trade_history_file(uploaded_file):
+    try:
+        df = pd.read_html(uploaded_file)[0]
+        required_cols = ['Date', 'Symbol', 'Trade Type', 'Quantity', 'Price']
+        if not all(col in df.columns for col in required_cols):
+            return None
+        df['Price'] = df['Price'].astype(str).str.replace('$', '').str.replace(',', '').astype(float)
+        df['Date'] = pd.to_datetime(df['Date'])
+        df = df.sort_values('Date')
+        return df
+    except:
+        return None
+
+def parse_account_history_file(uploaded_file):
+    try:
+        df = pd.read_html(uploaded_file)[0]
+        df['Date'] = pd.to_datetime(df['Date'])
+        df = df.sort_values('Date')
+        return df
+    except:
+        return None
+
+def calculate_portfolio_from_trades(trade_df):
+    holdings = {}
+    for _, row in trade_df.iterrows():
+        symbol = row['Symbol']
+        trade_type = row['Trade Type']
+        quantity = row['Quantity']
+        price = row['Price']
+        
+        if is_option_ticker(symbol):
+            continue
+        
+        if symbol not in holdings:
+            holdings[symbol] = {'total_shares': 0, 'total_cost': 0, 'trades': []}
+        
+        is_buy = 'Buy' in trade_type
+        
+        if is_buy:
+            holdings[symbol]['total_shares'] += quantity
+            holdings[symbol]['total_cost'] += (quantity * price)
+            holdings[symbol]['trades'].append({'type': 'BUY', 'quantity': quantity, 'price': price})
+        else:
+            remaining_to_sell = quantity
+            for trade in holdings[symbol]['trades']:
+                if trade['type'] == 'BUY' and remaining_to_sell > 0:
+                    if trade['quantity'] <= remaining_to_sell:
+                        holdings[symbol]['total_cost'] -= (trade['quantity'] * trade['price'])
+                        holdings[symbol]['total_shares'] -= trade['quantity']
+                        remaining_to_sell -= trade['quantity']
+                        trade['quantity'] = 0
+                    else:
+                        holdings[symbol]['total_cost'] -= (remaining_to_sell * trade['price'])
+                        holdings[symbol]['total_shares'] -= remaining_to_sell
+                        trade['quantity'] -= remaining_to_sell
+                        remaining_to_sell = 0
+    
+    portfolio_data = []
+    for symbol, data in holdings.items():
+        if data['total_shares'] > 0:
+            avg_cost = data['total_cost'] / data['total_shares']
+            portfolio_data.append({
+                'Ticker': symbol,
+                'Shares': data['total_shares'],
+                'Avg Cost': avg_cost
+            })
+    
+    if not portfolio_data:
+        return pd.DataFrame(columns=['Ticker', 'Shares', 'Avg Cost'])
+    return pd.DataFrame(portfolio_data).sort_values('Ticker')
+
+# ============================================================================
+# PORTFOLIO CALCULATIONS
+# ============================================================================
+
+@st.cache_data(ttl=600)
+def calculate_portfolio_returns(df, start_date, end_date):
+    try:
+        valid_positions = []
+        for _, row in df.iterrows():
+            if not is_option_ticker(row['Ticker']):
+                valid_positions.append(row)
+        
+        if not valid_positions:
+            return None
+        
+        valid_df = pd.DataFrame(valid_positions)
+        all_data = {}
+        
+        for _, row in valid_df.iterrows():
+            ticker = row['Ticker']
+            data = fetch_historical_data(ticker, start_date, end_date)
+            if data is not None and len(data) > 0:
+                all_data[ticker] = data
+        
+        if not all_data:
+            return None
+        
+        common_dates = None
+        for ticker, data in all_data.items():
+            dates = set(data.index)
+            common_dates = dates if common_dates is None else common_dates.intersection(dates)
+        
+        common_dates = sorted(list(common_dates))
+        if len(common_dates) < 2:
+            return None
+        
+        portfolio_values = []
+        for date in common_dates:
+            daily_value = 0
+            for _, row in valid_df.iterrows():
+                ticker = row['Ticker']
+                if ticker in all_data:
+                    try:
+                        price = all_data[ticker].loc[date, 'Close']
+                        daily_value += price * row['Shares']
+                    except KeyError:
+                        continue
+            portfolio_values.append(daily_value)
+        
+        portfolio_series = pd.Series(portfolio_values, index=common_dates)
+        returns = portfolio_series.pct_change().dropna()
+        return returns
+    except:
+        return None
+
+@st.cache_data(ttl=600)
+def calculate_benchmark_returns(benchmark_ticker, start_date, end_date):
+    try:
+        data = fetch_historical_data(benchmark_ticker, start_date, end_date)
+        if data is None or data.empty:
+            return None
+        returns = data['Close'].pct_change().dropna()
+        return returns
+    except:
+        return None
+
+# ============================================================================
+# ENHANCED HOLDINGS TABLE
+# ============================================================================
+
+def create_enhanced_holdings_table(df):
+    enhanced_df = df.copy()
+    
+    for idx, row in enhanced_df.iterrows():
+        ticker = row['Ticker']
+        market_data = fetch_market_data(ticker)
+        
+        if market_data:
+            enhanced_df.at[idx, 'Asset Name'] = market_data['company_name']
+            enhanced_df.at[idx, 'Current Price'] = market_data['price']
+            enhanced_df.at[idx, 'Daily Change'] = market_data['daily_change']
+            enhanced_df.at[idx, 'Daily Change %'] = market_data['daily_change_pct']
+            enhanced_df.at[idx, '5D Return %'] = market_data['five_day_return']
+            enhanced_df.at[idx, 'Beta'] = market_data.get('beta', 'N/A')
+            enhanced_df.at[idx, 'Volume'] = market_data.get('volume', 0)
+            base_sector = market_data.get('sector', 'Unknown')
+            enhanced_df.at[idx, 'Sector'] = classify_ticker_sector(ticker, base_sector)
+        else:
+            enhanced_df.at[idx, 'Asset Name'] = ticker
+            enhanced_df.at[idx, 'Sector'] = 'Other'
+        
+        analyst_data = fetch_analyst_data(ticker)
+        if analyst_data['success']:
+            enhanced_df.at[idx, 'Analyst Rating'] = analyst_data['rating']
+            enhanced_df.at[idx, 'Price Target'] = analyst_data['target_price']
+        else:
+            enhanced_df.at[idx, 'Analyst Rating'] = 'No Coverage'
+    
+    enhanced_df['Sector'] = enhanced_df['Sector'].fillna('Other')
+    enhanced_df['Shares'] = enhanced_df['Shares'].round(0).astype(int)
+    
+    enhanced_df['Total Cost'] = enhanced_df['Shares'] * enhanced_df['Avg Cost']
+    enhanced_df['Total Value'] = enhanced_df['Shares'] * enhanced_df['Current Price']
+    enhanced_df['Total Gain/Loss $'] = enhanced_df['Total Value'] - enhanced_df['Total Cost']
+    enhanced_df['Total Gain/Loss %'] = ((enhanced_df['Current Price'] - enhanced_df['Avg Cost']) / enhanced_df['Avg Cost']) * 100
+    enhanced_df['Daily P&L $'] = enhanced_df['Shares'] * enhanced_df['Daily Change']
+    
+    total_value = enhanced_df['Total Value'].sum()
+    enhanced_df['Weight %'] = (enhanced_df['Total Value'] / total_value * 100) if total_value > 0 else 0
+    
+    return enhanced_df
+
+def style_holdings_dataframe(df):
+    display_df = df[[
+        'Ticker', 'Asset Name', 'Shares', 'Avg Cost', 'Current Price',
+        'Daily Change %', '5D Return %', 'Weight %', 'Daily P&L $', 
+        'Total Gain/Loss $', 'Total Gain/Loss %', 'Beta', 'Analyst Rating'
+    ]].copy()
+    
+    pct_cols = ['Daily Change %', '5D Return %', 'Weight %', 'Total Gain/Loss %']
+    for col in pct_cols:
+        display_df[col] = display_df[col].apply(lambda x: format_percentage(x))
+    
+    currency_cols = ['Avg Cost', 'Current Price', 'Daily P&L $', 'Total Gain/Loss $']
+    for col in currency_cols:
+        display_df[col] = display_df[col].apply(format_currency)
+    
+    display_df['Daily Change %'] = display_df['Daily Change %'].apply(add_arrow_indicator)
+    display_df['Total Gain/Loss %'] = display_df['Total Gain/Loss %'].apply(add_arrow_indicator)
+    
+    return display_df
+
+# ============================================================================
+# RISK METRICS
+# ============================================================================
+
+def calculate_sharpe_ratio(returns, risk_free_rate=RISK_FREE_RATE):
+    if not is_valid_series(returns) or len(returns) < 2:
+        return None
+    total_return = (1 + returns).prod() - 1
+    n_years = len(returns) / 252
+    annualized_return = (1 + total_return) ** (1/n_years) - 1 if n_years > 0 else 0
+    annualized_vol = returns.std() * np.sqrt(252)
+    sharpe = (annualized_return - risk_free_rate) / annualized_vol if annualized_vol > 0 else 0
+    return sharpe
+
+def calculate_sortino_ratio(returns, risk_free_rate=RISK_FREE_RATE):
+    if not is_valid_series(returns) or len(returns) < 2:
+        return None
+    total_return = (1 + returns).prod() - 1
+    n_years = len(returns) / 252
+    annualized_return = (1 + total_return) ** (1/n_years) - 1 if n_years > 0 else 0
+    downside_returns = returns[returns < 0]
+    if len(downside_returns) < 2:
+        return None
+    downside_std = downside_returns.std() * np.sqrt(252)
+    sortino = (annualized_return - risk_free_rate) / downside_std if downside_std > 0 else 0
+    return sortino
+
+def calculate_information_ratio(portfolio_returns, benchmark_returns):
+    if not is_valid_series(portfolio_returns) or not is_valid_series(benchmark_returns):
+        return None
+    if len(portfolio_returns) < 2 or len(benchmark_returns) < 2:
+        return None
+    common_dates = portfolio_returns.index.intersection(benchmark_returns.index)
+    portfolio_returns = portfolio_returns.loc[common_dates]
+    benchmark_returns = benchmark_returns.loc[common_dates]
+    excess_returns = portfolio_returns - benchmark_returns
+    if len(excess_returns) < 2:
+        return None
+    total_excess = (1 + excess_returns).prod() - 1
+    n_years = len(excess_returns) / 252
+    annualized_excess = (1 + total_excess) ** (1/n_years) - 1 if n_years > 0 else 0
+    tracking_error = excess_returns.std() * np.sqrt(252)
+    info_ratio = annualized_excess / tracking_error if tracking_error > 0 else 0
+    return info_ratio
+
+def calculate_var(returns, confidence=0.95):
+    if not is_valid_series(returns) or len(returns) < 2:
+        return None
+    var = np.percentile(returns, (1 - confidence) * 100)
+    return var * 100
+
+def calculate_cvar(returns, confidence=0.95):
+    if not is_valid_series(returns) or len(returns) < 2:
+        return None
+    var = np.percentile(returns, (1 - confidence) * 100)
+    cvar = returns[returns <= var].mean()
+    return cvar * 100
+
+def calculate_max_drawdown(returns):
+    if not is_valid_series(returns) or len(returns) < 2:
+        return None
+    cumulative = (1 + returns).cumprod()
+    running_max = cumulative.expanding().max()
+    drawdown = (cumulative - running_max) / running_max
+    return drawdown.min() * 100
+
+def calculate_calmar_ratio(returns, risk_free_rate=RISK_FREE_RATE):
+    if not is_valid_series(returns) or len(returns) < 2:
+        return None
+    total_return = (1 + returns).prod() - 1
+    n_years = len(returns) / 252
+    annualized_return = (1 + total_return) ** (1/n_years) - 1 if n_years > 0 else 0
+    max_dd = abs(calculate_max_drawdown(returns))
+    if max_dd == 0:
+        return 0
+    return (annualized_return - risk_free_rate) / (max_dd / 100)
+
+# ============================================================================
+# CONTINUING IN PART 2...
+# ============================================================================
+# Part 2 will contain all visualizations and page implementations
+# Save this file and paste Part 2 below it!
