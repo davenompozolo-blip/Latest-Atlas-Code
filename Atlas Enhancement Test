@@ -1214,3 +1214,2498 @@ def calculate_calmar_ratio(returns, risk_free_rate=RISK_FREE_RATE):
 # ============================================================================
 # Part 2 will contain all visualizations and page implementations
 # Save this file and paste Part 2 below it!
+
+"""
+ATLAS TERMINAL v9.3 EXCELLENCE EDITION - PART 2 OF 2
+All Visualizations and Page Implementations
+
+PASTE THIS FILE BELOW PART 1 TO COMPLETE THE APP!
+"""
+
+# ============================================================================
+# WORLD-CLASS VISUALIZATIONS - ENHANCED WITH SEAMLESS THEMING
+# ============================================================================
+
+def create_top_contributors_chart(df, top_n=5):
+    """NEW: Top contributors visualization for Home Page"""
+    top_contributors = df.nlargest(top_n, 'Total Gain/Loss $')[['Ticker', 'Asset Name', 'Total Gain/Loss $', 'Total Gain/Loss %']]
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Bar(
+        x=top_contributors['Total Gain/Loss $'],
+        y=top_contributors['Ticker'],
+        orientation='h',
+        marker=dict(
+            color=top_contributors['Total Gain/Loss $'],
+            colorscale=[[0, COLORS['success']], [1, COLORS['success']]],
+            line=dict(color=COLORS['border'], width=2)
+        ),
+        text=[f"${x:,.0f}" for x in top_contributors['Total Gain/Loss $']],
+        textposition='auto',
+        hovertemplate='<b>%{y}</b><br>P&L: %{text}<extra></extra>'
+    ))
+    
+    fig.update_layout(
+        title="🎯 Top 5 Contributors",
+        xaxis_title="Total Gain ($)",
+        yaxis_title="",
+        height=400,
+        showlegend=False
+    )
+    
+    apply_chart_theme(fig)
+    return fig
+
+def create_top_detractors_chart(df, top_n=5):
+    """NEW: Top detractors visualization for Home Page"""
+    top_detractors = df.nsmallest(top_n, 'Total Gain/Loss $')[['Ticker', 'Asset Name', 'Total Gain/Loss $', 'Total Gain/Loss %']]
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Bar(
+        x=top_detractors['Total Gain/Loss $'],
+        y=top_detractors['Ticker'],
+        orientation='h',
+        marker=dict(
+            color=top_detractors['Total Gain/Loss $'],
+            colorscale=[[0, COLORS['danger']], [1, COLORS['danger']]],
+            line=dict(color=COLORS['border'], width=2)
+        ),
+        text=[f"${x:,.0f}" for x in top_detractors['Total Gain/Loss $']],
+        textposition='auto',
+        hovertemplate='<b>%{y}</b><br>P&L: %{text}<extra></extra>'
+    ))
+    
+    fig.update_layout(
+        title="⚠️ Top 5 Detractors",
+        xaxis_title="Total Loss ($)",
+        yaxis_title="",
+        height=400,
+        showlegend=False
+    )
+    
+    apply_chart_theme(fig)
+    return fig
+
+def create_sector_allocation_donut(df):
+    """NEW: Sector allocation donut chart for Home Page"""
+    sector_allocation = df.groupby('Sector')['Total Value'].sum().reset_index()
+    sector_allocation = sector_allocation.sort_values('Total Value', ascending=False)
+    
+    fig = go.Figure(data=[go.Pie(
+        labels=sector_allocation['Sector'],
+        values=sector_allocation['Total Value'],
+        hole=0.5,
+        marker=dict(
+            colors=px.colors.qualitative.Set3,
+            line=dict(color=COLORS['border'], width=2)
+        ),
+        textinfo='label+percent',
+        textfont=dict(size=12)
+    )])
+    
+    fig.update_layout(
+        title="📊 Sector Allocation",
+        height=400,
+        showlegend=True,
+        legend=dict(x=0.85, y=0.5)
+    )
+    
+    apply_chart_theme(fig)
+    return fig
+
+def create_rolling_metrics_chart(returns, window=60):
+    """Rolling metrics visualization - ENHANCED THEMING"""
+    if not is_valid_series(returns) or len(returns) < window:
+        return None
+    
+    rolling_vol = returns.rolling(window).std() * np.sqrt(252) * 100
+    rolling_sharpe = (returns.rolling(window).mean() * 252 - RISK_FREE_RATE) / (returns.rolling(window).std() * np.sqrt(252))
+    
+    fig = make_subplots(
+        rows=2, cols=1,
+        subplot_titles=('Rolling Volatility (60-Day)', 'Rolling Sharpe Ratio (60-Day)'),
+        vertical_spacing=0.15
+    )
+    
+    fig.add_trace(
+        go.Scatter(
+            x=rolling_vol.index,
+            y=rolling_vol.values,
+            fill='tozeroy',
+            fillcolor='rgba(255, 0, 68, 0.2)',
+            line=dict(color=COLORS['danger'], width=2),
+            name='Volatility'
+        ),
+        row=1, col=1
+    )
+    
+    fig.add_trace(
+        go.Scatter(
+            x=rolling_sharpe.index,
+            y=rolling_sharpe.values,
+            fill='tozeroy',
+            fillcolor='rgba(0, 212, 255, 0.2)',
+            line=dict(color=COLORS['neon_blue'], width=2),
+            name='Sharpe Ratio'
+        ),
+        row=2, col=1
+    )
+    
+    fig.add_hline(y=0, line_dash="dash", line_color=COLORS['text_muted'], row=2, col=1)
+    
+    fig.update_layout(
+        height=600,
+        showlegend=False,
+        title_text="📊 Rolling Risk Metrics"
+    )
+    
+    apply_chart_theme(fig)
+    return fig
+
+def create_underwater_plot(returns):
+    """Underwater drawdown plot - ENHANCED THEMING"""
+    if not is_valid_series(returns) or len(returns) < 2:
+        return None
+    
+    cumulative = (1 + returns).cumprod()
+    running_max = cumulative.expanding().max()
+    drawdown = ((cumulative - running_max) / running_max) * 100
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Scatter(
+        x=drawdown.index,
+        y=drawdown.values,
+        fill='tozeroy',
+        fillcolor='rgba(255, 0, 68, 0.3)',
+        line=dict(color=COLORS['danger'], width=2),
+        name='Drawdown'
+    ))
+    
+    fig.add_hline(y=0, line_dash="solid", line_color=COLORS['text_primary'], line_width=1)
+    
+    max_dd_idx = drawdown.idxmin()
+    max_dd_val = drawdown.min()
+    
+    fig.add_annotation(
+        x=max_dd_idx,
+        y=max_dd_val,
+        text=f"Max DD: {max_dd_val:.2f}%",
+        showarrow=True,
+        arrowhead=2,
+        arrowcolor=COLORS['danger'],
+        ax=0,
+        ay=-40,
+        bgcolor=COLORS['card_background'],
+        bordercolor=COLORS['danger'],
+        borderwidth=2
+    )
+    
+    fig.update_layout(
+        title="🌊 Underwater Plot",
+        xaxis_title="Date",
+        yaxis_title="Drawdown (%)",
+        height=500
+    )
+    
+    apply_chart_theme(fig)
+    return fig
+
+def create_var_waterfall(returns):
+    """VaR/CVaR waterfall chart - ENHANCED THEMING"""
+    if not is_valid_series(returns) or len(returns) < 2:
+        return None
+    
+    var_90 = calculate_var(returns, 0.90)
+    var_95 = calculate_var(returns, 0.95)
+    var_99 = calculate_var(returns, 0.99)
+    cvar_95 = calculate_cvar(returns, 0.95)
+    
+    categories = ['VaR 90%', 'VaR 95%', 'VaR 99%', 'CVaR 95%']
+    values = [var_90, var_95, var_99, cvar_95]
+    
+    colors_list = [COLORS['warning'], COLORS['orange'], COLORS['danger'], COLORS['danger']]
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Bar(
+        x=categories,
+        y=values,
+        marker=dict(
+            color=colors_list,
+            line=dict(color=COLORS['border'], width=2)
+        ),
+        text=[f"{v:.2f}%" for v in values],
+        textposition='outside'
+    ))
+    
+    fig.update_layout(
+        title="⚠️ Value at Risk Waterfall",
+        xaxis_title="Risk Measure",
+        yaxis_title="Expected Loss (%)",
+        height=500
+    )
+    
+    apply_chart_theme(fig)
+    return fig
+
+def create_risk_contribution_sunburst(df):
+    """Risk contribution sunburst - ENHANCED THEMING"""
+    risk_data = []
+    
+    for _, row in df.iterrows():
+        ticker = row['Ticker']
+        weight = row['Weight %']
+        sector = row['Sector']
+        
+        hist_data = fetch_historical_data(ticker, datetime.now() - timedelta(days=365), datetime.now())
+        if hist_data is not None and len(hist_data) > 30:
+            returns = hist_data['Close'].pct_change().dropna()
+            vol = returns.std() * np.sqrt(252) * 100
+            risk_contribution = weight * vol
+            
+            risk_data.append({
+                'Ticker': ticker,
+                'Sector': sector,
+                'Weight': weight,
+                'Volatility': vol,
+                'Risk Contribution': risk_contribution
+            })
+    
+    if not risk_data:
+        return None
+    
+    risk_df = pd.DataFrame(risk_data)
+    
+    fig = px.sunburst(
+        risk_df,
+        path=['Sector', 'Ticker'],
+        values='Risk Contribution',
+        color='Volatility',
+        color_continuous_scale='RdYlGn_r',
+        title="☀️ Risk Contribution Sunburst"
+    )
+    
+    fig.update_layout(height=600)
+    apply_chart_theme(fig)
+    return fig
+
+def create_risk_reward_plot(df):
+    """Risk-reward scatter plot - ENHANCED THEMING"""
+    risk_reward_data = []
+    
+    for _, row in df.iterrows():
+        ticker = row['Ticker']
+        hist_data = fetch_historical_data(ticker, datetime.now() - timedelta(days=365), datetime.now())
+        
+        if hist_data is not None and len(hist_data) > 30:
+            returns = hist_data['Close'].pct_change().dropna()
+            annual_return = ((1 + returns.mean()) ** 252 - 1) * 100
+            annual_vol = returns.std() * np.sqrt(252) * 100
+            
+            risk_reward_data.append({
+                'Ticker': ticker,
+                'Asset Name': row['Asset Name'],
+                'Return': annual_return,
+                'Risk': annual_vol,
+                'Weight': row['Weight %'],
+                'Sector': row['Sector']
+            })
+    
+    if not risk_reward_data:
+        return None
+    
+    rr_df = pd.DataFrame(risk_reward_data)
+    
+    fig = px.scatter(
+        rr_df,
+        x='Risk',
+        y='Return',
+        size='Weight',
+        color='Sector',
+        text='Ticker',
+        hover_data=['Asset Name'],
+        color_discrete_sequence=px.colors.qualitative.Set3
+    )
+    
+    fig.update_traces(
+        textposition='top center',
+        marker=dict(line=dict(width=2, color=COLORS['border']))
+    )
+    
+    fig.update_layout(
+        title="📈 Risk-Reward Analysis",
+        xaxis_title="Risk (Annual Volatility %)",
+        yaxis_title="Expected Return (Annual %)",
+        height=500
+    )
+    
+    apply_chart_theme(fig)
+    return fig
+
+def create_performance_heatmap(df, period='monthly'):
+    """Performance heatmap - ENHANCED THEMING & FIXED NOV 2024"""
+    try:
+        portfolio_values = {}
+        
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=365)
+        
+        for _, row in df.iterrows():
+            ticker = row['Ticker']
+            hist_data = fetch_historical_data(ticker, start_date, end_date)
+            
+            if hist_data is not None and len(hist_data) > 0:
+                monthly_data = hist_data['Close'].resample('M').last()
+                monthly_returns = monthly_data.pct_change() * 100
+                
+                for month, ret in monthly_returns.items():
+                    # FIXED: Skip current incomplete month
+                    if month.month == end_date.month and month.year == end_date.year:
+                        continue
+                    month_str = month.strftime('%b %Y')
+                    if month_str not in portfolio_values:
+                        portfolio_values[month_str] = {}
+                    if pd.notna(ret) and abs(ret) < 50:
+                        portfolio_values[month_str][ticker] = ret
+        
+        if not portfolio_values:
+            return None
+        
+        tickers = sorted(set(t for months in portfolio_values.values() for t in months))
+        months = sorted(portfolio_values.keys(), key=lambda x: datetime.strptime(x, '%b %Y'))
+        
+        # FIXED: Remove current incomplete month
+        months = [m for m in months if datetime.strptime(m, '%b %Y') < end_date.replace(day=1)]
+        
+        matrix = []
+        for ticker in tickers:
+            row = []
+            for month in months:
+                if ticker in portfolio_values[month]:
+                    val = portfolio_values[month][ticker]
+                    val = max(-50, min(50, val))
+                    row.append(val)
+                else:
+                    row.append(0)
+            matrix.append(row)
+        
+        fig = go.Figure(data=go.Heatmap(
+            z=matrix,
+            x=months,
+            y=tickers,
+            colorscale='RdYlGn',
+            zmid=0,
+            zmin=-20,
+            zmax=20,
+            text=np.round(matrix, 1),
+            texttemplate='%{text}%',
+            textfont={"size": 14},
+            colorbar=dict(title="Return %")
+        ))
+        
+        fig.update_layout(
+            title="🔥 Monthly Performance Heatmap",
+            xaxis_title="Month",
+            yaxis_title="Asset",
+            height=800,
+            width=1200
+        )
+        
+        apply_chart_theme(fig)
+        return fig
+    except Exception as e:
+        st.error(f"Error: {str(e)}")
+        return None
+
+def create_portfolio_heatmap(df):
+    """Portfolio treemap - ENHANCED THEMING"""
+    df_viz = df[['Ticker', 'Asset Name', 'Weight %', 'Total Gain/Loss %', 'Sector']].copy()
+    df_viz['Sector'] = df_viz['Sector'].fillna('Other')
+    df_viz = df_viz.dropna()
+    
+    if df_viz.empty:
+        return None
+    
+    fig = px.treemap(
+        df_viz,
+        path=[px.Constant("Portfolio"), 'Sector', 'Ticker'],
+        values='Weight %',
+        color='Total Gain/Loss %',
+        color_continuous_scale='RdYlGn',
+        color_continuous_midpoint=0,
+        hover_data={'Asset Name': True, 'Total Gain/Loss %': ':.2f'}
+    )
+    
+    fig.update_layout(
+        title="🗺️ Portfolio Heatmap",
+        height=700
+    )
+    
+    apply_chart_theme(fig)
+    return fig
+
+@st.cache_data(ttl=600)
+def fetch_ticker_performance(ticker, start_date, end_date):
+    try:
+        data = fetch_historical_data(ticker, start_date, end_date)
+        if data is not None and not data.empty:
+            returns = data['Close'].pct_change().fillna(0)
+            cumulative = (1 + returns).cumprod() - 1
+            return cumulative * 100, data
+        return None, None
+    except:
+        return None, None
+
+def create_interactive_performance_chart(tickers, start_date, end_date):
+    """Interactive performance chart - ENHANCED THEMING"""
+    fig = go.Figure()
+    
+    colors = [COLORS['neon_blue'], COLORS['electric_blue'], COLORS['teal'], 
+              COLORS['success'], COLORS['warning'], COLORS['danger'],
+              COLORS['purple'], COLORS['pink'], COLORS['orange']]
+    
+    for idx, ticker in enumerate(tickers):
+        cumulative, data = fetch_ticker_performance(ticker, start_date, end_date)
+        if cumulative is not None:
+            fig.add_trace(go.Scatter(
+                x=cumulative.index,
+                y=cumulative.values,
+                mode='lines',
+                name=ticker,
+                line=dict(width=2.5, color=colors[idx % len(colors)])
+            ))
+    
+    if not fig.data:
+        return None
+    
+    fig.update_layout(
+        title="📈 Interactive Performance Comparison",
+        xaxis_title="Date",
+        yaxis_title="Cumulative Return (%)",
+        height=600,
+        hovermode='x unified',
+        legend=dict(x=0.01, y=0.99)
+    )
+    
+    fig.add_hline(y=0, line_dash="dash", line_color=COLORS['text_muted'], line_width=1)
+    
+    apply_chart_theme(fig)
+    return fig
+
+def run_monte_carlo_simulation(returns, initial_value=100000, days=252, simulations=1000):
+    if not is_valid_series(returns) or len(returns) < 30:
+        return None
+    
+    daily_return = returns.mean()
+    daily_vol = returns.std()
+    
+    simulation_results = []
+    
+    for _ in range(simulations):
+        prices = [initial_value]
+        for _ in range(days):
+            price = prices[-1] * (1 + np.random.normal(daily_return, daily_vol))
+            prices.append(price)
+        simulation_results.append(prices)
+    
+    return np.array(simulation_results)
+
+def create_monte_carlo_chart(simulation_results, initial_value=100000):
+    if simulation_results is None:
+        return None, None
+    
+    fig = go.Figure()
+    
+    for i in range(min(100, len(simulation_results))):
+        fig.add_trace(go.Scatter(
+            y=simulation_results[i],
+            mode='lines',
+            line=dict(width=0.5, color=COLORS['electric_blue']),
+            opacity=0.1,
+            showlegend=False
+        ))
+    
+    percentiles = [5, 25, 50, 75, 95]
+    colors_pct = [COLORS['danger'], COLORS['warning'], COLORS['info'], 
+                  COLORS['teal'], COLORS['success']]
+    
+    for p, color in zip(percentiles, colors_pct):
+        values = np.percentile(simulation_results, p, axis=0)
+        fig.add_trace(go.Scatter(
+            y=values,
+            mode='lines',
+            line=dict(width=3, color=color),
+            name=f'{p}th Percentile'
+        ))
+    
+    fig.update_layout(
+        title="🎲 Monte Carlo Simulation",
+        xaxis_title="Trading Days",
+        yaxis_title="Portfolio Value ($)",
+        height=500
+    )
+    
+    apply_chart_theme(fig)
+    
+    final_values = simulation_results[:, -1]
+    stats = {
+        'mean': np.mean(final_values),
+        'median': np.median(final_values),
+        'percentile_5': np.percentile(final_values, 5),
+        'percentile_95': np.percentile(final_values, 95),
+        'prob_profit': (final_values > initial_value).mean() * 100,
+        'prob_loss_10': (final_values < initial_value * 0.9).mean() * 100,
+        'prob_gain_20': (final_values > initial_value * 1.2).mean() * 100
+    }
+    
+    return fig, stats
+
+def create_risk_parity_analysis(df):
+    risk_contributions = []
+    
+    for _, row in df.iterrows():
+        ticker = row['Ticker']
+        weight = row['Weight %'] / 100
+        
+        hist_data = fetch_historical_data(ticker, datetime.now() - timedelta(days=365), datetime.now())
+        if hist_data is not None and len(hist_data) > 30:
+            returns = hist_data['Close'].pct_change().dropna()
+            vol = returns.std() * np.sqrt(252)
+            risk_contribution = weight * vol
+            
+            risk_contributions.append({
+                'Ticker': ticker,
+                'Weight %': row['Weight %'],
+                'Volatility': vol * 100,
+                'Risk Contribution': risk_contribution * 100
+            })
+    
+    if not risk_contributions:
+        return None
+    
+    rc_df = pd.DataFrame(risk_contributions)
+    total_risk = rc_df['Risk Contribution'].sum()
+    rc_df['Risk %'] = (rc_df['Risk Contribution'] / total_risk) * 100
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Bar(
+        name='Weight %',
+        x=rc_df['Ticker'],
+        y=rc_df['Weight %'],
+        marker_color=COLORS['electric_blue']
+    ))
+    
+    fig.add_trace(go.Bar(
+        name='Risk Contribution %',
+        x=rc_df['Ticker'],
+        y=rc_df['Risk %'],
+        marker_color=COLORS['danger']
+    ))
+    
+    fig.update_layout(
+        title="⚖️ Risk Parity Analysis",
+        xaxis_title="Asset",
+        yaxis_title="Percentage",
+        barmode='group',
+        height=500
+    )
+    
+    apply_chart_theme(fig)
+    return fig
+
+def create_correlation_network(df, start_date, end_date):
+    returns_data = {}
+    
+    for _, row in df.iterrows():
+        ticker = row['Ticker']
+        hist_data = fetch_historical_data(ticker, start_date, end_date)
+        if hist_data is not None and len(hist_data) > 30:
+            returns_data[ticker] = hist_data['Close'].pct_change().dropna()
+    
+    if len(returns_data) < 2:
+        return None
+    
+    returns_df = pd.DataFrame(returns_data)
+    corr_matrix = returns_df.corr()
+    
+    fig = go.Figure()
+    
+    G = nx.Graph()
+    for ticker in corr_matrix.columns:
+        G.add_node(ticker)
+    
+    threshold = 0.5
+    for i, ticker1 in enumerate(corr_matrix.columns):
+        for j, ticker2 in enumerate(corr_matrix.columns):
+            if i < j:
+                corr = corr_matrix.iloc[i, j]
+                if abs(corr) > threshold:
+                    G.add_edge(ticker1, ticker2, weight=abs(corr))
+    
+    pos = nx.spring_layout(G)
+    
+    for edge in G.edges():
+        x0, y0 = pos[edge[0]]
+        x1, y1 = pos[edge[1]]
+        weight = G[edge[0]][edge[1]]['weight']
+        
+        fig.add_trace(go.Scatter(
+            x=[x0, x1],
+            y=[y0, y1],
+            mode='lines',
+            line=dict(width=weight*5, color=COLORS['electric_blue']),
+            opacity=0.5,
+            showlegend=False
+        ))
+    
+    node_x = []
+    node_y = []
+    node_text = []
+    
+    for node in G.nodes():
+        x, y = pos[node]
+        node_x.append(x)
+        node_y.append(y)
+        node_text.append(node)
+    
+    fig.add_trace(go.Scatter(
+        x=node_x,
+        y=node_y,
+        mode='markers+text',
+        text=node_text,
+        textposition='top center',
+        marker=dict(
+            size=20,
+            color=COLORS['neon_blue'],
+            line=dict(width=2, color=COLORS['border'])
+        ),
+        showlegend=False
+    ))
+    
+    fig.update_layout(
+        title="🔗 Correlation Network",
+        showlegend=False,
+        height=600,
+        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False)
+    )
+    
+    apply_chart_theme(fig)
+    return fig
+
+def create_efficient_frontier(df):
+    """FIXED BROADCASTING ERROR - ENHANCED THEMING"""
+    returns_data = {}
+    expected_returns = []
+    volatilities = []
+    tickers = []
+    
+    for _, row in df.iterrows():
+        ticker = row['Ticker']
+        hist_data = fetch_historical_data(ticker, datetime.now() - timedelta(days=365), datetime.now())
+        
+        if hist_data is not None and len(hist_data) > 30:
+            returns = hist_data['Close'].pct_change().dropna()
+            annual_return = ((1 + returns.mean()) ** 252 - 1)
+            annual_vol = returns.std() * np.sqrt(252)
+            
+            expected_returns.append(annual_return)
+            volatilities.append(annual_vol)
+            tickers.append(ticker)
+            returns_data[ticker] = returns
+    
+    if len(expected_returns) < 2:
+        return None
+    
+    returns_df = pd.DataFrame(returns_data)
+    cov_matrix = returns_df.cov() * 252
+    
+    num_portfolios = 5000
+    results = np.zeros((3, num_portfolios))
+    
+    np.random.seed(42)
+    
+    for i in range(num_portfolios):
+        weights = np.random.random(len(tickers))
+        weights /= np.sum(weights)
+        
+        portfolio_return = np.sum(weights * np.array(expected_returns))
+        portfolio_vol = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights)))
+        sharpe = (portfolio_return - RISK_FREE_RATE) / portfolio_vol if portfolio_vol > 0 else 0
+        
+        results[0, i] = portfolio_return * 100
+        results[1, i] = portfolio_vol * 100
+        results[2, i] = sharpe
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Scatter(
+        x=results[1],
+        y=results[0],
+        mode='markers',
+        marker=dict(
+            size=5,
+            color=results[2],
+            colorscale='Viridis',
+            showscale=True,
+            colorbar=dict(title="Sharpe Ratio")
+        ),
+        name='Efficient Frontier'
+    ))
+    
+    # FIXED: Properly align weights and returns
+    current_weights = df[df['Ticker'].isin(tickers)]['Weight %'].values / 100
+    aligned_returns = np.array(expected_returns[:len(current_weights)])
+    aligned_cov = cov_matrix.iloc[:len(current_weights), :len(current_weights)]
+    
+    current_return = np.sum(current_weights * aligned_returns) * 100
+    current_vol = np.sqrt(np.dot(current_weights.T, np.dot(aligned_cov, current_weights))) * 100
+    
+    fig.add_trace(go.Scatter(
+        x=[current_vol],
+        y=[current_return],
+        mode='markers',
+        marker=dict(size=20, color=COLORS['danger'], symbol='star'),
+        name='Current Portfolio'
+    ))
+    
+    fig.update_layout(
+        title="📊 Efficient Frontier",
+        xaxis_title="Risk (Volatility %)",
+        yaxis_title="Return %",
+        height=600
+    )
+    
+    apply_chart_theme(fig)
+    return fig
+
+# ============================================================================
+# MARKET WATCH - ENHANCED
+# ============================================================================
+
+@st.cache_data(ttl=300)
+def fetch_market_watch_data(tickers_dict):
+    market_data = []
+    
+    for ticker, info in tickers_dict.items():
+        try:
+            stock = yf.Ticker(ticker)
+            hist = stock.history(period="5d")
+            
+            if not hist.empty:
+                current = hist['Close'].iloc[-1]
+                prev = hist['Close'].iloc[-2] if len(hist) > 1 else current
+                change = ((current - prev) / prev) * 100
+                
+                five_day = ((current / hist['Close'].iloc[0]) - 1) * 100 if len(hist) >= 5 else 0
+                
+                volume = hist['Volume'].iloc[-1]
+                avg_volume = hist['Volume'].mean()
+                
+                market_data.append({
+                    'Symbol': ticker,
+                    'Name': info.get('name', ticker),
+                    'Category': info.get('category', info.get('region', '')),
+                    'Last': current,
+                    'Change %': change,
+                    '5D %': five_day,
+                    'Volume': volume,
+                    'Avg Volume': avg_volume,
+                    'Vol/Avg': volume / avg_volume if avg_volume > 0 else 0
+                })
+        except:
+            continue
+    
+    return pd.DataFrame(market_data)
+
+def create_dynamic_market_table(df, filters=None):
+    if filters:
+        if 'category' in filters and filters['category']:
+            df = df[df['Category'] == filters['category']]
+        
+        if 'min_change' in filters and filters['min_change']:
+            df = df[df['Change %'] >= filters['min_change']]
+        
+        if 'sort_by' in filters and filters['sort_by']:
+            ascending = filters.get('ascending', False)
+            df = df.sort_values(filters['sort_by'], ascending=ascending)
+    
+    display_df = df.copy()
+    display_df['Last'] = display_df['Last'].apply(format_currency)
+    display_df['Change %'] = display_df['Change %'].apply(lambda x: add_arrow_indicator(format_percentage(x)))
+    display_df['5D %'] = display_df['5D %'].apply(lambda x: add_arrow_indicator(format_percentage(x)))
+    display_df['Volume'] = display_df['Volume'].apply(lambda x: f"{x:,.0f}")
+    display_df['Vol/Avg'] = display_df['Vol/Avg'].apply(lambda x: f"{x:.2f}x")
+    
+    return display_df
+
+# ============================================================================
+# PORTFOLIO DEEP DIVE - ENHANCED
+# ============================================================================
+
+def create_sector_rotation_heatmap(df, start_date, end_date):
+    """Sector rotation heatmap - FIXED NOV 2024"""
+    sector_returns = {}
+    
+    end_date_cutoff = datetime.now().replace(day=1)  # First day of current month
+    
+    for _, row in df.iterrows():
+        ticker = row['Ticker']
+        sector = row['Sector']
+        
+        hist_data = fetch_historical_data(ticker, start_date, end_date)
+        if hist_data is not None and len(hist_data) > 30:
+            monthly_data = hist_data['Close'].resample('M').last()
+            monthly_returns = monthly_data.pct_change() * 100
+            
+            # FIXED: Filter out current incomplete month
+            monthly_returns = monthly_returns[monthly_returns.index < end_date_cutoff]
+            
+            if sector not in sector_returns:
+                sector_returns[sector] = []
+            
+            sector_returns[sector].append(monthly_returns)
+    
+    if not sector_returns:
+        return None
+    
+    sector_avg = {}
+    for sector, returns_list in sector_returns.items():
+        combined = pd.concat(returns_list, axis=1).mean(axis=1)
+        sector_avg[sector] = combined
+    
+    sectors = list(sector_avg.keys())
+    months = sector_avg[sectors[0]].index
+    
+    matrix = []
+    for sector in sectors:
+        matrix.append(sector_avg[sector].values)
+    
+    fig = go.Figure(data=go.Heatmap(
+        z=matrix,
+        x=[m.strftime('%b %Y') for m in months],
+        y=sectors,
+        colorscale='RdYlGn',
+        zmid=0,
+        text=np.round(matrix, 1),
+        texttemplate='%{text}%',
+        textfont={"size": 11},
+        colorbar=dict(title="Return %")
+    ))
+    
+    fig.update_layout(
+        title="🔄 Sector Rotation Heatmap",
+        xaxis_title="Month",
+        yaxis_title="Sector",
+        height=500
+    )
+    
+    apply_chart_theme(fig)
+    return fig
+
+def create_holdings_attribution_waterfall(df):
+    """Holdings attribution waterfall - ENHANCED THEMING"""
+    top_contributors = df.nlargest(10, 'Total Gain/Loss $')
+    
+    tickers = top_contributors['Ticker'].tolist()
+    contributions = top_contributors['Total Gain/Loss $'].tolist()
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Waterfall(
+        name="Attribution",
+        orientation="v",
+        x=tickers,
+        y=contributions,
+        connector={"line": {"color": COLORS['neon_blue']}},
+        decreasing={"marker": {"color": COLORS['danger']}},
+        increasing={"marker": {"color": COLORS['success']}},
+        totals={"marker": {"color": COLORS['electric_blue']}}
+    ))
+    
+    fig.update_layout(
+        title="💧 Holdings Attribution Waterfall",
+        xaxis_title="Ticker",
+        yaxis_title="Contribution ($)",
+        height=500
+    )
+    
+    apply_chart_theme(fig)
+    return fig
+
+def create_concentration_gauge(df):
+    """Concentration gauge - ENHANCED THEMING"""
+    top_5_weight = df.nlargest(5, 'Weight %')['Weight %'].sum()
+    
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number+delta",
+        value=top_5_weight,
+        title={'text': "Top 5 Concentration"},
+        delta={'reference': 50, 'increasing': {'color': COLORS['warning']}},
+        gauge={
+            'axis': {'range': [None, 100]},
+            'bar': {'color': COLORS['neon_blue']},
+            'steps': [
+                {'range': [0, 30], 'color': COLORS['success']},
+                {'range': [30, 50], 'color': COLORS['warning']},
+                {'range': [50, 100], 'color': COLORS['danger']}
+            ],
+            'threshold': {
+                'line': {'color': "red", 'width': 4},
+                'thickness': 0.75,
+                'value': 70
+            }
+        }
+    ))
+    
+    fig.update_layout(height=400)
+    apply_chart_theme(fig)
+    return fig
+
+def create_concentration_analysis(df):
+    """NEW: Enhanced concentration analysis with multiple visuals"""
+    
+    # Top 10 Holdings Bar Chart
+    top_10 = df.nlargest(10, 'Weight %')
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Bar(
+        x=top_10['Weight %'],
+        y=top_10['Ticker'],
+        orientation='h',
+        marker=dict(
+            color=top_10['Weight %'],
+            colorscale='Blues',
+            line=dict(color=COLORS['border'], width=2)
+        ),
+        text=[f"{x:.1f}%" for x in top_10['Weight %']],
+        textposition='auto'
+    ))
+    
+    fig.update_layout(
+        title="📊 Top 10 Holdings Concentration",
+        xaxis_title="Weight (%)",
+        yaxis_title="",
+        height=500,
+        showlegend=False
+    )
+    
+    apply_chart_theme(fig)
+    return fig
+
+# ============================================================================
+# MULTI-FACTOR ANALYSIS - ENHANCED
+# ============================================================================
+
+def create_factor_momentum_chart(factor_data):
+    """Factor momentum chart - ENHANCED THEMING"""
+    if factor_data is None or 'factor_returns' not in factor_data:
+        return None
+    
+    factor_returns = factor_data['factor_returns']
+    
+    fig = go.Figure()
+    
+    colors = [COLORS['neon_blue'], COLORS['electric_blue'], COLORS['teal'], 
+              COLORS['success'], COLORS['purple'], COLORS['pink']]
+    
+    for idx, factor in enumerate(FACTOR_DEFINITIONS.keys()):
+        if factor in factor_returns.columns:
+            cumulative = (1 + factor_returns[factor]).cumprod() - 1
+            fig.add_trace(go.Scatter(
+                x=cumulative.index,
+                y=cumulative.values * 100,
+                mode='lines',
+                name=factor,
+                line=dict(width=2, color=colors[idx % len(colors)])
+            ))
+    
+    fig.update_layout(
+        title="📈 Factor Momentum",
+        xaxis_title="Date",
+        yaxis_title="Cumulative Return (%)",
+        height=600,
+        hovermode='x unified',
+        legend=dict(x=0.02, y=0.98)
+    )
+    
+    apply_chart_theme(fig)
+    return fig
+
+def create_factor_exposure_radar(exposures):
+    """Factor exposure radar - ENHANCED THEMING"""
+    if exposures is None or 'exposures' not in exposures:
+        return None
+    
+    exp = exposures['exposures']
+    factors = [f for f in FACTOR_DEFINITIONS.keys() if f in exp.index]
+    values = [exp[f] for f in factors]
+    
+    max_abs = max([abs(v) for v in values]) if values else 1
+    normalized = [(v / max_abs) * 100 if max_abs > 0 else 0 for v in values]
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Scatterpolar(
+        r=normalized,
+        theta=factors,
+        fill='toself',
+        fillcolor='rgba(0, 212, 255, 0.2)',
+        line=dict(color=COLORS['neon_blue'], width=2),
+        name='Factor Exposure'
+    ))
+    
+    fig.update_layout(
+        polar=dict(
+            radialaxis=dict(
+                visible=True,
+                range=[0, 100],
+                color=COLORS['text_secondary']
+            ),
+            bgcolor='rgba(10, 25, 41, 0.3)'
+        ),
+        title="🎯 Factor Exposure Radar",
+        height=550
+    )
+    
+    apply_chart_theme(fig)
+    return fig
+
+@st.cache_data(ttl=3600)
+def calculate_factor_exposures(df, start_date, end_date):
+    try:
+        portfolio_returns = calculate_portfolio_returns(df, start_date, end_date)
+        if not is_valid_series(portfolio_returns):
+            return None
+        
+        factor_returns = {}
+        for factor_name, factor_info in FACTOR_DEFINITIONS.items():
+            benchmark = factor_info['benchmark']
+            returns = calculate_benchmark_returns(benchmark, start_date, end_date)
+            if is_valid_series(returns):
+                factor_returns[factor_name] = returns
+        
+        if not factor_returns:
+            return None
+        
+        common_dates = portfolio_returns.index
+        for factor_name in factor_returns:
+            common_dates = common_dates.intersection(factor_returns[factor_name].index)
+        
+        X = pd.DataFrame({name: returns.loc[common_dates] for name, returns in factor_returns.items()})
+        y = portfolio_returns.loc[common_dates]
+        
+        X['Alpha'] = 1
+        
+        model = LinearRegression()
+        model.fit(X, y)
+        
+        exposures = pd.Series(model.coef_, index=X.columns)
+        r_squared = model.score(X, y)
+        predicted_returns = model.predict(X)
+        
+        asset_exposures = {}
+        for _, row in df.iterrows():
+            ticker = row['Ticker']
+            ticker_returns = calculate_benchmark_returns(ticker, start_date, end_date)
+            if is_valid_series(ticker_returns):
+                ticker_aligned = ticker_returns.loc[common_dates]
+                
+                asset_model = LinearRegression()
+                asset_model.fit(X, ticker_aligned)
+                
+                asset_exposures[ticker] = pd.Series(asset_model.coef_, index=X.columns)
+        
+        return {
+            'exposures': exposures,
+            'r_squared': r_squared,
+            'factor_returns': X,
+            'portfolio_returns': y,
+            'predicted_returns': predicted_returns,
+            'asset_exposures': asset_exposures
+        }
+    except:
+        return None
+
+def create_factor_attribution_table(exposures, df):
+    if exposures is None or 'asset_exposures' not in exposures:
+        return None, None, None
+    
+    attribution_data = []
+    
+    for ticker, asset_exp in exposures['asset_exposures'].items():
+        asset_row = df[df['Ticker'] == ticker]
+        if asset_row.empty:
+            continue
+        
+        weight = asset_row['Weight %'].values[0] / 100
+        sector = asset_row['Sector'].values[0]
+        
+        for factor in FACTOR_DEFINITIONS.keys():
+            if factor in asset_exp:
+                contribution = weight * asset_exp[factor]
+                attribution_data.append({
+                    'Ticker': ticker,
+                    'Sector': sector,
+                    'Factor': factor,
+                    'Weight': weight * 100,
+                    'Factor Beta': asset_exp[factor],
+                    'Contribution': contribution
+                })
+    
+    if not attribution_data:
+        return None, None, None
+    
+    attr_df = pd.DataFrame(attribution_data)
+    
+    factor_summary = attr_df.groupby('Factor').agg({
+        'Contribution': 'sum'
+    }).reset_index()
+    factor_summary.columns = ['Factor', 'Total Contribution']
+    
+    sector_summary = attr_df.groupby(['Sector', 'Factor']).agg({
+        'Contribution': 'sum'
+    }).reset_index()
+    
+    return attr_df, factor_summary, sector_summary
+
+# ============================================================================
+# PERFORMANCE METRICS
+# ============================================================================
+
+def calculate_performance_metrics(df, portfolio_returns, benchmark_returns):
+    if not is_valid_series(portfolio_returns):
+        return None
+    
+    total_return = (1 + portfolio_returns).prod() - 1
+    n_years = len(portfolio_returns) / 252
+    annualized_return = (1 + total_return) ** (1/n_years) - 1 if n_years > 0 else 0
+    annualized_vol = portfolio_returns.std() * np.sqrt(252)
+    
+    sharpe = calculate_sharpe_ratio(portfolio_returns)
+    sortino = calculate_sortino_ratio(portfolio_returns)
+    calmar = calculate_calmar_ratio(portfolio_returns)
+    
+    info_ratio = calculate_information_ratio(portfolio_returns, benchmark_returns)
+    
+    var_95 = calculate_var(portfolio_returns, 0.95)
+    cvar_95 = calculate_cvar(portfolio_returns, 0.95)
+    max_dd = calculate_max_drawdown(portfolio_returns)
+    
+    winning_days = (portfolio_returns > 0).sum()
+    losing_days = (portfolio_returns < 0).sum()
+    win_rate = winning_days / (winning_days + losing_days) * 100 if (winning_days + losing_days) > 0 else 0
+    
+    avg_win = portfolio_returns[portfolio_returns > 0].mean() * 100 if winning_days > 0 else 0
+    avg_loss = portfolio_returns[portfolio_returns < 0].mean() * 100 if losing_days > 0 else 0
+    
+    best_day = portfolio_returns.max() * 100
+    worst_day = portfolio_returns.min() * 100
+    
+    return {
+        'Total Return': total_return * 100,
+        'Annualized Return': annualized_return * 100,
+        'Annualized Volatility': annualized_vol * 100,
+        'Sharpe Ratio': sharpe,
+        'Sortino Ratio': sortino,
+        'Calmar Ratio': calmar,
+        'Information Ratio': info_ratio,
+        'VaR (95%)': var_95,
+        'CVaR (95%)': cvar_95,
+        'Max Drawdown': max_dd,
+        'Win Rate': win_rate,
+        'Avg Win': avg_win,
+        'Avg Loss': avg_loss,
+        'Best Day': best_day,
+        'Worst Day': worst_day,
+        'Winning Days': winning_days,
+        'Losing Days': losing_days
+    }
+
+def create_performance_dashboard(metrics):
+    fig = make_subplots(
+        rows=2, cols=2,
+        subplot_titles=('Returns Distribution', 'Risk Metrics', 
+                       'Win/Loss Analysis', 'Risk-Adjusted Returns'),
+        specs=[[{'type': 'bar'}, {'type': 'scatter'}],
+               [{'type': 'pie'}, {'type': 'bar'}]]
+    )
+    
+    fig.add_trace(
+        go.Bar(x=['Total', 'Annualized'], 
+               y=[metrics['Total Return'], metrics['Annualized Return']],
+               marker_color=[COLORS['success'], COLORS['electric_blue']]),
+        row=1, col=1
+    )
+    
+    fig.add_trace(
+        go.Scatter(x=['Volatility', 'VaR', 'CVaR', 'Max DD'],
+                  y=[metrics['Annualized Volatility'], abs(metrics['VaR (95%)']), 
+                     abs(metrics['CVaR (95%)']), abs(metrics['Max Drawdown'])],
+                  mode='markers+lines',
+                  marker=dict(size=15, color=COLORS['danger'])),
+        row=1, col=2
+    )
+    
+    fig.add_trace(
+        go.Pie(labels=['Winning Days', 'Losing Days'],
+               values=[metrics['Winning Days'], metrics['Losing Days']],
+               marker=dict(colors=[COLORS['success'], COLORS['danger']])),
+        row=2, col=1
+    )
+    
+    fig.add_trace(
+        go.Bar(x=['Sharpe', 'Sortino', 'Calmar', 'Info'],
+               y=[metrics['Sharpe Ratio'], metrics['Sortino Ratio'], 
+                  metrics['Calmar Ratio'], metrics['Information Ratio']],
+               marker_color=COLORS['purple']),
+        row=2, col=2
+    )
+    
+    fig.update_layout(
+        height=700,
+        showlegend=False,
+        title_text="📊 Performance Dashboard"
+    )
+    
+    apply_chart_theme(fig)
+    return fig
+
+# ============================================================================
+# VALUATION HOUSE VISUALIZATIONS - ENHANCED
+# ============================================================================
+
+def create_dcf_waterfall(dcf_results, method='FCFF'):
+    """Create waterfall chart showing DCF buildup - ENHANCED THEMING"""
+    
+    categories = ['PV of Cash Flows', 'PV of Terminal Value']
+    values = [dcf_results['total_pv_cash_flows'], dcf_results['pv_terminal']]
+    
+    if method == 'FCFF':
+        categories.append('Enterprise Value')
+        categories.append('Less: Net Debt')
+        categories.append('Equity Value')
+        values.append(dcf_results['enterprise_value'])
+        values.append(-dcf_results.get('net_debt', 0))
+        values.append(dcf_results['equity_value'])
+    
+    fig = go.Figure(go.Waterfall(
+        name="DCF Buildup",
+        orientation="v",
+        x=categories,
+        y=values,
+        connector={"line": {"color": COLORS['neon_blue']}},
+        decreasing={"marker": {"color": COLORS['danger']}},
+        increasing={"marker": {"color": COLORS['success']}},
+    ))
+    
+    fig.update_layout(
+        title=f"💎 {method} Valuation Buildup",
+        yaxis_title="Value ($)",
+        height=500
+    )
+    
+    apply_chart_theme(fig)
+    return fig
+
+def create_cash_flow_chart(projections, method='FCFF'):
+    """Create bar chart of projected cash flows - ENHANCED THEMING"""
+    
+    cf_key = 'fcff' if method == 'FCFF' else 'fcfe'
+    
+    years = [proj['year'] for proj in projections]
+    cash_flows = [proj[cf_key] for proj in projections]
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Bar(
+        x=years,
+        y=cash_flows,
+        marker_color=COLORS['electric_blue'],
+        name=method,
+        marker=dict(line=dict(color=COLORS['border'], width=2))
+    ))
+    
+    fig.update_layout(
+        title=f"📊 Projected {method} by Year",
+        xaxis_title="Year",
+        yaxis_title=f"{method} ($)",
+        height=400
+    )
+    
+    apply_chart_theme(fig)
+    return fig
+
+def create_sensitivity_table(base_price, base_discount, base_terminal):
+    """Create sensitivity analysis table - ENHANCED THEMING"""
+    
+    discount_rates = np.linspace(base_discount - 0.02, base_discount + 0.02, 5)
+    terminal_growth_rates = np.linspace(base_terminal - 0.01, base_terminal + 0.01, 5)
+    
+    # This is simplified - in real implementation would recalculate DCF
+    sensitivity_matrix = []
+    for tr in terminal_growth_rates:
+        row = []
+        for dr in discount_rates:
+            # Simplified sensitivity calculation
+            adjustment = (1 - (dr - base_discount)) * (1 + (tr - base_terminal))
+            value = base_price * adjustment
+            row.append(value)
+        sensitivity_matrix.append(row)
+    
+    fig = go.Figure(data=go.Heatmap(
+        z=sensitivity_matrix,
+        x=[f"{dr:.1%}" for dr in discount_rates],
+        y=[f"{tg:.1%}" for tg in terminal_growth_rates],
+        colorscale='RdYlGn',
+        text=[[f"${v:.2f}" for v in row] for row in sensitivity_matrix],
+        texttemplate='%{text}',
+        textfont={"size": 10},
+        colorbar=dict(title="Price")
+    ))
+    
+    fig.update_layout(
+        title="🎯 Sensitivity Analysis",
+        xaxis_title="Discount Rate",
+        yaxis_title="Terminal Growth Rate",
+        height=400
+    )
+    
+    apply_chart_theme(fig)
+    return fig
+
+# ============================================================================
+# MAIN APP - EXCELLENCE EDITION
+# ============================================================================
+
+def main():
+    st.markdown("<h1>🔥 ATLAS TERMINAL v9.3 EXCELLENCE</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #00d4ff; font-size: 18px;'>Complete Portfolio Analytics + Valuation House 💎</p>", unsafe_allow_html=True)
+    
+    leverage_info = get_leverage_info()
+    if leverage_info:
+        st.markdown(f"""
+        <div style="background: linear-gradient(135deg, #ff6b00 0%, #ff0044 100%);
+                    border: 2px solid #ff6b00; border-radius: 8px; padding: 10px; margin-bottom: 10px;
+                    text-align: center;">
+            <span style="color: white; font-weight: 600;">⚡ LEVERAGED ACCOUNT ⚡</span>
+            <span style="color: white; margin-left: 20px;">Margin: ${leverage_info['margin_used']:,.2f}</span>
+            <span style="color: white; margin-left: 20px;">Leverage: {leverage_info['leverage_ratio']:.2f}x</span>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.sidebar.markdown("## 🎛️ NAVIGATION")
+    page = st.sidebar.radio("Select Module", [
+        "🔥 Phoenix Parser",
+        "🏠 Portfolio Home",
+        "🌍 Market Watch",
+        "📈 Risk Analysis",
+        "💎 Performance Suite",
+        "🔬 Portfolio Deep Dive",
+        "📊 Multi-Factor Analysis",
+        "💰 Valuation House",
+        "ℹ️ About"
+    ])
+    
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 📅 TIME RANGE")
+    date_options = ["1D", "1W", "1M", "3M", "6M", "YTD", "1Y", "3Y", "5Y", "MAX"]
+    selected_range = st.sidebar.selectbox("Period", date_options, index=6)
+    
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 🎯 BENCHMARK")
+    benchmark_options = ["SPY", "QQQ", "DIA", "IWM", "VTI", "ACWI"]
+    selected_benchmark = st.sidebar.selectbox("Compare Against", benchmark_options, index=0)
+    
+    if selected_range == "YTD":
+        start_date = datetime(datetime.now().year, 1, 1)
+        end_date = datetime.now()
+    elif selected_range == "MAX":
+        start_date = datetime(2000, 1, 1)
+        end_date = datetime.now()
+    else:
+        days_map = {"1D": 1, "1W": 7, "1M": 30, "3M": 90, "6M": 180, "1Y": 365, "3Y": 1095, "5Y": 1825}
+        days = days_map.get(selected_range, 365)
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=days)
+    
+    # ========================================================================
+    # PHOENIX PARSER
+    # ========================================================================
+    if page == "🔥 Phoenix Parser":
+        st.markdown("## 🔥 PHOENIX MODE")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("### 📊 Trade History")
+            trade_file = st.file_uploader("Upload Trade History", type=['xls', 'xlsx'], key="trade")
+            
+            if trade_file:
+                with st.spinner("Parsing..."):
+                    trade_df = parse_trade_history_file(trade_file)
+                    
+                    if trade_df is not None:
+                        save_trade_history(trade_df)
+                        st.success(f"✅ Parsed {len(trade_df)} trades!")
+                        st.dataframe(trade_df.head(10), use_container_width=True)
+                        
+                        portfolio_df = calculate_portfolio_from_trades(trade_df)
+                        if len(portfolio_df) > 0:
+                            save_portfolio_data(portfolio_df.to_dict('records'))
+                            st.success(f"🎉 Portfolio rebuilt! {len(portfolio_df)} positions")
+                            st.dataframe(portfolio_df, use_container_width=True)
+        
+        with col2:
+            st.markdown("### 💰 Account History")
+            account_file = st.file_uploader("Upload Account History", type=['xls', 'xlsx'], key="account")
+            
+            if account_file:
+                with st.spinner("Parsing..."):
+                    account_df = parse_account_history_file(account_file)
+                    
+                    if account_df is not None:
+                        save_account_history(account_df)
+                        st.success(f"✅ Parsed {len(account_df)} records!")
+                        st.dataframe(account_df.head(10), use_container_width=True)
+                        
+                        leverage_info_parsed = get_leverage_info()
+                        if leverage_info_parsed:
+                            st.info(f"""
+                            💡 Leverage Detected:
+                            - Margin: ${leverage_info_parsed['margin_used']:,.2f}
+                            - Leverage: {leverage_info_parsed['leverage_ratio']:.2f}x
+                            """)
+    
+    # ========================================================================
+    # PORTFOLIO HOME - ENHANCED WITH CONTRIBUTORS/DETRACTORS
+    # ========================================================================
+    elif page == "🏠 Portfolio Home":
+        st.markdown("## 🏠 PORTFOLIO HOME")
+        
+        portfolio_data = load_portfolio_data()
+        
+        if not portfolio_data:
+            st.warning("⚠️ No portfolio data. Please upload via Phoenix Parser.")
+            return
+        
+        df = pd.DataFrame(portfolio_data)
+        
+        with st.spinner("Loading..."):
+            enhanced_df = create_enhanced_holdings_table(df)
+        
+        total_value = enhanced_df['Total Value'].sum()
+        total_cost = enhanced_df['Total Cost'].sum()
+        total_gl = total_value - total_cost
+        total_gl_pct = (total_gl / total_cost) * 100 if total_cost > 0 else 0
+        daily_pl = enhanced_df['Daily P&L $'].sum()
+        
+        col1, col2, col3, col4, col5 = st.columns(5)
+        col1.metric("Total Value", format_currency(total_value))
+        col2.metric("Total Cost", format_currency(total_cost))
+        col3.metric("Total G/L", format_currency(total_gl), format_percentage(total_gl_pct))
+        col4.metric("Daily P&L", format_currency(daily_pl))
+        col5.metric("Positions", len(enhanced_df))
+        
+        st.markdown("---")
+        st.markdown("### 📋 Holdings")
+        display_df = style_holdings_dataframe(enhanced_df)
+        st.dataframe(display_df, use_container_width=True, hide_index=True, height=500)
+        
+        st.info("💡 **Tip:** Head to the Valuation House to analyze intrinsic values of any ticker!")
+        
+        st.markdown("---")
+        st.markdown("### 📊 DASHBOARD OVERVIEW")
+        
+        # ENHANCED: Better layout with 2 rows
+        row1_col1, row1_col2 = st.columns([2, 1])
+        
+        with row1_col1:
+            risk_reward = create_risk_reward_plot(enhanced_df)
+            if risk_reward:
+                st.plotly_chart(risk_reward, use_container_width=True)
+        
+        with row1_col2:
+            sector_donut = create_sector_allocation_donut(enhanced_df)
+            if sector_donut:
+                st.plotly_chart(sector_donut, use_container_width=True)
+        
+        # NEW: Second row with Contributors and Detractors
+        row2_col1, row2_col2 = st.columns(2)
+        
+        with row2_col1:
+            contributors = create_top_contributors_chart(enhanced_df)
+            if contributors:
+                st.plotly_chart(contributors, use_container_width=True)
+        
+        with row2_col2:
+            detractors = create_top_detractors_chart(enhanced_df)
+            if detractors:
+                st.plotly_chart(detractors, use_container_width=True)
+        
+        # Performance Heatmap (full width)
+        st.markdown("---")
+        perf_heatmap = create_performance_heatmap(enhanced_df)
+        if perf_heatmap:
+            st.plotly_chart(perf_heatmap, use_container_width=True)
+    
+    # ========================================================================
+    # MARKET WATCH - COMPLETE REVAMP
+    # ========================================================================
+    elif page == "🌍 Market Watch":
+        st.markdown("## 🌍 MARKET WATCH - EXCELLENCE EDITION")
+        st.markdown("*Your comprehensive window into global markets, crypto, bonds, and credit conditions*")
+        
+        st.markdown("---")
+        st.markdown("### 🔍 Filters & Settings")
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            filter_change = st.slider("Min Change %", -10.0, 10.0, -10.0)
+        with col2:
+            sort_by = st.selectbox("Sort By", ["Change %", "5D %", "Volume"])
+        with col3:
+            refresh = st.button("🔄 Refresh Data")
+        with col4:
+            auto_refresh = st.checkbox("Auto-Refresh (5min)")
+        
+        st.markdown("---")
+        
+        # EXPANDED TABS
+        tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+            "📈 Indices", 
+            "💰 Crypto", 
+            "🏦 ETFs", 
+            "⚡ Commodities",
+            "📊 Stocks",
+            "💵 Bonds & Rates",
+            "🎯 Credit Spreads"
+        ])
+        
+        with tab1:
+            st.markdown("#### 🌍 Global Indices")
+            with st.spinner("Loading indices..."):
+                indices_df = fetch_market_watch_data(GLOBAL_INDICES)
+                if not indices_df.empty:
+                    indices_df = indices_df[indices_df['Change %'] >= filter_change]
+                    display_df = create_dynamic_market_table(indices_df, {'sort_by': sort_by, 'ascending': False})
+                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=600)
+                else:
+                    st.warning("No data available")
+        
+        with tab2:
+            st.markdown("#### 🪙 Cryptocurrency Markets")
+            with st.spinner("Loading crypto..."):
+                crypto_df = fetch_market_watch_data(CRYPTOCURRENCIES)
+                if not crypto_df.empty:
+                    crypto_df = crypto_df[crypto_df['Change %'] >= filter_change]
+                    display_df = create_dynamic_market_table(crypto_df, {'sort_by': sort_by, 'ascending': False})
+                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=600)
+                else:
+                    st.warning("No data available")
+        
+        with tab3:
+            st.markdown("#### 📦 Exchange-Traded Funds")
+            sectors = st.multiselect("Filter by Category", 
+                                     ["Broad Market", "Sector", "Thematic", "International"],
+                                     default=["Broad Market", "Sector", "Thematic"])
+            
+            with st.spinner("Loading ETFs..."):
+                etf_df = fetch_market_watch_data(POPULAR_ETFS)
+                if not etf_df.empty:
+                    if sectors:
+                        etf_df = etf_df[etf_df['Category'].isin(sectors)]
+                    display_df = create_dynamic_market_table(etf_df, {'sort_by': sort_by, 'ascending': False})
+                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=600)
+                else:
+                    st.warning("No data available")
+        
+        with tab4:
+            st.markdown("#### ⛽ Commodity Markets")
+            commodity_cats = st.multiselect("Filter by Type",
+                                           ["Precious Metals", "Energy", "Industrial Metals", "Agriculture", "Livestock"],
+                                           default=["Precious Metals", "Energy"])
+            
+            with st.spinner("Loading commodities..."):
+                comm_df = fetch_market_watch_data(COMMODITIES)
+                if not comm_df.empty:
+                    if commodity_cats:
+                        comm_df = comm_df[comm_df['Category'].isin(commodity_cats)]
+                    display_df = create_dynamic_market_table(comm_df, {'sort_by': sort_by, 'ascending': False})
+                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=600)
+                else:
+                    st.warning("No data available")
+        
+        with tab5:
+            st.markdown("#### 📈 Popular Stocks")
+            stock_sectors = st.multiselect("Filter by Category",
+                                          ["Mega Cap Tech", "Financials", "Healthcare", "Consumer", "Energy"],
+                                          default=["Mega Cap Tech", "Financials"])
+            
+            with st.spinner("Loading stocks..."):
+                stocks_df = fetch_market_watch_data(POPULAR_STOCKS)
+                if not stocks_df.empty:
+                    if stock_sectors:
+                        stocks_df = stocks_df[stocks_df['Category'].isin(stock_sectors)]
+                    display_df = create_dynamic_market_table(stocks_df, {'sort_by': sort_by, 'ascending': False})
+                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=600)
+                else:
+                    st.warning("No data available")
+        
+        with tab6:
+            st.markdown("#### 💵 Bond Yields & Treasury Rates")
+            st.info("📊 **Key Insight:** Monitor the yield curve for recession signals and inflation expectations")
+            
+            with st.spinner("Loading bonds..."):
+                bonds_df = fetch_market_watch_data(BOND_YIELDS)
+                if not bonds_df.empty:
+                    display_df = create_dynamic_market_table(bonds_df, {'sort_by': sort_by, 'ascending': False})
+                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=400)
+                else:
+                    st.warning("No data available")
+        
+        with tab7:
+            st.markdown("#### 🎯 Credit Spreads & Conditions")
+            st.info("💡 **Key Insight:** Widening spreads signal deteriorating credit conditions and rising risk premiums")
+            
+            with st.spinner("Loading credit spreads..."):
+                credit_df = fetch_market_watch_data(CREDIT_SPREADS)
+                if not credit_df.empty:
+                    display_df = create_dynamic_market_table(credit_df, {'sort_by': sort_by, 'ascending': False})
+                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=400)
+                    
+                    st.markdown("---")
+                    st.markdown("#### 📊 Credit Market Interpretation")
+                    st.markdown("""
+                    **Investment Grade (LQD):** Corporate bonds rated BBB- or higher
+                    **High Yield (HYG):** "Junk" bonds with higher risk and return potential
+                    **Emerging Markets (EMB):** Sovereign and corporate debt from developing economies
+                    **TIPS (TIP):** Treasury Inflation-Protected Securities
+                    **MBS (MBB):** Mortgage-Backed Securities
+                    """)
+                else:
+                    st.warning("No data available")
+    
+    # Continue with remaining pages in next message...
+    # (Risk Analysis, Performance Suite, Portfolio Deep Dive, Multi-Factor, Valuation House, About)
+    
+    # ========================================================================
+    # RISK ANALYSIS - WORLD CLASS
+    # ========================================================================
+    elif page == "📈 Risk Analysis":
+        st.markdown("## 📈 RISK ANALYSIS - WORLD CLASS")
+        
+        portfolio_data = load_portfolio_data()
+        
+        if not portfolio_data:
+            st.warning("⚠️ No portfolio data.")
+            return
+        
+        df = pd.DataFrame(portfolio_data)
+        enhanced_df = create_enhanced_holdings_table(df)
+        
+        with st.spinner("Calculating..."):
+            portfolio_returns = calculate_portfolio_returns(df, start_date, end_date)
+            benchmark_returns = calculate_benchmark_returns(selected_benchmark, start_date, end_date)
+            
+            if not is_valid_series(portfolio_returns):
+                st.warning("Insufficient data")
+                return
+            
+            sharpe = calculate_sharpe_ratio(portfolio_returns)
+            sortino = calculate_sortino_ratio(portfolio_returns)
+            calmar = calculate_calmar_ratio(portfolio_returns)
+            var_95 = calculate_var(portfolio_returns, 0.95)
+            max_dd = calculate_max_drawdown(portfolio_returns)
+        
+        col1, col2, col3, col4, col5 = st.columns(5)
+        col1.metric("Sharpe", f"{sharpe:.2f}" if sharpe else "N/A")
+        col2.metric("Sortino", f"{sortino:.2f}" if sortino else "N/A")
+        col3.metric("Calmar", f"{calmar:.2f}" if calmar else "N/A")
+        col4.metric("VaR 95%", format_percentage(var_95) if var_95 else "N/A")
+        col5.metric("Max DD", format_percentage(max_dd) if max_dd else "N/A")
+        
+        st.markdown("---")
+        
+        tab1, tab2, tab3, tab4 = st.tabs([
+            "📊 Core Risk", "🎲 Monte Carlo", "🔬 Advanced Analytics", "⚡ Stress Tests"
+        ])
+        
+        with tab1:
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                var_chart = create_var_waterfall(portfolio_returns)
+                if var_chart:
+                    st.plotly_chart(var_chart, use_container_width=True)
+                
+                risk_parity = create_risk_parity_analysis(enhanced_df)
+                if risk_parity:
+                    st.plotly_chart(risk_parity, use_container_width=True)
+            
+            with col2:
+                efficient = create_efficient_frontier(enhanced_df)
+                if efficient:
+                    st.plotly_chart(efficient, use_container_width=True)
+        
+        with tab2:
+            simulations = run_monte_carlo_simulation(portfolio_returns)
+            if simulations is not None:
+                monte_carlo_chart, mc_stats = create_monte_carlo_chart(simulations, 100000)
+                
+                if monte_carlo_chart:
+                    st.plotly_chart(monte_carlo_chart, use_container_width=True)
+                
+                if mc_stats:
+                    st.markdown("#### 📊 Simulation Results")
+                    st.markdown(f"""
+                    **Key Statistics:**
+                    - Expected Value: ${mc_stats['mean']:,.2f}
+                    - Median: ${mc_stats['median']:,.2f}
+                    - Best Case (95th): ${mc_stats['percentile_95']:,.2f}
+                    - Worst Case (5th): ${mc_stats['percentile_5']:,.2f}
+                    - Prob of Profit: {mc_stats['prob_profit']:.1f}%
+                    """)
+        
+        with tab3:
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                rolling = create_rolling_metrics_chart(portfolio_returns)
+                if rolling:
+                    st.plotly_chart(rolling, use_container_width=True)
+            
+            with col2:
+                underwater = create_underwater_plot(portfolio_returns)
+                if underwater:
+                    st.plotly_chart(underwater, use_container_width=True)
+            
+            sunburst = create_risk_contribution_sunburst(enhanced_df)
+            if sunburst:
+                st.plotly_chart(sunburst, use_container_width=True)
+            
+            corr_network = create_correlation_network(enhanced_df, start_date, end_date)
+            if corr_network:
+                st.plotly_chart(corr_network, use_container_width=True)
+        
+        with tab4:
+            st.info("Comprehensive stress testing scenarios...")
+    
+    # Continue with remaining pages...
+
+"""
+ATLAS TERMINAL v9.3 EXCELLENCE EDITION - PART 2 CONTINUED
+Remaining Page Implementations
+
+PASTE THIS BELOW PART 2 (INCOMPLETE) TO COMPLETE THE APP!
+Replace the last "if __name__ == '__main__':" section with this complete version.
+"""
+
+    # ========================================================================
+    # PERFORMANCE SUITE
+    # ========================================================================
+    elif page == "💎 Performance Suite":
+        st.markdown("## 💎 PERFORMANCE SUITE")
+        
+        portfolio_data = load_portfolio_data()
+        
+        if not portfolio_data:
+            st.warning("⚠️ No portfolio data.")
+            return
+        
+        df = pd.DataFrame(portfolio_data)
+        enhanced_df = create_enhanced_holdings_table(df)
+        
+        with st.spinner("Calculating..."):
+            portfolio_returns = calculate_portfolio_returns(df, start_date, end_date)
+            benchmark_returns = calculate_benchmark_returns(selected_benchmark, start_date, end_date)
+            
+            metrics = None
+            if is_valid_series(portfolio_returns):
+                metrics = calculate_performance_metrics(enhanced_df, portfolio_returns, benchmark_returns)
+        
+        tab1, tab2, tab3 = st.tabs(["📈 Interactive Chart", "📊 Analytics", "📋 Metrics"])
+        
+        with tab1:
+            available_tickers = enhanced_df['Ticker'].tolist()
+            
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                selected_tickers = st.multiselect(
+                    "Select Tickers",
+                    options=available_tickers + ["SPY", "QQQ", "VTI"],
+                    default=available_tickers[:min(5, len(available_tickers))]
+                )
+            
+            with col2:
+                custom_ticker = st.text_input("Add Custom", placeholder="TSLA")
+                if custom_ticker:
+                    selected_tickers.append(custom_ticker.upper())
+            
+            if selected_tickers:
+                perf_chart = create_interactive_performance_chart(selected_tickers, start_date, end_date)
+                if perf_chart:
+                    st.plotly_chart(perf_chart, use_container_width=True)
+        
+        with tab2:
+            if metrics:
+                dashboard = create_performance_dashboard(metrics)
+                st.plotly_chart(dashboard, use_container_width=True)
+        
+        with tab3:
+            if metrics:
+                metrics_df = pd.DataFrame([
+                    ['Total Return', format_percentage(metrics['Total Return'])],
+                    ['Annualized Return', format_percentage(metrics['Annualized Return'])],
+                    ['Volatility', format_percentage(metrics['Annualized Volatility'])],
+                    ['Sharpe Ratio', f"{metrics['Sharpe Ratio']:.3f}"],
+                    ['Sortino Ratio', f"{metrics['Sortino Ratio']:.3f}"],
+                    ['Calmar Ratio', f"{metrics['Calmar Ratio']:.3f}"],
+                    ['VaR (95%)', format_percentage(metrics['VaR (95%)'])],
+                    ['Max Drawdown', format_percentage(metrics['Max Drawdown'])],
+                    ['Win Rate', format_percentage(metrics['Win Rate'])],
+                    ['Best Day', format_percentage(metrics['Best Day'])],
+                    ['Worst Day', format_percentage(metrics['Worst Day'])]
+                ], columns=['Metric', 'Value'])
+                
+                st.dataframe(metrics_df, use_container_width=True, hide_index=True, height=600)
+    
+    # ========================================================================
+    # PORTFOLIO DEEP DIVE - ENHANCED
+    # ========================================================================
+    elif page == "🔬 Portfolio Deep Dive":
+        st.markdown("## 🔬 PORTFOLIO DEEP DIVE - ENHANCED")
+        
+        portfolio_data = load_portfolio_data()
+        
+        if not portfolio_data:
+            st.warning("⚠️ No portfolio data.")
+            return
+        
+        df = pd.DataFrame(portfolio_data)
+        enhanced_df = create_enhanced_holdings_table(df)
+        
+        tab1, tab2, tab3 = st.tabs([
+            "🎯 Attribution", "🔄 Sector Rotation", "📊 Concentration"
+        ])
+        
+        with tab1:
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                heatmap = create_portfolio_heatmap(enhanced_df)
+                if heatmap:
+                    st.plotly_chart(heatmap, use_container_width=True)
+            
+            with col2:
+                waterfall = create_holdings_attribution_waterfall(enhanced_df)
+                if waterfall:
+                    st.plotly_chart(waterfall, use_container_width=True)
+        
+        with tab2:
+            rotation = create_sector_rotation_heatmap(enhanced_df, start_date, end_date)
+            if rotation:
+                st.plotly_chart(rotation, use_container_width=True)
+        
+        with tab3:
+            col1, col2 = st.columns([1, 2])
+            
+            with col1:
+                gauge = create_concentration_gauge(enhanced_df)
+                if gauge:
+                    st.plotly_chart(gauge, use_container_width=True)
+            
+            with col2:
+                # ENHANCED: Better concentration visual
+                conc_analysis = create_concentration_analysis(enhanced_df)
+                if conc_analysis:
+                    st.plotly_chart(conc_analysis, use_container_width=True)
+    
+    # ========================================================================
+    # MULTI-FACTOR ANALYSIS - ENHANCED
+    # ========================================================================
+    elif page == "📊 Multi-Factor Analysis":
+        st.markdown("## 📊 MULTI-FACTOR ANALYSIS - ENHANCED")
+        
+        portfolio_data = load_portfolio_data()
+        
+        if not portfolio_data:
+            st.warning("⚠️ No portfolio data.")
+            return
+        
+        df = pd.DataFrame(portfolio_data)
+        enhanced_df = create_enhanced_holdings_table(df)
+        
+        with st.spinner("Running analysis..."):
+            factor_data = calculate_factor_exposures(enhanced_df, start_date, end_date)
+        
+        if factor_data:
+            st.markdown(f"**Model R² = {factor_data['r_squared']:.3f}**")
+            st.progress(factor_data['r_squared'])
+            
+            result = create_factor_attribution_table(factor_data, enhanced_df)
+            
+            tab1, tab2, tab3 = st.tabs([
+                "📈 Factor Momentum", "🎯 Exposure Radar", "📊 Attribution"
+            ])
+            
+            with tab1:
+                momentum = create_factor_momentum_chart(factor_data)
+                if momentum:
+                    st.plotly_chart(momentum, use_container_width=True)
+            
+            with tab2:
+                radar = create_factor_exposure_radar(factor_data)
+                if radar:
+                    st.plotly_chart(radar, use_container_width=True)
+            
+            with tab3:
+                if result is not None:
+                    attr_df, factor_summary, sector_summary = result
+                    
+                    if factor_summary is not None:
+                        st.markdown("### Factor Summary")
+                        factor_display = factor_summary.copy()
+                        factor_display['Total Contribution'] = factor_display['Total Contribution'].apply(
+                            lambda x: f"{x:.4f}")
+                        st.dataframe(factor_display, use_container_width=True, hide_index=True)
+                    
+                    if attr_df is not None:
+                        st.markdown("### Holdings Attribution")
+                        holdings_attr = attr_df.pivot_table(
+                            index='Ticker',
+                            columns='Factor',
+                            values='Contribution',
+                            aggfunc='sum'
+                        ).round(4)
+                        
+                        st.dataframe(holdings_attr, use_container_width=True)
+                        
+                        st.info("""
+                        **Positive values**: Holding increases exposure
+                        **Negative values**: Holding decreases exposure
+                        """)
+        else:
+            st.error("Unable to calculate factor exposures.")
+    
+    # ========================================================================
+    # VALUATION HOUSE - ENHANCED WITH SMART ASSUMPTIONS
+    # ========================================================================
+    elif page == "💰 Valuation House":
+        st.markdown("## 💰 VALUATION HOUSE - EXCELLENCE EDITION")
+        st.markdown("### Professional DCF Valuation Engine with Smart Assumptions")
+        
+        st.info("🎯 **New Feature:** Toggle between Manual and Smart Assumptions for realistic valuations!")
+        
+        # Company Search
+        st.markdown("---")
+        st.markdown("#### 🔍 Company Search")
+        
+        col1, col2 = st.columns([3, 1])
+        
+        with col1:
+            ticker_input = st.text_input(
+                "Enter Ticker Symbol",
+                placeholder="e.g., AAPL, MSFT, GOOGL",
+                help="Enter any publicly traded company ticker"
+            ).upper()
+        
+        with col2:
+            search_button = st.button("🚀 Load Company", type="primary", use_container_width=True)
+        
+        if search_button and ticker_input:
+            with st.spinner(f"📊 Fetching data for {ticker_input}..."):
+                company_data = fetch_company_financials(ticker_input)
+                
+                if company_data['success']:
+                    st.session_state['valuation_company'] = company_data
+                    st.success(f"✅ Loaded {company_data['company']['name']}")
+                else:
+                    st.error(f"❌ Could not fetch data: {company_data.get('error', 'Unknown error')}")
+        
+        # Display valuation if company is loaded
+        if 'valuation_company' in st.session_state:
+            company = st.session_state['valuation_company']['company']
+            financials = st.session_state['valuation_company']['financials']
+            
+            st.markdown("---")
+            
+            # Company Overview
+            st.markdown(f"### 📊 {company['name']} ({company['ticker']})")
+            
+            col1, col2, col3, col4, col5 = st.columns(5)
+            col1.metric("Current Price", format_currency(company['current_price']))
+            col2.metric("Market Cap", format_large_number(company['market_cap']))
+            col3.metric("Sector", company['sector'])
+            col4.metric("Beta", f"{company['beta']:.2f}")
+            col5.metric("Forward P/E", f"{company.get('forward_pe', 'N/A'):.1f}" if company.get('forward_pe') else "N/A")
+            
+            st.markdown("---")
+            
+            # DCF Method Selection
+            st.markdown("#### 🎯 Valuation Method")
+            dcf_method = st.radio(
+                "Select DCF Method",
+                options=['FCFF', 'FCFE'],
+                horizontal=True,
+                help="FCFF: Free Cash Flow to Firm | FCFE: Free Cash Flow to Equity"
+            )
+            
+            st.markdown("---")
+            
+            # NEW: Smart Assumptions Toggle
+            st.markdown("#### 🧠 Assumptions Mode")
+            
+            use_smart_assumptions = st.checkbox(
+                "🤖 Use Smart Assumptions (AI-Generated)",
+                help="Generate realistic assumptions based on sector averages, company size, and economic fundamentals"
+            )
+            
+            if use_smart_assumptions:
+                st.info("🤖 **Smart Mode Active:** Assumptions are generated based on sector benchmarks and economic reality")
+                smart_params = calculate_smart_assumptions(company, financials)
+            
+            # Assumptions Panel
+            st.markdown("---")
+            st.markdown("#### 🎛️ Valuation Assumptions")
+            
+            tab1, tab2, tab3 = st.tabs(["📈 Growth & Operations", "💰 Cost of Capital", "🎯 Terminal Value"])
+            
+            with tab1:
+                st.markdown("##### Growth & Operating Assumptions")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    if use_smart_assumptions:
+                        revenue_growth = smart_params['revenue_growth']
+                        st.metric("Revenue Growth Rate", f"{revenue_growth*100:.1f}%", 
+                                 delta="AI Generated", delta_color="normal")
+                    else:
+                        revenue_growth = st.slider(
+                            "Revenue Growth Rate (%)",
+                            min_value=-10.0,
+                            max_value=30.0,
+                            value=5.0,
+                            step=0.5
+                        ) / 100
+                    
+                    if use_smart_assumptions:
+                        ebit_margin = smart_params['ebit_margin']
+                        st.metric("EBIT Margin", f"{ebit_margin*100:.1f}%",
+                                 delta="AI Generated", delta_color="normal")
+                    else:
+                        ebit_margin = st.slider(
+                            "EBIT Margin (%)",
+                            min_value=0.0,
+                            max_value=50.0,
+                            value=20.0,
+                            step=1.0
+                        ) / 100
+                    
+                    forecast_years = st.slider(
+                        "Forecast Horizon (Years)",
+                        min_value=3,
+                        max_value=15,
+                        value=smart_params['forecast_years'] if use_smart_assumptions else 5,
+                        step=1
+                    )
+                
+                with col2:
+                    if use_smart_assumptions:
+                        capex_pct = smart_params['capex_pct']
+                        st.metric("CapEx (% of Revenue)", f"{capex_pct*100:.1f}%",
+                                 delta="AI Generated", delta_color="normal")
+                    else:
+                        capex_pct = st.slider(
+                            "CapEx (% of Revenue)",
+                            min_value=0.0,
+                            max_value=20.0,
+                            value=5.0,
+                            step=0.5
+                        ) / 100
+                    
+                    if use_smart_assumptions:
+                        depreciation_pct = smart_params['depreciation_pct']
+                        st.metric("Depreciation (% of Revenue)", f"{depreciation_pct*100:.1f}%",
+                                 delta="AI Generated", delta_color="normal")
+                    else:
+                        depreciation_pct = st.slider(
+                            "Depreciation (% of Revenue)",
+                            min_value=0.0,
+                            max_value=15.0,
+                            value=3.0,
+                            step=0.5
+                        ) / 100
+                    
+                    wc_change = st.number_input(
+                        "Working Capital Change ($M)",
+                        min_value=-1000.0,
+                        max_value=1000.0,
+                        value=smart_params['wc_change'] if use_smart_assumptions else 0.0,
+                        step=10.0
+                    ) * 1e6
+            
+            with tab2:
+                st.markdown("##### Cost of Capital Assumptions")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    risk_free = st.slider(
+                        "Risk-Free Rate (%)",
+                        min_value=0.0,
+                        max_value=10.0,
+                        value=4.5,
+                        step=0.1
+                    ) / 100
+                    
+                    market_risk_premium = st.slider(
+                        "Market Risk Premium (%)",
+                        min_value=3.0,
+                        max_value=10.0,
+                        value=6.0,
+                        step=0.5
+                    ) / 100
+                    
+                    beta = st.number_input(
+                        "Beta",
+                        min_value=0.0,
+                        max_value=3.0,
+                        value=float(company['beta']) if company['beta'] else 1.0,
+                        step=0.1
+                    )
+                
+                with col2:
+                    if dcf_method == 'FCFF':
+                        cost_debt = st.slider(
+                            "Cost of Debt (%)",
+                            min_value=0.0,
+                            max_value=15.0,
+                            value=5.0,
+                            step=0.5
+                        ) / 100
+                    
+                    if use_smart_assumptions:
+                        tax_rate = smart_params['tax_rate']
+                        st.metric("Tax Rate", f"{tax_rate*100:.1f}%",
+                                 delta="AI Generated", delta_color="normal")
+                    else:
+                        tax_rate = st.slider(
+                            "Tax Rate (%)",
+                            min_value=0.0,
+                            max_value=40.0,
+                            value=float(financials.get('tax_rate', 0.21) * 100),
+                            step=1.0
+                        ) / 100
+                    
+                    if dcf_method == 'FCFE':
+                        net_borrowing = st.number_input(
+                            "Net Borrowing ($M)",
+                            min_value=-1000.0,
+                            max_value=1000.0,
+                            value=0.0,
+                            step=10.0
+                        ) * 1e6
+            
+            with tab3:
+                st.markdown("##### Terminal Value Assumptions")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    if use_smart_assumptions:
+                        terminal_growth = smart_params['terminal_growth']
+                        st.metric("Perpetual Growth Rate", f"{terminal_growth*100:.1f}%",
+                                 delta="AI Generated", delta_color="normal")
+                    else:
+                        terminal_growth = st.slider(
+                            "Perpetual Growth Rate (%)",
+                            min_value=0.0,
+                            max_value=5.0,
+                            value=2.5,
+                            step=0.1
+                        ) / 100
+                
+                with col2:
+                    st.info(f"""
+                    **Terminal Value Method:** Gordon Growth Model
+                    
+                    TV = FCFₙ₊₁ / (r - g)
+                    """)
+            
+            st.markdown("---")
+            
+            # Calculate DCF
+            if st.button("🚀 Calculate Intrinsic Value", type="primary", use_container_width=True):
+                with st.spinner("🔬 Running DCF Analysis..."):
+                    
+                    # Calculate cost of equity
+                    cost_equity = calculate_cost_of_equity(risk_free, beta, market_risk_premium)
+                    
+                    # Calculate discount rate
+                    if dcf_method == 'FCFF':
+                        total_debt = financials.get('total_debt', 0)
+                        total_equity = company['market_cap']
+                        discount_rate = calculate_wacc(cost_equity, cost_debt, tax_rate, total_debt, total_equity)
+                    else:
+                        discount_rate = cost_equity
+                    
+                    # Get base financials
+                    base_revenue = financials.get('revenue', 0)
+                    base_ebit = financials.get('ebit', 0)
+                    base_net_income = financials.get('net_income', 0)
+                    
+                    # ENHANCED: Project cash flows with scaling D&A and CapEx
+                    if dcf_method == 'FCFF':
+                        projections = project_fcff_enhanced(
+                            base_revenue, base_ebit, revenue_growth, ebit_margin, tax_rate,
+                            depreciation_pct, capex_pct, wc_change, forecast_years
+                        )
+                        final_fcf = projections[-1]['fcff']
+                    else:
+                        projections = project_fcfe_enhanced(
+                            base_revenue, base_net_income, revenue_growth, tax_rate,
+                            depreciation_pct, capex_pct, wc_change, net_borrowing, forecast_years
+                        )
+                        final_fcf = projections[-1]['fcfe']
+                    
+                    # Calculate terminal value
+                    terminal_value = calculate_terminal_value(final_fcf, discount_rate, terminal_growth)
+                    
+                    # Calculate DCF value
+                    net_debt = financials.get('total_debt', 0) - financials.get('cash', 0)
+                    shares = company['shares_outstanding']
+                    
+                    dcf_results = calculate_dcf_value(
+                        projections, discount_rate, terminal_value, shares,
+                        net_debt if dcf_method == 'FCFF' else 0, dcf_method
+                    )
+                    
+                    dcf_results['net_debt'] = net_debt
+                    
+                    # Store results
+                    st.session_state['dcf_results'] = dcf_results
+                    st.session_state['dcf_projections'] = projections
+                    st.session_state['dcf_method'] = dcf_method
+                    st.session_state['discount_rate'] = discount_rate
+                    st.session_state['terminal_growth'] = terminal_growth
+                    st.session_state['used_smart_assumptions'] = use_smart_assumptions
+                    
+                    st.success("✅ Valuation Complete!")
+            
+            # Display Results
+            if 'dcf_results' in st.session_state:
+                results = st.session_state['dcf_results']
+                projections = st.session_state['dcf_projections']
+                method = st.session_state['dcf_method']
+                
+                st.markdown("---")
+                st.markdown("### 📊 Valuation Results")
+                
+                if st.session_state.get('used_smart_assumptions', False):
+                    st.success("🤖 **These results used AI-Generated Smart Assumptions**")
+                
+                # Key metrics
+                intrinsic_value = results['intrinsic_value_per_share']
+                current_price = company['current_price']
+                upside_downside = ((intrinsic_value - current_price) / current_price) * 100
+                
+                col1, col2, col3, col4 = st.columns(4)
+                
+                col1.metric(
+                    "Intrinsic Value",
+                    format_currency(intrinsic_value),
+                    delta=format_percentage(upside_downside) if abs(upside_downside) < 1000 else "±∞"
+                )
+                
+                col2.metric("Current Price", format_currency(current_price))
+                
+                col3.metric(
+                    "Upside/Downside",
+                    format_percentage(upside_downside) if abs(upside_downside) < 1000 else "±∞",
+                    delta="Undervalued" if upside_downside > 0 else "Overvalued"
+                )
+                
+                col4.metric("Discount Rate", format_percentage(st.session_state['discount_rate'] * 100))
+                
+                # Valuation interpretation
+                st.markdown("---")
+                
+                if upside_downside > 20:
+                    st.success(f"""
+                    ✅ **Significantly Undervalued**
+                    
+                    The intrinsic value suggests the stock is trading at a {abs(upside_downside):.1f}% discount to fair value.
+                    """)
+                elif upside_downside > 0:
+                    st.info(f"""
+                    📊 **Slightly Undervalued**
+                    
+                    Modest upside potential of {upside_downside:.1f}%.
+                    """)
+                elif upside_downside > -20:
+                    st.warning(f"""
+                    ⚠️ **Slightly Overvalued**
+                    
+                    Trading {abs(upside_downside):.1f}% above fair value.
+                    """)
+                else:
+                    st.error(f"""
+                    ❌ **Significantly Overvalued**
+                    
+                    Trading at a {abs(upside_downside):.1f}% premium to fair value.
+                    """)
+                
+                st.markdown("---")
+                
+                # Visualizations
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    waterfall = create_dcf_waterfall(results, method)
+                    st.plotly_chart(waterfall, use_container_width=True)
+                
+                with col2:
+                    cf_chart = create_cash_flow_chart(projections, method)
+                    st.plotly_chart(cf_chart, use_container_width=True)
+                
+                # Sensitivity Analysis
+                st.markdown("---")
+                st.markdown("#### 🎯 Sensitivity Analysis")
+                
+                sensitivity = create_sensitivity_table(
+                    intrinsic_value,
+                    st.session_state['discount_rate'],
+                    st.session_state['terminal_growth']
+                )
+                st.plotly_chart(sensitivity, use_container_width=True)
+                
+                # Detailed Projections Table
+                st.markdown("---")
+                st.markdown("#### 📋 Detailed Cash Flow Projections")
+                
+                proj_df = pd.DataFrame(projections)
+                
+                # Format for display
+                if method == 'FCFF':
+                    display_cols = ['year', 'revenue', 'ebit', 'nopat', 'depreciation', 'capex', 'change_wc', 'fcff']
+                    col_names = ['Year', 'Revenue', 'EBIT', 'NOPAT', 'D&A', 'CapEx', 'ΔWC', 'FCFF']
+                else:
+                    display_cols = ['year', 'revenue', 'net_income', 'depreciation', 'capex', 'change_wc', 'net_borrowing', 'fcfe']
+                    col_names = ['Year', 'Revenue', 'Net Income', 'D&A', 'CapEx', 'ΔWC', 'Borrowing', 'FCFE']
+                
+                proj_display = proj_df[display_cols].copy()
+                proj_display.columns = col_names
+                
+                # Format numbers
+                for col in proj_display.columns:
+                    if col != 'Year':
+                        proj_display[col] = proj_display[col].apply(format_large_number)
+                
+                st.dataframe(proj_display, use_container_width=True, hide_index=True)
+                
+                st.success("✅ **Notice:** D&A and CapEx scale with revenue growth (as they should!)")
+                
+                # Export Options
+                st.markdown("---")
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    if st.button("📥 Export to Excel", use_container_width=True):
+                        st.info("Excel export feature coming soon!")
+                
+                with col2:
+                    if st.button("📄 Generate PDF Report", use_container_width=True):
+                        st.info("PDF export feature coming soon!")
+                
+                with col3:
+                    if st.button("🔄 Reset Valuation", use_container_width=True):
+                        for key in ['dcf_results', 'dcf_projections', 'used_smart_assumptions']:
+                            if key in st.session_state:
+                                del st.session_state[key]
+                        st.rerun()
+        
+        else:
+            # No company loaded
+            st.markdown("---")
+            st.markdown("""
+            ### 📚 How to Use Valuation House - Excellence Edition
+            
+            **NEW in v9.3: 🤖 Smart Assumptions Mode**
+            - AI-generated assumptions based on sector benchmarks
+            - Realistic, economically grounded projections
+            - Toggle between manual and smart modes
+            
+            **Step 1:** Search for any publicly traded company
+            **Step 2:** Choose FCFF or FCFE valuation method
+            **Step 3:** Enable Smart Assumptions or customize manually
+            **Step 4:** Calculate intrinsic value and analyze results
+            **Step 5:** Review sensitivity analysis
+            
+            ---
+            
+            ### ✨ What's New in v9.3 Excellence
+            
+            ✅ **Smart Assumptions:** AI-powered realistic assumptions
+            ✅ **Fixed Scaling:** D&A and CapEx properly scale with revenue
+            ✅ **Enhanced Visuals:** Seamless dark mode theming
+            ✅ **Better Analysis:** More comprehensive sensitivity testing
+            
+            *Ready to start? Enter a ticker symbol above!* 🚀
+            """)
+    
+    # ========================================================================
+    # ABOUT
+    # ========================================================================
+    elif page == "ℹ️ About":
+        st.markdown("### ℹ️ ATLAS Terminal v9.3 EXCELLENCE EDITION")
+        st.success("""
+        **ATLAS v9.3 EXCELLENCE EDITION** 🔥💎
+        
+        **EXCELLENCE ENHANCEMENTS:**
+        ✅ Enhanced Home Page (Top Contributors/Detractors + Better Layout)
+        ✅ Market Watch COMPLETE REVAMP (Crypto, Bonds, Spreads, 100+ Assets)
+        ✅ ALL Charts Seamlessly Themed (No More Black Boxes!)
+        ✅ Portfolio Deep Dive Enhanced (Better Concentration Analysis)
+        ✅ Valuation House: Smart Assumptions Mode (AI-Generated)
+        ✅ Valuation House: Fixed D&A/CapEx Scaling with Revenue
+        ✅ Fixed Nov 2024 Columns in All Heatmaps
+        ✅ Multi-Factor Analysis (Perfect - No Changes Needed!)
+        
+        **COMPLETE MODULE LIST:**
+        1. **Phoenix Parser** - Exceptional data parsing
+        2. **Portfolio Home** - Enhanced dashboard with contributors/detractors
+        3. **Market Watch** - Comprehensive: Indices, Crypto, Bonds, Spreads, ETFs, Stocks, Commodities
+        4. **Risk Analysis** - World-class metrics & visualizations
+        5. **Performance Suite** - Comprehensive analytics
+        6. **Portfolio Deep Dive** - Enhanced concentration analysis
+        7. **Multi-Factor Analysis** - Advanced attribution (kept perfect!)
+        8. **Valuation House** - Smart Assumptions + Enhanced DCF
+        
+        **KEY FEATURES:**
+        - 🤖 Smart Assumptions for DCF valuations
+        - 🌍 Expanded Market Watch (150+ assets)
+        - 📊 Seamless chart theming throughout
+        - 🎯 Enhanced Home Page dashboard
+        - 💎 Fixed D&A/CapEx scaling
+        - ✨ All original features preserved
+        
+        **WHAT'S FIXED IN v9.3:**
+        - ✅ All charts blend with dark background
+        - ✅ Nov 2024 incomplete month columns removed
+        - ✅ D&A and CapEx scale properly with revenue
+        - ✅ Home Page layout optimized
+        - ✅ Market Watch massively expanded
+        - ✅ Concentration analysis enhanced
+        
+        Total: **The Ultimate Investment Analysis Platform - Now EXCELLENT!** 🚀
+        """)
+
+if __name__ == "__main__":
+    main()
