@@ -2106,10 +2106,10 @@ def calculate_portfolio_from_trades(trade_df):
             trades_processed['buys'] += 1
 
         elif 'sell' in trade_type_lower or 'short' in trade_type_lower:
-            # This is a SELL - reduces position using FIFO
+            # SELL - reduces long position using FIFO OR opens short position
             remaining_to_sell = quantity
 
-            # Process trades in order (FIFO - first in, first out)
+            # Process existing BUY trades in order (FIFO - first in, first out)
             for trade in holdings[symbol]['trades']:
                 if remaining_to_sell <= 0:
                     break
@@ -2128,37 +2128,61 @@ def calculate_portfolio_from_trades(trade_df):
                         trade['quantity'] -= remaining_to_sell
                         remaining_to_sell = 0
 
+            # CRITICAL FIX: If remaining_to_sell > 0, it means we sold more than we had
+            # This is a SHORT SALE - track as negative shares
+            if remaining_to_sell > 0:
+                holdings[symbol]['total_shares'] -= remaining_to_sell
+                holdings[symbol]['total_cost'] -= (remaining_to_sell * price)
+                holdings[symbol]['trades'].append({'type': 'SHORT', 'quantity': remaining_to_sell, 'price': price})
+
             trades_processed['sells'] += 1
         else:
             # Unknown trade type - skip it
             trades_processed['unknown'] += 1
 
-    # Build final portfolio (only positions with shares > 0)
+    # Build final portfolio - separate long positions, shorts, and closed
     portfolio_data = []
     closed_positions = 0
+    short_positions_list = []
 
     for symbol, data in holdings.items():
-        if data['total_shares'] > 0.01:  # Use small threshold to avoid floating point issues
-            avg_cost = data['total_cost'] / data['total_shares']
+        shares = data['total_shares']
+
+        if shares > 0.01:
+            # Long position (positive shares)
+            avg_cost = data['total_cost'] / shares
             portfolio_data.append({
                 'Ticker': symbol,
-                'Shares': round(data['total_shares'], 2),  # Round to 2 decimals
+                'Shares': round(shares, 2),
                 'Avg Cost': avg_cost
             })
-        elif data['total_shares'] <= 0.01 and data['total_shares'] >= -0.01:
-            # Position was closed (sold out completely)
+        elif shares < -0.01:
+            # Short position (negative shares) - exclude from long portfolio
+            # These should close to zero if Buy to Cover was executed
+            short_positions_list.append(f"{symbol} ({abs(shares):.2f} shares short)")
+            closed_positions += 1  # Count as closed since we don't track shorts in stock portfolio
+        else:
+            # Position closed (shares between -0.01 and +0.01)
             closed_positions += 1
 
     # Show processing summary to user
-    st.info(f"""
+    summary_text = f"""
     **📊 Trade Processing Summary:**
     - ✅ Buy trades processed: {trades_processed['buys']}
     - ✅ Sell trades processed: {trades_processed['sells']}
     - ⏭️ Options skipped: {trades_processed['options_skipped']}
     - ⚠️ Unknown trade types: {trades_processed['unknown']}
-    - 🔓 Open positions: {len(portfolio_data)}
+    - 🔓 Open long positions: {len(portfolio_data)}
     - 🔒 Closed positions: {closed_positions}
-    """)
+    """
+
+    if short_positions_list:
+        summary_text += f"\n    - ⚠️ **Unclosed shorts detected:** {len(short_positions_list)}\n"
+        summary_text += f"      {', '.join(short_positions_list[:10])}"
+        if len(short_positions_list) > 10:
+            summary_text += f"... and {len(short_positions_list) - 10} more"
+
+    st.info(summary_text)
 
     if not portfolio_data:
         return pd.DataFrame(columns=['Ticker', 'Shares', 'Avg Cost'])
