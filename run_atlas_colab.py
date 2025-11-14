@@ -89,7 +89,7 @@ def main():
         # Start Streamlit in background
         print("\n🚀 Starting ATLAS Terminal...")
         streamlit_process = subprocess.Popen(
-            [sys.executable, "-m", "streamlit", "run", "atlas_terminal/main.py",
+            [sys.executable, "-m", "streamlit", "run", "run.py",
              "--server.port=8501", "--server.headless=true"],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE
@@ -151,7 +151,7 @@ def main():
 
         print("🚀 Starting ATLAS Terminal with localtunnel...")
         streamlit_process = subprocess.Popen(
-            [sys.executable, "-m", "streamlit", "run", "atlas_terminal/main.py",
+            [sys.executable, "-m", "streamlit", "run", "run.py",
              "--server.port=8501", "--server.headless=true"],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE
