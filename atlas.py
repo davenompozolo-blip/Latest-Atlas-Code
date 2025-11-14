@@ -250,6 +250,7 @@ MARKET_RETURN = 0.10
 # ============================================================================
 
 # Global Market Indices
+# v9.7 EXPANDED: Additional Global Indices
 GLOBAL_INDICES = {
     "^GSPC": {"name": "S&P 500", "region": "US"},
     "^NDX": {"name": "Nasdaq 100", "region": "US"},
@@ -265,10 +266,16 @@ GLOBAL_INDICES = {
     "^BSESN": {"name": "BSE Sensex", "region": "India"},
     "^BVSP": {"name": "Bovespa", "region": "Brazil"},
     "^AXJO": {"name": "ASX 200", "region": "Australia"},
-    "^GSPTSE": {"name": "TSX Composite", "region": "Canada"}
+    "^GSPTSE": {"name": "TSX Composite", "region": "Canada"},
+    # v9.7 NEW: Additional emerging and developed markets
+    "^KS11": {"name": "KOSPI", "region": "South Korea"},
+    "^TWII": {"name": "Taiwan Weighted", "region": "Taiwan"},
+    "^JKSE": {"name": "Jakarta Composite", "region": "Indonesia"},
+    "^MXX": {"name": "IPC Mexico", "region": "Mexico"}
 }
 
 # EXPANDED: Major Cryptocurrencies
+# v9.7 EXPANDED: Additional Cryptocurrencies
 CRYPTOCURRENCIES = {
     "BTC-USD": {"name": "Bitcoin", "category": "Crypto"},
     "ETH-USD": {"name": "Ethereum", "category": "Crypto"},
@@ -279,7 +286,13 @@ CRYPTOCURRENCIES = {
     "DOGE-USD": {"name": "Dogecoin", "category": "Crypto"},
     "MATIC-USD": {"name": "Polygon", "category": "Crypto"},
     "DOT-USD": {"name": "Polkadot", "category": "Crypto"},
-    "AVAX-USD": {"name": "Avalanche", "category": "Crypto"}
+    "AVAX-USD": {"name": "Avalanche", "category": "Crypto"},
+    # v9.7 NEW: Additional major cryptocurrencies
+    "LINK-USD": {"name": "Chainlink", "category": "Crypto"},
+    "UNI-USD": {"name": "Uniswap", "category": "Crypto"},
+    "LTC-USD": {"name": "Litecoin", "category": "Crypto"},
+    "ATOM-USD": {"name": "Cosmos", "category": "Crypto"},
+    "ALGO-USD": {"name": "Algorand", "category": "Crypto"}
 }
 
 # EXPANDED: Bond Yields and Rates
@@ -888,6 +901,72 @@ def load_account_history():
         with open(ACCOUNT_HISTORY_CACHE, "rb") as f:
             return pickle.load(f)
     return None
+
+# v9.7 NEW FEATURE: Data Validation & Integrity Checks
+def validate_portfolio_data(portfolio_data):
+    """
+    NEW IN v9.7: Comprehensive data validation and integrity checking
+    Returns validation metrics and quality scores
+    """
+    if not portfolio_data:
+        return {
+            'is_valid': False,
+            'total_holdings': 0,
+            'data_quality_score': 0,
+            'issues': ['No portfolio data available'],
+            'warnings': []
+        }
+
+    df = pd.DataFrame(portfolio_data)
+    issues = []
+    warnings = []
+
+    # Check required columns
+    required_columns = ['Ticker', 'Quantity', 'Current Price']
+    missing_columns = [col for col in required_columns if col not in df.columns]
+    if missing_columns:
+        issues.append(f"Missing required columns: {', '.join(missing_columns)}")
+
+    # Check for null values
+    null_counts = df[required_columns].isnull().sum()
+    for col, count in null_counts.items():
+        if count > 0:
+            warnings.append(f"{col}: {count} missing values")
+
+    # Check for negative quantities
+    if 'Quantity' in df.columns:
+        negative_qty = (df['Quantity'] < 0).sum()
+        if negative_qty > 0:
+            warnings.append(f"{negative_qty} holdings with negative quantities (short positions)")
+
+    # Check for zero/negative prices
+    if 'Current Price' in df.columns:
+        invalid_prices = (df['Current Price'] <= 0).sum()
+        if invalid_prices > 0:
+            issues.append(f"{invalid_prices} holdings with invalid prices (≤0)")
+
+    # Check for duplicate tickers
+    if 'Ticker' in df.columns:
+        duplicates = df['Ticker'].duplicated().sum()
+        if duplicates > 0:
+            warnings.append(f"{duplicates} duplicate ticker entries")
+
+    # Calculate data quality score (0-100)
+    quality_score = 100
+    quality_score -= len(issues) * 15  # Severe penalty for issues
+    quality_score -= len(warnings) * 5  # Moderate penalty for warnings
+    quality_score = max(0, min(100, quality_score))
+
+    return {
+        'is_valid': len(issues) == 0,
+        'total_holdings': len(df),
+        'data_quality_score': quality_score,
+        'issues': issues,
+        'warnings': warnings,
+        'null_counts': null_counts.to_dict() if not null_counts.empty else {},
+        'total_rows': len(df),
+        'complete_rows': len(df.dropna(subset=required_columns)) if all(c in df.columns for c in required_columns) else 0
+    }
 
 def get_leverage_info():
     account_df = load_account_history()
@@ -1994,26 +2073,42 @@ def calculate_information_ratio(portfolio_returns, benchmark_returns):
     info_ratio = annualized_excess / tracking_error if tracking_error > 0 else 0
     return info_ratio
 
+# v9.7 ENHANCEMENT: Added caching for performance optimization
+@st.cache_data(ttl=300)
 def calculate_var(returns, confidence=0.95):
+    """Calculate Value at Risk with caching for improved performance"""
     if not is_valid_series(returns) or len(returns) < 2:
         return None
-    var = np.percentile(returns, (1 - confidence) * 100)
-    return var * 100
+    try:
+        var = np.percentile(returns, (1 - confidence) * 100)
+        return var * 100
+    except Exception as e:
+        return None
 
+@st.cache_data(ttl=300)
 def calculate_cvar(returns, confidence=0.95):
+    """Calculate Conditional VaR with caching for improved performance"""
     if not is_valid_series(returns) or len(returns) < 2:
         return None
-    var = np.percentile(returns, (1 - confidence) * 100)
-    cvar = returns[returns <= var].mean()
-    return cvar * 100
+    try:
+        var = np.percentile(returns, (1 - confidence) * 100)
+        cvar = returns[returns <= var].mean()
+        return cvar * 100
+    except Exception as e:
+        return None
 
+@st.cache_data(ttl=300)
 def calculate_max_drawdown(returns):
+    """Calculate Maximum Drawdown with caching for improved performance"""
     if not is_valid_series(returns) or len(returns) < 2:
         return None
-    cumulative = (1 + returns).cumprod()
-    running_max = cumulative.expanding().max()
-    drawdown = (cumulative - running_max) / running_max
-    return drawdown.min() * 100
+    try:
+        cumulative = (1 + returns).cumprod()
+        running_max = cumulative.expanding().max()
+        drawdown = (cumulative - running_max) / running_max
+        return drawdown.min() * 100
+    except Exception as e:
+        return None
 
 def calculate_calmar_ratio(returns, risk_free_rate=RISK_FREE_RATE):
     if not is_valid_series(returns) or len(returns) < 2:
@@ -2279,6 +2374,74 @@ def create_var_waterfall(returns):
         height=500
     )
     
+    apply_chart_theme(fig)
+    return fig
+
+# v9.7 NEW FEATURE: Rolling VaR/CVaR Time Series
+def create_rolling_var_cvar_chart(returns, window=60):
+    """
+    NEW IN v9.7: Rolling VaR and CVaR time series visualization
+    Shows how tail risk metrics evolve over time
+    """
+    if not is_valid_series(returns) or len(returns) < window:
+        return None
+
+    # Calculate rolling VaR and CVaR
+    rolling_var_95 = []
+    rolling_cvar_95 = []
+    dates = []
+
+    for i in range(window, len(returns)):
+        window_returns = returns.iloc[i-window:i]
+        var = calculate_var(window_returns, 0.95)
+        cvar = calculate_cvar(window_returns, 0.95)
+
+        if var is not None and cvar is not None:
+            rolling_var_95.append(var)
+            rolling_cvar_95.append(cvar)
+            dates.append(returns.index[i])
+
+    if not rolling_var_95:
+        return None
+
+    fig = go.Figure()
+
+    # Add VaR trace
+    fig.add_trace(go.Scatter(
+        x=dates,
+        y=rolling_var_95,
+        name='VaR 95%',
+        line=dict(color=COLORS['orange'], width=2),
+        mode='lines'
+    ))
+
+    # Add CVaR trace
+    fig.add_trace(go.Scatter(
+        x=dates,
+        y=rolling_cvar_95,
+        name='CVaR 95%',
+        line=dict(color=COLORS['danger'], width=2, dash='dash'),
+        mode='lines'
+    ))
+
+    # Add zero line
+    fig.add_hline(y=0, line_dash="dot", line_color=COLORS['text_muted'], line_width=1)
+
+    fig.update_layout(
+        title=f"📊 Rolling VaR & CVaR Evolution ({window}-Day Window)",
+        xaxis_title="Date",
+        yaxis_title="Expected Loss (%)",
+        height=500,
+        hovermode='x unified',
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        )
+    )
+
     apply_chart_theme(fig)
     return fig
 
@@ -3605,6 +3768,55 @@ def main():
         col4.metric("Daily P&L", format_currency(daily_pl))
         col5.metric("📊 Positions", len(enhanced_df))
 
+        # v9.7 NEW FEATURE: Data Quality Indicator
+        validation_result = validate_portfolio_data(portfolio_data)
+        quality_score = validation_result['data_quality_score']
+
+        if quality_score >= 90:
+            quality_color = COLORS['success']
+            quality_status = "EXCELLENT"
+        elif quality_score >= 75:
+            quality_color = COLORS['info']
+            quality_status = "GOOD"
+        elif quality_score >= 60:
+            quality_color = COLORS['warning']
+            quality_status = "FAIR"
+        else:
+            quality_color = COLORS['danger']
+            quality_status = "POOR"
+
+        st.markdown(f"""
+        <div style='background: linear-gradient(135deg, {COLORS['card_background']} 0%, {COLORS['card_background_alt']} 100%);
+                    border-left: 4px solid {quality_color};
+                    padding: 12px 20px;
+                    border-radius: 8px;
+                    margin: 15px 0;'>
+            <div style='display: flex; align-items: center; justify-content: space-between;'>
+                <div>
+                    <span style='color: {COLORS['text_muted']}; font-size: 12px;'>🆕 v9.7 DATA QUALITY SCORE</span>
+                    <span style='color: {quality_color}; font-size: 24px; font-weight: 700; margin-left: 15px;'>{quality_score}/100</span>
+                    <span style='color: {quality_color}; font-size: 14px; font-weight: 600; margin-left: 10px;'>{quality_status}</span>
+                </div>
+                <div style='text-align: right; color: {COLORS['text_secondary']}; font-size: 11px;'>
+                    {validation_result['complete_rows']}/{validation_result['total_rows']} Complete Rows
+                    {f"<br/><span style='color: {COLORS['danger']};'>⚠️ {len(validation_result['issues'])} Issues</span>" if validation_result['issues'] else ""}
+                    {f"<br/><span style='color: {COLORS['warning']};'>⚡ {len(validation_result['warnings'])} Warnings</span>" if validation_result['warnings'] else ""}
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        if validation_result['issues'] or validation_result['warnings']:
+            with st.expander("🔍 View Data Quality Details", expanded=False):
+                if validation_result['issues']:
+                    st.error("**Issues Found:**")
+                    for issue in validation_result['issues']:
+                        st.write(f"- {issue}")
+                if validation_result['warnings']:
+                    st.warning("**Warnings:**")
+                    for warning in validation_result['warnings']:
+                        st.write(f"- {warning}")
+
         st.markdown("---")
 
         # Risk Snapshot & Signal Health
@@ -3861,12 +4073,16 @@ def main():
             var_95 = calculate_var(portfolio_returns, 0.95)
             max_dd = calculate_max_drawdown(portfolio_returns)
         
-        col1, col2, col3, col4, col5 = st.columns(5)
+        # v9.7 ENHANCEMENT: Added CVaR metric
+        cvar_95 = calculate_cvar(portfolio_returns, 0.95)
+
+        col1, col2, col3, col4, col5, col6 = st.columns(6)
         col1.metric("🔥 Sharpe", ATLASFormatter.format_ratio(sharpe) if sharpe else "N/A")
         col2.metric("💎 Sortino", ATLASFormatter.format_ratio(sortino) if sortino else "N/A")
         col3.metric("⚖️ Calmar", ATLASFormatter.format_ratio(calmar) if calmar else "N/A")
         col4.metric("📉 VaR 95%", format_percentage(var_95) if var_95 else "N/A")
-        col5.metric("⚠️ Max DD", format_percentage(max_dd) if max_dd else "N/A")
+        col5.metric("🔴 CVaR 95%", format_percentage(cvar_95) if cvar_95 else "N/A")
+        col6.metric("⚠️ Max DD", format_percentage(max_dd) if max_dd else "N/A")
         
         st.markdown("---")
         
@@ -3895,6 +4111,14 @@ def main():
                 drawdown_dist = create_drawdown_distribution(portfolio_returns)
                 if drawdown_dist:
                     st.plotly_chart(drawdown_dist, use_container_width=True)
+
+            # v9.7 NEW FEATURE: Rolling VaR/CVaR Evolution
+            st.markdown("#### 📈 v9.7: Rolling Risk Metrics Evolution")
+            rolling_var_cvar = create_rolling_var_cvar_chart(portfolio_returns, window=60)
+            if rolling_var_cvar:
+                st.plotly_chart(rolling_var_cvar, use_container_width=True)
+            else:
+                st.info("Insufficient data for rolling VaR/CVaR analysis (requires 60+ days)")
 
         with tab2:
             simulations = run_monte_carlo_simulation(portfolio_returns)
