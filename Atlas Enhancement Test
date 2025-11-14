@@ -312,7 +312,7 @@ COMMODITIES = {
     "GF=F": {"name": "Feeder Cattle", "category": "Livestock"}
 }
 
-# EXPANDED: Popular Stocks (diverse selection)
+# EXPANDED: Popular Stocks (45 diverse companies - FIXED)
 POPULAR_STOCKS = {
     # Mega Cap Tech
     "AAPL": {"name": "Apple", "sector": "Technology", "category": "Mega Cap Tech"},
@@ -322,26 +322,57 @@ POPULAR_STOCKS = {
     "NVDA": {"name": "NVIDIA", "sector": "Technology", "category": "Mega Cap Tech"},
     "META": {"name": "Meta", "sector": "Technology", "category": "Mega Cap Tech"},
     "TSLA": {"name": "Tesla", "sector": "Consumer Cyclical", "category": "Mega Cap Tech"},
-    
+    "NFLX": {"name": "Netflix", "sector": "Communication Services", "category": "Mega Cap Tech"},
+
     # Financials
     "JPM": {"name": "JPMorgan", "sector": "Financial Services", "category": "Financials"},
     "BAC": {"name": "Bank of America", "sector": "Financial Services", "category": "Financials"},
+    "WFC": {"name": "Wells Fargo", "sector": "Financial Services", "category": "Financials"},
     "GS": {"name": "Goldman Sachs", "sector": "Financial Services", "category": "Financials"},
     "MS": {"name": "Morgan Stanley", "sector": "Financial Services", "category": "Financials"},
-    
+    "C": {"name": "Citigroup", "sector": "Financial Services", "category": "Financials"},
+    "BLK": {"name": "BlackRock", "sector": "Financial Services", "category": "Financials"},
+    "V": {"name": "Visa", "sector": "Financial Services", "category": "Financials"},
+    "MA": {"name": "Mastercard", "sector": "Financial Services", "category": "Financials"},
+
     # Healthcare
     "JNJ": {"name": "Johnson & Johnson", "sector": "Healthcare", "category": "Healthcare"},
     "UNH": {"name": "UnitedHealth", "sector": "Healthcare", "category": "Healthcare"},
     "PFE": {"name": "Pfizer", "sector": "Healthcare", "category": "Healthcare"},
-    
+    "ABBV": {"name": "AbbVie", "sector": "Healthcare", "category": "Healthcare"},
+    "TMO": {"name": "Thermo Fisher", "sector": "Healthcare", "category": "Healthcare"},
+    "LLY": {"name": "Eli Lilly", "sector": "Healthcare", "category": "Healthcare"},
+
     # Consumer
     "WMT": {"name": "Walmart", "sector": "Consumer Defensive", "category": "Consumer"},
     "PG": {"name": "Procter & Gamble", "sector": "Consumer Defensive", "category": "Consumer"},
     "KO": {"name": "Coca-Cola", "sector": "Consumer Defensive", "category": "Consumer"},
-    
+    "PEP": {"name": "PepsiCo", "sector": "Consumer Defensive", "category": "Consumer"},
+    "COST": {"name": "Costco", "sector": "Consumer Defensive", "category": "Consumer"},
+    "NKE": {"name": "Nike", "sector": "Consumer Cyclical", "category": "Consumer"},
+    "MCD": {"name": "McDonald's", "sector": "Consumer Cyclical", "category": "Consumer"},
+    "SBUX": {"name": "Starbucks", "sector": "Consumer Cyclical", "category": "Consumer"},
+    "DIS": {"name": "Disney", "sector": "Communication Services", "category": "Consumer"},
+
     # Energy
     "XOM": {"name": "Exxon Mobil", "sector": "Energy", "category": "Energy"},
     "CVX": {"name": "Chevron", "sector": "Energy", "category": "Energy"},
+    "COP": {"name": "ConocoPhillips", "sector": "Energy", "category": "Energy"},
+    "SLB": {"name": "Schlumberger", "sector": "Energy", "category": "Energy"},
+
+    # Industrials
+    "BA": {"name": "Boeing", "sector": "Industrials", "category": "Industrials"},
+    "CAT": {"name": "Caterpillar", "sector": "Industrials", "category": "Industrials"},
+    "GE": {"name": "General Electric", "sector": "Industrials", "category": "Industrials"},
+    "UPS": {"name": "UPS", "sector": "Industrials", "category": "Industrials"},
+
+    # Tech (Additional)
+    "ORCL": {"name": "Oracle", "sector": "Technology", "category": "Tech"},
+    "CRM": {"name": "Salesforce", "sector": "Technology", "category": "Tech"},
+    "ADBE": {"name": "Adobe", "sector": "Technology", "category": "Tech"},
+    "INTC": {"name": "Intel", "sector": "Technology", "category": "Tech"},
+    "AMD": {"name": "AMD", "sector": "Technology", "category": "Tech"},
+    "CSCO": {"name": "Cisco", "sector": "Technology", "category": "Tech"},
 }
 
 # EXPANDED: Popular ETFs (now includes thematic and sector)
@@ -1227,91 +1258,105 @@ PASTE THIS FILE BELOW PART 1 TO COMPLETE THE APP!
 # ============================================================================
 
 def create_top_contributors_chart(df, top_n=5):
-    """NEW: Top contributors visualization for Home Page"""
-    top_contributors = df.nlargest(top_n, 'Total Gain/Loss $')[['Ticker', 'Asset Name', 'Total Gain/Loss $', 'Total Gain/Loss %']]
-    
+    """FIXED: Top contributors in PERCENTAGE terms"""
+    top_contributors = df.nlargest(top_n, 'Total Gain/Loss %')[['Ticker', 'Asset Name', 'Total Gain/Loss $', 'Total Gain/Loss %']]
+
     fig = go.Figure()
-    
+
     fig.add_trace(go.Bar(
-        x=top_contributors['Total Gain/Loss $'],
+        x=top_contributors['Total Gain/Loss %'],
         y=top_contributors['Ticker'],
         orientation='h',
         marker=dict(
-            color=top_contributors['Total Gain/Loss $'],
-            colorscale=[[0, COLORS['success']], [1, COLORS['success']]],
+            color=COLORS['success'],
             line=dict(color=COLORS['border'], width=2)
         ),
-        text=[f"${x:,.0f}" for x in top_contributors['Total Gain/Loss $']],
+        text=[f"{x:.1f}%" for x in top_contributors['Total Gain/Loss %']],
         textposition='auto',
-        hovertemplate='<b>%{y}</b><br>P&L: %{text}<extra></extra>'
+        hovertemplate='<b>%{y}</b><br>Return: %{x:.2f}%<extra></extra>'
     ))
-    
+
     fig.update_layout(
-        title="🎯 Top 5 Contributors",
-        xaxis_title="Total Gain ($)",
+        title="🎯 Top 5 Contributors (%)",
+        xaxis_title="Total Return (%)",
         yaxis_title="",
         height=400,
         showlegend=False
     )
-    
+
     apply_chart_theme(fig)
     return fig
 
 def create_top_detractors_chart(df, top_n=5):
-    """NEW: Top detractors visualization for Home Page"""
-    top_detractors = df.nsmallest(top_n, 'Total Gain/Loss $')[['Ticker', 'Asset Name', 'Total Gain/Loss $', 'Total Gain/Loss %']]
-    
+    """FIXED: Top detractors in PERCENTAGE terms"""
+    top_detractors = df.nsmallest(top_n, 'Total Gain/Loss %')[['Ticker', 'Asset Name', 'Total Gain/Loss $', 'Total Gain/Loss %']]
+
     fig = go.Figure()
-    
+
     fig.add_trace(go.Bar(
-        x=top_detractors['Total Gain/Loss $'],
+        x=top_detractors['Total Gain/Loss %'],
         y=top_detractors['Ticker'],
         orientation='h',
         marker=dict(
-            color=top_detractors['Total Gain/Loss $'],
-            colorscale=[[0, COLORS['danger']], [1, COLORS['danger']]],
+            color=COLORS['danger'],
             line=dict(color=COLORS['border'], width=2)
         ),
-        text=[f"${x:,.0f}" for x in top_detractors['Total Gain/Loss $']],
+        text=[f"{x:.1f}%" for x in top_detractors['Total Gain/Loss %']],
         textposition='auto',
-        hovertemplate='<b>%{y}</b><br>P&L: %{text}<extra></extra>'
+        hovertemplate='<b>%{y}</b><br>Loss: %{x:.2f}%<extra></extra>'
     ))
-    
+
     fig.update_layout(
-        title="⚠️ Top 5 Detractors",
-        xaxis_title="Total Loss ($)",
+        title="⚠️ Top 5 Detractors (%)",
+        xaxis_title="Total Return (%)",
         yaxis_title="",
         height=400,
         showlegend=False
     )
-    
+
     apply_chart_theme(fig)
     return fig
 
 def create_sector_allocation_donut(df):
-    """NEW: Sector allocation donut chart for Home Page"""
+    """ENHANCED: Sector allocation donut chart with better sizing"""
     sector_allocation = df.groupby('Sector')['Total Value'].sum().reset_index()
     sector_allocation = sector_allocation.sort_values('Total Value', ascending=False)
-    
+
+    # Better colors
+    colors = px.colors.qualitative.Set3
+
     fig = go.Figure(data=[go.Pie(
         labels=sector_allocation['Sector'],
         values=sector_allocation['Total Value'],
         hole=0.5,
         marker=dict(
-            colors=px.colors.qualitative.Set3,
+            colors=colors,
             line=dict(color=COLORS['border'], width=2)
         ),
+        textposition='auto',
         textinfo='label+percent',
-        textfont=dict(size=12)
+        textfont=dict(size=11),
+        hovertemplate='<b>%{label}</b><br>Value: $%{value:,.0f}<br>Percentage: %{percent}<extra></extra>'
     )])
-    
+
     fig.update_layout(
-        title="📊 Sector Allocation",
-        height=400,
+        title=dict(
+            text="📊 Sector Allocation",
+            font=dict(size=16)
+        ),
+        height=350,  # FIX: Reduced height for better fit
         showlegend=True,
-        legend=dict(x=0.85, y=0.5)
+        legend=dict(
+            orientation="v",
+            yanchor="middle",
+            y=0.5,
+            xanchor="left",
+            x=1.02,
+            font=dict(size=10)
+        ),
+        margin=dict(l=20, r=120, t=50, b=20)  # FIX: Better margins
     )
-    
+
     apply_chart_theme(fig)
     return fig
 
@@ -1817,6 +1862,55 @@ def create_risk_parity_analysis(df):
     apply_chart_theme(fig)
     return fig
 
+def create_drawdown_distribution(returns):
+    """NEW: Drawdown distribution histogram"""
+    if not is_valid_series(returns) or len(returns) < 2:
+        return None
+
+    cumulative = (1 + returns).cumprod()
+    running_max = cumulative.expanding().max()
+    drawdowns = ((cumulative - running_max) / running_max) * 100
+
+    # Remove zeros
+    drawdowns = drawdowns[drawdowns < 0]
+
+    if len(drawdowns) == 0:
+        return None
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Histogram(
+        x=drawdowns,
+        nbinsx=50,
+        marker=dict(
+            color=COLORS['danger'],
+            line=dict(color=COLORS['border'], width=1)
+        ),
+        name='Drawdowns',
+        hovertemplate='Drawdown: %{x:.2f}%<br>Count: %{y}<extra></extra>'
+    ))
+
+    # Add vertical line for mean
+    mean_dd = drawdowns.mean()
+    fig.add_vline(
+        x=mean_dd,
+        line_dash="dash",
+        line_color=COLORS['warning'],
+        annotation_text=f"Mean: {mean_dd:.2f}%",
+        annotation_position="top"
+    )
+
+    fig.update_layout(
+        title="📉 Drawdown Distribution",
+        xaxis_title="Drawdown (%)",
+        yaxis_title="Frequency",
+        height=400,
+        showlegend=False
+    )
+
+    apply_chart_theme(fig)
+    return fig
+
 def create_correlation_network(df, start_date, end_date):
     returns_data = {}
     
@@ -1977,9 +2071,19 @@ def create_efficient_frontier(df):
         title="📊 Efficient Frontier",
         xaxis_title="Risk (Volatility %)",
         yaxis_title="Return %",
-        height=600
+        height=600,
+        showlegend=True,  # FIX: Enable legend
+        legend=dict(
+            yanchor="top",
+            y=0.99,
+            xanchor="right",
+            x=0.99,
+            bgcolor="rgba(10, 25, 41, 0.8)",
+            bordercolor=COLORS['border'],
+            borderwidth=1
+        )
     )
-    
+
     apply_chart_theme(fig)
     return fig
 
@@ -2048,21 +2152,23 @@ def create_dynamic_market_table(df, filters=None):
 # ============================================================================
 
 def create_sector_rotation_heatmap(df, start_date, end_date):
-    """Sector rotation heatmap - FIXED NOV 2024"""
+    """Sector rotation heatmap - FIXED DATETIME COMPARISON"""
     sector_returns = {}
-    
-    end_date_cutoff = datetime.now().replace(day=1)  # First day of current month
-    
+
+    # FIX: Make end_date_cutoff timezone-naive
+    end_date_cutoff = pd.Timestamp(datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0))
+
     for _, row in df.iterrows():
         ticker = row['Ticker']
         sector = row['Sector']
-        
+
         hist_data = fetch_historical_data(ticker, start_date, end_date)
         if hist_data is not None and len(hist_data) > 30:
             monthly_data = hist_data['Close'].resample('M').last()
             monthly_returns = monthly_data.pct_change() * 100
-            
-            # FIXED: Filter out current incomplete month
+
+            # FIX: Convert index to timezone-naive before comparison
+            monthly_returns.index = monthly_returns.index.tz_localize(None)
             monthly_returns = monthly_returns[monthly_returns.index < end_date_cutoff]
             
             if sector not in sector_returns:
@@ -2952,7 +3058,12 @@ def main():
                 efficient = create_efficient_frontier(enhanced_df)
                 if efficient:
                     st.plotly_chart(efficient, use_container_width=True)
-        
+
+                # FIX 7: Add Drawdown Distribution chart
+                drawdown_dist = create_drawdown_distribution(portfolio_returns)
+                if drawdown_dist:
+                    st.plotly_chart(drawdown_dist, use_container_width=True)
+
         with tab2:
             simulations = run_monte_carlo_simulation(portfolio_returns)
             if simulations is not None:
@@ -3015,11 +3126,40 @@ def main():
         with st.spinner("Calculating..."):
             portfolio_returns = calculate_portfolio_returns(df, start_date, end_date)
             benchmark_returns = calculate_benchmark_returns(selected_benchmark, start_date, end_date)
-            
+
             metrics = None
             if is_valid_series(portfolio_returns):
                 metrics = calculate_performance_metrics(enhanced_df, portfolio_returns, benchmark_returns)
-        
+
+        # FIX 8: Enhanced Performance Overview
+        st.markdown("---")
+        st.markdown("### 📊 Portfolio Performance Overview")
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            if metrics:
+                st.metric("📈 Total Return", format_percentage(metrics['Total Return']))
+                st.metric("📊 Annualized Return", format_percentage(metrics['Annualized Return']))
+                st.metric("🎯 Win Rate", format_percentage(metrics['Win Rate']))
+
+        with col2:
+            if metrics:
+                st.metric("⚡ Volatility", format_percentage(metrics['Annualized Volatility']))
+                st.metric("📉 Max Drawdown", format_percentage(metrics['Max Drawdown']))
+                st.metric("🔥 Sharpe Ratio", f"{metrics['Sharpe Ratio']:.3f}")
+
+        with col3:
+            if metrics:
+                st.metric("💎 Sortino Ratio", f"{metrics['Sortino Ratio']:.3f}")
+                st.metric("⚖️ Calmar Ratio", f"{metrics['Calmar Ratio']:.3f}")
+                if metrics['Information Ratio']:
+                    st.metric("📊 Info Ratio", f"{metrics['Information Ratio']:.3f}")
+                else:
+                    st.metric("📊 Info Ratio", "N/A")
+
+        st.markdown("---")
+
         tab1, tab2, tab3 = st.tabs(["📈 Interactive Chart", "📊 Analytics", "📋 Metrics"])
         
         with tab1:
@@ -3338,7 +3478,7 @@ def main():
                         "Working Capital Change ($M)",
                         min_value=-1000.0,
                         max_value=1000.0,
-                        value=smart_params['wc_change'] if use_smart_assumptions else 0.0,
+                        value=float(smart_params['wc_change']) if use_smart_assumptions else 0.0,  # FIX: Ensure float
                         step=10.0
                     ) * 1e6
             
