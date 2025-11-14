@@ -195,12 +195,16 @@ def render():
                     st.write(f"- {warning}")
     
     st.markdown("---")
-    
-    # Calculate portfolio returns
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=365)
-    portfolio_returns = calculate_portfolio_returns(enhanced_df, start_date, end_date)
-    
+
+    # Calculate portfolio returns from account history
+    account_history = load_account_history()
+    portfolio_returns = None
+
+    if account_history is not None and not account_history.empty:
+        portfolio_returns = calculate_portfolio_returns(account_history, apply_leverage=True)
+    else:
+        logger.warning("No account history available - performance metrics will be limited")
+
     # Risk Snapshot & Signal Health
     col_health, col_snapshot = st.columns([1, 3])
     

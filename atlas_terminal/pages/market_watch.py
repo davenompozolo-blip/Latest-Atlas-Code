@@ -57,28 +57,36 @@ def render():
     ])
     
     with tab1:
-        st.markdown("#### 🌍 Global Indices")
+        st.markdown("####🌍 Global Indices")
         with st.spinner("Loading indices..."):
             try:
                 indices_df = fetch_market_watch_data(GLOBAL_INDICES)
                 if not indices_df.empty:
-                    indices_df = indices_df[indices_df['Change %'] >= filter_change]
-                    display_df = create_dynamic_market_table(indices_df, {'sort_by': sort_by, 'ascending': False})
+                    filters = {
+                        'min_change': filter_change,
+                        'sort_by': sort_by,
+                        'ascending': False
+                    }
+                    display_df = create_dynamic_market_table(indices_df, filters)
                     st.dataframe(display_df, use_container_width=True, hide_index=True, height=600)
                 else:
                     st.warning("No data available")
             except Exception as e:
                 logger.error(f"Error loading indices: {e}", exc_info=True)
                 st.error(f"Error loading indices: {e}")
-    
+
     with tab2:
         st.markdown("#### 🪙 Cryptocurrency Markets")
         with st.spinner("Loading crypto..."):
             try:
                 crypto_df = fetch_market_watch_data(CRYPTOCURRENCIES)
                 if not crypto_df.empty:
-                    crypto_df = crypto_df[crypto_df['Change %'] >= filter_change]
-                    display_df = create_dynamic_market_table(crypto_df, {'sort_by': sort_by, 'ascending': False})
+                    filters = {
+                        'min_change': filter_change,
+                        'sort_by': sort_by,
+                        'ascending': False
+                    }
+                    display_df = create_dynamic_market_table(crypto_df, filters)
                     st.dataframe(display_df, use_container_width=True, hide_index=True, height=600)
                 else:
                     st.warning("No data available")
