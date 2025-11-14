@@ -2070,52 +2070,86 @@ def parse_account_history_file(uploaded_file):
     }
 
 def calculate_portfolio_from_trades(trade_df):
+    """Calculate current portfolio from trade history using FIFO accounting"""
     holdings = {}
+
     for _, row in trade_df.iterrows():
         symbol = row['Symbol']
         trade_type = row['Trade Type']
         quantity = row['Quantity']
         price = row['Price']
-        
+
+        # Skip options
         if is_option_ticker(symbol):
             continue
-        
+
         if symbol not in holdings:
             holdings[symbol] = {'total_shares': 0, 'total_cost': 0, 'trades': []}
-        
-        is_buy = 'Buy' in trade_type
-        
-        if is_buy:
+
+        # CRITICAL FIX: Proper trade type detection
+        # Buy trades: "Buy", "Buy to Open", "Buy to Cover"
+        # Sell trades: "Sell", "Sell to Close", "Sell to Open", "Sell Short"
+        # For stocks (non-options), we care about net effect on position
+
+        trade_type_lower = trade_type.lower()
+
+        # Determine if this is a buy or sell
+        # Buy if: contains "buy" OR "cover" (covering short = buying back)
+        # Sell if: contains "sell" OR "short" (selling = reducing position)
+        is_buy = ('buy' in trade_type_lower and 'to open' not in trade_type_lower) or 'cover' in trade_type_lower
+        is_sell = 'sell' in trade_type_lower or 'short' in trade_type_lower
+
+        # For "Buy to Open" options, it's actually opening a position, so treat as buy
+        if 'buy to open' in trade_type_lower:
+            is_buy = True
+            is_sell = False
+
+        # For "Sell to Open" options, it's opening a short, treat as sell
+        if 'sell to open' in trade_type_lower:
+            is_buy = False
+            is_sell = True
+
+        if is_buy and not is_sell:
+            # Add to position (FIFO: append to end of queue)
             holdings[symbol]['total_shares'] += quantity
             holdings[symbol]['total_cost'] += (quantity * price)
             holdings[symbol]['trades'].append({'type': 'BUY', 'quantity': quantity, 'price': price})
-        else:
+
+        elif is_sell and not is_buy:
+            # Reduce position using FIFO (remove from oldest first)
             remaining_to_sell = quantity
+
+            # Process trades in order (FIFO - first in, first out)
             for trade in holdings[symbol]['trades']:
-                if trade['type'] == 'BUY' and remaining_to_sell > 0:
+                if trade['type'] == 'BUY' and trade['quantity'] > 0 and remaining_to_sell > 0:
                     if trade['quantity'] <= remaining_to_sell:
+                        # This entire buy lot is sold
                         holdings[symbol]['total_cost'] -= (trade['quantity'] * trade['price'])
                         holdings[symbol]['total_shares'] -= trade['quantity']
                         remaining_to_sell -= trade['quantity']
-                        trade['quantity'] = 0
+                        trade['quantity'] = 0  # Mark as fully sold
                     else:
+                        # Partial sale of this buy lot
                         holdings[symbol]['total_cost'] -= (remaining_to_sell * trade['price'])
                         holdings[symbol]['total_shares'] -= remaining_to_sell
                         trade['quantity'] -= remaining_to_sell
                         remaining_to_sell = 0
-    
+                        break
+
+    # Build final portfolio (only positions with shares > 0)
     portfolio_data = []
     for symbol, data in holdings.items():
-        if data['total_shares'] > 0:
+        if data['total_shares'] > 0.01:  # Use small threshold to avoid floating point issues
             avg_cost = data['total_cost'] / data['total_shares']
             portfolio_data.append({
                 'Ticker': symbol,
-                'Shares': data['total_shares'],
+                'Shares': round(data['total_shares'], 2),  # Round to 2 decimals
                 'Avg Cost': avg_cost
             })
-    
+
     if not portfolio_data:
         return pd.DataFrame(columns=['Ticker', 'Shares', 'Avg Cost'])
+
     return pd.DataFrame(portfolio_data).sort_values('Ticker')
 
 # ============================================================================
