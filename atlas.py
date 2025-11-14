@@ -303,13 +303,21 @@ BOND_YIELDS = {
     "^IRX": {"name": "US 13W Treasury", "category": "Government Bonds"},
 }
 
-# NEW: Credit Spreads (using ETF proxies)
+# v9.7 EXPANDED: Credit Spreads (using ETF proxies)
 CREDIT_SPREADS = {
     "LQD": {"name": "Investment Grade Credit", "category": "Credit"},
     "HYG": {"name": "High Yield Credit", "category": "Credit"},
+    "JNK": {"name": "High Yield Junk Bonds", "category": "Credit"},
     "EMB": {"name": "Emerging Market Bonds", "category": "Credit"},
     "TIP": {"name": "TIPS (Inflation-Protected)", "category": "Government Bonds"},
     "MBB": {"name": "Mortgage-Backed Securities", "category": "Credit"},
+    # v9.7 NEW: Additional spreads
+    "VCSH": {"name": "Short-Term Corporate", "category": "Credit"},
+    "VCIT": {"name": "Intermediate Corporate", "category": "Credit"},
+    "VCLT": {"name": "Long-Term Corporate", "category": "Credit"},
+    "BKLN": {"name": "Senior Loan (Floating Rate)", "category": "Credit"},
+    "ANGL": {"name": "Fallen Angels", "category": "Credit"},
+    "SHYG": {"name": "Short Duration High Yield", "category": "Credit"},
 }
 
 # EXPANDED: Commodities
@@ -705,24 +713,35 @@ def create_signal_health_badge(metrics):
     return badge_html
 
 def create_pnl_attribution_sector(df):
-    """P&L Attribution by Sector - Waterfall chart"""
-    sector_pnl = df.groupby('Sector')['Total Gain/Loss $'].sum().sort_values(ascending=False)
+    """v9.7 ENHANCED: P&L Attribution by Sector - Now showing % contribution"""
+    # Calculate sector P&L in dollars
+    sector_pnl_dollars = df.groupby('Sector')['Total Gain/Loss $'].sum()
+
+    # v9.7 FIX: Convert to percentage contribution of total portfolio P&L
+    total_pnl = sector_pnl_dollars.sum()
+    if total_pnl != 0:
+        sector_pnl_pct = (sector_pnl_dollars / abs(total_pnl)) * 100
+    else:
+        sector_pnl_pct = sector_pnl_dollars * 0  # All zeros if no P&L
+
+    sector_pnl_pct = sector_pnl_pct.sort_values(ascending=False)
 
     fig = go.Figure(go.Waterfall(
-        name="Sector P&L",
+        name="Sector P&L %",
         orientation="v",
-        x=sector_pnl.index,
-        y=sector_pnl.values,
-        connector={"line": {"color": COLORS['neon_blue']}},
+        x=sector_pnl_pct.index,
+        y=sector_pnl_pct.values,
+        connector={"line": {"color": COLORS['neon_blue'], "width": 2}},
         decreasing={"marker": {"color": COLORS['danger']}},
         increasing={"marker": {"color": COLORS['success']}},
         textposition="outside",
-        text=[ATLASFormatter.format_price(v, 0) for v in sector_pnl.values]
+        text=[f"{v:+.1f}%" for v in sector_pnl_pct.values],
+        textfont=dict(size=12, color=COLORS['text_primary'])
     ))
 
     fig.update_layout(
-        title="💼 P&L Attribution by Sector",
-        yaxis_title="P&L ($)",
+        title="💼 P&L Attribution by Sector (%)",
+        yaxis_title="P&L Contribution (%)",
         xaxis_title="",
         height=450,
         showlegend=False
@@ -732,28 +751,39 @@ def create_pnl_attribution_sector(df):
     return fig
 
 def create_pnl_attribution_position(df, top_n=10):
-    """P&L Attribution by Position - Top contributors and detractors"""
-    top_contributors = df.nlargest(top_n // 2, 'Total Gain/Loss $')
-    top_detractors = df.nsmallest(top_n // 2, 'Total Gain/Loss $')
-    combined = pd.concat([top_contributors, top_detractors]).sort_values('Total Gain/Loss $')
+    """v9.7 ENHANCED: P&L Attribution by Position - Now showing % returns"""
+    # v9.7 FIX: Use Gain/Loss % instead of dollars
+    top_contributors = df.nlargest(top_n // 2, 'Gain/Loss %')
+    top_detractors = df.nsmallest(top_n // 2, 'Gain/Loss %')
+    combined = pd.concat([top_contributors, top_detractors]).sort_values('Gain/Loss %')
 
-    colors = [COLORS['success'] if x > 0 else COLORS['danger'] for x in combined['Total Gain/Loss $']]
+    colors = [COLORS['success'] if x > 0 else COLORS['danger'] for x in combined['Gain/Loss %']]
+
+    # Create labels with ticker and percentage
+    labels = [f"{ticker}" for ticker in combined['Ticker']]
 
     fig = go.Figure(go.Bar(
-        x=combined['Total Gain/Loss $'],
-        y=combined['Ticker'],
+        x=combined['Gain/Loss %'],
+        y=labels,
         orientation='h',
-        marker=dict(color=colors, line=dict(color=COLORS['border'], width=1)),
-        text=[ATLASFormatter.format_price(v, 0) for v in combined['Total Gain/Loss $']],
-        textposition='auto'
+        marker=dict(
+            color=colors,
+            line=dict(color=COLORS['border'], width=2),
+            opacity=0.9
+        ),
+        text=[f"{v:+.1f}%" for v in combined['Gain/Loss %']],
+        textposition='outside',
+        textfont=dict(size=11, color=COLORS['text_primary']),
+        hovertemplate='<b>%{y}</b><br>Return: %{x:.2f}%<extra></extra>'
     ))
 
     fig.update_layout(
-        title=f"🎯 Top {top_n} P&L Contributors & Detractors",
-        xaxis_title="P&L ($)",
+        title=f"🎯 Top {top_n} P&L Contributors & Detractors (%)",
+        xaxis_title="Return (%)",
         yaxis_title="",
         height=500,
-        showlegend=False
+        showlegend=False,
+        xaxis=dict(zeroline=True, zerolinewidth=2, zerolinecolor=COLORS['text_muted'])
     )
 
     apply_chart_theme(fig)
@@ -2199,43 +2229,62 @@ def create_top_detractors_chart(df, top_n=5):
     return fig
 
 def create_sector_allocation_donut(df):
-    """ENHANCED: Sector allocation donut chart with better sizing"""
-    sector_allocation = df.groupby('Sector')['Total Value'].sum().reset_index()
+    """v9.7 ENHANCED: Sector allocation with better spacing and ETF classification"""
+    # v9.7 FIX: Rename "Other" to "ETFs"
+    df_copy = df.copy()
+    df_copy['Sector'] = df_copy['Sector'].replace('Other', 'ETFs')
+
+    sector_allocation = df_copy.groupby('Sector')['Total Value'].sum().reset_index()
     sector_allocation = sector_allocation.sort_values('Total Value', ascending=False)
 
-    # Better colors
-    colors = px.colors.qualitative.Set3
+    # Enhanced color palette for better distinction
+    colors = ['#00d4ff', '#00ff88', '#ff6b00', '#b794f6', '#ff00ff',
+              '#00ffcc', '#ffaa00', '#0080ff', '#ff0044', '#cyan']
 
     fig = go.Figure(data=[go.Pie(
         labels=sector_allocation['Sector'],
         values=sector_allocation['Total Value'],
-        hole=0.5,
+        hole=0.55,  # v9.7: Larger hole for better spacing
         marker=dict(
             colors=colors,
-            line=dict(color=COLORS['border'], width=2)
+            line=dict(color=COLORS['card_background'], width=3)
         ),
-        textposition='auto',
-        textinfo='label+percent',
-        textfont=dict(size=11),
-        hovertemplate='<b>%{label}</b><br>Value: $%{value:,.0f}<br>Percentage: %{percent}<extra></extra>'
+        textposition='inside',
+        textinfo='percent',
+        textfont=dict(size=14, color='white', family='Inter'),
+        insidetextorientation='radial',
+        hovertemplate='<b>%{label}</b><br>Value: $%{value:,.0f}<br>Share: %{percent}<extra></extra>',
+        pull=[0.05 if i == 0 else 0 for i in range(len(sector_allocation))]  # Pull out largest sector
     )])
 
     fig.update_layout(
         title=dict(
             text="📊 Sector Allocation",
-            font=dict(size=16)
+            font=dict(size=18, color=COLORS['neon_blue']),
+            x=0.5,
+            xanchor='center'
         ),
-        height=350,  # FIX: Reduced height for better fit
+        height=450,  # v9.7: Increased height for less clustering
         showlegend=True,
         legend=dict(
             orientation="v",
-            yanchor="middle",
-            y=0.5,
+            yanchor="top",
+            y=1,
             xanchor="left",
-            x=1.02,
-            font=dict(size=10)
+            x=1.05,
+            font=dict(size=12, color=COLORS['text_primary']),
+            bgcolor='rgba(10, 25, 41, 0.6)',
+            bordercolor=COLORS['border'],
+            borderwidth=1
         ),
-        margin=dict(l=20, r=120, t=50, b=20)  # FIX: Better margins
+        margin=dict(l=40, r=180, t=80, b=40),  # v9.7: More right margin for legend
+        annotations=[dict(
+            text='Portfolio<br>Sectors',
+            x=0.5, y=0.5,
+            font_size=16,
+            font_color=COLORS['neon_blue'],
+            showarrow=False
+        )]
     )
 
     apply_chart_theme(fig)
@@ -2540,39 +2589,47 @@ def create_risk_reward_plot(df):
     return fig
 
 def create_performance_heatmap(df, period='monthly'):
-    """Performance heatmap - ENHANCED THEMING & FIXED NOV 2024"""
+    """v9.7 ENHANCED: Performance heatmap with improved incomplete month filtering"""
     try:
         portfolio_values = {}
-        
+
         end_date = datetime.now()
         start_date = end_date - timedelta(days=365)
-        
+        current_month_start = end_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
         for _, row in df.iterrows():
             ticker = row['Ticker']
             hist_data = fetch_historical_data(ticker, start_date, end_date)
-            
+
             if hist_data is not None and len(hist_data) > 0:
                 monthly_data = hist_data['Close'].resample('M').last()
                 monthly_returns = monthly_data.pct_change() * 100
-                
+
                 for month, ret in monthly_returns.items():
-                    # FIXED: Skip current incomplete month
-                    if month.month == end_date.month and month.year == end_date.year:
+                    # v9.7 FIX: More robust check for incomplete months
+                    # Skip if this month is the current month or in the future
+                    month_start = month.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                    if month_start >= current_month_start:
                         continue
+
                     month_str = month.strftime('%b %Y')
                     if month_str not in portfolio_values:
                         portfolio_values[month_str] = {}
                     if pd.notna(ret) and abs(ret) < 50:
                         portfolio_values[month_str][ticker] = ret
-        
+
         if not portfolio_values:
             return None
-        
+
         tickers = sorted(set(t for months in portfolio_values.values() for t in months))
-        months = sorted(portfolio_values.keys(), key=lambda x: datetime.strptime(x, '%b %Y'))
-        
-        # FIXED: Remove current incomplete month
-        months = [m for m in months if datetime.strptime(m, '%b %Y') < end_date.replace(day=1)]
+        months_list = sorted(portfolio_values.keys(), key=lambda x: datetime.strptime(x, '%b %Y'))
+
+        # v9.7 FIX: Double-check to remove any incomplete months that slipped through
+        months = []
+        for m in months_list:
+            m_date = datetime.strptime(m, '%b %Y')
+            if m_date < current_month_start:
+                months.append(m)
         
         matrix = []
         for ticker in tickers:
@@ -3042,25 +3099,36 @@ def create_efficient_frontier(df):
 
 @st.cache_data(ttl=300)
 def fetch_market_watch_data(tickers_dict):
+    """v9.7 ENHANCED: Fetches market data with cleaned symbol display"""
     market_data = []
-    
+
     for ticker, info in tickers_dict.items():
         try:
             stock = yf.Ticker(ticker)
             hist = stock.history(period="5d")
-            
+
             if not hist.empty:
                 current = hist['Close'].iloc[-1]
                 prev = hist['Close'].iloc[-2] if len(hist) > 1 else current
                 change = ((current - prev) / prev) * 100
-                
+
                 five_day = ((current / hist['Close'].iloc[0]) - 1) * 100 if len(hist) >= 5 else 0
-                
+
                 volume = hist['Volume'].iloc[-1]
                 avg_volume = hist['Volume'].mean()
-                
+
+                # v9.7 FIX: Clean up symbol for display (remove ^, =F, etc.)
+                clean_symbol = ticker.replace('^', '').replace('=F', '').replace('-USD', '')
+                # For commodities, show descriptive name instead
+                if '=F' in ticker or ticker.endswith('=F'):
+                    display_symbol = info.get('name', clean_symbol)
+                elif ticker.startswith('^'):
+                    display_symbol = info.get('name', clean_symbol)
+                else:
+                    display_symbol = ticker
+
                 market_data.append({
-                    'Symbol': ticker,
+                    'Symbol': display_symbol,
                     'Name': info.get('name', ticker),
                     'Category': info.get('category', info.get('region', '')),
                     'Last': current,
@@ -3072,7 +3140,7 @@ def fetch_market_watch_data(tickers_dict):
                 })
         except:
             continue
-    
+
     return pd.DataFrame(market_data)
 
 def create_dynamic_market_table(df, filters=None):
@@ -5362,8 +5430,10 @@ def main():
                     format_percentage(upside_downside) if abs(upside_downside) < 1000 else "±∞",
                     delta="Undervalued" if upside_downside > 0 else "Overvalued"
                 )
-                
-                col4.metric("Discount Rate", ATLASFormatter.format_yield(st.session_state['discount_rate'] * 100, decimals=1))
+
+                # v9.7 FIX: Safe access to session_state with defaults
+                discount_rate = st.session_state.get('discount_rate', results.get('discount_rate', 0.10))
+                col4.metric("Discount Rate", ATLASFormatter.format_yield(discount_rate * 100, decimals=1))
                 
                 # Valuation interpretation
                 st.markdown("---")
@@ -5409,11 +5479,13 @@ def main():
                 # Sensitivity Analysis
                 st.markdown("---")
                 st.markdown("#### 🎯 Sensitivity Analysis")
-                
+
+                # v9.7 FIX: Safe access to session_state with defaults
+                terminal_growth = st.session_state.get('terminal_growth', results.get('terminal_growth', 0.025))
                 sensitivity = create_sensitivity_table(
                     intrinsic_value,
-                    st.session_state['discount_rate'],
-                    st.session_state['terminal_growth']
+                    discount_rate,
+                    terminal_growth
                 )
                 st.plotly_chart(sensitivity, use_container_width=True)
                 
