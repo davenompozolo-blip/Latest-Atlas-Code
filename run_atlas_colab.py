@@ -66,7 +66,8 @@ def main():
         'scipy',
         'scikit-learn',
         'openpyxl',
-        'pyngrok'
+        'pyngrok',
+        'networkx'
     ]
 
     for package in packages:

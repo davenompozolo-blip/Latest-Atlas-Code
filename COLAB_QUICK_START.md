@@ -17,7 +17,7 @@ print("\n✅ Repository cloned!")
 ### Cell 2: Install Dependencies
 ```python
 # Install all packages
-!pip install -q streamlit pandas numpy plotly yfinance scipy scikit-learn openpyxl pyngrok
+!pip install -q streamlit pandas numpy plotly yfinance scipy scikit-learn openpyxl pyngrok networkx networkx
 
 print("✅ Packages installed!")
 ```
@@ -78,7 +78,7 @@ Download and run: [colab_setup.py](https://raw.githubusercontent.com/davenompozo
 !git clone https://github.com/davenompozolo-blip/Latest-Atlas-Code.git 2>&1 | tail -1
 %cd Latest-Atlas-Code
 !git checkout claude/test-updated-version-01ED2kosfw6PYJkW8UK6BcQJ 2>&1 | tail -1
-!pip install -q streamlit pandas numpy plotly yfinance scipy scikit-learn openpyxl pyngrok
+!pip install -q streamlit pandas numpy plotly yfinance scipy scikit-learn openpyxl pyngrok networkx
 
 # Start server in background
 get_ipython().system_raw('streamlit run run.py --server.port=8501 --server.headless=true &')
