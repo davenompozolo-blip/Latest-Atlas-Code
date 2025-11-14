@@ -1,4 +1,3 @@
-%%writefile atlas_app.py
 #!/usr/bin/env python3
 """
 ATLAS TERMINAL v9.7 ULTIMATE EDITION
