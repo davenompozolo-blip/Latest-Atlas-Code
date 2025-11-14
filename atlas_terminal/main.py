@@ -95,43 +95,27 @@ def render_sidebar():
         )
         
         st.divider()
-        
+
         # Data Upload Section
         st.subheader("📁 Data Management")
-        
+
         with st.expander("Upload Data", expanded=False):
-            # Portfolio Snapshot Upload
-            portfolio_file = st.file_uploader(
-                "Portfolio Snapshot",
-                type=['csv', 'xlsx'],
-                help="Upload your current portfolio holdings"
-            )
-            
-            if portfolio_file:
-                import pandas as pd
-                try:
-                    if portfolio_file.name.endswith('.csv'):
-                        df = pd.read_csv(portfolio_file)
-                    else:
-                        df = pd.read_excel(portfolio_file)
-                    
-                    # Save to cache
-                    portfolio_data = df.to_dict('records')
-                    if save_portfolio_data(portfolio_data):
-                        st.success(f"✅ Loaded {len(df)} holdings")
-                    else:
-                        st.error("❌ Failed to save portfolio data")
-                        
-                except Exception as e:
-                    st.error(f"❌ Error loading file: {e}")
-            
+            st.markdown("""
+            **Upload your trading data:**
+            - **Trade History**: Your portfolio will be automatically built from your trades
+            - **Account History**: Used for performance tracking and reconciliation
+            """)
+
+            st.divider()
+
             # Trade History Upload
             trade_file = st.file_uploader(
-                "Trade History",
+                "📊 Trade History (Required)",
                 type=['csv', 'xlsx'],
-                help="Upload your trade history"
+                help="Upload your complete trade history - portfolio positions will be calculated from this",
+                key="trade_uploader"
             )
-            
+
             if trade_file:
                 import pandas as pd
                 try:
@@ -139,22 +123,36 @@ def render_sidebar():
                         df = pd.read_csv(trade_file)
                     else:
                         df = pd.read_excel(trade_file)
-                    
+
                     if save_trade_history(df):
-                        st.success(f"✅ Loaded {len(df)} trades")
+                        st.success(f"✅ Loaded {len(df)} trades - Portfolio will be built from this data")
+
+                        # Auto-build portfolio from trades
+                        from atlas_terminal.features.trade_journal import TradeJournal
+                        journal = TradeJournal()
+
+                        # Detect current positions from trade history
+                        current_positions = journal.detect_trades_from_history(df, None)
+
+                        if current_positions:
+                            # Save as portfolio data
+                            save_portfolio_data(current_positions)
+                            st.info(f"📈 Built portfolio with {len(current_positions)} open positions")
                     else:
                         st.error("❌ Failed to save trade history")
-                        
+
                 except Exception as e:
-                    st.error(f"❌ Error loading file: {e}")
-            
+                    st.error(f"❌ Error loading trade history: {e}")
+                    logger.error(f"Trade history upload error: {e}", exc_info=True)
+
             # Account History Upload
             account_file = st.file_uploader(
-                "Account History",
+                "💰 Account/Performance History (Optional)",
                 type=['csv', 'xlsx'],
-                help="Upload your account value history"
+                help="Upload your account value over time for performance tracking and reconciliation",
+                key="account_uploader"
             )
-            
+
             if account_file:
                 import pandas as pd
                 try:
@@ -162,24 +160,39 @@ def render_sidebar():
                         df = pd.read_csv(account_file)
                     else:
                         df = pd.read_excel(account_file)
-                    
+
                     if save_account_history(df):
-                        st.success(f"✅ Loaded {len(df)} records")
+                        st.success(f"✅ Loaded {len(df)} performance records")
                     else:
                         st.error("❌ Failed to save account history")
-                        
+
                 except Exception as e:
-                    st.error(f"❌ Error loading file: {e}")
-        
+                    st.error(f"❌ Error loading account history: {e}")
+                    logger.error(f"Account history upload error: {e}", exc_info=True)
+
         # Cache Info
         with st.expander("💾 Cache Status"):
             cache_info = get_cache_info()
-            
+
             for name, info in cache_info.items():
                 if info['exists']:
-                    st.success(f"✅ {name.title()}: {info['size_kb']:.1f} KB")
+                    if name == 'portfolio':
+                        st.success(f"✅ Portfolio (Built from Trades): {info['size_kb']:.1f} KB")
+                    elif name == 'trade_history':
+                        st.success(f"✅ Trade History: {info['size_kb']:.1f} KB")
+                    elif name == 'account_history':
+                        st.success(f"✅ Performance History: {info['size_kb']:.1f} KB")
+                    else:
+                        st.success(f"✅ {name.title()}: {info['size_kb']:.1f} KB")
                 else:
-                    st.info(f"ℹ️ {name.title()}: Not loaded")
+                    if name == 'portfolio':
+                        st.warning(f"⚠️ Portfolio: Upload Trade History to build")
+                    elif name == 'trade_history':
+                        st.info(f"ℹ️ Trade History: Not loaded (Required)")
+                    elif name == 'account_history':
+                        st.info(f"ℹ️ Performance History: Not loaded (Optional)")
+                    else:
+                        st.info(f"ℹ️ {name.title()}: Not loaded")
         
         st.divider()
         
@@ -187,22 +200,29 @@ def render_sidebar():
         with st.expander("ℹ️ About"):
             st.markdown(f"""
             **ATLAS Terminal v{VERSION}**
-            
+
             Professional Trading Terminal
-            
+
+            **How It Works:**
+            1. Upload your **Trade History** (CSV/Excel)
+            2. Portfolio positions are **automatically calculated** from trades
+            3. Optionally upload **Performance History** for reconciliation
+            4. Navigate through 7 analytical dashboards
+
             **Features:**
+            - Auto-build portfolio from trade history
             - Real-time portfolio analytics
             - Leverage-adjusted returns
-            - Comprehensive risk metrics
+            - Comprehensive risk metrics (VaR, CVaR, Sharpe, etc.)
             - DCF valuation models
-            - Trade journal
+            - Trade journal with P&L tracking
             - Risk budget monitoring
-            
+
             **Tech Stack:**
-            - Streamlit
-            - Plotly
-            - pandas / numpy
-            - yfinance
+            - Streamlit + Plotly
+            - pandas / numpy / scipy
+            - yfinance (real-time data)
+            - networkx (correlation analysis)
             """)
         
         return page
