@@ -128,16 +128,18 @@ def render_sidebar():
                         st.success(f"✅ Loaded {len(df)} trades - Portfolio will be built from this data")
 
                         # Auto-build portfolio from trades
-                        from atlas_terminal.features.trade_journal import TradeJournal
-                        journal = TradeJournal()
+                        from atlas_terminal.data.parsers import build_portfolio_from_trades
 
-                        # Detect current positions from trade history
-                        current_positions = journal.detect_trades_from_history(df, None)
+                        # Build current positions from trade history
+                        portfolio_df = build_portfolio_from_trades(df)
 
-                        if current_positions:
-                            # Save as portfolio data
-                            save_portfolio_data(current_positions)
-                            st.info(f"📈 Built portfolio with {len(current_positions)} open positions")
+                        if portfolio_df is not None and not portfolio_df.empty:
+                            # Convert to list of dicts for caching
+                            portfolio_data = portfolio_df.to_dict('records')
+                            save_portfolio_data(portfolio_data)
+                            st.info(f"📈 Built portfolio with {len(portfolio_df)} open positions from trades")
+                        else:
+                            st.warning("⚠️ No open positions found in trade history")
                     else:
                         st.error("❌ Failed to save trade history")
 

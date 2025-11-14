@@ -242,3 +242,97 @@ def standardize_column_names(df: pd.DataFrame) -> pd.DataFrame:
             logger.debug(f"Renamed column '{old_name}' to '{new_name}'")
 
     return df
+
+
+def build_portfolio_from_trades(trade_history: pd.DataFrame) -> Optional[pd.DataFrame]:
+    """
+    Build current portfolio positions from trade history
+
+    Calculates net positions and average cost basis from all trades
+
+    Args:
+        trade_history: DataFrame with columns: Ticker/Symbol, Action, Quantity, Price, Date
+
+    Returns:
+        DataFrame with current positions (Ticker, Quantity, Cost Basis, Total Cost)
+    """
+    if not is_valid_dataframe(trade_history):
+        logger.error("Invalid trade history for portfolio building")
+        return None
+
+    try:
+        # Standardize column names
+        df = trade_history.copy()
+        df = standardize_column_names(df)
+
+        # Ensure required columns exist
+        required_cols = ['Ticker', 'Action', 'Quantity', 'Price']
+        missing_cols = [col for col in required_cols if col not in df.columns]
+
+        if missing_cols:
+            # Try alternative column names
+            if 'Symbol' in df.columns:
+                df['Ticker'] = df['Symbol']
+            if 'Type' in df.columns and 'Action' not in df.columns:
+                df['Action'] = df['Type']
+            if 'Qty' in df.columns and 'Quantity' not in df.columns:
+                df['Quantity'] = df['Qty']
+
+            # Check again
+            missing_cols = [col for col in required_cols if col not in df.columns]
+            if missing_cols:
+                logger.error(f"Missing required columns: {missing_cols}")
+                return None
+
+        # Clean up actions (handle different formats)
+        df['Action'] = df['Action'].str.upper().str.strip()
+
+        # Build positions by ticker
+        positions = {}
+
+        for _, trade in df.iterrows():
+            ticker = trade['Ticker']
+            action = trade['Action']
+            qty = float(trade['Quantity'])
+            price = float(trade['Price'])
+
+            if ticker not in positions:
+                positions[ticker] = {
+                    'total_qty': 0,
+                    'total_cost': 0
+                }
+
+            if action in ['BUY', 'B', 'LONG']:
+                positions[ticker]['total_qty'] += qty
+                positions[ticker]['total_cost'] += (qty * price)
+            elif action in ['SELL', 'S', 'SHORT']:
+                positions[ticker]['total_qty'] -= qty
+                # For sells, reduce cost basis proportionally
+                if positions[ticker]['total_qty'] > 0:
+                    cost_per_share = positions[ticker]['total_cost'] / (positions[ticker]['total_qty'] + qty)
+                    positions[ticker]['total_cost'] -= (qty * cost_per_share)
+
+        # Convert to DataFrame with only open positions
+        portfolio_data = []
+        for ticker, data in positions.items():
+            if data['total_qty'] > 0:  # Only include open positions
+                avg_cost = data['total_cost'] / data['total_qty'] if data['total_qty'] > 0 else 0
+                portfolio_data.append({
+                    'Ticker': ticker,
+                    'Quantity': data['total_qty'],
+                    'Cost Basis': avg_cost,
+                    'Total Cost': data['total_cost']
+                })
+
+        if not portfolio_data:
+            logger.warning("No open positions found in trade history")
+            return None
+
+        result_df = pd.DataFrame(portfolio_data)
+        logger.info(f"Built portfolio from trades: {len(result_df)} open positions")
+
+        return result_df
+
+    except Exception as e:
+        logger.error(f"Error building portfolio from trades: {e}", exc_info=True)
+        return None
