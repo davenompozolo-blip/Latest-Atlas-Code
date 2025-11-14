@@ -906,6 +906,33 @@ def save_portfolio_data(data):
     with open(PORTFOLIO_CACHE, "wb") as f:
         pickle.dump(data, f)
 
+def standardize_portfolio_columns(df):
+    """Standardize column names to handle variations (Symbol/Ticker, etc.)"""
+    if df is None or df.empty:
+        return df
+
+    column_mapping = {
+        'Symbol': 'Ticker',
+        'symbol': 'Ticker',
+        'ticker': 'Ticker',
+        'SYMBOL': 'Ticker',
+        'TICKER': 'Ticker',
+        'shares': 'Shares',
+        'SHARES': 'Shares',
+        'avg cost': 'Avg Cost',
+        'Avg cost': 'Avg Cost',
+        'avg_cost': 'Avg Cost',
+        'AVG COST': 'Avg Cost',
+        'Average Cost': 'Avg Cost'
+    }
+
+    # Rename columns if needed
+    for old_col, new_col in column_mapping.items():
+        if old_col in df.columns and new_col not in df.columns:
+            df.rename(columns={old_col: new_col}, inplace=True)
+
+    return df
+
 def load_portfolio_data():
     if PORTFOLIO_CACHE.exists():
         with open(PORTFOLIO_CACHE, "rb") as f:
@@ -1979,6 +2006,20 @@ def calculate_portfolio_from_trades(trade_df):
 @st.cache_data(ttl=600)
 def calculate_portfolio_returns(df, start_date, end_date):
     try:
+        # CRITICAL FIX: Standardize column names (handle both 'Symbol' and 'Ticker')
+        df = df.copy()
+        column_mapping = {
+            'Symbol': 'Ticker',
+            'symbol': 'Ticker',
+            'ticker': 'Ticker',
+            'SYMBOL': 'Ticker',
+            'TICKER': 'Ticker'
+        }
+        for old_col, new_col in column_mapping.items():
+            if old_col in df.columns and new_col not in df.columns:
+                df.rename(columns={old_col: new_col}, inplace=True)
+                break
+
         valid_positions = []
         for _, row in df.iterrows():
             if not is_option_ticker(row['Ticker']):
@@ -2044,7 +2085,29 @@ def calculate_benchmark_returns(benchmark_ticker, start_date, end_date):
 
 def create_enhanced_holdings_table(df):
     enhanced_df = df.copy()
-    
+
+    # CRITICAL FIX: Standardize column names (handle both 'Symbol' and 'Ticker')
+    column_mapping = {
+        'Symbol': 'Ticker',
+        'symbol': 'Ticker',
+        'ticker': 'Ticker',
+        'SYMBOL': 'Ticker',
+        'TICKER': 'Ticker'
+    }
+
+    # Rename columns if needed
+    for old_col, new_col in column_mapping.items():
+        if old_col in enhanced_df.columns and new_col not in enhanced_df.columns:
+            enhanced_df.rename(columns={old_col: new_col}, inplace=True)
+            break
+
+    # Verify required columns exist
+    required_columns = ['Ticker', 'Shares', 'Avg Cost']
+    missing_columns = [col for col in required_columns if col not in enhanced_df.columns]
+
+    if missing_columns:
+        raise ValueError(f"Missing required columns: {missing_columns}. Found columns: {list(enhanced_df.columns)}")
+
     for idx, row in enhanced_df.iterrows():
         ticker = row['Ticker']
         market_data = fetch_market_data(ticker)
@@ -4264,12 +4327,13 @@ def main():
         st.markdown("## 📈 RISK ANALYSIS - WORLD CLASS")
         
         portfolio_data = load_portfolio_data()
-        
+
         if not portfolio_data:
             st.warning("⚠️ No portfolio data.")
             return
-        
+
         df = pd.DataFrame(portfolio_data)
+        df = standardize_portfolio_columns(df)  # CRITICAL FIX: Standardize column names
         enhanced_df = create_enhanced_holdings_table(df)
         
         with st.spinner("Calculating..."):
@@ -4500,12 +4564,13 @@ def main():
         st.markdown("## 💎 PERFORMANCE SUITE")
         
         portfolio_data = load_portfolio_data()
-        
+
         if not portfolio_data:
             st.warning("⚠️ No portfolio data.")
             return
-        
+
         df = pd.DataFrame(portfolio_data)
+        df = standardize_portfolio_columns(df)  # CRITICAL FIX: Standardize column names
         enhanced_df = create_enhanced_holdings_table(df)
         
         with st.spinner("Calculating..."):
@@ -4599,12 +4664,13 @@ def main():
         st.markdown("---")
 
         portfolio_data = load_portfolio_data()
-        
+
         if not portfolio_data:
             st.warning("⚠️ No portfolio data.")
             return
-        
+
         df = pd.DataFrame(portfolio_data)
+        df = standardize_portfolio_columns(df)  # CRITICAL FIX: Standardize column names
         enhanced_df = create_enhanced_holdings_table(df)
         
         tab1, tab2, tab3 = st.tabs([
@@ -4651,12 +4717,13 @@ def main():
         st.markdown("---")
 
         portfolio_data = load_portfolio_data()
-        
+
         if not portfolio_data:
             st.warning("⚠️ No portfolio data.")
             return
-        
+
         df = pd.DataFrame(portfolio_data)
+        df = standardize_portfolio_columns(df)  # CRITICAL FIX: Standardize column names
         enhanced_df = create_enhanced_holdings_table(df)
         
         with st.spinner("Running analysis..."):
