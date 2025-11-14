@@ -473,6 +473,380 @@ def add_arrow_indicator(value):
         return value
 
 # ============================================================================
+# PROFESSIONAL ENHANCEMENTS - ATLAS v9.4 EXCELLENCE EDITION
+# ============================================================================
+
+# Enhanced Formatting Standards with Strict Rules
+class ATLASFormatter:
+    """
+    Centralized professional formatting with strict standards:
+    - Prices: $ with 2 decimals
+    - Yields/Returns: % with 2 decimals
+    - Ratios: 1 decimal, no units
+    - Missing data: "–"
+    - Color rules: Green positive, Red negative, Grey zero
+    """
+
+    @staticmethod
+    def format_price(value, decimals=2):
+        """Prices: Always $ with exactly 2 decimals"""
+        if pd.isna(value) or value is None:
+            return "–"
+        return f"${value:,.{decimals}f}"
+
+    @staticmethod
+    def format_yield(value, decimals=2):
+        """Yields/Returns: Always % with exactly 2 decimals"""
+        if pd.isna(value) or value is None:
+            return "–"
+        return f"{value:.{decimals}f}%"
+
+    @staticmethod
+    def format_ratio(value, decimals=1):
+        """Ratios: 1 decimal place, no units"""
+        if pd.isna(value) or value is None:
+            return "–"
+        return f"{value:.{decimals}f}"
+
+    @staticmethod
+    def get_color(value):
+        """Color rules: Green positive, Red negative, Grey zero"""
+        if pd.isna(value) or value is None:
+            return COLORS['text_muted']
+        if value > 0:
+            return COLORS['success']
+        elif value < 0:
+            return COLORS['danger']
+        return COLORS['text_muted']
+
+    @staticmethod
+    def format_timestamp(dt=None):
+        """Data freshness indicator with precise timestamp"""
+        if dt is None:
+            dt = datetime.now()
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
+
+    @staticmethod
+    def get_freshness_badge(minutes_ago):
+        """Visual freshness indicator based on age"""
+        if minutes_ago < 5:
+            return f"🟢 Live ({minutes_ago}m ago)"
+        elif minutes_ago < 30:
+            return f"🟡 Recent ({minutes_ago}m ago)"
+        else:
+            return f"🔴 Stale ({minutes_ago}m ago)"
+
+# Valuation Scenario System
+VALUATION_SCENARIOS = {
+    'BEAR': {
+        'name': '🐻 Bear Case',
+        'revenue_growth': -0.05,
+        'terminal_growth': 0.015,
+        'risk_premium': 0.08,
+        'capex_pct': 0.07,
+        'description': 'Conservative: Negative growth, higher risk premium, elevated capex'
+    },
+    'BASE': {
+        'name': '📊 Base Case',
+        'revenue_growth': 0.05,
+        'terminal_growth': 0.025,
+        'risk_premium': 0.06,
+        'capex_pct': 0.05,
+        'description': 'Realistic: Moderate growth assumptions, normal operating conditions'
+    },
+    'BULL': {
+        'name': '🚀 Bull Case',
+        'revenue_growth': 0.15,
+        'terminal_growth': 0.035,
+        'risk_premium': 0.05,
+        'capex_pct': 0.04,
+        'description': 'Optimistic: High growth, lower risk premium, efficient capex'
+    }
+}
+
+def create_risk_snapshot(df, portfolio_returns):
+    """
+    Professional Risk Snapshot Dashboard Widget
+    Displays: Portfolio Beta, Volatility, Max Drawdown, Top 3 Exposures
+    """
+    # Calculate aggregate portfolio beta
+    weighted_beta = (df['Beta'].fillna(1.0) * df['Weight %'] / 100).sum()
+
+    # Calculate annualized volatility
+    vol = portfolio_returns.std() * np.sqrt(252) * 100 if is_valid_series(portfolio_returns) else 0
+
+    # Calculate max drawdown
+    if is_valid_series(portfolio_returns) and len(portfolio_returns) > 0:
+        cumulative = (1 + portfolio_returns).cumprod()
+        running_max = cumulative.expanding().max()
+        drawdown = ((cumulative - running_max) / running_max * 100).min()
+    else:
+        drawdown = 0
+
+    # Top 3 exposures by weight
+    top_3 = df.nlargest(3, 'Weight %')[['Ticker', 'Weight %']]
+
+    # Create compact, professional HTML widget
+    snapshot_html = f"""
+    <div style='background: linear-gradient(135deg, {COLORS['card_background']} 0%, {COLORS['card_background_alt']} 100%);
+                border: 2px solid {COLORS['neon_blue']}; border-radius: 12px; padding: 20px; margin: 10px 0;
+                box-shadow: 0 0 30px {COLORS['shadow']};'>
+        <h3 style='color: {COLORS['neon_blue']}; margin: 0 0 15px 0; font-size: 18px;'>⚡ Risk Snapshot</h3>
+        <div style='display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px;'>
+            <div>
+                <div style='color: {COLORS['text_muted']}; font-size: 11px; text-transform: uppercase;'>Portfolio Beta</div>
+                <div style='color: {COLORS['text_primary']}; font-size: 24px; font-weight: 600;'>{ATLASFormatter.format_ratio(weighted_beta)}</div>
+            </div>
+            <div>
+                <div style='color: {COLORS['text_muted']}; font-size: 11px; text-transform: uppercase;'>Volatility (Ann.)</div>
+                <div style='color: {COLORS['warning']}; font-size: 24px; font-weight: 600;'>{ATLASFormatter.format_yield(vol)}</div>
+            </div>
+            <div>
+                <div style='color: {COLORS['text_muted']}; font-size: 11px; text-transform: uppercase;'>Max Drawdown</div>
+                <div style='color: {COLORS['danger']}; font-size: 24px; font-weight: 600;'>{ATLASFormatter.format_yield(drawdown)}</div>
+            </div>
+            <div>
+                <div style='color: {COLORS['text_muted']}; font-size: 11px; text-transform: uppercase;'>Top Exposures</div>
+                <div style='color: {COLORS['text_primary']}; font-size: 13px; line-height: 1.6; margin-top: 5px;'>
+                    {'<br>'.join([f"• {row['Ticker']} ({row['Weight %']:.1f}%)" for _, row in top_3.iterrows()])}
+                </div>
+            </div>
+        </div>
+    </div>
+    """
+    return snapshot_html
+
+def calculate_signal_health(metrics):
+    """
+    Calculate overall portfolio health score with traffic light system
+    Returns: (status, percentage, label)
+    GREEN: 80%+, YELLOW: 50-79%, RED: <50%
+    """
+    score = 0
+    max_score = 5
+
+    # Check 1: Positive returns
+    if metrics.get('Total Return', 0) > 0:
+        score += 1
+
+    # Check 2: Sharpe > 1.0 (good risk-adjusted returns)
+    if metrics.get('Sharpe Ratio', 0) > 1.0:
+        score += 1
+
+    # Check 3: Drawdown > -20% (manageable losses)
+    if metrics.get('Max Drawdown', -100) > -20:
+        score += 1
+
+    # Check 4: Win rate > 55% (more winning days)
+    if metrics.get('Win Rate', 0) > 55:
+        score += 1
+
+    # Check 5: Volatility < 25% (controlled risk)
+    if metrics.get('Annualized Volatility', 100) < 25:
+        score += 1
+
+    percentage = (score / max_score) * 100
+
+    if percentage >= 80:
+        status = 'GREEN'
+        emoji = '🟢'
+        label = 'HEALTHY'
+    elif percentage >= 50:
+        status = 'YELLOW'
+        emoji = '🟡'
+        label = 'CAUTION'
+    else:
+        status = 'RED'
+        emoji = '🔴'
+        label = 'AT RISK'
+
+    return status, percentage, f"{emoji} {label}"
+
+def create_signal_health_badge(metrics):
+    """Create visual health indicator badge for portfolio"""
+    status, percentage, label = calculate_signal_health(metrics)
+
+    color_map = {
+        'GREEN': COLORS['success'],
+        'YELLOW': COLORS['warning'],
+        'RED': COLORS['danger']
+    }
+
+    badge_html = f"""
+    <div style='display: inline-block; background: {color_map[status]};
+                color: #000000; padding: 10px 20px; border-radius: 20px;
+                font-weight: 700; font-size: 15px; margin: 10px 0;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);'>
+        {label} ({percentage:.0f}%)
+    </div>
+    """
+    return badge_html
+
+def create_pnl_attribution_sector(df):
+    """P&L Attribution by Sector - Waterfall chart"""
+    sector_pnl = df.groupby('Sector')['Total Gain/Loss $'].sum().sort_values(ascending=False)
+
+    fig = go.Figure(go.Waterfall(
+        name="Sector P&L",
+        orientation="v",
+        x=sector_pnl.index,
+        y=sector_pnl.values,
+        connector={"line": {"color": COLORS['neon_blue']}},
+        decreasing={"marker": {"color": COLORS['danger']}},
+        increasing={"marker": {"color": COLORS['success']}},
+        textposition="outside",
+        text=[ATLASFormatter.format_price(v, 0) for v in sector_pnl.values]
+    ))
+
+    fig.update_layout(
+        title="💼 P&L Attribution by Sector",
+        yaxis_title="P&L ($)",
+        xaxis_title="",
+        height=450,
+        showlegend=False
+    )
+
+    apply_chart_theme(fig)
+    return fig
+
+def create_pnl_attribution_position(df, top_n=10):
+    """P&L Attribution by Position - Top contributors and detractors"""
+    top_contributors = df.nlargest(top_n // 2, 'Total Gain/Loss $')
+    top_detractors = df.nsmallest(top_n // 2, 'Total Gain/Loss $')
+    combined = pd.concat([top_contributors, top_detractors]).sort_values('Total Gain/Loss $')
+
+    colors = [COLORS['success'] if x > 0 else COLORS['danger'] for x in combined['Total Gain/Loss $']]
+
+    fig = go.Figure(go.Bar(
+        x=combined['Total Gain/Loss $'],
+        y=combined['Ticker'],
+        orientation='h',
+        marker=dict(color=colors, line=dict(color=COLORS['border'], width=1)),
+        text=[ATLASFormatter.format_price(v, 0) for v in combined['Total Gain/Loss $']],
+        textposition='auto'
+    ))
+
+    fig.update_layout(
+        title=f"🎯 Top {top_n} P&L Contributors & Detractors",
+        xaxis_title="P&L ($)",
+        yaxis_title="",
+        height=500,
+        showlegend=False
+    )
+
+    apply_chart_theme(fig)
+    return fig
+
+def create_sparkline(ticker, days=30):
+    """Generate mini sparkline chart for ticker (last 30 days)"""
+    try:
+        stock = yf.Ticker(ticker)
+        hist = stock.history(period=f"{days}d")
+
+        if hist.empty:
+            return None
+
+        prices = hist['Close'].values
+
+        # Determine color based on overall trend
+        color = COLORS['success'] if prices[-1] > prices[0] else COLORS['danger']
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            y=prices,
+            mode='lines',
+            line=dict(color=color, width=1.5),
+            fill='tozeroy',
+            fillcolor=f"rgba{tuple(list(int(color.lstrip('#')[i:i+2], 16) for i in (0, 2, 4)) + [0.2])}",
+            showlegend=False
+        ))
+
+        fig.update_layout(
+            height=60,
+            width=150,
+            margin=dict(l=0, r=0, t=0, b=0),
+            xaxis=dict(visible=False),
+            yaxis=dict(visible=False),
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            hovermode=False
+        )
+
+        return fig
+    except:
+        return None
+
+def create_yield_curve():
+    """Professional US Treasury Yield Curve visualization"""
+    # Treasury tickers and maturities
+    treasuries = {
+        "^IRX": {"maturity": 0.25, "name": "3M"},
+        "^FVX": {"maturity": 5, "name": "5Y"},
+        "^TNX": {"maturity": 10, "name": "10Y"},
+        "^TYX": {"maturity": 30, "name": "30Y"}
+    }
+
+    yields_data = []
+    maturities = []
+    labels = []
+
+    for ticker, info in treasuries.items():
+        try:
+            stock = yf.Ticker(ticker)
+            hist = stock.history(period="1d")
+            if not hist.empty:
+                current_yield = hist['Close'].iloc[-1]
+                yields_data.append(current_yield)
+                maturities.append(info['maturity'])
+                labels.append(info['name'])
+        except:
+            continue
+
+    if not yields_data:
+        return None
+
+    # Sort by maturity
+    sorted_data = sorted(zip(maturities, yields_data, labels))
+    maturities, yields_data, labels = zip(*sorted_data)
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Scatter(
+        x=maturities,
+        y=yields_data,
+        mode='lines+markers',
+        line=dict(color=COLORS['neon_blue'], width=3),
+        marker=dict(size=10, color=COLORS['electric_blue'], line=dict(color=COLORS['border'], width=2)),
+        text=[f"{l}: {y:.2f}%" for l, y in zip(labels, yields_data)],
+        hovertemplate='<b>%{text}</b><extra></extra>'
+    ))
+
+    fig.update_layout(
+        title="📈 US Treasury Yield Curve",
+        xaxis_title="Maturity (Years)",
+        yaxis_title="Yield (%)",
+        height=400,
+        showlegend=False
+    )
+
+    apply_chart_theme(fig)
+    return fig
+
+def get_data_freshness(cache_time=None):
+    """Calculate and format data age for freshness indicators"""
+    if cache_time is None:
+        return ATLASFormatter.format_timestamp(), 0
+
+    now = datetime.now()
+    age_seconds = (now - cache_time).total_seconds()
+    age_minutes = int(age_seconds / 60)
+
+    timestamp = ATLASFormatter.format_timestamp(cache_time)
+    badge = ATLASFormatter.get_freshness_badge(age_minutes)
+
+    return timestamp, age_minutes, badge
+
+# ============================================================================
 # DATA FUNCTIONS
 # ============================================================================
 
@@ -2817,7 +3191,28 @@ def main():
         col3.metric("Total G/L", format_currency(total_gl), format_percentage(total_gl_pct))
         col4.metric("Daily P&L", format_currency(daily_pl))
         col5.metric("Positions", len(enhanced_df))
-        
+
+        st.markdown("---")
+
+        # NEW: Risk Snapshot & Signal Health
+        portfolio_returns = calculate_portfolio_returns(df, start_date, end_date)
+
+        col_health, col_snapshot = st.columns([1, 3])
+
+        with col_health:
+            # Calculate metrics for health indicator
+            if is_valid_series(portfolio_returns):
+                metrics = calculate_performance_metrics(enhanced_df, portfolio_returns, None)
+                health_badge = create_signal_health_badge(metrics)
+                st.markdown("### 🎯 Portfolio Health")
+                st.markdown(health_badge, unsafe_allow_html=True)
+                st.caption(f"**Last Updated:** {ATLASFormatter.format_timestamp()}")
+
+        with col_snapshot:
+            # Risk Snapshot
+            risk_snapshot_html = create_risk_snapshot(enhanced_df, portfolio_returns)
+            st.markdown(risk_snapshot_html, unsafe_allow_html=True)
+
         st.markdown("---")
         st.markdown("### 📋 Holdings")
         display_df = style_holdings_dataframe(enhanced_df)
@@ -2854,6 +3249,22 @@ def main():
             if detractors:
                 st.plotly_chart(detractors, use_container_width=True)
         
+        # NEW: P&L Attribution Analysis
+        st.markdown("---")
+        st.markdown("### 💼 P&L Attribution Analysis")
+
+        pnl_col1, pnl_col2 = st.columns(2)
+
+        with pnl_col1:
+            pnl_sector = create_pnl_attribution_sector(enhanced_df)
+            if pnl_sector:
+                st.plotly_chart(pnl_sector, use_container_width=True)
+
+        with pnl_col2:
+            pnl_position = create_pnl_attribution_position(enhanced_df, top_n=10)
+            if pnl_position:
+                st.plotly_chart(pnl_position, use_container_width=True)
+
         # Performance Heatmap (full width)
         st.markdown("---")
         perf_heatmap = create_performance_heatmap(enhanced_df)
@@ -2966,7 +3377,15 @@ def main():
         with tab6:
             st.markdown("#### 💵 Bond Yields & Treasury Rates")
             st.info("📊 **Key Insight:** Monitor the yield curve for recession signals and inflation expectations")
-            
+
+            # NEW: Yield Curve Visualization
+            yield_curve = create_yield_curve()
+            if yield_curve:
+                st.plotly_chart(yield_curve, use_container_width=True)
+                st.caption(f"**Data Freshness:** {ATLASFormatter.format_timestamp()} • {ATLASFormatter.get_freshness_badge(2)}")
+
+            st.markdown("---")
+
             with st.spinner("Loading bonds..."):
                 bonds_df = fetch_market_watch_data(BOND_YIELDS)
                 if not bonds_df.empty:
@@ -3388,15 +3807,48 @@ def main():
             )
             
             st.markdown("---")
-            
+
+            # NEW: One-Click Scenario Buttons
+            st.markdown("#### 🎯 Quick Scenarios")
+            scenario_col1, scenario_col2, scenario_col3, scenario_col4 = st.columns([1, 1, 1, 2])
+
+            scenario_selected = None
+
+            with scenario_col1:
+                if st.button(VALUATION_SCENARIOS['BEAR']['name'], use_container_width=True, key="bear_btn"):
+                    scenario_selected = 'BEAR'
+                    st.session_state['selected_scenario'] = 'BEAR'
+
+            with scenario_col2:
+                if st.button(VALUATION_SCENARIOS['BASE']['name'], use_container_width=True, key="base_btn"):
+                    scenario_selected = 'BASE'
+                    st.session_state['selected_scenario'] = 'BASE'
+
+            with scenario_col3:
+                if st.button(VALUATION_SCENARIOS['BULL']['name'], use_container_width=True, key="bull_btn"):
+                    scenario_selected = 'BULL'
+                    st.session_state['selected_scenario'] = 'BULL'
+
+            with scenario_col4:
+                if st.button("🔄 Reset to Manual", use_container_width=True, key="reset_btn"):
+                    if 'selected_scenario' in st.session_state:
+                        del st.session_state['selected_scenario']
+
+            # Show active scenario
+            if 'selected_scenario' in st.session_state:
+                active_scenario = st.session_state['selected_scenario']
+                st.success(f"✅ **Active Scenario:** {VALUATION_SCENARIOS[active_scenario]['name']} - {VALUATION_SCENARIOS[active_scenario]['description']}")
+
+            st.markdown("---")
+
             # NEW: Smart Assumptions Toggle
             st.markdown("#### 🧠 Assumptions Mode")
-            
+
             use_smart_assumptions = st.checkbox(
                 "🤖 Use Smart Assumptions (AI-Generated)",
                 help="Generate realistic assumptions based on sector averages, company size, and economic fundamentals"
             )
-            
+
             if use_smart_assumptions:
                 st.info("🤖 **Smart Mode Active:** Assumptions are generated based on sector benchmarks and economic reality")
                 smart_params = calculate_smart_assumptions(company, financials)
@@ -3413,10 +3865,23 @@ def main():
                 col1, col2 = st.columns(2)
                 
                 with col1:
+                    # Determine revenue growth value
                     if use_smart_assumptions:
                         revenue_growth = smart_params['revenue_growth']
-                        st.metric("Revenue Growth Rate", f"{revenue_growth*100:.1f}%", 
+                        st.metric("Revenue Growth Rate", f"{revenue_growth*100:.1f}%",
                                  delta="AI Generated", delta_color="normal")
+                    elif 'selected_scenario' in st.session_state:
+                        # Use scenario value
+                        scenario_key = st.session_state['selected_scenario']
+                        default_value = VALUATION_SCENARIOS[scenario_key]['revenue_growth'] * 100
+                        revenue_growth = st.slider(
+                            "Revenue Growth Rate (%)",
+                            min_value=-10.0,
+                            max_value=30.0,
+                            value=default_value,
+                            step=0.5,
+                            key=f"rev_growth_{scenario_key}"
+                        ) / 100
                     else:
                         revenue_growth = st.slider(
                             "Revenue Growth Rate (%)",
