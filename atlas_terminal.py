@@ -2071,7 +2071,10 @@ def parse_account_history_file(uploaded_file):
 
 def calculate_portfolio_from_trades(trade_df):
     """Calculate current portfolio from trade history using FIFO accounting"""
+    import streamlit as st
+
     holdings = {}
+    trades_processed = {'buys': 0, 'sells': 0, 'options_skipped': 0, 'unknown': 0}
 
     for _, row in trade_df.iterrows():
         symbol = row['Symbol']
@@ -2079,49 +2082,39 @@ def calculate_portfolio_from_trades(trade_df):
         quantity = row['Quantity']
         price = row['Price']
 
-        # Skip options
+        # CRITICAL: Skip ALL options - they don't affect stock portfolio
         if is_option_ticker(symbol):
+            trades_processed['options_skipped'] += 1
             continue
 
         if symbol not in holdings:
             holdings[symbol] = {'total_shares': 0, 'total_cost': 0, 'trades': []}
 
-        # CRITICAL FIX: Proper trade type detection
-        # Buy trades: "Buy", "Buy to Open", "Buy to Cover"
-        # Sell trades: "Sell", "Sell to Close", "Sell to Open", "Sell Short"
-        # For stocks (non-options), we care about net effect on position
+        # SIMPLIFIED TRADE TYPE DETECTION FOR STOCKS ONLY
+        # After filtering options, we only have stock trades:
+        # BUY: "Buy", "Buy to Cover", "Cover"
+        # SELL: "Sell", "Sell Short", "Short"
 
         trade_type_lower = trade_type.lower()
 
-        # Determine if this is a buy or sell
-        # Buy if: contains "buy" OR "cover" (covering short = buying back)
-        # Sell if: contains "sell" OR "short" (selling = reducing position)
-        is_buy = ('buy' in trade_type_lower and 'to open' not in trade_type_lower) or 'cover' in trade_type_lower
-        is_sell = 'sell' in trade_type_lower or 'short' in trade_type_lower
-
-        # For "Buy to Open" options, it's actually opening a position, so treat as buy
-        if 'buy to open' in trade_type_lower:
-            is_buy = True
-            is_sell = False
-
-        # For "Sell to Open" options, it's opening a short, treat as sell
-        if 'sell to open' in trade_type_lower:
-            is_buy = False
-            is_sell = True
-
-        if is_buy and not is_sell:
-            # Add to position (FIFO: append to end of queue)
+        # Simple and clear logic
+        if 'buy' in trade_type_lower or 'cover' in trade_type_lower:
+            # This is a BUY - adds to position
             holdings[symbol]['total_shares'] += quantity
             holdings[symbol]['total_cost'] += (quantity * price)
             holdings[symbol]['trades'].append({'type': 'BUY', 'quantity': quantity, 'price': price})
+            trades_processed['buys'] += 1
 
-        elif is_sell and not is_buy:
-            # Reduce position using FIFO (remove from oldest first)
+        elif 'sell' in trade_type_lower or 'short' in trade_type_lower:
+            # This is a SELL - reduces position using FIFO
             remaining_to_sell = quantity
 
             # Process trades in order (FIFO - first in, first out)
             for trade in holdings[symbol]['trades']:
-                if trade['type'] == 'BUY' and trade['quantity'] > 0 and remaining_to_sell > 0:
+                if remaining_to_sell <= 0:
+                    break
+
+                if trade['type'] == 'BUY' and trade['quantity'] > 0:
                     if trade['quantity'] <= remaining_to_sell:
                         # This entire buy lot is sold
                         holdings[symbol]['total_cost'] -= (trade['quantity'] * trade['price'])
@@ -2134,10 +2127,16 @@ def calculate_portfolio_from_trades(trade_df):
                         holdings[symbol]['total_shares'] -= remaining_to_sell
                         trade['quantity'] -= remaining_to_sell
                         remaining_to_sell = 0
-                        break
+
+            trades_processed['sells'] += 1
+        else:
+            # Unknown trade type - skip it
+            trades_processed['unknown'] += 1
 
     # Build final portfolio (only positions with shares > 0)
     portfolio_data = []
+    closed_positions = 0
+
     for symbol, data in holdings.items():
         if data['total_shares'] > 0.01:  # Use small threshold to avoid floating point issues
             avg_cost = data['total_cost'] / data['total_shares']
@@ -2146,6 +2145,20 @@ def calculate_portfolio_from_trades(trade_df):
                 'Shares': round(data['total_shares'], 2),  # Round to 2 decimals
                 'Avg Cost': avg_cost
             })
+        elif data['total_shares'] <= 0.01 and data['total_shares'] >= -0.01:
+            # Position was closed (sold out completely)
+            closed_positions += 1
+
+    # Show processing summary to user
+    st.info(f"""
+    **📊 Trade Processing Summary:**
+    - ✅ Buy trades processed: {trades_processed['buys']}
+    - ✅ Sell trades processed: {trades_processed['sells']}
+    - ⏭️ Options skipped: {trades_processed['options_skipped']}
+    - ⚠️ Unknown trade types: {trades_processed['unknown']}
+    - 🔓 Open positions: {len(portfolio_data)}
+    - 🔒 Closed positions: {closed_positions}
+    """)
 
     if not portfolio_data:
         return pd.DataFrame(columns=['Ticker', 'Shares', 'Avg Cost'])
