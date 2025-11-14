@@ -205,6 +205,111 @@ COMMODITIES = {
 }
 
 # ============================================================================
+# MARKET UNIVERSE - POPULAR ETFs
+# ============================================================================
+POPULAR_ETFS = {
+    # Broad Market
+    "SPY": {"name": "SPDR S&P 500", "category": "Broad Market"},
+    "QQQ": {"name": "Invesco QQQ (Nasdaq 100)", "category": "Technology"},
+    "DIA": {"name": "SPDR Dow Jones", "category": "Broad Market"},
+    "IWM": {"name": "iShares Russell 2000", "category": "Small Cap"},
+    "VOO": {"name": "Vanguard S&P 500", "category": "Broad Market"},
+    "VTI": {"name": "Vanguard Total Market", "category": "Broad Market"},
+
+    # Sector ETFs
+    "XLF": {"name": "Financial Select Sector", "category": "Financial"},
+    "XLE": {"name": "Energy Select Sector", "category": "Energy"},
+    "XLK": {"name": "Technology Select Sector", "category": "Technology"},
+    "XLV": {"name": "Health Care Select Sector", "category": "Healthcare"},
+    "XLI": {"name": "Industrial Select Sector", "category": "Industrial"},
+    "XLP": {"name": "Consumer Staples Select", "category": "Consumer Staples"},
+    "XLY": {"name": "Consumer Discretionary Select", "category": "Consumer Discretionary"},
+    "XLU": {"name": "Utilities Select Sector", "category": "Utilities"},
+    "XLRE": {"name": "Real Estate Select Sector", "category": "Real Estate"},
+    "XLB": {"name": "Materials Select Sector", "category": "Materials"},
+    "XLC": {"name": "Communication Services Select", "category": "Communication"},
+
+    # International
+    "EFA": {"name": "iShares MSCI EAFE", "category": "International"},
+    "EEM": {"name": "iShares MSCI Emerging Markets", "category": "Emerging Markets"},
+    "VWO": {"name": "Vanguard Emerging Markets", "category": "Emerging Markets"},
+    "VEA": {"name": "Vanguard Developed Markets", "category": "International"},
+
+    # Fixed Income
+    "AGG": {"name": "iShares Core US Aggregate Bond", "category": "Bonds"},
+    "TLT": {"name": "iShares 20+ Year Treasury Bond", "category": "Bonds"},
+
+    # Commodities
+    "GLD": {"name": "SPDR Gold Shares", "category": "Commodities"},
+}
+
+# ============================================================================
+# MARKET UNIVERSE - POPULAR STOCKS
+# ============================================================================
+POPULAR_STOCKS = {
+    # Mega Cap Tech
+    "AAPL": {"name": "Apple Inc.", "sector": "Technology"},
+    "MSFT": {"name": "Microsoft Corporation", "sector": "Technology"},
+    "GOOGL": {"name": "Alphabet Inc.", "sector": "Technology"},
+    "AMZN": {"name": "Amazon.com Inc.", "sector": "Consumer Discretionary"},
+    "NVDA": {"name": "NVIDIA Corporation", "sector": "Technology"},
+    "META": {"name": "Meta Platforms Inc.", "sector": "Technology"},
+    "TSLA": {"name": "Tesla Inc.", "sector": "Consumer Discretionary"},
+
+    # Finance
+    "JPM": {"name": "JPMorgan Chase & Co.", "sector": "Financial"},
+    "BAC": {"name": "Bank of America Corp.", "sector": "Financial"},
+    "WFC": {"name": "Wells Fargo & Company", "sector": "Financial"},
+    "GS": {"name": "Goldman Sachs Group Inc.", "sector": "Financial"},
+    "MS": {"name": "Morgan Stanley", "sector": "Financial"},
+    "V": {"name": "Visa Inc.", "sector": "Financial"},
+    "MA": {"name": "Mastercard Inc.", "sector": "Financial"},
+
+    # Healthcare
+    "JNJ": {"name": "Johnson & Johnson", "sector": "Healthcare"},
+    "UNH": {"name": "UnitedHealth Group Inc.", "sector": "Healthcare"},
+    "PFE": {"name": "Pfizer Inc.", "sector": "Healthcare"},
+    "ABBV": {"name": "AbbVie Inc.", "sector": "Healthcare"},
+    "TMO": {"name": "Thermo Fisher Scientific", "sector": "Healthcare"},
+    "MRK": {"name": "Merck & Co. Inc.", "sector": "Healthcare"},
+
+    # Consumer
+    "WMT": {"name": "Walmart Inc.", "sector": "Consumer Staples"},
+    "PG": {"name": "Procter & Gamble Co.", "sector": "Consumer Staples"},
+    "KO": {"name": "Coca-Cola Company", "sector": "Consumer Staples"},
+    "PEP": {"name": "PepsiCo Inc.", "sector": "Consumer Staples"},
+    "COST": {"name": "Costco Wholesale Corp.", "sector": "Consumer Staples"},
+    "NKE": {"name": "Nike Inc.", "sector": "Consumer Discretionary"},
+    "MCD": {"name": "McDonald's Corporation", "sector": "Consumer Discretionary"},
+    "SBUX": {"name": "Starbucks Corporation", "sector": "Consumer Discretionary"},
+
+    # Energy
+    "XOM": {"name": "Exxon Mobil Corporation", "sector": "Energy"},
+    "CVX": {"name": "Chevron Corporation", "sector": "Energy"},
+
+    # Industrial
+    "BA": {"name": "Boeing Company", "sector": "Industrial"},
+    "CAT": {"name": "Caterpillar Inc.", "sector": "Industrial"},
+    "GE": {"name": "General Electric Company", "sector": "Industrial"},
+
+    # Communication
+    "DIS": {"name": "Walt Disney Company", "sector": "Communication"},
+    "NFLX": {"name": "Netflix Inc.", "sector": "Communication"},
+    "CMCSA": {"name": "Comcast Corporation", "sector": "Communication"},
+
+    # Semiconductors
+    "INTC": {"name": "Intel Corporation", "sector": "Technology"},
+    "AMD": {"name": "Advanced Micro Devices", "sector": "Technology"},
+    "QCOM": {"name": "Qualcomm Inc.", "sector": "Technology"},
+    "AVGO": {"name": "Broadcom Inc.", "sector": "Technology"},
+
+    # Emerging Tech
+    "CRM": {"name": "Salesforce Inc.", "sector": "Technology"},
+    "ORCL": {"name": "Oracle Corporation", "sector": "Technology"},
+    "ADBE": {"name": "Adobe Inc.", "sector": "Technology"},
+}
+
+# ============================================================================
 # SECTOR MAPPINGS FOR ETFs
 # ============================================================================
 ETF_SECTORS = {
