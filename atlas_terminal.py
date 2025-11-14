@@ -1930,15 +1930,39 @@ def create_valuation_summary_table(valuations_dict, current_price):
 
 def parse_trade_history_file(uploaded_file):
     """Parse Phoenix trade history file with detailed error reporting"""
-    # Try multiple encodings to handle Phoenix files
+
+    # STRATEGY 1: Try as native Excel file first (.xlsx, .xls)
+    try:
+        uploaded_file.seek(0)
+        df = pd.read_excel(uploaded_file, engine='openpyxl')
+
+        # Check for required columns
+        required_cols = ['Date', 'Symbol', 'Trade Type', 'Quantity', 'Price']
+        missing_cols = [col for col in required_cols if col not in df.columns]
+
+        if not missing_cols:
+            # Parse and clean data
+            df['Price'] = df['Price'].astype(str).str.replace('$', '').str.replace(',', '').astype(float)
+            df['Date'] = pd.to_datetime(df['Date'])
+            df = df.sort_values('Date')
+
+            return {
+                'success': True,
+                'error': None,
+                'data': df,
+                'row_count': len(df),
+                'file_format': 'Excel (native)'
+            }
+    except Exception as excel_error:
+        # If Excel parsing fails, try HTML format
+        pass
+
+    # STRATEGY 2: Try as HTML file (saved as .xls from web)
     encodings = ['utf-8', 'cp1252', 'iso-8859-1', 'latin1']
 
     for encoding in encodings:
         try:
-            # Reset file pointer for each attempt
             uploaded_file.seek(0)
-
-            # Try reading the HTML file with this encoding
             df = pd.read_html(uploaded_file, encoding=encoding)[0]
 
             # Check for required columns
@@ -1963,14 +1987,15 @@ def parse_trade_history_file(uploaded_file):
                 'error': None,
                 'data': df,
                 'row_count': len(df),
-                'encoding_used': encoding
+                'file_format': f'HTML ({encoding})'
             }
+        except ValueError as e:
+            if 'No tables found' in str(e):
+                continue
         except UnicodeDecodeError:
-            # Try next encoding
             continue
         except Exception as e:
-            # If it's not an encoding error, return it
-            if 'codec' not in str(e).lower() and 'decode' not in str(e).lower():
+            if 'codec' not in str(e).lower() and 'decode' not in str(e).lower() and 'no tables' not in str(e).lower():
                 return {
                     'success': False,
                     'error': f"Parse error: {str(e)}",
@@ -1978,24 +2003,41 @@ def parse_trade_history_file(uploaded_file):
                     'data': None
                 }
 
-    # If all encodings failed
+    # If all strategies failed
     return {
         'success': False,
-        'error': f"Unable to decode file. Tried encodings: {', '.join(encodings)}. Please save your Phoenix export as UTF-8 or contact support.",
+        'error': "Unable to parse file. Tried: Excel format and HTML with multiple encodings. Please ensure your Phoenix export is in .xlsx or .xls format with columns: Date, Symbol, Trade Type, Quantity, Price",
         'found_columns': None,
         'data': None
     }
 
 def parse_account_history_file(uploaded_file):
     """Parse Phoenix account history file with detailed error reporting"""
-    # Try multiple encodings to handle Phoenix files
+
+    # STRATEGY 1: Try as native Excel file first (.xlsx, .xls)
+    try:
+        uploaded_file.seek(0)
+        df = pd.read_excel(uploaded_file, engine='openpyxl')
+        df['Date'] = pd.to_datetime(df['Date'])
+        df = df.sort_values('Date')
+
+        return {
+            'success': True,
+            'error': None,
+            'data': df,
+            'row_count': len(df),
+            'file_format': 'Excel (native)'
+        }
+    except Exception as excel_error:
+        # If Excel parsing fails, try HTML format
+        pass
+
+    # STRATEGY 2: Try as HTML file (saved as .xls from web)
     encodings = ['utf-8', 'cp1252', 'iso-8859-1', 'latin1']
 
     for encoding in encodings:
         try:
-            # Reset file pointer for each attempt
             uploaded_file.seek(0)
-
             df = pd.read_html(uploaded_file, encoding=encoding)[0]
             df['Date'] = pd.to_datetime(df['Date'])
             df = df.sort_values('Date')
@@ -2005,24 +2047,25 @@ def parse_account_history_file(uploaded_file):
                 'error': None,
                 'data': df,
                 'row_count': len(df),
-                'encoding_used': encoding
+                'file_format': f'HTML ({encoding})'
             }
+        except ValueError as e:
+            if 'No tables found' in str(e):
+                continue
         except UnicodeDecodeError:
-            # Try next encoding
             continue
         except Exception as e:
-            # If it's not an encoding error, return it
-            if 'codec' not in str(e).lower() and 'decode' not in str(e).lower():
+            if 'codec' not in str(e).lower() and 'decode' not in str(e).lower() and 'no tables' not in str(e).lower():
                 return {
                     'success': False,
                     'error': f"Parse error: {str(e)}",
                     'data': None
                 }
 
-    # If all encodings failed
+    # If all strategies failed
     return {
         'success': False,
-        'error': f"Unable to decode file. Tried encodings: {', '.join(encodings)}. Please save your Phoenix export as UTF-8.",
+        'error': "Unable to parse file. Tried: Excel format and HTML with multiple encodings. Please ensure your Phoenix export is in .xlsx or .xls format.",
         'data': None
     }
 
