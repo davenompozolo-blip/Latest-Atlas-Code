@@ -1,0 +1,25 @@
+# ATLAS Terminal v9.7 ULTIMATE EDITION - Dependencies
+# Python 3.8+ required
+
+# Core Data Processing
+numpy>=1.21.0
+pandas>=1.3.0
+
+# Visualization
+plotly>=5.0.0
+streamlit>=1.20.0
+
+# Financial Data
+yfinance>=0.2.0
+
+# Scientific Computing
+scipy>=1.7.0
+
+# Machine Learning
+scikit-learn>=1.0.0
+
+# Network Analysis
+networkx>=2.6.0
+
+# Additional Requirements
+python-dateutil>=2.8.0
