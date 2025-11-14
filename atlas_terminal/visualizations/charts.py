@@ -18,6 +18,7 @@ from plotly.subplots import make_subplots
 import yfinance as yf
 from datetime import datetime, timedelta
 import logging
+import streamlit as st
 
 from ..config import COLORS, CHART_THEME
 from ..visualizations.themes import apply_chart_theme
