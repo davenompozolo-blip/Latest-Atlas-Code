@@ -21,7 +21,7 @@ from typing import Optional, Dict, Tuple
 import logging
 
 from ..data.validators import validate_returns_series, is_valid_series
-from .portfolio import calculate_drawdown, calculate_cumulative_returns, calculate_beta
+from .portfolio import calculate_drawdown, calculate_cumulative_returns, calculate_beta, calculate_max_drawdown
 
 logger = logging.getLogger(__name__)
 
@@ -586,3 +586,46 @@ def assess_risk_level(metrics: Dict) -> str:
     except Exception as e:
         logger.error(f"Error assessing risk level: {e}", exc_info=True)
         return "Unknown"
+
+
+def calculate_portfolio_volatility(returns: pd.Series, periods_per_year: int = 252) -> Optional[float]:
+    """
+    Calculate annualized portfolio volatility
+
+    Args:
+        returns: Series of returns
+        periods_per_year: Annualization factor (252 for daily, 52 for weekly, 12 for monthly)
+
+    Returns:
+        Annualized volatility as float (e.g., 0.25 for 25%) or None if invalid
+    """
+    if not validate_returns_series(returns):
+        logger.error("Invalid returns for volatility calculation")
+        return None
+
+    try:
+        volatility = returns.std() * np.sqrt(periods_per_year)
+        logger.info(f"Portfolio Volatility: {volatility*100:.2f}%")
+        return float(volatility)
+    except Exception as e:
+        logger.error(f"Error calculating volatility: {e}", exc_info=True)
+        return None
+
+
+def calculate_position_var(position_returns: pd.Series,
+                           confidence_level: float = 0.95,
+                           method: str = 'historical') -> Optional[float]:
+    """
+    Calculate VaR for a single position
+
+    Wrapper around calculate_var for position-level VaR calculations
+
+    Args:
+        position_returns: Returns series for the position
+        confidence_level: Confidence level (e.g., 0.95 for 95%)
+        method: 'historical' or 'parametric'
+
+    Returns:
+        Position VaR as negative float or None if invalid
+    """
+    return calculate_var(position_returns, confidence_level, method)

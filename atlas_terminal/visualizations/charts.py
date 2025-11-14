@@ -19,13 +19,238 @@ import yfinance as yf
 from datetime import datetime, timedelta
 import logging
 import streamlit as st
+try:
+    import networkx as nx
+except ImportError:
+    nx = None
+    logger.warning("networkx not installed - correlation network charts will be limited")
 
 from ..config import COLORS, CHART_THEME
 from ..visualizations.themes import apply_chart_theme
 from ..visualizations.formatters import ATLASFormatter
 from ..data.validators import is_valid_series, is_valid_dataframe
+from typing import Dict, Tuple, Any, Optional
 
 logger = logging.getLogger(__name__)
+
+# ============================================================================
+# CONSTANTS
+# ============================================================================
+FACTOR_DEFINITIONS = {
+    'Market': 'Broad market exposure (S&P 500)',
+    'Size': 'Small cap vs large cap bias',
+    'Value': 'Value stocks vs growth stocks',
+    'Momentum': 'Recent price momentum',
+    'Quality': 'High quality earnings',
+    'Volatility': 'Low volatility preference'
+}
+
+
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+def calculate_signal_health(metrics: Dict) -> Tuple[str, float, str]:
+    """
+    Calculate portfolio health score from performance metrics
+
+    Args:
+        metrics: Dict with keys like 'total_return', 'sharpe', 'max_drawdown', 'win_rate'
+
+    Returns:
+        Tuple of (status: 'GREEN'/'YELLOW'/'RED', percentage: float 0-100, label: str)
+    """
+    try:
+        score = 100.0
+
+        # Deduct for poor Sharpe ratio
+        sharpe = metrics.get('sharpe_ratio', 0)
+        if sharpe < 0:
+            score -= 20
+        elif sharpe < 0.5:
+            score -= 15
+        elif sharpe < 1.0:
+            score -= 10
+
+        # Deduct for high drawdown
+        max_dd = abs(metrics.get('max_drawdown', 0))
+        if max_dd > 0.40:
+            score -= 25
+        elif max_dd > 0.25:
+            score -= 15
+        elif max_dd > 0.15:
+            score -= 10
+
+        # Deduct for negative returns
+        total_return = metrics.get('total_return', 0)
+        if total_return < -0.20:
+            score -= 20
+        elif total_return < -0.10:
+            score -= 10
+        elif total_return < 0:
+            score -= 5
+
+        # Deduct for low win rate (if available)
+        win_rate = metrics.get('win_rate')
+        if win_rate is not None:
+            if win_rate < 0.30:
+                score -= 15
+            elif win_rate < 0.45:
+                score -= 10
+
+        # Ensure score is between 0 and 100
+        score = max(0, min(100, score))
+
+        # Determine status and label
+        if score >= 70:
+            status = 'GREEN'
+            label = 'Healthy'
+        elif score >= 40:
+            status = 'YELLOW'
+            label = 'Caution'
+        else:
+            status = 'RED'
+            label = 'At Risk'
+
+        return status, score, label
+
+    except Exception as e:
+        logger.error(f"Error calculating signal health: {e}")
+        return 'YELLOW', 50.0, 'Unknown'
+
+
+@st.cache_data(ttl=300)
+def fetch_market_data(ticker: str) -> Dict[str, Any]:
+    """
+    Fetch comprehensive market data for a ticker using yfinance
+
+    Args:
+        ticker: Stock/ETF ticker symbol
+
+    Returns:
+        Dict with market data or error info
+    """
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        hist = stock.history(period='5d')
+
+        if hist.empty:
+            return {
+                'ticker': ticker,
+                'error': 'No data available',
+                'company_name': ticker,
+                'price': 0.0,
+                'daily_change': 0.0,
+                'daily_change_pct': 0.0,
+                'five_day_return': 0.0,
+                'beta': None,
+                'volume': 0,
+                'sector': 'Unknown'
+            }
+
+        current_price = hist['Close'].iloc[-1]
+        prev_close = hist['Close'].iloc[-2] if len(hist) >= 2 else current_price
+        daily_change = current_price - prev_close
+        daily_change_pct = (daily_change / prev_close * 100) if prev_close != 0 else 0
+
+        five_day_return = ((current_price / hist['Close'].iloc[0] - 1) * 100) if len(hist) >= 5 else 0
+
+        return {
+            'ticker': ticker,
+            'company_name': info.get('longName', ticker),
+            'price': float(current_price),
+            'daily_change': float(daily_change),
+            'daily_change_pct': float(daily_change_pct),
+            'five_day_return': float(five_day_return),
+            'beta': info.get('beta'),
+            'volume': int(hist['Volume'].iloc[-1]) if 'Volume' in hist.columns else 0,
+            'sector': info.get('sector', 'Unknown')
+        }
+
+    except Exception as e:
+        logger.error(f"Error fetching market data for {ticker}: {e}")
+        return {
+            'ticker': ticker,
+            'error': str(e),
+            'company_name': ticker,
+            'price': 0.0,
+            'daily_change': 0.0,
+            'daily_change_pct': 0.0,
+            'five_day_return': 0.0,
+            'beta': None,
+            'volume': 0,
+            'sector': 'Unknown'
+        }
+
+
+@st.cache_data(ttl=300)
+def fetch_ticker_performance(ticker: str, start_date: datetime, end_date: datetime) -> Tuple[Optional[pd.Series], Optional[pd.DataFrame]]:
+    """
+    Fetch cumulative performance for a ticker over date range
+
+    Args:
+        ticker: Ticker symbol
+        start_date: Start date
+        end_date: End date
+
+    Returns:
+        Tuple of (cumulative_returns_series, historical_data_df)
+    """
+    try:
+        stock = yf.Ticker(ticker)
+        hist = stock.history(start=start_date, end=end_date)
+
+        if hist.empty:
+            logger.warning(f"No data available for {ticker}")
+            return None, None
+
+        # Calculate daily returns
+        hist['Returns'] = hist['Close'].pct_change()
+
+        # Calculate cumulative returns (starting from 0)
+        hist['Cumulative_Returns'] = (1 + hist['Returns']).cumprod() - 1
+        hist['Cumulative_Returns'] = hist['Cumulative_Returns'].fillna(0)
+
+        cumulative_series = hist['Cumulative_Returns']
+
+        return cumulative_series, hist
+
+    except Exception as e:
+        logger.error(f"Error fetching performance for {ticker}: {e}")
+        return None, None
+
+
+def format_currency(value: float, decimals: int = 2) -> str:
+    """Format numeric value as currency string"""
+    return ATLASFormatter.format_currency(value, decimals=decimals)
+
+
+def format_percentage(value: float, decimals: int = 1) -> str:
+    """Format numeric value as percentage string"""
+    return ATLASFormatter.format_percentage(value, decimals=decimals)
+
+
+def add_arrow_indicator(value: float, formatted_str: str = None) -> str:
+    """
+    Add arrow indicator to value or formatted string
+
+    Args:
+        value: Numeric value to check sign
+        formatted_str: Optional pre-formatted string to prepend arrow to
+
+    Returns:
+        String with arrow indicator
+    """
+    if formatted_str is None:
+        formatted_str = format_percentage(value)
+
+    if value > 0:
+        return f"▲ {formatted_str}"
+    elif value < 0:
+        return f"▼ {formatted_str}"
+    else:
+        return formatted_str
 
 
 def create_risk_snapshot(df, portfolio_returns):
