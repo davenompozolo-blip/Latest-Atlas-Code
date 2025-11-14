@@ -744,8 +744,9 @@ def create_pnl_attribution_sector(df):
         title="💼 P&L Attribution by Sector (%)",
         yaxis_title="P&L Contribution (%)",
         xaxis_title="",
-        height=450,
-        showlegend=False
+        height=800,  # ENHANCED: Increased height
+        showlegend=False,
+        margin=dict(l=60, r=60, t=100, b=120)  # FIX: Increased bottom margin to prevent x-axis label truncation
     )
 
     apply_chart_theme(fig)
@@ -772,9 +773,9 @@ def create_pnl_attribution_position(df, top_n=10):
             line=dict(color=COLORS['border'], width=2),
             opacity=0.9
         ),
-        text=[f"{v:+.1f}%" for v in combined['Gain/Loss %']],
+        text=[f"  {v:+.1f}%  " for v in combined['Gain/Loss %']],  # FIX: Added spacing for better alignment
         textposition='outside',
-        textfont=dict(size=11, color=COLORS['text_primary']),
+        textfont=dict(size=12, color=COLORS['text_primary'], weight='bold'),  # Enhanced font
         hovertemplate='<b>%{y}</b><br>Return: %{x:.2f}%<extra></extra>'
     ))
 
@@ -782,9 +783,17 @@ def create_pnl_attribution_position(df, top_n=10):
         title=f"🎯 Top {top_n} P&L Contributors & Detractors (%)",
         xaxis_title="Return (%)",
         yaxis_title="",
-        height=500,
+        height=800,  # ENHANCED: Increased height for better visibility
         showlegend=False,
-        xaxis=dict(zeroline=True, zerolinewidth=2, zerolinecolor=COLORS['text_muted'])
+        xaxis=dict(
+            zeroline=True,
+            zerolinewidth=2,
+            zerolinecolor=COLORS['text_muted']
+        ),
+        yaxis=dict(
+            tickfont=dict(size=12, color=COLORS['text_primary'])  # FIX: Ensure ticker symbols are visible
+        ),
+        margin=dict(l=80, r=120, t=80, b=60)  # FIX: More padding for labels
     )
 
     apply_chart_theme(fig)
@@ -884,6 +893,177 @@ def create_yield_curve():
 
     apply_chart_theme(fig)
     return fig
+
+# ============================================================================
+# ENHANCED TREASURY & FORWARD CURVE FUNCTIONS
+# ============================================================================
+
+def calculate_forward_rate(spot_long, time_long, spot_short, time_short):
+    """
+    Calculate forward rate between two periods
+
+    Parameters:
+    - spot_long: longer maturity spot rate (decimal, e.g., 0.045 for 4.5%)
+    - time_long: longer maturity in years
+    - spot_short: shorter maturity spot rate (decimal)
+    - time_short: shorter maturity in years
+
+    Returns:
+    - forward_rate: implied forward rate (decimal)
+    """
+    try:
+        forward_rate = (
+            ((1 + spot_long) ** time_long / (1 + spot_short) ** time_short)
+            ** (1 / (time_long - time_short))
+        ) - 1
+        return forward_rate
+    except:
+        return None
+
+@st.cache_data(ttl=300)
+def fetch_comprehensive_treasury_yields():
+    """Fetch complete US Treasury yield curve with all maturities"""
+    # Comprehensive Treasury tickers
+    treasuries = {
+        "^IRX": {"maturity": 0.25, "name": "3M"},
+        "^FVX": {"maturity": 5, "name": "5Y"},
+        "^TNX": {"maturity": 10, "name": "10Y"},
+        "^TYX": {"maturity": 30, "name": "30Y"}
+    }
+
+    yields_dict = {}
+
+    for ticker, info in treasuries.items():
+        try:
+            stock = yf.Ticker(ticker)
+            hist = stock.history(period="1d")
+            if not hist.empty:
+                current_yield = hist['Close'].iloc[-1] / 100  # Convert to decimal
+                yields_dict[info['name']] = {
+                    'yield': current_yield,
+                    'maturity': info['maturity'],
+                    'yield_pct': hist['Close'].iloc[-1]
+                }
+        except:
+            continue
+
+    return yields_dict
+
+def build_forward_curve(spot_rates_dict):
+    """Build forward curve from spot rates"""
+    if not spot_rates_dict or len(spot_rates_dict) < 2:
+        return None
+
+    forwards = []
+
+    # Sort by maturity
+    sorted_spots = sorted(spot_rates_dict.items(), key=lambda x: x[1]['maturity'])
+
+    # Calculate key forward rates
+    for i in range(len(sorted_spots) - 1):
+        short_name, short_data = sorted_spots[i]
+        long_name, long_data = sorted_spots[i + 1]
+
+        forward_rate = calculate_forward_rate(
+            long_data['yield'],
+            long_data['maturity'],
+            short_data['yield'],
+            short_data['maturity']
+        )
+
+        if forward_rate is not None:
+            forwards.append({
+                'period': f"{short_name}{long_name}",
+                'start_maturity': short_data['maturity'],
+                'end_maturity': long_data['maturity'],
+                'forward_rate': forward_rate * 100  # Convert to percentage
+            })
+
+    return forwards
+
+def create_enhanced_yield_curve_with_forwards():
+    """Enhanced yield curve with forward rates overlay"""
+    spot_yields = fetch_comprehensive_treasury_yields()
+
+    if not spot_yields:
+        return None
+
+    # Prepare spot curve data
+    maturities = [data['maturity'] for data in spot_yields.values()]
+    yields = [data['yield_pct'] for data in spot_yields.values()]
+    labels = list(spot_yields.keys())
+
+    # Sort by maturity
+    sorted_data = sorted(zip(maturities, yields, labels))
+    maturities, yields, labels = zip(*sorted_data)
+
+    fig = go.Figure()
+
+    # Spot curve
+    fig.add_trace(go.Scatter(
+        x=maturities,
+        y=yields,
+        mode='lines+markers',
+        name='Spot Curve',
+        line=dict(color=COLORS['neon_blue'], width=3),
+        marker=dict(size=10, color=COLORS['electric_blue'], line=dict(color=COLORS['border'], width=2)),
+        hovertemplate='<b>%{text}</b><br>Yield: %{y:.2f}%<extra></extra>',
+        text=labels
+    ))
+
+    # Calculate and add forward rates
+    forwards = build_forward_curve(spot_yields)
+    if forwards:
+        forward_maturities = [(f['start_maturity'] + f['end_maturity']) / 2 for f in forwards]
+        forward_rates = [f['forward_rate'] for f in forwards]
+        forward_labels = [f['period'] for f in forwards]
+
+        fig.add_trace(go.Scatter(
+            x=forward_maturities,
+            y=forward_rates,
+            mode='lines+markers',
+            name='Forward Rates',
+            line=dict(color=COLORS['warning'], width=2, dash='dash'),
+            marker=dict(size=8, color=COLORS['orange']),
+            hovertemplate='<b>%{text}</b><br>Forward: %{y:.2f}%<extra></extra>',
+            text=forward_labels
+        ))
+
+    fig.update_layout(
+        title="📈 US Treasury Yield Curve with Forward Rates",
+        xaxis_title="Maturity (Years)",
+        yaxis_title="Yield / Forward Rate (%)",
+        height=500,
+        showlegend=True,
+        legend=dict(
+            yanchor="top",
+            y=0.99,
+            xanchor="left",
+            x=0.01,
+            bgcolor="rgba(10, 25, 41, 0.8)",
+            bordercolor=COLORS['border'],
+            borderwidth=1
+        )
+    )
+
+    apply_chart_theme(fig)
+    return fig
+
+def create_treasury_data_table():
+    """Create properly formatted Treasury data table with Yield (%) column"""
+    spot_yields = fetch_comprehensive_treasury_yields()
+
+    if not spot_yields:
+        return None
+
+    data = []
+    for name, info in sorted(spot_yields.items(), key=lambda x: x[1]['maturity']):
+        data.append({
+            'Maturity': name,
+            'Yield (%)': f"{info['yield_pct']:.2f}%"
+        })
+
+    return pd.DataFrame(data)
 
 def get_data_freshness(cache_time=None):
     """Calculate and format data age for freshness indicators"""
@@ -1137,6 +1317,9 @@ def fetch_historical_data(ticker, start_date, end_date):
         stock = yf.Ticker(ticker)
         hist = stock.history(start=start_date, end=end_date)
         if not hist.empty:
+            # FIX: Remove timezone to avoid offset-naive/offset-aware comparison errors
+            if hist.index.tz is not None:
+                hist.index = hist.index.tz_localize(None)
             return hist
     except:
         pass
@@ -2250,62 +2433,206 @@ def create_top_detractors_chart(df, top_n=5):
     return fig
 
 def create_sector_allocation_donut(df):
-    """v9.7 ENHANCED: Sector allocation with better spacing and ETF classification"""
-    # v9.7 FIX: Rename "Other" to "ETFs"
+    """ENHANCED: Sector allocation donut with improved size, colors, and label positioning"""
     df_copy = df.copy()
     df_copy['Sector'] = df_copy['Sector'].replace('Other', 'ETFs')
 
     sector_allocation = df_copy.groupby('Sector')['Total Value'].sum().reset_index()
     sector_allocation = sector_allocation.sort_values('Total Value', ascending=False)
 
-    # Enhanced color palette for better distinction
-    colors = ['#00d4ff', '#00ff88', '#ff6b00', '#b794f6', '#ff00ff',
-              '#00ffcc', '#ffaa00', '#0080ff', '#ff0044', '#cyan']
+    # ENHANCED: Ocean blues-to-teal gradient color palette
+    colors = ['#0080ff', '#00d4ff', '#00ffcc', '#00ff88', '#40e0d0',
+              '#5f9ea0', '#4682b4', '#1e90ff', '#00bfff', '#87ceeb']
 
     fig = go.Figure(data=[go.Pie(
         labels=sector_allocation['Sector'],
         values=sector_allocation['Total Value'],
-        hole=0.55,  # v9.7: Larger hole for better spacing
+        hole=0.6,  # Larger donut hole
         marker=dict(
             colors=colors,
-            line=dict(color=COLORS['card_background'], width=3)
+            line=dict(color=COLORS['card_background'], width=4)
         ),
-        textposition='inside',
-        textinfo='percent',
-        textfont=dict(size=14, color='white', family='Inter'),
-        insidetextorientation='radial',
+        textposition='auto',  # Auto-position to prevent overlap
+        textinfo='label+percent',  # Show both label and percentage
+        textfont=dict(size=13, color='white', family='Inter', weight='bold'),
+        insidetextorientation='horizontal',
         hovertemplate='<b>%{label}</b><br>Value: $%{value:,.0f}<br>Share: %{percent}<extra></extra>',
-        pull=[0.05 if i == 0 else 0 for i in range(len(sector_allocation))]  # Pull out largest sector
+        pull=[0.08 if i == 0 else 0.02 for i in range(len(sector_allocation))]
     )])
 
     fig.update_layout(
         title=dict(
             text="📊 Sector Allocation",
-            font=dict(size=18, color=COLORS['neon_blue']),
+            font=dict(size=20, color=COLORS['neon_blue'], weight='bold'),
             x=0.5,
             xanchor='center'
         ),
-        height=450,  # v9.7: Increased height for less clustering
+        height=600,  # ENHANCED: Increased height for better visibility
         showlegend=True,
         legend=dict(
             orientation="v",
             yanchor="top",
             y=1,
             xanchor="left",
-            x=1.05,
-            font=dict(size=12, color=COLORS['text_primary']),
-            bgcolor='rgba(10, 25, 41, 0.6)',
+            x=1.02,
+            font=dict(size=13, color=COLORS['text_primary']),
+            bgcolor='rgba(10, 25, 41, 0.7)',
             bordercolor=COLORS['border'],
             borderwidth=1
         ),
-        margin=dict(l=40, r=180, t=80, b=40),  # v9.7: More right margin for legend
+        margin=dict(l=60, r=200, t=100, b=60),  # More spacing
         annotations=[dict(
             text='Portfolio<br>Sectors',
             x=0.5, y=0.5,
-            font_size=16,
+            font_size=18,
             font_color=COLORS['neon_blue'],
             showarrow=False
         )]
+    )
+
+    apply_chart_theme(fig)
+    return fig
+
+def create_sector_allocation_treemap(df):
+    """NEW: Treemap view showing hierarchical portfolio composition"""
+    df_copy = df.copy()
+    df_copy['Sector'] = df_copy['Sector'].replace('Other', 'ETFs')
+
+    # Calculate sector totals
+    sector_allocation = df_copy.groupby('Sector')['Total Value'].sum().reset_index()
+
+    # Create hierarchy: Portfolio -> Sector -> Holdings
+    treemap_data = []
+    treemap_data.append({
+        'labels': 'Portfolio',
+        'parents': '',
+        'values': 0
+    })
+
+    for sector in df_copy['Sector'].unique():
+        sector_value = df_copy[df_copy['Sector'] == sector]['Total Value'].sum()
+        treemap_data.append({
+            'labels': sector,
+            'parents': 'Portfolio',
+            'values': sector_value
+        })
+
+        # Add individual holdings
+        for _, row in df_copy[df_copy['Sector'] == sector].iterrows():
+            treemap_data.append({
+                'labels': f"{row['Ticker']}<br>${row['Total Value']:,.0f}",
+                'parents': sector,
+                'values': row['Total Value']
+            })
+
+    df_treemap = pd.DataFrame(treemap_data)
+
+    fig = go.Figure(go.Treemap(
+        labels=df_treemap['labels'],
+        parents=df_treemap['parents'],
+        values=df_treemap['values'],
+        textposition='middle center',
+        marker=dict(
+            colorscale='Teal',
+            line=dict(color=COLORS['card_background'], width=2)
+        ),
+        hovertemplate='<b>%{label}</b><br>Value: $%{value:,.0f}<extra></extra>'
+    ))
+
+    fig.update_layout(
+        title="🗺️ Portfolio Treemap - Hierarchical View",
+        height=600,
+        margin=dict(l=10, r=10, t=60, b=10)
+    )
+
+    apply_chart_theme(fig)
+    return fig
+
+def create_sector_allocation_sunburst(df):
+    """NEW: Sunburst chart for multi-level drill-down"""
+    df_copy = df.copy()
+    df_copy['Sector'] = df_copy['Sector'].replace('Other', 'ETFs')
+
+    # Create hierarchy data
+    sunburst_data = []
+    sunburst_data.append({
+        'labels': 'Portfolio',
+        'parents': '',
+        'values': 0
+    })
+
+    for sector in df_copy['Sector'].unique():
+        sector_value = df_copy[df_copy['Sector'] == sector]['Total Value'].sum()
+        sunburst_data.append({
+            'labels': sector,
+            'parents': 'Portfolio',
+            'values': sector_value
+        })
+
+        for _, row in df_copy[df_copy['Sector'] == sector].iterrows():
+            sunburst_data.append({
+                'labels': row['Ticker'],
+                'parents': sector,
+                'values': row['Total Value']
+            })
+
+    df_sunburst = pd.DataFrame(sunburst_data)
+
+    fig = go.Figure(go.Sunburst(
+        labels=df_sunburst['labels'],
+        parents=df_sunburst['parents'],
+        values=df_sunburst['values'],
+        branchvalues='total',
+        marker=dict(
+            colorscale='Blues',
+            line=dict(color=COLORS['card_background'], width=2)
+        ),
+        hovertemplate='<b>%{label}</b><br>Value: $%{value:,.0f}<extra></extra>'
+    ))
+
+    fig.update_layout(
+        title="☀️ Portfolio Sunburst - Interactive Drill-Down",
+        height=600,
+        margin=dict(l=10, r=10, t=60, b=10)
+    )
+
+    apply_chart_theme(fig)
+    return fig
+
+def create_sector_allocation_bar(df):
+    """NEW: Horizontal bar chart showing sectors ranked by allocation"""
+    df_copy = df.copy()
+    df_copy['Sector'] = df_copy['Sector'].replace('Other', 'ETFs')
+
+    sector_allocation = df_copy.groupby('Sector')['Total Value'].sum().reset_index()
+    sector_allocation = sector_allocation.sort_values('Total Value', ascending=True)  # Ascending for horizontal
+
+    # Calculate percentages
+    total_value = sector_allocation['Total Value'].sum()
+    sector_allocation['Percentage'] = (sector_allocation['Total Value'] / total_value * 100)
+
+    fig = go.Figure(go.Bar(
+        y=sector_allocation['Sector'],
+        x=sector_allocation['Total Value'],
+        orientation='h',
+        marker=dict(
+            color=sector_allocation['Total Value'],
+            colorscale='Teal',
+            line=dict(color=COLORS['border'], width=1)
+        ),
+        text=[f"${v:,.0f} ({p:.1f}%)" for v, p in zip(sector_allocation['Total Value'], sector_allocation['Percentage'])],
+        textposition='outside',
+        textfont=dict(size=12, color=COLORS['text_primary']),
+        hovertemplate='<b>%{y}</b><br>Value: $%{x:,.0f}<extra></extra>'
+    ))
+
+    fig.update_layout(
+        title="📊 Sector Allocation - Ranked by Value",
+        xaxis_title="Total Value ($)",
+        yaxis_title="",
+        height=500,
+        margin=dict(l=150, r=200, t=80, b=60),
+        showlegend=False
     )
 
     apply_chart_theme(fig)
@@ -3295,11 +3622,23 @@ def create_dynamic_market_table(df, filters=None):
 # ============================================================================
 
 def create_sector_rotation_heatmap(df, start_date, end_date):
-    """Sector rotation heatmap - FIXED DATETIME COMPARISON"""
+    """Sector rotation heatmap - FIXED to exclude incomplete current month"""
     sector_returns = {}
 
-    # FIX: Make end_date_cutoff timezone-naive
-    end_date_cutoff = pd.Timestamp(datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0))
+    # FIX: Calculate cutoff for incomplete month (exclude current month entirely)
+    now = datetime.now()
+    # Set cutoff to the last day of the previous month
+    if now.month == 1:
+        cutoff_year = now.year - 1
+        cutoff_month = 12
+    else:
+        cutoff_year = now.year
+        cutoff_month = now.month - 1
+
+    # Last day of previous month
+    from calendar import monthrange
+    last_day = monthrange(cutoff_year, cutoff_month)[1]
+    end_date_cutoff = pd.Timestamp(year=cutoff_year, month=cutoff_month, day=last_day)
 
     for _, row in df.iterrows():
         ticker = row['Ticker']
@@ -3310,13 +3649,12 @@ def create_sector_rotation_heatmap(df, start_date, end_date):
             monthly_data = hist_data['Close'].resample('M').last()
             monthly_returns = monthly_data.pct_change() * 100
 
-            # FIX: Convert index to timezone-naive before comparison
-            monthly_returns.index = monthly_returns.index.tz_localize(None)
-            monthly_returns = monthly_returns[monthly_returns.index < end_date_cutoff]
-            
+            # FIX: Filter out incomplete months - only include complete months
+            monthly_returns = monthly_returns[monthly_returns.index <= end_date_cutoff]
+
             if sector not in sector_returns:
                 sector_returns[sector] = []
-            
+
             sector_returns[sector].append(monthly_returns)
     
     if not sector_returns:
@@ -3357,32 +3695,46 @@ def create_sector_rotation_heatmap(df, start_date, end_date):
     return fig
 
 def create_holdings_attribution_waterfall(df):
-    """Holdings attribution waterfall - ENHANCED THEMING"""
+    """Holdings attribution waterfall - ENHANCED with dollar value labels"""
     top_contributors = df.nlargest(10, 'Total Gain/Loss $')
-    
+
     tickers = top_contributors['Ticker'].tolist()
     contributions = top_contributors['Total Gain/Loss $'].tolist()
-    
+
+    # FIX: Format dollar values for display
+    def format_dollar_short(value):
+        """Format dollar amounts in compact form"""
+        if abs(value) >= 1000:
+            return f"${value/1000:+.1f}k"
+        else:
+            return f"${value:+,.0f}"
+
+    text_labels = [format_dollar_short(v) for v in contributions]
+
     fig = go.Figure()
-    
+
     fig.add_trace(go.Waterfall(
         name="Attribution",
         orientation="v",
         x=tickers,
         y=contributions,
-        connector={"line": {"color": COLORS['neon_blue']}},
+        connector={"line": {"color": COLORS['neon_blue'], "width": 2}},
         decreasing={"marker": {"color": COLORS['danger']}},
         increasing={"marker": {"color": COLORS['success']}},
-        totals={"marker": {"color": COLORS['electric_blue']}}
+        totals={"marker": {"color": COLORS['electric_blue']}},
+        text=text_labels,  # FIX: Add dollar value labels on bars
+        textposition="outside",
+        textfont=dict(size=12, color=COLORS['text_primary'], weight='bold')
     ))
-    
+
     fig.update_layout(
         title="💧 Holdings Attribution Waterfall",
         xaxis_title="Ticker",
         yaxis_title="Contribution ($)",
-        height=500
+        height=600,  # Enhanced height for better visibility
+        margin=dict(l=60, r=60, t=100, b=80)  # More space for labels
     )
-    
+
     apply_chart_theme(fig)
     return fig
 
@@ -4051,9 +4403,28 @@ def main():
                 st.plotly_chart(risk_reward, use_container_width=True)
         
         with row1_col2:
-            sector_donut = create_sector_allocation_donut(enhanced_df)
-            if sector_donut:
-                st.plotly_chart(sector_donut, use_container_width=True)
+            # ENHANCED: Multiple visualization options for sector allocation
+            viz_tabs = st.tabs(["📊 Donut", "🗺️ Treemap", "☀️ Sunburst", "📈 Bar Chart"])
+
+            with viz_tabs[0]:
+                sector_donut = create_sector_allocation_donut(enhanced_df)
+                if sector_donut:
+                    st.plotly_chart(sector_donut, use_container_width=True)
+
+            with viz_tabs[1]:
+                sector_treemap = create_sector_allocation_treemap(enhanced_df)
+                if sector_treemap:
+                    st.plotly_chart(sector_treemap, use_container_width=True)
+
+            with viz_tabs[2]:
+                sector_sunburst = create_sector_allocation_sunburst(enhanced_df)
+                if sector_sunburst:
+                    st.plotly_chart(sector_sunburst, use_container_width=True)
+
+            with viz_tabs[3]:
+                sector_bar = create_sector_allocation_bar(enhanced_df)
+                if sector_bar:
+                    st.plotly_chart(sector_bar, use_container_width=True)
         
         # NEW: Second row with Contributors and Detractors
         row2_col1, row2_col2 = st.columns(2)
@@ -4194,24 +4565,34 @@ def main():
                     st.warning("No data available")
         
         with tab6:
-            st.markdown("#### 💵 Bond Yields & Treasury Rates")
-            st.info("📊 **Key Insight:** Monitor the yield curve for recession signals and inflation expectations")
+            st.markdown("#### 💵 US Treasury Yields & Forward Curves")
+            st.info("📊 **Key Insight:** Monitor the yield curve for recession signals and forward rates for market expectations")
 
-            # NEW: Yield Curve Visualization
-            yield_curve = create_yield_curve()
+            # ENHANCED: Yield Curve with Forward Rates
+            yield_curve = create_enhanced_yield_curve_with_forwards()
             if yield_curve:
                 st.plotly_chart(yield_curve, use_container_width=True)
                 st.caption(f"**Data Freshness:** {ATLASFormatter.format_timestamp()} • {ATLASFormatter.get_freshness_badge(2)}")
 
             st.markdown("---")
 
-            with st.spinner("Loading bonds..."):
-                bonds_df = fetch_market_watch_data(BOND_YIELDS)
-                if not bonds_df.empty:
-                    display_df = create_dynamic_market_table(bonds_df, {'sort_by': sort_by, 'ascending': False})
-                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=400)
-                else:
-                    st.warning("No data available")
+            # Treasury Data Table with proper Yield (%) column
+            st.markdown("##### 📊 Current Treasury Yields")
+            treasury_table = create_treasury_data_table()
+            if treasury_table is not None:
+                st.dataframe(treasury_table, use_container_width=True, hide_index=True, height=250)
+            else:
+                st.warning("Unable to load Treasury yield data")
+
+            st.markdown("---")
+            st.markdown("##### 💡 Understanding Forward Rates")
+            st.markdown("""
+            **Forward rates** represent the market's expectation of future interest rates:
+            - **3M5Y**: Expected 3-month rate, 5 years from now
+            - **5y5y**: Expected 5-year rate, 5 years from now (key inflation indicator)
+            - **Rising forwards**: Market expects higher future rates
+            - **Falling forwards**: Market expects lower future rates
+            """)
         
         with tab7:
             st.markdown("#### 🎯 Credit Spreads & Conditions")
@@ -5649,14 +6030,20 @@ def main():
                 
                 # Visualizations
                 col1, col2 = st.columns(2)
-                
-                with col1:
-                    waterfall = create_dcf_waterfall(results, method)
-                    st.plotly_chart(waterfall, use_container_width=True)
-                
-                with col2:
-                    cf_chart = create_cash_flow_chart(projections, method)
-                    st.plotly_chart(cf_chart, use_container_width=True)
+
+                # Only show DCF waterfall for DCF methods (FCFF/FCFE)
+                if method in ['FCFF', 'FCFE'] and all(k in results for k in ['total_pv_cash_flows', 'pv_terminal']):
+                    with col1:
+                        waterfall = create_dcf_waterfall(results, method)
+                        st.plotly_chart(waterfall, use_container_width=True)
+
+                    with col2:
+                        if projections:
+                            cf_chart = create_cash_flow_chart(projections, method)
+                            st.plotly_chart(cf_chart, use_container_width=True)
+                else:
+                    # For non-DCF methods, show alternative visualization
+                    st.info(f"💡 Waterfall visualization available for DCF methods only. Current method: {method}")
                 
                 # Sensitivity Analysis
                 st.markdown("---")
