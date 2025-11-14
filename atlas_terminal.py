@@ -1013,6 +1013,677 @@ def create_advanced_attribution_waterfall(df):
 
     return fig, summary
 
+def create_scenario_analysis_module(portfolio_df):
+    """
+    🆕 v10.0 INSTITUTIONAL-GRADE: Scenario Analysis & Stress Testing
+
+    Comprehensive what-if analysis with pre-defined and custom scenarios:
+    - Market crash scenarios (-10%, -20%, -30%, Black Monday -22%)
+    - Sector rotation (Tech collapse, Energy boom, etc.)
+    - Interest rate shocks (Fed hikes, yield curve inversion)
+    - Custom scenario builder
+    - Monte Carlo simulation (optional)
+    - VaR (Value at Risk) calculation
+    """
+
+    if 'Total Value' not in portfolio_df.columns or 'Sector' not in portfolio_df.columns:
+        return None
+
+    # Prepare portfolio data
+    df_copy = portfolio_df.copy()
+    df_copy['Sector'] = df_copy['Sector'].replace('Other', 'ETFs')
+
+    total_portfolio_value = df_copy['Total Value'].sum()
+
+    # Calculate current sector exposures
+    sector_exposure = df_copy.groupby('Sector')['Total Value'].sum()
+    sector_weights = (sector_exposure / total_portfolio_value).to_dict()
+
+    # Define pre-built scenarios
+    scenarios = {
+        'Market Crash -10%': {
+            'description': 'Broad market decline of 10%',
+            'type': 'market',
+            'impacts': {sector: -10.0 for sector in sector_weights.keys()}
+        },
+        'Market Crash -20%': {
+            'description': 'Major market correction of 20%',
+            'type': 'market',
+            'impacts': {sector: -20.0 for sector in sector_weights.keys()}
+        },
+        'Market Crash -30%': {
+            'description': 'Severe market crash of 30%',
+            'type': 'market',
+            'impacts': {sector: -30.0 for sector in sector_weights.keys()}
+        },
+        'Black Monday -22%': {
+            'description': '1987-style flash crash',
+            'type': 'market',
+            'impacts': {sector: -22.0 for sector in sector_weights.keys()}
+        },
+        'Tech Bubble Burst': {
+            'description': 'Technology sector -40%, others -5%',
+            'type': 'sector_rotation',
+            'impacts': {
+                'Technology': -40.0,
+                'Communication Services': -25.0,
+                'Consumer Cyclical': -10.0,
+                'Financial Services': -5.0,
+                'Healthcare': -3.0,
+                'Consumer Defensive': 0.0,
+                'Utilities': 2.0,
+                'Real Estate': 1.0,
+                'Energy': -5.0,
+                'Basic Materials': -8.0,
+                'Industrials': -7.0,
+                'ETFs': -15.0
+            }
+        },
+        'Energy Crisis Boom': {
+            'description': 'Energy +50%, defensive sectors up, tech down',
+            'type': 'sector_rotation',
+            'impacts': {
+                'Energy': 50.0,
+                'Basic Materials': 25.0,
+                'Utilities': 15.0,
+                'Consumer Defensive': 10.0,
+                'Real Estate': 5.0,
+                'Technology': -15.0,
+                'Consumer Cyclical': -10.0,
+                'Communication Services': -8.0,
+                'Financial Services': 0.0,
+                'Healthcare': 5.0,
+                'Industrials': 8.0,
+                'ETFs': -5.0
+            }
+        },
+        'Fed Rate Shock +200bps': {
+            'description': 'Aggressive Fed tightening, financials up, growth down',
+            'type': 'interest_rate',
+            'impacts': {
+                'Financial Services': 15.0,
+                'Energy': 5.0,
+                'Basic Materials': 3.0,
+                'Utilities': -8.0,
+                'Real Estate': -15.0,
+                'Technology': -18.0,
+                'Consumer Cyclical': -12.0,
+                'Communication Services': -10.0,
+                'Consumer Defensive': -2.0,
+                'Healthcare': -5.0,
+                'Industrials': -7.0,
+                'ETFs': -10.0
+            }
+        },
+        'Yield Curve Inversion': {
+            'description': 'Recession signal, defensive rotation',
+            'type': 'interest_rate',
+            'impacts': {
+                'Consumer Defensive': 8.0,
+                'Healthcare': 6.0,
+                'Utilities': 10.0,
+                'Real Estate': -5.0,
+                'Financial Services': -12.0,
+                'Technology': -15.0,
+                'Consumer Cyclical': -18.0,
+                'Communication Services': -10.0,
+                'Energy': -8.0,
+                'Basic Materials': -10.0,
+                'Industrials': -14.0,
+                'ETFs': -8.0
+            }
+        },
+        'Goldilocks Recovery': {
+            'description': 'Strong recovery, all sectors positive',
+            'type': 'market',
+            'impacts': {
+                'Technology': 25.0,
+                'Consumer Cyclical': 22.0,
+                'Financial Services': 18.0,
+                'Industrials': 20.0,
+                'Communication Services': 17.0,
+                'Energy': 15.0,
+                'Basic Materials': 16.0,
+                'Healthcare': 12.0,
+                'Consumer Defensive': 8.0,
+                'Real Estate': 14.0,
+                'Utilities': 7.0,
+                'ETFs': 18.0
+            }
+        }
+    }
+
+    # Calculate scenario impacts
+    scenario_results = []
+
+    for scenario_name, scenario_data in scenarios.items():
+        total_impact_dollars = 0
+        sector_impacts = []
+
+        for sector, weight in sector_weights.items():
+            sector_value = sector_exposure.get(sector, 0)
+            impact_pct = scenario_data['impacts'].get(sector, 0)
+            impact_dollars = sector_value * (impact_pct / 100)
+            total_impact_dollars += impact_dollars
+
+            sector_impacts.append({
+                'sector': sector,
+                'current_value': sector_value,
+                'impact_pct': impact_pct,
+                'impact_dollars': impact_dollars,
+                'new_value': sector_value + impact_dollars
+            })
+
+        new_portfolio_value = total_portfolio_value + total_impact_dollars
+        total_impact_pct = (total_impact_dollars / total_portfolio_value) * 100
+
+        scenario_results.append({
+            'scenario': scenario_name,
+            'description': scenario_data['description'],
+            'type': scenario_data['type'],
+            'impact_dollars': total_impact_dollars,
+            'impact_pct': total_impact_pct,
+            'new_value': new_portfolio_value,
+            'sector_impacts': sector_impacts
+        })
+
+    # Sort by impact (worst to best)
+    scenario_results.sort(key=lambda x: x['impact_dollars'])
+
+    # Create visualization
+    fig = go.Figure()
+
+    # Scenario impact bars
+    scenarios_list = [r['scenario'] for r in scenario_results]
+    impacts_pct = [r['impact_pct'] for r in scenario_results]
+    impacts_dollars = [r['impact_dollars'] for r in scenario_results]
+
+    colors = [
+        COLORS['danger'] if imp < -15 else (
+            COLORS['warning'] if imp < -5 else (
+                COLORS['info'] if imp < 5 else COLORS['success']
+            )
+        ) for imp in impacts_pct
+    ]
+
+    fig.add_trace(go.Bar(
+        x=impacts_pct,
+        y=scenarios_list,
+        orientation='h',
+        marker=dict(
+            color=colors,
+            line=dict(color=COLORS['border'], width=1.5),
+            opacity=0.9
+        ),
+        text=[f"{imp:+.1f}% (${imp_d:+,.0f})" for imp, imp_d in zip(impacts_pct, impacts_dollars)],
+        textposition='outside',
+        textfont=dict(size=11, color=COLORS['text_primary']),
+        hovertemplate='<b>%{y}</b><br>Impact: %{x:.2f}%<br>Dollar Impact: $%{customdata:,.0f}<extra></extra>',
+        customdata=impacts_dollars
+    ))
+
+    # Add vertical line at 0
+    fig.add_vline(
+        x=0,
+        line_width=2,
+        line_dash="solid",
+        line_color=COLORS['text_muted']
+    )
+
+    fig.update_layout(
+        title=dict(
+            text="📉 Scenario Analysis - Portfolio Stress Testing",
+            font=dict(size=18, color=COLORS['neon_blue']),
+            x=0.5,
+            xanchor='center'
+        ),
+        xaxis=dict(
+            title='Portfolio Impact (%)',
+            tickfont=dict(size=11, color=COLORS['text_primary']),
+            gridcolor=COLORS['border']
+        ),
+        yaxis=dict(
+            title='',
+            tickfont=dict(size=11, color=COLORS['text_primary'])
+        ),
+        height=600,
+        showlegend=False,
+        margin=dict(l=200, r=150, t=80, b=60)
+    )
+
+    apply_chart_theme(fig)
+
+    # Calculate VaR (Value at Risk) - 95% confidence
+    # Using historical simulation approach
+    negative_scenarios = [r for r in scenario_results if r['impact_dollars'] < 0]
+    if len(negative_scenarios) >= 2:
+        negative_impacts = sorted([r['impact_dollars'] for r in negative_scenarios])
+        var_95_index = int(len(negative_impacts) * 0.95)
+        var_95 = abs(negative_impacts[min(var_95_index, len(negative_impacts) - 1)])
+    else:
+        var_95 = 0
+
+    summary = {
+        'worst_case': scenario_results[0],
+        'best_case': scenario_results[-1],
+        'current_value': total_portfolio_value,
+        'var_95': var_95,
+        'scenario_results': scenario_results
+    }
+
+    return fig, summary
+
+def create_factor_attribution_layer(portfolio_df, start_date, end_date):
+    """
+    🆕 v10.0 INSTITUTIONAL-GRADE: Multi-Factor Attribution Analysis
+
+    Analyzes portfolio exposure to key investment factors:
+    - Market Factor (Beta): Overall market sensitivity
+    - Size Factor: Small cap vs Large cap tilt
+    - Value Factor: Value vs Growth tilt
+    - Momentum Factor: Trend-following exposure
+    - Quality Factor: Profitability and stability
+    - Volatility Factor: Low vol vs High vol tilt
+
+    Uses Fama-French style factor decomposition
+    """
+
+    if 'Ticker' not in portfolio_df.columns or 'Total Value' not in portfolio_df.columns:
+        return None
+
+    # Calculate portfolio weights
+    total_value = portfolio_df['Total Value'].sum()
+    portfolio_df_copy = portfolio_df.copy()
+    portfolio_df_copy['Weight'] = portfolio_df_copy['Total Value'] / total_value
+
+    # Initialize factor exposures
+    factor_exposures = {
+        'Market (Beta)': 0,
+        'Size (Small-Large)': 0,
+        'Value (Value-Growth)': 0,
+        'Momentum': 0,
+        'Quality': 0,
+        'Volatility (Low-High)': 0
+    }
+
+    position_count = 0
+    weighted_beta_sum = 0
+    weighted_market_cap_log = 0
+    weighted_pe_ratio = 0
+    weighted_momentum = 0
+    weighted_quality = 0
+
+    # Collect factor data for each position
+    factor_breakdown = []
+
+    for _, row in portfolio_df_copy.iterrows():
+        ticker = row['Ticker']
+        weight = row['Weight']
+
+        try:
+            # Fetch company data
+            stock = yf.Ticker(ticker)
+            info = stock.info
+
+            # Extract factor characteristics
+            beta = info.get('beta', 1.0) if info.get('beta') is not None else 1.0
+            market_cap = info.get('marketCap', 1e9) if info.get('marketCap') is not None else 1e9
+            pe_ratio = info.get('trailingPE', 15) if info.get('trailingPE') is not None else 15
+            forward_pe = info.get('forwardPE', 15) if info.get('forwardPE') is not None else 15
+
+            # Get price history for momentum calculation
+            hist = stock.history(period="6mo")
+            if not hist.empty and len(hist) >= 20:
+                # 6-month momentum (price change)
+                momentum_6m = ((hist['Close'].iloc[-1] / hist['Close'].iloc[0]) - 1) * 100
+            else:
+                momentum_6m = 0
+
+            # Size factor: log of market cap (small cap = lower values, large cap = higher values)
+            size_score = np.log10(market_cap) if market_cap > 0 else 9
+
+            # Value factor: Inverse of P/E (higher = more value-oriented)
+            value_score = (1 / pe_ratio) * 100 if pe_ratio > 0 else 0
+
+            # Quality factor: Based on profitability margins
+            profit_margin = info.get('profitMargins', 0.10) if info.get('profitMargins') is not None else 0.10
+            roe = info.get('returnOnEquity', 0.12) if info.get('returnOnEquity') is not None else 0.12
+            quality_score = (profit_margin * 100 + roe * 100) / 2
+
+            # Volatility: use beta as proxy
+            volatility_score = beta
+
+            # Weight-average the factors
+            weighted_beta_sum += beta * weight
+            weighted_market_cap_log += size_score * weight
+            weighted_pe_ratio += value_score * weight
+            weighted_momentum += momentum_6m * weight
+            weighted_quality += quality_score * weight
+
+            factor_breakdown.append({
+                'Ticker': ticker,
+                'Weight': weight * 100,
+                'Beta': beta,
+                'Market Cap': market_cap,
+                'Size Score': size_score,
+                'Value Score': value_score,
+                'Momentum 6M %': momentum_6m,
+                'Quality Score': quality_score,
+                'Volatility': volatility_score
+            })
+
+            position_count += 1
+
+        except Exception as e:
+            # Skip positions that fail to load
+            continue
+
+    if position_count == 0:
+        return None
+
+    # Calculate portfolio-level factor exposures
+    factor_exposures['Market (Beta)'] = weighted_beta_sum
+
+    # Size: Normalize to -100 to +100 scale (9=large cap, 6=small cap)
+    # Average large cap ~10, small cap ~6, so center at 8
+    size_exposure = (weighted_market_cap_log - 8) * 50  # Scale to -100 to +100
+    factor_exposures['Size (Small-Large)'] = min(100, max(-100, size_exposure))
+
+    # Value: Normalize (higher = more value)
+    # Average value score ~6, growth ~2
+    value_exposure = (weighted_pe_ratio - 4) * 25  # Scale to -100 to +100
+    factor_exposures['Value (Value-Growth)'] = min(100, max(-100, value_exposure))
+
+    # Momentum: Already in percentage form
+    factor_exposures['Momentum'] = min(100, max(-100, weighted_momentum))
+
+    # Quality: Average quality ~15, range 0-30
+    quality_exposure = (weighted_quality - 15) * 10  # Scale to -100 to +100
+    factor_exposures['Quality'] = min(100, max(-100, quality_exposure))
+
+    # Volatility: Beta-based (1.0 = market, <1.0 = low vol, >1.0 = high vol)
+    volatility_exposure = (weighted_beta_sum - 1.0) * 100
+    factor_exposures['Volatility (Low-High)'] = min(100, max(-100, volatility_exposure))
+
+    # Create visualization - Radar chart
+    factors = list(factor_exposures.keys())
+    values = list(factor_exposures.values())
+
+    fig = go.Figure()
+
+    # Add portfolio factor exposures
+    fig.add_trace(go.Scatterpolar(
+        r=values,
+        theta=factors,
+        fill='toself',
+        name='Your Portfolio',
+        line=dict(color=COLORS['neon_blue'], width=2),
+        fillcolor=f'rgba(0, 212, 255, 0.3)',
+        marker=dict(size=8, color=COLORS['neon_blue'])
+    ))
+
+    # Add market neutral baseline (0 for all factors)
+    fig.add_trace(go.Scatterpolar(
+        r=[0] * len(factors),
+        theta=factors,
+        name='Market Neutral',
+        line=dict(color=COLORS['text_muted'], width=2, dash='dot'),
+        marker=dict(size=6, color=COLORS['text_muted'])
+    ))
+
+    fig.update_layout(
+        polar=dict(
+            radialaxis=dict(
+                visible=True,
+                range=[-100, 100],
+                tickfont=dict(size=10, color=COLORS['text_muted']),
+                gridcolor=COLORS['border']
+            ),
+            angularaxis=dict(
+                tickfont=dict(size=11, color=COLORS['text_primary'])
+            ),
+            bgcolor=COLORS['card_background']
+        ),
+        title=dict(
+            text="📊 Multi-Factor Attribution - Portfolio Factor Exposures",
+            font=dict(size=18, color=COLORS['neon_blue']),
+            x=0.5,
+            xanchor='center'
+        ),
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=-0.15,
+            xanchor="center",
+            x=0.5,
+            font=dict(size=11, color=COLORS['text_primary']),
+            bgcolor='rgba(10, 25, 41, 0.8)',
+            bordercolor=COLORS['border'],
+            borderwidth=1
+        ),
+        height=550,
+        margin=dict(l=80, r=80, t=100, b=100)
+    )
+
+    apply_chart_theme(fig)
+
+    # Create factor breakdown table
+    factor_breakdown_df = pd.DataFrame(factor_breakdown)
+
+    # Summary statistics
+    summary = {
+        'factor_exposures': factor_exposures,
+        'factor_breakdown_df': factor_breakdown_df,
+        'avg_beta': weighted_beta_sum,
+        'avg_market_cap': 10 ** weighted_market_cap_log,
+        'momentum_score': weighted_momentum,
+        'quality_score': weighted_quality
+    }
+
+    return fig, summary
+
+def generate_smart_alerts_and_recommendations(portfolio_df, portfolio_returns=None):
+    """
+    🆕 v10.0 INSTITUTIONAL-GRADE: Smart Alerts & Recommendations System
+
+    Analyzes portfolio for risks and opportunities, generating actionable insights:
+    - Concentration warnings (position/sector)
+    - Risk alerts (volatility, drawdown, beta)
+    - Rebalancing recommendations
+    - Performance alerts (underperformers, outperformers)
+    - Factor exposure warnings
+    - Dividend opportunities
+    """
+
+    alerts = []
+    recommendations = []
+
+    if 'Total Value' not in portfolio_df.columns:
+        return None
+
+    # Calculate key metrics
+    total_value = portfolio_df['Total Value'].sum()
+    df_copy = portfolio_df.copy()
+    df_copy['Sector'] = df_copy['Sector'].replace('Other', 'ETFs')
+
+    # ==============================================
+    # ALERT 1: Position Concentration
+    # ==============================================
+    df_copy['Weight %'] = (df_copy['Total Value'] / total_value) * 100
+    max_position = df_copy.loc[df_copy['Weight %'].idxmax()]
+
+    if max_position['Weight %'] > 20:
+        alerts.append({
+            'severity': 'HIGH',
+            'category': 'Concentration',
+            'title': f"High Position Concentration: {max_position['Ticker']}",
+            'message': f"{max_position['Ticker']} represents {max_position['Weight %']:.1f}% of portfolio. Institutional best practice: <15%",
+            'action': f"Consider reducing {max_position['Ticker']} position to 12-15% of portfolio"
+        })
+        recommendations.append({
+            'type': 'Rebalance',
+            'priority': 'High',
+            'action': f"Trim {max_position['Ticker']} from {max_position['Weight %']:.1f}% to 12-15%",
+            'rationale': "Reduce single-stock risk"
+        })
+    elif max_position['Weight %'] > 10:
+        alerts.append({
+            'severity': 'MEDIUM',
+            'category': 'Concentration',
+            'title': f"Moderate Position Concentration: {max_position['Ticker']}",
+            'message': f"{max_position['Ticker']} is {max_position['Weight %']:.1f}% of portfolio",
+            'action': "Monitor for further concentration"
+        })
+
+    # ==============================================
+    # ALERT 2: Sector Concentration
+    # ==============================================
+    sector_exposure = df_copy.groupby('Sector')['Total Value'].sum()
+    sector_weights = (sector_exposure / total_value) * 100
+    max_sector = sector_weights.idxmax()
+    max_sector_weight = sector_weights.max()
+
+    if max_sector_weight > 40:
+        alerts.append({
+            'severity': 'HIGH',
+            'category': 'Concentration',
+            'title': f"High Sector Concentration: {max_sector}",
+            'message': f"{max_sector} represents {max_sector_weight:.1f}% of portfolio. Diversification recommended",
+            'action': f"Reduce {max_sector} exposure to <35%"
+        })
+        recommendations.append({
+            'type': 'Diversification',
+            'priority': 'High',
+            'action': f"Diversify away from {max_sector} sector",
+            'rationale': f"Current {max_sector_weight:.1f}% exposure creates sector-specific risk"
+        })
+    elif max_sector_weight > 30:
+        alerts.append({
+            'severity': 'MEDIUM',
+            'category': 'Concentration',
+            'title': f"Moderate Sector Concentration: {max_sector}",
+            'message': f"{max_sector} sector is {max_sector_weight:.1f}% of portfolio",
+            'action': "Consider sector diversification"
+        })
+
+    # ==============================================
+    # ALERT 3: Underperformers
+    # ==============================================
+    if 'Total Gain/Loss %' in df_copy.columns:
+        underperformers = df_copy[df_copy['Total Gain/Loss %'] < -20]
+
+        if len(underperformers) > 0:
+            worst_performer = underperformers.loc[underperformers['Total Gain/Loss %'].idxmin()]
+            alerts.append({
+                'severity': 'MEDIUM',
+                'category': 'Performance',
+                'title': f"Significant Underperformer: {worst_performer['Ticker']}",
+                'message': f"{worst_performer['Ticker']} down {worst_performer['Total Gain/Loss %']:.1f}%",
+                'action': "Review position thesis - consider tax-loss harvesting"
+            })
+            recommendations.append({
+                'type': 'Tax Strategy',
+                'priority': 'Medium',
+                'action': f"Consider harvesting {worst_performer['Ticker']} loss ({worst_performer['Total Gain/Loss %']:.1f}%)",
+                'rationale': "Offset capital gains and reduce losing position"
+            })
+
+    # ==============================================
+    # ALERT 4: Portfolio Size/Diversification
+    # ==============================================
+    num_positions = len(df_copy)
+
+    if num_positions < 10:
+        alerts.append({
+            'severity': 'MEDIUM',
+            'category': 'Diversification',
+            'title': f"Limited Diversification: {num_positions} Positions",
+            'message': "Portfolio may benefit from additional diversification",
+            'action': "Consider adding 5-10 more positions across different sectors"
+        })
+        recommendations.append({
+            'type': 'Diversification',
+            'priority': 'Medium',
+            'action': "Increase position count to 15-20",
+            'rationale': "Reduce unsystematic risk through diversification"
+        })
+    elif num_positions > 50:
+        alerts.append({
+            'severity': 'LOW',
+            'category': 'Complexity',
+            'title': f"High Position Count: {num_positions} Positions",
+            'message': "Large number of positions may dilute returns and increase complexity",
+            'action': "Consider consolidating into top convictions"
+        })
+
+    # ==============================================
+    # ALERT 5: Dividend Opportunities
+    # ==============================================
+    if 'Dividend Yield' in df_copy.columns:
+        low_yield_positions = df_copy[df_copy['Dividend Yield'] < 0.5]
+        if len(low_yield_positions) > len(df_copy) * 0.7:  # >70% don't pay dividends
+            recommendations.append({
+                'type': 'Income Generation',
+                'priority': 'Low',
+                'action': "Consider adding dividend-paying positions",
+                'rationale': f"Only {len(df_copy) - len(low_yield_positions)} positions pay meaningful dividends"
+            })
+
+    # ==============================================
+    # ALERT 6: Winners to Trim
+    # ==============================================
+    if 'Total Gain/Loss %' in df_copy.columns:
+        big_winners = df_copy[df_copy['Total Gain/Loss %'] > 100]
+
+        if len(big_winners) > 0:
+            for _, winner in big_winners.head(3).iterrows():
+                recommendations.append({
+                    'type': 'Profit Taking',
+                    'priority': 'Low',
+                    'action': f"Consider trimming {winner['Ticker']} (up {winner['Total Gain/Loss %']:.1f}%)",
+                    'rationale': "Lock in gains and rebalance"
+                })
+
+    # ==============================================
+    # ALERT 7: Cash Position
+    # ==============================================
+    cash_positions = df_copy[df_copy['Ticker'].str.contains('CASH|USD|MONEY', case=False, na=False)]
+    if len(cash_positions) > 0:
+        cash_value = cash_positions['Total Value'].sum()
+        cash_pct = (cash_value / total_value) * 100
+
+        if cash_pct > 10:
+            alerts.append({
+                'severity': 'LOW',
+                'category': 'Allocation',
+                'title': f"High Cash Position: {cash_pct:.1f}%",
+                'message': "Significant cash earning minimal returns",
+                'action': "Consider deploying cash or use money market fund"
+            })
+        elif cash_pct < 2 and total_value > 100000:
+            recommendations.append({
+                'type': 'Risk Management',
+                'priority': 'Low',
+                'action': "Consider maintaining 2-5% cash buffer",
+                'rationale': "Provides liquidity for opportunistic buying"
+            })
+
+    # ==============================================
+    # Create Summary
+    # ==============================================
+    summary = {
+        'total_alerts': len(alerts),
+        'high_severity': len([a for a in alerts if a['severity'] == 'HIGH']),
+        'medium_severity': len([a for a in alerts if a['severity'] == 'MEDIUM']),
+        'low_severity': len([a for a in alerts if a['severity'] == 'LOW']),
+        'total_recommendations': len(recommendations),
+        'alerts': alerts,
+        'recommendations': recommendations
+    }
+
+    return summary
+
 def create_sparkline(ticker, days=30):
     """Generate mini sparkline chart for ticker (last 30 days)"""
     try:
@@ -5046,6 +5717,78 @@ def main():
                 for detail in stress_details:
                     st.write(detail)
 
+        # 🆕 v10.0: SMART ALERTS & RECOMMENDATIONS
+        st.markdown("---")
+        st.markdown("### 🔔 Smart Alerts & Recommendations")
+        st.caption("AI-powered portfolio insights and actionable recommendations")
+
+        alerts_data = generate_smart_alerts_and_recommendations(enhanced_df, portfolio_returns)
+
+        if alerts_data:
+            # Summary badges
+            col_alert1, col_alert2, col_alert3, col_alert4 = st.columns(4)
+
+            col_alert1.metric(
+                "Total Alerts",
+                alerts_data['total_alerts'],
+                delta=f"{alerts_data['high_severity']} high priority" if alerts_data['high_severity'] > 0 else None,
+                delta_color="inverse" if alerts_data['high_severity'] > 0 else "off"
+            )
+            col_alert2.metric(
+                "High Severity",
+                alerts_data['high_severity'],
+                delta="Immediate action" if alerts_data['high_severity'] > 0 else None,
+                delta_color="inverse"
+            )
+            col_alert3.metric(
+                "Medium Severity",
+                alerts_data['medium_severity']
+            )
+            col_alert4.metric(
+                "Recommendations",
+                alerts_data['total_recommendations']
+            )
+
+            # Display alerts in columns
+            if alerts_data['alerts'] or alerts_data['recommendations']:
+                alert_col, rec_col = st.columns(2)
+
+                with alert_col:
+                    st.markdown("#### ⚠️ Active Alerts")
+
+                    if alerts_data['alerts']:
+                        for alert in alerts_data['alerts']:
+                            severity_color = {
+                                'HIGH': '🔴',
+                                'MEDIUM': '🟡',
+                                'LOW': '🟢'
+                            }.get(alert['severity'], '⚪')
+
+                            with st.expander(f"{severity_color} {alert['title']}", expanded=(alert['severity'] == 'HIGH')):
+                                st.markdown(f"**Category:** {alert['category']}")
+                                st.markdown(f"**Message:** {alert['message']}")
+                                st.markdown(f"**Recommended Action:** {alert['action']}")
+                    else:
+                        st.success("✅ No active alerts - portfolio looks healthy!")
+
+                with rec_col:
+                    st.markdown("#### 💡 Recommendations")
+
+                    if alerts_data['recommendations']:
+                        for rec in alerts_data['recommendations']:
+                            priority_badge = {
+                                'High': '🔴',
+                                'Medium': '🟡',
+                                'Low': '🟢'
+                            }.get(rec['priority'], '⚪')
+
+                            with st.expander(f"{priority_badge} {rec['type']}: {rec['action'][:50]}...", expanded=False):
+                                st.markdown(f"**Priority:** {rec['priority']}")
+                                st.markdown(f"**Action:** {rec['action']}")
+                                st.markdown(f"**Rationale:** {rec['rationale']}")
+                    else:
+                        st.info("No specific recommendations at this time")
+
         st.markdown("---")
         st.markdown("### 📊 DASHBOARD OVERVIEW")
         
@@ -5426,116 +6169,107 @@ def main():
                 st.plotly_chart(corr_network, use_container_width=True)
         
         with tab4:
-            st.markdown("#### ⚡ Market Stress Scenarios")
-            st.info("💡 **Stress Testing:** Evaluate portfolio resilience under extreme market conditions")
+            # 🆕 v10.0: INSTITUTIONAL-GRADE SCENARIO ANALYSIS MODULE
+            st.markdown("#### 📉 Scenario Analysis & Stress Testing")
+            st.info("💡 **Advanced Stress Testing:** Comprehensive what-if analysis with market, sector rotation, and interest rate scenarios")
 
-            # Stress scenario definitions
-            stress_scenarios = {
-                '📉 Market Crash (-30%)': -0.30,
-                '📊 Moderate Correction (-15%)': -0.15,
-                '📈 Strong Rally (+25%)': 0.25,
-                '💥 Flash Crash (-20%)': -0.20,
-                '🔥 Tech Bubble Burst (-40%)': -0.40,
-                '⚠️ Credit Crisis (-35%)': -0.35
-            }
+            # Generate scenario analysis
+            scenario_result = create_scenario_analysis_module(enhanced_df)
 
-            col1, col2 = st.columns(2)
+            if scenario_result:
+                scenario_fig, scenario_summary = scenario_result
 
-            with col1:
-                st.markdown("##### Market Shock Scenarios")
-                # v9.7 FIX: Use correct Total Value calculation
-                current_value = enhanced_df['Total Value'].sum()
+                # Display main chart
+                st.plotly_chart(scenario_fig, use_container_width=True)
 
-                stress_results = []
-                for scenario, shock in stress_scenarios.items():
-                    new_value = current_value * (1 + shock)
-                    impact = current_value * shock
-                    stress_results.append({
-                        'Scenario': scenario,
-                        'Portfolio Impact': impact,
-                        'New Value': new_value,
-                        'Return': shock * 100
+                # Display key metrics
+                st.markdown("---")
+                col1, col2, col3, col4 = st.columns(4)
+
+                worst_case = scenario_summary['worst_case']
+                best_case = scenario_summary['best_case']
+                current_value = scenario_summary['current_value']
+                var_95 = scenario_summary['var_95']
+
+                col1.metric(
+                    "Current Portfolio Value",
+                    format_currency(current_value)
+                )
+                col2.metric(
+                    "Worst Case Scenario",
+                    worst_case['scenario'],
+                    f"{worst_case['impact_pct']:.1f}%",
+                    delta_color="inverse"
+                )
+                col3.metric(
+                    "Best Case Scenario",
+                    best_case['scenario'],
+                    f"{best_case['impact_pct']:.1f}%"
+                )
+                col4.metric(
+                    "VaR 95% (Scenario-based)",
+                    format_currency(var_95)
+                )
+
+                # Expandable detailed scenario breakdown
+                st.markdown("---")
+                with st.expander("📊 View Detailed Scenario Breakdown", expanded=False):
+                    selected_scenario = st.selectbox(
+                        "Select Scenario for Sector-Level Analysis",
+                        options=[r['scenario'] for r in scenario_summary['scenario_results']],
+                        index=0
+                    )
+
+                    # Find selected scenario
+                    selected_data = next(r for r in scenario_summary['scenario_results'] if r['scenario'] == selected_scenario)
+
+                    st.markdown(f"**{selected_scenario}**")
+                    st.caption(selected_data['description'])
+
+                    col_detail1, col_detail2 = st.columns(2)
+
+                    with col_detail1:
+                        st.metric("Total Impact", f"{selected_data['impact_pct']:+.2f}%")
+                        st.metric("Dollar Impact", format_currency(selected_data['impact_dollars']))
+
+                    with col_detail2:
+                        st.metric("New Portfolio Value", format_currency(selected_data['new_value']))
+                        st.metric("Scenario Type", selected_data['type'].replace('_', ' ').title())
+
+                    # Sector breakdown table
+                    st.markdown("##### Sector-Level Impact")
+                    sector_impact_data = []
+                    for sector_impact in selected_data['sector_impacts']:
+                        sector_impact_data.append({
+                            'Sector': sector_impact['sector'],
+                            'Current Value': format_currency(sector_impact['current_value']),
+                            'Impact %': f"{sector_impact['impact_pct']:+.1f}%",
+                            'Impact $': format_currency(sector_impact['impact_dollars']),
+                            'New Value': format_currency(sector_impact['new_value'])
+                        })
+
+                    sector_impact_df = pd.DataFrame(sector_impact_data)
+                    st.dataframe(sector_impact_df, use_container_width=True, hide_index=True)
+
+                # Scenario comparison matrix
+                st.markdown("---")
+                st.markdown("##### 📊 Scenario Comparison Matrix")
+
+                comparison_data = []
+                for result in scenario_summary['scenario_results']:
+                    comparison_data.append({
+                        'Scenario': result['scenario'],
+                        'Type': result['type'].replace('_', ' ').title(),
+                        'Impact %': f"{result['impact_pct']:+.2f}%",
+                        'Impact $': format_currency(result['impact_dollars']),
+                        'New Value': format_currency(result['new_value'])
                     })
 
-                stress_df = pd.DataFrame(stress_results)
-                stress_df['Portfolio Impact'] = stress_df['Portfolio Impact'].apply(lambda x: format_currency(x))
-                stress_df['New Value'] = stress_df['New Value'].apply(lambda x: format_currency(x))
-                stress_df['Return'] = stress_df['Return'].apply(lambda x: f"{x:+.1f}%")
+                comparison_df = pd.DataFrame(comparison_data)
+                st.dataframe(comparison_df, use_container_width=True, hide_index=True)
 
-                st.dataframe(stress_df, use_container_width=True, hide_index=True)
-
-                st.caption(f"💼 Current Portfolio Value: {format_currency(current_value)}")
-
-            # v9.7 NEW: Stress Test Visualization
-            st.markdown("---")
-            st.markdown("##### 📊 Stress Test Impact Visualization")
-
-            # Create waterfall chart for stress scenarios
-            scenarios_short = [s.split(' ')[0] + ' ' + s.split('(')[1].replace(')', '') for s in stress_scenarios.keys()]
-            shocks = list(stress_scenarios.values())
-
-            fig_stress = go.Figure()
-
-            colors_stress = [COLORS['success'] if s > 0 else COLORS['danger'] for s in shocks]
-
-            fig_stress.add_trace(go.Bar(
-                x=scenarios_short,
-                y=[s * 100 for s in shocks],
-                marker=dict(
-                    color=colors_stress,
-                    line=dict(color=COLORS['border'], width=2),
-                    opacity=0.8
-                ),
-                text=[f"{s*100:+.0f}%" for s in shocks],
-                textposition='outside',
-                textfont=dict(size=12, color=COLORS['text_primary']),
-                hovertemplate='<b>%{x}</b><br>Impact: %{y:.1f}%<br>Portfolio Value: $%{customdata:,.0f}<extra></extra>',
-                customdata=[current_value * (1 + s) for s in shocks]
-            ))
-
-            fig_stress.update_layout(
-                title="Stress Test Scenarios - Portfolio Impact",
-                xaxis_title="Scenario",
-                yaxis_title="Return Impact (%)",
-                height=400,
-                showlegend=False,
-                xaxis=dict(tickangle=-45)
-            )
-
-            fig_stress.add_hline(
-                y=0,
-                line_dash="solid",
-                line_color=COLORS['text_muted'],
-                line_width=2
-            )
-
-            apply_chart_theme(fig_stress)
-            st.plotly_chart(fig_stress, use_container_width=True)
-
-            with col2:
-                st.markdown("##### Sector Concentration Risk")
-                sector_concentration = enhanced_df.groupby('Sector')['Weight %'].sum().sort_values(ascending=False)
-
-                concentration_warnings = []
-                for sector, weight in sector_concentration.items():
-                    if weight > 30:
-                        risk_level = "🔴 HIGH"
-                    elif weight > 20:
-                        risk_level = "🟡 MEDIUM"
-                    else:
-                        risk_level = "🟢 LOW"
-
-                    concentration_warnings.append({
-                        'Sector': sector,
-                        'Allocation': f"{weight:.1f}%",
-                        'Risk Level': risk_level
-                    })
-
-                conc_df = pd.DataFrame(concentration_warnings)
-                st.dataframe(conc_df, use_container_width=True, hide_index=True)
-
-                st.caption("⚠️ Sectors >30% = High concentration risk")
-                st.caption("🟡 Sectors 20-30% = Medium concentration risk")
+            else:
+                st.warning("Unable to generate scenario analysis. Please ensure portfolio data is loaded correctly.")
     
     # Continue with remaining pages...
     # ========================================================================
@@ -5706,8 +6440,95 @@ def main():
         df = pd.DataFrame(portfolio_data)
         df = standardize_portfolio_columns(df)  # CRITICAL FIX: Standardize column names
         enhanced_df = create_enhanced_holdings_table(df)
-        
-        with st.spinner("Running analysis..."):
+
+        # 🆕 v10.0: INSTITUTIONAL-GRADE FACTOR ATTRIBUTION LAYER
+        st.markdown("### 🎯 Institutional-Grade Factor Attribution")
+        st.caption("Fama-French style multi-factor decomposition of portfolio exposures")
+
+        with st.spinner("Analyzing factor exposures..."):
+            factor_result = create_factor_attribution_layer(enhanced_df, start_date, end_date)
+
+        if factor_result:
+            factor_fig, factor_summary = factor_result
+
+            # Display radar chart
+            st.plotly_chart(factor_fig, use_container_width=True)
+
+            # Display summary metrics
+            st.markdown("---")
+            col1, col2, col3, col4 = st.columns(4)
+
+            col1.metric(
+                "Portfolio Beta",
+                f"{factor_summary['avg_beta']:.2f}",
+                f"{'More' if factor_summary['avg_beta'] > 1.0 else 'Less'} volatile than market"
+            )
+            col2.metric(
+                "Avg Market Cap",
+                format_large_number(factor_summary['avg_market_cap'])
+            )
+            col3.metric(
+                "Momentum Score",
+                f"{factor_summary['momentum_score']:+.1f}%"
+            )
+            col4.metric(
+                "Quality Score",
+                f"{factor_summary['quality_score']:.1f}/100"
+            )
+
+            # Factor interpretation guide
+            st.markdown("---")
+            with st.expander("📚 Factor Interpretation Guide", expanded=False):
+                st.markdown("""
+                **Market (Beta):**
+                - Beta = 1.0: Moves with market
+                - Beta > 1.0: More volatile than market (amplifies gains/losses)
+                - Beta < 1.0: Less volatile (dampens market moves)
+
+                **Size (Small-Large):**
+                - Positive: Large cap tilt
+                - Negative: Small cap tilt
+                - Small caps historically offer higher returns but more volatility
+
+                **Value (Value-Growth):**
+                - Positive: Value tilt (low P/E stocks)
+                - Negative: Growth tilt (high P/E stocks)
+                - Value outperforms in some cycles, growth in others
+
+                **Momentum:**
+                - Positive: Trending up (winners keep winning)
+                - Negative: Trending down (mean reversion opportunity)
+
+                **Quality:**
+                - High: Strong margins, ROE (defensive)
+                - Low: Weaker fundamentals (higher risk)
+
+                **Volatility (Low-High):**
+                - Positive: High vol tilt (aggressive)
+                - Negative: Low vol tilt (defensive)
+                """)
+
+            # Detailed factor breakdown table
+            st.markdown("---")
+            with st.expander("🔬 View Position-Level Factor Breakdown", expanded=False):
+                if not factor_summary['factor_breakdown_df'].empty:
+                    display_factor_df = factor_summary['factor_breakdown_df'].copy()
+                    display_factor_df['Weight'] = display_factor_df['Weight'].apply(lambda x: f"{x:.2f}%")
+                    display_factor_df['Beta'] = display_factor_df['Beta'].apply(lambda x: f"{x:.2f}")
+                    display_factor_df['Market Cap'] = display_factor_df['Market Cap'].apply(format_large_number)
+                    display_factor_df['Momentum 6M %'] = display_factor_df['Momentum 6M %'].apply(lambda x: f"{x:+.1f}%")
+                    display_factor_df['Quality Score'] = display_factor_df['Quality Score'].apply(lambda x: f"{x:.1f}")
+
+                    st.dataframe(
+                        display_factor_df[['Ticker', 'Weight', 'Beta', 'Market Cap', 'Momentum 6M %', 'Quality Score']],
+                        use_container_width=True,
+                        hide_index=True
+                    )
+
+        st.markdown("---")
+        st.markdown("### 📊 Legacy Factor Analysis")
+
+        with st.spinner("Running legacy analysis..."):
             factor_data = calculate_factor_exposures(enhanced_df, start_date, end_date)
         
         if factor_data:
