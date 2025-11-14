@@ -14,7 +14,13 @@ import logging
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from atlas_terminal.config import VERSION, COLORS, CHART_THEME
-from atlas_terminal.pages import home
+from atlas_terminal.pages import (
+    home,
+    market_watch,
+    risk_analysis,
+    portfolio_deep_dive,
+    valuation_house
+)
 from atlas_terminal.data.cache_manager import (
     load_portfolio_data, load_account_history, load_trade_history,
     save_portfolio_data, save_account_history, save_trade_history,
@@ -213,37 +219,45 @@ def main():
     try:
         if selected_page == "🏠 Portfolio Home":
             home.render()
-        
+
         elif selected_page == "📈 Portfolio Deep Dive":
-            st.title("📈 Portfolio Deep Dive")
-            st.info("🚧 This page is under construction in the v10.0 refactor")
-            st.caption("Coming soon: Sector allocation, position analysis, correlation matrix, etc.")
-        
+            portfolio_deep_dive.render()
+
         elif selected_page == "🌍 Market Watch":
-            st.title("🌍 Market Watch")
-            st.info("🚧 This page is under construction in the v10.0 refactor")
-            st.caption("Coming soon: Global indices, crypto, bonds, commodities monitoring")
-        
+            market_watch.render()
+
         elif selected_page == "⚠️ Risk Analysis":
-            st.title("⚠️ Risk Analysis")
-            st.info("🚧 This page is under construction in the v10.0 refactor")
-            st.caption("Coming soon: VaR, CVaR, Sharpe, Sortino, drawdown analysis, stress testing")
-        
+            risk_analysis.render()
+
         elif selected_page == "💰 Valuation House":
-            st.title("💰 Valuation House")
-            st.info("🚧 This page is under construction in the v10.0 refactor")
-            st.caption("Coming soon: DCF models, WACC calculation, intrinsic value estimation")
-        
+            valuation_house.render()
+
         elif selected_page == "📓 Trade Journal":
             st.title("📓 Trade Journal")
             st.info("🚧 NEW FEATURE - Under construction in v10.0")
             st.caption("Coming soon: Trade tracking, performance attribution, win/loss analysis")
-        
+            st.markdown("""
+            **Planned Features:**
+            - Automatic trade detection from history
+            - Complete trade lifecycle tracking
+            - Performance attribution per trade
+            - Win/Loss statistics
+            - Trade notes, tags, and strategies
+            """)
+
         elif selected_page == "🎯 Risk Dashboard":
             st.title("🎯 Risk Dashboard")
             st.info("🚧 NEW FEATURE - Under construction in v10.0")
             st.caption("Coming soon: Risk budget monitoring, position risk, stress scenarios")
-        
+            st.markdown("""
+            **Planned Features:**
+            - Risk budget utilization tracking
+            - Position-level risk contributions
+            - Pre-trade risk assessment
+            - Stress testing integration
+            - Automated alerts at thresholds
+            """)
+
         else:
             st.error("Unknown page selected")
     
