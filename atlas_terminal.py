@@ -1930,60 +1930,101 @@ def create_valuation_summary_table(valuations_dict, current_price):
 
 def parse_trade_history_file(uploaded_file):
     """Parse Phoenix trade history file with detailed error reporting"""
-    try:
-        # Try reading the HTML file
-        df = pd.read_html(uploaded_file)[0]
+    # Try multiple encodings to handle Phoenix files
+    encodings = ['utf-8', 'cp1252', 'iso-8859-1', 'latin1']
 
-        # Check for required columns
-        required_cols = ['Date', 'Symbol', 'Trade Type', 'Quantity', 'Price']
-        missing_cols = [col for col in required_cols if col not in df.columns]
+    for encoding in encodings:
+        try:
+            # Reset file pointer for each attempt
+            uploaded_file.seek(0)
 
-        if missing_cols:
+            # Try reading the HTML file with this encoding
+            df = pd.read_html(uploaded_file, encoding=encoding)[0]
+
+            # Check for required columns
+            required_cols = ['Date', 'Symbol', 'Trade Type', 'Quantity', 'Price']
+            missing_cols = [col for col in required_cols if col not in df.columns]
+
+            if missing_cols:
+                return {
+                    'success': False,
+                    'error': f"Missing required columns: {', '.join(missing_cols)}",
+                    'found_columns': list(df.columns),
+                    'data': None
+                }
+
+            # Parse and clean data
+            df['Price'] = df['Price'].astype(str).str.replace('$', '').str.replace(',', '').astype(float)
+            df['Date'] = pd.to_datetime(df['Date'])
+            df = df.sort_values('Date')
+
             return {
-                'success': False,
-                'error': f"Missing required columns: {', '.join(missing_cols)}",
-                'found_columns': list(df.columns),
-                'data': None
+                'success': True,
+                'error': None,
+                'data': df,
+                'row_count': len(df),
+                'encoding_used': encoding
             }
+        except UnicodeDecodeError:
+            # Try next encoding
+            continue
+        except Exception as e:
+            # If it's not an encoding error, return it
+            if 'codec' not in str(e).lower() and 'decode' not in str(e).lower():
+                return {
+                    'success': False,
+                    'error': f"Parse error: {str(e)}",
+                    'found_columns': None,
+                    'data': None
+                }
 
-        # Parse and clean data
-        df['Price'] = df['Price'].astype(str).str.replace('$', '').str.replace(',', '').astype(float)
-        df['Date'] = pd.to_datetime(df['Date'])
-        df = df.sort_values('Date')
-
-        return {
-            'success': True,
-            'error': None,
-            'data': df,
-            'row_count': len(df)
-        }
-    except Exception as e:
-        return {
-            'success': False,
-            'error': f"Parse error: {str(e)}",
-            'found_columns': None,
-            'data': None
-        }
+    # If all encodings failed
+    return {
+        'success': False,
+        'error': f"Unable to decode file. Tried encodings: {', '.join(encodings)}. Please save your Phoenix export as UTF-8 or contact support.",
+        'found_columns': None,
+        'data': None
+    }
 
 def parse_account_history_file(uploaded_file):
     """Parse Phoenix account history file with detailed error reporting"""
-    try:
-        df = pd.read_html(uploaded_file)[0]
-        df['Date'] = pd.to_datetime(df['Date'])
-        df = df.sort_values('Date')
+    # Try multiple encodings to handle Phoenix files
+    encodings = ['utf-8', 'cp1252', 'iso-8859-1', 'latin1']
 
-        return {
-            'success': True,
-            'error': None,
-            'data': df,
-            'row_count': len(df)
-        }
-    except Exception as e:
-        return {
-            'success': False,
-            'error': f"Parse error: {str(e)}",
-            'data': None
-        }
+    for encoding in encodings:
+        try:
+            # Reset file pointer for each attempt
+            uploaded_file.seek(0)
+
+            df = pd.read_html(uploaded_file, encoding=encoding)[0]
+            df['Date'] = pd.to_datetime(df['Date'])
+            df = df.sort_values('Date')
+
+            return {
+                'success': True,
+                'error': None,
+                'data': df,
+                'row_count': len(df),
+                'encoding_used': encoding
+            }
+        except UnicodeDecodeError:
+            # Try next encoding
+            continue
+        except Exception as e:
+            # If it's not an encoding error, return it
+            if 'codec' not in str(e).lower() and 'decode' not in str(e).lower():
+                return {
+                    'success': False,
+                    'error': f"Parse error: {str(e)}",
+                    'data': None
+                }
+
+    # If all encodings failed
+    return {
+        'success': False,
+        'error': f"Unable to decode file. Tried encodings: {', '.join(encodings)}. Please save your Phoenix export as UTF-8.",
+        'data': None
+    }
 
 def calculate_portfolio_from_trades(trade_df):
     holdings = {}
