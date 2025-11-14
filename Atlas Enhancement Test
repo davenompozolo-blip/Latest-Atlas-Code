@@ -1331,6 +1331,409 @@ def calculate_dcf_value(projections, discount_rate, terminal_value, shares_outst
     }
 
 # ============================================================================
+# VALUATION HOUSE RENOVATION - NEW MODULAR METHODS
+# Following Damodaran / McKinsey Standards
+# ============================================================================
+
+# Industry-Standard Constraints
+VALUATION_CONSTRAINTS = {
+    'max_terminal_growth': 0.04,  # 4% (long-term GDP growth)
+    'max_payout_ratio': 1.0,      # 100%
+    'min_roe': 0.0,               # 0%
+    'max_roe': 0.50,              # 50% (sanity check)
+    'max_pe_multiple': 100,       # Outlier filter
+    'min_pe_multiple': 3,         # Outlier filter
+}
+
+def apply_damodaran_constraints(value, constraint_type):
+    """Apply industry-standard Damodaran constraints"""
+    if constraint_type == 'terminal_growth':
+        return min(value, VALUATION_CONSTRAINTS['max_terminal_growth'])
+    elif constraint_type == 'payout_ratio':
+        return min(max(value, 0), VALUATION_CONSTRAINTS['max_payout_ratio'])
+    elif constraint_type == 'roe':
+        return min(max(value, VALUATION_CONSTRAINTS['min_roe']), VALUATION_CONSTRAINTS['max_roe'])
+    return value
+
+# ============================================================================
+# DIVIDEND DISCOUNT MODELS (DDM)
+# ============================================================================
+
+def calculate_gordon_growth_ddm(current_dividend, cost_of_equity, growth_rate, shares_outstanding):
+    """
+    Gordon Growth Model (Constant Growth DDM)
+    Value = D1 / (r - g)
+    Where D1 = D0 * (1 + g)
+    """
+    # Apply constraint: growth < cost of equity
+    if growth_rate >= cost_of_equity:
+        growth_rate = cost_of_equity * 0.9  # Safety margin
+
+    # Constrain terminal growth
+    growth_rate = apply_damodaran_constraints(growth_rate, 'terminal_growth')
+
+    # Calculate next year's dividend
+    d1 = current_dividend * (1 + growth_rate)
+
+    # Gordon Growth formula
+    equity_value = d1 / (cost_of_equity - growth_rate)
+    intrinsic_value_per_share = equity_value / shares_outstanding if shares_outstanding > 0 else 0
+
+    return {
+        'method': 'Gordon Growth DDM',
+        'current_dividend': current_dividend,
+        'd1': d1,
+        'cost_of_equity': cost_of_equity,
+        'growth_rate': growth_rate,
+        'equity_value': equity_value,
+        'intrinsic_value_per_share': intrinsic_value_per_share,
+        'shares_outstanding': shares_outstanding
+    }
+
+def calculate_multistage_ddm(current_dividend, cost_of_equity, high_growth_rate,
+                             high_growth_years, stable_growth_rate, shares_outstanding):
+    """
+    Multi-Stage DDM (H-Model or 2-Stage)
+    Phase 1: High growth period
+    Phase 2: Transition to stable growth
+    """
+    # Apply constraints
+    stable_growth_rate = apply_damodaran_constraints(stable_growth_rate, 'terminal_growth')
+
+    if stable_growth_rate >= cost_of_equity:
+        stable_growth_rate = cost_of_equity * 0.9
+
+    pv_dividends = 0
+    current_div = current_dividend
+
+    # Phase 1: High growth dividends
+    for year in range(1, high_growth_years + 1):
+        current_div = current_div * (1 + high_growth_rate)
+        pv = current_div / ((1 + cost_of_equity) ** year)
+        pv_dividends += pv
+
+    # Terminal value using Gordon Growth
+    terminal_dividend = current_div * (1 + stable_growth_rate)
+    terminal_value = terminal_dividend / (cost_of_equity - stable_growth_rate)
+    pv_terminal = terminal_value / ((1 + cost_of_equity) ** high_growth_years)
+
+    equity_value = pv_dividends + pv_terminal
+    intrinsic_value_per_share = equity_value / shares_outstanding if shares_outstanding > 0 else 0
+
+    return {
+        'method': 'Multi-Stage DDM',
+        'pv_high_growth_dividends': pv_dividends,
+        'terminal_value': terminal_value,
+        'pv_terminal': pv_terminal,
+        'equity_value': equity_value,
+        'intrinsic_value_per_share': intrinsic_value_per_share,
+        'high_growth_years': high_growth_years,
+        'stable_growth_rate': stable_growth_rate,
+        'shares_outstanding': shares_outstanding
+    }
+
+# ============================================================================
+# RESIDUAL INCOME (ECONOMIC PROFIT) MODEL
+# ============================================================================
+
+def calculate_residual_income(book_value_equity, roe, cost_of_equity, growth_rate,
+                              forecast_years, shares_outstanding):
+    """
+    Residual Income Model (Edwards-Bell-Ohlson)
+    Value = Book Value + PV(Residual Income)
+    RI = (ROE - Cost of Equity) × Book Value
+    """
+    # Apply ROE constraints
+    roe = apply_damodaran_constraints(roe, 'roe')
+    growth_rate = apply_damodaran_constraints(growth_rate, 'terminal_growth')
+
+    pv_residual_income = 0
+    current_bv = book_value_equity
+
+    for year in range(1, forecast_years + 1):
+        # Calculate residual income
+        residual_income = (roe - cost_of_equity) * current_bv
+
+        # Discount to present value
+        pv_ri = residual_income / ((1 + cost_of_equity) ** year)
+        pv_residual_income += pv_ri
+
+        # Grow book value
+        current_bv = current_bv * (1 + roe)
+
+    # Terminal value of residual income
+    terminal_ri = (roe - cost_of_equity) * current_bv
+    terminal_value = terminal_ri / (cost_of_equity - growth_rate) if (cost_of_equity - growth_rate) > 0 else 0
+    pv_terminal = terminal_value / ((1 + cost_of_equity) ** forecast_years)
+
+    equity_value = book_value_equity + pv_residual_income + pv_terminal
+    intrinsic_value_per_share = equity_value / shares_outstanding if shares_outstanding > 0 else 0
+
+    return {
+        'method': 'Residual Income',
+        'book_value_equity': book_value_equity,
+        'roe': roe,
+        'cost_of_equity': cost_of_equity,
+        'pv_residual_income': pv_residual_income,
+        'pv_terminal': pv_terminal,
+        'equity_value': equity_value,
+        'intrinsic_value_per_share': intrinsic_value_per_share,
+        'shares_outstanding': shares_outstanding
+    }
+
+# ============================================================================
+# RELATIVE VALUATION - PEER MULTIPLES
+# ============================================================================
+
+def fetch_peer_companies(ticker, sector, max_peers=10):
+    """
+    Fetch comparable companies for relative valuation
+    Uses sector peers with similar market cap
+    """
+    # Sector peer mapping (simplified - can be enhanced)
+    sector_peers = {
+        'Technology': ['AAPL', 'MSFT', 'GOOGL', 'META', 'NVDA', 'ORCL', 'CRM', 'ADBE', 'INTC', 'AMD'],
+        'Financial Services': ['JPM', 'BAC', 'WFC', 'C', 'GS', 'MS', 'BLK', 'V', 'MA'],
+        'Healthcare': ['JNJ', 'UNH', 'PFE', 'ABBV', 'TMO', 'LLY', 'MRK', 'ABT'],
+        'Consumer Cyclical': ['AMZN', 'TSLA', 'NKE', 'MCD', 'SBUX', 'HD', 'LOW'],
+        'Consumer Defensive': ['WMT', 'PG', 'KO', 'PEP', 'COST', 'CL', 'GIS'],
+        'Energy': ['XOM', 'CVX', 'COP', 'SLB', 'EOG', 'PXD'],
+        'Industrials': ['BA', 'CAT', 'GE', 'UPS', 'HON', 'LMT', 'RTX'],
+        'Communication Services': ['GOOGL', 'META', 'DIS', 'NFLX', 'CMCSA', 'T', 'VZ'],
+    }
+
+    peers = sector_peers.get(sector, [])
+    # Remove the target ticker from peers
+    peers = [p for p in peers if p != ticker]
+
+    return peers[:max_peers]
+
+def calculate_peer_multiples(peers):
+    """
+    Calculate median multiples from peer companies
+    Returns: P/E, EV/EBITDA, EV/EBIT, P/B, EV/Sales, PEG
+    """
+    multiples_data = []
+
+    for peer in peers:
+        try:
+            stock = yf.Ticker(peer)
+            info = stock.info
+
+            pe = info.get('trailingPE')
+            pb = info.get('priceToBook')
+            ps = info.get('priceToSalesTrailing12Months')
+            peg = info.get('pegRatio')
+
+            # Calculate EV multiples
+            market_cap = info.get('marketCap', 0)
+            total_debt = info.get('totalDebt', 0)
+            cash = info.get('totalCash', 0)
+            ev = market_cap + total_debt - cash
+
+            ebitda = info.get('ebitda')
+            ebit = info.get('ebit')
+            revenue = info.get('totalRevenue')
+
+            ev_ebitda = ev / ebitda if ebitda and ebitda > 0 else None
+            ev_ebit = ev / ebit if ebit and ebit > 0 else None
+            ev_sales = ev / revenue if revenue and revenue > 0 else None
+
+            # Apply outlier filters
+            if pe and VALUATION_CONSTRAINTS['min_pe_multiple'] <= pe <= VALUATION_CONSTRAINTS['max_pe_multiple']:
+                multiples_data.append({
+                    'ticker': peer,
+                    'pe': pe,
+                    'pb': pb,
+                    'ps': ps,
+                    'peg': peg,
+                    'ev_ebitda': ev_ebitda,
+                    'ev_ebit': ev_ebit,
+                    'ev_sales': ev_sales
+                })
+        except:
+            continue
+
+    if not multiples_data:
+        return None
+
+    # Calculate median multiples
+    df = pd.DataFrame(multiples_data)
+
+    median_multiples = {
+        'pe': df['pe'].median(),
+        'pb': df['pb'].median(),
+        'ps': df['ps'].median(),
+        'peg': df['peg'].median(),
+        'ev_ebitda': df['ev_ebitda'].median(),
+        'ev_ebit': df['ev_ebit'].median(),
+        'ev_sales': df['ev_sales'].median(),
+        'num_peers': len(multiples_data),
+        'peer_data': multiples_data
+    }
+
+    return median_multiples
+
+def apply_relative_valuation(company_financials, median_multiples, shares_outstanding):
+    """
+    Apply peer multiples to company financials
+    Returns valuation for each multiple
+    """
+    results = {}
+
+    # Extract company metrics
+    eps = company_financials.get('eps', 0)
+    book_value_per_share = company_financials.get('book_value_per_share', 0)
+    sales_per_share = company_financials.get('sales_per_share', 0)
+    ebitda = company_financials.get('ebitda', 0)
+    ebit = company_financials.get('ebit', 0)
+    revenue = company_financials.get('revenue', 0)
+    total_debt = company_financials.get('total_debt', 0)
+    cash = company_financials.get('cash', 0)
+
+    # P/E Valuation
+    if median_multiples['pe'] and eps:
+        results['pe_value'] = eps * median_multiples['pe']
+
+    # P/B Valuation
+    if median_multiples['pb'] and book_value_per_share:
+        results['pb_value'] = book_value_per_share * median_multiples['pb']
+
+    # P/S Valuation
+    if median_multiples['ps'] and sales_per_share:
+        results['ps_value'] = sales_per_share * median_multiples['ps']
+
+    # EV/EBITDA Valuation
+    if median_multiples['ev_ebitda'] and ebitda and ebitda > 0:
+        ev = ebitda * median_multiples['ev_ebitda']
+        equity_value = ev - total_debt + cash
+        results['ev_ebitda_value'] = equity_value / shares_outstanding if shares_outstanding > 0 else 0
+
+    # EV/EBIT Valuation
+    if median_multiples['ev_ebit'] and ebit and ebit > 0:
+        ev = ebit * median_multiples['ev_ebit']
+        equity_value = ev - total_debt + cash
+        results['ev_ebit_value'] = equity_value / shares_outstanding if shares_outstanding > 0 else 0
+
+    # EV/Sales Valuation
+    if median_multiples['ev_sales'] and revenue and revenue > 0:
+        ev = revenue * median_multiples['ev_sales']
+        equity_value = ev - total_debt + cash
+        results['ev_sales_value'] = equity_value / shares_outstanding if shares_outstanding > 0 else 0
+
+    # Calculate average relative valuation
+    valid_values = [v for v in results.values() if v is not None and v > 0]
+    results['average_relative_value'] = np.median(valid_values) if valid_values else 0
+    results['median_multiples'] = median_multiples
+
+    return results
+
+# ============================================================================
+# SUM-OF-THE-PARTS (SOTP) VALUATION
+# ============================================================================
+
+def calculate_sotp_valuation(segments, discount_rate, shares_outstanding):
+    """
+    Sum-of-the-Parts valuation for multi-segment companies
+    segments = [{'name': 'Segment A', 'revenue': X, 'ebitda_margin': Y, 'multiple': Z}, ...]
+    """
+    total_value = 0
+    segment_values = []
+
+    for segment in segments:
+        name = segment.get('name', 'Unnamed')
+        revenue = segment.get('revenue', 0)
+        ebitda_margin = segment.get('ebitda_margin', 0)
+        ev_revenue_multiple = segment.get('ev_revenue_multiple', 0)
+
+        # Calculate segment EBITDA
+        ebitda = revenue * ebitda_margin
+
+        # Value segment using EV/Revenue multiple
+        segment_ev = revenue * ev_revenue_multiple
+
+        segment_values.append({
+            'name': name,
+            'revenue': revenue,
+            'ebitda': ebitda,
+            'ev': segment_ev
+        })
+
+        total_value += segment_ev
+
+    # Convert to equity value (simplified - assumes segments share same debt structure)
+    intrinsic_value_per_share = total_value / shares_outstanding if shares_outstanding > 0 else 0
+
+    return {
+        'method': 'Sum-of-the-Parts',
+        'segment_values': segment_values,
+        'total_enterprise_value': total_value,
+        'intrinsic_value_per_share': intrinsic_value_per_share,
+        'shares_outstanding': shares_outstanding
+    }
+
+# ============================================================================
+# CONSOLIDATED VALUATION SUMMARY
+# ============================================================================
+
+def create_valuation_summary_table(valuations_dict, current_price):
+    """
+    Create consolidated summary table from all valuation methods
+    valuations_dict = {'FCFF': result, 'FCFE': result, 'DDM': result, ...}
+    """
+    summary_data = []
+
+    for method, result in valuations_dict.items():
+        if result and 'intrinsic_value_per_share' in result:
+            intrinsic_value = result['intrinsic_value_per_share']
+
+            if intrinsic_value > 0:
+                upside = ((intrinsic_value - current_price) / current_price) * 100
+
+                summary_data.append({
+                    'Method': method,
+                    'Intrinsic Value': intrinsic_value,
+                    'Current Price': current_price,
+                    'Upside/Downside (%)': upside,
+                    'Rating': 'BUY' if upside > 20 else ('HOLD' if upside > -10 else 'SELL')
+                })
+
+    if not summary_data:
+        return None
+
+    df = pd.DataFrame(summary_data)
+
+    # Add summary statistics
+    avg_intrinsic = df['Intrinsic Value'].mean()
+    median_intrinsic = df['Intrinsic Value'].median()
+    avg_upside = df['Upside/Downside (%)'].mean()
+
+    # Consensus rating
+    buy_count = len(df[df['Rating'] == 'BUY'])
+    hold_count = len(df[df['Rating'] == 'HOLD'])
+    sell_count = len(df[df['Rating'] == 'SELL'])
+
+    if buy_count > max(hold_count, sell_count):
+        consensus = 'BUY'
+    elif sell_count > max(buy_count, hold_count):
+        consensus = 'SELL'
+    else:
+        consensus = 'HOLD'
+
+    summary_stats = {
+        'average_intrinsic_value': avg_intrinsic,
+        'median_intrinsic_value': median_intrinsic,
+        'average_upside': avg_upside,
+        'consensus_rating': consensus,
+        'num_methods': len(df),
+        'buy_count': buy_count,
+        'hold_count': hold_count,
+        'sell_count': sell_count
+    }
+
+    return df, summary_stats
+
+# ============================================================================
 # PHOENIX PARSER
 # ============================================================================
 
