@@ -4003,10 +4003,24 @@ def create_performance_dashboard(metrics):
 
 def create_dcf_waterfall(dcf_results, method='FCFF'):
     """Create waterfall chart showing DCF buildup - ENHANCED THEMING"""
-    
+
+    # Defensive check: ensure required keys exist
+    required_keys = ['total_pv_cash_flows', 'pv_terminal', 'enterprise_value', 'equity_value']
+    if not all(k in dcf_results for k in required_keys):
+        # Return simple metric display instead of crashing
+        fig = go.Figure()
+        fig.add_annotation(
+            text="DCF calculation incomplete - please recalculate",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=14, color=COLORS['text_muted'])
+        )
+        apply_chart_theme(fig)
+        return fig
+
     categories = ['PV of Cash Flows', 'PV of Terminal Value']
     values = [dcf_results['total_pv_cash_flows'], dcf_results['pv_terminal']]
-    
+
     if method == 'FCFF':
         categories.append('Enterprise Value')
         categories.append('Less: Net Debt')
@@ -4014,7 +4028,7 @@ def create_dcf_waterfall(dcf_results, method='FCFF'):
         values.append(dcf_results['enterprise_value'])
         values.append(-dcf_results.get('net_debt', 0))
         values.append(dcf_results['equity_value'])
-    
+
     fig = go.Figure(go.Waterfall(
         name="DCF Buildup",
         orientation="v",
@@ -4024,13 +4038,13 @@ def create_dcf_waterfall(dcf_results, method='FCFF'):
         decreasing={"marker": {"color": COLORS['danger']}},
         increasing={"marker": {"color": COLORS['success']}},
     ))
-    
+
     fig.update_layout(
         title=f"💎 {method} Valuation Buildup",
         yaxis_title="Value ($)",
         height=500
     )
-    
+
     apply_chart_theme(fig)
     return fig
 
