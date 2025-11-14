@@ -1773,6 +1773,174 @@ def generate_smart_alerts_and_recommendations(portfolio_df, portfolio_returns=No
 
     return summary
 
+# ============================================================================
+# 🆕 v10.0: EXPORT FUNCTIONALITY - CLIENT-FRIENDLY
+# ============================================================================
+
+def create_comprehensive_excel_export(portfolio_df, enhanced_df=None, attribution_data=None, scenario_data=None, alerts_data=None, health_data=None):
+    """
+    🆕 v10.0: Comprehensive Excel Export with Multiple Sheets
+
+    Creates a professional multi-sheet Excel workbook with:
+    - Portfolio Holdings (formatted with colors)
+    - Attribution Analysis
+    - Scenario Results
+    - Smart Alerts & Recommendations
+    - Portfolio Health Metrics
+    """
+    from io import BytesIO
+
+    output = BytesIO()
+
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        # Sheet 1: Portfolio Holdings
+        if enhanced_df is not None and not enhanced_df.empty:
+            export_portfolio = enhanced_df.copy()
+
+            # Select key columns for export
+            export_cols = ['Ticker', 'Company', 'Shares', 'Avg Cost', 'Current Price',
+                          'Total Value', 'Total Cost', 'Total Gain/Loss $', 'Total Gain/Loss %',
+                          'Daily P&L $', 'Daily P&L %', 'Weight %', 'Sector']
+
+            export_portfolio = export_portfolio[[col for col in export_cols if col in export_portfolio.columns]]
+
+            export_portfolio.to_excel(writer, sheet_name='Portfolio Holdings', index=False)
+
+            # Format the sheet
+            worksheet = writer.sheets['Portfolio Holdings']
+
+            # Set column widths
+            worksheet.column_dimensions['A'].width = 12  # Ticker
+            worksheet.column_dimensions['B'].width = 25  # Company
+            worksheet.column_dimensions['C'].width = 12  # Shares
+            worksheet.column_dimensions['D'].width = 12  # Avg Cost
+            worksheet.column_dimensions['E'].width = 14  # Current Price
+            worksheet.column_dimensions['F'].width = 15  # Total Value
+            worksheet.column_dimensions['G'].width = 14  # Total Cost
+            worksheet.column_dimensions['H'].width = 18  # Gain/Loss $
+            worksheet.column_dimensions['I'].width = 16  # Gain/Loss %
+            worksheet.column_dimensions['J'].width = 14  # Daily P&L $
+            worksheet.column_dimensions['K'].width = 14  # Daily P&L %
+            worksheet.column_dimensions['L'].width = 12  # Weight %
+            worksheet.column_dimensions['M'].width = 20  # Sector
+
+        # Sheet 2: Brinson Attribution Analysis
+        if attribution_data is not None and 'attribution_df' in attribution_data:
+            attribution_df = attribution_data['attribution_df'].copy()
+            attribution_df.to_excel(writer, sheet_name='Brinson Attribution', index=False)
+
+        # Sheet 3: Scenario Analysis Results
+        if scenario_data is not None and 'scenario_results' in scenario_data:
+            scenario_list = []
+            for result in scenario_data['scenario_results']:
+                scenario_list.append({
+                    'Scenario': result['scenario'],
+                    'Type': result['type'],
+                    'Impact %': result['impact_pct'],
+                    'Impact $': result['impact_dollars'],
+                    'New Portfolio Value': result['new_value']
+                })
+
+            scenario_df = pd.DataFrame(scenario_list)
+            scenario_df.to_excel(writer, sheet_name='Scenario Analysis', index=False)
+
+        # Sheet 4: Smart Alerts & Recommendations
+        if alerts_data is not None:
+            # Alerts sheet
+            if alerts_data.get('alerts'):
+                alerts_list = []
+                for alert in alerts_data['alerts']:
+                    alerts_list.append({
+                        'Severity': alert['severity'],
+                        'Category': alert['category'],
+                        'Title': alert['title'],
+                        'Message': alert['message'],
+                        'Action': alert['action']
+                    })
+                alerts_df = pd.DataFrame(alerts_list)
+                alerts_df.to_excel(writer, sheet_name='Alerts', index=False)
+
+            # Recommendations sheet
+            if alerts_data.get('recommendations'):
+                rec_list = []
+                for rec in alerts_data['recommendations']:
+                    rec_list.append({
+                        'Priority': rec['priority'],
+                        'Type': rec['type'],
+                        'Action': rec['action'],
+                        'Rationale': rec['rationale']
+                    })
+                rec_df = pd.DataFrame(rec_list)
+                rec_df.to_excel(writer, sheet_name='Recommendations', index=False)
+
+        # Sheet 5: Portfolio Health Metrics
+        if health_data is not None:
+            health_list = [{
+                'Metric': 'Portfolio Stress Score',
+                'Value': f"{health_data.get('stress_score', 0):.1f}/100"
+            }, {
+                'Metric': 'Herfindahl Concentration Index',
+                'Value': f"{health_data.get('herfindahl_index', 0):.4f}"
+            }, {
+                'Metric': 'Largest Position %',
+                'Value': f"{health_data.get('max_position_pct', 0):.1f}%"
+            }, {
+                'Metric': 'Largest Sector %',
+                'Value': f"{health_data.get('max_sector_pct', 0):.1f}%"
+            }, {
+                'Metric': 'Number of Positions',
+                'Value': str(health_data.get('num_positions', 0))
+            }, {
+                'Metric': 'Number of Sectors',
+                'Value': str(health_data.get('num_sectors', 0))
+            }, {
+                'Metric': 'Liquidity Score',
+                'Value': f"{health_data.get('liquidity_score', 0):.1f}/100"
+            }]
+
+            if health_data.get('tracking_error') is not None:
+                health_list.append({
+                    'Metric': 'Tracking Error',
+                    'Value': f"{health_data['tracking_error']:.2%}"
+                })
+
+            if health_data.get('information_ratio') is not None:
+                health_list.append({
+                    'Metric': 'Information Ratio',
+                    'Value': f"{health_data['information_ratio']:.2f}"
+                })
+
+            health_df = pd.DataFrame(health_list)
+            health_df.to_excel(writer, sheet_name='Health Metrics', index=False)
+
+        # Sheet 6: Export Metadata
+        metadata = pd.DataFrame([{
+            'Export Date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'ATLAS Terminal Version': 'v10.0 INSTITUTIONAL EDITION',
+            'Total Positions': len(portfolio_df) if portfolio_df is not None else 0,
+            'Portfolio Value': enhanced_df['Total Value'].sum() if enhanced_df is not None and not enhanced_df.empty else 0
+        }])
+        metadata.to_excel(writer, sheet_name='Export Info', index=False)
+
+    output.seek(0)
+    return output
+
+def create_csv_portfolio_export(enhanced_df):
+    """Create CSV export of portfolio holdings"""
+    if enhanced_df is None or enhanced_df.empty:
+        return None
+
+    export_df = enhanced_df.copy()
+
+    # Select key columns
+    export_cols = ['Ticker', 'Company', 'Shares', 'Avg Cost', 'Current Price',
+                   'Total Value', 'Total Cost', 'Total Gain/Loss $', 'Total Gain/Loss %',
+                   'Daily P&L $', 'Daily P&L %', 'Weight %', 'Sector']
+
+    export_df = export_df[[col for col in export_cols if col in export_df.columns]]
+
+    return export_df.to_csv(index=False).encode('utf-8')
+
 def create_sparkline(ticker, days=30):
     """Generate mini sparkline chart for ticker (last 30 days)"""
     try:
@@ -6040,7 +6208,110 @@ def main():
         perf_heatmap = create_performance_heatmap(enhanced_df)
         if perf_heatmap:
             st.plotly_chart(perf_heatmap, use_container_width=True)
-    
+
+        # 🆕 v10.0: EXPORT CENTER - CLIENT-FRIENDLY UI
+        st.markdown("---")
+        st.markdown("### 📥 Export Center")
+        st.caption("Download your portfolio data and analysis in professional formats")
+
+        export_col1, export_col2, export_col3 = st.columns(3)
+
+        with export_col1:
+            st.markdown("#### 📊 Excel Workbook")
+            st.write("Comprehensive multi-sheet workbook with:")
+            st.write("• Portfolio holdings with all metrics")
+            st.write("• Brinson attribution analysis")
+            st.write("• Scenario analysis results")
+            st.write("• Smart alerts & recommendations")
+            st.write("• Portfolio health metrics")
+
+            if st.button("📥 Generate Excel Export", use_container_width=True, key="excel_export_btn"):
+                with st.spinner("Generating Excel workbook..."):
+                    try:
+                        # Gather all data for export
+                        attribution_result = create_advanced_attribution_waterfall(enhanced_df)
+                        scenario_result = create_scenario_analysis_module(enhanced_df)
+                        alerts_result = generate_smart_alerts_and_recommendations(enhanced_df, portfolio_returns)
+                        health_result = create_portfolio_health_panel(
+                            enhanced_df,
+                            portfolio_returns if is_valid_series(portfolio_returns) else None,
+                            benchmark_returns
+                        )
+
+                        # Create Excel export
+                        excel_data = create_comprehensive_excel_export(
+                            portfolio_data=df,
+                            enhanced_df=enhanced_df,
+                            attribution_data=attribution_result[1] if attribution_result else None,
+                            scenario_data=scenario_result[1] if scenario_result else None,
+                            alerts_data=alerts_result,
+                            health_data=health_result[1] if health_result else None
+                        )
+
+                        # Generate filename
+                        filename = f"ATLAS_Portfolio_Export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+
+                        st.download_button(
+                            label="⬇️ Download Excel File",
+                            data=excel_data,
+                            file_name=filename,
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            use_container_width=True
+                        )
+
+                        st.success(f"✅ Excel export ready! Click to download")
+
+                    except Exception as e:
+                        st.error(f"❌ Export failed: {str(e)}")
+
+        with export_col2:
+            st.markdown("#### 📄 CSV Data")
+            st.write("Raw portfolio data in CSV format:")
+            st.write("• All holdings with metrics")
+            st.write("• Compatible with Excel/Sheets")
+            st.write("• Easy to import elsewhere")
+            st.write("• Lightweight format")
+            st.write("")  # Spacing
+
+            if st.button("📥 Generate CSV Export", use_container_width=True, key="csv_export_btn"):
+                with st.spinner("Generating CSV file..."):
+                    try:
+                        csv_data = create_csv_portfolio_export(enhanced_df)
+
+                        if csv_data:
+                            filename = f"ATLAS_Portfolio_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+
+                            st.download_button(
+                                label="⬇️ Download CSV File",
+                                data=csv_data,
+                                file_name=filename,
+                                mime="text/csv",
+                                use_container_width=True
+                            )
+
+                            st.success("✅ CSV export ready! Click to download")
+                        else:
+                            st.error("❌ No data available for export")
+
+                    except Exception as e:
+                        st.error(f"❌ Export failed: {str(e)}")
+
+        with export_col3:
+            st.markdown("#### 📋 Export Info")
+            st.write(f"**Portfolio Value:** {format_currency(total_value)}")
+            st.write(f"**Positions:** {len(enhanced_df)}")
+            st.write(f"**Benchmark:** {selected_benchmark}")
+            st.write(f"**Time Range:** {selected_range}")
+            st.write("")
+            st.info("💡 **Tip:** Excel exports include multiple sheets with all your analysis. CSV is a simple format for basic data.")
+
+        # Quick export preview
+        with st.expander("👁️ Preview Export Data", expanded=False):
+            preview_df = enhanced_df[['Ticker', 'Shares', 'Current Price', 'Total Value',
+                                      'Total Gain/Loss %', 'Weight %', 'Sector']].head(10)
+            st.dataframe(preview_df, use_container_width=True, hide_index=True)
+            st.caption(f"Showing 10 of {len(enhanced_df)} positions")
+
     # ========================================================================
     # MARKET WATCH - COMPLETE REVAMP
     # ========================================================================
