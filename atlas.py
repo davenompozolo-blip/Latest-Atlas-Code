@@ -944,34 +944,55 @@ def validate_portfolio_data(portfolio_data):
             'total_holdings': 0,
             'data_quality_score': 0,
             'issues': ['No portfolio data available'],
-            'warnings': []
+            'warnings': [],
+            'null_counts': {},
+            'total_rows': 0,
+            'complete_rows': 0
         }
 
     df = pd.DataFrame(portfolio_data)
     issues = []
     warnings = []
 
-    # Check required columns
-    required_columns = ['Ticker', 'Quantity', 'Current Price']
+    # Check required columns - use flexible column names
+    required_columns = ['Ticker']
+    optional_columns = ['Quantity', 'Current Price', 'Shares', 'Price', 'Last Price']
+
     missing_columns = [col for col in required_columns if col not in df.columns]
     if missing_columns:
         issues.append(f"Missing required columns: {', '.join(missing_columns)}")
 
-    # Check for null values
-    null_counts = df[required_columns].isnull().sum()
-    for col, count in null_counts.items():
-        if count > 0:
-            warnings.append(f"{col}: {count} missing values")
+    # Check for null values only on existing columns
+    existing_check_cols = [col for col in required_columns if col in df.columns]
+    null_counts = {}
 
-    # Check for negative quantities
-    if 'Quantity' in df.columns:
-        negative_qty = (df['Quantity'] < 0).sum()
+    if existing_check_cols:
+        null_counts = df[existing_check_cols].isnull().sum().to_dict()
+        for col, count in null_counts.items():
+            if count > 0:
+                warnings.append(f"{col}: {count} missing values")
+
+    # Check for negative quantities (flexible column names)
+    qty_col = None
+    for col in ['Quantity', 'Shares', 'Qty']:
+        if col in df.columns:
+            qty_col = col
+            break
+
+    if qty_col:
+        negative_qty = (df[qty_col] < 0).sum()
         if negative_qty > 0:
             warnings.append(f"{negative_qty} holdings with negative quantities (short positions)")
 
-    # Check for zero/negative prices
-    if 'Current Price' in df.columns:
-        invalid_prices = (df['Current Price'] <= 0).sum()
+    # Check for zero/negative prices (flexible column names)
+    price_col = None
+    for col in ['Current Price', 'Price', 'Last Price', 'Close']:
+        if col in df.columns:
+            price_col = col
+            break
+
+    if price_col:
+        invalid_prices = (df[price_col] <= 0).sum()
         if invalid_prices > 0:
             issues.append(f"{invalid_prices} holdings with invalid prices (≤0)")
 
@@ -987,15 +1008,20 @@ def validate_portfolio_data(portfolio_data):
     quality_score -= len(warnings) * 5  # Moderate penalty for warnings
     quality_score = max(0, min(100, quality_score))
 
+    # Calculate complete rows
+    complete_rows = len(df)
+    if existing_check_cols:
+        complete_rows = len(df.dropna(subset=existing_check_cols))
+
     return {
         'is_valid': len(issues) == 0,
         'total_holdings': len(df),
         'data_quality_score': quality_score,
         'issues': issues,
         'warnings': warnings,
-        'null_counts': null_counts.to_dict() if not null_counts.empty else {},
+        'null_counts': null_counts,
         'total_rows': len(df),
-        'complete_rows': len(df.dropna(subset=required_columns)) if all(c in df.columns for c in required_columns) else 0
+        'complete_rows': complete_rows
     }
 
 def get_leverage_info():
