@@ -1929,26 +1929,61 @@ def create_valuation_summary_table(valuations_dict, current_price):
 # ============================================================================
 
 def parse_trade_history_file(uploaded_file):
+    """Parse Phoenix trade history file with detailed error reporting"""
     try:
+        # Try reading the HTML file
         df = pd.read_html(uploaded_file)[0]
+
+        # Check for required columns
         required_cols = ['Date', 'Symbol', 'Trade Type', 'Quantity', 'Price']
-        if not all(col in df.columns for col in required_cols):
-            return None
+        missing_cols = [col for col in required_cols if col not in df.columns]
+
+        if missing_cols:
+            return {
+                'success': False,
+                'error': f"Missing required columns: {', '.join(missing_cols)}",
+                'found_columns': list(df.columns),
+                'data': None
+            }
+
+        # Parse and clean data
         df['Price'] = df['Price'].astype(str).str.replace('$', '').str.replace(',', '').astype(float)
         df['Date'] = pd.to_datetime(df['Date'])
         df = df.sort_values('Date')
-        return df
-    except:
-        return None
+
+        return {
+            'success': True,
+            'error': None,
+            'data': df,
+            'row_count': len(df)
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'error': f"Parse error: {str(e)}",
+            'found_columns': None,
+            'data': None
+        }
 
 def parse_account_history_file(uploaded_file):
+    """Parse Phoenix account history file with detailed error reporting"""
     try:
         df = pd.read_html(uploaded_file)[0]
         df['Date'] = pd.to_datetime(df['Date'])
         df = df.sort_values('Date')
-        return df
-    except:
-        return None
+
+        return {
+            'success': True,
+            'error': None,
+            'data': df,
+            'row_count': len(df)
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'error': f"Parse error: {str(e)}",
+            'data': None
+        }
 
 def calculate_portfolio_from_trades(trade_df):
     holdings = {}
@@ -3977,35 +4012,46 @@ def main():
         with col1:
             st.markdown("### 📊 Trade History")
             trade_file = st.file_uploader("Upload Trade History", type=['xls', 'xlsx'], key="trade")
-            
+
             if trade_file:
-                with st.spinner("Parsing..."):
-                    trade_df = parse_trade_history_file(trade_file)
-                    
-                    if trade_df is not None:
+                with st.spinner("Parsing trade history..."):
+                    result = parse_trade_history_file(trade_file)
+
+                    if result['success']:
+                        trade_df = result['data']
                         save_trade_history(trade_df)
-                        st.success(f"✅ Parsed {len(trade_df)} trades!")
+                        st.success(f"✅ Loaded {len(trade_df)} trades - Portfolio will be built from this data")
                         st.dataframe(trade_df.head(10), use_container_width=True)
-                        
+
+                        # Build portfolio from trades
                         portfolio_df = calculate_portfolio_from_trades(trade_df)
                         if len(portfolio_df) > 0:
                             save_portfolio_data(portfolio_df.to_dict('records'))
-                            st.success(f"🎉 Portfolio rebuilt! {len(portfolio_df)} positions")
+                            st.success(f"🎉 Portfolio built: {len(portfolio_df)} open positions")
                             st.dataframe(portfolio_df, use_container_width=True)
-        
+                        else:
+                            st.warning("⚠️ No open positions found in trade history")
+                    else:
+                        # Show detailed error information
+                        st.error(f"❌ Failed to parse trade history: {result['error']}")
+                        if result.get('found_columns'):
+                            st.info(f"**Found columns:** {', '.join(result['found_columns'])}")
+                            st.info(f"**Required columns:** Date, Symbol, Trade Type, Quantity, Price")
+
         with col2:
             st.markdown("### 💰 Account History")
             account_file = st.file_uploader("Upload Account History", type=['xls', 'xlsx'], key="account")
-            
+
             if account_file:
-                with st.spinner("Parsing..."):
-                    account_df = parse_account_history_file(account_file)
-                    
-                    if account_df is not None:
+                with st.spinner("Parsing account history..."):
+                    result = parse_account_history_file(account_file)
+
+                    if result['success']:
+                        account_df = result['data']
                         save_account_history(account_df)
-                        st.success(f"✅ Parsed {len(account_df)} records!")
+                        st.success(f"✅ Parsed {len(account_df)} account records!")
                         st.dataframe(account_df.head(10), use_container_width=True)
-                        
+
                         leverage_info_parsed = get_leverage_info()
                         if leverage_info_parsed:
                             st.info(f"""
@@ -4013,6 +4059,8 @@ def main():
                             - Margin: ${leverage_info_parsed['margin_used']:,.2f}
                             - Leverage: {leverage_info_parsed['leverage_ratio']:.2f}x
                             """)
+                    else:
+                        st.error(f"❌ Failed to parse account history: {result['error']}")
     
     # ========================================================================
     # PORTFOLIO HOME - ENHANCED WITH CONTRIBUTORS/DETRACTORS
