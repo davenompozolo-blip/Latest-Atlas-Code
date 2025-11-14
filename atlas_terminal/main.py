@@ -19,7 +19,9 @@ from atlas_terminal.pages import (
     market_watch,
     risk_analysis,
     portfolio_deep_dive,
-    valuation_house
+    valuation_house,
+    trade_journal,
+    risk_dashboard
 )
 from atlas_terminal.data.cache_manager import (
     load_portfolio_data, load_account_history, load_trade_history,
@@ -233,30 +235,10 @@ def main():
             valuation_house.render()
 
         elif selected_page == "📓 Trade Journal":
-            st.title("📓 Trade Journal")
-            st.info("🚧 NEW FEATURE - Under construction in v10.0")
-            st.caption("Coming soon: Trade tracking, performance attribution, win/loss analysis")
-            st.markdown("""
-            **Planned Features:**
-            - Automatic trade detection from history
-            - Complete trade lifecycle tracking
-            - Performance attribution per trade
-            - Win/Loss statistics
-            - Trade notes, tags, and strategies
-            """)
+            trade_journal.render()
 
         elif selected_page == "🎯 Risk Dashboard":
-            st.title("🎯 Risk Dashboard")
-            st.info("🚧 NEW FEATURE - Under construction in v10.0")
-            st.caption("Coming soon: Risk budget monitoring, position risk, stress scenarios")
-            st.markdown("""
-            **Planned Features:**
-            - Risk budget utilization tracking
-            - Position-level risk contributions
-            - Pre-trade risk assessment
-            - Stress testing integration
-            - Automated alerts at thresholds
-            """)
+            risk_dashboard.render()
 
         else:
             st.error("Unknown page selected")

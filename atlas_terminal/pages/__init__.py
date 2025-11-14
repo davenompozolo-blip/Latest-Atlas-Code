@@ -8,7 +8,9 @@ from . import (
     market_watch,
     risk_analysis,
     portfolio_deep_dive,
-    valuation_house
+    valuation_house,
+    trade_journal,
+    risk_dashboard
 )
 
 __all__ = [
@@ -16,5 +18,7 @@ __all__ = [
     'market_watch',
     'risk_analysis',
     'portfolio_deep_dive',
-    'valuation_house'
+    'valuation_house',
+    'trade_journal',
+    'risk_dashboard'
 ]
