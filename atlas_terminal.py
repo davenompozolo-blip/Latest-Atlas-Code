@@ -760,8 +760,8 @@ def create_pnl_attribution_position(df, top_n=10):
 
     colors = [COLORS['success'] if x > 0 else COLORS['danger'] for x in combined['Gain/Loss %']]
 
-    # Create labels with ticker and percentage
-    labels = [f"{ticker}" for ticker in combined['Ticker']]
+    # Create labels with ticker
+    labels = combined['Ticker'].tolist()
 
     fig = go.Figure(go.Bar(
         x=combined['Gain/Loss %'],
@@ -1184,6 +1184,8 @@ def fetch_company_financials(ticker):
             'beta': info.get('beta', 1.0),
             'forward_pe': info.get('forwardPE'),
             'trailing_pe': info.get('trailingPE'),
+            'dividendRate': info.get('dividendRate', 0),
+            'dividendYield': info.get('dividendYield', 0),
         }
         
         # Financial statements
@@ -1322,7 +1324,20 @@ def calculate_smart_assumptions(company_data, financials):
     
     # Smart Tax Rate (based on geography and sector)
     smart_tax_rate = 0.21  # US corporate rate
-    
+
+    # Smart Dividend Growth (typically 80% of revenue growth, capped at 5%)
+    smart_dividend_growth = min(smart_revenue_growth * 0.8, 0.05)
+
+    # Smart Cost of Equity (using CAPM with market assumptions)
+    # Risk-free rate: 4.5%, Market risk premium: 6%, Beta from company data
+    beta = company_data.get('beta', 1.0)
+    smart_cost_of_equity = 0.045 + (beta * 0.06)
+
+    # Smart Multi-Stage DDM parameters
+    smart_high_growth_rate = min(smart_revenue_growth * 1.2, 0.10)  # 20% higher than revenue growth, capped at 10%
+    smart_high_growth_years = 5
+    smart_stable_growth_rate = smart_terminal_growth
+
     return {
         'revenue_growth': smart_revenue_growth,
         'ebit_margin': smart_ebit_margin,
@@ -1331,7 +1346,12 @@ def calculate_smart_assumptions(company_data, financials):
         'terminal_growth': smart_terminal_growth,
         'tax_rate': smart_tax_rate,
         'wc_change': 0,  # Assume neutral
-        'forecast_years': 5
+        'forecast_years': 5,
+        'dividend_growth': smart_dividend_growth,
+        'cost_of_equity': smart_cost_of_equity,
+        'high_growth_rate': smart_high_growth_rate,
+        'high_growth_years': smart_high_growth_years,
+        'stable_growth_rate': smart_stable_growth_rate
     }
 
 def calculate_wacc(cost_equity, cost_debt, tax_rate, debt, equity):
@@ -4892,7 +4912,7 @@ def main():
                                 min_value=0.0,
                                 max_value=50.0,
                                 value=20.0,
-                                step=1.0
+                                step=0.5
                             ) / 100
 
                         forecast_years = st.slider(
@@ -4988,7 +5008,7 @@ def main():
                                 min_value=0.0,
                                 max_value=40.0,
                                 value=float(financials.get('tax_rate', 0.21) * 100),
-                                step=1.0
+                                step=0.5
                             ) / 100
 
                         if method_key == 'FCFE':
@@ -5038,10 +5058,10 @@ def main():
                     # Get current dividend from company data
                     current_dividend_default = company.get('dividendRate', 0) * company['shares_outstanding']
                     if current_dividend_default == 0:
-                        # Try to estimate from dividend yield
+                        # Try to estimate from dividend yield and current price
                         div_yield = company.get('dividendYield', 0)
-                        if div_yield > 0:
-                            current_dividend_default = company['market_cap'] * div_yield
+                        if div_yield > 0 and company['current_price'] > 0 and company['shares_outstanding'] > 0:
+                            current_dividend_default = company['current_price'] * company['shares_outstanding'] * div_yield
 
                     current_dividend = st.number_input(
                         "Current Annual Dividend ($)",
@@ -5122,8 +5142,8 @@ def main():
                     current_dividend_default = company.get('dividendRate', 0) * company['shares_outstanding']
                     if current_dividend_default == 0:
                         div_yield = company.get('dividendYield', 0)
-                        if div_yield > 0:
-                            current_dividend_default = company['market_cap'] * div_yield
+                        if div_yield > 0 and company['current_price'] > 0 and company['shares_outstanding'] > 0:
+                            current_dividend_default = company['current_price'] * company['shares_outstanding'] * div_yield
 
                     current_dividend_ms = st.number_input(
                         "Current Annual Dividend ($)",
@@ -5388,7 +5408,7 @@ def main():
                                 min_value=0.0,
                                 max_value=50.0,
                                 value=20.0,
-                                step=1.0,
+                                step=0.5,
                                 key=f"seg_ebitda_{i}"
                             ) / 100
 
