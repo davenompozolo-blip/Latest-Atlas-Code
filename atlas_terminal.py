@@ -752,18 +752,18 @@ def create_pnl_attribution_sector(df):
 
 def create_pnl_attribution_position(df, top_n=10):
     """v9.7 ENHANCED: P&L Attribution by Position - Now showing % returns"""
-    # v9.7 FIX: Use Gain/Loss % instead of dollars
-    top_contributors = df.nlargest(top_n // 2, 'Gain/Loss %')
-    top_detractors = df.nsmallest(top_n // 2, 'Gain/Loss %')
-    combined = pd.concat([top_contributors, top_detractors]).sort_values('Gain/Loss %')
+    # CRITICAL FIX: Use correct column name 'Total Gain/Loss %'
+    top_contributors = df.nlargest(top_n // 2, 'Total Gain/Loss %')
+    top_detractors = df.nsmallest(top_n // 2, 'Total Gain/Loss %')
+    combined = pd.concat([top_contributors, top_detractors]).sort_values('Total Gain/Loss %')
 
-    colors = [COLORS['success'] if x > 0 else COLORS['danger'] for x in combined['Gain/Loss %']]
+    colors = [COLORS['success'] if x > 0 else COLORS['danger'] for x in combined['Total Gain/Loss %']]
 
     # Create labels with ticker
     labels = combined['Ticker'].tolist()
 
     fig = go.Figure(go.Bar(
-        x=combined['Gain/Loss %'],
+        x=combined['Total Gain/Loss %'],
         y=labels,
         orientation='h',
         marker=dict(
@@ -771,7 +771,7 @@ def create_pnl_attribution_position(df, top_n=10):
             line=dict(color=COLORS['border'], width=2),
             opacity=0.9
         ),
-        text=[f"{v:+.1f}%" for v in combined['Gain/Loss %']],
+        text=[f"{v:+.1f}%" for v in combined['Total Gain/Loss %']],
         textposition='outside',
         textfont=dict(size=11, color=COLORS['text_primary']),
         hovertemplate='<b>%{y}</b><br>Return: %{x:.2f}%<extra></extra>'
