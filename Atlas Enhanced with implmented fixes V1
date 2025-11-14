@@ -473,380 +473,6 @@ def add_arrow_indicator(value):
         return value
 
 # ============================================================================
-# PROFESSIONAL ENHANCEMENTS - ATLAS v9.4 EXCELLENCE EDITION
-# ============================================================================
-
-# Enhanced Formatting Standards with Strict Rules
-class ATLASFormatter:
-    """
-    Centralized professional formatting with strict standards:
-    - Prices: $ with 2 decimals
-    - Yields/Returns: % with 2 decimals
-    - Ratios: 1 decimal, no units
-    - Missing data: "–"
-    - Color rules: Green positive, Red negative, Grey zero
-    """
-
-    @staticmethod
-    def format_price(value, decimals=2):
-        """Prices: Always $ with exactly 2 decimals"""
-        if pd.isna(value) or value is None:
-            return "–"
-        return f"${value:,.{decimals}f}"
-
-    @staticmethod
-    def format_yield(value, decimals=2):
-        """Yields/Returns: Always % with exactly 2 decimals"""
-        if pd.isna(value) or value is None:
-            return "–"
-        return f"{value:.{decimals}f}%"
-
-    @staticmethod
-    def format_ratio(value, decimals=1):
-        """Ratios: 1 decimal place, no units"""
-        if pd.isna(value) or value is None:
-            return "–"
-        return f"{value:.{decimals}f}"
-
-    @staticmethod
-    def get_color(value):
-        """Color rules: Green positive, Red negative, Grey zero"""
-        if pd.isna(value) or value is None:
-            return COLORS['text_muted']
-        if value > 0:
-            return COLORS['success']
-        elif value < 0:
-            return COLORS['danger']
-        return COLORS['text_muted']
-
-    @staticmethod
-    def format_timestamp(dt=None):
-        """Data freshness indicator with precise timestamp"""
-        if dt is None:
-            dt = datetime.now()
-        return dt.strftime("%Y-%m-%d %H:%M:%S")
-
-    @staticmethod
-    def get_freshness_badge(minutes_ago):
-        """Visual freshness indicator based on age"""
-        if minutes_ago < 5:
-            return f"🟢 Live ({minutes_ago}m ago)"
-        elif minutes_ago < 30:
-            return f"🟡 Recent ({minutes_ago}m ago)"
-        else:
-            return f"🔴 Stale ({minutes_ago}m ago)"
-
-# Valuation Scenario System
-VALUATION_SCENARIOS = {
-    'BEAR': {
-        'name': '🐻 Bear Case',
-        'revenue_growth': -0.05,
-        'terminal_growth': 0.015,
-        'risk_premium': 0.08,
-        'capex_pct': 0.07,
-        'description': 'Conservative: Negative growth, higher risk premium, elevated capex'
-    },
-    'BASE': {
-        'name': '📊 Base Case',
-        'revenue_growth': 0.05,
-        'terminal_growth': 0.025,
-        'risk_premium': 0.06,
-        'capex_pct': 0.05,
-        'description': 'Realistic: Moderate growth assumptions, normal operating conditions'
-    },
-    'BULL': {
-        'name': '🚀 Bull Case',
-        'revenue_growth': 0.15,
-        'terminal_growth': 0.035,
-        'risk_premium': 0.05,
-        'capex_pct': 0.04,
-        'description': 'Optimistic: High growth, lower risk premium, efficient capex'
-    }
-}
-
-def create_risk_snapshot(df, portfolio_returns):
-    """
-    Professional Risk Snapshot Dashboard Widget
-    Displays: Portfolio Beta, Volatility, Max Drawdown, Top 3 Exposures
-    """
-    # Calculate aggregate portfolio beta
-    weighted_beta = (df['Beta'].fillna(1.0) * df['Weight %'] / 100).sum()
-
-    # Calculate annualized volatility
-    vol = portfolio_returns.std() * np.sqrt(252) * 100 if is_valid_series(portfolio_returns) else 0
-
-    # Calculate max drawdown
-    if is_valid_series(portfolio_returns) and len(portfolio_returns) > 0:
-        cumulative = (1 + portfolio_returns).cumprod()
-        running_max = cumulative.expanding().max()
-        drawdown = ((cumulative - running_max) / running_max * 100).min()
-    else:
-        drawdown = 0
-
-    # Top 3 exposures by weight
-    top_3 = df.nlargest(3, 'Weight %')[['Ticker', 'Weight %']]
-
-    # Create compact, professional HTML widget
-    snapshot_html = f"""
-    <div style='background: linear-gradient(135deg, {COLORS['card_background']} 0%, {COLORS['card_background_alt']} 100%);
-                border: 2px solid {COLORS['neon_blue']}; border-radius: 12px; padding: 20px; margin: 10px 0;
-                box-shadow: 0 0 30px {COLORS['shadow']};'>
-        <h3 style='color: {COLORS['neon_blue']}; margin: 0 0 15px 0; font-size: 18px;'>⚡ Risk Snapshot</h3>
-        <div style='display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px;'>
-            <div>
-                <div style='color: {COLORS['text_muted']}; font-size: 11px; text-transform: uppercase;'>Portfolio Beta</div>
-                <div style='color: {COLORS['text_primary']}; font-size: 24px; font-weight: 600;'>{ATLASFormatter.format_ratio(weighted_beta)}</div>
-            </div>
-            <div>
-                <div style='color: {COLORS['text_muted']}; font-size: 11px; text-transform: uppercase;'>Volatility (Ann.)</div>
-                <div style='color: {COLORS['warning']}; font-size: 24px; font-weight: 600;'>{ATLASFormatter.format_yield(vol)}</div>
-            </div>
-            <div>
-                <div style='color: {COLORS['text_muted']}; font-size: 11px; text-transform: uppercase;'>Max Drawdown</div>
-                <div style='color: {COLORS['danger']}; font-size: 24px; font-weight: 600;'>{ATLASFormatter.format_yield(drawdown)}</div>
-            </div>
-            <div>
-                <div style='color: {COLORS['text_muted']}; font-size: 11px; text-transform: uppercase;'>Top Exposures</div>
-                <div style='color: {COLORS['text_primary']}; font-size: 13px; line-height: 1.6; margin-top: 5px;'>
-                    {'<br>'.join([f"• {row['Ticker']} ({row['Weight %']:.1f}%)" for _, row in top_3.iterrows()])}
-                </div>
-            </div>
-        </div>
-    </div>
-    """
-    return snapshot_html
-
-def calculate_signal_health(metrics):
-    """
-    Calculate overall portfolio health score with traffic light system
-    Returns: (status, percentage, label)
-    GREEN: 80%+, YELLOW: 50-79%, RED: <50%
-    """
-    score = 0
-    max_score = 5
-
-    # Check 1: Positive returns
-    if metrics.get('Total Return', 0) > 0:
-        score += 1
-
-    # Check 2: Sharpe > 1.0 (good risk-adjusted returns)
-    if metrics.get('Sharpe Ratio', 0) > 1.0:
-        score += 1
-
-    # Check 3: Drawdown > -20% (manageable losses)
-    if metrics.get('Max Drawdown', -100) > -20:
-        score += 1
-
-    # Check 4: Win rate > 55% (more winning days)
-    if metrics.get('Win Rate', 0) > 55:
-        score += 1
-
-    # Check 5: Volatility < 25% (controlled risk)
-    if metrics.get('Annualized Volatility', 100) < 25:
-        score += 1
-
-    percentage = (score / max_score) * 100
-
-    if percentage >= 80:
-        status = 'GREEN'
-        emoji = '🟢'
-        label = 'HEALTHY'
-    elif percentage >= 50:
-        status = 'YELLOW'
-        emoji = '🟡'
-        label = 'CAUTION'
-    else:
-        status = 'RED'
-        emoji = '🔴'
-        label = 'AT RISK'
-
-    return status, percentage, f"{emoji} {label}"
-
-def create_signal_health_badge(metrics):
-    """Create visual health indicator badge for portfolio"""
-    status, percentage, label = calculate_signal_health(metrics)
-
-    color_map = {
-        'GREEN': COLORS['success'],
-        'YELLOW': COLORS['warning'],
-        'RED': COLORS['danger']
-    }
-
-    badge_html = f"""
-    <div style='display: inline-block; background: {color_map[status]};
-                color: #000000; padding: 10px 20px; border-radius: 20px;
-                font-weight: 700; font-size: 15px; margin: 10px 0;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.3);'>
-        {label} ({percentage:.0f}%)
-    </div>
-    """
-    return badge_html
-
-def create_pnl_attribution_sector(df):
-    """P&L Attribution by Sector - Waterfall chart"""
-    sector_pnl = df.groupby('Sector')['Total Gain/Loss $'].sum().sort_values(ascending=False)
-
-    fig = go.Figure(go.Waterfall(
-        name="Sector P&L",
-        orientation="v",
-        x=sector_pnl.index,
-        y=sector_pnl.values,
-        connector={"line": {"color": COLORS['neon_blue']}},
-        decreasing={"marker": {"color": COLORS['danger']}},
-        increasing={"marker": {"color": COLORS['success']}},
-        textposition="outside",
-        text=[ATLASFormatter.format_price(v, 0) for v in sector_pnl.values]
-    ))
-
-    fig.update_layout(
-        title="💼 P&L Attribution by Sector",
-        yaxis_title="P&L ($)",
-        xaxis_title="",
-        height=450,
-        showlegend=False
-    )
-
-    apply_chart_theme(fig)
-    return fig
-
-def create_pnl_attribution_position(df, top_n=10):
-    """P&L Attribution by Position - Top contributors and detractors"""
-    top_contributors = df.nlargest(top_n // 2, 'Total Gain/Loss $')
-    top_detractors = df.nsmallest(top_n // 2, 'Total Gain/Loss $')
-    combined = pd.concat([top_contributors, top_detractors]).sort_values('Total Gain/Loss $')
-
-    colors = [COLORS['success'] if x > 0 else COLORS['danger'] for x in combined['Total Gain/Loss $']]
-
-    fig = go.Figure(go.Bar(
-        x=combined['Total Gain/Loss $'],
-        y=combined['Ticker'],
-        orientation='h',
-        marker=dict(color=colors, line=dict(color=COLORS['border'], width=1)),
-        text=[ATLASFormatter.format_price(v, 0) for v in combined['Total Gain/Loss $']],
-        textposition='auto'
-    ))
-
-    fig.update_layout(
-        title=f"🎯 Top {top_n} P&L Contributors & Detractors",
-        xaxis_title="P&L ($)",
-        yaxis_title="",
-        height=500,
-        showlegend=False
-    )
-
-    apply_chart_theme(fig)
-    return fig
-
-def create_sparkline(ticker, days=30):
-    """Generate mini sparkline chart for ticker (last 30 days)"""
-    try:
-        stock = yf.Ticker(ticker)
-        hist = stock.history(period=f"{days}d")
-
-        if hist.empty:
-            return None
-
-        prices = hist['Close'].values
-
-        # Determine color based on overall trend
-        color = COLORS['success'] if prices[-1] > prices[0] else COLORS['danger']
-
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            y=prices,
-            mode='lines',
-            line=dict(color=color, width=1.5),
-            fill='tozeroy',
-            fillcolor=f"rgba{tuple(list(int(color.lstrip('#')[i:i+2], 16) for i in (0, 2, 4)) + [0.2])}",
-            showlegend=False
-        ))
-
-        fig.update_layout(
-            height=60,
-            width=150,
-            margin=dict(l=0, r=0, t=0, b=0),
-            xaxis=dict(visible=False),
-            yaxis=dict(visible=False),
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)',
-            hovermode=False
-        )
-
-        return fig
-    except:
-        return None
-
-def create_yield_curve():
-    """Professional US Treasury Yield Curve visualization"""
-    # Treasury tickers and maturities
-    treasuries = {
-        "^IRX": {"maturity": 0.25, "name": "3M"},
-        "^FVX": {"maturity": 5, "name": "5Y"},
-        "^TNX": {"maturity": 10, "name": "10Y"},
-        "^TYX": {"maturity": 30, "name": "30Y"}
-    }
-
-    yields_data = []
-    maturities = []
-    labels = []
-
-    for ticker, info in treasuries.items():
-        try:
-            stock = yf.Ticker(ticker)
-            hist = stock.history(period="1d")
-            if not hist.empty:
-                current_yield = hist['Close'].iloc[-1]
-                yields_data.append(current_yield)
-                maturities.append(info['maturity'])
-                labels.append(info['name'])
-        except:
-            continue
-
-    if not yields_data:
-        return None
-
-    # Sort by maturity
-    sorted_data = sorted(zip(maturities, yields_data, labels))
-    maturities, yields_data, labels = zip(*sorted_data)
-
-    fig = go.Figure()
-
-    fig.add_trace(go.Scatter(
-        x=maturities,
-        y=yields_data,
-        mode='lines+markers',
-        line=dict(color=COLORS['neon_blue'], width=3),
-        marker=dict(size=10, color=COLORS['electric_blue'], line=dict(color=COLORS['border'], width=2)),
-        text=[f"{l}: {y:.2f}%" for l, y in zip(labels, yields_data)],
-        hovertemplate='<b>%{text}</b><extra></extra>'
-    ))
-
-    fig.update_layout(
-        title="📈 US Treasury Yield Curve",
-        xaxis_title="Maturity (Years)",
-        yaxis_title="Yield (%)",
-        height=400,
-        showlegend=False
-    )
-
-    apply_chart_theme(fig)
-    return fig
-
-def get_data_freshness(cache_time=None):
-    """Calculate and format data age for freshness indicators"""
-    if cache_time is None:
-        return ATLASFormatter.format_timestamp(), 0
-
-    now = datetime.now()
-    age_seconds = (now - cache_time).total_seconds()
-    age_minutes = int(age_seconds / 60)
-
-    timestamp = ATLASFormatter.format_timestamp(cache_time)
-    badge = ATLASFormatter.get_freshness_badge(age_minutes)
-
-    return timestamp, age_minutes, badge
-
-# ============================================================================
 # DATA FUNCTIONS
 # ============================================================================
 
@@ -1329,409 +955,6 @@ def calculate_dcf_value(projections, discount_rate, terminal_value, shares_outst
         'equity_value': equity_value,
         'intrinsic_value_per_share': intrinsic_value_per_share
     }
-
-# ============================================================================
-# VALUATION HOUSE RENOVATION - NEW MODULAR METHODS
-# Following Damodaran / McKinsey Standards
-# ============================================================================
-
-# Industry-Standard Constraints
-VALUATION_CONSTRAINTS = {
-    'max_terminal_growth': 0.04,  # 4% (long-term GDP growth)
-    'max_payout_ratio': 1.0,      # 100%
-    'min_roe': 0.0,               # 0%
-    'max_roe': 0.50,              # 50% (sanity check)
-    'max_pe_multiple': 100,       # Outlier filter
-    'min_pe_multiple': 3,         # Outlier filter
-}
-
-def apply_damodaran_constraints(value, constraint_type):
-    """Apply industry-standard Damodaran constraints"""
-    if constraint_type == 'terminal_growth':
-        return min(value, VALUATION_CONSTRAINTS['max_terminal_growth'])
-    elif constraint_type == 'payout_ratio':
-        return min(max(value, 0), VALUATION_CONSTRAINTS['max_payout_ratio'])
-    elif constraint_type == 'roe':
-        return min(max(value, VALUATION_CONSTRAINTS['min_roe']), VALUATION_CONSTRAINTS['max_roe'])
-    return value
-
-# ============================================================================
-# DIVIDEND DISCOUNT MODELS (DDM)
-# ============================================================================
-
-def calculate_gordon_growth_ddm(current_dividend, cost_of_equity, growth_rate, shares_outstanding):
-    """
-    Gordon Growth Model (Constant Growth DDM)
-    Value = D1 / (r - g)
-    Where D1 = D0 * (1 + g)
-    """
-    # Apply constraint: growth < cost of equity
-    if growth_rate >= cost_of_equity:
-        growth_rate = cost_of_equity * 0.9  # Safety margin
-
-    # Constrain terminal growth
-    growth_rate = apply_damodaran_constraints(growth_rate, 'terminal_growth')
-
-    # Calculate next year's dividend
-    d1 = current_dividend * (1 + growth_rate)
-
-    # Gordon Growth formula
-    equity_value = d1 / (cost_of_equity - growth_rate)
-    intrinsic_value_per_share = equity_value / shares_outstanding if shares_outstanding > 0 else 0
-
-    return {
-        'method': 'Gordon Growth DDM',
-        'current_dividend': current_dividend,
-        'd1': d1,
-        'cost_of_equity': cost_of_equity,
-        'growth_rate': growth_rate,
-        'equity_value': equity_value,
-        'intrinsic_value_per_share': intrinsic_value_per_share,
-        'shares_outstanding': shares_outstanding
-    }
-
-def calculate_multistage_ddm(current_dividend, cost_of_equity, high_growth_rate,
-                             high_growth_years, stable_growth_rate, shares_outstanding):
-    """
-    Multi-Stage DDM (H-Model or 2-Stage)
-    Phase 1: High growth period
-    Phase 2: Transition to stable growth
-    """
-    # Apply constraints
-    stable_growth_rate = apply_damodaran_constraints(stable_growth_rate, 'terminal_growth')
-
-    if stable_growth_rate >= cost_of_equity:
-        stable_growth_rate = cost_of_equity * 0.9
-
-    pv_dividends = 0
-    current_div = current_dividend
-
-    # Phase 1: High growth dividends
-    for year in range(1, high_growth_years + 1):
-        current_div = current_div * (1 + high_growth_rate)
-        pv = current_div / ((1 + cost_of_equity) ** year)
-        pv_dividends += pv
-
-    # Terminal value using Gordon Growth
-    terminal_dividend = current_div * (1 + stable_growth_rate)
-    terminal_value = terminal_dividend / (cost_of_equity - stable_growth_rate)
-    pv_terminal = terminal_value / ((1 + cost_of_equity) ** high_growth_years)
-
-    equity_value = pv_dividends + pv_terminal
-    intrinsic_value_per_share = equity_value / shares_outstanding if shares_outstanding > 0 else 0
-
-    return {
-        'method': 'Multi-Stage DDM',
-        'pv_high_growth_dividends': pv_dividends,
-        'terminal_value': terminal_value,
-        'pv_terminal': pv_terminal,
-        'equity_value': equity_value,
-        'intrinsic_value_per_share': intrinsic_value_per_share,
-        'high_growth_years': high_growth_years,
-        'stable_growth_rate': stable_growth_rate,
-        'shares_outstanding': shares_outstanding
-    }
-
-# ============================================================================
-# RESIDUAL INCOME (ECONOMIC PROFIT) MODEL
-# ============================================================================
-
-def calculate_residual_income(book_value_equity, roe, cost_of_equity, growth_rate,
-                              forecast_years, shares_outstanding):
-    """
-    Residual Income Model (Edwards-Bell-Ohlson)
-    Value = Book Value + PV(Residual Income)
-    RI = (ROE - Cost of Equity) × Book Value
-    """
-    # Apply ROE constraints
-    roe = apply_damodaran_constraints(roe, 'roe')
-    growth_rate = apply_damodaran_constraints(growth_rate, 'terminal_growth')
-
-    pv_residual_income = 0
-    current_bv = book_value_equity
-
-    for year in range(1, forecast_years + 1):
-        # Calculate residual income
-        residual_income = (roe - cost_of_equity) * current_bv
-
-        # Discount to present value
-        pv_ri = residual_income / ((1 + cost_of_equity) ** year)
-        pv_residual_income += pv_ri
-
-        # Grow book value
-        current_bv = current_bv * (1 + roe)
-
-    # Terminal value of residual income
-    terminal_ri = (roe - cost_of_equity) * current_bv
-    terminal_value = terminal_ri / (cost_of_equity - growth_rate) if (cost_of_equity - growth_rate) > 0 else 0
-    pv_terminal = terminal_value / ((1 + cost_of_equity) ** forecast_years)
-
-    equity_value = book_value_equity + pv_residual_income + pv_terminal
-    intrinsic_value_per_share = equity_value / shares_outstanding if shares_outstanding > 0 else 0
-
-    return {
-        'method': 'Residual Income',
-        'book_value_equity': book_value_equity,
-        'roe': roe,
-        'cost_of_equity': cost_of_equity,
-        'pv_residual_income': pv_residual_income,
-        'pv_terminal': pv_terminal,
-        'equity_value': equity_value,
-        'intrinsic_value_per_share': intrinsic_value_per_share,
-        'shares_outstanding': shares_outstanding
-    }
-
-# ============================================================================
-# RELATIVE VALUATION - PEER MULTIPLES
-# ============================================================================
-
-def fetch_peer_companies(ticker, sector, max_peers=10):
-    """
-    Fetch comparable companies for relative valuation
-    Uses sector peers with similar market cap
-    """
-    # Sector peer mapping (simplified - can be enhanced)
-    sector_peers = {
-        'Technology': ['AAPL', 'MSFT', 'GOOGL', 'META', 'NVDA', 'ORCL', 'CRM', 'ADBE', 'INTC', 'AMD'],
-        'Financial Services': ['JPM', 'BAC', 'WFC', 'C', 'GS', 'MS', 'BLK', 'V', 'MA'],
-        'Healthcare': ['JNJ', 'UNH', 'PFE', 'ABBV', 'TMO', 'LLY', 'MRK', 'ABT'],
-        'Consumer Cyclical': ['AMZN', 'TSLA', 'NKE', 'MCD', 'SBUX', 'HD', 'LOW'],
-        'Consumer Defensive': ['WMT', 'PG', 'KO', 'PEP', 'COST', 'CL', 'GIS'],
-        'Energy': ['XOM', 'CVX', 'COP', 'SLB', 'EOG', 'PXD'],
-        'Industrials': ['BA', 'CAT', 'GE', 'UPS', 'HON', 'LMT', 'RTX'],
-        'Communication Services': ['GOOGL', 'META', 'DIS', 'NFLX', 'CMCSA', 'T', 'VZ'],
-    }
-
-    peers = sector_peers.get(sector, [])
-    # Remove the target ticker from peers
-    peers = [p for p in peers if p != ticker]
-
-    return peers[:max_peers]
-
-def calculate_peer_multiples(peers):
-    """
-    Calculate median multiples from peer companies
-    Returns: P/E, EV/EBITDA, EV/EBIT, P/B, EV/Sales, PEG
-    """
-    multiples_data = []
-
-    for peer in peers:
-        try:
-            stock = yf.Ticker(peer)
-            info = stock.info
-
-            pe = info.get('trailingPE')
-            pb = info.get('priceToBook')
-            ps = info.get('priceToSalesTrailing12Months')
-            peg = info.get('pegRatio')
-
-            # Calculate EV multiples
-            market_cap = info.get('marketCap', 0)
-            total_debt = info.get('totalDebt', 0)
-            cash = info.get('totalCash', 0)
-            ev = market_cap + total_debt - cash
-
-            ebitda = info.get('ebitda')
-            ebit = info.get('ebit')
-            revenue = info.get('totalRevenue')
-
-            ev_ebitda = ev / ebitda if ebitda and ebitda > 0 else None
-            ev_ebit = ev / ebit if ebit and ebit > 0 else None
-            ev_sales = ev / revenue if revenue and revenue > 0 else None
-
-            # Apply outlier filters
-            if pe and VALUATION_CONSTRAINTS['min_pe_multiple'] <= pe <= VALUATION_CONSTRAINTS['max_pe_multiple']:
-                multiples_data.append({
-                    'ticker': peer,
-                    'pe': pe,
-                    'pb': pb,
-                    'ps': ps,
-                    'peg': peg,
-                    'ev_ebitda': ev_ebitda,
-                    'ev_ebit': ev_ebit,
-                    'ev_sales': ev_sales
-                })
-        except:
-            continue
-
-    if not multiples_data:
-        return None
-
-    # Calculate median multiples
-    df = pd.DataFrame(multiples_data)
-
-    median_multiples = {
-        'pe': df['pe'].median(),
-        'pb': df['pb'].median(),
-        'ps': df['ps'].median(),
-        'peg': df['peg'].median(),
-        'ev_ebitda': df['ev_ebitda'].median(),
-        'ev_ebit': df['ev_ebit'].median(),
-        'ev_sales': df['ev_sales'].median(),
-        'num_peers': len(multiples_data),
-        'peer_data': multiples_data
-    }
-
-    return median_multiples
-
-def apply_relative_valuation(company_financials, median_multiples, shares_outstanding):
-    """
-    Apply peer multiples to company financials
-    Returns valuation for each multiple
-    """
-    results = {}
-
-    # Extract company metrics
-    eps = company_financials.get('eps', 0)
-    book_value_per_share = company_financials.get('book_value_per_share', 0)
-    sales_per_share = company_financials.get('sales_per_share', 0)
-    ebitda = company_financials.get('ebitda', 0)
-    ebit = company_financials.get('ebit', 0)
-    revenue = company_financials.get('revenue', 0)
-    total_debt = company_financials.get('total_debt', 0)
-    cash = company_financials.get('cash', 0)
-
-    # P/E Valuation
-    if median_multiples['pe'] and eps:
-        results['pe_value'] = eps * median_multiples['pe']
-
-    # P/B Valuation
-    if median_multiples['pb'] and book_value_per_share:
-        results['pb_value'] = book_value_per_share * median_multiples['pb']
-
-    # P/S Valuation
-    if median_multiples['ps'] and sales_per_share:
-        results['ps_value'] = sales_per_share * median_multiples['ps']
-
-    # EV/EBITDA Valuation
-    if median_multiples['ev_ebitda'] and ebitda and ebitda > 0:
-        ev = ebitda * median_multiples['ev_ebitda']
-        equity_value = ev - total_debt + cash
-        results['ev_ebitda_value'] = equity_value / shares_outstanding if shares_outstanding > 0 else 0
-
-    # EV/EBIT Valuation
-    if median_multiples['ev_ebit'] and ebit and ebit > 0:
-        ev = ebit * median_multiples['ev_ebit']
-        equity_value = ev - total_debt + cash
-        results['ev_ebit_value'] = equity_value / shares_outstanding if shares_outstanding > 0 else 0
-
-    # EV/Sales Valuation
-    if median_multiples['ev_sales'] and revenue and revenue > 0:
-        ev = revenue * median_multiples['ev_sales']
-        equity_value = ev - total_debt + cash
-        results['ev_sales_value'] = equity_value / shares_outstanding if shares_outstanding > 0 else 0
-
-    # Calculate average relative valuation
-    valid_values = [v for v in results.values() if v is not None and v > 0]
-    results['average_relative_value'] = np.median(valid_values) if valid_values else 0
-    results['median_multiples'] = median_multiples
-
-    return results
-
-# ============================================================================
-# SUM-OF-THE-PARTS (SOTP) VALUATION
-# ============================================================================
-
-def calculate_sotp_valuation(segments, discount_rate, shares_outstanding):
-    """
-    Sum-of-the-Parts valuation for multi-segment companies
-    segments = [{'name': 'Segment A', 'revenue': X, 'ebitda_margin': Y, 'multiple': Z}, ...]
-    """
-    total_value = 0
-    segment_values = []
-
-    for segment in segments:
-        name = segment.get('name', 'Unnamed')
-        revenue = segment.get('revenue', 0)
-        ebitda_margin = segment.get('ebitda_margin', 0)
-        ev_revenue_multiple = segment.get('ev_revenue_multiple', 0)
-
-        # Calculate segment EBITDA
-        ebitda = revenue * ebitda_margin
-
-        # Value segment using EV/Revenue multiple
-        segment_ev = revenue * ev_revenue_multiple
-
-        segment_values.append({
-            'name': name,
-            'revenue': revenue,
-            'ebitda': ebitda,
-            'ev': segment_ev
-        })
-
-        total_value += segment_ev
-
-    # Convert to equity value (simplified - assumes segments share same debt structure)
-    intrinsic_value_per_share = total_value / shares_outstanding if shares_outstanding > 0 else 0
-
-    return {
-        'method': 'Sum-of-the-Parts',
-        'segment_values': segment_values,
-        'total_enterprise_value': total_value,
-        'intrinsic_value_per_share': intrinsic_value_per_share,
-        'shares_outstanding': shares_outstanding
-    }
-
-# ============================================================================
-# CONSOLIDATED VALUATION SUMMARY
-# ============================================================================
-
-def create_valuation_summary_table(valuations_dict, current_price):
-    """
-    Create consolidated summary table from all valuation methods
-    valuations_dict = {'FCFF': result, 'FCFE': result, 'DDM': result, ...}
-    """
-    summary_data = []
-
-    for method, result in valuations_dict.items():
-        if result and 'intrinsic_value_per_share' in result:
-            intrinsic_value = result['intrinsic_value_per_share']
-
-            if intrinsic_value > 0:
-                upside = ((intrinsic_value - current_price) / current_price) * 100
-
-                summary_data.append({
-                    'Method': method,
-                    'Intrinsic Value': intrinsic_value,
-                    'Current Price': current_price,
-                    'Upside/Downside (%)': upside,
-                    'Rating': 'BUY' if upside > 20 else ('HOLD' if upside > -10 else 'SELL')
-                })
-
-    if not summary_data:
-        return None
-
-    df = pd.DataFrame(summary_data)
-
-    # Add summary statistics
-    avg_intrinsic = df['Intrinsic Value'].mean()
-    median_intrinsic = df['Intrinsic Value'].median()
-    avg_upside = df['Upside/Downside (%)'].mean()
-
-    # Consensus rating
-    buy_count = len(df[df['Rating'] == 'BUY'])
-    hold_count = len(df[df['Rating'] == 'HOLD'])
-    sell_count = len(df[df['Rating'] == 'SELL'])
-
-    if buy_count > max(hold_count, sell_count):
-        consensus = 'BUY'
-    elif sell_count > max(buy_count, hold_count):
-        consensus = 'SELL'
-    else:
-        consensus = 'HOLD'
-
-    summary_stats = {
-        'average_intrinsic_value': avg_intrinsic,
-        'median_intrinsic_value': median_intrinsic,
-        'average_upside': avg_upside,
-        'consensus_rating': consensus,
-        'num_methods': len(df),
-        'buy_count': buy_count,
-        'hold_count': hold_count,
-        'sell_count': sell_count
-    }
-
-    return df, summary_stats
 
 # ============================================================================
 # PHOENIX PARSER
@@ -3593,29 +2816,8 @@ def main():
         col2.metric("Total Cost", format_currency(total_cost))
         col3.metric("Total G/L", format_currency(total_gl), format_percentage(total_gl_pct))
         col4.metric("Daily P&L", format_currency(daily_pl))
-        col5.metric("📊 Positions", len(enhanced_df))
-
-        st.markdown("---")
-
-        # Risk Snapshot & Signal Health
-        portfolio_returns = calculate_portfolio_returns(df, start_date, end_date)
-
-        col_health, col_snapshot = st.columns([1, 3])
-
-        with col_health:
-            # Calculate metrics for health indicator
-            if is_valid_series(portfolio_returns):
-                metrics = calculate_performance_metrics(enhanced_df, portfolio_returns, None)
-                health_badge = create_signal_health_badge(metrics)
-                st.markdown("### 🎯 Portfolio Health")
-                st.markdown(health_badge, unsafe_allow_html=True)
-                st.caption(f"**Last Updated:** {ATLASFormatter.format_timestamp()}")
-
-        with col_snapshot:
-            # Risk Snapshot
-            risk_snapshot_html = create_risk_snapshot(enhanced_df, portfolio_returns)
-            st.markdown(risk_snapshot_html, unsafe_allow_html=True)
-
+        col5.metric("Positions", len(enhanced_df))
+        
         st.markdown("---")
         st.markdown("### 📋 Holdings")
         display_df = style_holdings_dataframe(enhanced_df)
@@ -3651,23 +2853,7 @@ def main():
             detractors = create_top_detractors_chart(enhanced_df)
             if detractors:
                 st.plotly_chart(detractors, use_container_width=True)
-
-        # P&L Attribution Analysis
-        st.markdown("---")
-        st.markdown("### 💼 P&L Attribution Analysis")
-
-        pnl_col1, pnl_col2 = st.columns(2)
-
-        with pnl_col1:
-            pnl_sector = create_pnl_attribution_sector(enhanced_df)
-            if pnl_sector:
-                st.plotly_chart(pnl_sector, use_container_width=True)
-
-        with pnl_col2:
-            pnl_position = create_pnl_attribution_position(enhanced_df, top_n=10)
-            if pnl_position:
-                st.plotly_chart(pnl_position, use_container_width=True)
-
+        
         # Performance Heatmap (full width)
         st.markdown("---")
         perf_heatmap = create_performance_heatmap(enhanced_df)
@@ -3780,15 +2966,7 @@ def main():
         with tab6:
             st.markdown("#### 💵 Bond Yields & Treasury Rates")
             st.info("📊 **Key Insight:** Monitor the yield curve for recession signals and inflation expectations")
-
-            # NEW: Yield Curve Visualization
-            yield_curve = create_yield_curve()
-            if yield_curve:
-                st.plotly_chart(yield_curve, use_container_width=True)
-                st.caption(f"**Data Freshness:** {ATLASFormatter.format_timestamp()} • {ATLASFormatter.get_freshness_badge(2)}")
-
-            st.markdown("---")
-
+            
             with st.spinner("Loading bonds..."):
                 bonds_df = fetch_market_watch_data(BOND_YIELDS)
                 if not bonds_df.empty:
@@ -3852,11 +3030,11 @@ def main():
             max_dd = calculate_max_drawdown(portfolio_returns)
         
         col1, col2, col3, col4, col5 = st.columns(5)
-        col1.metric("🔥 Sharpe", ATLASFormatter.format_ratio(sharpe) if sharpe else "N/A")
-        col2.metric("💎 Sortino", ATLASFormatter.format_ratio(sortino) if sortino else "N/A")
-        col3.metric("⚖️ Calmar", ATLASFormatter.format_ratio(calmar) if calmar else "N/A")
-        col4.metric("📉 VaR 95%", format_percentage(var_95) if var_95 else "N/A")
-        col5.metric("⚠️ Max DD", format_percentage(max_dd) if max_dd else "N/A")
+        col1.metric("Sharpe", f"{sharpe:.2f}" if sharpe else "N/A")
+        col2.metric("Sortino", f"{sortino:.2f}" if sortino else "N/A")
+        col3.metric("Calmar", f"{calmar:.2f}" if calmar else "N/A")
+        col4.metric("VaR 95%", format_percentage(var_95) if var_95 else "N/A")
+        col5.metric("Max DD", format_percentage(max_dd) if max_dd else "N/A")
         
         st.markdown("---")
         
@@ -3927,67 +3105,7 @@ def main():
                 st.plotly_chart(corr_network, use_container_width=True)
         
         with tab4:
-            st.markdown("#### ⚡ Market Stress Scenarios")
-            st.info("💡 **Stress Testing:** Evaluate portfolio resilience under extreme market conditions")
-
-            # Stress scenario definitions
-            stress_scenarios = {
-                '📉 Market Crash (-30%)': -0.30,
-                '📊 Moderate Correction (-15%)': -0.15,
-                '📈 Strong Rally (+25%)': 0.25,
-                '💥 Flash Crash (-20%)': -0.20,
-                '🔥 Tech Bubble Burst (-40%)': -0.40,
-                '⚠️ Credit Crisis (-35%)': -0.35
-            }
-
-            col1, col2 = st.columns(2)
-
-            with col1:
-                st.markdown("##### Market Shock Scenarios")
-                current_value = (enhanced_df['Weight %'] * enhanced_df['Current Price']).sum()
-
-                stress_results = []
-                for scenario, shock in stress_scenarios.items():
-                    new_value = current_value * (1 + shock)
-                    impact = current_value * shock
-                    stress_results.append({
-                        'Scenario': scenario,
-                        'Portfolio Impact': impact,
-                        'New Value': new_value,
-                        'Return': shock * 100
-                    })
-
-                stress_df = pd.DataFrame(stress_results)
-                stress_df['Portfolio Impact'] = stress_df['Portfolio Impact'].apply(lambda x: format_currency(x))
-                stress_df['New Value'] = stress_df['New Value'].apply(lambda x: format_currency(x))
-                stress_df['Return'] = stress_df['Return'].apply(lambda x: f"{x:+.1f}%")
-
-                st.dataframe(stress_df, use_container_width=True, hide_index=True)
-
-            with col2:
-                st.markdown("##### Sector Concentration Risk")
-                sector_concentration = enhanced_df.groupby('Sector')['Weight %'].sum().sort_values(ascending=False)
-
-                concentration_warnings = []
-                for sector, weight in sector_concentration.items():
-                    if weight > 30:
-                        risk_level = "🔴 HIGH"
-                    elif weight > 20:
-                        risk_level = "🟡 MEDIUM"
-                    else:
-                        risk_level = "🟢 LOW"
-
-                    concentration_warnings.append({
-                        'Sector': sector,
-                        'Allocation': f"{weight:.1f}%",
-                        'Risk Level': risk_level
-                    })
-
-                conc_df = pd.DataFrame(concentration_warnings)
-                st.dataframe(conc_df, use_container_width=True, hide_index=True)
-
-                st.caption("⚠️ Sectors >30% = High concentration risk")
-                st.caption("🟡 Sectors 20-30% = Medium concentration risk")
+            st.info("Comprehensive stress testing scenarios...")
     
     # Continue with remaining pages...
     # ========================================================================
@@ -4013,7 +3131,7 @@ def main():
             if is_valid_series(portfolio_returns):
                 metrics = calculate_performance_metrics(enhanced_df, portfolio_returns, benchmark_returns)
 
-        # Enhanced Performance Overview
+        # FIX 8: Enhanced Performance Overview
         st.markdown("---")
         st.markdown("### 📊 Portfolio Performance Overview")
 
@@ -4093,8 +3211,7 @@ def main():
     # ========================================================================
     elif page == "🔬 Portfolio Deep Dive":
         st.markdown("## 🔬 PORTFOLIO DEEP DIVE - ENHANCED")
-        st.markdown("---")
-
+        
         portfolio_data = load_portfolio_data()
         
         if not portfolio_data:
@@ -4145,8 +3262,7 @@ def main():
     # ========================================================================
     elif page == "📊 Multi-Factor Analysis":
         st.markdown("## 📊 MULTI-FACTOR ANALYSIS - ENHANCED")
-        st.markdown("---")
-
+        
         portfolio_data = load_portfolio_data()
         
         if not portfolio_data:
@@ -4261,163 +3377,75 @@ def main():
             col5.metric("Forward P/E", f"{company.get('forward_pe', 'N/A'):.1f}" if company.get('forward_pe') else "N/A")
             
             st.markdown("---")
-
-            # ENHANCED: Comprehensive Valuation Method Selection
-            st.markdown("#### 🎯 Valuation Method Selection")
-
-            valuation_method = st.selectbox(
-                "Choose Valuation Approach",
-                options=[
-                    'FCFF DCF (Free Cash Flow to Firm)',
-                    'FCFE DCF (Free Cash Flow to Equity)',
-                    'Gordon Growth DDM (Dividend Discount Model)',
-                    'Multi-Stage DDM (2-Stage Dividend Model)',
-                    'Residual Income Model (Economic Profit)',
-                    'Relative Valuation (Peer Multiples)',
-                    'Sum-of-the-Parts (SOTP)'
-                ],
-                help="Select from 7 institutional-grade valuation methodologies"
+            
+            # DCF Method Selection
+            st.markdown("#### 🎯 Valuation Method")
+            dcf_method = st.radio(
+                "Select DCF Method",
+                options=['FCFF', 'FCFE'],
+                horizontal=True,
+                help="FCFF: Free Cash Flow to Firm | FCFE: Free Cash Flow to Equity"
             )
-
-            # Extract method key for logic
-            if 'FCFF' in valuation_method:
-                method_key = 'FCFF'
-            elif 'FCFE' in valuation_method:
-                method_key = 'FCFE'
-            elif 'Gordon' in valuation_method:
-                method_key = 'GORDON_DDM'
-            elif 'Multi-Stage' in valuation_method:
-                method_key = 'MULTISTAGE_DDM'
-            elif 'Residual' in valuation_method:
-                method_key = 'RESIDUAL_INCOME'
-            elif 'Relative' in valuation_method:
-                method_key = 'RELATIVE'
-            else:
-                method_key = 'SOTP'
-
-            # Show method description
-            method_descriptions = {
-                'FCFF': "💼 **FCFF DCF:** Values the entire firm by discounting free cash flows available to all investors (debt + equity)",
-                'FCFE': "💰 **FCFE DCF:** Values equity directly by discounting free cash flows available to equity holders only",
-                'GORDON_DDM': "📈 **Gordon Growth DDM:** Values stocks using perpetual dividend growth (D₁ / (r - g)). Best for stable dividend payers",
-                'MULTISTAGE_DDM': "🚀 **Multi-Stage DDM:** 2-phase model with high growth period transitioning to stable growth. Ideal for growing dividend stocks",
-                'RESIDUAL_INCOME': "🎯 **Residual Income:** Edwards-Bell-Ohlson model valuing excess returns over cost of equity (BV + PV(RI))",
-                'RELATIVE': "📊 **Relative Valuation:** Peer comparison using 6 multiples (P/E, P/B, P/S, PEG, EV/EBITDA, EV/EBIT)",
-                'SOTP': "🏢 **Sum-of-the-Parts:** Values multi-segment companies by summing independent business unit valuations"
-            }
-
-            st.info(method_descriptions[method_key])
-
-            # Scenario buttons only for DCF methods
-            if method_key in ['FCFF', 'FCFE']:
-                st.markdown("---")
-                st.markdown("#### 🎯 Quick Scenarios")
-                scenario_col1, scenario_col2, scenario_col3, scenario_col4 = st.columns([1, 1, 1, 2])
-
-                scenario_selected = None
-
-                with scenario_col1:
-                    if st.button(VALUATION_SCENARIOS['BEAR']['name'], use_container_width=True, key="bear_btn"):
-                        scenario_selected = 'BEAR'
-                        st.session_state['selected_scenario'] = 'BEAR'
-
-                with scenario_col2:
-                    if st.button(VALUATION_SCENARIOS['BASE']['name'], use_container_width=True, key="base_btn"):
-                        scenario_selected = 'BASE'
-                        st.session_state['selected_scenario'] = 'BASE'
-
-                with scenario_col3:
-                    if st.button(VALUATION_SCENARIOS['BULL']['name'], use_container_width=True, key="bull_btn"):
-                        scenario_selected = 'BULL'
-                        st.session_state['selected_scenario'] = 'BULL'
-
-                with scenario_col4:
-                    if st.button("🔄 Reset to Manual", use_container_width=True, key="reset_btn"):
-                        if 'selected_scenario' in st.session_state:
-                            del st.session_state['selected_scenario']
-
-                # Show active scenario
-                if 'selected_scenario' in st.session_state:
-                    active_scenario = st.session_state['selected_scenario']
-                    st.success(f"✅ **Active Scenario:** {VALUATION_SCENARIOS[active_scenario]['name']} - {VALUATION_SCENARIOS[active_scenario]['description']}")
-
+            
             st.markdown("---")
-
-            # Smart Assumptions Toggle (only for DCF and RI methods)
-            use_smart_assumptions = False
-            if method_key in ['FCFF', 'FCFE', 'GORDON_DDM', 'MULTISTAGE_DDM', 'RESIDUAL_INCOME']:
-                st.markdown("#### 🧠 Assumptions Mode")
-                use_smart_assumptions = st.checkbox(
-                    "🤖 Use Smart Assumptions (AI-Generated)",
-                    help="Generate realistic assumptions based on sector averages, company size, and economic fundamentals"
-                )
-
-                if use_smart_assumptions:
-                    st.info("🤖 **Smart Mode Active:** Assumptions are generated based on sector benchmarks and economic reality")
-                    smart_params = calculate_smart_assumptions(company, financials)
-
+            
+            # NEW: Smart Assumptions Toggle
+            st.markdown("#### 🧠 Assumptions Mode")
+            
+            use_smart_assumptions = st.checkbox(
+                "🤖 Use Smart Assumptions (AI-Generated)",
+                help="Generate realistic assumptions based on sector averages, company size, and economic fundamentals"
+            )
+            
+            if use_smart_assumptions:
+                st.info("🤖 **Smart Mode Active:** Assumptions are generated based on sector benchmarks and economic reality")
+                smart_params = calculate_smart_assumptions(company, financials)
+            
             # Assumptions Panel
             st.markdown("---")
             st.markdown("#### 🎛️ Valuation Assumptions")
-
-            # =================================================================
-            # DCF METHODS (FCFF / FCFE) - Existing comprehensive inputs
-            # =================================================================
-            if method_key in ['FCFF', 'FCFE']:
-                tab1, tab2, tab3 = st.tabs(["📈 Growth & Operations", "💰 Cost of Capital", "🎯 Terminal Value"])
-
-                with tab1:
-                    st.markdown("##### Growth & Operating Assumptions")
-
-                    col1, col2 = st.columns(2)
-
-                    with col1:
-                        # Determine revenue growth value
-                        if use_smart_assumptions:
-                            revenue_growth = smart_params['revenue_growth']
-                            st.metric("Revenue Growth Rate", f"{revenue_growth*100:.1f}%",
-                                     delta="AI Generated", delta_color="normal")
-                        elif 'selected_scenario' in st.session_state:
-                            # Use scenario value
-                            scenario_key = st.session_state['selected_scenario']
-                            default_value = VALUATION_SCENARIOS[scenario_key]['revenue_growth'] * 100
-                            revenue_growth = st.slider(
-                                "Revenue Growth Rate (%)",
-                                min_value=-10.0,
-                                max_value=30.0,
-                                value=default_value,
-                                step=0.5,
-                                key=f"rev_growth_{scenario_key}"
-                            ) / 100
-                        else:
-                            revenue_growth = st.slider(
-                                "Revenue Growth Rate (%)",
-                                min_value=-10.0,
-                                max_value=30.0,
-                                value=5.0,
-                                step=0.5
-                            ) / 100
-
-                        if use_smart_assumptions:
-                            ebit_margin = smart_params['ebit_margin']
-                            st.metric("EBIT Margin", f"{ebit_margin*100:.1f}%",
-                                     delta="AI Generated", delta_color="normal")
-                        else:
-                            ebit_margin = st.slider(
-                                "EBIT Margin (%)",
-                                min_value=0.0,
-                                max_value=50.0,
-                                value=20.0,
-                                step=1.0
-                            ) / 100
-
-                        forecast_years = st.slider(
-                            "Forecast Horizon (Years)",
-                            min_value=3,
-                            max_value=15,
-                            value=smart_params['forecast_years'] if use_smart_assumptions else 5,
-                            step=1
-                        )
+            
+            tab1, tab2, tab3 = st.tabs(["📈 Growth & Operations", "💰 Cost of Capital", "🎯 Terminal Value"])
+            
+            with tab1:
+                st.markdown("##### Growth & Operating Assumptions")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    if use_smart_assumptions:
+                        revenue_growth = smart_params['revenue_growth']
+                        st.metric("Revenue Growth Rate", f"{revenue_growth*100:.1f}%", 
+                                 delta="AI Generated", delta_color="normal")
+                    else:
+                        revenue_growth = st.slider(
+                            "Revenue Growth Rate (%)",
+                            min_value=-10.0,
+                            max_value=30.0,
+                            value=5.0,
+                            step=0.5
+                        ) / 100
+                    
+                    if use_smart_assumptions:
+                        ebit_margin = smart_params['ebit_margin']
+                        st.metric("EBIT Margin", f"{ebit_margin*100:.1f}%",
+                                 delta="AI Generated", delta_color="normal")
+                    else:
+                        ebit_margin = st.slider(
+                            "EBIT Margin (%)",
+                            min_value=0.0,
+                            max_value=50.0,
+                            value=20.0,
+                            step=1.0
+                        ) / 100
+                    
+                    forecast_years = st.slider(
+                        "Forecast Horizon (Years)",
+                        min_value=3,
+                        max_value=15,
+                        value=smart_params['forecast_years'] if use_smart_assumptions else 5,
+                        step=1
+                    )
                 
                 with col2:
                     if use_smart_assumptions:
@@ -4453,654 +3481,160 @@ def main():
                         value=float(smart_params['wc_change']) if use_smart_assumptions else 0.0,  # FIX: Ensure float
                         step=10.0
                     ) * 1e6
-
-                with tab2:
-                    st.markdown("##### Cost of Capital Assumptions")
-
-                    col1, col2 = st.columns(2)
-
-                    with col1:
-                        risk_free = st.slider(
-                            "Risk-Free Rate (%)",
+            
+            with tab2:
+                st.markdown("##### Cost of Capital Assumptions")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    risk_free = st.slider(
+                        "Risk-Free Rate (%)",
+                        min_value=0.0,
+                        max_value=10.0,
+                        value=4.5,
+                        step=0.1
+                    ) / 100
+                    
+                    market_risk_premium = st.slider(
+                        "Market Risk Premium (%)",
+                        min_value=3.0,
+                        max_value=10.0,
+                        value=6.0,
+                        step=0.5
+                    ) / 100
+                    
+                    beta = st.number_input(
+                        "Beta",
+                        min_value=0.0,
+                        max_value=3.0,
+                        value=float(company['beta']) if company['beta'] else 1.0,
+                        step=0.1
+                    )
+                
+                with col2:
+                    if dcf_method == 'FCFF':
+                        cost_debt = st.slider(
+                            "Cost of Debt (%)",
                             min_value=0.0,
-                            max_value=10.0,
-                            value=4.5,
-                            step=0.1
-                        ) / 100
-
-                        market_risk_premium = st.slider(
-                            "Market Risk Premium (%)",
-                            min_value=3.0,
-                            max_value=10.0,
-                            value=6.0,
+                            max_value=15.0,
+                            value=5.0,
                             step=0.5
                         ) / 100
-
-                        beta = st.number_input(
-                            "Beta",
+                    
+                    if use_smart_assumptions:
+                        tax_rate = smart_params['tax_rate']
+                        st.metric("Tax Rate", f"{tax_rate*100:.1f}%",
+                                 delta="AI Generated", delta_color="normal")
+                    else:
+                        tax_rate = st.slider(
+                            "Tax Rate (%)",
                             min_value=0.0,
-                            max_value=3.0,
-                            value=float(company['beta']) if company['beta'] else 1.0,
+                            max_value=40.0,
+                            value=float(financials.get('tax_rate', 0.21) * 100),
+                            step=1.0
+                        ) / 100
+                    
+                    if dcf_method == 'FCFE':
+                        net_borrowing = st.number_input(
+                            "Net Borrowing ($M)",
+                            min_value=-1000.0,
+                            max_value=1000.0,
+                            value=0.0,
+                            step=10.0
+                        ) * 1e6
+            
+            with tab3:
+                st.markdown("##### Terminal Value Assumptions")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    if use_smart_assumptions:
+                        terminal_growth = smart_params['terminal_growth']
+                        st.metric("Perpetual Growth Rate", f"{terminal_growth*100:.1f}%",
+                                 delta="AI Generated", delta_color="normal")
+                    else:
+                        terminal_growth = st.slider(
+                            "Perpetual Growth Rate (%)",
+                            min_value=0.0,
+                            max_value=5.0,
+                            value=2.5,
                             step=0.1
-                        )
-
-                    with col2:
-                        if method_key == 'FCFF':
-                            cost_debt = st.slider(
-                                "Cost of Debt (%)",
-                                min_value=0.0,
-                                max_value=15.0,
-                                value=5.0,
-                                step=0.5
-                            ) / 100
-
-                        if use_smart_assumptions:
-                            tax_rate = smart_params['tax_rate']
-                            st.metric("Tax Rate", f"{tax_rate*100:.1f}%",
-                                     delta="AI Generated", delta_color="normal")
-                        else:
-                            tax_rate = st.slider(
-                                "Tax Rate (%)",
-                                min_value=0.0,
-                                max_value=40.0,
-                                value=float(financials.get('tax_rate', 0.21) * 100),
-                                step=1.0
-                            ) / 100
-
-                        if method_key == 'FCFE':
-                            net_borrowing = st.number_input(
-                                "Net Borrowing ($M)",
-                                min_value=-1000.0,
-                                max_value=1000.0,
-                                value=0.0,
-                                step=10.0
-                            ) * 1e6
-
-                with tab3:
-                    st.markdown("##### Terminal Value Assumptions")
-
-                    col1, col2 = st.columns(2)
-
-                    with col1:
-                        if use_smart_assumptions:
-                            terminal_growth = smart_params['terminal_growth']
-                            st.metric("Perpetual Growth Rate", f"{terminal_growth*100:.1f}%",
-                                     delta="AI Generated", delta_color="normal")
-                        else:
-                            terminal_growth = st.slider(
-                                "Perpetual Growth Rate (%)",
-                                min_value=0.0,
-                                max_value=5.0,
-                                value=2.5,
-                                step=0.1
-                            ) / 100
-
-                    with col2:
-                        st.info(f"""
-                        **Terminal Value Method:** Gordon Growth Model
-
-                        TV = FCFₙ₊₁ / (r - g)
-                        """)
-
-            # =================================================================
-            # DIVIDEND DISCOUNT MODELS (GORDON & MULTI-STAGE)
-            # =================================================================
-            elif method_key == 'GORDON_DDM':
-                st.markdown("##### Gordon Growth DDM Inputs")
-
-                col1, col2 = st.columns(2)
-
-                with col1:
-                    # Get current dividend from company data
-                    current_dividend_default = company.get('dividendRate', 0) * company['shares_outstanding']
-                    if current_dividend_default == 0:
-                        # Try to estimate from dividend yield
-                        div_yield = company.get('dividendYield', 0)
-                        if div_yield > 0:
-                            current_dividend_default = company['market_cap'] * div_yield
-
-                    current_dividend = st.number_input(
-                        "Current Annual Dividend ($)",
-                        min_value=0.0,
-                        value=float(current_dividend_default),
-                        step=0.01,
-                        help="Total annual dividend paid by the company"
-                    )
-
-                    if use_smart_assumptions:
-                        cost_of_equity_ddm = smart_params.get('cost_of_equity', 0.10)
-                        st.metric("Cost of Equity", f"{cost_of_equity_ddm*100:.1f}%",
-                                 delta="AI Generated", delta_color="normal")
-                    else:
-                        risk_free_ddm = st.slider(
-                            "Risk-Free Rate (%)",
-                            min_value=0.0,
-                            max_value=10.0,
-                            value=4.5,
-                            step=0.1,
-                            key="ddm_risk_free"
                         ) / 100
-
-                        market_risk_premium_ddm = st.slider(
-                            "Market Risk Premium (%)",
-                            min_value=3.0,
-                            max_value=10.0,
-                            value=6.0,
-                            step=0.5,
-                            key="ddm_mrp"
-                        ) / 100
-
-                        beta_ddm = st.number_input(
-                            "Beta",
-                            min_value=0.0,
-                            max_value=3.0,
-                            value=float(company['beta']) if company['beta'] else 1.0,
-                            step=0.1,
-                            key="ddm_beta"
-                        )
-
-                        cost_of_equity_ddm = calculate_cost_of_equity(risk_free_ddm, beta_ddm, market_risk_premium_ddm)
-                        st.info(f"Calculated Cost of Equity: {cost_of_equity_ddm*100:.2f}%")
-
+                
                 with col2:
-                    if use_smart_assumptions:
-                        growth_rate_ddm = smart_params.get('dividend_growth', 0.03)
-                        st.metric("Dividend Growth Rate", f"{growth_rate_ddm*100:.1f}%",
-                                 delta="AI Generated", delta_color="normal")
-                    else:
-                        growth_rate_ddm = st.slider(
-                            "Perpetual Dividend Growth Rate (%)",
-                            min_value=0.0,
-                            max_value=5.0,
-                            value=2.5,
-                            step=0.1,
-                            help="Long-term sustainable dividend growth rate"
-                        ) / 100
-
                     st.info(f"""
-                    **Gordon Growth Formula:**
-
-                    Value = D₁ / (r - g)
-
-                    Where D₁ = D₀ × (1 + g)
+                    **Terminal Value Method:** Gordon Growth Model
+                    
+                    TV = FCFₙ₊₁ / (r - g)
                     """)
-
-            # =================================================================
-            # MULTI-STAGE DDM
-            # =================================================================
-            elif method_key == 'MULTISTAGE_DDM':
-                st.markdown("##### Multi-Stage DDM Inputs (2-Stage Model)")
-
-                col1, col2 = st.columns(2)
-
-                with col1:
-                    # Get current dividend
-                    current_dividend_default = company.get('dividendRate', 0) * company['shares_outstanding']
-                    if current_dividend_default == 0:
-                        div_yield = company.get('dividendYield', 0)
-                        if div_yield > 0:
-                            current_dividend_default = company['market_cap'] * div_yield
-
-                    current_dividend_ms = st.number_input(
-                        "Current Annual Dividend ($)",
-                        min_value=0.0,
-                        value=float(current_dividend_default),
-                        step=0.01,
-                        key="ms_dividend"
-                    )
-
-                    if use_smart_assumptions:
-                        cost_of_equity_ms = smart_params.get('cost_of_equity', 0.10)
-                        st.metric("Cost of Equity", f"{cost_of_equity_ms*100:.1f}%",
-                                 delta="AI Generated", delta_color="normal")
-                    else:
-                        risk_free_ms = st.slider(
-                            "Risk-Free Rate (%)",
-                            min_value=0.0,
-                            max_value=10.0,
-                            value=4.5,
-                            step=0.1,
-                            key="ms_risk_free"
-                        ) / 100
-
-                        market_risk_premium_ms = st.slider(
-                            "Market Risk Premium (%)",
-                            min_value=3.0,
-                            max_value=10.0,
-                            value=6.0,
-                            step=0.5,
-                            key="ms_mrp"
-                        ) / 100
-
-                        beta_ms = st.number_input(
-                            "Beta",
-                            min_value=0.0,
-                            max_value=3.0,
-                            value=float(company['beta']) if company['beta'] else 1.0,
-                            step=0.1,
-                            key="ms_beta"
-                        )
-
-                        cost_of_equity_ms = calculate_cost_of_equity(risk_free_ms, beta_ms, market_risk_premium_ms)
-                        st.info(f"Calculated Cost of Equity: {cost_of_equity_ms*100:.2f}%")
-
-                with col2:
-                    if use_smart_assumptions:
-                        high_growth_rate = smart_params.get('high_growth_rate', 0.08)
-                        high_growth_years = smart_params.get('high_growth_years', 5)
-                        stable_growth_rate = smart_params.get('stable_growth_rate', 0.03)
-
-                        st.metric("High Growth Rate", f"{high_growth_rate*100:.1f}%", delta="AI Generated")
-                        st.metric("High Growth Years", f"{high_growth_years} years", delta="AI Generated")
-                        st.metric("Stable Growth Rate", f"{stable_growth_rate*100:.1f}%", delta="AI Generated")
-                    else:
-                        high_growth_rate = st.slider(
-                            "High Growth Rate (%)",
-                            min_value=0.0,
-                            max_value=20.0,
-                            value=8.0,
-                            step=0.5,
-                            help="Initial high dividend growth rate"
-                        ) / 100
-
-                        high_growth_years = st.slider(
-                            "High Growth Period (Years)",
-                            min_value=3,
-                            max_value=15,
-                            value=5,
-                            step=1,
-                            help="Number of years of high growth"
-                        )
-
-                        stable_growth_rate = st.slider(
-                            "Stable Growth Rate (%)",
-                            min_value=0.0,
-                            max_value=5.0,
-                            value=2.5,
-                            step=0.1,
-                            help="Long-term perpetual growth rate"
-                        ) / 100
-
-            # =================================================================
-            # RESIDUAL INCOME MODEL
-            # =================================================================
-            elif method_key == 'RESIDUAL_INCOME':
-                st.markdown("##### Residual Income Model Inputs")
-
-                col1, col2 = st.columns(2)
-
-                with col1:
-                    # Book value of equity
-                    book_value_default = financials.get('total_equity', company.get('bookValue', 0) * company['shares_outstanding'])
-
-                    book_value_equity = st.number_input(
-                        "Book Value of Equity ($)",
-                        min_value=0.0,
-                        value=float(book_value_default),
-                        step=1000000.0,
-                        help="Current book value of shareholders' equity"
-                    )
-
-                    if use_smart_assumptions:
-                        roe = smart_params.get('roe', 0.15)
-                        st.metric("Return on Equity (ROE)", f"{roe*100:.1f}%",
-                                 delta="AI Generated", delta_color="normal")
-                    else:
-                        roe = st.slider(
-                            "Return on Equity - ROE (%)",
-                            min_value=0.0,
-                            max_value=50.0,
-                            value=15.0,
-                            step=0.5,
-                            help="Expected ROE for future periods"
-                        ) / 100
-
-                    forecast_years_ri = st.slider(
-                        "Forecast Horizon (Years)",
-                        min_value=3,
-                        max_value=15,
-                        value=smart_params.get('forecast_years', 5) if use_smart_assumptions else 5,
-                        step=1,
-                        key="ri_forecast_years"
-                    )
-
-                with col2:
-                    if use_smart_assumptions:
-                        cost_of_equity_ri = smart_params.get('cost_of_equity', 0.10)
-                        st.metric("Cost of Equity", f"{cost_of_equity_ri*100:.1f}%",
-                                 delta="AI Generated", delta_color="normal")
-                    else:
-                        risk_free_ri = st.slider(
-                            "Risk-Free Rate (%)",
-                            min_value=0.0,
-                            max_value=10.0,
-                            value=4.5,
-                            step=0.1,
-                            key="ri_risk_free"
-                        ) / 100
-
-                        market_risk_premium_ri = st.slider(
-                            "Market Risk Premium (%)",
-                            min_value=3.0,
-                            max_value=10.0,
-                            value=6.0,
-                            step=0.5,
-                            key="ri_mrp"
-                        ) / 100
-
-                        beta_ri = st.number_input(
-                            "Beta",
-                            min_value=0.0,
-                            max_value=3.0,
-                            value=float(company['beta']) if company['beta'] else 1.0,
-                            step=0.1,
-                            key="ri_beta"
-                        )
-
-                        cost_of_equity_ri = calculate_cost_of_equity(risk_free_ri, beta_ri, market_risk_premium_ri)
-                        st.info(f"Calculated Cost of Equity: {cost_of_equity_ri*100:.2f}%")
-
-                    if use_smart_assumptions:
-                        growth_rate_ri = smart_params.get('terminal_growth', 0.025)
-                        st.metric("Terminal Growth Rate", f"{growth_rate_ri*100:.1f}%",
-                                 delta="AI Generated", delta_color="normal")
-                    else:
-                        growth_rate_ri = st.slider(
-                            "Terminal Growth Rate (%)",
-                            min_value=0.0,
-                            max_value=5.0,
-                            value=2.5,
-                            step=0.1,
-                            key="ri_terminal_growth",
-                            help="Long-term growth rate for terminal value"
-                        ) / 100
-
-                    st.info(f"""
-                    **Residual Income Formula:**
-
-                    Value = BV + PV(RI)
-
-                    RI = (ROE - r) × BV
-                    """)
-
-            # =================================================================
-            # RELATIVE VALUATION (PEER MULTIPLES)
-            # =================================================================
-            elif method_key == 'RELATIVE':
-                st.markdown("##### Relative Valuation - Peer Multiples")
-
-                st.info(f"""
-                This method values the company based on peer comparison using 6 key multiples:
-
-                - **P/E Ratio:** Price to Earnings
-                - **P/B Ratio:** Price to Book Value
-                - **P/S Ratio:** Price to Sales
-                - **EV/EBITDA:** Enterprise Value to EBITDA
-                - **EV/EBIT:** Enterprise Value to EBIT
-                - **PEG Ratio:** P/E to Growth
-
-                Peer companies are automatically selected from the {company['sector']} sector.
-                """)
-
-                # Fetch peers
-                with st.spinner("Fetching peer companies..."):
-                    ticker = company['ticker']
-                    sector = company['sector']
-                    peers = fetch_peer_companies(ticker, sector, max_peers=10)
-
-                    if peers:
-                        st.success(f"Found {len(peers)} peer companies: {', '.join(peers)}")
-                    else:
-                        st.warning("No peer companies found. Using default sector averages.")
-
-            # =================================================================
-            # SUM-OF-THE-PARTS (SOTP)
-            # =================================================================
-            elif method_key == 'SOTP':
-                st.markdown("##### Sum-of-the-Parts Valuation")
-
-                st.info("""
-                SOTP values multi-segment companies by valuing each business unit independently.
-
-                For each segment, provide:
-                - Revenue
-                - EBITDA Margin
-                - EV/Revenue Multiple (based on comparable companies)
-                """)
-
-                # Number of segments
-                num_segments = st.number_input(
-                    "Number of Business Segments",
-                    min_value=1,
-                    max_value=10,
-                    value=2,
-                    step=1
-                )
-
-                # Create segment inputs
-                segments = []
-                for i in range(num_segments):
-                    with st.expander(f"Segment {i+1}", expanded=(i == 0)):
-                        col1, col2, col3 = st.columns(3)
-
-                        with col1:
-                            segment_name = st.text_input(
-                                "Segment Name",
-                                value=f"Segment {i+1}",
-                                key=f"seg_name_{i}"
-                            )
-
-                            segment_revenue = st.number_input(
-                                "Revenue ($M)",
-                                min_value=0.0,
-                                value=100.0,
-                                step=10.0,
-                                key=f"seg_rev_{i}"
-                            ) * 1e6
-
-                        with col2:
-                            segment_ebitda_margin = st.slider(
-                                "EBITDA Margin (%)",
-                                min_value=0.0,
-                                max_value=50.0,
-                                value=20.0,
-                                step=1.0,
-                                key=f"seg_ebitda_{i}"
-                            ) / 100
-
-                        with col3:
-                            segment_multiple = st.number_input(
-                                "EV/Revenue Multiple",
-                                min_value=0.0,
-                                max_value=10.0,
-                                value=2.0,
-                                step=0.1,
-                                key=f"seg_mult_{i}",
-                                help="Based on comparable segment peers"
-                            )
-
-                        segments.append({
-                            'name': segment_name,
-                            'revenue': segment_revenue,
-                            'ebitda_margin': segment_ebitda_margin,
-                            'ev_revenue_multiple': segment_multiple
-                        })
-
+            
             st.markdown("---")
             
-            # Calculate Valuation (All Methods)
+            # Calculate DCF
             if st.button("🚀 Calculate Intrinsic Value", type="primary", use_container_width=True):
-                with st.spinner(f"🔬 Running {method_key} Valuation..."):
-
+                with st.spinner("🔬 Running DCF Analysis..."):
+                    
+                    # Calculate cost of equity
+                    cost_equity = calculate_cost_of_equity(risk_free, beta, market_risk_premium)
+                    
+                    # Calculate discount rate
+                    if dcf_method == 'FCFF':
+                        total_debt = financials.get('total_debt', 0)
+                        total_equity = company['market_cap']
+                        discount_rate = calculate_wacc(cost_equity, cost_debt, tax_rate, total_debt, total_equity)
+                    else:
+                        discount_rate = cost_equity
+                    
+                    # Get base financials
+                    base_revenue = financials.get('revenue', 0)
+                    base_ebit = financials.get('ebit', 0)
+                    base_net_income = financials.get('net_income', 0)
+                    
+                    # ENHANCED: Project cash flows with scaling D&A and CapEx
+                    if dcf_method == 'FCFF':
+                        projections = project_fcff_enhanced(
+                            base_revenue, base_ebit, revenue_growth, ebit_margin, tax_rate,
+                            depreciation_pct, capex_pct, wc_change, forecast_years
+                        )
+                        final_fcf = projections[-1]['fcff']
+                    else:
+                        projections = project_fcfe_enhanced(
+                            base_revenue, base_net_income, revenue_growth, tax_rate,
+                            depreciation_pct, capex_pct, wc_change, net_borrowing, forecast_years
+                        )
+                        final_fcf = projections[-1]['fcfe']
+                    
+                    # Calculate terminal value
+                    terminal_value = calculate_terminal_value(final_fcf, discount_rate, terminal_growth)
+                    
+                    # Calculate DCF value
+                    net_debt = financials.get('total_debt', 0) - financials.get('cash', 0)
                     shares = company['shares_outstanding']
-
-                    # =================================================================
-                    # DCF METHODS (FCFF / FCFE)
-                    # =================================================================
-                    if method_key in ['FCFF', 'FCFE']:
-                        # Calculate cost of equity
-                        cost_equity = calculate_cost_of_equity(risk_free, beta, market_risk_premium)
-
-                        # Calculate discount rate
-                        if method_key == 'FCFF':
-                            total_debt = financials.get('total_debt', 0)
-                            total_equity = company['market_cap']
-                            discount_rate = calculate_wacc(cost_equity, cost_debt, tax_rate, total_debt, total_equity)
-                        else:
-                            discount_rate = cost_equity
-
-                        # Get base financials
-                        base_revenue = financials.get('revenue', 0)
-                        base_ebit = financials.get('ebit', 0)
-                        base_net_income = financials.get('net_income', 0)
-
-                        # ENHANCED: Project cash flows with scaling D&A and CapEx
-                        if method_key == 'FCFF':
-                            projections = project_fcff_enhanced(
-                                base_revenue, base_ebit, revenue_growth, ebit_margin, tax_rate,
-                                depreciation_pct, capex_pct, wc_change, forecast_years
-                            )
-                            final_fcf = projections[-1]['fcff']
-                        else:
-                            projections = project_fcfe_enhanced(
-                                base_revenue, base_net_income, revenue_growth, tax_rate,
-                                depreciation_pct, capex_pct, wc_change, net_borrowing, forecast_years
-                            )
-                            final_fcf = projections[-1]['fcfe']
-
-                        # Calculate terminal value
-                        terminal_value = calculate_terminal_value(final_fcf, discount_rate, terminal_growth)
-
-                        # Calculate DCF value
-                        net_debt = financials.get('total_debt', 0) - financials.get('cash', 0)
-
-                        dcf_results = calculate_dcf_value(
-                            projections, discount_rate, terminal_value, shares,
-                            net_debt if method_key == 'FCFF' else 0, method_key
-                        )
-
-                        dcf_results['net_debt'] = net_debt
-
-                        # Store results
-                        st.session_state['valuation_results'] = dcf_results
-                        st.session_state['dcf_projections'] = projections
-                        st.session_state['valuation_method'] = method_key
-                        st.session_state['discount_rate'] = discount_rate
-                        st.session_state['terminal_growth'] = terminal_growth
-                        st.session_state['used_smart_assumptions'] = use_smart_assumptions
-
-                    # =================================================================
-                    # GORDON GROWTH DDM
-                    # =================================================================
-                    elif method_key == 'GORDON_DDM':
-                        gordon_results = calculate_gordon_growth_ddm(
-                            current_dividend=current_dividend,
-                            cost_of_equity=cost_of_equity_ddm,
-                            growth_rate=growth_rate_ddm,
-                            shares_outstanding=shares
-                        )
-
-                        # Store results
-                        st.session_state['valuation_results'] = gordon_results
-                        st.session_state['valuation_method'] = method_key
-                        st.session_state['used_smart_assumptions'] = use_smart_assumptions
-
-                    # =================================================================
-                    # MULTI-STAGE DDM
-                    # =================================================================
-                    elif method_key == 'MULTISTAGE_DDM':
-                        multistage_results = calculate_multistage_ddm(
-                            current_dividend=current_dividend_ms,
-                            cost_of_equity=cost_of_equity_ms,
-                            high_growth_rate=high_growth_rate,
-                            high_growth_years=high_growth_years,
-                            stable_growth_rate=stable_growth_rate,
-                            shares_outstanding=shares
-                        )
-
-                        # Store results
-                        st.session_state['valuation_results'] = multistage_results
-                        st.session_state['valuation_method'] = method_key
-                        st.session_state['used_smart_assumptions'] = use_smart_assumptions
-
-                    # =================================================================
-                    # RESIDUAL INCOME
-                    # =================================================================
-                    elif method_key == 'RESIDUAL_INCOME':
-                        residual_results = calculate_residual_income(
-                            book_value_equity=book_value_equity,
-                            roe=roe,
-                            cost_of_equity=cost_of_equity_ri,
-                            growth_rate=growth_rate_ri,
-                            forecast_years=forecast_years_ri,
-                            shares_outstanding=shares
-                        )
-
-                        # Store results
-                        st.session_state['valuation_results'] = residual_results
-                        st.session_state['valuation_method'] = method_key
-                        st.session_state['used_smart_assumptions'] = use_smart_assumptions
-
-                    # =================================================================
-                    # RELATIVE VALUATION
-                    # =================================================================
-                    elif method_key == 'RELATIVE':
-                        # Calculate peer multiples
-                        median_multiples = calculate_peer_multiples(peers)
-
-                        if median_multiples:
-                            # Prepare company financials for relative valuation
-                            company_financials_dict = {
-                                'eps': financials.get('eps', 0),
-                                'book_value_per_share': financials.get('book_value_per_share', 0),
-                                'sales_per_share': financials.get('revenue', 0) / shares if shares > 0 else 0,
-                                'ebitda': financials.get('ebitda', 0),
-                                'ebit': financials.get('ebit', 0),
-                                'revenue': financials.get('revenue', 0),
-                                'total_debt': financials.get('total_debt', 0),
-                                'cash': financials.get('cash', 0)
-                            }
-
-                            relative_results = apply_relative_valuation(
-                                company_financials=company_financials_dict,
-                                median_multiples=median_multiples,
-                                shares_outstanding=shares
-                            )
-
-                            # Add method and average value
-                            relative_results['method'] = 'Relative Valuation'
-                            relative_results['intrinsic_value_per_share'] = relative_results.get('average_relative_value', 0)
-
-                            # Store results
-                            st.session_state['valuation_results'] = relative_results
-                            st.session_state['valuation_method'] = method_key
-                            st.session_state['used_smart_assumptions'] = False
-                        else:
-                            st.error("Unable to calculate peer multiples. Please check peer company data.")
-                            st.stop()
-
-                    # =================================================================
-                    # SUM-OF-THE-PARTS (SOTP)
-                    # =================================================================
-                    elif method_key == 'SOTP':
-                        sotp_results = calculate_sotp_valuation(
-                            segments=segments,
-                            discount_rate=0.10,  # Default WACC for SOTP
-                            shares_outstanding=shares
-                        )
-
-                        # Store results
-                        st.session_state['valuation_results'] = sotp_results
-                        st.session_state['valuation_method'] = method_key
-                        st.session_state['used_smart_assumptions'] = False
-
+                    
+                    dcf_results = calculate_dcf_value(
+                        projections, discount_rate, terminal_value, shares,
+                        net_debt if dcf_method == 'FCFF' else 0, dcf_method
+                    )
+                    
+                    dcf_results['net_debt'] = net_debt
+                    
+                    # Store results
+                    st.session_state['dcf_results'] = dcf_results
+                    st.session_state['dcf_projections'] = projections
+                    st.session_state['dcf_method'] = dcf_method
+                    st.session_state['discount_rate'] = discount_rate
+                    st.session_state['terminal_growth'] = terminal_growth
+                    st.session_state['used_smart_assumptions'] = use_smart_assumptions
+                    
                     st.success("✅ Valuation Complete!")
             
             # Display Results
-            if 'valuation_results' in st.session_state:
-                results = st.session_state['valuation_results']
-                method = st.session_state['valuation_method']
-                projections = st.session_state.get('dcf_projections', None)
+            if 'dcf_results' in st.session_state:
+                results = st.session_state['dcf_results']
+                projections = st.session_state['dcf_projections']
+                method = st.session_state['dcf_method']
                 
                 st.markdown("---")
                 st.markdown("### 📊 Valuation Results")
@@ -5129,7 +3663,7 @@ def main():
                     delta="Undervalued" if upside_downside > 0 else "Overvalued"
                 )
                 
-                col4.metric("Discount Rate", ATLASFormatter.format_yield(st.session_state['discount_rate'] * 100, decimals=1))
+                col4.metric("Discount Rate", format_percentage(st.session_state['discount_rate'] * 100))
                 
                 # Valuation interpretation
                 st.markdown("---")
@@ -5207,7 +3741,7 @@ def main():
                 
                 st.dataframe(proj_display, use_container_width=True, hide_index=True)
                 
-                st.info("💡 **Technical Note:** D&A and CapEx scale with revenue growth (as they should!)")
+                st.success("✅ **Notice:** D&A and CapEx scale with revenue growth (as they should!)")
                 
                 # Export Options
                 st.markdown("---")
