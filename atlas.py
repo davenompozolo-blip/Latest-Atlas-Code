@@ -2426,6 +2426,111 @@ def create_var_waterfall(returns):
     apply_chart_theme(fig)
     return fig
 
+# v9.7 NEW FEATURE: VaR/CVaR on Return Distribution
+def create_var_cvar_distribution(returns):
+    """
+    NEW IN v9.7: Visualize VaR and CVaR on the actual return distribution
+    Shows histogram of returns with VaR and CVaR threshold lines
+    """
+    if not is_valid_series(returns) or len(returns) < 30:
+        return None
+
+    # Calculate risk metrics
+    var_95 = calculate_var(returns, 0.95)
+    cvar_95 = calculate_cvar(returns, 0.95)
+    var_99 = calculate_var(returns, 0.99)
+
+    if var_95 is None or cvar_95 is None:
+        return None
+
+    # Convert to decimal for distribution
+    returns_pct = returns * 100
+
+    fig = go.Figure()
+
+    # Add histogram of returns
+    fig.add_trace(go.Histogram(
+        x=returns_pct,
+        name='Return Distribution',
+        nbinsx=50,
+        marker=dict(
+            color=COLORS['info'],
+            opacity=0.7,
+            line=dict(color=COLORS['border'], width=1)
+        ),
+        hovertemplate='Returns: %{x:.2f}%<br>Count: %{y}<extra></extra>'
+    ))
+
+    # Add VaR 95% line
+    fig.add_vline(
+        x=var_95,
+        line_dash="dash",
+        line_color=COLORS['warning'],
+        line_width=3,
+        annotation_text=f"VaR 95%: {var_95:.2f}%",
+        annotation_position="top",
+        annotation=dict(
+            font=dict(size=12, color=COLORS['warning']),
+            bgcolor='rgba(10, 25, 41, 0.8)',
+            bordercolor=COLORS['warning'],
+            borderwidth=2
+        )
+    )
+
+    # Add CVaR 95% line
+    fig.add_vline(
+        x=cvar_95,
+        line_dash="solid",
+        line_color=COLORS['danger'],
+        line_width=3,
+        annotation_text=f"CVaR 95%: {cvar_95:.2f}%",
+        annotation_position="bottom",
+        annotation=dict(
+            font=dict(size=12, color=COLORS['danger']),
+            bgcolor='rgba(10, 25, 41, 0.8)',
+            bordercolor=COLORS['danger'],
+            borderwidth=2
+        )
+    )
+
+    # Add VaR 99% line
+    fig.add_vline(
+        x=var_99,
+        line_dash="dot",
+        line_color=COLORS['danger'],
+        line_width=2,
+        annotation_text=f"VaR 99%: {var_99:.2f}%",
+        annotation_position="top right",
+        annotation=dict(
+            font=dict(size=10, color=COLORS['danger']),
+            bgcolor='rgba(10, 25, 41, 0.6)'
+        )
+    )
+
+    # Shade the tail risk area (beyond CVaR)
+    fig.add_vrect(
+        x0=returns_pct.min(),
+        x1=cvar_95,
+        fillcolor=COLORS['danger'],
+        opacity=0.15,
+        layer="below",
+        line_width=0,
+        annotation_text="Tail Risk Zone",
+        annotation_position="top left"
+    )
+
+    fig.update_layout(
+        title="📊 v9.7: Return Distribution with VaR/CVaR Analysis",
+        xaxis_title="Daily Returns (%)",
+        yaxis_title="Frequency",
+        height=500,
+        showlegend=False,
+        bargap=0.05
+    )
+
+    apply_chart_theme(fig)
+    return fig
+
 # v9.7 NEW FEATURE: Rolling VaR/CVaR Time Series
 def create_rolling_var_cvar_chart(returns, window=60):
     """
@@ -4165,7 +4270,14 @@ def main():
                 var_chart = create_var_waterfall(portfolio_returns)
                 if var_chart:
                     st.plotly_chart(var_chart, use_container_width=True)
-                
+
+                # v9.7 NEW: VaR/CVaR on Return Distribution
+                var_dist = create_var_cvar_distribution(portfolio_returns)
+                if var_dist:
+                    st.plotly_chart(var_dist, use_container_width=True)
+                else:
+                    st.info("Insufficient data for distribution analysis (requires 30+ observations)")
+
                 risk_parity = create_risk_parity_analysis(enhanced_df)
                 if risk_parity:
                     st.plotly_chart(risk_parity, use_container_width=True)
@@ -4246,7 +4358,8 @@ def main():
 
             with col1:
                 st.markdown("##### Market Shock Scenarios")
-                current_value = (enhanced_df['Weight %'] * enhanced_df['Current Price']).sum()
+                # v9.7 FIX: Use correct Total Value calculation
+                current_value = enhanced_df['Total Value'].sum()
 
                 stress_results = []
                 for scenario, shock in stress_scenarios.items():
@@ -4265,6 +4378,54 @@ def main():
                 stress_df['Return'] = stress_df['Return'].apply(lambda x: f"{x:+.1f}%")
 
                 st.dataframe(stress_df, use_container_width=True, hide_index=True)
+
+                st.caption(f"💼 Current Portfolio Value: {format_currency(current_value)}")
+
+            # v9.7 NEW: Stress Test Visualization
+            st.markdown("---")
+            st.markdown("##### 📊 Stress Test Impact Visualization")
+
+            # Create waterfall chart for stress scenarios
+            scenarios_short = [s.split(' ')[0] + ' ' + s.split('(')[1].replace(')', '') for s in stress_scenarios.keys()]
+            shocks = list(stress_scenarios.values())
+
+            fig_stress = go.Figure()
+
+            colors_stress = [COLORS['success'] if s > 0 else COLORS['danger'] for s in shocks]
+
+            fig_stress.add_trace(go.Bar(
+                x=scenarios_short,
+                y=[s * 100 for s in shocks],
+                marker=dict(
+                    color=colors_stress,
+                    line=dict(color=COLORS['border'], width=2),
+                    opacity=0.8
+                ),
+                text=[f"{s*100:+.0f}%" for s in shocks],
+                textposition='outside',
+                textfont=dict(size=12, color=COLORS['text_primary']),
+                hovertemplate='<b>%{x}</b><br>Impact: %{y:.1f}%<br>Portfolio Value: $%{customdata:,.0f}<extra></extra>',
+                customdata=[current_value * (1 + s) for s in shocks]
+            ))
+
+            fig_stress.update_layout(
+                title="Stress Test Scenarios - Portfolio Impact",
+                xaxis_title="Scenario",
+                yaxis_title="Return Impact (%)",
+                height=400,
+                showlegend=False,
+                xaxis=dict(tickangle=-45)
+            )
+
+            fig_stress.add_hline(
+                y=0,
+                line_dash="solid",
+                line_color=COLORS['text_muted'],
+                line_width=2
+            )
+
+            apply_chart_theme(fig_stress)
+            st.plotly_chart(fig_stress, use_container_width=True)
 
             with col2:
                 st.markdown("##### Sector Concentration Risk")
