@@ -2398,7 +2398,7 @@ def calculate_calmar_ratio(returns, risk_free_rate=RISK_FREE_RATE):
     return (annualized_return - risk_free_rate) / (max_dd / 100)
 
 # ============================================================================
-# PORTFOLIO OPTIMIZATION - VAR/CVAR MINIMIZATION
+# PORTFOLIO OPTIMIZATION - MEAN-VARIANCE (SHARPE RATIO MAXIMIZATION)
 # ============================================================================
 
 def calculate_optimal_weights_var_cvar(
@@ -2414,7 +2414,11 @@ def calculate_optimal_weights_var_cvar(
     allow_short=False
 ):
     """
-    INSTITUTIONAL-GRADE Portfolio Optimization: Minimize CVaR with realistic constraints
+    INSTITUTIONAL-GRADE Portfolio Optimization: Mean-Variance Optimization (Markowitz)
+    Maximize Sharpe Ratio to find optimal risk-return trade-off on the efficient frontier
+
+    This approach allows capturing upside opportunities while managing downside risk,
+    unlike CVaR minimization which is too conservative and sacrifices returns.
 
     Parameters:
     -----------
@@ -2423,7 +2427,7 @@ def calculate_optimal_weights_var_cvar(
     current_weights : dict
         Current portfolio weights {ticker: weight}
     confidence_level : float
-        Confidence level for VaR/CVaR (default: 0.95)
+        Confidence level for VaR/CVaR reporting (default: 0.95)
     method : str
         Method for calculation ('historical', 'parametric', 'monte_carlo')
     constraints : dict
@@ -2466,12 +2470,18 @@ def calculate_optimal_weights_var_cvar(
     current_var = np.percentile(current_returns, (1 - confidence_level) * 100)
     current_cvar = current_returns[current_returns <= current_var].mean()
 
-    # ENHANCED Objective function: Minimize CVaR + Concentration Penalty + Diversification Penalty
+    # MEAN-VARIANCE OPTIMIZATION: Maximize Sharpe Ratio (minimize negative Sharpe)
     def objective(weights):
-        # Primary objective: CVaR
+        # Primary objective: Maximize Sharpe Ratio (optimal risk-return trade-off)
         portfolio_returns = returns_matrix.values @ weights
-        var = np.percentile(portfolio_returns, (1 - confidence_level) * 100)
-        cvar = portfolio_returns[portfolio_returns <= var].mean()
+
+        # Annualized return and volatility
+        expected_return = portfolio_returns.mean() * 252  # Annualized
+        portfolio_std = portfolio_returns.std() * np.sqrt(252)  # Annualized volatility
+
+        # Sharpe Ratio (assume risk-free rate ≈ 0 for simplicity, or use 0.04 for 4%)
+        risk_free_rate = 0.04
+        sharpe_ratio = (expected_return - risk_free_rate) / portfolio_std if portfolio_std > 0 else 0
 
         # INSTITUTIONAL: Concentration penalty (quadratic penalty for large positions)
         concentration_penalty = 100 * np.sum(np.maximum(weights - max_position_weight * 0.8, 0) ** 2)
@@ -2484,7 +2494,8 @@ def calculate_optimal_weights_var_cvar(
         turnover = np.sum(np.abs(weights - current_weights_array))
         turnover_penalty = 10 * np.maximum(turnover - max_turnover, 0) ** 2
 
-        return cvar + concentration_penalty + diversification_penalty + turnover_penalty
+        # Minimize NEGATIVE Sharpe (to maximize Sharpe) + penalties
+        return -sharpe_ratio + concentration_penalty + diversification_penalty + turnover_penalty
 
     # INSTITUTIONAL: Turnover constraint
     def turnover_constraint(weights):
@@ -5489,13 +5500,14 @@ def main():
                 st.caption("🟡 Sectors 20-30% = Medium concentration risk")
 
         with tab5:
-            st.markdown("#### 🎯 Portfolio Optimization - CVaR Minimization")
+            st.markdown("#### 🎯 Portfolio Optimization - Mean-Variance (Markowitz)")
             st.info("""
-            💡 **VaR/CVaR Portfolio Optimization**: Find optimal portfolio weights to minimize Conditional Value at Risk (CVaR)
-            while maintaining diversification and respecting position limits.
+            💡 **Mean-Variance Optimization**: Find optimal portfolio weights to **maximize Sharpe Ratio**,
+            achieving the best risk-return trade-off on the efficient frontier.
 
-            **What is CVaR?** Conditional VaR measures the average loss in the worst-case scenarios beyond VaR,
-            providing a more complete picture of tail risk.
+            **Why Sharpe Maximization?** Unlike CVaR minimization which is too conservative and sacrifices upside,
+            maximizing Sharpe Ratio allows you to capture right-tail opportunities while managing downside risk.
+            This produces **superior risk-adjusted returns** and higher portfolio efficiency.
             """)
 
             # Optimization Controls
@@ -5527,7 +5539,7 @@ def main():
             if run_optimization or 'optimization_results' in st.session_state:
 
                 if run_optimization:
-                    with st.spinner("🔄 Running CVaR optimization... This may take a moment."):
+                    with st.spinner("🔄 Running Mean-Variance optimization (Sharpe maximization)... This may take a moment."):
 
                         # Prepare returns data
                         returns_data = {}
