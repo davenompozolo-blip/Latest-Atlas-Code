@@ -2692,6 +2692,82 @@ def calculate_portfolio_leverage_metrics(positions_df, cash_balance=0, margin_us
         'cash_balance': cash_balance
     }
 
+def add_optimization_columns_to_holdings(holdings_df, optimization_results=None):
+    """
+    Enhance holdings table with optimization columns from session state
+
+    Parameters:
+    -----------
+    holdings_df : pd.DataFrame
+        Current holdings table
+    optimization_results : dict
+        Optimization results from session state (optional)
+
+    Returns:
+    --------
+    pd.DataFrame with added columns:
+    - Optimal Weight %
+    - Weight Difference %
+    - Shares to Trade
+    - Trade Value
+    - Priority
+    """
+
+    enhanced_df = holdings_df.copy()
+
+    # Initialize new columns with defaults
+    enhanced_df['Optimal Weight %'] = enhanced_df['Weight %']  # Default to current
+    enhanced_df['Weight Diff %'] = 0.0
+    enhanced_df['Shares to Trade'] = 0
+    enhanced_df['Trade Value'] = 0.0
+    enhanced_df['Priority'] = '-'
+
+    # If optimization results available, populate columns
+    if optimization_results and optimization_results.get('optimization_success'):
+        optimal_weights = optimization_results.get('optimal_weights', {})
+        total_portfolio_value = enhanced_df['Total Value'].sum()
+
+        for idx, row in enhanced_df.iterrows():
+            ticker = row['Ticker']
+
+            if ticker in optimal_weights:
+                optimal_weight = optimal_weights[ticker] * 100  # Convert to percentage
+                current_weight = row['Weight %']
+                weight_diff = optimal_weight - current_weight
+
+                # Calculate shares to trade
+                target_value = total_portfolio_value * (optimal_weight / 100)
+                current_value = row['Total Value']
+                current_shares = row['Shares']
+                current_price = current_value / current_shares if current_shares > 0 else 0
+
+                if current_price > 0:
+                    target_shares = target_value / current_price
+                    shares_to_trade = target_shares - current_shares
+                    trade_value = shares_to_trade * current_price
+                else:
+                    shares_to_trade = 0
+                    trade_value = 0
+
+                # Determine priority
+                if abs(weight_diff) > 5:
+                    priority = '🔴 High'
+                elif abs(weight_diff) > 2:
+                    priority = '🟡 Medium'
+                elif abs(weight_diff) > 0.1:
+                    priority = '🟢 Low'
+                else:
+                    priority = '-'
+
+                # Update columns
+                enhanced_df.at[idx, 'Optimal Weight %'] = optimal_weight
+                enhanced_df.at[idx, 'Weight Diff %'] = weight_diff
+                enhanced_df.at[idx, 'Shares to Trade'] = shares_to_trade
+                enhanced_df.at[idx, 'Trade Value'] = trade_value
+                enhanced_df.at[idx, 'Priority'] = priority
+
+    return enhanced_df
+
 # ============================================================================
 # CONTINUING IN PART 2...
 # ============================================================================
@@ -4822,19 +4898,37 @@ def main():
         
         with st.spinner("Loading..."):
             enhanced_df = create_enhanced_holdings_table(df)
-        
+
+            # ENHANCED: Add optimization columns if results exist
+            optimization_results = st.session_state.get('optimization_results', None)
+            enhanced_df = add_optimization_columns_to_holdings(enhanced_df, optimization_results)
+
         total_value = enhanced_df['Total Value'].sum()
         total_cost = enhanced_df['Total Cost'].sum()
         total_gl = total_value - total_cost
         total_gl_pct = (total_gl / total_cost) * 100 if total_cost > 0 else 0
         daily_pl = enhanced_df['Daily P&L $'].sum()
-        
-        col1, col2, col3, col4, col5 = st.columns(5)
-        col1.metric("Total Value", format_currency(total_value))
-        col2.metric("Total Cost", format_currency(total_cost))
-        col3.metric("Total G/L", format_currency(total_gl), format_percentage(total_gl_pct))
-        col4.metric("Daily P&L", format_currency(daily_pl))
-        col5.metric("📊 Positions", len(enhanced_df))
+
+        # ENHANCED: Calculate leverage metrics
+        leverage_info_home = get_leverage_info()
+        cash_balance = 0  # Could be fetched from account data
+        margin_used = leverage_info_home.get('margin_used', 0) if leverage_info_home else 0
+
+        leverage_metrics = calculate_portfolio_leverage_metrics(
+            enhanced_df,
+            cash_balance=cash_balance,
+            margin_used=margin_used
+        )
+
+        # ENHANCED: Show Account Value vs Equity Value
+        col1, col2, col3, col4, col5, col6 = st.columns(6)
+        col1.metric("Account Value", format_currency(leverage_metrics['total_account_value']))
+        col2.metric("Equity Value", format_currency(leverage_metrics['equity_value']),
+                   delta=f"Leverage: {leverage_metrics['leverage_ratio']:.2f}x" if leverage_metrics['leverage_ratio'] > 1.01 else "No Leverage")
+        col3.metric("Total Cost", format_currency(total_cost))
+        col4.metric("Total G/L", format_currency(total_gl), format_percentage(total_gl_pct))
+        col5.metric("Daily P&L", format_currency(daily_pl))
+        col6.metric("📊 Positions", len(enhanced_df))
 
         # v9.7 NEW FEATURE: Data Quality Indicator
         validation_result = validate_portfolio_data(portfolio_data)
@@ -4915,40 +5009,16 @@ def main():
         
         st.markdown("---")
         st.markdown("### 📊 DASHBOARD OVERVIEW")
-        
-        # ENHANCED: Better layout with 2 rows
-        row1_col1, row1_col2 = st.columns([2, 1])
-        
-        with row1_col1:
-            risk_reward = create_risk_reward_plot(enhanced_df)
-            if risk_reward:
-                st.plotly_chart(risk_reward, use_container_width=True)
-        
-        with row1_col2:
-            # ENHANCED: Multiple visualization options for sector allocation
-            viz_tabs = st.tabs(["📊 Donut", "🗺️ Treemap", "☀️ Sunburst", "📈 Bar Chart"])
 
-            with viz_tabs[0]:
-                sector_donut = create_sector_allocation_donut(enhanced_df)
-                if sector_donut:
-                    st.plotly_chart(sector_donut, use_container_width=True)
+        # Show optimization status if available
+        if optimization_results and optimization_results.get('optimization_success'):
+            st.success(f"""
+            ✅ **Portfolio Optimization Active** - CVaR minimized by {abs(optimization_results['cvar_improvement_pct']):.1f}%
 
-            with viz_tabs[1]:
-                sector_treemap = create_sector_allocation_treemap(enhanced_df)
-                if sector_treemap:
-                    st.plotly_chart(sector_treemap, use_container_width=True)
+            View detailed breakdown in the holdings table below (see Optimal Weight %, Shares to Trade, Priority columns).
+            """)
 
-            with viz_tabs[2]:
-                sector_sunburst = create_sector_allocation_sunburst(enhanced_df)
-                if sector_sunburst:
-                    st.plotly_chart(sector_sunburst, use_container_width=True)
-
-            with viz_tabs[3]:
-                sector_bar = create_sector_allocation_bar(enhanced_df)
-                if sector_bar:
-                    st.plotly_chart(sector_bar, use_container_width=True)
-        
-        # NEW: Second row with Contributors and Detractors
+        # Contributors and Detractors
         row2_col1, row2_col2 = st.columns(2)
         
         with row2_col1:
@@ -5722,9 +5792,9 @@ def main():
         
         df = pd.DataFrame(portfolio_data)
         enhanced_df = create_enhanced_holdings_table(df)
-        
-        tab1, tab2, tab3 = st.tabs([
-            "🎯 Attribution", "🔄 Sector Rotation", "📊 Concentration"
+
+        tab1, tab2, tab3, tab4 = st.tabs([
+            "🎯 Attribution", "🔄 Sector Rotation", "📊 Concentration", "📊 Sector Allocation"
         ])
         
         with tab1:
@@ -5758,7 +5828,38 @@ def main():
                 conc_analysis = create_concentration_analysis(enhanced_df)
                 if conc_analysis:
                     st.plotly_chart(conc_analysis, use_container_width=True)
-    
+
+        with tab4:
+            st.markdown("### 📊 Sector Allocation - Multiple Views")
+            st.info("💡 **Moved from Portfolio Home** - Enhanced sector visualization with full width for better visibility")
+
+            # Multiple visualization options
+            viz_tabs = st.tabs(["📊 Donut", "🗺️ Treemap", "☀️ Sunburst", "📈 Bar Chart"])
+
+            with viz_tabs[0]:
+                st.markdown("#### 📊 Sector Allocation Donut Chart")
+                sector_donut = create_sector_allocation_donut(enhanced_df)
+                if sector_donut:
+                    st.plotly_chart(sector_donut, use_container_width=True)
+
+            with viz_tabs[1]:
+                st.markdown("#### 🗺️ Sector Treemap - Hierarchical View")
+                sector_treemap = create_sector_allocation_treemap(enhanced_df)
+                if sector_treemap:
+                    st.plotly_chart(sector_treemap, use_container_width=True)
+
+            with viz_tabs[2]:
+                st.markdown("#### ☀️ Sector Sunburst - Interactive Drill-Down")
+                sector_sunburst = create_sector_allocation_sunburst(enhanced_df)
+                if sector_sunburst:
+                    st.plotly_chart(sector_sunburst, use_container_width=True)
+
+            with viz_tabs[3]:
+                st.markdown("#### 📈 Sector Bar Chart - Ranked by Value")
+                sector_bar = create_sector_allocation_bar(enhanced_df)
+                if sector_bar:
+                    st.plotly_chart(sector_bar, use_container_width=True)
+
     # ========================================================================
     # MULTI-FACTOR ANALYSIS - ENHANCED
     # ========================================================================
