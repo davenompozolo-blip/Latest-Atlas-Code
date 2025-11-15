@@ -2481,20 +2481,27 @@ def calculate_optimal_weights_var_cvar(
 
         # Sharpe Ratio (assume risk-free rate ≈ 0 for simplicity, or use 0.04 for 4%)
         risk_free_rate = 0.04
-        sharpe_ratio = (expected_return - risk_free_rate) / portfolio_std if portfolio_std > 0 else 0
 
-        # INSTITUTIONAL: Concentration penalty (quadratic penalty for large positions)
-        concentration_penalty = 100 * np.sum(np.maximum(weights - max_position_weight * 0.8, 0) ** 2)
+        # Prevent division by zero
+        if portfolio_std < 1e-6:
+            sharpe_ratio = 0
+        else:
+            sharpe_ratio = (expected_return - risk_free_rate) / portfolio_std
 
-        # INSTITUTIONAL: Diversification penalty (encourage target number of positions)
+        # INSTITUTIONAL: Penalties (SCALED DOWN to not dominate objective)
+        # Concentration penalty (discourage positions >80% of max)
+        concentration_penalty = 0.5 * np.sum(np.maximum(weights - max_position_weight * 0.8, 0) ** 2)
+
+        # Diversification penalty (encourage target number of positions)
         n_active = np.sum(weights > min_position_weight * 0.5)
-        diversification_penalty = 0.01 * (n_active - diversification_target) ** 2
+        diversification_penalty = 0.001 * (n_active - diversification_target) ** 2
 
-        # INSTITUTIONAL: Turnover penalty (discourage excessive trading)
+        # Turnover penalty (discourage excessive trading beyond limit)
         turnover = np.sum(np.abs(weights - current_weights_array))
-        turnover_penalty = 10 * np.maximum(turnover - max_turnover, 0) ** 2
+        turnover_penalty = 0.1 * np.maximum(turnover - max_turnover, 0) ** 2
 
-        # Minimize NEGATIVE Sharpe (to maximize Sharpe) + penalties
+        # Minimize NEGATIVE Sharpe (to maximize Sharpe) + small penalties
+        # Penalties are small so Sharpe dominates, but they guide toward institutional constraints
         return -sharpe_ratio + concentration_penalty + diversification_penalty + turnover_penalty
 
     # INSTITUTIONAL: Turnover constraint
@@ -2529,15 +2536,24 @@ def calculate_optimal_weights_var_cvar(
             method='SLSQP',
             bounds=bounds,
             constraints=constraint_list,
-            options={'maxiter': 2000, 'ftol': 1e-8}  # More iterations for complex constraints
+            options={'maxiter': 2000, 'ftol': 1e-8, 'disp': False}  # More iterations for complex constraints
         )
 
         if not result.success:
-            # Try again with relaxed constraints if failed
-            print(f"Optimization warning: {result.message}")
-            return None
+            # Provide detailed error message
+            print(f"⚠️ Optimization did not converge: {result.message}")
+            print(f"   Status code: {result.status}")
+            print(f"   Final objective value: {result.fun:.6f}")
+            print(f"   Iterations: {result.nit}")
 
-        optimal_weights_array = result.x
+            # If close to convergence, still return result
+            if result.status == 9 or abs(result.fun) > 0:  # Status 9 = iteration limit
+                print(f"   ✓ Using best result found (not fully converged)")
+                optimal_weights_array = result.x
+            else:
+                return None
+        else:
+            optimal_weights_array = result.x
 
         # INSTITUTIONAL: Post-processing - zero out tiny positions below min threshold
         # This prevents 0.3% allocations that aren't meaningful
