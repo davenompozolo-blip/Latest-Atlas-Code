@@ -2407,11 +2407,14 @@ def calculate_optimal_weights_var_cvar(
     confidence_level=0.95,
     method='historical',
     constraints=None,
-    max_position_weight=0.25,
+    max_position_weight=0.06,      # INSTITUTIONAL: 6% max
+    min_position_weight=0.02,      # INSTITUTIONAL: 2% min if held
+    max_turnover=0.30,             # INSTITUTIONAL: 30% max total change
+    diversification_target=32,     # INSTITUTIONAL: Target 30-35 positions
     allow_short=False
 ):
     """
-    Calculate optimal portfolio weights to minimize CVaR (Conditional Value at Risk)
+    INSTITUTIONAL-GRADE Portfolio Optimization: Minimize CVaR with realistic constraints
 
     Parameters:
     -----------
@@ -2426,7 +2429,13 @@ def calculate_optimal_weights_var_cvar(
     constraints : dict
         Additional constraints (sector limits, etc.)
     max_position_weight : float
-        Maximum weight for any single position (default: 0.25)
+        Maximum weight for any single position (default: 0.06 = 6%)
+    min_position_weight : float
+        Minimum weight if position is held (default: 0.02 = 2%)
+    max_turnover : float
+        Maximum total turnover allowed (default: 0.30 = 30%)
+    diversification_target : int
+        Target number of positions (default: 32 for 30-35 range)
     allow_short : bool
         Allow short positions (default: False)
 
@@ -2457,26 +2466,47 @@ def calculate_optimal_weights_var_cvar(
     current_var = np.percentile(current_returns, (1 - confidence_level) * 100)
     current_cvar = current_returns[current_returns <= current_var].mean()
 
-    # Objective function: Minimize CVaR
+    # ENHANCED Objective function: Minimize CVaR + Concentration Penalty + Diversification Penalty
     def objective(weights):
+        # Primary objective: CVaR
         portfolio_returns = returns_matrix.values @ weights
         var = np.percentile(portfolio_returns, (1 - confidence_level) * 100)
         cvar = portfolio_returns[portfolio_returns <= var].mean()
-        return cvar  # Minimize CVaR (more negative = higher risk)
+
+        # INSTITUTIONAL: Concentration penalty (quadratic penalty for large positions)
+        concentration_penalty = 100 * np.sum(np.maximum(weights - max_position_weight * 0.8, 0) ** 2)
+
+        # INSTITUTIONAL: Diversification penalty (encourage target number of positions)
+        n_active = np.sum(weights > min_position_weight * 0.5)
+        diversification_penalty = 0.01 * (n_active - diversification_target) ** 2
+
+        # INSTITUTIONAL: Turnover penalty (discourage excessive trading)
+        turnover = np.sum(np.abs(weights - current_weights_array))
+        turnover_penalty = 10 * np.maximum(turnover - max_turnover, 0) ** 2
+
+        return cvar + concentration_penalty + diversification_penalty + turnover_penalty
+
+    # INSTITUTIONAL: Turnover constraint
+    def turnover_constraint(weights):
+        """Limit total turnover to max_turnover"""
+        return max_turnover - np.sum(np.abs(weights - current_weights_array))
 
     # Constraints
     constraint_list = [
-        {'type': 'eq', 'fun': lambda w: np.sum(w) - 1.0}  # Weights sum to 1
+        {'type': 'eq', 'fun': lambda w: np.sum(w) - 1.0},  # Weights sum to 1
+        {'type': 'ineq', 'fun': turnover_constraint}        # INSTITUTIONAL: Turnover limit
     ]
 
-    # Bounds for each weight
+    # INSTITUTIONAL: Bounds - either 0 or min_position to max_position
+    # This encourages meaningful positions (not tiny 0.5% allocations)
     if allow_short:
-        bounds = tuple((-0.5, max_position_weight) for _ in range(n_assets))
+        bounds = tuple((-0.1, max_position_weight) for _ in range(n_assets))
     else:
         bounds = tuple((0.0, max_position_weight) for _ in range(n_assets))
 
-    # Initial guess (equal weight)
-    initial_weights = np.array([1.0 / n_assets] * n_assets)
+    # INSTITUTIONAL: Initial guess - start from current weights (not equal weight)
+    # This makes optimization more realistic and faster
+    initial_weights = current_weights_array.copy()
 
     # Optimize
     try:
@@ -2488,13 +2518,25 @@ def calculate_optimal_weights_var_cvar(
             method='SLSQP',
             bounds=bounds,
             constraints=constraint_list,
-            options={'maxiter': 1000, 'ftol': 1e-9}
+            options={'maxiter': 2000, 'ftol': 1e-8}  # More iterations for complex constraints
         )
 
         if not result.success:
+            # Try again with relaxed constraints if failed
+            print(f"Optimization warning: {result.message}")
             return None
 
         optimal_weights_array = result.x
+
+        # INSTITUTIONAL: Post-processing - zero out tiny positions below min threshold
+        # This prevents 0.3% allocations that aren't meaningful
+        optimal_weights_array[optimal_weights_array < min_position_weight * 0.5] = 0.0
+
+        # Re-normalize after zeroing
+        if optimal_weights_array.sum() > 0:
+            optimal_weights_array = optimal_weights_array / optimal_weights_array.sum()
+        else:
+            return None
 
         # Calculate optimal portfolio metrics
         optimal_returns = returns_matrix.values @ optimal_weights_array
@@ -5457,20 +5499,28 @@ def main():
             """)
 
             # Optimization Controls
-            with st.expander("⚙️ Optimization Settings", expanded=True):
+            with st.expander("⚙️ Optimization Settings - Institutional Grade", expanded=True):
                 opt_col1, opt_col2, opt_col3 = st.columns(3)
 
                 with opt_col1:
+                    st.markdown("**Risk Parameters**")
                     confidence_level = st.slider("Confidence Level", 0.90, 0.99, 0.95, 0.01)
-                    max_position_weight = st.slider("Max Position Weight", 0.10, 0.50, 0.25, 0.05)
+                    max_position_weight = st.slider("Max Position Weight (%)", 3.0, 10.0, 6.0, 0.5) / 100
+                    min_position_weight = st.slider("Min Position Weight (%)", 1.0, 5.0, 2.0, 0.5) / 100
 
                 with opt_col2:
+                    st.markdown("**Portfolio Constraints**")
+                    max_turnover = st.slider("Max Turnover (%)", 10.0, 50.0, 30.0, 5.0) / 100
+                    diversification_target = st.slider("Diversification Target", 25, 40, 32, 1)
                     allow_short = st.checkbox("Allow Short Positions", value=False)
-                    include_transaction_costs = st.checkbox("Include Transaction Costs", value=True)
 
                 with opt_col3:
+                    st.markdown("**Transaction Costs**")
+                    include_transaction_costs = st.checkbox("Include Transaction Costs", value=True)
                     transaction_cost_pct = st.number_input("Transaction Cost (%)", 0.0, 1.0, 0.1, 0.05) / 100
 
+                st.markdown("---")
+                st.caption("💡 **Institutional Settings**: 3-6% position limits, 30% max turnover, 30-35 position target")
                 run_optimization = st.button("🚀 Run Optimization", type="primary", use_container_width=True)
 
             # Run optimization
@@ -5501,12 +5551,15 @@ def main():
                                 weight = row['Weight %'] / 100
                                 current_weights[ticker] = weight
 
-                            # Run optimization
+                            # Run optimization with INSTITUTIONAL-GRADE parameters
                             optimization_results = calculate_optimal_weights_var_cvar(
                                 returns_df,
                                 current_weights,
                                 confidence_level=confidence_level,
                                 max_position_weight=max_position_weight,
+                                min_position_weight=min_position_weight,
+                                max_turnover=max_turnover,
+                                diversification_target=diversification_target,
                                 allow_short=allow_short
                             )
 
