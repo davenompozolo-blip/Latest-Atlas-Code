@@ -1,1 +1,9 @@
 __pycache__/
+lt.log
+lt_url.txt
+ngrok
+ngrok-v3-stable-linux-amd64.tgz*
+ngrok.log
+streamlit.log
+tunnel.log
+start_tunnel.sh
