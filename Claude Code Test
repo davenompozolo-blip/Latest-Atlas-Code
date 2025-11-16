@@ -2967,7 +2967,7 @@ def fetch_spy_sector_weights():
 
     return {
         'weights': sector_weights,
-        'timestamp': datetime.datetime.now(),
+        'timestamp': datetime.now(),
         'source': 'SPY (S&P 500)'
     }
 
@@ -2996,7 +2996,7 @@ def fetch_acwi_regional_weights():
 
     return {
         'weights': acwi_sector_weights,
-        'timestamp': datetime.datetime.now(),
+        'timestamp': datetime.now(),
         'source': 'ACWI (MSCI All Country World Index)'
     }
 
@@ -3113,7 +3113,7 @@ def calculate_portfolio_correlations(df, period='90d'):
         return None
 
     # Get end date (today) and start date
-    end_date = datetime.datetime.now()
+    end_date = datetime.now()
     start_date = end_date - datetime.timedelta(days=days + 30)  # Extra buffer
 
     # Fetch price data
