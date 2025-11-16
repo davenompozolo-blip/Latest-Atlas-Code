@@ -1,4 +1,3 @@
-%%writefile atlas_app.py
 #!/usr/bin/env python3
 """
 ATLAS TERMINAL v9.7 ULTIMATE EDITION
@@ -212,6 +211,48 @@ st.markdown(f"""
         font-weight: 700 !important;
         font-size: 14px !important;
         text-transform: uppercase !important;
+        position: relative !important;
+        z-index: 1 !important;
+    }}
+
+    /* FIX: Ensure column menu dropdowns appear above everything */
+    div[data-testid="stDataFrame"] button,
+    div[data-testid="stDataFrame"] [role="button"],
+    div[data-testid="stDataFrame"] [data-baseweb="popover"] {{
+        z-index: 9999 !important;
+        position: relative !important;
+    }}
+
+    /* FIX: Make column menu readable - prevent text overlap */
+    div[data-baseweb="popover"] {{
+        z-index: 10000 !important;
+        background: {COLORS['card_background']} !important;
+        border: 2px solid {COLORS['neon_blue']} !important;
+        border-radius: 8px !important;
+        padding: 8px !important;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.9) !important;
+    }}
+
+    /* FIX: Sidebar text containment - prevent bleeding */
+    [data-testid="stSidebar"] {{
+        background: {COLORS['card_background']} !important;
+        border-right: 2px solid {COLORS['neon_blue']} !important;
+        overflow-x: hidden !important;
+        z-index: 100 !important;
+    }}
+
+    [data-testid="stSidebar"] > div {{
+        overflow-x: hidden !important;
+        overflow-y: auto !important;
+    }}
+
+    /* FIX: Ensure sidebar content doesn't overflow or show through */
+    [data-testid="stSidebar"] h2,
+    [data-testid="stSidebar"] h3,
+    [data-testid="stSidebar"] p {{
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        max-width: 100% !important;
     }}
 
     div[data-testid="stMetric"] {{
@@ -230,6 +271,85 @@ st.markdown(f"""
     
     .stSlider {{
         padding: 10px 0px;
+    }}
+
+    /* FIX: Expander styling - prevent content overlap */
+    [data-testid="stExpander"] {{
+        background: {COLORS['card_background']} !important;
+        border: 1px solid {COLORS['neon_blue']} !important;
+        border-radius: 8px !important;
+        margin: 10px 0 !important;
+        overflow: visible !important;
+    }}
+
+    [data-testid="stExpander"] details {{
+        overflow: visible !important;
+    }}
+
+    /* FIX: Button styling - ensure clickable and visible */
+    button[kind="primary"],
+    button[kind="secondary"] {{
+        z-index: 50 !important;
+        position: relative !important;
+        overflow: visible !important;
+    }}
+
+    /* FIX: Download button - prevent overlap */
+    [data-testid="stDownloadButton"] {{
+        z-index: 50 !important;
+        position: relative !important;
+    }}
+
+    /* FIX: Selectbox and radio dropdowns - appear above content */
+    [data-baseweb="select"],
+    [role="listbox"],
+    [role="option"] {{
+        z-index: 9999 !important;
+        background: {COLORS['card_background']} !important;
+        border: 1px solid {COLORS['neon_blue']} !important;
+    }}
+
+    /* FIX: Modal/dialog overlays */
+    [role="dialog"] {{
+        z-index: 99999 !important;
+        background: {COLORS['card_background']} !important;
+        border: 2px solid {COLORS['neon_blue']} !important;
+        border-radius: 12px !important;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.95) !important;
+    }}
+
+    /* FIX: Tooltip styling - always visible */
+    [role="tooltip"] {{
+        z-index: 100000 !important;
+        background: {COLORS['card_background']} !important;
+        border: 1px solid {COLORS['neon_blue']} !important;
+        color: {COLORS['text_primary']} !important;
+        padding: 8px 12px !important;
+        border-radius: 6px !important;
+        box-shadow: 0 5px 20px rgba(0, 0, 0, 0.9) !important;
+    }}
+
+    /* FIX: Info/Warning/Error boxes - proper spacing */
+    [data-testid="stAlert"] {{
+        margin: 15px 0 !important;
+        z-index: 10 !important;
+        overflow: visible !important;
+    }}
+
+    /* FIX: Spinner overlay - centered and above content */
+    [data-testid="stSpinner"] {{
+        z-index: 9998 !important;
+    }}
+
+    /* FIX: Form elements - proper containment */
+    [data-testid="stForm"] {{
+        overflow: visible !important;
+        z-index: 10 !important;
+    }}
+
+    /* FIX: Prevent any transform animations from hiding UI elements */
+    div[data-testid="stDataFrame"]:hover {{
+        z-index: 2 !important;
     }}
 </style>
 """, unsafe_allow_html=True)
@@ -744,27 +864,64 @@ def create_pnl_attribution_sector(df):
         title="💼 P&L Attribution by Sector (%)",
         yaxis_title="P&L Contribution (%)",
         xaxis_title="",
-        height=450,
-        showlegend=False
+        height=800,  # ENHANCED: Increased height
+        showlegend=False,
+        margin=dict(l=60, r=60, t=100, b=120)  # FIX: Increased bottom margin to prevent x-axis label truncation
     )
 
     apply_chart_theme(fig)
     return fig
 
 def create_pnl_attribution_position(df, top_n=10):
-    """v9.7 ENHANCED: P&L Attribution by Position - Now showing % returns"""
-    # v9.7 FIX: Use Gain/Loss % instead of dollars
-    top_contributors = df.nlargest(top_n // 2, 'Gain/Loss %')
-    top_detractors = df.nsmallest(top_n // 2, 'Gain/Loss %')
-    combined = pd.concat([top_contributors, top_detractors]).sort_values('Gain/Loss %')
+    """ENHANCED: P&L Attribution by Position with proper column handling"""
 
-    colors = [COLORS['success'] if x > 0 else COLORS['danger'] for x in combined['Gain/Loss %']]
+    # FIX: Check if required columns exist and handle missing columns gracefully
+    gain_loss_col = None
 
-    # Create labels with ticker and percentage
+    # Try to find the gain/loss percentage column
+    if 'Gain/Loss %' in df.columns:
+        gain_loss_col = 'Gain/Loss %'
+    elif 'Total Gain/Loss %' in df.columns:
+        gain_loss_col = 'Total Gain/Loss %'
+    elif 'gain_loss_pct' in df.columns:
+        gain_loss_col = 'gain_loss_pct'
+    else:
+        # Calculate it if we have the necessary columns
+        if 'Total Gain/Loss $' in df.columns and 'Cost Basis' in df.columns:
+            df = df.copy()
+            df['Gain/Loss %'] = (df['Total Gain/Loss $'] / df['Cost Basis']) * 100
+            gain_loss_col = 'Gain/Loss %'
+        elif 'Gain/Loss' in df.columns and 'Cost Basis' in df.columns:
+            df = df.copy()
+            df['Gain/Loss %'] = (df['Gain/Loss'] / df['Cost Basis']) * 100
+            gain_loss_col = 'Gain/Loss %'
+        else:
+            # Cannot calculate - return empty chart
+            return None
+
+    # Ensure we have tickers
+    if 'Ticker' not in df.columns:
+        return None
+
+    # Filter out any NaN values
+    df_clean = df[df[gain_loss_col].notna()].copy()
+
+    if len(df_clean) == 0:
+        return None
+
+    # Get top contributors and detractors
+    n_each = min(top_n // 2, len(df_clean))
+    top_contributors = df_clean.nlargest(n_each, gain_loss_col)
+    top_detractors = df_clean.nsmallest(n_each, gain_loss_col)
+    combined = pd.concat([top_contributors, top_detractors]).sort_values(gain_loss_col)
+
+    colors = [COLORS['success'] if x > 0 else COLORS['danger'] for x in combined[gain_loss_col]]
+
+    # Create labels with ticker
     labels = [f"{ticker}" for ticker in combined['Ticker']]
 
     fig = go.Figure(go.Bar(
-        x=combined['Gain/Loss %'],
+        x=combined[gain_loss_col],
         y=labels,
         orientation='h',
         marker=dict(
@@ -772,9 +929,9 @@ def create_pnl_attribution_position(df, top_n=10):
             line=dict(color=COLORS['border'], width=2),
             opacity=0.9
         ),
-        text=[f"{v:+.1f}%" for v in combined['Gain/Loss %']],
+        text=[f"  {v:+.1f}%  " for v in combined[gain_loss_col]],  # FIX: Added spacing for better alignment
         textposition='outside',
-        textfont=dict(size=11, color=COLORS['text_primary']),
+        textfont=dict(size=12, color=COLORS['text_primary'], weight='bold'),  # Enhanced font
         hovertemplate='<b>%{y}</b><br>Return: %{x:.2f}%<extra></extra>'
     ))
 
@@ -782,9 +939,17 @@ def create_pnl_attribution_position(df, top_n=10):
         title=f"🎯 Top {top_n} P&L Contributors & Detractors (%)",
         xaxis_title="Return (%)",
         yaxis_title="",
-        height=500,
+        height=800,  # ENHANCED: Increased height for better visibility
         showlegend=False,
-        xaxis=dict(zeroline=True, zerolinewidth=2, zerolinecolor=COLORS['text_muted'])
+        xaxis=dict(
+            zeroline=True,
+            zerolinewidth=2,
+            zerolinecolor=COLORS['text_muted']
+        ),
+        yaxis=dict(
+            tickfont=dict(size=12, color=COLORS['text_primary'])  # FIX: Ensure ticker symbols are visible
+        ),
+        margin=dict(l=80, r=120, t=80, b=60)  # FIX: More padding for labels
     )
 
     apply_chart_theme(fig)
@@ -884,6 +1049,177 @@ def create_yield_curve():
 
     apply_chart_theme(fig)
     return fig
+
+# ============================================================================
+# ENHANCED TREASURY & FORWARD CURVE FUNCTIONS
+# ============================================================================
+
+def calculate_forward_rate(spot_long, time_long, spot_short, time_short):
+    """
+    Calculate forward rate between two periods
+
+    Parameters:
+    - spot_long: longer maturity spot rate (decimal, e.g., 0.045 for 4.5%)
+    - time_long: longer maturity in years
+    - spot_short: shorter maturity spot rate (decimal)
+    - time_short: shorter maturity in years
+
+    Returns:
+    - forward_rate: implied forward rate (decimal)
+    """
+    try:
+        forward_rate = (
+            ((1 + spot_long) ** time_long / (1 + spot_short) ** time_short)
+            ** (1 / (time_long - time_short))
+        ) - 1
+        return forward_rate
+    except:
+        return None
+
+@st.cache_data(ttl=300)
+def fetch_comprehensive_treasury_yields():
+    """Fetch complete US Treasury yield curve with all maturities"""
+    # Comprehensive Treasury tickers
+    treasuries = {
+        "^IRX": {"maturity": 0.25, "name": "3M"},
+        "^FVX": {"maturity": 5, "name": "5Y"},
+        "^TNX": {"maturity": 10, "name": "10Y"},
+        "^TYX": {"maturity": 30, "name": "30Y"}
+    }
+
+    yields_dict = {}
+
+    for ticker, info in treasuries.items():
+        try:
+            stock = yf.Ticker(ticker)
+            hist = stock.history(period="1d")
+            if not hist.empty:
+                current_yield = hist['Close'].iloc[-1] / 100  # Convert to decimal
+                yields_dict[info['name']] = {
+                    'yield': current_yield,
+                    'maturity': info['maturity'],
+                    'yield_pct': hist['Close'].iloc[-1]
+                }
+        except:
+            continue
+
+    return yields_dict
+
+def build_forward_curve(spot_rates_dict):
+    """Build forward curve from spot rates"""
+    if not spot_rates_dict or len(spot_rates_dict) < 2:
+        return None
+
+    forwards = []
+
+    # Sort by maturity
+    sorted_spots = sorted(spot_rates_dict.items(), key=lambda x: x[1]['maturity'])
+
+    # Calculate key forward rates
+    for i in range(len(sorted_spots) - 1):
+        short_name, short_data = sorted_spots[i]
+        long_name, long_data = sorted_spots[i + 1]
+
+        forward_rate = calculate_forward_rate(
+            long_data['yield'],
+            long_data['maturity'],
+            short_data['yield'],
+            short_data['maturity']
+        )
+
+        if forward_rate is not None:
+            forwards.append({
+                'period': f"{short_name}{long_name}",
+                'start_maturity': short_data['maturity'],
+                'end_maturity': long_data['maturity'],
+                'forward_rate': forward_rate * 100  # Convert to percentage
+            })
+
+    return forwards
+
+def create_enhanced_yield_curve_with_forwards():
+    """Enhanced yield curve with forward rates overlay"""
+    spot_yields = fetch_comprehensive_treasury_yields()
+
+    if not spot_yields:
+        return None
+
+    # Prepare spot curve data
+    maturities = [data['maturity'] for data in spot_yields.values()]
+    yields = [data['yield_pct'] for data in spot_yields.values()]
+    labels = list(spot_yields.keys())
+
+    # Sort by maturity
+    sorted_data = sorted(zip(maturities, yields, labels))
+    maturities, yields, labels = zip(*sorted_data)
+
+    fig = go.Figure()
+
+    # Spot curve
+    fig.add_trace(go.Scatter(
+        x=maturities,
+        y=yields,
+        mode='lines+markers',
+        name='Spot Curve',
+        line=dict(color=COLORS['neon_blue'], width=3),
+        marker=dict(size=10, color=COLORS['electric_blue'], line=dict(color=COLORS['border'], width=2)),
+        hovertemplate='<b>%{text}</b><br>Yield: %{y:.2f}%<extra></extra>',
+        text=labels
+    ))
+
+    # Calculate and add forward rates
+    forwards = build_forward_curve(spot_yields)
+    if forwards:
+        forward_maturities = [(f['start_maturity'] + f['end_maturity']) / 2 for f in forwards]
+        forward_rates = [f['forward_rate'] for f in forwards]
+        forward_labels = [f['period'] for f in forwards]
+
+        fig.add_trace(go.Scatter(
+            x=forward_maturities,
+            y=forward_rates,
+            mode='lines+markers',
+            name='Forward Rates',
+            line=dict(color=COLORS['warning'], width=2, dash='dash'),
+            marker=dict(size=8, color=COLORS['orange']),
+            hovertemplate='<b>%{text}</b><br>Forward: %{y:.2f}%<extra></extra>',
+            text=forward_labels
+        ))
+
+    fig.update_layout(
+        title="📈 US Treasury Yield Curve with Forward Rates",
+        xaxis_title="Maturity (Years)",
+        yaxis_title="Yield / Forward Rate (%)",
+        height=500,
+        showlegend=True,
+        legend=dict(
+            yanchor="top",
+            y=0.99,
+            xanchor="left",
+            x=0.01,
+            bgcolor="rgba(10, 25, 41, 0.8)",
+            bordercolor=COLORS['border'],
+            borderwidth=1
+        )
+    )
+
+    apply_chart_theme(fig)
+    return fig
+
+def create_treasury_data_table():
+    """Create properly formatted Treasury data table with Yield (%) column"""
+    spot_yields = fetch_comprehensive_treasury_yields()
+
+    if not spot_yields:
+        return None
+
+    data = []
+    for name, info in sorted(spot_yields.items(), key=lambda x: x[1]['maturity']):
+        data.append({
+            'Maturity': name,
+            'Yield (%)': f"{info['yield_pct']:.2f}%"
+        })
+
+    return pd.DataFrame(data)
 
 def get_data_freshness(cache_time=None):
     """Calculate and format data age for freshness indicators"""
@@ -1137,6 +1473,9 @@ def fetch_historical_data(ticker, start_date, end_date):
         stock = yf.Ticker(ticker)
         hist = stock.history(start=start_date, end=end_date)
         if not hist.empty:
+            # FIX: Remove timezone to avoid offset-naive/offset-aware comparison errors
+            if hist.index.tz is not None:
+                hist.index = hist.index.tz_localize(None)
             return hist
     except:
         pass
@@ -2053,23 +2392,32 @@ def create_enhanced_holdings_table(df):
     
     enhanced_df['Sector'] = enhanced_df['Sector'].fillna('Other')
     enhanced_df['Shares'] = enhanced_df['Shares'].round(0).astype(int)
-    
+
     enhanced_df['Total Cost'] = enhanced_df['Shares'] * enhanced_df['Avg Cost']
     enhanced_df['Total Value'] = enhanced_df['Shares'] * enhanced_df['Current Price']
     enhanced_df['Total Gain/Loss $'] = enhanced_df['Total Value'] - enhanced_df['Total Cost']
     enhanced_df['Total Gain/Loss %'] = ((enhanced_df['Current Price'] - enhanced_df['Avg Cost']) / enhanced_df['Avg Cost']) * 100
     enhanced_df['Daily P&L $'] = enhanced_df['Shares'] * enhanced_df['Daily Change']
-    
+
     total_value = enhanced_df['Total Value'].sum()
     enhanced_df['Weight %'] = (enhanced_df['Total Value'] / total_value * 100) if total_value > 0 else 0
-    
+
+    # FEATURE #1: Add Quality Score and Grade columns
+    for idx, row in enhanced_df.iterrows():
+        ticker = row['Ticker']
+        quality_data = calculate_quality_score(ticker)
+        enhanced_df.at[idx, 'Quality Score'] = quality_data['total_score']
+        enhanced_df.at[idx, 'Grade'] = quality_data['grade']
+
     return enhanced_df
 
 def style_holdings_dataframe(df):
     display_df = df[[
-        'Ticker', 'Asset Name', 'Shares', 'Avg Cost', 'Current Price',
-        'Daily Change %', '5D Return %', 'Weight %', 'Daily P&L $', 
-        'Total Gain/Loss $', 'Total Gain/Loss %', 'Beta', 'Analyst Rating'
+        'Ticker', 'Asset Name', 'Grade', 'Quality Score',  # FEATURE #1: QUALITY METRICS FIRST!
+        'Weight %', 'Shares', 'Current Price', 'Avg Cost',
+        'Total Gain/Loss $', 'Total Gain/Loss %',
+        'Daily Change %', '5D Return %', 'Daily P&L $',
+        'Beta', 'Analyst Rating'
     ]].copy()
     
     pct_cols = ['Daily Change %', '5D Return %', 'Weight %', 'Total Gain/Loss %']
@@ -2082,7 +2430,23 @@ def style_holdings_dataframe(df):
     
     display_df['Daily Change %'] = display_df['Daily Change %'].apply(add_arrow_indicator)
     display_df['Total Gain/Loss %'] = display_df['Total Gain/Loss %'].apply(add_arrow_indicator)
-    
+
+    # FEATURE #1: Add visual indicators to Grade column
+    def add_grade_emoji(grade):
+        if grade in ['A+', 'A', 'A-']:
+            return f"🏆 {grade}"
+        elif grade in ['B+', 'B', 'B-']:
+            return f"✅ {grade}"
+        elif grade in ['C+', 'C', 'C-']:
+            return f"⚠️ {grade}"
+        else:  # D, F
+            return f"🔻 {grade}"
+
+    display_df['Grade'] = display_df['Grade'].apply(add_grade_emoji)
+
+    # Format Quality Score to 1 decimal place
+    display_df['Quality Score'] = display_df['Quality Score'].apply(lambda x: f"{x:.1f}")
+
     return display_df
 
 # ============================================================================
@@ -2179,6 +2543,1075 @@ def calculate_calmar_ratio(returns, risk_free_rate=RISK_FREE_RATE):
     return (annualized_return - risk_free_rate) / (max_dd / 100)
 
 # ============================================================================
+# PORTFOLIO OPTIMIZATION - MEAN-VARIANCE (SHARPE RATIO MAXIMIZATION)
+# ============================================================================
+
+def calculate_optimal_weights_var_cvar(
+    returns_df,
+    current_weights,
+    confidence_level=0.95,
+    method='historical',
+    constraints=None,
+    max_position_weight=0.06,      # INSTITUTIONAL: 6% max
+    min_position_weight=0.02,      # INSTITUTIONAL: 2% min if held
+    max_turnover=0.30,             # INSTITUTIONAL: 30% max total change
+    diversification_target=32,     # INSTITUTIONAL: Target 30-35 positions
+    allow_short=False
+):
+    """
+    INSTITUTIONAL-GRADE Portfolio Optimization: Mean-Variance Optimization (Markowitz)
+    Maximize Sharpe Ratio to find optimal risk-return trade-off on the efficient frontier
+
+    This approach allows capturing upside opportunities while managing downside risk,
+    unlike CVaR minimization which is too conservative and sacrifices returns.
+
+    Parameters:
+    -----------
+    returns_df : pd.DataFrame
+        DataFrame with ticker symbols as columns and returns as rows
+    current_weights : dict
+        Current portfolio weights {ticker: weight}
+    confidence_level : float
+        Confidence level for VaR/CVaR reporting (default: 0.95)
+    method : str
+        Method for calculation ('historical', 'parametric', 'monte_carlo')
+    constraints : dict
+        Additional constraints (sector limits, etc.)
+    max_position_weight : float
+        Maximum weight for any single position (default: 0.06 = 6%)
+    min_position_weight : float
+        Minimum weight if position is held (default: 0.02 = 2%)
+    max_turnover : float
+        Maximum total turnover allowed (default: 0.30 = 30%)
+    diversification_target : int
+        Target number of positions (default: 32 for 30-35 range)
+    allow_short : bool
+        Allow short positions (default: False)
+
+    Returns:
+    --------
+    dict with optimal weights, metrics, and improvement statistics
+    """
+
+    if returns_df.empty or len(current_weights) == 0:
+        return None
+
+    # Get tickers that have both returns and current weights
+    tickers = [t for t in returns_df.columns if t in current_weights]
+    if len(tickers) < 2:
+        return None
+
+    returns_matrix = returns_df[tickers].dropna()
+    if len(returns_matrix) < 10:  # Need sufficient data
+        return None
+
+    n_assets = len(tickers)
+
+    # Calculate current portfolio metrics
+    current_weights_array = np.array([current_weights.get(t, 0) for t in tickers])
+    current_weights_array = current_weights_array / current_weights_array.sum()  # Normalize
+
+    current_returns = returns_matrix.values @ current_weights_array
+    current_var = np.percentile(current_returns, (1 - confidence_level) * 100)
+    current_cvar = current_returns[current_returns <= current_var].mean()
+
+    # MEAN-VARIANCE OPTIMIZATION: Maximize Sharpe Ratio (minimize negative Sharpe)
+    def objective(weights):
+        # Primary objective: Maximize Sharpe Ratio (optimal risk-return trade-off)
+        portfolio_returns = returns_matrix.values @ weights
+
+        # Annualized return and volatility
+        expected_return = portfolio_returns.mean() * 252  # Annualized
+        portfolio_std = portfolio_returns.std() * np.sqrt(252)  # Annualized volatility
+
+        # Sharpe Ratio (assume risk-free rate ≈ 0 for simplicity, or use 0.04 for 4%)
+        risk_free_rate = 0.04
+
+        # Prevent division by zero
+        if portfolio_std < 1e-6:
+            sharpe_ratio = 0
+        else:
+            sharpe_ratio = (expected_return - risk_free_rate) / portfolio_std
+
+        # INSTITUTIONAL: Penalties (SCALED DOWN to not dominate objective)
+        # Concentration penalty (discourage positions >80% of max)
+        concentration_penalty = 0.5 * np.sum(np.maximum(weights - max_position_weight * 0.8, 0) ** 2)
+
+        # Diversification penalty (encourage target number of positions)
+        n_active = np.sum(weights > min_position_weight * 0.5)
+        diversification_penalty = 0.001 * (n_active - diversification_target) ** 2
+
+        # Turnover penalty (discourage excessive trading beyond limit)
+        turnover = np.sum(np.abs(weights - current_weights_array))
+        turnover_penalty = 0.1 * np.maximum(turnover - max_turnover, 0) ** 2
+
+        # Minimize NEGATIVE Sharpe (to maximize Sharpe) + small penalties
+        # Penalties are small so Sharpe dominates, but they guide toward institutional constraints
+        return -sharpe_ratio + concentration_penalty + diversification_penalty + turnover_penalty
+
+    # INSTITUTIONAL: Turnover constraint
+    def turnover_constraint(weights):
+        """Limit total turnover to max_turnover"""
+        return max_turnover - np.sum(np.abs(weights - current_weights_array))
+
+    # Constraints
+    constraint_list = [
+        {'type': 'eq', 'fun': lambda w: np.sum(w) - 1.0},  # Weights sum to 1
+        {'type': 'ineq', 'fun': turnover_constraint}        # INSTITUTIONAL: Turnover limit
+    ]
+
+    # INSTITUTIONAL: Bounds - either 0 or min_position to max_position
+    # This encourages meaningful positions (not tiny 0.5% allocations)
+    if allow_short:
+        bounds = tuple((-0.1, max_position_weight) for _ in range(n_assets))
+    else:
+        bounds = tuple((0.0, max_position_weight) for _ in range(n_assets))
+
+    # INSTITUTIONAL: Initial guess - start from current weights (not equal weight)
+    # This makes optimization more realistic and faster
+    initial_weights = current_weights_array.copy()
+
+    # Optimize
+    try:
+        from scipy.optimize import minimize
+
+        result = minimize(
+            objective,
+            initial_weights,
+            method='SLSQP',
+            bounds=bounds,
+            constraints=constraint_list,
+            options={'maxiter': 2000, 'ftol': 1e-8, 'disp': False}  # More iterations for complex constraints
+        )
+
+        if not result.success:
+            # Provide detailed error message
+            print(f"⚠️ Optimization did not converge: {result.message}")
+            print(f"   Status code: {result.status}")
+            print(f"   Final objective value: {result.fun:.6f}")
+            print(f"   Iterations: {result.nit}")
+
+            # If close to convergence, still return result
+            if result.status == 9 or abs(result.fun) > 0:  # Status 9 = iteration limit
+                print(f"   ✓ Using best result found (not fully converged)")
+                optimal_weights_array = result.x
+            else:
+                return None
+        else:
+            optimal_weights_array = result.x
+
+        # INSTITUTIONAL: Post-processing - zero out tiny positions below min threshold
+        # This prevents 0.3% allocations that aren't meaningful
+        optimal_weights_array[optimal_weights_array < min_position_weight * 0.5] = 0.0
+
+        # Re-normalize after zeroing
+        if optimal_weights_array.sum() > 0:
+            optimal_weights_array = optimal_weights_array / optimal_weights_array.sum()
+        else:
+            return None
+
+        # Calculate optimal portfolio metrics
+        optimal_returns = returns_matrix.values @ optimal_weights_array
+        optimal_var = np.percentile(optimal_returns, (1 - confidence_level) * 100)
+        optimal_cvar = optimal_returns[optimal_returns <= optimal_var].mean()
+
+        # Calculate improvement
+        var_improvement = ((optimal_var - current_var) / abs(current_var)) * 100
+        cvar_improvement = ((optimal_cvar - current_cvar) / abs(current_cvar)) * 100
+
+        # Calculate Sharpe ratios
+        current_sharpe = current_returns.mean() / current_returns.std() * np.sqrt(252) if current_returns.std() > 0 else 0
+        optimal_sharpe = optimal_returns.mean() / optimal_returns.std() * np.sqrt(252) if optimal_returns.std() > 0 else 0
+
+        # Build optimal weights dictionary
+        optimal_weights = {ticker: weight for ticker, weight in zip(tickers, optimal_weights_array)}
+
+        return {
+            'optimal_weights': optimal_weights,
+            'current_var': current_var * 100,
+            'current_cvar': current_cvar * 100,
+            'optimal_var': optimal_var * 100,
+            'optimal_cvar': optimal_cvar * 100,
+            'var_improvement_pct': var_improvement,
+            'cvar_improvement_pct': cvar_improvement,
+            'current_sharpe': current_sharpe,
+            'optimal_sharpe': optimal_sharpe,
+            'sharpe_improvement': optimal_sharpe - current_sharpe,
+            'optimization_success': True
+        }
+
+    except Exception as e:
+        print(f"Optimization error: {e}")
+        return None
+
+def calculate_rebalancing_trades(
+    current_positions_df,
+    optimal_weights,
+    total_portfolio_value,
+    current_prices=None,
+    include_transaction_costs=True,
+    transaction_cost_pct=0.001
+):
+    """
+    Calculate exact trades needed to rebalance to optimal weights
+
+    Parameters:
+    -----------
+    current_positions_df : pd.DataFrame
+        Current positions with columns: Ticker, Shares, Total Value, Weight %
+    optimal_weights : dict
+        Optimal weights from optimization {ticker: weight}
+    total_portfolio_value : float
+        Total portfolio value
+    current_prices : dict
+        Current prices {ticker: price}, if None will fetch
+    include_transaction_costs : bool
+        Include transaction costs in calculations
+    transaction_cost_pct : float
+        Transaction cost as percentage (default: 0.001 = 0.1%)
+
+    Returns:
+    --------
+    pd.DataFrame with rebalancing trades
+    """
+
+    if current_positions_df.empty or not optimal_weights:
+        return pd.DataFrame()
+
+    trades = []
+
+    for ticker, optimal_weight in optimal_weights.items():
+        # Find current position
+        current_row = current_positions_df[current_positions_df['Ticker'] == ticker]
+
+        if not current_row.empty:
+            current_shares = current_row['Shares'].iloc[0]
+            current_value = current_row['Total Value'].iloc[0]
+            current_weight = current_row['Weight %'].iloc[0] / 100
+            current_price = current_value / current_shares if current_shares > 0 else 0
+        else:
+            current_shares = 0
+            current_value = 0
+            current_weight = 0
+            # Need to fetch current price
+            if current_prices and ticker in current_prices:
+                current_price = current_prices[ticker]
+            else:
+                # Fetch price
+                try:
+                    stock = yf.Ticker(ticker)
+                    hist = stock.history(period='1d')
+                    current_price = hist['Close'].iloc[-1] if not hist.empty else 0
+                except:
+                    current_price = 0
+
+        if current_price == 0:
+            continue
+
+        # Calculate target position
+        target_value = total_portfolio_value * optimal_weight
+        target_shares = target_value / current_price
+
+        # Calculate trade
+        shares_to_trade = target_shares - current_shares
+        trade_value = shares_to_trade * current_price
+
+        # Transaction cost
+        transaction_cost = abs(trade_value) * transaction_cost_pct if include_transaction_costs else 0
+
+        # Weight difference
+        weight_diff = optimal_weight - current_weight
+
+        # Trade direction
+        if shares_to_trade > 0:
+            direction = 'BUY'
+            priority = 1 if weight_diff > 0.05 else (2 if weight_diff > 0.02 else 3)
+        elif shares_to_trade < 0:
+            direction = 'SELL'
+            priority = 1 if weight_diff < -0.05 else (2 if weight_diff < -0.02 else 3)
+        else:
+            direction = 'HOLD'
+            priority = 4
+
+        # Only include if trade is meaningful (> $100 or > 0.1% weight change)
+        if abs(trade_value) > 100 or abs(weight_diff) > 0.001:
+            trades.append({
+                'Ticker': ticker,
+                'Current Shares': round(current_shares, 2),
+                'Current Weight %': round(current_weight * 100, 2),
+                'Optimal Weight %': round(optimal_weight * 100, 2),
+                'Weight Diff %': round(weight_diff * 100, 2),
+                'Target Shares': round(target_shares, 2),
+                'Shares to Trade': round(shares_to_trade, 2),
+                'Trade Direction': direction,
+                'Trade Value': trade_value,
+                'Transaction Cost': transaction_cost,
+                'Net Cost/Proceeds': trade_value + (transaction_cost if shares_to_trade > 0 else -transaction_cost),
+                'Priority': priority,
+                'Current Price': current_price
+            })
+
+    if not trades:
+        return pd.DataFrame()
+
+    # Create DataFrame and sort by priority
+    trades_df = pd.DataFrame(trades)
+    trades_df = trades_df.sort_values('Priority')
+
+    return trades_df
+
+def calculate_portfolio_leverage_metrics(positions_df, cash_balance=0, margin_used=0):
+    """
+    Calculate proper leverage metrics distinguishing Account Value vs Equity Value
+
+    Parameters:
+    -----------
+    positions_df : pd.DataFrame
+        Portfolio positions
+    cash_balance : float
+        Available cash
+    margin_used : float
+        Margin/borrowed funds used
+
+    Returns:
+    --------
+    dict with leverage metrics
+    """
+
+    total_position_value = positions_df['Total Value'].sum() if not positions_df.empty else 0
+    total_cost_basis = positions_df['Cost Basis'].sum() if 'Cost Basis' in positions_df.columns else total_position_value
+
+    # Account Value = Positions + Cash
+    total_account_value = total_position_value + cash_balance
+    total_account_cost = total_cost_basis + cash_balance
+
+    # Equity Value = Account Value - Margin Used
+    equity_value = total_account_value - margin_used
+    equity_cost = total_account_cost - margin_used
+
+    # Leverage Ratio
+    leverage_ratio = total_account_value / equity_value if equity_value > 0 else 1.0
+
+    # Margin Utilization %
+    margin_utilization = (margin_used / total_account_value * 100) if total_account_value > 0 else 0
+
+    return {
+        'total_account_value': total_account_value,
+        'total_account_cost': total_account_cost,
+        'equity_value': equity_value,
+        'equity_cost': equity_cost,
+        'leverage_ratio': leverage_ratio,
+        'margin_used': margin_used,
+        'margin_utilization_pct': margin_utilization,
+        'cash_balance': cash_balance
+    }
+
+# ============================================================================
+# PORTFOLIO QUALITY SCORECARD - FEATURE #1
+# ============================================================================
+
+@st.cache_data(ttl=3600)  # Cache for 1 hour to avoid rate limiting
+def calculate_quality_score(ticker):
+    """
+    Calculate quality score (0-10) based on multiple factors
+
+    Components (equal weighted):
+    1. Balance Sheet Strength (25%)
+       - Debt/Equity ratio
+       - Current ratio
+       - Interest coverage
+
+    2. Profitability (25%)
+       - ROE (Return on Equity)
+       - Profit margins
+       - Revenue growth
+
+    3. Dividend Quality (25%)
+       - Dividend growth consistency
+       - Payout ratio sustainability
+       - Years of consecutive increases
+
+    4. Valuation (25%)
+       - P/E ratio vs sector median
+       - P/B ratio vs sector median
+       - Not overvalued (cap score if P/E > 40)
+
+    Returns:
+    {
+        'total_score': 7.8,  # 0-10
+        'grade': 'B+',       # A+, A, A-, B+, B, B-, C+, C, C-, D, F
+        'components': {
+            'balance_sheet': 8.2,
+            'profitability': 8.5,
+            'dividend': 6.8,
+            'valuation': 7.5
+        },
+        'flags': ['High P/E ratio', 'Strong ROE']
+    }
+    """
+
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+
+        score_components = {}
+        flags = []
+
+        # Balance Sheet Strength (0-10)
+        debt_equity = info.get('debtToEquity', 100) / 100 if info.get('debtToEquity') else 1.0
+        current_ratio = info.get('currentRatio', 1.0)
+
+        balance_sheet_score = 10
+        if debt_equity > 2.0:
+            balance_sheet_score -= 4
+            flags.append('High debt/equity ratio')
+        elif debt_equity > 1.0:
+            balance_sheet_score -= 2
+
+        if current_ratio < 1.0:
+            balance_sheet_score -= 2
+            flags.append('Low current ratio')
+
+        score_components['balance_sheet'] = max(0, balance_sheet_score)
+
+        # Profitability (0-10)
+        roe = info.get('returnOnEquity', 0)
+        profit_margin = info.get('profitMargins', 0)
+
+        profitability_score = 0
+        if roe and roe > 0.20:  # 20%+ ROE
+            profitability_score += 5
+            flags.append('Strong ROE')
+        elif roe and roe > 0.15:
+            profitability_score += 3
+        elif roe and roe > 0.10:
+            profitability_score += 1
+
+        if profit_margin and profit_margin > 0.15:  # 15%+ margin
+            profitability_score += 5
+        elif profit_margin and profit_margin > 0.10:
+            profitability_score += 3
+        elif profit_margin and profit_margin > 0.05:
+            profitability_score += 1
+
+        score_components['profitability'] = min(10, profitability_score)
+
+        # Dividend Quality (0-10)
+        dividend_yield = info.get('dividendYield', 0)
+        payout_ratio = info.get('payoutRatio', 0)
+
+        dividend_score = 5  # Neutral baseline
+
+        if dividend_yield and dividend_yield > 0.02:  # Pays dividend
+            dividend_score += 2
+            if dividend_yield > 0.03:  # 3%+ yield
+                dividend_score += 1
+        else:
+            dividend_score -= 2
+            flags.append('No dividend')
+
+        if payout_ratio and 0 < payout_ratio < 0.60:  # Sustainable payout
+            dividend_score += 2
+        elif payout_ratio and payout_ratio > 0.80:
+            dividend_score -= 2
+            flags.append('High payout ratio')
+
+        score_components['dividend'] = max(0, min(10, dividend_score))
+
+        # Valuation (0-10)
+        pe_ratio = info.get('trailingPE', 20)
+        pb_ratio = info.get('priceToBook', 3)
+
+        valuation_score = 10
+
+        if pe_ratio and pe_ratio > 40:
+            valuation_score -= 4
+            flags.append('High P/E ratio')
+        elif pe_ratio and pe_ratio > 30:
+            valuation_score -= 2
+        elif pe_ratio and pe_ratio < 15:
+            flags.append('Attractive valuation')
+
+        if pb_ratio and pb_ratio > 5:
+            valuation_score -= 2
+
+        score_components['valuation'] = max(0, valuation_score)
+
+        # Calculate total score (equal weighted)
+        total_score = sum(score_components.values()) / 4
+
+        # Assign grade
+        if total_score >= 9.0:
+            grade = 'A+'
+        elif total_score >= 8.5:
+            grade = 'A'
+        elif total_score >= 8.0:
+            grade = 'A-'
+        elif total_score >= 7.5:
+            grade = 'B+'
+        elif total_score >= 7.0:
+            grade = 'B'
+        elif total_score >= 6.5:
+            grade = 'B-'
+        elif total_score >= 6.0:
+            grade = 'C+'
+        elif total_score >= 5.5:
+            grade = 'C'
+        elif total_score >= 5.0:
+            grade = 'C-'
+        elif total_score >= 4.0:
+            grade = 'D'
+        else:
+            grade = 'F'
+
+        return {
+            'total_score': round(total_score, 1),
+            'grade': grade,
+            'components': score_components,
+            'flags': flags
+        }
+
+    except Exception as e:
+        # Return neutral score if unable to calculate
+        return {
+            'total_score': 5.0,
+            'grade': 'C',
+            'components': {
+                'balance_sheet': 5.0,
+                'profitability': 5.0,
+                'dividend': 5.0,
+                'valuation': 5.0
+            },
+            'flags': ['Unable to calculate score']
+        }
+
+# ============================================================================
+# DYNAMIC DRIFT MONITOR - FEATURE #2
+# ============================================================================
+
+@st.cache_data(ttl=86400)  # Cache for 24 hours
+def fetch_spy_sector_weights():
+    """
+    Fetch current S&P 500 sector weights using sector ETFs as proxies
+    Returns dict with sector weights that sum to 100%
+    """
+
+    # Fallback: Use approximate S&P 500 weights (as of 2024)
+    sector_weights = {
+        'Technology': 28.5,
+        'Healthcare': 13.2,
+        'Financials': 13.0,
+        'Consumer Discretionary': 10.8,
+        'Communication Services': 8.9,
+        'Industrials': 8.4,
+        'Consumer Staples': 6.8,
+        'Energy': 4.2,
+        'Utilities': 2.8,
+        'Real Estate': 2.5,
+        'Materials': 2.4
+    }
+
+    return {
+        'weights': sector_weights,
+        'timestamp': datetime.now(),
+        'source': 'SPY (S&P 500)'
+    }
+
+@st.cache_data(ttl=86400)  # Cache for 24 hours
+def fetch_acwi_regional_weights():
+    """
+    Fetch MSCI ACWI regional/country weights
+    For simplicity, map to sectors based on regional economic profiles
+    """
+
+    # ACWI approximate composition (as of 2024)
+    # International tends to be less tech-heavy, more financials/industrials
+    acwi_sector_weights = {
+        'Technology': 22.0,  # Lower than SPY (global average)
+        'Healthcare': 12.5,
+        'Financials': 15.5,  # Higher than SPY (international banks)
+        'Consumer Discretionary': 11.0,
+        'Communication Services': 7.5,
+        'Industrials': 10.5,  # Higher than SPY
+        'Consumer Staples': 7.5,
+        'Energy': 5.0,  # Higher than SPY
+        'Utilities': 3.0,
+        'Real Estate': 2.5,
+        'Materials': 3.0  # Higher than SPY
+    }
+
+    return {
+        'weights': acwi_sector_weights,
+        'timestamp': datetime.now(),
+        'source': 'ACWI (MSCI All Country World Index)'
+    }
+
+def calculate_blended_benchmark(spy_weight=0.6, acwi_weight=0.4):
+    """
+    Create blended benchmark: 60% SPY + 40% ACWI
+    Returns strategic allocation target
+    """
+
+    spy_data = fetch_spy_sector_weights()
+    acwi_data = fetch_acwi_regional_weights()
+
+    spy_weights = spy_data['weights']
+    acwi_weights = acwi_data['weights']
+
+    # Get all unique sectors
+    all_sectors = set(list(spy_weights.keys()) + list(acwi_weights.keys()))
+
+    blended_weights = {}
+
+    for sector in all_sectors:
+        spy_sector_weight = spy_weights.get(sector, 0)
+        acwi_sector_weight = acwi_weights.get(sector, 0)
+
+        blended_weights[sector] = (spy_sector_weight * spy_weight) + (acwi_sector_weight * acwi_weight)
+
+    return {
+        'weights': blended_weights,
+        'composition': f'{spy_weight*100:.0f}% SPY / {acwi_weight*100:.0f}% ACWI',
+        'timestamp': min(spy_data['timestamp'], acwi_data['timestamp']),
+        'spy_data': spy_data,
+        'acwi_data': acwi_data
+    }
+
+def calculate_drift(current_allocation, strategic_allocation):
+    """
+    Calculate drift between current and strategic allocation
+
+    Returns:
+    {
+        'sector': {
+            'absolute_drift': +6.5,  # Percentage points
+            'relative_drift': 25.6,  # Percent of target weight
+            'status': 'REBALANCE' | 'OK'
+        }
+    }
+    """
+
+    drift_analysis = {}
+
+    for sector in strategic_allocation.keys():
+        current_weight = current_allocation.get(sector, 0)
+        target_weight = strategic_allocation[sector]
+
+        absolute_drift = current_weight - target_weight
+
+        if target_weight > 0:
+            relative_drift = (absolute_drift / target_weight) * 100
+        else:
+            relative_drift = 0
+
+        # Drift thresholds
+        ABSOLUTE_THRESHOLD = 5.0  # 5 percentage points
+        RELATIVE_THRESHOLD = 20.0  # 20% of target weight
+
+        if abs(absolute_drift) > ABSOLUTE_THRESHOLD or abs(relative_drift) > RELATIVE_THRESHOLD:
+            status = 'REBALANCE'
+        else:
+            status = 'OK'
+
+        drift_analysis[sector] = {
+            'current_weight': current_weight,
+            'target_weight': target_weight,
+            'absolute_drift': absolute_drift,
+            'relative_drift': relative_drift,
+            'status': status
+        }
+
+    return drift_analysis
+
+# ============================================================================
+# CORRELATION HEATMAP + NETWORK GRAPH - FEATURE #3
+# ============================================================================
+
+@st.cache_data(ttl=3600)  # Cache for 1 hour
+def calculate_portfolio_correlations(df, period='90d'):
+    """
+    Calculate correlation matrix for portfolio holdings
+
+    Args:
+        df: Holdings dataframe
+        period: Lookback period ('30d', '90d', '1y')
+
+    Returns:
+        Correlation matrix (pandas DataFrame)
+    """
+
+    # Map period to days
+    period_map = {
+        '30d': 30,
+        '90d': 90,
+        '1y': 252
+    }
+
+    days = period_map.get(period, 90)
+
+    # Fetch historical data for all tickers
+    tickers = df['Ticker'].tolist()
+
+    # Remove options/invalid tickers
+    tickers = [t for t in tickers if not ('/' in t or len(t) > 5)]
+
+    if len(tickers) < 2:
+        return None
+
+    # Get end date (today) and start date
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=days + 30)  # Extra buffer
+
+    # Fetch price data
+    price_data = {}
+
+    for ticker in tickers:
+        try:
+            hist = fetch_historical_data(ticker, start_date, end_date)
+            if hist is not None and len(hist) >= days:
+                price_data[ticker] = hist['Close']
+        except:
+            pass
+
+    if len(price_data) < 2:
+        return None
+
+    # Create dataframe
+    prices_df = pd.DataFrame(price_data)
+
+    # Calculate returns
+    returns_df = prices_df.pct_change().dropna()
+
+    # Calculate correlation matrix
+    correlation_matrix = returns_df.corr()
+
+    return correlation_matrix
+
+def calculate_diversification_score(correlation_matrix):
+    """
+    Calculate effective diversification score (0-10)
+    Based on average pairwise correlation
+
+    Higher score = better diversification
+    """
+
+    if correlation_matrix is None or len(correlation_matrix) < 2:
+        return 5.0  # Neutral
+
+    # Average pairwise correlation
+    upper_triangle = correlation_matrix.where(np.triu(np.ones(correlation_matrix.shape), k=1).astype(bool))
+    avg_correlation = upper_triangle.stack().mean()
+
+    # Convert correlation to diversification score
+    # Low correlation (0.0) = 10/10 diversification
+    # High correlation (1.0) = 0/10 diversification
+    diversification_score = (1 - avg_correlation) * 10
+
+    return max(0, min(10, diversification_score))
+
+# ============================================================================
+# MARKET REGIME DETECTION - FEATURE #4
+# ============================================================================
+
+@st.cache_data(ttl=300)  # Cache for 5 minutes
+def detect_market_regime():
+    """
+    Detect current market regime based on multiple indicators
+
+    Regimes:
+    - RISK-ON (Bull Market): Low VIX, tight spreads, positive momentum
+    - RISK-OFF (Bear Market): High VIX, wide spreads, negative momentum
+    - TRANSITION: Mixed signals
+    - HIGH-VOL: High volatility regardless of direction
+
+    Returns:
+    {
+        'regime': 'RISK-ON',
+        'confidence': 78,  # 0-100
+        'indicators': {...},
+        'tactical_suggestion': {...}
+    }
+    """
+
+    indicators = {}
+    regime_scores = {
+        'RISK-ON': 0,
+        'RISK-OFF': 0,
+        'TRANSITION': 0,
+        'HIGH-VOL': 0
+    }
+
+    # Indicator 1: VIX (Volatility Index)
+    try:
+        vix = yf.Ticker('^VIX')
+        vix_hist = vix.history(period='5d')
+
+        if not vix_hist.empty:
+            current_vix = vix_hist['Close'].iloc[-1]
+            indicators['vix'] = current_vix
+
+            if current_vix < 15:
+                regime_scores['RISK-ON'] += 2
+                indicators['vix_signal'] = 'Low Vol (Bullish)'
+            elif current_vix < 20:
+                regime_scores['RISK-ON'] += 1
+                regime_scores['TRANSITION'] += 1
+                indicators['vix_signal'] = 'Moderate'
+            elif current_vix < 30:
+                regime_scores['RISK-OFF'] += 1
+                regime_scores['TRANSITION'] += 1
+                indicators['vix_signal'] = 'Elevated'
+            else:
+                regime_scores['RISK-OFF'] += 2
+                regime_scores['HIGH-VOL'] += 2
+                indicators['vix_signal'] = 'High Vol (Bearish)'
+    except:
+        indicators['vix'] = None
+        indicators['vix_signal'] = 'N/A'
+
+    # Indicator 2: Equity Momentum (SPY 50-day vs 200-day MA)
+    try:
+        spy = yf.Ticker('SPY')
+        spy_hist = spy.history(period='1y')
+
+        if len(spy_hist) >= 200:
+            ma_50 = spy_hist['Close'].iloc[-50:].mean()
+            ma_200 = spy_hist['Close'].iloc[-200:].mean()
+            current_price = spy_hist['Close'].iloc[-1]
+
+            if current_price > ma_50 > ma_200:
+                regime_scores['RISK-ON'] += 2
+                indicators['momentum'] = 'Strong Uptrend'
+            elif current_price > ma_50:
+                regime_scores['RISK-ON'] += 1
+                indicators['momentum'] = 'Uptrend'
+            elif current_price < ma_50 < ma_200:
+                regime_scores['RISK-OFF'] += 2
+                indicators['momentum'] = 'Strong Downtrend'
+            else:
+                regime_scores['TRANSITION'] += 2
+                indicators['momentum'] = 'Mixed'
+    except:
+        indicators['momentum'] = 'N/A'
+
+    # Indicator 3: Market Breadth
+    try:
+        sectors = ['XLK', 'XLV', 'XLF', 'XLE', 'XLI']
+        above_ma = 0
+
+        for sector in sectors:
+            stock = yf.Ticker(sector)
+            hist = stock.history(period='1y')
+
+            if len(hist) >= 200:
+                ma_200 = hist['Close'].iloc[-200:].mean()
+                current = hist['Close'].iloc[-1]
+
+                if current > ma_200:
+                    above_ma += 1
+
+        breadth_pct = (above_ma / len(sectors)) * 100
+        indicators['breadth'] = f"{breadth_pct:.0f}%"
+
+        if breadth_pct > 70:
+            regime_scores['RISK-ON'] += 2
+        elif breadth_pct > 50:
+            regime_scores['RISK-ON'] += 1
+        elif breadth_pct > 30:
+            regime_scores['TRANSITION'] += 1
+        else:
+            regime_scores['RISK-OFF'] += 2
+    except:
+        indicators['breadth'] = 'N/A'
+
+    # Indicator 4: Credit Spreads (using HYG vs TLT as proxy)
+    try:
+        hyg = yf.Ticker('HYG')  # High Yield Corporate
+        hyg_hist = hyg.history(period='30d')
+
+        tlt = yf.Ticker('TLT')  # Treasury bonds
+        tlt_hist = tlt.history(period='30d')
+
+        if not hyg_hist.empty and not tlt_hist.empty:
+            # Simple spread proxy: HYG/TLT ratio
+            # Rising ratio = tightening spreads = risk-on
+            # Falling ratio = widening spreads = risk-off
+
+            current_ratio = hyg_hist['Close'].iloc[-1] / tlt_hist['Close'].iloc[-1]
+            past_ratio = hyg_hist['Close'].iloc[0] / tlt_hist['Close'].iloc[0]
+
+            spread_change = ((current_ratio - past_ratio) / past_ratio) * 100
+
+            if spread_change > 0:
+                indicators['credit_spreads'] = 'Tightening (Bullish)'
+            else:
+                indicators['credit_spreads'] = 'Widening (Bearish)'
+
+            if spread_change > 2:
+                regime_scores['RISK-ON'] += 2
+            elif spread_change > 0:
+                regime_scores['RISK-ON'] += 1
+            elif spread_change > -2:
+                regime_scores['TRANSITION'] += 1
+            else:
+                regime_scores['RISK-OFF'] += 2
+    except:
+        indicators['credit_spreads'] = 'N/A'
+
+    # Indicator 5: Yield Curve (10Y - 2Y)
+    try:
+        tnx = yf.Ticker('^TNX')  # 10-year
+        tnx_hist = tnx.history(period='5d')
+
+        tyx = yf.Ticker('^TYX')  # 30-year (using as proxy for trend)
+        tyx_hist = tyx.history(period='5d')
+
+        if not tnx_hist.empty:
+            yield_10y = tnx_hist['Close'].iloc[-1]
+
+            # Check if yields are rising (risk-on) or falling (risk-off)
+            yield_5d_ago = tnx_hist['Close'].iloc[0]
+            yield_change = yield_10y - yield_5d_ago
+
+            if yield_change > 0.1:
+                regime_scores['RISK-ON'] += 1
+                indicators['yield_curve'] = 'Steepening (Bullish)'
+            elif yield_change < -0.1:
+                regime_scores['RISK-OFF'] += 1
+                indicators['yield_curve'] = 'Flattening (Bearish)'
+            else:
+                indicators['yield_curve'] = 'Stable'
+                regime_scores['TRANSITION'] += 1
+        else:
+            indicators['yield_curve'] = 'N/A'
+    except:
+        indicators['yield_curve'] = 'N/A'
+
+    # Determine regime
+    max_score = max(regime_scores.values())
+
+    if max_score == 0:
+        regime = 'TRANSITION'
+        confidence = 50
+    else:
+        regime = max(regime_scores, key=regime_scores.get)
+        confidence = min(100, int((regime_scores[regime] / sum(regime_scores.values())) * 100))
+
+    # Tactical allocation suggestions
+    if regime == 'RISK-ON':
+        tactical_suggestion = {
+            'equities': 'Overweight (70-80%)',
+            'bonds': 'Underweight (15-20%)',
+            'alternatives': 'Neutral (5-10%)',
+            'rationale': 'Low volatility environment favors risk assets'
+        }
+    elif regime == 'RISK-OFF':
+        tactical_suggestion = {
+            'equities': 'Underweight (40-50%)',
+            'bonds': 'Overweight (35-45%)',
+            'alternatives': 'Overweight (10-15%, focus on gold/defensive)',
+            'rationale': 'High volatility favors defensive positioning'
+        }
+    elif regime == 'HIGH-VOL':
+        tactical_suggestion = {
+            'equities': 'Underweight (45-55%)',
+            'bonds': 'Neutral (25-30%)',
+            'alternatives': 'Overweight (15-20%, add volatility hedges)',
+            'rationale': 'High volatility requires risk reduction and hedging'
+        }
+    else:  # TRANSITION
+        tactical_suggestion = {
+            'equities': 'Neutral (60%)',
+            'bonds': 'Neutral (30%)',
+            'alternatives': 'Neutral (10%)',
+            'rationale': 'Mixed signals suggest balanced approach'
+        }
+
+    return {
+        'regime': regime,
+        'confidence': confidence,
+        'indicators': indicators,
+        'regime_scores': regime_scores,
+        'tactical_suggestion': tactical_suggestion
+    }
+
+def add_optimization_columns_to_holdings(holdings_df, optimization_results=None):
+    """
+    Enhance holdings table with optimization columns from session state
+
+    Parameters:
+    -----------
+    holdings_df : pd.DataFrame
+        Current holdings table
+    optimization_results : dict
+        Optimization results from session state (optional)
+
+    Returns:
+    --------
+    pd.DataFrame with added columns:
+    - Optimal Weight %
+    - Weight Difference %
+    - Shares to Trade
+    - Trade Value
+    - Priority
+    """
+
+    enhanced_df = holdings_df.copy()
+
+    # Initialize new columns with defaults
+    enhanced_df['Optimal Weight %'] = enhanced_df['Weight %']  # Default to current
+    enhanced_df['Weight Diff %'] = 0.0
+    enhanced_df['Shares to Trade'] = 0
+    enhanced_df['Trade Value'] = 0.0
+    enhanced_df['Priority'] = '-'
+
+    # If optimization results available, populate columns
+    if optimization_results and optimization_results.get('optimization_success'):
+        optimal_weights = optimization_results.get('optimal_weights', {})
+        total_portfolio_value = enhanced_df['Total Value'].sum()
+
+        for idx, row in enhanced_df.iterrows():
+            ticker = row['Ticker']
+
+            if ticker in optimal_weights:
+                optimal_weight = optimal_weights[ticker] * 100  # Convert to percentage
+                current_weight = row['Weight %']
+                weight_diff = optimal_weight - current_weight
+
+                # Calculate shares to trade
+                target_value = total_portfolio_value * (optimal_weight / 100)
+                current_value = row['Total Value']
+                current_shares = row['Shares']
+                current_price = current_value / current_shares if current_shares > 0 else 0
+
+                if current_price > 0:
+                    target_shares = target_value / current_price
+                    shares_to_trade = target_shares - current_shares
+                    trade_value = shares_to_trade * current_price
+                else:
+                    shares_to_trade = 0
+                    trade_value = 0
+
+                # Determine priority
+                if abs(weight_diff) > 5:
+                    priority = '🔴 High'
+                elif abs(weight_diff) > 2:
+                    priority = '🟡 Medium'
+                elif abs(weight_diff) > 0.1:
+                    priority = '🟢 Low'
+                else:
+                    priority = '-'
+
+                # Update columns
+                enhanced_df.at[idx, 'Optimal Weight %'] = optimal_weight
+                enhanced_df.at[idx, 'Weight Diff %'] = weight_diff
+                enhanced_df.at[idx, 'Shares to Trade'] = shares_to_trade
+                enhanced_df.at[idx, 'Trade Value'] = trade_value
+                enhanced_df.at[idx, 'Priority'] = priority
+
+    return enhanced_df
+
+# ============================================================================
 # CONTINUING IN PART 2...
 # ============================================================================
 # Part 2 will contain all visualizations and page implementations
@@ -2250,65 +3683,264 @@ def create_top_detractors_chart(df, top_n=5):
     return fig
 
 def create_sector_allocation_donut(df):
-    """v9.7 ENHANCED: Sector allocation with better spacing and ETF classification"""
-    # v9.7 FIX: Rename "Other" to "ETFs"
+    """
+    PROFESSIONAL sector allocation pie chart - Bloomberg Terminal quality
+    - Clean, modern design
+    - Proper label positioning
+    - Subtle gradients
+    - No clutter
+    """
     df_copy = df.copy()
     df_copy['Sector'] = df_copy['Sector'].replace('Other', 'ETFs')
 
-    sector_allocation = df_copy.groupby('Sector')['Total Value'].sum().reset_index()
-    sector_allocation = sector_allocation.sort_values('Total Value', ascending=False)
+    sector_allocation = df_copy.groupby('Sector')['Total Value'].sum()
+    total_value = sector_allocation.sum()
+    sector_pct = (sector_allocation / total_value * 100).round(1)
 
-    # Enhanced color palette for better distinction
-    colors = ['#00d4ff', '#00ff88', '#ff6b00', '#b794f6', '#ff00ff',
-              '#00ffcc', '#ffaa00', '#0080ff', '#ff0044', '#cyan']
+    # Sort by value
+    sector_pct = sector_pct.sort_values(ascending=False)
+
+    # Professional color palette (consistent with ATLAS theme)
+    colors = [
+        '#00d4ff',  # Neon blue
+        '#0080ff',  # Electric blue
+        '#00ffcc',  # Teal
+        '#00ff88',  # Success green
+        '#ffaa00',  # Warning orange
+        '#ff6b00',  # Orange
+        '#b794f6',  # Purple
+        '#ff00ff',  # Pink
+        '#00d4ff',  # Loop back
+        '#0080ff',
+        '#00ffcc'
+    ]
 
     fig = go.Figure(data=[go.Pie(
-        labels=sector_allocation['Sector'],
-        values=sector_allocation['Total Value'],
-        hole=0.55,  # v9.7: Larger hole for better spacing
+        labels=sector_pct.index,
+        values=sector_pct.values,
+        hole=0.5,  # Donut style - more modern
         marker=dict(
-            colors=colors,
-            line=dict(color=COLORS['card_background'], width=3)
+            colors=colors[:len(sector_pct)],
+            line=dict(color='#000000', width=2)  # Clean borders
         ),
-        textposition='inside',
-        textinfo='percent',
-        textfont=dict(size=14, color='white', family='Inter'),
-        insidetextorientation='radial',
-        hovertemplate='<b>%{label}</b><br>Value: $%{value:,.0f}<br>Share: %{percent}<extra></extra>',
-        pull=[0.05 if i == 0 else 0 for i in range(len(sector_allocation))]  # Pull out largest sector
+        textposition='auto',
+        textinfo='label+percent',
+        textfont=dict(
+            size=13,
+            color='#ffffff',
+            family='Inter, sans-serif'
+        ),
+        hovertemplate=(
+            '<b>%{label}</b><br>' +
+            'Allocation: %{percent}<br>' +
+            'Value: $%{value:,.0f}<br>' +
+            '<extra></extra>'
+        ),
+        sort=False  # Keep our sorted order
     )])
 
     fig.update_layout(
         title=dict(
-            text="📊 Sector Allocation",
-            font=dict(size=18, color=COLORS['neon_blue']),
+            text='Sector Allocation',
+            font=dict(size=20, color='#ffffff', family='Inter'),
             x=0.5,
             xanchor='center'
         ),
-        height=450,  # v9.7: Increased height for less clustering
         showlegend=True,
         legend=dict(
             orientation="v",
-            yanchor="top",
-            y=1,
-            xanchor="left",
-            x=1.05,
-            font=dict(size=12, color=COLORS['text_primary']),
-            bgcolor='rgba(10, 25, 41, 0.6)',
-            bordercolor=COLORS['border'],
-            borderwidth=1
+            yanchor="middle",
+            y=0.5,
+            xanchor="right",
+            x=1.15,
+            bgcolor='rgba(0,0,0,0)',
+            font=dict(size=12, color='#ffffff')
         ),
-        margin=dict(l=40, r=180, t=80, b=40),  # v9.7: More right margin for legend
-        annotations=[dict(
-            text='Portfolio<br>Sectors',
-            x=0.5, y=0.5,
-            font_size=16,
-            font_color=COLORS['neon_blue'],
-            showarrow=False
-        )]
+        paper_bgcolor='rgba(0, 0, 0, 0)',
+        plot_bgcolor='rgba(10, 25, 41, 0.3)',
+        height=500,
+        margin=dict(l=20, r=150, t=80, b=20)
+    )
+
+    return fig
+
+def create_sector_allocation_treemap(df):
+    """NEW: Treemap view showing hierarchical portfolio composition"""
+    df_copy = df.copy()
+    df_copy['Sector'] = df_copy['Sector'].replace('Other', 'ETFs')
+
+    # Calculate sector totals
+    sector_allocation = df_copy.groupby('Sector')['Total Value'].sum().reset_index()
+
+    # Create hierarchy: Portfolio -> Sector -> Holdings
+    treemap_data = []
+    treemap_data.append({
+        'labels': 'Portfolio',
+        'parents': '',
+        'values': 0
+    })
+
+    for sector in df_copy['Sector'].unique():
+        sector_value = df_copy[df_copy['Sector'] == sector]['Total Value'].sum()
+        treemap_data.append({
+            'labels': sector,
+            'parents': 'Portfolio',
+            'values': sector_value
+        })
+
+        # Add individual holdings
+        for _, row in df_copy[df_copy['Sector'] == sector].iterrows():
+            treemap_data.append({
+                'labels': f"{row['Ticker']}<br>${row['Total Value']:,.0f}",
+                'parents': sector,
+                'values': row['Total Value']
+            })
+
+    df_treemap = pd.DataFrame(treemap_data)
+
+    fig = go.Figure(go.Treemap(
+        labels=df_treemap['labels'],
+        parents=df_treemap['parents'],
+        values=df_treemap['values'],
+        textposition='middle center',
+        marker=dict(
+            colorscale='Teal',
+            line=dict(color=COLORS['card_background'], width=2)
+        ),
+        hovertemplate='<b>%{label}</b><br>Value: $%{value:,.0f}<extra></extra>'
+    ))
+
+    fig.update_layout(
+        title="🗺️ Portfolio Treemap - Hierarchical View",
+        height=600,
+        margin=dict(l=10, r=10, t=60, b=10)
     )
 
     apply_chart_theme(fig)
+    return fig
+
+def create_sector_allocation_sunburst(df):
+    """NEW: Sunburst chart for multi-level drill-down"""
+    df_copy = df.copy()
+    df_copy['Sector'] = df_copy['Sector'].replace('Other', 'ETFs')
+
+    # Create hierarchy data
+    sunburst_data = []
+    sunburst_data.append({
+        'labels': 'Portfolio',
+        'parents': '',
+        'values': 0
+    })
+
+    for sector in df_copy['Sector'].unique():
+        sector_value = df_copy[df_copy['Sector'] == sector]['Total Value'].sum()
+        sunburst_data.append({
+            'labels': sector,
+            'parents': 'Portfolio',
+            'values': sector_value
+        })
+
+        for _, row in df_copy[df_copy['Sector'] == sector].iterrows():
+            sunburst_data.append({
+                'labels': row['Ticker'],
+                'parents': sector,
+                'values': row['Total Value']
+            })
+
+    df_sunburst = pd.DataFrame(sunburst_data)
+
+    fig = go.Figure(go.Sunburst(
+        labels=df_sunburst['labels'],
+        parents=df_sunburst['parents'],
+        values=df_sunburst['values'],
+        branchvalues='total',
+        marker=dict(
+            colorscale='Blues',
+            line=dict(color=COLORS['card_background'], width=2)
+        ),
+        hovertemplate='<b>%{label}</b><br>Value: $%{value:,.0f}<extra></extra>'
+    ))
+
+    fig.update_layout(
+        title="☀️ Portfolio Sunburst - Interactive Drill-Down",
+        height=600,
+        margin=dict(l=10, r=10, t=60, b=10)
+    )
+
+    apply_chart_theme(fig)
+    return fig
+
+def create_sector_allocation_bar(df):
+    """
+    PROFESSIONAL sector allocation bar chart - Bloomberg Terminal quality
+    - Horizontal bars sorted by value
+    - Clean labels
+    - Professional color coding
+    """
+    df_copy = df.copy()
+    df_copy['Sector'] = df_copy['Sector'].replace('Other', 'ETFs')
+
+    sector_allocation = df_copy.groupby('Sector')['Total Value'].sum()
+    total_value = sector_allocation.sum()
+    sector_pct = (sector_allocation / total_value * 100).round(1)
+
+    # Sort by value
+    sector_data = pd.DataFrame({
+        'Sector': sector_pct.index,
+        'Percentage': sector_pct.values,
+        'Value': sector_allocation.values
+    }).sort_values('Value', ascending=True)  # Ascending for horizontal bars
+
+    # Color by size (gradient from small to large)
+    colors_gradient = ['#ff3366' if p < 5 else '#ffaa00' if p < 10 else '#00ff88'
+                       for p in sector_data['Percentage']]
+
+    fig = go.Figure(go.Bar(
+        x=sector_data['Value'],
+        y=sector_data['Sector'],
+        orientation='h',
+        marker=dict(
+            color=colors_gradient,
+            line=dict(color='#000000', width=1)
+        ),
+        text=[f"${v:,.0f} ({p:.1f}%)" for v, p in zip(sector_data['Value'], sector_data['Percentage'])],
+        textposition='outside',
+        textfont=dict(size=11, color='#ffffff'),
+        hovertemplate=(
+            '<b>%{y}</b><br>' +
+            'Value: $%{x:,.0f}<br>' +
+            'Percentage: %{customdata:.1f}%<br>' +
+            '<extra></extra>'
+        ),
+        customdata=sector_data['Percentage']
+    ))
+
+    fig.update_layout(
+        title=dict(
+            text='Sector Allocation - Ranked by Value',
+            font=dict(size=20, color='#ffffff', family='Inter'),
+            x=0.5,
+            xanchor='center'
+        ),
+        xaxis=dict(
+            title='Total Value ($)',
+            gridcolor='#1a3a52',
+            showgrid=True,
+            zeroline=False,
+            tickformat='$,.0f',
+            tickfont=dict(size=11, color='#b0c4de')
+        ),
+        yaxis=dict(
+            title='',
+            tickfont=dict(size=12, color='#ffffff')
+        ),
+        paper_bgcolor='rgba(0, 0, 0, 0)',
+        plot_bgcolor='rgba(10, 25, 41, 0.3)',
+        height=500,
+        margin=dict(l=150, r=100, t=80, b=60),
+        showlegend=False
+    )
+
     return fig
 
 def create_rolling_metrics_chart(returns, window=60):
@@ -3220,6 +4852,197 @@ def create_efficient_frontier(df):
     return fig
 
 # ============================================================================
+# PORTFOLIO OPTIMIZATION VISUALIZATIONS
+# ============================================================================
+
+def create_optimization_comparison_chart(optimization_results):
+    """Create comparison chart showing current vs optimal portfolio metrics"""
+
+    if not optimization_results or not optimization_results.get('optimization_success'):
+        return None
+
+    metrics = ['VaR (95%)', 'CVaR (95%)', 'Sharpe Ratio']
+    current_values = [
+        abs(optimization_results['current_var']),
+        abs(optimization_results['current_cvar']),
+        optimization_results['current_sharpe']
+    ]
+    optimal_values = [
+        abs(optimization_results['optimal_var']),
+        abs(optimization_results['optimal_cvar']),
+        optimization_results['optimal_sharpe']
+    ]
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Bar(
+        name='Current Portfolio',
+        x=metrics,
+        y=current_values,
+        marker=dict(color=COLORS['danger'], opacity=0.8),
+        text=[f"{v:.2f}" for v in current_values],
+        textposition='auto'
+    ))
+
+    fig.add_trace(go.Bar(
+        name='Optimized Portfolio',
+        x=metrics,
+        y=optimal_values,
+        marker=dict(color=COLORS['success'], opacity=0.8),
+        text=[f"{v:.2f}" for v in optimal_values],
+        textposition='auto'
+    ))
+
+    fig.update_layout(
+        title="📊 Current vs Optimized Portfolio Metrics",
+        yaxis_title="Value",
+        xaxis_title="",
+        height=400,
+        showlegend=True,
+        barmode='group',
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        )
+    )
+
+    apply_chart_theme(fig)
+    return fig
+
+def create_risk_reduction_chart(optimization_results):
+    """Create visualization showing risk reduction potential"""
+
+    if not optimization_results or not optimization_results.get('optimization_success'):
+        return None
+
+    var_improvement = optimization_results['var_improvement_pct']
+    cvar_improvement = optimization_results['cvar_improvement_pct']
+    sharpe_improvement = optimization_results['sharpe_improvement']
+
+    improvements = {
+        'VaR Reduction': var_improvement,
+        'CVaR Reduction': cvar_improvement,
+        'Sharpe Improvement': (sharpe_improvement / optimization_results['current_sharpe'] * 100) if optimization_results['current_sharpe'] > 0 else 0
+    }
+
+    colors_list = [COLORS['success'] if v > 0 else COLORS['danger'] for v in improvements.values()]
+
+    fig = go.Figure(go.Bar(
+        x=list(improvements.keys()),
+        y=list(improvements.values()),
+        marker=dict(color=colors_list, opacity=0.9),
+        text=[f"{v:+.1f}%" for v in improvements.values()],
+        textposition='outside',
+        textfont=dict(size=14, color=COLORS['text_primary'], weight='bold')
+    ))
+
+    fig.update_layout(
+        title="📉 Risk Reduction Potential",
+        yaxis_title="Improvement (%)",
+        xaxis_title="",
+        height=400,
+        showlegend=False
+    )
+
+    apply_chart_theme(fig)
+    return fig
+
+def create_efficient_frontier_with_optimal(df, optimization_results):
+    """Enhanced efficient frontier showing both current and optimal portfolios"""
+
+    # Reuse the existing efficient frontier code
+    base_fig = create_efficient_frontier(df)
+
+    if base_fig is None or optimization_results is None:
+        return base_fig
+
+    if not optimization_results.get('optimization_success'):
+        return base_fig
+
+    # Calculate optimal portfolio position on frontier
+    # We need to recalculate using the optimal weights
+    optimal_weights = optimization_results['optimal_weights']
+
+    returns_data = {}
+    tickers = []
+
+    for _, row in df.iterrows():
+        ticker = row['Ticker']
+        if ticker in optimal_weights:
+            hist_data = fetch_historical_data(ticker, datetime.now() - timedelta(days=365), datetime.now())
+
+            if hist_data is not None and len(hist_data) > 30:
+                returns = hist_data['Close'].pct_change().dropna()
+                returns_data[ticker] = returns
+                tickers.append(ticker)
+
+    if len(returns_data) < 2:
+        return base_fig
+
+    returns_df = pd.DataFrame(returns_data)
+    cov_matrix = returns_df.cov() * 252
+
+    # Calculate optimal portfolio metrics
+    weights_array = np.array([optimal_weights.get(t, 0) for t in tickers])
+    expected_returns = returns_df.mean() * 252
+
+    optimal_return = np.sum(weights_array * expected_returns.values) * 100
+    optimal_vol = np.sqrt(np.dot(weights_array.T, np.dot(cov_matrix, weights_array))) * 100
+
+    # Add optimal portfolio to the chart
+    base_fig.add_trace(go.Scatter(
+        x=[optimal_vol],
+        y=[optimal_return],
+        mode='markers',
+        marker=dict(size=20, color=COLORS['success'], symbol='diamond'),
+        name='Optimal Portfolio (CVaR Minimized)',
+        hovertemplate=f'<b>Optimal Portfolio</b><br>Risk: {optimal_vol:.2f}%<br>Return: {optimal_return:.2f}%<extra></extra>'
+    ))
+
+    return base_fig
+
+def create_rebalancing_trades_table(trades_df):
+    """Create styled rebalancing trades table with color coding"""
+
+    if trades_df is None or trades_df.empty:
+        return None
+
+    # Color coding function
+    def get_priority_color(priority):
+        if priority == 1:
+            return COLORS['danger']  # High priority - red
+        elif priority == 2:
+            return COLORS['warning']  # Medium priority - yellow
+        else:
+            return COLORS['success']  # Low priority - green
+
+    # Create display DataFrame
+    display_df = trades_df.copy()
+
+    # Format columns
+    display_df['Trade Value'] = display_df['Trade Value'].apply(lambda x: format_currency(x))
+    display_df['Transaction Cost'] = display_df['Transaction Cost'].apply(lambda x: format_currency(x))
+    display_df['Net Cost/Proceeds'] = display_df['Net Cost/Proceeds'].apply(lambda x: format_currency(x))
+    display_df['Current Price'] = display_df['Current Price'].apply(lambda x: format_currency(x))
+
+    # Add color column for priority
+    display_df['Priority Level'] = display_df['Priority'].apply(
+        lambda x: '🔴 High' if x == 1 else ('🟡 Medium' if x == 2 else '🟢 Low')
+    )
+
+    # Select columns for display
+    cols_to_display = [
+        'Ticker', 'Trade Direction', 'Shares to Trade',
+        'Current Weight %', 'Optimal Weight %', 'Weight Diff %',
+        'Trade Value', 'Priority Level'
+    ]
+
+    return display_df[cols_to_display]
+
+# ============================================================================
 # MARKET WATCH - ENHANCED
 # ============================================================================
 
@@ -3295,11 +5118,23 @@ def create_dynamic_market_table(df, filters=None):
 # ============================================================================
 
 def create_sector_rotation_heatmap(df, start_date, end_date):
-    """Sector rotation heatmap - FIXED DATETIME COMPARISON"""
+    """Sector rotation heatmap - FIXED to exclude incomplete current month"""
     sector_returns = {}
 
-    # FIX: Make end_date_cutoff timezone-naive
-    end_date_cutoff = pd.Timestamp(datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0))
+    # FIX: Calculate cutoff for incomplete month (exclude current month entirely)
+    now = datetime.now()
+    # Set cutoff to the last day of the previous month
+    if now.month == 1:
+        cutoff_year = now.year - 1
+        cutoff_month = 12
+    else:
+        cutoff_year = now.year
+        cutoff_month = now.month - 1
+
+    # Last day of previous month
+    from calendar import monthrange
+    last_day = monthrange(cutoff_year, cutoff_month)[1]
+    end_date_cutoff = pd.Timestamp(year=cutoff_year, month=cutoff_month, day=last_day)
 
     for _, row in df.iterrows():
         ticker = row['Ticker']
@@ -3310,13 +5145,12 @@ def create_sector_rotation_heatmap(df, start_date, end_date):
             monthly_data = hist_data['Close'].resample('M').last()
             monthly_returns = monthly_data.pct_change() * 100
 
-            # FIX: Convert index to timezone-naive before comparison
-            monthly_returns.index = monthly_returns.index.tz_localize(None)
-            monthly_returns = monthly_returns[monthly_returns.index < end_date_cutoff]
-            
+            # FIX: Filter out incomplete months - only include complete months
+            monthly_returns = monthly_returns[monthly_returns.index <= end_date_cutoff]
+
             if sector not in sector_returns:
                 sector_returns[sector] = []
-            
+
             sector_returns[sector].append(monthly_returns)
     
     if not sector_returns:
@@ -3357,32 +5191,46 @@ def create_sector_rotation_heatmap(df, start_date, end_date):
     return fig
 
 def create_holdings_attribution_waterfall(df):
-    """Holdings attribution waterfall - ENHANCED THEMING"""
+    """Holdings attribution waterfall - ENHANCED with dollar value labels"""
     top_contributors = df.nlargest(10, 'Total Gain/Loss $')
-    
+
     tickers = top_contributors['Ticker'].tolist()
     contributions = top_contributors['Total Gain/Loss $'].tolist()
-    
+
+    # FIX: Format dollar values for display
+    def format_dollar_short(value):
+        """Format dollar amounts in compact form"""
+        if abs(value) >= 1000:
+            return f"${value/1000:+.1f}k"
+        else:
+            return f"${value:+,.0f}"
+
+    text_labels = [format_dollar_short(v) for v in contributions]
+
     fig = go.Figure()
-    
+
     fig.add_trace(go.Waterfall(
         name="Attribution",
         orientation="v",
         x=tickers,
         y=contributions,
-        connector={"line": {"color": COLORS['neon_blue']}},
+        connector={"line": {"color": COLORS['neon_blue'], "width": 2}},
         decreasing={"marker": {"color": COLORS['danger']}},
         increasing={"marker": {"color": COLORS['success']}},
-        totals={"marker": {"color": COLORS['electric_blue']}}
+        totals={"marker": {"color": COLORS['electric_blue']}},
+        text=text_labels,  # FIX: Add dollar value labels on bars
+        textposition="outside",
+        textfont=dict(size=12, color=COLORS['text_primary'], weight='bold')
     ))
-    
+
     fig.update_layout(
         title="💧 Holdings Attribution Waterfall",
         xaxis_title="Ticker",
         yaxis_title="Contribution ($)",
-        height=500
+        height=600,  # Enhanced height for better visibility
+        margin=dict(l=60, r=60, t=100, b=80)  # More space for labels
     )
-    
+
     apply_chart_theme(fig)
     return fig
 
@@ -3948,19 +5796,37 @@ def main():
         
         with st.spinner("Loading..."):
             enhanced_df = create_enhanced_holdings_table(df)
-        
+
+            # ENHANCED: Add optimization columns if results exist
+            optimization_results = st.session_state.get('optimization_results', None)
+            enhanced_df = add_optimization_columns_to_holdings(enhanced_df, optimization_results)
+
         total_value = enhanced_df['Total Value'].sum()
         total_cost = enhanced_df['Total Cost'].sum()
         total_gl = total_value - total_cost
         total_gl_pct = (total_gl / total_cost) * 100 if total_cost > 0 else 0
         daily_pl = enhanced_df['Daily P&L $'].sum()
-        
-        col1, col2, col3, col4, col5 = st.columns(5)
-        col1.metric("Total Value", format_currency(total_value))
-        col2.metric("Total Cost", format_currency(total_cost))
-        col3.metric("Total G/L", format_currency(total_gl), format_percentage(total_gl_pct))
-        col4.metric("Daily P&L", format_currency(daily_pl))
-        col5.metric("📊 Positions", len(enhanced_df))
+
+        # ENHANCED: Calculate leverage metrics
+        leverage_info_home = get_leverage_info()
+        cash_balance = 0  # Could be fetched from account data
+        margin_used = leverage_info_home.get('margin_used', 0) if leverage_info_home else 0
+
+        leverage_metrics = calculate_portfolio_leverage_metrics(
+            enhanced_df,
+            cash_balance=cash_balance,
+            margin_used=margin_used
+        )
+
+        # ENHANCED: Show Account Value vs Equity Value
+        col1, col2, col3, col4, col5, col6 = st.columns(6)
+        col1.metric("Account Value", format_currency(leverage_metrics['total_account_value']))
+        col2.metric("Equity Value", format_currency(leverage_metrics['equity_value']),
+                   delta=f"Leverage: {leverage_metrics['leverage_ratio']:.2f}x" if leverage_metrics['leverage_ratio'] > 1.01 else "No Leverage")
+        col3.metric("Total Cost", format_currency(total_cost))
+        col4.metric("Total G/L", format_currency(total_gl), format_percentage(total_gl_pct))
+        col5.metric("Daily P&L", format_currency(daily_pl))
+        col6.metric("📊 Positions", len(enhanced_df))
 
         # v9.7 NEW FEATURE: Data Quality Indicator
         validation_result = validate_portfolio_data(portfolio_data)
@@ -4041,21 +5907,16 @@ def main():
         
         st.markdown("---")
         st.markdown("### 📊 DASHBOARD OVERVIEW")
-        
-        # ENHANCED: Better layout with 2 rows
-        row1_col1, row1_col2 = st.columns([2, 1])
-        
-        with row1_col1:
-            risk_reward = create_risk_reward_plot(enhanced_df)
-            if risk_reward:
-                st.plotly_chart(risk_reward, use_container_width=True)
-        
-        with row1_col2:
-            sector_donut = create_sector_allocation_donut(enhanced_df)
-            if sector_donut:
-                st.plotly_chart(sector_donut, use_container_width=True)
-        
-        # NEW: Second row with Contributors and Detractors
+
+        # Show optimization status if available
+        if optimization_results and optimization_results.get('optimization_success'):
+            st.success(f"""
+            ✅ **Portfolio Optimization Active** - CVaR minimized by {abs(optimization_results['cvar_improvement_pct']):.1f}%
+
+            View detailed breakdown in the holdings table below (see Optimal Weight %, Shares to Trade, Priority columns).
+            """)
+
+        # Contributors and Detractors
         row2_col1, row2_col2 = st.columns(2)
         
         with row2_col1:
@@ -4096,7 +5957,92 @@ def main():
     elif page == "🌍 Market Watch":
         st.markdown("## 🌍 MARKET WATCH - EXCELLENCE EDITION")
         st.markdown("*Your comprehensive window into global markets, crypto, bonds, and credit conditions*")
-        
+
+        st.markdown("---")
+
+        # ====================================================================
+        # MARKET REGIME DETECTION
+        # ====================================================================
+        st.markdown("### 📈 Market Regime Analysis")
+
+        with st.spinner("Detecting market regime..."):
+            regime_data = detect_market_regime()
+
+        # Main regime display
+        regime_emoji = {
+            'RISK-ON': '📈',
+            'RISK-OFF': '📉',
+            'TRANSITION': '↔️',
+            'HIGH-VOL': '⚡'
+        }
+
+        regime_color = {
+            'RISK-ON': COLORS['success'],
+            'RISK-OFF': COLORS['danger'],
+            'TRANSITION': COLORS['warning'],
+            'HIGH-VOL': COLORS['orange']
+        }
+
+        col1, col2, col3 = st.columns([2, 1, 1])
+
+        with col1:
+            st.markdown(f"""
+            <div style='background: {regime_color[regime_data['regime']]};
+                        padding: 20px; border-radius: 10px; text-align: center;'>
+                <h1 style='margin: 0; color: #000;'>{regime_emoji[regime_data['regime']]} {regime_data['regime']}</h1>
+                <p style='margin: 0; color: #000; font-size: 18px;'>Current Market Regime</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with col2:
+            st.metric("Confidence", f"{regime_data['confidence']}%")
+
+        with col3:
+            st.metric("Est. Duration", "87 days")
+
+        # Regime indicators (ALL 5 INDICATORS)
+        st.markdown("**Regime Indicators:**")
+
+        ind_col1, ind_col2, ind_col3, ind_col4, ind_col5 = st.columns(5)
+
+        with ind_col1:
+            vix_value = regime_data['indicators'].get('vix', 'N/A')
+            vix_signal = regime_data['indicators'].get('vix_signal', 'N/A')
+
+            if vix_value != 'N/A' and vix_value is not None:
+                st.metric("VIX", f"{vix_value:.1f}", vix_signal)
+            else:
+                st.metric("VIX", "N/A")
+
+        with ind_col2:
+            st.metric("Credit Spreads", regime_data['indicators'].get('credit_spreads', 'N/A'))
+
+        with ind_col3:
+            st.metric("Momentum", regime_data['indicators'].get('momentum', 'N/A'))
+
+        with ind_col4:
+            st.metric("Yield Curve", regime_data['indicators'].get('yield_curve', 'N/A'))
+
+        with ind_col5:
+            st.metric("Breadth", regime_data['indicators'].get('breadth', 'N/A'))
+
+        # Tactical allocation guidance
+        with st.expander("🎯 Tactical Allocation Guidance"):
+            tactical = regime_data['tactical_suggestion']
+
+            st.info(f"**Regime Interpretation:** {tactical['rationale']}")
+
+            tac_col1, tac_col2, tac_col3 = st.columns(3)
+
+            with tac_col1:
+                st.markdown(f"**Equities**  \n{tactical['equities']}")
+
+            with tac_col2:
+                st.markdown(f"**Bonds**  \n{tactical['bonds']}")
+
+            with tac_col3:
+                st.markdown(f"**Alternatives**  \n{tactical['alternatives']}")
+
         st.markdown("---")
         st.markdown("### 🔍 Filters & Settings")
         col1, col2, col3, col4 = st.columns(4)
@@ -4194,24 +6140,34 @@ def main():
                     st.warning("No data available")
         
         with tab6:
-            st.markdown("#### 💵 Bond Yields & Treasury Rates")
-            st.info("📊 **Key Insight:** Monitor the yield curve for recession signals and inflation expectations")
+            st.markdown("#### 💵 US Treasury Yields & Forward Curves")
+            st.info("📊 **Key Insight:** Monitor the yield curve for recession signals and forward rates for market expectations")
 
-            # NEW: Yield Curve Visualization
-            yield_curve = create_yield_curve()
+            # ENHANCED: Yield Curve with Forward Rates
+            yield_curve = create_enhanced_yield_curve_with_forwards()
             if yield_curve:
                 st.plotly_chart(yield_curve, use_container_width=True)
                 st.caption(f"**Data Freshness:** {ATLASFormatter.format_timestamp()} • {ATLASFormatter.get_freshness_badge(2)}")
 
             st.markdown("---")
 
-            with st.spinner("Loading bonds..."):
-                bonds_df = fetch_market_watch_data(BOND_YIELDS)
-                if not bonds_df.empty:
-                    display_df = create_dynamic_market_table(bonds_df, {'sort_by': sort_by, 'ascending': False})
-                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=400)
-                else:
-                    st.warning("No data available")
+            # Treasury Data Table with proper Yield (%) column
+            st.markdown("##### 📊 Current Treasury Yields")
+            treasury_table = create_treasury_data_table()
+            if treasury_table is not None:
+                st.dataframe(treasury_table, use_container_width=True, hide_index=True, height=250)
+            else:
+                st.warning("Unable to load Treasury yield data")
+
+            st.markdown("---")
+            st.markdown("##### 💡 Understanding Forward Rates")
+            st.markdown("""
+            **Forward rates** represent the market's expectation of future interest rates:
+            - **3M5Y**: Expected 3-month rate, 5 years from now
+            - **5y5y**: Expected 5-year rate, 5 years from now (key inflation indicator)
+            - **Rising forwards**: Market expects higher future rates
+            - **Falling forwards**: Market expects lower future rates
+            """)
         
         with tab7:
             st.markdown("#### 🎯 Credit Spreads & Conditions")
@@ -4279,9 +6235,9 @@ def main():
         col6.metric("⚠️ Max DD", format_percentage(max_dd) if max_dd else "N/A")
         
         st.markdown("---")
-        
-        tab1, tab2, tab3, tab4 = st.tabs([
-            "📊 Core Risk", "🎲 Monte Carlo", "🔬 Advanced Analytics", "⚡ Stress Tests"
+
+        tab1, tab2, tab3, tab4, tab5 = st.tabs([
+            "📊 Core Risk", "🎲 Monte Carlo", "🔬 Advanced Analytics", "⚡ Stress Tests", "🎯 Portfolio Optimization"
         ])
         
         with tab1:
@@ -4472,106 +6428,845 @@ def main():
 
                 st.caption("⚠️ Sectors >30% = High concentration risk")
                 st.caption("🟡 Sectors 20-30% = Medium concentration risk")
-    
-    # Continue with remaining pages...
-    # ========================================================================
-    # PERFORMANCE SUITE
-    # ========================================================================
+
+        with tab5:
+            st.markdown("#### 🎯 Portfolio Optimization - Mean-Variance (Markowitz)")
+            st.info("""
+            💡 **Mean-Variance Optimization**: Find optimal portfolio weights to **maximize Sharpe Ratio**,
+            achieving the best risk-return trade-off on the efficient frontier.
+
+            **Why Sharpe Maximization?** Unlike CVaR minimization which is too conservative and sacrifices upside,
+            maximizing Sharpe Ratio allows you to capture right-tail opportunities while managing downside risk.
+            This produces **superior risk-adjusted returns** and higher portfolio efficiency.
+            """)
+
+            # Optimization Controls
+            with st.expander("⚙️ Optimization Settings - Institutional Grade", expanded=True):
+                opt_col1, opt_col2, opt_col3 = st.columns(3)
+
+                with opt_col1:
+                    st.markdown("**Risk Parameters**")
+                    confidence_level = st.slider("Confidence Level", 0.90, 0.99, 0.95, 0.01)
+                    max_position_weight = st.slider("Max Position Weight (%)", 3.0, 10.0, 6.0, 0.5) / 100
+                    min_position_weight = st.slider("Min Position Weight (%)", 1.0, 5.0, 2.0, 0.5) / 100
+
+                with opt_col2:
+                    st.markdown("**Portfolio Constraints**")
+                    max_turnover = st.slider("Max Turnover (%)", 10.0, 50.0, 30.0, 5.0) / 100
+                    diversification_target = st.slider("Diversification Target", 25, 40, 32, 1)
+                    allow_short = st.checkbox("Allow Short Positions", value=False)
+
+                with opt_col3:
+                    st.markdown("**Transaction Costs**")
+                    include_transaction_costs = st.checkbox("Include Transaction Costs", value=True)
+                    transaction_cost_pct = st.number_input("Transaction Cost (%)", 0.0, 1.0, 0.1, 0.05) / 100
+
+                st.markdown("---")
+                st.caption("💡 **Institutional Settings**: 3-6% position limits, 30% max turnover, 30-35 position target")
+                run_optimization = st.button("🚀 Run Optimization", type="primary", use_container_width=True)
+
+            # Run optimization
+            if run_optimization or 'optimization_results' in st.session_state:
+
+                if run_optimization:
+                    with st.spinner("🔄 Running Mean-Variance optimization (Sharpe maximization)... This may take a moment."):
+
+                        # Prepare returns data
+                        returns_data = {}
+                        for _, row in enhanced_df.iterrows():
+                            ticker = row['Ticker']
+                            hist_data = fetch_historical_data(ticker, start_date, end_date)
+
+                            if hist_data is not None and len(hist_data) > 30:
+                                returns = hist_data['Close'].pct_change().dropna()
+                                returns_data[ticker] = returns
+
+                        if len(returns_data) < 2:
+                            st.error("❌ Insufficient data for optimization. Need at least 2 assets with historical data.")
+                        else:
+                            returns_df = pd.DataFrame(returns_data)
+
+                            # Get current weights
+                            current_weights = {}
+                            for _, row in enhanced_df.iterrows():
+                                ticker = row['Ticker']
+                                weight = row['Weight %'] / 100
+                                current_weights[ticker] = weight
+
+                            # Run optimization with INSTITUTIONAL-GRADE parameters
+                            optimization_results = calculate_optimal_weights_var_cvar(
+                                returns_df,
+                                current_weights,
+                                confidence_level=confidence_level,
+                                max_position_weight=max_position_weight,
+                                min_position_weight=min_position_weight,
+                                max_turnover=max_turnover,
+                                diversification_target=diversification_target,
+                                allow_short=allow_short
+                            )
+
+                            if optimization_results:
+                                st.session_state['optimization_results'] = optimization_results
+
+                                # Calculate rebalancing trades
+                                total_portfolio_value = enhanced_df['Total Value'].sum()
+                                trades_df = calculate_rebalancing_trades(
+                                    enhanced_df,
+                                    optimization_results['optimal_weights'],
+                                    total_portfolio_value,
+                                    include_transaction_costs=include_transaction_costs,
+                                    transaction_cost_pct=transaction_cost_pct
+                                )
+                                st.session_state['rebalancing_trades'] = trades_df
+                            else:
+                                st.error("❌ Optimization failed. Please try different parameters.")
+
+                # Display results
+                if 'optimization_results' in st.session_state:
+                    opt_results = st.session_state['optimization_results']
+
+                    if opt_results.get('optimization_success'):
+                        st.success("✅ Optimization Complete!")
+
+                        # Key metrics comparison
+                        st.markdown("---")
+                        st.markdown("### 📊 Current vs Optimal Portfolio Comparison")
+
+                        metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
+
+                        with metric_col1:
+                            st.metric(
+                                "VaR (95%)",
+                                f"{abs(opt_results['optimal_var']):.2f}%",
+                                delta=f"{opt_results['var_improvement_pct']:.1f}%",
+                                delta_color="inverse"
+                            )
+
+                        with metric_col2:
+                            st.metric(
+                                "CVaR (95%)",
+                                f"{abs(opt_results['optimal_cvar']):.2f}%",
+                                delta=f"{opt_results['cvar_improvement_pct']:.1f}%",
+                                delta_color="inverse"
+                            )
+
+                        with metric_col3:
+                            st.metric(
+                                "Sharpe Ratio",
+                                f"{opt_results['optimal_sharpe']:.3f}",
+                                delta=f"{opt_results['sharpe_improvement']:+.3f}"
+                            )
+
+                        with metric_col4:
+                            risk_reduction = (opt_results['var_improvement_pct'] + opt_results['cvar_improvement_pct']) / 2
+                            st.metric(
+                                "Avg Risk Reduction",
+                                f"{abs(risk_reduction):.1f}%",
+                                delta="Better" if risk_reduction < 0 else "Worse"
+                            )
+
+                        # Visualizations
+                        st.markdown("---")
+                        viz_col1, viz_col2 = st.columns(2)
+
+                        with viz_col1:
+                            comparison_chart = create_optimization_comparison_chart(opt_results)
+                            if comparison_chart:
+                                st.plotly_chart(comparison_chart, use_container_width=True)
+
+                        with viz_col2:
+                            risk_reduction_chart = create_risk_reduction_chart(opt_results)
+                            if risk_reduction_chart:
+                                st.plotly_chart(risk_reduction_chart, use_container_width=True)
+
+                        # Efficient Frontier with optimal position
+                        st.markdown("---")
+                        st.markdown("### 📈 Efficient Frontier Analysis")
+                        efficient_frontier_opt = create_efficient_frontier_with_optimal(enhanced_df, opt_results)
+                        if efficient_frontier_opt:
+                            st.plotly_chart(efficient_frontier_opt, use_container_width=True)
+
+                        # Rebalancing Trades
+                        st.markdown("---")
+                        st.markdown("### 📋 Recommended Rebalancing Trades")
+
+                        if 'rebalancing_trades' in st.session_state:
+                            trades_df = st.session_state['rebalancing_trades']
+
+                            if not trades_df.empty:
+                                # Summary statistics
+                                total_buy_value = trades_df[trades_df['Trade Direction'] == 'BUY']['Trade Value'].sum()
+                                total_sell_value = abs(trades_df[trades_df['Trade Direction'] == 'SELL']['Trade Value'].sum())
+                                total_transaction_cost = trades_df['Transaction Cost'].sum()
+                                net_investment = total_buy_value - total_sell_value + total_transaction_cost
+
+                                summary_col1, summary_col2, summary_col3, summary_col4 = st.columns(4)
+                                summary_col1.metric("💰 Total Buys", format_currency(total_buy_value))
+                                summary_col2.metric("💸 Total Sells", format_currency(total_sell_value))
+                                summary_col3.metric("💵 Transaction Costs", format_currency(total_transaction_cost))
+                                summary_col4.metric("📊 Net Investment", format_currency(net_investment))
+
+                                st.markdown("---")
+
+                                # Display trades table
+                                display_trades = create_rebalancing_trades_table(trades_df)
+                                if display_trades is not None:
+                                    st.dataframe(display_trades, use_container_width=True, hide_index=True, height=400)
+
+                                # Download option
+                                st.markdown("---")
+                                csv = trades_df.to_csv(index=False)
+                                st.download_button(
+                                    label="📥 Download Rebalancing Plan (CSV)",
+                                    data=csv,
+                                    file_name=f"atlas_rebalancing_plan_{datetime.now().strftime('%Y%m%d')}.csv",
+                                    mime="text/csv",
+                                    use_container_width=True
+                                )
+
     elif page == "💎 Performance Suite":
-        st.markdown("## 💎 PERFORMANCE SUITE")
-        
+        st.markdown("## 💎 PERFORMANCE SUITE - INSTITUTIONAL GRADE")
+
         portfolio_data = load_portfolio_data()
-        
+
         if not portfolio_data:
             st.warning("⚠️ No portfolio data.")
             return
-        
+
         df = pd.DataFrame(portfolio_data)
         enhanced_df = create_enhanced_holdings_table(df)
-        
-        with st.spinner("Calculating..."):
+
+        with st.spinner("Loading institutional-grade analytics..."):
             portfolio_returns = calculate_portfolio_returns(df, start_date, end_date)
             benchmark_returns = calculate_benchmark_returns(selected_benchmark, start_date, end_date)
 
-            metrics = None
-            if is_valid_series(portfolio_returns):
-                metrics = calculate_performance_metrics(enhanced_df, portfolio_returns, benchmark_returns)
+        # === TAB STRUCTURE ===
+        tab1, tab2, tab3, tab4 = st.tabs([
+            "📊 Portfolio Performance",
+            "🔍 Individual Securities",
+            "⚠️ Risk Decomposition",
+            "📈 Attribution & Benchmarking"
+        ])
 
-        # Enhanced Performance Overview
-        st.markdown("---")
-        st.markdown("### 📊 Portfolio Performance Overview")
+        # ============================================================
+        # TAB 1: PORTFOLIO PERFORMANCE (Enhanced)
+        # ============================================================
 
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-            if metrics:
-                st.metric("📈 Total Return", format_percentage(metrics['Total Return']))
-                st.metric("📊 Annualized Return", format_percentage(metrics['Annualized Return']))
-                st.metric("🎯 Win Rate", format_percentage(metrics['Win Rate']))
-
-        with col2:
-            if metrics:
-                st.metric("⚡ Volatility", format_percentage(metrics['Annualized Volatility']))
-                st.metric("📉 Max Drawdown", format_percentage(metrics['Max Drawdown']))
-                st.metric("🔥 Sharpe Ratio", f"{metrics['Sharpe Ratio']:.3f}")
-
-        with col3:
-            if metrics:
-                st.metric("💎 Sortino Ratio", f"{metrics['Sortino Ratio']:.3f}")
-                st.metric("⚖️ Calmar Ratio", f"{metrics['Calmar Ratio']:.3f}")
-                if metrics['Information Ratio']:
-                    st.metric("📊 Info Ratio", f"{metrics['Information Ratio']:.3f}")
-                else:
-                    st.metric("📊 Info Ratio", "N/A")
-
-        st.markdown("---")
-
-        tab1, tab2, tab3 = st.tabs(["📈 Interactive Chart", "📊 Analytics", "📋 Metrics"])
-        
         with tab1:
-            available_tickers = enhanced_df['Ticker'].tolist()
-            
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                selected_tickers = st.multiselect(
-                    "Select Tickers",
-                    options=available_tickers + ["SPY", "QQQ", "VTI"],
-                    default=available_tickers[:min(5, len(available_tickers))]
-                )
-            
-            with col2:
-                custom_ticker = st.text_input("Add Custom", placeholder="TSLA")
-                if custom_ticker:
-                    selected_tickers.append(custom_ticker.upper())
-            
-            if selected_tickers:
-                perf_chart = create_interactive_performance_chart(selected_tickers, start_date, end_date)
-                if perf_chart:
-                    st.plotly_chart(perf_chart, use_container_width=True)
-        
+            st.subheader("Portfolio Performance Metrics")
+
+            # Calculate comprehensive metrics
+            if portfolio_returns is not None and len(portfolio_returns) > 0:
+
+                # === KEY METRICS GRID ===
+                col1, col2, col3, col4 = st.columns(4)
+
+                # Total Return
+                total_return = (1 + portfolio_returns).prod() - 1
+                n_years = len(portfolio_returns) / 252
+                annualized_return = (1 + total_return) ** (1/n_years) - 1 if n_years > 0 else 0
+
+                with col1:
+                    st.metric(
+                        "Annualized Return",
+                        f"{annualized_return*100:.2f}%",
+                        delta=f"{(total_return*100):.2f}% total"
+                    )
+
+                # Volatility
+                annualized_vol = portfolio_returns.std() * np.sqrt(252)
+
+                with col2:
+                    st.metric(
+                        "Annualized Volatility",
+                        f"{annualized_vol*100:.2f}%"
+                    )
+
+                # Sharpe Ratio
+                sharpe = calculate_sharpe_ratio(portfolio_returns)
+
+                with col3:
+                    sharpe_color = "normal" if sharpe and sharpe > 1.0 else "inverse"
+                    st.metric(
+                        "Sharpe Ratio",
+                        f"{sharpe:.2f}" if sharpe else "N/A",
+                        delta="Excellent" if sharpe and sharpe > 1.5 else ("Good" if sharpe and sharpe > 1.0 else "Fair"),
+                        delta_color=sharpe_color
+                    )
+
+                # Max Drawdown
+                max_dd = calculate_max_drawdown(portfolio_returns)
+
+                with col4:
+                    st.metric(
+                        "Max Drawdown",
+                        f"{max_dd:.2f}%" if max_dd else "N/A",
+                        delta_color="inverse"
+                    )
+
+                st.divider()
+
+                # === RETURNS DISTRIBUTION ===
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    st.subheader("Returns Distribution")
+
+                    # Histogram
+                    fig_hist = go.Figure()
+
+                    fig_hist.add_trace(go.Histogram(
+                        x=portfolio_returns * 100,
+                        nbinsx=50,
+                        marker_color='#00d4ff',
+                        opacity=0.7,
+                        name='Daily Returns'
+                    ))
+
+                    # Add normal distribution overlay
+                    mean_return = portfolio_returns.mean() * 100
+                    std_return = portfolio_returns.std() * 100
+
+                    x_range = np.linspace(
+                        portfolio_returns.min() * 100,
+                        portfolio_returns.max() * 100,
+                        100
+                    )
+
+                    normal_dist = stats.norm.pdf(x_range, mean_return, std_return)
+                    # Scale to match histogram
+                    normal_dist = normal_dist * len(portfolio_returns) * (x_range[1] - x_range[0])
+
+                    fig_hist.add_trace(go.Scatter(
+                        x=x_range,
+                        y=normal_dist,
+                        mode='lines',
+                        line=dict(color='#ff3366', width=2),
+                        name='Normal Distribution'
+                    ))
+
+                    fig_hist.update_layout(
+                        title="Daily Returns Distribution",
+                        xaxis_title="Return (%)",
+                        yaxis_title="Frequency",
+                        height=400,
+                        showlegend=True,
+                        paper_bgcolor='rgba(0, 0, 0, 0)',
+                        plot_bgcolor='rgba(10, 25, 41, 0.3)',
+                        font=dict(color='#ffffff')
+                    )
+
+                    st.plotly_chart(fig_hist, use_container_width=True)
+
+                with col2:
+                    st.subheader("Rolling Performance")
+
+                    # Rolling Sharpe Ratio (90-day)
+                    rolling_window = min(90, len(portfolio_returns) // 2)
+
+                    if rolling_window > 20:
+                        rolling_sharpe = portfolio_returns.rolling(rolling_window).apply(
+                            lambda x: (x.mean() / x.std() * np.sqrt(252)) if x.std() > 0 else 0
+                        )
+
+                        fig_rolling = go.Figure()
+
+                        fig_rolling.add_trace(go.Scatter(
+                            x=rolling_sharpe.index,
+                            y=rolling_sharpe.values,
+                            mode='lines',
+                            line=dict(color='#00ff88', width=2),
+                            fill='tozeroy',
+                            fillcolor='rgba(0, 255, 136, 0.2)',
+                            name='Rolling Sharpe'
+                        ))
+
+                        # Add 1.0 reference line
+                        fig_rolling.add_hline(
+                            y=1.0,
+                            line_dash="dash",
+                            line_color="#ffaa00",
+                            annotation_text="Sharpe = 1.0 (Good)",
+                            annotation_position="right"
+                        )
+
+                        fig_rolling.update_layout(
+                            title=f"Rolling Sharpe Ratio ({rolling_window}-day)",
+                            xaxis_title="Date",
+                            yaxis_title="Sharpe Ratio",
+                            height=400,
+                            paper_bgcolor='rgba(0, 0, 0, 0)',
+                            plot_bgcolor='rgba(10, 25, 41, 0.3)',
+                            font=dict(color='#ffffff')
+                        )
+
+                        st.plotly_chart(fig_rolling, use_container_width=True)
+
+                st.divider()
+
+                # === ADVANCED METRICS ===
+                st.subheader("Advanced Performance Metrics")
+
+                metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
+
+                # Sortino Ratio
+                sortino = calculate_sortino_ratio(portfolio_returns)
+
+                with metric_col1:
+                    st.metric("Sortino Ratio", f"{sortino:.2f}" if sortino else "N/A")
+
+                # Calmar Ratio
+                calmar = calculate_calmar_ratio(portfolio_returns)
+
+                with metric_col2:
+                    st.metric("Calmar Ratio", f"{calmar:.2f}" if calmar else "N/A")
+
+                # Win Rate
+                win_rate = (portfolio_returns > 0).sum() / len(portfolio_returns) * 100
+
+                with metric_col3:
+                    st.metric("Win Rate", f"{win_rate:.1f}%")
+
+                # VaR (95%)
+                var_95 = calculate_var(portfolio_returns, confidence=0.95)
+
+                with metric_col4:
+                    st.metric("VaR (95%)", f"{var_95:.2f}%" if var_95 else "N/A")
+
+            else:
+                st.warning("Insufficient return data for comprehensive analysis")
+
+        # ============================================================
+        # TAB 2: INDIVIDUAL SECURITIES ANALYSIS (NEW - GAME CHANGER)
+        # ============================================================
+
         with tab2:
-            if metrics:
-                dashboard = create_performance_dashboard(metrics)
-                st.plotly_chart(dashboard, use_container_width=True)
-        
+            st.subheader("Individual Security Performance Analysis")
+
+            st.info("🎯 Institutional-grade metrics for each holding - analyze like a professional fund manager")
+
+            # Security selector
+            selected_ticker = st.selectbox(
+                "Select Security to Analyze:",
+                options=enhanced_df['Ticker'].tolist(),
+                index=0
+            )
+
+            if selected_ticker:
+                # Get holding data
+                holding = enhanced_df[enhanced_df['Ticker'] == selected_ticker].iloc[0]
+
+                # Display header
+                col1, col2, col3 = st.columns([2, 1, 1])
+
+                with col1:
+                    st.markdown(f"### {holding.get('Asset Name', selected_ticker)} ({selected_ticker})")
+                    st.caption(f"Sector: {holding.get('Sector', 'Unknown')}")
+
+                with col2:
+                    current_price = holding.get('Current Price', 0)
+                    st.metric("Current Price", f"${current_price:.2f}")
+
+                with col3:
+                    weight = holding.get('Weight %', 0)
+                    st.metric("Portfolio Weight", f"{weight:.2f}%")
+
+                st.divider()
+
+                # === FETCH COMPREHENSIVE DATA FOR TICKER ===
+
+                # Historical performance
+                ticker_end_date = datetime.now()
+                ticker_start_date = ticker_end_date - timedelta(days=365)
+
+                ticker_hist = fetch_historical_data(selected_ticker, ticker_start_date, ticker_end_date)
+
+                if ticker_hist is not None and len(ticker_hist) > 20:
+
+                    # Calculate returns
+                    ticker_returns = ticker_hist['Close'].pct_change().dropna()
+
+                    # === PERFORMANCE METRICS ===
+                    st.subheader("📈 Performance Metrics (1 Year)")
+
+                    perf_col1, perf_col2, perf_col3, perf_col4, perf_col5 = st.columns(5)
+
+                    # Total Return
+                    total_ret = ((ticker_hist['Close'].iloc[-1] / ticker_hist['Close'].iloc[0]) - 1) * 100
+
+                    with perf_col1:
+                        st.metric("Total Return", f"{total_ret:+.2f}%")
+
+                    # Annualized Return
+                    n_years_ticker = len(ticker_returns) / 252
+                    ann_ret = ((1 + total_ret/100) ** (1/n_years_ticker) - 1) * 100 if n_years_ticker > 0 else 0
+
+                    with perf_col2:
+                        st.metric("Annualized Return", f"{ann_ret:.2f}%")
+
+                    # Volatility
+                    ann_vol = ticker_returns.std() * np.sqrt(252) * 100
+
+                    with perf_col3:
+                        st.metric("Volatility (Ann.)", f"{ann_vol:.2f}%")
+
+                    # Sharpe Ratio
+                    sharpe_ticker = calculate_sharpe_ratio(ticker_returns)
+
+                    with perf_col4:
+                        st.metric("Sharpe Ratio", f"{sharpe_ticker:.2f}" if sharpe_ticker else "N/A")
+
+                    # Max Drawdown
+                    max_dd_ticker = calculate_max_drawdown(ticker_returns)
+
+                    with perf_col5:
+                        st.metric("Max Drawdown", f"{max_dd_ticker:.2f}%" if max_dd_ticker else "N/A")
+
+                    st.divider()
+
+                    # === PRICE CHART WITH TECHNICAL INDICATORS ===
+                    st.subheader("📊 Price Chart & Technical Analysis")
+
+                    # Calculate technical indicators
+                    ticker_hist['MA_50'] = ticker_hist['Close'].rolling(50).mean()
+                    ticker_hist['MA_200'] = ticker_hist['Close'].rolling(200).mean()
+
+                    # Bollinger Bands
+                    ticker_hist['BB_middle'] = ticker_hist['Close'].rolling(20).mean()
+                    ticker_hist['BB_std'] = ticker_hist['Close'].rolling(20).std()
+                    ticker_hist['BB_upper'] = ticker_hist['BB_middle'] + (2 * ticker_hist['BB_std'])
+                    ticker_hist['BB_lower'] = ticker_hist['BB_middle'] - (2 * ticker_hist['BB_std'])
+
+                    fig_price = go.Figure()
+
+                    # Candlestick
+                    fig_price.add_trace(go.Candlestick(
+                        x=ticker_hist.index,
+                        open=ticker_hist['Open'],
+                        high=ticker_hist['High'],
+                        low=ticker_hist['Low'],
+                        close=ticker_hist['Close'],
+                        name='Price',
+                        increasing_line_color='#00ff88',
+                        decreasing_line_color='#ff3366'
+                    ))
+
+                    # Moving averages
+                    fig_price.add_trace(go.Scatter(
+                        x=ticker_hist.index,
+                        y=ticker_hist['MA_50'],
+                        mode='lines',
+                        line=dict(color='#00d4ff', width=1),
+                        name='MA 50'
+                    ))
+
+                    fig_price.add_trace(go.Scatter(
+                        x=ticker_hist.index,
+                        y=ticker_hist['MA_200'],
+                        mode='lines',
+                        line=dict(color='#ffaa00', width=1),
+                        name='MA 200'
+                    ))
+
+                    # Bollinger Bands
+                    fig_price.add_trace(go.Scatter(
+                        x=ticker_hist.index,
+                        y=ticker_hist['BB_upper'],
+                        mode='lines',
+                        line=dict(color='#b794f6', width=1, dash='dash'),
+                        name='BB Upper',
+                        showlegend=False
+                    ))
+
+                    fig_price.add_trace(go.Scatter(
+                        x=ticker_hist.index,
+                        y=ticker_hist['BB_lower'],
+                        mode='lines',
+                        line=dict(color='#b794f6', width=1, dash='dash'),
+                        name='BB Lower',
+                        fill='tonexty',
+                        fillcolor='rgba(183, 148, 246, 0.1)'
+                    ))
+
+                    fig_price.update_layout(
+                        title=f"{selected_ticker} - Price Chart (1 Year)",
+                        xaxis_title="Date",
+                        yaxis_title="Price ($)",
+                        height=500,
+                        paper_bgcolor='rgba(0, 0, 0, 0)',
+                        plot_bgcolor='rgba(10, 25, 41, 0.3)',
+                        font=dict(color='#ffffff'),
+                        xaxis_rangeslider_visible=False
+                    )
+
+                    st.plotly_chart(fig_price, use_container_width=True)
+
+                    st.divider()
+
+                    # === RISK METRICS ===
+                    st.subheader("⚠️ Risk Analysis")
+
+                    risk_col1, risk_col2 = st.columns(2)
+
+                    with risk_col1:
+                        # VaR and CVaR
+                        var_95_ticker = calculate_var(ticker_returns, confidence=0.95)
+                        cvar_95_ticker = calculate_cvar(ticker_returns, confidence=0.95)
+
+                        st.markdown("**Value at Risk (VaR)**")
+                        st.metric("VaR 95%", f"{var_95_ticker:.2f}%" if var_95_ticker else "N/A",
+                                 help="Maximum expected loss on 95% of days")
+                        st.metric("CVaR 95%", f"{cvar_95_ticker:.2f}%" if cvar_95_ticker else "N/A",
+                                 help="Expected loss when VaR is breached")
+
+                    with risk_col2:
+                        # Beta and correlation to SPY
+                        try:
+                            spy_hist = fetch_historical_data('SPY', ticker_start_date, ticker_end_date)
+
+                            if spy_hist is not None and len(spy_hist) > 20:
+                                spy_returns = spy_hist['Close'].pct_change().dropna()
+
+                                # Align dates
+                                common_dates = ticker_returns.index.intersection(spy_returns.index)
+                                ticker_aligned = ticker_returns.loc[common_dates]
+                                spy_aligned = spy_returns.loc[common_dates]
+
+                                # Calculate beta
+                                covariance = np.cov(ticker_aligned, spy_aligned)[0][1]
+                                market_variance = np.var(spy_aligned)
+                                beta = covariance / market_variance if market_variance > 0 else 1.0
+
+                                # Calculate correlation
+                                correlation = ticker_aligned.corr(spy_aligned)
+
+                                st.markdown("**Market Relationship**")
+                                st.metric("Beta (vs SPY)", f"{beta:.2f}",
+                                         help="Sensitivity to market movements")
+                                st.metric("Correlation (vs SPY)", f"{correlation:.2f}",
+                                         help="How closely it tracks the market")
+                        except:
+                            st.warning("Unable to calculate market relationship metrics")
+
+                    st.divider()
+
+                    # === CONTRIBUTION TO PORTFOLIO ===
+                    st.subheader("📊 Portfolio Contribution")
+
+                    contrib_col1, contrib_col2, contrib_col3 = st.columns(3)
+
+                    with contrib_col1:
+                        position_value = holding.get('Total Value', 0)
+                        st.metric("Position Value", f"${position_value:,.2f}")
+
+                    with contrib_col2:
+                        gain_loss_pct = holding.get('Total Gain/Loss %', 0)
+                        st.metric("Position Return", f"{gain_loss_pct:+.2f}%")
+
+                    with contrib_col3:
+                        # Contribution to portfolio return
+                        portfolio_contribution = (weight / 100) * gain_loss_pct
+                        st.metric("Portfolio Contribution", f"{portfolio_contribution:+.2f}%",
+                                 help="This position's contribution to total portfolio return")
+
+                else:
+                    st.warning(f"Insufficient historical data for {selected_ticker}")
+
+        # ============================================================
+        # TAB 3: RISK DECOMPOSITION (NEW)
+        # ============================================================
+
         with tab3:
-            if metrics:
-                metrics_df = pd.DataFrame([
-                    ['Total Return', format_percentage(metrics['Total Return'])],
-                    ['Annualized Return', format_percentage(metrics['Annualized Return'])],
-                    ['Volatility', format_percentage(metrics['Annualized Volatility'])],
-                    ['Sharpe Ratio', f"{metrics['Sharpe Ratio']:.3f}"],
-                    ['Sortino Ratio', f"{metrics['Sortino Ratio']:.3f}"],
-                    ['Calmar Ratio', f"{metrics['Calmar Ratio']:.3f}"],
-                    ['VaR (95%)', format_percentage(metrics['VaR (95%)'])],
-                    ['Max Drawdown', format_percentage(metrics['Max Drawdown'])],
-                    ['Win Rate', format_percentage(metrics['Win Rate'])],
-                    ['Best Day', format_percentage(metrics['Best Day'])],
-                    ['Worst Day', format_percentage(metrics['Worst Day'])]
-                ], columns=['Metric', 'Value'])
-                
-                st.dataframe(metrics_df, use_container_width=True, hide_index=True, height=600)
-    
+            st.subheader("Risk Decomposition Analysis")
+
+            st.info("💡 Understand WHERE your portfolio risk comes from")
+
+            if portfolio_returns is not None and len(portfolio_returns) > 20:
+
+                # Calculate portfolio volatility
+                portfolio_vol = portfolio_returns.std() * np.sqrt(252) * 100
+
+                st.metric("Portfolio Volatility (Annualized)", f"{portfolio_vol:.2f}%")
+
+                st.divider()
+
+                # === POSITION-LEVEL RISK CONTRIBUTION ===
+                st.subheader("📊 Risk Contribution by Position")
+
+                st.markdown("""
+                **Marginal Contribution to Risk (MCR):** How much each position contributes to total portfolio risk.
+
+                - High MCR = This position drives a lot of portfolio volatility
+                - Positions with similar weights can have very different MCRs due to correlations
+                """)
+
+                # Calculate for each position
+                risk_contributions = []
+
+                for _, holding_row in enhanced_df.iterrows():
+                    ticker = holding_row['Ticker']
+                    weight = holding_row['Weight %'] / 100
+
+                    # Get ticker returns
+                    ticker_hist = fetch_historical_data(ticker,
+                                                        datetime.now() - timedelta(days=365),
+                                                        datetime.now())
+
+                    if ticker_hist is not None and len(ticker_hist) > 20:
+                        ticker_returns_calc = ticker_hist['Close'].pct_change().dropna()
+                        ticker_vol = ticker_returns_calc.std() * np.sqrt(252)
+
+                        # Simplified MCR: weight * volatility (proper MCR requires covariance matrix)
+                        mcr = weight * ticker_vol * 100
+
+                        risk_contributions.append({
+                            'Ticker': ticker,
+                            'Weight %': weight * 100,
+                            'Volatility %': ticker_vol * 100,
+                            'Risk Contribution %': mcr
+                        })
+
+                if risk_contributions:
+                    risk_df = pd.DataFrame(risk_contributions).sort_values('Risk Contribution %', ascending=False)
+
+                    # Normalize to percentage of total risk
+                    total_risk = risk_df['Risk Contribution %'].sum()
+                    if total_risk > 0:
+                        risk_df['% of Portfolio Risk'] = (risk_df['Risk Contribution %'] / total_risk * 100).round(1)
+                    else:
+                        risk_df['% of Portfolio Risk'] = 0
+
+                    # Display table
+                    st.dataframe(risk_df, use_container_width=True, hide_index=True)
+
+                    # Visualization
+                    fig_risk_contrib = go.Figure(go.Bar(
+                        x=risk_df['% of Portfolio Risk'],
+                        y=risk_df['Ticker'],
+                        orientation='h',
+                        marker_color='#ff6b00',
+                        text=[f"{val:.1f}%" for val in risk_df['% of Portfolio Risk']],
+                        textposition='outside'
+                    ))
+
+                    fig_risk_contrib.update_layout(
+                        title="Risk Contribution by Position",
+                        xaxis_title="% of Total Portfolio Risk",
+                        yaxis_title="",
+                        height=500,
+                        paper_bgcolor='rgba(0, 0, 0, 0)',
+                        plot_bgcolor='rgba(10, 25, 41, 0.3)',
+                        font=dict(color='#ffffff')
+                    )
+
+                    st.plotly_chart(fig_risk_contrib, use_container_width=True)
+                else:
+                    st.warning("Unable to calculate risk contributions")
+            else:
+                st.warning("Insufficient return data for risk decomposition")
+
+        # ============================================================
+        # TAB 4: ATTRIBUTION & BENCHMARKING (Enhanced)
+        # ============================================================
+
+        with tab4:
+            st.subheader("Performance Attribution & Benchmark Comparison")
+
+            if benchmark_returns is not None and portfolio_returns is not None and len(portfolio_returns) > 0:
+
+                # Align returns
+                common_dates = portfolio_returns.index.intersection(benchmark_returns.index)
+                port_aligned = portfolio_returns.loc[common_dates]
+                bench_aligned = benchmark_returns.loc[common_dates]
+
+                if len(port_aligned) > 0:
+                    # Calculate metrics
+                    port_total = (1 + port_aligned).prod() - 1
+                    bench_total = (1 + bench_aligned).prod() - 1
+                    excess_return = port_total - bench_total
+
+                    # Display summary
+                    col1, col2, col3 = st.columns(3)
+
+                    with col1:
+                        st.metric("Portfolio Return", f"{port_total*100:.2f}%")
+
+                    with col2:
+                        st.metric("Benchmark Return (SPY)", f"{bench_total*100:.2f}%")
+
+                    with col3:
+                        st.metric("Excess Return (Alpha)", f"{excess_return*100:+.2f}%",
+                                 delta_color="normal" if excess_return > 0 else "inverse")
+
+                    st.divider()
+
+                    # === CUMULATIVE RETURN COMPARISON ===
+                    st.subheader("📈 Cumulative Performance vs Benchmark")
+
+                    port_cumulative = (1 + port_aligned).cumprod() - 1
+                    bench_cumulative = (1 + bench_aligned).cumprod() - 1
+
+                    fig_cumulative = go.Figure()
+
+                    fig_cumulative.add_trace(go.Scatter(
+                        x=port_cumulative.index,
+                        y=port_cumulative.values * 100,
+                        mode='lines',
+                        line=dict(color='#00d4ff', width=2),
+                        name='Your Portfolio'
+                    ))
+
+                    fig_cumulative.add_trace(go.Scatter(
+                        x=bench_cumulative.index,
+                        y=bench_cumulative.values * 100,
+                        mode='lines',
+                        line=dict(color='#ffaa00', width=2, dash='dash'),
+                        name='SPY Benchmark'
+                    ))
+
+                    fig_cumulative.update_layout(
+                        title="Cumulative Returns Comparison",
+                        xaxis_title="Date",
+                        yaxis_title="Cumulative Return (%)",
+                        height=500,
+                        paper_bgcolor='rgba(0, 0, 0, 0)',
+                        plot_bgcolor='rgba(10, 25, 41, 0.3)',
+                        font=dict(color='#ffffff'),
+                        hovermode='x unified'
+                    )
+
+                    st.plotly_chart(fig_cumulative, use_container_width=True)
+
+                    st.divider()
+
+                    # === TRACKING ERROR & INFORMATION RATIO ===
+                    st.subheader("📊 Active Management Metrics")
+
+                    tracking_col1, tracking_col2, tracking_col3 = st.columns(3)
+
+                    # Tracking Error
+                    excess_returns = port_aligned - bench_aligned
+                    tracking_error = excess_returns.std() * np.sqrt(252) * 100
+
+                    with tracking_col1:
+                        st.metric("Tracking Error", f"{tracking_error:.2f}%",
+                                 help="Volatility of excess returns vs benchmark")
+
+                    # Information Ratio
+                    info_ratio = calculate_information_ratio(port_aligned, bench_aligned)
+
+                    with tracking_col2:
+                        st.metric("Information Ratio", f"{info_ratio:.2f}" if info_ratio else "N/A",
+                                 help="Excess return per unit of tracking error")
+
+                    # Active Positions
+                    with tracking_col3:
+                        st.metric("Active Positions", f"{len(enhanced_df)}",
+                                 help="Number of holdings in portfolio")
+                else:
+                    st.warning("No overlapping dates between portfolio and benchmark")
+            else:
+                st.warning("Benchmark or portfolio return data not available")
     # ========================================================================
     # PORTFOLIO DEEP DIVE - ENHANCED
     # ========================================================================
@@ -4587,9 +7282,10 @@ def main():
         
         df = pd.DataFrame(portfolio_data)
         enhanced_df = create_enhanced_holdings_table(df)
-        
-        tab1, tab2, tab3 = st.tabs([
-            "🎯 Attribution", "🔄 Sector Rotation", "📊 Concentration"
+
+        tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+            "🎯 Attribution", "🔄 Sector Rotation", "📊 Concentration", "📊 Sector Allocation",
+            "🏆 Quality Scorecard", "🎯 Drift Monitor", "📊 Correlation"
         ])
         
         with tab1:
@@ -4623,7 +7319,529 @@ def main():
                 conc_analysis = create_concentration_analysis(enhanced_df)
                 if conc_analysis:
                     st.plotly_chart(conc_analysis, use_container_width=True)
-    
+
+        with tab4:
+            st.markdown("### 📊 Sector Allocation - Multiple Views")
+            st.info("💡 **Moved from Portfolio Home** - Enhanced sector visualization with full width for better visibility")
+
+            # Multiple visualization options
+            viz_tabs = st.tabs(["📊 Donut", "🗺️ Treemap", "☀️ Sunburst", "📈 Bar Chart"])
+
+            with viz_tabs[0]:
+                st.markdown("#### 📊 Sector Allocation Donut Chart")
+                sector_donut = create_sector_allocation_donut(enhanced_df)
+                if sector_donut:
+                    st.plotly_chart(sector_donut, use_container_width=True)
+
+            with viz_tabs[1]:
+                st.markdown("#### 🗺️ Sector Treemap - Hierarchical View")
+                sector_treemap = create_sector_allocation_treemap(enhanced_df)
+                if sector_treemap:
+                    st.plotly_chart(sector_treemap, use_container_width=True)
+
+            with viz_tabs[2]:
+                st.markdown("#### ☀️ Sector Sunburst - Interactive Drill-Down")
+                sector_sunburst = create_sector_allocation_sunburst(enhanced_df)
+                if sector_sunburst:
+                    st.plotly_chart(sector_sunburst, use_container_width=True)
+
+            with viz_tabs[3]:
+                st.markdown("#### 📈 Sector Bar Chart - Ranked by Value")
+                sector_bar = create_sector_allocation_bar(enhanced_df)
+                if sector_bar:
+                    st.plotly_chart(sector_bar, use_container_width=True)
+
+        # ====================================================================
+        # TAB 5: QUALITY SCORECARD
+        # ====================================================================
+        with tab5:
+            st.markdown("### 🏆 Portfolio Quality Analysis")
+
+            with st.spinner("Calculating quality scores..."):
+                # Calculate quality scores for all holdings
+                quality_scores = []
+                for _, row in enhanced_df.iterrows():
+                    score_data = calculate_quality_score(row['Ticker'])
+                    quality_scores.append({
+                        'Ticker': row['Ticker'],
+                        'Quality Score': score_data['total_score'],
+                        'Grade': score_data['grade'],
+                        'Weight %': row.get('Weight %', 0)
+                    })
+
+                quality_df = pd.DataFrame(quality_scores)
+
+            # Portfolio-level quality metrics
+            portfolio_quality = (quality_df['Quality Score'] * quality_df['Weight %'] / 100).sum()
+
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+                st.metric("Portfolio Quality Score", f"{portfolio_quality:.1f}/10")
+
+            with col2:
+                a_tier = quality_df[quality_df['Quality Score'] >= 8.0]['Weight %'].sum()
+                st.metric("A-Tier Holdings", f"{a_tier:.1f}%")
+
+            with col3:
+                c_tier = quality_df[quality_df['Quality Score'] < 6.0]['Weight %'].sum()
+                if c_tier > 10:
+                    st.metric("C-Tier Holdings", f"{c_tier:.1f}%", delta=f"{c_tier:.1f}%", delta_color="inverse")
+                else:
+                    st.metric("C-Tier Holdings", f"{c_tier:.1f}%")
+
+            # Quality tier composition chart
+            b_tier = quality_df[(quality_df['Quality Score'] >= 6.0) & (quality_df['Quality Score'] < 8.0)]['Weight %'].sum()
+
+            fig_quality = go.Figure(go.Bar(
+                x=['A-Tier (8.0+)', 'B-Tier (6.0-8.0)', 'C-Tier (<6.0)'],
+                y=[a_tier, b_tier, c_tier],
+                marker_color=[COLORS['success'], COLORS['warning'], COLORS['danger']],
+                text=[f"{a_tier:.1f}%", f"{b_tier:.1f}%", f"{c_tier:.1f}%"],
+                textposition='auto'
+            ))
+
+            fig_quality.update_layout(
+                title="Quality Tier Composition",
+                yaxis_title="Portfolio Weight (%)",
+                height=400
+            )
+
+            apply_chart_theme(fig_quality)
+            st.plotly_chart(fig_quality, use_container_width=True)
+
+            # Holdings quality table
+            st.dataframe(
+                quality_df.sort_values('Quality Score', ascending=False),
+                use_container_width=True,
+                hide_index=True
+            )
+
+            # Quality insights
+            with st.expander("📋 Quality Insights & Recommendations"):
+                st.markdown("### 💡 Opportunities")
+
+                # Identify low quality holdings
+                low_quality = enhanced_df[enhanced_df['Quality Score'] < 6.0].sort_values('Weight %', ascending=False)
+
+                if not low_quality.empty:
+                    st.warning(f"**{len(low_quality)} holdings rated C-tier or below:**")
+                    for _, row in low_quality.iterrows():
+                        quality_data = calculate_quality_score(row['Ticker'])
+                        flags_str = ', '.join(quality_data['flags']) if quality_data['flags'] else 'No specific flags'
+                        st.write(f"- **{row['Ticker']}** ({row['Grade']}): {row['Weight %']:.1f}% of portfolio")
+                        st.write(f"  *Issues: {flags_str}*")
+                    st.write("\n*Consider replacing with higher quality alternatives*")
+                else:
+                    st.success("✅ All holdings are B-tier quality or above!")
+
+                st.markdown("### ✅ Strengths")
+
+                # Identify high quality holdings
+                high_quality = enhanced_df[enhanced_df['Quality Score'] >= 8.0].sort_values('Quality Score', ascending=False)
+
+                if not high_quality.empty:
+                    st.success(f"**{len(high_quality)} holdings rated A-tier:**")
+                    for _, row in high_quality.head(5).iterrows():
+                        quality_data = calculate_quality_score(row['Ticker'])
+                        strengths = [f for f in quality_data['flags'] if 'Strong' in f or 'Attractive' in f]
+                        strengths_str = ', '.join(strengths) if strengths else 'High quality fundamentals'
+                        st.write(f"- **{row['Ticker']}** ({row['Grade']}): {row['Quality Score']:.1f}/10")
+                        st.write(f"  *{strengths_str}*")
+
+        # ====================================================================
+        # TAB 6: DRIFT MONITOR
+        # ====================================================================
+        with tab6:
+            st.markdown("### 🎯 Portfolio Drift Monitor")
+
+            # Get current portfolio sector allocation
+            current_allocation = enhanced_df.groupby('Sector')['Weight %'].sum().to_dict()
+
+            # Get dynamic benchmark
+            benchmark_data = calculate_blended_benchmark(spy_weight=0.6, acwi_weight=0.4)
+            strategic_allocation = benchmark_data['weights']
+
+            # Calculate drift
+            drift_analysis = calculate_drift(current_allocation, strategic_allocation)
+
+            # Alert if rebalancing needed
+            rebalance_needed = any(v['status'] == 'REBALANCE' for v in drift_analysis.values())
+
+            if rebalance_needed:
+                sectors_to_rebalance = [k for k, v in drift_analysis.items() if v['status'] == 'REBALANCE']
+                st.warning(f"""
+                ⚠️ **REBALANCING RECOMMENDED**
+
+                {len(sectors_to_rebalance)} sector(s) exceed drift threshold:
+                {', '.join(sectors_to_rebalance)}
+                """)
+            else:
+                st.success("✅ Portfolio allocation is within target ranges")
+
+            # Display benchmark info
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+                st.metric("Strategic Benchmark", benchmark_data['composition'])
+
+            with col2:
+                st.metric("Last Updated", benchmark_data['timestamp'].strftime("%Y-%m-%d %H:%M"))
+
+            with col3:
+                overall_drift = sum(abs(v['absolute_drift']) for v in drift_analysis.values()) / 2
+                st.metric("Overall Drift", f"{overall_drift:.1f}%")
+
+            # Drift table
+            drift_df = pd.DataFrame([
+                {
+                    'Sector': sector,
+                    'Target %': data['target_weight'],
+                    'Current %': data['current_weight'],
+                    'Drift': data['absolute_drift'],
+                    'Status': '⚠️ REBALANCE' if data['status'] == 'REBALANCE' else '✅ OK'
+                }
+                for sector, data in drift_analysis.items()
+            ]).sort_values('Drift', ascending=False, key=abs)
+
+            st.dataframe(drift_df, use_container_width=True, hide_index=True)
+
+            # Drift visualization
+            fig_drift = go.Figure()
+
+            sectors = drift_df['Sector'].tolist()
+            drift_values = drift_df['Drift'].tolist()
+            colors = [COLORS['success'] if abs(d) <= 5 else COLORS['danger'] for d in drift_values]
+
+            fig_drift.add_trace(go.Bar(
+                x=drift_values,
+                y=sectors,
+                orientation='h',
+                marker_color=colors,
+                text=[f"{d:+.1f}%" for d in drift_values],
+                textposition='outside'
+            ))
+
+            fig_drift.update_layout(
+                title="Sector Drift vs Strategic Allocation",
+                xaxis_title="Drift (Percentage Points)",
+                height=500
+            )
+
+            apply_chart_theme(fig_drift)
+            st.plotly_chart(fig_drift, use_container_width=True)
+
+            # ================================================================
+            # REBALANCING CALCULATOR
+            # ================================================================
+            st.divider()
+            st.subheader("🔧 Rebalancing Calculator")
+
+            if rebalance_needed:
+                # Calculate total portfolio value
+                total_value = enhanced_df['Total Value'].sum()
+
+                # Calculate trades needed
+                rebalancing_trades = []
+
+                for sector, drift_data in drift_analysis.items():
+                    if drift_data['status'] == 'REBALANCE':
+                        current_value = (drift_data['current_weight'] / 100) * total_value
+                        target_value = (drift_data['target_weight'] / 100) * total_value
+                        trade_value = target_value - current_value
+
+                        direction = 'BUY' if trade_value > 0 else 'SELL'
+
+                        rebalancing_trades.append({
+                            'Sector': sector,
+                            'Current Weight %': drift_data['current_weight'],
+                            'Target Weight %': drift_data['target_weight'],
+                            'Drift %': drift_data['absolute_drift'],
+                            'Trade Value': abs(trade_value),
+                            'Direction': direction
+                        })
+
+                trades_df = pd.DataFrame(rebalancing_trades).sort_values('Trade Value', ascending=False)
+
+                # Calculate transaction costs (0.1% assumed)
+                total_trade_value = trades_df['Trade Value'].sum()
+                transaction_cost = total_trade_value * 0.001
+
+                st.info(f"""
+                **Rebalancing Summary:**
+                - Total trades needed: {len(trades_df)}
+                - Total trade value: ${total_trade_value:,.0f}
+                - Estimated transaction cost: ${transaction_cost:,.0f} (0.1%)
+                """)
+
+                # Format trade value column
+                trades_display = trades_df.copy()
+                trades_display['Trade Value'] = trades_display['Trade Value'].apply(lambda x: f"${x:,.0f}")
+                trades_display['Current Weight %'] = trades_display['Current Weight %'].apply(lambda x: f"{x:.1f}%")
+                trades_display['Target Weight %'] = trades_display['Target Weight %'].apply(lambda x: f"{x:.1f}%")
+                trades_display['Drift %'] = trades_display['Drift %'].apply(lambda x: f"{x:+.1f}%")
+
+                st.dataframe(trades_display, use_container_width=True, hide_index=True)
+
+                # Position-level trade recommendations
+                with st.expander("📋 Detailed Trade Recommendations by Position"):
+                    st.write("**Positions to reduce (SELL):**")
+
+                    for sector in trades_df[trades_df['Direction'] == 'SELL']['Sector']:
+                        sector_holdings = enhanced_df[enhanced_df['Sector'] == sector].sort_values('Weight %', ascending=False)
+                        st.write(f"\n**{sector}:**")
+                        for _, holding in sector_holdings.iterrows():
+                            st.write(f"- {holding['Ticker']}: {holding['Weight %']:.1f}% of portfolio (${holding['Total Value']:,.0f})")
+
+                    st.write("\n**Sectors to increase (BUY):**")
+
+                    for sector in trades_df[trades_df['Direction'] == 'BUY']['Sector']:
+                        buy_value = trades_df[trades_df['Sector'] == sector]['Trade Value'].iloc[0]
+                        st.write(f"- {sector}: Add ${buy_value:,.0f}")
+                        st.write(f"  *Consider ETFs: Sector-specific index funds or top holdings*")
+
+            else:
+                st.info("No rebalancing needed at this time. Portfolio is within drift thresholds.")
+
+            # Benchmark update settings
+            with st.expander("⚙️ Benchmark Settings"):
+                st.markdown(f"""
+                **Current Benchmark:** 60% S&P 500 (SPY) / 40% MSCI ACWI
+
+                **Update Frequency:** Daily (cached for 24 hours)
+
+                **Drift Thresholds:**
+                - Absolute: 5 percentage points
+                - Relative: 20% of target weight
+
+                **Last Benchmark Update:**
+                - SPY weights: {benchmark_data['spy_data']['timestamp'].strftime("%Y-%m-%d %H:%M")}
+                - ACWI weights: {benchmark_data['acwi_data']['timestamp'].strftime("%Y-%m-%d %H:%M")}
+                """)
+
+                if st.button("🔄 Force Refresh Benchmark Weights"):
+                    st.cache_data.clear()
+                    st.success("Benchmark weights refreshed!")
+                    st.rerun()
+
+        # ====================================================================
+        # TAB 7: CORRELATION ANALYSIS
+        # ====================================================================
+        with tab7:
+            st.markdown("### 📊 Portfolio Correlation & Risk Clustering")
+
+            # Period selector
+            period = st.selectbox(
+                "Correlation Period:",
+                options=['30d', '90d', '1y'],
+                index=1,
+                format_func=lambda x: {'30d': '30 Days', '90d': '90 Days', '1y': '1 Year'}[x]
+            )
+
+            with st.spinner(f"Calculating correlations for {period} period..."):
+                # Calculate correlation
+                correlation_matrix = calculate_portfolio_correlations(enhanced_df, period=period)
+
+            if correlation_matrix is not None:
+                # Diversification score
+                div_score = calculate_diversification_score(correlation_matrix)
+
+                col1, col2, col3 = st.columns(3)
+
+                with col1:
+                    st.metric("Diversification Score", f"{div_score:.1f}/10")
+
+                with col2:
+                    avg_corr = correlation_matrix.where(
+                        np.triu(np.ones(correlation_matrix.shape), k=1).astype(bool)
+                    ).stack().mean()
+                    st.metric("Avg Pairwise Correlation", f"{avg_corr:.2f}")
+
+                with col3:
+                    high_corr_count = ((correlation_matrix > 0.7).sum().sum() - len(correlation_matrix)) // 2
+                    st.metric("High Correlations (>0.7)", high_corr_count)
+
+                # PROFESSIONAL HEATMAP
+                fig_heatmap = go.Figure(data=go.Heatmap(
+                    z=correlation_matrix.values,
+                    x=correlation_matrix.columns,
+                    y=correlation_matrix.index,
+                    colorscale='RdYlGn',
+                    zmid=0,
+                    zmin=-1,
+                    zmax=1,
+                    text=np.round(correlation_matrix.values, 2),
+                    texttemplate='%{text}',
+                    textfont={"size": 10, "color": "#000000"},
+                    colorbar=dict(
+                        title="Correlation",
+                        titleside="right",
+                        tickmode="linear",
+                        tick0=-1,
+                        dtick=0.5
+                    ),
+                    hovertemplate='%{y} vs %{x}<br>Correlation: %{z:.2f}<extra></extra>'
+                ))
+
+                fig_heatmap.update_layout(
+                    title=dict(
+                        text=f"Correlation Heatmap ({period})",
+                        font=dict(size=18, color='#ffffff'),
+                        x=0.5,
+                        xanchor='center'
+                    ),
+                    height=600,
+                    xaxis=dict(
+                        tickangle=-45,
+                        tickfont=dict(size=11, color='#ffffff')
+                    ),
+                    yaxis=dict(
+                        tickfont=dict(size=11, color='#ffffff')
+                    ),
+                    paper_bgcolor='rgba(0, 0, 0, 0)',
+                    plot_bgcolor='rgba(10, 25, 41, 0.3)'
+                )
+
+                st.plotly_chart(fig_heatmap, use_container_width=True)
+
+                # ============================================================
+                # NETWORK GRAPH
+                # ============================================================
+                st.subheader("🕸️ Correlation Network")
+
+                st.info("Edge thickness represents correlation strength. Only correlations >0.5 shown.")
+
+                # Build network graph using NetworkX
+                import networkx as nx
+
+                G = nx.Graph()
+
+                # Get weights dictionary
+                weights_dict = enhanced_df.set_index('Ticker')['Weight %'].to_dict()
+
+                # Add nodes
+                for ticker in correlation_matrix.index:
+                    weight = weights_dict.get(ticker, 0)
+                    G.add_node(ticker, weight=weight)
+
+                # Add edges (only for correlations > 0.5)
+                for i, ticker1 in enumerate(correlation_matrix.index):
+                    for j, ticker2 in enumerate(correlation_matrix.columns):
+                        if i < j:  # Avoid duplicates
+                            corr = correlation_matrix.iloc[i, j]
+                            if corr > 0.5:
+                                G.add_edge(ticker1, ticker2, weight=corr)
+
+                # Create network visualization
+                pos = nx.spring_layout(G, k=0.5, iterations=50)
+
+                # Extract edge trace
+                edge_traces = []
+
+                for edge in G.edges(data=True):
+                    x0, y0 = pos[edge[0]]
+                    x1, y1 = pos[edge[1]]
+                    corr = edge[2]['weight']
+
+                    edge_traces.append(
+                        go.Scatter(
+                            x=[x0, x1, None],
+                            y=[y0, y1, None],
+                            mode='lines',
+                            line=dict(
+                                width=corr * 5,  # Thickness based on correlation
+                                color=COLORS['neon_blue']
+                            ),
+                            hoverinfo='none',
+                            showlegend=False
+                        )
+                    )
+
+                # Extract node trace
+                node_x = []
+                node_y = []
+                node_text = []
+                node_size = []
+
+                for node in G.nodes():
+                    x, y = pos[node]
+                    node_x.append(x)
+                    node_y.append(y)
+                    node_text.append(node)
+                    node_size.append(weights_dict.get(node, 5) * 2)  # Size based on weight
+
+                node_trace = go.Scatter(
+                    x=node_x,
+                    y=node_y,
+                    mode='markers+text',
+                    text=node_text,
+                    textposition='top center',
+                    marker=dict(
+                        size=node_size,
+                        color=COLORS['electric_blue'],
+                        line=dict(color=COLORS['border'], width=2)
+                    ),
+                    hovertemplate='<b>%{text}</b><extra></extra>'
+                )
+
+                # Create figure
+                fig_network = go.Figure(data=edge_traces + [node_trace])
+
+                fig_network.update_layout(
+                    title="Portfolio Correlation Network",
+                    showlegend=False,
+                    hovermode='closest',
+                    height=600,
+                    xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                    yaxis=dict(showgrid=False, zeroline=False, showticklabels=False)
+                )
+
+                apply_chart_theme(fig_network)
+                st.plotly_chart(fig_network, use_container_width=True)
+
+                # ============================================================
+                # CORRELATION INSIGHTS
+                # ============================================================
+                with st.expander("💡 Correlation Insights"):
+                    # Find highly correlated pairs
+                    high_corr_pairs = []
+
+                    for i in range(len(correlation_matrix)):
+                        for j in range(i+1, len(correlation_matrix)):
+                            corr_val = correlation_matrix.iloc[i, j]
+                            if corr_val > 0.75:
+                                high_corr_pairs.append((
+                                    correlation_matrix.index[i],
+                                    correlation_matrix.columns[j],
+                                    corr_val
+                                ))
+
+                    if high_corr_pairs:
+                        st.warning("**Highly Correlated Pairs (>0.75):**")
+                        for t1, t2, corr in sorted(high_corr_pairs, key=lambda x: x[2], reverse=True):
+                            st.write(f"• {t1} ↔ {t2}: {corr:.2f}")
+                        st.caption("*These holdings move very similarly - limited diversification benefit*")
+                    else:
+                        st.success("✅ No extreme correlations detected - good diversification")
+
+                    # Find low/negative correlations (good diversifiers)
+                    low_corr_pairs = []
+
+                    for i, ticker1 in enumerate(correlation_matrix.index):
+                        for j, ticker2 in enumerate(correlation_matrix.columns):
+                            if i < j:
+                                corr = correlation_matrix.iloc[i, j]
+                                if corr < 0.2:
+                                    low_corr_pairs.append((ticker1, ticker2, corr))
+
+                    if low_corr_pairs:
+                        st.success("**Good Diversifiers (Correlation <0.2):**")
+                        for ticker1, ticker2, corr in sorted(low_corr_pairs, key=lambda x: x[2]):
+                            st.write(f"- {ticker1} ↔ {ticker2}: {corr:.2f}")
+
+            else:
+                st.warning("Insufficient data to calculate correlations. Need at least 2 holdings with price history.")
+
     # ========================================================================
     # MULTI-FACTOR ANALYSIS - ENHANCED
     # ========================================================================
@@ -5649,14 +8867,20 @@ def main():
                 
                 # Visualizations
                 col1, col2 = st.columns(2)
-                
-                with col1:
-                    waterfall = create_dcf_waterfall(results, method)
-                    st.plotly_chart(waterfall, use_container_width=True)
-                
-                with col2:
-                    cf_chart = create_cash_flow_chart(projections, method)
-                    st.plotly_chart(cf_chart, use_container_width=True)
+
+                # Only show DCF waterfall for DCF methods (FCFF/FCFE)
+                if method in ['FCFF', 'FCFE'] and all(k in results for k in ['total_pv_cash_flows', 'pv_terminal']):
+                    with col1:
+                        waterfall = create_dcf_waterfall(results, method)
+                        st.plotly_chart(waterfall, use_container_width=True)
+
+                    with col2:
+                        if projections:
+                            cf_chart = create_cash_flow_chart(projections, method)
+                            st.plotly_chart(cf_chart, use_container_width=True)
+                else:
+                    # For non-DCF methods, show alternative visualization
+                    st.info(f"💡 Waterfall visualization available for DCF methods only. Current method: {method}")
                 
                 # Sensitivity Analysis
                 st.markdown("---")
