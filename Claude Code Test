@@ -297,6 +297,84 @@ st.markdown(f"""
     div[data-testid="stDataFrame"] thead th:hover {{
         cursor: default !important;
     }}
+
+    /* ========================================================================
+       UI POLISH: Consistent Styling & Spacing
+       ======================================================================== */
+
+    /* Add breathing room between sections */
+    .block-container {{
+        padding-top: 2rem !important;
+        padding-bottom: 2rem !important;
+    }}
+
+    /* Consistent spacing for headers */
+    h1, h2, h3 {{
+        margin-top: 1.5rem !important;
+        margin-bottom: 1rem !important;
+    }}
+
+    /* Style ALL text inputs consistently */
+    input[type="text"],
+    input[type="number"] {{
+        background-color: #0a1929 !important;
+        border: 2px solid #00d4ff !important;
+        border-radius: 8px !important;
+        color: #ffffff !important;
+        padding: 8px 12px !important;
+    }}
+
+    input[type="text"]:focus,
+    input[type="number"]:focus {{
+        border-color: #00ff88 !important;
+        box-shadow: 0 0 10px rgba(0, 255, 136, 0.3) !important;
+    }}
+
+    /* Hide empty labels */
+    label:empty {{
+        display: none !important;
+    }}
+
+    /* Style search/filter inputs */
+    div[data-testid="stTextInput"] {{
+        margin-bottom: 20px;
+    }}
+
+    div[data-testid="stTextInput"] input {{
+        background-color: #0a1929 !important;
+        border: 2px solid #00d4ff !important;
+        color: #ffffff !important;
+        border-radius: 8px !important;
+        padding: 10px !important;
+    }}
+
+    /* Fix dropdown/select styling */
+    div[data-baseweb="select"] > div {{
+        background-color: #0a1929 !important;
+        border: 1px solid #00d4ff !important;
+        color: #ffffff !important;
+    }}
+
+    /* Ensure popover menus are visible when needed (non-broken ones) */
+    div[data-baseweb="popover"]:not([data-testid*="DataFrame"]) {{
+        z-index: 9999 !important;
+        display: block !important;
+    }}
+
+    /* Clean dropdown menu items */
+    div[data-baseweb="menu"] li {{
+        padding: 8px 12px !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        color: #ffffff !important;
+        line-height: 1.5 !important;
+        display: block !important;
+    }}
+
+    div[data-baseweb="menu"] li:hover {{
+        background-color: rgba(0, 212, 255, 0.2) !important;
+    }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -3169,14 +3247,14 @@ def create_performance_heatmap(df, period='monthly'):
         return None
 
 def create_portfolio_heatmap(df):
-    """Portfolio treemap - ENHANCED THEMING"""
+    """Portfolio treemap - ENHANCED THEMING with label fixes"""
     df_viz = df[['Ticker', 'Asset Name', 'Weight %', 'Total Gain/Loss %', 'Sector']].copy()
     df_viz['Sector'] = df_viz['Sector'].fillna('Other')
     df_viz = df_viz.dropna()
-    
+
     if df_viz.empty:
         return None
-    
+
     fig = px.treemap(
         df_viz,
         path=[px.Constant("Portfolio"), 'Sector', 'Ticker'],
@@ -3186,12 +3264,24 @@ def create_portfolio_heatmap(df):
         color_continuous_midpoint=0,
         hover_data={'Asset Name': True, 'Total Gain/Loss %': ':.2f'}
     )
-    
+
+    # CRITICAL: Ensure text doesn't get cut off
+    fig.update_traces(
+        textposition="middle center",
+        textfont=dict(size=14, color='white', family='Inter'),
+        texttemplate='<b>%{label}</b><br>%{value:.1f}%<br>%{color:+.1f}%',
+        insidetextanchor='middle'
+    )
+
     fig.update_layout(
         title="🗺️ Portfolio Heatmap",
-        height=700
+        height=700,
+        # Increase margins if labels are cut off
+        margin=dict(l=10, r=10, t=50, b=10),
+        # Ensure proper text sizing
+        uniformtext=dict(minsize=10, mode='hide')  # Hide text if too small
     )
-    
+
     apply_chart_theme(fig)
     return fig
 
