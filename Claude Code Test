@@ -421,6 +421,57 @@ st.markdown(f"""
     div[data-testid="stDataFrame"] [role="option"]:hover {{
         background-color: rgba(0, 212, 255, 0.3) !important;
     }}
+
+    /* GENERAL UI POLISH: Consistent spacing */
+    .block-container {{
+        padding-top: 2rem !important;
+        padding-bottom: 2rem !important;
+    }}
+
+    h1, h2, h3 {{
+        margin-top: 1.5rem !important;
+        margin-bottom: 1rem !important;
+    }}
+
+    /* GENERAL UI POLISH: Input field styling */
+    input[type="text"],
+    input[type="number"],
+    textarea {{
+        background-color: #0a1929 !important;
+        border: 2px solid #00d4ff !important;
+        border-radius: 8px !important;
+        color: #ffffff !important;
+        padding: 8px 12px !important;
+        font-family: 'Inter', sans-serif !important;
+    }}
+
+    input[type="text"]:focus,
+    input[type="number"]:focus,
+    textarea:focus {{
+        border-color: #00ff88 !important;
+        box-shadow: 0 0 10px rgba(0, 255, 136, 0.3) !important;
+        outline: none !important;
+    }}
+
+    /* Hide empty labels */
+    label:empty {{
+        display: none !important;
+    }}
+
+    /* Ensure all file uploaders have consistent styling */
+    [data-testid="stFileUploader"] {{
+        background: linear-gradient(135deg, {COLORS['card_background']} 0%, {COLORS['card_background_alt']} 100%) !important;
+        border: 2px solid {COLORS['neon_blue']} !important;
+        border-radius: 12px !important;
+        padding: 20px !important;
+    }}
+
+    /* Consistent divider styling */
+    hr {{
+        margin: 2rem 0 !important;
+        border-color: {COLORS['neon_blue']} !important;
+        opacity: 0.3 !important;
+    }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -4500,14 +4551,14 @@ def create_performance_heatmap(df, period='monthly'):
         return None
 
 def create_portfolio_heatmap(df):
-    """Portfolio treemap - ENHANCED THEMING"""
+    """Portfolio treemap - ENHANCED with proper label visibility"""
     df_viz = df[['Ticker', 'Asset Name', 'Weight %', 'Total Gain/Loss %', 'Sector']].copy()
     df_viz['Sector'] = df_viz['Sector'].fillna('Other')
     df_viz = df_viz.dropna()
-    
+
     if df_viz.empty:
         return None
-    
+
     fig = px.treemap(
         df_viz,
         path=[px.Constant("Portfolio"), 'Sector', 'Ticker'],
@@ -4517,12 +4568,23 @@ def create_portfolio_heatmap(df):
         color_continuous_midpoint=0,
         hover_data={'Asset Name': True, 'Total Gain/Loss %': ':.2f'}
     )
-    
+
+    # ENHANCED: Ensure labels are fully visible and readable
+    fig.update_traces(
+        textposition="middle center",
+        textfont=dict(size=14, color='white', family='Inter'),
+        texttemplate='<b>%{label}</b><br>%{value:.1f}%<br>%{color:.1f}%',
+        insidetextanchor='middle',
+        marker=dict(line=dict(width=2, color='#000000'))
+    )
+
     fig.update_layout(
         title="🗺️ Portfolio Heatmap",
-        height=700
+        height=700,
+        margin=dict(l=10, r=10, t=50, b=10),
+        uniformtext=dict(minsize=10, mode='hide')  # Hide text if too small to read
     )
-    
+
     apply_chart_theme(fig)
     return fig
 
