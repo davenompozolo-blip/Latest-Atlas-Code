@@ -3462,8 +3462,7 @@ def create_portfolio_heatmap(df):
     fig.update_traces(
         textposition="middle center",
         textfont=dict(size=14, color='white', family='Inter'),
-        texttemplate='<b>%{label}</b><br>%{value:.1f}%<br>%{color:+.1f}%',
-        insidetextanchor='middle'
+        texttemplate='<b>%{label}</b><br>%{value:.1f}%<br>%{color:+.1f}%'
     )
 
     fig.update_layout(
