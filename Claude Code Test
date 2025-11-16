@@ -1,16 +1,22 @@
 %%writefile atlas_app.py
 #!/usr/bin/env python3
 """
-ATLAS TERMINAL v9.7 ULTIMATE EDITION
+ATLAS TERMINAL v9.8 ULTIMATE EDITION
 Complete Portfolio Analytics + Valuation House - Production Ready
 
-🚀 NEW IN v9.7 (Latest Release - November 2025):
+🚀 NEW IN v9.8 (Latest Release - November 2025):
+✅ Brinson Attribution Analysis: Measure allocation vs selection skill
+✅ Portfolio Management Skill Scores: 0-10 ratings for sector timing and stock picking
+✅ Benchmark Sector Returns: Real-time sector ETF performance tracking
+✅ Table Dropdown Fix: Nuclear CSS override eliminates all UI glitches
+✅ Enhanced Data Tables: Clean, professional rendering across all pages
+✅ Skill-Based Recommendations: Actionable insights for portfolio strategy
+
+🎯 v9.7 FEATURES:
 ✅ Enhanced Performance: Optimized data loading and caching
 ✅ Advanced Risk Metrics: VaR, CVaR, and Maximum Drawdown analysis
 ✅ Improved Error Handling: Graceful fallbacks for data fetching
 ✅ Better Data Validation: Enhanced checks for portfolio data integrity
-✅ Version Display: Clear version info in sidebar
-✅ Code Structure: Modular, maintainable, production-ready
 ✅ Extended Market Coverage: Additional asset classes and indices
 
 PREVIOUS ENHANCEMENTS (v9.3-v9.6):
@@ -21,8 +27,9 @@ PREVIOUS ENHANCEMENTS (v9.3-v9.6):
 ✅ Valuation House: Analyst-grade fixes (scaling D&A/CapEx, Smart Assumptions, Editable Projections)
 ✅ ALL original features preserved and enhanced
 
-RELEASE DATE: November 14, 2025
+RELEASE DATE: November 16, 2025
 PRODUCTION STATUS: VERIFIED AND TESTED
+VERSION: 9.8
 """
 
 import pickle
@@ -66,7 +73,7 @@ def is_valid_dataframe(df):
 # PAGE CONFIG
 # ============================================================================
 st.set_page_config(
-    page_title="ATLAS Terminal v9.7 ULTIMATE",
+    page_title="ATLAS Terminal v9.8 ULTIMATE",
     page_icon="🚀",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -230,6 +237,66 @@ st.markdown(f"""
     
     .stSlider {{
         padding: 10px 0px;
+    }}
+
+    /* ========================================================================
+       NUCLEAR FIX: Table Dropdown Menu Bug - Hide ALL broken UI elements
+       ======================================================================== */
+
+    /* Hide the three-dot menu on dataframes */
+    button[title="View fullscreen"],
+    button[title="Download"],
+    button[kind="header"] {{
+        display: none !important;
+    }}
+
+    /* Hide column configuration menu and popovers */
+    div[data-testid="stDataFrameResizeHandle"],
+    div[data-baseweb="popover"],
+    div[data-baseweb="menu"] {{
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+    }}
+
+    /* Prevent any dropdown from rendering */
+    [role="menu"],
+    [role="listbox"],
+    [data-baseweb="select"] {{
+        display: none !important;
+    }}
+
+    /* Force clean table rendering - no overflow issues */
+    div[data-testid="stDataFrame"] {{
+        overflow: visible !important;
+    }}
+
+    /* Ensure table headers remain clean and properly styled */
+    div[data-testid="stDataFrame"] thead th {{
+        background: linear-gradient(135deg, {COLORS['neon_blue']} 0%, {COLORS['electric_blue']} 100%) !important;
+        color: #000000 !important;
+        font-weight: 700 !important;
+        padding: 12px !important;
+        border: none !important;
+        font-size: 14px !important;
+        text-transform: uppercase !important;
+    }}
+
+    /* Clean up table body styling */
+    div[data-testid="stDataFrame"] tbody td {{
+        padding: 10px !important;
+        border-bottom: 1px solid #1a3a52 !important;
+    }}
+
+    /* Hide any column sorting/filtering UI that might be garbled */
+    div[data-testid="stDataFrame"] button {{
+        display: none !important;
+    }}
+
+    /* Prevent column header interactions that trigger dropdowns */
+    div[data-testid="stDataFrame"] thead th:hover {{
+        cursor: default !important;
     }}
 </style>
 """, unsafe_allow_html=True)
@@ -2007,6 +2074,311 @@ def calculate_portfolio_returns(df, start_date, end_date):
         return returns
     except:
         return None
+
+# ============================================================================
+# BRINSON ATTRIBUTION ANALYSIS - NEW IN v9.7
+# ============================================================================
+
+# S&P 500 Sector Weights (Benchmark)
+SP500_SECTOR_WEIGHTS = {
+    'Technology': 28.5,
+    'Healthcare': 13.2,
+    'Financial Services': 12.8,
+    'Consumer Cyclical': 10.5,
+    'Communication Services': 8.7,
+    'Industrials': 8.3,
+    'Consumer Defensive': 6.8,
+    'Energy': 4.2,
+    'Real Estate': 2.5,
+    'Basic Materials': 2.3,
+    'Utilities': 2.2
+}
+
+@st.cache_data(ttl=3600)
+def get_benchmark_sector_returns(period='1Y'):
+    """
+    Fetch sector ETF returns as proxy for benchmark sector performance
+    """
+    sector_etfs = {
+        'Technology': 'XLK',
+        'Healthcare': 'XLV',
+        'Financial Services': 'XLF',
+        'Consumer Cyclical': 'XLY',
+        'Communication Services': 'XLC',
+        'Industrials': 'XLI',
+        'Consumer Defensive': 'XLP',
+        'Energy': 'XLE',
+        'Real Estate': 'XLRE',
+        'Basic Materials': 'XLB',
+        'Utilities': 'XLU'
+    }
+
+    benchmark_returns = {}
+
+    # Calculate date range based on period
+    end_date = datetime.now()
+    if period == '1Y':
+        start_date = end_date - timedelta(days=365)
+    elif period == 'YTD':
+        start_date = datetime(end_date.year, 1, 1)
+    elif period == '3M':
+        start_date = end_date - timedelta(days=90)
+    else:
+        start_date = end_date - timedelta(days=365)
+
+    for sector, etf in sector_etfs.items():
+        try:
+            data = fetch_historical_data(etf, start_date=start_date, end_date=end_date)
+            if data is not None and len(data) > 0:
+                total_return = ((data['Close'].iloc[-1] / data['Close'].iloc[0]) - 1) * 100
+                benchmark_returns[sector] = total_return
+            else:
+                benchmark_returns[sector] = 0.0
+        except:
+            benchmark_returns[sector] = 0.0
+
+    return benchmark_returns
+
+def calculate_skill_score(effect_value):
+    """
+    Convert attribution effect to skill score (0-10 scale)
+
+    Positive effects = higher scores
+    Scale: -5% to +5% maps to 0-10
+    """
+    # Normalize to 0-10 scale
+    if effect_value >= 5:
+        return 10.0
+    elif effect_value <= -5:
+        return 0.0
+    else:
+        return 5.0 + (effect_value / 5.0) * 5.0
+
+def calculate_brinson_attribution(portfolio_df, benchmark_weights, benchmark_returns, period='YTD'):
+    """
+    Calculate Brinson attribution: Allocation, Selection, and Interaction effects
+
+    Parameters:
+    -----------
+    portfolio_df : pd.DataFrame
+        Portfolio holdings with columns: Ticker, Sector, Weight %, Total Gain/Loss %
+    benchmark_weights : dict
+        Benchmark sector weights {sector: weight}
+    benchmark_returns : dict
+        Benchmark sector returns {sector: return}
+    period : str
+        Time period for analysis (YTD, 1Y, etc.)
+
+    Returns:
+    --------
+    dict with attribution_df, total_allocation_effect, total_selection_effect,
+    total_interaction_effect, total_attribution, allocation_skill_score, selection_skill_score
+    """
+
+    # Group portfolio by sector
+    portfolio_sectors = portfolio_df.groupby('Sector').agg({
+        'Weight %': 'sum',
+        'Total Gain/Loss %': 'mean'  # Average return in sector
+    }).reset_index()
+
+    portfolio_sectors.columns = ['Sector', 'Portfolio Weight', 'Portfolio Return']
+    portfolio_sectors['Portfolio Weight'] = portfolio_sectors['Portfolio Weight'] / 100
+
+    results = []
+
+    # Calculate benchmark total return (weighted average)
+    rb_total = sum([benchmark_weights.get(s, 0) / 100 * benchmark_returns.get(s, 0) / 100
+                   for s in benchmark_weights.keys()])
+
+    for sector in portfolio_sectors['Sector']:
+        # Get weights
+        wp = portfolio_sectors[portfolio_sectors['Sector'] == sector]['Portfolio Weight'].iloc[0]
+        wb = benchmark_weights.get(sector, 0) / 100
+
+        # Get returns
+        rp = portfolio_sectors[portfolio_sectors['Sector'] == sector]['Portfolio Return'].iloc[0] / 100
+        rb = benchmark_returns.get(sector, 0) / 100
+
+        # Brinson Attribution Formula:
+        # Allocation Effect = (wp - wb) × (rb - rb_total)
+        # Selection Effect = wb × (rp - rb)
+        # Interaction Effect = (wp - wb) × (rp - rb)
+
+        allocation_effect = (wp - wb) * (rb - rb_total) * 100
+        selection_effect = wb * (rp - rb) * 100
+        interaction_effect = (wp - wb) * (rp - rb) * 100
+
+        results.append({
+            'Sector': sector,
+            'Portfolio Weight': wp * 100,
+            'Benchmark Weight': wb * 100,
+            'Weight Diff': (wp - wb) * 100,
+            'Portfolio Return': rp * 100,
+            'Benchmark Return': rb * 100,
+            'Return Diff': (rp - rb) * 100,
+            'Allocation Effect': allocation_effect,
+            'Selection Effect': selection_effect,
+            'Interaction Effect': interaction_effect,
+            'Total Effect': allocation_effect + selection_effect + interaction_effect
+        })
+
+    attribution_df = pd.DataFrame(results)
+
+    # Calculate totals
+    total_allocation = attribution_df['Allocation Effect'].sum()
+    total_selection = attribution_df['Selection Effect'].sum()
+    total_interaction = attribution_df['Interaction Effect'].sum()
+    total_attribution = total_allocation + total_selection + total_interaction
+
+    return {
+        'attribution_df': attribution_df,
+        'total_allocation_effect': total_allocation,
+        'total_selection_effect': total_selection,
+        'total_interaction_effect': total_interaction,
+        'total_attribution': total_attribution,
+        'allocation_skill_score': calculate_skill_score(total_allocation),
+        'selection_skill_score': calculate_skill_score(total_selection)
+    }
+
+def create_brinson_attribution_chart(attribution_results):
+    """
+    Create waterfall chart showing allocation, selection, and interaction effects
+    """
+
+    # Aggregate by effect type
+    total_allocation = attribution_results['total_allocation_effect']
+    total_selection = attribution_results['total_selection_effect']
+    total_interaction = attribution_results['total_interaction_effect']
+    total = attribution_results['total_attribution']
+
+    fig = go.Figure(go.Waterfall(
+        name="Attribution",
+        orientation="v",
+        x=['Allocation<br>Effect', 'Selection<br>Effect', 'Interaction<br>Effect', 'Total<br>Attribution'],
+        y=[total_allocation, total_selection, total_interaction, total],
+        measure=['relative', 'relative', 'relative', 'total'],
+        text=[f"{total_allocation:+.2f}%", f"{total_selection:+.2f}%",
+              f"{total_interaction:+.2f}%", f"{total:.2f}%"],
+        textposition="outside",
+        connector={"line": {"color": COLORS['neon_blue'], "width": 2}},
+        decreasing={"marker": {"color": COLORS['danger']}},
+        increasing={"marker": {"color": COLORS['success']}},
+        totals={"marker": {"color": COLORS['electric_blue']}}
+    ))
+
+    fig.update_layout(
+        title="📊 Brinson Attribution: Portfolio Outperformance Breakdown",
+        yaxis_title="Effect (%)",
+        height=500,
+        showlegend=False
+    )
+
+    apply_chart_theme(fig)
+    return fig
+
+def create_skill_assessment_card(attribution_results):
+    """
+    Create visual skill assessment comparing allocation vs selection
+    """
+
+    allocation_score = attribution_results['allocation_skill_score']
+    selection_score = attribution_results['selection_skill_score']
+
+    allocation_effect = attribution_results['total_allocation_effect']
+    selection_effect = attribution_results['total_selection_effect']
+
+    # Determine primary skill
+    if allocation_score > selection_score + 2:
+        primary_skill = "Sector Timing (Allocation)"
+        recommendation = "Focus on sector rotation strategies. Consider using sector ETFs."
+    elif selection_score > allocation_score + 2:
+        primary_skill = "Stock Picking (Selection)"
+        recommendation = "Focus on fundamental analysis. Your stock picks add value."
+    else:
+        primary_skill = "Balanced"
+        recommendation = "Continue current strategy - both skills are comparable."
+
+    # Status emojis
+    alloc_status = '✅ Strong sector rotation' if allocation_effect > 1 else '⚠️ Neutral sector timing' if allocation_effect > -1 else '❌ Poor sector allocation'
+    select_status = '✅ Strong stock picks' if selection_effect > 1 else '⚠️ Neutral stock selection' if selection_effect > -1 else '❌ Stocks underperform sector'
+
+    html = f"""
+    <div style='background: linear-gradient(135deg, {COLORS['card_background']} 0%, {COLORS['card_background_alt']} 100%);
+                border: 2px solid {COLORS['neon_blue']}; border-radius: 12px; padding: 30px;
+                box-shadow: 0 0 30px {COLORS['shadow']};'>
+
+        <h2 style='color: {COLORS['neon_blue']}; margin-top: 0;'>🎯 Portfolio Management Skill Assessment</h2>
+
+        <div style='display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin: 20px 0;'>
+
+            <!-- Allocation Skill -->
+            <div>
+                <h3 style='color: {COLORS['text_secondary']}; font-size: 14px; margin-bottom: 10px;'>
+                    ALLOCATION SKILL (Sector Timing)
+                </h3>
+                <div style='font-size: 48px; color: {COLORS['success'] if allocation_effect > 0 else COLORS['danger']};
+                            font-weight: 700; margin: 10px 0;'>
+                    {allocation_score:.1f}/10
+                </div>
+                <div style='font-size: 18px; color: {COLORS['text_primary']}; margin: 5px 0;'>
+                    Effect: {allocation_effect:+.2f}%
+                </div>
+                <div style='color: {COLORS['text_muted']}; font-size: 13px; margin-top: 10px;'>
+                    {alloc_status}
+                </div>
+            </div>
+
+            <!-- Selection Skill -->
+            <div>
+                <h3 style='color: {COLORS['text_secondary']}; font-size: 14px; margin-bottom: 10px;'>
+                    SELECTION SKILL (Stock Picking)
+                </h3>
+                <div style='font-size: 48px; color: {COLORS['success'] if selection_effect > 0 else COLORS['danger']};
+                            font-weight: 700; margin: 10px 0;'>
+                    {selection_score:.1f}/10
+                </div>
+                <div style='font-size: 18px; color: {COLORS['text_primary']}; margin: 5px 0;'>
+                    Effect: {selection_effect:+.2f}%
+                </div>
+                <div style='color: {COLORS['text_muted']}; font-size: 13px; margin-top: 10px;'>
+                    {select_status}
+                </div>
+            </div>
+        </div>
+
+        <div style='background: rgba(0, 212, 255, 0.1); border-left: 4px solid {COLORS['neon_blue']};
+                    padding: 15px; border-radius: 8px; margin-top: 20px;'>
+            <h4 style='color: {COLORS['neon_blue']}; margin: 0 0 10px 0;'>
+                🏆 Primary Strength: {primary_skill}
+            </h4>
+            <p style='color: {COLORS['text_primary']}; margin: 0; font-size: 15px;'>
+                {recommendation}
+            </p>
+        </div>
+    </div>
+    """
+
+    return html
+
+def create_sector_attribution_table(attribution_df):
+    """
+    Create detailed sector-by-sector attribution table
+    """
+
+    # Format for display
+    display_df = attribution_df[[
+        'Sector', 'Weight Diff', 'Return Diff',
+        'Allocation Effect', 'Selection Effect', 'Total Effect'
+    ]].copy()
+
+    # Sort by total effect
+    display_df = display_df.sort_values('Total Effect', ascending=False)
+
+    # Format percentages
+    for col in ['Weight Diff', 'Return Diff', 'Allocation Effect', 'Selection Effect', 'Total Effect']:
+        display_df[col] = display_df[col].apply(lambda x: f"{x:+.2f}%")
+
+    return display_df
 
 @st.cache_data(ttl=600)
 def calculate_benchmark_returns(benchmark_ticker, start_date, end_date):
@@ -3833,9 +4205,9 @@ def create_sensitivity_table(base_price, base_discount, base_terminal):
 # ============================================================================
 
 def main():
-    st.markdown("<h1>🚀 ATLAS TERMINAL v9.7 ULTIMATE</h1>", unsafe_allow_html=True)
+    st.markdown("<h1>🚀 ATLAS TERMINAL v9.8 ULTIMATE</h1>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #00d4ff; font-size: 18px;'>Complete Portfolio Analytics + Valuation House - Production Ready 💎✨</p>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #00ff88; font-size: 14px;'>📅 Release: November 14, 2025 | 🔥 Latest Version</p>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #00ff88; font-size: 14px;'>📅 Release: November 16, 2025 | 🔥 Latest Version v9.8</p>", unsafe_allow_html=True)
     
     leverage_info = get_leverage_info()
     if leverage_info:
@@ -3903,13 +4275,13 @@ def main():
                     if trade_df is not None:
                         save_trade_history(trade_df)
                         st.success(f"✅ Parsed {len(trade_df)} trades!")
-                        st.dataframe(trade_df.head(10), use_container_width=True)
-                        
+                        st.dataframe(trade_df.head(10), use_container_width=True, column_config=None)
+
                         portfolio_df = calculate_portfolio_from_trades(trade_df)
                         if len(portfolio_df) > 0:
                             save_portfolio_data(portfolio_df.to_dict('records'))
                             st.success(f"🎉 Portfolio rebuilt! {len(portfolio_df)} positions")
-                            st.dataframe(portfolio_df, use_container_width=True)
+                            st.dataframe(portfolio_df, use_container_width=True, column_config=None)
         
         with col2:
             st.markdown("### 💰 Account History")
@@ -3922,7 +4294,7 @@ def main():
                     if account_df is not None:
                         save_account_history(account_df)
                         st.success(f"✅ Parsed {len(account_df)} records!")
-                        st.dataframe(account_df.head(10), use_container_width=True)
+                        st.dataframe(account_df.head(10), use_container_width=True, column_config=None)
                         
                         leverage_info_parsed = get_leverage_info()
                         if leverage_info_parsed:
@@ -4035,7 +4407,7 @@ def main():
         st.markdown("---")
         st.markdown("### 📋 Holdings")
         display_df = style_holdings_dataframe(enhanced_df)
-        st.dataframe(display_df, use_container_width=True, hide_index=True, height=500)
+        st.dataframe(display_df, use_container_width=True, hide_index=True, height=500, column_config=None)
         
         st.info("💡 **Tip:** Head to the Valuation House to analyze intrinsic values of any ticker!")
         
@@ -4130,7 +4502,7 @@ def main():
                 if not indices_df.empty:
                     indices_df = indices_df[indices_df['Change %'] >= filter_change]
                     display_df = create_dynamic_market_table(indices_df, {'sort_by': sort_by, 'ascending': False})
-                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=600)
+                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=600, column_config=None)
                 else:
                     st.warning("No data available")
         
@@ -4141,7 +4513,7 @@ def main():
                 if not crypto_df.empty:
                     crypto_df = crypto_df[crypto_df['Change %'] >= filter_change]
                     display_df = create_dynamic_market_table(crypto_df, {'sort_by': sort_by, 'ascending': False})
-                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=600)
+                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=600, column_config=None)
                 else:
                     st.warning("No data available")
         
@@ -4157,7 +4529,7 @@ def main():
                     if sectors:
                         etf_df = etf_df[etf_df['Category'].isin(sectors)]
                     display_df = create_dynamic_market_table(etf_df, {'sort_by': sort_by, 'ascending': False})
-                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=600)
+                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=600, column_config=None)
                 else:
                     st.warning("No data available")
         
@@ -4173,7 +4545,7 @@ def main():
                     if commodity_cats:
                         comm_df = comm_df[comm_df['Category'].isin(commodity_cats)]
                     display_df = create_dynamic_market_table(comm_df, {'sort_by': sort_by, 'ascending': False})
-                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=600)
+                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=600, column_config=None)
                 else:
                     st.warning("No data available")
         
@@ -4189,7 +4561,7 @@ def main():
                     if stock_sectors:
                         stocks_df = stocks_df[stocks_df['Category'].isin(stock_sectors)]
                     display_df = create_dynamic_market_table(stocks_df, {'sort_by': sort_by, 'ascending': False})
-                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=600)
+                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=600, column_config=None)
                 else:
                     st.warning("No data available")
         
@@ -4209,7 +4581,7 @@ def main():
                 bonds_df = fetch_market_watch_data(BOND_YIELDS)
                 if not bonds_df.empty:
                     display_df = create_dynamic_market_table(bonds_df, {'sort_by': sort_by, 'ascending': False})
-                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=400)
+                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=400, column_config=None)
                 else:
                     st.warning("No data available")
         
@@ -4221,7 +4593,7 @@ def main():
                 credit_df = fetch_market_watch_data(CREDIT_SPREADS)
                 if not credit_df.empty:
                     display_df = create_dynamic_market_table(credit_df, {'sort_by': sort_by, 'ascending': False})
-                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=400)
+                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=400, column_config=None)
                     
                     st.markdown("---")
                     st.markdown("#### 📊 Credit Market Interpretation")
@@ -4398,7 +4770,7 @@ def main():
                 stress_df['New Value'] = stress_df['New Value'].apply(lambda x: format_currency(x))
                 stress_df['Return'] = stress_df['Return'].apply(lambda x: f"{x:+.1f}%")
 
-                st.dataframe(stress_df, use_container_width=True, hide_index=True)
+                st.dataframe(stress_df, use_container_width=True, hide_index=True, column_config=None)
 
                 st.caption(f"💼 Current Portfolio Value: {format_currency(current_value)}")
 
@@ -4468,7 +4840,7 @@ def main():
                     })
 
                 conc_df = pd.DataFrame(concentration_warnings)
-                st.dataframe(conc_df, use_container_width=True, hide_index=True)
+                st.dataframe(conc_df, use_container_width=True, hide_index=True, column_config=None)
 
                 st.caption("⚠️ Sectors >30% = High concentration risk")
                 st.caption("🟡 Sectors 20-30% = Medium concentration risk")
@@ -4569,8 +4941,8 @@ def main():
                     ['Best Day', format_percentage(metrics['Best Day'])],
                     ['Worst Day', format_percentage(metrics['Worst Day'])]
                 ], columns=['Metric', 'Value'])
-                
-                st.dataframe(metrics_df, use_container_width=True, hide_index=True, height=600)
+
+                st.dataframe(metrics_df, use_container_width=True, hide_index=True, height=600, column_config=None)
     
     # ========================================================================
     # PORTFOLIO DEEP DIVE - ENHANCED
@@ -4587,9 +4959,9 @@ def main():
         
         df = pd.DataFrame(portfolio_data)
         enhanced_df = create_enhanced_holdings_table(df)
-        
-        tab1, tab2, tab3 = st.tabs([
-            "🎯 Attribution", "🔄 Sector Rotation", "📊 Concentration"
+
+        tab1, tab2, tab3, tab4 = st.tabs([
+            "🎯 Attribution", "🔄 Sector Rotation", "📊 Concentration", "🏆 Brinson Attribution"
         ])
         
         with tab1:
@@ -4623,7 +4995,70 @@ def main():
                 conc_analysis = create_concentration_analysis(enhanced_df)
                 if conc_analysis:
                     st.plotly_chart(conc_analysis, use_container_width=True)
-    
+
+        with tab4:
+            st.markdown("### 🏆 Brinson Attribution Analysis")
+            st.markdown("Decompose portfolio performance into **Allocation** (sector timing) vs **Selection** (stock picking) skill")
+
+            # Get benchmark data
+            benchmark_weights = SP500_SECTOR_WEIGHTS
+            with st.spinner("Fetching benchmark sector returns..."):
+                benchmark_returns = get_benchmark_sector_returns(period='1Y')
+
+            # Calculate attribution
+            try:
+                attribution_results = calculate_brinson_attribution(
+                    enhanced_df,
+                    benchmark_weights,
+                    benchmark_returns,
+                    period='1Y'
+                )
+
+                # Display skill assessment card
+                st.markdown(create_skill_assessment_card(attribution_results), unsafe_allow_html=True)
+
+                # Display waterfall chart
+                st.plotly_chart(create_brinson_attribution_chart(attribution_results),
+                               use_container_width=True)
+
+                # Display detailed sector table
+                st.markdown("#### 📋 Sector-by-Sector Attribution")
+                sector_table = create_sector_attribution_table(attribution_results['attribution_df'])
+                st.dataframe(
+                    sector_table,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config=None
+                )
+
+                # Explanation
+                with st.expander("ℹ️ Understanding Brinson Attribution"):
+                    st.markdown("""
+                    **Brinson Attribution** breaks down your portfolio outperformance into:
+
+                    1. **Allocation Effect** - Your skill at sector timing
+                       - Measures if you overweighted sectors that outperformed
+                       - Example: Overweighting tech before a tech rally = positive allocation
+
+                    2. **Selection Effect** - Your skill at stock picking
+                       - Measures if your stocks beat their sector average
+                       - Example: Picking NVDA in tech when NVDA beats XLK = positive selection
+
+                    3. **Interaction Effect** - Combined benefit
+                       - Being overweight the right sectors AND picking winners within them
+
+                    **Interpretation:**
+                    - **High Allocation Score**: You're good at macro/sector calls → Use sector ETFs
+                    - **High Selection Score**: You're good at stock picking → Focus on fundamentals
+                    - **Both Low**: Consider passive indexing
+
+                    **Benchmark**: S&P 500 sector weights and sector ETF returns (XLK, XLV, XLF, etc.)
+                    """)
+
+            except Exception as e:
+                st.error(f"Error calculating Brinson Attribution: {str(e)}")
+                st.info("💡 Make sure your portfolio has valid sector classifications and return data.")
+
     # ========================================================================
     # MULTI-FACTOR ANALYSIS - ENHANCED
     # ========================================================================
@@ -4672,7 +5107,7 @@ def main():
                         factor_display = factor_summary.copy()
                         factor_display['Total Contribution'] = factor_display['Total Contribution'].apply(
                             lambda x: f"{x:.4f}")
-                        st.dataframe(factor_display, use_container_width=True, hide_index=True)
+                        st.dataframe(factor_display, use_container_width=True, hide_index=True, column_config=None)
                     
                     if attr_df is not None:
                         st.markdown("### Holdings Attribution")
@@ -4682,8 +5117,8 @@ def main():
                             values='Contribution',
                             aggfunc='sum'
                         ).round(4)
-                        
-                        st.dataframe(holdings_attr, use_container_width=True)
+
+                        st.dataframe(holdings_attr, use_container_width=True, column_config=None)
                         
                         st.info("""
                         **Positive values**: Holding increases exposure
@@ -5692,8 +6127,8 @@ def main():
                 for col in proj_display.columns:
                     if col != 'Year':
                         proj_display[col] = proj_display[col].apply(format_large_number)
-                
-                st.dataframe(proj_display, use_container_width=True, hide_index=True)
+
+                st.dataframe(proj_display, use_container_width=True, hide_index=True, column_config=None)
                 
                 st.info("💡 **Technical Note:** D&A and CapEx scale with revenue growth (as they should!)")
                 
