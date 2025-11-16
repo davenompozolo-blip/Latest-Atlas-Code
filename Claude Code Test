@@ -375,6 +375,199 @@ st.markdown(f"""
     div[data-baseweb="menu"] li:hover {{
         background-color: rgba(0, 212, 255, 0.2) !important;
     }}
+
+    /* ========================================================================
+       NEON BLUE BORDERS: The Cool Cyberpunk Look
+       ======================================================================== */
+
+    /* Add blue borders to all major sections and cards */
+    .element-container {{
+        border-radius: 8px;
+    }}
+
+    /* Expanders with neon blue borders */
+    div[data-testid="stExpander"] {{
+        border: 2px solid {COLORS['neon_blue']} !important;
+        border-radius: 10px !important;
+        background: linear-gradient(135deg, {COLORS['card_background']} 0%, {COLORS['card_background_alt']} 100%) !important;
+        margin: 15px 0 !important;
+        box-shadow: 0 0 20px {COLORS['shadow']} !important;
+    }}
+
+    div[data-testid="stExpander"]:hover {{
+        box-shadow: 0 0 30px {COLORS['shadow_strong']} !important;
+        border-color: {COLORS['teal']} !important;
+    }}
+
+    /* Tab containers with blue borders */
+    div[data-baseweb="tab-list"] {{
+        border-bottom: 2px solid {COLORS['neon_blue']} !important;
+        background: {COLORS['card_background']} !important;
+        padding: 10px !important;
+        border-radius: 8px 8px 0 0 !important;
+    }}
+
+    div[data-baseweb="tab"] {{
+        border: 2px solid transparent !important;
+        border-radius: 8px !important;
+        padding: 10px 20px !important;
+        transition: all 0.3s ease !important;
+    }}
+
+    div[data-baseweb="tab"]:hover {{
+        border-color: {COLORS['neon_blue']} !important;
+        background: rgba(0, 212, 255, 0.1) !important;
+    }}
+
+    div[data-baseweb="tab"][aria-selected="true"] {{
+        border-color: {COLORS['neon_blue']} !important;
+        background: linear-gradient(135deg, rgba(0, 212, 255, 0.2) 0%, rgba(0, 128, 255, 0.2) 100%) !important;
+        box-shadow: 0 0 15px {COLORS['shadow']} !important;
+    }}
+
+    /* Columns with subtle borders */
+    div[data-testid="column"] {{
+        border: 1px solid rgba(0, 212, 255, 0.3) !important;
+        border-radius: 10px !important;
+        padding: 15px !important;
+        background: linear-gradient(135deg, {COLORS['card_background']} 0%, {COLORS['card_background_alt']} 100%) !important;
+        margin: 5px !important;
+    }}
+
+    /* Info/Warning/Success/Error boxes with borders */
+    div[data-testid="stAlert"] {{
+        border: 2px solid {COLORS['neon_blue']} !important;
+        border-radius: 10px !important;
+        box-shadow: 0 0 15px {COLORS['shadow']} !important;
+    }}
+
+    div[data-testid="stAlert"][data-baseweb*="info"] {{
+        border-color: {COLORS['info']} !important;
+        box-shadow: 0 0 15px rgba(0, 212, 255, 0.3) !important;
+    }}
+
+    div[data-testid="stAlert"][data-baseweb*="success"] {{
+        border-color: {COLORS['success']} !important;
+        box-shadow: 0 0 15px rgba(0, 255, 136, 0.3) !important;
+    }}
+
+    div[data-testid="stAlert"][data-baseweb*="warning"] {{
+        border-color: {COLORS['warning']} !important;
+        box-shadow: 0 0 15px rgba(255, 170, 0, 0.3) !important;
+    }}
+
+    div[data-testid="stAlert"][data-baseweb*="error"] {{
+        border-color: {COLORS['danger']} !important;
+        box-shadow: 0 0 15px rgba(255, 0, 68, 0.3) !important;
+    }}
+
+    /* Sidebar with neon border */
+    section[data-testid="stSidebar"] {{
+        border-right: 3px solid {COLORS['neon_blue']} !important;
+        background: linear-gradient(180deg, {COLORS['card_background']} 0%, {COLORS['background']} 100%) !important;
+        box-shadow: 5px 0 20px {COLORS['shadow']} !important;
+    }}
+
+    /* File uploader with border */
+    div[data-testid="stFileUploader"] {{
+        border: 2px dashed {COLORS['neon_blue']} !important;
+        border-radius: 10px !important;
+        background: {COLORS['card_background']} !important;
+        padding: 20px !important;
+        transition: all 0.3s ease !important;
+    }}
+
+    div[data-testid="stFileUploader"]:hover {{
+        border-color: {COLORS['teal']} !important;
+        background: {COLORS['card_background_alt']} !important;
+        box-shadow: 0 0 20px {COLORS['shadow']} !important;
+    }}
+
+    /* Buttons with glowing borders */
+    button[kind="primary"],
+    button[kind="secondary"] {{
+        border: 2px solid {COLORS['neon_blue']} !important;
+        border-radius: 8px !important;
+        background: linear-gradient(135deg, {COLORS['card_background']} 0%, {COLORS['electric_blue']} 100%) !important;
+        color: white !important;
+        padding: 10px 20px !important;
+        font-weight: 600 !important;
+        transition: all 0.3s ease !important;
+        box-shadow: 0 0 10px {COLORS['shadow']} !important;
+    }}
+
+    button[kind="primary"]:hover,
+    button[kind="secondary"]:hover {{
+        border-color: {COLORS['teal']} !important;
+        box-shadow: 0 0 25px {COLORS['shadow_strong']} !important;
+        transform: translateY(-2px) !important;
+    }}
+
+    /* Plotly chart containers with borders */
+    div[data-testid="stPlotlyChart"] {{
+        border: 2px solid {COLORS['neon_blue']} !important;
+        border-radius: 12px !important;
+        padding: 15px !important;
+        background: {COLORS['card_background']} !important;
+        box-shadow: 0 0 20px {COLORS['shadow']} !important;
+        margin: 15px 0 !important;
+    }}
+
+    /* Select boxes with blue borders */
+    div[data-baseweb="select"] {{
+        border: 2px solid {COLORS['neon_blue']} !important;
+        border-radius: 8px !important;
+        transition: all 0.3s ease !important;
+    }}
+
+    div[data-baseweb="select"]:hover {{
+        border-color: {COLORS['teal']} !important;
+        box-shadow: 0 0 15px {COLORS['shadow']} !important;
+    }}
+
+    /* Sliders with neon track */
+    div[data-testid="stSlider"] {{
+        padding: 15px !important;
+        border: 1px solid rgba(0, 212, 255, 0.3) !important;
+        border-radius: 8px !important;
+        background: {COLORS['card_background']} !important;
+    }}
+
+    /* Number input and text input glowing borders */
+    div[data-testid="stNumberInput"],
+    div[data-testid="stTextInput"] {{
+        border: 2px solid {COLORS['neon_blue']} !important;
+        border-radius: 8px !important;
+        background: {COLORS['card_background']} !important;
+        transition: all 0.3s ease !important;
+    }}
+
+    div[data-testid="stNumberInput"]:focus-within,
+    div[data-testid="stTextInput"]:focus-within {{
+        border-color: {COLORS['teal']} !important;
+        box-shadow: 0 0 20px rgba(0, 255, 204, 0.4) !important;
+    }}
+
+    /* Date input with border */
+    div[data-testid="stDateInput"] {{
+        border: 2px solid {COLORS['neon_blue']} !important;
+        border-radius: 8px !important;
+        background: {COLORS['card_background']} !important;
+    }}
+
+    /* Horizontal dividers with glow */
+    hr {{
+        border: none !important;
+        border-top: 2px solid {COLORS['neon_blue']} !important;
+        box-shadow: 0 0 10px {COLORS['shadow']} !important;
+        margin: 30px 0 !important;
+    }}
+
+    /* Add glow effect to main container */
+    .main .block-container {{
+        border-radius: 15px !important;
+        padding: 20px !important;
+    }}
 </style>
 """, unsafe_allow_html=True)
 
