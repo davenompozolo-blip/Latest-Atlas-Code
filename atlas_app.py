@@ -1,4 +1,3 @@
-%%writefile atlas_app.py
 #!/usr/bin/env python3
 """
 ATLAS TERMINAL v9.7 ULTIMATE EDITION
@@ -3684,64 +3683,85 @@ def create_top_detractors_chart(df, top_n=5):
     return fig
 
 def create_sector_allocation_donut(df):
-    """ENHANCED: Sector allocation donut with improved size, colors, and label positioning"""
+    """
+    PROFESSIONAL sector allocation pie chart - Bloomberg Terminal quality
+    - Clean, modern design
+    - Proper label positioning
+    - Subtle gradients
+    - No clutter
+    """
     df_copy = df.copy()
     df_copy['Sector'] = df_copy['Sector'].replace('Other', 'ETFs')
 
-    sector_allocation = df_copy.groupby('Sector')['Total Value'].sum().reset_index()
-    sector_allocation = sector_allocation.sort_values('Total Value', ascending=False)
+    sector_allocation = df_copy.groupby('Sector')['Total Value'].sum()
+    total_value = sector_allocation.sum()
+    sector_pct = (sector_allocation / total_value * 100).round(1)
 
-    # ENHANCED: Ocean blues-to-teal gradient color palette
-    colors = ['#0080ff', '#00d4ff', '#00ffcc', '#00ff88', '#40e0d0',
-              '#5f9ea0', '#4682b4', '#1e90ff', '#00bfff', '#87ceeb']
+    # Sort by value
+    sector_pct = sector_pct.sort_values(ascending=False)
+
+    # Professional color palette (consistent with ATLAS theme)
+    colors = [
+        '#00d4ff',  # Neon blue
+        '#0080ff',  # Electric blue
+        '#00ffcc',  # Teal
+        '#00ff88',  # Success green
+        '#ffaa00',  # Warning orange
+        '#ff6b00',  # Orange
+        '#b794f6',  # Purple
+        '#ff00ff',  # Pink
+        '#00d4ff',  # Loop back
+        '#0080ff',
+        '#00ffcc'
+    ]
 
     fig = go.Figure(data=[go.Pie(
-        labels=sector_allocation['Sector'],
-        values=sector_allocation['Total Value'],
-        hole=0.6,  # Larger donut hole
+        labels=sector_pct.index,
+        values=sector_pct.values,
+        hole=0.5,  # Donut style - more modern
         marker=dict(
-            colors=colors,
-            line=dict(color=COLORS['card_background'], width=4)
+            colors=colors[:len(sector_pct)],
+            line=dict(color='#000000', width=2)  # Clean borders
         ),
-        textposition='auto',  # Auto-position to prevent overlap
-        textinfo='label+percent',  # Show both label and percentage
-        textfont=dict(size=13, color='white', family='Inter', weight='bold'),
-        insidetextorientation='horizontal',
-        hovertemplate='<b>%{label}</b><br>Value: $%{value:,.0f}<br>Share: %{percent}<extra></extra>',
-        pull=[0.08 if i == 0 else 0.02 for i in range(len(sector_allocation))]
+        textposition='auto',
+        textinfo='label+percent',
+        textfont=dict(
+            size=13,
+            color='#ffffff',
+            family='Inter, sans-serif'
+        ),
+        hovertemplate=(
+            '<b>%{label}</b><br>' +
+            'Allocation: %{percent}<br>' +
+            'Value: $%{value:,.0f}<br>' +
+            '<extra></extra>'
+        ),
+        sort=False  # Keep our sorted order
     )])
 
     fig.update_layout(
         title=dict(
-            text="📊 Sector Allocation",
-            font=dict(size=20, color=COLORS['neon_blue'], weight='bold'),
+            text='Sector Allocation',
+            font=dict(size=20, color='#ffffff', family='Inter'),
             x=0.5,
             xanchor='center'
         ),
-        height=600,  # ENHANCED: Increased height for better visibility
         showlegend=True,
         legend=dict(
             orientation="v",
-            yanchor="top",
-            y=1,
-            xanchor="left",
-            x=1.02,
-            font=dict(size=13, color=COLORS['text_primary']),
-            bgcolor='rgba(10, 25, 41, 0.7)',
-            bordercolor=COLORS['border'],
-            borderwidth=1
+            yanchor="middle",
+            y=0.5,
+            xanchor="right",
+            x=1.15,
+            bgcolor='rgba(0,0,0,0)',
+            font=dict(size=12, color='#ffffff')
         ),
-        margin=dict(l=60, r=200, t=100, b=60),  # More spacing
-        annotations=[dict(
-            text='Portfolio<br>Sectors',
-            x=0.5, y=0.5,
-            font_size=18,
-            font_color=COLORS['neon_blue'],
-            showarrow=False
-        )]
+        paper_bgcolor='rgba(0, 0, 0, 0)',
+        plot_bgcolor='rgba(10, 25, 41, 0.3)',
+        height=500,
+        margin=dict(l=20, r=150, t=80, b=20)
     )
 
-    apply_chart_theme(fig)
     return fig
 
 def create_sector_allocation_treemap(df):
@@ -3851,42 +3871,76 @@ def create_sector_allocation_sunburst(df):
     return fig
 
 def create_sector_allocation_bar(df):
-    """NEW: Horizontal bar chart showing sectors ranked by allocation"""
+    """
+    PROFESSIONAL sector allocation bar chart - Bloomberg Terminal quality
+    - Horizontal bars sorted by value
+    - Clean labels
+    - Professional color coding
+    """
     df_copy = df.copy()
     df_copy['Sector'] = df_copy['Sector'].replace('Other', 'ETFs')
 
-    sector_allocation = df_copy.groupby('Sector')['Total Value'].sum().reset_index()
-    sector_allocation = sector_allocation.sort_values('Total Value', ascending=True)  # Ascending for horizontal
+    sector_allocation = df_copy.groupby('Sector')['Total Value'].sum()
+    total_value = sector_allocation.sum()
+    sector_pct = (sector_allocation / total_value * 100).round(1)
 
-    # Calculate percentages
-    total_value = sector_allocation['Total Value'].sum()
-    sector_allocation['Percentage'] = (sector_allocation['Total Value'] / total_value * 100)
+    # Sort by value
+    sector_data = pd.DataFrame({
+        'Sector': sector_pct.index,
+        'Percentage': sector_pct.values,
+        'Value': sector_allocation.values
+    }).sort_values('Value', ascending=True)  # Ascending for horizontal bars
+
+    # Color by size (gradient from small to large)
+    colors_gradient = ['#ff3366' if p < 5 else '#ffaa00' if p < 10 else '#00ff88'
+                       for p in sector_data['Percentage']]
 
     fig = go.Figure(go.Bar(
-        y=sector_allocation['Sector'],
-        x=sector_allocation['Total Value'],
+        x=sector_data['Value'],
+        y=sector_data['Sector'],
         orientation='h',
         marker=dict(
-            color=sector_allocation['Total Value'],
-            colorscale='Teal',
-            line=dict(color=COLORS['border'], width=1)
+            color=colors_gradient,
+            line=dict(color='#000000', width=1)
         ),
-        text=[f"${v:,.0f} ({p:.1f}%)" for v, p in zip(sector_allocation['Total Value'], sector_allocation['Percentage'])],
+        text=[f"${v:,.0f} ({p:.1f}%)" for v, p in zip(sector_data['Value'], sector_data['Percentage'])],
         textposition='outside',
-        textfont=dict(size=12, color=COLORS['text_primary']),
-        hovertemplate='<b>%{y}</b><br>Value: $%{x:,.0f}<extra></extra>'
+        textfont=dict(size=11, color='#ffffff'),
+        hovertemplate=(
+            '<b>%{y}</b><br>' +
+            'Value: $%{x:,.0f}<br>' +
+            'Percentage: %{customdata:.1f}%<br>' +
+            '<extra></extra>'
+        ),
+        customdata=sector_data['Percentage']
     ))
 
     fig.update_layout(
-        title="📊 Sector Allocation - Ranked by Value",
-        xaxis_title="Total Value ($)",
-        yaxis_title="",
+        title=dict(
+            text='Sector Allocation - Ranked by Value',
+            font=dict(size=20, color='#ffffff', family='Inter'),
+            x=0.5,
+            xanchor='center'
+        ),
+        xaxis=dict(
+            title='Total Value ($)',
+            gridcolor='#1a3a52',
+            showgrid=True,
+            zeroline=False,
+            tickformat='$,.0f',
+            tickfont=dict(size=11, color='#b0c4de')
+        ),
+        yaxis=dict(
+            title='',
+            tickfont=dict(size=12, color='#ffffff')
+        ),
+        paper_bgcolor='rgba(0, 0, 0, 0)',
+        plot_bgcolor='rgba(10, 25, 41, 0.3)',
         height=500,
-        margin=dict(l=150, r=200, t=80, b=60),
+        margin=dict(l=150, r=100, t=80, b=60),
         showlegend=False
     )
 
-    apply_chart_theme(fig)
     return fig
 
 def create_rolling_metrics_chart(returns, window=60):
@@ -6570,154 +6624,649 @@ def main():
                                     use_container_width=True
                                 )
 
-                                # Educational note
-                                st.info("""
-                                **Priority Levels:**
-                                - 🔴 **High (Priority 1)**: Weight difference > 5% - Execute immediately
-                                - 🟡 **Medium (Priority 2)**: Weight difference 2-5% - Execute when convenient
-                                - 🟢 **Low (Priority 3)**: Weight difference < 2% - Optional fine-tuning
-
-                                **Note:** These are recommendations based on CVaR minimization. Always consider:
-                                - Tax implications
-                                - Market conditions
-                                - Liquidity needs
-                                - Your investment time horizon
-                                """)
-                            else:
-                                st.success("✅ Portfolio is already optimally balanced! No trades needed.")
-                        else:
-                            st.warning("Run optimization to see rebalancing recommendations.")
-
-                    else:
-                        st.error("Optimization did not converge. Try different parameters.")
-            else:
-                st.info("👆 Click 'Run Optimization' to find optimal portfolio weights that minimize CVaR.")
-
-                # Educational content
-                st.markdown("---")
-                st.markdown("### 📚 Understanding VaR/CVaR Optimization")
-
-                with st.expander("💡 Learn More About CVaR Optimization"):
-                    st.markdown("""
-                    **Value at Risk (VaR)**: The maximum loss expected at a given confidence level.
-                    - Example: VaR(95%) = -2.5% means you expect to lose no more than 2.5% on 95 out of 100 days.
-
-                    **Conditional VaR (CVaR)**: The average loss in the worst-case scenarios beyond VaR.
-                    - Example: CVaR(95%) = -4.0% means if losses exceed VaR, they average -4.0%.
-                    - CVaR provides better tail risk measurement than VaR alone.
-
-                    **Why Optimize for CVaR?**
-                    1. **Tail Risk Management**: Focus on worst-case scenarios
-                    2. **Regulatory Compliance**: Many institutions use CVaR for risk management
-                    3. **Better Diversification**: Reduces concentration in high-tail-risk assets
-                    4. **Institutional Grade**: Used by hedge funds and asset managers worldwide
-
-                    **Constraints in Optimization:**
-                    - **Position Limits**: Prevents over-concentration in single assets
-                    - **Long-Only**: Default prevents short positions (can be changed)
-                    - **Full Investment**: Weights sum to 100%
-                    - **Transaction Costs**: Realistic cost consideration
-                    """)
-
-    # Continue with remaining pages...
-    # ========================================================================
-    # PERFORMANCE SUITE
-    # ========================================================================
     elif page == "💎 Performance Suite":
-        st.markdown("## 💎 PERFORMANCE SUITE")
-        
+        st.markdown("## 💎 PERFORMANCE SUITE - INSTITUTIONAL GRADE")
+
         portfolio_data = load_portfolio_data()
-        
+
         if not portfolio_data:
             st.warning("⚠️ No portfolio data.")
             return
-        
+
         df = pd.DataFrame(portfolio_data)
         enhanced_df = create_enhanced_holdings_table(df)
-        
-        with st.spinner("Calculating..."):
+
+        with st.spinner("Loading institutional-grade analytics..."):
             portfolio_returns = calculate_portfolio_returns(df, start_date, end_date)
             benchmark_returns = calculate_benchmark_returns(selected_benchmark, start_date, end_date)
 
-            metrics = None
-            if is_valid_series(portfolio_returns):
-                metrics = calculate_performance_metrics(enhanced_df, portfolio_returns, benchmark_returns)
+        # === TAB STRUCTURE ===
+        tab1, tab2, tab3, tab4 = st.tabs([
+            "📊 Portfolio Performance",
+            "🔍 Individual Securities",
+            "⚠️ Risk Decomposition",
+            "📈 Attribution & Benchmarking"
+        ])
 
-        # Enhanced Performance Overview
-        st.markdown("---")
-        st.markdown("### 📊 Portfolio Performance Overview")
+        # ============================================================
+        # TAB 1: PORTFOLIO PERFORMANCE (Enhanced)
+        # ============================================================
 
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-            if metrics:
-                st.metric("📈 Total Return", format_percentage(metrics['Total Return']))
-                st.metric("📊 Annualized Return", format_percentage(metrics['Annualized Return']))
-                st.metric("🎯 Win Rate", format_percentage(metrics['Win Rate']))
-
-        with col2:
-            if metrics:
-                st.metric("⚡ Volatility", format_percentage(metrics['Annualized Volatility']))
-                st.metric("📉 Max Drawdown", format_percentage(metrics['Max Drawdown']))
-                st.metric("🔥 Sharpe Ratio", f"{metrics['Sharpe Ratio']:.3f}")
-
-        with col3:
-            if metrics:
-                st.metric("💎 Sortino Ratio", f"{metrics['Sortino Ratio']:.3f}")
-                st.metric("⚖️ Calmar Ratio", f"{metrics['Calmar Ratio']:.3f}")
-                if metrics['Information Ratio']:
-                    st.metric("📊 Info Ratio", f"{metrics['Information Ratio']:.3f}")
-                else:
-                    st.metric("📊 Info Ratio", "N/A")
-
-        st.markdown("---")
-
-        tab1, tab2, tab3 = st.tabs(["📈 Interactive Chart", "📊 Analytics", "📋 Metrics"])
-        
         with tab1:
-            available_tickers = enhanced_df['Ticker'].tolist()
-            
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                selected_tickers = st.multiselect(
-                    "Select Tickers",
-                    options=available_tickers + ["SPY", "QQQ", "VTI"],
-                    default=available_tickers[:min(5, len(available_tickers))]
-                )
-            
-            with col2:
-                custom_ticker = st.text_input("Add Custom", placeholder="TSLA")
-                if custom_ticker:
-                    selected_tickers.append(custom_ticker.upper())
-            
-            if selected_tickers:
-                perf_chart = create_interactive_performance_chart(selected_tickers, start_date, end_date)
-                if perf_chart:
-                    st.plotly_chart(perf_chart, use_container_width=True)
-        
+            st.subheader("Portfolio Performance Metrics")
+
+            # Calculate comprehensive metrics
+            if portfolio_returns is not None and len(portfolio_returns) > 0:
+
+                # === KEY METRICS GRID ===
+                col1, col2, col3, col4 = st.columns(4)
+
+                # Total Return
+                total_return = (1 + portfolio_returns).prod() - 1
+                n_years = len(portfolio_returns) / 252
+                annualized_return = (1 + total_return) ** (1/n_years) - 1 if n_years > 0 else 0
+
+                with col1:
+                    st.metric(
+                        "Annualized Return",
+                        f"{annualized_return*100:.2f}%",
+                        delta=f"{(total_return*100):.2f}% total"
+                    )
+
+                # Volatility
+                annualized_vol = portfolio_returns.std() * np.sqrt(252)
+
+                with col2:
+                    st.metric(
+                        "Annualized Volatility",
+                        f"{annualized_vol*100:.2f}%"
+                    )
+
+                # Sharpe Ratio
+                sharpe = calculate_sharpe_ratio(portfolio_returns)
+
+                with col3:
+                    sharpe_color = "normal" if sharpe and sharpe > 1.0 else "inverse"
+                    st.metric(
+                        "Sharpe Ratio",
+                        f"{sharpe:.2f}" if sharpe else "N/A",
+                        delta="Excellent" if sharpe and sharpe > 1.5 else ("Good" if sharpe and sharpe > 1.0 else "Fair"),
+                        delta_color=sharpe_color
+                    )
+
+                # Max Drawdown
+                max_dd = calculate_max_drawdown(portfolio_returns)
+
+                with col4:
+                    st.metric(
+                        "Max Drawdown",
+                        f"{max_dd:.2f}%" if max_dd else "N/A",
+                        delta_color="inverse"
+                    )
+
+                st.divider()
+
+                # === RETURNS DISTRIBUTION ===
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    st.subheader("Returns Distribution")
+
+                    # Histogram
+                    fig_hist = go.Figure()
+
+                    fig_hist.add_trace(go.Histogram(
+                        x=portfolio_returns * 100,
+                        nbinsx=50,
+                        marker_color='#00d4ff',
+                        opacity=0.7,
+                        name='Daily Returns'
+                    ))
+
+                    # Add normal distribution overlay
+                    mean_return = portfolio_returns.mean() * 100
+                    std_return = portfolio_returns.std() * 100
+
+                    x_range = np.linspace(
+                        portfolio_returns.min() * 100,
+                        portfolio_returns.max() * 100,
+                        100
+                    )
+
+                    normal_dist = stats.norm.pdf(x_range, mean_return, std_return)
+                    # Scale to match histogram
+                    normal_dist = normal_dist * len(portfolio_returns) * (x_range[1] - x_range[0])
+
+                    fig_hist.add_trace(go.Scatter(
+                        x=x_range,
+                        y=normal_dist,
+                        mode='lines',
+                        line=dict(color='#ff3366', width=2),
+                        name='Normal Distribution'
+                    ))
+
+                    fig_hist.update_layout(
+                        title="Daily Returns Distribution",
+                        xaxis_title="Return (%)",
+                        yaxis_title="Frequency",
+                        height=400,
+                        showlegend=True,
+                        paper_bgcolor='rgba(0, 0, 0, 0)',
+                        plot_bgcolor='rgba(10, 25, 41, 0.3)',
+                        font=dict(color='#ffffff')
+                    )
+
+                    st.plotly_chart(fig_hist, use_container_width=True)
+
+                with col2:
+                    st.subheader("Rolling Performance")
+
+                    # Rolling Sharpe Ratio (90-day)
+                    rolling_window = min(90, len(portfolio_returns) // 2)
+
+                    if rolling_window > 20:
+                        rolling_sharpe = portfolio_returns.rolling(rolling_window).apply(
+                            lambda x: (x.mean() / x.std() * np.sqrt(252)) if x.std() > 0 else 0
+                        )
+
+                        fig_rolling = go.Figure()
+
+                        fig_rolling.add_trace(go.Scatter(
+                            x=rolling_sharpe.index,
+                            y=rolling_sharpe.values,
+                            mode='lines',
+                            line=dict(color='#00ff88', width=2),
+                            fill='tozeroy',
+                            fillcolor='rgba(0, 255, 136, 0.2)',
+                            name='Rolling Sharpe'
+                        ))
+
+                        # Add 1.0 reference line
+                        fig_rolling.add_hline(
+                            y=1.0,
+                            line_dash="dash",
+                            line_color="#ffaa00",
+                            annotation_text="Sharpe = 1.0 (Good)",
+                            annotation_position="right"
+                        )
+
+                        fig_rolling.update_layout(
+                            title=f"Rolling Sharpe Ratio ({rolling_window}-day)",
+                            xaxis_title="Date",
+                            yaxis_title="Sharpe Ratio",
+                            height=400,
+                            paper_bgcolor='rgba(0, 0, 0, 0)',
+                            plot_bgcolor='rgba(10, 25, 41, 0.3)',
+                            font=dict(color='#ffffff')
+                        )
+
+                        st.plotly_chart(fig_rolling, use_container_width=True)
+
+                st.divider()
+
+                # === ADVANCED METRICS ===
+                st.subheader("Advanced Performance Metrics")
+
+                metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
+
+                # Sortino Ratio
+                sortino = calculate_sortino_ratio(portfolio_returns)
+
+                with metric_col1:
+                    st.metric("Sortino Ratio", f"{sortino:.2f}" if sortino else "N/A")
+
+                # Calmar Ratio
+                calmar = calculate_calmar_ratio(portfolio_returns)
+
+                with metric_col2:
+                    st.metric("Calmar Ratio", f"{calmar:.2f}" if calmar else "N/A")
+
+                # Win Rate
+                win_rate = (portfolio_returns > 0).sum() / len(portfolio_returns) * 100
+
+                with metric_col3:
+                    st.metric("Win Rate", f"{win_rate:.1f}%")
+
+                # VaR (95%)
+                var_95 = calculate_var(portfolio_returns, confidence=0.95)
+
+                with metric_col4:
+                    st.metric("VaR (95%)", f"{var_95:.2f}%" if var_95 else "N/A")
+
+            else:
+                st.warning("Insufficient return data for comprehensive analysis")
+
+        # ============================================================
+        # TAB 2: INDIVIDUAL SECURITIES ANALYSIS (NEW - GAME CHANGER)
+        # ============================================================
+
         with tab2:
-            if metrics:
-                dashboard = create_performance_dashboard(metrics)
-                st.plotly_chart(dashboard, use_container_width=True)
-        
+            st.subheader("Individual Security Performance Analysis")
+
+            st.info("🎯 Institutional-grade metrics for each holding - analyze like a professional fund manager")
+
+            # Security selector
+            selected_ticker = st.selectbox(
+                "Select Security to Analyze:",
+                options=enhanced_df['Ticker'].tolist(),
+                index=0
+            )
+
+            if selected_ticker:
+                # Get holding data
+                holding = enhanced_df[enhanced_df['Ticker'] == selected_ticker].iloc[0]
+
+                # Display header
+                col1, col2, col3 = st.columns([2, 1, 1])
+
+                with col1:
+                    st.markdown(f"### {holding.get('Asset Name', selected_ticker)} ({selected_ticker})")
+                    st.caption(f"Sector: {holding.get('Sector', 'Unknown')}")
+
+                with col2:
+                    current_price = holding.get('Current Price', 0)
+                    st.metric("Current Price", f"${current_price:.2f}")
+
+                with col3:
+                    weight = holding.get('Weight %', 0)
+                    st.metric("Portfolio Weight", f"{weight:.2f}%")
+
+                st.divider()
+
+                # === FETCH COMPREHENSIVE DATA FOR TICKER ===
+
+                # Historical performance
+                ticker_end_date = datetime.now()
+                ticker_start_date = ticker_end_date - timedelta(days=365)
+
+                ticker_hist = fetch_historical_data(selected_ticker, ticker_start_date, ticker_end_date)
+
+                if ticker_hist is not None and len(ticker_hist) > 20:
+
+                    # Calculate returns
+                    ticker_returns = ticker_hist['Close'].pct_change().dropna()
+
+                    # === PERFORMANCE METRICS ===
+                    st.subheader("📈 Performance Metrics (1 Year)")
+
+                    perf_col1, perf_col2, perf_col3, perf_col4, perf_col5 = st.columns(5)
+
+                    # Total Return
+                    total_ret = ((ticker_hist['Close'].iloc[-1] / ticker_hist['Close'].iloc[0]) - 1) * 100
+
+                    with perf_col1:
+                        st.metric("Total Return", f"{total_ret:+.2f}%")
+
+                    # Annualized Return
+                    n_years_ticker = len(ticker_returns) / 252
+                    ann_ret = ((1 + total_ret/100) ** (1/n_years_ticker) - 1) * 100 if n_years_ticker > 0 else 0
+
+                    with perf_col2:
+                        st.metric("Annualized Return", f"{ann_ret:.2f}%")
+
+                    # Volatility
+                    ann_vol = ticker_returns.std() * np.sqrt(252) * 100
+
+                    with perf_col3:
+                        st.metric("Volatility (Ann.)", f"{ann_vol:.2f}%")
+
+                    # Sharpe Ratio
+                    sharpe_ticker = calculate_sharpe_ratio(ticker_returns)
+
+                    with perf_col4:
+                        st.metric("Sharpe Ratio", f"{sharpe_ticker:.2f}" if sharpe_ticker else "N/A")
+
+                    # Max Drawdown
+                    max_dd_ticker = calculate_max_drawdown(ticker_returns)
+
+                    with perf_col5:
+                        st.metric("Max Drawdown", f"{max_dd_ticker:.2f}%" if max_dd_ticker else "N/A")
+
+                    st.divider()
+
+                    # === PRICE CHART WITH TECHNICAL INDICATORS ===
+                    st.subheader("📊 Price Chart & Technical Analysis")
+
+                    # Calculate technical indicators
+                    ticker_hist['MA_50'] = ticker_hist['Close'].rolling(50).mean()
+                    ticker_hist['MA_200'] = ticker_hist['Close'].rolling(200).mean()
+
+                    # Bollinger Bands
+                    ticker_hist['BB_middle'] = ticker_hist['Close'].rolling(20).mean()
+                    ticker_hist['BB_std'] = ticker_hist['Close'].rolling(20).std()
+                    ticker_hist['BB_upper'] = ticker_hist['BB_middle'] + (2 * ticker_hist['BB_std'])
+                    ticker_hist['BB_lower'] = ticker_hist['BB_middle'] - (2 * ticker_hist['BB_std'])
+
+                    fig_price = go.Figure()
+
+                    # Candlestick
+                    fig_price.add_trace(go.Candlestick(
+                        x=ticker_hist.index,
+                        open=ticker_hist['Open'],
+                        high=ticker_hist['High'],
+                        low=ticker_hist['Low'],
+                        close=ticker_hist['Close'],
+                        name='Price',
+                        increasing_line_color='#00ff88',
+                        decreasing_line_color='#ff3366'
+                    ))
+
+                    # Moving averages
+                    fig_price.add_trace(go.Scatter(
+                        x=ticker_hist.index,
+                        y=ticker_hist['MA_50'],
+                        mode='lines',
+                        line=dict(color='#00d4ff', width=1),
+                        name='MA 50'
+                    ))
+
+                    fig_price.add_trace(go.Scatter(
+                        x=ticker_hist.index,
+                        y=ticker_hist['MA_200'],
+                        mode='lines',
+                        line=dict(color='#ffaa00', width=1),
+                        name='MA 200'
+                    ))
+
+                    # Bollinger Bands
+                    fig_price.add_trace(go.Scatter(
+                        x=ticker_hist.index,
+                        y=ticker_hist['BB_upper'],
+                        mode='lines',
+                        line=dict(color='#b794f6', width=1, dash='dash'),
+                        name='BB Upper',
+                        showlegend=False
+                    ))
+
+                    fig_price.add_trace(go.Scatter(
+                        x=ticker_hist.index,
+                        y=ticker_hist['BB_lower'],
+                        mode='lines',
+                        line=dict(color='#b794f6', width=1, dash='dash'),
+                        name='BB Lower',
+                        fill='tonexty',
+                        fillcolor='rgba(183, 148, 246, 0.1)'
+                    ))
+
+                    fig_price.update_layout(
+                        title=f"{selected_ticker} - Price Chart (1 Year)",
+                        xaxis_title="Date",
+                        yaxis_title="Price ($)",
+                        height=500,
+                        paper_bgcolor='rgba(0, 0, 0, 0)',
+                        plot_bgcolor='rgba(10, 25, 41, 0.3)',
+                        font=dict(color='#ffffff'),
+                        xaxis_rangeslider_visible=False
+                    )
+
+                    st.plotly_chart(fig_price, use_container_width=True)
+
+                    st.divider()
+
+                    # === RISK METRICS ===
+                    st.subheader("⚠️ Risk Analysis")
+
+                    risk_col1, risk_col2 = st.columns(2)
+
+                    with risk_col1:
+                        # VaR and CVaR
+                        var_95_ticker = calculate_var(ticker_returns, confidence=0.95)
+                        cvar_95_ticker = calculate_cvar(ticker_returns, confidence=0.95)
+
+                        st.markdown("**Value at Risk (VaR)**")
+                        st.metric("VaR 95%", f"{var_95_ticker:.2f}%" if var_95_ticker else "N/A",
+                                 help="Maximum expected loss on 95% of days")
+                        st.metric("CVaR 95%", f"{cvar_95_ticker:.2f}%" if cvar_95_ticker else "N/A",
+                                 help="Expected loss when VaR is breached")
+
+                    with risk_col2:
+                        # Beta and correlation to SPY
+                        try:
+                            spy_hist = fetch_historical_data('SPY', ticker_start_date, ticker_end_date)
+
+                            if spy_hist is not None and len(spy_hist) > 20:
+                                spy_returns = spy_hist['Close'].pct_change().dropna()
+
+                                # Align dates
+                                common_dates = ticker_returns.index.intersection(spy_returns.index)
+                                ticker_aligned = ticker_returns.loc[common_dates]
+                                spy_aligned = spy_returns.loc[common_dates]
+
+                                # Calculate beta
+                                covariance = np.cov(ticker_aligned, spy_aligned)[0][1]
+                                market_variance = np.var(spy_aligned)
+                                beta = covariance / market_variance if market_variance > 0 else 1.0
+
+                                # Calculate correlation
+                                correlation = ticker_aligned.corr(spy_aligned)
+
+                                st.markdown("**Market Relationship**")
+                                st.metric("Beta (vs SPY)", f"{beta:.2f}",
+                                         help="Sensitivity to market movements")
+                                st.metric("Correlation (vs SPY)", f"{correlation:.2f}",
+                                         help="How closely it tracks the market")
+                        except:
+                            st.warning("Unable to calculate market relationship metrics")
+
+                    st.divider()
+
+                    # === CONTRIBUTION TO PORTFOLIO ===
+                    st.subheader("📊 Portfolio Contribution")
+
+                    contrib_col1, contrib_col2, contrib_col3 = st.columns(3)
+
+                    with contrib_col1:
+                        position_value = holding.get('Total Value', 0)
+                        st.metric("Position Value", f"${position_value:,.2f}")
+
+                    with contrib_col2:
+                        gain_loss_pct = holding.get('Total Gain/Loss %', 0)
+                        st.metric("Position Return", f"{gain_loss_pct:+.2f}%")
+
+                    with contrib_col3:
+                        # Contribution to portfolio return
+                        portfolio_contribution = (weight / 100) * gain_loss_pct
+                        st.metric("Portfolio Contribution", f"{portfolio_contribution:+.2f}%",
+                                 help="This position's contribution to total portfolio return")
+
+                else:
+                    st.warning(f"Insufficient historical data for {selected_ticker}")
+
+        # ============================================================
+        # TAB 3: RISK DECOMPOSITION (NEW)
+        # ============================================================
+
         with tab3:
-            if metrics:
-                metrics_df = pd.DataFrame([
-                    ['Total Return', format_percentage(metrics['Total Return'])],
-                    ['Annualized Return', format_percentage(metrics['Annualized Return'])],
-                    ['Volatility', format_percentage(metrics['Annualized Volatility'])],
-                    ['Sharpe Ratio', f"{metrics['Sharpe Ratio']:.3f}"],
-                    ['Sortino Ratio', f"{metrics['Sortino Ratio']:.3f}"],
-                    ['Calmar Ratio', f"{metrics['Calmar Ratio']:.3f}"],
-                    ['VaR (95%)', format_percentage(metrics['VaR (95%)'])],
-                    ['Max Drawdown', format_percentage(metrics['Max Drawdown'])],
-                    ['Win Rate', format_percentage(metrics['Win Rate'])],
-                    ['Best Day', format_percentage(metrics['Best Day'])],
-                    ['Worst Day', format_percentage(metrics['Worst Day'])]
-                ], columns=['Metric', 'Value'])
-                
-                st.dataframe(metrics_df, use_container_width=True, hide_index=True, height=600)
-    
+            st.subheader("Risk Decomposition Analysis")
+
+            st.info("💡 Understand WHERE your portfolio risk comes from")
+
+            if portfolio_returns is not None and len(portfolio_returns) > 20:
+
+                # Calculate portfolio volatility
+                portfolio_vol = portfolio_returns.std() * np.sqrt(252) * 100
+
+                st.metric("Portfolio Volatility (Annualized)", f"{portfolio_vol:.2f}%")
+
+                st.divider()
+
+                # === POSITION-LEVEL RISK CONTRIBUTION ===
+                st.subheader("📊 Risk Contribution by Position")
+
+                st.markdown("""
+                **Marginal Contribution to Risk (MCR):** How much each position contributes to total portfolio risk.
+
+                - High MCR = This position drives a lot of portfolio volatility
+                - Positions with similar weights can have very different MCRs due to correlations
+                """)
+
+                # Calculate for each position
+                risk_contributions = []
+
+                for _, holding_row in enhanced_df.iterrows():
+                    ticker = holding_row['Ticker']
+                    weight = holding_row['Weight %'] / 100
+
+                    # Get ticker returns
+                    ticker_hist = fetch_historical_data(ticker,
+                                                        datetime.now() - timedelta(days=365),
+                                                        datetime.now())
+
+                    if ticker_hist is not None and len(ticker_hist) > 20:
+                        ticker_returns_calc = ticker_hist['Close'].pct_change().dropna()
+                        ticker_vol = ticker_returns_calc.std() * np.sqrt(252)
+
+                        # Simplified MCR: weight * volatility (proper MCR requires covariance matrix)
+                        mcr = weight * ticker_vol * 100
+
+                        risk_contributions.append({
+                            'Ticker': ticker,
+                            'Weight %': weight * 100,
+                            'Volatility %': ticker_vol * 100,
+                            'Risk Contribution %': mcr
+                        })
+
+                if risk_contributions:
+                    risk_df = pd.DataFrame(risk_contributions).sort_values('Risk Contribution %', ascending=False)
+
+                    # Normalize to percentage of total risk
+                    total_risk = risk_df['Risk Contribution %'].sum()
+                    if total_risk > 0:
+                        risk_df['% of Portfolio Risk'] = (risk_df['Risk Contribution %'] / total_risk * 100).round(1)
+                    else:
+                        risk_df['% of Portfolio Risk'] = 0
+
+                    # Display table
+                    st.dataframe(risk_df, use_container_width=True, hide_index=True)
+
+                    # Visualization
+                    fig_risk_contrib = go.Figure(go.Bar(
+                        x=risk_df['% of Portfolio Risk'],
+                        y=risk_df['Ticker'],
+                        orientation='h',
+                        marker_color='#ff6b00',
+                        text=[f"{val:.1f}%" for val in risk_df['% of Portfolio Risk']],
+                        textposition='outside'
+                    ))
+
+                    fig_risk_contrib.update_layout(
+                        title="Risk Contribution by Position",
+                        xaxis_title="% of Total Portfolio Risk",
+                        yaxis_title="",
+                        height=500,
+                        paper_bgcolor='rgba(0, 0, 0, 0)',
+                        plot_bgcolor='rgba(10, 25, 41, 0.3)',
+                        font=dict(color='#ffffff')
+                    )
+
+                    st.plotly_chart(fig_risk_contrib, use_container_width=True)
+                else:
+                    st.warning("Unable to calculate risk contributions")
+            else:
+                st.warning("Insufficient return data for risk decomposition")
+
+        # ============================================================
+        # TAB 4: ATTRIBUTION & BENCHMARKING (Enhanced)
+        # ============================================================
+
+        with tab4:
+            st.subheader("Performance Attribution & Benchmark Comparison")
+
+            if benchmark_returns is not None and portfolio_returns is not None and len(portfolio_returns) > 0:
+
+                # Align returns
+                common_dates = portfolio_returns.index.intersection(benchmark_returns.index)
+                port_aligned = portfolio_returns.loc[common_dates]
+                bench_aligned = benchmark_returns.loc[common_dates]
+
+                if len(port_aligned) > 0:
+                    # Calculate metrics
+                    port_total = (1 + port_aligned).prod() - 1
+                    bench_total = (1 + bench_aligned).prod() - 1
+                    excess_return = port_total - bench_total
+
+                    # Display summary
+                    col1, col2, col3 = st.columns(3)
+
+                    with col1:
+                        st.metric("Portfolio Return", f"{port_total*100:.2f}%")
+
+                    with col2:
+                        st.metric("Benchmark Return (SPY)", f"{bench_total*100:.2f}%")
+
+                    with col3:
+                        st.metric("Excess Return (Alpha)", f"{excess_return*100:+.2f}%",
+                                 delta_color="normal" if excess_return > 0 else "inverse")
+
+                    st.divider()
+
+                    # === CUMULATIVE RETURN COMPARISON ===
+                    st.subheader("📈 Cumulative Performance vs Benchmark")
+
+                    port_cumulative = (1 + port_aligned).cumprod() - 1
+                    bench_cumulative = (1 + bench_aligned).cumprod() - 1
+
+                    fig_cumulative = go.Figure()
+
+                    fig_cumulative.add_trace(go.Scatter(
+                        x=port_cumulative.index,
+                        y=port_cumulative.values * 100,
+                        mode='lines',
+                        line=dict(color='#00d4ff', width=2),
+                        name='Your Portfolio'
+                    ))
+
+                    fig_cumulative.add_trace(go.Scatter(
+                        x=bench_cumulative.index,
+                        y=bench_cumulative.values * 100,
+                        mode='lines',
+                        line=dict(color='#ffaa00', width=2, dash='dash'),
+                        name='SPY Benchmark'
+                    ))
+
+                    fig_cumulative.update_layout(
+                        title="Cumulative Returns Comparison",
+                        xaxis_title="Date",
+                        yaxis_title="Cumulative Return (%)",
+                        height=500,
+                        paper_bgcolor='rgba(0, 0, 0, 0)',
+                        plot_bgcolor='rgba(10, 25, 41, 0.3)',
+                        font=dict(color='#ffffff'),
+                        hovermode='x unified'
+                    )
+
+                    st.plotly_chart(fig_cumulative, use_container_width=True)
+
+                    st.divider()
+
+                    # === TRACKING ERROR & INFORMATION RATIO ===
+                    st.subheader("📊 Active Management Metrics")
+
+                    tracking_col1, tracking_col2, tracking_col3 = st.columns(3)
+
+                    # Tracking Error
+                    excess_returns = port_aligned - bench_aligned
+                    tracking_error = excess_returns.std() * np.sqrt(252) * 100
+
+                    with tracking_col1:
+                        st.metric("Tracking Error", f"{tracking_error:.2f}%",
+                                 help="Volatility of excess returns vs benchmark")
+
+                    # Information Ratio
+                    info_ratio = calculate_information_ratio(port_aligned, bench_aligned)
+
+                    with tracking_col2:
+                        st.metric("Information Ratio", f"{info_ratio:.2f}" if info_ratio else "N/A",
+                                 help="Excess return per unit of tracking error")
+
+                    # Active Positions
+                    with tracking_col3:
+                        st.metric("Active Positions", f"{len(enhanced_df)}",
+                                 help="Number of holdings in portfolio")
+                else:
+                    st.warning("No overlapping dates between portfolio and benchmark")
+            else:
+                st.warning("Benchmark or portfolio return data not available")
     # ========================================================================
     # PORTFOLIO DEEP DIVE - ENHANCED
     # ========================================================================
@@ -7112,7 +7661,7 @@ def main():
                     high_corr_count = ((correlation_matrix > 0.7).sum().sum() - len(correlation_matrix)) // 2
                     st.metric("High Correlations (>0.7)", high_corr_count)
 
-                # Heatmap
+                # PROFESSIONAL HEATMAP
                 fig_heatmap = go.Figure(data=go.Heatmap(
                     z=correlation_matrix.values,
                     x=correlation_matrix.columns,
@@ -7121,18 +7670,38 @@ def main():
                     zmid=0,
                     zmin=-1,
                     zmax=1,
-                    text=correlation_matrix.values,
-                    texttemplate='%{text:.2f}',
-                    textfont={"size": 10},
-                    colorbar=dict(title="Correlation")
+                    text=np.round(correlation_matrix.values, 2),
+                    texttemplate='%{text}',
+                    textfont={"size": 10, "color": "#000000"},
+                    colorbar=dict(
+                        title="Correlation",
+                        titleside="right",
+                        tickmode="linear",
+                        tick0=-1,
+                        dtick=0.5
+                    ),
+                    hovertemplate='%{y} vs %{x}<br>Correlation: %{z:.2f}<extra></extra>'
                 ))
 
                 fig_heatmap.update_layout(
-                    title=f"Correlation Heatmap ({period})",
-                    height=600
+                    title=dict(
+                        text=f"Correlation Heatmap ({period})",
+                        font=dict(size=18, color='#ffffff'),
+                        x=0.5,
+                        xanchor='center'
+                    ),
+                    height=600,
+                    xaxis=dict(
+                        tickangle=-45,
+                        tickfont=dict(size=11, color='#ffffff')
+                    ),
+                    yaxis=dict(
+                        tickfont=dict(size=11, color='#ffffff')
+                    ),
+                    paper_bgcolor='rgba(0, 0, 0, 0)',
+                    plot_bgcolor='rgba(10, 25, 41, 0.3)'
                 )
 
-                apply_chart_theme(fig_heatmap)
                 st.plotly_chart(fig_heatmap, use_container_width=True)
 
                 # ============================================================
@@ -7237,20 +7806,23 @@ def main():
                     # Find highly correlated pairs
                     high_corr_pairs = []
 
-                    for i, ticker1 in enumerate(correlation_matrix.index):
-                        for j, ticker2 in enumerate(correlation_matrix.columns):
-                            if i < j:
-                                corr = correlation_matrix.iloc[i, j]
-                                if corr > 0.8:
-                                    high_corr_pairs.append((ticker1, ticker2, corr))
+                    for i in range(len(correlation_matrix)):
+                        for j in range(i+1, len(correlation_matrix)):
+                            corr_val = correlation_matrix.iloc[i, j]
+                            if corr_val > 0.75:
+                                high_corr_pairs.append((
+                                    correlation_matrix.index[i],
+                                    correlation_matrix.columns[j],
+                                    corr_val
+                                ))
 
                     if high_corr_pairs:
-                        st.warning("**High Correlation Pairs (>0.8):**")
-                        for ticker1, ticker2, corr in sorted(high_corr_pairs, key=lambda x: x[2], reverse=True):
-                            st.write(f"- {ticker1} ↔ {ticker2}: {corr:.2f}")
-                        st.write("\n*These holdings move very similarly - limited diversification benefit*")
+                        st.warning("**Highly Correlated Pairs (>0.75):**")
+                        for t1, t2, corr in sorted(high_corr_pairs, key=lambda x: x[2], reverse=True):
+                            st.write(f"• {t1} ↔ {t2}: {corr:.2f}")
+                        st.caption("*These holdings move very similarly - limited diversification benefit*")
                     else:
-                        st.success("✅ No extremely high correlations detected")
+                        st.success("✅ No extreme correlations detected - good diversification")
 
                     # Find low/negative correlations (good diversifiers)
                     low_corr_pairs = []
