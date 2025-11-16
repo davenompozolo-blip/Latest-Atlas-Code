@@ -212,6 +212,48 @@ st.markdown(f"""
         font-weight: 700 !important;
         font-size: 14px !important;
         text-transform: uppercase !important;
+        position: relative !important;
+        z-index: 1 !important;
+    }}
+
+    /* FIX: Ensure column menu dropdowns appear above everything */
+    div[data-testid="stDataFrame"] button,
+    div[data-testid="stDataFrame"] [role="button"],
+    div[data-testid="stDataFrame"] [data-baseweb="popover"] {{
+        z-index: 9999 !important;
+        position: relative !important;
+    }}
+
+    /* FIX: Make column menu readable - prevent text overlap */
+    div[data-baseweb="popover"] {{
+        z-index: 10000 !important;
+        background: {COLORS['card_background']} !important;
+        border: 2px solid {COLORS['neon_blue']} !important;
+        border-radius: 8px !important;
+        padding: 8px !important;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.9) !important;
+    }}
+
+    /* FIX: Sidebar text containment - prevent bleeding */
+    [data-testid="stSidebar"] {{
+        background: {COLORS['card_background']} !important;
+        border-right: 2px solid {COLORS['neon_blue']} !important;
+        overflow-x: hidden !important;
+        z-index: 100 !important;
+    }}
+
+    [data-testid="stSidebar"] > div {{
+        overflow-x: hidden !important;
+        overflow-y: auto !important;
+    }}
+
+    /* FIX: Ensure sidebar content doesn't overflow or show through */
+    [data-testid="stSidebar"] h2,
+    [data-testid="stSidebar"] h3,
+    [data-testid="stSidebar"] p {{
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        max-width: 100% !important;
     }}
 
     div[data-testid="stMetric"] {{
@@ -230,6 +272,85 @@ st.markdown(f"""
     
     .stSlider {{
         padding: 10px 0px;
+    }}
+
+    /* FIX: Expander styling - prevent content overlap */
+    [data-testid="stExpander"] {{
+        background: {COLORS['card_background']} !important;
+        border: 1px solid {COLORS['neon_blue']} !important;
+        border-radius: 8px !important;
+        margin: 10px 0 !important;
+        overflow: visible !important;
+    }}
+
+    [data-testid="stExpander"] details {{
+        overflow: visible !important;
+    }}
+
+    /* FIX: Button styling - ensure clickable and visible */
+    button[kind="primary"],
+    button[kind="secondary"] {{
+        z-index: 50 !important;
+        position: relative !important;
+        overflow: visible !important;
+    }}
+
+    /* FIX: Download button - prevent overlap */
+    [data-testid="stDownloadButton"] {{
+        z-index: 50 !important;
+        position: relative !important;
+    }}
+
+    /* FIX: Selectbox and radio dropdowns - appear above content */
+    [data-baseweb="select"],
+    [role="listbox"],
+    [role="option"] {{
+        z-index: 9999 !important;
+        background: {COLORS['card_background']} !important;
+        border: 1px solid {COLORS['neon_blue']} !important;
+    }}
+
+    /* FIX: Modal/dialog overlays */
+    [role="dialog"] {{
+        z-index: 99999 !important;
+        background: {COLORS['card_background']} !important;
+        border: 2px solid {COLORS['neon_blue']} !important;
+        border-radius: 12px !important;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.95) !important;
+    }}
+
+    /* FIX: Tooltip styling - always visible */
+    [role="tooltip"] {{
+        z-index: 100000 !important;
+        background: {COLORS['card_background']} !important;
+        border: 1px solid {COLORS['neon_blue']} !important;
+        color: {COLORS['text_primary']} !important;
+        padding: 8px 12px !important;
+        border-radius: 6px !important;
+        box-shadow: 0 5px 20px rgba(0, 0, 0, 0.9) !important;
+    }}
+
+    /* FIX: Info/Warning/Error boxes - proper spacing */
+    [data-testid="stAlert"] {{
+        margin: 15px 0 !important;
+        z-index: 10 !important;
+        overflow: visible !important;
+    }}
+
+    /* FIX: Spinner overlay - centered and above content */
+    [data-testid="stSpinner"] {{
+        z-index: 9998 !important;
+    }}
+
+    /* FIX: Form elements - proper containment */
+    [data-testid="stForm"] {{
+        overflow: visible !important;
+        z-index: 10 !important;
+    }}
+
+    /* FIX: Prevent any transform animations from hiding UI elements */
+    div[data-testid="stDataFrame"]:hover {{
+        z-index: 2 !important;
     }}
 </style>
 """, unsafe_allow_html=True)
