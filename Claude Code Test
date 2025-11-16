@@ -351,6 +351,76 @@ st.markdown(f"""
     div[data-testid="stDataFrame"]:hover {{
         z-index: 2 !important;
     }}
+
+    /* FIX: Column selector dropdown - prevent text overlap */
+    [data-testid="stDataFrameResizeHandle"] {{
+        z-index: 999 !important;
+    }}
+
+    /* FIX: Dropdown menus - clean rendering */
+    div[data-baseweb="menu"] {{
+        background-color: #0a1929 !important;
+        border: 1px solid #00d4ff !important;
+        max-height: 400px !important;
+        overflow-y: auto !important;
+        z-index: 10001 !important;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.9) !important;
+    }}
+
+    /* FIX: Menu items - prevent text overlap */
+    div[data-baseweb="menu"] li {{
+        padding: 8px 12px !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        color: #ffffff !important;
+        font-size: 14px !important;
+        line-height: 1.5 !important;
+    }}
+
+    div[data-baseweb="menu"] li:hover {{
+        background-color: rgba(0, 212, 255, 0.2) !important;
+    }}
+
+    /* FIX: Select boxes */
+    div[data-baseweb="select"] > div {{
+        background-color: #0a1929 !important;
+        border: 1px solid #00d4ff !important;
+        color: #ffffff !important;
+    }}
+
+    /* FIX: Column header dropdown buttons */
+    button[data-testid*="column"] {{
+        z-index: 100 !important;
+        position: relative !important;
+    }}
+
+    /* FIX: Ensure all dataframe menus are readable */
+    div[data-testid="stDataFrame"] [role="menu"],
+    div[data-testid="stDataFrame"] [role="listbox"] {{
+        background: #0a1929 !important;
+        border: 2px solid #00d4ff !important;
+        border-radius: 8px !important;
+        padding: 4px !important;
+        max-width: 300px !important;
+        z-index: 10001 !important;
+    }}
+
+    div[data-testid="stDataFrame"] [role="menuitem"],
+    div[data-testid="stDataFrame"] [role="option"] {{
+        padding: 8px 12px !important;
+        color: #ffffff !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        font-family: 'Inter', sans-serif !important;
+        font-size: 14px !important;
+    }}
+
+    div[data-testid="stDataFrame"] [role="menuitem"]:hover,
+    div[data-testid="stDataFrame"] [role="option"]:hover {{
+        background-color: rgba(0, 212, 255, 0.3) !important;
+    }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -5901,7 +5971,93 @@ def main():
         st.markdown("---")
         st.markdown("### 📋 Holdings")
         display_df = style_holdings_dataframe(enhanced_df)
-        st.dataframe(display_df, use_container_width=True, hide_index=True, height=500)
+
+        # PROFESSIONAL COLUMN CONFIGURATION - Prevents text overlap in column selector
+        column_config = {
+            "Ticker": st.column_config.TextColumn(
+                "Ticker",
+                width="small",
+                help="Stock ticker symbol"
+            ),
+            "Asset Name": st.column_config.TextColumn(
+                "Asset Name",
+                width="medium",
+                help="Company or asset name"
+            ),
+            "Grade": st.column_config.TextColumn(
+                "Grade",
+                width="small",
+                help="Quality grade (A+ to F)"
+            ),
+            "Quality Score": st.column_config.TextColumn(
+                "Quality Score",
+                width="small",
+                help="Quality score out of 10"
+            ),
+            "Weight %": st.column_config.TextColumn(
+                "Weight %",
+                width="small",
+                help="Portfolio allocation percentage"
+            ),
+            "Shares": st.column_config.NumberColumn(
+                "Shares",
+                width="small",
+                help="Number of shares held"
+            ),
+            "Current Price": st.column_config.TextColumn(
+                "Current Price",
+                width="small",
+                help="Current market price"
+            ),
+            "Avg Cost": st.column_config.TextColumn(
+                "Avg Cost",
+                width="small",
+                help="Average cost basis"
+            ),
+            "Total Gain/Loss $": st.column_config.TextColumn(
+                "Total Gain/Loss $",
+                width="medium",
+                help="Total profit/loss in dollars"
+            ),
+            "Total Gain/Loss %": st.column_config.TextColumn(
+                "Total Gain/Loss %",
+                width="medium",
+                help="Total profit/loss percentage"
+            ),
+            "Daily Change %": st.column_config.TextColumn(
+                "Daily Change %",
+                width="small",
+                help="Daily price change percentage"
+            ),
+            "5D Return %": st.column_config.TextColumn(
+                "5D Return %",
+                width="small",
+                help="5-day return percentage"
+            ),
+            "Daily P&L $": st.column_config.TextColumn(
+                "Daily P&L $",
+                width="medium",
+                help="Daily profit/loss in dollars"
+            ),
+            "Beta": st.column_config.TextColumn(
+                "Beta",
+                width="small",
+                help="Market correlation coefficient"
+            ),
+            "Analyst Rating": st.column_config.TextColumn(
+                "Analyst Rating",
+                width="medium",
+                help="Consensus analyst rating"
+            )
+        }
+
+        st.dataframe(
+            display_df,
+            column_config=column_config,
+            use_container_width=True,
+            hide_index=True,
+            height=500
+        )
         
         st.info("💡 **Tip:** Head to the Valuation House to analyze intrinsic values of any ticker!")
         
