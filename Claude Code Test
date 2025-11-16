@@ -2272,23 +2272,32 @@ def create_enhanced_holdings_table(df):
     
     enhanced_df['Sector'] = enhanced_df['Sector'].fillna('Other')
     enhanced_df['Shares'] = enhanced_df['Shares'].round(0).astype(int)
-    
+
     enhanced_df['Total Cost'] = enhanced_df['Shares'] * enhanced_df['Avg Cost']
     enhanced_df['Total Value'] = enhanced_df['Shares'] * enhanced_df['Current Price']
     enhanced_df['Total Gain/Loss $'] = enhanced_df['Total Value'] - enhanced_df['Total Cost']
     enhanced_df['Total Gain/Loss %'] = ((enhanced_df['Current Price'] - enhanced_df['Avg Cost']) / enhanced_df['Avg Cost']) * 100
     enhanced_df['Daily P&L $'] = enhanced_df['Shares'] * enhanced_df['Daily Change']
-    
+
     total_value = enhanced_df['Total Value'].sum()
     enhanced_df['Weight %'] = (enhanced_df['Total Value'] / total_value * 100) if total_value > 0 else 0
-    
+
+    # FEATURE #1: Add Quality Score and Grade columns
+    for idx, row in enhanced_df.iterrows():
+        ticker = row['Ticker']
+        quality_data = calculate_quality_score(ticker)
+        enhanced_df.at[idx, 'Quality Score'] = quality_data['total_score']
+        enhanced_df.at[idx, 'Grade'] = quality_data['grade']
+
     return enhanced_df
 
 def style_holdings_dataframe(df):
     display_df = df[[
         'Ticker', 'Asset Name', 'Shares', 'Avg Cost', 'Current Price',
-        'Daily Change %', '5D Return %', 'Weight %', 'Daily P&L $', 
-        'Total Gain/Loss $', 'Total Gain/Loss %', 'Beta', 'Analyst Rating'
+        'Daily Change %', '5D Return %', 'Weight %',
+        'Quality Score', 'Grade',  # FEATURE #1: NEW COLUMNS
+        'Daily P&L $', 'Total Gain/Loss $', 'Total Gain/Loss %',
+        'Beta', 'Analyst Rating'
     ]].copy()
     
     pct_cols = ['Daily Change %', '5D Return %', 'Weight %', 'Total Gain/Loss %']
@@ -3277,6 +3286,69 @@ def detect_market_regime():
             regime_scores['RISK-OFF'] += 2
     except:
         indicators['breadth'] = 'N/A'
+
+    # Indicator 4: Credit Spreads (using HYG vs TLT as proxy)
+    try:
+        hyg = yf.Ticker('HYG')  # High Yield Corporate
+        hyg_hist = hyg.history(period='30d')
+
+        tlt = yf.Ticker('TLT')  # Treasury bonds
+        tlt_hist = tlt.history(period='30d')
+
+        if not hyg_hist.empty and not tlt_hist.empty:
+            # Simple spread proxy: HYG/TLT ratio
+            # Rising ratio = tightening spreads = risk-on
+            # Falling ratio = widening spreads = risk-off
+
+            current_ratio = hyg_hist['Close'].iloc[-1] / tlt_hist['Close'].iloc[-1]
+            past_ratio = hyg_hist['Close'].iloc[0] / tlt_hist['Close'].iloc[0]
+
+            spread_change = ((current_ratio - past_ratio) / past_ratio) * 100
+
+            if spread_change > 0:
+                indicators['credit_spreads'] = 'Tightening (Bullish)'
+            else:
+                indicators['credit_spreads'] = 'Widening (Bearish)'
+
+            if spread_change > 2:
+                regime_scores['RISK-ON'] += 2
+            elif spread_change > 0:
+                regime_scores['RISK-ON'] += 1
+            elif spread_change > -2:
+                regime_scores['TRANSITION'] += 1
+            else:
+                regime_scores['RISK-OFF'] += 2
+    except:
+        indicators['credit_spreads'] = 'N/A'
+
+    # Indicator 5: Yield Curve (10Y - 2Y)
+    try:
+        tnx = yf.Ticker('^TNX')  # 10-year
+        tnx_hist = tnx.history(period='5d')
+
+        tyx = yf.Ticker('^TYX')  # 30-year (using as proxy for trend)
+        tyx_hist = tyx.history(period='5d')
+
+        if not tnx_hist.empty:
+            yield_10y = tnx_hist['Close'].iloc[-1]
+
+            # Check if yields are rising (risk-on) or falling (risk-off)
+            yield_5d_ago = tnx_hist['Close'].iloc[0]
+            yield_change = yield_10y - yield_5d_ago
+
+            if yield_change > 0.1:
+                regime_scores['RISK-ON'] += 1
+                indicators['yield_curve'] = 'Steepening (Bullish)'
+            elif yield_change < -0.1:
+                regime_scores['RISK-OFF'] += 1
+                indicators['yield_curve'] = 'Flattening (Bearish)'
+            else:
+                indicators['yield_curve'] = 'Stable'
+                regime_scores['TRANSITION'] += 1
+        else:
+            indicators['yield_curve'] = 'N/A'
+    except:
+        indicators['yield_curve'] = 'N/A'
 
     # Determine regime
     max_score = max(regime_scores.values())
@@ -5736,10 +5808,10 @@ def main():
         with col3:
             st.metric("Est. Duration", "87 days")
 
-        # Regime indicators
+        # Regime indicators (ALL 5 INDICATORS)
         st.markdown("**Regime Indicators:**")
 
-        ind_col1, ind_col2, ind_col3 = st.columns(3)
+        ind_col1, ind_col2, ind_col3, ind_col4, ind_col5 = st.columns(5)
 
         with ind_col1:
             vix_value = regime_data['indicators'].get('vix', 'N/A')
@@ -5751,9 +5823,15 @@ def main():
                 st.metric("VIX", "N/A")
 
         with ind_col2:
-            st.metric("Momentum", regime_data['indicators'].get('momentum', 'N/A'))
+            st.metric("Credit Spreads", regime_data['indicators'].get('credit_spreads', 'N/A'))
 
         with ind_col3:
+            st.metric("Momentum", regime_data['indicators'].get('momentum', 'N/A'))
+
+        with ind_col4:
+            st.metric("Yield Curve", regime_data['indicators'].get('yield_curve', 'N/A'))
+
+        with ind_col5:
             st.metric("Breadth", regime_data['indicators'].get('breadth', 'N/A'))
 
         # Tactical allocation guidance
@@ -6652,6 +6730,38 @@ def main():
                 hide_index=True
             )
 
+            # Quality insights
+            with st.expander("📋 Quality Insights & Recommendations"):
+                st.markdown("### 💡 Opportunities")
+
+                # Identify low quality holdings
+                low_quality = enhanced_df[enhanced_df['Quality Score'] < 6.0].sort_values('Weight %', ascending=False)
+
+                if not low_quality.empty:
+                    st.warning(f"**{len(low_quality)} holdings rated C-tier or below:**")
+                    for _, row in low_quality.iterrows():
+                        quality_data = calculate_quality_score(row['Ticker'])
+                        flags_str = ', '.join(quality_data['flags']) if quality_data['flags'] else 'No specific flags'
+                        st.write(f"- **{row['Ticker']}** ({row['Grade']}): {row['Weight %']:.1f}% of portfolio")
+                        st.write(f"  *Issues: {flags_str}*")
+                    st.write("\n*Consider replacing with higher quality alternatives*")
+                else:
+                    st.success("✅ All holdings are B-tier quality or above!")
+
+                st.markdown("### ✅ Strengths")
+
+                # Identify high quality holdings
+                high_quality = enhanced_df[enhanced_df['Quality Score'] >= 8.0].sort_values('Quality Score', ascending=False)
+
+                if not high_quality.empty:
+                    st.success(f"**{len(high_quality)} holdings rated A-tier:**")
+                    for _, row in high_quality.head(5).iterrows():
+                        quality_data = calculate_quality_score(row['Ticker'])
+                        strengths = [f for f in quality_data['flags'] if 'Strong' in f or 'Attractive' in f]
+                        strengths_str = ', '.join(strengths) if strengths else 'High quality fundamentals'
+                        st.write(f"- **{row['Ticker']}** ({row['Grade']}): {row['Quality Score']:.1f}/10")
+                        st.write(f"  *{strengths_str}*")
+
         # ====================================================================
         # TAB 6: DRIFT MONITOR
         # ====================================================================
@@ -6734,6 +6844,99 @@ def main():
             apply_chart_theme(fig_drift)
             st.plotly_chart(fig_drift, use_container_width=True)
 
+            # ================================================================
+            # REBALANCING CALCULATOR
+            # ================================================================
+            st.divider()
+            st.subheader("🔧 Rebalancing Calculator")
+
+            if rebalance_needed:
+                # Calculate total portfolio value
+                total_value = enhanced_df['Total Value'].sum()
+
+                # Calculate trades needed
+                rebalancing_trades = []
+
+                for sector, drift_data in drift_analysis.items():
+                    if drift_data['status'] == 'REBALANCE':
+                        current_value = (drift_data['current_weight'] / 100) * total_value
+                        target_value = (drift_data['target_weight'] / 100) * total_value
+                        trade_value = target_value - current_value
+
+                        direction = 'BUY' if trade_value > 0 else 'SELL'
+
+                        rebalancing_trades.append({
+                            'Sector': sector,
+                            'Current Weight %': drift_data['current_weight'],
+                            'Target Weight %': drift_data['target_weight'],
+                            'Drift %': drift_data['absolute_drift'],
+                            'Trade Value': abs(trade_value),
+                            'Direction': direction
+                        })
+
+                trades_df = pd.DataFrame(rebalancing_trades).sort_values('Trade Value', ascending=False)
+
+                # Calculate transaction costs (0.1% assumed)
+                total_trade_value = trades_df['Trade Value'].sum()
+                transaction_cost = total_trade_value * 0.001
+
+                st.info(f"""
+                **Rebalancing Summary:**
+                - Total trades needed: {len(trades_df)}
+                - Total trade value: ${total_trade_value:,.0f}
+                - Estimated transaction cost: ${transaction_cost:,.0f} (0.1%)
+                """)
+
+                # Format trade value column
+                trades_display = trades_df.copy()
+                trades_display['Trade Value'] = trades_display['Trade Value'].apply(lambda x: f"${x:,.0f}")
+                trades_display['Current Weight %'] = trades_display['Current Weight %'].apply(lambda x: f"{x:.1f}%")
+                trades_display['Target Weight %'] = trades_display['Target Weight %'].apply(lambda x: f"{x:.1f}%")
+                trades_display['Drift %'] = trades_display['Drift %'].apply(lambda x: f"{x:+.1f}%")
+
+                st.dataframe(trades_display, use_container_width=True, hide_index=True)
+
+                # Position-level trade recommendations
+                with st.expander("📋 Detailed Trade Recommendations by Position"):
+                    st.write("**Positions to reduce (SELL):**")
+
+                    for sector in trades_df[trades_df['Direction'] == 'SELL']['Sector']:
+                        sector_holdings = enhanced_df[enhanced_df['Sector'] == sector].sort_values('Weight %', ascending=False)
+                        st.write(f"\n**{sector}:**")
+                        for _, holding in sector_holdings.iterrows():
+                            st.write(f"- {holding['Ticker']}: {holding['Weight %']:.1f}% of portfolio (${holding['Total Value']:,.0f})")
+
+                    st.write("\n**Sectors to increase (BUY):**")
+
+                    for sector in trades_df[trades_df['Direction'] == 'BUY']['Sector']:
+                        buy_value = trades_df[trades_df['Sector'] == sector]['Trade Value'].iloc[0]
+                        st.write(f"- {sector}: Add ${buy_value:,.0f}")
+                        st.write(f"  *Consider ETFs: Sector-specific index funds or top holdings*")
+
+            else:
+                st.info("No rebalancing needed at this time. Portfolio is within drift thresholds.")
+
+            # Benchmark update settings
+            with st.expander("⚙️ Benchmark Settings"):
+                st.markdown(f"""
+                **Current Benchmark:** 60% S&P 500 (SPY) / 40% MSCI ACWI
+
+                **Update Frequency:** Daily (cached for 24 hours)
+
+                **Drift Thresholds:**
+                - Absolute: 5 percentage points
+                - Relative: 20% of target weight
+
+                **Last Benchmark Update:**
+                - SPY weights: {benchmark_data['spy_data']['timestamp'].strftime("%Y-%m-%d %H:%M")}
+                - ACWI weights: {benchmark_data['acwi_data']['timestamp'].strftime("%Y-%m-%d %H:%M")}
+                """)
+
+                if st.button("🔄 Force Refresh Benchmark Weights"):
+                    st.cache_data.clear()
+                    st.success("Benchmark weights refreshed!")
+                    st.rerun()
+
         # ====================================================================
         # TAB 7: CORRELATION ANALYSIS
         # ====================================================================
@@ -6793,6 +6996,139 @@ def main():
 
                 apply_chart_theme(fig_heatmap)
                 st.plotly_chart(fig_heatmap, use_container_width=True)
+
+                # ============================================================
+                # NETWORK GRAPH
+                # ============================================================
+                st.subheader("🕸️ Correlation Network")
+
+                st.info("Edge thickness represents correlation strength. Only correlations >0.5 shown.")
+
+                # Build network graph using NetworkX
+                import networkx as nx
+
+                G = nx.Graph()
+
+                # Get weights dictionary
+                weights_dict = enhanced_df.set_index('Ticker')['Weight %'].to_dict()
+
+                # Add nodes
+                for ticker in correlation_matrix.index:
+                    weight = weights_dict.get(ticker, 0)
+                    G.add_node(ticker, weight=weight)
+
+                # Add edges (only for correlations > 0.5)
+                for i, ticker1 in enumerate(correlation_matrix.index):
+                    for j, ticker2 in enumerate(correlation_matrix.columns):
+                        if i < j:  # Avoid duplicates
+                            corr = correlation_matrix.iloc[i, j]
+                            if corr > 0.5:
+                                G.add_edge(ticker1, ticker2, weight=corr)
+
+                # Create network visualization
+                pos = nx.spring_layout(G, k=0.5, iterations=50)
+
+                # Extract edge trace
+                edge_traces = []
+
+                for edge in G.edges(data=True):
+                    x0, y0 = pos[edge[0]]
+                    x1, y1 = pos[edge[1]]
+                    corr = edge[2]['weight']
+
+                    edge_traces.append(
+                        go.Scatter(
+                            x=[x0, x1, None],
+                            y=[y0, y1, None],
+                            mode='lines',
+                            line=dict(
+                                width=corr * 5,  # Thickness based on correlation
+                                color=COLORS['neon_blue']
+                            ),
+                            hoverinfo='none',
+                            showlegend=False
+                        )
+                    )
+
+                # Extract node trace
+                node_x = []
+                node_y = []
+                node_text = []
+                node_size = []
+
+                for node in G.nodes():
+                    x, y = pos[node]
+                    node_x.append(x)
+                    node_y.append(y)
+                    node_text.append(node)
+                    node_size.append(weights_dict.get(node, 5) * 2)  # Size based on weight
+
+                node_trace = go.Scatter(
+                    x=node_x,
+                    y=node_y,
+                    mode='markers+text',
+                    text=node_text,
+                    textposition='top center',
+                    marker=dict(
+                        size=node_size,
+                        color=COLORS['electric_blue'],
+                        line=dict(color=COLORS['border'], width=2)
+                    ),
+                    hovertemplate='<b>%{text}</b><extra></extra>'
+                )
+
+                # Create figure
+                fig_network = go.Figure(data=edge_traces + [node_trace])
+
+                fig_network.update_layout(
+                    title="Portfolio Correlation Network",
+                    showlegend=False,
+                    hovermode='closest',
+                    height=600,
+                    xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                    yaxis=dict(showgrid=False, zeroline=False, showticklabels=False)
+                )
+
+                apply_chart_theme(fig_network)
+                st.plotly_chart(fig_network, use_container_width=True)
+
+                # ============================================================
+                # CORRELATION INSIGHTS
+                # ============================================================
+                with st.expander("💡 Correlation Insights"):
+                    # Find highly correlated pairs
+                    high_corr_pairs = []
+
+                    for i, ticker1 in enumerate(correlation_matrix.index):
+                        for j, ticker2 in enumerate(correlation_matrix.columns):
+                            if i < j:
+                                corr = correlation_matrix.iloc[i, j]
+                                if corr > 0.8:
+                                    high_corr_pairs.append((ticker1, ticker2, corr))
+
+                    if high_corr_pairs:
+                        st.warning("**High Correlation Pairs (>0.8):**")
+                        for ticker1, ticker2, corr in sorted(high_corr_pairs, key=lambda x: x[2], reverse=True):
+                            st.write(f"- {ticker1} ↔ {ticker2}: {corr:.2f}")
+                        st.write("\n*These holdings move very similarly - limited diversification benefit*")
+                    else:
+                        st.success("✅ No extremely high correlations detected")
+
+                    # Find low/negative correlations (good diversifiers)
+                    low_corr_pairs = []
+
+                    for i, ticker1 in enumerate(correlation_matrix.index):
+                        for j, ticker2 in enumerate(correlation_matrix.columns):
+                            if i < j:
+                                corr = correlation_matrix.iloc[i, j]
+                                if corr < 0.2:
+                                    low_corr_pairs.append((ticker1, ticker2, corr))
+
+                    if low_corr_pairs:
+                        st.success("**Good Diversifiers (Correlation <0.2):**")
+                        for ticker1, ticker2, corr in sorted(low_corr_pairs, key=lambda x: x[2]):
+                            st.write(f"- {ticker1} ↔ {ticker2}: {corr:.2f}")
+
             else:
                 st.warning("Insufficient data to calculate correlations. Need at least 2 holdings with price history.")
 
