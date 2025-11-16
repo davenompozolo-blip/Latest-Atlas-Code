@@ -4904,9 +4904,16 @@ def create_portfolio_heatmap(df):
     
     fig.update_layout(
         title="🗺️ Portfolio Heatmap",
-        height=700
+        height=700,
+        uniformtext=dict(minsize=10, mode='hide')
     )
-    
+
+    fig.update_traces(
+        textposition="middle center",
+        textfont=dict(size=12, color='white', family='Inter'),
+        texttemplate='<b>%{label}</b><br>%{value:.1f}%<br>%{color:+.1f}%'
+    )
+
     apply_chart_theme(fig)
     return fig
 
@@ -6205,13 +6212,13 @@ def main():
                     if trade_df is not None:
                         save_trade_history(trade_df)
                         st.success(f"✅ Parsed {len(trade_df)} trades!")
-                        st.dataframe(trade_df.head(10), use_container_width=True)
+                        st.dataframe(trade_df.head(10), use_container_width=True, column_config=None)
                         
                         portfolio_df = calculate_portfolio_from_trades(trade_df)
                         if len(portfolio_df) > 0:
                             save_portfolio_data(portfolio_df.to_dict('records'))
                             st.success(f"🎉 Portfolio rebuilt! {len(portfolio_df)} positions")
-                            st.dataframe(portfolio_df, use_container_width=True)
+                            st.dataframe(portfolio_df, use_container_width=True, column_config=None)
         
         with col2:
             st.markdown("### 💰 Account History")
@@ -6224,7 +6231,7 @@ def main():
                     if account_df is not None:
                         save_account_history(account_df)
                         st.success(f"✅ Parsed {len(account_df)} records!")
-                        st.dataframe(account_df.head(10), use_container_width=True)
+                        st.dataframe(account_df.head(10), use_container_width=True, column_config=None)
                         
                         leverage_info_parsed = get_leverage_info()
                         if leverage_info_parsed:
@@ -6355,7 +6362,7 @@ def main():
         st.markdown("---")
         st.markdown("### 📋 Holdings")
         display_df = style_holdings_dataframe(enhanced_df)
-        st.dataframe(display_df, use_container_width=True, hide_index=True, height=500)
+        st.dataframe(display_df, use_container_width=True, hide_index=True, height=500, column_config=None)
         
         st.info("💡 **Tip:** Head to the Valuation House to analyze intrinsic values of any ticker!")
         
@@ -6530,7 +6537,7 @@ def main():
                 if not indices_df.empty:
                     indices_df = indices_df[indices_df['Change %'] >= filter_change]
                     display_df = create_dynamic_market_table(indices_df, {'sort_by': sort_by, 'ascending': False})
-                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=600)
+                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=600, column_config=None)
                 else:
                     st.warning("No data available")
         
@@ -6541,7 +6548,7 @@ def main():
                 if not crypto_df.empty:
                     crypto_df = crypto_df[crypto_df['Change %'] >= filter_change]
                     display_df = create_dynamic_market_table(crypto_df, {'sort_by': sort_by, 'ascending': False})
-                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=600)
+                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=600, column_config=None)
                 else:
                     st.warning("No data available")
         
@@ -6557,7 +6564,7 @@ def main():
                     if sectors:
                         etf_df = etf_df[etf_df['Category'].isin(sectors)]
                     display_df = create_dynamic_market_table(etf_df, {'sort_by': sort_by, 'ascending': False})
-                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=600)
+                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=600, column_config=None)
                 else:
                     st.warning("No data available")
         
@@ -6573,7 +6580,7 @@ def main():
                     if commodity_cats:
                         comm_df = comm_df[comm_df['Category'].isin(commodity_cats)]
                     display_df = create_dynamic_market_table(comm_df, {'sort_by': sort_by, 'ascending': False})
-                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=600)
+                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=600, column_config=None)
                 else:
                     st.warning("No data available")
         
@@ -6589,7 +6596,7 @@ def main():
                     if stock_sectors:
                         stocks_df = stocks_df[stocks_df['Category'].isin(stock_sectors)]
                     display_df = create_dynamic_market_table(stocks_df, {'sort_by': sort_by, 'ascending': False})
-                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=600)
+                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=600, column_config=None)
                 else:
                     st.warning("No data available")
         
@@ -6609,7 +6616,7 @@ def main():
             st.markdown("##### 📊 Current Treasury Yields")
             treasury_table = create_treasury_data_table()
             if treasury_table is not None:
-                st.dataframe(treasury_table, use_container_width=True, hide_index=True, height=250)
+                st.dataframe(treasury_table, use_container_width=True, hide_index=True, height=250, column_config=None)
             else:
                 st.warning("Unable to load Treasury yield data")
 
@@ -6631,7 +6638,7 @@ def main():
                 credit_df = fetch_market_watch_data(CREDIT_SPREADS)
                 if not credit_df.empty:
                     display_df = create_dynamic_market_table(credit_df, {'sort_by': sort_by, 'ascending': False})
-                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=400)
+                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=400, column_config=None)
                     
                     st.markdown("---")
                     st.markdown("#### 📊 Credit Market Interpretation")
@@ -6808,7 +6815,7 @@ def main():
                 stress_df['New Value'] = stress_df['New Value'].apply(lambda x: format_currency(x))
                 stress_df['Return'] = stress_df['Return'].apply(lambda x: f"{x:+.1f}%")
 
-                st.dataframe(stress_df, use_container_width=True, hide_index=True)
+                st.dataframe(stress_df, use_container_width=True, hide_index=True, column_config=None)
 
                 st.caption(f"💼 Current Portfolio Value: {format_currency(current_value)}")
 
@@ -6878,7 +6885,7 @@ def main():
                     })
 
                 conc_df = pd.DataFrame(concentration_warnings)
-                st.dataframe(conc_df, use_container_width=True, hide_index=True)
+                st.dataframe(conc_df, use_container_width=True, hide_index=True, column_config=None)
 
                 st.caption("⚠️ Sectors >30% = High concentration risk")
                 st.caption("🟡 Sectors 20-30% = Medium concentration risk")
@@ -7065,7 +7072,7 @@ def main():
                                 # Display trades table
                                 display_trades = create_rebalancing_trades_table(trades_df)
                                 if display_trades is not None:
-                                    st.dataframe(display_trades, use_container_width=True, hide_index=True, height=400)
+                                    st.dataframe(display_trades, use_container_width=True, hide_index=True, height=400, column_config=None)
 
                                 # Download option
                                 st.markdown("---")
@@ -7223,8 +7230,8 @@ def main():
                     ['Best Day', format_percentage(metrics['Best Day'])],
                     ['Worst Day', format_percentage(metrics['Worst Day'])]
                 ], columns=['Metric', 'Value'])
-                
-                st.dataframe(metrics_df, use_container_width=True, hide_index=True, height=600)
+
+                st.dataframe(metrics_df, use_container_width=True, hide_index=True, height=600, column_config=None)
     
     # ========================================================================
     # PORTFOLIO DEEP DIVE - ENHANCED
@@ -7242,9 +7249,9 @@ def main():
         df = pd.DataFrame(portfolio_data)
         enhanced_df = create_enhanced_holdings_table(df)
 
-        tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+        tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
             "🎯 Attribution", "🔄 Sector Rotation", "📊 Concentration", "📊 Sector Allocation",
-            "🏆 Quality Scorecard", "🎯 Drift Monitor", "📊 Correlation"
+            "🏆 Quality Scorecard", "🎯 Drift Monitor", "📊 Correlation", "🏆 Brinson Attribution"
         ])
         
         with tab1:
@@ -7373,7 +7380,8 @@ def main():
             st.dataframe(
                 quality_df.sort_values('Quality Score', ascending=False),
                 use_container_width=True,
-                hide_index=True
+                hide_index=True,
+                column_config=None
             )
 
             # Quality insights
@@ -7463,7 +7471,7 @@ def main():
                 for sector, data in drift_analysis.items()
             ]).sort_values('Drift', ascending=False, key=abs)
 
-            st.dataframe(drift_df, use_container_width=True, hide_index=True)
+            st.dataframe(drift_df, use_container_width=True, hide_index=True, column_config=None)
 
             # Drift visualization
             fig_drift = go.Figure()
@@ -7540,7 +7548,7 @@ def main():
                 trades_display['Target Weight %'] = trades_display['Target Weight %'].apply(lambda x: f"{x:.1f}%")
                 trades_display['Drift %'] = trades_display['Drift %'].apply(lambda x: f"{x:+.1f}%")
 
-                st.dataframe(trades_display, use_container_width=True, hide_index=True)
+                st.dataframe(trades_display, use_container_width=True, hide_index=True, column_config=None)
 
                 # Position-level trade recommendations
                 with st.expander("📋 Detailed Trade Recommendations by Position"):
@@ -7778,6 +7786,129 @@ def main():
             else:
                 st.warning("Insufficient data to calculate correlations. Need at least 2 holdings with price history.")
 
+        # ====================================================================
+        # TAB 8: BRINSON ATTRIBUTION ANALYSIS
+        # ====================================================================
+        with tab8:
+            st.markdown("### 🏆 Brinson Attribution Analysis")
+            st.markdown("Decompose portfolio performance into **Allocation Effect** (sector timing skill) vs **Selection Effect** (stock picking skill)")
+
+            # Period selector
+            attribution_period = st.selectbox(
+                "Attribution Period:",
+                options=['1Y', '3Y', '5Y', 'YTD'],
+                index=0,
+                format_func=lambda x: {'1Y': '1 Year', '3Y': '3 Years', '5Y': '5 Years', 'YTD': 'Year to Date'}[x],
+                key='brinson_period'
+            )
+
+            # Get benchmark data
+            st.markdown("---")
+            st.markdown("#### 📊 Benchmark: S&P 500 Sector Weights & Returns")
+
+            with st.spinner("Fetching benchmark sector returns..."):
+                benchmark_weights = SP500_SECTOR_WEIGHTS
+                benchmark_returns = get_benchmark_sector_returns(period=attribution_period)
+
+            # Display benchmark info
+            col1, col2 = st.columns(2)
+
+            with col1:
+                st.markdown("**S&P 500 Sector Weights:**")
+                benchmark_df = pd.DataFrame([
+                    {'Sector': sector, 'Weight %': weight}
+                    for sector, weight in benchmark_weights.items()
+                ]).sort_values('Weight %', ascending=False)
+                st.dataframe(benchmark_df, use_container_width=True, hide_index=True, column_config=None)
+
+            with col2:
+                st.markdown("**Sector Returns (via ETFs):**")
+                returns_df = pd.DataFrame([
+                    {'Sector': sector, 'Return %': ret * 100}
+                    for sector, ret in benchmark_returns.items()
+                ]).sort_values('Return %', ascending=False)
+                st.dataframe(returns_df, use_container_width=True, hide_index=True, column_config=None)
+
+            # Calculate Brinson Attribution
+            st.markdown("---")
+            st.markdown("#### 🎯 Attribution Analysis")
+
+            try:
+                with st.spinner("Calculating Brinson attribution..."):
+                    attribution_results = calculate_brinson_attribution(
+                        enhanced_df,
+                        benchmark_weights,
+                        benchmark_returns,
+                        period=attribution_period
+                    )
+
+                # Display skill assessment card
+                st.markdown(create_skill_assessment_card(attribution_results), unsafe_allow_html=True)
+
+                # Display waterfall chart
+                st.markdown("---")
+                st.markdown("#### 📊 Attribution Breakdown")
+                fig_attribution = create_brinson_attribution_chart(attribution_results)
+                st.plotly_chart(fig_attribution, use_container_width=True)
+
+                # Display detailed sector table
+                st.markdown("---")
+                st.markdown("#### 📋 Sector-by-Sector Attribution")
+                sector_table = create_sector_attribution_table(attribution_results['attribution_df'])
+                st.dataframe(sector_table, use_container_width=True, hide_index=True, column_config=None)
+
+                # Insights and recommendations
+                with st.expander("💡 Brinson Attribution Insights & Methodology"):
+                    st.markdown("""
+                    ### 🎓 Understanding Brinson Attribution
+
+                    **Brinson-Fachler Attribution** decomposes your portfolio's active return into three components:
+
+                    1. **Allocation Effect** (Sector Timing Skill):
+                       - Measures the value added by overweighting/underweighting sectors
+                       - Formula: (Portfolio Weight - Benchmark Weight) × (Benchmark Sector Return - Benchmark Total Return)
+                       - Positive = Good sector timing decisions
+
+                    2. **Selection Effect** (Stock Picking Skill):
+                       - Measures the value added by picking stocks that outperform their sector
+                       - Formula: Benchmark Weight × (Portfolio Sector Return - Benchmark Sector Return)
+                       - Positive = Good stock selection within sectors
+
+                    3. **Interaction Effect**:
+                       - Captures the combined benefit of allocation and selection decisions
+                       - Formula: (Portfolio Weight - Benchmark Weight) × (Portfolio Sector Return - Benchmark Sector Return)
+                       - Can be positive or negative
+
+                    ### 🎯 Skill Score Interpretation
+
+                    - **9-10**: Elite skill level - Consistent outperformance
+                    - **7-8**: Strong skill - Reliable value addition
+                    - **5-6**: Moderate skill - Some value but inconsistent
+                    - **3-4**: Weak skill - Minimal or negative contribution
+                    - **0-2**: Poor skill - Destroying value
+
+                    ### 📈 How to Improve Your Scores
+
+                    **If Allocation Score > Selection Score:**
+                    - You're better at sector timing than stock picking
+                    - Consider: Sector rotation strategies, ETF-based allocation, macro research
+
+                    **If Selection Score > Allocation Score:**
+                    - You're better at stock picking than sector timing
+                    - Consider: Deep fundamental analysis, single-stock alpha strategies
+
+                    **If Both Scores Are Low:**
+                    - Consider: Index funds, passive strategies, or improving research process
+
+                    ### 📚 Reference
+                    Based on "Determinants of Portfolio Performance" (Brinson, Hood, Beebower, 1986)
+                    and "Measuring Non-U.S. Equity Portfolio Performance" (Brinson & Fachler, 1985)
+                    """)
+
+            except Exception as e:
+                st.error(f"Error calculating Brinson attribution: {str(e)}")
+                st.info("Ensure your portfolio has sector classifications and valid returns data.")
+
     # ========================================================================
     # MULTI-FACTOR ANALYSIS - ENHANCED
     # ========================================================================
@@ -7826,7 +7957,7 @@ def main():
                         factor_display = factor_summary.copy()
                         factor_display['Total Contribution'] = factor_display['Total Contribution'].apply(
                             lambda x: f"{x:.4f}")
-                        st.dataframe(factor_display, use_container_width=True, hide_index=True)
+                        st.dataframe(factor_display, use_container_width=True, hide_index=True, column_config=None)
                     
                     if attr_df is not None:
                         st.markdown("### Holdings Attribution")
@@ -7836,8 +7967,8 @@ def main():
                             values='Contribution',
                             aggfunc='sum'
                         ).round(4)
-                        
-                        st.dataframe(holdings_attr, use_container_width=True)
+
+                        st.dataframe(holdings_attr, use_container_width=True, column_config=None)
                         
                         st.info("""
                         **Positive values**: Holding increases exposure
@@ -8852,8 +8983,8 @@ def main():
                 for col in proj_display.columns:
                     if col != 'Year':
                         proj_display[col] = proj_display[col].apply(format_large_number)
-                
-                st.dataframe(proj_display, use_container_width=True, hide_index=True)
+
+                st.dataframe(proj_display, use_container_width=True, hide_index=True, column_config=None)
                 
                 st.info("💡 **Technical Note:** D&A and CapEx scale with revenue growth (as they should!)")
                 
