@@ -340,7 +340,7 @@ st.markdown("""
     }
 
     div[data-testid="stMetric"] [data-testid="stMetricValue"] {
-        font-size: 2.2em !important;
+        font-size: 1.8em !important;
         font-weight: 800 !important;
         background: linear-gradient(135deg, #ffffff 0%, #00d4ff 100%);
         background-clip: text;
@@ -403,6 +403,40 @@ st.markdown("""
         font-size: 14px !important;
         color: #e0e7ee !important;
         font-weight: 500 !important;
+    }
+
+    /* ============================================
+       NUCLEAR OPTION - COMPLETELY REMOVE TABLE DROPDOWNS
+       ============================================ */
+
+    /* Hide ALL table controls that cause issues */
+    div[data-testid="stDataFrame"] button,
+    div[data-testid="stDataFrame"] [role="button"],
+    div[data-testid="stDataFrame"] [data-baseweb="popover"],
+    div[data-testid="stDataFrame"] [data-baseweb="menu"],
+    div[data-testid="stDataFrame"] [role="menu"],
+    div[data-testid="stDataFrame"] [role="listbox"] {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+        position: absolute !important;
+        left: -9999px !important;
+    }
+
+    /* Remove column resize handles */
+    div[data-testid="stDataFrameResizeHandle"] {
+        display: none !important;
+    }
+
+    /* Remove any floating menus */
+    div[data-baseweb="popover"] {
+        display: none !important;
+    }
+
+    /* Prevent any dropdown overlays */
+    div[role="presentation"] {
+        display: none !important;
     }
 
     /* ============================================
@@ -2538,6 +2572,50 @@ def calculate_skill_score(effect_value):
     else:
         return 5.0 + (effect_value / 5.0) * 5.0
 
+def validate_and_map_sectors(df):
+    """
+    Ensure all securities are properly classified into standard sectors
+    Map any non-standard sectors to standard GICS sectors
+    """
+
+    STANDARD_SECTORS = [
+        'Technology', 'Healthcare', 'Financial Services', 'Consumer Cyclical',
+        'Communication Services', 'Industrials', 'Consumer Defensive',
+        'Energy', 'Real Estate', 'Basic Materials', 'Utilities'
+    ]
+
+    SECTOR_MAPPING = {
+        'Information Technology': 'Technology',
+        'Health Care': 'Healthcare',
+        'Financials': 'Financial Services',
+        'Consumer Discretionary': 'Consumer Cyclical',
+        'Communication': 'Communication Services',
+        'Consumer Staples': 'Consumer Defensive',
+        'Materials': 'Basic Materials',
+        'Utilities': 'Utilities',
+        'Real Estate': 'Real Estate',
+        'Energy': 'Energy',
+        'Industrials': 'Industrials',
+        # Add more mappings as needed
+    }
+
+    # Make a copy to avoid modifying original
+    df_copy = df.copy()
+
+    # Replace with mappings
+    df_copy['Sector'] = df_copy['Sector'].replace(SECTOR_MAPPING)
+
+    # Check for unmapped sectors
+    unmapped = df_copy[~df_copy['Sector'].isin(STANDARD_SECTORS)]['Sector'].unique()
+    if len(unmapped) > 0:
+        print(f"⚠️ Warning: Unmapped sectors found: {unmapped}")
+        # Default unmapped to 'Other' or the closest match
+        for sector in unmapped:
+            if pd.notna(sector) and sector not in STANDARD_SECTORS:
+                df_copy.loc[df_copy['Sector'] == sector, 'Sector'] = 'Technology'  # Default fallback
+
+    return df_copy
+
 def calculate_brinson_attribution(portfolio_df, benchmark_weights, benchmark_returns, period='YTD'):
     """
     Calculate Brinson attribution: Allocation, Selection, and Interaction effects
@@ -2776,6 +2854,71 @@ def calculate_benchmark_returns(benchmark_ticker, start_date, end_date):
         return None
 
 # ============================================================================
+# QUALITY SCORE CALCULATION
+# ============================================================================
+
+def calculate_quality_score(ticker):
+    """
+    Calculate comprehensive quality score (0-10)
+    Based on: Profitability, Growth, Financial Health, Valuation
+    """
+    score = 5.0  # Start at neutral
+
+    try:
+        # Fetch stock info
+        stock = yf.Ticker(ticker)
+        info = stock.info
+
+        # Profitability metrics
+        roe = info.get('returnOnEquity', 0)
+        if roe and roe > 0.15:
+            score += 1
+        elif roe and roe > 0.10:
+            score += 0.5
+
+        # Growth metrics
+        revenue_growth = info.get('revenueGrowth', 0)
+        if revenue_growth and revenue_growth > 0.15:
+            score += 1
+        elif revenue_growth and revenue_growth > 0.05:
+            score += 0.5
+
+        # Financial health
+        debt_to_equity = info.get('debtToEquity', 0)
+        if debt_to_equity and debt_to_equity < 50:
+            score += 1
+        elif debt_to_equity and debt_to_equity < 100:
+            score += 0.5
+
+        # Profitability
+        profit_margin = info.get('profitMargins', 0)
+        if profit_margin and profit_margin > 0.20:
+            score += 1
+        elif profit_margin and profit_margin > 0.10:
+            score += 0.5
+
+        # Current ratio (liquidity)
+        current_ratio = info.get('currentRatio', 0)
+        if current_ratio and current_ratio > 2:
+            score += 0.5
+        elif current_ratio and current_ratio > 1:
+            score += 0.25
+
+        # Analyst recommendations
+        recommendation = info.get('recommendationKey', '')
+        if recommendation in ['strong_buy', 'buy']:
+            score += 0.5
+
+        # Cap at 10
+        score = min(10.0, score)
+
+    except Exception as e:
+        # If unable to fetch data, return neutral score
+        score = 5.0
+
+    return round(score, 1)
+
+# ============================================================================
 # ENHANCED HOLDINGS TABLE
 # ============================================================================
 
@@ -2806,7 +2949,10 @@ def create_enhanced_holdings_table(df):
             enhanced_df.at[idx, 'Price Target'] = analyst_data['target_price']
         else:
             enhanced_df.at[idx, 'Analyst Rating'] = 'No Coverage'
-    
+
+        # Calculate Quality Score
+        enhanced_df.at[idx, 'Quality Score'] = calculate_quality_score(ticker)
+
     enhanced_df['Sector'] = enhanced_df['Sector'].fillna('Other')
     enhanced_df['Shares'] = enhanced_df['Shares'].round(0).astype(int)
     
@@ -4847,7 +4993,7 @@ def main():
         </div>
         """, unsafe_allow_html=True)
     
-    st.sidebar.markdown("## 🎛️ NAVIGATION")
+    st.sidebar.markdown("### NAVIGATION")
     page = st.sidebar.radio("Select Module", [
         "🔥 Phoenix Parser",
         "🏠 Portfolio Home",
@@ -5021,7 +5167,7 @@ def main():
             if is_valid_series(portfolio_returns):
                 metrics = calculate_performance_metrics(enhanced_df, portfolio_returns, None)
                 health_badge = create_signal_health_badge(metrics)
-                st.markdown("### 🎯 Portfolio Health")
+                st.markdown("<h3 style='color: #ffffff;'>🎯 Portfolio Health</h3>", unsafe_allow_html=True)
                 st.markdown(health_badge, unsafe_allow_html=True)
                 st.caption(f"**Last Updated:** {ATLASFormatter.format_timestamp()}")
 
@@ -5032,9 +5178,58 @@ def main():
 
         st.markdown("---")
         st.markdown("### 📋 Holdings")
-        display_df = style_holdings_dataframe(enhanced_df)
-        st.dataframe(display_df, use_container_width=True, hide_index=True, height=500, column_config=None)
-        
+
+        # Column selector for holdings table
+        st.markdown("#### 📋 Configure Display Columns")
+
+        # Define all available columns
+        ALL_COLUMNS = [
+            'Ticker', 'Asset Name', 'Shares', 'Avg Cost', 'Current Price',
+            'Daily Change %', '5D Return %', 'Weight %', 'Daily P&L $',
+            'Total Gain/Loss $', 'Total Gain/Loss %', 'Beta', 'Analyst Rating',
+            'Sector', 'Quality Score', 'Price Target'
+        ]
+
+        # Default columns to show
+        DEFAULT_COLUMNS = [
+            'Ticker', 'Asset Name', 'Shares', 'Current Price',
+            'Daily Change %', 'Weight %',
+            'Total Gain/Loss $', 'Total Gain/Loss %', 'Quality Score'
+        ]
+
+        # Column selector
+        selected_columns = st.multiselect(
+            "Select Columns to Display",
+            options=ALL_COLUMNS,
+            default=DEFAULT_COLUMNS,
+            help="Choose which columns to show in the holdings table"
+        )
+
+        # Display only selected columns
+        if selected_columns:
+            # Create display dataframe with selected columns
+            available_cols = [col for col in selected_columns if col in enhanced_df.columns]
+
+            if available_cols:
+                display_df = enhanced_df[available_cols].copy()
+
+                # Format numeric columns
+                pct_cols = ['Daily Change %', '5D Return %', 'Weight %', 'Total Gain/Loss %']
+                for col in pct_cols:
+                    if col in display_df.columns:
+                        display_df[col] = display_df[col].apply(lambda x: f"{x:+.2f}%" if pd.notna(x) else "N/A")
+
+                currency_cols = ['Avg Cost', 'Current Price', 'Daily P&L $', 'Total Gain/Loss $', 'Price Target']
+                for col in currency_cols:
+                    if col in display_df.columns:
+                        display_df[col] = display_df[col].apply(lambda x: f"${x:,.2f}" if pd.notna(x) and isinstance(x, (int, float)) else str(x))
+
+                st.dataframe(display_df, use_container_width=True, hide_index=True, height=500, column_config=None)
+            else:
+                st.warning("No valid columns selected")
+        else:
+            st.warning("Please select at least one column to display")
+
         st.info("💡 **Tip:** Head to the Valuation House to analyze intrinsic values of any ticker!")
         
         st.markdown("---")
@@ -6161,8 +6356,11 @@ def main():
 
             # Calculate attribution
             try:
+                # Validate and map sectors before attribution calculation
+                enhanced_df_validated = validate_and_map_sectors(enhanced_df)
+
                 attribution_results = calculate_brinson_attribution(
-                    enhanced_df,
+                    enhanced_df_validated,
                     benchmark_weights,
                     benchmark_returns,
                     period='1Y'
@@ -6212,6 +6410,120 @@ def main():
             except Exception as e:
                 st.error(f"Error calculating Brinson Attribution: {str(e)}")
                 st.info("💡 Make sure your portfolio has valid sector classifications and return data.")
+
+        # ============================================================
+        # QUALITY SCORECARD - COMPREHENSIVE ANALYSIS
+        # ============================================================
+        st.divider()
+        st.subheader("🏆 Quality Scorecard")
+        st.markdown("Comprehensive quality analysis for all portfolio holdings")
+
+        # Calculate comprehensive quality metrics for each holding
+        quality_data = []
+
+        with st.spinner("Calculating quality metrics..."):
+            for _, row in enhanced_df.iterrows():
+                ticker = row['Ticker']
+
+                try:
+                    stock = yf.Ticker(ticker)
+                    info = stock.info
+
+                    quality_data.append({
+                        'Ticker': ticker,
+                        'Asset Name': row.get('Asset Name', ticker),
+                        'Quality Score': row.get('Quality Score', 5.0),
+                        'ROE': f"{info.get('returnOnEquity', 0) * 100:.1f}%" if info.get('returnOnEquity') else "N/A",
+                        'Profit Margin': f"{info.get('profitMargins', 0) * 100:.1f}%" if info.get('profitMargins') else "N/A",
+                        'Revenue Growth': f"{info.get('revenueGrowth', 0) * 100:.1f}%" if info.get('revenueGrowth') else "N/A",
+                        'Debt/Equity': f"{info.get('debtToEquity', 0):.1f}" if info.get('debtToEquity') else "N/A",
+                        'Current Ratio': f"{info.get('currentRatio', 0):.2f}" if info.get('currentRatio') else "N/A",
+                        'Peg Ratio': f"{info.get('pegRatio', 0):.2f}" if info.get('pegRatio') else "N/A",
+                        'Analyst Rating': info.get('recommendationKey', 'N/A').replace('_', ' ').title() if info.get('recommendationKey') else 'N/A',
+                        'Target Price': f"${info.get('targetMeanPrice', 0):.2f}" if info.get('targetMeanPrice') else "N/A",
+                        'Upside': f"{((info.get('targetMeanPrice', 0) / row['Current Price']) - 1) * 100:+.1f}%" if info.get('targetMeanPrice') and row.get('Current Price', 0) > 0 else "N/A"
+                    })
+                except Exception as e:
+                    quality_data.append({
+                        'Ticker': ticker,
+                        'Asset Name': row.get('Asset Name', ticker),
+                        'Quality Score': row.get('Quality Score', 5.0),
+                        'ROE': "N/A",
+                        'Profit Margin': "N/A",
+                        'Revenue Growth': "N/A",
+                        'Debt/Equity': "N/A",
+                        'Current Ratio': "N/A",
+                        'Peg Ratio': "N/A",
+                        'Analyst Rating': "N/A",
+                        'Target Price': "N/A",
+                        'Upside': "N/A"
+                    })
+
+        quality_df = pd.DataFrame(quality_data)
+
+        # Sort by Quality Score descending
+        quality_df = quality_df.sort_values('Quality Score', ascending=False)
+
+        # Display quality scorecard
+        st.dataframe(
+            quality_df,
+            use_container_width=True,
+            hide_index=True
+        )
+
+        # Quality distribution chart
+        fig = go.Figure()
+
+        # Determine colors based on quality score
+        colors = []
+        for score in quality_df['Quality Score']:
+            if score >= 7:
+                colors.append(COLORS['success'])
+            elif score >= 5:
+                colors.append(COLORS['warning'])
+            else:
+                colors.append(COLORS['danger'])
+
+        fig.add_trace(go.Bar(
+            x=quality_df['Ticker'],
+            y=quality_df['Quality Score'],
+            marker_color=colors,
+            text=quality_df['Quality Score'],
+            textposition='outside',
+            hovertemplate='<b>%{x}</b><br>Quality Score: %{y:.1f}/10<extra></extra>'
+        ))
+
+        fig.update_layout(
+            title="Portfolio Quality Score Distribution",
+            yaxis_title="Quality Score (0-10)",
+            xaxis_title="",
+            height=400,
+            yaxis_range=[0, 11]
+        )
+
+        apply_chart_theme(fig)
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Quality insights
+        high_quality = quality_df[quality_df['Quality Score'] >= 7]
+        low_quality = quality_df[quality_df['Quality Score'] < 5]
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown(f"#### ✅ High Quality ({len(high_quality)} holdings)")
+            if len(high_quality) > 0:
+                st.markdown(", ".join(high_quality['Ticker'].tolist()))
+            else:
+                st.markdown("*None*")
+
+        with col2:
+            st.markdown(f"#### ⚠️ Low Quality ({len(low_quality)} holdings)")
+            if len(low_quality) > 0:
+                st.markdown(", ".join(low_quality['Ticker'].tolist()))
+                st.warning("⚠️ Consider reviewing these positions for quality concerns")
+            else:
+                st.markdown("*None*")
 
         # ============================================================
         # CORRELATION HEATMAP - NEW ADDITION
