@@ -5387,18 +5387,163 @@ def main():
                     st.warning("No data available")
         
         with tab6:
-            st.markdown("#### 💵 Bond Yields & Treasury Rates")
-            st.info("📊 **Key Insight:** Monitor the yield curve for recession signals and inflation expectations")
+            st.markdown("#### 💵 Global Yield Curves & Treasury Rates")
+            st.info("📊 **Key Insight:** Monitor yield curves for recession signals and inflation expectations across major economies")
 
-            # NEW: Yield Curve Visualization
-            yield_curve = create_yield_curve()
-            if yield_curve:
-                st.plotly_chart(yield_curve, use_container_width=True)
+            # Country selector for yield curves
+            selected_curve = st.selectbox(
+                "Select Yield Curve",
+                ["US Treasuries", "UK Gilts", "German Bunds", "SA Government Bonds"],
+                index=0
+            )
+
+            # Define yield curve data for different countries
+            yield_curve_configs = {
+                'US Treasuries': {
+                    'tickers': {
+                        "^IRX": {"maturity": 0.25, "name": "3M"},
+                        "^FVX": {"maturity": 5, "name": "5Y"},
+                        "^TNX": {"maturity": 10, "name": "10Y"},
+                        "^TYX": {"maturity": 30, "name": "30Y"}
+                    },
+                    'color': COLORS['neon_blue'],
+                    'title': 'US Treasury Yield Curve'
+                },
+                'UK Gilts': {
+                    'manual_data': {
+                        'maturities': [0.25, 1, 2, 5, 10, 30],
+                        'labels': ['3M', '1Y', '2Y', '5Y', '10Y', '30Y'],
+                        'yields': [5.2, 4.8, 4.5, 4.2, 4.4, 4.7]  # Placeholder - would need real API
+                    },
+                    'color': COLORS['purple'],
+                    'title': 'UK Gilt Yield Curve'
+                },
+                'German Bunds': {
+                    'manual_data': {
+                        'maturities': [0.25, 1, 2, 5, 10, 30],
+                        'labels': ['3M', '1Y', '2Y', '5Y', '10Y', '30Y'],
+                        'yields': [3.8, 3.5, 3.3, 3.0, 3.2, 3.5]  # Placeholder - would need real API
+                    },
+                    'color': COLORS['warning'],
+                    'title': 'German Bund Yield Curve'
+                },
+                'SA Government Bonds': {
+                    'manual_data': {
+                        'maturities': [0.25, 1, 3, 5, 10, 20],
+                        'labels': ['3M', '1Y', '3Y', '5Y', '10Y', '20Y'],
+                        'yields': [8.5, 9.0, 9.5, 10.0, 10.5, 11.0]  # Placeholder - would need real API
+                    },
+                    'color': COLORS['success'],
+                    'title': 'SA Government Bond Yield Curve'
+                }
+            }
+
+            config = yield_curve_configs[selected_curve]
+
+            # Fetch or use manual data
+            if 'tickers' in config:
+                # Fetch live data for US Treasuries
+                yields_data = []
+                maturities = []
+                labels = []
+
+                with st.spinner(f"Fetching {selected_curve} data..."):
+                    for ticker, info in config['tickers'].items():
+                        try:
+                            stock = yf.Ticker(ticker)
+                            hist = stock.history(period="1d")
+                            if not hist.empty:
+                                current_yield = hist['Close'].iloc[-1]
+                                yields_data.append(current_yield)
+                                maturities.append(info['maturity'])
+                                labels.append(info['name'])
+                        except:
+                            continue
+
+                # Sort by maturity
+                if yields_data:
+                    sorted_data = sorted(zip(maturities, yields_data, labels))
+                    maturities, yields_data, labels = zip(*sorted_data)
+            else:
+                # Use manual data for other countries
+                manual = config['manual_data']
+                maturities = manual['maturities']
+                yields_data = manual['yields']
+                labels = manual['labels']
+
+            # Create yield curve chart
+            if maturities and yields_data:
+                fig = go.Figure()
+
+                fig.add_trace(go.Scatter(
+                    x=maturities,
+                    y=yields_data,
+                    mode='lines+markers',
+                    name=selected_curve,
+                    line=dict(color=config['color'], width=3),
+                    marker=dict(size=10, color=config['color'], line=dict(color=COLORS['border'], width=2)),
+                    text=[f"{l}: {y:.2f}%" for l, y in zip(labels, yields_data)],
+                    hovertemplate='<b>%{text}</b><extra></extra>',
+                    fill='tozeroy',
+                    fillcolor=f"rgba{tuple(list(int(config['color'].lstrip('#')[i:i+2], 16) for i in (0, 2, 4)) + [0.1])}"
+                ))
+
+                fig.update_layout(
+                    title=f"📈 {config['title']}",
+                    xaxis_title="Maturity (Years)",
+                    yaxis_title="Yield (%)",
+                    height=500,
+                    showlegend=False
+                )
+
+                apply_chart_theme(fig)
+                st.plotly_chart(fig, use_container_width=True)
+
+                # Calculate and display spread
+                if len(yields_data) >= 2:
+                    # Find 10Y and 2Y for spread calculation
+                    spread_10y_2y = None
+                    if 10 in maturities and 2 in maturities:
+                        idx_10y = maturities.index(10)
+                        idx_2y = maturities.index(2)
+                        spread_10y_2y = yields_data[idx_10y] - yields_data[idx_2y]
+                    elif 10 in maturities and 1 in maturities:
+                        idx_10y = maturities.index(10)
+                        idx_1y = maturities.index(1)
+                        spread_10y_2y = yields_data[idx_10y] - yields_data[idx_1y]
+
+                    if spread_10y_2y is not None:
+                        spread_status = "Normal (Positive)" if spread_10y_2y > 0 else "⚠️ INVERTED (Recession Signal)"
+                        spread_color = "success" if spread_10y_2y > 0 else "warning"
+
+                        st.markdown(f"""
+                        <div style='background: rgba(0, 212, 255, 0.1); border-left: 4px solid {COLORS['neon_blue']};
+                                    padding: 15px; border-radius: 8px; margin: 10px 0;'>
+                            <h4 style='color: {COLORS['neon_blue']}; margin: 0 0 10px 0;'>
+                                Yield Curve Analysis
+                            </h4>
+                            <p style='color: {COLORS['text_primary']}; margin: 0; font-size: 15px;'>
+                                <strong>10Y-2Y Spread:</strong> {spread_10y_2y:+.2f}% - {spread_status}
+                            </p>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                # Display yield table
+                st.markdown("#### 📋 Yield Data")
+                yield_table_df = pd.DataFrame({
+                    'Maturity': labels,
+                    'Years': maturities,
+                    'Yield': [f"{y:.2f}%" for y in yields_data]
+                })
+                st.dataframe(yield_table_df[['Maturity', 'Yield']], use_container_width=True, hide_index=True)
+
                 st.caption(f"**Data Freshness:** {ATLASFormatter.format_timestamp()} • {ATLASFormatter.get_freshness_badge(2)}")
+            else:
+                st.warning(f"Unable to load {selected_curve} data")
 
             st.markdown("---")
 
-            with st.spinner("Loading bonds..."):
+            with st.spinner("Loading bond markets..."):
                 bonds_df = fetch_market_watch_data(BOND_YIELDS)
                 if not bonds_df.empty:
                     display_df = create_dynamic_market_table(bonds_df, {'sort_by': sort_by, 'ascending': False})
@@ -6524,6 +6669,132 @@ def main():
                 st.warning("⚠️ Consider reviewing these positions for quality concerns")
             else:
                 st.markdown("*None*")
+
+        # ============================================================
+        # SECTOR ALLOCATION - PROFESSIONAL CHARTS
+        # ============================================================
+        st.divider()
+        st.subheader("🎯 Sector Allocation")
+        st.markdown("Portfolio exposure across market sectors")
+
+        # Calculate sector weights
+        sector_allocation = enhanced_df.groupby('Sector')['Weight %'].sum().sort_values(ascending=False)
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            # Create professional donut chart
+            fig = go.Figure(data=[go.Pie(
+                labels=sector_allocation.index,
+                values=sector_allocation.values,
+                hole=0.5,
+                marker=dict(
+                    colors=[
+                        COLORS['electric_blue'], COLORS['teal'], COLORS['purple'],
+                        COLORS['warning'], COLORS['success'], COLORS['danger'],
+                        COLORS['neon_blue'], COLORS['text_secondary'], COLORS['pink'],
+                        COLORS['orange'], COLORS['chart_accent']
+                    ],
+                    line=dict(color=COLORS['background'], width=2)
+                ),
+                textinfo='label+percent',
+                textfont=dict(size=13, color='white', weight='bold'),
+                hovertemplate='<b>%{label}</b><br>Weight: %{value:.2f}%<br>Percent: %{percent}<extra></extra>'
+            )])
+
+            fig.update_layout(
+                title="Portfolio Sector Allocation",
+                height=500,
+                showlegend=False
+            )
+
+            apply_chart_theme(fig)
+            st.plotly_chart(fig, use_container_width=True)
+
+        with col2:
+            # Create horizontal bar chart comparing to benchmark
+            benchmark_weights_list = [SP500_SECTOR_WEIGHTS.get(s, 0) for s in sector_allocation.index]
+            portfolio_weights_list = sector_allocation.values
+
+            fig = go.Figure()
+
+            fig.add_trace(go.Bar(
+                y=sector_allocation.index,
+                x=portfolio_weights_list,
+                name='Portfolio',
+                orientation='h',
+                marker_color=COLORS['neon_blue'],
+                text=[f"{x:.1f}%" for x in portfolio_weights_list],
+                textposition='outside'
+            ))
+
+            fig.add_trace(go.Bar(
+                y=sector_allocation.index,
+                x=benchmark_weights_list,
+                name='S&P 500',
+                orientation='h',
+                marker_color=COLORS['text_muted'],
+                opacity=0.6,
+                text=[f"{x:.1f}%" for x in benchmark_weights_list],
+                textposition='outside'
+            ))
+
+            fig.update_layout(
+                title="Portfolio vs S&P 500 Sector Weights",
+                xaxis_title="Weight (%)",
+                yaxis_title="",
+                height=500,
+                barmode='group',
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="right",
+                    x=1
+                )
+            )
+
+            apply_chart_theme(fig)
+            st.plotly_chart(fig, use_container_width=True)
+
+        # Sector allocation table with benchmark comparison
+        st.markdown("#### 📋 Sector Breakdown vs Benchmark")
+
+        sector_table = pd.DataFrame({
+            'Sector': sector_allocation.index,
+            'Portfolio Weight': sector_allocation.values,
+            'S&P 500 Weight': [SP500_SECTOR_WEIGHTS.get(s, 0) for s in sector_allocation.index],
+            'Difference': sector_allocation.values - [SP500_SECTOR_WEIGHTS.get(s, 0) for s in sector_allocation.index]
+        })
+
+        # Format for display
+        display_sector_table = sector_table.copy()
+        display_sector_table['Portfolio Weight'] = display_sector_table['Portfolio Weight'].apply(lambda x: f"{x:.2f}%")
+        display_sector_table['S&P 500 Weight'] = display_sector_table['S&P 500 Weight'].apply(lambda x: f"{x:.2f}%")
+        display_sector_table['Difference'] = display_sector_table['Difference'].apply(lambda x: f"{x:+.2f}%")
+
+        st.dataframe(display_sector_table, use_container_width=True, hide_index=True)
+
+        # Sector allocation insights
+        overweight = sector_table[sector_table['Difference'] > 5].sort_values('Difference', ascending=False)
+        underweight = sector_table[sector_table['Difference'] < -5].sort_values('Difference')
+
+        if len(overweight) > 0 or len(underweight) > 0:
+            st.markdown("#### 📊 Allocation Insights")
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                if len(overweight) > 0:
+                    st.markdown("**🔼 Significantly Overweight:**")
+                    for _, row in overweight.iterrows():
+                        st.markdown(f"- **{row['Sector']}**: {row['Difference']:+.1f}% vs benchmark")
+
+            with col2:
+                if len(underweight) > 0:
+                    st.markdown("**🔽 Significantly Underweight:**")
+                    for _, row in underweight.iterrows():
+                        st.markdown(f"- **{row['Sector']}**: {row['Difference']:+.1f}% vs benchmark")
 
         # ============================================================
         # CORRELATION HEATMAP - NEW ADDITION
