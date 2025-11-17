@@ -5775,91 +5775,170 @@ def main():
                 st.plotly_chart(corr_network, use_container_width=True)
         
         with tab4:
-            st.markdown("#### ⚡ Market Stress Scenarios")
-            st.info("💡 **Stress Testing:** Evaluate portfolio resilience under extreme market conditions")
+            st.markdown("#### ⚡ Historical Stress Test Analysis")
+            st.info("💡 **Stress Testing:** See how your current portfolio would have performed during historical market crises")
 
-            # Stress scenario definitions
-            stress_scenarios = {
-                '📉 Market Crash (-30%)': -0.30,
-                '📊 Moderate Correction (-15%)': -0.15,
-                '📈 Strong Rally (+25%)': 0.25,
-                '💥 Flash Crash (-20%)': -0.20,
-                '🔥 Tech Bubble Burst (-40%)': -0.40,
-                '⚠️ Credit Crisis (-35%)': -0.35
+            # Define historical stress periods
+            STRESS_SCENARIOS = {
+                'COVID-19 Crash (Feb-Mar 2020)': {
+                    'start': '2020-02-20',
+                    'end': '2020-03-23',
+                    'description': 'Global pandemic market crash'
+                },
+                'Dec 2018 Selloff': {
+                    'start': '2018-10-01',
+                    'end': '2018-12-24',
+                    'description': 'Fed rate hikes concern'
+                },
+                '2015-16 China Slowdown': {
+                    'start': '2015-08-01',
+                    'end': '2016-02-11',
+                    'description': 'China growth concerns'
+                },
+                '2011 Euro Crisis': {
+                    'start': '2011-05-01',
+                    'end': '2011-10-03',
+                    'description': 'European debt crisis'
+                }
             }
 
-            col1, col2 = st.columns(2)
-
-            with col1:
-                st.markdown("##### Market Shock Scenarios")
-                # v9.7 FIX: Use correct Total Value calculation
-                current_value = enhanced_df['Total Value'].sum()
-
-                stress_results = []
-                for scenario, shock in stress_scenarios.items():
-                    new_value = current_value * (1 + shock)
-                    impact = current_value * shock
-                    stress_results.append({
-                        'Scenario': scenario,
-                        'Portfolio Impact': impact,
-                        'New Value': new_value,
-                        'Return': shock * 100
-                    })
-
-                stress_df = pd.DataFrame(stress_results)
-                stress_df['Portfolio Impact'] = stress_df['Portfolio Impact'].apply(lambda x: format_currency(x))
-                stress_df['New Value'] = stress_df['New Value'].apply(lambda x: format_currency(x))
-                stress_df['Return'] = stress_df['Return'].apply(lambda x: f"{x:+.1f}%")
-
-                st.dataframe(stress_df, use_container_width=True, hide_index=True, column_config=None)
-
-                st.caption(f"💼 Current Portfolio Value: {format_currency(current_value)}")
-
-            # v9.7 NEW: Stress Test Visualization
-            st.markdown("---")
-            st.markdown("##### 📊 Stress Test Impact Visualization")
-
-            # Create waterfall chart for stress scenarios
-            scenarios_short = [s.split(' ')[0] + ' ' + s.split('(')[1].replace(')', '') for s in stress_scenarios.keys()]
-            shocks = list(stress_scenarios.values())
-
-            fig_stress = go.Figure()
-
-            colors_stress = [COLORS['success'] if s > 0 else COLORS['danger'] for s in shocks]
-
-            fig_stress.add_trace(go.Bar(
-                x=scenarios_short,
-                y=[s * 100 for s in shocks],
-                marker=dict(
-                    color=colors_stress,
-                    line=dict(color=COLORS['border'], width=2),
-                    opacity=0.8
-                ),
-                text=[f"{s*100:+.0f}%" for s in shocks],
-                textposition='outside',
-                textfont=dict(size=12, color=COLORS['text_primary']),
-                hovertemplate='<b>%{x}</b><br>Impact: %{y:.1f}%<br>Portfolio Value: $%{customdata:,.0f}<extra></extra>',
-                customdata=[current_value * (1 + s) for s in shocks]
-            ))
-
-            fig_stress.update_layout(
-                title="Stress Test Scenarios - Portfolio Impact",
-                xaxis_title="Scenario",
-                yaxis_title="Return Impact (%)",
-                height=400,
-                showlegend=False,
-                xaxis=dict(tickangle=-45)
+            selected_scenario = st.selectbox(
+                "Select Historical Stress Period",
+                list(STRESS_SCENARIOS.keys()),
+                index=0,
+                help="Choose a historical crisis period to backtest your portfolio"
             )
 
-            fig_stress.add_hline(
-                y=0,
-                line_dash="solid",
-                line_color=COLORS['text_muted'],
-                line_width=2
-            )
+            scenario = STRESS_SCENARIOS[selected_scenario]
 
-            apply_chart_theme(fig_stress)
-            st.plotly_chart(fig_stress, use_container_width=True)
+            # Backtest portfolio during stress period
+            with st.spinner(f"⚡ Backtesting portfolio during {selected_scenario}..."):
+
+                stress_start = pd.to_datetime(scenario['start'])
+                stress_end = pd.to_datetime(scenario['end'])
+
+                portfolio_performance = []
+
+                for _, row in enhanced_df.iterrows():
+                    ticker = row['Ticker']
+                    weight = row['Weight %'] / 100
+
+                    # Fetch historical data
+                    hist_data = fetch_historical_data(ticker, stress_start, stress_end)
+
+                    if hist_data is not None and len(hist_data) > 0:
+                        # Calculate returns
+                        returns = hist_data['Close'].pct_change().fillna(0)
+                        weighted_returns = returns * weight
+                        portfolio_performance.append(weighted_returns)
+
+                # Combine into portfolio returns
+                if portfolio_performance:
+                    portfolio_returns_stress = pd.concat(portfolio_performance, axis=1).sum(axis=1)
+                    portfolio_cumulative = (1 + portfolio_returns_stress).cumprod()
+
+                    # Fetch benchmark (S&P 500) performance
+                    benchmark_data = fetch_historical_data('^GSPC', stress_start, stress_end)
+
+                    if benchmark_data is not None and len(benchmark_data) > 0:
+                        benchmark_returns = benchmark_data['Close'].pct_change().fillna(0)
+                        benchmark_cumulative = (1 + benchmark_returns).cumprod()
+
+                        # Create comparison chart
+                        fig = go.Figure()
+
+                        fig.add_trace(go.Scatter(
+                            x=portfolio_cumulative.index,
+                            y=(portfolio_cumulative - 1) * 100,
+                            mode='lines',
+                            name='Your Portfolio',
+                            line=dict(color=COLORS['neon_blue'], width=3),
+                            fill='tozeroy',
+                            fillcolor='rgba(0, 212, 255, 0.1)'
+                        ))
+
+                        fig.add_trace(go.Scatter(
+                            x=benchmark_cumulative.index,
+                            y=(benchmark_cumulative - 1) * 100,
+                            mode='lines',
+                            name='S&P 500',
+                            line=dict(color=COLORS['danger'], width=2, dash='dash')
+                        ))
+
+                        fig.update_layout(
+                            title=f"Performance During {selected_scenario}",
+                            xaxis_title="Date",
+                            yaxis_title="Cumulative Return (%)",
+                            height=500,
+                            hovermode='x unified'
+                        )
+
+                        apply_chart_theme(fig)
+                        st.plotly_chart(fig, use_container_width=True)
+
+                        # Calculate stress metrics
+                        port_total_return = (portfolio_cumulative.iloc[-1] - 1) * 100
+                        bench_total_return = (benchmark_cumulative.iloc[-1] - 1) * 100
+                        excess_return = port_total_return - bench_total_return
+
+                        port_max_dd = ((portfolio_cumulative / portfolio_cumulative.cummax()) - 1).min() * 100
+                        bench_max_dd = ((benchmark_cumulative / benchmark_cumulative.cummax()) - 1).min() * 100
+
+                        # Display stress metrics
+                        st.markdown("### 📊 Stress Period Performance")
+
+                        col1, col2 = st.columns(2)
+
+                        with col1:
+                            st.markdown("#### 💼 Your Portfolio")
+                            st.metric("Total Return", f"{port_total_return:+.2f}%")
+                            st.metric("Max Drawdown", f"{port_max_dd:.2f}%")
+                            st.metric("Volatility", f"{portfolio_returns_stress.std() * np.sqrt(252) * 100:.1f}%")
+
+                        with col2:
+                            st.markdown("#### 📊 S&P 500")
+                            st.metric("Total Return", f"{bench_total_return:+.2f}%")
+                            st.metric("Max Drawdown", f"{bench_max_dd:.2f}%")
+                            st.metric("Volatility", f"{benchmark_returns.std() * np.sqrt(252) * 100:.1f}%")
+
+                        # Stress test result
+                        st.divider()
+
+                        if excess_return > 0:
+                            st.success(f"✅ Your portfolio outperformed S&P 500 by **{excess_return:.2f}%** during this stress period")
+                        else:
+                            st.warning(f"⚠️ Your portfolio underperformed S&P 500 by **{abs(excess_return):.2f}%** during this stress period")
+
+                        # Note about survivorship bias
+                        with st.expander("ℹ️ Important Notes on Stress Testing"):
+                            st.markdown("""
+                            ### Methodology & Limitations
+
+                            **Backtesting Approach:**
+                            - Portfolio reconstructed using historical prices during stress period
+                            - Current portfolio weights applied to historical data
+                            - Assumes holdings existed and were tradable during stress period
+
+                            **Survivorship Bias:**
+                            - Some current holdings may not have existed during historical stress periods
+                            - Companies that failed during crises are not represented
+                            - Results may be optimistic compared to actual performance
+
+                            **What This Tells You:**
+                            - How your *current portfolio construction* would have performed
+                            - Relative resilience compared to broad market
+                            - Whether your allocation provides downside protection
+
+                            **Limitations:**
+                            - Not predictive of future crises
+                            - Different market dynamics in each period
+                            - Doesn't account for forced liquidations or margin calls
+                            """)
+
+                    else:
+                        st.error("Unable to fetch benchmark data for stress period")
+                else:
+                    st.error("Insufficient portfolio data for selected stress period")
 
             with col2:
                 st.markdown("##### Sector Concentration Risk")
@@ -6107,14 +6186,100 @@ def main():
 
             st.info("🎯 Institutional-grade metrics for each holding - analyze like a professional fund manager")
 
-            # Security selector
-            selected_ticker = st.selectbox(
-                "Select Security to Analyze:",
-                options=enhanced_df['Ticker'].tolist(),
-                index=0
-            )
+            # === ENHANCED CONTROLS ===
+            col1, col2 = st.columns([2, 1])
 
-            if selected_ticker:
+            with col1:
+                # Allow multiple selection for comparison
+                allow_multiple = st.checkbox("Compare Multiple Securities", value=False, help="Compare performance of multiple holdings")
+
+                if allow_multiple:
+                    selected_tickers = st.multiselect(
+                        "Select Securities to Compare",
+                        options=enhanced_df['Ticker'].tolist(),
+                        default=[enhanced_df['Ticker'].iloc[0]] if len(enhanced_df) > 0 else [],
+                        help="Select 2+ securities for comparison"
+                    )
+                else:
+                    selected_ticker = st.selectbox(
+                        "Select Security to Analyze:",
+                        options=enhanced_df['Ticker'].tolist(),
+                        index=0
+                    )
+                    selected_tickers = [selected_ticker]
+
+            with col2:
+                # Chart type selector - only allow candlestick for single security
+                if len(selected_tickers) == 1:
+                    chart_type = st.radio(
+                        "Chart Type",
+                        ["Candlestick", "Line"],
+                        index=0,
+                        horizontal=True,
+                        help="Chart visualization style"
+                    )
+                else:
+                    chart_type = "Line"  # Force line chart for multiple securities
+                    st.info("📊 Line chart mode (multi-compare)")
+
+            # === TIME PERIOD SELECTOR ===
+            st.markdown("### 📅 Time Period")
+
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+                period_preset = st.selectbox(
+                    "Quick Select",
+                    ["Custom", "1 Month", "3 Months", "6 Months", "YTD", "1 Year", "2 Years", "5 Years", "Max"],
+                    index=5,
+                    help="Predefined time periods"
+                )
+
+            # Calculate date range based on preset
+            end_date_ticker = datetime.now()
+
+            if period_preset == "Custom":
+                with col2:
+                    start_date_input = st.date_input(
+                        "Start Date",
+                        value=datetime.now() - timedelta(days=365),
+                        max_value=datetime.now()
+                    )
+                with col3:
+                    end_date_input = st.date_input(
+                        "End Date",
+                        value=datetime.now(),
+                        max_value=datetime.now()
+                    )
+                end_date_ticker = datetime.combine(end_date_input, datetime.min.time())
+                start_date_ticker = datetime.combine(start_date_input, datetime.min.time())
+            else:
+                # Calculate start date based on preset
+                if period_preset == "1 Month":
+                    start_date_ticker = end_date_ticker - timedelta(days=30)
+                elif period_preset == "3 Months":
+                    start_date_ticker = end_date_ticker - timedelta(days=90)
+                elif period_preset == "6 Months":
+                    start_date_ticker = end_date_ticker - timedelta(days=180)
+                elif period_preset == "YTD":
+                    start_date_ticker = datetime(end_date_ticker.year, 1, 1)
+                elif period_preset == "1 Year":
+                    start_date_ticker = end_date_ticker - timedelta(days=365)
+                elif period_preset == "2 Years":
+                    start_date_ticker = end_date_ticker - timedelta(days=730)
+                elif period_preset == "5 Years":
+                    start_date_ticker = end_date_ticker - timedelta(days=1825)
+                elif period_preset == "Max":
+                    start_date_ticker = end_date_ticker - timedelta(days=3650)  # 10 years max
+
+            st.divider()
+
+            # === FETCH AND DISPLAY DATA ===
+            if selected_tickers and len(selected_tickers) > 0:
+
+                if chart_type == "Candlestick" and len(selected_tickers) == 1:
+                    # === SINGLE SECURITY CANDLESTICK CHART ===
+                    selected_ticker = selected_tickers[0]
                 # Get holding data
                 holding = enhanced_df[enhanced_df['Ticker'] == selected_ticker].iloc[0]
 
@@ -6331,6 +6496,64 @@ def main():
 
                 else:
                     st.warning(f"Insufficient historical data for {selected_ticker}")
+
+                else:
+                    # === MULTI-SECURITY COMPARISON MODE ===
+                    st.subheader(f"📊 Multi-Security Comparison ({len(selected_tickers)} securities)")
+
+                    comparison_stats = []
+                    fig = go.Figure()
+
+                    colors = [COLORS['neon_blue'], COLORS['success'], COLORS['warning'],
+                             COLORS['purple'], COLORS['pink'], COLORS['orange']]
+
+                    with st.spinner("⚡ Fetching data for comparison..."):
+                        for idx, ticker in enumerate(selected_tickers):
+                            hist_data = fetch_historical_data(ticker, start_date_ticker, end_date_ticker)
+
+                            if hist_data is not None and len(hist_data) > 0:
+                                # Normalize to percentage change
+                                normalized = (hist_data['Close'] / hist_data['Close'].iloc[0] - 1) * 100
+
+                                fig.add_trace(go.Scatter(
+                                    x=normalized.index,
+                                    y=normalized,
+                                    mode='lines',
+                                    name=ticker,
+                                    line=dict(width=2, color=colors[idx % len(colors)])
+                                ))
+
+                                # Calculate stats
+                                period_return = normalized.iloc[-1]
+                                volatility = hist_data['Close'].pct_change().std() * np.sqrt(252) * 100
+                                max_dd = ((hist_data['Close'] / hist_data['Close'].cummax()) - 1).min() * 100
+
+                                comparison_stats.append({
+                                    'Ticker': ticker,
+                                    'Return': f"{period_return:+.2f}%",
+                                    'Volatility': f"{volatility:.1f}%",
+                                    'Max Drawdown': f"{max_dd:.2f}%"
+                                })
+
+                    fig.update_layout(
+                        title="Performance Comparison (Normalized to 0%)",
+                        xaxis_title="Date",
+                        yaxis_title="Return (%)",
+                        height=600,
+                        hovermode='x unified'
+                    )
+
+                    apply_chart_theme(fig)
+                    st.plotly_chart(fig, use_container_width=True)
+
+                    # Comparison table
+                    if comparison_stats:
+                        st.markdown("### 📊 Comparison Statistics")
+                        comparison_df = pd.DataFrame(comparison_stats)
+                        st.dataframe(comparison_df, use_container_width=True, hide_index=True)
+
+            else:
+                st.info("Please select at least one security to analyze")
 
         # ============================================================
         # TAB 3: RISK DECOMPOSITION (NEW)
