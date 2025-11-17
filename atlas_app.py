@@ -2854,6 +2854,81 @@ def calculate_benchmark_returns(benchmark_ticker, start_date, end_date):
         return None
 
 # ============================================================================
+# PORTFOLIO OPTIMIZATION FUNCTIONS
+# ============================================================================
+
+def optimize_max_sharpe(returns_df, risk_free_rate):
+    """Optimize for maximum Sharpe ratio"""
+    from scipy.optimize import minimize
+
+    n_assets = len(returns_df.columns)
+
+    def neg_sharpe(weights):
+        port_return = np.sum(returns_df.mean() * weights) * 252
+        port_vol = np.sqrt(np.dot(weights.T, np.dot(returns_df.cov() * 252, weights)))
+        if port_vol == 0:
+            return 999
+        return -(port_return - risk_free_rate) / port_vol
+
+    constraints = {'type': 'eq', 'fun': lambda x: np.sum(x) - 1}
+    bounds = tuple((0, 1) for _ in range(n_assets))
+    initial_guess = np.array([1/n_assets] * n_assets)
+
+    result = minimize(neg_sharpe, initial_guess, method='SLSQP', bounds=bounds, constraints=constraints)
+
+    return pd.Series(result.x, index=returns_df.columns)
+
+
+def optimize_min_volatility(returns_df):
+    """Optimize for minimum volatility"""
+    from scipy.optimize import minimize
+
+    n_assets = len(returns_df.columns)
+
+    def portfolio_vol(weights):
+        return np.sqrt(np.dot(weights.T, np.dot(returns_df.cov() * 252, weights)))
+
+    constraints = {'type': 'eq', 'fun': lambda x: np.sum(x) - 1}
+    bounds = tuple((0, 1) for _ in range(n_assets))
+    initial_guess = np.array([1/n_assets] * n_assets)
+
+    result = minimize(portfolio_vol, initial_guess, method='SLSQP', bounds=bounds, constraints=constraints)
+
+    return pd.Series(result.x, index=returns_df.columns)
+
+
+def optimize_max_return(returns_df):
+    """Optimize for maximum return"""
+    mean_returns = returns_df.mean() * 252
+    # Normalize to sum to 1
+    return mean_returns / mean_returns.sum()
+
+
+def optimize_risk_parity(returns_df):
+    """Risk parity optimization - equal risk contribution"""
+    from scipy.optimize import minimize
+
+    n_assets = len(returns_df.columns)
+    cov_matrix = returns_df.cov() * 252
+
+    def risk_parity_objective(weights):
+        port_vol = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights)))
+        if port_vol == 0:
+            return 999
+        marginal_contrib = np.dot(cov_matrix, weights) / port_vol
+        risk_contrib = weights * marginal_contrib
+        target_risk = port_vol / n_assets
+        return np.sum((risk_contrib - target_risk) ** 2)
+
+    constraints = {'type': 'eq', 'fun': lambda x: np.sum(x) - 1}
+    bounds = tuple((0, 1) for _ in range(n_assets))
+    initial_guess = np.array([1/n_assets] * n_assets)
+
+    result = minimize(risk_parity_objective, initial_guess, method='SLSQP', bounds=bounds, constraints=constraints)
+
+    return pd.Series(result.x, index=returns_df.columns)
+
+# ============================================================================
 # QUALITY SCORE CALCULATION
 # ============================================================================
 
@@ -5832,11 +5907,12 @@ def main():
             benchmark_returns = calculate_benchmark_returns(selected_benchmark, start_date, end_date)
 
         # === TAB STRUCTURE ===
-        tab1, tab2, tab3, tab4 = st.tabs([
+        tab1, tab2, tab3, tab4, tab5 = st.tabs([
             "📈 Portfolio Performance",
             "🎯 Individual Securities",
             "⚠️ Risk Decomposition",
-            "📊 Attribution & Benchmarking"
+            "📊 Attribution & Benchmarking",
+            "⚙️ Portfolio Optimization"
         ])
 
         # ============================================================
@@ -6437,7 +6513,179 @@ def main():
                 with tracking_col3:
                     st.metric("Active Positions", f"{len(enhanced_df)}",
                              help="Number of holdings in portfolio")
-    
+
+        # ============================================================
+        # TAB 5: PORTFOLIO OPTIMIZATION
+        # ============================================================
+        with tab5:
+            st.subheader("⚙️ Portfolio Optimization")
+            st.markdown("Optimize allocation using Modern Portfolio Theory")
+
+            # Optimization controls
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+                optimization_objective = st.selectbox(
+                    "Optimization Objective",
+                    ["Max Sharpe Ratio", "Min Volatility", "Max Return", "Risk Parity"],
+                    index=0,
+                    help="Choose optimization strategy"
+                )
+
+            with col2:
+                risk_free_rate_input = st.number_input(
+                    "Risk-Free Rate (%)",
+                    value=RISK_FREE_RATE * 100,
+                    min_value=0.0,
+                    max_value=10.0,
+                    step=0.1,
+                    help="Annual risk-free rate for Sharpe calculation"
+                ) / 100
+
+            with col3:
+                lookback_period = st.selectbox(
+                    "Historical Period",
+                    ["1 Year", "2 Years", "3 Years"],
+                    index=0,
+                    help="Historical data for optimization"
+                )
+
+            if st.button("🚀 Run Optimization", type="primary", use_container_width=True):
+                with st.spinner("⚡ Optimizing portfolio allocation..."):
+
+                    # Get historical returns for all holdings
+                    lookback_days = {"1 Year": 252, "2 Years": 504, "3 Years": 756}[lookback_period]
+                    start_opt = datetime.now() - timedelta(days=lookback_days)
+                    end_opt = datetime.now()
+
+                    returns_data = {}
+                    for ticker in enhanced_df['Ticker'].unique():
+                        hist_data = fetch_historical_data(ticker, start_opt, end_opt)
+                        if hist_data is not None and len(hist_data) > 0:
+                            returns_data[ticker] = hist_data['Close'].pct_change().dropna()
+
+                    # Create returns dataframe
+                    returns_df = pd.DataFrame(returns_data)
+                    returns_df = returns_df.dropna()
+
+                    if len(returns_df) > 0 and len(returns_df.columns) > 1:
+                        # Calculate optimal weights based on objective
+                        try:
+                            if optimization_objective == "Max Sharpe Ratio":
+                                optimal_weights = optimize_max_sharpe(returns_df, risk_free_rate_input)
+                            elif optimization_objective == "Min Volatility":
+                                optimal_weights = optimize_min_volatility(returns_df)
+                            elif optimization_objective == "Max Return":
+                                optimal_weights = optimize_max_return(returns_df)
+                            elif optimization_objective == "Risk Parity":
+                                optimal_weights = optimize_risk_parity(returns_df)
+
+                            # Display results
+                            current_weights = enhanced_df.set_index('Ticker')['Weight %'] / 100
+
+                            comparison_df = pd.DataFrame({
+                                'Ticker': optimal_weights.index,
+                                'Current Weight': [current_weights.get(t, 0) * 100 for t in optimal_weights.index],
+                                'Optimal Weight': optimal_weights.values * 100,
+                                'Difference': [optimal_weights.get(t, 0) * 100 - current_weights.get(t, 0) * 100
+                                              for t in optimal_weights.index]
+                            })
+
+                            comparison_df = comparison_df.sort_values('Optimal Weight', ascending=False)
+
+                            # Filter out very small weights
+                            comparison_df = comparison_df[comparison_df['Optimal Weight'] > 0.1]
+
+                            st.markdown("### 📊 Optimization Results")
+
+                            # Format for display
+                            display_comparison = comparison_df.copy()
+                            display_comparison['Current Weight'] = display_comparison['Current Weight'].apply(lambda x: f"{x:.2f}%")
+                            display_comparison['Optimal Weight'] = display_comparison['Optimal Weight'].apply(lambda x: f"{x:.2f}%")
+                            display_comparison['Difference'] = display_comparison['Difference'].apply(lambda x: f"{x:+.2f}%")
+
+                            st.dataframe(display_comparison, use_container_width=True, hide_index=True)
+
+                            # Calculate portfolio metrics
+                            st.markdown("### 📈 Expected Performance Comparison")
+
+                            # Current portfolio metrics
+                            current_return = (returns_df * current_weights).sum(axis=1).mean() * 252
+                            current_vol = (returns_df * current_weights).sum(axis=1).std() * np.sqrt(252)
+                            current_sharpe = (current_return - risk_free_rate_input) / current_vol if current_vol > 0 else 0
+
+                            # Optimal portfolio metrics
+                            optimal_return = (returns_df * optimal_weights).sum(axis=1).mean() * 252
+                            optimal_vol = (returns_df * optimal_weights).sum(axis=1).std() * np.sqrt(252)
+                            optimal_sharpe = (optimal_return - risk_free_rate_input) / optimal_vol if optimal_vol > 0 else 0
+
+                            col1, col2 = st.columns(2)
+
+                            with col1:
+                                st.markdown("#### Current Portfolio")
+                                st.metric("Expected Return", f"{current_return * 100:.2f}%")
+                                st.metric("Volatility", f"{current_vol * 100:.2f}%")
+                                st.metric("Sharpe Ratio", f"{current_sharpe:.2f}")
+
+                            with col2:
+                                st.markdown("#### Optimized Portfolio")
+                                st.metric("Expected Return", f"{optimal_return * 100:.2f}%",
+                                         delta=f"{(optimal_return - current_return) * 100:+.2f}%")
+                                st.metric("Volatility", f"{optimal_vol * 100:.2f}%",
+                                         delta=f"{(optimal_vol - current_vol) * 100:+.2f}%")
+                                st.metric("Sharpe Ratio", f"{optimal_sharpe:.2f}",
+                                         delta=f"{optimal_sharpe - current_sharpe:+.2f}")
+
+                            # Visualization: Weight comparison
+                            st.markdown("### 📊 Weight Comparison Chart")
+
+                            fig = go.Figure()
+
+                            fig.add_trace(go.Bar(
+                                y=comparison_df['Ticker'],
+                                x=comparison_df['Current Weight'],
+                                name='Current',
+                                orientation='h',
+                                marker_color=COLORS['text_muted']
+                            ))
+
+                            fig.add_trace(go.Bar(
+                                y=comparison_df['Ticker'],
+                                x=comparison_df['Optimal Weight'],
+                                name='Optimal',
+                                orientation='h',
+                                marker_color=COLORS['neon_blue']
+                            ))
+
+                            fig.update_layout(
+                                title=f"Current vs Optimal Weights ({optimization_objective})",
+                                xaxis_title="Weight (%)",
+                                yaxis_title="",
+                                height=max(400, len(comparison_df) * 25),
+                                barmode='group'
+                            )
+
+                            apply_chart_theme(fig)
+                            st.plotly_chart(fig, use_container_width=True)
+
+                            # Important disclaimer
+                            st.info("""
+                            **⚠️ Important Notes:**
+                            - Optimization is based on historical data and may not predict future performance
+                            - Results assume no transaction costs or taxes
+                            - Consider your risk tolerance and investment goals before rebalancing
+                            - Consult with a financial advisor before making investment decisions
+                            """)
+
+                        except Exception as e:
+                            st.error(f"Optimization failed: {str(e)}")
+                            st.info("Try adjusting the lookback period or check if you have sufficient historical data.")
+
+                    else:
+                        st.error("Insufficient data for optimization. Need at least 2 securities with historical returns.")
+            else:
+                st.info("👆 Click 'Run Optimization' to calculate optimal portfolio weights")
+
     # ========================================================================
     # PORTFOLIO DEEP DIVE - ENHANCED
     # ========================================================================
