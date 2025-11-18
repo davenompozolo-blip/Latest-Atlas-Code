@@ -3159,6 +3159,117 @@ def calculate_cvar(returns, confidence=0.95):
     except Exception as e:
         return None
 
+def calculate_historical_stress_test(enhanced_df):
+    """
+    Calculate portfolio performance during historical stress periods vs S&P 500.
+
+    Returns performance data for visualization of portfolio resilience during major market events.
+
+    Historical Stress Periods:
+    - 2008 Financial Crisis: Sep 2008 - Mar 2009
+    - 2011 Euro Crisis: Jul 2011 - Oct 2011
+    - 2015-16 China Slowdown: Aug 2015 - Feb 2016
+    - Dec 2018 Selloff: Oct 2018 - Dec 2018
+    - COVID-19 Crash: Feb 2020 - Mar 2020
+
+    Returns:
+        dict: Contains period data, cumulative returns, and stress metrics
+    """
+
+    # Define historical stress periods
+    stress_periods = {
+        '2008 Financial Crisis': {'start': '2008-09-01', 'end': '2009-03-31', 'color': '#FF4136'},
+        '2011 Euro Crisis': {'start': '2011-07-01', 'end': '2011-10-31', 'color': '#FF851B'},
+        '2015-16 China Slowdown': {'start': '2015-08-01', 'end': '2016-02-29', 'color': '#FFDC00'},
+        'Dec 2018 Selloff': {'start': '2018-10-01', 'end': '2018-12-31', 'color': '#39CCCC'},
+        'COVID-19 Crash': {'start': '2020-02-01', 'end': '2020-03-31', 'color': '#B10DC9'}
+    }
+
+    results = {}
+
+    # Get portfolio tickers and weights
+    tickers = enhanced_df['Ticker'].tolist()
+    weights = (enhanced_df['Weight %'] / 100).tolist()
+
+    for period_name, period_info in stress_periods.items():
+        try:
+            # Fetch S&P 500 data for this period
+            spy_data = fetch_historical_data('^GSPC', period_info['start'], period_info['end'])
+
+            if spy_data is None or spy_data.empty:
+                continue
+
+            # Fetch portfolio holdings data for this period
+            portfolio_returns = []
+            valid_weights = []
+
+            for ticker, weight in zip(tickers, weights):
+                ticker_data = fetch_historical_data(ticker, period_info['start'], period_info['end'])
+                if ticker_data is not None and not ticker_data.empty and len(ticker_data) > 0:
+                    # Calculate cumulative return for this ticker
+                    ticker_returns = ticker_data['Close'].pct_change().fillna(0)
+                    portfolio_returns.append(ticker_returns)
+                    valid_weights.append(weight)
+
+            if not portfolio_returns:
+                continue
+
+            # Normalize weights
+            valid_weights = np.array(valid_weights)
+            valid_weights = valid_weights / valid_weights.sum()
+
+            # Calculate weighted portfolio returns
+            returns_df = pd.DataFrame(portfolio_returns).T
+            portfolio_daily_returns = (returns_df * valid_weights).sum(axis=1)
+
+            # Calculate cumulative returns
+            portfolio_cumulative = (1 + portfolio_daily_returns).cumprod()
+            spy_cumulative = (1 + spy_data['Close'].pct_change().fillna(0)).cumprod()
+
+            # Align indices
+            common_index = portfolio_cumulative.index.intersection(spy_cumulative.index)
+            if len(common_index) == 0:
+                continue
+
+            portfolio_cumulative = portfolio_cumulative.loc[common_index]
+            spy_cumulative = spy_cumulative.loc[common_index]
+
+            # Normalize to start at 100
+            portfolio_cumulative = (portfolio_cumulative / portfolio_cumulative.iloc[0]) * 100
+            spy_cumulative = (spy_cumulative / spy_cumulative.iloc[0]) * 100
+
+            # Calculate stress metrics
+            total_return_portfolio = ((portfolio_cumulative.iloc[-1] / 100) - 1) * 100
+            total_return_spy = ((spy_cumulative.iloc[-1] / 100) - 1) * 100
+
+            max_drawdown_portfolio = ((portfolio_cumulative / portfolio_cumulative.cummax()) - 1).min() * 100
+            max_drawdown_spy = ((spy_cumulative / spy_cumulative.cummax()) - 1).min() * 100
+
+            volatility_portfolio = portfolio_daily_returns.std() * np.sqrt(252) * 100
+            volatility_spy = spy_data['Close'].pct_change().std() * np.sqrt(252) * 100
+
+            results[period_name] = {
+                'dates': common_index,
+                'portfolio_cumulative': portfolio_cumulative,
+                'spy_cumulative': spy_cumulative,
+                'metrics': {
+                    'portfolio_return': total_return_portfolio,
+                    'spy_return': total_return_spy,
+                    'portfolio_drawdown': max_drawdown_portfolio,
+                    'spy_drawdown': max_drawdown_spy,
+                    'portfolio_volatility': volatility_portfolio,
+                    'spy_volatility': volatility_spy,
+                    'outperformance': total_return_portfolio - total_return_spy
+                },
+                'color': period_info['color']
+            }
+
+        except Exception as e:
+            # Skip periods where data is unavailable
+            continue
+
+    return results
+
 def calculate_var_cvar_portfolio_optimization(enhanced_df, confidence_level=0.95, lookback_days=252):
     """
     Calculate optimal portfolio weights to minimize CVaR (Conditional Value at Risk)
@@ -5744,14 +5855,122 @@ def main():
                     st.warning("No data available")
         
         with tab6:
-            st.markdown("#### 💵 Bond Yields & Treasury Rates")
-            st.info("📊 **Key Insight:** Monitor the yield curve for recession signals and inflation expectations")
+            st.markdown("#### 💵 Global Bond Yields & Yield Curves")
+            st.info("📊 **Key Insight:** Monitor yield curves for recession signals, inflation expectations, and relative value across markets")
 
-            # NEW: Yield Curve Visualization
-            yield_curve = create_yield_curve()
-            if yield_curve:
-                st.plotly_chart(yield_curve, use_container_width=True)
-                st.caption(f"**Data Freshness:** {ATLASFormatter.format_timestamp()} • {ATLASFormatter.get_freshness_badge(2)}")
+            # Country/Region selector for yield curves
+            selected_curve = st.selectbox(
+                "Select Yield Curve",
+                ["US Treasuries", "UK Gilts", "German Bunds", "SA Government Bonds"],
+                index=0,
+                help="Compare government bond yields across major economies"
+            )
+
+            # Display yield curve based on selection
+            if selected_curve == "US Treasuries":
+                yield_curve = create_yield_curve()
+                if yield_curve:
+                    st.plotly_chart(yield_curve, use_container_width=True)
+                    st.caption(f"**Data Freshness:** {ATLASFormatter.format_timestamp()} • {ATLASFormatter.get_freshness_badge(2)}")
+
+                    # Calculate and display spread
+                    treasuries_10y = yf.Ticker("^TNX")
+                    treasuries_2y = yf.Ticker("^FVX")
+                    try:
+                        hist_10y = treasuries_10y.history(period="1d")
+                        hist_2y = treasuries_2y.history(period="1d")
+                        if not hist_10y.empty and not hist_2y.empty:
+                            spread_10y_2y = hist_10y['Close'].iloc[-1] - hist_2y['Close'].iloc[-1]
+                            if spread_10y_2y > 0:
+                                st.success(f"✅ 10Y-2Y Spread: **+{spread_10y_2y:.2f}%** (Normal - Positive slope)")
+                            else:
+                                st.error(f"⚠️ 10Y-2Y Spread: **{spread_10y_2y:.2f}%** (INVERTED - Potential recession signal)")
+                    except:
+                        pass
+
+            elif selected_curve == "UK Gilts":
+                st.warning("📊 UK Gilt yield curve data integration pending. Sample structure shown:")
+                # Sample data for illustration
+                maturities = [2, 5, 10, 30]
+                yields = [4.2, 4.0, 4.1, 4.5]  # Sample yields
+
+                fig_gilts = go.Figure()
+                fig_gilts.add_trace(go.Scatter(
+                    x=maturities,
+                    y=yields,
+                    mode='lines+markers',
+                    line=dict(color='#FF6B6B', width=3),
+                    marker=dict(size=10),
+                    text=[f"{m}Y: {y:.2f}%" for m, y in zip(maturities, yields)],
+                    hovertemplate='<b>%{text}</b><extra></extra>'
+                ))
+
+                fig_gilts.update_layout(
+                    title="📈 UK Gilt Yield Curve (Sample)",
+                    xaxis_title="Maturity (Years)",
+                    yaxis_title="Yield (%)",
+                    height=400,
+                    showlegend=False
+                )
+                apply_chart_theme(fig_gilts)
+                st.plotly_chart(fig_gilts, use_container_width=True)
+                st.caption("*Real-time UK gilt data can be integrated via Bloomberg API or Bank of England feeds*")
+
+            elif selected_curve == "German Bunds":
+                st.warning("📊 German Bund yield curve data integration pending. Sample structure shown:")
+                # Sample data for illustration
+                maturities = [2, 5, 10, 30]
+                yields = [2.8, 2.5, 2.6, 2.9]  # Sample yields
+
+                fig_bunds = go.Figure()
+                fig_bunds.add_trace(go.Scatter(
+                    x=maturities,
+                    y=yields,
+                    mode='lines+markers',
+                    line=dict(color='#FFD700', width=3),
+                    marker=dict(size=10),
+                    text=[f"{m}Y: {y:.2f}%" for m, y in zip(maturities, yields)],
+                    hovertemplate='<b>%{text}</b><extra></extra>'
+                ))
+
+                fig_bunds.update_layout(
+                    title="📈 German Bund Yield Curve (Sample)",
+                    xaxis_title="Maturity (Years)",
+                    yaxis_title="Yield (%)",
+                    height=400,
+                    showlegend=False
+                )
+                apply_chart_theme(fig_bunds)
+                st.plotly_chart(fig_bunds, use_container_width=True)
+                st.caption("*Real-time Bund data can be integrated via Bloomberg API or Bundesbank feeds*")
+
+            elif selected_curve == "SA Government Bonds":
+                st.warning("📊 SA Government Bond yield curve data integration pending. Sample structure shown:")
+                # Sample data for illustration
+                maturities = [3, 5, 10, 20]
+                yields = [10.5, 10.8, 11.2, 11.5]  # Sample yields
+
+                fig_sagov = go.Figure()
+                fig_sagov.add_trace(go.Scatter(
+                    x=maturities,
+                    y=yields,
+                    mode='lines+markers',
+                    line=dict(color='#00D4FF', width=3),
+                    marker=dict(size=10),
+                    text=[f"{m}Y: {y:.2f}%" for m, y in zip(maturities, yields)],
+                    hovertemplate='<b>%{text}</b><extra></extra>'
+                ))
+
+                fig_sagov.update_layout(
+                    title="📈 SA Government Bond Yield Curve (Sample)",
+                    xaxis_title="Maturity (Years)",
+                    yaxis_title="Yield (%)",
+                    height=400,
+                    showlegend=False
+                )
+                apply_chart_theme(fig_sagov)
+                st.plotly_chart(fig_sagov, use_container_width=True)
+                st.caption("*Real-time SA bond data can be integrated via JSE or SARB feeds*")
 
             st.markdown("---")
 
@@ -5912,116 +6131,150 @@ def main():
                 st.plotly_chart(corr_network, use_container_width=True)
         
         with tab4:
-            st.markdown("#### ⚡ Market Stress Scenarios")
-            st.info("💡 **Stress Testing:** Evaluate portfolio resilience under extreme market conditions")
+            st.markdown("#### ⚡ Historical Stress Test Analysis")
+            st.info("💡 **Historical Stress Testing:** See how your current portfolio would have performed during major market crises")
 
-            # Stress scenario definitions
-            stress_scenarios = {
-                '📉 Market Crash (-30%)': -0.30,
-                '📊 Moderate Correction (-15%)': -0.15,
-                '📈 Strong Rally (+25%)': 0.25,
-                '💥 Flash Crash (-20%)': -0.20,
-                '🔥 Tech Bubble Burst (-40%)': -0.40,
-                '⚠️ Credit Crisis (-35%)': -0.35
-            }
+            # Run historical stress test calculation
+            with st.spinner("Calculating historical stress scenarios..."):
+                stress_results = calculate_historical_stress_test(enhanced_df)
 
-            col1, col2 = st.columns(2)
+            if not stress_results:
+                st.warning("⚠️ Unable to calculate historical stress tests. This may be due to data availability for your holdings during historical periods.")
+            else:
+                # Period selector
+                selected_period = st.selectbox(
+                    "Select Historical Stress Period",
+                    options=list(stress_results.keys()),
+                    index=len(stress_results) - 1 if len(stress_results) > 0 else 0
+                )
 
-            with col1:
-                st.markdown("##### Market Shock Scenarios")
-                # v9.7 FIX: Use correct Total Value calculation
-                current_value = enhanced_df['Total Value'].sum()
+                if selected_period in stress_results:
+                    period_data = stress_results[selected_period]
+                    metrics = period_data['metrics']
 
-                stress_results = []
-                for scenario, shock in stress_scenarios.items():
-                    new_value = current_value * (1 + shock)
-                    impact = current_value * shock
-                    stress_results.append({
-                        'Scenario': scenario,
-                        'Portfolio Impact': impact,
-                        'New Value': new_value,
-                        'Return': shock * 100
-                    })
+                    # Display key metrics
+                    st.markdown("##### 📊 Performance Metrics")
+                    metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
 
-                stress_df = pd.DataFrame(stress_results)
-                stress_df['Portfolio Impact'] = stress_df['Portfolio Impact'].apply(lambda x: format_currency(x))
-                stress_df['New Value'] = stress_df['New Value'].apply(lambda x: format_currency(x))
-                stress_df['Return'] = stress_df['Return'].apply(lambda x: f"{x:+.1f}%")
+                    with metric_col1:
+                        st.metric(
+                            "Portfolio Return",
+                            f"{metrics['portfolio_return']:+.2f}%",
+                            delta=None
+                        )
 
-                st.dataframe(stress_df, use_container_width=True, hide_index=True, column_config=None)
+                    with metric_col2:
+                        st.metric(
+                            "S&P 500 Return",
+                            f"{metrics['spy_return']:+.2f}%",
+                            delta=None
+                        )
 
-                st.caption(f"💼 Current Portfolio Value: {format_currency(current_value)}")
+                    with metric_col3:
+                        outperf_color = "normal" if metrics['outperformance'] >= 0 else "inverse"
+                        st.metric(
+                            "Outperformance",
+                            f"{metrics['outperformance']:+.2f}%",
+                            delta=f"{metrics['outperformance']:+.2f}%",
+                            delta_color=outperf_color
+                        )
 
-            # v9.7 NEW: Stress Test Visualization
-            st.markdown("---")
-            st.markdown("##### 📊 Stress Test Impact Visualization")
+                    with metric_col4:
+                        st.metric(
+                            "Max Drawdown",
+                            f"{metrics['portfolio_drawdown']:.2f}%",
+                            delta=f"{metrics['portfolio_drawdown'] - metrics['spy_drawdown']:+.2f}% vs SPY"
+                        )
 
-            # Create waterfall chart for stress scenarios
-            scenarios_short = [s.split(' ')[0] + ' ' + s.split('(')[1].replace(')', '') for s in stress_scenarios.keys()]
-            shocks = list(stress_scenarios.values())
+                    # Create line graph showing cumulative returns
+                    st.markdown("##### 📈 Cumulative Returns Comparison")
 
-            fig_stress = go.Figure()
+                    fig_stress = go.Figure()
 
-            colors_stress = [COLORS['success'] if s > 0 else COLORS['danger'] for s in shocks]
+                    # Portfolio line
+                    fig_stress.add_trace(go.Scatter(
+                        x=period_data['dates'],
+                        y=period_data['portfolio_cumulative'],
+                        mode='lines',
+                        name='Your Portfolio',
+                        line=dict(color='#00D4FF', width=3),
+                        hovertemplate='<b>Portfolio</b><br>Date: %{x|%Y-%m-%d}<br>Value: %{y:.2f}<extra></extra>'
+                    ))
 
-            fig_stress.add_trace(go.Bar(
-                x=scenarios_short,
-                y=[s * 100 for s in shocks],
-                marker=dict(
-                    color=colors_stress,
-                    line=dict(color=COLORS['border'], width=2),
-                    opacity=0.8
-                ),
-                text=[f"{s*100:+.0f}%" for s in shocks],
-                textposition='outside',
-                textfont=dict(size=12, color=COLORS['text_primary']),
-                hovertemplate='<b>%{x}</b><br>Impact: %{y:.1f}%<br>Portfolio Value: $%{customdata:,.0f}<extra></extra>',
-                customdata=[current_value * (1 + s) for s in shocks]
-            ))
+                    # S&P 500 line
+                    fig_stress.add_trace(go.Scatter(
+                        x=period_data['dates'],
+                        y=period_data['spy_cumulative'],
+                        mode='lines',
+                        name='S&P 500',
+                        line=dict(color='#FF4136', width=2, dash='dash'),
+                        hovertemplate='<b>S&P 500</b><br>Date: %{x|%Y-%m-%d}<br>Value: %{y:.2f}<extra></extra>'
+                    ))
 
-            fig_stress.update_layout(
-                title="Stress Test Scenarios - Portfolio Impact",
-                xaxis_title="Scenario",
-                yaxis_title="Return Impact (%)",
-                height=400,
-                showlegend=False,
-                xaxis=dict(tickangle=-45)
-            )
+                    fig_stress.update_layout(
+                        title=f"{selected_period} - Portfolio vs S&P 500",
+                        xaxis_title="Date",
+                        yaxis_title="Cumulative Return (Base 100)",
+                        height=500,
+                        hovermode='x unified',
+                        legend=dict(
+                            orientation="h",
+                            yanchor="bottom",
+                            y=1.02,
+                            xanchor="right",
+                            x=1
+                        )
+                    )
 
-            fig_stress.add_hline(
-                y=0,
-                line_dash="solid",
-                line_color=COLORS['text_muted'],
-                line_width=2
-            )
+                    # Add baseline at 100
+                    fig_stress.add_hline(
+                        y=100,
+                        line_dash="dot",
+                        line_color=COLORS['text_muted'],
+                        line_width=1,
+                        annotation_text="Starting Value"
+                    )
 
-            apply_chart_theme(fig_stress)
-            st.plotly_chart(fig_stress, use_container_width=True)
+                    apply_chart_theme(fig_stress)
+                    st.plotly_chart(fig_stress, use_container_width=True)
 
-            with col2:
-                st.markdown("##### Sector Concentration Risk")
-                sector_concentration = enhanced_df.groupby('Sector')['Weight %'].sum().sort_values(ascending=False)
+                    # Summary metrics table
+                    st.markdown("##### 📋 Detailed Stress Metrics")
 
-                concentration_warnings = []
-                for sector, weight in sector_concentration.items():
-                    if weight > 30:
-                        risk_level = "🔴 HIGH"
-                    elif weight > 20:
-                        risk_level = "🟡 MEDIUM"
-                    else:
-                        risk_level = "🟢 LOW"
+                    summary_data = []
+                    for period_name, data in stress_results.items():
+                        m = data['metrics']
+                        summary_data.append({
+                            'Period': period_name,
+                            'Portfolio Return': f"{m['portfolio_return']:+.2f}%",
+                            'S&P 500 Return': f"{m['spy_return']:+.2f}%",
+                            'Outperformance': f"{m['outperformance']:+.2f}%",
+                            'Portfolio Max DD': f"{m['portfolio_drawdown']:.2f}%",
+                            'SPY Max DD': f"{m['spy_drawdown']:.2f}%",
+                            'Portfolio Vol': f"{m['portfolio_volatility']:.2f}%"
+                        })
 
-                    concentration_warnings.append({
-                        'Sector': sector,
-                        'Allocation': f"{weight:.1f}%",
-                        'Risk Level': risk_level
-                    })
+                    summary_df = pd.DataFrame(summary_data)
+                    st.dataframe(summary_df, use_container_width=True, hide_index=True, column_config=None)
 
-                conc_df = pd.DataFrame(concentration_warnings)
-                st.dataframe(conc_df, use_container_width=True, hide_index=True, column_config=None)
+                    # Methodology notes
+                    st.markdown("---")
+                    st.markdown("##### ⚠️ Methodology & Important Notes")
+                    st.caption("""
+                    **Calculation Method:**
+                    - Uses current portfolio weights applied to historical price data
+                    - Compares against S&P 500 (^GSPC) performance during same periods
+                    - Cumulative returns normalized to base 100 at period start
+                    - Maximum drawdown calculated as peak-to-trough decline
 
-                st.caption("⚠️ Sectors >30% = High concentration risk")
-                st.caption("🟡 Sectors 20-30% = Medium concentration risk")
+                    **Important Limitations:**
+                    - ⚠️ **Survivorship Bias:** Analysis assumes current holdings existed during historical periods. Companies that failed or weren't publicly traded are excluded.
+                    - ⚠️ **Hindsight Bias:** Current portfolio composition may differ significantly from what would have been held historically
+                    - ⚠️ **Data Availability:** Some holdings may lack historical data for earlier periods, affecting accuracy
+                    - ⚠️ **No Rebalancing:** Assumes static weights throughout each period (no tactical adjustments)
+
+                    **Use Case:** This analysis provides directional insight into portfolio resilience during crises, but should not be interpreted as definitive historical performance.
+                    """)
 
         with tab5:  # NEW VaR/CVaR Optimization Tab
             st.markdown("### 🎯 VaR/CVaR Portfolio Optimization")
