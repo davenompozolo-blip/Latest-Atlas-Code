@@ -340,7 +340,7 @@ st.markdown("""
     }
 
     div[data-testid="stMetric"] [data-testid="stMetricValue"] {
-        font-size: 2.2em !important;
+        font-size: 1.8em !important;
         font-weight: 800 !important;
         background: linear-gradient(135deg, #ffffff 0%, #00d4ff 100%);
         background-clip: text;
@@ -403,6 +403,40 @@ st.markdown("""
         font-size: 14px !important;
         color: #e0e7ee !important;
         font-weight: 500 !important;
+    }
+
+    /* ============================================
+       NUCLEAR OPTION - COMPLETELY REMOVE TABLE DROPDOWNS
+       ============================================ */
+
+    /* Hide ALL table controls that cause issues */
+    div[data-testid="stDataFrame"] button,
+    div[data-testid="stDataFrame"] [role="button"],
+    div[data-testid="stDataFrame"] [data-baseweb="popover"],
+    div[data-testid="stDataFrame"] [data-baseweb="menu"],
+    div[data-testid="stDataFrame"] [role="menu"],
+    div[data-testid="stDataFrame"] [role="listbox"] {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+        position: absolute !important;
+        left: -9999px !important;
+    }
+
+    /* Remove column resize handles */
+    div[data-testid="stDataFrameResizeHandle"] {
+        display: none !important;
+    }
+
+    /* Remove any floating menus */
+    div[data-baseweb="popover"] {
+        display: none !important;
+    }
+
+    /* Prevent any dropdown overlays */
+    div[role="presentation"] {
+        display: none !important;
     }
 
     /* ============================================
@@ -1156,7 +1190,7 @@ def create_signal_health_badge(metrics):
 
     badge_html = f"""
     <div style='display: inline-block; background: {color_map[status]};
-                color: #000000; padding: 10px 20px; border-radius: 20px;
+                color: #ffffff; padding: 10px 20px; border-radius: 20px;
                 font-weight: 700; font-size: 15px; margin: 10px 0;
                 box-shadow: 0 4px 12px rgba(0,0,0,0.3);'>
         {label} ({percentage:.0f}%)
@@ -5032,7 +5066,7 @@ def main():
         </div>
         """, unsafe_allow_html=True)
     
-    st.sidebar.markdown("## 🎛️ NAVIGATION")
+    st.sidebar.markdown("### NAVIGATION")
     page = st.sidebar.radio("Select Module", [
         "🔥 Phoenix Parser",
         "🏠 Portfolio Home",
