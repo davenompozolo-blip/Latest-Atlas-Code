@@ -3307,6 +3307,71 @@ def calculate_var_cvar_portfolio_optimization(enhanced_df, confidence_level=0.95
 
     return rebalancing_df, optimization_metrics
 
+def optimize_max_sharpe(returns_df, risk_free_rate):
+    """Optimize for maximum Sharpe ratio using Modern Portfolio Theory"""
+    from scipy.optimize import minimize
+
+    n_assets = len(returns_df.columns)
+
+    def neg_sharpe(weights):
+        port_return = np.sum(returns_df.mean() * weights) * 252
+        port_vol = np.sqrt(np.dot(weights.T, np.dot(returns_df.cov() * 252, weights)))
+        return -(port_return - risk_free_rate) / port_vol if port_vol > 0 else 0
+
+    constraints = {'type': 'eq', 'fun': lambda x: np.sum(x) - 1}
+    bounds = tuple((0, 1) for _ in range(n_assets))
+    initial_guess = np.array([1/n_assets] * n_assets)
+
+    result = minimize(neg_sharpe, initial_guess, method='SLSQP', bounds=bounds, constraints=constraints)
+
+    return pd.Series(result.x, index=returns_df.columns)
+
+def optimize_min_volatility(returns_df):
+    """Optimize for minimum volatility"""
+    from scipy.optimize import minimize
+
+    n_assets = len(returns_df.columns)
+
+    def portfolio_vol(weights):
+        return np.sqrt(np.dot(weights.T, np.dot(returns_df.cov() * 252, weights)))
+
+    constraints = {'type': 'eq', 'fun': lambda x: np.sum(x) - 1}
+    bounds = tuple((0, 1) for _ in range(n_assets))
+    initial_guess = np.array([1/n_assets] * n_assets)
+
+    result = minimize(portfolio_vol, initial_guess, method='SLSQP', bounds=bounds, constraints=constraints)
+
+    return pd.Series(result.x, index=returns_df.columns)
+
+def optimize_max_return(returns_df):
+    """Optimize for maximum return"""
+    mean_returns = returns_df.mean() * 252
+    return mean_returns / mean_returns.sum()
+
+def optimize_risk_parity(returns_df):
+    """Risk parity optimization - equal risk contribution"""
+    from scipy.optimize import minimize
+
+    n_assets = len(returns_df.columns)
+    cov_matrix = returns_df.cov() * 252
+
+    def risk_parity_objective(weights):
+        port_vol = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights)))
+        if port_vol == 0:
+            return 1e10
+        marginal_contrib = np.dot(cov_matrix, weights) / port_vol
+        risk_contrib = weights * marginal_contrib
+        target_risk = port_vol / n_assets
+        return np.sum((risk_contrib - target_risk) ** 2)
+
+    constraints = {'type': 'eq', 'fun': lambda x: np.sum(x) - 1}
+    bounds = tuple((0, 1) for _ in range(n_assets))
+    initial_guess = np.array([1/n_assets] * n_assets)
+
+    result = minimize(risk_parity_objective, initial_guess, method='SLSQP', bounds=bounds, constraints=constraints)
+
+    return pd.Series(result.x, index=returns_df.columns)
+
 @st.cache_data(ttl=300)
 def calculate_max_drawdown(returns):
     """Calculate Maximum Drawdown with caching for improved performance"""
