@@ -2955,7 +2955,14 @@ def create_enhanced_holdings_table(df):
             enhanced_df.at[idx, 'Price Target'] = analyst_data['target_price']
         else:
             enhanced_df.at[idx, 'Analyst Rating'] = 'No Coverage'
-    
+
+        # Calculate Quality Score
+        info = fetch_stock_info(ticker)
+        if info:
+            enhanced_df.at[idx, 'Quality Score'] = calculate_quality_score(ticker, info)
+        else:
+            enhanced_df.at[idx, 'Quality Score'] = 5.0
+
     enhanced_df['Sector'] = enhanced_df['Sector'].fillna('Other')
     enhanced_df['Shares'] = enhanced_df['Shares'].round(0).astype(int)
     
@@ -2969,6 +2976,62 @@ def create_enhanced_holdings_table(df):
     enhanced_df['Weight %'] = (enhanced_df['Total Value'] / total_value * 100) if total_value > 0 else 0
     
     return enhanced_df
+
+def calculate_quality_score(ticker, info):
+    """
+    Calculate comprehensive quality score (0-10)
+    Based on: Profitability, Growth, Financial Health, Valuation
+    """
+    score = 5.0  # Start at neutral
+
+    try:
+        # Profitability metrics
+        roe = info.get('returnOnEquity', 0)
+        if roe and roe > 0.15:
+            score += 1
+        elif roe and roe > 0.10:
+            score += 0.5
+
+        # Growth metrics
+        revenue_growth = info.get('revenueGrowth', 0)
+        if revenue_growth and revenue_growth > 0.15:
+            score += 1
+        elif revenue_growth and revenue_growth > 0.05:
+            score += 0.5
+
+        # Financial health
+        debt_to_equity = info.get('debtToEquity', 0)
+        if debt_to_equity and debt_to_equity < 50:
+            score += 1
+        elif debt_to_equity and debt_to_equity < 100:
+            score += 0.5
+
+        # Profitability
+        profit_margin = info.get('profitMargins', 0)
+        if profit_margin and profit_margin > 0.20:
+            score += 1
+        elif profit_margin and profit_margin > 0.10:
+            score += 0.5
+
+        # Current ratio (liquidity)
+        current_ratio = info.get('currentRatio', 0)
+        if current_ratio and current_ratio > 2:
+            score += 0.5
+        elif current_ratio and current_ratio > 1:
+            score += 0.25
+
+        # Analyst recommendations
+        recommendation = info.get('recommendationKey', '')
+        if recommendation in ['strong_buy', 'buy']:
+            score += 0.5
+
+        # Cap at 10
+        score = min(10.0, score)
+
+    except Exception as e:
+        score = 5.0
+
+    return round(score, 1)
 
 def style_holdings_dataframe(df):
     display_df = df[[
@@ -5366,9 +5429,62 @@ def main():
 
         st.markdown("---")
         st.markdown("### 📋 Holdings")
-        display_df = style_holdings_dataframe(enhanced_df)
-        st.dataframe(display_df, use_container_width=True, hide_index=True, height=500, column_config=None)
-        
+
+        # Column selector for interactive table customization
+        with st.expander("⚙️ Customize Columns", expanded=False):
+            # Define all available columns
+            ALL_COLUMNS = [
+                'Ticker', 'Asset Name', 'Shares', 'Avg Cost', 'Current Price',
+                'Daily Change %', '5D Return %', 'YTD Return %', 'Weight %',
+                'Daily P&L $', 'Total Gain/Loss $', 'Total Gain/Loss %',
+                'Beta', 'Analyst Rating', 'Quality Score', 'Sector',
+                'Price Target', 'Volume'
+            ]
+
+            # Default columns to show
+            DEFAULT_COLUMNS = [
+                'Ticker', 'Asset Name', 'Shares', 'Current Price',
+                'Daily Change %', '5D Return %', 'Weight %',
+                'Total Gain/Loss $', 'Total Gain/Loss %', 'Quality Score'
+            ]
+
+            # Filter only columns that exist in enhanced_df
+            available_columns = [col for col in ALL_COLUMNS if col in enhanced_df.columns]
+            default_selected = [col for col in DEFAULT_COLUMNS if col in enhanced_df.columns]
+
+            selected_columns = st.multiselect(
+                "Select Columns to Display",
+                options=available_columns,
+                default=default_selected,
+                help="Choose which columns to show in the holdings table"
+            )
+
+        # Display holdings table
+        if selected_columns:
+            # Create display dataframe with selected columns
+            display_df = enhanced_df[selected_columns].copy()
+
+            # Format columns appropriately
+            pct_cols = [col for col in selected_columns if '%' in col]
+            for col in pct_cols:
+                if col in display_df.columns:
+                    display_df[col] = display_df[col].apply(lambda x: format_percentage(x) if pd.notna(x) else 'N/A')
+
+            currency_cols = ['Avg Cost', 'Current Price', 'Daily P&L $', 'Total Gain/Loss $', 'Price Target']
+            for col in currency_cols:
+                if col in display_df.columns:
+                    display_df[col] = display_df[col].apply(lambda x: format_currency(x) if pd.notna(x) else 'N/A')
+
+            # Add arrow indicators for change columns
+            if 'Daily Change %' in display_df.columns:
+                display_df['Daily Change %'] = display_df['Daily Change %'].apply(add_arrow_indicator)
+            if 'Total Gain/Loss %' in display_df.columns:
+                display_df['Total Gain/Loss %'] = display_df['Total Gain/Loss %'].apply(add_arrow_indicator)
+
+            st.dataframe(display_df, use_container_width=True, hide_index=True, height=500, column_config=None)
+        else:
+            st.warning("⚠️ Please select at least one column to display")
+
         st.info("💡 **Tip:** Head to the Valuation House to analyze intrinsic values of any ticker!")
 
         # Add VaR/CVaR Optimization Toggle
