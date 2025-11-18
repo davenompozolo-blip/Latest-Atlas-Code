@@ -6658,10 +6658,67 @@ def main():
 
                 st.divider()
 
-                # === FETCH COMPREHENSIVE DATA FOR TICKER ===
-                end_date_ticker = datetime.now()
-                start_date_ticker = end_date_ticker - timedelta(days=365)
+                # === CHART CONTROLS ===
+                st.markdown("#### ⚙️ Chart Settings")
 
+                ctrl_col1, ctrl_col2, ctrl_col3, ctrl_col4 = st.columns([2, 2, 2, 2])
+
+                with ctrl_col1:
+                    time_range = st.selectbox(
+                        "Time Period",
+                        options=["1M", "3M", "6M", "YTD", "1Y", "2Y", "5Y", "Max"],
+                        index=4  # Default to 1Y
+                    )
+
+                with ctrl_col2:
+                    chart_type = st.selectbox(
+                        "Chart Type",
+                        options=["Candlestick", "Line"],
+                        index=0
+                    )
+
+                with ctrl_col3:
+                    show_volume = st.checkbox("Show Volume", value=True)
+
+                with ctrl_col4:
+                    show_indicators = st.checkbox("Show Indicators", value=True)
+
+                # Multi-security comparison
+                st.markdown("#### 📊 Multi-Security Comparison")
+                compare_mode = st.checkbox("Enable Comparison Mode", value=False)
+
+                compare_tickers = [selected_ticker]
+                if compare_mode:
+                    available_tickers = [t for t in enhanced_df['Ticker'].tolist() if t != selected_ticker]
+                    additional_tickers = st.multiselect(
+                        "Add securities to compare:",
+                        options=available_tickers,
+                        max_selections=4,
+                        help="Compare up to 5 securities total"
+                    )
+                    compare_tickers.extend(additional_tickers)
+
+                # === CALCULATE DATE RANGE ===
+                end_date_ticker = datetime.now()
+
+                if time_range == "1M":
+                    start_date_ticker = end_date_ticker - timedelta(days=30)
+                elif time_range == "3M":
+                    start_date_ticker = end_date_ticker - timedelta(days=90)
+                elif time_range == "6M":
+                    start_date_ticker = end_date_ticker - timedelta(days=180)
+                elif time_range == "YTD":
+                    start_date_ticker = datetime(end_date_ticker.year, 1, 1)
+                elif time_range == "1Y":
+                    start_date_ticker = end_date_ticker - timedelta(days=365)
+                elif time_range == "2Y":
+                    start_date_ticker = end_date_ticker - timedelta(days=730)
+                elif time_range == "5Y":
+                    start_date_ticker = end_date_ticker - timedelta(days=1825)
+                else:  # Max
+                    start_date_ticker = end_date_ticker - timedelta(days=3650)  # 10 years
+
+                # === FETCH COMPREHENSIVE DATA FOR TICKER ===
                 ticker_hist = fetch_historical_data(selected_ticker, start_date_ticker, end_date_ticker)
 
                 if ticker_hist is not None and len(ticker_hist) > 20:
@@ -6708,81 +6765,217 @@ def main():
                     st.divider()
 
                     # === PRICE CHART WITH TECHNICAL INDICATORS ===
-                    st.subheader("📊 Price Chart & Technical Analysis")
+                    if compare_mode and len(compare_tickers) > 1:
+                        st.subheader("📊 Multi-Security Comparison")
 
-                    # Calculate technical indicators
-                    ticker_hist['MA_50'] = ticker_hist['Close'].rolling(50).mean()
-                    ticker_hist['MA_200'] = ticker_hist['Close'].rolling(200).mean()
+                        # Fetch data for all comparison tickers
+                        comparison_data = {}
+                        colors = ['#00D4FF', '#FF4136', '#2ECC40', '#FFDC00', '#B10DC9']
 
-                    # Bollinger Bands
-                    ticker_hist['BB_middle'] = ticker_hist['Close'].rolling(20).mean()
-                    ticker_hist['BB_std'] = ticker_hist['Close'].rolling(20).std()
-                    ticker_hist['BB_upper'] = ticker_hist['BB_middle'] + (2 * ticker_hist['BB_std'])
-                    ticker_hist['BB_lower'] = ticker_hist['BB_middle'] - (2 * ticker_hist['BB_std'])
+                        for idx, ticker in enumerate(compare_tickers):
+                            ticker_data = fetch_historical_data(ticker, start_date_ticker, end_date_ticker)
+                            if ticker_data is not None and len(ticker_data) > 0:
+                                # Normalize to base 100
+                                normalized = (ticker_data['Close'] / ticker_data['Close'].iloc[0]) * 100
+                                comparison_data[ticker] = {
+                                    'data': normalized,
+                                    'color': colors[idx % len(colors)]
+                                }
 
-                    fig_price = go.Figure()
+                        # Create comparison chart
+                        fig_compare = go.Figure()
 
-                    # Candlestick
-                    fig_price.add_trace(go.Candlestick(
-                        x=ticker_hist.index,
-                        open=ticker_hist['Open'],
-                        high=ticker_hist['High'],
-                        low=ticker_hist['Low'],
-                        close=ticker_hist['Close'],
-                        name='Price',
-                        increasing_line_color='#00ff88',
-                        decreasing_line_color='#ff3366'
-                    ))
+                        for ticker, info in comparison_data.items():
+                            fig_compare.add_trace(go.Scatter(
+                                x=info['data'].index,
+                                y=info['data'],
+                                mode='lines',
+                                name=ticker,
+                                line=dict(color=info['color'], width=2),
+                                hovertemplate=f'<b>{ticker}</b><br>Date: %{{x|%Y-%m-%d}}<br>Value: %{{y:.2f}}<extra></extra>'
+                            ))
 
-                    # Moving averages
-                    fig_price.add_trace(go.Scatter(
-                        x=ticker_hist.index,
-                        y=ticker_hist['MA_50'],
-                        mode='lines',
-                        line=dict(color='#00d4ff', width=1),
-                        name='MA 50'
-                    ))
+                        fig_compare.update_layout(
+                            title=f"Normalized Price Comparison ({time_range}) - Base 100",
+                            xaxis_title="Date",
+                            yaxis_title="Normalized Value (Base 100)",
+                            height=600,
+                            hovermode='x unified',
+                            legend=dict(
+                                orientation="h",
+                                yanchor="bottom",
+                                y=1.02,
+                                xanchor="right",
+                                x=1
+                            )
+                        )
 
-                    fig_price.add_trace(go.Scatter(
-                        x=ticker_hist.index,
-                        y=ticker_hist['MA_200'],
-                        mode='lines',
-                        line=dict(color='#ffaa00', width=1),
-                        name='MA 200'
-                    ))
+                        fig_compare.add_hline(
+                            y=100,
+                            line_dash="dot",
+                            line_color=COLORS['text_muted'],
+                            line_width=1,
+                            annotation_text="Starting Value"
+                        )
 
-                    # Bollinger Bands
-                    fig_price.add_trace(go.Scatter(
-                        x=ticker_hist.index,
-                        y=ticker_hist['BB_upper'],
-                        mode='lines',
-                        line=dict(color='#b794f6', width=1, dash='dash'),
-                        name='BB Upper',
-                        showlegend=False
-                    ))
+                        apply_chart_theme(fig_compare)
+                        st.plotly_chart(fig_compare, use_container_width=True)
 
-                    fig_price.add_trace(go.Scatter(
-                        x=ticker_hist.index,
-                        y=ticker_hist['BB_lower'],
-                        mode='lines',
-                        line=dict(color='#b794f6', width=1, dash='dash'),
-                        name='BB Lower',
-                        fill='tonexty',
-                        fillcolor='rgba(183, 148, 246, 0.1)'
-                    ))
+                        # Comparison metrics table
+                        st.markdown("##### Performance Comparison")
+                        comparison_metrics = []
 
-                    fig_price.update_layout(
-                        title=f"{selected_ticker} - Price Chart (1 Year)",
-                        xaxis_title="Date",
-                        yaxis_title="Price ($)",
-                        height=500,
-                        paper_bgcolor='rgba(0, 0, 0, 0)',
-                        plot_bgcolor='rgba(10, 25, 41, 0.3)',
-                        font=dict(color='#ffffff'),
-                        xaxis_rangeslider_visible=False
-                    )
+                        for ticker in compare_tickers:
+                            ticker_data = fetch_historical_data(ticker, start_date_ticker, end_date_ticker)
+                            if ticker_data is not None and len(ticker_data) > 5:
+                                total_return = ((ticker_data['Close'].iloc[-1] / ticker_data['Close'].iloc[0]) - 1) * 100
+                                returns = ticker_data['Close'].pct_change().dropna()
+                                volatility = returns.std() * np.sqrt(252) * 100
+                                sharpe = calculate_sharpe_ratio(returns)
 
-                    st.plotly_chart(fig_price, use_container_width=True)
+                                comparison_metrics.append({
+                                    'Ticker': ticker,
+                                    'Total Return': f"{total_return:+.2f}%",
+                                    'Volatility': f"{volatility:.2f}%",
+                                    'Sharpe Ratio': f"{sharpe:.2f}" if sharpe else "N/A",
+                                    'Current Price': f"${ticker_data['Close'].iloc[-1]:.2f}"
+                                })
+
+                        if comparison_metrics:
+                            comp_df = pd.DataFrame(comparison_metrics)
+                            st.dataframe(comp_df, use_container_width=True, hide_index=True, column_config=None)
+
+                    else:
+                        # Single security analysis with technical indicators
+                        st.subheader("📊 Price Chart & Technical Analysis")
+
+                        # Calculate technical indicators
+                        ticker_hist['MA_50'] = ticker_hist['Close'].rolling(50).mean()
+                        ticker_hist['MA_200'] = ticker_hist['Close'].rolling(200).mean()
+
+                        # Bollinger Bands
+                        ticker_hist['BB_middle'] = ticker_hist['Close'].rolling(20).mean()
+                        ticker_hist['BB_std'] = ticker_hist['Close'].rolling(20).std()
+                        ticker_hist['BB_upper'] = ticker_hist['BB_middle'] + (2 * ticker_hist['BB_std'])
+                        ticker_hist['BB_lower'] = ticker_hist['BB_middle'] - (2 * ticker_hist['BB_std'])
+
+                        # Create subplots if volume is enabled
+                        if show_volume:
+                            from plotly.subplots import make_subplots
+                            fig_price = make_subplots(
+                                rows=2, cols=1,
+                                shared_xaxes=True,
+                                vertical_spacing=0.03,
+                                row_heights=[0.7, 0.3],
+                                subplot_titles=(f"{selected_ticker} - {chart_type} Chart ({time_range})", "Volume")
+                            )
+                        else:
+                            fig_price = go.Figure()
+
+                        # Add price chart based on selected type
+                        if chart_type == "Candlestick":
+                            price_trace = go.Candlestick(
+                                x=ticker_hist.index,
+                                open=ticker_hist['Open'],
+                                high=ticker_hist['High'],
+                                low=ticker_hist['Low'],
+                                close=ticker_hist['Close'],
+                                name='Price',
+                                increasing_line_color='#00ff88',
+                                decreasing_line_color='#ff3366'
+                            )
+                        else:  # Line chart
+                            price_trace = go.Scatter(
+                                x=ticker_hist.index,
+                                y=ticker_hist['Close'],
+                                mode='lines',
+                                name='Price',
+                                line=dict(color='#00D4FF', width=2),
+                                fill='tozeroy',
+                                fillcolor='rgba(0, 212, 255, 0.1)'
+                            )
+
+                        if show_volume:
+                            fig_price.add_trace(price_trace, row=1, col=1)
+                        else:
+                            fig_price.add_trace(price_trace)
+
+                        # Add technical indicators if enabled
+                        if show_indicators:
+                            row_num = 1 if show_volume else None
+                            col_num = 1 if show_volume else None
+
+                            # Moving averages
+                            fig_price.add_trace(go.Scatter(
+                                x=ticker_hist.index,
+                                y=ticker_hist['MA_50'],
+                                mode='lines',
+                                line=dict(color='#00d4ff', width=1.5),
+                                name='MA 50'
+                            ), row=row_num, col=col_num)
+
+                            fig_price.add_trace(go.Scatter(
+                                x=ticker_hist.index,
+                                y=ticker_hist['MA_200'],
+                                mode='lines',
+                                line=dict(color='#ffaa00', width=1.5),
+                                name='MA 200'
+                            ), row=row_num, col=col_num)
+
+                            # Bollinger Bands
+                            fig_price.add_trace(go.Scatter(
+                                x=ticker_hist.index,
+                                y=ticker_hist['BB_upper'],
+                                mode='lines',
+                                line=dict(color='#b794f6', width=1, dash='dash'),
+                                name='BB Upper',
+                                showlegend=False
+                            ), row=row_num, col=col_num)
+
+                            fig_price.add_trace(go.Scatter(
+                                x=ticker_hist.index,
+                                y=ticker_hist['BB_lower'],
+                                mode='lines',
+                                line=dict(color='#b794f6', width=1, dash='dash'),
+                                name='BB Lower',
+                                fill='tonexty',
+                                fillcolor='rgba(183, 148, 246, 0.1)'
+                            ), row=row_num, col=col_num)
+
+                        # Add volume bars if enabled
+                        if show_volume:
+                            colors_vol = ['#00ff88' if ticker_hist['Close'].iloc[i] >= ticker_hist['Open'].iloc[i]
+                                         else '#ff3366' for i in range(len(ticker_hist))]
+
+                            fig_price.add_trace(go.Bar(
+                                x=ticker_hist.index,
+                                y=ticker_hist['Volume'],
+                                name='Volume',
+                                marker=dict(color=colors_vol),
+                                showlegend=False
+                            ), row=2, col=1)
+
+                        # Update layout
+                        if show_volume:
+                            fig_price.update_layout(
+                                height=700,
+                                hovermode='x unified',
+                                xaxis_rangeslider_visible=False,
+                                xaxis2_title="Date",
+                                yaxis_title="Price ($)",
+                                yaxis2_title="Volume"
+                            )
+                        else:
+                            fig_price.update_layout(
+                                title=f"{selected_ticker} - {chart_type} Chart ({time_range})",
+                                xaxis_title="Date",
+                                yaxis_title="Price ($)",
+                                height=600,
+                                xaxis_rangeslider_visible=False
+                            )
+
+                        apply_chart_theme(fig_price)
+                        st.plotly_chart(fig_price, use_container_width=True)
 
                     st.divider()
 
