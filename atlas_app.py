@@ -7439,7 +7439,8 @@ def main():
                 )
 
                 # Display skill assessment card
-                st.markdown(create_skill_assessment_card(attribution_results), unsafe_allow_html=True)
+                import streamlit.components.v1 as components
+                components.html(create_skill_assessment_card(attribution_results), height=400)
 
                 # Display waterfall chart
                 st.plotly_chart(create_brinson_attribution_chart(attribution_results),
