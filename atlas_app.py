@@ -2838,7 +2838,44 @@ def style_holdings_dataframe(df):
     
     display_df['Daily Change %'] = display_df['Daily Change %'].apply(add_arrow_indicator)
     display_df['Total Gain/Loss %'] = display_df['Total Gain/Loss %'].apply(add_arrow_indicator)
-    
+
+    return display_df
+
+def style_holdings_dataframe_with_optimization(df):
+    """Style holdings dataframe with optimization columns"""
+    display_df = df[[
+        'Ticker', 'Asset Name', 'Shares', 'Current Price',
+        'Weight %', 'Optimal Weight %', 'Weight Diff %',
+        'Shares to Trade', 'Action', 'Total Gain/Loss %'
+    ]].copy()
+
+    # Format percentages
+    pct_cols = ['Weight %', 'Optimal Weight %', 'Weight Diff %', 'Total Gain/Loss %']
+    for col in pct_cols:
+        if col in display_df.columns:
+            display_df[col] = display_df[col].apply(lambda x: format_percentage(x) if pd.notna(x) else '')
+
+    # Format currency
+    display_df['Current Price'] = display_df['Current Price'].apply(format_currency)
+
+    # Format shares to trade with sign
+    display_df['Shares to Trade'] = display_df['Shares to Trade'].apply(
+        lambda x: f"+{int(x):,}" if x > 0 else f"{int(x):,}" if x < 0 else "0" if pd.notna(x) else ''
+    )
+
+    # Add indicators to action column
+    def style_action(val):
+        if val == 'BUY':
+            return '🟢 BUY'
+        elif val == 'SELL':
+            return '🔴 SELL'
+        elif val == 'HOLD':
+            return '⚪ HOLD'
+        return val
+
+    if 'Action' in display_df.columns:
+        display_df['Action'] = display_df['Action'].apply(style_action)
+
     return display_df
 
 # ============================================================================
@@ -2909,6 +2946,154 @@ def calculate_cvar(returns, confidence=0.95):
         return cvar * 100
     except Exception as e:
         return None
+
+def calculate_var_cvar_portfolio_optimization(enhanced_df, confidence_level=0.95, lookback_days=252):
+    """
+    Calculate optimal portfolio weights to minimize CVaR (Conditional Value at Risk)
+
+    This function implements portfolio optimization from Quantitative Risk Management
+    to find weights that minimize tail risk while maintaining diversification.
+
+    Args:
+        enhanced_df: Enhanced holdings dataframe with current positions
+        confidence_level: Confidence level for VaR/CVaR calculation (default 95%)
+        lookback_days: Days of historical data to use (default 252 = 1 year)
+
+    Returns:
+        tuple: (rebalancing_df, optimization_metrics)
+    """
+    from scipy.optimize import minimize
+
+    # Get current portfolio composition
+    tickers = enhanced_df['Ticker'].tolist()
+    current_values = enhanced_df['Total Value'].values
+    total_portfolio_value = current_values.sum()
+    current_weights = current_values / total_portfolio_value
+
+    # Fetch historical returns for all tickers
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=lookback_days)
+
+    # Build returns matrix
+    returns_dict = {}
+    for ticker in tickers:
+        hist_data = fetch_historical_data(ticker, start_date, end_date)
+        if hist_data is not None and len(hist_data) > 1:
+            returns = hist_data['Close'].pct_change().dropna()
+            returns_dict[ticker] = returns
+
+    # Align all returns to common dates
+    returns_df = pd.DataFrame(returns_dict)
+    returns_df = returns_df.dropna()
+
+    if len(returns_df) < 30:
+        st.warning("Insufficient historical data for optimization (need 30+ days)")
+        return None, None
+
+    returns_matrix = returns_df.values
+    n_assets = len(tickers)
+
+    # Define CVaR calculation
+    def calculate_portfolio_cvar(weights, returns, alpha):
+        """Calculate CVaR (Expected Shortfall) for given weights"""
+        portfolio_returns = returns @ weights
+        var_threshold = np.percentile(portfolio_returns, (1-alpha) * 100)
+        cvar = portfolio_returns[portfolio_returns <= var_threshold].mean()
+        return -cvar  # Negative because we minimize
+
+    # Optimization objective
+    def objective(weights):
+        return calculate_portfolio_cvar(weights, returns_matrix, confidence_level)
+
+    # Constraints
+    constraints = [
+        {'type': 'eq', 'fun': lambda x: np.sum(x) - 1.0},  # Weights sum to 1
+        {'type': 'ineq', 'fun': lambda x: x}  # All weights >= 0 (long-only)
+    ]
+
+    # Bounds (min 1%, max 40% per position for diversification)
+    bounds = tuple((0.01, 0.40) for _ in range(n_assets))
+
+    # Initial guess (equal weight)
+    initial_weights = np.ones(n_assets) / n_assets
+
+    # Run optimization
+    result = minimize(
+        objective,
+        initial_weights,
+        method='SLSQP',
+        bounds=bounds,
+        constraints=constraints,
+        options={'maxiter': 1000, 'ftol': 1e-9}
+    )
+
+    if not result.success:
+        st.warning(f"Optimization converged with warning: {result.message}")
+
+    optimal_weights = result.x
+
+    # Calculate current and optimal risk metrics
+    current_portfolio_returns = returns_matrix @ current_weights
+    optimal_portfolio_returns = returns_matrix @ optimal_weights
+
+    current_var = np.percentile(current_portfolio_returns, (1-confidence_level) * 100)
+    optimal_var = np.percentile(optimal_portfolio_returns, (1-confidence_level) * 100)
+
+    current_cvar = current_portfolio_returns[current_portfolio_returns <= current_var].mean()
+    optimal_cvar = optimal_portfolio_returns[optimal_portfolio_returns <= optimal_var].mean()
+
+    # Calculate Sharpe ratios
+    current_sharpe = (current_portfolio_returns.mean() / current_portfolio_returns.std()) * np.sqrt(252)
+    optimal_sharpe = (optimal_portfolio_returns.mean() / optimal_portfolio_returns.std()) * np.sqrt(252)
+
+    # Build rebalancing dataframe
+    rebalancing_data = []
+    for i, ticker in enumerate(tickers):
+        current_value = enhanced_df[enhanced_df['Ticker'] == ticker]['Total Value'].values[0]
+        current_shares = enhanced_df[enhanced_df['Ticker'] == ticker]['Shares'].values[0]
+        current_price = enhanced_df[enhanced_df['Ticker'] == ticker]['Current Price'].values[0]
+
+        optimal_value = optimal_weights[i] * total_portfolio_value
+        optimal_shares = optimal_value / current_price
+        shares_to_trade = optimal_shares - current_shares
+        trade_value = shares_to_trade * current_price
+
+        rebalancing_data.append({
+            'Ticker': ticker,
+            'Asset Name': enhanced_df[enhanced_df['Ticker'] == ticker]['Asset Name'].values[0],
+            'Current Weight %': (current_value / total_portfolio_value) * 100,
+            'Optimal Weight %': optimal_weights[i] * 100,
+            'Weight Diff %': (optimal_weights[i] * 100) - (current_value / total_portfolio_value * 100),
+            'Current Shares': int(current_shares),
+            'Target Shares': int(optimal_shares),
+            'Shares to Trade': int(shares_to_trade),
+            'Current Price': current_price,
+            'Trade Value': trade_value,
+            'Action': 'BUY' if shares_to_trade > 5 else 'SELL' if shares_to_trade < -5 else 'HOLD',
+            'Priority': abs(trade_value)  # Sort by impact
+        })
+
+    rebalancing_df = pd.DataFrame(rebalancing_data)
+    rebalancing_df = rebalancing_df.sort_values('Priority', ascending=False)
+
+    # Calculate optimization metrics
+    optimization_metrics = {
+        'current_var': current_var * 100,
+        'optimal_var': optimal_var * 100,
+        'var_reduction_pct': abs((optimal_var - current_var) / abs(current_var)) * 100,
+        'current_cvar': current_cvar * 100,
+        'optimal_cvar': optimal_cvar * 100,
+        'cvar_reduction_pct': abs((optimal_cvar - current_cvar) / abs(current_cvar)) * 100,
+        'current_sharpe': current_sharpe,
+        'optimal_sharpe': optimal_sharpe,
+        'sharpe_improvement': optimal_sharpe - current_sharpe,
+        'total_trades': len(rebalancing_df[rebalancing_df['Action'] != 'HOLD']),
+        'rebalancing_cost': abs(rebalancing_df['Trade Value'].sum()),
+        'buy_trades': len(rebalancing_df[rebalancing_df['Action'] == 'BUY']),
+        'sell_trades': len(rebalancing_df[rebalancing_df['Action'] == 'SELL'])
+    }
+
+    return rebalancing_df, optimization_metrics
 
 @st.cache_data(ttl=300)
 def calculate_max_drawdown(returns):
@@ -5036,7 +5221,56 @@ def main():
         st.dataframe(display_df, use_container_width=True, hide_index=True, height=500, column_config=None)
         
         st.info("💡 **Tip:** Head to the Valuation House to analyze intrinsic values of any ticker!")
-        
+
+        # Add VaR/CVaR Optimization Toggle
+        st.markdown("---")
+        show_optimization = st.checkbox("🎯 Show VaR/CVaR Portfolio Optimization", value=False,
+                                       help="Calculate optimal portfolio weights to minimize tail risk")
+
+        if show_optimization:
+            with st.spinner("Calculating optimal portfolio weights..."):
+                rebalancing_df, opt_metrics = calculate_var_cvar_portfolio_optimization(enhanced_df)
+
+                if rebalancing_df is not None and opt_metrics is not None:
+                    # Display optimization summary
+                    st.markdown("### 🎯 Portfolio Optimization Results")
+
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("VaR Reduction",
+                                 f"{opt_metrics['var_reduction_pct']:.1f}%",
+                                 f"{opt_metrics['current_var']:.2f}% → {opt_metrics['optimal_var']:.2f}%",
+                                 delta_color="inverse")
+
+                    with col2:
+                        st.metric("CVaR Reduction",
+                                 f"{opt_metrics['cvar_reduction_pct']:.1f}%",
+                                 f"{opt_metrics['current_cvar']:.2f}% → {opt_metrics['optimal_cvar']:.2f}%",
+                                 delta_color="inverse")
+
+                    with col3:
+                        st.metric("Sharpe Improvement",
+                                 f"+{opt_metrics['sharpe_improvement']:.2f}",
+                                 f"{opt_metrics['current_sharpe']:.2f} → {opt_metrics['optimal_sharpe']:.2f}")
+
+                    with col4:
+                        st.metric("Trades Required",
+                                 opt_metrics['total_trades'],
+                                 f"Est. Cost: ${opt_metrics['rebalancing_cost']:,.0f}")
+
+                    # Merge optimization data into enhanced_df for display
+                    enhanced_df_with_opt = enhanced_df.merge(
+                        rebalancing_df[['Ticker', 'Optimal Weight %', 'Weight Diff %',
+                                       'Shares to Trade', 'Trade Value', 'Action']],
+                        on='Ticker',
+                        how='left'
+                    )
+
+                    # Display enhanced table with optimization columns
+                    st.markdown("### 📋 Holdings with Optimization Targets")
+                    display_df_opt = style_holdings_dataframe_with_optimization(enhanced_df_with_opt)
+                    st.dataframe(display_df_opt, use_container_width=True, hide_index=True, height=500)
+
         st.markdown("---")
         st.markdown("### 📊 DASHBOARD OVERVIEW")
         
@@ -5047,21 +5281,9 @@ def main():
             risk_reward = create_risk_reward_plot(enhanced_df)
             if risk_reward:
                 st.plotly_chart(risk_reward, use_container_width=True)
-        
+
         with row1_col2:
-            sector_donut = create_professional_sector_allocation_pie(enhanced_df)
-            if sector_donut:
-                st.plotly_chart(sector_donut, use_container_width=True)
-        
-        # NEW: Second row with Contributors and Detractors
-        row2_col1, row2_col2 = st.columns(2)
-        
-        with row2_col1:
-            contributors = create_top_contributors_chart(enhanced_df)
-            if contributors:
-                st.plotly_chart(contributors, use_container_width=True)
-        
-        with row2_col2:
+            # Sector allocation chart moved to Portfolio Deep Dive for better visibility
             detractors = create_top_detractors_chart(enhanced_df)
             if detractors:
                 st.plotly_chart(detractors, use_container_width=True)
@@ -5277,9 +5499,9 @@ def main():
         col6.metric("⚠️ Max DD", format_percentage(max_dd) if max_dd else "N/A")
         
         st.markdown("---")
-        
-        tab1, tab2, tab3, tab4 = st.tabs([
-            "📊 Core Risk", "🎲 Monte Carlo", "🔬 Advanced Analytics", "⚡ Stress Tests"
+
+        tab1, tab2, tab3, tab4, tab5 = st.tabs([
+            "📊 Core Risk", "🎲 Monte Carlo", "🔬 Advanced Analytics", "⚡ Stress Tests", "🎯 VaR/CVaR Optimization"
         ])
         
         with tab1:
@@ -5470,7 +5692,141 @@ def main():
 
                 st.caption("⚠️ Sectors >30% = High concentration risk")
                 st.caption("🟡 Sectors 20-30% = Medium concentration risk")
-    
+
+        with tab5:  # NEW VaR/CVaR Optimization Tab
+            st.markdown("### 🎯 VaR/CVaR Portfolio Optimization")
+            st.info("Optimize portfolio weights to minimize Conditional Value at Risk (CVaR) - the expected loss beyond VaR")
+
+            col1, col2, col3 = st.columns([2, 1, 1])
+
+            with col2:
+                confidence = st.slider("Confidence Level", 90, 99, 95, 1) / 100
+                lookback = st.slider("Lookback Period (days)", 60, 504, 252, 21)
+
+            with col3:
+                if st.button("🔄 Run Optimization", type="primary"):
+                    st.session_state['run_optimization'] = True
+
+            with col1:
+                if st.session_state.get('run_optimization', False):
+                    with st.spinner("Running portfolio optimization..."):
+                        rebalancing_df, opt_metrics = calculate_var_cvar_portfolio_optimization(
+                            enhanced_df, confidence, lookback
+                        )
+
+                        if rebalancing_df is not None:
+                            st.session_state['rebalancing_df'] = rebalancing_df
+                            st.session_state['opt_metrics'] = opt_metrics
+                            st.success("✅ Optimization complete!")
+
+            # Display results if available
+            if 'rebalancing_df' in st.session_state:
+                rebalancing_df = st.session_state['rebalancing_df']
+                opt_metrics = st.session_state['opt_metrics']
+
+                # Risk metrics improvement
+                st.markdown("#### 📊 Risk Metrics Improvement")
+                col1, col2, col3, col4 = st.columns(4)
+
+                with col1:
+                    st.metric("Current VaR", f"{opt_metrics['current_var']:.2f}%")
+                    st.metric("Optimal VaR", f"{opt_metrics['optimal_var']:.2f}%",
+                             f"-{opt_metrics['var_reduction_pct']:.1f}%", delta_color="inverse")
+
+                with col2:
+                    st.metric("Current CVaR", f"{opt_metrics['current_cvar']:.2f}%")
+                    st.metric("Optimal CVaR", f"{opt_metrics['optimal_cvar']:.2f}%",
+                             f"-{opt_metrics['cvar_reduction_pct']:.1f}%", delta_color="inverse")
+
+                with col3:
+                    st.metric("Current Sharpe", f"{opt_metrics['current_sharpe']:.2f}")
+                    st.metric("Optimal Sharpe", f"{opt_metrics['optimal_sharpe']:.2f}",
+                             f"+{opt_metrics['sharpe_improvement']:.2f}")
+
+                with col4:
+                    st.metric("Buy Trades", opt_metrics['buy_trades'])
+                    st.metric("Sell Trades", opt_metrics['sell_trades'])
+
+                # Rebalancing instructions
+                st.markdown("#### 📋 Rebalancing Instructions")
+                trades_only = rebalancing_df[rebalancing_df['Action'] != 'HOLD'].copy()
+
+                if len(trades_only) > 0:
+                    # Format for display
+                    trades_only['Trade Value'] = trades_only['Trade Value'].apply(
+                        lambda x: f"${x:,.0f}" if x > 0 else f"-${abs(x):,.0f}"
+                    )
+                    trades_only['Weight Diff %'] = trades_only['Weight Diff %'].apply(
+                        lambda x: f"{x:+.1f}%"
+                    )
+
+                    st.dataframe(
+                        trades_only[['Ticker', 'Asset Name', 'Action', 'Shares to Trade',
+                                   'Trade Value', 'Current Weight %', 'Optimal Weight %',
+                                   'Weight Diff %']],
+                        use_container_width=True,
+                        hide_index=True
+                    )
+
+                    # Download button
+                    csv = rebalancing_df.to_csv(index=False)
+                    st.download_button(
+                        "📥 Export Optimization Plan",
+                        csv,
+                        f"var_optimization_{datetime.now().strftime('%Y%m%d')}.csv",
+                        "text/csv"
+                    )
+
+                # Weight comparison chart
+                st.markdown("#### 📈 Portfolio Weight Comparison")
+
+                # Create comparison chart
+                fig = go.Figure()
+
+                # Sort by current weight
+                df_sorted = rebalancing_df.sort_values('Current Weight %', ascending=True)
+
+                fig.add_trace(go.Bar(
+                    name='Current',
+                    y=df_sorted['Ticker'],
+                    x=df_sorted['Current Weight %'],
+                    orientation='h',
+                    marker_color=COLORS['electric_blue'],
+                    text=df_sorted['Current Weight %'].apply(lambda x: f"{x:.1f}%"),
+                    textposition='auto',
+                ))
+
+                fig.add_trace(go.Bar(
+                    name='Optimal',
+                    y=df_sorted['Ticker'],
+                    x=df_sorted['Optimal Weight %'],
+                    orientation='h',
+                    marker_color=COLORS['teal'],
+                    text=df_sorted['Optimal Weight %'].apply(lambda x: f"{x:.1f}%"),
+                    textposition='auto',
+                ))
+
+                fig.update_layout(
+                    title="Current vs Optimal Portfolio Weights",
+                    xaxis_title="Weight (%)",
+                    yaxis_title="",
+                    barmode='group',
+                    height=max(400, len(df_sorted) * 40),
+                    template="plotly_dark",
+                    paper_bgcolor=COLORS['background'],
+                    plot_bgcolor=COLORS['card_background'],
+                    showlegend=True,
+                    legend=dict(
+                        orientation="h",
+                        yanchor="bottom",
+                        y=1.02,
+                        xanchor="right",
+                        x=1
+                    )
+                )
+
+                st.plotly_chart(fig, use_container_width=True)
+
     # Continue with remaining pages...
     # ========================================================================
     # PERFORMANCE SUITE
@@ -6000,6 +6356,28 @@ def main():
                     )
 
                     st.plotly_chart(fig_risk_contrib, use_container_width=True)
+
+            # === SECTOR ALLOCATION ANALYSIS ===
+            st.divider()
+            st.markdown("### 📊 Sector Allocation Analysis")
+            st.info("View portfolio sector distribution with enhanced visibility")
+
+            # Use full width for better label visibility
+            sector_chart = create_professional_sector_allocation_pie(enhanced_df)
+            if sector_chart:
+                # Increase height for better label display
+                sector_chart.update_layout(
+                    height=600,
+                    margin=dict(l=20, r=150, t=40, b=20),  # More margin for labels
+                    showlegend=True,
+                    legend=dict(
+                        yanchor="middle",
+                        y=0.5,
+                        xanchor="left",
+                        x=1.05
+                    )
+                )
+                st.plotly_chart(sector_chart, use_container_width=True)
 
         # ============================================================
         # TAB 4: ATTRIBUTION & BENCHMARKING (Enhanced)
