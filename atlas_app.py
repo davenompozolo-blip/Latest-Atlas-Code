@@ -7041,6 +7041,168 @@ def main():
             st.warning("Unable to fetch quality data for holdings")
 
         # ============================================================
+        # MPT PORTFOLIO OPTIMIZATION - MODERN PORTFOLIO THEORY
+        # ============================================================
+        st.divider()
+        st.subheader("⚙️ Portfolio Optimization (Modern Portfolio Theory)")
+        st.info("Optimize portfolio allocation using institutional-grade MPT algorithms")
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            optimization_objective = st.selectbox(
+                "Optimization Objective",
+                ["Max Sharpe Ratio", "Min Volatility", "Max Return", "Risk Parity"],
+                index=0,
+                help="Select optimization strategy based on your investment goals"
+            )
+
+        with col2:
+            risk_free_rate_input = st.number_input(
+                "Risk-Free Rate (%)",
+                value=RISK_FREE_RATE * 100,
+                min_value=0.0,
+                max_value=10.0,
+                step=0.1
+            ) / 100
+
+        with col3:
+            if st.button("🚀 Run MPT Optimization", type="primary"):
+                st.session_state['run_mpt_optimization'] = True
+
+        if st.session_state.get('run_mpt_optimization', False):
+            with st.spinner("⚡ Running portfolio optimization..."):
+                # Get historical returns for all holdings
+                returns_data = {}
+                for ticker in enhanced_df['Ticker'].unique():
+                    hist_data = fetch_historical_data(ticker,
+                                                     datetime.now() - timedelta(days=252),
+                                                     datetime.now())
+                    if hist_data is not None and len(hist_data) > 0:
+                        returns_data[ticker] = hist_data['Close'].pct_change().dropna()
+
+                # Create returns dataframe
+                returns_df = pd.DataFrame(returns_data)
+                returns_df = returns_df.dropna()
+
+                if len(returns_df) > 30:
+                    # Calculate optimal weights based on objective
+                    if optimization_objective == "Max Sharpe Ratio":
+                        optimal_weights = optimize_max_sharpe(returns_df, risk_free_rate_input)
+                    elif optimization_objective == "Min Volatility":
+                        optimal_weights = optimize_min_volatility(returns_df)
+                    elif optimization_objective == "Max Return":
+                        optimal_weights = optimize_max_return(returns_df)
+                    elif optimization_objective == "Risk Parity":
+                        optimal_weights = optimize_risk_parity(returns_df)
+
+                    # Get current weights
+                    current_weights_dict = {}
+                    total_value = enhanced_df['Total Value'].sum()
+                    for _, row in enhanced_df.iterrows():
+                        current_weights_dict[row['Ticker']] = row['Total Value'] / total_value
+
+                    current_weights = pd.Series(current_weights_dict)
+
+                    # Create comparison dataframe
+                    comparison_data = []
+                    for ticker in optimal_weights.index:
+                        current_w = current_weights.get(ticker, 0)
+                        optimal_w = optimal_weights.get(ticker, 0)
+
+                        comparison_data.append({
+                            'Ticker': ticker,
+                            'Current Weight': current_w * 100,
+                            'Optimal Weight': optimal_w * 100,
+                            'Difference': (optimal_w - current_w) * 100,
+                            'Action': '🟢 Increase' if optimal_w > current_w else '🔴 Decrease' if optimal_w < current_w else '⚪ Hold'
+                        })
+
+                    comparison_df = pd.DataFrame(comparison_data)
+                    comparison_df = comparison_df.sort_values('Optimal Weight', ascending=False)
+
+                    st.markdown("### 📊 Optimization Results")
+
+                    # Format for display
+                    display_comparison = comparison_df.copy()
+                    display_comparison['Current Weight'] = display_comparison['Current Weight'].apply(lambda x: f"{x:.2f}%")
+                    display_comparison['Optimal Weight'] = display_comparison['Optimal Weight'].apply(lambda x: f"{x:.2f}%")
+                    display_comparison['Difference'] = display_comparison['Difference'].apply(lambda x: f"{x:+.2f}%")
+
+                    st.dataframe(display_comparison, use_container_width=True, hide_index=True)
+
+                    # Calculate portfolio metrics
+                    st.markdown("### 📈 Expected Performance")
+
+                    # Current portfolio metrics
+                    current_return = (returns_df * current_weights).sum(axis=1).mean() * 252
+                    current_vol = (returns_df * current_weights).sum(axis=1).std() * np.sqrt(252)
+                    current_sharpe = (current_return - risk_free_rate_input) / current_vol if current_vol > 0 else 0
+
+                    # Optimal portfolio metrics
+                    optimal_return = (returns_df * optimal_weights).sum(axis=1).mean() * 252
+                    optimal_vol = (returns_df * optimal_weights).sum(axis=1).std() * np.sqrt(252)
+                    optimal_sharpe = (optimal_return - risk_free_rate_input) / optimal_vol if optimal_vol > 0 else 0
+
+                    col1, col2 = st.columns(2)
+
+                    with col1:
+                        st.markdown("#### 📊 Current Portfolio")
+                        st.metric("Expected Return", f"{current_return * 100:.2f}%")
+                        st.metric("Volatility", f"{current_vol * 100:.2f}%")
+                        st.metric("Sharpe Ratio", f"{current_sharpe:.2f}")
+
+                    with col2:
+                        st.markdown("#### ✨ Optimized Portfolio")
+                        st.metric("Expected Return", f"{optimal_return * 100:.2f}%",
+                                 delta=f"{(optimal_return - current_return) * 100:+.2f}%")
+                        st.metric("Volatility", f"{optimal_vol * 100:.2f}%",
+                                 delta=f"{(optimal_vol - current_vol) * 100:+.2f}%",
+                                 delta_color="inverse")
+                        st.metric("Sharpe Ratio", f"{optimal_sharpe:.2f}",
+                                 delta=f"{(optimal_sharpe - current_sharpe):+.2f}")
+
+                    # Weight comparison chart
+                    st.markdown("#### 📈 Weight Comparison")
+
+                    fig_weights = go.Figure()
+
+                    fig_weights.add_trace(go.Bar(
+                        name='Current',
+                        x=comparison_df['Ticker'],
+                        y=comparison_df['Current Weight'],
+                        marker_color=COLORS['electric_blue'],
+                        text=comparison_df['Current Weight'].apply(lambda x: f"{x:.1f}%"),
+                        textposition='auto'
+                    ))
+
+                    fig_weights.add_trace(go.Bar(
+                        name='Optimal',
+                        x=comparison_df['Ticker'],
+                        y=comparison_df['Optimal Weight'],
+                        marker_color=COLORS['teal'],
+                        text=comparison_df['Optimal Weight'].apply(lambda x: f"{x:.1f}%"),
+                        textposition='auto'
+                    ))
+
+                    fig_weights.update_layout(
+                        title=f"Current vs Optimal Weights ({optimization_objective})",
+                        xaxis_title="",
+                        yaxis_title="Weight (%)",
+                        barmode='group',
+                        height=500,
+                        showlegend=True
+                    )
+
+                    apply_chart_theme(fig_weights)
+                    st.plotly_chart(fig_weights, use_container_width=True)
+
+                    st.success(f"✅ Optimization complete using {optimization_objective} strategy!")
+
+                else:
+                    st.error("Insufficient historical data for optimization (need 30+ days)")
+
+        # ============================================================
         # CORRELATION HEATMAP - NEW ADDITION
         # ============================================================
         st.divider()
