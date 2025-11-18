@@ -6860,6 +6860,122 @@ def main():
                 st.info("💡 Make sure your portfolio has valid sector classifications and return data.")
 
         # ============================================================
+        # QUALITY SCORECARD - COMPREHENSIVE QUALITY ANALYSIS
+        # ============================================================
+        st.divider()
+        st.subheader("🏆 Portfolio Quality Scorecard")
+        st.info("Comprehensive quality analysis for all holdings based on profitability, growth, financial health, and analyst ratings")
+
+        # Calculate comprehensive quality metrics for each holding
+        quality_data = []
+
+        for _, row in enhanced_df.iterrows():
+            ticker = row['Ticker']
+            info = fetch_stock_info(ticker)
+
+            if info:
+                quality_data.append({
+                    'Ticker': ticker,
+                    'Asset Name': row.get('Asset Name', ticker),
+                    'Quality Score': row.get('Quality Score', 5.0),
+                    'ROE': f"{info.get('returnOnEquity', 0) * 100:.1f}%" if info.get('returnOnEquity') else 'N/A',
+                    'Profit Margin': f"{info.get('profitMargins', 0) * 100:.1f}%" if info.get('profitMargins') else 'N/A',
+                    'Revenue Growth': f"{info.get('revenueGrowth', 0) * 100:.1f}%" if info.get('revenueGrowth') else 'N/A',
+                    'Debt/Equity': f"{info.get('debtToEquity', 0):.1f}" if info.get('debtToEquity') else 'N/A',
+                    'Current Ratio': f"{info.get('currentRatio', 0):.2f}" if info.get('currentRatio') else 'N/A',
+                    'Peg Ratio': f"{info.get('pegRatio', 0):.2f}" if info.get('pegRatio') else 'N/A',
+                    'Analyst Rating': info.get('recommendationKey', 'N/A').replace('_', ' ').title(),
+                    'Target Price': f"${info.get('targetMeanPrice', 0):.2f}" if info.get('targetMeanPrice') else 'N/A',
+                    'Upside': f"{((info.get('targetMeanPrice', 0) / row['Current Price']) - 1) * 100:+.1f}%" if info.get('targetMeanPrice') and row['Current Price'] > 0 else 'N/A'
+                })
+
+        if quality_data:
+            quality_df = pd.DataFrame(quality_data)
+
+            # Sort by Quality Score descending
+            quality_df = quality_df.sort_values('Quality Score', ascending=False)
+
+            # Display quality scorecard table
+            st.dataframe(
+                quality_df,
+                use_container_width=True,
+                hide_index=True,
+                column_config=None
+            )
+
+            # Quality distribution chart
+            fig_quality = go.Figure()
+
+            colors_quality = [
+                COLORS['success'] if score >= 7 else COLORS['warning'] if score >= 5 else COLORS['danger']
+                for score in quality_df['Quality Score']
+            ]
+
+            fig_quality.add_trace(go.Bar(
+                x=quality_df['Ticker'],
+                y=quality_df['Quality Score'],
+                marker_color=colors_quality,
+                text=quality_df['Quality Score'].apply(lambda x: f"{x:.1f}"),
+                textposition='outside',
+                hovertemplate='<b>%{x}</b><br>Quality Score: %{y:.1f}/10<extra></extra>'
+            ))
+
+            fig_quality.update_layout(
+                title="Portfolio Quality Score Distribution",
+                yaxis_title="Quality Score (0-10)",
+                xaxis_title="",
+                height=400,
+                yaxis=dict(range=[0, 11]),
+                showlegend=False
+            )
+
+            apply_chart_theme(fig_quality)
+            st.plotly_chart(fig_quality, use_container_width=True)
+
+            # Quality insights
+            high_quality = quality_df[quality_df['Quality Score'] >= 7]
+            medium_quality = quality_df[(quality_df['Quality Score'] >= 5) & (quality_df['Quality Score'] < 7)]
+            low_quality = quality_df[quality_df['Quality Score'] < 5]
+
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+                st.markdown(f"#### ✅ High Quality ({len(high_quality)})")
+                if len(high_quality) > 0:
+                    st.success(", ".join(high_quality['Ticker'].tolist()))
+                else:
+                    st.markdown("*None*")
+
+            with col2:
+                st.markdown(f"#### ⚠️ Medium Quality ({len(medium_quality)})")
+                if len(medium_quality) > 0:
+                    st.warning(", ".join(medium_quality['Ticker'].tolist()))
+                else:
+                    st.markdown("*None*")
+
+            with col3:
+                st.markdown(f"#### 🔴 Low Quality ({len(low_quality)})")
+                if len(low_quality) > 0:
+                    st.error(", ".join(low_quality['Ticker'].tolist()))
+                    st.caption("*Consider reviewing these positions*")
+                else:
+                    st.markdown("*None*")
+
+            # Overall portfolio quality score
+            avg_quality = quality_df['Quality Score'].mean()
+            st.markdown(f"### 📊 Overall Portfolio Quality: **{avg_quality:.1f}/10**")
+
+            if avg_quality >= 7:
+                st.success("✅ Your portfolio consists of high-quality companies with strong fundamentals")
+            elif avg_quality >= 5:
+                st.warning("⚠️ Your portfolio has mixed quality - consider upgrading lower-rated holdings")
+            else:
+                st.error("🔴 Portfolio quality is below average - focus on fundamental improvements")
+
+        else:
+            st.warning("Unable to fetch quality data for holdings")
+
+        # ============================================================
         # CORRELATION HEATMAP - NEW ADDITION
         # ============================================================
         st.divider()
