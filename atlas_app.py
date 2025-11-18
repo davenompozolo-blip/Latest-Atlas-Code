@@ -1314,6 +1314,24 @@ def create_sparkline(ticker, days=30):
     except:
         return None
 
+def calculate_forward_rates(maturities, spot_rates):
+    """Calculate forward rates from spot rates"""
+    forward_rates = []
+    forward_maturities = []
+
+    for i in range(len(maturities) - 1):
+        t1 = maturities[i]
+        t2 = maturities[i + 1]
+        s1 = spot_rates[i] / 100  # Convert to decimal
+        s2 = spot_rates[i + 1] / 100
+
+        # Forward rate formula: f(t1,t2) = [(1 + s2)^t2 / (1 + s1)^t1]^(1/(t2-t1)) - 1
+        forward_rate = (((1 + s2) ** t2) / ((1 + s1) ** t1)) ** (1 / (t2 - t1)) - 1
+        forward_rates.append(forward_rate * 100)  # Convert back to percentage
+        forward_maturities.append(f"{int(t1)}Y-{int(t2)}Y")
+
+    return forward_maturities, forward_rates
+
 def create_yield_curve():
     """Professional US Treasury Yield Curve visualization"""
     # Treasury tickers and maturities
@@ -1356,13 +1374,49 @@ def create_yield_curve():
         line=dict(color=COLORS['neon_blue'], width=3),
         marker=dict(size=10, color=COLORS['electric_blue'], line=dict(color=COLORS['border'], width=2)),
         text=[f"{l}: {y:.2f}%" for l, y in zip(labels, yields_data)],
-        hovertemplate='<b>%{text}</b><extra></extra>'
+        hovertemplate='<b>%{text}</b><extra></extra>',
+        name='Spot Rates'
     ))
 
     fig.update_layout(
         title="📈 US Treasury Yield Curve",
         xaxis_title="Maturity (Years)",
         yaxis_title="Yield (%)",
+        height=400,
+        showlegend=False
+    )
+
+    apply_chart_theme(fig)
+    return fig, list(maturities), list(yields_data)
+
+def create_forward_curve(maturities, spot_rates, title="Forward Curve"):
+    """Create forward rate curve visualization"""
+    forward_labels, forward_rates = calculate_forward_rates(maturities, spot_rates)
+
+    if not forward_rates:
+        return None
+
+    fig = go.Figure()
+
+    # Create x-axis positions for forward rates
+    x_positions = list(range(len(forward_labels)))
+
+    fig.add_trace(go.Bar(
+        x=forward_labels,
+        y=forward_rates,
+        marker=dict(
+            color=COLORS['neon_green'],
+            line=dict(color=COLORS['border'], width=1)
+        ),
+        text=[f"{rate:.2f}%" for rate in forward_rates],
+        textposition='outside',
+        hovertemplate='<b>%{x}</b><br>Forward Rate: %{y:.2f}%<extra></extra>'
+    ))
+
+    fig.update_layout(
+        title=f"📊 {title}",
+        xaxis_title="Forward Period",
+        yaxis_title="Forward Rate (%)",
         height=400,
         showlegend=False
     )
@@ -1626,6 +1680,16 @@ def fetch_historical_data(ticker, start_date, end_date):
     except:
         pass
     return None
+
+@st.cache_data(ttl=3600)
+def fetch_stock_info(ticker):
+    """Fetch stock information from yfinance"""
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        return info
+    except:
+        return None
 
 @st.cache_data(ttl=3600)
 def fetch_analyst_data(ticker):
@@ -5868,8 +5932,11 @@ def main():
 
             # Display yield curve based on selection
             if selected_curve == "US Treasuries":
-                yield_curve = create_yield_curve()
-                if yield_curve:
+                result = create_yield_curve()
+                if result:
+                    yield_curve, maturities, spot_rates = result
+
+                    # Display spot yield curve
                     st.plotly_chart(yield_curve, use_container_width=True)
                     st.caption(f"**Data Freshness:** {ATLASFormatter.format_timestamp()} • {ATLASFormatter.get_freshness_badge(2)}")
 
@@ -5887,6 +5954,15 @@ def main():
                                 st.error(f"⚠️ 10Y-2Y Spread: **{spread_10y_2y:.2f}%** (INVERTED - Potential recession signal)")
                     except:
                         pass
+
+                    # Display forward curve
+                    st.markdown("---")
+                    st.markdown("#### 📈 Implied Forward Rates")
+                    st.info("💡 **Key Insight:** Forward rates show market expectations of future interest rates implied by the current yield curve")
+
+                    forward_curve = create_forward_curve(maturities, spot_rates, "US Treasury Forward Rates")
+                    if forward_curve:
+                        st.plotly_chart(forward_curve, use_container_width=True)
 
             elif selected_curve == "UK Gilts":
                 st.warning("📊 UK Gilt yield curve data integration pending. Sample structure shown:")
@@ -5916,6 +5992,13 @@ def main():
                 st.plotly_chart(fig_gilts, use_container_width=True)
                 st.caption("*Real-time UK gilt data can be integrated via Bloomberg API or Bank of England feeds*")
 
+                # Display forward curve
+                st.markdown("---")
+                st.markdown("#### 📈 Implied Forward Rates")
+                forward_curve = create_forward_curve(maturities, yields, "UK Gilt Forward Rates")
+                if forward_curve:
+                    st.plotly_chart(forward_curve, use_container_width=True)
+
             elif selected_curve == "German Bunds":
                 st.warning("📊 German Bund yield curve data integration pending. Sample structure shown:")
                 # Sample data for illustration
@@ -5944,6 +6027,13 @@ def main():
                 st.plotly_chart(fig_bunds, use_container_width=True)
                 st.caption("*Real-time Bund data can be integrated via Bloomberg API or Bundesbank feeds*")
 
+                # Display forward curve
+                st.markdown("---")
+                st.markdown("#### 📈 Implied Forward Rates")
+                forward_curve = create_forward_curve(maturities, yields, "German Bund Forward Rates")
+                if forward_curve:
+                    st.plotly_chart(forward_curve, use_container_width=True)
+
             elif selected_curve == "SA Government Bonds":
                 st.warning("📊 SA Government Bond yield curve data integration pending. Sample structure shown:")
                 # Sample data for illustration
@@ -5971,6 +6061,13 @@ def main():
                 apply_chart_theme(fig_sagov)
                 st.plotly_chart(fig_sagov, use_container_width=True)
                 st.caption("*Real-time SA bond data can be integrated via JSE or SARB feeds*")
+
+                # Display forward curve
+                st.markdown("---")
+                st.markdown("#### 📈 Implied Forward Rates")
+                forward_curve = create_forward_curve(maturities, yields, "SA Government Bond Forward Rates")
+                if forward_curve:
+                    st.plotly_chart(forward_curve, use_container_width=True)
 
             st.markdown("---")
 
