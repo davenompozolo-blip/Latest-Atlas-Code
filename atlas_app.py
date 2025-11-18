@@ -1238,18 +1238,18 @@ def create_pnl_attribution_sector(df):
 
 def create_pnl_attribution_position(df, top_n=10):
     """v9.7 ENHANCED: P&L Attribution by Position - Now showing % returns"""
-    # v9.7 FIX: Use Gain/Loss % instead of dollars
-    top_contributors = df.nlargest(top_n // 2, 'Gain/Loss %')
-    top_detractors = df.nsmallest(top_n // 2, 'Gain/Loss %')
-    combined = pd.concat([top_contributors, top_detractors]).sort_values('Gain/Loss %')
+    # v9.7 FIX: Use Total Gain/Loss % instead of dollars
+    top_contributors = df.nlargest(top_n // 2, 'Total Gain/Loss %')
+    top_detractors = df.nsmallest(top_n // 2, 'Total Gain/Loss %')
+    combined = pd.concat([top_contributors, top_detractors]).sort_values('Total Gain/Loss %')
 
-    colors = [COLORS['success'] if x > 0 else COLORS['danger'] for x in combined['Gain/Loss %']]
+    colors = [COLORS['success'] if x > 0 else COLORS['danger'] for x in combined['Total Gain/Loss %']]
 
     # Create labels with ticker and percentage
     labels = [f"{ticker}" for ticker in combined['Ticker']]
 
     fig = go.Figure(go.Bar(
-        x=combined['Gain/Loss %'],
+        x=combined['Total Gain/Loss %'],
         y=labels,
         orientation='h',
         marker=dict(
@@ -1405,7 +1405,7 @@ def create_forward_curve(maturities, spot_rates, title="Forward Curve"):
         x=forward_labels,
         y=forward_rates,
         marker=dict(
-            color=COLORS['neon_green'],
+            color=COLORS['success'],
             line=dict(color=COLORS['border'], width=1)
         ),
         text=[f"{rate:.2f}%" for rate in forward_rates],
@@ -3377,29 +3377,45 @@ def calculate_var_cvar_portfolio_optimization(enhanced_df, confidence_level=0.95
         st.warning("Insufficient historical data for optimization (need 30+ days)")
         return None, None
 
+    # CRITICAL FIX: Only keep tickers that have valid data
+    valid_tickers = returns_df.columns.tolist()
     returns_matrix = returns_df.values
-    n_assets = len(tickers)
+    n_assets = len(valid_tickers)
 
-    # Define CVaR calculation
+    # Update enhanced_df to only include valid tickers
+    enhanced_df = enhanced_df[enhanced_df['Ticker'].isin(valid_tickers)].copy()
+    tickers = valid_tickers
+    current_values = enhanced_df['Total Value'].values
+    total_portfolio_value = current_values.sum()
+    current_weights = current_values / total_portfolio_value
+
+    # Define CVaR calculation with regularization for diversification
     def calculate_portfolio_cvar(weights, returns, alpha):
         """Calculate CVaR (Expected Shortfall) for given weights"""
         portfolio_returns = returns @ weights
         var_threshold = np.percentile(portfolio_returns, (1-alpha) * 100)
         cvar = portfolio_returns[portfolio_returns <= var_threshold].mean()
-        return -cvar  # Negative because we minimize
+
+        # Add diversification penalty (concentration risk)
+        # Penalize portfolios that deviate too much from equal weight
+        concentration_penalty = 0.1 * np.sum((weights - 1/n_assets)**2)
+
+        return -cvar + concentration_penalty  # Negative because we minimize
 
     # Optimization objective
     def objective(weights):
         return calculate_portfolio_cvar(weights, returns_matrix, confidence_level)
 
-    # Constraints
+    # Constraints for realistic diversification
     constraints = [
         {'type': 'eq', 'fun': lambda x: np.sum(x) - 1.0},  # Weights sum to 1
-        {'type': 'ineq', 'fun': lambda x: x}  # All weights >= 0 (long-only)
+        {'type': 'ineq', 'fun': lambda x: np.sum(x > 0.001) - 5}  # At least 5 positions > 0.1%
     ]
 
-    # Bounds (min 1%, max 40% per position for diversification)
-    bounds = tuple((0.01, 0.40) for _ in range(n_assets))
+    # Realistic bounds: Allow 0% (can sell), max 25% per position for diversification
+    # For portfolios with < 8 holdings, allow up to 30% max
+    max_weight = 0.25 if n_assets >= 8 else 0.30
+    bounds = tuple((0.0, max_weight) for _ in range(n_assets))
 
     # Initial guess (equal weight)
     initial_weights = np.ones(n_assets) / n_assets
