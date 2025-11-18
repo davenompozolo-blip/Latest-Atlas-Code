@@ -429,16 +429,6 @@ st.markdown("""
         display: none !important;
     }
 
-    /* Remove any floating menus */
-    div[data-baseweb="popover"] {
-        display: none !important;
-    }
-
-    /* Prevent any dropdown overlays */
-    div[role="presentation"] {
-        display: none !important;
-    }
-
     /* ============================================
        BUTTONS - Modern Interactive Elements
        ============================================ */
@@ -1284,6 +1274,10 @@ def create_sparkline(ticker, days=30):
         if hist.empty:
             return None
 
+        # Convert timezone-aware index to timezone-naive
+        if hist.index.tz is not None:
+            hist.index = hist.index.tz_localize(None)
+
         prices = hist['Close'].values
 
         # Determine color based on overall trend
@@ -1333,6 +1327,9 @@ def create_yield_curve():
             stock = yf.Ticker(ticker)
             hist = stock.history(period="1d")
             if not hist.empty:
+                # Convert timezone-aware index to timezone-naive
+                if hist.index.tz is not None:
+                    hist.index = hist.index.tz_localize(None)
                 current_yield = hist['Close'].iloc[-1]
                 yields_data.append(current_yield)
                 maturities.append(info['maturity'])
@@ -1572,7 +1569,11 @@ def fetch_market_data(ticker):
         hist = stock.history(period="5d")
         if hist.empty:
             return None
-        
+
+        # Convert timezone-aware index to timezone-naive
+        if hist.index.tz is not None:
+            hist.index = hist.index.tz_localize(None)
+
         current_price = hist['Close'].iloc[-1]
         prev_close = hist['Close'].iloc[-2] if len(hist) > 1 else current_price
         daily_change = current_price - prev_close
@@ -1622,6 +1623,9 @@ def fetch_historical_data(ticker, start_date, end_date):
         stock = yf.Ticker(ticker)
         hist = stock.history(start=start_date, end=end_date)
         if not hist.empty:
+            # Convert timezone-aware index to timezone-naive to prevent comparison errors
+            if hist.index.tz is not None:
+                hist.index = hist.index.tz_localize(None)
             return hist
     except:
         pass
@@ -4755,6 +4759,10 @@ def fetch_market_watch_data(tickers_dict):
             hist = stock.history(period="5d")
 
             if not hist.empty:
+                # Convert timezone-aware index to timezone-naive
+                if hist.index.tz is not None:
+                    hist.index = hist.index.tz_localize(None)
+
                 current = hist['Close'].iloc[-1]
                 prev = hist['Close'].iloc[-2] if len(hist) > 1 else current
                 change = ((current - prev) / prev) * 100
