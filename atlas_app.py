@@ -2778,6 +2778,121 @@ def create_skill_assessment_card(attribution_results):
 
     return html
 
+def validate_and_map_sectors(df):
+    """
+    Ensure all securities are properly classified into standard sectors
+    Map any non-standard sectors to standard GICS sectors
+    """
+    STANDARD_SECTORS = [
+        'Technology', 'Healthcare', 'Financial Services', 'Consumer Cyclical',
+        'Communication Services', 'Industrials', 'Consumer Defensive',
+        'Energy', 'Real Estate', 'Basic Materials', 'Utilities'
+    ]
+
+    SECTOR_MAPPING = {
+        'Information Technology': 'Technology',
+        'Health Care': 'Healthcare',
+        'Financials': 'Financial Services',
+        'Consumer Discretionary': 'Consumer Cyclical',
+        'Communication': 'Communication Services',
+        'Consumer Staples': 'Consumer Defensive',
+        'Materials': 'Basic Materials',
+        'Technology ': 'Technology',  # Trim whitespace
+        'Financial': 'Financial Services',
+    }
+
+    # Apply mapping
+    df['Sector'] = df['Sector'].replace(SECTOR_MAPPING)
+
+    # Check for unmapped sectors
+    unmapped = df[~df['Sector'].isin(STANDARD_SECTORS)]['Sector'].unique()
+    if len(unmapped) > 0:
+        st.warning(f"⚠️ Unmapped sectors found: {', '.join(unmapped)}. These will be grouped as 'Other'.")
+        df.loc[~df['Sector'].isin(STANDARD_SECTORS), 'Sector'] = 'Other'
+
+    return df
+
+def validate_brinson_calculations(attribution_df, portfolio_weights, benchmark_weights,
+                                  portfolio_returns, benchmark_returns):
+    """
+    Validate Brinson attribution calculations with detailed checks
+    Returns validation results dict
+    """
+    validation_output = []
+
+    validation_output.append("=" * 60)
+    validation_output.append("BRINSON ATTRIBUTION VALIDATION")
+    validation_output.append("=" * 60)
+
+    # Check 1: Weights sum to 100%
+    port_weight_sum = sum(portfolio_weights.values())
+    bench_weight_sum = sum(benchmark_weights.values())
+
+    validation_output.append("\n1. WEIGHT VALIDATION:")
+    validation_output.append(f"   Portfolio weights sum: {port_weight_sum:.2f}%")
+    validation_output.append(f"   Benchmark weights sum: {bench_weight_sum:.2f}%")
+
+    weight_check_passed = True
+    if abs(port_weight_sum - 100) > 0.1:
+        validation_output.append("   ⚠️ WARNING: Portfolio weights don't sum to 100%")
+        weight_check_passed = False
+    if abs(bench_weight_sum - 100) > 0.1:
+        validation_output.append("   ⚠️ WARNING: Benchmark weights don't sum to 100%")
+        weight_check_passed = False
+
+    # Check 2: Attribution effects sum correctly
+    total_allocation = attribution_df['Allocation Effect'].sum()
+    total_selection = attribution_df['Selection Effect'].sum()
+    total_interaction = attribution_df['Interaction Effect'].sum()
+    total_attribution = total_allocation + total_selection + total_interaction
+
+    validation_output.append(f"\n2. ATTRIBUTION DECOMPOSITION:")
+    validation_output.append(f"   Allocation Effect: {total_allocation:+.2f}%")
+    validation_output.append(f"   Selection Effect: {total_selection:+.2f}%")
+    validation_output.append(f"   Interaction Effect: {total_interaction:+.2f}%")
+    validation_output.append(f"   Total Attribution: {total_attribution:+.2f}%")
+
+    # Check 3: Compare to actual excess return
+    portfolio_return = sum(portfolio_weights.get(s, 0) * portfolio_returns.get(s, 0) / 100
+                          for s in portfolio_weights.keys())
+    benchmark_return = sum(benchmark_weights.get(s, 0) * benchmark_returns.get(s, 0) / 100
+                          for s in benchmark_weights.keys())
+    actual_excess = portfolio_return - benchmark_return
+
+    validation_output.append(f"\n3. EXCESS RETURN VALIDATION:")
+    validation_output.append(f"   Portfolio Return: {portfolio_return * 100:.2f}%")
+    validation_output.append(f"   Benchmark Return: {benchmark_return * 100:.2f}%")
+    validation_output.append(f"   Actual Excess Return: {actual_excess * 100:.2f}%")
+    validation_output.append(f"   Attribution Total: {total_attribution:.2f}%")
+    validation_output.append(f"   Difference: {abs(actual_excess * 100 - total_attribution):.4f}%")
+
+    attribution_matches = abs(actual_excess * 100 - total_attribution) < 0.5
+    if not attribution_matches:
+        validation_output.append("   ⚠️ WARNING: Attribution doesn't match excess return")
+
+    # Check 4: Sector-level sanity checks
+    validation_output.append(f"\n4. SECTOR-LEVEL CHECKS:")
+    for _, row in attribution_df.iterrows():
+        sector = row['Sector']
+        alloc = row['Allocation Effect']
+        selection = row['Selection Effect']
+        validation_output.append(f"   {sector}:")
+        validation_output.append(f"      Allocation: {alloc:+.2f}% | Selection: {selection:+.2f}%")
+
+    validation_output.append("\n" + "=" * 60)
+
+    # Print to console for debugging
+    for line in validation_output:
+        print(line)
+
+    return {
+        'weight_check_passed': weight_check_passed,
+        'attribution_matches': attribution_matches,
+        'total_attribution': total_attribution,
+        'actual_excess': actual_excess * 100,
+        'validation_output': '\n'.join(validation_output)
+    }
+
 def create_sector_attribution_table(attribution_df):
     """
     Create detailed sector-by-sector attribution table
@@ -6566,6 +6681,9 @@ def main():
             st.markdown("### 🏆 Brinson Attribution Analysis")
             st.markdown("Decompose portfolio performance into **Allocation** (sector timing) vs **Selection** (stock picking) skill")
 
+            # Validate and map sectors before attribution analysis
+            enhanced_df_validated = validate_and_map_sectors(enhanced_df.copy())
+
             # Get benchmark data
             benchmark_weights = SP500_SECTOR_WEIGHTS
             with st.spinner("Fetching benchmark sector returns..."):
@@ -6574,7 +6692,7 @@ def main():
             # Calculate attribution
             try:
                 attribution_results = calculate_brinson_attribution(
-                    enhanced_df,
+                    enhanced_df_validated,
                     benchmark_weights,
                     benchmark_returns,
                     period='1Y'
