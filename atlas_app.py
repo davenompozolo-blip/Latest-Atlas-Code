@@ -4010,9 +4010,11 @@ def calculate_historical_stress_test(enhanced_df):
 
     return results
 
-def calculate_var_cvar_portfolio_optimization(enhanced_df, confidence_level=0.95, lookback_days=252):
+def calculate_var_cvar_portfolio_optimization(enhanced_df, confidence_level=0.95, lookback_days=252,
+                                             max_position=0.25, min_position=0.02):
     """
     Calculate optimal portfolio weights to minimize CVaR (Conditional Value at Risk)
+    with realistic position sizing constraints
 
     This function implements portfolio optimization from Quantitative Risk Management
     to find weights that minimize tail risk while maintaining diversification.
@@ -4021,6 +4023,8 @@ def calculate_var_cvar_portfolio_optimization(enhanced_df, confidence_level=0.95
         enhanced_df: Enhanced holdings dataframe with current positions
         confidence_level: Confidence level for VaR/CVaR calculation (default 95%)
         lookback_days: Days of historical data to use (default 252 = 1 year)
+        max_position: Maximum weight per security (default 0.25 = 25%)
+        min_position: Minimum meaningful position size (default 0.02 = 2%)
 
     Returns:
         tuple: (rebalancing_df, optimization_metrics)
@@ -4065,16 +4069,15 @@ def calculate_var_cvar_portfolio_optimization(enhanced_df, confidence_level=0.95
     total_portfolio_value = current_values.sum()
     current_weights = current_values / total_portfolio_value
 
-    # Define CVaR calculation with regularization for diversification
+    # Define CVaR calculation with L2 regularization for diversification
     def calculate_portfolio_cvar(weights, returns, alpha):
         """Calculate CVaR (Expected Shortfall) for given weights"""
         portfolio_returns = returns @ weights
         var_threshold = np.percentile(portfolio_returns, (1-alpha) * 100)
         cvar = portfolio_returns[portfolio_returns <= var_threshold].mean()
 
-        # Add diversification penalty (concentration risk)
-        # Penalize portfolios that deviate too much from equal weight
-        concentration_penalty = 0.1 * np.sum((weights - 1/n_assets)**2)
+        # Add L2 regularization penalty to prevent extreme weights
+        concentration_penalty = 0.01 * np.sum((weights - 1/n_assets)**2)
 
         return -cvar + concentration_penalty  # Negative because we minimize
 
@@ -4085,13 +4088,10 @@ def calculate_var_cvar_portfolio_optimization(enhanced_df, confidence_level=0.95
     # Constraints for realistic diversification
     constraints = [
         {'type': 'eq', 'fun': lambda x: np.sum(x) - 1.0},  # Weights sum to 1
-        {'type': 'ineq', 'fun': lambda x: np.sum(x > 0.001) - 5}  # At least 5 positions > 0.1%
     ]
 
-    # Realistic bounds: Allow 0% (can sell), max 25% per position for diversification
-    # For portfolios with < 8 holdings, allow up to 30% max
-    max_weight = 0.25 if n_assets >= 8 else 0.30
-    bounds = tuple((0.0, max_weight) for _ in range(n_assets))
+    # Realistic bounds: Use user-specified max_position
+    bounds = tuple((0.0, max_position) for _ in range(n_assets))
 
     # Initial guess (equal weight)
     initial_weights = np.ones(n_assets) / n_assets
@@ -4110,6 +4110,18 @@ def calculate_var_cvar_portfolio_optimization(enhanced_df, confidence_level=0.95
         st.warning(f"Optimization converged with warning: {result.message}")
 
     optimal_weights = result.x
+
+    # Post-processing: apply minimum position threshold
+    optimal_weights_filtered = optimal_weights.copy()
+    optimal_weights_filtered[optimal_weights_filtered < min_position] = 0
+
+    # Renormalize to sum to 1
+    if np.sum(optimal_weights_filtered) > 0:
+        optimal_weights = optimal_weights_filtered / np.sum(optimal_weights_filtered)
+    else:
+        # Fallback to equal weight if all filtered out
+        st.warning("⚠️ All positions below minimum threshold. Using equal weight.")
+        optimal_weights = np.ones(n_assets) / n_assets
 
     # Calculate current and optimal risk metrics
     current_portfolio_returns = returns_matrix @ current_weights
@@ -4155,7 +4167,12 @@ def calculate_var_cvar_portfolio_optimization(enhanced_df, confidence_level=0.95
     rebalancing_df = pd.DataFrame(rebalancing_data)
     rebalancing_df = rebalancing_df.sort_values('Priority', ascending=False)
 
-    # Calculate optimization metrics
+    # Calculate optimization metrics including portfolio quality checks
+    n_positions = np.sum(optimal_weights > 0)
+    max_weight = np.max(optimal_weights)
+    herfindahl_index = np.sum(optimal_weights**2)
+    effective_positions = 1 / herfindahl_index if herfindahl_index > 0 else 0
+
     optimization_metrics = {
         'current_var': current_var * 100,
         'optimal_var': optimal_var * 100,
@@ -4169,7 +4186,12 @@ def calculate_var_cvar_portfolio_optimization(enhanced_df, confidence_level=0.95
         'total_trades': len(rebalancing_df[rebalancing_df['Action'] != 'HOLD']),
         'rebalancing_cost': abs(rebalancing_df['Trade Value'].sum()),
         'buy_trades': len(rebalancing_df[rebalancing_df['Action'] == 'BUY']),
-        'sell_trades': len(rebalancing_df[rebalancing_df['Action'] == 'SELL'])
+        'sell_trades': len(rebalancing_df[rebalancing_df['Action'] == 'SELL']),
+        # Portfolio quality metrics
+        'n_positions': n_positions,
+        'max_weight': max_weight,
+        'herfindahl_index': herfindahl_index,
+        'effective_positions': effective_positions
     }
 
     return rebalancing_df, optimization_metrics
@@ -7051,7 +7073,7 @@ def main():
 
         with tab5:  # NEW VaR/CVaR Optimization Tab
             st.markdown("### 🎯 VaR/CVaR Portfolio Optimization")
-            st.info("Optimize portfolio weights to minimize Conditional Value at Risk (CVaR) - the expected loss beyond VaR")
+            st.info("Optimize portfolio weights to minimize Conditional Value at Risk (CVaR) with realistic position constraints")
 
             col1, col2, col3 = st.columns([2, 1, 1])
 
@@ -7063,11 +7085,39 @@ def main():
                 if st.button("🔄 Run Optimization", type="primary"):
                     st.session_state['run_optimization'] = True
 
+            # Advanced constraints in expander
+            with st.expander("⚙️ Advanced Constraints - Prevent Extreme Weights"):
+                st.markdown("**Position Sizing Constraints** - Enforce realistic portfolio management principles")
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    max_position_var = st.slider(
+                        "Max Position Size (%) - VaR",
+                        min_value=5,
+                        max_value=50,
+                        value=25,
+                        step=5,
+                        help="Maximum weight allowed per security (prevents over-concentration)",
+                        key="max_position_var"
+                    ) / 100
+
+                with col_b:
+                    min_position_var = st.slider(
+                        "Min Position Size (%) - VaR",
+                        min_value=0,
+                        max_value=10,
+                        value=2,
+                        step=1,
+                        help="Minimum meaningful position size (smaller positions excluded)",
+                        key="min_position_var"
+                    ) / 100
+
+                st.caption(f"ℹ️ These constraints prevent impractical portfolios. Max: {max_position_var*100:.0f}%, Min: {min_position_var*100:.0f}%")
+
             with col1:
                 if st.session_state.get('run_optimization', False):
                     with st.spinner("Running portfolio optimization..."):
                         rebalancing_df, opt_metrics = calculate_var_cvar_portfolio_optimization(
-                            enhanced_df, confidence, lookback
+                            enhanced_df, confidence, lookback, max_position_var, min_position_var
                         )
 
                         if rebalancing_df is not None:
@@ -7102,6 +7152,54 @@ def main():
                 with col4:
                     st.metric("Buy Trades", opt_metrics['buy_trades'])
                     st.metric("Sell Trades", opt_metrics['sell_trades'])
+
+                # Portfolio Quality Validation Metrics
+                st.markdown("---")
+                st.markdown("#### ✅ Portfolio Quality Checks")
+                st.info("Validate that the optimized portfolio meets practical portfolio management principles")
+
+                col1, col2, col3, col4 = st.columns(4)
+
+                with col1:
+                    n_positions = opt_metrics['n_positions']
+                    st.metric("Number of Positions", n_positions)
+                    if n_positions < 5:
+                        st.warning("⚠️ Low diversification")
+                    else:
+                        st.success("✅ Well diversified")
+
+                with col2:
+                    max_weight = opt_metrics['max_weight']
+                    st.metric("Largest Position", f"{max_weight*100:.1f}%")
+                    if max_weight > 0.30:
+                        st.warning("⚠️ High concentration")
+                    else:
+                        st.success("✅ Balanced")
+
+                with col3:
+                    herfindahl_index = opt_metrics['herfindahl_index']
+                    st.metric("HHI Index", f"{herfindahl_index:.3f}")
+                    ideal_hhi = 1 / n_positions if n_positions > 0 else 0
+                    st.caption(f"Ideal: {ideal_hhi:.3f}")
+                    if herfindahl_index > 0.3:
+                        st.warning("⚠️ Concentrated")
+                    else:
+                        st.success("✅ Diversified")
+
+                with col4:
+                    effective_positions = opt_metrics['effective_positions']
+                    st.metric("Effective N", f"{effective_positions:.1f}")
+                    st.caption("Diversification measure")
+
+                # Show positions that were excluded (< min_position)
+                optimal_weights_all = rebalancing_df['Optimal Weight %'].values / 100
+                excluded_positions = rebalancing_df[rebalancing_df['Optimal Weight %'] == 0]
+                if len(excluded_positions) > 0:
+                    with st.expander(f"ℹ️ {len(excluded_positions)} positions excluded (below {min_position_var*100:.0f}% threshold)"):
+                        st.write(", ".join(excluded_positions['Ticker'].tolist()))
+                        st.caption("These securities had weights below the minimum threshold and were excluded for practicality")
+
+                st.markdown("---")
 
                 # Rebalancing instructions
                 st.markdown("#### 📋 Rebalancing Instructions")
