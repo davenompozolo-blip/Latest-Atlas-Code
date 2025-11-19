@@ -2751,6 +2751,7 @@ def get_industry_average_ev_ebitda(ticker):
 def calculate_consensus_valuation(ticker, company_data, financials):
     """
     Calculate consensus valuation from multiple methods with intelligent weighting
+    Includes DCF (FCFF & FCFE) using smart assumptions
 
     Returns:
     --------
@@ -2761,13 +2762,15 @@ def calculate_consensus_valuation(ticker, company_data, financials):
         - excluded_methods: dict of methods excluded and why
     """
 
-    # Define method weights (sum to 1.0)
+    # Define method weights (sum to 1.0) - DCF gets highest weight as most comprehensive
     METHOD_WEIGHTS = {
-        'P/E Multiple': 0.25,
-        'P/B Multiple': 0.15,
-        'EV/EBITDA': 0.25,
-        'PEG Ratio': 0.20,
-        'P/S Multiple': 0.15
+        'FCFF DCF': 0.25,        # Most comprehensive - firm valuation
+        'FCFE DCF': 0.20,        # Equity valuation
+        'P/E Multiple': 0.15,    # Reduced from 0.25
+        'EV/EBITDA': 0.15,       # Reduced from 0.25
+        'PEG Ratio': 0.10,       # Reduced from 0.20
+        'P/B Multiple': 0.10,    # Reduced from 0.15
+        'P/S Multiple': 0.05     # Reduced from 0.15
     }
 
     valuations = {}
@@ -2775,6 +2778,137 @@ def calculate_consensus_valuation(ticker, company_data, financials):
 
     current_price = company_data.get('current_price', 0)
     shares_outstanding = company_data.get('shares_outstanding', 0)
+
+    # Get smart assumptions for DCF methods
+    smart_params = calculate_smart_assumptions(company_data, financials)
+
+    # =================================================================
+    # DCF METHODS - FCFF and FCFE with Smart Assumptions
+    # =================================================================
+
+    # 0A. FCFF DCF Valuation
+    try:
+        revenue = financials.get('revenue', 0)
+        ebit = financials.get('ebit', 0)
+        total_debt = financials.get('total_debt', 0)
+        cash = financials.get('cash', 0)
+        total_equity = financials.get('total_equity', 0)
+        beta = company_data.get('beta', 1.0)
+
+        if revenue > 0 and ebit > 0 and shares_outstanding > 0:
+            # Calculate discount rate (WACC)
+            risk_free_rate = 0.04  # 4% risk-free rate
+            market_risk_premium = 0.06  # 6% market risk premium
+            cost_of_equity = calculate_cost_of_equity(risk_free_rate, beta, market_risk_premium)
+            cost_of_debt = 0.05  # Assume 5% cost of debt
+
+            net_debt = total_debt - cash
+            wacc = calculate_wacc(cost_of_equity, cost_of_debt, smart_params['tax_rate'],
+                                 total_debt, total_equity)
+
+            # Project FCFF
+            projections = project_fcff_enhanced(
+                base_revenue=revenue,
+                base_ebit=ebit,
+                revenue_growth=smart_params['revenue_growth'],
+                ebit_margin=smart_params['ebit_margin'],
+                tax_rate=smart_params['tax_rate'],
+                depreciation_pct=smart_params['depreciation_pct'],
+                capex_pct=smart_params['capex_pct'],
+                change_wc=smart_params['wc_change'],
+                forecast_years=smart_params['forecast_years']
+            )
+
+            if projections and len(projections) > 0:
+                final_fcf = projections[-1]['fcff']
+
+                # Calculate terminal value
+                terminal_value = calculate_terminal_value(
+                    final_fcf, wacc, smart_params['terminal_growth']
+                )
+
+                # Calculate DCF value
+                dcf_result = calculate_dcf_value(
+                    projections=projections,
+                    discount_rate=wacc,
+                    terminal_value=terminal_value,
+                    shares_outstanding=shares_outstanding,
+                    net_debt=net_debt,
+                    method='FCFF'
+                )
+
+                intrinsic_value = dcf_result['intrinsic_value_per_share']
+
+                if intrinsic_value > 0 and intrinsic_value < current_price * 10:  # Sanity check
+                    valuations['FCFF DCF'] = intrinsic_value
+                else:
+                    excluded_methods['FCFF DCF'] = f"Unrealistic DCF value: ${intrinsic_value:.2f}"
+            else:
+                excluded_methods['FCFF DCF'] = "Failed to generate projections"
+        else:
+            excluded_methods['FCFF DCF'] = "Missing revenue, EBIT, or shares data"
+    except Exception as e:
+        excluded_methods['FCFF DCF'] = f"Calculation error: {str(e)}"
+
+    # 0B. FCFE DCF Valuation
+    try:
+        revenue = financials.get('revenue', 0)
+        net_income = financials.get('net_income', 0)
+        beta = company_data.get('beta', 1.0)
+
+        if revenue > 0 and net_income > 0 and shares_outstanding > 0:
+            # Calculate discount rate (cost of equity)
+            risk_free_rate = 0.04
+            market_risk_premium = 0.06
+            cost_of_equity = calculate_cost_of_equity(risk_free_rate, beta, market_risk_premium)
+
+            # Project FCFE
+            projections = project_fcfe_enhanced(
+                base_revenue=revenue,
+                base_net_income=net_income,
+                revenue_growth=smart_params['revenue_growth'],
+                tax_rate=smart_params['tax_rate'],
+                depreciation_pct=smart_params['depreciation_pct'],
+                capex_pct=smart_params['capex_pct'],
+                change_wc=smart_params['wc_change'],
+                net_borrowing=0,  # Assume neutral
+                forecast_years=smart_params['forecast_years']
+            )
+
+            if projections and len(projections) > 0:
+                final_fcf = projections[-1]['fcfe']
+
+                # Calculate terminal value
+                terminal_value = calculate_terminal_value(
+                    final_fcf, cost_of_equity, smart_params['terminal_growth']
+                )
+
+                # Calculate DCF value
+                dcf_result = calculate_dcf_value(
+                    projections=projections,
+                    discount_rate=cost_of_equity,
+                    terminal_value=terminal_value,
+                    shares_outstanding=shares_outstanding,
+                    net_debt=0,  # Already in equity value
+                    method='FCFE'
+                )
+
+                intrinsic_value = dcf_result['intrinsic_value_per_share']
+
+                if intrinsic_value > 0 and intrinsic_value < current_price * 10:  # Sanity check
+                    valuations['FCFE DCF'] = intrinsic_value
+                else:
+                    excluded_methods['FCFE DCF'] = f"Unrealistic DCF value: ${intrinsic_value:.2f}"
+            else:
+                excluded_methods['FCFE DCF'] = "Failed to generate projections"
+        else:
+            excluded_methods['FCFE DCF'] = "Missing revenue, net income, or shares data"
+    except Exception as e:
+        excluded_methods['FCFE DCF'] = f"Calculation error: {str(e)}"
+
+    # =================================================================
+    # MULTIPLES-BASED VALUATION METHODS
+    # =================================================================
 
     # 1. P/E Multiple Valuation
     try:
@@ -8163,7 +8297,7 @@ def main():
             with col1:
                 max_position = st.slider(
                     "Max Position Size (%)",
-                    min_value=10,
+                    min_value=5,
                     max_value=50,
                     value=25,
                     step=5,
@@ -8618,14 +8752,16 @@ def main():
 
             # Show method description
             method_descriptions = {
-                'CONSENSUS': """🎯 **Consensus Valuation:** Intelligent aggregation of multiple valuation methods with automated weighting:
-                - **P/E Multiple (25%)** - Earnings-based comparison
-                - **EV/EBITDA (25%)** - Enterprise value perspective
-                - **PEG Ratio (20%)** - Growth-adjusted valuation
-                - **P/B Multiple (15%)** - Book value anchor
-                - **P/S Multiple (15%)** - Revenue-based valuation
+                'CONSENSUS': """🎯 **Consensus Valuation:** Intelligent aggregation of 7 valuation methods with automated weighting:
+                - **FCFF DCF (25%)** - Most comprehensive firm valuation using smart assumptions
+                - **FCFE DCF (20%)** - Equity DCF valuation using smart assumptions
+                - **P/E Multiple (15%)** - Earnings-based comparison
+                - **EV/EBITDA (15%)** - Enterprise value perspective
+                - **PEG Ratio (10%)** - Growth-adjusted valuation
+                - **P/B Multiple (10%)** - Book value anchor
+                - **P/S Multiple (5%)** - Revenue-based valuation
 
-                Invalid or nonsensical results are automatically excluded using statistical outlier detection.""",
+                DCF methods use AI-generated smart assumptions based on sector benchmarks and company fundamentals. Invalid or nonsensical results are automatically excluded using statistical outlier detection.""",
                 'FCFF': "💼 **FCFF DCF:** Values the entire firm by discounting free cash flows available to all investors (debt + equity)",
                 'FCFE': "💰 **FCFE DCF:** Values equity directly by discounting free cash flows available to equity holders only",
                 'GORDON_DDM': "📈 **Gordon Growth DDM:** Values stocks using perpetual dividend growth (D₁ / (r - g)). Best for stable dividend payers",
@@ -8740,13 +8876,15 @@ def main():
                     st.markdown("---")
                     st.markdown("#### 📊 Method Breakdown")
 
-                    # Get weights for display
+                    # Get weights for display (must match weights in calculate_consensus_valuation)
                     METHOD_WEIGHTS = {
-                        'P/E Multiple': 0.25,
-                        'P/B Multiple': 0.15,
-                        'EV/EBITDA': 0.25,
-                        'PEG Ratio': 0.20,
-                        'P/S Multiple': 0.15
+                        'FCFF DCF': 0.25,
+                        'FCFE DCF': 0.20,
+                        'P/E Multiple': 0.15,
+                        'EV/EBITDA': 0.15,
+                        'PEG Ratio': 0.10,
+                        'P/B Multiple': 0.10,
+                        'P/S Multiple': 0.05
                     }
 
                     breakdown_data = []
