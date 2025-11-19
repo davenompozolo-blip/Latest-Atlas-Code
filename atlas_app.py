@@ -363,8 +363,30 @@ st.markdown("""
         background: rgba(10, 25, 41, 0.3) !important;
         border: 1px solid rgba(0, 212, 255, 0.15) !important;
         border-radius: 12px !important;
-        overflow: hidden !important;
+        overflow: visible !important;
         box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3) !important;
+    }
+
+    /* Fix for column header popovers - prevent text overlap */
+    div[data-testid="stDataFrame"] div[data-baseweb="popover"] {
+        z-index: 9999 !important;
+        display: block !important;
+        position: fixed !important;
+    }
+
+    /* Ensure popover content doesn't overflow */
+    div[data-testid="stDataFrame"] div[role="tooltip"],
+    div[data-testid="stDataFrame"] div[data-baseweb="popover"] > div {
+        max-width: 300px !important;
+        word-wrap: break-word !important;
+        white-space: normal !important;
+        overflow: visible !important;
+        background: rgba(10, 25, 41, 0.95) !important;
+        border: 1px solid rgba(0, 212, 255, 0.3) !important;
+        border-radius: 8px !important;
+        padding: 12px !important;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
+        backdrop-filter: blur(20px) !important;
     }
 
     /* Table Headers - Gradient Effect */
@@ -380,6 +402,7 @@ st.markdown("""
         position: sticky !important;
         top: 0 !important;
         z-index: 10 !important;
+        overflow: visible !important;
     }
 
     /* Table Rows - Smooth Hover */
@@ -2614,6 +2637,339 @@ def create_valuation_summary_table(valuations_dict, current_price):
     return df, summary_stats
 
 # ============================================================================
+# CONSENSUS VALUATION - MULTI-METHOD AGGREGATION
+# ============================================================================
+
+def get_industry_average_pe(ticker):
+    """Get industry average P/E ratio for comparison"""
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        industry = info.get('industry', '')
+
+        # Industry average P/E ratios (approximate benchmarks)
+        industry_pe_map = {
+            'Software': 30.0,
+            'Technology': 25.0,
+            'Semiconductors': 22.0,
+            'Biotechnology': 20.0,
+            'Healthcare': 18.0,
+            'Financial Services': 12.0,
+            'Banks': 10.0,
+            'Insurance': 11.0,
+            'Retail': 15.0,
+            'Consumer Cyclical': 16.0,
+            'Consumer Defensive': 18.0,
+            'Energy': 12.0,
+            'Utilities': 16.0,
+            'Real Estate': 20.0,
+            'Industrials': 17.0,
+            'Materials': 14.0,
+            'Communication Services': 19.0
+        }
+
+        # Try to match industry
+        for key, pe in industry_pe_map.items():
+            if key.lower() in industry.lower():
+                return pe
+
+        # Default market average
+        return 18.0
+
+    except:
+        return 18.0
+
+def get_industry_average_pb(ticker):
+    """Get industry average P/B ratio"""
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        industry = info.get('industry', '')
+
+        # Industry average P/B ratios
+        industry_pb_map = {
+            'Software': 8.0,
+            'Technology': 6.0,
+            'Biotechnology': 4.0,
+            'Healthcare': 3.5,
+            'Financial Services': 1.5,
+            'Banks': 1.2,
+            'Insurance': 1.3,
+            'Retail': 3.0,
+            'Consumer Cyclical': 2.5,
+            'Consumer Defensive': 3.0,
+            'Energy': 1.5,
+            'Utilities': 1.8,
+            'Real Estate': 2.0,
+            'Industrials': 2.8,
+            'Materials': 2.0
+        }
+
+        for key, pb in industry_pb_map.items():
+            if key.lower() in industry.lower():
+                return pb
+
+        return 3.0
+
+    except:
+        return 3.0
+
+def get_industry_average_ev_ebitda(ticker):
+    """Get industry average EV/EBITDA multiple"""
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        industry = info.get('industry', '')
+
+        # Industry average EV/EBITDA multiples
+        industry_ev_ebitda_map = {
+            'Software': 20.0,
+            'Technology': 16.0,
+            'Biotechnology': 15.0,
+            'Healthcare': 14.0,
+            'Financial Services': 10.0,
+            'Banks': 8.0,
+            'Retail': 10.0,
+            'Consumer Cyclical': 11.0,
+            'Consumer Defensive': 12.0,
+            'Energy': 8.0,
+            'Utilities': 10.0,
+            'Real Estate': 15.0,
+            'Industrials': 11.0,
+            'Materials': 9.0
+        }
+
+        for key, ev_ebitda in industry_ev_ebitda_map.items():
+            if key.lower() in industry.lower():
+                return ev_ebitda
+
+        return 12.0
+
+    except:
+        return 12.0
+
+def calculate_consensus_valuation(ticker, company_data, financials):
+    """
+    Calculate consensus valuation from multiple methods with intelligent weighting
+
+    Returns:
+    --------
+    dict with:
+        - consensus_value: weighted average valuation
+        - confidence_score: 0-100 based on method agreement
+        - contributing_methods: dict of methods and values used
+        - excluded_methods: dict of methods excluded and why
+    """
+
+    # Define method weights (sum to 1.0)
+    METHOD_WEIGHTS = {
+        'P/E Multiple': 0.25,
+        'P/B Multiple': 0.15,
+        'EV/EBITDA': 0.25,
+        'PEG Ratio': 0.20,
+        'P/S Multiple': 0.15
+    }
+
+    valuations = {}
+    excluded_methods = {}
+
+    current_price = company_data.get('current_price', 0)
+    shares_outstanding = company_data.get('shares_outstanding', 0)
+
+    # 1. P/E Multiple Valuation
+    try:
+        # Get EPS
+        net_income = financials.get('net_income', 0)
+        if shares_outstanding > 0 and net_income > 0:
+            eps = net_income / shares_outstanding
+            industry_pe = get_industry_average_pe(ticker)
+
+            if eps > 0 and industry_pe > 0:
+                pe_value = eps * industry_pe
+
+                # Sanity check
+                if current_price > 0:
+                    implied_pe = pe_value / eps
+                    if 0 < implied_pe < 100:  # Reasonable P/E range
+                        valuations['P/E Multiple'] = pe_value
+                    else:
+                        excluded_methods['P/E Multiple'] = f"Unrealistic P/E ratio: {implied_pe:.1f}"
+                else:
+                    valuations['P/E Multiple'] = pe_value
+            else:
+                excluded_methods['P/E Multiple'] = "Negative or missing EPS data"
+        else:
+            excluded_methods['P/E Multiple'] = "Negative earnings or missing shares data"
+    except Exception as e:
+        excluded_methods['P/E Multiple'] = f"Calculation error: {str(e)}"
+
+    # 2. P/B Multiple Valuation
+    try:
+        total_equity = financials.get('total_equity', 0)
+        if shares_outstanding > 0 and total_equity > 0:
+            book_value_per_share = total_equity / shares_outstanding
+            industry_pb = get_industry_average_pb(ticker)
+
+            if book_value_per_share > 0 and industry_pb > 0:
+                pb_value = book_value_per_share * industry_pb
+
+                # Sanity check
+                if pb_value > 0 and pb_value < book_value_per_share * 15:
+                    valuations['P/B Multiple'] = pb_value
+                else:
+                    excluded_methods['P/B Multiple'] = "Unrealistic P/B multiple"
+            else:
+                excluded_methods['P/B Multiple'] = "Negative or missing book value"
+        else:
+            excluded_methods['P/B Multiple'] = "Missing equity or shares data"
+    except Exception as e:
+        excluded_methods['P/B Multiple'] = f"Calculation error: {str(e)}"
+
+    # 3. EV/EBITDA Valuation
+    try:
+        ebit = financials.get('ebit', 0)
+        depreciation = financials.get('depreciation', 0)
+        ebitda = ebit + depreciation
+
+        total_debt = financials.get('total_debt', 0)
+        cash = financials.get('cash', 0)
+        net_debt = total_debt - cash
+
+        industry_ev_ebitda = get_industry_average_ev_ebitda(ticker)
+
+        if ebitda > 0 and industry_ev_ebitda > 0 and shares_outstanding > 0:
+            enterprise_value = ebitda * industry_ev_ebitda
+            equity_value = enterprise_value - net_debt
+            ev_ebitda_value = equity_value / shares_outstanding
+
+            if ev_ebitda_value > 0:
+                valuations['EV/EBITDA'] = ev_ebitda_value
+            else:
+                excluded_methods['EV/EBITDA'] = "Negative equity value (high debt)"
+        else:
+            excluded_methods['EV/EBITDA'] = "Missing EBITDA or shares data"
+    except Exception as e:
+        excluded_methods['EV/EBITDA'] = f"Calculation error: {str(e)}"
+
+    # 4. PEG Ratio Valuation
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        peg_ratio = info.get('pegRatio')
+        forward_eps = info.get('forwardEps')
+        earnings_growth = info.get('earningsGrowth')
+
+        if forward_eps and forward_eps > 0 and earnings_growth and earnings_growth > 0:
+            # Fair PEG ratio is typically around 1.0
+            fair_peg = 1.0
+            fair_pe = (earnings_growth * 100) * fair_peg
+            peg_value = forward_eps * fair_pe
+
+            if 0 < fair_pe < 50:  # Reasonable P/E range
+                valuations['PEG Ratio'] = peg_value
+            else:
+                excluded_methods['PEG Ratio'] = "Unrealistic growth rate"
+        else:
+            excluded_methods['PEG Ratio'] = "Missing EPS or growth data"
+    except Exception as e:
+        excluded_methods['PEG Ratio'] = f"Calculation error: {str(e)}"
+
+    # 5. P/S (Price-to-Sales) Multiple
+    try:
+        revenue = financials.get('revenue', 0)
+        if shares_outstanding > 0 and revenue > 0:
+            sales_per_share = revenue / shares_outstanding
+
+            # Get sector-appropriate P/S ratio
+            stock = yf.Ticker(ticker)
+            sector = stock.info.get('sector', '')
+
+            sector_ps_map = {
+                'Technology': 6.0,
+                'Healthcare': 4.0,
+                'Financial': 2.5,
+                'Consumer Cyclical': 1.5,
+                'Consumer Defensive': 1.8,
+                'Energy': 1.2,
+                'Industrials': 1.5,
+                'Utilities': 2.0,
+                'Real Estate': 5.0
+            }
+
+            ps_multiple = 2.0  # Default
+            for key, ps in sector_ps_map.items():
+                if key.lower() in sector.lower():
+                    ps_multiple = ps
+                    break
+
+            ps_value = sales_per_share * ps_multiple
+
+            if ps_value > 0:
+                valuations['P/S Multiple'] = ps_value
+            else:
+                excluded_methods['P/S Multiple'] = "Negative valuation"
+        else:
+            excluded_methods['P/S Multiple'] = "Missing revenue or shares data"
+    except Exception as e:
+        excluded_methods['P/S Multiple'] = f"Calculation error: {str(e)}"
+
+    # Filter outliers using IQR method if we have at least 3 methods
+    if len(valuations) >= 3:
+        values = list(valuations.values())
+        q1 = np.percentile(values, 25)
+        q3 = np.percentile(values, 75)
+        iqr = q3 - q1
+        lower_bound = q1 - 1.5 * iqr
+        upper_bound = q3 + 1.5 * iqr
+
+        # Remove outliers
+        for method, value in list(valuations.items()):
+            if value < lower_bound or value > upper_bound:
+                excluded_methods[method] = f"Statistical outlier (value: ${value:.2f}, bounds: ${lower_bound:.2f}-${upper_bound:.2f})"
+                del valuations[method]
+
+    # Calculate weighted consensus
+    if valuations:
+        # Normalize weights for available methods
+        total_weight = sum(METHOD_WEIGHTS.get(m, 0.1) for m in valuations.keys())
+
+        if total_weight > 0:
+            consensus_value = sum(
+                valuations[method] * (METHOD_WEIGHTS.get(method, 0.1) / total_weight)
+                for method in valuations.keys()
+            )
+
+            # Calculate confidence score (0-100)
+            # Based on: 1) number of methods, 2) convergence of values
+            method_count_score = (len(valuations) / len(METHOD_WEIGHTS)) * 50
+
+            # Convergence score: how tightly clustered are the valuations?
+            if len(valuations) > 1:
+                cv = np.std(list(valuations.values())) / np.mean(list(valuations.values()))
+                convergence_score = max(0, (1 - cv) * 50)
+            else:
+                convergence_score = 25
+
+            confidence_score = min(100, method_count_score + convergence_score)
+
+            return {
+                'consensus_value': consensus_value,
+                'confidence_score': confidence_score,
+                'contributing_methods': valuations,
+                'excluded_methods': excluded_methods,
+                'method_count': len(valuations)
+            }
+
+    # If no valid valuations
+    return {
+        'consensus_value': None,
+        'confidence_score': 0,
+        'contributing_methods': {},
+        'excluded_methods': excluded_methods,
+        'method_count': 0
+    }
+
+# ============================================================================
 # PHOENIX PARSER
 # ============================================================================
 
@@ -3684,8 +4040,8 @@ def calculate_var_cvar_portfolio_optimization(enhanced_df, confidence_level=0.95
 
     return rebalancing_df, optimization_metrics
 
-def optimize_max_sharpe(returns_df, risk_free_rate):
-    """Optimize for maximum Sharpe ratio using Modern Portfolio Theory"""
+def optimize_max_sharpe(returns_df, risk_free_rate, max_position=0.25, min_position=0.02):
+    """Optimize for maximum Sharpe ratio with realistic position constraints"""
     from scipy.optimize import minimize
 
     n_assets = len(returns_df.columns)
@@ -3693,40 +4049,95 @@ def optimize_max_sharpe(returns_df, risk_free_rate):
     def neg_sharpe(weights):
         port_return = np.sum(returns_df.mean() * weights) * 252
         port_vol = np.sqrt(np.dot(weights.T, np.dot(returns_df.cov() * 252, weights)))
-        return -(port_return - risk_free_rate) / port_vol if port_vol > 0 else 0
+        sharpe = (port_return - risk_free_rate) / port_vol if port_vol > 0 else 0
+        # Add L2 regularization penalty for extreme weights
+        concentration_penalty = 0.01 * np.sum((weights - 1/n_assets)**2)
+        return -sharpe + concentration_penalty
 
     constraints = {'type': 'eq', 'fun': lambda x: np.sum(x) - 1}
-    bounds = tuple((0, 1) for _ in range(n_assets))
+    bounds = tuple((0, max_position) for _ in range(n_assets))
     initial_guess = np.array([1/n_assets] * n_assets)
 
-    result = minimize(neg_sharpe, initial_guess, method='SLSQP', bounds=bounds, constraints=constraints)
+    result = minimize(neg_sharpe, initial_guess, method='SLSQP', bounds=bounds, constraints=constraints,
+                     options={'maxiter': 1000, 'ftol': 1e-9})
 
-    return pd.Series(result.x, index=returns_df.columns)
+    # Post-processing: apply minimum position threshold
+    optimized_weights = result.x.copy()
+    optimized_weights[optimized_weights < min_position] = 0
 
-def optimize_min_volatility(returns_df):
-    """Optimize for minimum volatility"""
+    # Renormalize to sum to 1
+    if np.sum(optimized_weights) > 0:
+        optimized_weights = optimized_weights / np.sum(optimized_weights)
+    else:
+        optimized_weights = np.array([1/n_assets] * n_assets)
+
+    return pd.Series(optimized_weights, index=returns_df.columns)
+
+def optimize_min_volatility(returns_df, max_position=0.25, min_position=0.02):
+    """Optimize for minimum volatility with realistic position constraints"""
     from scipy.optimize import minimize
 
     n_assets = len(returns_df.columns)
 
     def portfolio_vol(weights):
-        return np.sqrt(np.dot(weights.T, np.dot(returns_df.cov() * 252, weights)))
+        vol = np.sqrt(np.dot(weights.T, np.dot(returns_df.cov() * 252, weights)))
+        # Add concentration penalty
+        concentration_penalty = 0.01 * np.sum((weights - 1/n_assets)**2)
+        return vol + concentration_penalty
 
     constraints = {'type': 'eq', 'fun': lambda x: np.sum(x) - 1}
-    bounds = tuple((0, 1) for _ in range(n_assets))
+    bounds = tuple((0, max_position) for _ in range(n_assets))
     initial_guess = np.array([1/n_assets] * n_assets)
 
-    result = minimize(portfolio_vol, initial_guess, method='SLSQP', bounds=bounds, constraints=constraints)
+    result = minimize(portfolio_vol, initial_guess, method='SLSQP', bounds=bounds, constraints=constraints,
+                     options={'maxiter': 1000, 'ftol': 1e-9})
 
-    return pd.Series(result.x, index=returns_df.columns)
+    # Post-processing: apply minimum position threshold
+    optimized_weights = result.x.copy()
+    optimized_weights[optimized_weights < min_position] = 0
 
-def optimize_max_return(returns_df):
-    """Optimize for maximum return"""
+    # Renormalize to sum to 1
+    if np.sum(optimized_weights) > 0:
+        optimized_weights = optimized_weights / np.sum(optimized_weights)
+    else:
+        optimized_weights = np.array([1/n_assets] * n_assets)
+
+    return pd.Series(optimized_weights, index=returns_df.columns)
+
+def optimize_max_return(returns_df, max_position=0.25, min_position=0.02):
+    """Optimize for maximum return with realistic position constraints"""
+    from scipy.optimize import minimize
+
+    n_assets = len(returns_df.columns)
     mean_returns = returns_df.mean() * 252
-    return mean_returns / mean_returns.sum()
 
-def optimize_risk_parity(returns_df):
-    """Risk parity optimization - equal risk contribution"""
+    def neg_return(weights):
+        portfolio_return = np.sum(mean_returns * weights)
+        # Add concentration penalty
+        concentration_penalty = 0.01 * np.sum((weights - 1/n_assets)**2)
+        return -portfolio_return + concentration_penalty
+
+    constraints = {'type': 'eq', 'fun': lambda x: np.sum(x) - 1}
+    bounds = tuple((0, max_position) for _ in range(n_assets))
+    initial_guess = np.array([1/n_assets] * n_assets)
+
+    result = minimize(neg_return, initial_guess, method='SLSQP', bounds=bounds, constraints=constraints,
+                     options={'maxiter': 1000, 'ftol': 1e-9})
+
+    # Post-processing: apply minimum position threshold
+    optimized_weights = result.x.copy()
+    optimized_weights[optimized_weights < min_position] = 0
+
+    # Renormalize to sum to 1
+    if np.sum(optimized_weights) > 0:
+        optimized_weights = optimized_weights / np.sum(optimized_weights)
+    else:
+        optimized_weights = np.array([1/n_assets] * n_assets)
+
+    return pd.Series(optimized_weights, index=returns_df.columns)
+
+def optimize_risk_parity(returns_df, max_position=0.25, min_position=0.02):
+    """Risk parity optimization with realistic position constraints"""
     from scipy.optimize import minimize
 
     n_assets = len(returns_df.columns)
@@ -3742,12 +4153,23 @@ def optimize_risk_parity(returns_df):
         return np.sum((risk_contrib - target_risk) ** 2)
 
     constraints = {'type': 'eq', 'fun': lambda x: np.sum(x) - 1}
-    bounds = tuple((0, 1) for _ in range(n_assets))
+    bounds = tuple((0, max_position) for _ in range(n_assets))
     initial_guess = np.array([1/n_assets] * n_assets)
 
-    result = minimize(risk_parity_objective, initial_guess, method='SLSQP', bounds=bounds, constraints=constraints)
+    result = minimize(risk_parity_objective, initial_guess, method='SLSQP', bounds=bounds, constraints=constraints,
+                     options={'maxiter': 1000, 'ftol': 1e-9})
 
-    return pd.Series(result.x, index=returns_df.columns)
+    # Post-processing: apply minimum position threshold
+    optimized_weights = result.x.copy()
+    optimized_weights[optimized_weights < min_position] = 0
+
+    # Renormalize to sum to 1
+    if np.sum(optimized_weights) > 0:
+        optimized_weights = optimized_weights / np.sum(optimized_weights)
+    else:
+        optimized_weights = np.array([1/n_assets] * n_assets)
+
+    return pd.Series(optimized_weights, index=returns_df.columns)
 
 @st.cache_data(ttl=300)
 def calculate_max_drawdown(returns):
@@ -7709,7 +8131,7 @@ def main():
         # ============================================================
         st.divider()
         st.subheader("⚙️ Portfolio Optimization (Modern Portfolio Theory)")
-        st.info("Optimize portfolio allocation using institutional-grade MPT algorithms")
+        st.info("Optimize portfolio allocation using institutional-grade MPT algorithms with realistic constraints")
 
         col1, col2, col3 = st.columns(3)
 
@@ -7734,6 +8156,32 @@ def main():
             if st.button("🚀 Run MPT Optimization", type="primary"):
                 st.session_state['run_mpt_optimization'] = True
 
+        # Advanced constraints in expander
+        with st.expander("⚙️ Advanced Constraints - Prevent Extreme Weights"):
+            st.markdown("**Position Sizing Constraints** - Enforce realistic portfolio management principles")
+            col1, col2 = st.columns(2)
+            with col1:
+                max_position = st.slider(
+                    "Max Position Size (%)",
+                    min_value=10,
+                    max_value=50,
+                    value=25,
+                    step=5,
+                    help="Maximum weight allowed per security (prevents over-concentration)"
+                ) / 100
+
+            with col2:
+                min_position = st.slider(
+                    "Min Position Size (%)",
+                    min_value=0,
+                    max_value=10,
+                    value=2,
+                    step=1,
+                    help="Minimum meaningful position size (smaller positions excluded)"
+                ) / 100
+
+            st.caption(f"ℹ️ These constraints prevent impractical portfolios like 95% in one stock. Max: {max_position*100:.0f}%, Min: {min_position*100:.0f}%")
+
         if st.session_state.get('run_mpt_optimization', False):
             with st.spinner("⚡ Running portfolio optimization..."):
                 # Get historical returns for all holdings
@@ -7750,15 +8198,15 @@ def main():
                 returns_df = returns_df.dropna()
 
                 if len(returns_df) > 30:
-                    # Calculate optimal weights based on objective
+                    # Calculate optimal weights based on objective with realistic constraints
                     if optimization_objective == "Max Sharpe Ratio":
-                        optimal_weights = optimize_max_sharpe(returns_df, risk_free_rate_input)
+                        optimal_weights = optimize_max_sharpe(returns_df, risk_free_rate_input, max_position, min_position)
                     elif optimization_objective == "Min Volatility":
-                        optimal_weights = optimize_min_volatility(returns_df)
+                        optimal_weights = optimize_min_volatility(returns_df, max_position, min_position)
                     elif optimization_objective == "Max Return":
-                        optimal_weights = optimize_max_return(returns_df)
+                        optimal_weights = optimize_max_return(returns_df, max_position, min_position)
                     elif optimization_objective == "Risk Parity":
-                        optimal_weights = optimize_risk_parity(returns_df)
+                        optimal_weights = optimize_risk_parity(returns_df, max_position, min_position)
 
                     # Get current weights
                     current_weights_dict = {}
@@ -7861,7 +8309,52 @@ def main():
                     apply_chart_theme(fig_weights)
                     st.plotly_chart(fig_weights, use_container_width=True)
 
-                    st.success(f"✅ Optimization complete using {optimization_objective} strategy!")
+                    # Portfolio Quality Validation Metrics
+                    st.markdown("#### ✅ Portfolio Quality Checks")
+                    st.info("Validate that the optimized portfolio meets practical portfolio management principles")
+
+                    col1, col2, col3, col4 = st.columns(4)
+
+                    with col1:
+                        n_positions = np.sum(optimal_weights > 0)
+                        st.metric("Number of Positions", n_positions)
+                        if n_positions < 5:
+                            st.warning("⚠️ Low diversification")
+                        else:
+                            st.success("✅ Well diversified")
+
+                    with col2:
+                        max_weight = np.max(optimal_weights)
+                        st.metric("Largest Position", f"{max_weight*100:.1f}%")
+                        if max_weight > 0.30:
+                            st.warning("⚠️ High concentration")
+                        else:
+                            st.success("✅ Balanced")
+
+                    with col3:
+                        # Herfindahl-Hirschman Index (concentration measure)
+                        herfindahl_index = np.sum(optimal_weights**2)
+                        st.metric("HHI Index", f"{herfindahl_index:.3f}")
+                        st.caption(f"Ideal: {1/len(optimal_weights):.3f}")
+                        if herfindahl_index > 0.3:
+                            st.warning("⚠️ Concentrated")
+                        else:
+                            st.success("✅ Diversified")
+
+                    with col4:
+                        # Effective number of positions (inverse of HHI)
+                        effective_positions = 1 / herfindahl_index if herfindahl_index > 0 else 0
+                        st.metric("Effective N", f"{effective_positions:.1f}")
+                        st.caption("Diversification measure")
+
+                    # Show positions that were excluded (< min_position)
+                    excluded_positions = optimal_weights[optimal_weights == 0]
+                    if len(excluded_positions) > 0:
+                        with st.expander(f"ℹ️ {len(excluded_positions)} positions excluded (below {min_position*100:.0f}% threshold)"):
+                            st.write(", ".join(excluded_positions.index.tolist()))
+                            st.caption("These securities had weights below the minimum threshold and were excluded for practicality")
+
+                    st.success(f"✅ Optimization complete using {optimization_objective} strategy with realistic constraints!")
 
                 else:
                     st.error("Insufficient historical data for optimization (need 30+ days)")
@@ -8093,6 +8586,7 @@ def main():
             valuation_method = st.selectbox(
                 "Choose Valuation Approach",
                 options=[
+                    '🎯 Consensus Valuation (Multi-Method Aggregate)',
                     'FCFF DCF (Free Cash Flow to Firm)',
                     'FCFE DCF (Free Cash Flow to Equity)',
                     'Gordon Growth DDM (Dividend Discount Model)',
@@ -8101,11 +8595,13 @@ def main():
                     'Relative Valuation (Peer Multiples)',
                     'Sum-of-the-Parts (SOTP)'
                 ],
-                help="Select from 7 institutional-grade valuation methodologies"
+                help="Select from 8 institutional-grade valuation methodologies"
             )
 
             # Extract method key for logic
-            if 'FCFF' in valuation_method:
+            if 'Consensus' in valuation_method:
+                method_key = 'CONSENSUS'
+            elif 'FCFF' in valuation_method:
                 method_key = 'FCFF'
             elif 'FCFE' in valuation_method:
                 method_key = 'FCFE'
@@ -8122,6 +8618,14 @@ def main():
 
             # Show method description
             method_descriptions = {
+                'CONSENSUS': """🎯 **Consensus Valuation:** Intelligent aggregation of multiple valuation methods with automated weighting:
+                - **P/E Multiple (25%)** - Earnings-based comparison
+                - **EV/EBITDA (25%)** - Enterprise value perspective
+                - **PEG Ratio (20%)** - Growth-adjusted valuation
+                - **P/B Multiple (15%)** - Book value anchor
+                - **P/S Multiple (15%)** - Revenue-based valuation
+
+                Invalid or nonsensical results are automatically excluded using statistical outlier detection.""",
                 'FCFF': "💼 **FCFF DCF:** Values the entire firm by discounting free cash flows available to all investors (debt + equity)",
                 'FCFE': "💰 **FCFE DCF:** Values equity directly by discounting free cash flows available to equity holders only",
                 'GORDON_DDM': "📈 **Gordon Growth DDM:** Values stocks using perpetual dividend growth (D₁ / (r - g)). Best for stable dividend payers",
@@ -8186,9 +8690,148 @@ def main():
             st.markdown("#### 🎛️ Valuation Assumptions")
 
             # =================================================================
+            # CONSENSUS VALUATION - MULTI-METHOD AGGREGATE
+            # =================================================================
+            if method_key == 'CONSENSUS':
+                st.markdown("##### 🎯 Consensus Valuation Analysis")
+
+                with st.spinner("Calculating consensus valuation across multiple methods..."):
+                    consensus_result = calculate_consensus_valuation(ticker_input, company, financials)
+
+                if consensus_result['consensus_value']:
+                    # Display main result
+                    st.markdown("---")
+                    col1, col2, col3 = st.columns(3)
+
+                    with col1:
+                        upside_pct = ((consensus_result['consensus_value'] / company['current_price'] - 1) * 100) if company['current_price'] > 0 else 0
+                        st.metric(
+                            "Consensus Fair Value",
+                            f"${consensus_result['consensus_value']:.2f}",
+                            delta=f"{upside_pct:+.1f}%" if company['current_price'] > 0 else None
+                        )
+
+                    with col2:
+                        confidence_color = (
+                            "🟢" if consensus_result['confidence_score'] >= 70
+                            else "🟡" if consensus_result['confidence_score'] >= 50
+                            else "🔴"
+                        )
+                        st.metric(
+                            "Confidence Score",
+                            f"{confidence_color} {consensus_result['confidence_score']:.0f}/100"
+                        )
+                        st.caption(f"Based on {consensus_result['method_count']} valid methods")
+
+                    with col3:
+                        st.metric(
+                            "Current Price",
+                            f"${company['current_price']:.2f}"
+                        )
+
+                        if upside_pct > 20:
+                            st.success("🚀 Potentially undervalued")
+                        elif upside_pct < -20:
+                            st.error("⚠️ Potentially overvalued")
+                        else:
+                            st.info("✅ Fairly valued")
+
+                    # Show breakdown of contributing methods
+                    st.markdown("---")
+                    st.markdown("#### 📊 Method Breakdown")
+
+                    # Get weights for display
+                    METHOD_WEIGHTS = {
+                        'P/E Multiple': 0.25,
+                        'P/B Multiple': 0.15,
+                        'EV/EBITDA': 0.25,
+                        'PEG Ratio': 0.20,
+                        'P/S Multiple': 0.15
+                    }
+
+                    breakdown_data = []
+                    for method, value in consensus_result['contributing_methods'].items():
+                        weight = METHOD_WEIGHTS.get(method, 0)
+                        upside = ((value / company['current_price'] - 1) * 100) if company['current_price'] > 0 else 0
+                        breakdown_data.append({
+                            'Method': method,
+                            'Fair Value': f"${value:.2f}",
+                            'Weight': f"{weight*100:.0f}%",
+                            'vs Current': f"{upside:+.1f}%",
+                            'Status': '✅ Included'
+                        })
+
+                    breakdown_df = pd.DataFrame(breakdown_data)
+                    st.dataframe(breakdown_df, use_container_width=True, hide_index=True)
+
+                    # Show excluded methods
+                    if consensus_result['excluded_methods']:
+                        with st.expander("⚠️ Excluded Methods"):
+                            for method, reason in consensus_result['excluded_methods'].items():
+                                st.warning(f"**{method}**: {reason}")
+
+                    # Visualization: Range of valuations
+                    st.markdown("---")
+                    st.markdown("#### 📈 Valuation Range")
+
+                    values = list(consensus_result['contributing_methods'].values())
+                    methods = list(consensus_result['contributing_methods'].keys())
+
+                    fig = go.Figure()
+
+                    # Bar chart of individual methods
+                    fig.add_trace(go.Bar(
+                        x=methods,
+                        y=values,
+                        name='Method Valuations',
+                        marker_color=COLORS['electric_blue'],
+                        text=[f"${v:.2f}" for v in values],
+                        textposition='auto'
+                    ))
+
+                    # Add current price line
+                    fig.add_hline(
+                        y=company['current_price'],
+                        line_dash="dash",
+                        line_color="red",
+                        annotation_text=f"Current: ${company['current_price']:.2f}",
+                        annotation_position="right"
+                    )
+
+                    # Add consensus line
+                    fig.add_hline(
+                        y=consensus_result['consensus_value'],
+                        line_dash="solid",
+                        line_color="green",
+                        line_width=2,
+                        annotation_text=f"Consensus: ${consensus_result['consensus_value']:.2f}",
+                        annotation_position="left"
+                    )
+
+                    fig.update_layout(
+                        title="Valuation Methods Comparison",
+                        xaxis_title="Method",
+                        yaxis_title="Fair Value ($)",
+                        height=500,
+                        showlegend=False
+                    )
+
+                    apply_chart_theme(fig)
+                    st.plotly_chart(fig, use_container_width=True)
+
+                else:
+                    st.error("❌ Unable to calculate consensus valuation")
+                    st.warning("Insufficient valid data from valuation methods")
+
+                    if consensus_result['excluded_methods']:
+                        st.subheader("Issues Found:")
+                        for method, reason in consensus_result['excluded_methods'].items():
+                            st.warning(f"**{method}**: {reason}")
+
+            # =================================================================
             # DCF METHODS (FCFF / FCFE) - Existing comprehensive inputs
             # =================================================================
-            if method_key in ['FCFF', 'FCFE']:
+            elif method_key in ['FCFF', 'FCFE']:
                 tab1, tab2, tab3 = st.tabs(["📈 Growth & Operations", "💰 Cost of Capital", "🎯 Terminal Value"])
 
                 with tab1:
