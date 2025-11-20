@@ -4010,7 +4010,7 @@ def calculate_historical_stress_test(enhanced_df):
 
     return results
 
-def calculate_var_cvar_portfolio_optimization(enhanced_df, confidence_level=0.95, lookback_days=252):
+def calculate_var_cvar_portfolio_optimization(enhanced_df, confidence_level=0.95, lookback_days=252, max_position=0.25, min_position=0.02):
     """
     Calculate optimal portfolio weights to minimize CVaR (Conditional Value at Risk)
 
@@ -4021,6 +4021,8 @@ def calculate_var_cvar_portfolio_optimization(enhanced_df, confidence_level=0.95
         enhanced_df: Enhanced holdings dataframe with current positions
         confidence_level: Confidence level for VaR/CVaR calculation (default 95%)
         lookback_days: Days of historical data to use (default 252 = 1 year)
+        max_position: Maximum position size per security (default 25%)
+        min_position: Minimum meaningful position size (default 2%)
 
     Returns:
         tuple: (rebalancing_df, optimization_metrics)
@@ -4065,18 +4067,29 @@ def calculate_var_cvar_portfolio_optimization(enhanced_df, confidence_level=0.95
     total_portfolio_value = current_values.sum()
     current_weights = current_values / total_portfolio_value
 
-    # Define CVaR calculation with regularization for diversification
+    # Define CVaR calculation with smart regularization for diversification
     def calculate_portfolio_cvar(weights, returns, alpha):
-        """Calculate CVaR (Expected Shortfall) for given weights"""
+        """Calculate CVaR (Expected Shortfall) for given weights with nuanced penalties"""
         portfolio_returns = returns @ weights
         var_threshold = np.percentile(portfolio_returns, (1-alpha) * 100)
         cvar = portfolio_returns[portfolio_returns <= var_threshold].mean()
 
-        # Add diversification penalty (concentration risk)
-        # Penalize portfolios that deviate too much from equal weight
-        concentration_penalty = 0.1 * np.sum((weights - 1/n_assets)**2)
+        # IMPROVED: Multi-faceted diversification penalty
+        # 1. Concentration penalty (Herfindahl index)
+        hhi = np.sum(weights ** 2)
+        concentration_penalty = 50 * (hhi - 1/n_assets)  # Penalize high concentration
 
-        return -cvar + concentration_penalty  # Negative because we minimize
+        # 2. Sparse portfolio penalty - discourage too many near-zero positions
+        active_positions = np.sum(weights > 0.01)
+        if active_positions < max(5, n_assets * 0.3):  # Want at least 30% of assets active
+            sparsity_penalty = 10 * (max(5, n_assets * 0.3) - active_positions)
+        else:
+            sparsity_penalty = 0
+
+        # 3. Extreme weight penalty - discourage positions at exact max bound
+        extreme_penalty = 20 * np.sum((weights > max_position * 0.95) & (weights <= max_position))
+
+        return -cvar + concentration_penalty + sparsity_penalty + extreme_penalty
 
     # Optimization objective
     def objective(weights):
@@ -4085,13 +4098,11 @@ def calculate_var_cvar_portfolio_optimization(enhanced_df, confidence_level=0.95
     # Constraints for realistic diversification
     constraints = [
         {'type': 'eq', 'fun': lambda x: np.sum(x) - 1.0},  # Weights sum to 1
-        {'type': 'ineq', 'fun': lambda x: np.sum(x > 0.001) - 5}  # At least 5 positions > 0.1%
+        {'type': 'ineq', 'fun': lambda x: np.sum(x >= min_position) - max(3, int(n_assets * 0.2))}  # At least 20% of assets above min
     ]
 
-    # Realistic bounds: Allow 0% (can sell), max 25% per position for diversification
-    # For portfolios with < 8 holdings, allow up to 30% max
-    max_weight = 0.25 if n_assets >= 8 else 0.30
-    bounds = tuple((0.0, max_weight) for _ in range(n_assets))
+    # Use user-specified bounds
+    bounds = tuple((0.0, max_position) for _ in range(n_assets))
 
     # Initial guess (equal weight)
     initial_weights = np.ones(n_assets) / n_assets
@@ -4175,7 +4186,7 @@ def calculate_var_cvar_portfolio_optimization(enhanced_df, confidence_level=0.95
     return rebalancing_df, optimization_metrics
 
 def optimize_max_sharpe(returns_df, risk_free_rate, max_position=0.25, min_position=0.02):
-    """Optimize for maximum Sharpe ratio with realistic position constraints"""
+    """Optimize for maximum Sharpe ratio with realistic position constraints and nuanced diversification"""
     from scipy.optimize import minimize
 
     n_assets = len(returns_df.columns)
@@ -4184,20 +4195,35 @@ def optimize_max_sharpe(returns_df, risk_free_rate, max_position=0.25, min_posit
         port_return = np.sum(returns_df.mean() * weights) * 252
         port_vol = np.sqrt(np.dot(weights.T, np.dot(returns_df.cov() * 252, weights)))
         sharpe = (port_return - risk_free_rate) / port_vol if port_vol > 0 else 0
-        # Add L2 regularization penalty for extreme weights
-        concentration_penalty = 0.01 * np.sum((weights - 1/n_assets)**2)
-        return -sharpe + concentration_penalty
 
-    constraints = {'type': 'eq', 'fun': lambda x: np.sum(x) - 1}
+        # IMPROVED: Multi-faceted diversification penalties
+        # 1. Concentration penalty (Herfindahl index) - penalize concentrated portfolios
+        hhi = np.sum(weights ** 2)
+        concentration_penalty = 0.5 * (hhi - 1/n_assets)
+
+        # 2. Sparsity penalty - discourage too many near-zero positions
+        active_positions = np.sum(weights > 0.01)
+        sparsity_penalty = 0.2 * max(0, max(5, n_assets * 0.3) - active_positions)
+
+        # 3. Extreme weight penalty - discourage positions at exact max bound
+        extreme_penalty = 0.3 * np.sum((weights > max_position * 0.95) & (weights <= max_position))
+
+        return -sharpe + concentration_penalty + sparsity_penalty + extreme_penalty
+
+    constraints = [
+        {'type': 'eq', 'fun': lambda x: np.sum(x) - 1},
+        {'type': 'ineq', 'fun': lambda x: np.sum(x >= min_position/2) - max(3, int(n_assets * 0.2))}
+    ]
     bounds = tuple((0, max_position) for _ in range(n_assets))
     initial_guess = np.array([1/n_assets] * n_assets)
 
     result = minimize(neg_sharpe, initial_guess, method='SLSQP', bounds=bounds, constraints=constraints,
                      options={'maxiter': 1000, 'ftol': 1e-9})
 
-    # Post-processing: apply minimum position threshold
+    # IMPROVED: Smart post-processing with gradual threshold
     optimized_weights = result.x.copy()
-    optimized_weights[optimized_weights < min_position] = 0
+    # Use a softer threshold - keep positions above half the min
+    optimized_weights[optimized_weights < min_position * 0.5] = 0
 
     # Renormalize to sum to 1
     if np.sum(optimized_weights) > 0:
@@ -4208,27 +4234,41 @@ def optimize_max_sharpe(returns_df, risk_free_rate, max_position=0.25, min_posit
     return pd.Series(optimized_weights, index=returns_df.columns)
 
 def optimize_min_volatility(returns_df, max_position=0.25, min_position=0.02):
-    """Optimize for minimum volatility with realistic position constraints"""
+    """Optimize for minimum volatility with realistic position constraints and nuanced diversification"""
     from scipy.optimize import minimize
 
     n_assets = len(returns_df.columns)
 
     def portfolio_vol(weights):
         vol = np.sqrt(np.dot(weights.T, np.dot(returns_df.cov() * 252, weights)))
-        # Add concentration penalty
-        concentration_penalty = 0.01 * np.sum((weights - 1/n_assets)**2)
-        return vol + concentration_penalty
 
-    constraints = {'type': 'eq', 'fun': lambda x: np.sum(x) - 1}
+        # IMPROVED: Multi-faceted diversification penalties
+        # 1. Concentration penalty (Herfindahl index)
+        hhi = np.sum(weights ** 2)
+        concentration_penalty = 0.02 * (hhi - 1/n_assets)
+
+        # 2. Sparsity penalty - discourage too many near-zero positions
+        active_positions = np.sum(weights > 0.01)
+        sparsity_penalty = 0.01 * max(0, max(5, n_assets * 0.3) - active_positions)
+
+        # 3. Extreme weight penalty
+        extreme_penalty = 0.015 * np.sum((weights > max_position * 0.95) & (weights <= max_position))
+
+        return vol + concentration_penalty + sparsity_penalty + extreme_penalty
+
+    constraints = [
+        {'type': 'eq', 'fun': lambda x: np.sum(x) - 1},
+        {'type': 'ineq', 'fun': lambda x: np.sum(x >= min_position/2) - max(3, int(n_assets * 0.2))}
+    ]
     bounds = tuple((0, max_position) for _ in range(n_assets))
     initial_guess = np.array([1/n_assets] * n_assets)
 
     result = minimize(portfolio_vol, initial_guess, method='SLSQP', bounds=bounds, constraints=constraints,
                      options={'maxiter': 1000, 'ftol': 1e-9})
 
-    # Post-processing: apply minimum position threshold
+    # IMPROVED: Smart post-processing with gradual threshold
     optimized_weights = result.x.copy()
-    optimized_weights[optimized_weights < min_position] = 0
+    optimized_weights[optimized_weights < min_position * 0.5] = 0
 
     # Renormalize to sum to 1
     if np.sum(optimized_weights) > 0:
@@ -4239,7 +4279,7 @@ def optimize_min_volatility(returns_df, max_position=0.25, min_position=0.02):
     return pd.Series(optimized_weights, index=returns_df.columns)
 
 def optimize_max_return(returns_df, max_position=0.25, min_position=0.02):
-    """Optimize for maximum return with realistic position constraints"""
+    """Optimize for maximum return with realistic position constraints and nuanced diversification"""
     from scipy.optimize import minimize
 
     n_assets = len(returns_df.columns)
@@ -4247,20 +4287,34 @@ def optimize_max_return(returns_df, max_position=0.25, min_position=0.02):
 
     def neg_return(weights):
         portfolio_return = np.sum(mean_returns * weights)
-        # Add concentration penalty
-        concentration_penalty = 0.01 * np.sum((weights - 1/n_assets)**2)
-        return -portfolio_return + concentration_penalty
 
-    constraints = {'type': 'eq', 'fun': lambda x: np.sum(x) - 1}
+        # IMPROVED: Multi-faceted diversification penalties
+        # 1. Concentration penalty (Herfindahl index)
+        hhi = np.sum(weights ** 2)
+        concentration_penalty = 0.3 * (hhi - 1/n_assets)
+
+        # 2. Sparsity penalty - discourage too many near-zero positions
+        active_positions = np.sum(weights > 0.01)
+        sparsity_penalty = 0.15 * max(0, max(5, n_assets * 0.3) - active_positions)
+
+        # 3. Extreme weight penalty
+        extreme_penalty = 0.2 * np.sum((weights > max_position * 0.95) & (weights <= max_position))
+
+        return -portfolio_return + concentration_penalty + sparsity_penalty + extreme_penalty
+
+    constraints = [
+        {'type': 'eq', 'fun': lambda x: np.sum(x) - 1},
+        {'type': 'ineq', 'fun': lambda x: np.sum(x >= min_position/2) - max(3, int(n_assets * 0.2))}
+    ]
     bounds = tuple((0, max_position) for _ in range(n_assets))
     initial_guess = np.array([1/n_assets] * n_assets)
 
     result = minimize(neg_return, initial_guess, method='SLSQP', bounds=bounds, constraints=constraints,
                      options={'maxiter': 1000, 'ftol': 1e-9})
 
-    # Post-processing: apply minimum position threshold
+    # IMPROVED: Smart post-processing with gradual threshold
     optimized_weights = result.x.copy()
-    optimized_weights[optimized_weights < min_position] = 0
+    optimized_weights[optimized_weights < min_position * 0.5] = 0
 
     # Renormalize to sum to 1
     if np.sum(optimized_weights) > 0:
@@ -4271,7 +4325,7 @@ def optimize_max_return(returns_df, max_position=0.25, min_position=0.02):
     return pd.Series(optimized_weights, index=returns_df.columns)
 
 def optimize_risk_parity(returns_df, max_position=0.25, min_position=0.02):
-    """Risk parity optimization with realistic position constraints"""
+    """Risk parity optimization with realistic position constraints and nuanced diversification"""
     from scipy.optimize import minimize
 
     n_assets = len(returns_df.columns)
@@ -4284,18 +4338,31 @@ def optimize_risk_parity(returns_df, max_position=0.25, min_position=0.02):
         marginal_contrib = np.dot(cov_matrix, weights) / port_vol
         risk_contrib = weights * marginal_contrib
         target_risk = port_vol / n_assets
-        return np.sum((risk_contrib - target_risk) ** 2)
+        risk_parity_error = np.sum((risk_contrib - target_risk) ** 2)
 
-    constraints = {'type': 'eq', 'fun': lambda x: np.sum(x) - 1}
+        # IMPROVED: Add diversification penalties
+        # 1. Sparsity penalty - discourage too many near-zero positions
+        active_positions = np.sum(weights > 0.01)
+        sparsity_penalty = 0.01 * max(0, max(5, n_assets * 0.3) - active_positions)
+
+        # 2. Extreme weight penalty
+        extreme_penalty = 0.015 * np.sum((weights > max_position * 0.95) & (weights <= max_position))
+
+        return risk_parity_error + sparsity_penalty + extreme_penalty
+
+    constraints = [
+        {'type': 'eq', 'fun': lambda x: np.sum(x) - 1},
+        {'type': 'ineq', 'fun': lambda x: np.sum(x >= min_position/2) - max(3, int(n_assets * 0.2))}
+    ]
     bounds = tuple((0, max_position) for _ in range(n_assets))
     initial_guess = np.array([1/n_assets] * n_assets)
 
     result = minimize(risk_parity_objective, initial_guess, method='SLSQP', bounds=bounds, constraints=constraints,
                      options={'maxiter': 1000, 'ftol': 1e-9})
 
-    # Post-processing: apply minimum position threshold
+    # IMPROVED: Smart post-processing with gradual threshold
     optimized_weights = result.x.copy()
-    optimized_weights[optimized_weights < min_position] = 0
+    optimized_weights[optimized_weights < min_position * 0.5] = 0
 
     # Renormalize to sum to 1
     if np.sum(optimized_weights) > 0:
@@ -7053,27 +7120,54 @@ def main():
             st.markdown("### 🎯 VaR/CVaR Portfolio Optimization")
             st.info("Optimize portfolio weights to minimize Conditional Value at Risk (CVaR) - the expected loss beyond VaR")
 
-            col1, col2, col3 = st.columns([2, 1, 1])
+            col1, col2 = st.columns([2, 1])
 
-            with col2:
+            with col1:
                 confidence = st.slider("Confidence Level", 90, 99, 95, 1) / 100
                 lookback = st.slider("Lookback Period (days)", 60, 504, 252, 21)
 
-            with col3:
+            with col2:
                 if st.button("🔄 Run Optimization", type="primary"):
                     st.session_state['run_optimization'] = True
 
-            with col1:
-                if st.session_state.get('run_optimization', False):
-                    with st.spinner("Running portfolio optimization..."):
-                        rebalancing_df, opt_metrics = calculate_var_cvar_portfolio_optimization(
-                            enhanced_df, confidence, lookback
-                        )
+            # Position Constraints
+            with st.expander("⚙️ Position Constraints - Control Portfolio Allocation"):
+                st.markdown("**Position Sizing Constraints** - Set realistic bounds for portfolio optimization")
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    max_position_var = st.slider(
+                        "Max Position Size (%)",
+                        min_value=1,
+                        max_value=50,
+                        value=25,
+                        step=1,
+                        key="max_pos_var",
+                        help="Maximum weight allowed per security (prevents over-concentration)"
+                    ) / 100
 
-                        if rebalancing_df is not None:
-                            st.session_state['rebalancing_df'] = rebalancing_df
-                            st.session_state['opt_metrics'] = opt_metrics
-                            st.success("✅ Optimization complete!")
+                with col_b:
+                    min_position_var = st.slider(
+                        "Min Position Size (%)",
+                        min_value=1,
+                        max_value=50,
+                        value=2,
+                        step=1,
+                        key="min_pos_var",
+                        help="Minimum meaningful position size (smaller positions excluded)"
+                    ) / 100
+
+                st.caption(f"ℹ️ Portfolio will optimize within these constraints: {min_position_var*100:.0f}% - {max_position_var*100:.0f}% per position")
+
+            if st.session_state.get('run_optimization', False):
+                with st.spinner("Running portfolio optimization..."):
+                    rebalancing_df, opt_metrics = calculate_var_cvar_portfolio_optimization(
+                        enhanced_df, confidence, lookback, max_position_var, min_position_var
+                    )
+
+                    if rebalancing_df is not None:
+                        st.session_state['rebalancing_df'] = rebalancing_df
+                        st.session_state['opt_metrics'] = opt_metrics
+                        st.success("✅ Optimization complete!")
 
             # Display results if available
             if 'rebalancing_df' in st.session_state:
@@ -8297,18 +8391,18 @@ def main():
             with col1:
                 max_position = st.slider(
                     "Max Position Size (%)",
-                    min_value=5,
+                    min_value=1,
                     max_value=50,
                     value=25,
-                    step=5,
+                    step=1,
                     help="Maximum weight allowed per security (prevents over-concentration)"
                 ) / 100
 
             with col2:
                 min_position = st.slider(
                     "Min Position Size (%)",
-                    min_value=0,
-                    max_value=10,
+                    min_value=1,
+                    max_value=50,
                     value=2,
                     step=1,
                     help="Minimum meaningful position size (smaller positions excluded)"
