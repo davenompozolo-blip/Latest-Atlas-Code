@@ -7158,11 +7158,21 @@ def main():
 
                 st.caption(f"ℹ️ Portfolio will optimize within these constraints: {min_position_var*100:.0f}% - {max_position_var*100:.0f}% per position")
 
+                # Validation: Ensure min < max
+                if min_position_var >= max_position_var:
+                    st.error(f"⚠️ Min position ({min_position_var*100:.0f}%) must be less than max position ({max_position_var*100:.0f}%)")
+
             if st.session_state.get('run_optimization', False):
-                with st.spinner("Running portfolio optimization..."):
-                    rebalancing_df, opt_metrics = calculate_var_cvar_portfolio_optimization(
-                        enhanced_df, confidence, lookback, max_position_var, min_position_var
-                    )
+                # Validate constraints before optimization
+                if min_position_var >= max_position_var:
+                    st.error("❌ Cannot optimize: Min position must be less than max position")
+                elif max_position_var * len(enhanced_df) < 1.0:
+                    st.error(f"❌ Cannot optimize: Max position too small. With {len(enhanced_df)} assets and {max_position_var*100:.0f}% max, portfolio cannot reach 100%")
+                else:
+                    with st.spinner("Running portfolio optimization..."):
+                        rebalancing_df, opt_metrics = calculate_var_cvar_portfolio_optimization(
+                            enhanced_df, confidence, lookback, max_position_var, min_position_var
+                        )
 
                     if rebalancing_df is not None:
                         st.session_state['rebalancing_df'] = rebalancing_df
@@ -8410,182 +8420,192 @@ def main():
 
             st.caption(f"ℹ️ These constraints prevent impractical portfolios like 95% in one stock. Max: {max_position*100:.0f}%, Min: {min_position*100:.0f}%")
 
+            # Validation: Ensure min < max
+            if min_position >= max_position:
+                st.error(f"⚠️ Min position ({min_position*100:.0f}%) must be less than max position ({max_position*100:.0f}%)")
+
         if st.session_state.get('run_mpt_optimization', False):
-            with st.spinner("⚡ Running portfolio optimization..."):
-                # Get historical returns for all holdings
-                returns_data = {}
-                for ticker in enhanced_df['Ticker'].unique():
-                    hist_data = fetch_historical_data(ticker,
-                                                     datetime.now() - timedelta(days=252),
-                                                     datetime.now())
-                    if hist_data is not None and len(hist_data) > 0:
-                        returns_data[ticker] = hist_data['Close'].pct_change().dropna()
+            # Validate constraints before optimization
+            if min_position >= max_position:
+                st.error("❌ Cannot optimize: Min position must be less than max position")
+            elif max_position * len(enhanced_df) < 1.0:
+                st.error(f"❌ Cannot optimize: Max position too small. With {len(enhanced_df)} assets and {max_position*100:.0f}% max, portfolio cannot reach 100%")
+            else:
+                with st.spinner("⚡ Running portfolio optimization..."):
+                    # Get historical returns for all holdings
+                    returns_data = {}
+                    for ticker in enhanced_df['Ticker'].unique():
+                        hist_data = fetch_historical_data(ticker,
+                                                         datetime.now() - timedelta(days=252),
+                                                         datetime.now())
+                        if hist_data is not None and len(hist_data) > 0:
+                            returns_data[ticker] = hist_data['Close'].pct_change().dropna()
 
-                # Create returns dataframe
-                returns_df = pd.DataFrame(returns_data)
-                returns_df = returns_df.dropna()
+                    # Create returns dataframe
+                    returns_df = pd.DataFrame(returns_data)
+                    returns_df = returns_df.dropna()
 
-                if len(returns_df) > 30:
-                    # Calculate optimal weights based on objective with realistic constraints
-                    if optimization_objective == "Max Sharpe Ratio":
-                        optimal_weights = optimize_max_sharpe(returns_df, risk_free_rate_input, max_position, min_position)
-                    elif optimization_objective == "Min Volatility":
-                        optimal_weights = optimize_min_volatility(returns_df, max_position, min_position)
-                    elif optimization_objective == "Max Return":
-                        optimal_weights = optimize_max_return(returns_df, max_position, min_position)
-                    elif optimization_objective == "Risk Parity":
-                        optimal_weights = optimize_risk_parity(returns_df, max_position, min_position)
+                    if len(returns_df) > 30:
+                        # Calculate optimal weights based on objective with realistic constraints
+                        if optimization_objective == "Max Sharpe Ratio":
+                            optimal_weights = optimize_max_sharpe(returns_df, risk_free_rate_input, max_position, min_position)
+                        elif optimization_objective == "Min Volatility":
+                            optimal_weights = optimize_min_volatility(returns_df, max_position, min_position)
+                        elif optimization_objective == "Max Return":
+                            optimal_weights = optimize_max_return(returns_df, max_position, min_position)
+                        elif optimization_objective == "Risk Parity":
+                            optimal_weights = optimize_risk_parity(returns_df, max_position, min_position)
 
-                    # Get current weights
-                    current_weights_dict = {}
-                    total_value = enhanced_df['Total Value'].sum()
-                    for _, row in enhanced_df.iterrows():
-                        current_weights_dict[row['Ticker']] = row['Total Value'] / total_value
+                        # Get current weights
+                        current_weights_dict = {}
+                        total_value = enhanced_df['Total Value'].sum()
+                        for _, row in enhanced_df.iterrows():
+                            current_weights_dict[row['Ticker']] = row['Total Value'] / total_value
 
-                    current_weights = pd.Series(current_weights_dict)
+                        current_weights = pd.Series(current_weights_dict)
 
-                    # Create comparison dataframe
-                    comparison_data = []
-                    for ticker in optimal_weights.index:
-                        current_w = current_weights.get(ticker, 0)
-                        optimal_w = optimal_weights.get(ticker, 0)
+                        # Create comparison dataframe
+                        comparison_data = []
+                        for ticker in optimal_weights.index:
+                            current_w = current_weights.get(ticker, 0)
+                            optimal_w = optimal_weights.get(ticker, 0)
 
-                        comparison_data.append({
-                            'Ticker': ticker,
-                            'Current Weight': current_w * 100,
-                            'Optimal Weight': optimal_w * 100,
-                            'Difference': (optimal_w - current_w) * 100,
-                            'Action': '🟢 Increase' if optimal_w > current_w else '🔴 Decrease' if optimal_w < current_w else '⚪ Hold'
-                        })
+                            comparison_data.append({
+                                'Ticker': ticker,
+                                'Current Weight': current_w * 100,
+                                'Optimal Weight': optimal_w * 100,
+                                'Difference': (optimal_w - current_w) * 100,
+                                'Action': '🟢 Increase' if optimal_w > current_w else '🔴 Decrease' if optimal_w < current_w else '⚪ Hold'
+                            })
 
-                    comparison_df = pd.DataFrame(comparison_data)
-                    comparison_df = comparison_df.sort_values('Optimal Weight', ascending=False)
+                        comparison_df = pd.DataFrame(comparison_data)
+                        comparison_df = comparison_df.sort_values('Optimal Weight', ascending=False)
 
-                    st.markdown("### 📊 Optimization Results")
+                        st.markdown("### 📊 Optimization Results")
 
-                    # Format for display
-                    display_comparison = comparison_df.copy()
-                    display_comparison['Current Weight'] = display_comparison['Current Weight'].apply(lambda x: f"{x:.2f}%")
-                    display_comparison['Optimal Weight'] = display_comparison['Optimal Weight'].apply(lambda x: f"{x:.2f}%")
-                    display_comparison['Difference'] = display_comparison['Difference'].apply(lambda x: f"{x:+.2f}%")
+                        # Format for display
+                        display_comparison = comparison_df.copy()
+                        display_comparison['Current Weight'] = display_comparison['Current Weight'].apply(lambda x: f"{x:.2f}%")
+                        display_comparison['Optimal Weight'] = display_comparison['Optimal Weight'].apply(lambda x: f"{x:.2f}%")
+                        display_comparison['Difference'] = display_comparison['Difference'].apply(lambda x: f"{x:+.2f}%")
 
-                    st.dataframe(display_comparison, use_container_width=True, hide_index=True)
+                        st.dataframe(display_comparison, use_container_width=True, hide_index=True)
 
-                    # Calculate portfolio metrics
-                    st.markdown("### 📈 Expected Performance")
+                        # Calculate portfolio metrics
+                        st.markdown("### 📈 Expected Performance")
 
-                    # Current portfolio metrics
-                    current_return = (returns_df * current_weights).sum(axis=1).mean() * 252
-                    current_vol = (returns_df * current_weights).sum(axis=1).std() * np.sqrt(252)
-                    current_sharpe = (current_return - risk_free_rate_input) / current_vol if current_vol > 0 else 0
+                        # Current portfolio metrics
+                        current_return = (returns_df * current_weights).sum(axis=1).mean() * 252
+                        current_vol = (returns_df * current_weights).sum(axis=1).std() * np.sqrt(252)
+                        current_sharpe = (current_return - risk_free_rate_input) / current_vol if current_vol > 0 else 0
 
-                    # Optimal portfolio metrics
-                    optimal_return = (returns_df * optimal_weights).sum(axis=1).mean() * 252
-                    optimal_vol = (returns_df * optimal_weights).sum(axis=1).std() * np.sqrt(252)
-                    optimal_sharpe = (optimal_return - risk_free_rate_input) / optimal_vol if optimal_vol > 0 else 0
+                        # Optimal portfolio metrics
+                        optimal_return = (returns_df * optimal_weights).sum(axis=1).mean() * 252
+                        optimal_vol = (returns_df * optimal_weights).sum(axis=1).std() * np.sqrt(252)
+                        optimal_sharpe = (optimal_return - risk_free_rate_input) / optimal_vol if optimal_vol > 0 else 0
 
-                    col1, col2 = st.columns(2)
+                        col1, col2 = st.columns(2)
 
-                    with col1:
-                        st.markdown("#### 📊 Current Portfolio")
-                        st.metric("Expected Return", f"{current_return * 100:.2f}%")
-                        st.metric("Volatility", f"{current_vol * 100:.2f}%")
-                        st.metric("Sharpe Ratio", f"{current_sharpe:.2f}")
+                        with col1:
+                            st.markdown("#### 📊 Current Portfolio")
+                            st.metric("Expected Return", f"{current_return * 100:.2f}%")
+                            st.metric("Volatility", f"{current_vol * 100:.2f}%")
+                            st.metric("Sharpe Ratio", f"{current_sharpe:.2f}")
 
-                    with col2:
-                        st.markdown("#### ✨ Optimized Portfolio")
-                        st.metric("Expected Return", f"{optimal_return * 100:.2f}%",
-                                 delta=f"{(optimal_return - current_return) * 100:+.2f}%")
-                        st.metric("Volatility", f"{optimal_vol * 100:.2f}%",
-                                 delta=f"{(optimal_vol - current_vol) * 100:+.2f}%",
-                                 delta_color="inverse")
-                        st.metric("Sharpe Ratio", f"{optimal_sharpe:.2f}",
-                                 delta=f"{(optimal_sharpe - current_sharpe):+.2f}")
+                        with col2:
+                            st.markdown("#### ✨ Optimized Portfolio")
+                            st.metric("Expected Return", f"{optimal_return * 100:.2f}%",
+                                     delta=f"{(optimal_return - current_return) * 100:+.2f}%")
+                            st.metric("Volatility", f"{optimal_vol * 100:.2f}%",
+                                     delta=f"{(optimal_vol - current_vol) * 100:+.2f}%",
+                                     delta_color="inverse")
+                            st.metric("Sharpe Ratio", f"{optimal_sharpe:.2f}",
+                                     delta=f"{(optimal_sharpe - current_sharpe):+.2f}")
 
-                    # Weight comparison chart
-                    st.markdown("#### 📈 Weight Comparison")
+                        # Weight comparison chart
+                        st.markdown("#### 📈 Weight Comparison")
 
-                    fig_weights = go.Figure()
+                        fig_weights = go.Figure()
 
-                    fig_weights.add_trace(go.Bar(
-                        name='Current',
-                        x=comparison_df['Ticker'],
-                        y=comparison_df['Current Weight'],
-                        marker_color=COLORS['electric_blue'],
-                        text=comparison_df['Current Weight'].apply(lambda x: f"{x:.1f}%"),
-                        textposition='auto'
-                    ))
+                        fig_weights.add_trace(go.Bar(
+                            name='Current',
+                            x=comparison_df['Ticker'],
+                            y=comparison_df['Current Weight'],
+                            marker_color=COLORS['electric_blue'],
+                            text=comparison_df['Current Weight'].apply(lambda x: f"{x:.1f}%"),
+                            textposition='auto'
+                        ))
 
-                    fig_weights.add_trace(go.Bar(
-                        name='Optimal',
-                        x=comparison_df['Ticker'],
-                        y=comparison_df['Optimal Weight'],
-                        marker_color=COLORS['teal'],
-                        text=comparison_df['Optimal Weight'].apply(lambda x: f"{x:.1f}%"),
-                        textposition='auto'
-                    ))
+                        fig_weights.add_trace(go.Bar(
+                            name='Optimal',
+                            x=comparison_df['Ticker'],
+                            y=comparison_df['Optimal Weight'],
+                            marker_color=COLORS['teal'],
+                            text=comparison_df['Optimal Weight'].apply(lambda x: f"{x:.1f}%"),
+                            textposition='auto'
+                        ))
 
-                    fig_weights.update_layout(
-                        title=f"Current vs Optimal Weights ({optimization_objective})",
-                        xaxis_title="",
-                        yaxis_title="Weight (%)",
-                        barmode='group',
-                        height=500,
-                        showlegend=True
-                    )
+                        fig_weights.update_layout(
+                            title=f"Current vs Optimal Weights ({optimization_objective})",
+                            xaxis_title="",
+                            yaxis_title="Weight (%)",
+                            barmode='group',
+                            height=500,
+                            showlegend=True
+                        )
 
-                    apply_chart_theme(fig_weights)
-                    st.plotly_chart(fig_weights, use_container_width=True)
+                        apply_chart_theme(fig_weights)
+                        st.plotly_chart(fig_weights, use_container_width=True)
 
-                    # Portfolio Quality Validation Metrics
-                    st.markdown("#### ✅ Portfolio Quality Checks")
-                    st.info("Validate that the optimized portfolio meets practical portfolio management principles")
+                        # Portfolio Quality Validation Metrics
+                        st.markdown("#### ✅ Portfolio Quality Checks")
+                        st.info("Validate that the optimized portfolio meets practical portfolio management principles")
 
-                    col1, col2, col3, col4 = st.columns(4)
+                        col1, col2, col3, col4 = st.columns(4)
 
-                    with col1:
-                        n_positions = np.sum(optimal_weights > 0)
-                        st.metric("Number of Positions", n_positions)
-                        if n_positions < 5:
-                            st.warning("⚠️ Low diversification")
-                        else:
-                            st.success("✅ Well diversified")
+                        with col1:
+                            n_positions = np.sum(optimal_weights > 0)
+                            st.metric("Number of Positions", n_positions)
+                            if n_positions < 5:
+                                st.warning("⚠️ Low diversification")
+                            else:
+                                st.success("✅ Well diversified")
 
-                    with col2:
-                        max_weight = np.max(optimal_weights)
-                        st.metric("Largest Position", f"{max_weight*100:.1f}%")
-                        if max_weight > 0.30:
-                            st.warning("⚠️ High concentration")
-                        else:
-                            st.success("✅ Balanced")
+                        with col2:
+                            max_weight = np.max(optimal_weights)
+                            st.metric("Largest Position", f"{max_weight*100:.1f}%")
+                            if max_weight > 0.30:
+                                st.warning("⚠️ High concentration")
+                            else:
+                                st.success("✅ Balanced")
 
-                    with col3:
-                        # Herfindahl-Hirschman Index (concentration measure)
-                        herfindahl_index = np.sum(optimal_weights**2)
-                        st.metric("HHI Index", f"{herfindahl_index:.3f}")
-                        st.caption(f"Ideal: {1/len(optimal_weights):.3f}")
-                        if herfindahl_index > 0.3:
-                            st.warning("⚠️ Concentrated")
-                        else:
-                            st.success("✅ Diversified")
+                        with col3:
+                            # Herfindahl-Hirschman Index (concentration measure)
+                            herfindahl_index = np.sum(optimal_weights**2)
+                            st.metric("HHI Index", f"{herfindahl_index:.3f}")
+                            st.caption(f"Ideal: {1/len(optimal_weights):.3f}")
+                            if herfindahl_index > 0.3:
+                                st.warning("⚠️ Concentrated")
+                            else:
+                                st.success("✅ Diversified")
 
-                    with col4:
-                        # Effective number of positions (inverse of HHI)
-                        effective_positions = 1 / herfindahl_index if herfindahl_index > 0 else 0
-                        st.metric("Effective N", f"{effective_positions:.1f}")
-                        st.caption("Diversification measure")
+                        with col4:
+                            # Effective number of positions (inverse of HHI)
+                            effective_positions = 1 / herfindahl_index if herfindahl_index > 0 else 0
+                            st.metric("Effective N", f"{effective_positions:.1f}")
+                            st.caption("Diversification measure")
 
-                    # Show positions that were excluded (< min_position)
-                    excluded_positions = optimal_weights[optimal_weights == 0]
-                    if len(excluded_positions) > 0:
-                        with st.expander(f"ℹ️ {len(excluded_positions)} positions excluded (below {min_position*100:.0f}% threshold)"):
-                            st.write(", ".join(excluded_positions.index.tolist()))
-                            st.caption("These securities had weights below the minimum threshold and were excluded for practicality")
+                        # Show positions that were excluded (< min_position)
+                        excluded_positions = optimal_weights[optimal_weights == 0]
+                        if len(excluded_positions) > 0:
+                            with st.expander(f"ℹ️ {len(excluded_positions)} positions excluded (below {min_position*100:.0f}% threshold)"):
+                                st.write(", ".join(excluded_positions.index.tolist()))
+                                st.caption("These securities had weights below the minimum threshold and were excluded for practicality")
 
-                    st.success(f"✅ Optimization complete using {optimization_objective} strategy with realistic constraints!")
+                        st.success(f"✅ Optimization complete using {optimization_objective} strategy with realistic constraints!")
 
-                else:
-                    st.error("Insufficient historical data for optimization (need 30+ days)")
+                    else:
+                        st.error("Insufficient historical data for optimization (need 30+ days)")
 
         # ============================================================
         # CORRELATION HEATMAP - NEW ADDITION
