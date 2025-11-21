@@ -7716,7 +7716,6 @@ def main():
 
                 # Create a returns dataframe for validation (fetch historical data)
                 try:
-                    from datetime import datetime, timedelta
                     end_date = datetime.now()
                     start_date = end_date - timedelta(days=252)
 
