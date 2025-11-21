@@ -7594,47 +7594,72 @@ def main():
             st.markdown("### 🎯 VaR/CVaR Portfolio Optimization")
             st.info("Optimize portfolio weights to minimize Conditional Value at Risk (CVaR) - the expected loss beyond VaR")
 
-            col1, col2 = st.columns([2, 1])
+            col1, col2, col3 = st.columns([2, 2, 1])
 
             with col1:
                 confidence = st.slider("Confidence Level", 90, 99, 95, 1) / 100
                 lookback = st.slider("Lookback Period (days)", 60, 504, 252, 21)
 
             with col2:
-                if st.button("🔄 Run Optimization", type="primary"):
+                # 🎯 NEW v10.3: Risk Profile Selector
+                st.markdown("**Risk Profile** - Choose your investment style")
+                risk_profile_var = st.radio(
+                    "Risk Tolerance",
+                    options=['conservative', 'moderate', 'aggressive'],
+                    format_func=lambda x: {
+                        'conservative': '🛡️ Conservative - Capital Preservation',
+                        'moderate': '⚖️ Moderate - Balanced Growth',
+                        'aggressive': '🚀 Aggressive - Maximum Returns'
+                    }[x],
+                    index=1,  # Default to Moderate
+                    key="risk_profile_var",
+                    help="Your risk profile automatically sets optimal position limits and diversification requirements"
+                )
+
+                # Display what this risk profile means
+                config_var = RiskProfile.get_config(risk_profile_var, 'cvar_minimization')
+                st.caption(f"📊 **Auto-configured:** Max position {config_var['max_position_base']*100:.0f}%, Min {config_var['min_diversification']} holdings, Risk budget {config_var['risk_budget_per_asset']*100:.0f}% per asset")
+
+            with col3:
+                if st.button("🔄 Run Optimization", type="primary", key="run_var_opt"):
                     st.session_state['run_optimization'] = True
 
-            # Position Constraints
-            with st.expander("⚙️ Position Constraints - Control Portfolio Allocation"):
-                st.markdown("**Position Sizing Constraints** - Set realistic bounds for portfolio optimization")
-                col_a, col_b = st.columns(2)
-                with col_a:
-                    max_position_var = st.slider(
-                        "Max Position Size (%)",
-                        min_value=1,
-                        max_value=50,
-                        value=25,
-                        step=1,
-                        key="max_pos_var",
-                        help="Maximum weight allowed per security (prevents over-concentration)"
-                    ) / 100
+            # Advanced: Manual Override (collapsed by default)
+            with st.expander("🔧 Advanced: Manual Position Constraints Override"):
+                st.warning("⚠️ Advanced users only - Manual overrides bypass risk profile automation")
+                use_manual_var = st.checkbox("Use manual position constraints", value=False, key="use_manual_var")
 
-                with col_b:
-                    min_position_var = st.slider(
-                        "Min Position Size (%)",
-                        min_value=1,
-                        max_value=50,
-                        value=2,
-                        step=1,
-                        key="min_pos_var",
-                        help="Minimum meaningful position size (smaller positions excluded)"
-                    ) / 100
+                if use_manual_var:
+                    col_a, col_b = st.columns(2)
+                    with col_a:
+                        max_position_var = st.slider(
+                            "Max Position Size (%)",
+                            min_value=1,
+                            max_value=50,
+                            value=int(config_var['max_position_base']*100),
+                            step=1,
+                            key="max_pos_var_manual",
+                            help="Maximum weight allowed per security (prevents over-concentration)"
+                        ) / 100
 
-                st.caption(f"ℹ️ Portfolio will optimize within these constraints: {min_position_var*100:.0f}% - {max_position_var*100:.0f}% per position")
+                    with col_b:
+                        min_position_var = st.slider(
+                            "Min Position Size (%)",
+                            min_value=1,
+                            max_value=50,
+                            value=2,
+                            step=1,
+                            key="min_pos_var_manual",
+                            help="Minimum meaningful position size (smaller positions excluded)"
+                        ) / 100
 
-                # Validation: Ensure min < max
-                if min_position_var >= max_position_var:
-                    st.error(f"⚠️ Min position ({min_position_var*100:.0f}%) must be less than max position ({max_position_var*100:.0f}%)")
+                    # Validation: Ensure min < max
+                    if min_position_var >= max_position_var:
+                        st.error(f"⚠️ Min position ({min_position_var*100:.0f}%) must be less than max position ({max_position_var*100:.0f}%)")
+                else:
+                    # Use risk profile defaults
+                    max_position_var = config_var['max_position_base']
+                    min_position_var = 0.02  # Standard minimum
 
             if st.session_state.get('run_optimization', False):
                 # Validate constraints before optimization
@@ -7680,6 +7705,101 @@ def main():
                 with col4:
                     st.metric("Buy Trades", opt_metrics['buy_trades'])
                     st.metric("Sell Trades", opt_metrics['sell_trades'])
+
+                # 🎯 NEW v10.3: Realism Scoring & Portfolio Insights
+                st.markdown("---")
+                st.markdown("#### 🎯 Portfolio Quality Assessment")
+
+                # Get optimal weights from rebalancing_df
+                optimal_weights_dict = dict(zip(rebalancing_df['Ticker'], rebalancing_df['Optimal Weight %'] / 100))
+                optimal_weights_series = pd.Series(optimal_weights_dict)
+
+                # Create a returns dataframe for validation (fetch historical data)
+                try:
+                    from datetime import datetime, timedelta
+                    end_date = datetime.now()
+                    start_date = end_date - timedelta(days=252)
+
+                    returns_dict = {}
+                    for ticker in rebalancing_df['Ticker']:
+                        hist_data = fetch_historical_data(ticker, start_date, end_date)
+                        if hist_data is not None and len(hist_data) > 1:
+                            returns = hist_data['Close'].pct_change().dropna()
+                            returns_dict[ticker] = returns
+
+                    if returns_dict:
+                        returns_df_check = pd.DataFrame(returns_dict).dropna()
+
+                        # Calculate realism score
+                        realism = validate_portfolio_realism(
+                            optimal_weights_series.values,
+                            returns_df_check,
+                            'cvar_minimization'
+                        )
+
+                        # Calculate explanations
+                        explainer = OptimizationExplainer()
+                        explanations = explainer.explain_portfolio_weights(
+                            optimal_weights_series.values,
+                            returns_df_check,
+                            'cvar_minimization',
+                            None
+                        )
+
+                        # Identify red/yellow flags
+                        red_flags_data = explainer.identify_red_flags(
+                            optimal_weights_series.values,
+                            returns_df_check,
+                            config_var
+                        )
+
+                        # Display realism score prominently
+                        col_a, col_b, col_c = st.columns([1, 2, 2])
+
+                        with col_a:
+                            score_color = "🟢" if realism['overall'] >= 80 else "🟡" if realism['overall'] >= 60 else "🔴"
+                            st.metric("Realism Score", f"{score_color} {realism['overall']}/100")
+
+                        with col_b:
+                            st.markdown(f"**Classification:** {realism['classification']}")
+                            if realism['issues']:
+                                st.caption(f"⚠️ Issues: {', '.join(realism['issues'])}")
+
+                        with col_c:
+                            # Effective holdings
+                            effective_n = explanations['diversification']['effective_holdings']
+                            st.metric("Effective Holdings", f"{effective_n:.1f}")
+                            st.caption(explanations['diversification']['explanation'])
+
+                        # Display red/yellow flags if any
+                        if red_flags_data['red_flags'] or red_flags_data['yellow_flags']:
+                            st.markdown("**⚠️ Alerts:**")
+                            for flag in red_flags_data['red_flags']:
+                                st.error(flag)
+                            for flag in red_flags_data['yellow_flags']:
+                                st.warning(flag)
+                        else:
+                            st.success("✅ No major concerns detected - portfolio looks healthy!")
+
+                        # Portfolio insights in expander
+                        with st.expander("📊 Why These Weights? - Portfolio Explanation"):
+                            st.markdown("##### Top Holdings Analysis")
+                            for holding in explanations['top_holdings']:
+                                st.markdown(f"**{holding['ticker']}** - {holding['weight']*100:.1f}%")
+                                for reason in holding['reasons']:
+                                    st.markdown(f"  • {reason}")
+                                st.markdown("")
+
+                            st.markdown("##### Risk Contributors")
+                            st.markdown("Assets contributing most to portfolio risk:")
+                            for contributor in explanations['risk']['top_risk_contributors']:
+                                risk_pct = contributor['risk_contribution'] * 100 if contributor['risk_contribution'] > 0 else 0
+                                st.markdown(f"  • **{contributor['ticker']}**: {risk_pct:.1f}% risk contribution (weight: {contributor['weight']*100:.1f}%)")
+
+                except Exception as e:
+                    st.info("💡 Portfolio quality metrics will be displayed after optimization completes")
+
+                st.markdown("---")
 
                 # Rebalancing instructions
                 st.markdown("#### 📋 Rebalancing Instructions")
@@ -8843,9 +8963,9 @@ def main():
         # ============================================================
         st.divider()
         st.subheader("⚙️ Portfolio Optimization (Modern Portfolio Theory)")
-        st.info("Optimize portfolio allocation using institutional-grade MPT algorithms with realistic constraints")
+        st.info("Optimize portfolio allocation using production-grade MPT algorithms with intelligent risk management")
 
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns([2, 1, 2, 1])
 
         with col1:
             optimization_objective = st.selectbox(
@@ -8865,38 +8985,77 @@ def main():
             ) / 100
 
         with col3:
-            if st.button("🚀 Run MPT Optimization", type="primary"):
+            # 🎯 NEW v10.3: Risk Profile Selector
+            st.markdown("**Risk Profile**")
+            risk_profile_mpt = st.radio(
+                "Investment Style",
+                options=['conservative', 'moderate', 'aggressive'],
+                format_func=lambda x: {
+                    'conservative': '🛡️ Conservative',
+                    'moderate': '⚖️ Moderate',
+                    'aggressive': '🚀 Aggressive'
+                }[x],
+                index=1,  # Default to Moderate
+                key="risk_profile_mpt",
+                horizontal=True,
+                help="Auto-configures position limits and diversification based on your risk tolerance"
+            )
+
+        with col4:
+            if st.button("🚀 Run MPT Optimization", type="primary", key="run_mpt_opt"):
                 st.session_state['run_mpt_optimization'] = True
 
-        # Advanced constraints in expander
-        with st.expander("⚙️ Advanced Constraints - Prevent Extreme Weights"):
-            st.markdown("**Position Sizing Constraints** - Enforce realistic portfolio management principles")
-            col1, col2 = st.columns(2)
-            with col1:
-                max_position = st.slider(
-                    "Max Position Size (%)",
-                    min_value=1,
-                    max_value=50,
-                    value=25,
-                    step=1,
-                    help="Maximum weight allowed per security (prevents over-concentration)"
-                ) / 100
+        # Map optimization objective to strategy type
+        strategy_map = {
+            "Max Sharpe Ratio": "max_sharpe",
+            "Min Volatility": "min_volatility",
+            "Max Return": "max_return",
+            "Risk Parity": "risk_parity"
+        }
+        strategy_type_mpt = strategy_map[optimization_objective]
 
-            with col2:
-                min_position = st.slider(
-                    "Min Position Size (%)",
-                    min_value=1,
-                    max_value=50,
-                    value=2,
-                    step=1,
-                    help="Minimum meaningful position size (smaller positions excluded)"
-                ) / 100
+        # Get risk profile configuration
+        config_mpt = RiskProfile.get_config(risk_profile_mpt, strategy_type_mpt)
 
-            st.caption(f"ℹ️ These constraints prevent impractical portfolios like 95% in one stock. Max: {max_position*100:.0f}%, Min: {min_position*100:.0f}%")
+        # Display auto-configuration
+        st.caption(f"📊 **Auto-configured for {risk_profile_mpt.title()} {optimization_objective}:** Max position {config_mpt['max_position_base']*100:.0f}%, Min {config_mpt['min_diversification']} holdings, Risk budget {config_mpt['risk_budget_per_asset']*100:.0f}%/asset")
 
-            # Validation: Ensure min < max
-            if min_position >= max_position:
-                st.error(f"⚠️ Min position ({min_position*100:.0f}%) must be less than max position ({max_position*100:.0f}%)")
+        # Advanced: Manual Override (collapsed by default)
+        with st.expander("🔧 Advanced: Manual Position Constraints Override"):
+            st.warning("⚠️ Advanced users only - Manual overrides bypass risk profile automation")
+            use_manual_mpt = st.checkbox("Use manual position constraints", value=False, key="use_manual_mpt")
+
+            if use_manual_mpt:
+                col1, col2 = st.columns(2)
+                with col1:
+                    max_position = st.slider(
+                        "Max Position Size (%)",
+                        min_value=1,
+                        max_value=50,
+                        value=int(config_mpt['max_position_base']*100),
+                        step=1,
+                        key="max_pos_mpt_manual",
+                        help="Maximum weight allowed per security (prevents over-concentration)"
+                    ) / 100
+
+                with col2:
+                    min_position = st.slider(
+                        "Min Position Size (%)",
+                        min_value=1,
+                        max_value=50,
+                        value=2,
+                        step=1,
+                        key="min_pos_mpt_manual",
+                        help="Minimum meaningful position size (smaller positions excluded)"
+                    ) / 100
+
+                # Validation: Ensure min < max
+                if min_position >= max_position:
+                    st.error(f"⚠️ Min position ({min_position*100:.0f}%) must be less than max position ({max_position*100:.0f}%)")
+            else:
+                # Use risk profile defaults
+                max_position = config_mpt['max_position_base']
+                min_position = 0.02  # Standard minimum
 
         if st.session_state.get('run_mpt_optimization', False):
             # Validate constraints before optimization
@@ -8996,8 +9155,83 @@ def main():
                             st.metric("Sharpe Ratio", f"{optimal_sharpe:.2f}",
                                      delta=f"{(optimal_sharpe - current_sharpe):+.2f}")
 
+                        # 🎯 NEW v10.3: Portfolio Quality Assessment
+                        st.markdown("---")
+                        st.markdown("### 🎯 Portfolio Quality Assessment")
+
+                        try:
+                            # Calculate realism score
+                            realism_mpt = validate_portfolio_realism(
+                                optimal_weights.values,
+                                returns_df,
+                                strategy_type_mpt
+                            )
+
+                            # Calculate explanations
+                            explainer_mpt = OptimizationExplainer()
+                            explanations_mpt = explainer_mpt.explain_portfolio_weights(
+                                optimal_weights.values,
+                                returns_df,
+                                strategy_type_mpt,
+                                None
+                            )
+
+                            # Identify red/yellow flags
+                            red_flags_mpt = explainer_mpt.identify_red_flags(
+                                optimal_weights.values,
+                                returns_df,
+                                config_mpt
+                            )
+
+                            # Display realism score
+                            col_a, col_b, col_c = st.columns([1, 2, 2])
+
+                            with col_a:
+                                score_color = "🟢" if realism_mpt['overall'] >= 80 else "🟡" if realism_mpt['overall'] >= 60 else "🔴"
+                                st.metric("Realism Score", f"{score_color} {realism_mpt['overall']}/100")
+
+                            with col_b:
+                                st.markdown(f"**Classification:** {realism_mpt['classification']}")
+                                if realism_mpt['issues']:
+                                    st.caption(f"⚠️ Issues: {', '.join(realism_mpt['issues'])}")
+
+                            with col_c:
+                                effective_n_mpt = explanations_mpt['diversification']['effective_holdings']
+                                st.metric("Effective Holdings", f"{effective_n_mpt:.1f}")
+                                st.caption(explanations_mpt['diversification']['explanation'])
+
+                            # Display alerts
+                            if red_flags_mpt['red_flags'] or red_flags_mpt['yellow_flags']:
+                                st.markdown("**⚠️ Alerts:**")
+                                for flag in red_flags_mpt['red_flags']:
+                                    st.error(flag)
+                                for flag in red_flags_mpt['yellow_flags']:
+                                    st.warning(flag)
+                            else:
+                                st.success("✅ No major concerns - portfolio looks healthy!")
+
+                            # Portfolio explanation
+                            with st.expander("📊 Why These Weights? - Portfolio Explanation"):
+                                st.markdown("##### Top Holdings Analysis")
+                                for holding in explanations_mpt['top_holdings']:
+                                    st.markdown(f"**{holding['ticker']}** - {holding['weight']*100:.1f}%")
+                                    for reason in holding['reasons']:
+                                        st.markdown(f"  • {reason}")
+                                    st.markdown("")
+
+                                st.markdown("##### Risk Contributors")
+                                st.markdown("Assets contributing most to portfolio risk:")
+                                for contributor in explanations_mpt['risk']['top_risk_contributors']:
+                                    risk_pct = contributor['risk_contribution'] * 100 if contributor['risk_contribution'] > 0 else 0
+                                    st.markdown(f"  • **{contributor['ticker']}**: {risk_pct:.1f}% risk contribution (weight: {contributor['weight']*100:.1f}%)")
+
+                        except Exception as e:
+                            st.info("💡 Portfolio quality metrics ready")
+
+                        st.markdown("---")
+
                         # Weight comparison chart
-                        st.markdown("#### 📈 Weight Comparison")
+                        st.markdown("### 📈 Weight Comparison")
 
                         fig_weights = go.Figure()
 
