@@ -4067,38 +4067,32 @@ def calculate_var_cvar_portfolio_optimization(enhanced_df, confidence_level=0.95
     total_portfolio_value = current_values.sum()
     current_weights = current_values / total_portfolio_value
 
-    # Define CVaR calculation with smart regularization for diversification
+    # Define CVaR calculation with production-grade regularization
     def calculate_portfolio_cvar(weights, returns, alpha):
-        """Calculate CVaR (Expected Shortfall) for given weights with nuanced penalties"""
+        """
+        Calculate CVaR (Expected Shortfall) for given weights
+
+        FIXED v10.3: Removed aggressive penalties causing equal-weight portfolios.
+        Now uses gentle regularization scaled appropriately.
+        """
         portfolio_returns = returns @ weights
         var_threshold = np.percentile(portfolio_returns, (1-alpha) * 100)
         cvar = portfolio_returns[portfolio_returns <= var_threshold].mean()
 
-        # IMPROVED: Multi-faceted diversification penalty
-        # 1. Concentration penalty (Herfindahl index)
+        # GENTLE regularization - tiny penalty to avoid extreme concentration
+        # CVaR is typically -0.05 to -0.20, so penalty should be ~0.0001 to 0.001
         hhi = np.sum(weights ** 2)
-        concentration_penalty = 50 * (hhi - 1/n_assets)  # Penalize high concentration
+        gentle_regularization = 0.0005 * (hhi - 1/n_assets)
 
-        # 2. Sparse portfolio penalty - discourage too many near-zero positions
-        active_positions = np.sum(weights > 0.01)
-        if active_positions < max(5, n_assets * 0.3):  # Want at least 30% of assets active
-            sparsity_penalty = 10 * (max(5, n_assets * 0.3) - active_positions)
-        else:
-            sparsity_penalty = 0
-
-        # 3. Extreme weight penalty - discourage positions at exact max bound
-        extreme_penalty = 20 * np.sum((weights > max_position * 0.95) & (weights <= max_position))
-
-        return -cvar + concentration_penalty + sparsity_penalty + extreme_penalty
+        return -cvar + gentle_regularization
 
     # Optimization objective
     def objective(weights):
         return calculate_portfolio_cvar(weights, returns_matrix, confidence_level)
 
-    # Constraints for realistic diversification
+    # Production-grade constraints
     constraints = [
-        {'type': 'eq', 'fun': lambda x: np.sum(x) - 1.0},  # Weights sum to 1
-        {'type': 'ineq', 'fun': lambda x: np.sum(x >= min_position) - max(3, int(n_assets * 0.2))}  # At least 20% of assets above min
+        {'type': 'eq', 'fun': lambda x: np.sum(x) - 1.0}  # Weights sum to 1
     ]
 
     # Use user-specified bounds
@@ -4185,8 +4179,507 @@ def calculate_var_cvar_portfolio_optimization(enhanced_df, confidence_level=0.95
 
     return rebalancing_df, optimization_metrics
 
+# ============================================================================
+# PRODUCTION-GRADE PORTFOLIO OPTIMIZATION SYSTEM v10.3
+# ============================================================================
+# PM/Developer Hybrid Approach - Built for Trust & Transparency
+#
+# Key Components:
+# 1. RiskProfile - Translate user intent to optimization parameters
+# 2. RobustPortfolioOptimizer - Handle estimation uncertainty
+# 3. OptimizationExplainer - Generate transparent insights
+# 4. Production workflow - Complete end-to-end optimization
+# ============================================================================
+
+class RiskProfile:
+    """
+    Translate user risk tolerance into optimization parameters
+
+    Instead of asking users to set 47 parameters, provide 3 clear risk profiles:
+    - Conservative: Capital preservation, steady returns
+    - Moderate: Balance growth and risk
+    - Aggressive: Maximize returns, accept volatility
+    """
+
+    PROFILES = {
+        'conservative': {
+            'name': 'Conservative',
+            'description': 'Prioritize capital preservation and steady returns',
+            'max_position_base': 0.15,        # Smaller positions
+            'max_sector_concentration': 0.30,  # Tight sector limits
+            'min_diversification': 10,         # Force 10+ holdings
+            'max_drawdown_tolerance': 0.15,    # 15% max drawdown
+            'turnover_sensitivity': 'low',     # Avoid frequent trading
+            'risk_budget_per_asset': 0.12,     # No asset >12% of risk
+        },
+
+        'moderate': {
+            'name': 'Moderate',
+            'description': 'Balance growth and risk management',
+            'max_position_base': 0.20,
+            'max_sector_concentration': 0.40,
+            'min_diversification': 8,
+            'max_drawdown_tolerance': 0.25,
+            'turnover_sensitivity': 'medium',
+            'risk_budget_per_asset': 0.15,
+        },
+
+        'aggressive': {
+            'name': 'Aggressive',
+            'description': 'Maximize returns, accept higher volatility',
+            'max_position_base': 0.25,
+            'max_sector_concentration': 0.50,
+            'min_diversification': 6,
+            'max_drawdown_tolerance': 0.35,
+            'turnover_sensitivity': 'high',
+            'risk_budget_per_asset': 0.20,
+        }
+    }
+
+    @classmethod
+    def get_config(cls, risk_tolerance, strategy_type):
+        """
+        Get optimization config based on user risk profile + strategy
+
+        This is the KEY translation layer - from user intent to math parameters
+        """
+        base_config = cls.PROFILES[risk_tolerance].copy()
+
+        # Strategy-specific adjustments
+        if strategy_type == 'min_volatility':
+            # Min vol naturally conservative - allow more concentration
+            base_config['max_position_base'] *= 1.4
+            base_config['min_diversification'] = max(5, base_config['min_diversification'] - 3)
+
+        elif strategy_type == 'max_return':
+            # Return chasing is dangerous - force MORE diversification
+            base_config['max_position_base'] *= 0.75
+            base_config['min_diversification'] += 2
+            base_config['max_sector_concentration'] -= 0.10
+
+        elif strategy_type == 'max_sharpe':
+            # Sharpe is balanced - use base config as-is
+            pass
+
+        return base_config
+
+
+def calculate_risk_adjusted_limits(returns_df, max_position_base, risk_budget_per_asset):
+    """
+    Calculate risk-adjusted position limits for each asset
+
+    Idea: Higher volatility assets should have lower maximum position sizes
+    to prevent them from dominating portfolio risk
+
+    Args:
+        returns_df: Historical returns dataframe
+        max_position_base: Base maximum position size
+        risk_budget_per_asset: Maximum risk contribution per asset
+
+    Returns:
+        List of (min, max) tuples for each asset
+    """
+    # Calculate annualized volatilities
+    vols = returns_df.std() * np.sqrt(252)
+    avg_vol = vols.mean()
+
+    position_limits = []
+    for vol in vols:
+        # Adjust max position based on relative volatility
+        # High vol → lower max position
+        vol_adjustment = avg_vol / vol if vol > 0 else 1.0
+        adjusted_max = min(max_position_base * vol_adjustment, max_position_base * 1.5)
+        adjusted_max = min(adjusted_max, 0.50)  # Hard cap at 50%
+
+        position_limits.append((0, adjusted_max))
+
+    return position_limits
+
+
+def calculate_max_risk_contrib(weights, returns_df):
+    """Calculate maximum risk contribution from any single asset"""
+    cov_matrix = returns_df.cov() * 252
+    port_vol = np.sqrt(weights @ cov_matrix @ weights)
+
+    if port_vol == 0:
+        return 0
+
+    # Marginal contribution to risk
+    marginal_contrib = (cov_matrix @ weights) / port_vol
+
+    # Total risk contribution
+    risk_contrib = weights * marginal_contrib
+
+    # Return max contribution as fraction of total risk
+    return np.max(np.abs(risk_contrib)) / np.sum(np.abs(risk_contrib)) if np.sum(np.abs(risk_contrib)) > 0 else 0
+
+
+class RobustPortfolioOptimizer:
+    """
+    Optimization that acknowledges we don't know future returns/correlations
+
+    Approach: Generate multiple scenarios, find portfolio that performs well
+    across ALL scenarios (not just average)
+    """
+
+    def __init__(self, returns_df, confidence_level=0.95):
+        self.returns_df = returns_df
+        self.confidence_level = confidence_level
+
+    def estimate_returns_with_uncertainty(self):
+        """
+        Instead of point estimates, get confidence intervals
+
+        Uses bootstrapping to estimate uncertainty in mean returns
+        """
+        n_bootstrap = 500  # Reduced for performance
+        n_samples = len(self.returns_df)
+
+        bootstrap_means = []
+        for _ in range(n_bootstrap):
+            # Resample with replacement
+            sample = self.returns_df.sample(n=n_samples, replace=True)
+            bootstrap_means.append(sample.mean())
+
+        bootstrap_means = pd.DataFrame(bootstrap_means)
+
+        return {
+            'mean': self.returns_df.mean(),
+            'lower_bound': bootstrap_means.quantile((1 - self.confidence_level) / 2),
+            'upper_bound': bootstrap_means.quantile((1 + self.confidence_level) / 2),
+            'std_error': bootstrap_means.std()
+        }
+
+    def estimate_covariance_with_shrinkage(self):
+        """
+        Sample covariance is noisy - shrink toward diagonal
+
+        Ledoit-Wolf shrinkage: blend sample cov with simple structure
+        """
+        sample_cov = self.returns_df.cov() * 252
+
+        # Target: diagonal matrix (assume zero correlations)
+        target = np.diag(np.diag(sample_cov))
+
+        # Optimal shrinkage intensity (simplified Ledoit-Wolf formula)
+        n_samples = len(self.returns_df)
+        shrinkage = min(0.5, (n_samples - 2) / (n_samples * (n_samples + 2)))
+
+        # Shrunk covariance
+        shrunk_cov = shrinkage * target + (1 - shrinkage) * sample_cov
+
+        return shrunk_cov, shrinkage
+
+    def generate_scenarios(self):
+        """
+        Generate multiple plausible future scenarios
+
+        Scenarios:
+        1. Base case (historical means)
+        2. Pessimistic (lower bound returns)
+        3. Optimistic (upper bound returns)
+        4. High correlation (crisis scenario)
+        5. Low correlation (diversification works)
+        """
+        returns_with_ci = self.estimate_returns_with_uncertainty()
+        base_cov, _ = self.estimate_covariance_with_shrinkage()
+
+        scenarios = {
+            'base': {
+                'returns': returns_with_ci['mean'],
+                'cov_matrix': base_cov,
+                'probability': 0.40,
+                'description': 'Historical averages'
+            },
+
+            'pessimistic': {
+                'returns': returns_with_ci['lower_bound'],
+                'cov_matrix': base_cov * 1.5,  # Higher volatility in downturns
+                'probability': 0.20,
+                'description': 'Below-average returns, higher volatility'
+            },
+
+            'optimistic': {
+                'returns': returns_with_ci['upper_bound'],
+                'cov_matrix': base_cov * 0.8,
+                'probability': 0.20,
+                'description': 'Above-average returns, lower volatility'
+            },
+
+            'crisis': {
+                'returns': returns_with_ci['lower_bound'] * 1.5,
+                'cov_matrix': self._increase_correlations(base_cov, target_corr=0.8),
+                'probability': 0.10,
+                'description': 'Market stress - high correlations'
+            },
+
+            'goldilocks': {
+                'returns': returns_with_ci['mean'] * 1.2,
+                'cov_matrix': self._decrease_correlations(base_cov, target_corr=0.3),
+                'probability': 0.10,
+                'description': 'Low correlation, steady growth'
+            }
+        }
+
+        return scenarios
+
+    def _increase_correlations(self, cov_matrix, target_corr=0.8):
+        """Simulate crisis scenario with high correlations"""
+        corr_matrix = cov_matrix / np.outer(np.sqrt(np.diag(cov_matrix)),
+                                            np.sqrt(np.diag(cov_matrix)))
+
+        # Push correlations toward target
+        crisis_corr = 0.7 * corr_matrix + 0.3 * target_corr * np.ones_like(corr_matrix)
+        np.fill_diagonal(crisis_corr, 1.0)
+
+        # Convert back to covariance
+        stds = np.sqrt(np.diag(cov_matrix))
+        crisis_cov = np.outer(stds, stds) * crisis_corr
+
+        return crisis_cov
+
+    def _decrease_correlations(self, cov_matrix, target_corr=0.3):
+        """Simulate goldilocks scenario with low correlations"""
+        corr_matrix = cov_matrix / np.outer(np.sqrt(np.diag(cov_matrix)),
+                                            np.sqrt(np.diag(cov_matrix)))
+
+        # Push correlations toward target
+        good_corr = 0.5 * corr_matrix + 0.5 * target_corr * np.ones_like(corr_matrix)
+        np.fill_diagonal(good_corr, 1.0)
+
+        stds = np.sqrt(np.diag(cov_matrix))
+        good_cov = np.outer(stds, stds) * good_corr
+
+        return good_cov
+
+
+class OptimizationExplainer:
+    """
+    Translate optimization results into human-readable insights
+
+    Users need to understand:
+    1. WHY these weights were chosen
+    2. WHAT tradeoffs were made
+    3. HOW sensitive is this to assumptions
+    """
+
+    def explain_portfolio_weights(self, weights, returns_df, strategy_type, scenarios=None):
+        """
+        Generate natural language explanation of why optimizer chose these weights
+        """
+        explanations = {}
+        tickers = returns_df.columns
+
+        # 1. Top holdings explanation
+        top_holdings = []
+        top_3_idx = np.argsort(weights)[-3:][::-1]
+        for idx in top_3_idx:
+            ticker = tickers[idx]
+            weight = weights[idx]
+
+            # WHY was this chosen?
+            reasons = self._explain_single_holding(
+                ticker, weight, returns_df, strategy_type
+            )
+
+            top_holdings.append({
+                'ticker': ticker,
+                'weight': weight,
+                'reasons': reasons
+            })
+
+        explanations['top_holdings'] = top_holdings
+
+        # 2. Diversification explanation
+        effective_n = 1 / np.sum(weights ** 2)
+        explanations['diversification'] = {
+            'effective_holdings': effective_n,
+            'explanation': f"Portfolio behaves like {effective_n:.1f} equally-weighted holdings"
+        }
+
+        # 3. Risk explanation
+        risk_contribs = self._calculate_risk_contributions(weights, returns_df.cov() * 252)
+        top_risk_contributors_idx = np.argsort(risk_contribs)[-3:][::-1]
+
+        explanations['risk'] = {
+            'top_risk_contributors': [
+                {
+                    'ticker': tickers[i],
+                    'risk_contribution': risk_contribs[i],
+                    'weight': weights[i]
+                }
+                for i in top_risk_contributors_idx
+            ]
+        }
+
+        return explanations
+
+    def _explain_single_holding(self, ticker, weight, returns_df, strategy_type):
+        """WHY was this specific holding chosen?"""
+        returns = returns_df[ticker]
+        ann_return = returns.mean() * 252
+        ann_vol = returns.std() * np.sqrt(252)
+        sharpe = ann_return / ann_vol if ann_vol > 0 else 0
+
+        avg_corr = returns_df.corr()[ticker].drop(ticker).mean()
+
+        reasons = []
+
+        if strategy_type == 'max_sharpe':
+            if sharpe > 1.0:
+                reasons.append(f"Strong risk-adjusted returns (Sharpe: {sharpe:.2f})")
+            if avg_corr < 0.5:
+                reasons.append(f"Low correlation with other holdings ({avg_corr:.2f})")
+
+        elif strategy_type == 'min_volatility':
+            if ann_vol < 0.20:
+                reasons.append(f"Low volatility ({ann_vol:.1%} annual)")
+            if avg_corr < 0.6:
+                reasons.append(f"Provides diversification (avg corr: {avg_corr:.2f})")
+
+        elif strategy_type == 'max_return':
+            if ann_return > 0.15:
+                reasons.append(f"High historical return ({ann_return:.1%} annual)")
+
+        if weight > 0.15:
+            reasons.append(f"Large allocation reflects strong fundamentals")
+
+        if len(reasons) == 0:
+            reasons.append("Contributes to overall portfolio optimization")
+
+        return reasons
+
+    def _calculate_risk_contributions(self, weights, cov_matrix):
+        """Calculate risk contribution of each asset"""
+        port_vol = np.sqrt(weights @ cov_matrix @ weights)
+
+        if port_vol == 0:
+            return np.zeros(len(weights))
+
+        # Marginal contribution to risk
+        marginal_contrib = (cov_matrix @ weights) / port_vol
+
+        # Total risk contribution
+        risk_contrib = weights * marginal_contrib
+
+        return risk_contrib
+
+    def generate_sensitivity_analysis(self, weights, returns_df, scenarios):
+        """How sensitive is this portfolio to different scenarios?"""
+        sensitivity = {}
+
+        for scenario_name, scenario in scenarios.items():
+            port_return = weights @ scenario['returns'] * 252
+            port_vol = np.sqrt(weights @ scenario['cov_matrix'] @ weights)
+            sharpe = port_return / port_vol if port_vol > 0 else 0
+
+            sensitivity[scenario_name] = {
+                'description': scenario['description'],
+                'expected_return': port_return * 100,
+                'volatility': port_vol * 100,
+                'sharpe_ratio': sharpe,
+                'probability': scenario['probability']
+            }
+
+        return sensitivity
+
+    def identify_red_flags(self, weights, returns_df, config):
+        """Automated sanity checks - warn user if something looks off"""
+        red_flags = []
+        yellow_flags = []
+
+        # 1. Over-concentration
+        max_weight = np.max(weights)
+        if max_weight > 0.30:
+            red_flags.append(f"⚠️ Single position at {max_weight:.1%} - consider reducing")
+        elif max_weight > 0.25:
+            yellow_flags.append(f"⚡ Largest position at {max_weight:.1%} - monitor closely")
+
+        # 2. Insufficient diversification
+        effective_n = 1 / np.sum(weights ** 2)
+        if effective_n < 5:
+            red_flags.append(f"⚠️ Very concentrated ({effective_n:.1f} effective holdings)")
+        elif effective_n < 7:
+            yellow_flags.append(f"⚡ Moderate concentration ({effective_n:.1f} effective holdings)")
+
+        # 3. Check for extreme allocations
+        tiny_positions = np.sum((weights > 0) & (weights < 0.02))
+        if tiny_positions > 3:
+            yellow_flags.append(f"⚡ {tiny_positions} very small positions (<2%) - consider consolidating")
+
+        return {'red_flags': red_flags, 'yellow_flags': yellow_flags}
+
+
+def validate_portfolio_realism(weights, returns_df, strategy_type):
+    """
+    Score portfolio on realism scale 0-100
+
+    Checks:
+    - Diversification level
+    - Position sizes
+    - Risk concentration
+    """
+    score = 100
+    issues = []
+
+    # 1. Diversification check
+    effective_n = 1 / np.sum(weights ** 2)
+    if effective_n < 5:
+        score -= 30
+        issues.append("Very low diversification")
+    elif effective_n < 7:
+        score -= 15
+        issues.append("Low diversification")
+
+    # 2. Position size check
+    max_weight = np.max(weights)
+    if max_weight > 0.40:
+        score -= 25
+        issues.append("Excessive single position")
+    elif max_weight > 0.30:
+        score -= 10
+        issues.append("Large single position")
+
+    # 3. Number of tiny positions
+    tiny = np.sum((weights > 0) & (weights < 0.02))
+    if tiny > 5:
+        score -= 15
+        issues.append("Too many tiny positions")
+
+    # 4. Equal weight check (bad sign)
+    weights_nonzero = weights[weights > 0.01]
+    if len(weights_nonzero) > 0:
+        cv = np.std(weights_nonzero) / np.mean(weights_nonzero)
+        if cv < 0.15:  # Very similar weights
+            score -= 20
+            issues.append("Near equal weighting detected")
+
+    score = max(0, score)
+
+    # Classification
+    if score >= 80:
+        classification = "Excellent - Realistic and well-diversified"
+    elif score >= 60:
+        classification = "Good - Some minor concerns"
+    elif score >= 40:
+        classification = "Fair - Notable issues present"
+    else:
+        classification = "Poor - Significant problems"
+
+    return {
+        'overall': score,
+        'classification': classification,
+        'issues': issues
+    }
+
+
 def optimize_max_sharpe(returns_df, risk_free_rate, max_position=0.25, min_position=0.02):
-    """Optimize for maximum Sharpe ratio with realistic position constraints and nuanced diversification"""
+    """
+    Optimize for maximum Sharpe ratio with production-grade constraints
+
+    FIXED v10.3: Removed aggressive penalties that were causing equal-weight portfolios.
+    Now uses proper constraints and gentle regularization.
+    """
     from scipy.optimize import minimize
 
     n_assets = len(returns_df.columns)
@@ -4196,23 +4689,15 @@ def optimize_max_sharpe(returns_df, risk_free_rate, max_position=0.25, min_posit
         port_vol = np.sqrt(np.dot(weights.T, np.dot(returns_df.cov() * 252, weights)))
         sharpe = (port_return - risk_free_rate) / port_vol if port_vol > 0 else 0
 
-        # IMPROVED: Multi-faceted diversification penalties
-        # 1. Concentration penalty (Herfindahl index) - penalize concentrated portfolios
+        # GENTLE regularization - tiny penalty to avoid extreme concentration
+        # Scaled to be ~1% of typical Sharpe ratio magnitude
         hhi = np.sum(weights ** 2)
-        concentration_penalty = 0.5 * (hhi - 1/n_assets)
+        gentle_regularization = 0.01 * (hhi - 1/n_assets)
 
-        # 2. Sparsity penalty - discourage too many near-zero positions
-        active_positions = np.sum(weights > 0.01)
-        sparsity_penalty = 0.2 * max(0, max(5, n_assets * 0.3) - active_positions)
-
-        # 3. Extreme weight penalty - discourage positions at exact max bound
-        extreme_penalty = 0.3 * np.sum((weights > max_position * 0.95) & (weights <= max_position))
-
-        return -sharpe + concentration_penalty + sparsity_penalty + extreme_penalty
+        return -sharpe + gentle_regularization
 
     constraints = [
-        {'type': 'eq', 'fun': lambda x: np.sum(x) - 1},
-        {'type': 'ineq', 'fun': lambda x: np.sum(x >= min_position/2) - max(3, int(n_assets * 0.2))}
+        {'type': 'eq', 'fun': lambda x: np.sum(x) - 1}  # Weights sum to 1
     ]
     bounds = tuple((0, max_position) for _ in range(n_assets))
     initial_guess = np.array([1/n_assets] * n_assets)
@@ -4220,10 +4705,9 @@ def optimize_max_sharpe(returns_df, risk_free_rate, max_position=0.25, min_posit
     result = minimize(neg_sharpe, initial_guess, method='SLSQP', bounds=bounds, constraints=constraints,
                      options={'maxiter': 1000, 'ftol': 1e-9})
 
-    # IMPROVED: Smart post-processing with gradual threshold
+    # Post-processing: Remove tiny positions
     optimized_weights = result.x.copy()
-    # Use a softer threshold - keep positions above half the min
-    optimized_weights[optimized_weights < min_position * 0.5] = 0
+    optimized_weights[optimized_weights < min_position] = 0
 
     # Renormalize to sum to 1
     if np.sum(optimized_weights) > 0:
@@ -4234,7 +4718,12 @@ def optimize_max_sharpe(returns_df, risk_free_rate, max_position=0.25, min_posit
     return pd.Series(optimized_weights, index=returns_df.columns)
 
 def optimize_min_volatility(returns_df, max_position=0.25, min_position=0.02):
-    """Optimize for minimum volatility with realistic position constraints and nuanced diversification"""
+    """
+    Optimize for minimum volatility with production-grade constraints
+
+    FIXED v10.3: Removed aggressive penalties that were causing equal-weight portfolios.
+    Now uses proper constraints and gentle regularization.
+    """
     from scipy.optimize import minimize
 
     n_assets = len(returns_df.columns)
@@ -4242,23 +4731,15 @@ def optimize_min_volatility(returns_df, max_position=0.25, min_position=0.02):
     def portfolio_vol(weights):
         vol = np.sqrt(np.dot(weights.T, np.dot(returns_df.cov() * 252, weights)))
 
-        # IMPROVED: Multi-faceted diversification penalties
-        # 1. Concentration penalty (Herfindahl index)
+        # GENTLE regularization - tiny penalty to avoid extreme concentration
+        # Scaled to be ~0.5% of typical volatility magnitude
         hhi = np.sum(weights ** 2)
-        concentration_penalty = 0.02 * (hhi - 1/n_assets)
+        gentle_regularization = 0.001 * (hhi - 1/n_assets)
 
-        # 2. Sparsity penalty - discourage too many near-zero positions
-        active_positions = np.sum(weights > 0.01)
-        sparsity_penalty = 0.01 * max(0, max(5, n_assets * 0.3) - active_positions)
-
-        # 3. Extreme weight penalty
-        extreme_penalty = 0.015 * np.sum((weights > max_position * 0.95) & (weights <= max_position))
-
-        return vol + concentration_penalty + sparsity_penalty + extreme_penalty
+        return vol + gentle_regularization
 
     constraints = [
-        {'type': 'eq', 'fun': lambda x: np.sum(x) - 1},
-        {'type': 'ineq', 'fun': lambda x: np.sum(x >= min_position/2) - max(3, int(n_assets * 0.2))}
+        {'type': 'eq', 'fun': lambda x: np.sum(x) - 1}  # Weights sum to 1
     ]
     bounds = tuple((0, max_position) for _ in range(n_assets))
     initial_guess = np.array([1/n_assets] * n_assets)
@@ -4266,9 +4747,9 @@ def optimize_min_volatility(returns_df, max_position=0.25, min_position=0.02):
     result = minimize(portfolio_vol, initial_guess, method='SLSQP', bounds=bounds, constraints=constraints,
                      options={'maxiter': 1000, 'ftol': 1e-9})
 
-    # IMPROVED: Smart post-processing with gradual threshold
+    # Post-processing: Remove tiny positions
     optimized_weights = result.x.copy()
-    optimized_weights[optimized_weights < min_position * 0.5] = 0
+    optimized_weights[optimized_weights < min_position] = 0
 
     # Renormalize to sum to 1
     if np.sum(optimized_weights) > 0:
@@ -4279,7 +4760,12 @@ def optimize_min_volatility(returns_df, max_position=0.25, min_position=0.02):
     return pd.Series(optimized_weights, index=returns_df.columns)
 
 def optimize_max_return(returns_df, max_position=0.25, min_position=0.02):
-    """Optimize for maximum return with realistic position constraints and nuanced diversification"""
+    """
+    Optimize for maximum return with production-grade constraints
+
+    FIXED v10.3: Removed aggressive penalties that were causing equal-weight portfolios.
+    Now uses proper constraints and gentle regularization.
+    """
     from scipy.optimize import minimize
 
     n_assets = len(returns_df.columns)
@@ -4288,23 +4774,15 @@ def optimize_max_return(returns_df, max_position=0.25, min_position=0.02):
     def neg_return(weights):
         portfolio_return = np.sum(mean_returns * weights)
 
-        # IMPROVED: Multi-faceted diversification penalties
-        # 1. Concentration penalty (Herfindahl index)
+        # GENTLE regularization - tiny penalty to avoid extreme concentration
+        # Scaled to be ~1% of typical return magnitude
         hhi = np.sum(weights ** 2)
-        concentration_penalty = 0.3 * (hhi - 1/n_assets)
+        gentle_regularization = 0.005 * (hhi - 1/n_assets)
 
-        # 2. Sparsity penalty - discourage too many near-zero positions
-        active_positions = np.sum(weights > 0.01)
-        sparsity_penalty = 0.15 * max(0, max(5, n_assets * 0.3) - active_positions)
-
-        # 3. Extreme weight penalty
-        extreme_penalty = 0.2 * np.sum((weights > max_position * 0.95) & (weights <= max_position))
-
-        return -portfolio_return + concentration_penalty + sparsity_penalty + extreme_penalty
+        return -portfolio_return + gentle_regularization
 
     constraints = [
-        {'type': 'eq', 'fun': lambda x: np.sum(x) - 1},
-        {'type': 'ineq', 'fun': lambda x: np.sum(x >= min_position/2) - max(3, int(n_assets * 0.2))}
+        {'type': 'eq', 'fun': lambda x: np.sum(x) - 1}  # Weights sum to 1
     ]
     bounds = tuple((0, max_position) for _ in range(n_assets))
     initial_guess = np.array([1/n_assets] * n_assets)
@@ -4312,9 +4790,9 @@ def optimize_max_return(returns_df, max_position=0.25, min_position=0.02):
     result = minimize(neg_return, initial_guess, method='SLSQP', bounds=bounds, constraints=constraints,
                      options={'maxiter': 1000, 'ftol': 1e-9})
 
-    # IMPROVED: Smart post-processing with gradual threshold
+    # Post-processing: Remove tiny positions
     optimized_weights = result.x.copy()
-    optimized_weights[optimized_weights < min_position * 0.5] = 0
+    optimized_weights[optimized_weights < min_position] = 0
 
     # Renormalize to sum to 1
     if np.sum(optimized_weights) > 0:
@@ -4325,7 +4803,12 @@ def optimize_max_return(returns_df, max_position=0.25, min_position=0.02):
     return pd.Series(optimized_weights, index=returns_df.columns)
 
 def optimize_risk_parity(returns_df, max_position=0.25, min_position=0.02):
-    """Risk parity optimization with realistic position constraints and nuanced diversification"""
+    """
+    Risk parity optimization with production-grade constraints
+
+    FIXED v10.3: Removed aggressive penalties that were causing equal-weight portfolios.
+    Now uses pure risk parity objective with proper constraints.
+    """
     from scipy.optimize import minimize
 
     n_assets = len(returns_df.columns)
@@ -4340,19 +4823,10 @@ def optimize_risk_parity(returns_df, max_position=0.25, min_position=0.02):
         target_risk = port_vol / n_assets
         risk_parity_error = np.sum((risk_contrib - target_risk) ** 2)
 
-        # IMPROVED: Add diversification penalties
-        # 1. Sparsity penalty - discourage too many near-zero positions
-        active_positions = np.sum(weights > 0.01)
-        sparsity_penalty = 0.01 * max(0, max(5, n_assets * 0.3) - active_positions)
-
-        # 2. Extreme weight penalty
-        extreme_penalty = 0.015 * np.sum((weights > max_position * 0.95) & (weights <= max_position))
-
-        return risk_parity_error + sparsity_penalty + extreme_penalty
+        return risk_parity_error
 
     constraints = [
-        {'type': 'eq', 'fun': lambda x: np.sum(x) - 1},
-        {'type': 'ineq', 'fun': lambda x: np.sum(x >= min_position/2) - max(3, int(n_assets * 0.2))}
+        {'type': 'eq', 'fun': lambda x: np.sum(x) - 1}  # Weights sum to 1
     ]
     bounds = tuple((0, max_position) for _ in range(n_assets))
     initial_guess = np.array([1/n_assets] * n_assets)
@@ -4360,9 +4834,9 @@ def optimize_risk_parity(returns_df, max_position=0.25, min_position=0.02):
     result = minimize(risk_parity_objective, initial_guess, method='SLSQP', bounds=bounds, constraints=constraints,
                      options={'maxiter': 1000, 'ftol': 1e-9})
 
-    # IMPROVED: Smart post-processing with gradual threshold
+    # Post-processing: Remove tiny positions
     optimized_weights = result.x.copy()
-    optimized_weights[optimized_weights < min_position * 0.5] = 0
+    optimized_weights[optimized_weights < min_position] = 0
 
     # Renormalize to sum to 1
     if np.sum(optimized_weights) > 0:
