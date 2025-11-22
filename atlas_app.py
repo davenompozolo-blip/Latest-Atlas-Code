@@ -9413,15 +9413,23 @@ def main():
                     returns_df = returns_df.dropna()
 
                     if len(returns_df) > 30:
-                        # Calculate optimal weights based on objective with realistic constraints
-                        if optimization_objective == "Max Sharpe Ratio":
-                            optimal_weights = optimize_max_sharpe(returns_df, risk_free_rate_input, max_position, min_position)
-                        elif optimization_objective == "Min Volatility":
-                            optimal_weights = optimize_min_volatility(returns_df, max_position, min_position)
-                        elif optimization_objective == "Max Return":
-                            optimal_weights = optimize_max_return(returns_df, max_position, min_position)
-                        elif optimization_objective == "Risk Parity":
-                            optimal_weights = optimize_risk_parity(returns_df, max_position, min_position)
+                        # 🎯 TWO-STAGE DIVERSIFICATION-FIRST OPTIMIZATION
+                        # Stage 1: Find peak performance
+                        # Stage 2: Maximize diversification while maintaining acceptable performance
+
+                        st.info(f"🔍 Running two-stage diversification-first optimization for {strategy_type_mpt}...")
+
+                        # Use the two-stage diversification-first optimizer
+                        optimal_weights_array = optimize_two_stage_diversification_first(
+                            returns_df=returns_df,
+                            strategy_type=strategy_type_mpt,
+                            risk_profile_config=config_mpt,
+                            risk_free_rate=risk_free_rate_input,
+                            verbose=False  # Don't print to console in Streamlit
+                        )
+
+                        # Convert to Series
+                        optimal_weights = pd.Series(optimal_weights_array, index=returns_df.columns)
 
                         # Get current weights
                         current_weights_dict = {}
