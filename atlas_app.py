@@ -659,6 +659,42 @@ st.markdown("""
     }
 
     /* ============================================
+       FIX: Material Icons Issue - Hide "keyboard_arrow_right" Text
+       ============================================ */
+
+    /* Hide the broken Material Icons text that appears in dropdowns */
+    [data-baseweb="select"] span[aria-hidden="true"] {
+        font-size: 0 !important;
+        color: transparent !important;
+    }
+
+    /* Ensure dropdown arrows still work by using CSS arrow */
+    [data-baseweb="select"] > div::after {
+        content: '▼' !important;
+        position: absolute !important;
+        right: 12px !important;
+        top: 50% !important;
+        transform: translateY(-50%) !important;
+        color: #00d4ff !important;
+        font-size: 12px !important;
+        pointer-events: none !important;
+    }
+
+    /* Hide any Material Icons text across the entire app */
+    span.material-icons,
+    i.material-icons {
+        font-size: 0 !important;
+    }
+
+    /* But allow the icon font to work if it loads */
+    @font-face {
+        font-family: 'Material Icons';
+        font-style: normal;
+        font-weight: 400;
+        src: url(https://fonts.gstatic.com/s/materialicons/v139/flUhRq6tzZclQEJ-Vdg-IuiaDsNc.woff2) format('woff2');
+    }
+
+    /* ============================================
        SCROLLBAR - Custom Styling
        ============================================ */
 
