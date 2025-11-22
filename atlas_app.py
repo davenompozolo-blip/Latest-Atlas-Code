@@ -562,13 +562,40 @@ st.markdown("""
     }
 
     /* ============================================
-       SIDEBAR - Clean Navigation
+       SIDEBAR - Clean Navigation - ALWAYS VISIBLE
        ============================================ */
 
     section[data-testid="stSidebar"] {
         background: linear-gradient(180deg, rgba(5, 15, 23, 0.95) 0%, rgba(10, 25, 41, 0.95) 100%) !important;
         border-right: 1px solid rgba(0, 212, 255, 0.15) !important;
         backdrop-filter: blur(20px) !important;
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        min-width: 250px !important;
+        width: 336px !important;
+    }
+
+    /* Force sidebar to stay visible - prevent collapse */
+    section[data-testid="stSidebar"][aria-hidden="true"] {
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+    }
+
+    /* Ensure sidebar content is visible */
+    section[data-testid="stSidebar"] > div {
+        display: block !important;
+        visibility: visible !important;
+    }
+
+    /* Hide the collapse button so sidebar can't be hidden */
+    button[kind="header"],
+    button[data-testid="baseButton-header"],
+    button[aria-label="Close sidebar"],
+    section[data-testid="stSidebar"] button[kind="header"] {
+        display: none !important;
+        visibility: hidden !important;
     }
 
     section[data-testid="stSidebar"] .stRadio > label {
@@ -768,95 +795,27 @@ st.markdown("""
 </style>
 
 <script>
-    // Enhanced sidebar toggle functionality
-    function toggleSidebar() {
-        // Try multiple selectors to find the sidebar toggle button
-        const selectors = [
-            'button[kind="header"]',  // Older Streamlit versions
-            '[data-testid="collapsedControl"]',  // Collapsed state button
-            'button[data-testid="baseButton-header"]',  // Newer Streamlit
-            'section[data-testid="stSidebar"] button',  // Any button in sidebar
-            '[aria-label="Close sidebar"]',  // Accessibility label
-            '[aria-label="Open sidebar"]',  // When collapsed
-            'button[aria-label*="sidebar" i]',  // Case-insensitive sidebar label
-        ];
-
-        for (const selector of selectors) {
-            const button = document.querySelector(selector);
-            if (button) {
-                button.click();
-                console.log('Sidebar toggled using selector:', selector);
-                return true;
-            }
+    // Force sidebar to remain visible on page load
+    function ensureSidebarVisible() {
+        const sidebar = document.querySelector('section[data-testid="stSidebar"]');
+        if (sidebar) {
+            sidebar.style.display = 'block';
+            sidebar.style.visibility = 'visible';
+            sidebar.style.opacity = '1';
+            sidebar.removeAttribute('aria-hidden');
+            console.log('Sidebar forced to visible state');
         }
-
-        console.warn('Could not find sidebar toggle button');
-        return false;
     }
 
-    // Keyboard shortcut: Ctrl+B (or Cmd+B on Mac)
-    document.addEventListener('keydown', function(event) {
-        if ((event.ctrlKey || event.metaKey) && event.key === 'b') {
-            event.preventDefault();
-            toggleSidebar();
-        }
-    });
-
-    // Create a visible toggle button
-    function createToggleButton() {
-        // Check if button already exists
-        if (document.getElementById('sidebar-toggle-btn')) return;
-
-        const toggleBtn = document.createElement('button');
-        toggleBtn.id = 'sidebar-toggle-btn';
-        toggleBtn.innerHTML = '☰ Menu';
-        toggleBtn.style.cssText = `
-            position: fixed;
-            top: 20px;
-            left: 20px;
-            z-index: 999999;
-            background: linear-gradient(135deg, #00d4ff 0%, #0080ff 100%);
-            color: white;
-            border: 2px solid #00d4ff;
-            border-radius: 8px;
-            padding: 10px 16px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            box-shadow: 0 4px 12px rgba(0, 212, 255, 0.4);
-            transition: all 0.3s ease;
-            font-family: 'Inter', sans-serif;
-        `;
-
-        toggleBtn.onmouseover = function() {
-            this.style.background = 'linear-gradient(135deg, #00ffcc 0%, #00d4ff 100%)';
-            this.style.boxShadow = '0 6px 16px rgba(0, 255, 204, 0.5)';
-            this.style.transform = 'translateY(-2px)';
-        };
-
-        toggleBtn.onmouseout = function() {
-            this.style.background = 'linear-gradient(135deg, #00d4ff 0%, #0080ff 100%)';
-            this.style.boxShadow = '0 4px 12px rgba(0, 212, 255, 0.4)';
-            this.style.transform = 'translateY(0)';
-        };
-
-        toggleBtn.onclick = function() {
-            toggleSidebar();
-        };
-
-        document.body.appendChild(toggleBtn);
-    }
-
-    // Initialize the toggle button when page loads
+    // Run on page load
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', createToggleButton);
+        document.addEventListener('DOMContentLoaded', ensureSidebarVisible);
     } else {
-        createToggleButton();
+        ensureSidebarVisible();
     }
 
-    // Re-create button if Streamlit reruns the app
-    setTimeout(createToggleButton, 1000);
-    setTimeout(createToggleButton, 3000);
+    // Continuously ensure sidebar stays visible
+    setInterval(ensureSidebarVisible, 500);
 </script>
 
 """, unsafe_allow_html=True)
