@@ -794,12 +794,29 @@ CRYPTOCURRENCIES = {
     "ALGO-USD": {"name": "Algorand", "category": "Crypto"}
 }
 
-# EXPANDED: Bond Yields and Rates
+# EXPANDED: Bond Yields and Rates - COMPREHENSIVE GLOBAL COVERAGE
 BOND_YIELDS = {
+    # US Treasuries (Direct Yield Indices)
     "^TNX": {"name": "US 10Y Treasury", "category": "Government Bonds"},
     "^TYX": {"name": "US 30Y Treasury", "category": "Government Bonds"},
     "^FVX": {"name": "US 5Y Treasury", "category": "Government Bonds"},
     "^IRX": {"name": "US 13W Treasury", "category": "Government Bonds"},
+
+    # UK Gilts (ETF proxies - Yahoo Finance doesn't have direct UK yield indices)
+    "IGLT.L": {"name": "UK Gilt (Long-Term)", "category": "Government Bonds"},
+    "IGLS.L": {"name": "UK Gilt (Short-Term)", "category": "Government Bonds"},
+
+    # German Bunds (ETF proxies)
+    "IBGM.DE": {"name": "Germany Govt Bonds", "category": "Government Bonds"},
+    "DTLA.DE": {"name": "German Bund 10Y", "category": "Government Bonds"},
+
+    # Japanese JGBs (ETF proxies)
+    "1346.T": {"name": "Japan Govt Bonds (ETF)", "category": "Government Bonds"},
+
+    # Other Major Economies (ETF proxies)
+    "XGB.TO": {"name": "Canada Govt Bonds", "category": "Government Bonds"},
+    "IGB.AX": {"name": "Australia Govt Bonds", "category": "Government Bonds"},
+    "AGGH": {"name": "Global Aggregate Bonds", "category": "Government Bonds"},
 }
 
 # v9.7 EXPANDED: Credit Spreads (using ETF proxies)
@@ -2985,26 +3002,65 @@ def calculate_consensus_valuation(ticker, company_data, financials):
     except Exception as e:
         excluded_methods['EV/EBITDA'] = f"Calculation error: {str(e)}"
 
-    # 4. PEG Ratio Valuation
+    # 4. PEG Ratio Valuation (with comprehensive fallbacks)
     try:
         stock = yf.Ticker(ticker)
         info = stock.info
+        peg_value = None
+        growth_rate = None
+        eps_value = None
+
+        # Get available data points
         peg_ratio = info.get('pegRatio')
         forward_eps = info.get('forwardEps')
-        earnings_growth = info.get('earningsGrowth')
+        trailing_eps = info.get('trailingEps')
+        earnings_growth = info.get('earningsGrowth')  # Forward earnings growth
+        earnings_quarterly_growth = info.get('earningsQuarterlyGrowth')
+        revenue_growth = info.get('revenueGrowth')
+        current_pe = info.get('trailingPE')
+        forward_pe = info.get('forwardPE')
 
+        # FALLBACK 1: Use forward EPS and earnings growth (primary method)
         if forward_eps and forward_eps > 0 and earnings_growth and earnings_growth > 0:
+            growth_rate = earnings_growth
+            eps_value = forward_eps
+        # FALLBACK 2: Use trailing EPS and earnings growth
+        elif trailing_eps and trailing_eps > 0 and earnings_growth and earnings_growth > 0:
+            growth_rate = earnings_growth
+            eps_value = trailing_eps
+        # FALLBACK 3: Use forward EPS and quarterly growth as proxy
+        elif forward_eps and forward_eps > 0 and earnings_quarterly_growth and earnings_quarterly_growth > 0:
+            growth_rate = earnings_quarterly_growth
+            eps_value = forward_eps
+        # FALLBACK 4: Use trailing EPS and revenue growth as proxy (conservative)
+        elif trailing_eps and trailing_eps > 0 and revenue_growth and revenue_growth > 0:
+            # Use 70% of revenue growth as earnings growth proxy (conservative)
+            growth_rate = revenue_growth * 0.7
+            eps_value = trailing_eps
+        # FALLBACK 5: Back-calculate from existing PEG ratio and P/E
+        elif peg_ratio and peg_ratio > 0 and (forward_pe or current_pe):
+            pe_value = forward_pe if forward_pe and forward_pe > 0 else current_pe
+            if pe_value and pe_value > 0:
+                # PEG = P/E / Growth, so Growth = P/E / PEG
+                growth_rate = pe_value / peg_ratio / 100  # Convert to decimal
+                eps_value = forward_eps if forward_eps and forward_eps > 0 else trailing_eps
+
+        # Calculate PEG-based valuation if we have both growth rate and EPS
+        if growth_rate and growth_rate > 0 and eps_value and eps_value > 0:
             # Fair PEG ratio is typically around 1.0
             fair_peg = 1.0
-            fair_pe = (earnings_growth * 100) * fair_peg
-            peg_value = forward_eps * fair_pe
+            fair_pe = (growth_rate * 100) * fair_peg  # Convert growth to percentage
+            peg_value = eps_value * fair_pe
 
-            if 0 < fair_pe < 50:  # Reasonable P/E range
-                valuations['PEG Ratio'] = peg_value
+            # Sanity checks
+            if not (0 < fair_pe < 50):  # Reasonable P/E range
+                excluded_methods['PEG Ratio'] = f"Unrealistic implied P/E: {fair_pe:.1f}"
+            elif not (0 < peg_value < current_price * 5):  # Not more than 5x current price
+                excluded_methods['PEG Ratio'] = f"Unrealistic PEG value: ${peg_value:.2f}"
             else:
-                excluded_methods['PEG Ratio'] = "Unrealistic growth rate"
+                valuations['PEG Ratio'] = peg_value
         else:
-            excluded_methods['PEG Ratio'] = "Missing EPS or growth data"
+            excluded_methods['PEG Ratio'] = "Missing EPS or growth data (all fallbacks exhausted)"
     except Exception as e:
         excluded_methods['PEG Ratio'] = f"Calculation error: {str(e)}"
 
@@ -4516,56 +4572,202 @@ class OptimizationExplainer:
     3. HOW sensitive is this to assumptions
     """
 
-    def explain_portfolio_weights(self, weights, returns_df, strategy_type, scenarios=None):
+    def explain_portfolio_weights(self, weights, returns_df, strategy_type, scenarios=None, risk_profile_config=None, peak_performance=None):
         """
-        Generate natural language explanation of why optimizer chose these weights
+        Generate PM-level natural language explanation of optimization results
+
+        PM-LEVEL TRANSPARENCY:
+        - WHY each position was chosen (with quantitative support)
+        - WHAT tradeoffs were made (explicit cost-benefit)
+        - HOW confident we are (uncertainty ranges)
+        - WHICH constraints were binding (and why)
         """
         explanations = {}
         tickers = returns_df.columns
+        cov_matrix = returns_df.cov() * 252
 
-        # 1. Top holdings explanation
+        # ============================================================
+        # 1. EXECUTIVE SUMMARY
+        # ============================================================
+        effective_n = 1 / np.sum(weights ** 2)
+        max_position = np.max(weights)
+        top_3_conc = np.sum(np.sort(weights)[-3:])
+
+        port_return = np.sum(returns_df.mean() * weights) * 252
+        port_vol = np.sqrt(weights @ cov_matrix @ weights)
+        sharpe = (port_return - 0.02) / port_vol if port_vol > 0 else 0
+
+        try:
+            max_dd = calculate_portfolio_max_drawdown(weights, returns_df)
+        except:
+            max_dd = 0
+
+        explanations['executive_summary'] = {
+            'title': f'{strategy_type.upper().replace("_", " ")} OPTIMIZATION',
+            'metrics': {
+                'Expected Return': f"{port_return:.1%}",
+                'Expected Volatility': f"{port_vol:.1%}",
+                'Sharpe Ratio': f"{sharpe:.2f}",
+                'Max Drawdown': f"{max_dd:.1%}",
+                'Effective Holdings': f"{effective_n:.1f}",
+                'Largest Position': f"{max_position:.1%}",
+                'Top 3 Concentration': f"{top_3_conc:.1%}"
+            }
+        }
+
+        # ============================================================
+        # 2. TOP HOLDINGS WITH DETAILED REASONING
+        # ============================================================
         top_holdings = []
-        top_3_idx = np.argsort(weights)[-3:][::-1]
-        for idx in top_3_idx:
+        top_5_idx = np.argsort(weights)[-5:][::-1]
+        for idx in top_5_idx:
             ticker = tickers[idx]
             weight = weights[idx]
 
-            # WHY was this chosen?
-            reasons = self._explain_single_holding(
-                ticker, weight, returns_df, strategy_type
+            # Enhanced reasoning with quantitative support
+            reasons = self._explain_single_holding_enhanced(
+                ticker, weight, returns_df, cov_matrix, strategy_type
             )
 
             top_holdings.append({
                 'ticker': ticker,
                 'weight': weight,
+                'weight_pct': f"{weight:.1%}",
                 'reasons': reasons
             })
 
         explanations['top_holdings'] = top_holdings
 
-        # 2. Diversification explanation
-        effective_n = 1 / np.sum(weights ** 2)
-        explanations['diversification'] = {
-            'effective_holdings': effective_n,
-            'explanation': f"Portfolio behaves like {effective_n:.1f} equally-weighted holdings"
-        }
+        # ============================================================
+        # 3. TRADEOFF ANALYSIS (Critical for PM trust)
+        # ============================================================
+        tradeoffs = []
 
-        # 3. Risk explanation
-        risk_contribs = self._calculate_risk_contributions(weights, returns_df.cov() * 252)
-        top_risk_contributors_idx = np.argsort(risk_contribs)[-3:][::-1]
+        if risk_profile_config and peak_performance:
+            # Calculate what was sacrificed for diversification
+            current_performance = sharpe
+            performance_cost = (1 - current_performance/peak_performance) * 100 if peak_performance > 0 else 0
 
-        explanations['risk'] = {
-            'top_risk_contributors': [
-                {
-                    'ticker': tickers[i],
-                    'risk_contribution': risk_contribs[i],
-                    'weight': weights[i]
-                }
-                for i in top_risk_contributors_idx
-            ]
-        }
+            tradeoffs.append(
+                f"Accepted {performance_cost:.1f}% lower Sharpe ratio to achieve "
+                f"{effective_n:.0f} effective holdings (vs concentrated peak)"
+            )
+
+            if 'max_drawdown_tolerance' in risk_profile_config:
+                dd_limit = risk_profile_config['max_drawdown_tolerance']
+                dd_margin = dd_limit - max_dd
+                tradeoffs.append(
+                    f"Maximum drawdown: {max_dd:.1%} (within {dd_limit:.1%} limit, "
+                    f"{dd_margin:.1%} margin of safety)"
+                )
+
+        explanations['tradeoffs'] = tradeoffs
+
+        # ============================================================
+        # 4. CONSTRAINT ANALYSIS (Which constraints were binding?)
+        # ============================================================
+        binding_constraints = []
+
+        if risk_profile_config:
+            # Check position limits
+            if max_position > risk_profile_config.get('max_position_base', 1) * 0.95:
+                binding_constraints.append(
+                    f"Position limit binding: Largest position at {max_position:.1%} "
+                    f"(limit: {risk_profile_config['max_position_base']:.1%})"
+                )
+
+            # Check concentration limits
+            if top_3_conc > risk_profile_config.get('max_top_3_concentration', 1) * 0.95:
+                binding_constraints.append(
+                    f"Top-3 concentration binding: {top_3_conc:.1%} "
+                    f"(limit: {risk_profile_config['max_top_3_concentration']:.1%})"
+                )
+
+            # Check drawdown constraint
+            if 'max_drawdown_tolerance' in risk_profile_config:
+                dd_limit = risk_profile_config['max_drawdown_tolerance']
+                if max_dd > dd_limit * 0.90:
+                    binding_constraints.append(
+                        f"Drawdown constraint active: {max_dd:.1%} "
+                        f"(limit: {dd_limit:.1%})"
+                    )
+
+        explanations['binding_constraints'] = binding_constraints if binding_constraints else [
+            "No constraints binding - optimizer found unconstrained optimum"
+        ]
+
+        # ============================================================
+        # 5. RISK BREAKDOWN (Where is risk coming from?)
+        # ============================================================
+        risk_contribs = self._calculate_risk_contributions(weights, cov_matrix)
+        top_risk_idx = np.argsort(risk_contribs)[-5:][::-1]
+
+        explanations['risk_breakdown'] = [
+            {
+                'ticker': tickers[i],
+                'weight': f"{weights[i]:.1%}",
+                'risk_contribution': f"{risk_contribs[i]:.1%}",
+                'risk_to_weight_ratio': f"{(risk_contribs[i]/weights[i]):.2f}x" if weights[i] > 0 else "N/A"
+            }
+            for i in top_risk_idx
+        ]
+
+        # ============================================================
+        # 6. UNCERTAINTY & ASSUMPTIONS
+        # ============================================================
+        explanations['assumptions'] = [
+            f"Historical returns based on {len(returns_df)} trading days",
+            "Assumes returns are normally distributed (actual returns may have fat tails)",
+            "Past performance does not guarantee future results",
+            "Correlations and volatilities may change during market stress"
+        ]
 
         return explanations
+
+    def _explain_single_holding_enhanced(self, ticker, weight, returns_df, cov_matrix, strategy_type):
+        """
+        PM-LEVEL EXPLANATION: WHY was this specific holding chosen?
+        Provide quantitative support for every reason
+        """
+        returns = returns_df[ticker]
+        ann_return = returns.mean() * 252
+        ann_vol = returns.std() * np.sqrt(252)
+        sharpe = ann_return / ann_vol if ann_vol > 0 else 0
+
+        # Correlation with rest of portfolio
+        correlations = returns_df.corr()[ticker].drop(ticker)
+        avg_corr = correlations.mean()
+        max_corr = correlations.max()
+
+        # Risk contribution
+        risk_contribs = self._calculate_risk_contributions(np.ones(len(returns_df.columns))/len(returns_df.columns), cov_matrix)
+
+        reasons = []
+
+        # Quantitative reasons based on strategy
+        if strategy_type == 'max_sharpe':
+            reasons.append(f"Return: {ann_return:.1%}/year, Vol: {ann_vol:.1%}, Sharpe: {sharpe:.2f}")
+            if avg_corr < 0.6:
+                reasons.append(f"Good diversifier (avg corr: {avg_corr:.2f}, max: {max_corr:.2f})")
+            elif avg_corr >= 0.6:
+                reasons.append(f"Higher correlation to portfolio (avg: {avg_corr:.2f}) justified by strong Sharpe")
+
+        elif strategy_type == 'min_volatility':
+            reasons.append(f"Low volatility: {ann_vol:.1%}/year")
+            reasons.append(f"Avg correlation: {avg_corr:.2f} provides portfolio diversification")
+
+        elif strategy_type == 'max_return':
+            reasons.append(f"Strong historical return: {ann_return:.1%}/year")
+            if ann_vol > 0.30:
+                reasons.append(f"High volatility ({ann_vol:.1%}) tolerated for return potential")
+
+        # Weight-based reasoning
+        if weight > 0.10:
+            reasons.append(f"Large {weight:.1%} allocation reflects strong contribution to objective")
+        elif weight < 0.05:
+            reasons.append(f"Modest {weight:.1%} allocation for diversification/risk balance")
+
+        return reasons
 
     def _explain_single_holding(self, ticker, weight, returns_df, strategy_type):
         """WHY was this specific holding chosen?"""
@@ -4769,6 +4971,37 @@ def calculate_performance_metric(weights, returns_df, strategy_type, risk_free_r
     return 0
 
 
+def calculate_portfolio_max_drawdown(weights, returns_df):
+    """
+    Calculate maximum drawdown for a portfolio with given weights
+
+    Args:
+        weights: Portfolio weights
+        returns_df: Historical returns dataframe
+
+    Returns:
+        Maximum drawdown as a positive decimal (e.g., 0.20 for 20% drawdown)
+    """
+    try:
+        # Calculate portfolio returns
+        portfolio_returns = returns_df.values @ weights
+
+        # Calculate cumulative returns
+        cumulative = (1 + portfolio_returns).cumprod()
+
+        # Calculate running maximum
+        running_max = np.maximum.accumulate(cumulative)
+
+        # Calculate drawdown at each point
+        drawdown = (cumulative - running_max) / running_max
+
+        # Return maximum drawdown as positive value
+        max_dd = abs(np.min(drawdown))
+
+        return max_dd
+    except:
+        return 0.0
+
 def calculate_max_risk_contrib_pct(weights, returns_df):
     """Calculate maximum risk contribution from any single asset as percentage"""
     cov_matrix = returns_df.cov() * 252
@@ -4897,6 +5130,17 @@ def optimize_two_stage_diversification_first(
          'fun': lambda w: risk_profile_config['risk_budget_per_asset'] - calculate_max_risk_contrib_pct(w, returns_df)},
     ]
 
+    # DRAWDOWN AWARENESS: Add max drawdown constraint for conservative (and moderate) profiles
+    if 'max_drawdown_tolerance' in risk_profile_config:
+        max_dd_allowed = risk_profile_config['max_drawdown_tolerance']
+        if verbose:
+            print(f"Adding drawdown constraint: Max {max_dd_allowed:.1%} drawdown")
+
+        constraints.append({
+            'type': 'ineq',
+            'fun': lambda w: max_dd_allowed - calculate_portfolio_max_drawdown(w, returns_df)
+        })
+
     # Volatility-adjusted position limits
     volatilities = returns_df.std() * np.sqrt(252)
     median_vol = volatilities.median()
@@ -4951,6 +5195,10 @@ def optimize_two_stage_diversification_first(
     final_max_position = np.max(diversified_weights)
     final_top_3 = np.sum(np.sort(diversified_weights)[-3:])
 
+    # Calculate drawdowns for both portfolios
+    peak_drawdown = calculate_portfolio_max_drawdown(peak_weights, returns_df)
+    final_drawdown = calculate_portfolio_max_drawdown(diversified_weights, returns_df)
+
     if verbose:
         print(f"\n{'='*60}")
         print(f"DIVERSIFICATION OPTIMIZATION RESULTS")
@@ -4960,16 +5208,25 @@ def optimize_two_stage_diversification_first(
         print(f"  Effective Holdings: {peak_effective_n:.1f}")
         print(f"  Largest Position: {peak_max_position:.1%}")
         print(f"  Top 3 Total: {np.sum(np.sort(peak_weights)[-3:]):.1%}")
+        print(f"  Max Drawdown: {peak_drawdown:.1%}")
 
         print(f"\nDiversified Portfolio:")
         print(f"  Performance: {final_performance:.4f} ({performance_ratio:.1%} of peak)")
         print(f"  Effective Holdings: {final_effective_n:.1f} ({final_effective_n/peak_effective_n:.1f}x more)")
         print(f"  Largest Position: {final_max_position:.1%}")
         print(f"  Top 3 Total: {final_top_3:.1%}")
+        print(f"  Max Drawdown: {final_drawdown:.1%}")
+
+        # Show drawdown constraint status if applicable
+        if 'max_drawdown_tolerance' in risk_profile_config:
+            max_dd_allowed = risk_profile_config['max_drawdown_tolerance']
+            dd_margin = max_dd_allowed - final_drawdown
+            print(f"  Drawdown Margin: {dd_margin:.1%} (limit: {max_dd_allowed:.1%})")
 
         print(f"\nTRADEOFF:")
         print(f"  Diversification Increase: {final_effective_n/peak_effective_n:.1f}x")
         print(f"  Performance Cost: {(1-performance_ratio)*100:.1f}%")
+        print(f"  Drawdown Improvement: {(peak_drawdown-final_drawdown):.1%}")
         print(f"{'='*60}\n")
 
     return diversified_weights
@@ -5260,7 +5517,7 @@ def calculate_portfolio_correlations(df, period='90d'):
 # ============================================================================
 
 def create_top_contributors_chart(df, top_n=5):
-    """FIXED: Top contributors in PERCENTAGE terms"""
+    """FIXED: Top contributors in PERCENTAGE terms with improved spacing"""
     top_contributors = df.nlargest(top_n, 'Total Gain/Loss %')[['Ticker', 'Asset Name', 'Total Gain/Loss $', 'Total Gain/Loss %']]
 
     fig = go.Figure()
@@ -5274,23 +5531,30 @@ def create_top_contributors_chart(df, top_n=5):
             line=dict(color=COLORS['border'], width=2)
         ),
         text=[f"{x:.1f}%" for x in top_contributors['Total Gain/Loss %']],
-        textposition='auto',
-        hovertemplate='<b>%{y}</b><br>Return: %{x:.2f}%<extra></extra>'
+        textposition='outside',  # Changed from 'auto' for better visibility
+        textfont=dict(size=12),
+        hovertemplate='<b>%{y}</b><br>Return: %{x:.2f}%<extra></extra>',
+        width=0.6  # Slightly thinner bars for better spacing
     ))
 
     fig.update_layout(
         title="🎯 Top 5 Contributors (%)",
         xaxis_title="Total Return (%)",
         yaxis_title="",
-        height=400,
-        showlegend=False
+        height=450,  # Increased from 400 for better spacing
+        showlegend=False,
+        margin=dict(l=100, r=80, t=80, b=50)  # Increased margins to prevent cutoff
     )
+
+    # Ensure labels are fully visible
+    fig.update_xaxes(tickfont=dict(size=12))
+    fig.update_yaxes(tickfont=dict(size=12))
 
     apply_chart_theme(fig)
     return fig
 
 def create_top_detractors_chart(df, top_n=5):
-    """FIXED: Top detractors in PERCENTAGE terms"""
+    """FIXED: Top detractors in PERCENTAGE terms with improved spacing"""
     top_detractors = df.nsmallest(top_n, 'Total Gain/Loss %')[['Ticker', 'Asset Name', 'Total Gain/Loss $', 'Total Gain/Loss %']]
 
     fig = go.Figure()
@@ -5304,17 +5568,24 @@ def create_top_detractors_chart(df, top_n=5):
             line=dict(color=COLORS['border'], width=2)
         ),
         text=[f"{x:.1f}%" for x in top_detractors['Total Gain/Loss %']],
-        textposition='auto',
-        hovertemplate='<b>%{y}</b><br>Loss: %{x:.2f}%<extra></extra>'
+        textposition='outside',  # Changed from 'auto' for better visibility
+        textfont=dict(size=12),
+        hovertemplate='<b>%{y}</b><br>Loss: %{x:.2f}%<extra></extra>',
+        width=0.6  # Slightly thinner bars for better spacing
     ))
 
     fig.update_layout(
         title="⚠️ Top 5 Detractors (%)",
         xaxis_title="Total Return (%)",
         yaxis_title="",
-        height=400,
-        showlegend=False
+        height=450,  # Increased from 400 for better spacing
+        showlegend=False,
+        margin=dict(l=100, r=80, t=80, b=50)  # Increased margins to prevent cutoff
     )
+
+    # Ensure labels are fully visible
+    fig.update_xaxes(tickfont=dict(size=12))
+    fig.update_yaxes(tickfont=dict(size=12))
 
     apply_chart_theme(fig)
     return fig
@@ -5933,6 +6204,44 @@ def create_risk_reward_plot(df):
     apply_chart_theme(fig)
     return fig
 
+def should_display_monthly_heatmap(df):
+    """
+    Validate if monthly heatmap should be displayed.
+    Returns True only if there are at least 2 complete months of meaningful data.
+    """
+    try:
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=365)
+        current_month_start = end_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+        monthly_data_count = 0
+        has_meaningful_data = False
+
+        for _, row in df.iterrows():
+            ticker = row['Ticker']
+            hist_data = fetch_historical_data(ticker, start_date, end_date)
+
+            if hist_data is not None and len(hist_data) > 0:
+                monthly_data = hist_data['Close'].resample('M').last()
+                monthly_returns = monthly_data.pct_change()
+
+                # Count complete months (excluding current month)
+                complete_months = []
+                for month, ret in monthly_returns.items():
+                    month_start = month.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                    if month_start < current_month_start and pd.notna(ret):
+                        complete_months.append(ret)
+                        if abs(ret) > 0.001:  # At least 0.1% variation
+                            has_meaningful_data = True
+
+                if len(complete_months) > monthly_data_count:
+                    monthly_data_count = len(complete_months)
+
+        # Require at least 2 complete months with some meaningful variation
+        return monthly_data_count >= 2 and has_meaningful_data
+    except:
+        return False
+
 def create_performance_heatmap(df, period='monthly'):
     """v9.7 ENHANCED: Performance heatmap with improved incomplete month filtering"""
     try:
@@ -6485,7 +6794,8 @@ def fetch_market_watch_data(tickers_dict):
                     '5D %': five_day,
                     'Volume': volume,
                     'Avg Volume': avg_volume,
-                    'Vol/Avg': volume / avg_volume if avg_volume > 0 else 0
+                    'Vol/Avg': volume / avg_volume if avg_volume > 0 else 0,
+                    '_raw_ticker': ticker  # Store original ticker for formatting logic
                 })
         except:
             continue
@@ -6496,21 +6806,41 @@ def create_dynamic_market_table(df, filters=None):
     if filters:
         if 'category' in filters and filters['category']:
             df = df[df['Category'] == filters['category']]
-        
+
         if 'min_change' in filters and filters['min_change']:
             df = df[df['Change %'] >= filters['min_change']]
-        
+
         if 'sort_by' in filters and filters['sort_by']:
             ascending = filters.get('ascending', False)
             df = df.sort_values(filters['sort_by'], ascending=ascending)
-    
+
     display_df = df.copy()
-    display_df['Last'] = display_df['Last'].apply(format_currency)
+
+    # FIX: Format treasury yields as percentages, not dollars
+    # Treasury yield INDICES (^TNX, ^TYX, etc.) show yield values as percentages
+    # Bond ETFs show prices as dollars
+    def format_last_value(row):
+        raw_ticker = row.get('_raw_ticker', '')
+        # Yield indices starting with ^ and containing treasury/yield info
+        is_yield_index = (raw_ticker.startswith('^') and
+                         row.get('Category') == 'Government Bonds')
+
+        if is_yield_index:
+            # Treasury yields are already in percentage points (e.g., 4.5 = 4.5%)
+            return f"{row['Last']:.2f}%"
+        else:
+            return format_currency(row['Last'])
+
+    display_df['Last'] = display_df.apply(format_last_value, axis=1)
     display_df['Change %'] = display_df['Change %'].apply(lambda x: add_arrow_indicator(format_percentage(x)))
     display_df['5D %'] = display_df['5D %'].apply(lambda x: add_arrow_indicator(format_percentage(x)))
     display_df['Volume'] = display_df['Volume'].apply(lambda x: f"{x:,.0f}")
     display_df['Vol/Avg'] = display_df['Vol/Avg'].apply(lambda x: f"{x:.2f}x")
-    
+
+    # Remove internal column before displaying
+    if '_raw_ticker' in display_df.columns:
+        display_df = display_df.drop('_raw_ticker', axis=1)
+
     return display_df
 
 # ============================================================================
@@ -7447,11 +7777,14 @@ def main():
             if pnl_position:
                 st.plotly_chart(pnl_position, use_container_width=True)
 
-        # Performance Heatmap (full width)
+        # Performance Heatmap (full width) - Only show if meaningful data exists
         st.markdown("---")
-        perf_heatmap = create_performance_heatmap(enhanced_df)
-        if perf_heatmap:
-            st.plotly_chart(perf_heatmap, use_container_width=True)
+        if should_display_monthly_heatmap(enhanced_df):
+            perf_heatmap = create_performance_heatmap(enhanced_df)
+            if perf_heatmap:
+                st.plotly_chart(perf_heatmap, use_container_width=True)
+        else:
+            st.info("📊 Monthly performance heatmap will be available after 2+ months of portfolio history")
     
     # ========================================================================
     # MARKET WATCH - COMPLETE REVAMP
