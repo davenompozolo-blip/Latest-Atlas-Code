@@ -766,6 +766,30 @@ st.markdown("""
     header {visibility: hidden;}
 
 </style>
+
+<script>
+    // Keyboard shortcut to toggle sidebar (Ctrl + B)
+    document.addEventListener('keydown', function(event) {
+        // Check if Ctrl+B is pressed (or Cmd+B on Mac)
+        if ((event.ctrlKey || event.metaKey) && event.key === 'b') {
+            event.preventDefault(); // Prevent browser's default bookmark action
+
+            // Find the sidebar collapse button
+            const collapseButton = document.querySelector('button[kind="header"]');
+
+            if (collapseButton) {
+                collapseButton.click();
+            } else {
+                // Alternative selector if the first one doesn't work
+                const alternativeButton = document.querySelector('[data-testid="collapsedControl"]');
+                if (alternativeButton) {
+                    alternativeButton.click();
+                }
+            }
+        }
+    });
+</script>
+
 """, unsafe_allow_html=True)
 
 # ============================================================================
