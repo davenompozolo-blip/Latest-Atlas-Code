@@ -52,6 +52,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
+from streamlit_option_menu import option_menu
 import yfinance as yf
 from scipy import stats
 from scipy.optimize import minimize
@@ -80,7 +81,7 @@ st.set_page_config(
     page_title="ATLAS Terminal v10.0 INSTITUTIONAL",
     page_icon="🚀",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
 # ============================================================================
@@ -572,63 +573,6 @@ st.markdown("""
     }
 
     /* ============================================
-       SIDEBAR - Clean Navigation - ALWAYS VISIBLE
-       ============================================ */
-
-    section[data-testid="stSidebar"] {
-        background: linear-gradient(180deg, rgba(5, 15, 23, 0.95) 0%, rgba(10, 25, 41, 0.95) 100%) !important;
-        border-right: 1px solid rgba(0, 212, 255, 0.15) !important;
-        backdrop-filter: blur(20px) !important;
-        display: block !important;
-        visibility: visible !important;
-        opacity: 1 !important;
-        min-width: 250px !important;
-        width: 336px !important;
-    }
-
-    /* Force sidebar to stay visible - prevent collapse */
-    section[data-testid="stSidebar"][aria-hidden="true"] {
-        display: block !important;
-        visibility: visible !important;
-        opacity: 1 !important;
-    }
-
-    /* Ensure sidebar content is visible */
-    section[data-testid="stSidebar"] > div {
-        display: block !important;
-        visibility: visible !important;
-    }
-
-    /* Hide the collapse button so sidebar can't be hidden */
-    button[kind="header"],
-    button[data-testid="baseButton-header"],
-    button[aria-label="Close sidebar"],
-    button[aria-label="Collapse sidebar"],
-    section[data-testid="stSidebar"] button[kind="header"],
-    section[data-testid="stSidebar"] button[aria-label*="sidebar"],
-    section[data-testid="stSidebar"] button[aria-label*="Sidebar"] {
-        display: none !important;
-        visibility: hidden !important;
-        pointer-events: none !important;
-    }
-
-    section[data-testid="stSidebar"] .stRadio > label {
-        background: rgba(10, 25, 41, 0.4) !important;
-        border: 1px solid rgba(0, 212, 255, 0.15) !important;
-        border-radius: 10px !important;
-        padding: 12px 16px !important;
-        margin: 6px 0 !important;
-        transition: all 0.3s ease !important;
-        cursor: pointer !important;
-    }
-
-    section[data-testid="stSidebar"] .stRadio > label:hover {
-        background: rgba(0, 212, 255, 0.1) !important;
-        border-color: rgba(0, 212, 255, 0.4) !important;
-        transform: translateX(4px) !important;
-    }
-
-    /* ============================================
        EXPANDERS - Collapsible Sections
        ============================================ */
 
@@ -823,72 +767,6 @@ st.markdown("""
 
 </style>
 
-<script>
-    // Force sidebar to remain visible on page load
-    function ensureSidebarVisible() {
-        const sidebar = document.querySelector('section[data-testid="stSidebar"]');
-        if (sidebar) {
-            sidebar.style.display = 'block';
-            sidebar.style.visibility = 'visible';
-            sidebar.style.opacity = '1';
-            sidebar.style.transform = 'translateX(0)';
-            sidebar.removeAttribute('aria-hidden');
-            sidebar.setAttribute('aria-expanded', 'true');
-
-            // Also force the inner container
-            const sidebarContent = sidebar.querySelector('div[data-testid="stSidebarContent"]');
-            if (sidebarContent) {
-                sidebarContent.style.display = 'block';
-                sidebarContent.style.visibility = 'visible';
-            }
-
-            console.log('Sidebar forced to visible state');
-        }
-    }
-
-    // Keyboard shortcut: Ctrl+B (or Cmd+B on Mac) to show sidebar
-    document.addEventListener('keydown', function(e) {
-        // Ctrl+B (Windows/Linux) or Cmd+B (Mac)
-        if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
-            e.preventDefault();
-            console.log('Sidebar shortcut triggered (Ctrl/Cmd+B)');
-            ensureSidebarVisible();
-
-            // Show confirmation
-            const notification = document.createElement('div');
-            notification.textContent = '✅ Sidebar restored!';
-            notification.style.cssText = `
-                position: fixed;
-                top: 20px;
-                right: 20px;
-                background: linear-gradient(135deg, #00d4ff, #0080ff);
-                color: white;
-                padding: 12px 24px;
-                border-radius: 8px;
-                font-weight: bold;
-                z-index: 999999;
-                box-shadow: 0 4px 20px rgba(0, 212, 255, 0.5);
-                animation: slideIn 0.3s ease-out;
-            `;
-            document.body.appendChild(notification);
-            setTimeout(() => {
-                notification.style.transition = 'opacity 0.3s';
-                notification.style.opacity = '0';
-                setTimeout(() => notification.remove(), 300);
-            }, 2000);
-        }
-    });
-
-    // Run on page load
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', ensureSidebarVisible);
-    } else {
-        ensureSidebarVisible();
-    }
-
-    // Continuously ensure sidebar stays visible
-    setInterval(ensureSidebarVisible, 500);
-</script>
 
 
 """, unsafe_allow_html=True)
@@ -7611,8 +7489,7 @@ def main():
         </div>
         <div style="color: #b0c4de; font-size: 0.95em; line-height: 1.6;">
             <strong style="color: #00ff88;">Keyboard Shortcuts:</strong><br>
-            🔄 <strong style="color: #ffffff;">Hard Refresh:</strong> Ctrl+Shift+R (Win/Linux) | Cmd+Shift+R (Mac)<br>
-            📂 <strong style="color: #ffffff;">Show Sidebar:</strong> Ctrl+B (Win/Linux) | Cmd+B (Mac)
+            🔄 <strong style="color: #ffffff;">Hard Refresh:</strong> Ctrl+Shift+R (Win/Linux) | Cmd+Shift+R (Mac)
         </div>
     </div>
     """.format(CACHE_BUSTER), unsafe_allow_html=True)
@@ -7628,30 +7505,117 @@ def main():
             <span style="color: white; margin-left: 20px;">Leverage: {leverage_info['leverage_ratio']:.2f}x</span>
         </div>
         """, unsafe_allow_html=True)
-    
-    st.sidebar.markdown("### NAVIGATION")
-    page = st.sidebar.radio("Select Module", [
-        "🔥 Phoenix Parser",
-        "🏠 Portfolio Home",
-        "🌍 Market Watch",
-        "📈 Risk Analysis",
-        "💎 Performance Suite",
-        "🔬 Portfolio Deep Dive",
-        "📊 Multi-Factor Analysis",
-        "💰 Valuation House",
-        "ℹ️ About"
-    ])
-    
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("### 📅 TIME RANGE")
-    date_options = ["1D", "1W", "1M", "3M", "6M", "YTD", "1Y", "3Y", "5Y", "MAX"]
-    selected_range = st.sidebar.selectbox("Period", date_options, index=6)
-    
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("### 🎯 BENCHMARK")
-    benchmark_options = ["SPY", "QQQ", "DIA", "IWM", "VTI", "ACWI"]
-    selected_benchmark = st.sidebar.selectbox("Compare Against", benchmark_options, index=0)
-    
+
+    # ============================================================================
+    # NAVIGATION MENU - COLAB-COMPATIBLE (REPLACES SIDEBAR)
+    # ============================================================================
+
+    st.markdown("---")
+
+    # Horizontal navigation menu
+    page = option_menu(
+        menu_title=None,
+        options=[
+            "Phoenix Parser",
+            "Portfolio Home",
+            "Market Watch",
+            "Risk Analysis",
+            "Performance Suite",
+            "Portfolio Deep Dive",
+            "Multi-Factor Analysis",
+            "Valuation House",
+            "About"
+        ],
+        icons=[
+            "fire",
+            "house-fill",
+            "globe",
+            "graph-up-arrow",
+            "gem",
+            "microscope",
+            "bar-chart-fill",
+            "cash-coin",
+            "info-circle-fill"
+        ],
+        menu_icon="cast",
+        default_index=1,  # Default to Portfolio Home
+        orientation="horizontal",
+        styles={
+            "container": {
+                "padding": "0!important",
+                "background-color": "#0e1117",
+                "border-radius": "10px",
+                "margin-bottom": "20px"
+            },
+            "icon": {
+                "color": "#00d4ff",
+                "font-size": "18px"
+            },
+            "nav-link": {
+                "font-size": "14px",
+                "text-align": "center",
+                "margin": "0px",
+                "padding": "12px 16px",
+                "border-radius": "8px",
+                "color": "#ffffff",
+                "--hover-color": "#1f2937"
+            },
+            "nav-link-selected": {
+                "background-color": "#00d4ff",
+                "color": "#000000",
+                "font-weight": "600"
+            },
+        }
+    )
+
+    # Prefix emojis to page names for consistency with old navigation
+    page_mapping = {
+        "Phoenix Parser": "🔥 Phoenix Parser",
+        "Portfolio Home": "🏠 Portfolio Home",
+        "Market Watch": "🌍 Market Watch",
+        "Risk Analysis": "📈 Risk Analysis",
+        "Performance Suite": "💎 Performance Suite",
+        "Portfolio Deep Dive": "🔬 Portfolio Deep Dive",
+        "Multi-Factor Analysis": "📊 Multi-Factor Analysis",
+        "Valuation House": "💰 Valuation House",
+        "About": "ℹ️ About"
+    }
+
+    page = page_mapping[page]
+
+    st.markdown("---")
+
+    # ============================================================================
+    # CONTROLS - TIME RANGE & BENCHMARK (NOW IN MAIN AREA)
+    # ============================================================================
+
+    col1, col2, col3 = st.columns([2, 2, 2])
+
+    with col1:
+        st.markdown("### 📅 TIME RANGE")
+        date_options = ["1D", "1W", "1M", "3M", "6M", "YTD", "1Y", "3Y", "5Y", "MAX"]
+        selected_range = st.selectbox("Period", date_options, index=6, key="time_range_selector")
+
+    with col2:
+        st.markdown("### 🎯 BENCHMARK")
+        benchmark_options = ["SPY", "QQQ", "DIA", "IWM", "VTI", "ACWI"]
+        selected_benchmark = st.selectbox("Compare Against", benchmark_options, index=0, key="benchmark_selector")
+
+    with col3:
+        st.markdown("### ⚙️ SETTINGS")
+        with st.popover("Configure"):
+            st.markdown("**Display Options**")
+            show_debug = st.checkbox("Show Debug Info", value=False, key="show_debug_info")
+
+            st.markdown("**Data Options**")
+            auto_refresh = st.checkbox("Auto-refresh data", value=True, key="auto_refresh_data")
+
+            if st.button("Clear Cache"):
+                st.cache_data.clear()
+                st.success("Cache cleared!")
+
+    st.markdown("---")
+
     if selected_range == "YTD":
         start_date = datetime(datetime.now().year, 1, 1)
         end_date = datetime.now()

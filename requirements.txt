@@ -1,4 +1,5 @@
 streamlit>=1.28.0
+streamlit-option-menu>=0.3.6
 pyngrok>=7.0.0
 yfinance>=0.2.32
 plotly>=5.17.0
