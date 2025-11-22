@@ -562,40 +562,13 @@ st.markdown("""
     }
 
     /* ============================================
-       SIDEBAR - Clean Navigation - ALWAYS VISIBLE
+       SIDEBAR - Clean Navigation
        ============================================ */
 
     section[data-testid="stSidebar"] {
         background: linear-gradient(180deg, rgba(5, 15, 23, 0.95) 0%, rgba(10, 25, 41, 0.95) 100%) !important;
         border-right: 1px solid rgba(0, 212, 255, 0.15) !important;
         backdrop-filter: blur(20px) !important;
-        display: block !important;
-        visibility: visible !important;
-        opacity: 1 !important;
-        min-width: 250px !important;
-        width: 336px !important;
-    }
-
-    /* Force sidebar to stay visible - prevent collapse */
-    section[data-testid="stSidebar"][aria-hidden="true"] {
-        display: block !important;
-        visibility: visible !important;
-        opacity: 1 !important;
-    }
-
-    /* Ensure sidebar content is visible */
-    section[data-testid="stSidebar"] > div {
-        display: block !important;
-        visibility: visible !important;
-    }
-
-    /* Hide the collapse button so sidebar can't be hidden */
-    button[kind="header"],
-    button[data-testid="baseButton-header"],
-    button[aria-label="Close sidebar"],
-    section[data-testid="stSidebar"] button[kind="header"] {
-        display: none !important;
-        visibility: hidden !important;
     }
 
     section[data-testid="stSidebar"] .stRadio > label {
@@ -793,31 +766,6 @@ st.markdown("""
     header {visibility: hidden;}
 
 </style>
-
-<script>
-    // Force sidebar to remain visible on page load
-    function ensureSidebarVisible() {
-        const sidebar = document.querySelector('section[data-testid="stSidebar"]');
-        if (sidebar) {
-            sidebar.style.display = 'block';
-            sidebar.style.visibility = 'visible';
-            sidebar.style.opacity = '1';
-            sidebar.removeAttribute('aria-hidden');
-            console.log('Sidebar forced to visible state');
-        }
-    }
-
-    // Run on page load
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', ensureSidebarVisible);
-    } else {
-        ensureSidebarVisible();
-    }
-
-    // Continuously ensure sidebar stays visible
-    setInterval(ensureSidebarVisible, 500);
-</script>
-
 """, unsafe_allow_html=True)
 
 # ============================================================================
