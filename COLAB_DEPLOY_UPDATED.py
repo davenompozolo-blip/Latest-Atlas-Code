@@ -12,12 +12,12 @@ import os
 import ast
 
 # Download from specific commit SHA to bypass GitHub cache
-COMMIT_SHA = "66e5e43f66256e6614f202b50493f83b0641c219"
+COMMIT_SHA = "fe8567cafa82a42f7ec8146cbe63f2e07a5f03d3"
 BRANCH = "claude/merge-diversification-changes-01MFb2o3Pq6kibkf5Vc7xhf8"
 url = f"https://raw.githubusercontent.com/davenompozolo-blip/Latest-Atlas-Code/{COMMIT_SHA}/atlas_app.py"
 
 print(f"Downloading from branch: {BRANCH}")
-print(f"Using commit SHA: {COMMIT_SHA}")
+print(f"Using commit SHA: {COMMIT_SHA} (with sidebar forcing restored)")
 print(f"URL: {url}")
 
 try:
@@ -124,6 +124,7 @@ print("🎨 UI ENHANCEMENTS:")
 print("   ✓ Material Icons text overlay fix - clean dropdowns")
 print("   ✓ Comprehensive UI optimization")
 print("   ✓ Professional sector allocation visualizations")
+print("   ✓ SIDEBAR FORCING: Always visible and uncollapsible (CSS/JS enforced)")
 print()
 print("🧠 OPTIMIZATION SYSTEM:")
 print("   ✓ Two-stage diversification-first optimizer")
