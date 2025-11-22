@@ -91,8 +91,13 @@ print("⏳ Waiting for Streamlit to initialize...")
 time.sleep(15)
 
 # Create ngrok tunnel
-tunnel = ngrok.connect(8501)
-public_url = tunnel.public_url
+try:
+    tunnel = ngrok.connect(8501)
+    public_url = str(tunnel.public_url)
+    print(f"✅ Ngrok tunnel created successfully")
+except Exception as e:
+    print(f"❌ Ngrok error: {e}")
+    raise
 
 # ============================================================================
 # DISPLAY ACCESS INFORMATION
