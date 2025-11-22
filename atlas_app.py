@@ -167,8 +167,18 @@ COLORSCALES = {
 # ============================================================================
 # MODERN UI/UX - GLASSMORPHISM & BEAUTIFUL DESIGN
 # ============================================================================
+
+# AGGRESSIVE CACHE BUSTING - Force fresh content
+import hashlib
+import time as time_module
+CACHE_BUSTER = hashlib.md5(str(time_module.time()).encode()).hexdigest()[:8]
+
 st.markdown("""
-<style>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<meta name="version" content="{}">
+<style>""".format(CACHE_BUSTER) + """
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&display=swap');
 
     /* ============================================
@@ -7452,10 +7462,10 @@ def main():
                     ATLAS TERMINAL
                 </h1>
                 <div style="color: #6c8ca8; font-size: 0.9em; font-weight: 600; letter-spacing: 0.15em; margin-top: 0.25rem;">
-                    INSTITUTIONAL EDITION v10.0
+                    INSTITUTIONAL EDITION v10.0 <span style="color: #00ff88; font-size: 0.7em;">[Build: {}]</span>
                 </div>
             </div>
-        </div>
+        </div>""".format(CACHE_BUSTER) + """
         <p style="color: #b0c4de; font-size: 1.1em; margin-top: 1.5rem; font-weight: 500;">
             Bloomberg Terminal-Quality Portfolio Analytics 📊 | Institutional-Grade Performance Suite 💎
         </p>
@@ -7475,7 +7485,22 @@ def main():
         </div>
     </div>
     """, unsafe_allow_html=True)
-    
+
+    # Cache warning banner
+    st.markdown("""
+    <div style="background: linear-gradient(135deg, rgba(0, 212, 255, 0.2) 0%, rgba(0, 255, 136, 0.2) 100%);
+                border: 2px solid #00d4ff; border-radius: 12px; padding: 15px; margin: 20px auto; max-width: 800px;
+                text-align: center; box-shadow: 0 4px 20px rgba(0, 212, 255, 0.3);">
+        <div style="color: #00d4ff; font-weight: 700; font-size: 1.1em; margin-bottom: 8px;">
+            🔄 NEW BUILD DEPLOYED - Build {}
+        </div>
+        <div style="color: #b0c4de; font-size: 0.95em; line-height: 1.6;">
+            If you see an older version or missing sidebar, please <strong style="color: #00ff88;">hard refresh</strong>:<br>
+            <strong style="color: #ffffff;">Windows/Linux:</strong> Ctrl+Shift+R &nbsp;|&nbsp; <strong style="color: #ffffff;">Mac:</strong> Cmd+Shift+R
+        </div>
+    </div>
+    """.format(CACHE_BUSTER), unsafe_allow_html=True)
+
     leverage_info = get_leverage_info()
     if leverage_info:
         st.markdown(f"""
