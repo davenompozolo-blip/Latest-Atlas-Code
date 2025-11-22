@@ -4204,35 +4204,95 @@ class RiskProfile:
     PROFILES = {
         'conservative': {
             'name': 'Conservative',
-            'description': 'Prioritize capital preservation and steady returns',
-            'max_position_base': 0.15,        # Smaller positions
-            'max_sector_concentration': 0.30,  # Tight sector limits
-            'min_diversification': 10,         # Force 10+ holdings
+            'description': 'Maximum diversification with capital preservation',
+            'philosophy': 'Prioritize diversification - accept 5-10% lower performance for 2-3x more holdings',
+
+            # MUCH STRICTER POSITION LIMITS (Diversification-First)
+            'max_position_base': 0.06,         # Max 6% in any single asset (was 15%)
+            'typical_position_target': 0.04,   # Aim for 4% positions
+            'max_sector_concentration': 0.25,  # Tight sector limits
+
+            # FORCE BROAD DIVERSIFICATION
+            'min_diversification': 18,         # Force at least 18 holdings (was 10)
+            'target_holdings': 25,             # Aim for 25+ holdings
+            'min_position_to_count': 0.02,     # Only count positions >2%
+
+            # VERY TIGHT CONCENTRATION LIMITS
+            'max_top_3_concentration': 0.15,   # Top 3 can't exceed 15%
+            'max_top_5_concentration': 0.25,   # Top 5 can't exceed 25%
+            'max_top_10_concentration': 0.50,  # Top 10 can't exceed 50%
+
+            # RISK DISTRIBUTION
             'max_drawdown_tolerance': 0.15,    # 15% max drawdown
             'turnover_sensitivity': 'low',     # Avoid frequent trading
-            'risk_budget_per_asset': 0.12,     # No asset >12% of risk
+            'risk_budget_per_asset': 0.08,     # No asset >8% of portfolio risk (was 12%)
+            'target_effective_n': 20,          # Target 20 "effective" holdings
+
+            # DIVERSIFICATION PRIORITY
+            'acceptable_sharpe_ratio': 0.90,   # Accept 90% of max Sharpe for diversification
+            'diversification_priority': 'maximum',
         },
 
         'moderate': {
             'name': 'Moderate',
-            'description': 'Balance growth and risk management',
-            'max_position_base': 0.20,
-            'max_sector_concentration': 0.40,
-            'min_diversification': 8,
+            'description': 'Strong diversification with balanced growth',
+            'philosophy': 'Balance performance and diversification - accept 3-5% lower performance for better diversification',
+
+            # MODERATE POSITION LIMITS (Still Diversified)
+            'max_position_base': 0.10,         # Max 10% in any single asset (was 20%)
+            'typical_position_target': 0.06,   # Aim for 6% positions
+            'max_sector_concentration': 0.35,
+
+            # GOOD DIVERSIFICATION
+            'min_diversification': 12,         # Force at least 12 holdings (was 8)
+            'target_holdings': 18,             # Aim for 18+ holdings
+            'min_position_to_count': 0.025,
+
+            # REASONABLE CONCENTRATION LIMITS
+            'max_top_3_concentration': 0.25,   # Top 3 can't exceed 25%
+            'max_top_5_concentration': 0.40,   # Top 5 can't exceed 40%
+            'max_top_10_concentration': 0.70,  # Top 10 can't exceed 70%
+
+            # RISK DISTRIBUTION
             'max_drawdown_tolerance': 0.25,
             'turnover_sensitivity': 'medium',
-            'risk_budget_per_asset': 0.15,
+            'risk_budget_per_asset': 0.12,     # No asset >12% of portfolio risk
+            'target_effective_n': 12,          # Target 12 "effective" holdings
+
+            # DIVERSIFICATION PRIORITY
+            'acceptable_sharpe_ratio': 0.95,   # Accept 95% of max Sharpe
+            'diversification_priority': 'high',
         },
 
         'aggressive': {
             'name': 'Aggressive',
-            'description': 'Maximize returns, accept higher volatility',
-            'max_position_base': 0.25,
+            'description': 'Growth-focused but still properly diversified',
+            'philosophy': 'Allow concentration where justified, but maintain meaningful diversification',
+
+            # STILL REASONABLE LIMITS
+            'max_position_base': 0.15,         # Max 15% in any single asset (was 25%)
+            'typical_position_target': 0.08,   # Aim for 8% positions
             'max_sector_concentration': 0.50,
-            'min_diversification': 6,
+
+            # MEANINGFUL DIVERSIFICATION
+            'min_diversification': 10,         # Force at least 10 holdings (was 6)
+            'target_holdings': 15,             # Aim for 15+ holdings
+            'min_position_to_count': 0.03,
+
+            # LOOSER BUT STILL BOUNDED
+            'max_top_3_concentration': 0.35,   # Top 3 can't exceed 35%
+            'max_top_5_concentration': 0.55,   # Top 5 can't exceed 55%
+            'max_top_10_concentration': 0.85,  # Top 10 can't exceed 85%
+
+            # RISK DISTRIBUTION
             'max_drawdown_tolerance': 0.35,
             'turnover_sensitivity': 'high',
-            'risk_budget_per_asset': 0.20,
+            'risk_budget_per_asset': 0.15,     # No asset >15% of portfolio risk
+            'target_effective_n': 10,          # Target 10 "effective" holdings
+
+            # DIVERSIFICATION PRIORITY
+            'acceptable_sharpe_ratio': 0.98,   # Accept 98% of max Sharpe
+            'diversification_priority': 'moderate',
         }
     }
 
@@ -4242,24 +4302,17 @@ class RiskProfile:
         Get optimization config based on user risk profile + strategy
 
         This is the KEY translation layer - from user intent to math parameters
+
+        DIVERSIFICATION-FIRST PHILOSOPHY:
+        We no longer adjust limits by strategy. Instead, we maintain strict
+        diversification requirements and let the two-stage optimization find
+        the most diversified solution on the efficient frontier.
         """
         base_config = cls.PROFILES[risk_tolerance].copy()
 
-        # Strategy-specific adjustments
-        if strategy_type == 'min_volatility':
-            # Min vol naturally conservative - allow more concentration
-            base_config['max_position_base'] *= 1.4
-            base_config['min_diversification'] = max(5, base_config['min_diversification'] - 3)
-
-        elif strategy_type == 'max_return':
-            # Return chasing is dangerous - force MORE diversification
-            base_config['max_position_base'] *= 0.75
-            base_config['min_diversification'] += 2
-            base_config['max_sector_concentration'] -= 0.10
-
-        elif strategy_type == 'max_sharpe':
-            # Sharpe is balanced - use base config as-is
-            pass
+        # All strategies now use the same diversification-first constraints
+        # The two-stage optimizer will find the most diversified solution
+        # that achieves acceptable performance for the chosen strategy
 
         return base_config
 
@@ -4673,12 +4726,294 @@ def validate_portfolio_realism(weights, returns_df, strategy_type):
     }
 
 
+# ============================================================================
+# TWO-STAGE DIVERSIFICATION-FIRST OPTIMIZATION SYSTEM
+# ============================================================================
+# Key Insight: Hundreds of portfolios on efficient frontier perform similarly.
+# Choose the MOST DIVERSIFIED one, not the most concentrated.
+# ============================================================================
+
+def calculate_performance_metric(weights, returns_df, strategy_type, risk_free_rate=0.02):
+    """Calculate the relevant performance metric for the strategy"""
+    cov_matrix = returns_df.cov() * 252
+
+    if strategy_type == 'max_sharpe':
+        port_return = np.sum(returns_df.mean() * weights) * 252
+        port_vol = np.sqrt(weights @ cov_matrix @ weights)
+        return (port_return - risk_free_rate) / port_vol if port_vol > 0 else 0
+
+    elif strategy_type == 'min_volatility':
+        return -np.sqrt(weights @ cov_matrix @ weights)  # Negative for constraint
+
+    elif strategy_type == 'cvar_minimization':
+        portfolio_returns = returns_df.values @ weights
+        var_threshold = np.percentile(portfolio_returns, 5)
+        cvar = portfolio_returns[portfolio_returns <= var_threshold].mean()
+        return -cvar  # Negative because we minimize CVaR
+
+    elif strategy_type == 'max_return':
+        mean_returns = returns_df.mean() * 252
+        return np.sum(mean_returns * weights)
+
+    elif strategy_type == 'risk_parity':
+        # For risk parity, use negative of risk parity error as "performance"
+        port_vol = np.sqrt(weights @ cov_matrix @ weights)
+        if port_vol < 1e-10:
+            return 0
+        marginal_contrib = (cov_matrix @ weights) / port_vol
+        risk_contrib = weights * marginal_contrib
+        target_risk = port_vol / len(weights)
+        risk_parity_error = np.sum((risk_contrib - target_risk) ** 2)
+        return -risk_parity_error
+
+    return 0
+
+
+def calculate_max_risk_contrib_pct(weights, returns_df):
+    """Calculate maximum risk contribution from any single asset as percentage"""
+    cov_matrix = returns_df.cov() * 252
+    port_vol = np.sqrt(weights @ cov_matrix @ weights)
+
+    if port_vol < 1e-10:
+        return 0
+
+    marginal_contrib = (cov_matrix @ weights) / port_vol
+    risk_contribs = weights * marginal_contrib / port_vol
+    return np.max(np.abs(risk_contribs))
+
+
+def optimize_two_stage_diversification_first(
+    returns_df,
+    strategy_type,
+    risk_profile_config,
+    risk_free_rate=0.02,
+    verbose=True
+):
+    """
+    TWO-STAGE DIVERSIFICATION-FIRST OPTIMIZATION
+
+    STAGE 1: Find peak performance (the "optimal" concentrated solution)
+    STAGE 2: Maximize diversification while maintaining acceptable performance
+
+    This finds the MOST DIVERSIFIED portfolio on the efficient frontier,
+    not the most concentrated one.
+
+    Args:
+        returns_df: Historical returns
+        strategy_type: 'max_sharpe', 'min_volatility', etc.
+        risk_profile_config: Configuration from RiskProfile
+        risk_free_rate: Risk-free rate for Sharpe calculation
+        verbose: Print optimization details
+
+    Returns:
+        Optimized weights (most diversified solution on efficient frontier)
+    """
+    from scipy.optimize import minimize
+
+    n_assets = len(returns_df.columns)
+    cov_matrix = returns_df.cov() * 252
+
+    # ========================================
+    # STAGE 1: FIND PEAK PERFORMANCE
+    # ========================================
+
+    if verbose:
+        print(f"\n{'='*60}")
+        print(f"STAGE 1: Finding peak performance...")
+        print(f"{'='*60}")
+
+    # Use relaxed constraints to find true optimum
+    peak_weights = optimize_for_peak_performance(
+        returns_df, strategy_type, risk_free_rate, max_position=0.30
+    )
+
+    peak_performance = calculate_performance_metric(
+        peak_weights, returns_df, strategy_type, risk_free_rate
+    )
+
+    peak_effective_n = 1 / np.sum(peak_weights ** 2)
+    peak_max_position = np.max(peak_weights)
+
+    if verbose:
+        print(f"Peak performance: {peak_performance:.4f}")
+        print(f"Effective holdings: {peak_effective_n:.1f}")
+        print(f"Max position: {peak_max_position:.1%}")
+
+    # ========================================
+    # STAGE 2: MAXIMIZE DIVERSIFICATION
+    # ========================================
+
+    if verbose:
+        print(f"\n{'='*60}")
+        print(f"STAGE 2: Maximizing diversification...")
+        print(f"{'='*60}")
+
+    # Set acceptable performance threshold
+    min_acceptable_performance = peak_performance * risk_profile_config['acceptable_sharpe_ratio']
+
+    if verbose:
+        print(f"Min acceptable performance: {min_acceptable_performance:.4f}")
+        print(f"(={risk_profile_config['acceptable_sharpe_ratio']:.0%} of peak)")
+
+    def diversification_objective(weights):
+        """
+        Objective: MINIMIZE concentration (MAXIMIZE diversification)
+        Using Herfindahl-Hirschman Index (HHI)
+        Lower HHI = more diversified
+        """
+        hhi = np.sum(weights ** 2)
+
+        # Penalize too few meaningful positions
+        meaningful_positions = np.sum(weights >= risk_profile_config['min_position_to_count'])
+        if meaningful_positions < risk_profile_config['target_holdings']:
+            sparsity_penalty = (risk_profile_config['target_holdings'] - meaningful_positions) * 0.01
+        else:
+            sparsity_penalty = 0
+
+        return hhi + sparsity_penalty
+
+    # Build constraints
+    constraints = [
+        {'type': 'eq', 'fun': lambda w: np.sum(w) - 1.0},
+
+        # CRITICAL: Performance must stay above threshold
+        {'type': 'ineq',
+         'fun': lambda w: calculate_performance_metric(w, returns_df, strategy_type, risk_free_rate) - min_acceptable_performance},
+
+        # Minimum meaningful holdings
+        {'type': 'ineq',
+         'fun': lambda w: np.sum(w >= risk_profile_config['min_position_to_count']) - risk_profile_config['min_diversification']},
+
+        # Top 3 concentration limit
+        {'type': 'ineq',
+         'fun': lambda w: risk_profile_config['max_top_3_concentration'] - np.sum(np.sort(w)[-3:])},
+
+        # Top 5 concentration limit
+        {'type': 'ineq',
+         'fun': lambda w: risk_profile_config['max_top_5_concentration'] - np.sum(np.sort(w)[-5:])},
+
+        # Risk contribution limit
+        {'type': 'ineq',
+         'fun': lambda w: risk_profile_config['risk_budget_per_asset'] - calculate_max_risk_contrib_pct(w, returns_df)},
+    ]
+
+    # Volatility-adjusted position limits
+    volatilities = returns_df.std() * np.sqrt(252)
+    median_vol = volatilities.median()
+    vol_scalars = np.clip(median_vol / volatilities, 0.5, 1.5)
+
+    position_limits = risk_profile_config['max_position_base'] * vol_scalars
+    position_limits = np.clip(position_limits, 0.01, risk_profile_config['max_position_base'])
+
+    bounds = [(0, limit) for limit in position_limits]
+
+    # Initial guess: Equal weight (most diversified starting point)
+    initial_guess = np.ones(n_assets) / n_assets
+
+    # Optimize for DIVERSIFICATION subject to performance constraint
+    result = minimize(
+        diversification_objective,
+        initial_guess,
+        method='SLSQP',
+        bounds=bounds,
+        constraints=constraints,
+        options={'maxiter': 2000, 'ftol': 1e-10}
+    )
+
+    if not result.success:
+        if verbose:
+            print(f"Warning: {result.message}")
+            print("Falling back to peak performance portfolio...")
+        return peak_weights
+
+    diversified_weights = result.x
+
+    # Clean up tiny positions
+    min_position = risk_profile_config.get('min_position_to_count', 0.02) / 2
+    diversified_weights[diversified_weights < min_position] = 0
+
+    # Renormalize
+    if np.sum(diversified_weights) > 0:
+        diversified_weights = diversified_weights / np.sum(diversified_weights)
+    else:
+        diversified_weights = peak_weights
+
+    # ========================================
+    # STAGE 3: VALIDATE & COMPARE
+    # ========================================
+
+    final_performance = calculate_performance_metric(
+        diversified_weights, returns_df, strategy_type, risk_free_rate
+    )
+    performance_ratio = final_performance / peak_performance
+
+    final_effective_n = 1 / np.sum(diversified_weights ** 2)
+    final_max_position = np.max(diversified_weights)
+    final_top_3 = np.sum(np.sort(diversified_weights)[-3:])
+
+    if verbose:
+        print(f"\n{'='*60}")
+        print(f"DIVERSIFICATION OPTIMIZATION RESULTS")
+        print(f"{'='*60}")
+        print(f"\nPeak Performance Portfolio:")
+        print(f"  Performance: {peak_performance:.4f}")
+        print(f"  Effective Holdings: {peak_effective_n:.1f}")
+        print(f"  Largest Position: {peak_max_position:.1%}")
+        print(f"  Top 3 Total: {np.sum(np.sort(peak_weights)[-3:]):.1%}")
+
+        print(f"\nDiversified Portfolio:")
+        print(f"  Performance: {final_performance:.4f} ({performance_ratio:.1%} of peak)")
+        print(f"  Effective Holdings: {final_effective_n:.1f} ({final_effective_n/peak_effective_n:.1f}x more)")
+        print(f"  Largest Position: {final_max_position:.1%}")
+        print(f"  Top 3 Total: {final_top_3:.1%}")
+
+        print(f"\nTRADEOFF:")
+        print(f"  Diversification Increase: {final_effective_n/peak_effective_n:.1f}x")
+        print(f"  Performance Cost: {(1-performance_ratio)*100:.1f}%")
+        print(f"{'='*60}\n")
+
+    return diversified_weights
+
+
+def optimize_for_peak_performance(returns_df, strategy_type, risk_free_rate, max_position=0.30):
+    """
+    Find peak performance with minimal constraints
+
+    This is STAGE 1 - find the best possible performance
+    """
+    from scipy.optimize import minimize
+
+    n_assets = len(returns_df.columns)
+
+    # Use the original optimization functions with relaxed constraints
+    if strategy_type == 'max_sharpe':
+        weights = optimize_max_sharpe(returns_df, risk_free_rate, max_position, 0.01)
+    elif strategy_type == 'min_volatility':
+        weights = optimize_min_volatility(returns_df, max_position, 0.01)
+    elif strategy_type == 'max_return':
+        weights = optimize_max_return(returns_df, max_position, 0.01)
+    elif strategy_type == 'risk_parity':
+        weights = optimize_risk_parity(returns_df, max_position, 0.01)
+    else:
+        # Default: equal weight
+        weights = pd.Series(np.ones(n_assets) / n_assets, index=returns_df.columns)
+
+    return weights.values if isinstance(weights, pd.Series) else weights
+
+
+# ============================================================================
+# ORIGINAL OPTIMIZATION FUNCTIONS (Used for Stage 1 Peak Finding)
+# ============================================================================
+
 def optimize_max_sharpe(returns_df, risk_free_rate, max_position=0.25, min_position=0.02):
     """
     Optimize for maximum Sharpe ratio with production-grade constraints
 
     FIXED v10.3: Removed aggressive penalties that were causing equal-weight portfolios.
     Now uses proper constraints and gentle regularization.
+
+    NOTE: This function is now primarily used for STAGE 1 (peak finding).
+    For diversification-first optimization, use optimize_two_stage_diversification_first()
     """
     from scipy.optimize import minimize
 
