@@ -603,9 +603,13 @@ st.markdown("""
     button[kind="header"],
     button[data-testid="baseButton-header"],
     button[aria-label="Close sidebar"],
-    section[data-testid="stSidebar"] button[kind="header"] {
+    button[aria-label="Collapse sidebar"],
+    section[data-testid="stSidebar"] button[kind="header"],
+    section[data-testid="stSidebar"] button[aria-label*="sidebar"],
+    section[data-testid="stSidebar"] button[aria-label*="Sidebar"] {
         display: none !important;
         visibility: hidden !important;
+        pointer-events: none !important;
     }
 
     section[data-testid="stSidebar"] .stRadio > label {
@@ -795,6 +799,21 @@ st.markdown("""
     }
 
     /* ============================================
+       KEYBOARD SHORTCUT ANIMATIONS
+       ============================================ */
+
+    @keyframes slideIn {
+        from {
+            transform: translateX(100%);
+            opacity: 0;
+        }
+        to {
+            transform: translateX(0);
+            opacity: 1;
+        }
+    }
+
+    /* ============================================
        HIDE STREAMLIT BRANDING
        ============================================ */
 
@@ -812,10 +831,53 @@ st.markdown("""
             sidebar.style.display = 'block';
             sidebar.style.visibility = 'visible';
             sidebar.style.opacity = '1';
+            sidebar.style.transform = 'translateX(0)';
             sidebar.removeAttribute('aria-hidden');
+            sidebar.setAttribute('aria-expanded', 'true');
+
+            // Also force the inner container
+            const sidebarContent = sidebar.querySelector('div[data-testid="stSidebarContent"]');
+            if (sidebarContent) {
+                sidebarContent.style.display = 'block';
+                sidebarContent.style.visibility = 'visible';
+            }
+
             console.log('Sidebar forced to visible state');
         }
     }
+
+    // Keyboard shortcut: Ctrl+B (or Cmd+B on Mac) to show sidebar
+    document.addEventListener('keydown', function(e) {
+        // Ctrl+B (Windows/Linux) or Cmd+B (Mac)
+        if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+            e.preventDefault();
+            console.log('Sidebar shortcut triggered (Ctrl/Cmd+B)');
+            ensureSidebarVisible();
+
+            // Show confirmation
+            const notification = document.createElement('div');
+            notification.textContent = '✅ Sidebar restored!';
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: linear-gradient(135deg, #00d4ff, #0080ff);
+                color: white;
+                padding: 12px 24px;
+                border-radius: 8px;
+                font-weight: bold;
+                z-index: 999999;
+                box-shadow: 0 4px 20px rgba(0, 212, 255, 0.5);
+                animation: slideIn 0.3s ease-out;
+            `;
+            document.body.appendChild(notification);
+            setTimeout(() => {
+                notification.style.transition = 'opacity 0.3s';
+                notification.style.opacity = '0';
+                setTimeout(() => notification.remove(), 300);
+            }, 2000);
+        }
+    });
 
     // Run on page load
     if (document.readyState === 'loading') {
@@ -7548,8 +7610,9 @@ def main():
             🔄 NEW BUILD DEPLOYED - Build {}
         </div>
         <div style="color: #b0c4de; font-size: 0.95em; line-height: 1.6;">
-            If you see an older version or missing sidebar, please <strong style="color: #00ff88;">hard refresh</strong>:<br>
-            <strong style="color: #ffffff;">Windows/Linux:</strong> Ctrl+Shift+R &nbsp;|&nbsp; <strong style="color: #ffffff;">Mac:</strong> Cmd+Shift+R
+            <strong style="color: #00ff88;">Keyboard Shortcuts:</strong><br>
+            🔄 <strong style="color: #ffffff;">Hard Refresh:</strong> Ctrl+Shift+R (Win/Linux) | Cmd+Shift+R (Mac)<br>
+            📂 <strong style="color: #ffffff;">Show Sidebar:</strong> Ctrl+B (Win/Linux) | Cmd+B (Mac)
         </div>
     </div>
     """.format(CACHE_BUSTER), unsafe_allow_html=True)
