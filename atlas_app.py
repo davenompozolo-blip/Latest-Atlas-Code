@@ -768,26 +768,95 @@ st.markdown("""
 </style>
 
 <script>
-    // Keyboard shortcut to toggle sidebar (Ctrl + B)
-    document.addEventListener('keydown', function(event) {
-        // Check if Ctrl+B is pressed (or Cmd+B on Mac)
-        if ((event.ctrlKey || event.metaKey) && event.key === 'b') {
-            event.preventDefault(); // Prevent browser's default bookmark action
+    // Enhanced sidebar toggle functionality
+    function toggleSidebar() {
+        // Try multiple selectors to find the sidebar toggle button
+        const selectors = [
+            'button[kind="header"]',  // Older Streamlit versions
+            '[data-testid="collapsedControl"]',  // Collapsed state button
+            'button[data-testid="baseButton-header"]',  // Newer Streamlit
+            'section[data-testid="stSidebar"] button',  // Any button in sidebar
+            '[aria-label="Close sidebar"]',  // Accessibility label
+            '[aria-label="Open sidebar"]',  // When collapsed
+            'button[aria-label*="sidebar" i]',  // Case-insensitive sidebar label
+        ];
 
-            // Find the sidebar collapse button
-            const collapseButton = document.querySelector('button[kind="header"]');
-
-            if (collapseButton) {
-                collapseButton.click();
-            } else {
-                // Alternative selector if the first one doesn't work
-                const alternativeButton = document.querySelector('[data-testid="collapsedControl"]');
-                if (alternativeButton) {
-                    alternativeButton.click();
-                }
+        for (const selector of selectors) {
+            const button = document.querySelector(selector);
+            if (button) {
+                button.click();
+                console.log('Sidebar toggled using selector:', selector);
+                return true;
             }
         }
+
+        console.warn('Could not find sidebar toggle button');
+        return false;
+    }
+
+    // Keyboard shortcut: Ctrl+B (or Cmd+B on Mac)
+    document.addEventListener('keydown', function(event) {
+        if ((event.ctrlKey || event.metaKey) && event.key === 'b') {
+            event.preventDefault();
+            toggleSidebar();
+        }
     });
+
+    // Create a visible toggle button
+    function createToggleButton() {
+        // Check if button already exists
+        if (document.getElementById('sidebar-toggle-btn')) return;
+
+        const toggleBtn = document.createElement('button');
+        toggleBtn.id = 'sidebar-toggle-btn';
+        toggleBtn.innerHTML = '☰ Menu';
+        toggleBtn.style.cssText = `
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 999999;
+            background: linear-gradient(135deg, #00d4ff 0%, #0080ff 100%);
+            color: white;
+            border: 2px solid #00d4ff;
+            border-radius: 8px;
+            padding: 10px 16px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0, 212, 255, 0.4);
+            transition: all 0.3s ease;
+            font-family: 'Inter', sans-serif;
+        `;
+
+        toggleBtn.onmouseover = function() {
+            this.style.background = 'linear-gradient(135deg, #00ffcc 0%, #00d4ff 100%)';
+            this.style.boxShadow = '0 6px 16px rgba(0, 255, 204, 0.5)';
+            this.style.transform = 'translateY(-2px)';
+        };
+
+        toggleBtn.onmouseout = function() {
+            this.style.background = 'linear-gradient(135deg, #00d4ff 0%, #0080ff 100%)';
+            this.style.boxShadow = '0 4px 12px rgba(0, 212, 255, 0.4)';
+            this.style.transform = 'translateY(0)';
+        };
+
+        toggleBtn.onclick = function() {
+            toggleSidebar();
+        };
+
+        document.body.appendChild(toggleBtn);
+    }
+
+    // Initialize the toggle button when page loads
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', createToggleButton);
+    } else {
+        createToggleButton();
+    }
+
+    // Re-create button if Streamlit reruns the app
+    setTimeout(createToggleButton, 1000);
+    setTimeout(createToggleButton, 3000);
 </script>
 
 """, unsafe_allow_html=True)
