@@ -11,11 +11,13 @@ import urllib.request
 import os
 import ast
 
-# Download from feature branch with latest updates
+# Download from specific commit SHA to bypass GitHub cache
+COMMIT_SHA = "66e5e43f66256e6614f202b50493f83b0641c219"
 BRANCH = "claude/merge-diversification-changes-01MFb2o3Pq6kibkf5Vc7xhf8"
-url = f"https://raw.githubusercontent.com/davenompozolo-blip/Latest-Atlas-Code/{BRANCH}/atlas_app.py"
+url = f"https://raw.githubusercontent.com/davenompozolo-blip/Latest-Atlas-Code/{COMMIT_SHA}/atlas_app.py"
 
-print(f"Downloading from: {BRANCH}")
+print(f"Downloading from branch: {BRANCH}")
+print(f"Using commit SHA: {COMMIT_SHA}")
 print(f"URL: {url}")
 
 try:
