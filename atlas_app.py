@@ -758,6 +758,39 @@ st.markdown("""
     }
 
     /* ============================================
+       ATLAS NAVIGATION MENU - TOGGLE SUPPORT
+       ============================================ */
+
+    .atlas-nav-container {
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        overflow: hidden !important;
+    }
+
+    .atlas-nav-hidden {
+        max-height: 0 !important;
+        opacity: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        pointer-events: none !important;
+    }
+
+    .atlas-nav-visible {
+        max-height: 200px !important;
+        opacity: 1 !important;
+    }
+
+    @keyframes slideInFromTop {
+        from {
+            transform: translateY(-20px);
+            opacity: 0;
+        }
+        to {
+            transform: translateY(0);
+            opacity: 1;
+        }
+    }
+
+    /* ============================================
        HIDE STREAMLIT BRANDING
        ============================================ */
 
@@ -766,6 +799,121 @@ st.markdown("""
     header {visibility: hidden;}
 
 </style>
+
+<script>
+    // Wait for the page to fully load
+    function initAtlasNavigation() {
+        let navVisible = true;
+
+        // Function to find the navigation menu (streamlit-option-menu container)
+        function findNavMenu() {
+            // The streamlit-option-menu creates a nav element
+            const navElements = document.querySelectorAll('nav');
+            for (let nav of navElements) {
+                // Look for the option menu by checking for its characteristic structure
+                if (nav.querySelector('[role="menubar"]') || nav.querySelector('.nav-link')) {
+                    return nav;
+                }
+            }
+
+            // Fallback: look for any nav element with menu items
+            const allNavs = document.querySelectorAll('nav');
+            if (allNavs.length > 0) {
+                return allNavs[allNavs.length - 1]; // Get the last nav (likely the option menu)
+            }
+
+            return null;
+        }
+
+        // Function to toggle navigation visibility
+        function toggleNavigation() {
+            const navMenu = findNavMenu();
+
+            if (navMenu) {
+                navVisible = !navVisible;
+
+                if (navVisible) {
+                    navMenu.style.display = 'flex';
+                    navMenu.style.visibility = 'visible';
+                    navMenu.style.opacity = '1';
+                    navMenu.style.maxHeight = '200px';
+                    navMenu.style.marginBottom = '20px';
+                    navMenu.style.transition = 'all 0.3s ease';
+                    console.log('✅ ATLAS Navigation shown');
+                } else {
+                    navMenu.style.opacity = '0';
+                    navMenu.style.maxHeight = '0';
+                    navMenu.style.marginBottom = '0';
+                    navMenu.style.transition = 'all 0.3s ease';
+                    // Don't set display:none immediately, let the transition complete
+                    setTimeout(() => {
+                        if (!navVisible) {
+                            navMenu.style.visibility = 'hidden';
+                        }
+                    }, 300);
+                    console.log('❌ ATLAS Navigation hidden');
+                }
+
+                return true;
+            } else {
+                console.warn('⚠️  Could not find ATLAS navigation menu');
+                return false;
+            }
+        }
+
+        // Keyboard shortcut: Ctrl+B (or Cmd+B on Mac) to toggle navigation
+        document.addEventListener('keydown', function(e) {
+            // Ctrl+B (Windows/Linux) or Cmd+B (Mac)
+            if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+                e.preventDefault();
+                console.log('🎯 ATLAS Navigation toggle triggered (Ctrl/Cmd+B)');
+
+                const success = toggleNavigation();
+
+                if (success) {
+                    // Show confirmation notification
+                    const notification = document.createElement('div');
+                    notification.textContent = navVisible ? '📂 Navigation shown!' : '🔒 Navigation hidden!';
+                    notification.style.cssText = `
+                        position: fixed;
+                        top: 20px;
+                        right: 20px;
+                        background: linear-gradient(135deg, #00d4ff, #0080ff);
+                        color: white;
+                        padding: 12px 24px;
+                        border-radius: 8px;
+                        font-weight: bold;
+                        font-size: 14px;
+                        z-index: 999999;
+                        box-shadow: 0 4px 20px rgba(0, 212, 255, 0.5);
+                        animation: slideInFromTop 0.3s ease-out;
+                    `;
+                    document.body.appendChild(notification);
+
+                    setTimeout(() => {
+                        notification.style.transition = 'opacity 0.3s';
+                        notification.style.opacity = '0';
+                        setTimeout(() => notification.remove(), 300);
+                    }, 2000);
+                }
+            }
+        });
+
+        console.log('🚀 ATLAS Navigation toggle initialized (Ctrl/Cmd+B)');
+    }
+
+    // Initialize when DOM is ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initAtlasNavigation);
+    } else {
+        initAtlasNavigation();
+    }
+
+    // Also re-initialize after Streamlit reruns (in case the menu gets recreated)
+    window.addEventListener('load', function() {
+        setTimeout(initAtlasNavigation, 500);
+    });
+</script>
 
 
 
@@ -7489,7 +7637,8 @@ def main():
         </div>
         <div style="color: #b0c4de; font-size: 0.95em; line-height: 1.6;">
             <strong style="color: #00ff88;">Keyboard Shortcuts:</strong><br>
-            🔄 <strong style="color: #ffffff;">Hard Refresh:</strong> Ctrl+Shift+R (Win/Linux) | Cmd+Shift+R (Mac)
+            🔄 <strong style="color: #ffffff;">Hard Refresh:</strong> Ctrl+Shift+R (Win/Linux) | Cmd+Shift+R (Mac)<br>
+            📂 <strong style="color: #ffffff;">Toggle Navigation:</strong> Ctrl+B (Win/Linux) | Cmd+B (Mac)
         </div>
     </div>
     """.format(CACHE_BUSTER), unsafe_allow_html=True)
