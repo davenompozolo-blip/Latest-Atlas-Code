@@ -52,7 +52,6 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
-from streamlit_option_menu import option_menu
 import yfinance as yf
 from scipy import stats
 from scipy.optimize import minimize
@@ -7489,117 +7488,29 @@ def main():
         </div>
         """, unsafe_allow_html=True)
 
-    # ============================================================================
-    # NAVIGATION MENU - SIDEBAR
-    # ============================================================================
+    st.sidebar.markdown("### NAVIGATION")
+    page = st.sidebar.radio("Select Module", [
+        "🔥 Phoenix Parser",
+        "🏠 Portfolio Home",
+        "🌍 Market Watch",
+        "📈 Risk Analysis",
+        "💎 Performance Suite",
+        "🔬 Portfolio Deep Dive",
+        "📊 Multi-Factor Analysis",
+        "💰 Valuation House",
+        "ℹ️ About"
+    ])
 
-    with st.sidebar:
-        st.markdown("## 🚀 ATLAS Navigation")
-        st.markdown("---")
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 📅 TIME RANGE")
+    date_options = ["1D", "1W", "1M", "3M", "6M", "YTD", "1Y", "3Y", "5Y", "MAX"]
+    selected_range = st.sidebar.selectbox("Period", date_options, index=6)
 
-        # Vertical navigation menu in sidebar
-        page = option_menu(
-            menu_title=None,
-            options=[
-                "Phoenix Parser",
-                "Portfolio Home",
-                "Market Watch",
-                "Risk Analysis",
-                "Performance Suite",
-                "Portfolio Deep Dive",
-                "Multi-Factor Analysis",
-                "Valuation House",
-                "About"
-            ],
-            icons=[
-                "fire",
-                "house-fill",
-                "globe",
-                "graph-up-arrow",
-                "gem",
-                "microscope",
-                "bar-chart-fill",
-                "cash-coin",
-                "info-circle-fill"
-            ],
-            menu_icon="cast",
-            default_index=1,  # Default to Portfolio Home
-            orientation="vertical",
-            styles={
-                "container": {
-                    "padding": "0!important",
-                    "background-color": "#0e1117"
-                },
-                "icon": {
-                    "color": "#00d4ff",
-                    "font-size": "18px"
-                },
-                "nav-link": {
-                    "font-size": "14px",
-                    "text-align": "left",
-                    "margin": "0px",
-                    "padding": "12px 16px",
-                    "border-radius": "8px",
-                    "color": "#ffffff",
-                    "--hover-color": "#1f2937"
-                },
-                "nav-link-selected": {
-                    "background-color": "#00d4ff",
-                    "color": "#000000",
-                    "font-weight": "600"
-                },
-            }
-        )
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 🎯 BENCHMARK")
+    benchmark_options = ["SPY", "QQQ", "DIA", "IWM", "VTI", "ACWI"]
+    selected_benchmark = st.sidebar.selectbox("Compare Against", benchmark_options, index=0)
 
-        # Prefix emojis to page names for consistency with old navigation
-        page_mapping = {
-            "Phoenix Parser": "🔥 Phoenix Parser",
-            "Portfolio Home": "🏠 Portfolio Home",
-            "Market Watch": "🌍 Market Watch",
-            "Risk Analysis": "📈 Risk Analysis",
-            "Performance Suite": "💎 Performance Suite",
-            "Portfolio Deep Dive": "🔬 Portfolio Deep Dive",
-            "Multi-Factor Analysis": "📊 Multi-Factor Analysis",
-            "Valuation House": "💰 Valuation House",
-            "About": "ℹ️ About"
-        }
-
-        page = page_mapping[page]
-
-        st.markdown("---")
-
-    st.markdown("---")
-
-    # ============================================================================
-    # CONTROLS - TIME RANGE & BENCHMARK (NOW IN MAIN AREA)
-    # ============================================================================
-
-    col1, col2, col3 = st.columns([2, 2, 2])
-
-    with col1:
-        st.markdown("### 📅 TIME RANGE")
-        date_options = ["1D", "1W", "1M", "3M", "6M", "YTD", "1Y", "3Y", "5Y", "MAX"]
-        selected_range = st.selectbox("Period", date_options, index=6, key="time_range_selector")
-
-    with col2:
-        st.markdown("### 🎯 BENCHMARK")
-        benchmark_options = ["SPY", "QQQ", "DIA", "IWM", "VTI", "ACWI"]
-        selected_benchmark = st.selectbox("Compare Against", benchmark_options, index=0, key="benchmark_selector")
-
-    with col3:
-        st.markdown("### ⚙️ SETTINGS")
-        with st.popover("Configure"):
-            st.markdown("**Display Options**")
-            show_debug = st.checkbox("Show Debug Info", value=False, key="show_debug_info")
-
-            st.markdown("**Data Options**")
-            auto_refresh = st.checkbox("Auto-refresh data", value=True, key="auto_refresh_data")
-
-            if st.button("Clear Cache"):
-                st.cache_data.clear()
-                st.success("Cache cleared!")
-
-    st.markdown("---")
 
     if selected_range == "YTD":
         start_date = datetime(datetime.now().year, 1, 1)
