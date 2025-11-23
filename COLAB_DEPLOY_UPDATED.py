@@ -12,7 +12,7 @@ import os
 import ast
 
 # Download from specific commit SHA to bypass GitHub cache
-COMMIT_SHA = "eb9e4295cd4bb1487c5c2b7bdebc9c3c452cbe8d"
+COMMIT_SHA = "a2f26e3c16d82e945b4f1aa32e88a233b9e6b65c"
 BRANCH = "claude/merge-diversification-changes-01MFb2o3Pq6kibkf5Vc7xhf8"
 url = f"https://raw.githubusercontent.com/davenompozolo-blip/Latest-Atlas-Code/{COMMIT_SHA}/atlas_app.py"
 
