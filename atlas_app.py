@@ -202,6 +202,17 @@ st.markdown("""
         background-attachment: fixed;
     }
 
+    /* Ensure full-width layout for sidebar positioning */
+    .main .block-container {
+        max-width: 100vw !important;
+        padding-left: 0 !important;
+    }
+
+    /* Remove default Streamlit column gaps for flush sidebar */
+    [data-testid="stHorizontalBlock"] {
+        gap: 0 !important;
+    }
+
     /* Add subtle noise texture for depth */
     .main::before {
         content: '';
@@ -219,7 +230,9 @@ st.markdown("""
     .block-container {
         padding-top: 3rem !important;
         padding-bottom: 3rem !important;
-        max-width: 1400px !important;
+        padding-left: 0 !important;
+        padding-right: 1rem !important;
+        max-width: 100% !important;
     }
 
     /* ============================================
@@ -7493,17 +7506,29 @@ def main():
     # VERTICAL SIDEBAR LAYOUT (Colab-Compatible)
     # ============================================================================
 
-    # Create two columns: left sidebar (20%), main content (80%)
-    sidebar_col, content_col = st.columns([1, 4])
+    # Create two columns: left sidebar (narrower), main content (wider for charts)
+    sidebar_col, content_col = st.columns([0.85, 5])
 
     with sidebar_col:
-        # Sidebar container styling
+        # Sidebar container styling - FLUSH LEFT
         st.markdown("""
             <style>
+            /* Push sidebar to far left edge */
             [data-testid="column"]:first-child {
-                background-color: rgba(10, 25, 41, 0.3);
-                padding: 20px 10px;
-                border-radius: 10px;
+                background-color: rgba(10, 25, 41, 0.5);
+                padding: 20px 15px 20px 15px;
+                border-radius: 0px;
+                border-right: 2px solid rgba(0, 212, 255, 0.3);
+                margin-left: 0 !important;
+                position: sticky;
+                top: 0;
+                height: 100vh;
+                overflow-y: auto;
+            }
+
+            /* Remove gap between sidebar and main content */
+            [data-testid="column"]:nth-child(2) {
+                padding-left: 2rem !important;
             }
             </style>
         """, unsafe_allow_html=True)
