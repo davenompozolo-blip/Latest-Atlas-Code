@@ -7510,37 +7510,98 @@ def main():
     sidebar_col, content_col = st.columns([0.85, 5])
 
     with sidebar_col:
-        # Sidebar container styling - FLUSH LEFT
+        # Sidebar container styling - TOP LEFT POSITIONED
         st.markdown("""
             <style>
-            /* Push sidebar to far left edge */
+            /* Position sidebar at top left with elegant styling */
             [data-testid="column"]:first-child {
-                background-color: rgba(10, 25, 41, 0.5);
-                padding: 20px 15px 20px 15px;
-                border-radius: 0px;
+                background: linear-gradient(180deg, rgba(10, 25, 41, 0.85) 0%, rgba(10, 25, 41, 0.7) 100%);
+                backdrop-filter: blur(10px);
+                -webkit-backdrop-filter: blur(10px);
+                padding: 15px 12px 20px 12px !important;
+                border-radius: 0 0 16px 0;
                 border-right: 2px solid rgba(0, 212, 255, 0.3);
+                border-bottom: 1px solid rgba(0, 212, 255, 0.2);
                 margin-left: 0 !important;
-                position: sticky;
+                margin-top: 0 !important;
+                position: fixed;
                 top: 0;
+                left: 0;
                 height: 100vh;
                 overflow-y: auto;
+                z-index: 1000;
+                box-shadow: 4px 0 24px rgba(0, 0, 0, 0.3), 0 0 40px rgba(0, 212, 255, 0.1);
             }
 
-            /* Remove gap between sidebar and main content */
+            /* Smooth scrollbar styling for sidebar */
+            [data-testid="column"]:first-child::-webkit-scrollbar {
+                width: 6px;
+            }
+
+            [data-testid="column"]:first-child::-webkit-scrollbar-track {
+                background: rgba(0, 0, 0, 0.2);
+                border-radius: 3px;
+            }
+
+            [data-testid="column"]:first-child::-webkit-scrollbar-thumb {
+                background: rgba(0, 212, 255, 0.3);
+                border-radius: 3px;
+            }
+
+            [data-testid="column"]:first-child::-webkit-scrollbar-thumb:hover {
+                background: rgba(0, 212, 255, 0.5);
+            }
+
+            /* Ensure main content has proper left margin for sidebar */
             [data-testid="column"]:nth-child(2) {
+                margin-left: calc(0.85 * (100vw - 3rem) / 5.85) !important;
                 padding-left: 2rem !important;
+            }
+
+            /* Add subtle glow effect on sidebar top edge */
+            [data-testid="column"]:first-child::before {
+                content: '';
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                height: 2px;
+                background: linear-gradient(90deg, rgba(0, 212, 255, 0.6) 0%, rgba(0, 212, 255, 0) 100%);
+                z-index: 1;
             }
             </style>
         """, unsafe_allow_html=True)
 
-        # Header
-        st.markdown("# 🚀 ATLAS")
-        st.markdown("**Terminal v10.0**")
-        st.markdown("*Institutional*")
-        st.markdown("---")
+        # Header - Compact top-left design
+        st.markdown("""
+            <div style='
+                padding: 8px 0 12px 0;
+                margin-bottom: 12px;
+                border-bottom: 1px solid rgba(0, 212, 255, 0.3);
+            '>
+                <h1 style='
+                    margin: 0;
+                    padding: 0;
+                    font-size: 28px;
+                    font-weight: 800;
+                    letter-spacing: 2px;
+                    background: linear-gradient(135deg, #00d4ff 0%, #00a8cc 100%);
+                    -webkit-background-clip: text;
+                    -webkit-text-fill-color: transparent;
+                    text-shadow: 0 0 30px rgba(0, 212, 255, 0.3);
+                '>🚀 ATLAS</h1>
+                <p style='
+                    margin: 4px 0 0 0;
+                    font-size: 11px;
+                    color: rgba(255, 255, 255, 0.6);
+                    font-weight: 500;
+                    letter-spacing: 1px;
+                '>TERMINAL v10.0 <span style='color: rgba(0, 212, 255, 0.8);'>●</span> INSTITUTIONAL</p>
+            </div>
+        """, unsafe_allow_html=True)
 
         # Navigation Menu
-        st.markdown("### NAVIGATION")
+        st.markdown("<p style='font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.5); margin-bottom: 8px; letter-spacing: 1px;'>NAVIGATION</p>", unsafe_allow_html=True)
         page = option_menu(
             menu_title=None,
             options=[
@@ -7561,33 +7622,36 @@ def main():
             styles={
                 "container": {
                     "padding": "0!important",
-                    "background-color": "transparent"
+                    "background-color": "transparent",
+                    "margin-bottom": "8px"
                 },
                 "icon": {
                     "color": "#00d4ff",
-                    "font-size": "18px"
+                    "font-size": "16px"
                 },
                 "nav-link": {
-                    "font-size": "14px",
+                    "font-size": "13px",
                     "text-align": "left",
-                    "margin": "2px 0px",
-                    "padding": "10px 12px",
-                    "border-radius": "5px",
+                    "margin": "1px 0px",
+                    "padding": "8px 10px",
+                    "border-radius": "6px",
                     "--hover-color": "rgba(0, 212, 255, 0.15)",
-                    "color": "#ffffff"
+                    "color": "#ffffff",
+                    "transition": "all 0.2s ease"
                 },
                 "nav-link-selected": {
-                    "background-color": "#00d4ff",
+                    "background": "linear-gradient(135deg, #00d4ff 0%, #00a8cc 100%)",
                     "color": "#000000",
-                    "font-weight": "600"
+                    "font-weight": "600",
+                    "box-shadow": "0 2px 8px rgba(0, 212, 255, 0.3)"
                 }
             }
         )
 
-        st.markdown("---")
+        st.markdown("<div style='height: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); margin: 12px 0;'></div>", unsafe_allow_html=True)
 
         # Time Range Control
-        st.markdown("### 📅 TIME RANGE")
+        st.markdown("<p style='font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.5); margin-bottom: 8px; letter-spacing: 1px;'>📅 TIME RANGE</p>", unsafe_allow_html=True)
         date_options = ["1D", "1W", "1M", "3M", "6M", "YTD", "1Y", "3Y", "5Y", "MAX"]
         selected_range = st.selectbox(
             "Period",
@@ -7597,10 +7661,10 @@ def main():
             label_visibility="collapsed"
         )
 
-        st.markdown("---")
+        st.markdown("<div style='height: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); margin: 12px 0;'></div>", unsafe_allow_html=True)
 
         # Benchmark Control
-        st.markdown("### 🎯 BENCHMARK")
+        st.markdown("<p style='font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.5); margin-bottom: 8px; letter-spacing: 1px;'>🎯 BENCHMARK</p>", unsafe_allow_html=True)
         benchmark_options = ["SPY", "QQQ", "DIA", "IWM", "VTI", "ACWI"]
         selected_benchmark = st.selectbox(
             "Compare Against",
@@ -7610,9 +7674,27 @@ def main():
             label_visibility="collapsed"
         )
 
-        st.markdown("---")
-        st.markdown("*© 2025 ATLAS Terminal*")
-        st.markdown("*Optimized for Colab*")
+        # Footer
+        st.markdown("""
+            <div style='
+                margin-top: 20px;
+                padding-top: 12px;
+                border-top: 1px solid rgba(255,255,255,0.1);
+                text-align: center;
+            '>
+                <p style='
+                    font-size: 10px;
+                    color: rgba(255, 255, 255, 0.4);
+                    margin: 2px 0;
+                    letter-spacing: 0.5px;
+                '>© 2025 ATLAS Terminal</p>
+                <p style='
+                    font-size: 9px;
+                    color: rgba(0, 212, 255, 0.5);
+                    margin: 2px 0;
+                '>Optimized for Colab</p>
+            </div>
+        """, unsafe_allow_html=True)
 
     # ============================================================================
     # MAIN CONTENT AREA
