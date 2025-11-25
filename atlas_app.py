@@ -7790,10 +7790,10 @@ def main():
     st.markdown("---")
 
     # Add skip navigation link for accessibility
-    st.markdown("""
-        <a href="#main-content" class="skip-nav">Skip to main content</a>
-        <div id="main-content" role="main" aria-label="Main content area"></div>
-    """, unsafe_allow_html=True)
+    st.markdown('<a href="#main-content" class="skip-nav">Skip to main content</a>', unsafe_allow_html=True)
+
+    # Add accessible navigation wrapper
+    st.markdown('<nav role="navigation" aria-label="Main Navigation">', unsafe_allow_html=True)
 
     # Horizontal Navigation Menu
     page = option_menu(
@@ -7843,7 +7843,9 @@ def main():
         }
     )
 
+    st.markdown('</nav>', unsafe_allow_html=True)
     st.markdown("---")
+    st.markdown('<div id="main-content" role="main" aria-label="Main content area"></div>', unsafe_allow_html=True)
     
     if selected_range == "YTD":
         start_date = datetime(datetime.now().year, 1, 1)
