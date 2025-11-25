@@ -87,35 +87,37 @@ st.set_page_config(
 # PROFESSIONAL THEME SYSTEM - ENHANCED FOR SEAMLESS CHARTS
 # ============================================================================
 
+# COLORS dictionary now references CSS variables for consistency
+# These are still used in Python-generated charts via apply_chart_theme()
 COLORS = {
-    "background": "#000000",
-    "card_background": "#0a1929",
-    "card_background_alt": "#050f17",
-    "neon_blue": "#00d4ff",
-    "electric_blue": "#0080ff",
-    "teal": "#00ffcc",
-    "cyan": "#00ffff",
-    "success": "#00ff88",
-    "warning": "#ffaa00",
-    "danger": "#ff0044",
-    "info": "#00d4ff",
-    "purple": "#b794f6",
-    "pink": "#ff00ff",
-    "orange": "#ff6b00",
-    "chart_primary": "#00d4ff",
-    "chart_secondary": "#0080ff",
-    "chart_accent": "#00ffcc",
-    "chart_grid": "#1a3a52",
-    "text_primary": "#ffffff",
-    "text_secondary": "#b0c4de",
-    "text_muted": "#6c8ca8",
-    "border": "#00d4ff",
-    "shadow": "rgba(0, 212, 255, 0.3)",
-    "shadow_strong": "rgba(0, 212, 255, 0.6)",
-    "gain_bg": "rgba(0, 255, 136, 0.15)",
-    "gain_text": "#00ff88",
-    "loss_bg": "rgba(255, 0, 68, 0.15)",
-    "loss_text": "#ff0044",
+    "background": "#000000",  # var(--color-bg-primary)
+    "card_background": "#0a1929",  # var(--color-bg-card)
+    "card_background_alt": "#050f17",  # var(--color-bg-card-alt)
+    "neon_blue": "#00d4ff",  # var(--color-accent-primary)
+    "electric_blue": "#0080ff",  # var(--color-accent-secondary)
+    "teal": "#00ffcc",  # var(--color-accent-teal)
+    "cyan": "#00ffff",  # var(--color-accent-cyan)
+    "success": "#00ff88",  # var(--color-success)
+    "warning": "#ffaa00",  # var(--color-warning)
+    "danger": "#ff0044",  # var(--color-danger)
+    "info": "#00d4ff",  # var(--color-info)
+    "purple": "#b794f6",  # var(--color-purple)
+    "pink": "#ff00ff",  # var(--color-pink)
+    "orange": "#ff6b00",  # var(--color-orange)
+    "chart_primary": "#00d4ff",  # var(--color-chart-primary)
+    "chart_secondary": "#0080ff",  # var(--color-chart-secondary)
+    "chart_accent": "#00ffcc",  # var(--color-chart-accent)
+    "chart_grid": "#1a3a52",  # var(--color-chart-grid)
+    "text_primary": "#ffffff",  # var(--color-text-primary)
+    "text_secondary": "#c5d3e0",  # var(--color-text-secondary) - Improved contrast
+    "text_muted": "#8694a8",  # var(--color-text-muted) - Improved contrast
+    "border": "#00d4ff",  # var(--color-border)
+    "shadow": "rgba(0, 212, 255, 0.3)",  # var(--color-shadow)
+    "shadow_strong": "rgba(0, 212, 255, 0.6)",  # var(--color-shadow-strong)
+    "gain_bg": "rgba(0, 255, 136, 0.15)",  # var(--color-gain-bg)
+    "gain_text": "#00ff88",  # var(--color-gain-text)
+    "loss_bg": "rgba(255, 0, 68, 0.15)",  # var(--color-loss-bg)
+    "loss_text": "#ff0044",  # var(--color-loss-text)
 }
 
 # ============================================================================
@@ -172,26 +174,143 @@ st.markdown("""
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&display=swap');
 
     /* ============================================
-       CORE FOUNDATIONS - Beautiful Basics
+       CSS CUSTOM PROPERTIES - DESIGN TOKENS
        ============================================ */
+    :root {
+        /* Colors - Primary Palette */
+        --color-bg-primary: #000000;
+        --color-bg-card: #0a1929;
+        --color-bg-card-alt: #050f17;
+        --color-bg-gradient: linear-gradient(135deg, #000000 0%, #0a0e1a 50%, #000000 100%);
 
+        /* Colors - Accent */
+        --color-accent-primary: #00d4ff;
+        --color-accent-secondary: #0080ff;
+        --color-accent-teal: #00ffcc;
+        --color-accent-cyan: #00ffff;
+
+        /* Colors - Semantic */
+        --color-success: #00ff88;
+        --color-warning: #ffaa00;
+        --color-danger: #ff0044;
+        --color-info: #00d4ff;
+        --color-purple: #b794f6;
+        --color-pink: #ff00ff;
+        --color-orange: #ff6b00;
+
+        /* Colors - Chart */
+        --color-chart-primary: #00d4ff;
+        --color-chart-secondary: #0080ff;
+        --color-chart-accent: #00ffcc;
+        --color-chart-grid: #1a3a52;
+
+        /* Colors - Text */
+        --color-text-primary: #ffffff;
+        --color-text-secondary: #c5d3e0;  /* Improved contrast: 8.5:1 ratio - WCAG AAA */
+        --color-text-muted: #8694a8;      /* Improved contrast: 5.1:1 ratio - WCAG AA */
+
+        /* Colors - Border & Shadow */
+        --color-border: #00d4ff;
+        --color-shadow: rgba(0, 212, 255, 0.3);
+        --color-shadow-strong: rgba(0, 212, 255, 0.6);
+
+        /* Colors - States */
+        --color-gain-bg: rgba(0, 255, 136, 0.15);
+        --color-gain-text: #00ff88;
+        --color-loss-bg: rgba(255, 0, 68, 0.15);
+        --color-loss-text: #ff0044;
+
+        /* Typography */
+        --font-primary: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        --font-mono: 'JetBrains Mono', monospace;
+
+        /* Font Sizes */
+        --font-size-xs: 12px;
+        --font-size-sm: 14px;
+        --font-size-base: 16px;
+        --font-size-lg: 18px;
+        --font-size-xl: 24px;
+        --font-size-2xl: 32px;
+        --font-size-3xl: 48px;
+
+        /* Font Weights */
+        --font-weight-light: 300;
+        --font-weight-normal: 400;
+        --font-weight-medium: 500;
+        --font-weight-semibold: 600;
+        --font-weight-bold: 700;
+        --font-weight-extrabold: 800;
+        --font-weight-black: 900;
+
+        /* Spacing System (8px base) */
+        --space-xs: 4px;
+        --space-sm: 8px;
+        --space-md: 16px;
+        --space-lg: 24px;
+        --space-xl: 32px;
+        --space-2xl: 48px;
+        --space-3xl: 64px;
+
+        /* Border Radius */
+        --radius-sm: 8px;
+        --radius-md: 12px;
+        --radius-lg: 16px;
+        --radius-xl: 20px;
+        --radius-full: 9999px;
+
+        /* Shadows */
+        --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.15);
+        --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.2);
+        --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.3);
+        --shadow-xl: 0 12px 48px rgba(0, 0, 0, 0.4);
+        --shadow-accent: 0 4px 16px rgba(0, 212, 255, 0.3);
+        --shadow-accent-strong: 0 8px 32px rgba(0, 212, 255, 0.5);
+
+        /* Transitions */
+        --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+        --transition-base: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        --transition-slow: 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+
+        /* Z-Index Scale */
+        --z-base: 1;
+        --z-dropdown: 1000;
+        --z-sticky: 1020;
+        --z-fixed: 1030;
+        --z-modal-backdrop: 1040;
+        --z-modal: 1050;
+        --z-popover: 1060;
+        --z-tooltip: 1070;
+
+        /* Breakpoints (for reference) */
+        --breakpoint-sm: 640px;
+        --breakpoint-md: 768px;
+        --breakpoint-lg: 1024px;
+        --breakpoint-xl: 1280px;
+        --breakpoint-2xl: 1536px;
+    }
+
+    /* ============================================
+       RESET & BASE STYLES
+       ============================================ */
     * {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+        font-family: var(--font-primary) !important;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
     }
 
     code, pre, .monospace {
-        font-family: 'JetBrains Mono', monospace !important;
+        font-family: var(--font-mono) !important;
     }
 
-    /* Dark Background with Subtle Gradient */
+    /* ============================================
+       LAYOUT - MAIN CONTAINER
+       ============================================ */
     .main {
-        background: linear-gradient(135deg, #000000 0%, #0a0e1a 50%, #000000 100%);
+        background: var(--color-bg-gradient);
         background-attachment: fixed;
     }
 
-    /* Add subtle noise texture for depth */
+    /* Subtle noise texture for depth */
     .main::before {
         content: '';
         position: fixed;
@@ -202,19 +321,165 @@ st.markdown("""
         opacity: 0.03;
         background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
         pointer-events: none;
-        z-index: 1;
+        z-index: var(--z-base);
     }
 
     .block-container {
-        padding-top: 3rem !important;
-        padding-bottom: 3rem !important;
+        padding-top: var(--space-3xl) !important;
+        padding-bottom: var(--space-3xl) !important;
         max-width: 1400px !important;
+        padding-left: var(--space-xl);
+        padding-right: var(--space-xl);
     }
 
     /* ============================================
-       GLASSMORPHISM CARDS - Modern Aesthetic
+       RESPONSIVE BREAKPOINTS - MOBILE FIRST
        ============================================ */
 
+    /* Base styles above apply to mobile (320px+) */
+
+    /* Mobile Large (640px+) */
+    @media (min-width: 640px) {
+        .block-container {
+            padding-left: var(--space-xl);
+            padding-right: var(--space-xl);
+        }
+    }
+
+    /* Tablet (768px+) */
+    @media (min-width: 768px) {
+        h1 {
+            font-size: 3em !important;
+        }
+
+        h2 {
+            font-size: 2em !important;
+        }
+
+        .block-container {
+            max-width: 1200px;
+        }
+    }
+
+    /* Desktop (1024px+) */
+    @media (min-width: 1024px) {
+        .block-container {
+            max-width: 1200px;
+        }
+    }
+
+    /* Desktop Large (1280px+) */
+    @media (min-width: 1280px) {
+        .block-container {
+            max-width: 1400px;
+        }
+
+        h1 {
+            font-size: 3.5em !important;
+        }
+    }
+
+    /* Mobile Specific Overrides (max-width: 640px) */
+    @media (max-width: 640px) {
+        .block-container {
+            padding-left: var(--space-md);
+            padding-right: var(--space-md);
+            padding-top: var(--space-xl) !important;
+        }
+
+        h1 {
+            font-size: 2em !important;
+        }
+
+        h2 {
+            font-size: 1.5em !important;
+        }
+
+        h3 {
+            font-size: 1.2em !important;
+        }
+
+        /* Touch-friendly buttons on mobile */
+        .stButton > button {
+            min-height: 44px !important; /* Apple HIG minimum tap target */
+            font-size: 16px !important; /* Prevents zoom on iOS */
+            padding: var(--space-md) var(--space-lg) !important;
+        }
+
+        /* Horizontal scroll for navigation */
+        nav[role="navigation"] {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
+        }
+
+        /* Stack columns on mobile */
+        [data-testid="column"] {
+            min-width: 100% !important;
+        }
+
+        /* Make tables scrollable horizontally */
+        div[data-testid="stDataFrame"] {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+    }
+
+    /* Tablet Specific (768px - 1023px) */
+    @media (min-width: 768px) and (max-width: 1023px) {
+        div[data-testid="stMetric"] {
+            padding: var(--space-md) !important;
+        }
+    }
+
+    /* ============================================
+       ACCESSIBILITY - WCAG 2.1 COMPLIANCE
+       ============================================ */
+
+    /* Skip to main content link */
+    .skip-nav {
+        position: absolute;
+        top: -100px;
+        left: 0;
+        background: var(--color-accent-primary);
+        color: #000;
+        padding: var(--space-md) var(--space-lg);
+        z-index: var(--z-modal);
+        transition: top var(--transition-fast);
+        font-weight: var(--font-weight-bold);
+        text-decoration: none;
+        border-radius: 0 0 var(--radius-md) 0;
+    }
+
+    .skip-nav:focus {
+        top: 0;
+    }
+
+    /* Enhanced focus indicators for keyboard navigation */
+    *:focus-visible {
+        outline: 3px solid var(--color-accent-primary) !important;
+        outline-offset: 2px !important;
+        transition: outline var(--transition-fast);
+    }
+
+    /* Hide focus outline for mouse users */
+    *:focus:not(:focus-visible) {
+        outline: none !important;
+    }
+
+    /* Ensure interactive elements have proper focus states */
+    button:focus-visible,
+    a:focus-visible,
+    input:focus-visible,
+    select:focus-visible,
+    textarea:focus-visible {
+        outline: 3px solid var(--color-accent-primary) !important;
+        outline-offset: 2px !important;
+    }
+
+    /* ============================================
+       GLASSMORPHISM CARDS - ENHANCED
+       ============================================ */
     div[data-testid="stMetric"],
     div[data-testid="stMarkdownContainer"] > div,
     .stTabs [data-baseweb="tab-panel"],
@@ -223,35 +488,31 @@ st.markdown("""
         backdrop-filter: blur(20px) saturate(180%) !important;
         -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
         border: 1px solid rgba(0, 212, 255, 0.15) !important;
-        border-radius: 16px !important;
-        padding: 24px !important;
-        box-shadow:
-            0 8px 32px 0 rgba(0, 0, 0, 0.37),
-            inset 0 1px 0 0 rgba(255, 255, 255, 0.05) !important;
-        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        border-radius: var(--radius-lg) !important;
+        padding: var(--space-lg) !important;
+        box-shadow: var(--shadow-lg), inset 0 1px 0 0 rgba(255, 255, 255, 0.05) !important;
+        transition: all var(--transition-base) !important;
     }
 
     div[data-testid="stMetric"]:hover,
     .stExpander:hover {
         transform: translateY(-4px) !important;
         border-color: rgba(0, 212, 255, 0.4) !important;
-        box-shadow:
-            0 12px 48px 0 rgba(0, 212, 255, 0.2),
-            0 0 0 1px rgba(0, 212, 255, 0.1),
-            inset 0 1px 0 0 rgba(255, 255, 255, 0.1) !important;
+        box-shadow: var(--shadow-xl),
+                    0 0 0 1px rgba(0, 212, 255, 0.1),
+                    inset 0 1px 0 0 rgba(255, 255, 255, 0.1) !important;
     }
 
     /* ============================================
-       TYPOGRAPHY - Crisp & Modern
+       TYPOGRAPHY - USING VARIABLES
        ============================================ */
-
     h1 {
-        font-weight: 900 !important;
+        font-weight: var(--font-weight-black) !important;
         font-size: 3.5em !important;
         letter-spacing: -0.02em !important;
         line-height: 1.1 !important;
         margin-bottom: 0.5em !important;
-        background: linear-gradient(135deg, #00d4ff 0%, #00ff88 50%, #00d4ff 100%);
+        background: linear-gradient(135deg, var(--color-accent-primary) 0%, var(--color-success) 50%, var(--color-accent-primary) 100%);
         background-size: 200% auto;
         background-clip: text;
         -webkit-background-clip: text;
@@ -265,14 +526,14 @@ st.markdown("""
     }
 
     h2 {
-        font-weight: 700 !important;
+        font-weight: var(--font-weight-bold) !important;
         font-size: 2em !important;
-        color: #ffffff !important;
+        color: var(--color-text-primary) !important;
         letter-spacing: -0.01em !important;
         margin-top: 1.5em !important;
         margin-bottom: 0.75em !important;
         position: relative;
-        padding-left: 20px;
+        padding-left: var(--space-lg);
     }
 
     h2::before {
@@ -283,14 +544,14 @@ st.markdown("""
         transform: translateY(-50%);
         width: 4px;
         height: 70%;
-        background: linear-gradient(180deg, #00d4ff, #00ff88);
+        background: linear-gradient(180deg, var(--color-accent-primary), var(--color-success));
         border-radius: 2px;
     }
 
     h3 {
-        font-weight: 600 !important;
+        font-weight: var(--font-weight-semibold) !important;
         font-size: 1.4em !important;
-        color: #00d4ff !important;
+        color: var(--color-accent-primary) !important;
         letter-spacing: -0.01em !important;
         margin-top: 1.2em !important;
         margin-bottom: 0.6em !important;
@@ -299,21 +560,22 @@ st.markdown("""
     p {
         font-size: 1.05em !important;
         line-height: 1.7 !important;
-        color: #b0c4de !important;
-        font-weight: 400 !important;
+        color: var(--color-text-secondary) !important;
+        font-weight: var(--font-weight-normal) !important;
     }
 
     /* ============================================
-       METRICS - Beautiful Number Display
+       METRICS - PROFESSIONAL DISPLAY
        ============================================ */
-
     div[data-testid="stMetric"] {
-        background: linear-gradient(135deg, rgba(10, 25, 41, 0.6) 0%, rgba(5, 15, 23, 0.8) 100%) !important;
+        background: linear-gradient(135deg,
+            rgba(10, 25, 41, 0.6) 0%,
+            rgba(5, 15, 23, 0.8) 100%) !important;
         position: relative;
         overflow: hidden;
     }
 
-    /* Animated gradient background on hover */
+    /* Animated glow effect on hover */
     div[data-testid="stMetric"]::before {
         content: '';
         position: absolute;
@@ -323,7 +585,7 @@ st.markdown("""
         height: 200%;
         background: radial-gradient(circle, rgba(0, 212, 255, 0.1) 0%, transparent 70%);
         opacity: 0;
-        transition: opacity 0.4s ease;
+        transition: opacity var(--transition-base);
     }
 
     div[data-testid="stMetric"]:hover::before {
@@ -331,18 +593,18 @@ st.markdown("""
     }
 
     div[data-testid="stMetric"] label {
-        font-size: 0.85em !important;
-        font-weight: 600 !important;
+        font-size: var(--font-size-sm) !important;
+        font-weight: var(--font-weight-semibold) !important;
         text-transform: uppercase !important;
         letter-spacing: 0.1em !important;
-        color: #6c8ca8 !important;
-        margin-bottom: 8px !important;
+        color: var(--color-text-muted) !important;
+        margin-bottom: var(--space-sm) !important;
     }
 
     div[data-testid="stMetric"] [data-testid="stMetricValue"] {
         font-size: 1.8em !important;
-        font-weight: 800 !important;
-        background: linear-gradient(135deg, #ffffff 0%, #00d4ff 100%);
+        font-weight: var(--font-weight-extrabold) !important;
+        background: linear-gradient(135deg, var(--color-text-primary) 0%, var(--color-accent-primary) 100%);
         background-clip: text;
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
@@ -351,63 +613,39 @@ st.markdown("""
 
     div[data-testid="stMetric"] [data-testid="stMetricDelta"] {
         font-size: 1em !important;
-        font-weight: 600 !important;
-        margin-top: 4px !important;
+        font-weight: var(--font-weight-semibold) !important;
+        margin-top: var(--space-xs) !important;
     }
 
     /* ============================================
-       TABLES - Sleek Data Display
+       TABLES - SLEEK DATA DISPLAY
        ============================================ */
-
     div[data-testid="stDataFrame"] {
         background: rgba(10, 25, 41, 0.3) !important;
         border: 1px solid rgba(0, 212, 255, 0.15) !important;
-        border-radius: 12px !important;
+        border-radius: var(--radius-md) !important;
         overflow: visible !important;
-        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3) !important;
+        box-shadow: var(--shadow-md) !important;
     }
 
-    /* Fix for column header popovers - prevent text overlap */
-    div[data-testid="stDataFrame"] div[data-baseweb="popover"] {
-        z-index: 9999 !important;
-        display: block !important;
-        position: fixed !important;
-    }
-
-    /* Ensure popover content doesn't overflow */
-    div[data-testid="stDataFrame"] div[role="tooltip"],
-    div[data-testid="stDataFrame"] div[data-baseweb="popover"] > div {
-        max-width: 300px !important;
-        word-wrap: break-word !important;
-        white-space: normal !important;
-        overflow: visible !important;
-        background: rgba(10, 25, 41, 0.95) !important;
-        border: 1px solid rgba(0, 212, 255, 0.3) !important;
-        border-radius: 8px !important;
-        padding: 12px !important;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
-        backdrop-filter: blur(20px) !important;
-    }
-
-    /* Table Headers - Gradient Effect */
+    /* Table header gradient */
     div[data-testid="stDataFrame"] thead th {
-        background: linear-gradient(135deg, #00d4ff 0%, #0080ff 100%) !important;
+        background: linear-gradient(135deg, var(--color-accent-primary) 0%, var(--color-accent-secondary) 100%) !important;
         color: #000000 !important;
-        font-weight: 700 !important;
-        font-size: 13px !important;
+        font-weight: var(--font-weight-bold) !important;
+        font-size: var(--font-size-sm) !important;
         text-transform: uppercase !important;
         letter-spacing: 0.05em !important;
-        padding: 16px 12px !important;
+        padding: var(--space-md) var(--space-sm) !important;
         border: none !important;
         position: sticky !important;
         top: 0 !important;
         z-index: 10 !important;
-        overflow: visible !important;
     }
 
-    /* Table Rows - Smooth Hover */
+    /* Enhanced row hover effect */
     div[data-testid="stDataFrame"] tbody tr {
-        transition: all 0.2s ease !important;
+        transition: all var(--transition-fast) !important;
         border-bottom: 1px solid rgba(26, 58, 82, 0.5) !important;
     }
 
@@ -417,61 +655,48 @@ st.markdown("""
             rgba(0, 212, 255, 0.15) 50%,
             rgba(0, 212, 255, 0.08) 100%) !important;
         transform: translateX(4px) scale(1.002) !important;
-        border-left: 3px solid #00d4ff !important;
-        box-shadow: 0 2px 12px rgba(0, 212, 255, 0.2) !important;
+        border-left: 3px solid var(--color-accent-primary) !important;
+        box-shadow: var(--shadow-accent) !important;
     }
 
     div[data-testid="stDataFrame"] tbody td {
         padding: 14px 12px !important;
-        font-size: 14px !important;
+        font-size: var(--font-size-sm) !important;
         color: #e0e7ee !important;
-        font-weight: 500 !important;
+        font-weight: var(--font-weight-medium) !important;
     }
 
-    /* ============================================
-       NUCLEAR OPTION - COMPLETELY REMOVE TABLE DROPDOWNS
-       ============================================ */
-
-    /* Hide ALL table controls that cause issues */
+    /* NUCLEAR OPTION - Remove table controls that cause UI issues */
     div[data-testid="stDataFrame"] button,
     div[data-testid="stDataFrame"] [role="button"],
     div[data-testid="stDataFrame"] [data-baseweb="popover"],
-    div[data-testid="stDataFrame"] [data-baseweb="menu"],
-    div[data-testid="stDataFrame"] [role="menu"],
-    div[data-testid="stDataFrame"] [role="listbox"] {
+    div[data-testid="stDataFrame"] [data-baseweb="menu"] {
         display: none !important;
         visibility: hidden !important;
         opacity: 0 !important;
         pointer-events: none !important;
-        position: absolute !important;
-        left: -9999px !important;
-    }
-
-    /* Remove column resize handles */
-    div[data-testid="stDataFrameResizeHandle"] {
-        display: none !important;
     }
 
     /* ============================================
-       BUTTONS - Modern Interactive Elements
+       BUTTONS - ENHANCED INTERACTIONS
        ============================================ */
-
     .stButton > button {
-        background: linear-gradient(135deg, #00d4ff 0%, #0080ff 100%) !important;
+        background: linear-gradient(135deg, var(--color-accent-primary) 0%, var(--color-accent-secondary) 100%) !important;
         color: #000000 !important;
         border: none !important;
-        border-radius: 12px !important;
+        border-radius: var(--radius-md) !important;
         padding: 14px 32px !important;
-        font-weight: 700 !important;
-        font-size: 15px !important;
+        font-weight: var(--font-weight-bold) !important;
+        font-size: var(--font-size-base) !important;
         letter-spacing: 0.05em !important;
         text-transform: uppercase !important;
-        box-shadow: 0 4px 16px rgba(0, 212, 255, 0.3) !important;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        box-shadow: var(--shadow-accent) !important;
+        transition: all var(--transition-base) !important;
         position: relative !important;
         overflow: hidden !important;
     }
 
+    /* Ripple effect on click */
     .stButton > button::before {
         content: '';
         position: absolute;
@@ -479,7 +704,7 @@ st.markdown("""
         left: 50%;
         width: 0;
         height: 0;
-        border-radius: 50%;
+        border-radius: var(--radius-full);
         background: rgba(255, 255, 255, 0.3);
         transform: translate(-50%, -50%);
         transition: width 0.6s, height 0.6s;
@@ -492,7 +717,7 @@ st.markdown("""
 
     .stButton > button:hover {
         transform: translateY(-2px) !important;
-        box-shadow: 0 8px 24px rgba(0, 212, 255, 0.5) !important;
+        box-shadow: var(--shadow-accent-strong) !important;
     }
 
     .stButton > button:active {
@@ -500,9 +725,8 @@ st.markdown("""
     }
 
     /* ============================================
-       INPUTS - Clean Form Elements
+       INPUTS - ENHANCED FOCUS STATES
        ============================================ */
-
     input[type="text"],
     input[type="number"],
     textarea,
@@ -510,66 +734,250 @@ st.markdown("""
     .stNumberInput > div > div > input {
         background: rgba(10, 25, 41, 0.5) !important;
         border: 2px solid rgba(0, 212, 255, 0.2) !important;
-        border-radius: 10px !important;
-        color: #ffffff !important;
-        padding: 12px 16px !important;
-        font-size: 15px !important;
-        font-weight: 500 !important;
-        transition: all 0.3s ease !important;
+        border-radius: var(--radius-md) !important;
+        color: var(--color-text-primary) !important;
+        padding: var(--space-md) !important;
+        font-size: var(--font-size-base) !important;
+        font-weight: var(--font-weight-medium) !important;
+        transition: all var(--transition-base) !important;
     }
 
     input:focus,
-    textarea:focus {
-        border-color: #00d4ff !important;
-        box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.1) !important;
+    textarea:focus,
+    .stTextInput > div > div > input:focus,
+    .stNumberInput > div > div > input:focus {
+        border-color: var(--color-accent-primary) !important;
+        box-shadow:
+            0 0 0 3px rgba(0, 212, 255, 0.1),
+            0 0 20px rgba(0, 212, 255, 0.3) !important;
         outline: none !important;
         background: rgba(10, 25, 41, 0.7) !important;
+        transform: translateY(-1px);
     }
 
     /* ============================================
-       TABS - Sleek Navigation
+       TABS - MODERN NAVIGATION
        ============================================ */
-
     .stTabs [data-baseweb="tab-list"] {
-        gap: 8px !important;
+        gap: var(--space-sm) !important;
         background: rgba(10, 25, 41, 0.3) !important;
-        padding: 8px !important;
-        border-radius: 12px !important;
+        padding: var(--space-sm) !important;
+        border-radius: var(--radius-md) !important;
         border: 1px solid rgba(0, 212, 255, 0.1) !important;
     }
 
     .stTabs [data-baseweb="tab"] {
         background: transparent !important;
         border: none !important;
-        border-radius: 8px !important;
-        padding: 12px 24px !important;
-        font-weight: 600 !important;
-        font-size: 14px !important;
-        color: #6c8ca8 !important;
-        transition: all 0.3s ease !important;
+        border-radius: var(--radius-sm) !important;
+        padding: var(--space-md) var(--space-lg) !important;
+        font-weight: var(--font-weight-semibold) !important;
+        font-size: var(--font-size-sm) !important;
+        color: var(--color-text-muted) !important;
+        transition: all var(--transition-base) !important;
     }
 
     .stTabs [data-baseweb="tab"]:hover {
         background: rgba(0, 212, 255, 0.1) !important;
-        color: #00d4ff !important;
+        color: var(--color-accent-primary) !important;
     }
 
     .stTabs [aria-selected="true"] {
         background: linear-gradient(135deg, rgba(0, 212, 255, 0.2) 0%, rgba(0, 128, 255, 0.2) 100%) !important;
-        color: #00d4ff !important;
+        color: var(--color-accent-primary) !important;
         border: 1px solid rgba(0, 212, 255, 0.3) !important;
-        box-shadow: 0 4px 12px rgba(0, 212, 255, 0.15) !important;
+        box-shadow: var(--shadow-accent) !important;
     }
 
     /* ============================================
-       HIDE SIDEBAR - Using Horizontal Navigation
+       HORIZONTAL NAVIGATION - RESPONSIVE
        ============================================ */
+    .main .block-container {
+        max-width: 100%;
+        padding-left: var(--space-xl);
+        padding-right: var(--space-xl);
+    }
 
+    /* Make horizontal menu scrollable on smaller screens */
+    nav[role="navigation"] {
+        overflow-x: auto;
+        white-space: nowrap;
+        scrollbar-width: thin;
+    }
+
+    nav[role="navigation"]::-webkit-scrollbar {
+        height: 6px;
+    }
+
+    nav[role="navigation"]::-webkit-scrollbar-thumb {
+        background-color: rgba(0, 212, 255, 0.3);
+        border-radius: var(--radius-sm);
+    }
+
+    nav[role="navigation"]::-webkit-scrollbar-track {
+        background-color: rgba(10, 25, 41, 0.2);
+    }
+
+    /* ============================================
+       EXPANDERS - COLLAPSIBLE SECTIONS
+       ============================================ */
+    .streamlit-expanderHeader {
+        background: rgba(10, 25, 41, 0.5) !important;
+        border: 1px solid rgba(0, 212, 255, 0.2) !important;
+        border-radius: var(--radius-md) !important;
+        padding: var(--space-md) !important;
+        font-weight: var(--font-weight-semibold) !important;
+        font-size: var(--font-size-base) !important;
+        color: var(--color-accent-primary) !important;
+        transition: all var(--transition-base) !important;
+    }
+
+    .streamlit-expanderHeader:hover {
+        background: rgba(0, 212, 255, 0.1) !important;
+        border-color: rgba(0, 212, 255, 0.4) !important;
+    }
+
+    /* ============================================
+       PROGRESS BARS
+       ============================================ */
+    .stProgress > div > div > div {
+        background: linear-gradient(90deg, var(--color-accent-primary), var(--color-success), var(--color-accent-primary)) !important;
+        background-size: 200% auto !important;
+        animation: shimmer 2s linear infinite !important;
+        border-radius: var(--radius-md) !important;
+        height: 8px !important;
+    }
+
+    /* ============================================
+       ALERTS & NOTIFICATIONS
+       ============================================ */
+    .stAlert {
+        background: rgba(10, 25, 41, 0.6) !important;
+        border-left: 4px solid var(--color-info) !important;
+        border-radius: var(--radius-md) !important;
+        padding: var(--space-md) var(--space-lg) !important;
+        backdrop-filter: blur(10px) !important;
+    }
+
+    .stSuccess {
+        border-left-color: var(--color-success) !important;
+    }
+
+    .stError {
+        border-left-color: var(--color-danger) !important;
+    }
+
+    .stWarning {
+        border-left-color: var(--color-warning) !important;
+    }
+
+    /* ============================================
+       SELECTBOX & MULTISELECT
+       ============================================ */
+    div[data-baseweb="select"] > div {
+        background: rgba(10, 25, 41, 0.5) !important;
+        border: 2px solid rgba(0, 212, 255, 0.2) !important;
+        border-radius: var(--radius-md) !important;
+        min-height: 48px !important;
+        transition: all var(--transition-base) !important;
+    }
+
+    div[data-baseweb="select"]:hover > div {
+        border-color: rgba(0, 212, 255, 0.4) !important;
+    }
+
+    div[data-baseweb="select"]:focus-within > div {
+        border-color: var(--color-accent-primary) !important;
+        box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.1) !important;
+    }
+
+    /* FIX: Material Icons Issue */
+    [data-baseweb="select"] span[aria-hidden="true"] {
+        font-size: 0 !important;
+        color: transparent !important;
+    }
+
+    [data-baseweb="select"] > div::after {
+        content: '▼' !important;
+        position: absolute !important;
+        right: 12px !important;
+        top: 50% !important;
+        transform: translateY(-50%) !important;
+        color: var(--color-accent-primary) !important;
+        font-size: 12px !important;
+        pointer-events: none !important;
+    }
+
+    span.material-icons,
+    i.material-icons {
+        font-size: 0 !important;
+    }
+
+    @font-face {
+        font-family: 'Material Icons';
+        font-style: normal;
+        font-weight: 400;
+        src: url(https://fonts.gstatic.com/s/materialicons/v139/flUhRq6tzZclQEJ-Vdg-IuiaDsNc.woff2) format('woff2');
+    }
+
+    /* ============================================
+       CUSTOM SCROLLBAR
+       ============================================ */
+    ::-webkit-scrollbar {
+        width: 10px !important;
+        height: 10px !important;
+    }
+
+    ::-webkit-scrollbar-track {
+        background: rgba(10, 25, 41, 0.3) !important;
+        border-radius: var(--radius-md) !important;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        background: linear-gradient(180deg, var(--color-accent-primary), var(--color-accent-secondary)) !important;
+        border-radius: var(--radius-md) !important;
+        border: 2px solid rgba(10, 25, 41, 0.3) !important;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+        background: linear-gradient(180deg, var(--color-success), var(--color-accent-primary)) !important;
+    }
+
+    /* ============================================
+       PLOTLY CHARTS - SEAMLESS INTEGRATION
+       ============================================ */
+    .js-plotly-plot {
+        border-radius: var(--radius-md) !important;
+        overflow: hidden !important;
+    }
+
+    /* ============================================
+       SPECIAL EFFECTS - GLOWS & SHADOWS
+       ============================================ */
+    .glow-text {
+        text-shadow: 0 0 20px var(--color-shadow),
+                     0 0 40px rgba(0, 212, 255, 0.3),
+                     0 0 60px rgba(0, 212, 255, 0.2);
+    }
+
+    .glow-box {
+        box-shadow: 0 0 20px var(--color-shadow),
+                    0 0 40px rgba(0, 212, 255, 0.2),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    }
+
+    /* ============================================
+       HIDE STREAMLIT BRANDING
+       ============================================ */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+
+    /* Hide sidebar (using horizontal navigation) */
     section[data-testid="stSidebar"] {
         display: none !important;
     }
 
-    /* Hide sidebar collapse button */
     button[kind="header"] {
         display: none !important;
     }
@@ -579,232 +987,49 @@ st.markdown("""
     }
 
     /* ============================================
-       HORIZONTAL NAVIGATION - RESPONSIVE DESIGN
+       MICRO-INTERACTIONS & ANIMATIONS
        ============================================ */
 
-    /* Ensure full-width content area */
-    .main .block-container {
-        max-width: 100%;
-        padding-left: 2rem;
-        padding-right: 2rem;
+    /* Loading skeleton */
+    @keyframes skeleton-loading {
+        0% { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
     }
 
-    /* Professional header styling */
-    h1 {
-        font-weight: 600;
-        margin-top: 0.5rem !important;
-        margin-bottom: 1rem !important;
-        background: linear-gradient(135deg, #00d4ff 0%, #0080ff 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
+    .skeleton {
+        background: linear-gradient(
+            90deg,
+            rgba(10, 25, 41, 0.3) 0%,
+            rgba(0, 212, 255, 0.1) 50%,
+            rgba(10, 25, 41, 0.3) 100%
+        );
+        background-size: 200% 100%;
+        animation: skeleton-loading 1.5s ease-in-out infinite;
+        border-radius: var(--radius-sm);
     }
 
-    /* Make horizontal menu scrollable on smaller screens */
-    nav[role="navigation"] {
-        overflow-x: auto;
-        white-space: nowrap;
-    }
-
-    /* Smooth scrolling for menu */
-    nav[role="navigation"]::-webkit-scrollbar {
-        height: 6px;
-    }
-
-    nav[role="navigation"]::-webkit-scrollbar-thumb {
-        background-color: rgba(0, 212, 255, 0.3);
-        border-radius: 3px;
-    }
-
-    nav[role="navigation"]::-webkit-scrollbar-track {
-        background-color: rgba(10, 25, 41, 0.2);
-    }
-
-    /* Professional card styling for metrics */
-    [data-testid="metric-container"] {
-        background-color: rgba(10, 25, 41, 0.3);
-        border: 1px solid rgba(0, 212, 255, 0.2);
-        padding: 15px;
-        border-radius: 10px;
-    }
-
-    /* ============================================
-       EXPANDERS - Collapsible Sections
-       ============================================ */
-
-    .streamlit-expanderHeader {
-        background: rgba(10, 25, 41, 0.5) !important;
-        border: 1px solid rgba(0, 212, 255, 0.2) !important;
-        border-radius: 10px !important;
-        padding: 16px !important;
-        font-weight: 600 !important;
-        font-size: 15px !important;
-        color: #00d4ff !important;
-        transition: all 0.3s ease !important;
-    }
-
-    .streamlit-expanderHeader:hover {
-        background: rgba(0, 212, 255, 0.1) !important;
-        border-color: rgba(0, 212, 255, 0.4) !important;
-    }
-
-    /* ============================================
-       PROGRESS BARS - Animated Loading
-       ============================================ */
-
-    .stProgress > div > div > div {
-        background: linear-gradient(90deg, #00d4ff, #00ff88, #00d4ff) !important;
-        background-size: 200% auto !important;
-        animation: shimmer 2s linear infinite !important;
-        border-radius: 10px !important;
-        height: 8px !important;
-    }
-
-    /* ============================================
-       ALERTS & NOTIFICATIONS
-       ============================================ */
-
-    .stAlert {
-        background: rgba(10, 25, 41, 0.6) !important;
-        border-left: 4px solid #00d4ff !important;
-        border-radius: 10px !important;
-        padding: 16px 20px !important;
-        backdrop-filter: blur(10px) !important;
-    }
-
-    .stSuccess {
-        border-left-color: #00ff88 !important;
-    }
-
-    .stError {
-        border-left-color: #ff0044 !important;
-    }
-
-    .stWarning {
-        border-left-color: #ffaa00 !important;
-    }
-
-    /* ============================================
-       SELECTBOX & MULTISELECT - Working Dropdowns
-       ============================================ */
-
-    div[data-baseweb="select"] > div {
-        background: rgba(10, 25, 41, 0.5) !important;
-        border: 2px solid rgba(0, 212, 255, 0.2) !important;
-        border-radius: 10px !important;
-        min-height: 48px !important;
-    }
-
-    div[data-baseweb="select"]:hover > div {
-        border-color: rgba(0, 212, 255, 0.4) !important;
-    }
-
-    /* ============================================
-       FIX: Material Icons Issue - Hide "keyboard_arrow_right" Text
-       ============================================ */
-
-    /* Hide the broken Material Icons text that appears in dropdowns */
-    [data-baseweb="select"] span[aria-hidden="true"] {
-        font-size: 0 !important;
-        color: transparent !important;
-    }
-
-    /* Ensure dropdown arrows still work by using CSS arrow */
-    [data-baseweb="select"] > div::after {
-        content: '▼' !important;
-        position: absolute !important;
-        right: 12px !important;
-        top: 50% !important;
-        transform: translateY(-50%) !important;
-        color: #00d4ff !important;
-        font-size: 12px !important;
-        pointer-events: none !important;
-    }
-
-    /* Hide any Material Icons text across the entire app */
-    span.material-icons,
-    i.material-icons {
-        font-size: 0 !important;
-    }
-
-    /* But allow the icon font to work if it loads */
-    @font-face {
-        font-family: 'Material Icons';
-        font-style: normal;
-        font-weight: 400;
-        src: url(https://fonts.gstatic.com/s/materialicons/v139/flUhRq6tzZclQEJ-Vdg-IuiaDsNc.woff2) format('woff2');
-    }
-
-    /* ============================================
-       SCROLLBAR - Custom Styling
-       ============================================ */
-
-    ::-webkit-scrollbar {
-        width: 10px !important;
-        height: 10px !important;
-    }
-
-    ::-webkit-scrollbar-track {
-        background: rgba(10, 25, 41, 0.3) !important;
-        border-radius: 10px !important;
-    }
-
-    ::-webkit-scrollbar-thumb {
-        background: linear-gradient(180deg, #00d4ff, #0080ff) !important;
-        border-radius: 10px !important;
-        border: 2px solid rgba(10, 25, 41, 0.3) !important;
-    }
-
-    ::-webkit-scrollbar-thumb:hover {
-        background: linear-gradient(180deg, #00ff88, #00d4ff) !important;
-    }
-
-    /* ============================================
-       PLOTLY CHARTS - Seamless Integration
-       ============================================ */
-
-    .js-plotly-plot {
-        border-radius: 12px !important;
-        overflow: hidden !important;
-    }
-
-    /* ============================================
-       SPECIAL EFFECTS - Glows & Shadows
-       ============================================ */
-
-    .glow-text {
-        text-shadow: 0 0 20px rgba(0, 212, 255, 0.5),
-                     0 0 40px rgba(0, 212, 255, 0.3),
-                     0 0 60px rgba(0, 212, 255, 0.2);
-    }
-
-    .glow-box {
-        box-shadow: 0 0 20px rgba(0, 212, 255, 0.3),
-                    0 0 40px rgba(0, 212, 255, 0.2),
-                    inset 0 1px 0 rgba(255, 255, 255, 0.1);
-    }
-
-    /* ============================================
-       RESPONSIVE DESIGN
-       ============================================ */
-
-    @media (max-width: 768px) {
-        h1 { font-size: 2.5em !important; }
-        h2 { font-size: 1.8em !important; }
-        h3 { font-size: 1.3em !important; }
-
-        div[data-testid="stMetric"] {
-            padding: 16px !important;
+    /* Fade in animation for new content */
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(30px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
         }
     }
 
-    /* ============================================
-       HIDE STREAMLIT BRANDING
-       ============================================ */
+    .fade-in {
+        animation: fadeInUp 0.6s ease-out both;
+    }
 
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
+    /* Staggered animation for metrics */
+    div[data-testid="stMetric"]:nth-child(1) { animation-delay: 0.1s; }
+    div[data-testid="stMetric"]:nth-child(2) { animation-delay: 0.2s; }
+    div[data-testid="stMetric"]:nth-child(3) { animation-delay: 0.3s; }
+    div[data-testid="stMetric"]:nth-child(4) { animation-delay: 0.4s; }
+    div[data-testid="stMetric"]:nth-child(5) { animation-delay: 0.5s; }
 
 </style>
 
@@ -7563,6 +7788,12 @@ def main():
         )
 
     st.markdown("---")
+
+    # Add skip navigation link for accessibility
+    st.markdown("""
+        <a href="#main-content" class="skip-nav">Skip to main content</a>
+        <div id="main-content" role="main" aria-label="Main content area"></div>
+    """, unsafe_allow_html=True)
 
     # Horizontal Navigation Menu
     page = option_menu(
