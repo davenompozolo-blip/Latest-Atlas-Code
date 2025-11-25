@@ -52,6 +52,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
+from streamlit_option_menu import option_menu
 import yfinance as yf
 from scipy import stats
 from scipy.optimize import minimize
@@ -79,8 +80,7 @@ def is_valid_dataframe(df):
 st.set_page_config(
     page_title="ATLAS Terminal v10.0 INSTITUTIONAL",
     page_icon="🚀",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="wide"
 )
 
 # ============================================================================
@@ -562,29 +562,70 @@ st.markdown("""
     }
 
     /* ============================================
-       SIDEBAR - Clean Navigation
+       HIDE SIDEBAR - Using Horizontal Navigation
        ============================================ */
 
     section[data-testid="stSidebar"] {
-        background: linear-gradient(180deg, rgba(5, 15, 23, 0.95) 0%, rgba(10, 25, 41, 0.95) 100%) !important;
-        border-right: 1px solid rgba(0, 212, 255, 0.15) !important;
-        backdrop-filter: blur(20px) !important;
+        display: none !important;
     }
 
-    section[data-testid="stSidebar"] .stRadio > label {
-        background: rgba(10, 25, 41, 0.4) !important;
-        border: 1px solid rgba(0, 212, 255, 0.15) !important;
-        border-radius: 10px !important;
-        padding: 12px 16px !important;
-        margin: 6px 0 !important;
-        transition: all 0.3s ease !important;
-        cursor: pointer !important;
+    /* Hide sidebar collapse button */
+    button[kind="header"] {
+        display: none !important;
     }
 
-    section[data-testid="stSidebar"] .stRadio > label:hover {
-        background: rgba(0, 212, 255, 0.1) !important;
-        border-color: rgba(0, 212, 255, 0.4) !important;
-        transform: translateX(4px) !important;
+    [data-testid="collapsedControl"] {
+        display: none !important;
+    }
+
+    /* ============================================
+       HORIZONTAL NAVIGATION - RESPONSIVE DESIGN
+       ============================================ */
+
+    /* Ensure full-width content area */
+    .main .block-container {
+        max-width: 100%;
+        padding-left: 2rem;
+        padding-right: 2rem;
+    }
+
+    /* Professional header styling */
+    h1 {
+        font-weight: 600;
+        margin-top: 0.5rem !important;
+        margin-bottom: 1rem !important;
+        background: linear-gradient(135deg, #00d4ff 0%, #0080ff 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+
+    /* Make horizontal menu scrollable on smaller screens */
+    nav[role="navigation"] {
+        overflow-x: auto;
+        white-space: nowrap;
+    }
+
+    /* Smooth scrolling for menu */
+    nav[role="navigation"]::-webkit-scrollbar {
+        height: 6px;
+    }
+
+    nav[role="navigation"]::-webkit-scrollbar-thumb {
+        background-color: rgba(0, 212, 255, 0.3);
+        border-radius: 3px;
+    }
+
+    nav[role="navigation"]::-webkit-scrollbar-track {
+        background-color: rgba(10, 25, 41, 0.2);
+    }
+
+    /* Professional card styling for metrics */
+    [data-testid="metric-container"] {
+        background-color: rgba(10, 25, 41, 0.3);
+        border: 1px solid rgba(0, 212, 255, 0.2);
+        padding: 15px;
+        border-radius: 10px;
     }
 
     /* ============================================
@@ -767,28 +808,7 @@ st.markdown("""
 
 </style>
 
-<script>
-    // Keyboard shortcut to toggle sidebar (Ctrl + B)
-    document.addEventListener('keydown', function(event) {
-        // Check if Ctrl+B is pressed (or Cmd+B on Mac)
-        if ((event.ctrlKey || event.metaKey) && event.key === 'b') {
-            event.preventDefault(); // Prevent browser's default bookmark action
-
-            // Find the sidebar collapse button
-            const collapseButton = document.querySelector('button[kind="header"]');
-
-            if (collapseButton) {
-                collapseButton.click();
-            } else {
-                // Alternative selector if the first one doesn't work
-                const alternativeButton = document.querySelector('[data-testid="collapsedControl"]');
-                if (alternativeButton) {
-                    alternativeButton.click();
-                }
-            }
-        }
-    });
-</script>
+<!-- Note: Sidebar toggle removed - Using horizontal navigation bar for maximum screen space -->
 
 """, unsafe_allow_html=True)
 
@@ -7512,28 +7532,87 @@ def main():
         </div>
         """, unsafe_allow_html=True)
     
-    st.sidebar.markdown("### NAVIGATION")
-    page = st.sidebar.radio("Select Module", [
-        "🔥 Phoenix Parser",
-        "🏠 Portfolio Home",
-        "🌍 Market Watch",
-        "📈 Risk Analysis",
-        "💎 Performance Suite",
-        "🔬 Portfolio Deep Dive",
-        "📊 Multi-Factor Analysis",
-        "💰 Valuation House",
-        "ℹ️ About"
-    ])
-    
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("### 📅 TIME RANGE")
-    date_options = ["1D", "1W", "1M", "3M", "6M", "YTD", "1Y", "3Y", "5Y", "MAX"]
-    selected_range = st.sidebar.selectbox("Period", date_options, index=6)
-    
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("### 🎯 BENCHMARK")
-    benchmark_options = ["SPY", "QQQ", "DIA", "IWM", "VTI", "ACWI"]
-    selected_benchmark = st.sidebar.selectbox("Compare Against", benchmark_options, index=0)
+    # ============================================================================
+    # HORIZONTAL NAVIGATION BAR - MAXIMUM SCREEN SPACE UTILIZATION
+    # ============================================================================
+
+    # Header Row with Branding and Controls
+    header_col1, header_col2, header_col3 = st.columns([3, 1, 1])
+
+    with header_col1:
+        st.markdown("# 🚀 ATLAS Terminal v10.0 INSTITUTIONAL")
+
+    with header_col2:
+        # Time Range Control (compact)
+        date_options = ["1D", "1W", "1M", "3M", "6M", "YTD", "1Y", "3Y", "5Y", "MAX"]
+        selected_range = st.selectbox(
+            "📅 Time Range",
+            date_options,
+            index=6,  # Default to "1Y"
+            key="time_range_selector"
+        )
+
+    with header_col3:
+        # Benchmark Control (compact)
+        benchmark_options = ["SPY", "QQQ", "DIA", "IWM", "VTI", "ACWI"]
+        selected_benchmark = st.selectbox(
+            "🎯 Benchmark",
+            benchmark_options,
+            index=0,  # Default to "SPY"
+            key="benchmark_selector"
+        )
+
+    st.markdown("---")
+
+    # Horizontal Navigation Menu
+    page = option_menu(
+        menu_title=None,
+        options=[
+            "🔥 Phoenix Parser",
+            "🏠 Portfolio Home",
+            "🌍 Market Watch",
+            "📈 Risk Analysis",
+            "💎 Performance Suite",
+            "🔬 Portfolio Deep Dive",
+            "📊 Multi-Factor Analysis",
+            "💰 Valuation House",
+            "ℹ️ About"
+        ],
+        icons=["fire", "house-fill", "globe", "graph-up", "gem", "microscope", "bar-chart-fill", "cash-coin", "info-circle-fill"],
+        menu_icon="cast",
+        default_index=0,
+        orientation="horizontal",  # KEY: Horizontal layout
+        styles={
+            "container": {
+                "padding": "0!important",
+                "background-color": "rgba(10, 25, 41, 0.4)",
+                "border-radius": "10px",
+                "margin-bottom": "20px"
+            },
+            "icon": {
+                "color": "#00d4ff",
+                "font-size": "18px"
+            },
+            "nav-link": {
+                "font-size": "14px",
+                "text-align": "center",
+                "margin": "0px",
+                "padding": "12px 16px",
+                "border-radius": "8px",
+                "--hover-color": "rgba(0, 212, 255, 0.15)",
+                "color": "#ffffff",
+                "white-space": "nowrap"
+            },
+            "nav-link-selected": {
+                "background-color": "#00d4ff",
+                "color": "#000000",
+                "font-weight": "600",
+                "box-shadow": "0 4px 12px rgba(0, 212, 255, 0.3)"
+            }
+        }
+    )
+
+    st.markdown("---")
     
     if selected_range == "YTD":
         start_date = datetime(datetime.now().year, 1, 1)
