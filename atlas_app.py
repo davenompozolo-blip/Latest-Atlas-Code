@@ -7693,12 +7693,14 @@ def main():
                     if trade_df is not None:
                         save_trade_history(trade_df)
                         st.success(f"✅ Parsed {len(trade_df)} trades!")
+                        show_toast(f"Trade history imported: {len(trade_df)} trades parsed successfully", toast_type="success", duration=3000)
                         st.dataframe(trade_df.head(10), use_container_width=True, column_config=None)
 
                         portfolio_df = calculate_portfolio_from_trades(trade_df)
                         if len(portfolio_df) > 0:
                             save_portfolio_data(portfolio_df.to_dict('records'))
                             st.success(f"🎉 Portfolio rebuilt! {len(portfolio_df)} positions")
+                            show_toast(f"🔥 Phoenix reconstruction complete: {len(portfolio_df)} positions rebuilt", toast_type="success", duration=4000)
                             st.dataframe(portfolio_df, use_container_width=True, column_config=None)
         
         with col2:
@@ -7712,6 +7714,7 @@ def main():
                     if account_df is not None:
                         save_account_history(account_df)
                         st.success(f"✅ Parsed {len(account_df)} records!")
+                        show_toast(f"Account history imported: {len(account_df)} records processed", toast_type="success", duration=3000)
                         st.dataframe(account_df.head(10), use_container_width=True, column_config=None)
                         
                         leverage_info_parsed = get_leverage_info()
@@ -7990,9 +7993,13 @@ def main():
             sort_by = st.selectbox("Sort By", ["Change %", "5D %", "Volume"])
         with col3:
             refresh = st.button("🔄 Refresh Data")
+            if refresh:
+                from datetime import datetime
+                current_time = datetime.now().strftime("%H:%M:%S")
+                show_toast(f"Market data refreshed - updated at {current_time}", toast_type="info", duration=3000)
         with col4:
             auto_refresh = st.checkbox("Auto-Refresh (5min)")
-        
+
         st.markdown("---")
         
         # EXPANDED TABS
@@ -8207,6 +8214,34 @@ def main():
         
         # v9.7 ENHANCEMENT: Added CVaR metric
         cvar_95 = calculate_cvar(portfolio_returns, 0.95)
+
+        # Risk Alerts - Check for threshold violations
+        risk_alerts = []
+
+        # VaR threshold (flag if > 15% daily loss)
+        if var_95 and abs(var_95) > 15:
+            risk_alerts.append(f"VaR 95% at {abs(var_95):.1f}% exceeds 15% threshold")
+
+        # CVaR threshold (flag if > 20% daily loss)
+        if cvar_95 and abs(cvar_95) > 20:
+            risk_alerts.append(f"CVaR 95% at {abs(cvar_95):.1f}% exceeds 20% threshold")
+
+        # Maximum Drawdown threshold (flag if > 30%)
+        if max_dd and abs(max_dd) > 30:
+            risk_alerts.append(f"Maximum Drawdown at {abs(max_dd):.1f}% exceeds 30% threshold")
+
+        # Concentration risk - check if any single position > 25%
+        if len(enhanced_df) > 0:
+            total_value = enhanced_df['Total Value'].sum()
+            for _, row in enhanced_df.iterrows():
+                position_pct = (row['Total Value'] / total_value) * 100
+                if position_pct > 25:
+                    risk_alerts.append(f"{row['Ticker']} concentration at {position_pct:.1f}% exceeds 25% limit")
+
+        # Display risk alerts as toasts
+        if risk_alerts:
+            for alert in risk_alerts[:3]:  # Limit to 3 toasts to avoid overwhelming
+                show_toast(f"⚠️ Risk Alert: {alert}", toast_type="warning", duration=6000)
 
         col1, col2, col3, col4, col5, col6 = st.columns(6)
         col1.metric("🔥 Sharpe", ATLASFormatter.format_ratio(sharpe) if sharpe else "N/A")
@@ -8532,6 +8567,16 @@ def main():
                         st.session_state['rebalancing_df'] = rebalancing_df
                         st.session_state['opt_metrics'] = opt_metrics
                         st.success("✅ Optimization complete!")
+
+                        # Toast with key metrics
+                        var_reduction = opt_metrics['var_reduction_pct']
+                        cvar_reduction = opt_metrics['cvar_reduction_pct']
+                        sharpe_improvement = opt_metrics['sharpe_improvement']
+                        show_toast(
+                            f"VaR/CVaR Optimization: -{var_reduction:.1f}% VaR, -{cvar_reduction:.1f}% CVaR, +{sharpe_improvement:.2f} Sharpe",
+                            toast_type="success",
+                            duration=5000
+                        )
 
             # Display results if available
             if 'rebalancing_df' in st.session_state:
@@ -9999,6 +10044,16 @@ def main():
                         optimal_vol = (returns_df * optimal_weights).sum(axis=1).std() * np.sqrt(252)
                         optimal_sharpe = (optimal_return - risk_free_rate_input) / optimal_vol if optimal_vol > 0 else 0
 
+                        # MPT Optimization toast with performance data
+                        return_improvement = (optimal_return - current_return) * 100
+                        vol_change = (optimal_vol - current_vol) * 100
+                        sharpe_change = optimal_sharpe - current_sharpe
+                        show_toast(
+                            f"MPT {optimization_objective}: Return {optimal_return*100:.1f}% (+{return_improvement:.1f}%), Sharpe {optimal_sharpe:.2f} (+{sharpe_change:.2f})",
+                            toast_type="success",
+                            duration=5000
+                        )
+
                         col1, col2 = st.columns(2)
 
                         with col1:
@@ -11385,23 +11440,39 @@ def main():
                         st.session_state['used_smart_assumptions'] = False
 
                     st.success("✅ Valuation Complete!")
-            
+
             # Display Results
             if 'valuation_results' in st.session_state:
                 results = st.session_state['valuation_results']
                 method = st.session_state['valuation_method']
                 projections = st.session_state.get('dcf_projections', None)
-                
+
                 st.markdown("---")
                 st.markdown("### 📊 Valuation Results")
-                
+
                 if st.session_state.get('used_smart_assumptions', False):
                     st.success("🤖 **These results used AI-Generated Smart Assumptions**")
-                
+
                 # Key metrics
                 intrinsic_value = results['intrinsic_value_per_share']
                 current_price = company['current_price']
                 upside_downside = ((intrinsic_value - current_price) / current_price) * 100
+
+                # DCF Valuation toast with upside/downside
+                if abs(upside_downside) < 1000:  # Valid result
+                    if upside_downside > 20:
+                        toast_msg = f"DCF Valuation: ${intrinsic_value:.2f} target | {upside_downside:.1f}% upside - Significantly Undervalued"
+                        toast_type = "success"
+                    elif upside_downside > 0:
+                        toast_msg = f"DCF Valuation: ${intrinsic_value:.2f} target | {upside_downside:.1f}% upside - Slightly Undervalued"
+                        toast_type = "info"
+                    elif upside_downside > -20:
+                        toast_msg = f"DCF Valuation: ${intrinsic_value:.2f} target | {abs(upside_downside):.1f}% downside - Slightly Overvalued"
+                        toast_type = "warning"
+                    else:
+                        toast_msg = f"DCF Valuation: ${intrinsic_value:.2f} target | {abs(upside_downside):.1f}% downside - Significantly Overvalued"
+                        toast_type = "warning"
+                    show_toast(toast_msg, toast_type=toast_type, duration=5000)
                 
                 col1, col2, col3, col4 = st.columns(4)
                 
