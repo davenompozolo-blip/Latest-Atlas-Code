@@ -1031,6 +1031,316 @@ st.markdown("""
     div[data-testid="stMetric"]:nth-child(4) { animation-delay: 0.4s; }
     div[data-testid="stMetric"]:nth-child(5) { animation-delay: 0.5s; }
 
+    /* ============================================
+       PHASE 2: ENHANCED TABLE MICRO-INTERACTIONS
+       ============================================ */
+
+    /* Smooth row expansion on hover */
+    div[data-testid="stDataFrame"] tbody tr {
+        position: relative;
+        transition: all var(--transition-fast) !important;
+    }
+
+    /* Add subtle highlight bar on left */
+    div[data-testid="stDataFrame"] tbody tr::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 0;
+        height: 100%;
+        width: 0;
+        background: linear-gradient(90deg, var(--color-accent-primary), transparent);
+        transition: width var(--transition-base);
+    }
+
+    div[data-testid="stDataFrame"] tbody tr:hover::before {
+        width: 8px;
+    }
+
+    /* Pulse animation on row click */
+    div[data-testid="stDataFrame"] tbody tr:active {
+        animation: rowPulse 0.3s ease-out;
+    }
+
+    @keyframes rowPulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.01); }
+    }
+
+    /* Skeleton loading state for tables */
+    .table-loading tbody tr {
+        background: linear-gradient(
+            90deg,
+            rgba(10, 25, 41, 0.3) 0%,
+            rgba(0, 212, 255, 0.05) 50%,
+            rgba(10, 25, 41, 0.3) 100%
+        );
+        background-size: 200% 100%;
+        animation: skeleton-loading 1.5s ease-in-out infinite;
+    }
+
+    /* Mobile: Enhanced card-style table view */
+    @media (max-width: 640px) {
+        /* Hide headers on mobile */
+        div[data-testid="stDataFrame"] thead {
+            display: none;
+        }
+
+        /* Make rows look like cards */
+        div[data-testid="stDataFrame"] tbody tr {
+            display: block;
+            margin-bottom: var(--space-lg);
+            background: var(--color-bg-card);
+            border-radius: var(--radius-md);
+            padding: var(--space-md);
+            border: 1px solid rgba(0, 212, 255, 0.2);
+            box-shadow: var(--shadow-md);
+        }
+
+        /* Stack cells vertically */
+        div[data-testid="stDataFrame"] tbody td {
+            display: block;
+            padding: var(--space-sm) 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            text-align: left !important;
+        }
+
+        div[data-testid="stDataFrame"] tbody td:last-child {
+            border-bottom: none;
+        }
+    }
+
+    /* ============================================
+       PHASE 2: ANIMATED METRIC TRANSITIONS
+       ============================================ */
+
+    /* Pulse animation on metric update */
+    div[data-testid="stMetric"].updating {
+        animation: metricUpdate 0.5s ease-out;
+    }
+
+    @keyframes metricUpdate {
+        0% {
+            transform: scale(1);
+            box-shadow: var(--shadow-md);
+        }
+        50% {
+            transform: scale(1.05);
+            box-shadow: var(--shadow-accent-strong);
+        }
+        100% {
+            transform: scale(1);
+            box-shadow: var(--shadow-md);
+        }
+    }
+
+    /* Value change indicator */
+    div[data-testid="stMetric"] [data-testid="stMetricValue"] {
+        position: relative;
+        transition: all var(--transition-base);
+    }
+
+    div[data-testid="stMetric"] [data-testid="stMetricValue"]::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        right: -10px;
+        width: 8px;
+        height: 8px;
+        background: var(--color-success);
+        border-radius: 50%;
+        opacity: 0;
+        transition: opacity var(--transition-base);
+    }
+
+    div[data-testid="stMetric"].positive-change [data-testid="stMetricValue"]::after {
+        background: var(--color-success);
+        opacity: 1;
+        animation: blink 1s ease-in-out 3;
+    }
+
+    div[data-testid="stMetric"].negative-change [data-testid="stMetricValue"]::after {
+        background: var(--color-danger);
+        opacity: 1;
+        animation: blink 1s ease-in-out 3;
+    }
+
+    @keyframes blink {
+        0%, 100% { opacity: 0; }
+        50% { opacity: 1; }
+    }
+
+    /* Smooth number transitions */
+    div[data-testid="stMetric"] [data-testid="stMetricValue"] {
+        transition: all var(--transition-base);
+    }
+
+    /* Staggered fade-in for metrics on page load */
+    div[data-testid="stMetric"] {
+        animation: fadeInUp 0.6s ease-out both;
+    }
+
+    div[data-testid="stMetric"]:nth-child(1) { animation-delay: 0.1s; }
+    div[data-testid="stMetric"]:nth-child(2) { animation-delay: 0.2s; }
+    div[data-testid="stMetric"]:nth-child(3) { animation-delay: 0.3s; }
+    div[data-testid="stMetric"]:nth-child(4) { animation-delay: 0.4s; }
+    div[data-testid="stMetric"]:nth-child(5) { animation-delay: 0.5s; }
+
+    /* ============================================
+       PHASE 2: ENHANCED INPUT INTERACTIONS
+       ============================================ */
+
+    /* Label animation on focus */
+    .stTextInput label,
+    .stNumberInput label,
+    .stSelectbox label {
+        transition: all var(--transition-base);
+        color: var(--color-text-muted);
+    }
+
+    .stTextInput:focus-within label,
+    .stNumberInput:focus-within label,
+    .stSelectbox:focus-within label {
+        color: var(--color-accent-primary);
+        transform: translateY(-2px);
+        font-weight: var(--font-weight-semibold);
+    }
+
+    /* Input value indicator - green border when filled */
+    input:not(:placeholder-shown) {
+        border-color: rgba(0, 255, 136, 0.4) !important;
+    }
+
+    /* Invalid input state */
+    input:invalid {
+        border-color: var(--color-danger) !important;
+    }
+
+    /* Shake animation for invalid input */
+    input:invalid:focus {
+        animation: shake 0.3s ease-in-out;
+    }
+
+    @keyframes shake {
+        0%, 100% { transform: translateX(0); }
+        25% { transform: translateX(-5px); }
+        75% { transform: translateX(5px); }
+    }
+
+    /* Select dropdown hover effect */
+    div[data-baseweb="select"]:hover > div {
+        border-color: rgba(0, 212, 255, 0.5) !important;
+        transform: translateY(-1px);
+    }
+
+    /* Select dropdown focus effect */
+    div[data-baseweb="select"]:focus-within > div {
+        border-color: var(--color-accent-primary) !important;
+        box-shadow:
+            0 0 0 3px rgba(0, 212, 255, 0.1),
+            0 4px 12px rgba(0, 212, 255, 0.2) !important;
+        transform: translateY(-2px);
+    }
+
+    /* ============================================
+       PHASE 2: SMOOTH PAGE TRANSITIONS
+       ============================================ */
+
+    /* Fade in main content on page load */
+    .main > div > div > div > div {
+        animation: fadeIn 0.5s ease-out;
+    }
+
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    /* Stagger animations for multiple sections */
+    .main > div > div > div:nth-child(1) { animation-delay: 0s; }
+    .main > div > div > div:nth-child(2) { animation-delay: 0.1s; }
+    .main > div > div > div:nth-child(3) { animation-delay: 0.2s; }
+    .main > div > div > div:nth-child(4) { animation-delay: 0.3s; }
+
+    /* Smooth chart rendering */
+    .js-plotly-plot {
+        animation: fadeIn 0.6s ease-out 0.2s both;
+    }
+
+    /* Smooth expander transitions */
+    .streamlit-expanderContent {
+        animation: expandDown 0.3s ease-out;
+    }
+
+    @keyframes expandDown {
+        from {
+            opacity: 0;
+            max-height: 0;
+        }
+        to {
+            opacity: 1;
+            max-height: 1000px;
+        }
+    }
+
+    /* ============================================
+       PHASE 2: ENHANCED BUTTON INTERACTIONS
+       ============================================ */
+
+    /* Button press animation */
+    .stButton > button:active {
+        transform: translateY(2px) scale(0.98) !important;
+        box-shadow: 0 2px 8px rgba(0, 212, 255, 0.3) !important;
+    }
+
+    /* Disabled button state */
+    .stButton > button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none !important;
+    }
+
+    .stButton > button:disabled:hover {
+        transform: none !important;
+        box-shadow: var(--shadow-accent) !important;
+    }
+
+    /* Button loading state indicator */
+    .stButton > button.loading {
+        position: relative;
+        color: transparent !important;
+    }
+
+    .stButton > button.loading::after {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 20px;
+        height: 20px;
+        margin: -10px 0 0 -10px;
+        border: 2px solid #000;
+        border-top-color: transparent;
+        border-radius: 50%;
+        animation: buttonSpin 0.6s linear infinite;
+    }
+
+    @keyframes buttonSpin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    /* Button group spacing */
+    .stButton + .stButton {
+        margin-left: var(--space-sm);
+    }
+
 </style>
 
 <!-- Note: Sidebar toggle removed - Using horizontal navigation bar for maximum screen space -->
@@ -1322,6 +1632,131 @@ def add_arrow_indicator(value):
         return f"─ {value}"
     except:
         return value
+
+def show_toast(message, toast_type="info", duration=3000):
+    """
+    Display a professional toast notification
+
+    Parameters:
+    -----------
+    message : str
+        The message to display
+    toast_type : str
+        Type of toast: 'success', 'error', 'warning', 'info'
+    duration : int
+        How long to show the toast in milliseconds (default 3000ms = 3 seconds)
+
+    Usage:
+    ------
+    show_toast("Portfolio analyzed successfully!", toast_type="success")
+    show_toast("Failed to load data", toast_type="error")
+    show_toast("Market data is 15 minutes delayed", toast_type="warning")
+    show_toast("Loading portfolio data...", toast_type="info")
+    """
+
+    colors = {
+        'success': '#00ff88',
+        'error': '#ff0044',
+        'warning': '#ffaa00',
+        'info': '#00d4ff'
+    }
+
+    icons = {
+        'success': '✓',
+        'error': '✕',
+        'warning': '⚠',
+        'info': 'ℹ'
+    }
+
+    toast_html = f"""
+    <style>
+    .toast-container {{
+        position: fixed;
+        top: 80px;
+        right: 20px;
+        z-index: 9999;
+        pointer-events: none;
+    }}
+
+    .toast {{
+        background: rgba(10, 25, 41, 0.95);
+        border-left: 4px solid {colors[toast_type]};
+        border-radius: 12px;
+        padding: 16px 20px;
+        margin-bottom: 10px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 300px;
+        max-width: 400px;
+        animation: slideInRight 0.3s ease-out, fadeOut 0.3s ease-in {duration - 300}ms;
+        pointer-events: auto;
+        backdrop-filter: blur(20px);
+    }}
+
+    .toast-icon {{
+        width: 28px;
+        height: 28px;
+        background: {colors[toast_type]};
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #000;
+        font-weight: 700;
+        font-size: 18px;
+        flex-shrink: 0;
+    }}
+
+    .toast-message {{
+        flex: 1;
+        color: #ffffff;
+        font-size: 14px;
+        font-weight: 500;
+        line-height: 1.4;
+    }}
+
+    @keyframes slideInRight {{
+        from {{
+            transform: translateX(400px);
+            opacity: 0;
+        }}
+        to {{
+            transform: translateX(0);
+            opacity: 1;
+        }}
+    }}
+
+    @keyframes fadeOut {{
+        from {{
+            opacity: 1;
+        }}
+        to {{
+            opacity: 0;
+            transform: translateX(400px);
+        }}
+    }}
+    </style>
+
+    <div class="toast-container">
+        <div class="toast">
+            <div class="toast-icon">{icons[toast_type]}</div>
+            <div class="toast-message">{message}</div>
+        </div>
+    </div>
+
+    <script>
+    setTimeout(() => {{
+        const container = document.querySelector('.toast-container');
+        if (container) {{
+            container.remove();
+        }}
+    }}, {duration});
+    </script>
+    """
+
+    st.markdown(toast_html, unsafe_allow_html=True)
 
 # ============================================================================
 # PROFESSIONAL ENHANCEMENTS - ATLAS v9.4 EXCELLENCE EDITION
