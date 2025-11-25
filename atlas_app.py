@@ -1098,6 +1098,54 @@ def add_arrow_indicator(value):
     except:
         return value
 
+def show_toast(message, toast_type="info", duration=3000):
+    """Display a professional toast notification"""
+    toast_styles = {
+        "success": {"bg": "rgba(0, 255, 136, 0.95)", "border": "#00ff88", "icon": "✓"},
+        "error": {"bg": "rgba(255, 0, 68, 0.95)", "border": "#ff0044", "icon": "✕"},
+        "warning": {"bg": "rgba(255, 170, 0, 0.95)", "border": "#ffaa00", "icon": "⚠"},
+        "info": {"bg": "rgba(0, 212, 255, 0.95)", "border": "#00d4ff", "icon": "ℹ"}
+    }
+    style = toast_styles.get(toast_type, toast_styles["info"])
+    toast_id = f"toast_{int(time.time() * 1000)}_{random.randint(1000, 9999)}"
+
+    toast_html = f"""
+    <style>
+        .atlas-toast-container {{ position: fixed; top: 80px; right: 20px; z-index: 999999; }}
+        .atlas-toast {{ min-width: 300px; max-width: 500px; margin-bottom: 12px; padding: 16px 20px;
+                       background: {style['bg']}; border: 2px solid {style['border']}; border-radius: 12px;
+                       color: #000; font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 600;
+                       animation: slideIn 0.4s ease-out, fadeOut 0.3s ease-in {duration-300}ms forwards; }}
+        .atlas-toast-content {{ display: flex; align-items: center; gap: 12px; }}
+        .atlas-toast-icon {{ font-size: 20px; }}
+        @keyframes slideIn {{ from {{ transform: translateX(400px); opacity: 0; }}
+                             to {{ transform: translateX(0); opacity: 1; }} }}
+        @keyframes fadeOut {{ to {{ opacity: 0; transform: translateX(100px); }} }}
+    </style>
+    <div id="{toast_id}" class="atlas-toast">
+        <div class="atlas-toast-content">
+            <div class="atlas-toast-icon">{style['icon']}</div>
+            <div>{message}</div>
+        </div>
+    </div>
+    <script>
+        (function() {{
+            let container = document.querySelector('.atlas-toast-container');
+            if (!container) {{
+                container = document.createElement('div');
+                container.className = 'atlas-toast-container';
+                document.body.appendChild(container);
+            }}
+            const toast = document.getElementById('{toast_id}');
+            if (toast) {{
+                container.appendChild(toast);
+                setTimeout(() => toast.remove(), {duration});
+            }}
+        }})();
+    </script>
+    """
+    st.markdown(toast_html, unsafe_allow_html=True)
+
 # ============================================================================
 # PROFESSIONAL ENHANCEMENTS - ATLAS v9.4 EXCELLENCE EDITION
 # ============================================================================
@@ -11562,6 +11610,46 @@ def main():
 
         Total: **The Ultimate Investment Analysis Platform - PRODUCTION READY!** 🚀💎
         """)
+
+        # SYSTEM NOTIFICATIONS DEMO
+        # ============================================================
+        st.divider()
+        st.subheader("🧪 System Notifications Demo")
+        st.caption("Test the toast notification system with different message types")
+
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            if st.button("✓ Success", use_container_width=True, key="demo_success"):
+                show_toast("Portfolio optimization completed successfully!", toast_type="success", duration=3000)
+
+        with col2:
+            if st.button("✕ Error", use_container_width=True, key="demo_error"):
+                show_toast("Failed to connect to market data API", toast_type="error", duration=4000)
+
+        with col3:
+            if st.button("⚠ Warning", use_container_width=True, key="demo_warning"):
+                show_toast("Portfolio VaR exceeds risk threshold", toast_type="warning", duration=4000)
+
+        with col4:
+            if st.button("ℹ Info", use_container_width=True, key="demo_info"):
+                show_toast("Market data updated - last refresh: 14:23:45", toast_type="info", duration=3000)
+
+        st.markdown("")  # Spacing
+
+        # Sequential demo button
+        if st.button("🎬 Play All Notifications", use_container_width=True, key="demo_sequential"):
+            show_toast("Starting system check...", toast_type="info", duration=2000)
+            import time
+            time.sleep(0.3)
+            show_toast("✓ Market data connection established", toast_type="success", duration=2000)
+            time.sleep(0.3)
+            show_toast("⚠️ High volatility detected in portfolio", toast_type="warning", duration=2000)
+            time.sleep(0.3)
+            show_toast("System check complete!", toast_type="success", duration=3000)
+
+if __name__ == "__main__":
+    main()
 
 if __name__ == "__main__":
     main()
