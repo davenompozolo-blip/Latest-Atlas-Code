@@ -806,6 +806,86 @@ st.markdown("""
     footer {visibility: hidden;}
     header {visibility: hidden;}
 
+    /* ============================================
+       UI POLISH: FIX DROPDOWN OVERLAPPING TEXT
+       ============================================ */
+
+    /* Hide Streamlit's default select box arrow icons */
+    div[data-baseweb="select"] svg {
+        display: none !important;
+    }
+
+    /* Remove any pseudo-element arrows */
+    div[data-baseweb="select"]::before,
+    div[data-baseweb="select"]::after {
+        display: none !important;
+    }
+
+    /* Fix select box inner content alignment */
+    div[data-baseweb="select"] > div {
+        padding-right: 40px !important; /* Space for custom arrow */
+    }
+
+    /* Add clean custom dropdown arrow */
+    div[data-baseweb="select"] {
+        position: relative;
+    }
+
+    div[data-baseweb="select"]::after {
+        content: '▼';
+        position: absolute;
+        right: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        pointer-events: none;
+        color: #00d4ff;
+        font-size: 12px;
+        display: block !important;
+    }
+
+    /* Fix select box text overflow */
+    div[data-baseweb="select"] > div > div {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 100%;
+    }
+
+    /* Hide any material icons or conflicting text */
+    div[data-baseweb="select"] span[class*="material"],
+    div[data-baseweb="select"] span[class*="icon"],
+    div[data-baseweb="select"] span[class*="arrow"] {
+        display: none !important;
+    }
+
+    /* Ensure proper text rendering in dropdown options */
+    div[role="listbox"] div {
+        padding: 8px 16px;
+        white-space: normal;
+        overflow: visible;
+        text-overflow: clip;
+    }
+
+    /* Fix any conflicting Streamlit default styles */
+    .stSelectbox [data-baseweb="select"] {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+        color: #ffffff;
+    }
+
+    /* Clean up the dropdown menu itself */
+    div[role="listbox"] {
+        background: rgba(10, 25, 41, 0.95) !important;
+        border: 1px solid rgba(0, 212, 255, 0.2) !important;
+        border-radius: 10px;
+        box-shadow: 0 8px 32px rgba(0, 212, 255, 0.2);
+        backdrop-filter: blur(20px);
+    }
+
+    /* Fix option hover state */
+    div[role="option"]:hover {
+        background: rgba(0, 212, 255, 0.1) !important;
+    }
+
 </style>
 
 <!-- Note: Sidebar toggle removed - Using horizontal navigation bar for maximum screen space -->
@@ -7584,35 +7664,7 @@ def main():
     # HORIZONTAL NAVIGATION BAR - MAXIMUM SCREEN SPACE UTILIZATION
     # ============================================================================
 
-    # Header Row with Branding and Controls
-    header_col1, header_col2, header_col3 = st.columns([3, 1, 1])
-
-    with header_col1:
-        st.markdown("# 🚀 ATLAS Terminal v10.0 INSTITUTIONAL")
-
-    with header_col2:
-        # Time Range Control (compact)
-        date_options = ["1D", "1W", "1M", "3M", "6M", "YTD", "1Y", "3Y", "5Y", "MAX"]
-        selected_range = st.selectbox(
-            "📅 Time Range",
-            date_options,
-            index=6,  # Default to "1Y"
-            key="time_range_selector"
-        )
-
-    with header_col3:
-        # Benchmark Control (compact)
-        benchmark_options = ["SPY", "QQQ", "DIA", "IWM", "VTI", "ACWI"]
-        selected_benchmark = st.selectbox(
-            "🎯 Benchmark",
-            benchmark_options,
-            index=0,  # Default to "SPY"
-            key="benchmark_selector"
-        )
-
-    st.markdown("---")
-
-    # Horizontal Navigation Menu
+    # Horizontal Navigation Menu (positioned at top for better hierarchy)
     page = option_menu(
         menu_title=None,
         options=[
@@ -7661,7 +7713,32 @@ def main():
     )
 
     st.markdown("---")
-    
+
+    # Time Range and Benchmark Controls (positioned below navigation)
+    col1, col2 = st.columns(2)
+
+    with col1:
+        # Time Range Control
+        date_options = ["1D", "1W", "1M", "3M", "6M", "YTD", "1Y", "3Y", "5Y", "MAX"]
+        selected_range = st.selectbox(
+            "📅 Time Range",
+            date_options,
+            index=6,  # Default to "1Y"
+            key="time_range_selector"
+        )
+
+    with col2:
+        # Benchmark Control
+        benchmark_options = ["SPY", "QQQ", "DIA", "IWM", "VTI", "ACWI"]
+        selected_benchmark = st.selectbox(
+            "🎯 Benchmark",
+            benchmark_options,
+            index=0,  # Default to "SPY"
+            key="benchmark_selector"
+        )
+
+    st.markdown("---")
+
     if selected_range == "YTD":
         start_date = datetime(datetime.now().year, 1, 1)
         end_date = datetime.now()
