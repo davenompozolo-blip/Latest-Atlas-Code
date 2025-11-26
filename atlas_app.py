@@ -700,39 +700,71 @@ st.markdown("""
     }
 
     /* ============================================
-       FIX: Material Icons Issue - Hide "keyboard_arrow_right" Text
+       CONSOLIDATED DROPDOWN FIX - v10.0.4
+       Fixes Material Icons "keyboard_arrow_right" text overlap
        ============================================ */
 
-    /* Hide the broken Material Icons text that appears in dropdowns */
-    [data-baseweb="select"] span[aria-hidden="true"] {
+    @import url('https://fonts.googleapis.com/icon?family=Material+Icons');
+
+    div[data-baseweb="select"] svg,
+    div[data-baseweb="select"] [data-baseweb="icon"],
+    div[data-baseweb="select"] span[aria-hidden="true"],
+    div[data-baseweb="select"] [role="presentation"],
+    [data-testid="stSelectbox"] svg {
+        display: none !important;
+        visibility: hidden !important;
+        width: 0 !important;
+        height: 0 !important;
+        font-size: 0 !important;
+    }
+
+    div[data-baseweb="select"] span:not([data-testid]) {
         font-size: 0 !important;
         color: transparent !important;
+        -webkit-text-fill-color: transparent !important;
     }
 
-    /* Ensure dropdown arrows still work by using CSS arrow */
-    [data-baseweb="select"] > div::after {
-        content: '▼' !important;
+    div[data-baseweb="select"] [role="option"],
+    div[data-baseweb="select"] [role="option"] *,
+    div[data-baseweb="select"] > div > div:first-child > div {
+        font-size: 14px !important;
+        font-family: 'Inter', sans-serif !important;
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+    }
+
+    div[data-baseweb="select"] > div {
+        padding-right: 40px !important;
+        position: relative !important;
+    }
+
+    div[data-baseweb="select"]::before,
+    div[data-baseweb="select"]::after,
+    div[data-baseweb="select"] > div::before,
+    div[data-baseweb="select"] > div::after {
+        content: none !important;
+    }
+
+    div[data-baseweb="select"]::after {
+        content: '▾' !important;
+        font-family: system-ui, sans-serif !important;
+        font-size: 16px !important;
+        color: #00d4ff !important;
+        -webkit-text-fill-color: #00d4ff !important;
         position: absolute !important;
-        right: 12px !important;
+        right: 14px !important;
         top: 50% !important;
         transform: translateY(-50%) !important;
-        color: #00d4ff !important;
-        font-size: 12px !important;
         pointer-events: none !important;
+        z-index: 10 !important;
+        display: block !important;
+        visibility: visible !important;
     }
 
-    /* Hide any Material Icons text across the entire app */
-    span.material-icons,
-    i.material-icons {
-        font-size: 0 !important;
-    }
-
-    /* But allow the icon font to work if it loads */
-    @font-face {
-        font-family: 'Material Icons';
-        font-style: normal;
-        font-weight: 400;
-        src: url(https://fonts.gstatic.com/s/materialicons/v139/flUhRq6tzZclQEJ-Vdg-IuiaDsNc.woff2) format('woff2');
+    div[role="option"] {
+        font-size: 14px !important;
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
     }
 
     /* ============================================
@@ -805,86 +837,6 @@ st.markdown("""
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
-
-    /* ============================================
-       UI POLISH: FIX DROPDOWN OVERLAPPING TEXT
-       ============================================ */
-
-    /* Hide Streamlit's default select box arrow icons */
-    div[data-baseweb="select"] svg {
-        display: none !important;
-    }
-
-    /* Remove any pseudo-element arrows */
-    div[data-baseweb="select"]::before,
-    div[data-baseweb="select"]::after {
-        display: none !important;
-    }
-
-    /* Fix select box inner content alignment */
-    div[data-baseweb="select"] > div {
-        padding-right: 40px !important; /* Space for custom arrow */
-    }
-
-    /* Add clean custom dropdown arrow */
-    div[data-baseweb="select"] {
-        position: relative;
-    }
-
-    div[data-baseweb="select"]::after {
-        content: '▼';
-        position: absolute;
-        right: 12px;
-        top: 50%;
-        transform: translateY(-50%);
-        pointer-events: none;
-        color: #00d4ff;
-        font-size: 12px;
-        display: block !important;
-    }
-
-    /* Fix select box text overflow */
-    div[data-baseweb="select"] > div > div {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        max-width: 100%;
-    }
-
-    /* Hide any material icons or conflicting text */
-    div[data-baseweb="select"] span[class*="material"],
-    div[data-baseweb="select"] span[class*="icon"],
-    div[data-baseweb="select"] span[class*="arrow"] {
-        display: none !important;
-    }
-
-    /* Ensure proper text rendering in dropdown options */
-    div[role="listbox"] div {
-        padding: 8px 16px;
-        white-space: normal;
-        overflow: visible;
-        text-overflow: clip;
-    }
-
-    /* Fix any conflicting Streamlit default styles */
-    .stSelectbox [data-baseweb="select"] {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
-        color: #ffffff;
-    }
-
-    /* Clean up the dropdown menu itself */
-    div[role="listbox"] {
-        background: rgba(10, 25, 41, 0.95) !important;
-        border: 1px solid rgba(0, 212, 255, 0.2) !important;
-        border-radius: 10px;
-        box-shadow: 0 8px 32px rgba(0, 212, 255, 0.2);
-        backdrop-filter: blur(20px);
-    }
-
-    /* Fix option hover state */
-    div[role="option"]:hover {
-        background: rgba(0, 212, 255, 0.1) !important;
-    }
 
 </style>
 
