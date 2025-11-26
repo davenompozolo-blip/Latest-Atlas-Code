@@ -700,49 +700,68 @@ st.markdown("""
     }
 
     /* ============================================
-       CONSOLIDATED DROPDOWN FIX - v10.0.4
-       Fixes Material Icons "keyboard_arrow_right" text overlap
+       SURGICAL FIX: OVERLAPPING TEXT - v10.0.5
+       Completely removes Material Icons ligature text
        ============================================ */
 
     @import url('https://fonts.googleapis.com/icon?family=Material+Icons');
 
-    div[data-baseweb="select"] svg,
-    div[data-baseweb="select"] [data-baseweb="icon"],
-    div[data-baseweb="select"] span[aria-hidden="true"],
-    div[data-baseweb="select"] [role="presentation"],
-    [data-testid="stSelectbox"] svg {
+    /* Expander icons - hide keyboard_arrow_right/down text */
+    .streamlit-expanderHeader span[aria-hidden="true"],
+    .streamlit-expanderHeader [data-baseweb="icon"],
+    .streamlit-expanderHeader [role="presentation"],
+    [data-testid="stExpander"] summary span[aria-hidden="true"] {
         display: none !important;
-        visibility: hidden !important;
+        position: absolute !important;
+        left: -9999px !important;
         width: 0 !important;
         height: 0 !important;
-        font-size: 0 !important;
+        overflow: hidden !important;
+        visibility: hidden !important;
     }
 
-    div[data-baseweb="select"] span:not([data-testid]) {
-        font-size: 0 !important;
-        color: transparent !important;
-        -webkit-text-fill-color: transparent !important;
+    /* Select/Dropdown icons - hide keyboard_arrow_down text */
+    div[data-baseweb="select"] span[aria-hidden="true"],
+    div[data-baseweb="select"] [data-baseweb="icon"],
+    div[data-baseweb="select"] [role="presentation"],
+    div[data-baseweb="select"] svg {
+        display: none !important;
+        position: absolute !important;
+        left: -9999px !important;
+        width: 0 !important;
+        height: 0 !important;
+        overflow: hidden !important;
+        visibility: hidden !important;
     }
 
+    /* DataFrame menu icons - hide arrow_upward/downward text */
+    div[data-testid="stDataFrame"] [role="menuitem"] span[aria-hidden="true"],
+    div[data-testid="stDataFrame"] [role="menuitem"] [data-baseweb="icon"],
+    div[data-testid="stDataFrame"] [role="menuitem"] svg {
+        display: none !important;
+        position: absolute !important;
+        left: -9999px !important;
+        width: 0 !important;
+        height: 0 !important;
+        overflow: hidden !important;
+        visibility: hidden !important;
+    }
+
+    /* Dropdown label text - ensure visible */
     div[data-baseweb="select"] [role="option"],
-    div[data-baseweb="select"] [role="option"] *,
     div[data-baseweb="select"] > div > div:first-child > div {
         font-size: 14px !important;
         font-family: 'Inter', sans-serif !important;
         color: #ffffff !important;
         -webkit-text-fill-color: #ffffff !important;
+        display: block !important;
+        visibility: visible !important;
     }
 
+    /* Add custom dropdown arrow */
     div[data-baseweb="select"] > div {
         padding-right: 40px !important;
         position: relative !important;
-    }
-
-    div[data-baseweb="select"]::before,
-    div[data-baseweb="select"]::after,
-    div[data-baseweb="select"] > div::before,
-    div[data-baseweb="select"] > div::after {
-        content: none !important;
     }
 
     div[data-baseweb="select"]::after {
@@ -761,10 +780,58 @@ st.markdown("""
         visibility: visible !important;
     }
 
-    div[role="option"] {
+    /* ============================================
+       SURGICAL FIX: MULTISELECT RED SQUARES - v10.0.5
+       Restore text visibility to tag labels
+       ============================================ */
+
+    /* Tag container styling */
+    div[data-baseweb="tag"] {
+        background: rgba(0, 212, 255, 0.25) !important;
+        border: 1px solid rgba(0, 212, 255, 0.5) !important;
+        border-radius: 6px !important;
+        padding: 4px 10px !important;
+        margin: 2px !important;
+        display: inline-flex !important;
+        align-items: center !important;
+    }
+
+    /* Tag text - MUST be visible (fixes red squares) */
+    div[data-baseweb="tag"] span,
+    div[data-baseweb="tag"] > span:first-child {
+        font-size: 13px !important;
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+        font-family: 'Inter', sans-serif !important;
+        display: inline !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+    }
+
+    /* Tag close/remove button */
+    div[data-baseweb="tag"] svg,
+    div[data-baseweb="tag"] [role="button"] {
+        display: inline-flex !important;
+        visibility: visible !important;
+        width: 14px !important;
+        height: 14px !important;
+        color: #ffffff !important;
+        opacity: 0.7 !important;
+        cursor: pointer !important;
+        margin-left: 6px !important;
+    }
+
+    div[data-baseweb="tag"] [role="button"]:hover {
+        opacity: 1 !important;
+    }
+
+    /* Multiselect dropdown options */
+    div[data-baseweb="select"] div[role="option"] {
         font-size: 14px !important;
         color: #ffffff !important;
         -webkit-text-fill-color: #ffffff !important;
+        display: flex !important;
+        visibility: visible !important;
     }
 
     /* ============================================
