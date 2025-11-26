@@ -7994,7 +7994,6 @@ def main():
         with col3:
             refresh = st.button("🔄 Refresh Data")
             if refresh:
-                from datetime import datetime
                 current_time = datetime.now().strftime("%H:%M:%S")
                 show_toast(f"Market data refreshed - updated at {current_time}", toast_type="info", duration=3000)
         with col4:
