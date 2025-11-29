@@ -64,6 +64,12 @@ from sklearn.linear_model import LinearRegression
 # Multi-source data broker
 from atlas_multi_source_data_broker import HybridDataBroker, DATA_SOURCES, DataSource, create_default_broker
 
+# Investopedia live data engine
+from atlas_investopedia_live import (
+    InvestopediaSession, InvestopediaAutoSync, InvestopediaCredentials,
+    create_investopedia_session, test_connection
+)
+
 warnings.filterwarnings("ignore")
 
 # ============================================================================
@@ -8130,6 +8136,119 @@ def main():
             st.success("Cache cleared!")
 
     # ============================================================================
+    # INVESTOPEDIA LIVE FEED (SIDEBAR)
+    # ============================================================================
+
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 🔐 Investopedia Live")
+
+    # Check if Investopedia is connected
+    if 'investopedia_auto_sync' not in st.session_state:
+        with st.sidebar.expander("Connect to Investopedia", expanded=False):
+            st.markdown("**Automated Portfolio Sync**")
+            st.caption("Login once, auto-sync your portfolio every 5 minutes")
+
+            email = st.text_input("Email", key="investo_email")
+            password = st.text_input("Password", type="password", key="investo_password")
+            game_id = st.text_input(
+                "Game ID (optional)",
+                help="Found in your Investopedia portfolio URL",
+                key="investo_game_id"
+            )
+
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("🔐 Connect", use_container_width=True):
+                    if email and password:
+                        with st.spinner("Connecting to Investopedia..."):
+                            try:
+                                session = create_investopedia_session(email, password, game_id or None)
+                                if session.login():
+                                    st.session_state['investopedia_session'] = session
+                                    st.session_state['investopedia_auto_sync'] = InvestopediaAutoSync(
+                                        session,
+                                        sync_interval_minutes=5
+                                    )
+                                    st.success("✅ Connected!")
+                                    st.rerun()
+                                else:
+                                    st.error("❌ Login failed - check credentials")
+                            except Exception as e:
+                                st.error(f"❌ Connection error: {str(e)}")
+                    else:
+                        st.warning("Please enter email and password")
+
+            with col2:
+                if st.button("🧪 Test", use_container_width=True):
+                    if email and password:
+                        with st.spinner("Testing connection..."):
+                            if test_connection(email, password, game_id or None):
+                                st.success("✅ Connection works!")
+                            else:
+                                st.error("❌ Connection failed")
+                    else:
+                        st.warning("Enter credentials first")
+
+    else:
+        # Already connected - show sync controls
+        auto_sync = st.session_state['investopedia_auto_sync']
+
+        with st.sidebar.expander("Investopedia Sync", expanded=True):
+            # Sync status
+            if auto_sync.last_sync:
+                time_since = datetime.now() - auto_sync.last_sync
+                minutes_since = int(time_since.total_seconds() / 60)
+                st.caption(f"Last sync: {minutes_since}m ago")
+
+                # Auto-sync badge
+                if minutes_since < 6:
+                    st.success("🟢 Live")
+                elif minutes_since < 15:
+                    st.warning("🟡 Syncing...")
+                else:
+                    st.error("🔴 Stale")
+            else:
+                st.info("⏳ Never synced")
+
+            # Sync controls
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("🔄 Sync Now", use_container_width=True):
+                    with st.spinner("Syncing..."):
+                        result = auto_sync.sync(force=True)
+                        if result and result.get('success'):
+                            st.success("✅ Synced!")
+                            st.rerun()
+                        else:
+                            st.error("❌ Sync failed")
+
+            with col2:
+                if st.button("🔓 Disconnect", use_container_width=True):
+                    del st.session_state['investopedia_session']
+                    del st.session_state['investopedia_auto_sync']
+                    st.rerun()
+
+            # Show portfolio summary
+            latest = auto_sync.get_latest_portfolio()
+            if latest and latest.get('success'):
+                summary = latest['account_summary']
+                st.markdown("**Account Summary:**")
+                st.metric("Account Value", f"${summary.get('account_value', 0):,.2f}")
+                st.metric("Cash", f"${summary.get('cash', 0):,.2f}")
+                st.metric(
+                    "Total Gain/Loss",
+                    f"${summary.get('total_gain_loss', 0):,.2f}",
+                    delta=f"{summary.get('total_gain_loss_pct', 0):.2f}%"
+                )
+
+                # Show changes if available
+                changes = auto_sync.get_portfolio_changes()
+                if changes and changes.get('holdings_changes'):
+                    st.markdown("**Recent Changes:**")
+                    for change in changes['holdings_changes'][:3]:
+                        st.caption(f"{change['action']}: {change['ticker']}")
+
+    # ============================================================================
     # HORIZONTAL NAVIGATION BAR - MAXIMUM SCREEN SPACE UTILIZATION
     # ============================================================================
 
@@ -8225,12 +8344,97 @@ def main():
     # ========================================================================
     if page == "🔥 Phoenix Parser":
         st.markdown("## 🔥 PHOENIX MODE")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("### 📊 Trade History")
-            trade_file = st.file_uploader("Upload Trade History", type=['xls', 'xlsx'], key="trade")
+
+        # Data Source Selection
+        st.markdown("### 📥 Data Source")
+        data_source = st.radio(
+            "Choose how to load your portfolio:",
+            ["📁 Manual Upload (Excel Files)", "🔐 Investopedia Live Sync"],
+            horizontal=True
+        )
+
+        # ===================================================================
+        # INVESTOPEDIA LIVE SYNC MODE
+        # ===================================================================
+        if data_source == "🔐 Investopedia Live Sync":
+            if 'investopedia_auto_sync' not in st.session_state:
+                st.warning("⚠️ Not connected to Investopedia. Please connect in the sidebar first.")
+                st.info("👈 Open **Investopedia Live** in the sidebar to connect your account.")
+            else:
+                auto_sync = st.session_state['investopedia_auto_sync']
+
+                st.markdown("### 🔄 Auto-Sync from Investopedia")
+
+                col1, col2, col3 = st.columns(3)
+
+                with col1:
+                    if st.button("🔄 Sync & Load Portfolio", use_container_width=True):
+                        with st.spinner("Syncing from Investopedia..."):
+                            portfolio_data = auto_sync.sync(force=True)
+
+                            if portfolio_data and portfolio_data.get('success'):
+                                # Convert to ATLAS format
+                                atlas_df = auto_sync.convert_to_atlas_format(portfolio_data)
+
+                                if len(atlas_df) > 0:
+                                    # Save portfolio data
+                                    save_portfolio_data(atlas_df.to_dict('records'))
+                                    st.success(f"✅ Synced {len(atlas_df)} positions from Investopedia!")
+                                    show_toast(f"Portfolio synced: {len(atlas_df)} positions loaded", toast_type="success", duration=4000)
+                                    st.dataframe(atlas_df, use_container_width=True)
+                                else:
+                                    st.warning("No positions found in Investopedia portfolio")
+                            else:
+                                st.error("❌ Sync failed - check your connection")
+
+                with col2:
+                    if auto_sync.last_sync:
+                        minutes_ago = int((datetime.now() - auto_sync.last_sync).total_seconds() / 60)
+                        st.metric("Last Sync", f"{minutes_ago}m ago")
+
+                with col3:
+                    latest = auto_sync.get_latest_portfolio()
+                    if latest and latest.get('success'):
+                        holdings_count = len(latest.get('holdings', []))
+                        st.metric("Positions", holdings_count)
+
+                # Show current portfolio from Investopedia
+                latest = auto_sync.get_latest_portfolio()
+                if latest and latest.get('success'):
+                    st.markdown("---")
+                    st.markdown("### 📊 Current Investopedia Portfolio")
+
+                    # Account summary
+                    summary = latest['account_summary']
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("Account Value", f"${summary.get('account_value', 0):,.2f}")
+                    with col2:
+                        st.metric("Cash", f"${summary.get('cash', 0):,.2f}")
+                    with col3:
+                        st.metric("Buying Power", f"${summary.get('buying_power', 0):,.2f}")
+                    with col4:
+                        st.metric(
+                            "Total G/L",
+                            f"${summary.get('total_gain_loss', 0):,.2f}",
+                            delta=f"{summary.get('total_gain_loss_pct', 0):.2f}%"
+                        )
+
+                    # Holdings table
+                    if latest.get('holdings'):
+                        st.markdown("**Holdings:**")
+                        holdings_df = pd.DataFrame(latest['holdings'])
+                        st.dataframe(holdings_df, use_container_width=True)
+
+        # ===================================================================
+        # MANUAL UPLOAD MODE (ORIGINAL)
+        # ===================================================================
+        else:
+            col1, col2 = st.columns(2)
+
+            with col1:
+                st.markdown("### 📊 Trade History")
+                trade_file = st.file_uploader("Upload Trade History", type=['xls', 'xlsx'], key="trade")
             
             if trade_file:
                 with st.spinner("Parsing..."):
