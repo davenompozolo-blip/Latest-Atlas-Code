@@ -2014,7 +2014,7 @@ def get_leverage_info():
     account_df = load_account_history()
     if account_df is not None:
         latest_cash = account_df.get('Cash Balance', account_df.get('Cash', pd.Series([0]))).iloc[-1]
-        
+
         if isinstance(latest_cash, str):
             latest_cash = latest_cash.replace('$', '').replace(',', '')
             if '(' in latest_cash and ')' in latest_cash:
@@ -2023,9 +2023,9 @@ def get_leverage_info():
                 latest_cash = float(latest_cash)
             except:
                 latest_cash = 0
-        
+
         latest_margin = 0
-        
+
         if 'Margin Used' in account_df.columns:
             latest_margin = account_df['Margin Used'].iloc[-1]
             if isinstance(latest_margin, str):
@@ -2036,10 +2036,10 @@ def get_leverage_info():
                     latest_margin = float(latest_margin)
                 except:
                     latest_margin = 0
-        
+
         if latest_cash < 0:
             latest_margin = abs(latest_cash)
-            
+
         total_value = 0
         if 'Total Value' in account_df.columns:
             total_value = account_df['Total Value'].iloc[-1]
@@ -2053,9 +2053,9 @@ def get_leverage_info():
                     total_value = abs(latest_cash) + latest_margin
         else:
             total_value = abs(latest_cash) + latest_margin
-            
+
         leverage_ratio = (total_value / (total_value - latest_margin)) if (total_value - latest_margin) > 0 else 1
-        
+
         return {
             'margin_used': latest_margin,
             'cash_balance': latest_cash,
@@ -2063,6 +2063,284 @@ def get_leverage_info():
             'total_value': total_value
         }
     return None
+
+
+def calculate_portfolio_metrics(df: pd.DataFrame, cash: float, sp500_return: float, leverage_ratio: float = 2.0):
+    """
+    Calculate portfolio metrics with proper leverage accounting.
+
+    ATLAS v10.0 - LEVERAGE ACCOUNTING FIX
+    =====================================
+    Properly accounts for leveraged positions by:
+    - Adjusting cost basis to reflect actual equity deployed (not notional)
+    - Amplifying returns to show true equity performance
+    - Scaling volatility and beta by leverage multiplier
+
+    Args:
+        df: Portfolio dataframe with positions
+        cash: Cash balance (negative if margin used)
+        sp500_return: Benchmark return for alpha calculation
+        leverage_ratio: Account leverage multiplier (default 2.0 for 2x margin)
+
+    Returns:
+        dict: Portfolio metrics with corrected leverage accounting
+    """
+
+    # Market values (unchanged)
+    total_value = df["Total Value"].sum() if "Total Value" in df.columns else df["Value"].sum() if "Value" in df.columns else df["Current Value"].sum()
+
+    # P/L calculation - handle different column names
+    if "Daily P&L $" in df.columns:
+        total_pl_dollars = df["Total G/L $"].sum() if "Total G/L $" in df.columns else (total_value - df["Total Cost"].sum())
+    elif "P/L" in df.columns:
+        total_pl_dollars = df["P/L"].sum()
+    else:
+        total_pl_dollars = df["Gain/Loss"].sum() if "Gain/Loss" in df.columns else 0
+
+    # Leverage-adjusted cost basis
+    # If 2x leveraged, you only put up 50% of notional value as equity
+    if "Total Cost" in df.columns:
+        cost_col = "Total Cost"
+    elif "Cost" in df.columns:
+        cost_col = "Cost"
+    else:
+        cost_col = "Cost Basis"
+
+    total_cost_notional = df[cost_col].sum()
+    total_cost_equity = total_cost_notional / leverage_ratio
+
+    # Account value = your actual equity
+    account_value_equity = total_value + cash
+
+    # Returns on YOUR equity (leverage-amplified)
+    total_return_pct = (total_pl_dollars / total_cost_equity * 100) if total_cost_equity > 0 else 0
+    annualized_return = total_return_pct  # Simplified - adjust for time weighting if needed
+
+    # Portfolio risk metrics
+    if "Weight %" in df.columns:
+        weight_col = "Weight %"
+        weights = df[weight_col].values / 100
+    elif "Weight" in df.columns:
+        weight_col = "Weight"
+        weights = df[weight_col].values / 100
+    else:
+        # Calculate weights if not present
+        df_temp = df.copy()
+        value_col = "Total Value" if "Total Value" in df.columns else "Value"
+        df_temp["Weight"] = (df_temp[value_col] / total_value * 100) if total_value > 0 else 0
+        weight_col = "Weight"
+        weights = df_temp[weight_col].values / 100
+
+    # Standard deviation - handle different column names
+    if "Volatility" in df.columns:
+        std_col = "Volatility"
+        std_devs = df[std_col].values / 100
+    elif "Std Dev" in df.columns:
+        std_col = "Std Dev"
+        std_devs = df[std_col].values / 100
+    elif "Annualized Volatility %" in df.columns:
+        std_col = "Annualized Volatility %"
+        std_devs = df[std_col].values / 100
+    else:
+        # Default to 20% volatility if not available
+        std_devs = np.full(len(df), 0.20)
+
+    # Portfolio volatility (amplified by leverage)
+    portfolio_variance = np.dot(weights**2, std_devs**2)
+    portfolio_std_unleveraged = np.sqrt(portfolio_variance) * 100
+    portfolio_std = portfolio_std_unleveraged * leverage_ratio
+
+    # Risk-adjusted returns
+    RISK_FREE_RATE = 0.045  # 4.5%
+    sharpe = ((annualized_return - RISK_FREE_RATE * 100) / portfolio_std) if portfolio_std > 0 else 0
+
+    # Beta and Alpha (leverage-adjusted)
+    if "Beta" in df.columns:
+        beta_col = "Beta"
+        portfolio_beta_unleveraged = np.average(df[beta_col], weights=weights)
+    else:
+        portfolio_beta_unleveraged = 1.0  # Default to market beta
+
+    portfolio_beta = portfolio_beta_unleveraged * leverage_ratio
+
+    expected_return = RISK_FREE_RATE * 100 + portfolio_beta * (sp500_return - RISK_FREE_RATE * 100)
+    alpha = annualized_return - expected_return
+
+    # Information Ratio
+    tracking_error = abs(annualized_return - sp500_return * leverage_ratio)
+    information_ratio = ((annualized_return - sp500_return * leverage_ratio) / tracking_error) if tracking_error > 0 else 0
+
+    # Leverage metrics
+    actual_leverage = total_value / account_value_equity if account_value_equity > 0 else 1.0
+    margin_used = abs(cash) if cash < 0 else 0
+
+    return {
+        # Account values
+        "account_value": account_value_equity,
+        "total_value": total_value,
+        "cash": cash,
+
+        # Cost basis (both notional and equity)
+        "total_cost": total_cost_notional,  # Keep for backward compatibility
+        "total_cost_equity": total_cost_equity,  # NEW - actual equity deployed
+
+        # P/L
+        "total_pl": total_pl_dollars,
+        "total_return": total_return_pct,  # Return on equity (amplified)
+
+        # Annualized metrics
+        "annualized_return": annualized_return,
+
+        # Risk
+        "portfolio_std": portfolio_std,  # Leverage-adjusted volatility
+        "portfolio_std_unleveraged": portfolio_std_unleveraged,  # Base volatility
+
+        # Risk-adjusted returns
+        "sharpe_ratio": sharpe,
+
+        # Beta & Alpha
+        "portfolio_beta": portfolio_beta,  # Leverage-adjusted
+        "portfolio_beta_unleveraged": portfolio_beta_unleveraged,  # Base beta
+        "alpha": alpha,
+
+        # Performance
+        "information_ratio": information_ratio,
+
+        # Leverage
+        "leverage": actual_leverage,  # Keep for backward compatibility
+        "leverage_ratio": leverage_ratio,  # Target leverage
+        "actual_leverage": actual_leverage,  # Actual leverage in use
+        "margin_used": margin_used,
+    }
+
+
+def fix_portfolio_weights(df: pd.DataFrame, leverage_ratio: float = 2.0):
+    """
+    Fix portfolio weights to reflect actual equity allocation.
+
+    For a 2x leveraged account:
+    - If you have $100k equity
+    - And $200k in positions
+    - Each position should show its weight as % of $100k equity, not $200k notional
+    - Weights will sum to ~200% (leverage_ratio * 100%)
+
+    Args:
+        df: Portfolio dataframe
+        leverage_ratio: Account leverage multiplier
+
+    Returns:
+        pd.DataFrame: DataFrame with corrected weights
+    """
+    df_fixed = df.copy()
+
+    # Determine value column name
+    if "Total Value" in df_fixed.columns:
+        value_col = "Total Value"
+    elif "Value" in df_fixed.columns:
+        value_col = "Value"
+    else:
+        value_col = "Current Value"
+
+    # Current value is market value (unchanged)
+    total_market_value = df_fixed[value_col].sum()
+
+    # Equity value is market value / leverage
+    total_equity_value = total_market_value / leverage_ratio
+
+    # Weight as % of equity (not notional)
+    # This will make weights sum to leverage_ratio * 100% (e.g., 200% for 2x leverage)
+    if "Weight %" in df_fixed.columns:
+        df_fixed["Weight %"] = (df_fixed[value_col] / total_equity_value) * 100
+    else:
+        df_fixed["Weight"] = (df_fixed[value_col] / total_equity_value) * 100
+
+    return df_fixed
+
+
+def display_portfolio_summary_fixed(metrics: dict, enhanced_df: pd.DataFrame):
+    """
+    Display corrected portfolio summary with leverage accounting.
+
+    ATLAS v10.0 - Shows true equity performance, not notional values.
+    """
+
+    st.markdown("### 💼 Portfolio Summary (Leverage-Adjusted)")
+
+    col1, col2, col3, col4, col5 = st.columns(5)
+
+    with col1:
+        st.metric(
+            "TOTAL VALUE",
+            format_currency(metrics['total_value']),
+            help="Current market value of all positions"
+        )
+
+    with col2:
+        st.metric(
+            "EQUITY (YOUR CAPITAL)",
+            format_currency(metrics['total_cost_equity']),
+            help="Actual capital you deployed (accounts for leverage)"
+        )
+
+    with col3:
+        daily_pl = enhanced_df['Daily P&L $'].sum() if 'Daily P&L $' in enhanced_df.columns else 0
+        st.metric(
+            "TOTAL G/L",
+            format_currency(metrics['total_pl']),
+            delta=f"{metrics['total_return']:.2f}%"
+        )
+
+    with col4:
+        st.metric(
+            "DAILY P&L",
+            format_currency(daily_pl),
+            help="Today's profit/loss"
+        )
+
+    with col5:
+        st.metric(
+            "POSITIONS",
+            f"{len(enhanced_df)}",
+            help="Number of holdings"
+        )
+
+    # Second row - Leverage info
+    st.markdown("---")
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        leverage_color = "🟢" if metrics['actual_leverage'] < 1.5 else "🟡" if metrics['actual_leverage'] < 2.0 else "🔴"
+        st.metric(
+            f"{leverage_color} LEVERAGE",
+            f"{metrics['actual_leverage']:.2f}x",
+            help="Actual portfolio leverage (Position Value / Equity)"
+        )
+
+    with col2:
+        margin_pct = (metrics['margin_used'] / metrics['total_value'] * 100) if metrics['total_value'] > 0 else 0
+        st.metric(
+            "MARGIN USED",
+            format_currency(metrics['margin_used']),
+            delta=f"{margin_pct:.1f}%",
+            help="Amount borrowed on margin"
+        )
+
+    with col3:
+        buying_power = metrics['account_value'] - metrics['margin_used']
+        st.metric(
+            "BUYING POWER",
+            format_currency(buying_power),
+            help="Available capital for new positions"
+        )
+
+    with col4:
+        equity_pct = (metrics['account_value'] / metrics['total_value'] * 100) if metrics['total_value'] > 0 else 0
+        st.metric(
+            "EQUITY %",
+            f"{equity_pct:.1f}%",
+            help="Equity as % of total position value"
+        )
 
 @st.cache_data(ttl=300)
 def fetch_market_data(ticker):
@@ -7667,18 +7945,63 @@ def main():
     </div>
     """, unsafe_allow_html=True)
     
+    # ============================================================================
+    # SIDEBAR - ACCOUNT SETTINGS (v10.0 LEVERAGE ACCOUNTING)
+    # ============================================================================
+
+    st.sidebar.markdown("### ⚙️ Account Settings")
+
+    # Detect current leverage from account history
     leverage_info = get_leverage_info()
-    if leverage_info:
+    detected_leverage = leverage_info['leverage_ratio'] if leverage_info else 1.0
+
+    # Allow user to override detected leverage
+    use_auto_leverage = st.sidebar.checkbox(
+        "Auto-detect leverage",
+        value=True,
+        help="Automatically detect leverage from account history"
+    )
+
+    if use_auto_leverage:
+        leverage_ratio_setting = detected_leverage
+        st.sidebar.info(f"""
+        📊 **Detected Settings:**
+        - Leverage: {detected_leverage:.2f}x
+        - Margin: ${leverage_info['margin_used']:,.2f if leverage_info else 0}
+        - This affects returns, volatility, and beta calculations
+        """)
+    else:
+        leverage_ratio_setting = st.sidebar.number_input(
+            "Manual Leverage Ratio",
+            min_value=1.0,
+            max_value=4.0,
+            value=detected_leverage,
+            step=0.1,
+            help="Set to 2.0 for 2x margin account, 1.0 for cash account"
+        )
+
+        st.sidebar.info(f"""
+        📊 **Manual Settings:**
+        - Leverage: {leverage_ratio_setting:.2f}x
+        - Positions can be up to {leverage_ratio_setting:.2f}x your equity
+        - Returns and volatility are amplified by {leverage_ratio_setting:.2f}x
+        """)
+
+    # Store in session state for use across pages
+    st.session_state['leverage_ratio'] = leverage_ratio_setting
+
+    # Display leverage notification banner
+    if leverage_info and leverage_info['margin_used'] > 0:
         st.markdown(f"""
         <div style="background: linear-gradient(135deg, #ff6b00 0%, #ff0044 100%);
                     border: 2px solid #ff6b00; border-radius: 8px; padding: 10px; margin-bottom: 10px;
                     text-align: center;">
             <span style="color: white; font-weight: 600;">⚡ LEVERAGED ACCOUNT ⚡</span>
             <span style="color: white; margin-left: 20px;">Margin: ${leverage_info['margin_used']:,.2f}</span>
-            <span style="color: white; margin-left: 20px;">Leverage: {leverage_info['leverage_ratio']:.2f}x</span>
+            <span style="color: white; margin-left: 20px;">Leverage: {leverage_ratio_setting:.2f}x</span>
         </div>
         """, unsafe_allow_html=True)
-    
+
     # ============================================================================
     # HORIZONTAL NAVIGATION BAR - MAXIMUM SCREEN SPACE UTILIZATION
     # ============================================================================
@@ -7826,30 +8149,39 @@ def main():
     # ========================================================================
     elif page == "🏠 Portfolio Home":
         st.markdown("## 🏠 PORTFOLIO HOME")
-        
+
         portfolio_data = load_portfolio_data()
-        
+
         if not portfolio_data:
             st.warning("⚠️ No portfolio data. Please upload via Phoenix Parser.")
             return
-        
+
         df = pd.DataFrame(portfolio_data)
-        
+
         with st.spinner("Loading..."):
             enhanced_df = create_enhanced_holdings_table(df)
-        
-        total_value = enhanced_df['Total Value'].sum()
-        total_cost = enhanced_df['Total Cost'].sum()
-        total_gl = total_value - total_cost
-        total_gl_pct = (total_gl / total_cost) * 100 if total_cost > 0 else 0
-        daily_pl = enhanced_df['Daily P&L $'].sum()
-        
-        col1, col2, col3, col4, col5 = st.columns(5)
-        col1.metric("Total Value", format_currency(total_value))
-        col2.metric("Total Cost", format_currency(total_cost))
-        col3.metric("Total G/L", format_currency(total_gl), format_percentage(total_gl_pct))
-        col4.metric("Daily P&L", format_currency(daily_pl))
-        col5.metric("📊 Positions", len(enhanced_df))
+
+        # v10.0 LEVERAGE ACCOUNTING FIX - Get leverage settings
+        leverage_ratio = st.session_state.get('leverage_ratio', 1.0)
+
+        # Get cash balance from account history
+        leverage_info = get_leverage_info()
+        cash_balance = leverage_info.get('cash_balance', 0) if leverage_info else 0
+
+        # Get S&P 500 return for alpha calculation (simplified - could be YTD or period-specific)
+        # For now, use a placeholder - this could be fetched from market data
+        sp500_return = 15.0  # Default 15% annual return
+
+        # Calculate portfolio metrics with leverage accounting
+        portfolio_metrics = calculate_portfolio_metrics(
+            enhanced_df,
+            cash=cash_balance,
+            sp500_return=sp500_return,
+            leverage_ratio=leverage_ratio
+        )
+
+        # Display leverage-adjusted portfolio summary
+        display_portfolio_summary_fixed(portfolio_metrics, enhanced_df)
 
         # v9.7 NEW FEATURE: Data Quality Indicator
         validation_result = validate_portfolio_data(portfolio_data)
