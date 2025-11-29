@@ -61,6 +61,9 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from sklearn.linear_model import LinearRegression
 
+# Multi-source data broker
+from atlas_multi_source_data_broker import HybridDataBroker, DATA_SOURCES, DataSource, create_default_broker
+
 warnings.filterwarnings("ignore")
 
 # ============================================================================
@@ -2343,8 +2346,64 @@ def display_portfolio_summary_fixed(metrics: dict, enhanced_df: pd.DataFrame):
         )
 
 @st.cache_data(ttl=300)
-def fetch_market_data(ticker):
+def fetch_market_data(ticker, broker=None, use_multi_source=False):
+    """
+    Fetch market data for a ticker.
+
+    Args:
+        ticker: Stock ticker symbol
+        broker: HybridDataBroker instance (optional)
+        use_multi_source: If True and broker is provided, use multi-source aggregation
+
+    Returns:
+        Dictionary with market data including price, changes, volume, etc.
+    """
     try:
+        # If multi-source is enabled and broker is available, use it for price data
+        if use_multi_source and broker:
+            broker_data = broker.get_live_price(ticker)
+            if not broker_data.get('error'):
+                # Get additional data from yfinance (company info, sector, etc.)
+                stock = yf.Ticker(ticker)
+                info = stock.info
+                hist = stock.history(period="5d")
+
+                # Use broker price as current price
+                current_price = broker_data['price']
+                daily_change = broker_data.get('change', 0)
+                daily_change_pct = broker_data.get('change_pct', 0)
+
+                # Calculate 5-day return if we have historical data
+                five_day_return = 0
+                if not hist.empty and len(hist) >= 5:
+                    # Convert timezone-aware index to timezone-naive
+                    if hist.index.tz is not None:
+                        hist.index = hist.index.tz_localize(None)
+                    five_day_return = ((current_price / hist['Close'].iloc[0]) - 1) * 100
+
+                company_name = info.get('longName', info.get('shortName', ticker))
+
+                return {
+                    "price": current_price,
+                    "daily_change": daily_change,
+                    "daily_change_pct": daily_change_pct,
+                    "five_day_return": five_day_return,
+                    "volume": broker_data.get('volume', info.get('volume', 0)),
+                    "avg_volume": info.get('averageVolume', 0),
+                    "sector": info.get('sector', 'Unknown'),
+                    "beta": info.get('beta', None),
+                    "market_cap": info.get('marketCap', 0),
+                    "company_name": company_name,
+                    "52_week_high": info.get('fiftyTwoWeekHigh', None),
+                    "52_week_low": info.get('fiftyTwoWeekLow', None),
+                    # Add multi-source metadata
+                    "data_source": "multi-source",
+                    "confidence_score": broker_data.get('confidence_score', 85),
+                    "sources_used": broker_data.get('sources_used', ['Yahoo Finance']),
+                    "primary_source": broker_data.get('primary_source', 'Yahoo Finance')
+                }
+
+        # Fallback to standard yfinance
         stock = yf.Ticker(ticker)
         info = stock.info
         hist = stock.history(period="5d")
@@ -2359,11 +2418,11 @@ def fetch_market_data(ticker):
         prev_close = hist['Close'].iloc[-2] if len(hist) > 1 else current_price
         daily_change = current_price - prev_close
         daily_change_pct = (daily_change / prev_close * 100) if prev_close else 0
-        
+
         five_day_return = ((current_price / hist['Close'].iloc[0]) - 1) * 100 if len(hist) >= 5 else 0
-        
+
         company_name = info.get('longName', info.get('shortName', ticker))
-        
+
         return {
             "price": current_price,
             "daily_change": daily_change,
@@ -2376,7 +2435,11 @@ def fetch_market_data(ticker):
             "market_cap": info.get('marketCap', 0),
             "company_name": company_name,
             "52_week_high": info.get('fiftyTwoWeekHigh', None),
-            "52_week_low": info.get('fiftyTwoWeekLow', None)
+            "52_week_low": info.get('fiftyTwoWeekLow', None),
+            "data_source": "yahoo_finance",
+            "confidence_score": 85,  # Default confidence for single source
+            "sources_used": ["Yahoo Finance"],
+            "primary_source": "Yahoo Finance"
         }
     except:
         return None
@@ -4229,13 +4292,24 @@ def calculate_benchmark_returns(benchmark_ticker, start_date, end_date):
 # ENHANCED HOLDINGS TABLE
 # ============================================================================
 
-def create_enhanced_holdings_table(df):
+def create_enhanced_holdings_table(df, broker=None, use_multi_source=False):
+    """
+    Create enhanced holdings table with market data.
+
+    Args:
+        df: Portfolio dataframe
+        broker: HybridDataBroker instance (optional)
+        use_multi_source: If True, use multi-source price aggregation
+
+    Returns:
+        Enhanced dataframe with market data and calculations
+    """
     enhanced_df = df.copy()
-    
+
     for idx, row in enhanced_df.iterrows():
         ticker = row['Ticker']
-        market_data = fetch_market_data(ticker)
-        
+        market_data = fetch_market_data(ticker, broker=broker, use_multi_source=use_multi_source)
+
         if market_data:
             enhanced_df.at[idx, 'Asset Name'] = market_data['company_name']
             enhanced_df.at[idx, 'Current Price'] = market_data['price']
@@ -4246,10 +4320,18 @@ def create_enhanced_holdings_table(df):
             enhanced_df.at[idx, 'Volume'] = market_data.get('volume', 0)
             base_sector = market_data.get('sector', 'Unknown')
             enhanced_df.at[idx, 'Sector'] = classify_ticker_sector(ticker, base_sector)
+
+            # Add multi-source metadata if available
+            if use_multi_source:
+                enhanced_df.at[idx, 'Data Confidence'] = market_data.get('confidence_score', 85)
+                enhanced_df.at[idx, 'Data Sources'] = len(market_data.get('sources_used', []))
         else:
             enhanced_df.at[idx, 'Asset Name'] = ticker
             enhanced_df.at[idx, 'Sector'] = 'Other'
-        
+            if use_multi_source:
+                enhanced_df.at[idx, 'Data Confidence'] = 0
+                enhanced_df.at[idx, 'Data Sources'] = 0
+
         analyst_data = fetch_analyst_data(ticker)
         if analyst_data['success']:
             enhanced_df.at[idx, 'Analyst Rating'] = analyst_data['rating']
@@ -4266,16 +4348,16 @@ def create_enhanced_holdings_table(df):
 
     enhanced_df['Sector'] = enhanced_df['Sector'].fillna('Other')
     enhanced_df['Shares'] = enhanced_df['Shares'].round(0).astype(int)
-    
+
     enhanced_df['Total Cost'] = enhanced_df['Shares'] * enhanced_df['Avg Cost']
     enhanced_df['Total Value'] = enhanced_df['Shares'] * enhanced_df['Current Price']
     enhanced_df['Total Gain/Loss $'] = enhanced_df['Total Value'] - enhanced_df['Total Cost']
     enhanced_df['Total Gain/Loss %'] = ((enhanced_df['Current Price'] - enhanced_df['Avg Cost']) / enhanced_df['Avg Cost']) * 100
     enhanced_df['Daily P&L $'] = enhanced_df['Shares'] * enhanced_df['Daily Change']
-    
+
     total_value = enhanced_df['Total Value'].sum()
     enhanced_df['Weight %'] = (enhanced_df['Total Value'] / total_value * 100) if total_value > 0 else 0
-    
+
     return enhanced_df
 
 def calculate_quality_score(ticker, info):
@@ -7944,7 +8026,17 @@ def main():
         </div>
     </div>
     """, unsafe_allow_html=True)
-    
+
+    # ============================================================================
+    # MULTI-SOURCE DATA BROKER INITIALIZATION
+    # ============================================================================
+
+    # Initialize the hybrid data broker in session state
+    if 'data_broker' not in st.session_state:
+        st.session_state['data_broker'] = create_default_broker()
+
+    broker = st.session_state['data_broker']
+
     # ============================================================================
     # SIDEBAR - ACCOUNT SETTINGS (v10.0 LEVERAGE ACCOUNTING)
     # ============================================================================
@@ -8001,6 +8093,41 @@ def main():
             <span style="color: white; margin-left: 20px;">Leverage: {leverage_ratio_setting:.2f}x</span>
         </div>
         """, unsafe_allow_html=True)
+
+    # ============================================================================
+    # DATA SOURCE STATISTICS (SIDEBAR)
+    # ============================================================================
+
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 📡 Data Sources")
+
+    with st.sidebar.expander("View Source Statistics", expanded=False):
+        stats_df = broker.get_source_statistics()
+
+        # Show active sources count
+        active_sources = (stats_df['Status'] == '🟢 Active').sum()
+        st.metric("Active Sources", f"{active_sources}/{len(stats_df)}")
+
+        # Show success rate
+        total_hits = stats_df['Hits'].sum()
+        if total_hits > 0:
+            st.metric("Total Fetches", f"{total_hits:,}")
+
+        # Show detailed stats
+        st.markdown("**Source Details:**")
+        for idx, row in stats_df.iterrows():
+            with st.container():
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    st.caption(f"{row['Status']} {row['Source']}")
+                with col2:
+                    if row['Hits'] > 0:
+                        st.caption(f"{row['Success Rate']}")
+
+        # Clear cache button
+        if st.button("🔄 Clear Price Cache", help="Clear cached price data"):
+            broker.clear_cache()
+            st.success("Cache cleared!")
 
     # ============================================================================
     # HORIZONTAL NAVIGATION BAR - MAXIMUM SCREEN SPACE UTILIZATION
@@ -8158,8 +8285,19 @@ def main():
 
         df = pd.DataFrame(portfolio_data)
 
+        # Multi-source data toggle (optional feature)
+        use_multi_source = st.sidebar.checkbox(
+            "🔄 Multi-Source Data",
+            value=False,
+            help="Aggregate prices from multiple data sources for validation"
+        )
+
         with st.spinner("Loading..."):
-            enhanced_df = create_enhanced_holdings_table(df)
+            enhanced_df = create_enhanced_holdings_table(
+                df,
+                broker=broker,
+                use_multi_source=use_multi_source
+            )
 
         # v10.0 LEVERAGE ACCOUNTING FIX - Get leverage settings
         leverage_ratio = st.session_state.get('leverage_ratio', 1.0)
