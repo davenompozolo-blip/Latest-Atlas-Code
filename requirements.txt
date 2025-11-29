@@ -10,3 +10,6 @@ openpyxl>=3.1.0
 XlsxWriter>=3.1.0
 pandas>=2.0.0
 numpy>=1.24.0
+requests>=2.28.0
+beautifulsoup4>=4.11.0
+lxml>=4.9.0

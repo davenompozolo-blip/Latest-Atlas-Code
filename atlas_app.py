@@ -1,9 +1,18 @@
 #!/usr/bin/env python3
 """
-ATLAS TERMINAL v10.0 INSTITUTIONAL EDITION
+ATLAS TERMINAL v10.1 INSTITUTIONAL EDITION
 Complete Portfolio Analytics + Valuation House - Bloomberg Terminal Quality
 
-🚀 NEW IN v10.0 (Latest Release - November 16, 2025):
+🚀 NEW IN v10.1 (Latest Release - November 29, 2025):
+✅ INVESTOPEDIA LIVE DATA ENGINE: Automated portfolio sync from Investopedia
+   • Automated login and session management
+   • Real-time portfolio fetching (holdings, cash, account value)
+   • Auto-sync every 5 minutes (configurable)
+   • Trade detection and change alerts
+   • Zero manual copy-paste - fully automated
+   • "From Excel Toy to Production Engine - The Quant Developer Move!"
+
+🎯 v10.0 FEATURES (November 16, 2025):
 ✅ INSTITUTIONAL PERFORMANCE SUITE: 4-tab professional analysis system
    • Portfolio Performance: Enhanced metrics with rolling Sharpe, returns distribution
    • Individual Securities: Deep-dive analysis for each holding with technical indicators
@@ -31,9 +40,9 @@ PREVIOUS ENHANCEMENTS (v9.3-v9.7):
 ✅ Portfolio Deep Dive: Enhanced visuals + Fixed Nov 2024 columns
 ✅ Valuation House: Analyst-grade fixes (scaling D&A/CapEx, Smart Assumptions, Editable Projections)
 
-RELEASE DATE: November 16, 2025
+RELEASE DATE: November 29, 2025
 PRODUCTION STATUS: VERIFIED AND TESTED
-VERSION: 10.0
+VERSION: 10.1
 """
 
 import pickle
@@ -61,6 +70,19 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from sklearn.linear_model import LinearRegression
 
+# Investopedia Live Data Engine
+try:
+    from investopedia_live_engine import (
+        InvestopediaSession,
+        InvestopediaCredentials,
+        InvestopediaAutoSync,
+        convert_investopedia_to_atlas_format
+    )
+    INVESTOPEDIA_AVAILABLE = True
+except ImportError:
+    INVESTOPEDIA_AVAILABLE = False
+    print("⚠️ Investopedia live engine not available. Run: pip install requests beautifulsoup4 lxml")
+
 warnings.filterwarnings("ignore")
 
 # ============================================================================
@@ -78,7 +100,7 @@ def is_valid_dataframe(df):
 # PAGE CONFIG
 # ============================================================================
 st.set_page_config(
-    page_title="ATLAS Terminal v10.0 INSTITUTIONAL",
+    page_title="ATLAS Terminal v10.1 INSTITUTIONAL",
     page_icon="🚀",
     layout="wide"
 )
@@ -7775,17 +7797,171 @@ def main():
     # ========================================================================
     if page == "🔥 Phoenix Parser":
         st.markdown("## 🔥 PHOENIX MODE")
-        
+
+        # ========================================================================
+        # INVESTOPEDIA LIVE FEED - NEW FEATURE
+        # ========================================================================
+        if INVESTOPEDIA_AVAILABLE:
+            st.markdown("---")
+            st.markdown("### 🔴 INVESTOPEDIA LIVE FEED")
+            st.markdown("**Automate portfolio sync from Investopedia - No more manual uploads!**")
+
+            # Check if already connected
+            if 'investopedia_session' not in st.session_state:
+                with st.expander("🔐 Connect to Investopedia", expanded=False):
+                    st.markdown("""
+                    **Transform ATLAS into a real-time portfolio engine!**
+
+                    Login to automatically fetch:
+                    - Live portfolio holdings
+                    - Current positions & values
+                    - Real-time price updates
+                    - Auto-sync every 5 minutes
+                    """)
+
+                    col1, col2 = st.columns(2)
+
+                    with col1:
+                        email = st.text_input("Investopedia Email", type="default", key="inv_email")
+                        password = st.text_input("Investopedia Password", type="password", key="inv_password")
+
+                    with col2:
+                        game_id = st.text_input("Game ID (optional)",
+                                               help="Found in your Investopedia portfolio URL",
+                                               key="inv_game_id")
+                        sync_interval = st.number_input("Auto-sync interval (minutes)",
+                                                       min_value=1,
+                                                       max_value=60,
+                                                       value=5,
+                                                       key="inv_sync_interval")
+
+                    if st.button("🔐 Connect to Investopedia", type="primary"):
+                        if email and password:
+                            with st.spinner("Connecting to Investopedia..."):
+                                creds = InvestopediaCredentials(email, password, game_id if game_id else None)
+                                session = InvestopediaSession(creds)
+
+                                if session.login():
+                                    st.session_state.investopedia_session = session
+                                    st.session_state.auto_sync = InvestopediaAutoSync(session, sync_interval_minutes=sync_interval)
+                                    st.success("✅ Connected to Investopedia!")
+                                    show_toast("Connected to Investopedia live feed", toast_type="success", duration=3000)
+                                    st.rerun()
+                                else:
+                                    st.error("❌ Login failed - check your credentials")
+                        else:
+                            st.warning("⚠️ Please enter email and password")
+
+            else:
+                # Connected - show controls
+                session = st.session_state.investopedia_session
+                auto_sync = st.session_state.auto_sync
+
+                col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
+
+                with col1:
+                    if auto_sync.last_sync:
+                        st.success(f"🟢 LIVE • Last sync: {auto_sync.last_sync.strftime('%H:%M:%S')}")
+                    else:
+                        st.info("⚪ Not synced yet")
+
+                with col2:
+                    if st.button("🔄 Sync Now"):
+                        with st.spinner("Syncing..."):
+                            data = auto_sync.sync(force=True)
+                            if data:
+                                st.success("✅ Synced!")
+                                st.rerun()
+                            else:
+                                st.error("❌ Sync failed")
+
+                with col3:
+                    auto_sync_on = st.checkbox("Auto-sync", value=True)
+
+                with col4:
+                    if st.button("🔓 Disconnect"):
+                        del st.session_state.investopedia_session
+                        del st.session_state.auto_sync
+                        st.rerun()
+
+                # Auto-sync in background if enabled
+                if auto_sync_on:
+                    latest_data = auto_sync.sync()
+
+                    if latest_data:
+                        st.success("🔄 Auto-sync completed!")
+
+                # Get latest portfolio data
+                portfolio_data = auto_sync.get_latest_portfolio()
+
+                if portfolio_data and portfolio_data.get('success'):
+                    # Convert to ATLAS format
+                    atlas_df = convert_investopedia_to_atlas_format(portfolio_data)
+
+                    if not atlas_df.empty:
+                        # Save to ATLAS
+                        save_portfolio_data(atlas_df.to_dict('records'))
+
+                        # Display summary
+                        col1, col2, col3 = st.columns(3)
+
+                        with col1:
+                            account_value = portfolio_data['account_summary'].get('account_value', 0)
+                            st.metric("Account Value", f"${account_value:,.2f}")
+
+                        with col2:
+                            cash = portfolio_data['account_summary'].get('cash', 0)
+                            st.metric("Cash", f"${cash:,.2f}")
+
+                        with col3:
+                            st.metric("Positions", len(portfolio_data['holdings']))
+
+                        # Show holdings
+                        st.markdown("#### 📊 Live Holdings")
+                        st.dataframe(atlas_df, use_container_width=True, height=300)
+
+                        # Detect changes
+                        changes = auto_sync.get_portfolio_changes()
+                        if changes and changes['holdings_changes']:
+                            st.markdown("#### 🔔 Recent Changes")
+                            for change in changes['holdings_changes']:
+                                action = change['action']
+                                ticker = change['ticker']
+
+                                if action == 'BUY':
+                                    shares = change['shares_change']
+                                    st.success(f"📈 BUY: {shares} shares of {ticker}")
+                                elif action == 'SELL':
+                                    shares = change['shares_change']
+                                    st.error(f"📉 SELL: {shares} shares of {ticker}")
+                                elif action == 'NEW':
+                                    shares = change['shares']
+                                    st.info(f"✨ NEW: Opened position in {ticker} ({shares} shares)")
+                                elif action == 'CLOSED':
+                                    shares = change['shares']
+                                    st.warning(f"🚪 CLOSED: Exited {ticker} position ({shares} shares)")
+                    else:
+                        st.warning("⚠️ No holdings found in Investopedia portfolio")
+                else:
+                    st.info("Click 'Sync Now' to fetch portfolio data")
+
+            st.markdown("---")
+
+        # ========================================================================
+        # ORIGINAL FILE UPLOAD SECTION
+        # ========================================================================
+        st.markdown("### 📁 Manual File Upload")
+
         col1, col2 = st.columns(2)
-        
+
         with col1:
-            st.markdown("### 📊 Trade History")
+            st.markdown("#### 📊 Trade History")
             trade_file = st.file_uploader("Upload Trade History", type=['xls', 'xlsx'], key="trade")
-            
+
             if trade_file:
                 with st.spinner("Parsing..."):
                     trade_df = parse_trade_history_file(trade_file)
-                    
+
                     if trade_df is not None:
                         save_trade_history(trade_df)
                         st.success(f"✅ Parsed {len(trade_df)} trades!")
@@ -7798,21 +7974,21 @@ def main():
                             st.success(f"🎉 Portfolio rebuilt! {len(portfolio_df)} positions")
                             show_toast(f"🔥 Phoenix reconstruction complete: {len(portfolio_df)} positions rebuilt", toast_type="success", duration=4000)
                             st.dataframe(portfolio_df, use_container_width=True, column_config=None)
-        
+
         with col2:
-            st.markdown("### 💰 Account History")
+            st.markdown("#### 💰 Account History")
             account_file = st.file_uploader("Upload Account History", type=['xls', 'xlsx'], key="account")
-            
+
             if account_file:
                 with st.spinner("Parsing..."):
                     account_df = parse_account_history_file(account_file)
-                    
+
                     if account_df is not None:
                         save_account_history(account_df)
                         st.success(f"✅ Parsed {len(account_df)} records!")
                         show_toast(f"Account history imported: {len(account_df)} records processed", toast_type="success", duration=3000)
                         st.dataframe(account_df.head(10), use_container_width=True, column_config=None)
-                        
+
                         leverage_info_parsed = get_leverage_info()
                         if leverage_info_parsed:
                             st.info(f"""
