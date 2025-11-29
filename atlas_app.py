@@ -7857,7 +7857,7 @@ def main():
                 session = st.session_state.investopedia_session
                 auto_sync = st.session_state.auto_sync
 
-                col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
+                col1, col2, col3, col4, col5 = st.columns([2, 1, 1, 1, 1])
 
                 with col1:
                     if auto_sync.last_sync:
@@ -7879,10 +7879,78 @@ def main():
                     auto_sync_on = st.checkbox("Auto-sync", value=True)
 
                 with col4:
+                    if st.button("🐛 Debug"):
+                        with st.spinner("Running diagnostics..."):
+                            diag_results = session.run_diagnostics()
+
+                            if diag_results.get('success'):
+                                st.session_state.diag_results = diag_results
+                                st.success("✅ Diagnostics complete!")
+                            else:
+                                st.error(f"❌ Diagnostics failed: {diag_results.get('error')}")
+
+                with col5:
                     if st.button("🔓 Disconnect"):
                         del st.session_state.investopedia_session
                         del st.session_state.auto_sync
+                        if 'diag_results' in st.session_state:
+                            del st.session_state.diag_results
                         st.rerun()
+
+                # Show diagnostic results if available
+                if 'diag_results' in st.session_state and st.session_state.diag_results.get('success'):
+                    with st.expander("🔍 Diagnostic Results", expanded=True):
+                        results = st.session_state.diag_results
+                        analysis = results.get('analysis', {})
+                        findings = results.get('findings', {})
+
+                        col1, col2, col3 = st.columns(3)
+
+                        with col1:
+                            st.metric("Tables Found", analysis.get('tables_found', 0))
+
+                        with col2:
+                            st.metric("JSON Scripts", analysis.get('scripts_with_json', 0))
+
+                        with col3:
+                            api_count = len(analysis.get('api_endpoints', []))
+                            st.metric("API Endpoints", api_count)
+
+                        # Show findings
+                        st.markdown("**Data Detection:**")
+
+                        status_cols = st.columns(3)
+
+                        with status_cols[0]:
+                            if findings.get('account_value_found'):
+                                st.success("✅ Account Value")
+                            else:
+                                st.error("❌ Account Value")
+
+                        with status_cols[1]:
+                            if findings.get('cash_found'):
+                                st.success("✅ Cash")
+                            else:
+                                st.error("❌ Cash")
+
+                        with status_cols[2]:
+                            if findings.get('holdings_found'):
+                                st.success("✅ Holdings")
+                            else:
+                                st.error("❌ Holdings")
+
+                        # Show table info
+                        if analysis.get('table_info'):
+                            st.markdown("**Tables Structure:**")
+                            for table in analysis.get('table_info', []):
+                                st.code(f"Table {table['index']}: {table['rows']} rows\nHeaders: {', '.join(table['headers'])}")
+
+                        if results.get('html_saved'):
+                            st.info("📄 HTML saved to `investopedia_portfolio.html` for manual inspection")
+
+                        if st.button("Clear Diagnostics"):
+                            del st.session_state.diag_results
+                            st.rerun()
 
                 # Auto-sync in background if enabled
                 if auto_sync_on:

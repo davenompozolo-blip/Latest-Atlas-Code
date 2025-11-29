@@ -28,6 +28,18 @@ import pickle
 import os
 from dataclasses import dataclass
 
+# Import improved scraper and diagnostics
+try:
+    from atlas_investopedia_diagnostics import (
+        ImprovedInvestopediaScraper,
+        InvestopediaDiagnostics,
+        diagnose_and_fix_scraping
+    )
+    DIAGNOSTICS_AVAILABLE = True
+except ImportError:
+    DIAGNOSTICS_AVAILABLE = False
+    print("⚠️ Diagnostics module not found - using legacy scraper")
+
 # ===================================================================
 # INVESTOPEDIA SESSION MANAGER
 # ===================================================================
@@ -159,6 +171,7 @@ class InvestopediaSession:
     def get_portfolio_data(self) -> Optional[Dict]:
         """
         Fetch current portfolio holdings from Investopedia.
+        Uses improved multi-strategy scraper for better reliability.
 
         Returns:
             Dict with holdings, cash, account value, etc.
@@ -180,9 +193,37 @@ class InvestopediaSession:
 
             soup = BeautifulSoup(response.content, 'html.parser')
 
-            # Parse portfolio data
+            # Try improved multi-strategy scraper first (if available)
+            if DIAGNOSTICS_AVAILABLE:
+                portfolio_data = ImprovedInvestopediaScraper.parse_portfolio_multi_strategy(response.text)
+
+                if portfolio_data and portfolio_data.get('holdings'):
+                    # Add account summary
+                    account_summary = self._parse_account_summary(soup)
+
+                    return {
+                        'holdings': portfolio_data['holdings'],
+                        'account_summary': account_summary,
+                        'timestamp': datetime.now(),
+                        'success': True
+                    }
+                else:
+                    print("⚠️ Improved scraper found no data, falling back to legacy parser...")
+
+            # Fallback to legacy scraper
             holdings = self._parse_holdings(soup)
             account_summary = self._parse_account_summary(soup)
+
+            if not holdings:
+                print("⚠️ No holdings found - portfolio may be empty or scraper needs updating")
+                # Save HTML for debugging
+                if DIAGNOSTICS_AVAILABLE:
+                    try:
+                        diag = InvestopediaDiagnostics(self.session)
+                        diag.save_portfolio_html()
+                        print("📄 HTML saved to investopedia_portfolio.html for debugging")
+                    except:
+                        pass
 
             return {
                 'holdings': holdings,
@@ -386,6 +427,36 @@ class InvestopediaSession:
             except:
                 pass
         return None
+
+    def run_diagnostics(self) -> Dict:
+        """
+        Run diagnostic tools to analyze portfolio HTML structure.
+        Useful for debugging scraping issues.
+
+        Returns:
+            Dict with diagnostic results
+        """
+        if not DIAGNOSTICS_AVAILABLE:
+            return {
+                'success': False,
+                'error': 'Diagnostics module not available'
+            }
+
+        if not self.is_authenticated:
+            if not self.login():
+                return {
+                    'success': False,
+                    'error': 'Not authenticated'
+                }
+
+        try:
+            from atlas_investopedia_diagnostics import get_diagnostic_info
+            return get_diagnostic_info(self.session)
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e)
+            }
 
     def get_trade_history(self, days: int = 30) -> List[Dict]:
         """
