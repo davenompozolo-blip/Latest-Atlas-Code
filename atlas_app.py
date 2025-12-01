@@ -83,6 +83,22 @@ except ImportError:
     INVESTOPEDIA_AVAILABLE = False
     print("⚠️ Investopedia live engine not available. Run: pip install requests beautifulsoup4 lxml")
 
+# Quant Portfolio Optimizer
+try:
+    from quant_optimizer.atlas_quant_optimizer_ui import setup_quant_optimizer_ui
+    QUANT_OPTIMIZER_AVAILABLE = True
+except ImportError:
+    QUANT_OPTIMIZER_AVAILABLE = False
+    print("⚠️ Quant optimizer not available")
+
+# Multi-Source Data Broker
+try:
+    from multi_source_data.atlas_multi_source_data_broker import HybridDataBroker, DataSource
+    MULTI_SOURCE_AVAILABLE = True
+except ImportError:
+    MULTI_SOURCE_AVAILABLE = False
+    print("⚠️ Multi-source data broker not available")
+
 warnings.filterwarnings("ignore")
 
 # ============================================================================
@@ -7711,6 +7727,9 @@ def main():
         options=[
             "🔥 Phoenix Parser",
             "🏠 Portfolio Home",
+            "🔐 Investopedia Live",
+            "🧮 Quant Optimizer",
+            "🌐 Multi-Source Data",
             "🌍 Market Watch",
             "📈 Risk Analysis",
             "💎 Performance Suite",
@@ -7719,7 +7738,7 @@ def main():
             "💰 Valuation House",
             "ℹ️ About"
         ],
-        icons=["fire", "house-fill", "globe", "graph-up", "gem", "microscope", "bar-chart-fill", "cash-coin", "info-circle-fill"],
+        icons=["fire", "house-fill", "key-fill", "calculator", "globe2", "globe", "graph-up", "gem", "microscope", "bar-chart-fill", "cash-coin", "info-circle-fill"],
         menu_icon="cast",
         default_index=0,
         orientation="horizontal",  # KEY: Horizontal layout
@@ -8315,7 +8334,254 @@ def main():
                 st.plotly_chart(perf_heatmap, use_container_width=True)
         else:
             st.info("📊 Monthly performance heatmap will be available after 2+ months of portfolio history")
-    
+
+    # ========================================================================
+    # INVESTOPEDIA LIVE FEED - AUTOMATED PORTFOLIO SYNC
+    # ========================================================================
+    elif page == "🔐 Investopedia Live":
+        st.markdown("## 🔐 INVESTOPEDIA LIVE DATA ENGINE")
+        st.markdown("*Transform ATLAS into a real-time portfolio engine with automated Investopedia sync*")
+
+        if not INVESTOPEDIA_AVAILABLE:
+            st.error("❌ Investopedia Live Engine not available. Run: `pip install requests beautifulsoup4 lxml`")
+        else:
+            st.markdown("---")
+
+            # Connection Status
+            if 'investopedia_session' in st.session_state and st.session_state.investopedia_session:
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.success("✅ Connected to Investopedia")
+                with col2:
+                    if st.button("🔄 Sync Portfolio Now", type="primary"):
+                        with st.spinner("Fetching latest portfolio data..."):
+                            try:
+                                session = st.session_state.investopedia_session
+                                portfolio_data = session.get_portfolio()
+
+                                if portfolio_data and 'holdings' in portfolio_data:
+                                    # Convert to ATLAS format
+                                    atlas_df = convert_investopedia_to_atlas_format(portfolio_data)
+                                    st.session_state.portfolio_df = atlas_df
+                                    st.session_state.last_sync = datetime.now()
+                                    st.success(f"✅ Synced {len(atlas_df)} positions!")
+                                    st.rerun()
+                                else:
+                                    st.error("Failed to fetch portfolio data")
+                            except Exception as e:
+                                st.error(f"Sync failed: {str(e)}")
+                with col3:
+                    if st.button("🔴 Disconnect", type="secondary"):
+                        del st.session_state.investopedia_session
+                        st.rerun()
+
+                # Display synced portfolio
+                if 'portfolio_df' in st.session_state and not st.session_state.portfolio_df.empty:
+                    st.markdown("---")
+                    st.markdown("### 📊 Current Portfolio (Live from Investopedia)")
+
+                    df = st.session_state.portfolio_df
+
+                    # Portfolio Summary
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        total_value = (df['Quantity'] * df['Current Price']).sum()
+                        st.metric("Total Value", f"${total_value:,.2f}")
+                    with col2:
+                        num_positions = len(df)
+                        st.metric("Positions", num_positions)
+                    with col3:
+                        total_gain = (df['Gain/Loss $']).sum() if 'Gain/Loss $' in df.columns else 0
+                        st.metric("Total Gain/Loss", f"${total_gain:,.2f}")
+                    with col4:
+                        if 'last_sync' in st.session_state:
+                            st.metric("Last Sync", st.session_state.last_sync.strftime("%H:%M:%S"))
+
+                    # Holdings Table
+                    st.dataframe(df, use_container_width=True, height=400)
+
+                    # Auto-sync controls
+                    st.markdown("---")
+                    st.markdown("### ⚡ Auto-Sync Settings")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        auto_sync = st.checkbox("Enable Auto-Sync", value=False, key="auto_sync_enabled")
+                    with col2:
+                        sync_interval = st.number_input("Sync Interval (minutes)", min_value=1, max_value=60, value=5, key="sync_interval_setting")
+
+                    if auto_sync:
+                        st.info(f"✅ Auto-sync enabled: Portfolio will refresh every {sync_interval} minutes")
+
+            else:
+                # Login Form
+                st.markdown("### 🔐 Connect to Investopedia")
+                st.markdown("""
+                **Why connect?**
+                - ✅ Automatically fetch your portfolio holdings
+                - ✅ Real-time position updates
+                - ✅ No more manual CSV uploads
+                - ✅ Seamless integration with all ATLAS features
+                """)
+
+                with st.form("investopedia_login"):
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        email = st.text_input("Investopedia Email")
+                        password = st.text_input("Investopedia Password", type="password")
+                    with col2:
+                        game_id = st.text_input("Game ID (optional)", help="Found in your Investopedia portfolio URL")
+                        st.markdown("<br>", unsafe_allow_html=True)
+
+                    submitted = st.form_submit_button("🚀 Connect & Sync", type="primary", use_container_width=True)
+
+                    if submitted:
+                        if email and password:
+                            with st.spinner("Connecting to Investopedia..."):
+                                try:
+                                    creds = InvestopediaCredentials(email, password, game_id if game_id else None)
+                                    session = InvestopediaSession(creds)
+
+                                    if session.login():
+                                        st.session_state.investopedia_session = session
+
+                                        # Immediate sync
+                                        portfolio_data = session.get_portfolio()
+                                        if portfolio_data and 'holdings' in portfolio_data:
+                                            atlas_df = convert_investopedia_to_atlas_format(portfolio_data)
+                                            st.session_state.portfolio_df = atlas_df
+                                            st.session_state.last_sync = datetime.now()
+                                            st.success("✅ Connected and synced successfully!")
+                                            st.rerun()
+                                        else:
+                                            st.error("Connected but failed to fetch portfolio")
+                                    else:
+                                        st.error("❌ Login failed. Check your credentials.")
+                                except Exception as e:
+                                    st.error(f"Connection error: {str(e)}")
+                        else:
+                            st.warning("Please enter email and password")
+
+    # ========================================================================
+    # QUANT OPTIMIZER - INSTITUTIONAL-GRADE PORTFOLIO OPTIMIZATION
+    # ========================================================================
+    elif page == "🧮 Quant Optimizer":
+        st.markdown("## 🧮 QUANT PORTFOLIO OPTIMIZER")
+        st.markdown("*Institutional-grade portfolio optimization with multiple strategies*")
+
+        if not QUANT_OPTIMIZER_AVAILABLE:
+            st.error("❌ Quant Optimizer not available. Module not found.")
+        else:
+            # Check if portfolio data exists
+            if 'portfolio_df' not in st.session_state or st.session_state.portfolio_df.empty:
+                st.warning("⚠️ No portfolio data loaded. Please upload a portfolio or connect to Investopedia Live first.")
+                st.markdown("""
+                **To use the Quant Optimizer:**
+                1. Go to 🔥 Phoenix Parser and upload a portfolio CSV, or
+                2. Go to 🔐 Investopedia Live and connect your account
+                3. Return here to optimize your portfolio
+                """)
+            else:
+                # Call the optimizer UI
+                setup_quant_optimizer_ui()
+
+    # ========================================================================
+    # MULTI-SOURCE DATA BROKER - UNIFIED DATA AGGREGATION
+    # ========================================================================
+    elif page == "🌐 Multi-Source Data":
+        st.markdown("## 🌐 MULTI-SOURCE DATA BROKER")
+        st.markdown("*Aggregate and validate data from multiple sources for maximum reliability*")
+
+        if not MULTI_SOURCE_AVAILABLE:
+            st.error("❌ Multi-Source Data Broker not available. Module not found.")
+        else:
+            st.markdown("---")
+
+            # Ticker input
+            ticker_input = st.text_input("Enter ticker symbol", value="AAPL", key="multi_source_ticker").upper()
+
+            col1, col2 = st.columns(2)
+            with col1:
+                fetch_price = st.checkbox("Fetch Price Data", value=True)
+                fetch_fundamentals = st.checkbox("Fetch Fundamentals", value=True)
+            with col2:
+                fetch_news = st.checkbox("Fetch News", value=False)
+                fetch_options = st.checkbox("Fetch Options Data", value=False)
+
+            if st.button("🚀 Fetch Multi-Source Data", type="primary"):
+                if ticker_input:
+                    with st.spinner(f"Fetching data for {ticker_input} from multiple sources..."):
+                        try:
+                            broker = HybridDataBroker()
+
+                            # Fetch price data
+                            if fetch_price:
+                                st.markdown("---")
+                                st.markdown(f"### 📈 Price Data for {ticker_input}")
+
+                                price_data = broker.get_price_data(
+                                    ticker_input,
+                                    sources=[DataSource.YAHOO_FINANCE, DataSource.ALPHA_VANTAGE]
+                                )
+
+                                if price_data and 'data' in price_data:
+                                    df = price_data['data']
+
+                                    # Display chart
+                                    fig = go.Figure()
+                                    fig.add_trace(go.Candlestick(
+                                        x=df.index,
+                                        open=df['Open'],
+                                        high=df['High'],
+                                        low=df['Low'],
+                                        close=df['Close'],
+                                        name=ticker_input
+                                    ))
+                                    fig.update_layout(
+                                        title=f"{ticker_input} Price Chart",
+                                        xaxis_title="Date",
+                                        yaxis_title="Price ($)",
+                                        template="plotly_dark",
+                                        height=500
+                                    )
+                                    st.plotly_chart(fig, use_container_width=True)
+
+                                    # Show data sources
+                                    st.info(f"📊 Data sources: {', '.join([s.value for s in price_data.get('sources', [])])}")
+                                else:
+                                    st.warning("No price data available")
+
+                            # Fetch fundamentals
+                            if fetch_fundamentals:
+                                st.markdown("---")
+                                st.markdown(f"### 💼 Fundamentals for {ticker_input}")
+
+                                fundamentals = broker.get_fundamentals(
+                                    ticker_input,
+                                    sources=[DataSource.YAHOO_FINANCE, DataSource.ALPHA_VANTAGE]
+                                )
+
+                                if fundamentals and 'data' in fundamentals:
+                                    fund_data = fundamentals['data']
+
+                                    col1, col2, col3, col4 = st.columns(4)
+                                    with col1:
+                                        st.metric("Market Cap", f"${fund_data.get('market_cap', 0)/1e9:.2f}B")
+                                    with col2:
+                                        st.metric("P/E Ratio", f"{fund_data.get('pe_ratio', 0):.2f}")
+                                    with col3:
+                                        st.metric("EPS", f"${fund_data.get('eps', 0):.2f}")
+                                    with col4:
+                                        st.metric("Dividend Yield", f"{fund_data.get('dividend_yield', 0)*100:.2f}%")
+
+                                    st.info(f"📊 Data sources: {', '.join([s.value for s in fundamentals.get('sources', [])])}")
+                                else:
+                                    st.warning("No fundamental data available")
+
+                        except Exception as e:
+                            st.error(f"Error fetching data: {str(e)}")
+                else:
+                    st.warning("Please enter a ticker symbol")
+
     # ========================================================================
     # MARKET WATCH - COMPLETE REVAMP
     # ========================================================================
