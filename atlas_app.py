@@ -7651,6 +7651,24 @@ def create_sensitivity_table(base_price, base_discount, base_terminal):
 # ============================================================================
 
 def main():
+    # Initialize ALL session state variables first
+    if 'investopedia_session' not in st.session_state:
+        st.session_state.investopedia_session = None
+    if 'auth_state' not in st.session_state:
+        st.session_state.auth_state = 'disconnected'
+    if 'auto_sync' not in st.session_state:
+        st.session_state.auto_sync = None
+    if 'investopedia_portfolio' not in st.session_state:
+        st.session_state.investopedia_portfolio = None
+    if 'optimization_result' not in st.session_state:
+        st.session_state.optimization_result = None
+    if 'optimizer' not in st.session_state:
+        st.session_state.optimizer = None
+    if 'portfolio_returns' not in st.session_state:
+        st.session_state.portfolio_returns = None
+    if 'diag_results' not in st.session_state:
+        st.session_state.diag_results = None
+
     # Professional Header with Logo
     st.markdown("""
     <div style="text-align: center; margin-bottom: 2rem;">
@@ -8357,7 +8375,7 @@ def main():
                         with st.spinner("Fetching latest portfolio data..."):
                             try:
                                 session = st.session_state.investopedia_session
-                                portfolio_data = session.get_portfolio()
+                                portfolio_data = session.get_portfolio_data()
 
                                 if portfolio_data and 'holdings' in portfolio_data:
                                     # Convert to ATLAS format
@@ -8445,7 +8463,7 @@ def main():
                                         st.session_state.investopedia_session = session
 
                                         # Immediate sync
-                                        portfolio_data = session.get_portfolio()
+                                        portfolio_data = session.get_portfolio_data()
                                         if portfolio_data and 'holdings' in portfolio_data:
                                             atlas_df = convert_investopedia_to_atlas_format(portfolio_data)
                                             st.session_state.portfolio_df = atlas_df
