@@ -1,12 +1,225 @@
-streamlit>=1.28.0
-streamlit-option-menu>=0.3.6
-pyngrok>=7.0.0
-yfinance>=0.2.32
-plotly>=5.17.0
-scikit-learn>=1.3.0
-scipy>=1.11.0
-networkx>=3.1
-openpyxl>=3.1.0
-XlsxWriter>=3.1.0
-pandas>=2.0.0
+# ===================================================================
+# ATLAS TERMINAL v10.0 - COMPLETE REQUIREMENTS
+# ===================================================================
+#
+# Install with: pip install -r requirements.txt
+#
+
+# ===================================================================
+# CORE DATA SCIENCE & MATHEMATICS
+# ===================================================================
+
+# Numerical computing
 numpy>=1.24.0
+pandas>=2.0.0
+
+# Scientific computing & optimization
+scipy>=1.10.0
+
+# Statistics
+statsmodels>=0.14.0
+
+# ===================================================================
+# VISUALIZATION
+# ===================================================================
+
+# Core plotting
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# Interactive plots (optional but recommended)
+plotly>=5.17.0
+
+# Image processing
+pillow>=10.0.0
+
+# ===================================================================
+# WEB & APIs
+# ===================================================================
+
+# HTTP requests
+requests>=2.31.0
+
+# HTML parsing
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+
+# Financial data
+yfinance>=0.2.28
+
+# ===================================================================
+# STREAMLIT & UI
+# ===================================================================
+
+# Main UI framework
+streamlit>=1.28.0
+
+# Session state (included with streamlit)
+# streamlit-extras>=0.3.0  # Optional
+
+# ===================================================================
+# DATA STORAGE & SERIALIZATION
+# ===================================================================
+
+# Excel support
+openpyxl>=3.1.0
+xlsxwriter>=3.1.0
+
+# Word documents (DOCX)
+python-docx>=0.8.11
+
+# PDF processing
+pypdf2>=3.0.0
+reportlab>=4.0.0
+
+# Pickle (built-in, no install needed)
+# JSON (built-in, no install needed)
+
+# ===================================================================
+# DATE & TIME
+# ===================================================================
+
+# Timezone support
+pytz>=2023.3
+
+# Date parsing
+python-dateutil>=2.8.2
+
+# ===================================================================
+# SECURITY & AUTHENTICATION
+# ===================================================================
+
+# Encryption (for credentials)
+cryptography>=41.0.0
+
+# Password hashing
+bcrypt>=4.0.0
+
+# ===================================================================
+# TESTING & DEVELOPMENT
+# ===================================================================
+
+# Testing framework
+pytest>=7.4.0
+pytest-cov>=4.1.0
+
+# Code quality
+black>=23.0.0
+flake8>=6.0.0
+mypy>=1.5.0
+
+# Jupyter notebooks
+jupyter>=1.0.0
+ipykernel>=6.25.0
+
+# ===================================================================
+# OPTIONAL: ADVANCED DATA SOURCES
+# ===================================================================
+
+# Bloomberg Terminal API (requires subscription + separate install)
+# blpapi  # Install separately if you have Bloomberg Terminal
+
+# Polygon.io (requires API key)
+# polygon-api-client>=1.12.0
+
+# Alpha Vantage (requires API key)
+# alpha-vantage>=2.3.1
+
+# IEX Cloud (requires API key)
+# iexfinance>=0.5.0
+
+# Finnhub (requires API key)
+# finnhub-python>=2.4.0
+
+# ===================================================================
+# OPTIONAL: MACHINE LEARNING (for advanced features)
+# ===================================================================
+
+# scikit-learn>=1.3.0
+# tensorflow>=2.13.0
+# torch>=2.0.0
+
+# ===================================================================
+# DEVELOPMENT TOOLS
+# ===================================================================
+
+# Virtual environment
+virtualenv>=20.24.0
+
+# Package management
+pip>=23.2.0
+setuptools>=68.0.0
+wheel>=0.41.0
+
+# ===================================================================
+# PLATFORM-SPECIFIC
+# ===================================================================
+
+# Windows-specific (uncomment if on Windows)
+# pywin32>=306  # For Windows clipboard, etc.
+
+# macOS-specific (uncomment if on macOS)
+# pyobjc>=9.2  # For macOS-specific features
+
+# ===================================================================
+# VERSION NOTES
+# ===================================================================
+#
+# Python Version: 3.9+
+# Tested on: Python 3.10, 3.11, 3.12
+#
+# Not compatible with: Python 3.7 or earlier
+#
+# ===================================================================
+# INSTALLATION INSTRUCTIONS
+# ===================================================================
+#
+# 1. Create virtual environment:
+#    python -m venv atlas_env
+#
+# 2. Activate virtual environment:
+#    - Windows: atlas_env\Scripts\activate
+#    - macOS/Linux: source atlas_env/bin/activate
+#
+# 3. Upgrade pip:
+#    pip install --upgrade pip
+#
+# 4. Install requirements:
+#    pip install -r requirements.txt
+#
+# 5. Verify installation:
+#    python -c "import numpy, pandas, scipy, streamlit; print('✅ All core packages installed')"
+#
+# ===================================================================
+# MINIMAL INSTALL (Core Only)
+# ===================================================================
+#
+# If you want minimal install, use only these:
+# numpy pandas scipy matplotlib seaborn requests beautifulsoup4 lxml yfinance streamlit
+#
+# Install with:
+# pip install numpy pandas scipy matplotlib seaborn requests beautifulsoup4 lxml yfinance streamlit
+#
+# ===================================================================
+# GOOGLE COLAB
+# ===================================================================
+#
+# If running in Google Colab, most packages are pre-installed.
+# Only install missing ones:
+# !pip install yfinance streamlit python-docx
+#
+# ===================================================================
+# TROUBLESHOOTING
+# ===================================================================
+#
+# If you get SSL certificate errors:
+# pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org -r requirements.txt
+#
+# If you get version conflicts:
+# pip install --upgrade --force-reinstall -r requirements.txt
+#
+# If a specific package fails:
+# Comment it out (add # at start of line) and install manually:
+# pip install package-name
+#
+# ===================================================================
