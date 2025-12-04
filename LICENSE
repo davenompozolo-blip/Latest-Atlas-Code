@@ -1,0 +1,182 @@
+MIT License
+
+Copyright (c) 2024 Hlobo Nompozolo
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+## Third-Party Licenses
+
+This software uses the following third-party libraries, each with their own licenses:
+
+### Core Dependencies
+- **NumPy** - BSD License
+- **Pandas** - BSD License
+- **SciPy** - BSD License
+- **Matplotlib** - PSF License
+- **Streamlit** - Apache License 2.0
+
+### Data Sources
+- **yfinance** - Apache License 2.0
+- **BeautifulSoup4** - MIT License
+- **requests** - Apache License 2.0
+
+### Other Dependencies
+See `requirements.txt` for a complete list of dependencies.
+
+Each dependency retains its original license. Please refer to the individual packages for their respective license terms.
+
+---
+
+## Financial Disclaimer
+
+**IMPORTANT: This software is for educational and informational purposes only.**
+
+- This software does NOT provide financial, investment, or trading advice
+- Past performance does not guarantee future results
+- All investment strategies involve risk of loss
+- Users should consult with qualified financial advisors before making investment decisions
+- The developers assume NO responsibility for financial losses incurred through use of this software
+
+**USE AT YOUR OWN RISK.**
+
+---
+
+## Data Sources Disclaimer
+
+This software aggregates data from multiple third-party sources including:
+- Bloomberg Terminal (requires subscription)
+- Alpha Vantage
+- Yahoo Finance
+- Financial Modeling Prep
+- Polygon.io
+- IEX Cloud
+- Investing.com
+- MarketWatch
+
+**Data Accuracy:**
+- Data accuracy depends on third-party providers
+- No guarantee of data correctness or completeness
+- Users should independently verify all data
+- Real-time data may be delayed
+- Historical data may contain errors
+
+---
+
+## Investopedia Integration Disclaimer
+
+The Investopedia integration feature:
+- Accesses Investopedia's simulator platform
+- Is NOT affiliated with or endorsed by Investopedia
+- May break if Investopedia changes their website structure
+- Uses web scraping techniques that may violate Investopedia's Terms of Service
+- Should be used in compliance with Investopedia's policies
+
+**Users are responsible for:**
+- Complying with Investopedia's Terms of Service
+- Securing their own credentials
+- Any consequences of automated access to Investopedia
+
+---
+
+## API Integrations
+
+This software integrates with third-party APIs:
+- Users must obtain their own API keys
+- Users must comply with each provider's Terms of Service
+- Rate limits apply per provider's policies
+- API access may require paid subscriptions
+- API availability is not guaranteed
+
+**The developers are not responsible for:**
+- API outages or changes
+- Violation of third-party Terms of Service
+- Costs incurred from API usage
+- Data provided by third-party APIs
+
+---
+
+## Compliance Notice
+
+**Users are responsible for:**
+- Complying with all applicable financial regulations
+- Proper reporting of investment activities
+- Tax obligations related to trading activities
+- Compliance with securities laws in their jurisdiction
+
+This software does not:
+- Provide tax advice
+- Ensure regulatory compliance
+- Constitute a broker-dealer service
+- Facilitate actual securities transactions
+
+---
+
+## No Warranty
+
+THIS SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.
+
+THE DEVELOPERS DO NOT WARRANT THAT:
+- The software will be error-free or uninterrupted
+- Defects will be corrected
+- The software is free of viruses or harmful components
+- Results will be accurate or reliable
+
+---
+
+## Limitation of Liability
+
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+THIS INCLUDES BUT IS NOT LIMITED TO:
+- Financial losses from trading or investment decisions
+- Data loss or corruption
+- System damage or downtime
+- Third-party service failures
+- Unauthorized access due to security vulnerabilities
+
+**MAXIMUM LIABILITY:** To the extent permitted by law, the developers' maximum liability shall not exceed the amount paid by the user for the software (which is $0 for free/open-source distribution).
+
+---
+
+## Attribution
+
+If you use this software in your project, please provide attribution:
+
+```
+ATLAS Terminal v10.0
+Copyright (c) 2024 Hlobo Nompozolo
+https://github.com/davenompozolo-blip/Latest-Atlas-Code
+Licensed under MIT License
+```
+
+---
+
+## Contact
+
+**Developer:** Hlobo Nompozolo
+**Email:** davenompozolo@gmail.com
+**GitHub:** [@davenompozolo-blip](https://github.com/davenompozolo-blip)
+
+For questions about licensing, please open an issue on GitHub.
+
+---
+
+**Last Updated:** December 2024
