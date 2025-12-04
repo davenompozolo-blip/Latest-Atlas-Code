@@ -1,8 +1,20 @@
-# Python
+# ===================================================================
+# ATLAS TERMINAL v10.0 - GITIGNORE
+# ===================================================================
+
+# ===================================================================
+# PYTHON
+# ===================================================================
+
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
+
+# C extensions
 *.so
+
+# Distribution / packaging
 .Python
 build/
 develop-eggs/
@@ -16,32 +28,470 @@ parts/
 sdist/
 var/
 wheels/
+share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
 
-# Virtual environments
-venv/
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+.pybuilder/
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# poetry
+poetry.lock
+
+# pdm
+.pdm.toml
+
+# PEP 582
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.venv
 env/
+venv/
 ENV/
+env.bak/
+venv.bak/
+atlas_env/
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
+# Spyder project settings
+.spyderproject
+.spyproject
 
-# OS
-.DS_Store
-Thumbs.db
+# Rope project settings
+.ropeproject
 
-# Streamlit
-.streamlit/
+# mkdocs documentation
+/site
 
-# Data files
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# ===================================================================
+# STREAMLIT
+# ===================================================================
+
+.streamlit/secrets.toml
+.streamlit/config.toml
+*.streamlit
+
+# ===================================================================
+# ATLAS TERMINAL SPECIFIC
+# ===================================================================
+
+# Session files
+investopedia_session.pkl
 *.pkl
 *.pickle
-*.csv
+
+# Cached data
+data_cache/
+*.cache
+.cache/
+
+# Downloaded HTML files (debugging)
+investopedia_portfolio.html
+pretty_investopedia_portfolio.html
+portfolio_debug.html
+*.html.bak
+
+# Generated reports
+reports/
+*.pdf
+*.docx
 *.xlsx
+monthly_heatmap*.png
+
+# API Keys (if stored in files)
+api_keys.txt
+api_keys.json
+credentials.json
+credentials.enc
+config_private.py
+secrets.py
+
+# Database files
 *.db
+*.sqlite
+
+# Log files
+*.log
+logs/
+atlas_terminal.log
+
+# Temporary files
+temp/
+tmp/
+*.tmp
+*.bak
+*.swp
+*~
+
+# Output files
+output/
+outputs/
+generated/
+
+# Test data
+test_data/
+sample_data/
+mock_data/
+
+# ===================================================================
+# DATA FILES (Large datasets)
+# ===================================================================
+
+# CSV files (unless specifically needed in repo)
+*.csv
+!example_data.csv  # Keep example data
+
+# Excel files
+# *.xlsx  # Uncomment if you don't want to track Excel files
+
+# JSON data
+data/*.json
+*.data.json
+
+# ===================================================================
+# OPERATING SYSTEM
+# ===================================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ===================================================================
+# IDEs & EDITORS
+# ===================================================================
+
+# VSCode
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+.history/
+
+# PyCharm
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+[._]*.s[a-v][a-z]
+[._]*.sw[a-p]
+[._]s[a-rt-v][a-z]
+[._]ss[a-gi-z]
+[._]sw[a-p]
+Session.vim
+Sessionx.vim
+.netrwhist
+tags
+[._]*.un~
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+.org-id-locations
+*_archive
+*_flymake.*
+/eshell/history
+/eshell/lastdir
+/elpa/
+*.rel
+/auto/
+.cask/
+dist/
+flycheck_*.el
+/server/
+.projectile
+.dir-locals.el
+/network-security.data
+
+# Eclipse
+.metadata
+bin/
+tmp/
+*.tmp
+*.bak
+*.swp
+*~.nib
+local.properties
+.settings/
+.loadpath
+.recommenders
+.externalToolBuilders/
+*.launch
+*.pydevproject
+.cproject
+.classpath
+.factorypath
+.buildpath
+.target
+.tern-project
+.texlipse
+.springBeans
+.recommenders/
+.apt_generated/
+.apt_generated_test/
+.cache-main
+.scala_dependencies
+.worksheet
+
+# ===================================================================
+# CLOUD & DEPLOYMENT
+# ===================================================================
+
+# Heroku
+.heroku/
+Procfile
+runtime.txt
+
+# AWS
+.aws/
+*.pem
+
+# Google Cloud
+.gcloud/
+gcloud_credentials.json
+
+# Docker
+.dockerignore
+Dockerfile
+docker-compose.yml
+.docker/
+
+# ===================================================================
+# SECURITY
+# ===================================================================
+
+# Never commit these!
+*.key
+*.pem
+*.p12
+*.pfx
+*.cer
+*.crt
+*.der
+id_rsa
+id_rsa.pub
+*.gpg
+*.pgp
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+.env.development
+.env.test
+.env.production
+
+# Secrets
+secrets/
+.secrets/
+credentials/
+
+# ===================================================================
+# JUPYTER NOTEBOOKS (Optional)
+# ===================================================================
+
+# Uncomment if you don't want to track notebook outputs
+# *.ipynb
+
+# But always ignore checkpoints
+.ipynb_checkpoints/
+
+# ===================================================================
+# PACKAGE MANAGERS
+# ===================================================================
+
+# npm
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# Yarn
+.yarn-integrity
+.yarn/
+
+# ===================================================================
+# MISC
+# ===================================================================
+
+# Archives
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# Large binary files
+*.bin
+*.dat
+
+# Backups
+backup/
+backups/
+*.backup
+
+# Compiled files
+*.pyc
+*.pyo
+*.pyd
+
+# ===================================================================
+# ATLAS TERMINAL - KEEP THESE
+# ===================================================================
+
+# DO commit these important files:
+# !README.md
+# !requirements.txt
+# !LICENSE
+# !.gitignore
+# !atlas_app.py
+# !quant_optimizer/
+# !investopedia_integration/
+# !multi_source_data/
+# !patches/
+# !docs/
+
+# ===================================================================
+# CUSTOM EXCEPTIONS
+# ===================================================================
+
+# Add any custom files you want to track despite patterns above:
+# !important_file.csv
+# !config_template.py
+
+# ===================================================================
+# END
+# ===================================================================
