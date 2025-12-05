@@ -67,6 +67,36 @@ DEFAULT_TICKERS = {
 # RETURN GENERATION
 # ===================================================================
 
+def make_positive_definite(matrix, min_eigenvalue=1e-6):
+    """
+    Fix non-positive-definite matrices using eigenvalue correction.
+
+    This ensures the correlation matrix can be used with Cholesky decomposition
+    by correcting any negative or near-zero eigenvalues.
+
+    Args:
+        matrix: Square matrix (typically correlation matrix)
+        min_eigenvalue: Minimum eigenvalue threshold
+
+    Returns:
+        Positive definite matrix
+    """
+    # Ensure symmetry
+    matrix = (matrix + matrix.T) / 2
+
+    # Eigenvalue decomposition
+    eigenvalues, eigenvectors = np.linalg.eigh(matrix)
+
+    # Correct eigenvalues
+    eigenvalues = np.maximum(eigenvalues, min_eigenvalue)
+
+    # Reconstruct matrix
+    fixed = eigenvectors @ np.diag(eigenvalues) @ eigenvectors.T
+
+    # Ensure symmetry again
+    return (fixed + fixed.T) / 2
+
+
 def generate_correlated_returns(
     tickers: list,
     n_days: int,
@@ -113,7 +143,10 @@ def generate_correlated_returns(
     # Generate uncorrelated returns
     uncorrelated_returns = np.random.randn(n_days, n_assets)
 
-    # Apply correlation
+    # Fix correlation matrix to ensure positive definiteness
+    correlation_matrix = make_positive_definite(correlation_matrix)
+
+    # Apply correlation using Cholesky decomposition
     cholesky = np.linalg.cholesky(correlation_matrix)
     correlated_returns = uncorrelated_returns @ cholesky.T
 
