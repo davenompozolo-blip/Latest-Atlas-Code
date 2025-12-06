@@ -61,6 +61,24 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from sklearn.linear_model import LinearRegression
 
+# ATLAS v10.0 Advanced Modules
+try:
+    from valuation.atlas_dcf_engine import DCFValuation
+    from risk_analytics.atlas_monte_carlo import MonteCarloSimulation
+    from risk_analytics.atlas_risk_metrics import RiskAnalytics
+    from portfolio_tools.atlas_phoenix_mode import PhoenixMode
+    from analytics.atlas_performance_attribution import PerformanceAttribution
+    from ui.atlas_enhanced_components import (
+        create_allocation_chart,
+        create_performance_chart,
+        create_drawdown_chart,
+        create_risk_return_scatter
+    )
+    V10_MODULES_AVAILABLE = True
+except ImportError as e:
+    V10_MODULES_AVAILABLE = False
+    print(f"⚠️ v10.0 modules not available: {e}")
+
 warnings.filterwarnings("ignore")
 
 # ============================================================================
@@ -7689,6 +7707,7 @@ def main():
         options=[
             "🔥 Phoenix Parser",
             "🏠 Portfolio Home",
+            "🚀 v10.0 Analytics",
             "🌍 Market Watch",
             "📈 Risk Analysis",
             "💎 Performance Suite",
@@ -7697,7 +7716,7 @@ def main():
             "💰 Valuation House",
             "ℹ️ About"
         ],
-        icons=["fire", "house-fill", "globe", "graph-up", "gem", "microscope", "bar-chart-fill", "cash-coin", "info-circle-fill"],
+        icons=["fire", "house-fill", "rocket-takeoff-fill", "globe", "graph-up", "gem", "microscope", "bar-chart-fill", "cash-coin", "info-circle-fill"],
         menu_icon="cast",
         default_index=0,
         orientation="horizontal",  # KEY: Horizontal layout
@@ -7820,7 +7839,289 @@ def main():
                             - Margin: ${leverage_info_parsed['margin_used']:,.2f}
                             - Leverage: {leverage_info_parsed['leverage_ratio']:.2f}x
                             """)
-    
+
+    # ========================================================================
+    # v10.0 ANALYTICS - NEW ADVANCED FEATURES
+    # ========================================================================
+    elif page == "🚀 v10.0 Analytics":
+        st.markdown("## 🚀 ATLAS v10.0 ADVANCED ANALYTICS")
+
+        if not V10_MODULES_AVAILABLE:
+            st.error("❌ v10.0 modules not available. Please check installation.")
+            return
+
+        st.success("✅ All v10.0 Advanced Modules Loaded")
+
+        # Create tabs for different v10.0 features
+        tabs = st.tabs([
+            "🎲 Monte Carlo",
+            "📊 Risk Metrics",
+            "💰 DCF Valuation",
+            "🔥 Phoenix Mode",
+            "📈 Attribution",
+            "🎨 Enhanced Charts"
+        ])
+
+        # Tab 1: Monte Carlo Simulation
+        with tabs[0]:
+            st.markdown("### 🎲 Monte Carlo Portfolio Simulation")
+
+            portfolio_data = load_portfolio_data()
+            if not portfolio_data:
+                st.warning("⚠️ Upload portfolio data via Phoenix Parser first")
+            else:
+                df = pd.DataFrame(portfolio_data)
+
+                col1, col2 = st.columns(2)
+                with col1:
+                    n_simulations = st.slider("Number of Simulations", 1000, 20000, 5000, 1000)
+                    n_days = st.slider("Time Horizon (days)", 30, 365, 252)
+                with col2:
+                    confidence_level = st.slider("Confidence Level", 0.90, 0.99, 0.95, 0.01)
+                    initial_value = st.number_input("Portfolio Value ($)", value=100000, step=10000)
+
+                if st.button("🎲 Run Monte Carlo Simulation", type="primary"):
+                    with st.spinner("Running simulations..."):
+                        try:
+                            # Get historical returns (placeholder - use actual data)
+                            tickers = df['Ticker'].tolist() if 'Ticker' in df.columns else []
+                            if len(tickers) > 0:
+                                returns = yf.download(tickers, period="1y", progress=False)['Adj Close'].pct_change().dropna()
+                                weights = np.array([1/len(tickers)] * len(tickers))
+
+                                mc = MonteCarloSimulation(returns, weights, initial_value=initial_value)
+                                var_result = mc.calculate_var_cvar(n_simulations=n_simulations, n_days=n_days, confidence_level=confidence_level)
+
+                                # Display results
+                                col1, col2, col3 = st.columns(3)
+                                col1.metric("VaR", f"${var_result['var_dollar']:,.0f}", f"{var_result['var_pct']:.2f}%")
+                                col2.metric("CVaR", f"${var_result['cvar_dollar']:,.0f}", f"{var_result['cvar_pct']:.2f}%")
+                                col3.metric("Simulations", f"{n_simulations:,}")
+
+                                st.success(f"✅ Simulation complete! {n_simulations:,} paths analyzed")
+                            else:
+                                st.warning("No tickers found in portfolio")
+                        except Exception as e:
+                            st.error(f"Error: {str(e)}")
+
+        # Tab 2: Advanced Risk Metrics
+        with tabs[1]:
+            st.markdown("### 📊 Advanced Risk Metrics")
+
+            portfolio_data = load_portfolio_data()
+            if not portfolio_data:
+                st.warning("⚠️ Upload portfolio data via Phoenix Parser first")
+            else:
+                df = pd.DataFrame(portfolio_data)
+
+                if st.button("📊 Calculate Risk Metrics", type="primary"):
+                    with st.spinner("Calculating metrics..."):
+                        try:
+                            tickers = df['Ticker'].tolist() if 'Ticker' in df.columns else []
+                            if len(tickers) > 0:
+                                returns_data = yf.download(tickers, period="1y", progress=False)['Adj Close'].pct_change().dropna()
+                                portfolio_returns = returns_data.mean(axis=1)
+
+                                # Benchmark (SPY)
+                                spy = yf.download('SPY', period="1y", progress=False)['Adj Close'].pct_change().dropna()
+
+                                risk = RiskAnalytics(portfolio_returns, spy)
+                                metrics = risk.comprehensive_metrics(risk_free_rate=0.03)
+
+                                # Display metrics
+                                col1, col2, col3, col4 = st.columns(4)
+                                col1.metric("Sharpe Ratio", f"{metrics['sharpe_ratio']:.3f}")
+                                col2.metric("Sortino Ratio", f"{metrics['sortino_ratio']:.3f}")
+                                col3.metric("Beta", f"{metrics['beta']:.3f}")
+                                col4.metric("Alpha", f"{metrics['alpha']:.2f}%")
+
+                                col1, col2, col3 = st.columns(3)
+                                col1.metric("Max Drawdown", f"{metrics['max_drawdown']:.2f}%")
+                                col2.metric("Annual Return", f"{metrics['annual_return']:.2f}%")
+                                col3.metric("Annual Volatility", f"{metrics['annual_volatility']:.2f}%")
+
+                                st.success("✅ Risk metrics calculated successfully")
+                            else:
+                                st.warning("No tickers found in portfolio")
+                        except Exception as e:
+                            st.error(f"Error: {str(e)}")
+
+        # Tab 3: DCF Valuation
+        with tabs[2]:
+            st.markdown("### 💰 DCF Intrinsic Value Calculator")
+
+            ticker = st.text_input("Enter Ticker Symbol", value="AAPL")
+
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                projection_years = st.slider("Projection Years", 3, 10, 5)
+            with col2:
+                growth_rate = st.slider("Growth Rate (%)", 0, 20, 8) / 100
+            with col3:
+                terminal_growth = st.slider("Terminal Growth (%)", 0, 5, 3) / 100
+
+            if st.button("💰 Calculate DCF", type="primary"):
+                with st.spinner(f"Analyzing {ticker}..."):
+                    try:
+                        dcf = DCFValuation(ticker)
+                        result = dcf.calculate_intrinsic_value(
+                            projection_years=projection_years,
+                            growth_rate=growth_rate,
+                            terminal_growth_rate=terminal_growth
+                        )
+
+                        col1, col2, col3 = st.columns(3)
+                        col1.metric("Intrinsic Value", f"${result['intrinsic_value']:.2f}")
+                        col2.metric("Current Price", f"${result['current_price']:.2f}")
+                        col3.metric("Upside/Downside", f"{result['upside_pct']:.1f}%")
+
+                        if result['upside_pct'] > 20:
+                            st.success("🟢 Signal: UNDERVALUED")
+                        elif result['upside_pct'] < -20:
+                            st.error("🔴 Signal: OVERVALUED")
+                        else:
+                            st.info("🟡 Signal: FAIRLY VALUED")
+
+                        st.metric("WACC", f"{result['wacc']*100:.2f}%")
+                    except Exception as e:
+                        st.error(f"Error: {str(e)}")
+
+        # Tab 4: Phoenix Mode
+        with tabs[3]:
+            st.markdown("### 🔥 Phoenix Mode - Portfolio Reconstruction")
+
+            st.markdown("Upload a CSV file with trade history:")
+            st.code("Required columns: Date, Ticker, Action, Quantity, Price", language="text")
+
+            uploaded_file = st.file_uploader("Upload Trade History CSV", type=['csv'])
+
+            if uploaded_file:
+                with st.spinner("Reconstructing portfolio..."):
+                    try:
+                        phoenix = PhoenixMode()
+                        trades = phoenix.load_trade_history(uploaded_file)
+
+                        st.success(f"✅ Loaded {len(trades)} trades")
+                        st.dataframe(trades, use_container_width=True)
+
+                        # Get current prices (you'd fetch these from API)
+                        tickers = trades['Ticker'].unique()
+                        current_prices = {}
+                        for ticker in tickers:
+                            try:
+                                price = yf.Ticker(ticker).history(period='1d')['Close'].iloc[-1]
+                                current_prices[ticker] = price
+                            except:
+                                current_prices[ticker] = 0
+
+                        portfolio = phoenix.reconstruct_portfolio(current_prices)
+
+                        col1, col2, col3, col4 = st.columns(4)
+                        col1.metric("Positions", portfolio['total_positions'])
+                        col2.metric("Total Cost", f"${portfolio['total_cost']:,.2f}")
+                        col3.metric("Current Value", f"${portfolio['current_value']:,.2f}")
+                        col4.metric("Total P&L", f"${portfolio['total_pnl']:,.2f}", f"{portfolio['total_return_pct']:.2f}%")
+
+                        summary = phoenix.get_portfolio_summary(current_prices)
+                        st.dataframe(summary, use_container_width=True)
+
+                    except Exception as e:
+                        st.error(f"Error: {str(e)}")
+
+        # Tab 5: Performance Attribution
+        with tabs[4]:
+            st.markdown("### 📈 Performance Attribution Analysis")
+
+            portfolio_data = load_portfolio_data()
+            if not portfolio_data:
+                st.warning("⚠️ Upload portfolio data via Phoenix Parser first")
+            else:
+                df = pd.DataFrame(portfolio_data)
+
+                if st.button("📈 Calculate Attribution", type="primary"):
+                    with st.spinner("Analyzing..."):
+                        try:
+                            # Prepare data
+                            weights = {}
+                            total_value = df['Total Value'].sum() if 'Total Value' in df.columns else 1
+
+                            for _, row in df.iterrows():
+                                ticker = row['Ticker']
+                                value = row['Total Value'] if 'Total Value' in df.columns else 1
+                                weights[ticker] = value / total_value
+
+                            # Get returns and sectors
+                            asset_data_list = []
+                            for ticker in weights.keys():
+                                try:
+                                    stock = yf.Ticker(ticker)
+                                    hist = stock.history(period='1mo')
+                                    ret = (hist['Close'].iloc[-1] / hist['Close'].iloc[0] - 1)
+                                    sector = stock.info.get('sector', 'Unknown')
+                                    asset_data_list.append({'ticker': ticker, 'sector': sector, 'return': ret})
+                                except:
+                                    pass
+
+                            if len(asset_data_list) > 0:
+                                asset_data = pd.DataFrame(asset_data_list)
+                                attribution = PerformanceAttribution(weights, asset_data)
+
+                                st.markdown("#### Stock-Level Contribution")
+                                stock_contrib = attribution.stock_contribution()
+                                st.dataframe(stock_contrib, use_container_width=True)
+
+                                st.markdown("#### Sector-Level Attribution")
+                                sector_contrib = attribution.sector_attribution()
+                                st.dataframe(sector_contrib, use_container_width=True)
+
+                                st.success("✅ Attribution analysis complete")
+                            else:
+                                st.warning("Could not fetch data for analysis")
+                        except Exception as e:
+                            st.error(f"Error: {str(e)}")
+
+        # Tab 6: Enhanced Charts
+        with tabs[5]:
+            st.markdown("### 🎨 Enhanced Plotly Visualizations")
+
+            portfolio_data = load_portfolio_data()
+            if not portfolio_data:
+                st.warning("⚠️ Upload portfolio data via Phoenix Parser first")
+            else:
+                df = pd.DataFrame(portfolio_data)
+
+                # Portfolio allocation chart
+                st.markdown("#### Portfolio Allocation")
+                weights = {}
+                total_value = df['Total Value'].sum() if 'Total Value' in df.columns else 1
+                for _, row in df.iterrows():
+                    ticker = row['Ticker']
+                    value = row['Total Value'] if 'Total Value' in df.columns else 1
+                    weights[ticker] = value / total_value
+
+                allocation_fig = create_allocation_chart(weights)
+                st.plotly_chart(allocation_fig, use_container_width=True)
+
+                # Get historical returns for other charts
+                tickers = df['Ticker'].tolist() if 'Ticker' in df.columns else []
+                if len(tickers) > 0:
+                    try:
+                        returns_data = yf.download(tickers, period="1y", progress=False)['Adj Close'].pct_change().dropna()
+                        portfolio_returns = returns_data.mean(axis=1)
+                        spy = yf.download('SPY', period="1y", progress=False)['Adj Close'].pct_change().dropna()
+
+                        st.markdown("#### Cumulative Returns")
+                        performance_fig = create_performance_chart(portfolio_returns, spy)
+                        st.plotly_chart(performance_fig, use_container_width=True)
+
+                        st.markdown("#### Portfolio Drawdown")
+                        drawdown_fig = create_drawdown_chart(portfolio_returns)
+                        st.plotly_chart(drawdown_fig, use_container_width=True)
+
+                        st.success("✅ All charts generated successfully")
+                    except Exception as e:
+                        st.error(f"Error generating charts: {str(e)}")
+
     # ========================================================================
     # PORTFOLIO HOME - ENHANCED WITH CONTRIBUTORS/DETRACTORS
     # ========================================================================
