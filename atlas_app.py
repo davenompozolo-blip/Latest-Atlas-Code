@@ -4328,12 +4328,14 @@ def calculate_historical_stress_test(enhanced_df):
 
     return results
 
-def calculate_var_cvar_portfolio_optimization(enhanced_df, confidence_level=0.95, lookback_days=252, max_position=0.25, min_position=0.02):
+def calculate_var_cvar_portfolio_optimization(enhanced_df, confidence_level=0.95, lookback_days=252, max_position=0.25, min_position=0.02, target_leverage=1.0):
     """
     Calculate optimal portfolio weights to minimize CVaR (Conditional Value at Risk)
 
     This function implements portfolio optimization from Quantitative Risk Management
     to find weights that minimize tail risk while maintaining diversification.
+
+    FIXED v11.0: Added leverage constraint support. Leverage = sum of absolute weights.
 
     Args:
         enhanced_df: Enhanced holdings dataframe with current positions
@@ -4341,6 +4343,7 @@ def calculate_var_cvar_portfolio_optimization(enhanced_df, confidence_level=0.95
         lookback_days: Days of historical data to use (default 252 = 1 year)
         max_position: Maximum position size per security (default 25%)
         min_position: Minimum meaningful position size (default 2%)
+        target_leverage: Target portfolio leverage (default 1.0 = no leverage)
 
     Returns:
         tuple: (rebalancing_df, optimization_metrics)
@@ -4408,16 +4411,21 @@ def calculate_var_cvar_portfolio_optimization(enhanced_df, confidence_level=0.95
     def objective(weights):
         return calculate_portfolio_cvar(weights, returns_matrix, confidence_level)
 
+    # FIXED v11.0: Leverage constraint using absolute sum of weights
+    def leverage_constraint(w, target_lev):
+        """Leverage = sum of absolute weights"""
+        return np.abs(w).sum() - target_lev
+
     # Production-grade constraints
     constraints = [
-        {'type': 'eq', 'fun': lambda x: np.sum(x) - 1.0}  # Weights sum to 1
+        {'type': 'eq', 'fun': leverage_constraint, 'args': (target_leverage,)}
     ]
 
     # Use user-specified bounds
     bounds = tuple((0.0, max_position) for _ in range(n_assets))
 
-    # Initial guess (equal weight)
-    initial_weights = np.ones(n_assets) / n_assets
+    # Initial guess (scaled by leverage)
+    initial_weights = np.ones(n_assets) * (target_leverage / n_assets)
 
     # Run optimization
     result = minimize(
@@ -5282,7 +5290,8 @@ def optimize_two_stage_diversification_first(
     strategy_type,
     risk_profile_config,
     risk_free_rate=0.02,
-    verbose=True
+    verbose=True,
+    target_leverage=1.0
 ):
     """
     TWO-STAGE DIVERSIFICATION-FIRST OPTIMIZATION
@@ -5293,12 +5302,15 @@ def optimize_two_stage_diversification_first(
     This finds the MOST DIVERSIFIED portfolio on the efficient frontier,
     not the most concentrated one.
 
+    FIXED v11.0: Added leverage support
+
     Args:
         returns_df: Historical returns
         strategy_type: 'max_sharpe', 'min_volatility', etc.
         risk_profile_config: Configuration from RiskProfile
         risk_free_rate: Risk-free rate for Sharpe calculation
         verbose: Print optimization details
+        target_leverage: Target portfolio leverage (default 1.0 = no leverage)
 
     Returns:
         Optimized weights (most diversified solution on efficient frontier)
@@ -5319,7 +5331,7 @@ def optimize_two_stage_diversification_first(
 
     # Use relaxed constraints to find true optimum
     peak_weights = optimize_for_peak_performance(
-        returns_df, strategy_type, risk_free_rate, max_position=0.30
+        returns_df, strategy_type, risk_free_rate, max_position=0.30, target_leverage=target_leverage
     )
 
     peak_performance = calculate_performance_metric(
@@ -5367,9 +5379,14 @@ def optimize_two_stage_diversification_first(
 
         return hhi + sparsity_penalty
 
+    # FIXED v11.0: Leverage constraint
+    def leverage_constraint_stage2(w, target_lev):
+        """Leverage = sum of absolute weights"""
+        return np.abs(w).sum() - target_lev
+
     # Build constraints
     constraints = [
-        {'type': 'eq', 'fun': lambda w: np.sum(w) - 1.0},
+        {'type': 'eq', 'fun': leverage_constraint_stage2, 'args': (target_leverage,)},
 
         # CRITICAL: Performance must stay above threshold
         {'type': 'ineq',
@@ -5379,13 +5396,13 @@ def optimize_two_stage_diversification_first(
         {'type': 'ineq',
          'fun': lambda w: np.sum(w >= risk_profile_config['min_position_to_count']) - risk_profile_config['min_diversification']},
 
-        # Top 3 concentration limit
+        # Top 3 concentration limit (adjusted for leverage)
         {'type': 'ineq',
-         'fun': lambda w: risk_profile_config['max_top_3_concentration'] - np.sum(np.sort(w)[-3:])},
+         'fun': lambda w: risk_profile_config['max_top_3_concentration'] * target_leverage - np.sum(np.sort(w)[-3:])},
 
-        # Top 5 concentration limit
+        # Top 5 concentration limit (adjusted for leverage)
         {'type': 'ineq',
-         'fun': lambda w: risk_profile_config['max_top_5_concentration'] - np.sum(np.sort(w)[-5:])},
+         'fun': lambda w: risk_profile_config['max_top_5_concentration'] * target_leverage - np.sum(np.sort(w)[-5:])},
 
         # Risk contribution limit
         {'type': 'ineq',
@@ -5413,8 +5430,8 @@ def optimize_two_stage_diversification_first(
 
     bounds = [(0, limit) for limit in position_limits]
 
-    # Initial guess: Equal weight (most diversified starting point)
-    initial_guess = np.ones(n_assets) / n_assets
+    # Initial guess: Equal weight scaled by leverage (most diversified starting point)
+    initial_guess = np.ones(n_assets) * (target_leverage / n_assets)
 
     # Optimize for DIVERSIFICATION subject to performance constraint
     result = minimize(
@@ -5438,9 +5455,10 @@ def optimize_two_stage_diversification_first(
     min_position = risk_profile_config.get('min_position_to_count', 0.02) / 2
     diversified_weights[diversified_weights < min_position] = 0
 
-    # Renormalize
-    if np.sum(diversified_weights) > 0:
-        diversified_weights = diversified_weights / np.sum(diversified_weights)
+    # Renormalize to target leverage
+    current_leverage = np.abs(diversified_weights).sum()
+    if current_leverage > 0:
+        diversified_weights = diversified_weights * (target_leverage / current_leverage)
     else:
         diversified_weights = peak_weights
 
@@ -5494,11 +5512,13 @@ def optimize_two_stage_diversification_first(
     return diversified_weights
 
 
-def optimize_for_peak_performance(returns_df, strategy_type, risk_free_rate, max_position=0.30):
+def optimize_for_peak_performance(returns_df, strategy_type, risk_free_rate, max_position=0.30, target_leverage=1.0):
     """
     Find peak performance with minimal constraints
 
     This is STAGE 1 - find the best possible performance
+
+    FIXED v11.0: Added leverage support
     """
     from scipy.optimize import minimize
 
@@ -5506,16 +5526,16 @@ def optimize_for_peak_performance(returns_df, strategy_type, risk_free_rate, max
 
     # Use the original optimization functions with relaxed constraints
     if strategy_type == 'max_sharpe':
-        weights = optimize_max_sharpe(returns_df, risk_free_rate, max_position, 0.01)
+        weights = optimize_max_sharpe(returns_df, risk_free_rate, max_position, 0.01, target_leverage)
     elif strategy_type == 'min_volatility':
-        weights = optimize_min_volatility(returns_df, max_position, 0.01)
+        weights = optimize_min_volatility(returns_df, max_position, 0.01, target_leverage)
     elif strategy_type == 'max_return':
-        weights = optimize_max_return(returns_df, max_position, 0.01)
+        weights = optimize_max_return(returns_df, max_position, 0.01, target_leverage)
     elif strategy_type == 'risk_parity':
-        weights = optimize_risk_parity(returns_df, max_position, 0.01)
+        weights = optimize_risk_parity(returns_df, max_position, 0.01, target_leverage)
     else:
-        # Default: equal weight
-        weights = pd.Series(np.ones(n_assets) / n_assets, index=returns_df.columns)
+        # Default: equal weight scaled by leverage
+        weights = pd.Series(np.ones(n_assets) * (target_leverage / n_assets), index=returns_df.columns)
 
     return weights.values if isinstance(weights, pd.Series) else weights
 
@@ -5524,15 +5544,22 @@ def optimize_for_peak_performance(returns_df, strategy_type, risk_free_rate, max
 # ORIGINAL OPTIMIZATION FUNCTIONS (Used for Stage 1 Peak Finding)
 # ============================================================================
 
-def optimize_max_sharpe(returns_df, risk_free_rate, max_position=0.25, min_position=0.02):
+def optimize_max_sharpe(returns_df, risk_free_rate, max_position=0.25, min_position=0.02, target_leverage=1.0):
     """
     Optimize for maximum Sharpe ratio with production-grade constraints
 
     FIXED v10.3: Removed aggressive penalties that were causing equal-weight portfolios.
     Now uses proper constraints and gentle regularization.
 
+    FIXED v11.0: Added leverage constraint support. Leverage = sum of absolute weights.
+
     NOTE: This function is now primarily used for STAGE 1 (peak finding).
     For diversification-first optimization, use optimize_two_stage_diversification_first()
+
+    Args:
+        target_leverage: Target portfolio leverage (default 1.0 = no leverage)
+                        1.0x = sum(abs(weights)) = 1.0 (long only, fully invested)
+                        2.0x = sum(abs(weights)) = 2.0 (2x leverage)
     """
     from scipy.optimize import minimize
 
@@ -5550,11 +5577,16 @@ def optimize_max_sharpe(returns_df, risk_free_rate, max_position=0.25, min_posit
 
         return -sharpe + gentle_regularization
 
+    # FIXED v11.0: Leverage constraint using absolute sum of weights
+    def leverage_constraint(w, target_lev):
+        """Leverage = sum of absolute weights"""
+        return np.abs(w).sum() - target_lev
+
     constraints = [
-        {'type': 'eq', 'fun': lambda x: np.sum(x) - 1}  # Weights sum to 1
+        {'type': 'eq', 'fun': leverage_constraint, 'args': (target_leverage,)}
     ]
     bounds = tuple((0, max_position) for _ in range(n_assets))
-    initial_guess = np.array([1/n_assets] * n_assets)
+    initial_guess = np.array([target_leverage/n_assets] * n_assets)  # Scale initial guess by leverage
 
     result = minimize(neg_sharpe, initial_guess, method='SLSQP', bounds=bounds, constraints=constraints,
                      options={'maxiter': 1000, 'ftol': 1e-9})
@@ -5563,20 +5595,26 @@ def optimize_max_sharpe(returns_df, risk_free_rate, max_position=0.25, min_posit
     optimized_weights = result.x.copy()
     optimized_weights[optimized_weights < min_position] = 0
 
-    # Renormalize to sum to 1
-    if np.sum(optimized_weights) > 0:
-        optimized_weights = optimized_weights / np.sum(optimized_weights)
+    # Renormalize to target leverage
+    current_leverage = np.abs(optimized_weights).sum()
+    if current_leverage > 0:
+        optimized_weights = optimized_weights * (target_leverage / current_leverage)
     else:
-        optimized_weights = np.array([1/n_assets] * n_assets)
+        optimized_weights = np.array([target_leverage/n_assets] * n_assets)
 
     return pd.Series(optimized_weights, index=returns_df.columns)
 
-def optimize_min_volatility(returns_df, max_position=0.25, min_position=0.02):
+def optimize_min_volatility(returns_df, max_position=0.25, min_position=0.02, target_leverage=1.0):
     """
     Optimize for minimum volatility with production-grade constraints
 
     FIXED v10.3: Removed aggressive penalties that were causing equal-weight portfolios.
     Now uses proper constraints and gentle regularization.
+
+    FIXED v11.0: Added leverage constraint support. Leverage = sum of absolute weights.
+
+    Args:
+        target_leverage: Target portfolio leverage (default 1.0 = no leverage)
     """
     from scipy.optimize import minimize
 
@@ -5592,11 +5630,16 @@ def optimize_min_volatility(returns_df, max_position=0.25, min_position=0.02):
 
         return vol + gentle_regularization
 
+    # FIXED v11.0: Leverage constraint using absolute sum of weights
+    def leverage_constraint(w, target_lev):
+        """Leverage = sum of absolute weights"""
+        return np.abs(w).sum() - target_lev
+
     constraints = [
-        {'type': 'eq', 'fun': lambda x: np.sum(x) - 1}  # Weights sum to 1
+        {'type': 'eq', 'fun': leverage_constraint, 'args': (target_leverage,)}
     ]
     bounds = tuple((0, max_position) for _ in range(n_assets))
-    initial_guess = np.array([1/n_assets] * n_assets)
+    initial_guess = np.array([target_leverage/n_assets] * n_assets)
 
     result = minimize(portfolio_vol, initial_guess, method='SLSQP', bounds=bounds, constraints=constraints,
                      options={'maxiter': 1000, 'ftol': 1e-9})
@@ -5605,20 +5648,26 @@ def optimize_min_volatility(returns_df, max_position=0.25, min_position=0.02):
     optimized_weights = result.x.copy()
     optimized_weights[optimized_weights < min_position] = 0
 
-    # Renormalize to sum to 1
-    if np.sum(optimized_weights) > 0:
-        optimized_weights = optimized_weights / np.sum(optimized_weights)
+    # Renormalize to target leverage
+    current_leverage = np.abs(optimized_weights).sum()
+    if current_leverage > 0:
+        optimized_weights = optimized_weights * (target_leverage / current_leverage)
     else:
-        optimized_weights = np.array([1/n_assets] * n_assets)
+        optimized_weights = np.array([target_leverage/n_assets] * n_assets)
 
     return pd.Series(optimized_weights, index=returns_df.columns)
 
-def optimize_max_return(returns_df, max_position=0.25, min_position=0.02):
+def optimize_max_return(returns_df, max_position=0.25, min_position=0.02, target_leverage=1.0):
     """
     Optimize for maximum return with production-grade constraints
 
     FIXED v10.3: Removed aggressive penalties that were causing equal-weight portfolios.
     Now uses proper constraints and gentle regularization.
+
+    FIXED v11.0: Added leverage constraint support. Leverage = sum of absolute weights.
+
+    Args:
+        target_leverage: Target portfolio leverage (default 1.0 = no leverage)
     """
     from scipy.optimize import minimize
 
@@ -5635,11 +5684,16 @@ def optimize_max_return(returns_df, max_position=0.25, min_position=0.02):
 
         return -portfolio_return + gentle_regularization
 
+    # FIXED v11.0: Leverage constraint using absolute sum of weights
+    def leverage_constraint(w, target_lev):
+        """Leverage = sum of absolute weights"""
+        return np.abs(w).sum() - target_lev
+
     constraints = [
-        {'type': 'eq', 'fun': lambda x: np.sum(x) - 1}  # Weights sum to 1
+        {'type': 'eq', 'fun': leverage_constraint, 'args': (target_leverage,)}
     ]
     bounds = tuple((0, max_position) for _ in range(n_assets))
-    initial_guess = np.array([1/n_assets] * n_assets)
+    initial_guess = np.array([target_leverage/n_assets] * n_assets)
 
     result = minimize(neg_return, initial_guess, method='SLSQP', bounds=bounds, constraints=constraints,
                      options={'maxiter': 1000, 'ftol': 1e-9})
@@ -5648,20 +5702,26 @@ def optimize_max_return(returns_df, max_position=0.25, min_position=0.02):
     optimized_weights = result.x.copy()
     optimized_weights[optimized_weights < min_position] = 0
 
-    # Renormalize to sum to 1
-    if np.sum(optimized_weights) > 0:
-        optimized_weights = optimized_weights / np.sum(optimized_weights)
+    # Renormalize to target leverage
+    current_leverage = np.abs(optimized_weights).sum()
+    if current_leverage > 0:
+        optimized_weights = optimized_weights * (target_leverage / current_leverage)
     else:
-        optimized_weights = np.array([1/n_assets] * n_assets)
+        optimized_weights = np.array([target_leverage/n_assets] * n_assets)
 
     return pd.Series(optimized_weights, index=returns_df.columns)
 
-def optimize_risk_parity(returns_df, max_position=0.25, min_position=0.02):
+def optimize_risk_parity(returns_df, max_position=0.25, min_position=0.02, target_leverage=1.0):
     """
     Risk parity optimization with production-grade constraints
 
     FIXED v10.3: Removed aggressive penalties that were causing equal-weight portfolios.
     Now uses pure risk parity objective with proper constraints.
+
+    FIXED v11.0: Added leverage constraint support. Leverage = sum of absolute weights.
+
+    Args:
+        target_leverage: Target portfolio leverage (default 1.0 = no leverage)
     """
     from scipy.optimize import minimize
 
@@ -5679,11 +5739,16 @@ def optimize_risk_parity(returns_df, max_position=0.25, min_position=0.02):
 
         return risk_parity_error
 
+    # FIXED v11.0: Leverage constraint using absolute sum of weights
+    def leverage_constraint(w, target_lev):
+        """Leverage = sum of absolute weights"""
+        return np.abs(w).sum() - target_lev
+
     constraints = [
-        {'type': 'eq', 'fun': lambda x: np.sum(x) - 1}  # Weights sum to 1
+        {'type': 'eq', 'fun': leverage_constraint, 'args': (target_leverage,)}
     ]
     bounds = tuple((0, max_position) for _ in range(n_assets))
-    initial_guess = np.array([1/n_assets] * n_assets)
+    initial_guess = np.array([target_leverage/n_assets] * n_assets)
 
     result = minimize(risk_parity_objective, initial_guess, method='SLSQP', bounds=bounds, constraints=constraints,
                      options={'maxiter': 1000, 'ftol': 1e-9})
@@ -5692,11 +5757,12 @@ def optimize_risk_parity(returns_df, max_position=0.25, min_position=0.02):
     optimized_weights = result.x.copy()
     optimized_weights[optimized_weights < min_position] = 0
 
-    # Renormalize to sum to 1
-    if np.sum(optimized_weights) > 0:
-        optimized_weights = optimized_weights / np.sum(optimized_weights)
+    # Renormalize to target leverage
+    current_leverage = np.abs(optimized_weights).sum()
+    if current_leverage > 0:
+        optimized_weights = optimized_weights * (target_leverage / current_leverage)
     else:
-        optimized_weights = np.array([1/n_assets] * n_assets)
+        optimized_weights = np.array([target_leverage/n_assets] * n_assets)
 
     return pd.Series(optimized_weights, index=returns_df.columns)
 
@@ -11003,12 +11069,12 @@ summary(df)""",
         st.caption(f"📊 **Auto-configured for {risk_profile_mpt.title()} {optimization_objective}:** Max position {config_mpt['max_position_base']*100:.0f}%, Min {config_mpt['min_diversification']} holdings, Risk budget {config_mpt['risk_budget_per_asset']*100:.0f}%/asset")
 
         # Advanced: Manual Override (collapsed by default)
-        with st.expander("🔧 Advanced: Manual Position Constraints Override"):
+        with st.expander("🔧 Advanced: Manual Position Constraints & Leverage Override"):
             st.warning("⚠️ Advanced users only - Manual overrides bypass risk profile automation")
             use_manual_mpt = st.checkbox("Use manual position constraints", value=False, key="use_manual_mpt")
 
             if use_manual_mpt:
-                col1, col2 = st.columns(2)
+                col1, col2, col3 = st.columns(3)
                 with col1:
                     max_position = st.slider(
                         "Max Position Size (%)",
@@ -11031,6 +11097,17 @@ summary(df)""",
                         help="Minimum meaningful position size (smaller positions excluded)"
                     ) / 100
 
+                with col3:
+                    target_leverage = st.slider(
+                        "Target Leverage (x)",
+                        min_value=1.0,
+                        max_value=3.0,
+                        value=1.0,
+                        step=0.1,
+                        key="target_leverage_mpt_manual",
+                        help="Portfolio leverage: 1.0x = no leverage, 2.0x = 2x leverage, etc. Leverage = sum(abs(weights))"
+                    )
+
                 # Validation: Ensure min < max
                 if min_position >= max_position:
                     st.error(f"⚠️ Min position ({min_position*100:.0f}%) must be less than max position ({max_position*100:.0f}%)")
@@ -11038,6 +11115,7 @@ summary(df)""",
                 # Use risk profile defaults
                 max_position = config_mpt['max_position_base']
                 min_position = 0.02  # Standard minimum
+                target_leverage = 1.0  # Default: no leverage
 
         if st.session_state.get('run_mpt_optimization', False):
             # Validate constraints before optimization
@@ -11073,7 +11151,8 @@ summary(df)""",
                             strategy_type=strategy_type_mpt,
                             risk_profile_config=config_mpt,
                             risk_free_rate=risk_free_rate_input,
-                            verbose=False  # Don't print to console in Streamlit
+                            verbose=False,  # Don't print to console in Streamlit
+                            target_leverage=target_leverage  # Pass leverage parameter
                         )
 
                         # Convert to Series
@@ -11137,6 +11216,10 @@ summary(df)""",
                             duration=5000
                         )
 
+                        # Calculate leverage for both portfolios
+                        current_leverage = np.abs(current_weights).sum()
+                        optimal_leverage = np.abs(optimal_weights).sum()
+
                         col1, col2 = st.columns(2)
 
                         with col1:
@@ -11144,6 +11227,8 @@ summary(df)""",
                             st.metric("Expected Return", f"{current_return * 100:.2f}%")
                             st.metric("Volatility", f"{current_vol * 100:.2f}%")
                             st.metric("Sharpe Ratio", f"{current_sharpe:.2f}")
+                            st.metric("Portfolio Leverage", f"{current_leverage:.2f}x",
+                                     help="Leverage = sum of absolute weights")
 
                         with col2:
                             st.markdown("#### ✨ Optimized Portfolio")
@@ -11154,6 +11239,9 @@ summary(df)""",
                                      delta_color="inverse")
                             st.metric("Sharpe Ratio", f"{optimal_sharpe:.2f}",
                                      delta=f"{(optimal_sharpe - current_sharpe):+.2f}")
+                            st.metric("Portfolio Leverage", f"{optimal_leverage:.2f}x",
+                                     delta=f"{(optimal_leverage - current_leverage):+.2f}x",
+                                     help="Leverage = sum of absolute weights")
 
                         # 🎯 NEW v10.3: Portfolio Quality Assessment
                         st.markdown("---")
