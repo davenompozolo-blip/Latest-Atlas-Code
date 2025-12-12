@@ -34,12 +34,15 @@ class RAnalytics:
             import rpy2.robjects as ro
             from rpy2.robjects import pandas2ri
             from rpy2.robjects.packages import importr
+            from rpy2.robjects.conversion import localconverter
 
-            # Activate pandas conversion
-            pandas2ri.activate()
+            # FIXED: Use converter instead of deprecated activate()
+            # Store converter for use in methods
+            self.converter = ro.default_converter + pandas2ri.converter
 
             self.ro = ro
             self.pandas2ri = pandas2ri
+            self.localconverter = localconverter
 
             # Import base R packages
             self.base = importr('base')
@@ -89,10 +92,11 @@ class RAnalytics:
         if not os.path.exists(script_path):
             raise FileNotFoundError(f"R script not found: {script_path}")
 
-        # Pass arguments to R
+        # Pass arguments to R (with proper conversion context)
         for key, value in kwargs.items():
             if isinstance(value, pd.DataFrame):
-                self.ro.globalenv[key] = value
+                with self.localconverter(self.converter):
+                    self.ro.globalenv[key] = value
             elif isinstance(value, (list, np.ndarray)):
                 self.ro.globalenv[key] = self.ro.FloatVector(value)
             else:
@@ -135,12 +139,12 @@ class RAnalytics:
         fit = self.rugarch.ugarchfit(spec=spec, data=r_returns)
 
         # Extract results
-        sigma = np.array(self.rugarch.sigma(fit))
+        sigma = np.array(self.rugarch.sigma(fit)).flatten()
 
         return {
             'volatility': sigma,
-            'last_volatility': sigma[-1],
-            'mean_volatility': sigma.mean(),
+            'last_volatility': float(sigma[-1]),
+            'mean_volatility': float(sigma.mean()),
             'model': model,
             'order': order
         }
@@ -209,8 +213,9 @@ class RAnalytics:
         if self.copula is None:
             raise RuntimeError("copula package not available")
 
-        # Convert to R
-        r_returns = self.pandas2ri.py2rpy(returns_df)
+        # Convert to R (with proper conversion context)
+        with self.localconverter(self.converter):
+            r_returns = self.ro.conversion.py2rpy(returns_df)
 
         # Fit copula
         if copula_type == 't':
@@ -246,13 +251,15 @@ class RAnalytics:
             Result from R execution
         """
         if data is not None:
-            self.ro.globalenv['df'] = data
+            with self.localconverter(self.converter):
+                self.ro.globalenv['df'] = data
 
         result = self.ro.r(r_code)
 
         # Try to convert back to pandas if possible
         try:
-            return self.pandas2ri.rpy2py(result)
+            with self.localconverter(self.converter):
+                return self.ro.conversion.rpy2py(result)
         except:
             return result
 
