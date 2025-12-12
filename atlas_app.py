@@ -8029,14 +8029,42 @@ class InvestopediaIntegration:
             from selenium.webdriver.support import expected_conditions as EC
             from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
-            # Initialize Chrome driver (headless mode)
-            options = webdriver.ChromeOptions()
-            options.add_argument('--headless')
-            options.add_argument('--no-sandbox')
-            options.add_argument('--disable-dev-shm-usage')
-            options.add_argument('--disable-gpu')
+            # FIXED: Use webdriver-manager for auto ChromeDriver version matching
+            try:
+                from selenium.webdriver.chrome.service import Service
+                from webdriver_manager.chrome import ChromeDriverManager
 
-            self.driver = webdriver.Chrome(options=options)
+                # Initialize Chrome driver with proper configuration
+                options = webdriver.ChromeOptions()
+                options.add_argument('--headless')
+                options.add_argument('--no-sandbox')
+                options.add_argument('--disable-dev-shm-usage')
+                options.add_argument('--disable-gpu')
+                options.add_argument('--window-size=1920,1080')
+                options.add_argument('--disable-blink-features=AutomationControlled')
+
+                # Auto-install correct ChromeDriver version
+                service = Service(ChromeDriverManager().install())
+                self.driver = webdriver.Chrome(service=service, options=options)
+
+            except ImportError:
+                # Fallback if webdriver-manager not installed
+                st.warning("⚠️ Installing webdriver-manager for better Chrome compatibility...")
+                import subprocess
+                subprocess.check_call(['pip', 'install', '-q', 'webdriver-manager'])
+
+                from selenium.webdriver.chrome.service import Service
+                from webdriver_manager.chrome import ChromeDriverManager
+
+                options = webdriver.ChromeOptions()
+                options.add_argument('--headless')
+                options.add_argument('--no-sandbox')
+                options.add_argument('--disable-dev-shm-usage')
+                options.add_argument('--disable-gpu')
+                options.add_argument('--window-size=1920,1080')
+
+                service = Service(ChromeDriverManager().install())
+                self.driver = webdriver.Chrome(service=service, options=options)
 
             # Navigate to Investopedia login page
             self.driver.get("https://www.investopedia.com/simulator/trade/login")
