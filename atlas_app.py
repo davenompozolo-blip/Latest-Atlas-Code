@@ -799,82 +799,63 @@ st.markdown("""
     }
 
     /* ============================================
-       SURGICAL FIX: OVERLAPPING TEXT - v10.0.5
+       SURGICAL FIX: OVERLAPPING TEXT - v10.0.6
        Completely removes Material Icons ligature text
        ============================================ */
 
     /* ============================================
-       CRITICAL FIX: Material Icons Ligature Text
-       Prevents "keyboard_arrow_right" text from showing
+       NUCLEAR OPTION: Hide ALL expander icons and use custom arrows
+       Fixes "keyboard_arrow_right" text showing instead of icon
        ============================================ */
 
-    @import url('https://fonts.googleapis.com/icon?family=Material+Icons');
-
-    /* Force Material Icons to use icon font, not text */
-    .material-icons {
-        font-family: 'Material Icons' !important;
-        font-weight: normal !important;
-        font-style: normal !important;
-        font-size: 24px !important;
-        display: inline-block !important;
-        line-height: 1 !important;
-        text-transform: none !important;
-        letter-spacing: normal !important;
-        word-wrap: normal !important;
-        white-space: nowrap !important;
-        direction: ltr !important;
-        -webkit-font-smoothing: antialiased !important;
-        text-rendering: optimizeLegibility !important;
-        -moz-osx-font-smoothing: grayscale !important;
-        font-feature-settings: 'liga' !important;
-    }
-
-    /* Aggressively hide Material Icons ligature text fallback */
-    .streamlit-expanderHeader span[aria-hidden="true"],
-    .streamlit-expanderHeader [data-baseweb="icon"] *,
-    .streamlit-expanderHeader [role="presentation"] *,
-    [data-testid="stExpander"] summary span[aria-hidden="true"],
-    [data-testid="stExpander"] details summary span[aria-hidden="true"],
-    [data-testid="stExpander"] .material-icons-text {
-        font-size: 0 !important;
-        color: transparent !important;
+    /* Hide the entire icon container in expanders */
+    [data-testid="stExpander"] summary svg,
+    [data-testid="stExpander"] summary [data-baseweb="icon"],
+    [data-testid="stExpander"] summary span[role="img"],
+    .streamlit-expanderHeader svg,
+    .streamlit-expanderHeader [data-baseweb="icon"],
+    .streamlit-expanderHeader span[role="img"] {
         display: none !important;
-        position: absolute !important;
-        left: -9999px !important;
-        width: 0 !important;
-        height: 0 !important;
-        overflow: hidden !important;
         visibility: hidden !important;
-        text-indent: -9999px !important;
     }
 
-    /* Ensure expander icons render as icons, not text */
-    [data-testid="stExpander"] details summary::before,
+    /* Add custom arrow using CSS */
+    [data-testid="stExpander"] summary {
+        position: relative !important;
+        padding-left: 30px !important;
+    }
+
     [data-testid="stExpander"] summary::before {
         content: '▶' !important;
-        font-family: 'Material Icons', sans-serif !important;
-        margin-right: 8px !important;
-        display: inline-block !important;
-        transition: transform 0.2s !important;
+        position: absolute !important;
+        left: 8px !important;
+        top: 50% !important;
+        transform: translateY(-50%) !important;
+        font-size: 14px !important;
+        color: rgba(0, 212, 255, 0.8) !important;
+        transition: transform 0.2s ease !important;
+        font-family: Arial, sans-serif !important;
     }
 
-    [data-testid="stExpander"][open] details summary::before,
     [data-testid="stExpander"][open] summary::before {
-        transform: rotate(90deg) !important;
+        transform: translateY(-50%) rotate(90deg) !important;
     }
 
+    /* Also hide any stray Material Icons text nodes */
+    [data-testid="stExpander"] summary *:not(div):not(p) {
+        font-size: 0 !important;
+    }
+
+    /* Make sure the label text is still visible */
+    [data-testid="stExpander"] summary > div {
+        font-size: 15px !important;
+    }
 
     /* Select/Dropdown icons - hide keyboard_arrow_down text */
-    div[data-baseweb="select"] span[aria-hidden="true"],
+    div[data-baseweb="select"] svg,
     div[data-baseweb="select"] [data-baseweb="icon"],
-    div[data-baseweb="select"] [role="presentation"],
-    div[data-baseweb="select"] svg {
+    div[data-baseweb="select"] [role="presentation"] {
         display: none !important;
-        position: absolute !important;
-        left: -9999px !important;
-        width: 0 !important;
-        height: 0 !important;
-        overflow: hidden !important;
         visibility: hidden !important;
     }
 
@@ -8080,6 +8061,7 @@ class InvestopediaIntegration:
                 from webdriver_manager.chrome import ChromeDriverManager
 
                 # Initialize Chrome driver with proper configuration
+                # COLAB-SPECIFIC: Aggressive Chrome options to prevent crash
                 options = webdriver.ChromeOptions()
                 options.add_argument('--headless')
                 options.add_argument('--no-sandbox')
@@ -8087,6 +8069,16 @@ class InvestopediaIntegration:
                 options.add_argument('--disable-gpu')
                 options.add_argument('--window-size=1920,1080')
                 options.add_argument('--disable-blink-features=AutomationControlled')
+                options.add_argument('--remote-debugging-port=9222')
+                options.add_argument('--disable-setuid-sandbox')
+                options.add_argument('--single-process')
+                options.add_argument('--disable-extensions')
+                options.add_argument('--disable-logging')
+                options.add_argument('--disable-login-animations')
+                options.add_argument('--disable-notifications')
+                options.add_argument('--disable-background-timer-throttling')
+                options.add_argument('--disable-backgrounding-occluded-windows')
+                options.add_argument('--disable-renderer-backgrounding')
 
                 # Auto-install correct ChromeDriver version
                 service = Service(ChromeDriverManager().install())
@@ -8101,12 +8093,23 @@ class InvestopediaIntegration:
                 from selenium.webdriver.chrome.service import Service
                 from webdriver_manager.chrome import ChromeDriverManager
 
+                # COLAB-SPECIFIC: Aggressive Chrome options to prevent crash
                 options = webdriver.ChromeOptions()
                 options.add_argument('--headless')
                 options.add_argument('--no-sandbox')
                 options.add_argument('--disable-dev-shm-usage')
                 options.add_argument('--disable-gpu')
                 options.add_argument('--window-size=1920,1080')
+                options.add_argument('--remote-debugging-port=9222')
+                options.add_argument('--disable-setuid-sandbox')
+                options.add_argument('--single-process')
+                options.add_argument('--disable-extensions')
+                options.add_argument('--disable-logging')
+                options.add_argument('--disable-login-animations')
+                options.add_argument('--disable-notifications')
+                options.add_argument('--disable-background-timer-throttling')
+                options.add_argument('--disable-backgrounding-occluded-windows')
+                options.add_argument('--disable-renderer-backgrounding')
 
                 service = Service(ChromeDriverManager().install())
                 self.driver = webdriver.Chrome(service=service, options=options)
