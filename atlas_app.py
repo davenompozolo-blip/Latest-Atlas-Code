@@ -1924,18 +1924,158 @@ def get_data_freshness(cache_time=None):
 # ============================================================================
 
 def save_portfolio_data(data):
+    """
+    Save portfolio data to BOTH database and pickle cache
+    Database is primary storage, pickle is backup
+    """
+    # Save to pickle (backwards compatibility)
     with open(PORTFOLIO_CACHE, "wb") as f:
         pickle.dump(data, f)
 
+    # PHASE 4: Auto-save to database
+    if SQL_AVAILABLE:
+        try:
+            db = get_db()
+            # Convert list of dicts to DataFrame
+            df = pd.DataFrame(data)
+
+            # Ensure required columns exist
+            if 'Ticker' in df.columns and 'Shares' in df.columns:
+                # Prepare DataFrame for database
+                portfolio_df = df.copy()
+
+                # Rename columns to match database schema
+                column_mapping = {
+                    'Ticker': 'ticker',
+                    'Shares': 'quantity',
+                    'Avg Price': 'avg_cost',
+                    'Current Price': 'current_price'
+                }
+
+                # Only rename columns that exist
+                portfolio_df = portfolio_df.rename(columns={
+                    k: v for k, v in column_mapping.items() if k in portfolio_df.columns
+                })
+
+                # Ensure required columns
+                required_cols = ['ticker', 'quantity', 'avg_cost']
+                if all(col in portfolio_df.columns for col in required_cols):
+                    # Select only relevant columns
+                    save_cols = [col for col in ['ticker', 'quantity', 'avg_cost', 'current_price']
+                                 if col in portfolio_df.columns]
+                    portfolio_df = portfolio_df[save_cols]
+
+                    # Save to database
+                    db.save_portfolio(portfolio_df)
+                    print("✅ Portfolio saved to database")
+        except Exception as e:
+            print(f"⚠️ Database save failed (pickle still saved): {e}")
+
 def load_portfolio_data():
+    """
+    Load portfolio data from DATABASE FIRST, fallback to pickle
+    This implements Phase 4: SQL-first loading
+    """
+    # PHASE 4: Try database first
+    if SQL_AVAILABLE:
+        try:
+            db = get_db()
+            df = db.get_portfolio()
+
+            if len(df) > 0:
+                # Convert database format back to app format
+                column_mapping = {
+                    'ticker': 'Ticker',
+                    'quantity': 'Shares',
+                    'avg_cost': 'Avg Price',
+                    'current_price': 'Current Price'
+                }
+
+                df = df.rename(columns={
+                    k: v for k, v in column_mapping.items() if k in df.columns
+                })
+
+                print(f"✅ Loaded {len(df)} positions from database")
+                return df.to_dict('records')
+        except Exception as e:
+            print(f"⚠️ Database load failed, falling back to pickle: {e}")
+
+    # Fallback to pickle
     if PORTFOLIO_CACHE.exists():
         with open(PORTFOLIO_CACHE, "rb") as f:
-            return pickle.load(f)
+            data = pickle.load(f)
+            print(f"✅ Loaded {len(data)} positions from pickle cache")
+            return data
+
     return []
 
 def save_trade_history(df):
+    """
+    Save trade history to BOTH database and pickle cache
+    """
+    # Save to pickle (backwards compatibility)
     with open(TRADE_HISTORY_CACHE, "wb") as f:
         pickle.dump(df, f)
+
+    # PHASE 4: Auto-save to database
+    if SQL_AVAILABLE and df is not None and len(df) > 0:
+        try:
+            db = get_db()
+            # Prepare DataFrame for database
+            trades_df = df.copy()
+
+            # Map columns to database schema
+            # Database expects: date, ticker, action, quantity, price
+            # Try different possible column names
+            column_mapping = {}
+
+            # Date column
+            for date_col in ['Date', 'date', 'Trade Date']:
+                if date_col in trades_df.columns:
+                    column_mapping[date_col] = 'date'
+                    break
+
+            # Ticker column
+            for ticker_col in ['Ticker', 'ticker', 'Symbol']:
+                if ticker_col in trades_df.columns:
+                    column_mapping[ticker_col] = 'ticker'
+                    break
+
+            # Action column
+            for action_col in ['Action', 'action', 'Type', 'Side']:
+                if action_col in trades_df.columns:
+                    column_mapping[action_col] = 'action'
+                    break
+
+            # Quantity column
+            for qty_col in ['Quantity', 'quantity', 'Shares', 'Qty']:
+                if qty_col in trades_df.columns:
+                    column_mapping[qty_col] = 'quantity'
+                    break
+
+            # Price column
+            for price_col in ['Price', 'price', 'Exec Price']:
+                if price_col in trades_df.columns:
+                    column_mapping[price_col] = 'price'
+                    break
+
+            # Rename columns
+            trades_df = trades_df.rename(columns=column_mapping)
+
+            # Check if we have the required columns
+            required = ['date', 'ticker', 'action', 'quantity', 'price']
+            if all(col in trades_df.columns for col in required):
+                trades_df = trades_df[required]
+
+                # Save to database
+                db.bulk_insert('trades', trades_df, if_exists='append')
+                print(f"✅ Saved {len(trades_df)} trades to database")
+            else:
+                missing = [col for col in required if col not in trades_df.columns]
+                print(f"⚠️ Cannot save trades to database: missing columns {missing}")
+
+        except Exception as e:
+            print(f"⚠️ Trade history database save failed (pickle still saved): {e}")
 
 def load_trade_history():
     if TRADE_HISTORY_CACHE.exists():
@@ -8551,6 +8691,82 @@ def main():
                             - Margin: ${leverage_info_parsed['margin_used']:,.2f}
                             - Leverage: {leverage_info_parsed['leverage_ratio']:.2f}x
                             """)
+
+        # PHASE 4: Database Management Section
+        st.markdown("---")
+        st.markdown("### 💾 Database Management")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("#### 📊 Database Status")
+
+            if SQL_AVAILABLE:
+                try:
+                    db = get_db()
+
+                    # Check if portfolio exists in database
+                    portfolio_db = db.get_portfolio()
+                    portfolio_count = len(portfolio_db)
+
+                    # Check if trades exist in database
+                    trades_db = db.get_trades()
+                    trades_count = len(trades_db)
+
+                    st.success("✅ Database Connected")
+                    st.metric("Portfolio Positions", portfolio_count)
+                    st.metric("Trade History Records", trades_count)
+
+                    if portfolio_count > 0:
+                        st.info(f"💡 Last updated: {portfolio_db['updated_at'].max() if 'updated_at' in portfolio_db.columns else 'Unknown'}")
+
+                except Exception as e:
+                    st.error(f"❌ Database Error: {e}")
+            else:
+                st.warning("⚠️ SQL database not available")
+                st.info("Portfolio data is saved to pickle cache only")
+
+        with col2:
+            st.markdown("#### 🔄 Manual Database Operations")
+
+            # Manual save button
+            if st.button("💾 Save Current Portfolio to Database", type="primary"):
+                if SQL_AVAILABLE:
+                    portfolio_data = load_portfolio_data()
+                    if portfolio_data:
+                        with st.spinner("Saving to database..."):
+                            try:
+                                save_portfolio_data(portfolio_data)
+                                st.success("✅ Portfolio saved to database!")
+                                show_toast("Portfolio saved to database successfully", toast_type="success", duration=2000)
+                            except Exception as e:
+                                st.error(f"❌ Save failed: {e}")
+                    else:
+                        st.warning("⚠️ No portfolio data to save")
+                else:
+                    st.error("❌ SQL database not available")
+
+            # Clear database button
+            if st.button("🗑️ Clear Database (Keep Pickle Cache)"):
+                if SQL_AVAILABLE:
+                    try:
+                        db = get_db()
+                        db.execute("DELETE FROM holdings")
+                        st.success("✅ Database cleared (pickle cache preserved)")
+                        show_toast("Database cleared successfully", toast_type="info", duration=2000)
+                    except Exception as e:
+                        st.error(f"❌ Clear failed: {e}")
+                else:
+                    st.error("❌ SQL database not available")
+
+            st.info("""
+            **ℹ️ Auto-Save:**
+            Portfolio data is automatically saved to both:
+            - 💾 SQL Database (persistent)
+            - 📦 Pickle Cache (backup)
+
+            Use the manual save button to force a database update.
+            """)
 
     # ========================================================================
     # v10.0 ANALYTICS - NEW ADVANCED FEATURES
