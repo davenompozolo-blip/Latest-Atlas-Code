@@ -703,6 +703,51 @@ st.markdown("""
     }
 
     /* ============================================
+       FIX: EXPANDER ICON/TEXT OVERLAP (PR #7596)
+       Prevent icon shrinking with long labels
+       ============================================ */
+
+    /* Target expander summary (header) */
+    [data-testid="stExpander"] details summary {
+        display: flex !important;
+        align-items: center !important;
+        gap: 8px !important;
+        min-height: 48px !important;
+    }
+
+    /* CRITICAL FIX: Prevent icon from shrinking */
+    [data-testid="stExpander"] details summary svg,
+    [data-testid="stExpander"] details summary .streamlit-expanderHeader svg,
+    .streamlit-expanderHeader svg {
+        flex-shrink: 0 !important;
+        min-width: 20px !important;
+        min-height: 20px !important;
+        margin-right: 8px !important;
+    }
+
+    /* Handle long text in expander labels */
+    [data-testid="stExpander"] details summary > div,
+    [data-testid="stExpander"] details summary .streamlit-expanderHeader {
+        flex: 1 !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        white-space: nowrap !important;
+    }
+
+    /* On hover, show full text */
+    [data-testid="stExpander"] details summary:hover > div {
+        overflow: visible !important;
+        white-space: normal !important;
+        position: relative !important;
+        z-index: 1000 !important;
+    }
+
+    /* Ensure adequate container width */
+    [data-testid="stExpander"] {
+        width: 100% !important;
+    }
+
+    /* ============================================
        PROGRESS BARS - Animated Loading
        ============================================ */
 
