@@ -803,13 +803,41 @@ st.markdown("""
        Completely removes Material Icons ligature text
        ============================================ */
 
+    /* ============================================
+       CRITICAL FIX: Material Icons Ligature Text
+       Prevents "keyboard_arrow_right" text from showing
+       ============================================ */
+
     @import url('https://fonts.googleapis.com/icon?family=Material+Icons');
 
-    /* Expander icons - hide keyboard_arrow_right/down text */
+    /* Force Material Icons to use icon font, not text */
+    .material-icons {
+        font-family: 'Material Icons' !important;
+        font-weight: normal !important;
+        font-style: normal !important;
+        font-size: 24px !important;
+        display: inline-block !important;
+        line-height: 1 !important;
+        text-transform: none !important;
+        letter-spacing: normal !important;
+        word-wrap: normal !important;
+        white-space: nowrap !important;
+        direction: ltr !important;
+        -webkit-font-smoothing: antialiased !important;
+        text-rendering: optimizeLegibility !important;
+        -moz-osx-font-smoothing: grayscale !important;
+        font-feature-settings: 'liga' !important;
+    }
+
+    /* Aggressively hide Material Icons ligature text fallback */
     .streamlit-expanderHeader span[aria-hidden="true"],
-    .streamlit-expanderHeader [data-baseweb="icon"],
-    .streamlit-expanderHeader [role="presentation"],
-    [data-testid="stExpander"] summary span[aria-hidden="true"] {
+    .streamlit-expanderHeader [data-baseweb="icon"] *,
+    .streamlit-expanderHeader [role="presentation"] *,
+    [data-testid="stExpander"] summary span[aria-hidden="true"],
+    [data-testid="stExpander"] details summary span[aria-hidden="true"],
+    [data-testid="stExpander"] .material-icons-text {
+        font-size: 0 !important;
+        color: transparent !important;
         display: none !important;
         position: absolute !important;
         left: -9999px !important;
@@ -817,7 +845,24 @@ st.markdown("""
         height: 0 !important;
         overflow: hidden !important;
         visibility: hidden !important;
+        text-indent: -9999px !important;
     }
+
+    /* Ensure expander icons render as icons, not text */
+    [data-testid="stExpander"] details summary::before,
+    [data-testid="stExpander"] summary::before {
+        content: '▶' !important;
+        font-family: 'Material Icons', sans-serif !important;
+        margin-right: 8px !important;
+        display: inline-block !important;
+        transition: transform 0.2s !important;
+    }
+
+    [data-testid="stExpander"][open] details summary::before,
+    [data-testid="stExpander"][open] summary::before {
+        transform: rotate(90deg) !important;
+    }
+
 
     /* Select/Dropdown icons - hide keyboard_arrow_down text */
     div[data-baseweb="select"] span[aria-hidden="true"],
