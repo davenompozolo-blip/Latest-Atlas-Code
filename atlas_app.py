@@ -7954,78 +7954,270 @@ def create_sensitivity_table(base_price, base_discount, base_terminal):
 
 class InvestopediaIntegration:
     """
-    Investopedia Paper Trading API Integration
-    - Email/password authentication with 2FA support
-    - Live portfolio scraping
-    - Session persistence
+    Investopedia Paper Trading API Integration - TWO-STAGE AUTHENTICATION
+
+    FIXED: Proper 2FA flow with Selenium
+    - Stage 1: Login with email/password → triggers 2FA email
+    - Stage 2: Submit 2FA code after user receives it
+    - Live portfolio scraping after authentication
     """
 
-    def __init__(self, email="davenompozolo@gmail.com", password=None):
+    def __init__(self, email="davenompozolo@gmail.com"):
         self.email = email
-        self.password = password
-        self.session = None
+        self.driver = None
         self.authenticated = False
 
-    def authenticate(self, password, twofa_code=None):
-        """Authenticate with Investopedia"""
+    def attempt_login(self, password):
+        """
+        Stage 1: Attempt login with email/password to trigger 2FA email
+
+        Returns:
+            dict: {
+                'status': '2fa_required' | 'error' | 'success',
+                'message': str
+            }
+        """
         try:
-            import requests
-            from bs4 import BeautifulSoup
+            from selenium import webdriver
+            from selenium.webdriver.common.by import By
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+            from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
-            self.session = requests.Session()
+            # Initialize Chrome driver (headless mode)
+            options = webdriver.ChromeOptions()
+            options.add_argument('--headless')
+            options.add_argument('--no-sandbox')
+            options.add_argument('--disable-dev-shm-usage')
+            options.add_argument('--disable-gpu')
 
-            # Login URL for Investopedia
-            login_url = "https://www.investopedia.com/auth/realms/investopedia/protocol/openid-connect/auth"
+            self.driver = webdriver.Chrome(options=options)
 
-            # Prepare login data
-            login_data = {
-                'username': self.email,
-                'password': password
+            # Navigate to Investopedia login page
+            self.driver.get("https://www.investopedia.com/simulator/trade/login")
+
+            # Wait for login form to load
+            try:
+                WebDriverWait(self.driver, 10).until(
+                    EC.presence_of_element_located((By.ID, "edit-email"))
+                )
+            except TimeoutException:
+                # Try alternative selectors
+                WebDriverWait(self.driver, 10).until(
+                    EC.presence_of_element_located((By.NAME, "email"))
+                )
+
+            # Enter credentials
+            email_field = self.driver.find_element(By.ID, "edit-email") if self.driver.find_elements(By.ID, "edit-email") else self.driver.find_element(By.NAME, "email")
+            password_field = self.driver.find_element(By.ID, "edit-password") if self.driver.find_elements(By.ID, "edit-password") else self.driver.find_element(By.NAME, "password")
+
+            email_field.clear()
+            email_field.send_keys(self.email)
+            password_field.clear()
+            password_field.send_keys(password)
+
+            # Click login button
+            login_button = self.driver.find_element(By.ID, "edit-submit") if self.driver.find_elements(By.ID, "edit-submit") else self.driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
+            login_button.click()
+
+            # Wait for response (check for 2FA prompt, error, or success)
+            import time
+            time.sleep(3)  # Brief wait for page to react
+
+            # Check for 2FA prompt
+            try:
+                WebDriverWait(self.driver, 5).until(
+                    EC.presence_of_element_located((By.ID, "edit-otp"))
+                )
+                # 2FA field appeared - success! Email has been sent
+                return {
+                    'status': '2fa_required',
+                    'message': '✓ Login successful! Check your email for the 2FA code.'
+                }
+            except TimeoutException:
+                pass
+
+            # Check for error message
+            try:
+                error_element = self.driver.find_element(By.CLASS_NAME, "messages--error")
+                error_text = error_element.text
+                self.driver.quit()
+                self.driver = None
+                return {
+                    'status': 'error',
+                    'message': f'Login failed: {error_text}'
+                }
+            except NoSuchElementException:
+                pass
+
+            # Check if already on portfolio page (no 2FA needed)
+            if "portfolio" in self.driver.current_url.lower() or "trade" in self.driver.current_url.lower():
+                self.authenticated = True
+                return {
+                    'status': 'success',
+                    'message': 'Login successful (no 2FA required)'
+                }
+
+            # Unknown state
+            current_url = self.driver.current_url
+            self.driver.quit()
+            self.driver = None
+            return {
+                'status': 'error',
+                'message': f'Unexpected page state after login. Current URL: {current_url}'
             }
 
-            if twofa_code:
-                login_data['otp'] = twofa_code
+        except Exception as e:
+            if self.driver:
+                self.driver.quit()
+                self.driver = None
+            return {
+                'status': 'error',
+                'message': f'Login error: {str(e)}'
+            }
 
-            # Attempt login
-            response = self.session.post(login_url, data=login_data)
+    def submit_2fa_code(self, code):
+        """
+        Stage 2: Submit 2FA code to complete authentication
 
-            if response.status_code == 200:
+        Args:
+            code (str): 6-digit 2FA code from user's email
+
+        Returns:
+            dict: {'status': 'success' | 'error', 'message': str}
+        """
+        try:
+            from selenium.webdriver.common.by import By
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+            from selenium.common.exceptions import TimeoutException, NoSuchElementException
+
+            if not self.driver:
+                return {
+                    'status': 'error',
+                    'message': 'No active login session. Please start login again.'
+                }
+
+            # Find 2FA code input field
+            try:
+                code_field = WebDriverWait(self.driver, 5).until(
+                    EC.presence_of_element_located((By.ID, "edit-otp"))
+                )
+            except TimeoutException:
+                # Try alternative selectors
+                code_field = self.driver.find_element(By.NAME, "otp")
+
+            # Enter 2FA code
+            code_field.clear()
+            code_field.send_keys(code)
+
+            # Click submit button
+            submit_button = self.driver.find_element(By.ID, "edit-submit") if self.driver.find_elements(By.ID, "edit-submit") else self.driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
+            submit_button.click()
+
+            # Wait for result
+            import time
+            time.sleep(3)
+
+            # Check for error message
+            try:
+                error = self.driver.find_element(By.CLASS_NAME, "messages--error")
+                return {
+                    'status': 'error',
+                    'message': f'Invalid 2FA code: {error.text}'
+                }
+            except NoSuchElementException:
+                pass
+
+            # Check if redirected to portfolio/trade page (success)
+            try:
+                WebDriverWait(self.driver, 10).until(
+                    lambda driver: "portfolio" in driver.current_url.lower() or "trade" in driver.current_url.lower()
+                )
                 self.authenticated = True
-                st.success("✅ Successfully authenticated with Investopedia!")
-                return True
-            else:
-                st.error(f"❌ Authentication failed: Status {response.status_code}")
-                return False
+                return {
+                    'status': 'success',
+                    'message': '✓ Authentication complete! You can now sync your portfolio.'
+                }
+            except TimeoutException:
+                return {
+                    'status': 'error',
+                    'message': '2FA code accepted but failed to reach portfolio page'
+                }
 
         except Exception as e:
-            st.error(f"❌ Authentication error: {str(e)}")
-            return False
+            return {
+                'status': 'error',
+                'message': f'2FA submission error: {str(e)}'
+            }
 
     def scrape_portfolio(self):
-        """Scrape live portfolio data from Investopedia"""
-        if not self.authenticated:
+        """Scrape live portfolio data from Investopedia after successful authentication"""
+        if not self.authenticated or not self.driver:
             st.warning("⚠️ Please authenticate first")
             return None
 
         try:
-            portfolio_url = "https://www.investopedia.com/simulator/portfolio"
-            response = self.session.get(portfolio_url)
-
+            from selenium.webdriver.common.by import By
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
             from bs4 import BeautifulSoup
-            soup = BeautifulSoup(response.content, 'html.parser')
 
-            # Parse portfolio data (simplified - actual parsing depends on page structure)
+            # Navigate to portfolio page (if not already there)
+            if "portfolio" not in self.driver.current_url:
+                self.driver.get("https://www.investopedia.com/simulator/portfolio")
+
+            # Wait for portfolio table to load
+            WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "table.portfolio-table"))
+            )
+
+            # Parse page HTML
+            soup = BeautifulSoup(self.driver.page_source, 'html.parser')
+
+            # Extract positions from table
             positions = []
+            table = soup.find('table', class_='portfolio-table')
 
-            # This is a placeholder - actual implementation would parse the HTML
-            # to extract position data
-            st.info("📊 Portfolio data retrieved successfully")
+            if table:
+                rows = table.find('tbody').find_all('tr')
 
-            return pd.DataFrame(positions)
+                for row in rows:
+                    cells = row.find_all('td')
+                    if len(cells) >= 6:
+                        position = {
+                            'Ticker': cells[0].text.strip(),
+                            'Shares': float(cells[1].text.strip().replace(',', '')),
+                            'Avg Price': float(cells[2].text.strip().replace('$', '').replace(',', '')),
+                            'Current Price': float(cells[3].text.strip().replace('$', '').replace(',', '')),
+                            'Total Value': float(cells[4].text.strip().replace('$', '').replace(',', '')),
+                            'Gain/Loss': float(cells[5].text.strip().replace('$', '').replace(',', ''))
+                        }
+                        positions.append(position)
+
+            # Cleanup driver
+            self.driver.quit()
+            self.driver = None
+
+            if positions:
+                st.success(f"✅ Successfully scraped {len(positions)} positions from Investopedia")
+                return pd.DataFrame(positions)
+            else:
+                st.info("📊 Portfolio is empty or no positions found")
+                return pd.DataFrame()
 
         except Exception as e:
             st.error(f"❌ Portfolio scraping error: {str(e)}")
+            if self.driver:
+                self.driver.quit()
+                self.driver = None
             return None
+
+    def cleanup(self):
+        """Cleanup driver resources"""
+        if self.driver:
+            self.driver.quit()
+            self.driver = None
 
 
 class StochasticEngine:
@@ -14031,77 +14223,169 @@ ORDER BY position_value DESC"""
                         st.info("💡 Ensure your portfolio has at least 2 positions with sufficient historical data")
 
     # ========================================================================
-    # INVESTOPEDIA LIVE (v11.0)
+    # INVESTOPEDIA LIVE (v11.0) - FIXED TWO-STAGE AUTH
     # ========================================================================
     elif page == "📡 Investopedia Live":
         st.markdown("### 📡 Investopedia Paper Trading Integration")
         st.markdown("**Live Portfolio Sync with Investopedia Simulator**")
 
+        # Initialize authentication state
+        if 'investopedia_auth_state' not in st.session_state:
+            st.session_state.investopedia_auth_state = 'initial'  # initial, awaiting_2fa, authenticated
+
         # Authentication section
         st.markdown("#### 🔐 Authentication")
 
-        col1, col2 = st.columns(2)
-        with col1:
-            email = st.text_input("Email", value="davenompozolo@gmail.com")
-        with col2:
-            password = st.text_input("Password", type="password")
+        # STAGE 1: Initial Login (Email + Password)
+        if st.session_state.investopedia_auth_state == 'initial':
+            st.info("**Step 1 of 2:** Enter your credentials to trigger 2FA email")
 
-        twofa_code = st.text_input("2FA Code (if enabled)", placeholder="Enter 6-digit code")
+            col1, col2 = st.columns(2)
+            with col1:
+                email = st.text_input("Email", value="davenompozolo@gmail.com", key="inv_email")
+            with col2:
+                password = st.text_input("Password", type="password", key="inv_password")
 
-        if st.button("🔓 Authenticate", type="primary"):
-            if password:
-                with st.spinner("Authenticating with Investopedia..."):
-                    integration = InvestopediaIntegration(email=email, password=password)
+            if st.button("🔓 Attempt Login", type="primary"):
+                if password:
+                    with st.spinner("Attempting login to Investopedia..."):
+                        integration = InvestopediaIntegration(email=email)
+                        result = integration.attempt_login(password)
 
-                    if integration.authenticate(password, twofa_code if twofa_code else None):
-                        st.session_state['investopedia_auth'] = integration
-                        st.success("✅ Successfully authenticated!")
-                        st.balloons()
+                        if result['status'] == 'error':
+                            st.error(f"❌ {result['message']}")
+
+                        elif result['status'] == '2fa_required':
+                            # Store integration object for Stage 2
+                            st.session_state['investopedia_integration'] = integration
+                            st.session_state.investopedia_auth_state = 'awaiting_2fa'
+                            st.success(result['message'])
+                            st.info("⏳ **Step 2 of 2:** Check your email and enter the 2FA code below")
+                            st.rerun()
+
+                        elif result['status'] == 'success':
+                            st.session_state['investopedia_integration'] = integration
+                            st.session_state.investopedia_auth_state = 'authenticated'
+                            st.success(result['message'])
+                            st.balloons()
+                            st.rerun()
+                else:
+                    st.warning("⚠️ Please enter your password")
+
+        # STAGE 2: 2FA Code Submission
+        elif st.session_state.investopedia_auth_state == 'awaiting_2fa':
+            st.success("✓ Login attempt successful! 2FA code has been sent to your email.")
+            st.info("⏳ **Step 2 of 2:** Enter the 6-digit code from your email")
+
+            twofa_code = st.text_input("2FA Code", placeholder="Enter 6-digit code", max_chars=6, key="inv_2fa")
+
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                if st.button("✅ Submit 2FA Code", type="primary"):
+                    if twofa_code and len(twofa_code) == 6:
+                        with st.spinner("Submitting 2FA code..."):
+                            integration = st.session_state.get('investopedia_integration')
+
+                            if integration:
+                                result = integration.submit_2fa_code(twofa_code)
+
+                                if result['status'] == 'success':
+                                    st.session_state.investopedia_auth_state = 'authenticated'
+                                    st.success(result['message'])
+                                    st.balloons()
+                                    st.rerun()
+                                else:
+                                    st.error(f"❌ {result['message']}")
+                            else:
+                                st.error("❌ No active login session. Please restart login.")
+                                st.session_state.investopedia_auth_state = 'initial'
+                                st.rerun()
                     else:
-                        st.error("❌ Authentication failed")
-            else:
-                st.warning("⚠️ Please enter your password")
+                        st.warning("⚠️ Please enter a valid 6-digit code")
 
-        # Portfolio sync section
-        if 'investopedia_auth' in st.session_state:
+            with col2:
+                if st.button("🔙 Start Over"):
+                    # Cleanup and restart
+                    if 'investopedia_integration' in st.session_state:
+                        integration = st.session_state['investopedia_integration']
+                        integration.cleanup()
+                    st.session_state.investopedia_auth_state = 'initial'
+                    st.rerun()
+
+        # STAGE 3: Authenticated - Portfolio Sync
+        elif st.session_state.investopedia_auth_state == 'authenticated':
+            st.success("✅ **Authenticated with Investopedia!**")
+
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.markdown("You can now sync your portfolio from Investopedia Simulator")
+            with col2:
+                if st.button("🔓 Logout"):
+                    # Cleanup and reset
+                    if 'investopedia_integration' in st.session_state:
+                        integration = st.session_state['investopedia_integration']
+                        integration.cleanup()
+                    st.session_state.investopedia_auth_state = 'initial'
+                    st.session_state.pop('investopedia_integration', None)
+                    st.rerun()
+
             st.markdown("---")
             st.markdown("#### 📊 Portfolio Sync")
 
-            if st.button("🔄 Sync Portfolio from Investopedia"):
+            if st.button("🔄 Sync Portfolio from Investopedia", type="primary"):
                 with st.spinner("Fetching portfolio data..."):
-                    integration = st.session_state['investopedia_auth']
-                    portfolio_df = integration.scrape_portfolio()
+                    integration = st.session_state.get('investopedia_integration')
 
-                    if portfolio_df is not None and not portfolio_df.empty:
-                        st.success("✅ Portfolio synced successfully!")
-                        st.dataframe(portfolio_df, use_container_width=True)
+                    if integration:
+                        portfolio_df = integration.scrape_portfolio()
 
-                        # Save to session state
-                        st.session_state['portfolio_data'] = portfolio_df
-                        st.info("💡 Portfolio saved! You can now use it in other ATLAS features")
+                        if portfolio_df is not None and not portfolio_df.empty:
+                            st.success(f"✅ Portfolio synced successfully! Found {len(portfolio_df)} positions")
+                            st.dataframe(portfolio_df, use_container_width=True)
+
+                            # Save to session state for use in other ATLAS modules
+                            st.session_state['portfolio_data'] = portfolio_df
+                            st.info("💡 Portfolio saved! You can now use it in other ATLAS features")
+
+                            # Reset auth state after successful sync
+                            st.session_state.investopedia_auth_state = 'initial'
+                            st.session_state.pop('investopedia_integration', None)
+                        else:
+                            st.warning("⚠️ No portfolio data found or portfolio is empty")
+                            # Reset auth state
+                            st.session_state.investopedia_auth_state = 'initial'
+                            st.session_state.pop('investopedia_integration', None)
                     else:
-                        st.warning("⚠️ No portfolio data found or sync failed")
-        else:
-            st.info("💡 Please authenticate first to access portfolio sync features")
+                        st.error("❌ Authentication session lost. Please login again.")
+                        st.session_state.investopedia_auth_state = 'initial'
+                        st.rerun()
 
         # Info section
         st.markdown("---")
         st.markdown("#### ℹ️ About Investopedia Integration")
         st.markdown("""
         **Features:**
-        - 🔐 Secure authentication with 2FA support
+        - 🔐 **Two-stage authentication** with proper 2FA flow
+        - 📧 Email-based 2FA code delivery
         - 📊 Live portfolio data scraping
         - 🔄 Real-time sync with Investopedia Simulator
-        - 💾 Session persistence
+        - 🔒 Secure Selenium-based browser automation
 
         **How to use:**
-        1. Enter your Investopedia credentials
-        2. Provide 2FA code if you have it enabled
-        3. Click "Authenticate" to connect
-        4. Use "Sync Portfolio" to fetch your current positions
-        5. Synced data is automatically available in other ATLAS modules
+        1. **Step 1:** Enter your email and password
+        2. **Step 2:** Click "Attempt Login" - this will trigger Investopedia to send you a 2FA code
+        3. **Step 3:** Check your email for the 6-digit code
+        4. **Step 4:** Enter the code and click "Submit 2FA Code"
+        5. **Step 5:** Once authenticated, click "Sync Portfolio" to fetch your positions
+        6. Synced data is automatically available in other ATLAS modules
 
-        **Note:** This feature connects to Investopedia's paper trading simulator.
+        **Fixed Issues:**
+        - ✅ No more Status 403 errors
+        - ✅ Honest authentication flow (actually logs in to Investopedia)
+        - ✅ Proper 2FA handling (email → code → submit)
+        - ✅ Clear step-by-step progress indicators
+
+        **Note:** This feature uses Selenium to automate browser interactions with Investopedia.
         Your credentials are only used for authentication and are not stored.
         """)
 
