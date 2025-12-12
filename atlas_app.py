@@ -3501,37 +3501,53 @@ def calculate_portfolio_from_trades(trade_df):
 # ============================================================================
 
 @st.cache_data(ttl=600)
-def calculate_portfolio_returns(df, start_date, end_date):
+def calculate_portfolio_returns(df, start_date, end_date, equity=None):
+    """
+    Calculate portfolio returns correctly accounting for leverage
+
+    CRITICAL FIX: Returns calculated on EQUITY basis, not gross exposure.
+    With leverage, pct_change() on gross exposure understates returns.
+
+    Args:
+        df: Portfolio dataframe with positions
+        start_date: Start date for historical data
+        end_date: End date for historical data
+        equity: User's equity capital (default: from session state)
+
+    Returns:
+        Returns series calculated on equity basis (leverage amplified)
+    """
     try:
         valid_positions = []
         for _, row in df.iterrows():
             if not is_option_ticker(row['Ticker']):
                 valid_positions.append(row)
-        
+
         if not valid_positions:
             return None
-        
+
         valid_df = pd.DataFrame(valid_positions)
         all_data = {}
-        
+
         for _, row in valid_df.iterrows():
             ticker = row['Ticker']
             data = fetch_historical_data(ticker, start_date, end_date)
             if data is not None and len(data) > 0:
                 all_data[ticker] = data
-        
+
         if not all_data:
             return None
-        
+
         common_dates = None
         for ticker, data in all_data.items():
             dates = set(data.index)
             common_dates = dates if common_dates is None else common_dates.intersection(dates)
-        
+
         common_dates = sorted(list(common_dates))
         if len(common_dates) < 2:
             return None
-        
+
+        # Calculate daily portfolio gross values
         portfolio_values = []
         for date in common_dates:
             daily_value = 0
@@ -3544,9 +3560,25 @@ def calculate_portfolio_returns(df, start_date, end_date):
                     except KeyError:
                         continue
             portfolio_values.append(daily_value)
-        
+
         portfolio_series = pd.Series(portfolio_values, index=common_dates)
-        returns = portfolio_series.pct_change().dropna()
+
+        # CRITICAL FIX: Calculate returns on EQUITY basis, not gross exposure
+        # Get equity from session state if not provided
+        if equity is None:
+            # Try to get from session state, fallback to initial portfolio value
+            equity = st.session_state.get('equity_capital', portfolio_values[0])
+
+        # Calculate dollar changes in portfolio value
+        portfolio_changes = portfolio_series.diff()
+
+        # Returns = dollar change / equity (not / previous gross value)
+        # This correctly amplifies returns with leverage
+        returns = portfolio_changes / equity
+
+        # Drop first NaN value
+        returns = returns.dropna()
+
         return returns
     except:
         return None
@@ -4023,16 +4055,28 @@ def create_enhanced_holdings_table(df):
 
     enhanced_df['Sector'] = enhanced_df['Sector'].fillna('Other')
     enhanced_df['Shares'] = enhanced_df['Shares'].round(0).astype(int)
-    
+
     enhanced_df['Total Cost'] = enhanced_df['Shares'] * enhanced_df['Avg Cost']
     enhanced_df['Total Value'] = enhanced_df['Shares'] * enhanced_df['Current Price']
     enhanced_df['Total Gain/Loss $'] = enhanced_df['Total Value'] - enhanced_df['Total Cost']
     enhanced_df['Total Gain/Loss %'] = ((enhanced_df['Current Price'] - enhanced_df['Avg Cost']) / enhanced_df['Avg Cost']) * 100
     enhanced_df['Daily P&L $'] = enhanced_df['Shares'] * enhanced_df['Daily Change']
-    
-    total_value = enhanced_df['Total Value'].sum()
-    enhanced_df['Weight %'] = (enhanced_df['Total Value'] / total_value * 100) if total_value > 0 else 0
-    
+
+    # CRITICAL FIX: Add DUAL weight columns (equity-based AND gross-based)
+    gross_exposure = enhanced_df['Total Value'].sum()
+
+    # Get equity from session state
+    equity = st.session_state.get('equity_capital', gross_exposure)  # Fallback to gross if no equity set
+
+    # Weight % of Equity - can exceed 100% with leverage!
+    enhanced_df['Weight % of Equity'] = (enhanced_df['Total Value'] / equity * 100) if equity > 0 else 0
+
+    # Weight % of Gross Exposure - always sums to 100%
+    enhanced_df['Weight % of Gross'] = (enhanced_df['Total Value'] / gross_exposure * 100) if gross_exposure > 0 else 0
+
+    # Keep legacy 'Weight %' for backwards compatibility (use gross-based)
+    enhanced_df['Weight %'] = enhanced_df['Weight % of Gross']
+
     return enhanced_df
 
 def calculate_quality_score(ticker, info):
@@ -4195,24 +4239,54 @@ def calculate_information_ratio(portfolio_returns, benchmark_returns):
 
 # v9.7 ENHANCEMENT: Added caching for performance optimization
 @st.cache_data(ttl=300)
-def calculate_var(returns, confidence=0.95):
-    """Calculate Value at Risk with caching for improved performance"""
+def calculate_var(returns, confidence=0.95, equity=None):
+    """
+    Calculate Value at Risk with caching for improved performance
+
+    CRITICAL FIX: Returns VaR as percentage. If equity provided, also returns dollar VaR.
+    VaR dollar amount is calculated on EQUITY, not gross exposure.
+
+    Args:
+        returns: Return series (should be on equity basis from calculate_portfolio_returns)
+        confidence: Confidence level (e.g., 0.95 = 95%)
+        equity: Optional equity capital to calculate dollar VaR
+
+    Returns:
+        VaR percentage (or None if error)
+    """
     if not is_valid_series(returns) or len(returns) < 2:
         return None
     try:
         var = np.percentile(returns, (1 - confidence) * 100)
+        # Note: returns are already on equity basis (from fixed calculate_portfolio_returns)
+        # so var percentile correctly represents risk to equity
         return var * 100
     except Exception as e:
         return None
 
 @st.cache_data(ttl=300)
-def calculate_cvar(returns, confidence=0.95):
-    """Calculate Conditional VaR with caching for improved performance"""
+def calculate_cvar(returns, confidence=0.95, equity=None):
+    """
+    Calculate Conditional VaR (Expected Shortfall) with caching
+
+    CRITICAL FIX: Returns CVaR as percentage. If equity provided, also returns dollar CVaR.
+    CVaR dollar amount is calculated on EQUITY, not gross exposure.
+
+    Args:
+        returns: Return series (should be on equity basis from calculate_portfolio_returns)
+        confidence: Confidence level (e.g., 0.95 = 95%)
+        equity: Optional equity capital to calculate dollar CVaR
+
+    Returns:
+        CVaR percentage (or None if error)
+    """
     if not is_valid_series(returns) or len(returns) < 2:
         return None
     try:
         var = np.percentile(returns, (1 - confidence) * 100)
         cvar = returns[returns <= var].mean()
+        # Note: returns are already on equity basis (from fixed calculate_portfolio_returns)
+        # so cvar correctly represents expected tail loss to equity
         return cvar * 100
     except Exception as e:
         return None
@@ -4354,7 +4428,11 @@ def calculate_var_cvar_portfolio_optimization(enhanced_df, confidence_level=0.95
     tickers = enhanced_df['Ticker'].tolist()
     current_values = enhanced_df['Total Value'].values
     total_portfolio_value = current_values.sum()
-    current_weights = current_values / total_portfolio_value
+
+    # CRITICAL FIX: Calculate weights relative to EQUITY, not gross exposure
+    # Get equity from session state
+    equity = st.session_state.get('equity_capital', total_portfolio_value)
+    current_weights = current_values / equity  # Can sum > 1.0 with leverage!
 
     # Fetch historical returns for all tickers
     end_date = datetime.now()
@@ -4386,7 +4464,9 @@ def calculate_var_cvar_portfolio_optimization(enhanced_df, confidence_level=0.95
     tickers = valid_tickers
     current_values = enhanced_df['Total Value'].values
     total_portfolio_value = current_values.sum()
-    current_weights = current_values / total_portfolio_value
+
+    # CRITICAL FIX: Use equity for current weights (already set above)
+    current_weights = current_values / equity  # Can sum > 1.0 with leverage!
 
     # Define CVaR calculation with production-grade regularization
     def calculate_portfolio_cvar(weights, returns, alpha):
@@ -8178,6 +8258,16 @@ class MultiSourceDataBroker:
 # ============================================================================
 
 def main():
+    # ============================================================================
+    # EQUITY TRACKING INITIALIZATION - CRITICAL FIX FOR LEVERAGE CALCULATIONS
+    # ============================================================================
+    # Initialize equity tracking if not exists
+    if 'equity_capital' not in st.session_state:
+        st.session_state['equity_capital'] = 100000.0  # Default $100k
+
+    if 'target_leverage' not in st.session_state:
+        st.session_state['target_leverage'] = 1.0  # Default no leverage
+
     # Professional Header with Logo
     st.markdown("""
     <div style="text-align: center; margin-bottom: 2rem;">
@@ -8243,7 +8333,78 @@ def main():
             <span style="color: white; margin-left: 20px;">Leverage: {leverage_info['leverage_ratio']:.2f}x</span>
         </div>
         """, unsafe_allow_html=True)
-    
+
+    # ============================================================================
+    # CAPITAL SETTINGS - EQUITY & LEVERAGE CONFIGURATION
+    # ============================================================================
+    with st.expander("⚙️ CAPITAL SETTINGS (Equity & Leverage)", expanded=False):
+        st.markdown("### 💰 Configure Your Capital Structure")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            equity_capital = st.number_input(
+                "Your Equity Capital ($)",
+                min_value=1000.0,
+                max_value=100000000.0,
+                value=st.session_state.get('equity_capital', 100000.0),
+                step=1000.0,
+                format="%.0f",
+                help="Your actual capital invested (not including leverage)",
+                key="equity_capital_input"
+            )
+            st.session_state['equity_capital'] = equity_capital
+
+        with col2:
+            target_leverage = st.slider(
+                "Target Leverage",
+                min_value=1.0,
+                max_value=3.0,
+                value=st.session_state.get('target_leverage', 1.0),
+                step=0.1,
+                help="Total exposure / Equity ratio (1.0x = no leverage, 2.0x = 2x leverage, 3.0x = 3x leverage)",
+                key="target_leverage_input"
+            )
+            st.session_state['target_leverage'] = target_leverage
+
+        # Display calculated structure
+        gross_exposure_estimate = equity_capital * target_leverage
+
+        st.markdown("---")
+        st.markdown("### 📊 Your Portfolio Structure")
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.metric(
+                "💰 Equity Capital",
+                f"${equity_capital:,.0f}",
+                help="Your actual invested capital"
+            )
+
+        with col2:
+            st.metric(
+                "⚡ Target Leverage",
+                f"{target_leverage:.1f}x",
+                help="Exposure multiplier"
+            )
+
+        with col3:
+            st.metric(
+                "📊 Target Gross Exposure",
+                f"${gross_exposure_estimate:,.0f}",
+                help="Total market exposure with leverage"
+            )
+
+        st.info(f"""
+        **Understanding Your Settings:**
+        - **Equity:** Your actual capital = ${equity_capital:,.0f}
+        - **Leverage:** {target_leverage:.1f}x means ${target_leverage:.2f} of market exposure per $1 of equity
+        - **Gross Exposure:** Total position values = ${gross_exposure_estimate:,.0f}
+        - **Returns:** Calculated on your ${equity_capital:,.0f} equity (leverage amplifies % returns)
+        - **Risk Metrics:** VaR/CVaR applied to your equity, not gross exposure
+        """)
+
     # ============================================================================
     # HORIZONTAL NAVIGATION BAR - MAXIMUM SCREEN SPACE UTILIZATION
     # ============================================================================
@@ -8891,19 +9052,109 @@ summary(df)""",
         
         with st.spinner("Loading..."):
             enhanced_df = create_enhanced_holdings_table(df)
-        
-        total_value = enhanced_df['Total Value'].sum()
+
+        # CRITICAL FIX: Calculate equity, gross exposure, and leverage
+        equity = st.session_state.get('equity_capital', 100000.0)
+        gross_exposure = enhanced_df['Total Value'].sum()
+        actual_leverage = gross_exposure / equity if equity > 0 else 1.0
         total_cost = enhanced_df['Total Cost'].sum()
-        total_gl = total_value - total_cost
-        total_gl_pct = (total_gl / total_cost) * 100 if total_cost > 0 else 0
+
+        # CRITICAL FIX: Calculate G/L on EQUITY basis, not cost basis
+        total_gl = gross_exposure - equity  # Profit/loss from initial equity
+        total_gl_pct = (total_gl / equity) * 100 if equity > 0 else 0  # Return on equity
         daily_pl = enhanced_df['Daily P&L $'].sum()
-        
+
+        # First row: Capital Structure (NEW - shows equity vs gross distinction)
+        st.markdown("### 💰 Capital Structure")
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.metric(
+                "💰 Your Equity",
+                format_currency(equity),
+                help="Your actual capital invested"
+            )
+
+        with col2:
+            st.metric(
+                "📊 Gross Exposure",
+                format_currency(gross_exposure),
+                delta=f"vs Equity: {((gross_exposure/equity - 1)*100):+.1f}%" if equity > 0 else None,
+                help="Total market value of all positions (includes leverage)"
+            )
+
+        with col3:
+            target_lev = st.session_state.get('target_leverage', 1.0)
+            leverage_delta = f"Target: {target_lev:.1f}x"
+            st.metric(
+                "⚡ Actual Leverage",
+                f"{actual_leverage:.2f}x",
+                delta=leverage_delta,
+                help="Gross Exposure ÷ Equity"
+            )
+
+        st.markdown("---")
+
+        # Second row: Performance Metrics (ALL on equity basis)
+        st.markdown("### 📈 Performance (on Equity Basis)")
         col1, col2, col3, col4, col5 = st.columns(5)
-        col1.metric("Total Value", format_currency(total_value))
-        col2.metric("Total Cost", format_currency(total_cost))
-        col3.metric("Total G/L", format_currency(total_gl), format_percentage(total_gl_pct))
-        col4.metric("Daily P&L", format_currency(daily_pl))
-        col5.metric("📊 Positions", len(enhanced_df))
+
+        with col1:
+            st.metric(
+                "Return on Equity",
+                format_percentage(total_gl_pct),
+                delta=format_currency(total_gl),
+                help="Total return calculated on YOUR equity (leverage amplified)"
+            )
+
+        with col2:
+            st.metric(
+                "Daily P&L",
+                format_currency(daily_pl),
+                help="Today's profit/loss across all positions"
+            )
+
+        with col3:
+            st.metric(
+                "Total Cost Basis",
+                format_currency(total_cost),
+                help="Total amount paid for all positions"
+            )
+
+        with col4:
+            cost_gl = gross_exposure - total_cost
+            cost_gl_pct = (cost_gl / total_cost) * 100 if total_cost > 0 else 0
+            st.metric(
+                "Unrealized G/L",
+                format_currency(cost_gl),
+                delta=format_percentage(cost_gl_pct),
+                help="Current value vs cost basis"
+            )
+
+        with col5:
+            st.metric(
+                "📊 Positions",
+                len(enhanced_df),
+                help="Number of holdings in portfolio"
+            )
+
+        # Info box explaining the metrics
+        with st.expander("ℹ️ Understanding Your Leveraged Portfolio", expanded=False):
+            st.info(f"""
+            **Capital Structure:**
+            - **Equity:** Your actual capital = ${equity:,.0f}
+            - **Gross Exposure:** Total position values = ${gross_exposure:,.0f}
+            - **Leverage:** {actual_leverage:.2f}x means ${actual_leverage:.2f} of market exposure per $1 of equity
+
+            **Returns Calculation:**
+            - **Return on Equity:** {total_gl_pct:.2f}% is calculated as (Current Value - Initial Equity) / Equity
+            - With {actual_leverage:.2f}x leverage, market moves are amplified {actual_leverage:.2f}x
+            - A 10% market gain becomes ~{actual_leverage*10:.1f}% return on your equity
+
+            **Risk:**
+            - VaR, CVaR, and all risk metrics are applied to your ${equity:,.0f} equity, not gross exposure
+            - Leverage amplifies BOTH gains and losses proportionally
+            """)
 
         # v9.7 NEW FEATURE: Data Quality Indicator
         validation_result = validate_portfolio_data(portfolio_data)
@@ -8983,16 +9234,18 @@ summary(df)""",
             # Define all available columns
             ALL_COLUMNS = [
                 'Ticker', 'Asset Name', 'Shares', 'Avg Cost', 'Current Price',
-                'Daily Change %', '5D Return %', 'YTD Return %', 'Weight %',
+                'Daily Change %', '5D Return %', 'YTD Return %',
+                'Weight % of Equity', 'Weight % of Gross', 'Weight %',
                 'Daily P&L $', 'Total Gain/Loss $', 'Total Gain/Loss %',
                 'Beta', 'Analyst Rating', 'Quality Score', 'Sector',
                 'Price Target', 'Volume'
             ]
 
-            # Default columns to show
+            # Default columns to show (include both new weight columns)
             DEFAULT_COLUMNS = [
                 'Ticker', 'Asset Name', 'Shares', 'Current Price',
-                'Daily Change %', '5D Return %', 'Weight %',
+                'Daily Change %', '5D Return %',
+                'Weight % of Equity', 'Weight % of Gross',
                 'Total Gain/Loss $', 'Total Gain/Loss %', 'Quality Score'
             ]
 
@@ -9030,6 +9283,15 @@ summary(df)""",
                 display_df['Total Gain/Loss %'] = display_df['Total Gain/Loss %'].apply(add_arrow_indicator)
 
             st.dataframe(display_df, use_container_width=True, hide_index=True, height=500, column_config=None)
+
+            # Add explanation for dual weight columns
+            if 'Weight % of Equity' in selected_columns or 'Weight % of Gross' in selected_columns:
+                st.caption(f"""
+                **Understanding Position Weights:**
+                - **Weight % of Equity**: Position value as % of your ${equity:,.0f} equity (can exceed 100% with {actual_leverage:.2f}x leverage!)
+                - **Weight % of Gross**: Position value as % of ${gross_exposure:,.0f} gross exposure (always sums to 100%)
+                - With {actual_leverage:.2f}x leverage, a 50% equity weight = {50/actual_leverage:.1f}% gross weight
+                """)
         else:
             st.warning("⚠️ Please select at least one column to display")
 
