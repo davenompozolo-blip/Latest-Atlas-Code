@@ -241,18 +241,33 @@ st.markdown("""
     }
 
     .block-container {
+        position: relative !important;
+        z-index: 100 !important;
         padding-top: 3rem !important;
         padding-bottom: 3rem !important;
         max-width: 1400px !important;
+    }
+
+    /* Prevent text overflow and wrapping issues */
+    .block-container * {
+        max-width: 100%;
+        overflow-wrap: break-word;
+        word-wrap: break-word;
+    }
+
+    /* Fix for inline-flex containers that could overflow */
+    div[style*="display: inline-flex"],
+    div[style*="display:inline-flex"] {
+        flex-wrap: wrap !important;
+        overflow: hidden !important;
     }
 
     /* ============================================
        GLASSMORPHISM CARDS - Modern Aesthetic
        ============================================ */
 
+    /* FIXED: Removed over-broad stMarkdownContainer selector to prevent text overlap */
     div[data-testid="stMetric"],
-    div[data-testid="stMarkdownContainer"] > div,
-    .stTabs [data-baseweb="tab-panel"],
     .stExpander {
         background: rgba(10, 25, 41, 0.4) !important;
         backdrop-filter: blur(20px) saturate(180%) !important;
@@ -286,12 +301,16 @@ st.markdown("""
         letter-spacing: -0.02em !important;
         line-height: 1.1 !important;
         margin-bottom: 0.5em !important;
+        /* Fallback color for browsers that don't support background-clip */
+        color: #00d4ff !important;
         background: linear-gradient(135deg, #00d4ff 0%, #00ff88 50%, #00d4ff 100%);
         background-size: 200% auto;
         background-clip: text;
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         animation: shimmer 3s linear infinite;
+        /* Prevent duplicate rendering */
+        text-shadow: none !important;
     }
 
     @keyframes shimmer {
