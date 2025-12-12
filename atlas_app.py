@@ -799,37 +799,63 @@ st.markdown("""
     }
 
     /* ============================================
-       SURGICAL FIX: OVERLAPPING TEXT - v10.0.5
+       SURGICAL FIX: OVERLAPPING TEXT - v10.0.6
        Completely removes Material Icons ligature text
        ============================================ */
 
-    @import url('https://fonts.googleapis.com/icon?family=Material+Icons');
+    /* ============================================
+       NUCLEAR OPTION: Hide ALL expander icons and use custom arrows
+       Fixes "keyboard_arrow_right" text showing instead of icon
+       ============================================ */
 
-    /* Expander icons - hide keyboard_arrow_right/down text */
-    .streamlit-expanderHeader span[aria-hidden="true"],
+    /* Hide the entire icon container in expanders */
+    [data-testid="stExpander"] summary svg,
+    [data-testid="stExpander"] summary [data-baseweb="icon"],
+    [data-testid="stExpander"] summary span[role="img"],
+    .streamlit-expanderHeader svg,
     .streamlit-expanderHeader [data-baseweb="icon"],
-    .streamlit-expanderHeader [role="presentation"],
-    [data-testid="stExpander"] summary span[aria-hidden="true"] {
+    .streamlit-expanderHeader span[role="img"] {
         display: none !important;
-        position: absolute !important;
-        left: -9999px !important;
-        width: 0 !important;
-        height: 0 !important;
-        overflow: hidden !important;
         visibility: hidden !important;
     }
 
-    /* Select/Dropdown icons - hide keyboard_arrow_down text */
-    div[data-baseweb="select"] span[aria-hidden="true"],
-    div[data-baseweb="select"] [data-baseweb="icon"],
-    div[data-baseweb="select"] [role="presentation"],
-    div[data-baseweb="select"] svg {
-        display: none !important;
+    /* Add custom arrow using CSS */
+    [data-testid="stExpander"] summary {
+        position: relative !important;
+        padding-left: 30px !important;
+    }
+
+    [data-testid="stExpander"] summary::before {
+        content: '▶' !important;
         position: absolute !important;
-        left: -9999px !important;
-        width: 0 !important;
-        height: 0 !important;
-        overflow: hidden !important;
+        left: 8px !important;
+        top: 50% !important;
+        transform: translateY(-50%) !important;
+        font-size: 14px !important;
+        color: rgba(0, 212, 255, 0.8) !important;
+        transition: transform 0.2s ease !important;
+        font-family: Arial, sans-serif !important;
+    }
+
+    [data-testid="stExpander"][open] summary::before {
+        transform: translateY(-50%) rotate(90deg) !important;
+    }
+
+    /* Also hide any stray Material Icons text nodes */
+    [data-testid="stExpander"] summary *:not(div):not(p) {
+        font-size: 0 !important;
+    }
+
+    /* Make sure the label text is still visible */
+    [data-testid="stExpander"] summary > div {
+        font-size: 15px !important;
+    }
+
+    /* Select/Dropdown icons - hide keyboard_arrow_down text */
+    div[data-baseweb="select"] svg,
+    div[data-baseweb="select"] [data-baseweb="icon"],
+    div[data-baseweb="select"] [role="presentation"] {
+        display: none !important;
         visibility: hidden !important;
     }
 
@@ -8029,14 +8055,64 @@ class InvestopediaIntegration:
             from selenium.webdriver.support import expected_conditions as EC
             from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
-            # Initialize Chrome driver (headless mode)
-            options = webdriver.ChromeOptions()
-            options.add_argument('--headless')
-            options.add_argument('--no-sandbox')
-            options.add_argument('--disable-dev-shm-usage')
-            options.add_argument('--disable-gpu')
+            # FIXED: Use webdriver-manager for auto ChromeDriver version matching
+            try:
+                from selenium.webdriver.chrome.service import Service
+                from webdriver_manager.chrome import ChromeDriverManager
 
-            self.driver = webdriver.Chrome(options=options)
+                # Initialize Chrome driver with proper configuration
+                # COLAB-SPECIFIC: Aggressive Chrome options to prevent crash
+                options = webdriver.ChromeOptions()
+                options.add_argument('--headless')
+                options.add_argument('--no-sandbox')
+                options.add_argument('--disable-dev-shm-usage')
+                options.add_argument('--disable-gpu')
+                options.add_argument('--window-size=1920,1080')
+                options.add_argument('--disable-blink-features=AutomationControlled')
+                options.add_argument('--remote-debugging-port=9222')
+                options.add_argument('--disable-setuid-sandbox')
+                options.add_argument('--single-process')
+                options.add_argument('--disable-extensions')
+                options.add_argument('--disable-logging')
+                options.add_argument('--disable-login-animations')
+                options.add_argument('--disable-notifications')
+                options.add_argument('--disable-background-timer-throttling')
+                options.add_argument('--disable-backgrounding-occluded-windows')
+                options.add_argument('--disable-renderer-backgrounding')
+
+                # Auto-install correct ChromeDriver version
+                service = Service(ChromeDriverManager().install())
+                self.driver = webdriver.Chrome(service=service, options=options)
+
+            except ImportError:
+                # Fallback if webdriver-manager not installed
+                st.warning("⚠️ Installing webdriver-manager for better Chrome compatibility...")
+                import subprocess
+                subprocess.check_call(['pip', 'install', '-q', 'webdriver-manager'])
+
+                from selenium.webdriver.chrome.service import Service
+                from webdriver_manager.chrome import ChromeDriverManager
+
+                # COLAB-SPECIFIC: Aggressive Chrome options to prevent crash
+                options = webdriver.ChromeOptions()
+                options.add_argument('--headless')
+                options.add_argument('--no-sandbox')
+                options.add_argument('--disable-dev-shm-usage')
+                options.add_argument('--disable-gpu')
+                options.add_argument('--window-size=1920,1080')
+                options.add_argument('--remote-debugging-port=9222')
+                options.add_argument('--disable-setuid-sandbox')
+                options.add_argument('--single-process')
+                options.add_argument('--disable-extensions')
+                options.add_argument('--disable-logging')
+                options.add_argument('--disable-login-animations')
+                options.add_argument('--disable-notifications')
+                options.add_argument('--disable-background-timer-throttling')
+                options.add_argument('--disable-backgrounding-occluded-windows')
+                options.add_argument('--disable-renderer-backgrounding')
+
+                service = Service(ChromeDriverManager().install())
+                self.driver = webdriver.Chrome(service=service, options=options)
 
             # Navigate to Investopedia login page
             self.driver.get("https://www.investopedia.com/simulator/trade/login")
