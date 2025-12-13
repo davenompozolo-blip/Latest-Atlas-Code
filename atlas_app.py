@@ -52,7 +52,18 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
-from streamlit_option_menu import option_menu
+
+# Auto-install streamlit_option_menu if missing
+try:
+    from streamlit_option_menu import option_menu
+except ImportError:
+    import subprocess
+    import sys
+    print("📦 Installing streamlit-option-menu...")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "streamlit-option-menu>=0.3.6"])
+    from streamlit_option_menu import option_menu
+    print("✅ streamlit-option-menu installed successfully!")
+
 import yfinance as yf
 from scipy import stats
 from scipy.optimize import minimize
