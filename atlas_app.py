@@ -52,7 +52,18 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
-from streamlit_option_menu import option_menu
+
+# Auto-install streamlit_option_menu if missing
+try:
+    from streamlit_option_menu import option_menu
+except ImportError:
+    import subprocess
+    import sys
+    print("📦 Installing streamlit-option-menu...")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "streamlit-option-menu>=0.3.6"])
+    from streamlit_option_menu import option_menu
+    print("✅ streamlit-option-menu installed successfully!")
+
 import yfinance as yf
 from scipy import stats
 from scipy.optimize import minimize
@@ -8055,64 +8066,35 @@ class InvestopediaIntegration:
             from selenium.webdriver.support import expected_conditions as EC
             from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
-            # FIXED: Use webdriver-manager for auto ChromeDriver version matching
-            try:
-                from selenium.webdriver.chrome.service import Service
-                from webdriver_manager.chrome import ChromeDriverManager
+            # COLAB-OPTIMIZED: System ChromeDriver setup
+            # Auto-install Chromium and ChromeDriver if not present
+            import subprocess
+            import os
 
-                # Initialize Chrome driver with proper configuration
-                # COLAB-SPECIFIC: Aggressive Chrome options to prevent crash
-                options = webdriver.ChromeOptions()
-                options.add_argument('--headless')
-                options.add_argument('--no-sandbox')
-                options.add_argument('--disable-dev-shm-usage')
-                options.add_argument('--disable-gpu')
-                options.add_argument('--window-size=1920,1080')
-                options.add_argument('--disable-blink-features=AutomationControlled')
-                options.add_argument('--remote-debugging-port=9222')
-                options.add_argument('--disable-setuid-sandbox')
-                options.add_argument('--single-process')
-                options.add_argument('--disable-extensions')
-                options.add_argument('--disable-logging')
-                options.add_argument('--disable-login-animations')
-                options.add_argument('--disable-notifications')
-                options.add_argument('--disable-background-timer-throttling')
-                options.add_argument('--disable-backgrounding-occluded-windows')
-                options.add_argument('--disable-renderer-backgrounding')
+            # Check if ChromeDriver is installed, install if missing
+            if not os.path.exists('/usr/bin/chromedriver'):
+                st.info("📦 Installing Chrome/ChromeDriver for Colab...")
+                try:
+                    subprocess.run(['apt-get', 'update'], check=True, capture_output=True)
+                    subprocess.run(['apt-get', 'install', '-y', 'chromium-chromedriver'], check=True, capture_output=True)
+                    subprocess.run(['cp', '/usr/lib/chromium-browser/chromedriver', '/usr/bin'], check=True, capture_output=True)
+                    subprocess.run(['chmod', '+x', '/usr/bin/chromedriver'], check=True, capture_output=True)
+                    st.success("✅ ChromeDriver installed successfully!")
+                except Exception as e:
+                    st.warning(f"⚠️ ChromeDriver installation failed: {e}")
 
-                # Auto-install correct ChromeDriver version
-                service = Service(ChromeDriverManager().install())
-                self.driver = webdriver.Chrome(service=service, options=options)
+            # COLAB-OPTIMIZED: Minimal Chrome options for stability
+            options = webdriver.ChromeOptions()
+            options.add_argument('--headless')
+            options.add_argument('--no-sandbox')
+            options.add_argument('--disable-dev-shm-usage')
+            options.add_argument('--disable-gpu')
 
-            except ImportError:
-                # Fallback if webdriver-manager not installed
-                st.warning("⚠️ Installing webdriver-manager for better Chrome compatibility...")
-                import subprocess
-                subprocess.check_call(['pip', 'install', '-q', 'webdriver-manager'])
+            # Explicit binary location for Colab
+            options.binary_location = '/usr/bin/chromium-browser'
 
-                from selenium.webdriver.chrome.service import Service
-                from webdriver_manager.chrome import ChromeDriverManager
-
-                # COLAB-SPECIFIC: Aggressive Chrome options to prevent crash
-                options = webdriver.ChromeOptions()
-                options.add_argument('--headless')
-                options.add_argument('--no-sandbox')
-                options.add_argument('--disable-dev-shm-usage')
-                options.add_argument('--disable-gpu')
-                options.add_argument('--window-size=1920,1080')
-                options.add_argument('--remote-debugging-port=9222')
-                options.add_argument('--disable-setuid-sandbox')
-                options.add_argument('--single-process')
-                options.add_argument('--disable-extensions')
-                options.add_argument('--disable-logging')
-                options.add_argument('--disable-login-animations')
-                options.add_argument('--disable-notifications')
-                options.add_argument('--disable-background-timer-throttling')
-                options.add_argument('--disable-backgrounding-occluded-windows')
-                options.add_argument('--disable-renderer-backgrounding')
-
-                service = Service(ChromeDriverManager().install())
-                self.driver = webdriver.Chrome(service=service, options=options)
+            # Use system ChromeDriver (no webdriver-manager needed)
+            self.driver = webdriver.Chrome(options=options)
 
             # Navigate to Investopedia login page
             self.driver.get("https://www.investopedia.com/simulator/trade/login")
