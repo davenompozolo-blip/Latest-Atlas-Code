@@ -9119,21 +9119,109 @@ def main():
 
             # Manual save button
             if st.button("💾 Save Current Portfolio to Database", type="primary"):
-                if SQL_AVAILABLE:
-                    portfolio_data = load_portfolio_data()
-                    # ===== FIX #1: Database Save ValueError =====
-                    if portfolio_data is not None and not (isinstance(portfolio_data, pd.DataFrame) and portfolio_data.empty):
-                        with st.spinner("Saving to database..."):
-                            try:
-                                save_portfolio_data(portfolio_data)
-                                st.success("✅ Portfolio saved to database!")
-                                show_toast("Portfolio saved to database successfully", toast_type="success", duration=2000)
-                            except Exception as e:
-                                st.error(f"❌ Save failed: {e}")
-                    else:
-                        st.warning("⚠️ No portfolio data to save")
+                # Load current portfolio
+                portfolio_data = load_portfolio_data()
+
+                # ===== FIX #1: Robust validation =====
+                has_data = False
+
+                if portfolio_data is not None:
+                    if isinstance(portfolio_data, pd.DataFrame):
+                        has_data = not portfolio_data.empty
+                    elif isinstance(portfolio_data, list):
+                        has_data = len(portfolio_data) > 0
+
+                if not has_data:
+                    st.error("❌ No portfolio data to save. Upload data via Phoenix Parser first.")
                 else:
-                    st.error("❌ SQL database not available")
+                    # Convert to DataFrame if needed
+                    if isinstance(portfolio_data, list):
+                        df = pd.DataFrame(portfolio_data)
+                    else:
+                        df = portfolio_data
+
+                    # DEBUG: Show what we're saving
+                    st.info(f"💾 Attempting to save {len(df)} positions...")
+
+                    try:
+                        import sqlite3
+                        from datetime import datetime
+
+                        # Connect to database
+                        conn = sqlite3.connect('atlas_portfolio.db', timeout=10)
+                        cursor = conn.cursor()
+
+                        # Create table if it doesn't exist
+                        cursor.execute("""
+                            CREATE TABLE IF NOT EXISTS portfolio_positions (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                ticker TEXT NOT NULL,
+                                quantity REAL NOT NULL,
+                                avg_cost REAL NOT NULL,
+                                current_price REAL,
+                                total_value REAL,
+                                sector TEXT,
+                                last_updated TEXT
+                            )
+                        """)
+
+                        # Clear existing positions
+                        cursor.execute("DELETE FROM portfolio_positions")
+
+                        # Save each position
+                        saved_count = 0
+                        for idx, row in df.iterrows():
+                            try:
+                                # Handle different column name variations
+                                ticker = str(row.get('Ticker', row.get('Symbol', 'UNKNOWN')))
+                                quantity = float(row.get('Quantity', row.get('Shares', 0)))
+                                avg_cost = float(row.get('Avg Cost', row.get('Average Cost', row.get('Avg Price', 0))))
+                                current_price = float(row.get('Current Price', 0))
+                                total_value = float(row.get('Total Value', quantity * current_price if current_price else quantity * avg_cost))
+                                sector = str(row.get('Sector', 'Unknown'))
+
+                                cursor.execute("""
+                                    INSERT INTO portfolio_positions
+                                    (ticker, quantity, avg_cost, current_price, total_value, sector, last_updated)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                                """, (
+                                    ticker,
+                                    quantity,
+                                    avg_cost,
+                                    current_price,
+                                    total_value,
+                                    sector,
+                                    datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                                ))
+                                saved_count += 1
+                            except Exception as row_error:
+                                st.warning(f"⚠️ Skipped {row.get('Ticker', row.get('Symbol', 'unknown'))}: {row_error}")
+
+                        conn.commit()
+                        conn.close()
+
+                        st.success(f"✅ Successfully saved {saved_count} positions to database!")
+                        st.balloons()
+
+                    except Exception as e:
+                        st.error(f"❌ Database save failed: {str(e)}")
+                        import traceback
+                        st.code(traceback.format_exc())
+
+            # Debug database state button
+            if st.button("🔍 Debug Database State"):
+                try:
+                    import sqlite3
+                    conn = sqlite3.connect('atlas_portfolio.db')
+                    result = pd.read_sql("SELECT * FROM portfolio_positions", conn)
+                    st.write(f"**Database has {len(result)} positions**")
+                    if len(result) > 0:
+                        st.dataframe(result, use_container_width=True)
+                    else:
+                        st.info("No positions found in database")
+                    conn.close()
+                except Exception as e:
+                    st.error(f"Error reading database: {e}")
 
             # Clear database button
             if st.button("🗑️ Clear Database (Keep Pickle Cache)"):
