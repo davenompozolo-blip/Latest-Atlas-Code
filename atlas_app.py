@@ -9145,7 +9145,7 @@ def main():
 
                     try:
                         import sqlite3
-                        from datetime import datetime
+                        # datetime already imported globally at top of file
 
                         # Connect to database
                         conn = sqlite3.connect('atlas_portfolio.db', timeout=10)
