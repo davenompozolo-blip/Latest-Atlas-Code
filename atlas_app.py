@@ -9072,7 +9072,8 @@ def main():
             if st.button("💾 Save Current Portfolio to Database", type="primary"):
                 if SQL_AVAILABLE:
                     portfolio_data = load_portfolio_data()
-                    if portfolio_data:
+                    # ===== FIX #1: Database Save ValueError =====
+                    if portfolio_data is not None and not (isinstance(portfolio_data, pd.DataFrame) and portfolio_data.empty):
                         with st.spinner("Saving to database..."):
                             try:
                                 save_portfolio_data(portfolio_data)
@@ -11007,6 +11008,9 @@ ORDER BY position_value DESC"""
                 st.plotly_chart(corr_network, use_container_width=True)
         
         with tab4:
+            # ===== FIX #3: Stress Test 'go' Undefined Error =====
+            import plotly.graph_objects as go
+
             st.markdown("#### ⚡ Historical Stress Test Analysis")
             st.info("💡 **Historical Stress Testing:** See how your current portfolio would have performed during major market crises")
 
@@ -11153,6 +11157,9 @@ ORDER BY position_value DESC"""
                     """)
 
         with tab5:  # NEW VaR/CVaR Optimization Tab
+            # ===== FIX #7: VaR/CVaR 'go' Error =====
+            import plotly.graph_objects as go
+
             st.markdown("### 🎯 VaR/CVaR Portfolio Optimization")
             st.info("Optimize portfolio weights to minimize Conditional Value at Risk (CVaR) - the expected loss beyond VaR")
 
@@ -11457,6 +11464,10 @@ ORDER BY position_value DESC"""
     # PERFORMANCE SUITE
     # ========================================================================
     elif page == "💎 Performance Suite":
+        # ===== FIX #6: Performance Suite 'go' Error =====
+        import plotly.graph_objects as go
+        import plotly.express as px
+
         st.title("📊 Performance Suite")
 
         portfolio_data = load_portfolio_data()
@@ -14343,8 +14354,14 @@ ORDER BY position_value DESC"""
             if st.button("🚀 Run Monte Carlo Simulation", type="primary"):
                 with st.spinner("Running Monte Carlo simulation..."):
                     try:
+                        # ===== FIX #4: Handle Symbol vs Ticker column name =====
+                        # Detect which column name is used
+                        ticker_column = 'Symbol' if 'Symbol' in portfolio_data.columns else 'Ticker'
+                        print(f"🎯 Detected ticker column: '{ticker_column}'")
+
                         # Get tickers and current prices
-                        tickers = portfolio_data['Symbol'].unique().tolist()
+                        tickers = portfolio_data[ticker_column].unique().tolist()
+                        print(f"🎯 Found {len(tickers)} unique tickers: {tickers[:5]}...")
 
                         # Download historical data
                         hist_data = yf.download(tickers, period='1y', progress=False)['Close']
@@ -14373,7 +14390,7 @@ ORDER BY position_value DESC"""
                         weights_dict = {}
 
                         for ticker in tickers_list:
-                            ticker_data = portfolio_data[portfolio_data['Symbol'] == ticker]
+                            ticker_data = portfolio_data[portfolio_data[ticker_column] == ticker]
 
                             if len(ticker_data) > 0:
                                 if 'Total Value' in ticker_data.columns:
@@ -14533,8 +14550,13 @@ ORDER BY position_value DESC"""
             if st.button("🚀 Optimize Portfolio (Max Sharpe Ratio)", type="primary"):
                 with st.spinner("Running optimization with analytical gradients..."):
                     try:
+                        # ===== FIX #5: Handle Symbol vs Ticker column name =====
+                        ticker_column = 'Symbol' if 'Symbol' in portfolio_data.columns else 'Ticker'
+                        print(f"🎯 Detected ticker column: '{ticker_column}'")
+
                         # Get tickers
-                        tickers = portfolio_data['Symbol'].unique().tolist()
+                        tickers = portfolio_data[ticker_column].unique().tolist()
+                        print(f"🎯 Optimizing portfolio with {len(tickers)} tickers")
 
                         # Download historical data
                         hist_data = yf.download(tickers, period='2y', progress=False)['Close']
