@@ -2097,7 +2097,7 @@ def load_portfolio_data():
                 })
 
                 print(f"✅ Loaded {len(df)} positions from database")
-                return df.to_dict('records')
+                return df  # ✅ FIX: Return DataFrame instead of list
         except Exception as e:
             print(f"⚠️ Database load failed, falling back to pickle: {e}")
 
@@ -2106,9 +2106,12 @@ def load_portfolio_data():
         with open(PORTFOLIO_CACHE, "rb") as f:
             data = pickle.load(f)
             print(f"✅ Loaded {len(data)} positions from pickle cache")
+            # ✅ FIX: Convert to DataFrame if it's a list
+            if isinstance(data, list):
+                return pd.DataFrame(data)
             return data
 
-    return []
+    return pd.DataFrame()  # ✅ FIX: Return empty DataFrame instead of empty list
 
 def save_trade_history(df):
     """
@@ -2200,7 +2203,7 @@ def validate_portfolio_data(portfolio_data):
     NEW IN v9.7: Comprehensive data validation and integrity checking
     Returns validation metrics and quality scores
     """
-    if not portfolio_data:
+    if portfolio_data is None or (isinstance(portfolio_data, pd.DataFrame) and portfolio_data.empty):
         return {
             'is_valid': False,
             'total_holdings': 0,
@@ -3733,7 +3736,7 @@ def calculate_portfolio_from_trades(trade_df):
                 'Avg Cost': avg_cost
             })
     
-    if not portfolio_data:
+    if portfolio_data is None or (isinstance(portfolio_data, pd.DataFrame) and portfolio_data.empty):
         return pd.DataFrame(columns=['Ticker', 'Shares', 'Avg Cost'])
     return pd.DataFrame(portfolio_data).sort_values('Ticker')
 
@@ -9110,7 +9113,7 @@ def main():
             st.markdown("### 🎲 Monte Carlo Portfolio Simulation")
 
             portfolio_data = load_portfolio_data()
-            if not portfolio_data:
+            if portfolio_data is None or (isinstance(portfolio_data, pd.DataFrame) and portfolio_data.empty):
                 st.warning("⚠️ Upload portfolio data via Phoenix Parser first")
             else:
                 df = pd.DataFrame(portfolio_data)
@@ -9129,7 +9132,7 @@ def main():
                             # Get historical returns (placeholder - use actual data)
                             tickers = df['Ticker'].tolist() if 'Ticker' in df.columns else []
                             if len(tickers) > 0:
-                                returns = yf.download(tickers, period="1y", progress=False)['Adj Close'].pct_change().dropna()
+                                returns = yf.download(tickers, period="1y", progress=False)['Close'].pct_change().dropna()
                                 weights = np.array([1/len(tickers)] * len(tickers))
 
                                 mc = MonteCarloSimulation(returns, weights, initial_value=initial_value)
@@ -9152,7 +9155,7 @@ def main():
             st.markdown("### 📊 Advanced Risk Metrics")
 
             portfolio_data = load_portfolio_data()
-            if not portfolio_data:
+            if portfolio_data is None or (isinstance(portfolio_data, pd.DataFrame) and portfolio_data.empty):
                 st.warning("⚠️ Upload portfolio data via Phoenix Parser first")
             else:
                 df = pd.DataFrame(portfolio_data)
@@ -9162,11 +9165,11 @@ def main():
                         try:
                             tickers = df['Ticker'].tolist() if 'Ticker' in df.columns else []
                             if len(tickers) > 0:
-                                returns_data = yf.download(tickers, period="1y", progress=False)['Adj Close'].pct_change().dropna()
+                                returns_data = yf.download(tickers, period="1y", progress=False)['Close'].pct_change().dropna()
                                 portfolio_returns = returns_data.mean(axis=1)
 
                                 # Benchmark (SPY)
-                                spy = yf.download('SPY', period="1y", progress=False)['Adj Close'].pct_change().dropna()
+                                spy = yf.download('SPY', period="1y", progress=False)['Close'].pct_change().dropna()
 
                                 risk = RiskAnalytics(portfolio_returns, spy)
                                 metrics = risk.comprehensive_metrics(risk_free_rate=0.03)
@@ -9276,7 +9279,7 @@ def main():
             st.markdown("### 📈 Performance Attribution Analysis")
 
             portfolio_data = load_portfolio_data()
-            if not portfolio_data:
+            if portfolio_data is None or (isinstance(portfolio_data, pd.DataFrame) and portfolio_data.empty):
                 st.warning("⚠️ Upload portfolio data via Phoenix Parser first")
             else:
                 df = pd.DataFrame(portfolio_data)
@@ -9328,7 +9331,7 @@ def main():
             st.markdown("### 🎨 Enhanced Plotly Visualizations")
 
             portfolio_data = load_portfolio_data()
-            if not portfolio_data:
+            if portfolio_data is None or (isinstance(portfolio_data, pd.DataFrame) and portfolio_data.empty):
                 st.warning("⚠️ Upload portfolio data via Phoenix Parser first")
             else:
                 df = pd.DataFrame(portfolio_data)
@@ -9349,9 +9352,9 @@ def main():
                 tickers = df['Ticker'].tolist() if 'Ticker' in df.columns else []
                 if len(tickers) > 0:
                     try:
-                        returns_data = yf.download(tickers, period="1y", progress=False)['Adj Close'].pct_change().dropna()
+                        returns_data = yf.download(tickers, period="1y", progress=False)['Close'].pct_change().dropna()
                         portfolio_returns = returns_data.mean(axis=1)
-                        spy = yf.download('SPY', period="1y", progress=False)['Adj Close'].pct_change().dropna()
+                        spy = yf.download('SPY', period="1y", progress=False)['Close'].pct_change().dropna()
 
                         st.markdown("#### Cumulative Returns")
                         performance_fig = create_performance_chart(portfolio_returns, spy)
@@ -9399,7 +9402,7 @@ def main():
             st.markdown("Fit GARCH models to estimate conditional volatility and forecast future volatility")
 
             portfolio_data = load_portfolio_data()
-            if not portfolio_data:
+            if portfolio_data is None or (isinstance(portfolio_data, pd.DataFrame) and portfolio_data.empty):
                 st.warning("⚠️ Upload portfolio data via Phoenix Parser first")
             else:
                 df = pd.DataFrame(portfolio_data)
@@ -9418,7 +9421,7 @@ def main():
                         try:
                             # Get historical data
                             stock_data = yf.download(ticker, period="1y", progress=False)
-                            returns = stock_data['Adj Close'].pct_change().dropna()
+                            returns = stock_data['Close'].pct_change().dropna()
 
                             # Fit GARCH model using R
                             result = r.garch_volatility(returns, model=model_type)
@@ -9461,7 +9464,7 @@ def main():
             st.markdown("Model the dependency structure between assets using copula functions")
 
             portfolio_data = load_portfolio_data()
-            if not portfolio_data:
+            if portfolio_data is None or (isinstance(portfolio_data, pd.DataFrame) and portfolio_data.empty):
                 st.warning("⚠️ Upload portfolio data via Phoenix Parser first")
             else:
                 df = pd.DataFrame(portfolio_data)
@@ -9481,7 +9484,7 @@ def main():
                         with st.spinner(f"Fitting {copula_type} copula..."):
                             try:
                                 # Get returns data
-                                returns_data = yf.download(selected_tickers, period="1y", progress=False)['Adj Close'].pct_change().dropna()
+                                returns_data = yf.download(selected_tickers, period="1y", progress=False)['Close'].pct_change().dropna()
 
                                 # Fit copula
                                 result = r.copula_dependency(returns_data, copula_type=copula_type)
@@ -9541,7 +9544,7 @@ summary(df)""",
             if st.button("▶️ Run R Code", type="primary"):
                 portfolio_data = load_portfolio_data()
 
-                if not portfolio_data:
+                if portfolio_data is None or (isinstance(portfolio_data, pd.DataFrame) and portfolio_data.empty):
                     st.warning("⚠️ No portfolio data available")
                 else:
                     with st.spinner("Executing R code..."):
@@ -9551,7 +9554,7 @@ summary(df)""",
                             # Get returns for analysis
                             tickers = df['Ticker'].tolist() if 'Ticker' in df.columns else []
                             if len(tickers) > 0:
-                                returns_data = yf.download(tickers, period="1y", progress=False)['Adj Close'].pct_change().dropna()
+                                returns_data = yf.download(tickers, period="1y", progress=False)['Close'].pct_change().dropna()
 
                                 # Execute custom R code
                                 result = r.run_custom_analysis(r_code, data=returns_data)
@@ -10031,7 +10034,7 @@ ORDER BY position_value DESC"""
         
         portfolio_data = load_portfolio_data()
         
-        if not portfolio_data:
+        if portfolio_data is None or (isinstance(portfolio_data, pd.DataFrame) and portfolio_data.empty):
             st.warning("⚠️ No portfolio data. Please upload via Phoenix Parser.")
             return
         
@@ -10589,7 +10592,7 @@ ORDER BY position_value DESC"""
         
         portfolio_data = load_portfolio_data()
         
-        if not portfolio_data:
+        if portfolio_data is None or (isinstance(portfolio_data, pd.DataFrame) and portfolio_data.empty):
             st.warning("⚠️ No portfolio data.")
             return
         
@@ -11187,7 +11190,7 @@ ORDER BY position_value DESC"""
 
         portfolio_data = load_portfolio_data()
 
-        if not portfolio_data:
+        if portfolio_data is None or (isinstance(portfolio_data, pd.DataFrame) and portfolio_data.empty):
             st.warning("⚠️ No portfolio data.")
             return
 
@@ -12029,7 +12032,7 @@ ORDER BY position_value DESC"""
 
         portfolio_data = load_portfolio_data()
         
-        if not portfolio_data:
+        if portfolio_data is None or (isinstance(portfolio_data, pd.DataFrame) and portfolio_data.empty):
             st.warning("⚠️ No portfolio data.")
             return
         
@@ -12760,7 +12763,7 @@ ORDER BY position_value DESC"""
 
         portfolio_data = load_portfolio_data()
         
-        if not portfolio_data:
+        if portfolio_data is None or (isinstance(portfolio_data, pd.DataFrame) and portfolio_data.empty):
             st.warning("⚠️ No portfolio data.")
             return
         
@@ -14051,7 +14054,8 @@ ORDER BY position_value DESC"""
 
         portfolio_data = load_portfolio_data()
 
-        if portfolio_data is None or portfolio_data.empty:
+        # ✅ FIX: Proper DataFrame empty check
+        if portfolio_data is None or (isinstance(portfolio_data, pd.DataFrame) and portfolio_data.empty):
             st.warning("⚠️ Please upload portfolio data via Phoenix Parser first")
         else:
             st.success(f"✅ Portfolio loaded: {len(portfolio_data)} positions")
@@ -14072,7 +14076,7 @@ ORDER BY position_value DESC"""
                         tickers = portfolio_data['Symbol'].unique().tolist()
 
                         # Download historical data
-                        hist_data = yf.download(tickers, period='1y', progress=False)['Adj Close']
+                        hist_data = yf.download(tickers, period='1y', progress=False)['Close']
 
                         if isinstance(hist_data, pd.Series):
                             hist_data = hist_data.to_frame()
@@ -14201,7 +14205,8 @@ ORDER BY position_value DESC"""
 
         portfolio_data = load_portfolio_data()
 
-        if portfolio_data is None or portfolio_data.empty:
+        # ✅ FIX: Proper DataFrame empty check
+        if portfolio_data is None or (isinstance(portfolio_data, pd.DataFrame) and portfolio_data.empty):
             st.warning("⚠️ Please upload portfolio data via Phoenix Parser first")
         else:
             st.success(f"✅ Portfolio loaded: {len(portfolio_data)} positions")
@@ -14222,7 +14227,7 @@ ORDER BY position_value DESC"""
                         tickers = portfolio_data['Symbol'].unique().tolist()
 
                         # Download historical data
-                        hist_data = yf.download(tickers, period='2y', progress=False)['Adj Close']
+                        hist_data = yf.download(tickers, period='2y', progress=False)['Close']
 
                         if isinstance(hist_data, pd.Series):
                             hist_data = hist_data.to_frame()
