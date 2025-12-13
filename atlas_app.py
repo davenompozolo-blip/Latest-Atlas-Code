@@ -2049,7 +2049,8 @@ def save_portfolio_data(data):
                 column_mapping = {
                     'Ticker': 'ticker',
                     'Shares': 'quantity',
-                    'Avg Price': 'avg_cost',
+                    'Avg Price': 'avg_cost',  # From account imports
+                    'Avg Cost': 'avg_cost',   # From trade imports (Phoenix Parser)
                     'Current Price': 'current_price'
                 }
 
@@ -2068,9 +2069,15 @@ def save_portfolio_data(data):
 
                     # Save to database
                     db.save_portfolio(portfolio_df)
-                    print("✅ Portfolio saved to database")
+                    print(f"✅ Portfolio saved to database ({len(portfolio_df)} positions)")
+                else:
+                    missing = [col for col in required_cols if col not in portfolio_df.columns]
+                    print(f"⚠️ Cannot save to database: missing columns {missing}")
+                    print(f"   Available columns: {list(portfolio_df.columns)}")
         except Exception as e:
             print(f"⚠️ Database save failed (pickle still saved): {e}")
+            import traceback
+            print(traceback.format_exc())
 
 def load_portfolio_data():
     """
@@ -2088,7 +2095,7 @@ def load_portfolio_data():
                 column_mapping = {
                     'ticker': 'Ticker',
                     'quantity': 'Shares',
-                    'avg_cost': 'Avg Price',
+                    'avg_cost': 'Avg Cost',  # Standard column name in app
                     'current_price': 'Current Price'
                 }
 
@@ -2383,8 +2390,31 @@ def fetch_market_data(ticker):
         return None
 
 def is_option_ticker(ticker):
+    """
+    Detect if ticker is an option symbol
+    Options typically have format: TICKER[DATE][TYPE][STRIKE]
+    Examples: AU2520F50, META2405D482.5, AAPL240119C150
+    """
+    import re
+
+    # Skip if too short
     if len(ticker) <= 6:
         return False
+
+    # Specific known options to exclude
+    known_options = ['AU2520F50', 'META2405D482.5']
+    if ticker.upper() in known_options:
+        return True
+
+    # General option pattern detection
+    # Pattern: Letters + 4-digit year (20XX, 24XX, etc) + optional letter + decimals
+    # Examples: META2405D482.5 = META + 2405 + D + 482.5
+    #           AU2520F50 = AU + 2520 + F + 50
+    option_pattern = r'^[A-Z]+\d{4}[A-Z]\d+\.?\d*$'
+    if re.match(option_pattern, ticker.upper()):
+        return True
+
+    # Standard options format (older logic)
     has_year = any(str(y) in ticker for y in range(2020, 2030))
     has_strike = any(c.isdigit() for c in ticker[6:])
     has_type = ticker[-1] in ['C', 'P'] or 'C' in ticker[6:] or 'P' in ticker[6:]
@@ -8315,7 +8345,7 @@ class InvestopediaIntegration:
                         position = {
                             'Ticker': cells[0].text.strip(),
                             'Shares': float(cells[1].text.strip().replace(',', '')),
-                            'Avg Price': float(cells[2].text.strip().replace('$', '').replace(',', '')),
+                            'Avg Cost': float(cells[2].text.strip().replace('$', '').replace(',', '')),
                             'Current Price': float(cells[3].text.strip().replace('$', '').replace(',', '')),
                             'Total Value': float(cells[4].text.strip().replace('$', '').replace(',', '')),
                             'Gain/Loss': float(cells[5].text.strip().replace('$', '').replace(',', ''))
@@ -9003,11 +9033,29 @@ def main():
                         show_toast(f"Trade history imported: {len(trade_df)} trades parsed successfully", toast_type="success", duration=3000)
                         st.dataframe(trade_df.head(10), use_container_width=True, column_config=None)
 
+                        # Check for options that will be filtered
+                        option_tickers = []
+                        if 'Symbol' in trade_df.columns:
+                            unique_symbols = trade_df['Symbol'].unique()
+                            option_tickers = [ticker for ticker in unique_symbols if is_option_ticker(ticker)]
+
                         portfolio_df = calculate_portfolio_from_trades(trade_df)
                         if len(portfolio_df) > 0:
                             save_portfolio_data(portfolio_df.to_dict('records'))
                             st.success(f"🎉 Portfolio rebuilt! {len(portfolio_df)} positions")
                             show_toast(f"🔥 Phoenix reconstruction complete: {len(portfolio_df)} positions rebuilt", toast_type="success", duration=4000)
+
+                            # Show filtered options if any
+                            if option_tickers:
+                                with st.expander(f"🗑️ Filtered {len(option_tickers)} option symbols"):
+                                    st.info("""
+                                    **Options automatically excluded from equity portfolio:**
+
+                                    These option positions are excluded from equity analysis:
+                                    """)
+                                    for opt in option_tickers:
+                                        st.write(f"- {opt}")
+
                             st.dataframe(portfolio_df, use_container_width=True, column_config=None)
         
         with col2:
@@ -9501,6 +9549,17 @@ def main():
         # ===== FIX #9: Enhanced Charts Quality =====
         # Tab 6: Truly Enhanced Charts
         with tabs[5]:
+            # ===== FIX #2: Import required modules for this tab =====
+            try:
+                import plotly.express as px
+                import plotly.graph_objects as go
+                import numpy as np
+                from scipy import stats
+            except ImportError as e:
+                st.error(f"❌ Missing dependency: {e}")
+                st.code("pip install plotly scipy numpy")
+                st.stop()
+
             st.markdown("### 🎨 Enhanced Plotly Visualizations")
             st.markdown("Professional-grade charts with Bloomberg Terminal quality")
 
@@ -9738,14 +9797,97 @@ def main():
         st.markdown("## 📊 R ANALYTICS - ADVANCED QUANTITATIVE MODELS")
 
         if not R_AVAILABLE:
-            st.error("❌ R analytics not available")
-            st.info("""
-            **To enable R analytics:**
-            1. Install R: `apt-get install r-base r-base-dev`
-            2. Install R packages: `R -e "install.packages(c('rugarch', 'copula', 'xts'))"`
-            3. Install rpy2: `pip install rpy2`
-            4. Restart the application
+            st.error("❌ R Analytics Requires Manual Setup")
+
+            st.markdown("""
+            ### 📋 R Analytics Setup Instructions
+
+            R analytics requires packages that cannot be installed from within the app.
+            You must install these dependencies **before** running the application.
+
+            ---
+
+            #### 🔧 For Google Colab Users:
+
+            1. Create a new code cell **ABOVE** your Streamlit app cell
+            2. Run this code:
+
+            ```python
+            # Install R and packages (takes 3-5 minutes)
+            !apt-get update -qq
+            !apt-get install -y r-base r-base-dev
+            !R -e "install.packages(c('rugarch', 'copula', 'xts'), repos='https://cloud.r-project.org')"
+            !pip install rpy2
+            ```
+
+            3. Wait for installation to complete
+            4. Restart your Streamlit app
+            5. R Analytics will then be available
+
+            ---
+
+            #### 💻 For Local Deployment (Linux/MacOS):
+
+            ```bash
+            # Install R
+            sudo apt-get update
+            sudo apt-get install -y r-base r-base-dev
+
+            # Install R packages
+            R -e "install.packages(c('rugarch', 'copula', 'xts'), repos='https://cloud.r-project.org')"
+
+            # Install Python bridge
+            pip install rpy2
+            ```
+
+            ---
+
+            #### 🪟 For Windows:
+
+            1. Download and install R from: https://cran.r-project.org/bin/windows/base/
+            2. Open R console and run:
+               ```r
+               install.packages(c('rugarch', 'copula', 'xts'))
+               ```
+            3. Install rpy2:
+               ```bash
+               pip install rpy2
+               ```
+
+            ---
             """)
+
+            # Add status check
+            st.markdown("### 🔍 Package Status Check")
+
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+                try:
+                    import rpy2
+                    st.success("✅ rpy2 installed")
+                except ImportError:
+                    st.error("❌ rpy2 missing")
+                    st.caption("Run: `pip install rpy2`")
+
+            with col2:
+                try:
+                    from rpy2.robjects.packages import importr
+                    importr('rugarch')
+                    st.success("✅ rugarch available")
+                except:
+                    st.error("❌ rugarch missing")
+                    st.caption("Install in R")
+
+            with col3:
+                try:
+                    from rpy2.robjects.packages import importr
+                    importr('copula')
+                    st.success("✅ copula available")
+                except:
+                    st.error("❌ copula missing")
+                    st.caption("Install in R")
+
             return
 
         # Initialize R analytics
@@ -10734,7 +10876,86 @@ ORDER BY position_value DESC"""
                 st.plotly_chart(perf_heatmap, use_container_width=True)
         else:
             st.info("📊 Monthly performance heatmap will be available after 2+ months of portfolio history")
-    
+        # ===== SYSTEM TEST SECTION =====
+        st.markdown("---")
+        st.markdown("### 🧪 System Test & Validation")
+
+        if st.button("🧪 Run System Test", type="primary"):
+            st.markdown("#### 🔍 Test Results")
+
+            col1, col2, col3 = st.columns(3)
+
+            # Test 1: Database
+            with col1:
+                st.markdown("**Database Test**")
+                try:
+                    conn = get_db()
+                    portfolio = conn.get_portfolio()
+                    pos_count = len(portfolio)
+
+                    if pos_count > 0:
+                        st.success(f"✅ Database: {pos_count} positions")
+                    else:
+                        st.warning("⚠️ Database: No positions")
+                except Exception as e:
+                    st.error(f"❌ Database: {str(e)}")
+
+            # Test 2: Imports
+            with col2:
+                st.markdown("**Import Tests**")
+                imports_ok = True
+
+                try:
+                    import plotly.express as px
+                    st.success("✅ plotly.express")
+                except:
+                    st.error("❌ plotly.express")
+                    imports_ok = False
+
+                try:
+                    import plotly.graph_objects as go
+                    st.success("✅ plotly.graph_objects")
+                except:
+                    st.error("❌ plotly.graph_objects")
+                    imports_ok = False
+
+                try:
+                    from scipy import stats
+                    st.success("✅ scipy.stats")
+                except:
+                    st.error("❌ scipy.stats")
+                    imports_ok = False
+
+            # Test 3: Portfolio data
+            with col3:
+                st.markdown("**Portfolio Test**")
+                try:
+                    portfolio_data = load_portfolio_data()
+                    if portfolio_data is not None:
+                        if isinstance(portfolio_data, pd.DataFrame):
+                            if not portfolio_data.empty:
+                                st.success(f"✅ Portfolio: {len(portfolio_data)} positions")
+                            else:
+                                st.warning("⚠️ Portfolio: Empty")
+                        else:
+                            st.warning("⚠️ Portfolio: Not a DataFrame")
+                    else:
+                        st.warning("⚠️ Portfolio: No data")
+                except Exception as e:
+                    st.error(f"❌ Portfolio: {str(e)}")
+
+            st.markdown("---")
+
+            # Test 4: Options filtering
+            st.markdown("**Options Filtering Test**")
+            test_tickers = ['AAPL', 'AU2520F50', 'TSLA', 'META2405D482.5', 'MSFT']
+            filtered = [t for t in test_tickers if is_option_ticker(t)]
+
+            if len(filtered) == 2 and 'AU2520F50' in filtered and 'META2405D482.5' in filtered:
+                st.success(f"✅ Options filtering working: {filtered}")
+            else:
+                st.error(f"❌ Options filtering failed: {filtered}")
+
     # ========================================================================
     # MARKET WATCH - COMPLETE REVAMP
     # ========================================================================
@@ -11549,9 +11770,11 @@ ORDER BY position_value DESC"""
     # PERFORMANCE SUITE
     # ========================================================================
     elif page == "💎 Performance Suite":
-        # ===== FIX #6: Performance Suite 'go' Error =====
+        # ===== FIX #4 & #6: Performance Suite imports =====
         import plotly.graph_objects as go
         import plotly.express as px
+        from scipy import stats
+        import numpy as np
 
         st.title("📊 Performance Suite")
 
@@ -14612,6 +14835,11 @@ ORDER BY position_value DESC"""
     # QUANT OPTIMIZER (v11.0)
     # ========================================================================
     elif page == "🧮 Quant Optimizer":
+        # ===== FIX #5: Import required modules =====
+        import plotly.graph_objects as go
+        import plotly.express as px
+        import numpy as np
+
         st.markdown("### 🧮 Quantitative Portfolio Optimizer")
         st.markdown("**Advanced Optimization using Multivariable Calculus & Analytical Gradients**")
 
@@ -14931,6 +15159,89 @@ ORDER BY position_value DESC"""
     elif page == "📡 Investopedia Live":
         st.markdown("### 📡 Investopedia Paper Trading Integration")
         st.markdown("**Live Portfolio Sync with Investopedia Simulator**")
+
+        # ===== FIX #6: Check for Selenium availability =====
+        try:
+            from selenium import webdriver
+            SELENIUM_AVAILABLE = True
+        except ImportError:
+            SELENIUM_AVAILABLE = False
+
+        if not SELENIUM_AVAILABLE:
+            st.error("❌ Selenium Not Installed")
+
+            st.markdown("""
+            ### 📦 Selenium Installation Required
+
+            Investopedia integration requires Selenium for web automation.
+
+            ---
+
+            #### 🔧 For Google Colab:
+
+            Run this in a code cell **before** starting the app:
+
+            ```python
+            # Install Selenium and ChromeDriver
+            !pip install selenium
+            !apt-get update
+            !apt-get install -y chromium-chromedriver
+            !cp /usr/lib/chromium-browser/chromedriver /usr/bin
+            ```
+
+            Then restart your Streamlit app.
+
+            ---
+
+            #### 💻 For Local Deployment:
+
+            ```bash
+            # Install Selenium
+            pip install selenium webdriver-manager
+
+            # For Chrome (recommended)
+            # Download ChromeDriver from: https://chromedriver.chromium.org/
+            # Or use webdriver-manager to auto-download
+            ```
+
+            ---
+
+            #### 📋 Requirements:
+
+            - ✅ `selenium` package (Python)
+            - ✅ Chrome/Chromium browser
+            - ✅ ChromeDriver (matching Chrome version)
+
+            ---
+            """)
+
+            # Add status check
+            st.markdown("### 🔍 Package Status Check")
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                try:
+                    from selenium import webdriver
+                    st.success("✅ selenium installed")
+                except ImportError:
+                    st.error("❌ selenium missing")
+                    st.caption("Run: `pip install selenium`")
+
+            with col2:
+                try:
+                    import subprocess
+                    result = subprocess.run(['which', 'chromedriver'], capture_output=True)
+                    if result.returncode == 0:
+                        st.success("✅ chromedriver found")
+                    else:
+                        st.error("❌ chromedriver missing")
+                        st.caption("Install ChromeDriver")
+                except:
+                    st.error("❌ chromedriver missing")
+                    st.caption("Install ChromeDriver")
+
+            st.stop()
 
         # Initialize authentication state
         if 'investopedia_auth_state' not in st.session_state:
