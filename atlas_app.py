@@ -6948,7 +6948,28 @@ def create_performance_heatmap(df, period='monthly'):
                 else:
                     row.append(0)
             matrix.append(row)
-        
+
+        # ===== FIX #6: Remove Empty Columns from Heatmap =====
+        # Convert to numpy array for easier column operations
+        matrix_array = np.array(matrix)
+
+        # Find columns where all values are zero
+        non_zero_cols = []
+        filtered_months = []
+
+        for i, month in enumerate(months):
+            # Check if this column has any non-zero values
+            if np.any(np.abs(matrix_array[:, i]) > 0.01):
+                non_zero_cols.append(i)
+                filtered_months.append(month)
+
+        # Filter matrix to keep only non-zero columns
+        if len(non_zero_cols) > 0:
+            filtered_matrix = matrix_array[:, non_zero_cols].tolist()
+            months = filtered_months
+            matrix = filtered_matrix
+            print(f"✅ Filtered heatmap: kept {len(filtered_months)} non-empty months")
+
         fig = go.Figure(data=go.Heatmap(
             z=matrix,
             x=months,
@@ -9296,7 +9317,7 @@ def main():
                                 value = row['Total Value'] if 'Total Value' in df.columns else 1
                                 weights[ticker] = value / total_value
 
-                            # Get returns and sectors
+                            # ===== FIX #4: Get returns, sectors, and include weights =====
                             asset_data_list = []
                             for ticker in weights.keys():
                                 try:
@@ -9304,7 +9325,13 @@ def main():
                                     hist = stock.history(period='1mo')
                                     ret = (hist['Close'].iloc[-1] / hist['Close'].iloc[0] - 1)
                                     sector = stock.info.get('sector', 'Unknown')
-                                    asset_data_list.append({'ticker': ticker, 'sector': sector, 'return': ret})
+                                    # ✅ Include actual weight in asset data
+                                    asset_data_list.append({
+                                        'ticker': ticker,
+                                        'sector': sector,
+                                        'return': ret,
+                                        'weight': weights[ticker] * 100  # Convert to percentage
+                                    })
                                 except:
                                     pass
 
@@ -9316,9 +9343,68 @@ def main():
                                 stock_contrib = attribution.stock_contribution()
                                 st.dataframe(stock_contrib, use_container_width=True)
 
-                                st.markdown("#### Sector-Level Attribution")
+                                st.markdown("#### Sector-Level Attribution (Brinson-Fachler Model)")
                                 sector_contrib = attribution.sector_attribution()
                                 st.dataframe(sector_contrib, use_container_width=True)
+
+                                # ===== FIX #5: Calculate and Display Skill Scores =====
+                                if 'Allocation Effect' in sector_contrib.columns and 'Selection Effect' in sector_contrib.columns:
+                                    st.markdown("---")
+                                    st.markdown("#### 🎯 Portfolio Management Skill Assessment")
+
+                                    # Calculate total effects
+                                    total_allocation = sector_contrib['Allocation Effect'].sum()
+                                    total_selection = sector_contrib['Selection Effect'].sum()
+                                    total_interaction = sector_contrib['Interaction Effect'].sum() if 'Interaction Effect' in sector_contrib.columns else 0
+
+                                    # Skill scoring: 0-10 scale where 5 = neutral (0% effect)
+                                    # Each 1% positive effect = +1 point, each 1% negative effect = -1 point
+                                    allocation_score = max(0, min(10, 5 + total_allocation))
+                                    selection_score = max(0, min(10, 5 + total_selection))
+
+                                    # Display skill assessment
+                                    col1, col2, col3 = st.columns(3)
+
+                                    with col1:
+                                        st.metric(
+                                            "Allocation Skill (Sector Timing)",
+                                            f"{allocation_score:.1f}/10",
+                                            f"Effect: {total_allocation:+.2f}%"
+                                        )
+
+                                        if allocation_score > 6:
+                                            st.success("✅ Strong sector allocation")
+                                        elif allocation_score < 4:
+                                            st.error("❌ Poor sector allocation")
+                                        else:
+                                            st.info("ℹ️ Neutral sector allocation")
+
+                                    with col2:
+                                        st.metric(
+                                            "Selection Skill (Stock Picking)",
+                                            f"{selection_score:.1f}/10",
+                                            f"Effect: {total_selection:+.2f}%"
+                                        )
+
+                                        if selection_score > 6:
+                                            st.success("✅ Strong stock selection")
+                                        elif selection_score < 4:
+                                            st.error("❌ Poor stock selection")
+                                        else:
+                                            st.info("ℹ️ Neutral stock selection")
+
+                                    with col3:
+                                        total_active_return = total_allocation + total_selection + total_interaction
+                                        st.metric(
+                                            "Total Active Return",
+                                            f"{total_active_return:+.2f}%",
+                                            f"Interaction: {total_interaction:+.2f}%"
+                                        )
+
+                                        if total_active_return > 0:
+                                            st.success("✅ Outperforming benchmark")
+                                        else:
+                                            st.error("❌ Underperforming benchmark")
 
                                 st.success("✅ Attribution analysis complete")
                             else:
@@ -9326,47 +9412,238 @@ def main():
                         except Exception as e:
                             st.error(f"Error: {str(e)}")
 
-        # Tab 6: Enhanced Charts
+        # ===== FIX #9: Enhanced Charts Quality =====
+        # Tab 6: Truly Enhanced Charts
         with tabs[5]:
             st.markdown("### 🎨 Enhanced Plotly Visualizations")
+            st.markdown("Professional-grade charts with Bloomberg Terminal quality")
 
             portfolio_data = load_portfolio_data()
+
             if portfolio_data is None or (isinstance(portfolio_data, pd.DataFrame) and portfolio_data.empty):
                 st.warning("⚠️ Upload portfolio data via Phoenix Parser first")
             else:
-                df = pd.DataFrame(portfolio_data)
+                df = pd.DataFrame(portfolio_data) if isinstance(portfolio_data, list) else portfolio_data
 
-                # Portfolio allocation chart
-                st.markdown("#### Portfolio Allocation")
+                # ===== CHART 1: Advanced Portfolio Allocation =====
+                st.markdown("#### 📊 Portfolio Allocation")
+
                 weights = {}
                 total_value = df['Total Value'].sum() if 'Total Value' in df.columns else 1
+
                 for _, row in df.iterrows():
                     ticker = row['Ticker']
                     value = row['Total Value'] if 'Total Value' in df.columns else 1
                     weights[ticker] = value / total_value
 
-                allocation_fig = create_allocation_chart(weights)
-                st.plotly_chart(allocation_fig, use_container_width=True)
+                # Create sunburst chart (more advanced than donut)
+                allocation_data = []
+                for ticker, weight in weights.items():
+                    ticker_data = df[df['Ticker'] == ticker].iloc[0]
+                    sector = ticker_data.get('Sector', 'Unknown')
 
-                # Get historical returns for other charts
+                    allocation_data.append({
+                        'Ticker': ticker,
+                        'Sector': sector,
+                        'Weight': weight * 100,
+                        'Value': weight * total_value
+                    })
+
+                allocation_df = pd.DataFrame(allocation_data)
+
+                fig_allocation = px.sunburst(
+                    allocation_df,
+                    path=['Sector', 'Ticker'],
+                    values='Weight',
+                    color='Weight',
+                    color_continuous_scale='Viridis',
+                    title='Portfolio Allocation by Sector & Ticker'
+                )
+
+                fig_allocation.update_layout(
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(10,25,41,0.3)',
+                    font=dict(color='white', size=12),
+                    height=600
+                )
+
+                st.plotly_chart(fig_allocation, use_container_width=True)
+
+                # ===== CHART 2: Returns Distribution with Statistics =====
+                st.markdown("#### 📈 Returns Distribution Analysis")
+
                 tickers = df['Ticker'].tolist() if 'Ticker' in df.columns else []
+
                 if len(tickers) > 0:
                     try:
-                        returns_data = yf.download(tickers, period="1y", progress=False)['Close'].pct_change().dropna()
-                        portfolio_returns = returns_data.mean(axis=1)
-                        spy = yf.download('SPY', period="1y", progress=False)['Close'].pct_change().dropna()
+                        # Fetch 1 year of data
+                        hist_data = yf.download(tickers, period="1y", progress=False)['Close']
 
-                        st.markdown("#### Cumulative Returns")
-                        performance_fig = create_performance_chart(portfolio_returns, spy)
-                        st.plotly_chart(performance_fig, use_container_width=True)
+                        if isinstance(hist_data, pd.Series):
+                            hist_data = hist_data.to_frame()
 
-                        st.markdown("#### Portfolio Drawdown")
-                        drawdown_fig = create_drawdown_chart(portfolio_returns)
-                        st.plotly_chart(drawdown_fig, use_container_width=True)
+                        # Calculate daily returns
+                        returns = hist_data.pct_change().dropna()
 
-                        st.success("✅ All charts generated successfully")
+                        # Calculate portfolio returns (weighted average)
+                        portfolio_returns = pd.Series(0, index=returns.index)
+                        for ticker, weight in weights.items():
+                            if ticker in returns.columns:
+                                portfolio_returns += returns[ticker] * weight
+
+                        # Create distribution plot with annotations
+                        from scipy import stats
+
+                        fig_dist = go.Figure()
+
+                        # Histogram
+                        fig_dist.add_trace(go.Histogram(
+                            x=portfolio_returns * 100,
+                            name='Daily Returns',
+                            nbinsx=50,
+                            marker_color='rgba(0, 212, 255, 0.6)',
+                            showlegend=False
+                        ))
+
+                        # Add normal distribution overlay
+                        mu = portfolio_returns.mean() * 100
+                        sigma = portfolio_returns.std() * 100
+                        x_range = np.linspace(portfolio_returns.min() * 100,
+                                            portfolio_returns.max() * 100, 100)
+                        y_range = stats.norm.pdf(x_range, mu, sigma) * len(portfolio_returns) * \
+                                (portfolio_returns.max() - portfolio_returns.min()) * 100 / 50
+
+                        fig_dist.add_trace(go.Scatter(
+                            x=x_range,
+                            y=y_range,
+                            mode='lines',
+                            name='Normal Distribution',
+                            line=dict(color='#00ff9d', width=2, dash='dash')
+                        ))
+
+                        # Add statistics annotations
+                        fig_dist.add_annotation(
+                            x=0.02, y=0.98,
+                            xref='paper', yref='paper',
+                            text=f'<b>Statistics</b><br>Mean: {mu:.3f}%<br>Std Dev: {sigma:.3f}%<br>' + \
+                                f'Skew: {portfolio_returns.skew():.3f}<br>Kurtosis: {portfolio_returns.kurtosis():.3f}',
+                            showarrow=False,
+                            align='left',
+                            bgcolor='rgba(10,25,41,0.8)',
+                            bordercolor='#00d4ff',
+                            borderwidth=1,
+                            font=dict(color='white', size=11)
+                        )
+
+                        fig_dist.update_layout(
+                            title='Portfolio Returns Distribution (1 Year)',
+                            xaxis_title='Daily Return (%)',
+                            yaxis_title='Frequency',
+                            paper_bgcolor='rgba(0,0,0,0)',
+                            plot_bgcolor='rgba(10,25,41,0.3)',
+                            font=dict(color='white'),
+                            height=500
+                        )
+
+                        st.plotly_chart(fig_dist, use_container_width=True)
+
+                        # ===== CHART 3: Correlation Network Graph =====
+                        st.markdown("#### 🔗 Correlation Network")
+
+                        if len(tickers) > 1:
+                            corr_matrix = returns.corr()
+
+                            # Create network graph
+                            fig_network = go.Figure()
+
+                            # Add nodes
+                            for i, ticker in enumerate(tickers):
+                                fig_network.add_trace(go.Scatter(
+                                    x=[i],
+                                    y=[0],
+                                    mode='markers+text',
+                                    marker=dict(size=30, color='#00d4ff'),
+                                    text=[ticker],
+                                    textposition='top center',
+                                    name=ticker,
+                                    showlegend=False
+                                ))
+
+                            # Add edges for strong correlations (>0.5)
+                            for i, ticker1 in enumerate(tickers):
+                                for j, ticker2 in enumerate(tickers):
+                                    if i < j and ticker1 in corr_matrix.columns and ticker2 in corr_matrix.columns:
+                                        if abs(corr_matrix.loc[ticker1, ticker2]) > 0.5:
+                                            corr_val = corr_matrix.loc[ticker1, ticker2]
+                                            color = '#00ff9d' if corr_val > 0 else '#ff0055'
+
+                                            fig_network.add_trace(go.Scatter(
+                                                x=[i, j],
+                                                y=[0, 0],
+                                                mode='lines',
+                                                line=dict(
+                                                    color=color,
+                                                    width=abs(corr_val) * 3
+                                                ),
+                                                showlegend=False,
+                                                hovertext=f'{ticker1}-{ticker2}: {corr_val:.2f}'
+                                            ))
+
+                            fig_network.update_layout(
+                                title='Asset Correlation Network (|r| > 0.5)',
+                                xaxis=dict(visible=False),
+                                yaxis=dict(visible=False),
+                                paper_bgcolor='rgba(0,0,0,0)',
+                                plot_bgcolor='rgba(10,25,41,0.3)',
+                                height=400
+                            )
+
+                            st.plotly_chart(fig_network, use_container_width=True)
+
+                        # ===== CHART 4: Rolling Metrics =====
+                        st.markdown("#### 📉 Rolling Sharpe Ratio (90-Day)")
+
+                        rolling_sharpe = (portfolio_returns.rolling(90).mean() /
+                                        portfolio_returns.rolling(90).std() * np.sqrt(252))
+
+                        fig_sharpe = go.Figure()
+
+                        fig_sharpe.add_trace(go.Scatter(
+                            x=rolling_sharpe.index,
+                            y=rolling_sharpe,
+                            mode='lines',
+                            fill='tozeroy',
+                            line=dict(color='#00d4ff', width=2),
+                            fillcolor='rgba(0, 212, 255, 0.2)',
+                            name='Rolling Sharpe'
+                        ))
+
+                        # Add reference line at Sharpe = 1
+                        fig_sharpe.add_hline(
+                            y=1,
+                            line_dash="dash",
+                            line_color="#00ff9d",
+                            annotation_text="Sharpe = 1 (Good)"
+                        )
+
+                        fig_sharpe.update_layout(
+                            title='Rolling 90-Day Sharpe Ratio',
+                            xaxis_title='Date',
+                            yaxis_title='Sharpe Ratio',
+                            paper_bgcolor='rgba(0,0,0,0)',
+                            plot_bgcolor='rgba(10,25,41,0.3)',
+                            font=dict(color='white'),
+                            height=400
+                        )
+
+                        st.plotly_chart(fig_sharpe, use_container_width=True)
+
+                        st.success("✅ All enhanced charts generated successfully")
+
                     except Exception as e:
                         st.error(f"Error generating charts: {str(e)}")
+                        import traceback
+                        st.code(traceback.format_exc())
 
     # ========================================================================
     # R ANALYTICS - ADVANCED QUANT MODELS (v11.0)
@@ -10338,36 +10615,30 @@ ORDER BY position_value DESC"""
 
         st.markdown("---")
         st.markdown("### 📊 DASHBOARD OVERVIEW")
-        
-        # ENHANCED: Better layout with 2 rows
-        row1_col1, row1_col2 = st.columns([2, 1])
-        
-        with row1_col1:
-            risk_reward = create_risk_reward_plot(enhanced_df)
-            if risk_reward:
-                st.plotly_chart(risk_reward, use_container_width=True)
 
-        with row1_col2:
-            # Sector allocation chart moved to Portfolio Deep Dive for better visibility
-            detractors = create_top_detractors_chart(enhanced_df)
-            if detractors:
-                st.plotly_chart(detractors, use_container_width=True)
+        # ===== FIX #7: Improved Home Page Layout - Remove Top Detractors =====
+        # Two-column layout for better visibility
+        col1, col2 = st.columns(2)
 
-        # P&L Attribution Analysis
-        st.markdown("---")
-        st.markdown("### 💼 P&L Attribution Analysis")
-
-        pnl_col1, pnl_col2 = st.columns(2)
-
-        with pnl_col1:
+        with col1:
+            # P&L attribution by sector
             pnl_sector = create_pnl_attribution_sector(enhanced_df)
             if pnl_sector:
                 st.plotly_chart(pnl_sector, use_container_width=True)
 
-        with pnl_col2:
-            pnl_position = create_pnl_attribution_position(enhanced_df, top_n=10)
-            if pnl_position:
-                st.plotly_chart(pnl_position, use_container_width=True)
+        with col2:
+            # Risk/Reward scatter - NOW LARGER!
+            risk_reward = create_risk_reward_plot(enhanced_df)
+            if risk_reward:
+                st.plotly_chart(risk_reward, use_container_width=True)
+
+        # Additional position-level P&L analysis
+        st.markdown("---")
+        st.markdown("### 💼 Top Contributors")
+
+        pnl_position = create_pnl_attribution_position(enhanced_df, top_n=10)
+        if pnl_position:
+            st.plotly_chart(pnl_position, use_container_width=True)
 
         # Performance Heatmap (full width) - Only show if meaningful data exists
         st.markdown("---")
@@ -14084,24 +14355,63 @@ ORDER BY position_value DESC"""
                         # Calculate returns
                         returns = hist_data.pct_change().dropna()
 
-                        # Get current prices
-                        current_prices = hist_data.iloc[-1].values
+                        # ===== FIX #8: Aligned Weight Calculation for Monte Carlo =====
 
-                        # Get portfolio weights
-                        total_value = (portfolio_data['Quantity'] * portfolio_data['Current Price']).sum()
-                        portfolio_data['Weight'] = (portfolio_data['Quantity'] * portfolio_data['Current Price']) / total_value
+                        # Get unique tickers (this is what the simulation will use)
+                        tickers_list = list(returns.columns)
+                        print(f"🎯 Running Monte Carlo for {len(tickers_list)} tickers: {tickers_list}")
 
-                        # Merge weights with tickers
-                        weights = []
-                        S0_values = []
-                        for ticker in returns.columns:
-                            if ticker in portfolio_data['Symbol'].values:
-                                weight = portfolio_data[portfolio_data['Symbol'] == ticker]['Weight'].values[0]
-                                weights.append(weight)
-                                S0_values.append(current_prices[list(returns.columns).index(ticker)])
+                        # Calculate total portfolio value
+                        if 'Total Value' in portfolio_data.columns:
+                            total_value = portfolio_data['Total Value'].sum()
+                        else:
+                            total_value = (portfolio_data['Quantity'] * portfolio_data['Current Price']).sum()
 
-                        weights = np.array(weights)
-                        S0_values = np.array(S0_values)
+                        print(f"💰 Total portfolio value: ${total_value:,.2f}")
+
+                        # Build aligned weights dictionary
+                        weights_dict = {}
+
+                        for ticker in tickers_list:
+                            ticker_data = portfolio_data[portfolio_data['Symbol'] == ticker]
+
+                            if len(ticker_data) > 0:
+                                if 'Total Value' in ticker_data.columns:
+                                    ticker_value = ticker_data['Total Value'].sum()
+                                else:
+                                    ticker_value = (ticker_data['Quantity'] * ticker_data['Current Price']).sum()
+
+                                weight = ticker_value / total_value
+                                weights_dict[ticker] = weight
+                            else:
+                                # Ticker in returns but not in portfolio - assign zero weight
+                                weights_dict[ticker] = 0.0
+                                print(f"⚠️ Warning: {ticker} in historical data but not in portfolio")
+
+                        # Create numpy arrays in same order as tickers_list
+                        weights = np.array([weights_dict[ticker] for ticker in tickers_list])
+                        S0_values = hist_data.iloc[-1].values
+
+                        # ===== CRITICAL VALIDATION =====
+                        # Ensure perfect alignment
+                        assert len(weights) == len(tickers_list), \
+                            f"❌ Shape mismatch: {len(weights)} weights vs {len(tickers_list)} tickers"
+
+                        assert len(S0_values) == len(tickers_list), \
+                            f"❌ Shape mismatch: {len(S0_values)} prices vs {len(tickers_list)} tickers"
+
+                        assert abs(weights.sum() - 1.0) < 0.01, \
+                            f"❌ Weights don't sum to 1.0: {weights.sum():.4f}"
+
+                        # Ensure all weights are non-negative
+                        assert (weights >= 0).all(), \
+                            "❌ Negative weights detected"
+
+                        print(f"✅ Weight validation passed:")
+                        print(f"   - Array length: {len(weights)}")
+                        print(f"   - Sum: {weights.sum():.4f}")
+                        print(f"   - Min weight: {weights.min():.4f}")
+                        print(f"   - Max weight: {weights.max():.4f}")
 
                         # Initialize StochasticEngine
                         engine = StochasticEngine(tickers=list(returns.columns), returns_data=returns)
