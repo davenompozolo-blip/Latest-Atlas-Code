@@ -2049,7 +2049,8 @@ def save_portfolio_data(data):
                 column_mapping = {
                     'Ticker': 'ticker',
                     'Shares': 'quantity',
-                    'Avg Price': 'avg_cost',
+                    'Avg Price': 'avg_cost',  # From account imports
+                    'Avg Cost': 'avg_cost',   # From trade imports (Phoenix Parser)
                     'Current Price': 'current_price'
                 }
 
@@ -2068,9 +2069,15 @@ def save_portfolio_data(data):
 
                     # Save to database
                     db.save_portfolio(portfolio_df)
-                    print("✅ Portfolio saved to database")
+                    print(f"✅ Portfolio saved to database ({len(portfolio_df)} positions)")
+                else:
+                    missing = [col for col in required_cols if col not in portfolio_df.columns]
+                    print(f"⚠️ Cannot save to database: missing columns {missing}")
+                    print(f"   Available columns: {list(portfolio_df.columns)}")
         except Exception as e:
             print(f"⚠️ Database save failed (pickle still saved): {e}")
+            import traceback
+            print(traceback.format_exc())
 
 def load_portfolio_data():
     """
@@ -2088,7 +2095,7 @@ def load_portfolio_data():
                 column_mapping = {
                     'ticker': 'Ticker',
                     'quantity': 'Shares',
-                    'avg_cost': 'Avg Price',
+                    'avg_cost': 'Avg Cost',  # Standard column name in app
                     'current_price': 'Current Price'
                 }
 
@@ -2383,8 +2390,31 @@ def fetch_market_data(ticker):
         return None
 
 def is_option_ticker(ticker):
+    """
+    Detect if ticker is an option symbol
+    Options typically have format: TICKER[DATE][TYPE][STRIKE]
+    Examples: AU2520F50, META2405D482.5, AAPL240119C150
+    """
+    import re
+
+    # Skip if too short
     if len(ticker) <= 6:
         return False
+
+    # Specific known options to exclude
+    known_options = ['AU2520F50', 'META2405D482.5']
+    if ticker.upper() in known_options:
+        return True
+
+    # General option pattern detection
+    # Pattern: Letters + 4-digit year (20XX, 24XX, etc) + optional letter + decimals
+    # Examples: META2405D482.5 = META + 2405 + D + 482.5
+    #           AU2520F50 = AU + 2520 + F + 50
+    option_pattern = r'^[A-Z]+\d{4}[A-Z]\d+\.?\d*$'
+    if re.match(option_pattern, ticker.upper()):
+        return True
+
+    # Standard options format (older logic)
     has_year = any(str(y) in ticker for y in range(2020, 2030))
     has_strike = any(c.isdigit() for c in ticker[6:])
     has_type = ticker[-1] in ['C', 'P'] or 'C' in ticker[6:] or 'P' in ticker[6:]
@@ -6948,7 +6978,28 @@ def create_performance_heatmap(df, period='monthly'):
                 else:
                     row.append(0)
             matrix.append(row)
-        
+
+        # ===== FIX #6: Remove Empty Columns from Heatmap =====
+        # Convert to numpy array for easier column operations
+        matrix_array = np.array(matrix)
+
+        # Find columns where all values are zero
+        non_zero_cols = []
+        filtered_months = []
+
+        for i, month in enumerate(months):
+            # Check if this column has any non-zero values
+            if np.any(np.abs(matrix_array[:, i]) > 0.01):
+                non_zero_cols.append(i)
+                filtered_months.append(month)
+
+        # Filter matrix to keep only non-zero columns
+        if len(non_zero_cols) > 0:
+            filtered_matrix = matrix_array[:, non_zero_cols].tolist()
+            months = filtered_months
+            matrix = filtered_matrix
+            print(f"✅ Filtered heatmap: kept {len(filtered_months)} non-empty months")
+
         fig = go.Figure(data=go.Heatmap(
             z=matrix,
             x=months,
@@ -8294,7 +8345,7 @@ class InvestopediaIntegration:
                         position = {
                             'Ticker': cells[0].text.strip(),
                             'Shares': float(cells[1].text.strip().replace(',', '')),
-                            'Avg Price': float(cells[2].text.strip().replace('$', '').replace(',', '')),
+                            'Avg Cost': float(cells[2].text.strip().replace('$', '').replace(',', '')),
                             'Current Price': float(cells[3].text.strip().replace('$', '').replace(',', '')),
                             'Total Value': float(cells[4].text.strip().replace('$', '').replace(',', '')),
                             'Gain/Loss': float(cells[5].text.strip().replace('$', '').replace(',', ''))
@@ -8883,10 +8934,11 @@ def main():
             "💰 Valuation House",
             "🎲 Monte Carlo Engine",
             "🧮 Quant Optimizer",
+            "📊 Leverage Tracker",
             "📡 Investopedia Live",
             "ℹ️ About"
         ],
-        icons=["fire", "house-fill", "rocket-takeoff-fill", "graph-up-arrow", "database-fill", "globe", "graph-up", "gem", "microscope", "bar-chart-fill", "cash-coin", "dice-5-fill", "calculator-fill", "broadcast", "info-circle-fill"],
+        icons=["fire", "house-fill", "rocket-takeoff-fill", "graph-up-arrow", "database-fill", "globe", "graph-up", "gem", "microscope", "bar-chart-fill", "cash-coin", "dice-5-fill", "calculator-fill", "graph-up", "broadcast", "info-circle-fill"],
         menu_icon="cast",
         default_index=0,
         orientation="horizontal",  # KEY: Horizontal layout
@@ -8981,11 +9033,29 @@ def main():
                         show_toast(f"Trade history imported: {len(trade_df)} trades parsed successfully", toast_type="success", duration=3000)
                         st.dataframe(trade_df.head(10), use_container_width=True, column_config=None)
 
+                        # Check for options that will be filtered
+                        option_tickers = []
+                        if 'Symbol' in trade_df.columns:
+                            unique_symbols = trade_df['Symbol'].unique()
+                            option_tickers = [ticker for ticker in unique_symbols if is_option_ticker(ticker)]
+
                         portfolio_df = calculate_portfolio_from_trades(trade_df)
                         if len(portfolio_df) > 0:
                             save_portfolio_data(portfolio_df.to_dict('records'))
                             st.success(f"🎉 Portfolio rebuilt! {len(portfolio_df)} positions")
                             show_toast(f"🔥 Phoenix reconstruction complete: {len(portfolio_df)} positions rebuilt", toast_type="success", duration=4000)
+
+                            # Show filtered options if any
+                            if option_tickers:
+                                with st.expander(f"🗑️ Filtered {len(option_tickers)} option symbols"):
+                                    st.info("""
+                                    **Options automatically excluded from equity portfolio:**
+
+                                    These option positions are excluded from equity analysis:
+                                    """)
+                                    for opt in option_tickers:
+                                        st.write(f"- {opt}")
+
                             st.dataframe(portfolio_df, use_container_width=True, column_config=None)
         
         with col2:
@@ -9049,20 +9119,109 @@ def main():
 
             # Manual save button
             if st.button("💾 Save Current Portfolio to Database", type="primary"):
-                if SQL_AVAILABLE:
-                    portfolio_data = load_portfolio_data()
-                    if portfolio_data:
-                        with st.spinner("Saving to database..."):
-                            try:
-                                save_portfolio_data(portfolio_data)
-                                st.success("✅ Portfolio saved to database!")
-                                show_toast("Portfolio saved to database successfully", toast_type="success", duration=2000)
-                            except Exception as e:
-                                st.error(f"❌ Save failed: {e}")
-                    else:
-                        st.warning("⚠️ No portfolio data to save")
+                # Load current portfolio
+                portfolio_data = load_portfolio_data()
+
+                # ===== FIX #1: Robust validation =====
+                has_data = False
+
+                if portfolio_data is not None:
+                    if isinstance(portfolio_data, pd.DataFrame):
+                        has_data = not portfolio_data.empty
+                    elif isinstance(portfolio_data, list):
+                        has_data = len(portfolio_data) > 0
+
+                if not has_data:
+                    st.error("❌ No portfolio data to save. Upload data via Phoenix Parser first.")
                 else:
-                    st.error("❌ SQL database not available")
+                    # Convert to DataFrame if needed
+                    if isinstance(portfolio_data, list):
+                        df = pd.DataFrame(portfolio_data)
+                    else:
+                        df = portfolio_data
+
+                    # DEBUG: Show what we're saving
+                    st.info(f"💾 Attempting to save {len(df)} positions...")
+
+                    try:
+                        import sqlite3
+                        from datetime import datetime
+
+                        # Connect to database
+                        conn = sqlite3.connect('atlas_portfolio.db', timeout=10)
+                        cursor = conn.cursor()
+
+                        # Create table if it doesn't exist
+                        cursor.execute("""
+                            CREATE TABLE IF NOT EXISTS portfolio_positions (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                ticker TEXT NOT NULL,
+                                quantity REAL NOT NULL,
+                                avg_cost REAL NOT NULL,
+                                current_price REAL,
+                                total_value REAL,
+                                sector TEXT,
+                                last_updated TEXT
+                            )
+                        """)
+
+                        # Clear existing positions
+                        cursor.execute("DELETE FROM portfolio_positions")
+
+                        # Save each position
+                        saved_count = 0
+                        for idx, row in df.iterrows():
+                            try:
+                                # Handle different column name variations
+                                ticker = str(row.get('Ticker', row.get('Symbol', 'UNKNOWN')))
+                                quantity = float(row.get('Quantity', row.get('Shares', 0)))
+                                avg_cost = float(row.get('Avg Cost', row.get('Average Cost', row.get('Avg Price', 0))))
+                                current_price = float(row.get('Current Price', 0))
+                                total_value = float(row.get('Total Value', quantity * current_price if current_price else quantity * avg_cost))
+                                sector = str(row.get('Sector', 'Unknown'))
+
+                                cursor.execute("""
+                                    INSERT INTO portfolio_positions
+                                    (ticker, quantity, avg_cost, current_price, total_value, sector, last_updated)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                                """, (
+                                    ticker,
+                                    quantity,
+                                    avg_cost,
+                                    current_price,
+                                    total_value,
+                                    sector,
+                                    datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                                ))
+                                saved_count += 1
+                            except Exception as row_error:
+                                st.warning(f"⚠️ Skipped {row.get('Ticker', row.get('Symbol', 'unknown'))}: {row_error}")
+
+                        conn.commit()
+                        conn.close()
+
+                        st.success(f"✅ Successfully saved {saved_count} positions to database!")
+                        st.balloons()
+
+                    except Exception as e:
+                        st.error(f"❌ Database save failed: {str(e)}")
+                        import traceback
+                        st.code(traceback.format_exc())
+
+            # Debug database state button
+            if st.button("🔍 Debug Database State"):
+                try:
+                    import sqlite3
+                    conn = sqlite3.connect('atlas_portfolio.db')
+                    result = pd.read_sql("SELECT * FROM portfolio_positions", conn)
+                    st.write(f"**Database has {len(result)} positions**")
+                    if len(result) > 0:
+                        st.dataframe(result, use_container_width=True)
+                    else:
+                        st.info("No positions found in database")
+                    conn.close()
+                except Exception as e:
+                    st.error(f"Error reading database: {e}")
 
             # Clear database button
             if st.button("🗑️ Clear Database (Keep Pickle Cache)"):
@@ -9085,6 +9244,90 @@ def main():
 
             Use the manual save button to force a database update.
             """)
+
+        # ===== FIX #8: LEVERAGE TRACKING FEATURE =====
+        st.markdown("---")
+        st.markdown("### 📊 Leverage Tracking (Optional)")
+        st.info("📈 Upload your Investopedia performance-history.xls file to enable leverage analysis")
+
+        perf_history_file = st.file_uploader(
+            "📈 Upload Performance History",
+            type=['xls', 'xlsx', 'html'],
+            help="Upload your Investopedia performance-history.xls file for leverage tracking",
+            key="perf_history"
+        )
+
+        if perf_history_file is not None:
+            try:
+                # Save uploaded file temporarily
+                import tempfile
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.xls') as tmp_file:
+                    tmp_file.write(perf_history_file.getvalue())
+                    tmp_path = tmp_file.name
+
+                # Parse leverage data
+                from analytics.leverage_tracker import LeverageTracker
+
+                tracker = LeverageTracker(tmp_path)
+
+                if tracker.load_and_parse():
+                    # Get current stats
+                    stats = tracker.get_current_stats()
+
+                    # Display current leverage
+                    st.success("✅ Performance history loaded!")
+
+                    col1, col2, col3, col4 = st.columns(4)
+
+                    with col1:
+                        st.metric(
+                            "Current Leverage",
+                            f"{stats['current_leverage']:.2f}x",
+                            help="Gross Exposure / Net Equity"
+                        )
+
+                    with col2:
+                        st.metric(
+                            "Net Equity",
+                            f"${stats['current_equity']:,.0f}",
+                            help="Account Value (Column F)"
+                        )
+
+                    with col3:
+                        st.metric(
+                            "Gross Exposure",
+                            f"${stats['current_gross_exposure']:,.0f}",
+                            help="Total position value"
+                        )
+
+                    with col4:
+                        st.metric(
+                            "Avg Leverage",
+                            f"{stats['avg_leverage']:.2f}x",
+                            help="Historical average"
+                        )
+
+                    # Store in session state for other pages
+                    st.session_state.leverage_tracker = tracker
+
+                    # Show dashboard
+                    with st.expander("📊 View Leverage Dashboard", expanded=True):
+                        fig = tracker.create_leverage_dashboard()
+                        st.plotly_chart(fig, use_container_width=True)
+
+                    # Show calculation workings
+                    with st.expander("🧮 Calculation Workings"):
+                        workings = tracker.create_workings_display()
+                        st.markdown(workings)
+
+                    show_toast("Leverage tracking enabled! Visit the Leverage Tracker page for full analysis", toast_type="success", duration=4000)
+                else:
+                    st.error("❌ Could not parse performance history file")
+
+            except Exception as e:
+                st.error(f"Error loading performance history: {e}")
+                import traceback
+                st.code(traceback.format_exc())
 
     # ========================================================================
     # v10.0 ANALYTICS - NEW ADVANCED FEATURES
@@ -9296,7 +9539,7 @@ def main():
                                 value = row['Total Value'] if 'Total Value' in df.columns else 1
                                 weights[ticker] = value / total_value
 
-                            # Get returns and sectors
+                            # ===== FIX #4: Get returns, sectors, and include weights =====
                             asset_data_list = []
                             for ticker in weights.keys():
                                 try:
@@ -9304,7 +9547,13 @@ def main():
                                     hist = stock.history(period='1mo')
                                     ret = (hist['Close'].iloc[-1] / hist['Close'].iloc[0] - 1)
                                     sector = stock.info.get('sector', 'Unknown')
-                                    asset_data_list.append({'ticker': ticker, 'sector': sector, 'return': ret})
+                                    # ✅ Include actual weight in asset data
+                                    asset_data_list.append({
+                                        'ticker': ticker,
+                                        'sector': sector,
+                                        'return': ret,
+                                        'weight': weights[ticker] * 100  # Convert to percentage
+                                    })
                                 except:
                                     pass
 
@@ -9316,9 +9565,68 @@ def main():
                                 stock_contrib = attribution.stock_contribution()
                                 st.dataframe(stock_contrib, use_container_width=True)
 
-                                st.markdown("#### Sector-Level Attribution")
+                                st.markdown("#### Sector-Level Attribution (Brinson-Fachler Model)")
                                 sector_contrib = attribution.sector_attribution()
                                 st.dataframe(sector_contrib, use_container_width=True)
+
+                                # ===== FIX #5: Calculate and Display Skill Scores =====
+                                if 'Allocation Effect' in sector_contrib.columns and 'Selection Effect' in sector_contrib.columns:
+                                    st.markdown("---")
+                                    st.markdown("#### 🎯 Portfolio Management Skill Assessment")
+
+                                    # Calculate total effects
+                                    total_allocation = sector_contrib['Allocation Effect'].sum()
+                                    total_selection = sector_contrib['Selection Effect'].sum()
+                                    total_interaction = sector_contrib['Interaction Effect'].sum() if 'Interaction Effect' in sector_contrib.columns else 0
+
+                                    # Skill scoring: 0-10 scale where 5 = neutral (0% effect)
+                                    # Each 1% positive effect = +1 point, each 1% negative effect = -1 point
+                                    allocation_score = max(0, min(10, 5 + total_allocation))
+                                    selection_score = max(0, min(10, 5 + total_selection))
+
+                                    # Display skill assessment
+                                    col1, col2, col3 = st.columns(3)
+
+                                    with col1:
+                                        st.metric(
+                                            "Allocation Skill (Sector Timing)",
+                                            f"{allocation_score:.1f}/10",
+                                            f"Effect: {total_allocation:+.2f}%"
+                                        )
+
+                                        if allocation_score > 6:
+                                            st.success("✅ Strong sector allocation")
+                                        elif allocation_score < 4:
+                                            st.error("❌ Poor sector allocation")
+                                        else:
+                                            st.info("ℹ️ Neutral sector allocation")
+
+                                    with col2:
+                                        st.metric(
+                                            "Selection Skill (Stock Picking)",
+                                            f"{selection_score:.1f}/10",
+                                            f"Effect: {total_selection:+.2f}%"
+                                        )
+
+                                        if selection_score > 6:
+                                            st.success("✅ Strong stock selection")
+                                        elif selection_score < 4:
+                                            st.error("❌ Poor stock selection")
+                                        else:
+                                            st.info("ℹ️ Neutral stock selection")
+
+                                    with col3:
+                                        total_active_return = total_allocation + total_selection + total_interaction
+                                        st.metric(
+                                            "Total Active Return",
+                                            f"{total_active_return:+.2f}%",
+                                            f"Interaction: {total_interaction:+.2f}%"
+                                        )
+
+                                        if total_active_return > 0:
+                                            st.success("✅ Outperforming benchmark")
+                                        else:
+                                            st.error("❌ Underperforming benchmark")
 
                                 st.success("✅ Attribution analysis complete")
                             else:
@@ -9326,47 +9634,249 @@ def main():
                         except Exception as e:
                             st.error(f"Error: {str(e)}")
 
-        # Tab 6: Enhanced Charts
+        # ===== FIX #9: Enhanced Charts Quality =====
+        # Tab 6: Truly Enhanced Charts
         with tabs[5]:
+            # ===== FIX #2: Import required modules for this tab =====
+            try:
+                import plotly.express as px
+                import plotly.graph_objects as go
+                import numpy as np
+                from scipy import stats
+            except ImportError as e:
+                st.error(f"❌ Missing dependency: {e}")
+                st.code("pip install plotly scipy numpy")
+                st.stop()
+
             st.markdown("### 🎨 Enhanced Plotly Visualizations")
+            st.markdown("Professional-grade charts with Bloomberg Terminal quality")
 
             portfolio_data = load_portfolio_data()
+
             if portfolio_data is None or (isinstance(portfolio_data, pd.DataFrame) and portfolio_data.empty):
                 st.warning("⚠️ Upload portfolio data via Phoenix Parser first")
             else:
-                df = pd.DataFrame(portfolio_data)
+                df = pd.DataFrame(portfolio_data) if isinstance(portfolio_data, list) else portfolio_data
 
-                # Portfolio allocation chart
-                st.markdown("#### Portfolio Allocation")
+                # ===== CHART 1: Advanced Portfolio Allocation =====
+                st.markdown("#### 📊 Portfolio Allocation")
+
                 weights = {}
                 total_value = df['Total Value'].sum() if 'Total Value' in df.columns else 1
+
                 for _, row in df.iterrows():
                     ticker = row['Ticker']
                     value = row['Total Value'] if 'Total Value' in df.columns else 1
                     weights[ticker] = value / total_value
 
-                allocation_fig = create_allocation_chart(weights)
-                st.plotly_chart(allocation_fig, use_container_width=True)
+                # Create sunburst chart (more advanced than donut)
+                allocation_data = []
+                for ticker, weight in weights.items():
+                    ticker_data = df[df['Ticker'] == ticker].iloc[0]
+                    sector = ticker_data.get('Sector', 'Unknown')
 
-                # Get historical returns for other charts
+                    allocation_data.append({
+                        'Ticker': ticker,
+                        'Sector': sector,
+                        'Weight': weight * 100,
+                        'Value': weight * total_value
+                    })
+
+                allocation_df = pd.DataFrame(allocation_data)
+
+                fig_allocation = px.sunburst(
+                    allocation_df,
+                    path=['Sector', 'Ticker'],
+                    values='Weight',
+                    color='Weight',
+                    color_continuous_scale='Viridis',
+                    title='Portfolio Allocation by Sector & Ticker'
+                )
+
+                fig_allocation.update_layout(
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(10,25,41,0.3)',
+                    font=dict(color='white', size=12),
+                    height=600
+                )
+
+                st.plotly_chart(fig_allocation, use_container_width=True)
+
+                # ===== CHART 2: Returns Distribution with Statistics =====
+                st.markdown("#### 📈 Returns Distribution Analysis")
+
                 tickers = df['Ticker'].tolist() if 'Ticker' in df.columns else []
+
                 if len(tickers) > 0:
                     try:
-                        returns_data = yf.download(tickers, period="1y", progress=False)['Close'].pct_change().dropna()
-                        portfolio_returns = returns_data.mean(axis=1)
-                        spy = yf.download('SPY', period="1y", progress=False)['Close'].pct_change().dropna()
+                        # Fetch 1 year of data
+                        hist_data = yf.download(tickers, period="1y", progress=False)['Close']
 
-                        st.markdown("#### Cumulative Returns")
-                        performance_fig = create_performance_chart(portfolio_returns, spy)
-                        st.plotly_chart(performance_fig, use_container_width=True)
+                        if isinstance(hist_data, pd.Series):
+                            hist_data = hist_data.to_frame()
 
-                        st.markdown("#### Portfolio Drawdown")
-                        drawdown_fig = create_drawdown_chart(portfolio_returns)
-                        st.plotly_chart(drawdown_fig, use_container_width=True)
+                        # Calculate daily returns
+                        returns = hist_data.pct_change().dropna()
 
-                        st.success("✅ All charts generated successfully")
+                        # Calculate portfolio returns (weighted average)
+                        portfolio_returns = pd.Series(0, index=returns.index)
+                        for ticker, weight in weights.items():
+                            if ticker in returns.columns:
+                                portfolio_returns += returns[ticker] * weight
+
+                        # Create distribution plot with annotations
+                        from scipy import stats
+
+                        fig_dist = go.Figure()
+
+                        # Histogram
+                        fig_dist.add_trace(go.Histogram(
+                            x=portfolio_returns * 100,
+                            name='Daily Returns',
+                            nbinsx=50,
+                            marker_color='rgba(0, 212, 255, 0.6)',
+                            showlegend=False
+                        ))
+
+                        # Add normal distribution overlay
+                        mu = portfolio_returns.mean() * 100
+                        sigma = portfolio_returns.std() * 100
+                        x_range = np.linspace(portfolio_returns.min() * 100,
+                                            portfolio_returns.max() * 100, 100)
+                        y_range = stats.norm.pdf(x_range, mu, sigma) * len(portfolio_returns) * \
+                                (portfolio_returns.max() - portfolio_returns.min()) * 100 / 50
+
+                        fig_dist.add_trace(go.Scatter(
+                            x=x_range,
+                            y=y_range,
+                            mode='lines',
+                            name='Normal Distribution',
+                            line=dict(color='#00ff9d', width=2, dash='dash')
+                        ))
+
+                        # Add statistics annotations
+                        fig_dist.add_annotation(
+                            x=0.02, y=0.98,
+                            xref='paper', yref='paper',
+                            text=f'<b>Statistics</b><br>Mean: {mu:.3f}%<br>Std Dev: {sigma:.3f}%<br>' + \
+                                f'Skew: {portfolio_returns.skew():.3f}<br>Kurtosis: {portfolio_returns.kurtosis():.3f}',
+                            showarrow=False,
+                            align='left',
+                            bgcolor='rgba(10,25,41,0.8)',
+                            bordercolor='#00d4ff',
+                            borderwidth=1,
+                            font=dict(color='white', size=11)
+                        )
+
+                        fig_dist.update_layout(
+                            title='Portfolio Returns Distribution (1 Year)',
+                            xaxis_title='Daily Return (%)',
+                            yaxis_title='Frequency',
+                            paper_bgcolor='rgba(0,0,0,0)',
+                            plot_bgcolor='rgba(10,25,41,0.3)',
+                            font=dict(color='white'),
+                            height=500
+                        )
+
+                        st.plotly_chart(fig_dist, use_container_width=True)
+
+                        # ===== CHART 3: Correlation Network Graph =====
+                        st.markdown("#### 🔗 Correlation Network")
+
+                        if len(tickers) > 1:
+                            corr_matrix = returns.corr()
+
+                            # Create network graph
+                            fig_network = go.Figure()
+
+                            # Add nodes
+                            for i, ticker in enumerate(tickers):
+                                fig_network.add_trace(go.Scatter(
+                                    x=[i],
+                                    y=[0],
+                                    mode='markers+text',
+                                    marker=dict(size=30, color='#00d4ff'),
+                                    text=[ticker],
+                                    textposition='top center',
+                                    name=ticker,
+                                    showlegend=False
+                                ))
+
+                            # Add edges for strong correlations (>0.5)
+                            for i, ticker1 in enumerate(tickers):
+                                for j, ticker2 in enumerate(tickers):
+                                    if i < j and ticker1 in corr_matrix.columns and ticker2 in corr_matrix.columns:
+                                        if abs(corr_matrix.loc[ticker1, ticker2]) > 0.5:
+                                            corr_val = corr_matrix.loc[ticker1, ticker2]
+                                            color = '#00ff9d' if corr_val > 0 else '#ff0055'
+
+                                            fig_network.add_trace(go.Scatter(
+                                                x=[i, j],
+                                                y=[0, 0],
+                                                mode='lines',
+                                                line=dict(
+                                                    color=color,
+                                                    width=abs(corr_val) * 3
+                                                ),
+                                                showlegend=False,
+                                                hovertext=f'{ticker1}-{ticker2}: {corr_val:.2f}'
+                                            ))
+
+                            fig_network.update_layout(
+                                title='Asset Correlation Network (|r| > 0.5)',
+                                xaxis=dict(visible=False),
+                                yaxis=dict(visible=False),
+                                paper_bgcolor='rgba(0,0,0,0)',
+                                plot_bgcolor='rgba(10,25,41,0.3)',
+                                height=400
+                            )
+
+                            st.plotly_chart(fig_network, use_container_width=True)
+
+                        # ===== CHART 4: Rolling Metrics =====
+                        st.markdown("#### 📉 Rolling Sharpe Ratio (90-Day)")
+
+                        rolling_sharpe = (portfolio_returns.rolling(90).mean() /
+                                        portfolio_returns.rolling(90).std() * np.sqrt(252))
+
+                        fig_sharpe = go.Figure()
+
+                        fig_sharpe.add_trace(go.Scatter(
+                            x=rolling_sharpe.index,
+                            y=rolling_sharpe,
+                            mode='lines',
+                            fill='tozeroy',
+                            line=dict(color='#00d4ff', width=2),
+                            fillcolor='rgba(0, 212, 255, 0.2)',
+                            name='Rolling Sharpe'
+                        ))
+
+                        # Add reference line at Sharpe = 1
+                        fig_sharpe.add_hline(
+                            y=1,
+                            line_dash="dash",
+                            line_color="#00ff9d",
+                            annotation_text="Sharpe = 1 (Good)"
+                        )
+
+                        fig_sharpe.update_layout(
+                            title='Rolling 90-Day Sharpe Ratio',
+                            xaxis_title='Date',
+                            yaxis_title='Sharpe Ratio',
+                            paper_bgcolor='rgba(0,0,0,0)',
+                            plot_bgcolor='rgba(10,25,41,0.3)',
+                            font=dict(color='white'),
+                            height=400
+                        )
+
+                        st.plotly_chart(fig_sharpe, use_container_width=True)
+
+                        st.success("✅ All enhanced charts generated successfully")
+
                     except Exception as e:
                         st.error(f"Error generating charts: {str(e)}")
+                        import traceback
+                        st.code(traceback.format_exc())
 
     # ========================================================================
     # R ANALYTICS - ADVANCED QUANT MODELS (v11.0)
@@ -9375,14 +9885,97 @@ def main():
         st.markdown("## 📊 R ANALYTICS - ADVANCED QUANTITATIVE MODELS")
 
         if not R_AVAILABLE:
-            st.error("❌ R analytics not available")
-            st.info("""
-            **To enable R analytics:**
-            1. Install R: `apt-get install r-base r-base-dev`
-            2. Install R packages: `R -e "install.packages(c('rugarch', 'copula', 'xts'))"`
-            3. Install rpy2: `pip install rpy2`
-            4. Restart the application
+            st.error("❌ R Analytics Requires Manual Setup")
+
+            st.markdown("""
+            ### 📋 R Analytics Setup Instructions
+
+            R analytics requires packages that cannot be installed from within the app.
+            You must install these dependencies **before** running the application.
+
+            ---
+
+            #### 🔧 For Google Colab Users:
+
+            1. Create a new code cell **ABOVE** your Streamlit app cell
+            2. Run this code:
+
+            ```python
+            # Install R and packages (takes 3-5 minutes)
+            !apt-get update -qq
+            !apt-get install -y r-base r-base-dev
+            !R -e "install.packages(c('rugarch', 'copula', 'xts'), repos='https://cloud.r-project.org')"
+            !pip install rpy2
+            ```
+
+            3. Wait for installation to complete
+            4. Restart your Streamlit app
+            5. R Analytics will then be available
+
+            ---
+
+            #### 💻 For Local Deployment (Linux/MacOS):
+
+            ```bash
+            # Install R
+            sudo apt-get update
+            sudo apt-get install -y r-base r-base-dev
+
+            # Install R packages
+            R -e "install.packages(c('rugarch', 'copula', 'xts'), repos='https://cloud.r-project.org')"
+
+            # Install Python bridge
+            pip install rpy2
+            ```
+
+            ---
+
+            #### 🪟 For Windows:
+
+            1. Download and install R from: https://cran.r-project.org/bin/windows/base/
+            2. Open R console and run:
+               ```r
+               install.packages(c('rugarch', 'copula', 'xts'))
+               ```
+            3. Install rpy2:
+               ```bash
+               pip install rpy2
+               ```
+
+            ---
             """)
+
+            # Add status check
+            st.markdown("### 🔍 Package Status Check")
+
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+                try:
+                    import rpy2
+                    st.success("✅ rpy2 installed")
+                except ImportError:
+                    st.error("❌ rpy2 missing")
+                    st.caption("Run: `pip install rpy2`")
+
+            with col2:
+                try:
+                    from rpy2.robjects.packages import importr
+                    importr('rugarch')
+                    st.success("✅ rugarch available")
+                except:
+                    st.error("❌ rugarch missing")
+                    st.caption("Install in R")
+
+            with col3:
+                try:
+                    from rpy2.robjects.packages import importr
+                    importr('copula')
+                    st.success("✅ copula available")
+                except:
+                    st.error("❌ copula missing")
+                    st.caption("Install in R")
+
             return
 
         # Initialize R analytics
@@ -10338,36 +10931,30 @@ ORDER BY position_value DESC"""
 
         st.markdown("---")
         st.markdown("### 📊 DASHBOARD OVERVIEW")
-        
-        # ENHANCED: Better layout with 2 rows
-        row1_col1, row1_col2 = st.columns([2, 1])
-        
-        with row1_col1:
-            risk_reward = create_risk_reward_plot(enhanced_df)
-            if risk_reward:
-                st.plotly_chart(risk_reward, use_container_width=True)
 
-        with row1_col2:
-            # Sector allocation chart moved to Portfolio Deep Dive for better visibility
-            detractors = create_top_detractors_chart(enhanced_df)
-            if detractors:
-                st.plotly_chart(detractors, use_container_width=True)
+        # ===== FIX #7: Improved Home Page Layout - Remove Top Detractors =====
+        # Two-column layout for better visibility
+        col1, col2 = st.columns(2)
 
-        # P&L Attribution Analysis
-        st.markdown("---")
-        st.markdown("### 💼 P&L Attribution Analysis")
-
-        pnl_col1, pnl_col2 = st.columns(2)
-
-        with pnl_col1:
+        with col1:
+            # P&L attribution by sector
             pnl_sector = create_pnl_attribution_sector(enhanced_df)
             if pnl_sector:
                 st.plotly_chart(pnl_sector, use_container_width=True)
 
-        with pnl_col2:
-            pnl_position = create_pnl_attribution_position(enhanced_df, top_n=10)
-            if pnl_position:
-                st.plotly_chart(pnl_position, use_container_width=True)
+        with col2:
+            # Risk/Reward scatter - NOW LARGER!
+            risk_reward = create_risk_reward_plot(enhanced_df)
+            if risk_reward:
+                st.plotly_chart(risk_reward, use_container_width=True)
+
+        # Additional position-level P&L analysis
+        st.markdown("---")
+        st.markdown("### 💼 Top Contributors")
+
+        pnl_position = create_pnl_attribution_position(enhanced_df, top_n=10)
+        if pnl_position:
+            st.plotly_chart(pnl_position, use_container_width=True)
 
         # Performance Heatmap (full width) - Only show if meaningful data exists
         st.markdown("---")
@@ -10377,7 +10964,86 @@ ORDER BY position_value DESC"""
                 st.plotly_chart(perf_heatmap, use_container_width=True)
         else:
             st.info("📊 Monthly performance heatmap will be available after 2+ months of portfolio history")
-    
+        # ===== SYSTEM TEST SECTION =====
+        st.markdown("---")
+        st.markdown("### 🧪 System Test & Validation")
+
+        if st.button("🧪 Run System Test", type="primary"):
+            st.markdown("#### 🔍 Test Results")
+
+            col1, col2, col3 = st.columns(3)
+
+            # Test 1: Database
+            with col1:
+                st.markdown("**Database Test**")
+                try:
+                    conn = get_db()
+                    portfolio = conn.get_portfolio()
+                    pos_count = len(portfolio)
+
+                    if pos_count > 0:
+                        st.success(f"✅ Database: {pos_count} positions")
+                    else:
+                        st.warning("⚠️ Database: No positions")
+                except Exception as e:
+                    st.error(f"❌ Database: {str(e)}")
+
+            # Test 2: Imports
+            with col2:
+                st.markdown("**Import Tests**")
+                imports_ok = True
+
+                try:
+                    import plotly.express as px
+                    st.success("✅ plotly.express")
+                except:
+                    st.error("❌ plotly.express")
+                    imports_ok = False
+
+                try:
+                    import plotly.graph_objects as go
+                    st.success("✅ plotly.graph_objects")
+                except:
+                    st.error("❌ plotly.graph_objects")
+                    imports_ok = False
+
+                try:
+                    from scipy import stats
+                    st.success("✅ scipy.stats")
+                except:
+                    st.error("❌ scipy.stats")
+                    imports_ok = False
+
+            # Test 3: Portfolio data
+            with col3:
+                st.markdown("**Portfolio Test**")
+                try:
+                    portfolio_data = load_portfolio_data()
+                    if portfolio_data is not None:
+                        if isinstance(portfolio_data, pd.DataFrame):
+                            if not portfolio_data.empty:
+                                st.success(f"✅ Portfolio: {len(portfolio_data)} positions")
+                            else:
+                                st.warning("⚠️ Portfolio: Empty")
+                        else:
+                            st.warning("⚠️ Portfolio: Not a DataFrame")
+                    else:
+                        st.warning("⚠️ Portfolio: No data")
+                except Exception as e:
+                    st.error(f"❌ Portfolio: {str(e)}")
+
+            st.markdown("---")
+
+            # Test 4: Options filtering
+            st.markdown("**Options Filtering Test**")
+            test_tickers = ['AAPL', 'AU2520F50', 'TSLA', 'META2405D482.5', 'MSFT']
+            filtered = [t for t in test_tickers if is_option_ticker(t)]
+
+            if len(filtered) == 2 and 'AU2520F50' in filtered and 'META2405D482.5' in filtered:
+                st.success(f"✅ Options filtering working: {filtered}")
+            else:
+                st.error(f"❌ Options filtering failed: {filtered}")
+
     # ========================================================================
     # MARKET WATCH - COMPLETE REVAMP
     # ========================================================================
@@ -10736,6 +11402,9 @@ ORDER BY position_value DESC"""
                 st.plotly_chart(corr_network, use_container_width=True)
         
         with tab4:
+            # ===== FIX #3: Stress Test 'go' Undefined Error =====
+            import plotly.graph_objects as go
+
             st.markdown("#### ⚡ Historical Stress Test Analysis")
             st.info("💡 **Historical Stress Testing:** See how your current portfolio would have performed during major market crises")
 
@@ -10882,6 +11551,9 @@ ORDER BY position_value DESC"""
                     """)
 
         with tab5:  # NEW VaR/CVaR Optimization Tab
+            # ===== FIX #7: VaR/CVaR 'go' Error =====
+            import plotly.graph_objects as go
+
             st.markdown("### 🎯 VaR/CVaR Portfolio Optimization")
             st.info("Optimize portfolio weights to minimize Conditional Value at Risk (CVaR) - the expected loss beyond VaR")
 
@@ -11186,6 +11858,12 @@ ORDER BY position_value DESC"""
     # PERFORMANCE SUITE
     # ========================================================================
     elif page == "💎 Performance Suite":
+        # ===== FIX #4 & #6: Performance Suite imports =====
+        import plotly.graph_objects as go
+        import plotly.express as px
+        from scipy import stats
+        import numpy as np
+
         st.title("📊 Performance Suite")
 
         portfolio_data = load_portfolio_data()
@@ -14072,8 +14750,14 @@ ORDER BY position_value DESC"""
             if st.button("🚀 Run Monte Carlo Simulation", type="primary"):
                 with st.spinner("Running Monte Carlo simulation..."):
                     try:
+                        # ===== FIX #4: Handle Symbol vs Ticker column name =====
+                        # Detect which column name is used
+                        ticker_column = 'Symbol' if 'Symbol' in portfolio_data.columns else 'Ticker'
+                        print(f"🎯 Detected ticker column: '{ticker_column}'")
+
                         # Get tickers and current prices
-                        tickers = portfolio_data['Symbol'].unique().tolist()
+                        tickers = portfolio_data[ticker_column].unique().tolist()
+                        print(f"🎯 Found {len(tickers)} unique tickers: {tickers[:5]}...")
 
                         # Download historical data
                         hist_data = yf.download(tickers, period='1y', progress=False)['Close']
@@ -14084,24 +14768,63 @@ ORDER BY position_value DESC"""
                         # Calculate returns
                         returns = hist_data.pct_change().dropna()
 
-                        # Get current prices
-                        current_prices = hist_data.iloc[-1].values
+                        # ===== FIX #8: Aligned Weight Calculation for Monte Carlo =====
 
-                        # Get portfolio weights
-                        total_value = (portfolio_data['Quantity'] * portfolio_data['Current Price']).sum()
-                        portfolio_data['Weight'] = (portfolio_data['Quantity'] * portfolio_data['Current Price']) / total_value
+                        # Get unique tickers (this is what the simulation will use)
+                        tickers_list = list(returns.columns)
+                        print(f"🎯 Running Monte Carlo for {len(tickers_list)} tickers: {tickers_list}")
 
-                        # Merge weights with tickers
-                        weights = []
-                        S0_values = []
-                        for ticker in returns.columns:
-                            if ticker in portfolio_data['Symbol'].values:
-                                weight = portfolio_data[portfolio_data['Symbol'] == ticker]['Weight'].values[0]
-                                weights.append(weight)
-                                S0_values.append(current_prices[list(returns.columns).index(ticker)])
+                        # Calculate total portfolio value
+                        if 'Total Value' in portfolio_data.columns:
+                            total_value = portfolio_data['Total Value'].sum()
+                        else:
+                            total_value = (portfolio_data['Quantity'] * portfolio_data['Current Price']).sum()
 
-                        weights = np.array(weights)
-                        S0_values = np.array(S0_values)
+                        print(f"💰 Total portfolio value: ${total_value:,.2f}")
+
+                        # Build aligned weights dictionary
+                        weights_dict = {}
+
+                        for ticker in tickers_list:
+                            ticker_data = portfolio_data[portfolio_data[ticker_column] == ticker]
+
+                            if len(ticker_data) > 0:
+                                if 'Total Value' in ticker_data.columns:
+                                    ticker_value = ticker_data['Total Value'].sum()
+                                else:
+                                    ticker_value = (ticker_data['Quantity'] * ticker_data['Current Price']).sum()
+
+                                weight = ticker_value / total_value
+                                weights_dict[ticker] = weight
+                            else:
+                                # Ticker in returns but not in portfolio - assign zero weight
+                                weights_dict[ticker] = 0.0
+                                print(f"⚠️ Warning: {ticker} in historical data but not in portfolio")
+
+                        # Create numpy arrays in same order as tickers_list
+                        weights = np.array([weights_dict[ticker] for ticker in tickers_list])
+                        S0_values = hist_data.iloc[-1].values
+
+                        # ===== CRITICAL VALIDATION =====
+                        # Ensure perfect alignment
+                        assert len(weights) == len(tickers_list), \
+                            f"❌ Shape mismatch: {len(weights)} weights vs {len(tickers_list)} tickers"
+
+                        assert len(S0_values) == len(tickers_list), \
+                            f"❌ Shape mismatch: {len(S0_values)} prices vs {len(tickers_list)} tickers"
+
+                        assert abs(weights.sum() - 1.0) < 0.01, \
+                            f"❌ Weights don't sum to 1.0: {weights.sum():.4f}"
+
+                        # Ensure all weights are non-negative
+                        assert (weights >= 0).all(), \
+                            "❌ Negative weights detected"
+
+                        print(f"✅ Weight validation passed:")
+                        print(f"   - Array length: {len(weights)}")
+                        print(f"   - Sum: {weights.sum():.4f}")
+                        print(f"   - Min weight: {weights.min():.4f}")
+                        print(f"   - Max weight: {weights.max():.4f}")
 
                         # Initialize StochasticEngine
                         engine = StochasticEngine(tickers=list(returns.columns), returns_data=returns)
@@ -14200,6 +14923,11 @@ ORDER BY position_value DESC"""
     # QUANT OPTIMIZER (v11.0)
     # ========================================================================
     elif page == "🧮 Quant Optimizer":
+        # ===== FIX #5: Import required modules =====
+        import plotly.graph_objects as go
+        import plotly.express as px
+        import numpy as np
+
         st.markdown("### 🧮 Quantitative Portfolio Optimizer")
         st.markdown("**Advanced Optimization using Multivariable Calculus & Analytical Gradients**")
 
@@ -14223,8 +14951,13 @@ ORDER BY position_value DESC"""
             if st.button("🚀 Optimize Portfolio (Max Sharpe Ratio)", type="primary"):
                 with st.spinner("Running optimization with analytical gradients..."):
                     try:
+                        # ===== FIX #5: Handle Symbol vs Ticker column name =====
+                        ticker_column = 'Symbol' if 'Symbol' in portfolio_data.columns else 'Ticker'
+                        print(f"🎯 Detected ticker column: '{ticker_column}'")
+
                         # Get tickers
-                        tickers = portfolio_data['Symbol'].unique().tolist()
+                        tickers = portfolio_data[ticker_column].unique().tolist()
+                        print(f"🎯 Optimizing portfolio with {len(tickers)} tickers")
 
                         # Download historical data
                         hist_data = yf.download(tickers, period='2y', progress=False)['Close']
@@ -14331,11 +15064,272 @@ ORDER BY position_value DESC"""
                         st.info("💡 Ensure your portfolio has at least 2 positions with sufficient historical data")
 
     # ========================================================================
+    # LEVERAGE TRACKER (v11.0) - NEW FEATURE
+    # ========================================================================
+    elif page == "📊 Leverage Tracker":
+        st.markdown("## 📊 LEVERAGE TRACKING & ANALYSIS")
+        st.markdown("**Track how leverage has affected your returns over time**")
+
+        # Check if leverage tracker exists in session state
+        if 'leverage_tracker' not in st.session_state:
+            st.warning("⚠️ No performance history loaded")
+            st.info("""
+            **To use Leverage Tracking:**
+
+            1. Go to 🔥 Phoenix Parser
+            2. Upload your Investopedia performance-history.xls file
+            3. Return to this page to view full analysis
+
+            **OR** upload your performance history file below:
+            """)
+
+            # Allow upload here too
+            perf_file = st.file_uploader(
+                "📈 Upload Performance History",
+                type=['xls', 'xlsx', 'html'],
+                help="Upload your Investopedia performance-history.xls file",
+                key="leverage_upload"
+            )
+
+            if perf_file:
+                try:
+                    # Save uploaded file temporarily
+                    import tempfile
+                    with tempfile.NamedTemporaryFile(delete=False, suffix='.xls') as tmp_file:
+                        tmp_file.write(perf_file.getvalue())
+                        tmp_path = tmp_file.name
+
+                    # Parse leverage data
+                    from analytics.leverage_tracker import LeverageTracker
+
+                    tracker = LeverageTracker(tmp_path)
+
+                    if tracker.load_and_parse():
+                        st.session_state.leverage_tracker = tracker
+                        st.success("✅ Performance history loaded! Refresh to see analysis.")
+                        st.experimental_rerun()
+                    else:
+                        st.error("❌ Could not parse performance history file")
+
+                except Exception as e:
+                    st.error(f"Error loading performance history: {e}")
+                    import traceback
+                    st.code(traceback.format_exc())
+        else:
+            # Display leverage analysis
+            tracker = st.session_state.leverage_tracker
+            stats = tracker.get_current_stats()
+
+            # Header metrics
+            st.markdown("### 📊 Current Statistics")
+
+            col1, col2, col3, col4, col5 = st.columns(5)
+
+            with col1:
+                st.metric(
+                    "Current Leverage",
+                    f"{stats['current_leverage']:.2f}x",
+                    help="Gross Exposure / Net Equity"
+                )
+
+            with col2:
+                st.metric(
+                    "Net Equity",
+                    f"${stats['current_equity']:,.0f}",
+                    help="Your actual capital"
+                )
+
+            with col3:
+                st.metric(
+                    "Gross Exposure",
+                    f"${stats['current_gross_exposure']:,.0f}",
+                    help="Total position value"
+                )
+
+            with col4:
+                st.metric(
+                    "YTD Equity Return",
+                    f"{stats['ytd_equity_return']:.1f}%",
+                    help="Return on your capital"
+                )
+
+            with col5:
+                st.metric(
+                    "YTD Gross Return",
+                    f"{stats['ytd_gross_return']:.1f}%",
+                    help="Portfolio performance"
+                )
+
+            # Additional stats row
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+                st.metric(
+                    "Average Leverage",
+                    f"{stats['avg_leverage']:.2f}x",
+                    help="Historical average"
+                )
+
+            with col2:
+                st.metric(
+                    "Max Leverage",
+                    f"{stats['max_leverage']:.2f}x",
+                    help="Highest leverage used"
+                )
+
+            with col3:
+                st.metric(
+                    "Min Leverage",
+                    f"{stats['min_leverage']:.2f}x",
+                    help="Lowest leverage"
+                )
+
+            # Dashboard
+            st.markdown("---")
+            st.markdown("### 📊 6-Chart Leverage Dashboard")
+
+            fig = tracker.create_leverage_dashboard()
+            st.plotly_chart(fig, use_container_width=True)
+
+            # Workings
+            st.markdown("---")
+            st.markdown("### 🧮 Calculation Workings")
+            st.markdown("**See exactly how leverage is calculated**")
+
+            workings = tracker.create_workings_display()
+            st.markdown(workings)
+
+            # Historical data table
+            st.markdown("---")
+            st.markdown("### 📋 Historical Data Table")
+
+            display_df = tracker.leverage_history[[
+                'Date', 'Net Equity', 'Gross Exposure', 'Leverage Ratio',
+                'Equity Return (%)', 'Gross Return (%)', 'Leverage Impact (%)'
+            ]].copy()
+
+            # Format for display
+            display_df['Date'] = display_df['Date'].dt.strftime('%Y-%m-%d')
+            display_df['Net Equity'] = display_df['Net Equity'].apply(lambda x: f"${x:,.0f}")
+            display_df['Gross Exposure'] = display_df['Gross Exposure'].apply(lambda x: f"${x:,.0f}")
+            display_df['Leverage Ratio'] = display_df['Leverage Ratio'].apply(lambda x: f"{x:.2f}x")
+
+            for col in ['Equity Return (%)', 'Gross Return (%)', 'Leverage Impact (%)']:
+                display_df[col] = display_df[col].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "")
+
+            st.dataframe(display_df, use_container_width=True, height=400)
+
+            # Export options
+            st.markdown("---")
+            st.markdown("### 💾 Export Options")
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                if st.button("📥 Download Full Data (CSV)"):
+                    csv = tracker.leverage_history.to_csv(index=False)
+                    st.download_button(
+                        label="Download CSV",
+                        data=csv,
+                        file_name="leverage_history.csv",
+                        mime="text/csv"
+                    )
+
+            with col2:
+                if st.button("🔄 Clear Leverage Data"):
+                    del st.session_state.leverage_tracker
+                    st.success("✅ Leverage data cleared. Upload a new file to continue.")
+                    st.experimental_rerun()
+
+    # ========================================================================
     # INVESTOPEDIA LIVE (v11.0) - FIXED TWO-STAGE AUTH
     # ========================================================================
     elif page == "📡 Investopedia Live":
         st.markdown("### 📡 Investopedia Paper Trading Integration")
         st.markdown("**Live Portfolio Sync with Investopedia Simulator**")
+
+        # ===== FIX #6: Check for Selenium availability =====
+        try:
+            from selenium import webdriver
+            SELENIUM_AVAILABLE = True
+        except ImportError:
+            SELENIUM_AVAILABLE = False
+
+        if not SELENIUM_AVAILABLE:
+            st.error("❌ Selenium Not Installed")
+
+            st.markdown("""
+            ### 📦 Selenium Installation Required
+
+            Investopedia integration requires Selenium for web automation.
+
+            ---
+
+            #### 🔧 For Google Colab:
+
+            Run this in a code cell **before** starting the app:
+
+            ```python
+            # Install Selenium and ChromeDriver
+            !pip install selenium
+            !apt-get update
+            !apt-get install -y chromium-chromedriver
+            !cp /usr/lib/chromium-browser/chromedriver /usr/bin
+            ```
+
+            Then restart your Streamlit app.
+
+            ---
+
+            #### 💻 For Local Deployment:
+
+            ```bash
+            # Install Selenium
+            pip install selenium webdriver-manager
+
+            # For Chrome (recommended)
+            # Download ChromeDriver from: https://chromedriver.chromium.org/
+            # Or use webdriver-manager to auto-download
+            ```
+
+            ---
+
+            #### 📋 Requirements:
+
+            - ✅ `selenium` package (Python)
+            - ✅ Chrome/Chromium browser
+            - ✅ ChromeDriver (matching Chrome version)
+
+            ---
+            """)
+
+            # Add status check
+            st.markdown("### 🔍 Package Status Check")
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                try:
+                    from selenium import webdriver
+                    st.success("✅ selenium installed")
+                except ImportError:
+                    st.error("❌ selenium missing")
+                    st.caption("Run: `pip install selenium`")
+
+            with col2:
+                try:
+                    import subprocess
+                    result = subprocess.run(['which', 'chromedriver'], capture_output=True)
+                    if result.returncode == 0:
+                        st.success("✅ chromedriver found")
+                    else:
+                        st.error("❌ chromedriver missing")
+                        st.caption("Install ChromeDriver")
+                except:
+                    st.error("❌ chromedriver missing")
+                    st.caption("Install ChromeDriver")
+
+            st.stop()
 
         # Initialize authentication state
         if 'investopedia_auth_state' not in st.session_state:
