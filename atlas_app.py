@@ -8904,10 +8904,11 @@ def main():
             "💰 Valuation House",
             "🎲 Monte Carlo Engine",
             "🧮 Quant Optimizer",
+            "📊 Leverage Tracker",
             "📡 Investopedia Live",
             "ℹ️ About"
         ],
-        icons=["fire", "house-fill", "rocket-takeoff-fill", "graph-up-arrow", "database-fill", "globe", "graph-up", "gem", "microscope", "bar-chart-fill", "cash-coin", "dice-5-fill", "calculator-fill", "broadcast", "info-circle-fill"],
+        icons=["fire", "house-fill", "rocket-takeoff-fill", "graph-up-arrow", "database-fill", "globe", "graph-up", "gem", "microscope", "bar-chart-fill", "cash-coin", "dice-5-fill", "calculator-fill", "graph-up", "broadcast", "info-circle-fill"],
         menu_icon="cast",
         default_index=0,
         orientation="horizontal",  # KEY: Horizontal layout
@@ -9107,6 +9108,90 @@ def main():
 
             Use the manual save button to force a database update.
             """)
+
+        # ===== FIX #8: LEVERAGE TRACKING FEATURE =====
+        st.markdown("---")
+        st.markdown("### 📊 Leverage Tracking (Optional)")
+        st.info("📈 Upload your Investopedia performance-history.xls file to enable leverage analysis")
+
+        perf_history_file = st.file_uploader(
+            "📈 Upload Performance History",
+            type=['xls', 'xlsx', 'html'],
+            help="Upload your Investopedia performance-history.xls file for leverage tracking",
+            key="perf_history"
+        )
+
+        if perf_history_file is not None:
+            try:
+                # Save uploaded file temporarily
+                import tempfile
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.xls') as tmp_file:
+                    tmp_file.write(perf_history_file.getvalue())
+                    tmp_path = tmp_file.name
+
+                # Parse leverage data
+                from analytics.leverage_tracker import LeverageTracker
+
+                tracker = LeverageTracker(tmp_path)
+
+                if tracker.load_and_parse():
+                    # Get current stats
+                    stats = tracker.get_current_stats()
+
+                    # Display current leverage
+                    st.success("✅ Performance history loaded!")
+
+                    col1, col2, col3, col4 = st.columns(4)
+
+                    with col1:
+                        st.metric(
+                            "Current Leverage",
+                            f"{stats['current_leverage']:.2f}x",
+                            help="Gross Exposure / Net Equity"
+                        )
+
+                    with col2:
+                        st.metric(
+                            "Net Equity",
+                            f"${stats['current_equity']:,.0f}",
+                            help="Account Value (Column F)"
+                        )
+
+                    with col3:
+                        st.metric(
+                            "Gross Exposure",
+                            f"${stats['current_gross_exposure']:,.0f}",
+                            help="Total position value"
+                        )
+
+                    with col4:
+                        st.metric(
+                            "Avg Leverage",
+                            f"{stats['avg_leverage']:.2f}x",
+                            help="Historical average"
+                        )
+
+                    # Store in session state for other pages
+                    st.session_state.leverage_tracker = tracker
+
+                    # Show dashboard
+                    with st.expander("📊 View Leverage Dashboard", expanded=True):
+                        fig = tracker.create_leverage_dashboard()
+                        st.plotly_chart(fig, use_container_width=True)
+
+                    # Show calculation workings
+                    with st.expander("🧮 Calculation Workings"):
+                        workings = tracker.create_workings_display()
+                        st.markdown(workings)
+
+                    show_toast("Leverage tracking enabled! Visit the Leverage Tracker page for full analysis", toast_type="success", duration=4000)
+                else:
+                    st.error("❌ Could not parse performance history file")
+
+            except Exception as e:
+                st.error(f"Error loading performance history: {e}")
+                import traceback
+                st.code(traceback.format_exc())
 
     # ========================================================================
     # v10.0 ANALYTICS - NEW ADVANCED FEATURES
@@ -14661,6 +14746,184 @@ ORDER BY position_value DESC"""
                     except Exception as e:
                         st.error(f"❌ Optimization error: {str(e)}")
                         st.info("💡 Ensure your portfolio has at least 2 positions with sufficient historical data")
+
+    # ========================================================================
+    # LEVERAGE TRACKER (v11.0) - NEW FEATURE
+    # ========================================================================
+    elif page == "📊 Leverage Tracker":
+        st.markdown("## 📊 LEVERAGE TRACKING & ANALYSIS")
+        st.markdown("**Track how leverage has affected your returns over time**")
+
+        # Check if leverage tracker exists in session state
+        if 'leverage_tracker' not in st.session_state:
+            st.warning("⚠️ No performance history loaded")
+            st.info("""
+            **To use Leverage Tracking:**
+
+            1. Go to 🔥 Phoenix Parser
+            2. Upload your Investopedia performance-history.xls file
+            3. Return to this page to view full analysis
+
+            **OR** upload your performance history file below:
+            """)
+
+            # Allow upload here too
+            perf_file = st.file_uploader(
+                "📈 Upload Performance History",
+                type=['xls', 'xlsx', 'html'],
+                help="Upload your Investopedia performance-history.xls file",
+                key="leverage_upload"
+            )
+
+            if perf_file:
+                try:
+                    # Save uploaded file temporarily
+                    import tempfile
+                    with tempfile.NamedTemporaryFile(delete=False, suffix='.xls') as tmp_file:
+                        tmp_file.write(perf_file.getvalue())
+                        tmp_path = tmp_file.name
+
+                    # Parse leverage data
+                    from analytics.leverage_tracker import LeverageTracker
+
+                    tracker = LeverageTracker(tmp_path)
+
+                    if tracker.load_and_parse():
+                        st.session_state.leverage_tracker = tracker
+                        st.success("✅ Performance history loaded! Refresh to see analysis.")
+                        st.experimental_rerun()
+                    else:
+                        st.error("❌ Could not parse performance history file")
+
+                except Exception as e:
+                    st.error(f"Error loading performance history: {e}")
+                    import traceback
+                    st.code(traceback.format_exc())
+        else:
+            # Display leverage analysis
+            tracker = st.session_state.leverage_tracker
+            stats = tracker.get_current_stats()
+
+            # Header metrics
+            st.markdown("### 📊 Current Statistics")
+
+            col1, col2, col3, col4, col5 = st.columns(5)
+
+            with col1:
+                st.metric(
+                    "Current Leverage",
+                    f"{stats['current_leverage']:.2f}x",
+                    help="Gross Exposure / Net Equity"
+                )
+
+            with col2:
+                st.metric(
+                    "Net Equity",
+                    f"${stats['current_equity']:,.0f}",
+                    help="Your actual capital"
+                )
+
+            with col3:
+                st.metric(
+                    "Gross Exposure",
+                    f"${stats['current_gross_exposure']:,.0f}",
+                    help="Total position value"
+                )
+
+            with col4:
+                st.metric(
+                    "YTD Equity Return",
+                    f"{stats['ytd_equity_return']:.1f}%",
+                    help="Return on your capital"
+                )
+
+            with col5:
+                st.metric(
+                    "YTD Gross Return",
+                    f"{stats['ytd_gross_return']:.1f}%",
+                    help="Portfolio performance"
+                )
+
+            # Additional stats row
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+                st.metric(
+                    "Average Leverage",
+                    f"{stats['avg_leverage']:.2f}x",
+                    help="Historical average"
+                )
+
+            with col2:
+                st.metric(
+                    "Max Leverage",
+                    f"{stats['max_leverage']:.2f}x",
+                    help="Highest leverage used"
+                )
+
+            with col3:
+                st.metric(
+                    "Min Leverage",
+                    f"{stats['min_leverage']:.2f}x",
+                    help="Lowest leverage"
+                )
+
+            # Dashboard
+            st.markdown("---")
+            st.markdown("### 📊 6-Chart Leverage Dashboard")
+
+            fig = tracker.create_leverage_dashboard()
+            st.plotly_chart(fig, use_container_width=True)
+
+            # Workings
+            st.markdown("---")
+            st.markdown("### 🧮 Calculation Workings")
+            st.markdown("**See exactly how leverage is calculated**")
+
+            workings = tracker.create_workings_display()
+            st.markdown(workings)
+
+            # Historical data table
+            st.markdown("---")
+            st.markdown("### 📋 Historical Data Table")
+
+            display_df = tracker.leverage_history[[
+                'Date', 'Net Equity', 'Gross Exposure', 'Leverage Ratio',
+                'Equity Return (%)', 'Gross Return (%)', 'Leverage Impact (%)'
+            ]].copy()
+
+            # Format for display
+            display_df['Date'] = display_df['Date'].dt.strftime('%Y-%m-%d')
+            display_df['Net Equity'] = display_df['Net Equity'].apply(lambda x: f"${x:,.0f}")
+            display_df['Gross Exposure'] = display_df['Gross Exposure'].apply(lambda x: f"${x:,.0f}")
+            display_df['Leverage Ratio'] = display_df['Leverage Ratio'].apply(lambda x: f"{x:.2f}x")
+
+            for col in ['Equity Return (%)', 'Gross Return (%)', 'Leverage Impact (%)']:
+                display_df[col] = display_df[col].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "")
+
+            st.dataframe(display_df, use_container_width=True, height=400)
+
+            # Export options
+            st.markdown("---")
+            st.markdown("### 💾 Export Options")
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                if st.button("📥 Download Full Data (CSV)"):
+                    csv = tracker.leverage_history.to_csv(index=False)
+                    st.download_button(
+                        label="Download CSV",
+                        data=csv,
+                        file_name="leverage_history.csv",
+                        mime="text/csv"
+                    )
+
+            with col2:
+                if st.button("🔄 Clear Leverage Data"):
+                    del st.session_state.leverage_tracker
+                    st.success("✅ Leverage data cleared. Upload a new file to continue.")
+                    st.experimental_rerun()
 
     # ========================================================================
     # INVESTOPEDIA LIVE (v11.0) - FIXED TWO-STAGE AUTH
