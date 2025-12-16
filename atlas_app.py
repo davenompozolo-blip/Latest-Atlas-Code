@@ -117,6 +117,23 @@ except ImportError as e:
     MODEL_INPUTS_DASHBOARD_AVAILABLE = False
     print(f"⚠️ Model Inputs Dashboard not available: {e}")
 
+# ATLAS v11.0 Multi-Stage DCF
+try:
+    from analytics.multistage_ui import (
+        display_model_selection,
+        visualize_stage_transitions,
+        display_multistage_results
+    )
+    from analytics.multistage_dcf import (
+        MultiStageProjectionEngine,
+        calculate_multistage_dcf
+    )
+    MULTISTAGE_DCF_AVAILABLE = True
+    print("✅ Multi-Stage DCF loaded")
+except ImportError as e:
+    MULTISTAGE_DCF_AVAILABLE = False
+    print(f"⚠️ Multi-Stage DCF not available: {e}")
+
 try:
     from r_analytics import get_r
     R_AVAILABLE = True
@@ -13889,6 +13906,125 @@ ORDER BY position_value DESC"""
                 else:
                     # Dashboard not active - clear state
                     st.session_state['use_model_inputs_dashboard'] = False
+
+            # ============================================================
+            # MULTI-STAGE DCF (ATLAS v11.0)
+            # ============================================================
+            if method_key in ['FCFF', 'FCFE']:
+                st.markdown("---")
+                st.markdown("#### 🚀 Multi-Stage DCF (Advanced)")
+
+                use_multistage_dcf = st.checkbox(
+                    "🎯 Enable Multi-Stage DCF Model",
+                    value=False,
+                    help="Model different growth phases: Hypergrowth → Transition → Mature",
+                    key="use_multistage_dcf"
+                )
+
+                if use_multistage_dcf and MULTISTAGE_DCF_AVAILABLE:
+                    st.info("""
+                    **🎯 Multi-Stage DCF Active**
+
+                    Model realistic growth transitions:
+                    - Single-Stage: Mature companies (constant growth)
+                    - Two-Stage: Growth companies (high → stable)
+                    - Three-Stage: Hypergrowth tech (hypergrowth → declining → mature)
+
+                    Choose from pre-configured templates or customize each stage.
+                    """)
+
+                    # Store historical data for templates
+                    historical_data = {
+                        'revenue': financials.get('revenue', 0),
+                        'ebit': financials.get('ebit', 0),
+                        'revenue_growth_3yr': company.get('revenue_growth_3yr', 0.10),
+                        'tax_rate': financials.get('tax_rate', 0.21)
+                    }
+                    st.session_state['financial_data'] = historical_data
+
+                    # Display model selection and configuration
+                    multistage_config = display_model_selection(historical_data)
+
+                    if multistage_config:
+                        st.session_state['multistage_config'] = multistage_config
+
+                        # Generate projections button
+                        st.markdown("---")
+                        if st.button("🔄 Generate Multi-Stage Projections", type="primary"):
+                            with st.spinner("Generating stage-based projections..."):
+                                try:
+                                    engine = MultiStageProjectionEngine(multistage_config, historical_data)
+                                    projections = engine.generate_projections()
+
+                                    st.session_state['multistage_projections'] = projections
+                                    st.session_state['multistage_engine'] = engine
+
+                                    st.success(f"✅ Generated {len(projections)} years of projections across {len(multistage_config.stages)} stages")
+
+                                except Exception as e:
+                                    st.error(f"❌ Error generating projections: {str(e)}")
+
+                        # Display projections and visualizations if available
+                        if 'multistage_projections' in st.session_state:
+                            projections = st.session_state['multistage_projections']
+
+                            # Visualize stage transitions
+                            st.markdown("---")
+                            visualize_stage_transitions(multistage_config, projections)
+
+                            # Run valuation button
+                            st.markdown("---")
+                            col1, col2 = st.columns(2)
+
+                            with col1:
+                                if st.button("🚀 RUN MULTI-STAGE DCF", type="primary", use_container_width=True):
+                                    with st.spinner("Calculating multi-stage DCF valuation..."):
+                                        try:
+                                            # Get diluted shares (from dashboard or default)
+                                            diluted_shares = st.session_state.get('dashboard_inputs', {}).get(
+                                                'diluted_shares',
+                                                company.get('shares_outstanding', 1e9)
+                                            )
+
+                                            # Calculate net debt
+                                            net_debt = financials.get('total_debt', 0) - financials.get('cash', 0)
+
+                                            # Run multi-stage DCF
+                                            dcf_result = calculate_multistage_dcf(
+                                                projections=projections,
+                                                terminal_growth=multistage_config.terminal_growth_rate,
+                                                wacc=multistage_config.wacc,
+                                                diluted_shares=diluted_shares,
+                                                net_debt=net_debt
+                                            )
+
+                                            st.session_state['multistage_dcf_result'] = dcf_result
+
+                                            # Display results
+                                            display_multistage_results(dcf_result, multistage_config)
+
+                                        except Exception as e:
+                                            st.error(f"❌ Error calculating DCF: {str(e)}")
+                                            import traceback
+                                            st.code(traceback.format_exc())
+
+                            with col2:
+                                if st.button("📊 Export Projections", use_container_width=True):
+                                    # Export projections to DataFrame
+                                    proj_df = pd.DataFrame(projections).T
+                                    st.dataframe(proj_df, use_container_width=True)
+
+                                    # Offer download
+                                    csv = proj_df.to_csv()
+                                    st.download_button(
+                                        "💾 Download CSV",
+                                        csv,
+                                        f"{ticker_input}_multistage_projections.csv",
+                                        "text/csv"
+                                    )
+
+                elif use_multistage_dcf and not MULTISTAGE_DCF_AVAILABLE:
+                    st.error("❌ Multi-Stage DCF module not available.")
 
             st.markdown("---")
 
