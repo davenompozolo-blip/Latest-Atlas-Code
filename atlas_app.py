@@ -108,6 +108,15 @@ except ImportError as e:
     DCF_TRAP_DETECTION_AVAILABLE = False
     print(f"⚠️ DCF Trap Detection not available: {e}")
 
+# ATLAS v11.0 Model Inputs Dashboard
+try:
+    from analytics.model_inputs_ui import display_model_inputs_dashboard
+    MODEL_INPUTS_DASHBOARD_AVAILABLE = True
+    print("✅ Model Inputs Dashboard loaded")
+except ImportError as e:
+    MODEL_INPUTS_DASHBOARD_AVAILABLE = False
+    print(f"⚠️ Model Inputs Dashboard not available: {e}")
+
 try:
     from r_analytics import get_r
     R_AVAILABLE = True
@@ -13830,9 +13839,55 @@ ORDER BY position_value DESC"""
                     active_scenario = st.session_state['selected_scenario']
                     st.success(f"✅ **Active Scenario:** {VALUATION_SCENARIOS[active_scenario]['name']} - {VALUATION_SCENARIOS[active_scenario]['description']}")
 
+                # ============================================================
+                # MODEL INPUTS DASHBOARD (ATLAS v11.0)
+                # ============================================================
+                st.markdown("---")
+                st.markdown("#### 🎯 DCF Input Mode")
+
+                use_model_inputs_dashboard = st.checkbox(
+                    "📊 Use Model Inputs Dashboard (Advanced)",
+                    value=False,
+                    help="Full transparency: DuPont ROE, SGR, live WACC, editable projections",
+                    key="use_model_inputs_dashboard"
+                )
+
+                if use_model_inputs_dashboard and MODEL_INPUTS_DASHBOARD_AVAILABLE:
+                    st.info("""
+                    **📊 Model Inputs Dashboard Active**
+
+                    You now have complete control and transparency:
+                    - 🔍 DuPont ROE breakdown
+                    - 📈 Sustainable Growth Rate → Terminal Growth
+                    - 🔴 **LIVE** 10-year Treasury yield → WACC
+                    - 💎 Diluted shares (Treasury Stock Method)
+                    - ✏️ Editable projections
+                    - 📊 Professional charts
+                    """)
+
+                    # Display the full dashboard
+                    dashboard_inputs = display_model_inputs_dashboard(company['ticker'])
+
+                    # Store dashboard inputs in session state for DCF calculation
+                    st.session_state['dashboard_inputs'] = dashboard_inputs
+
+                    st.markdown("---")
+                    st.markdown("#### ✅ Ready to Run DCF")
+                    st.success(f"""
+                    **Model Inputs Configured:**
+                    - ROE: {dashboard_inputs['roe']*100:.2f}%
+                    - Terminal Growth: {dashboard_inputs['terminal_growth']*100:.2f}%
+                    - WACC: {dashboard_inputs['wacc']*100:.2f}%
+                    - Diluted Shares: {dashboard_inputs['diluted_shares']/1e6:.1f}M
+                    """)
+
+                elif use_model_inputs_dashboard and not MODEL_INPUTS_DASHBOARD_AVAILABLE:
+                    st.error("❌ Model Inputs Dashboard module not available. Using simple mode.")
+                    use_model_inputs_dashboard = False
+
             st.markdown("---")
 
-            # Smart Assumptions Toggle (only for DCF and RI methods)
+            # Smart Assumptions Toggle (only for DCF and RI methods - skip if dashboard is active)
             use_smart_assumptions = False
             if method_key in ['FCFF', 'FCFE', 'GORDON_DDM', 'MULTISTAGE_DDM', 'RESIDUAL_INCOME']:
                 st.markdown("#### 🧠 Assumptions Mode")
