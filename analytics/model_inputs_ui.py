@@ -719,6 +719,197 @@ def display_projection_summary(projections: DCFProjections):
 
 
 # ============================================================================
+# EDITABLE PROJECTION TABLE (CRITICAL FEATURE)
+# ============================================================================
+
+def display_editable_projection_table(projections: DCFProjections) -> DCFProjections:
+    """
+    Display fully editable projection table with manual override capability.
+
+    This is the CRITICAL feature that allows analysts to manually edit any
+    projection value and see the model recalculate in real-time.
+
+    Features:
+    - Click any cell to edit
+    - 🤖 indicators for auto-generated values
+    - ✏️ indicators for manually edited values
+    - Smart recalculation of dependent items
+    - Reset to auto button
+
+    Args:
+        projections: DCFProjections object
+
+    Returns:
+        Updated DCFProjections object with manual overrides applied
+    """
+    st.markdown("### ✏️ Editable Projection Table")
+    st.markdown("*Click any cell to manually override. FCFF recalculates automatically.*")
+
+    # Build editable dataframe
+    line_items = [
+        ('Revenue', 'revenue', '$B', 1e9),
+        ('EBIT', 'ebit', '$B', 1e9),
+        ('EBIT Margin', 'ebit_margin', '%', 100),
+        ('Tax Rate', 'tax_rate', '%', 100),
+        ('NOPAT', 'nopat', '$B', 1e9),
+        ('D&A', 'depreciation_amortization', '$B', 1e9),
+        ('CapEx', 'capex', '$B', 1e9),
+        ('Δ NWC', 'nwc_change', '$B', 1e9),
+        ('SBC Expense', 'sbc_expense', '$B', 1e9),
+        ('FCFF', 'fcff', '$B', 1e9)
+    ]
+
+    # Create data structure for st.data_editor
+    data = []
+
+    for display_name, item_key, unit, divisor in line_items:
+        row = {'Metric': display_name}
+
+        for year in range(1, projections.forecast_years + 1):
+            # Get value from final projections
+            value = projections.final_projections[year][item_key]
+
+            # Check if manually overridden
+            is_manual = item_key in projections.manual_overrides[year]
+
+            # Format value
+            if unit == '%':
+                formatted_value = value * 100  # Store as percentage for editing
+            else:
+                formatted_value = value / divisor  # Convert to billions
+
+            # Add indicator
+            indicator = "✏️" if is_manual else "🤖"
+
+            # Store both value and indicator
+            row[f'Y{year}'] = formatted_value
+            row[f'Y{year}_ind'] = indicator
+
+        data.append(row)
+
+    df = pd.DataFrame(data)
+
+    # Create column config for editing
+    column_config = {
+        'Metric': st.column_config.TextColumn('Metric', width='medium', disabled=True)
+    }
+
+    for year in range(1, projections.forecast_years + 1):
+        column_config[f'Y{year}'] = st.column_config.NumberColumn(
+            f'Year {year}',
+            help=f'Edit to override auto value. Click to modify.',
+            format="%.2f",
+            width='small'
+        )
+        # Indicator column (read-only)
+        column_config[f'Y{year}_ind'] = st.column_config.TextColumn(
+            '',
+            width='small',
+            disabled=True
+        )
+
+    # Display editable table
+    edited_df = st.data_editor(
+        df,
+        column_config=column_config,
+        use_container_width=True,
+        hide_index=True,
+        key='projection_editor'
+    )
+
+    # Detect changes and apply manual overrides
+    changes_made = False
+
+    for idx, (display_name, item_key, unit, divisor) in enumerate(line_items):
+        for year in range(1, projections.forecast_years + 1):
+            col_name = f'Y{year}'
+
+            # Get original and edited values
+            original_value = df.at[idx, col_name]
+            edited_value = edited_df.at[idx, col_name]
+
+            # Check if value changed
+            if abs(edited_value - original_value) > 1e-6:
+                # Convert back to actual value
+                if unit == '%':
+                    actual_value = edited_value / 100
+                else:
+                    actual_value = edited_value * divisor
+
+                # Apply manual override
+                projections.set_manual_override(year, item_key, actual_value)
+                changes_made = True
+
+    # Show status
+    if changes_made:
+        st.success("✅ Manual overrides applied! FCFF recalculated.")
+
+    # Manual override indicators
+    col1, col2, col3 = st.columns([2, 1, 1])
+
+    with col1:
+        st.caption("🤖 = Auto-generated | ✏️ = Manually edited")
+
+    with col2:
+        # Count manual overrides
+        total_manual = sum(
+            len(overrides) for overrides in projections.manual_overrides.values()
+        )
+        st.caption(f"Manual overrides: {total_manual}")
+
+    with col3:
+        # Reset button
+        if st.button("🔄 Reset All to Auto", help="Clear all manual overrides"):
+            # Clear all manual overrides
+            for year in projections.manual_overrides:
+                projections.manual_overrides[year] = {}
+
+            # Regenerate final projections
+            projections.final_projections = projections._merge_projections()
+
+            st.success("✅ All values reset to auto-generated!")
+            st.rerun()
+
+    # Help text
+    with st.expander("💡 How to Use the Editable Table"):
+        st.markdown("""
+        **Editing Projections:**
+        1. Click any cell in Year 1-5 columns
+        2. Type new value and press Enter
+        3. Dependent values recalculate automatically
+
+        **Smart Recalculation:**
+        - Edit Revenue → EBIT adjusts to maintain margin
+        - Edit EBIT → NOPAT recalculates with tax rate
+        - Edit Tax Rate → NOPAT updates
+        - Any change → FCFF recalculates
+
+        **Indicators:**
+        - 🤖 **Auto**: System-generated based on historical data
+        - ✏️ **Manual**: You've overridden this value
+
+        **Reset:**
+        - Click "Reset All to Auto" to clear all manual changes
+        - Individual cells can't be reset (just re-enter auto value)
+
+        **Units:**
+        - Revenue, EBIT, NOPAT, etc.: $Billions
+        - Margins & Rates: Percentages (e.g., enter 15 for 15%)
+        - CapEx, NWC change, SBC: $Billions (negatives shown as negative)
+
+        **Example:**
+        - Current Year 1 Revenue: $100B 🤖
+        - Edit to: $120B
+        - Press Enter
+        - Indicator changes to: $120B ✏️
+        - EBIT recalculates: $18B ✏️ (maintaining 15% margin)
+        - FCFF updates automatically
+        """)
+
+    return projections
+
+
+# ============================================================================
 # CHARTS SECTION
 # ============================================================================
 
@@ -826,6 +1017,12 @@ def display_model_inputs_dashboard(ticker: str) -> Dict[str, Any]:
     # COMPONENT 6: Projection Summary
     with st.container():
         display_projection_summary(projections)
+
+    st.markdown("---")
+
+    # COMPONENT 7: EDITABLE PROJECTION TABLE ⭐ CRITICAL FEATURE
+    with st.container():
+        projections = display_editable_projection_table(projections)
 
     st.markdown("---")
 
