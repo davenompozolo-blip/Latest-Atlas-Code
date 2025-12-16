@@ -257,7 +257,7 @@ class MultiStageProjectionEngine:
             projected_sbc = -(projected_revenue * stage.sbc_pct_revenue)
 
             # Calculate FCFF
-            # FCFF = NOPAT + D&A - CapEx - ΔNWCprojected_sbc
+            # FCFF = NOPAT + D&A - CapEx - ΔNWC - SBC
             fcff = (projected_nopat +
                    projected_da +
                    projected_capex +

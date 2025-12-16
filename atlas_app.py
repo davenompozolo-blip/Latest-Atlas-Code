@@ -117,6 +117,22 @@ except ImportError as e:
     MODEL_INPUTS_DASHBOARD_AVAILABLE = False
     print(f"⚠️ Model Inputs Dashboard not available: {e}")
 
+# ATLAS v11.0 SBC Integration
+try:
+    from analytics.sbc_forecaster import (
+        SBCForecaster,
+        SBCForecastConfig,
+        SBCForecastMethod,
+        integrate_sbc_with_fcff,
+        create_sbc_comparison_analysis
+    )
+    from analytics.sbc_ui import display_sbc_valuation_impact
+    SBC_AVAILABLE = True
+    print("✅ SBC Integration loaded")
+except ImportError as e:
+    SBC_AVAILABLE = False
+    print(f"⚠️ SBC Integration not available: {e}")
+
 # ATLAS v11.0 Multi-Stage DCF
 try:
     from analytics.multistage_ui import (
@@ -14873,6 +14889,46 @@ ORDER BY position_value DESC"""
                             # Use shares from company data
                             shares = company['shares_outstanding']
 
+                        # =================================================================
+                        # SBC INTEGRATION: Adjust FCFF for Share-Based Compensation
+                        # =================================================================
+                        sbc_enabled = False
+                        sbc_forecast = None
+                        projections_without_sbc = None
+
+                        if dashboard_active and SBC_AVAILABLE:
+                            # Check if SBC is enabled in dashboard
+                            sbc_data = dashboard_data.get('sbc')
+                            if sbc_data and sbc_data.get('enabled', False):
+                                sbc_enabled = True
+
+                                # Store original projections for before/after comparison
+                                projections_without_sbc = [p.copy() for p in projections]
+
+                                # Generate SBC forecast using revenue projections
+                                revenue_projections = {p['year']: p['revenue'] for p in projections}
+
+                                config = sbc_data['config']
+                                forecaster = SBCForecaster(config)
+                                sbc_forecast = forecaster.generate_sbc_forecast(revenue_projections)
+
+                                # Integrate SBC into FCFF projections
+                                # Convert projections list to dict format for integration
+                                projections_dict = {p['year']: p for p in projections}
+                                updated_projections_dict = integrate_sbc_with_fcff(
+                                    projections_dict,
+                                    sbc_forecast,
+                                    sbc_already_in_fcff=False  # Dashboard mode calculates from NOPAT
+                                )
+
+                                # Convert back to list format
+                                projections = [updated_projections_dict[year] for year in sorted(updated_projections_dict.keys())]
+
+                                # Update final FCF (now includes SBC)
+                                final_fcf = projections[-1]['fcff'] if method_key == 'FCFF' else projections[-1]['fcfe']
+
+                                st.info(f"✅ SBC integrated into valuation. Avg SBC: {config.starting_sbc_pct_revenue:.1f}% of revenue")
+
                         # Calculate terminal value (both modes)
                         terminal_value = calculate_terminal_value(final_fcf, discount_rate, terminal_growth)
 
@@ -14894,6 +14950,15 @@ ORDER BY position_value DESC"""
                         st.session_state['terminal_growth'] = terminal_growth
                         st.session_state['used_smart_assumptions'] = use_smart_assumptions if not dashboard_active else False
                         st.session_state['used_dashboard_mode'] = dashboard_active
+
+                        # Store SBC data for before/after comparison
+                        if sbc_enabled:
+                            st.session_state['sbc_enabled'] = True
+                            st.session_state['sbc_forecast'] = sbc_forecast
+                            st.session_state['projections_without_sbc'] = projections_without_sbc
+                            st.session_state['sbc_forecaster'] = forecaster
+                        else:
+                            st.session_state['sbc_enabled'] = False
 
                     # =================================================================
                     # GORDON GROWTH DDM
@@ -15157,6 +15222,75 @@ ORDER BY position_value DESC"""
                         except Exception as e:
                             st.error(f"⚠️ Trap detection error: {str(e)}")
                             st.info("Trap detection requires valid DCF inputs. Please ensure all assumptions are properly configured.")
+
+                # =================================================================
+                # SBC BEFORE/AFTER COMPARISON
+                # =================================================================
+                if st.session_state.get('sbc_enabled', False) and SBC_AVAILABLE:
+                    st.markdown("---")
+                    st.markdown("#### 💰 SBC Impact on Valuation")
+
+                    try:
+                        # Get SBC data from session state
+                        sbc_forecast = st.session_state.get('sbc_forecast', {})
+                        projections_without_sbc = st.session_state.get('projections_without_sbc', [])
+                        forecaster = st.session_state.get('sbc_forecaster')
+
+                        if sbc_forecast and projections_without_sbc and forecaster:
+                            # Calculate valuation WITHOUT SBC for comparison
+                            projections_dict_no_sbc = {p['year']: p for p in projections_without_sbc}
+                            terminal_value_no_sbc = calculate_terminal_value(
+                                projections_without_sbc[-1]['fcff'],
+                                discount_rate,
+                                terminal_growth
+                            )
+
+                            dcf_results_no_sbc = calculate_dcf_value(
+                                projections_without_sbc,
+                                discount_rate,
+                                terminal_value_no_sbc,
+                                results.get('diluted_shares', company['shares_outstanding']),
+                                results.get('net_debt', 0),
+                                method
+                            )
+
+                            # Create comparison analysis
+                            comparison = create_sbc_comparison_analysis(
+                                valuation_without_sbc=dcf_results_no_sbc,
+                                valuation_with_sbc=results,
+                                sbc_forecast=sbc_forecast
+                            )
+
+                            # Display comparison using the UI component
+                            display_sbc_valuation_impact(comparison, company['ticker'])
+
+                            # Educational message
+                            with st.expander("📚 Why This Matters", expanded=False):
+                                st.markdown("""
+                                ### Share-Based Compensation is a Real Cost
+
+                                Many analysts ignore SBC in DCF valuations, treating it as "non-cash."
+                                This is incorrect because:
+
+                                1. **SBC dilutes shareholders** - Every stock grant reduces your ownership %
+                                2. **SBC represents real economic transfer** - If not paid in stock, would be cash
+                                3. **High-SBC companies are systematically overvalued** - Ignoring 10%+ SBC causes 15-20% overvaluation
+
+                                **ATLAS properly treats SBC as a cash cost**, providing more accurate valuations.
+
+                                **The comparison above shows:**
+                                - How much fair value changes when SBC is properly accounted for
+                                - The percentage impact on enterprise value
+                                - Whether ignoring SBC would cause material mispricing
+
+                                **Rule of Thumb:**
+                                - SBC < 3% of revenue: Not material, minor impact
+                                - SBC 3-7%: Material, should be modeled
+                                - SBC > 7%: Highly material, ignoring it causes major overvaluation
+                                """)
+
+                    except Exception as e:
+                        st.warning(f"⚠️ Could not display SBC comparison: {str(e)}")
 
                 # Detailed Projections Table
                 st.markdown("---")

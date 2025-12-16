@@ -34,6 +34,22 @@ from analytics.projection_visualizer import (
     create_projection_dashboard
 )
 
+# ATLAS v11.0 - SBC Integration
+try:
+    from analytics.sbc_detector import detect_sbc_for_company
+    from analytics.sbc_forecaster import SBCForecaster, SBCForecastConfig, SBCForecastMethod
+    from analytics.sbc_ui import (
+        display_sbc_educational_intro,
+        display_sbc_detection_results,
+        visualize_sbc_historical_trend,
+        configure_sbc_forecast,
+        visualize_sbc_forecast
+    )
+    SBC_AVAILABLE = True
+except ImportError as e:
+    SBC_AVAILABLE = False
+    print(f"⚠️ SBC modules not available: {e}")
+
 
 # ============================================================================
 # COMPONENT 1: DuPont ROE ANALYSIS UI
@@ -585,7 +601,73 @@ def display_diluted_shares(financial_data: dict, market_data: dict) -> float:
 
 
 # ============================================================================
-# COMPONENT 5: PROJECTION SUMMARY (Simplified)
+# COMPONENT 5: SHARE-BASED COMPENSATION (SBC) ANALYSIS
+# ============================================================================
+
+def display_sbc_analysis(ticker: str, forecast_years: int = 10) -> Optional[Dict]:
+    """
+    Display SBC analysis integrated into Model Inputs Dashboard.
+
+    Args:
+        ticker: Stock ticker
+        forecast_years: Number of forecast years
+
+    Returns:
+        Dict with SBC data, config, and forecaster (or None if disabled)
+    """
+    st.markdown("### 5️⃣ Share-Based Compensation (SBC)")
+    st.markdown("*Properly account for SBC as a real economic cost*")
+
+    if not SBC_AVAILABLE:
+        st.warning("⚠️ SBC modules not available. Install required dependencies.")
+        return None
+
+    # Option to enable/disable SBC
+    use_sbc = st.checkbox(
+        "Include SBC in DCF Valuation",
+        value=True,
+        help="SBC is a real cost that should be subtracted from FCFF",
+        key="use_sbc_checkbox"
+    )
+
+    if not use_sbc:
+        st.info("💡 SBC will not be included in valuation. This may overstate fair value for high-SBC companies.")
+        return None
+
+    # Detect SBC
+    with st.spinner(f"Detecting SBC for {ticker}..."):
+        sbc_data = detect_sbc_for_company(ticker)
+
+    detection_success = display_sbc_detection_results(ticker, sbc_data)
+
+    # Historical trend visualization
+    if detection_success:
+        visualize_sbc_historical_trend(sbc_data, ticker)
+
+    # Forecast configuration
+    with st.expander("⚙️ SBC Forecast Settings", expanded=False):
+        config = configure_sbc_forecast(ticker, sbc_data, forecast_years)
+
+        if config:
+            # Validate
+            is_valid, error = config.validate()
+            if not is_valid:
+                st.error(f"❌ Invalid configuration: {error}")
+                return None
+
+            st.success("✅ SBC forecast configured successfully")
+
+            return {
+                'sbc_data': sbc_data,
+                'config': config,
+                'enabled': True
+            }
+
+    return None
+
+
+# ============================================================================
+# COMPONENT 6: PROJECTION SUMMARY (Simplified)
 # ============================================================================
 
 def display_projection_summary(projections: DCFProjections):
@@ -595,7 +677,7 @@ def display_projection_summary(projections: DCFProjections):
     Args:
         projections: DCFProjections object
     """
-    st.markdown("### 5️⃣ DCF Projections Summary")
+    st.markdown("### 6️⃣ DCF Projections Summary")
     st.markdown("*Auto-generated projections (full editing available below)*")
 
     stats = projections.get_summary_stats()
@@ -731,7 +813,17 @@ def display_model_inputs_dashboard(ticker: str) -> Dict[str, Any]:
 
     st.markdown("---")
 
-    # COMPONENT 5: Projection Summary
+    # COMPONENT 5: Share-Based Compensation (SBC)
+    sbc_result = None
+    if SBC_AVAILABLE:
+        with st.container():
+            sbc_result = display_sbc_analysis(ticker, forecast_years=projections.forecast_years)
+    else:
+        st.info("💡 SBC integration unavailable. Install required dependencies to enable.")
+
+    st.markdown("---")
+
+    # COMPONENT 6: Projection Summary
     with st.container():
         display_projection_summary(projections)
 
@@ -755,5 +847,6 @@ def display_model_inputs_dashboard(ticker: str) -> Dict[str, Any]:
         'diluted_shares': diluted_shares,
         'projections': projections,
         'financial_data': financial_data,
-        'market_data': market_data
+        'market_data': market_data,
+        'sbc': sbc_result  # SBC data, config, and enabled flag
     }
