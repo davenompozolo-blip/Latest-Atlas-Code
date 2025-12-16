@@ -99,6 +99,15 @@ except ImportError as e:
     SQL_AVAILABLE = False
     print(f"⚠️ SQL layer not available: {e}")
 
+# ATLAS v11.0 DCF Trap Detection System
+try:
+    from analytics.dcf_trap_detector import DCFTrapDetector, analyze_dcf_traps
+    DCF_TRAP_DETECTION_AVAILABLE = True
+    print("✅ DCF Trap Detection System loaded")
+except ImportError as e:
+    DCF_TRAP_DETECTION_AVAILABLE = False
+    print(f"⚠️ DCF Trap Detection not available: {e}")
+
 try:
     from r_analytics import get_r
     R_AVAILABLE = True
@@ -1380,6 +1389,181 @@ def show_toast(message, toast_type="info", duration=3000):
     </script>
     """
     st.markdown(toast_html, unsafe_allow_html=True)
+
+
+def display_trap_warnings(trap_summary: dict, ticker: str):
+    """
+    Display DCF trap detection warnings in user-friendly format
+
+    Args:
+        trap_summary: Summary dictionary from DCFTrapDetector.get_summary()
+        ticker: Stock ticker symbol
+    """
+    if not trap_summary or trap_summary.get('total_warnings', 0) == 0:
+        # No warnings - display success message
+        st.success("""
+        ✅ **No Value Trap Patterns Detected**
+
+        The DCF valuation appears sound with no significant red flags. Assumptions look reasonable given the company's risk profile.
+        """)
+        return
+
+    # Display warnings section
+    st.markdown("---")
+    st.markdown("### 🚨 DCF Trap Detection Analysis")
+
+    # Overall summary
+    max_severity = trap_summary.get('max_severity', 'LOW')
+    overall_confidence = trap_summary.get('overall_confidence', 0)
+    total_warnings = trap_summary.get('total_warnings', 0)
+
+    # Severity color coding
+    severity_colors = {
+        'CRITICAL': '🔴',
+        'HIGH': '🟠',
+        'MEDIUM': '🟡',
+        'LOW': '🟢'
+    }
+
+    severity_icon = severity_colors.get(max_severity, '🟢')
+
+    # Display summary card
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.metric(
+            "Overall Risk Level",
+            f"{severity_icon} {max_severity}",
+            delta=f"{total_warnings} warning(s)"
+        )
+
+    with col2:
+        st.metric(
+            "Detection Confidence",
+            f"{overall_confidence*100:.0f}%"
+        )
+
+    with col3:
+        severity_counts = trap_summary.get('severity_counts', {})
+        critical_high = severity_counts.get('CRITICAL', 0) + severity_counts.get('HIGH', 0)
+        status = "⚠️ Review Required" if critical_high > 0 else "✅ Monitor"
+        st.metric("Action Required", status)
+
+    # Overall recommendation
+    recommendation = trap_summary.get('recommendation', '')
+
+    if max_severity == 'CRITICAL':
+        st.error(f"""
+        **🚨 CRITICAL ISSUES DETECTED**
+
+        {recommendation}
+        """)
+    elif max_severity == 'HIGH':
+        st.warning(f"""
+        **⚠️ HIGH RISK PATTERNS DETECTED**
+
+        {recommendation}
+        """)
+    elif max_severity == 'MEDIUM':
+        st.warning(f"""
+        **⚠️ MODERATE RISK DETECTED**
+
+        {recommendation}
+        """)
+    else:
+        st.info(f"""
+        **ℹ️ MINOR CONCERNS DETECTED**
+
+        {recommendation}
+        """)
+
+    # Display individual warnings
+    st.markdown("#### 📋 Detailed Warning Breakdown")
+
+    warnings_list = trap_summary.get('warnings', [])
+
+    for idx, warning in enumerate(warnings_list, 1):
+        trap_type = warning.get('trap_type', 'UNKNOWN')
+        severity = warning.get('severity', 'LOW')
+        confidence = warning.get('confidence', 0)
+        title = warning.get('title', 'Warning')
+        description = warning.get('description', '')
+        recommendation = warning.get('recommendation', '')
+        metrics = warning.get('metrics', {})
+
+        # Icon based on severity
+        severity_icon = severity_colors.get(severity, '🟢')
+
+        # Create expander for each warning
+        with st.expander(f"{severity_icon} **{title}** (Confidence: {confidence*100:.0f}%)", expanded=(severity in ['CRITICAL', 'HIGH'])):
+            st.markdown(f"**Severity:** {severity_icon} {severity}")
+            st.markdown(f"**Confidence:** {confidence*100:.0f}%")
+
+            st.markdown("---")
+            st.markdown("**Description:**")
+            st.markdown(description)
+
+            # Display relevant metrics
+            if metrics:
+                st.markdown("---")
+                st.markdown("**Key Metrics:**")
+
+                # Format metrics nicely
+                metrics_cols = st.columns(min(3, len(metrics)))
+
+                metric_items = list(metrics.items())
+                for i, (key, value) in enumerate(metric_items[:6]):  # Show max 6 metrics
+                    col_idx = i % 3
+
+                    # Format value based on type
+                    if isinstance(value, float):
+                        if 'percent' in key.lower() or 'growth' in key.lower() or 'margin' in key.lower():
+                            formatted_value = f"{value*100:.1f}%"
+                        elif value > 1000:
+                            formatted_value = f"${value:,.0f}"
+                        else:
+                            formatted_value = f"{value:.2f}"
+                    elif isinstance(value, dict) or isinstance(value, list):
+                        formatted_value = str(value)[:50] + "..." if len(str(value)) > 50 else str(value)
+                    else:
+                        formatted_value = str(value)
+
+                    # Format key (make it readable)
+                    readable_key = key.replace('_', ' ').title()
+
+                    with metrics_cols[col_idx]:
+                        st.metric(readable_key, formatted_value)
+
+            st.markdown("---")
+            st.markdown("**Recommendation:**")
+            st.info(recommendation)
+
+    # Add actionable next steps
+    st.markdown("---")
+    st.markdown("#### 🎯 Recommended Actions")
+
+    if max_severity in ['CRITICAL', 'HIGH']:
+        st.markdown("""
+        1. **Re-examine DCF assumptions** - Focus on flagged parameters
+        2. **Run sensitivity analysis** - Test impact of adjusting problematic assumptions
+        3. **Consider alternative valuation** - Use relative valuation or sum-of-parts
+        4. **Seek additional validation** - Review with peers or use external benchmarks
+        5. **Apply discount to valuation** - Haircut DCF result by 15-30% for safety margin
+        """)
+    elif max_severity == 'MEDIUM':
+        st.markdown("""
+        1. **Review flagged assumptions** - Verify they reflect economic reality
+        2. **Run stress tests** - Model downside scenarios
+        3. **Cross-check with peers** - Compare assumptions to industry benchmarks
+        4. **Monitor catalysts** - Track whether assumed improvements materialize
+        """)
+    else:
+        st.markdown("""
+        1. **Monitor flagged metrics** - Keep eye on mentioned concerns
+        2. **Validate with sensitivity analysis** - Test robustness of valuation
+        3. **Proceed with normal diligence** - Valuation appears reasonable
+        """)
+
 
 # ============================================================================
 # PROFESSIONAL ENHANCEMENTS - ATLAS v9.4 EXCELLENCE EDITION
@@ -14648,7 +14832,56 @@ ORDER BY position_value DESC"""
                     terminal_growth
                 )
                 st.plotly_chart(sensitivity, use_container_width=True)
-                
+
+                # ============================================================
+                # DCF TRAP DETECTION SYSTEM (ATLAS v11.0)
+                # ============================================================
+                if method in ['FCFF', 'FCFE'] and DCF_TRAP_DETECTION_AVAILABLE:
+                    st.markdown("---")
+                    st.markdown("### 🔍 DCF Quality Assessment (NEW)")
+
+                    st.info("""
+                    **🎯 What is this?** The DCF Trap Detection System analyzes your valuation assumptions to identify common
+                    patterns associated with value traps. Philosophy: *"Mathematically sound ≠ Economically sound"*
+
+                    This institutional-grade analysis checks for:
+                    • Discount Rate Illusion • Terminal Value Dependency • Revenue Concentration
+                    • Idiosyncratic Optionality • Absence of Critical Factor
+                    """)
+
+                    # Run trap detection
+                    with st.spinner("🔍 Running trap detection analysis..."):
+                        try:
+                            # Prepare DCF inputs for trap detector
+                            revenue_projections = [p.get('revenue', 0) for p in projections] if projections else []
+
+                            if method == 'FCFF':
+                                fcf_projections = [p.get('fcff', 0) for p in projections] if projections else []
+                            else:
+                                fcf_projections = [p.get('fcfe', 0) for p in projections] if projections else []
+
+                            dcf_inputs_for_trap_detection = {
+                                'wacc': discount_rate,
+                                'terminal_growth_rate': terminal_growth,
+                                'projection_years': len(projections) if projections else 5,
+                                'revenue_projections': revenue_projections,
+                                'fcf_projections': fcf_projections,
+                                'terminal_value': results.get('pv_terminal', 0),
+                                'enterprise_value': results.get('enterprise_value', 0) if method == 'FCFF' else results.get('equity_value', 0),
+                                'current_price': current_price,
+                                'fair_value': intrinsic_value
+                            }
+
+                            # Run trap detection
+                            trap_summary = analyze_dcf_traps(company['ticker'], dcf_inputs_for_trap_detection)
+
+                            # Display warnings
+                            display_trap_warnings(trap_summary, company['ticker'])
+
+                        except Exception as e:
+                            st.error(f"⚠️ Trap detection error: {str(e)}")
+                            st.info("Trap detection requires valid DCF inputs. Please ensure all assumptions are properly configured.")
+
                 # Detailed Projections Table
                 st.markdown("---")
                 st.markdown("#### 📋 Detailed Cash Flow Projections")
