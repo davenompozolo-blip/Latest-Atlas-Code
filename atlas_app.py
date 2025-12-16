@@ -13868,8 +13868,9 @@ ORDER BY position_value DESC"""
                     # Display the full dashboard
                     dashboard_inputs = display_model_inputs_dashboard(company['ticker'])
 
-                    # Store dashboard inputs in session state for DCF calculation
+                    # Store dashboard inputs and active state in session state for DCF calculation
                     st.session_state['dashboard_inputs'] = dashboard_inputs
+                    st.session_state['use_model_inputs_dashboard'] = True
 
                     st.markdown("---")
                     st.markdown("#### ✅ Ready to Run DCF")
@@ -13884,6 +13885,10 @@ ORDER BY position_value DESC"""
                 elif use_model_inputs_dashboard and not MODEL_INPUTS_DASHBOARD_AVAILABLE:
                     st.error("❌ Model Inputs Dashboard module not available. Using simple mode.")
                     use_model_inputs_dashboard = False
+                    st.session_state['use_model_inputs_dashboard'] = False
+                else:
+                    # Dashboard not active - clear state
+                    st.session_state['use_model_inputs_dashboard'] = False
 
             st.markdown("---")
 
@@ -14049,183 +14054,219 @@ ORDER BY position_value DESC"""
             # DCF METHODS (FCFF / FCFE) - Existing comprehensive inputs
             # =================================================================
             elif method_key in ['FCFF', 'FCFE']:
-                tab1, tab2, tab3 = st.tabs(["📈 Growth & Operations", "💰 Cost of Capital", "🎯 Terminal Value"])
+                # Check if Model Inputs Dashboard is active
+                dashboard_active = ('dashboard_inputs' in st.session_state and
+                                   st.session_state.get('use_model_inputs_dashboard', False))
 
-                with tab1:
-                    st.markdown("##### Growth & Operating Assumptions")
+                if dashboard_active:
+                    # =========================================================
+                    # DASHBOARD MODE: Use pre-calculated inputs from Model Inputs Dashboard
+                    # =========================================================
+                    st.success("✅ **Dashboard Mode Active** - Using inputs from Model Inputs Dashboard")
 
-                    col1, col2 = st.columns(2)
+                    dashboard_data = st.session_state['dashboard_inputs']
 
+                    # Extract dashboard inputs
+                    discount_rate = dashboard_data['wacc']  # Pre-calculated WACC
+                    terminal_growth = dashboard_data['terminal_growth']  # SGR-guided terminal growth
+                    shares = dashboard_data['diluted_shares']  # Diluted shares (Treasury Stock Method)
+                    dcf_projections_obj = dashboard_data.get('projections')  # DCFProjections object
+
+                    # Display what we're using (read-only summary)
+                    col1, col2, col3 = st.columns(3)
                     with col1:
-                        # Determine revenue growth value
-                        if use_smart_assumptions:
-                            revenue_growth = smart_params['revenue_growth']
-                            st.metric("Revenue Growth Rate", f"{revenue_growth*100:.1f}%",
-                                     delta="AI Generated", delta_color="normal")
-                        elif 'selected_scenario' in st.session_state:
-                            # Use scenario value
-                            scenario_key = st.session_state['selected_scenario']
-                            default_value = VALUATION_SCENARIOS[scenario_key]['revenue_growth'] * 100
-                            revenue_growth = st.slider(
-                                "Revenue Growth Rate (%)",
-                                min_value=-10.0,
-                                max_value=30.0,
-                                value=default_value,
-                                step=0.5,
-                                key=f"rev_growth_{scenario_key}"
-                            ) / 100
-                        else:
-                            revenue_growth = st.slider(
-                                "Revenue Growth Rate (%)",
-                                min_value=-10.0,
-                                max_value=30.0,
-                                value=5.0,
-                                step=0.5
-                            ) / 100
-
-                        if use_smart_assumptions:
-                            ebit_margin = smart_params['ebit_margin']
-                            st.metric("EBIT Margin", f"{ebit_margin*100:.1f}%",
-                                     delta="AI Generated", delta_color="normal")
-                        else:
-                            ebit_margin = st.slider(
-                                "EBIT Margin (%)",
-                                min_value=0.0,
-                                max_value=50.0,
-                                value=20.0,
-                                step=1.0
-                            ) / 100
-
-                        forecast_years = st.slider(
-                            "Forecast Horizon (Years)",
-                            min_value=3,
-                            max_value=15,
-                            value=smart_params['forecast_years'] if use_smart_assumptions else 5,
-                            step=1
-                        )
-                
-                with col2:
-                    if use_smart_assumptions:
-                        capex_pct = smart_params['capex_pct']
-                        st.metric("CapEx (% of Revenue)", f"{capex_pct*100:.1f}%",
-                                 delta="AI Generated", delta_color="normal")
-                    else:
-                        capex_pct = st.slider(
-                            "CapEx (% of Revenue)",
-                            min_value=0.0,
-                            max_value=20.0,
-                            value=5.0,
-                            step=0.5
-                        ) / 100
-                    
-                    if use_smart_assumptions:
-                        depreciation_pct = smart_params['depreciation_pct']
-                        st.metric("Depreciation (% of Revenue)", f"{depreciation_pct*100:.1f}%",
-                                 delta="AI Generated", delta_color="normal")
-                    else:
-                        depreciation_pct = st.slider(
-                            "Depreciation (% of Revenue)",
-                            min_value=0.0,
-                            max_value=15.0,
-                            value=3.0,
-                            step=0.5
-                        ) / 100
-                    
-                    wc_change = st.number_input(
-                        "Working Capital Change ($M)",
-                        min_value=-1000.0,
-                        max_value=1000.0,
-                        value=float(smart_params['wc_change']) if use_smart_assumptions else 0.0,  # FIX: Ensure float
-                        step=10.0
-                    ) * 1e6
-
-                with tab2:
-                    st.markdown("##### Cost of Capital Assumptions")
-
-                    col1, col2 = st.columns(2)
-
-                    with col1:
-                        risk_free = st.slider(
-                            "Risk-Free Rate (%)",
-                            min_value=0.0,
-                            max_value=10.0,
-                            value=4.5,
-                            step=0.1
-                        ) / 100
-
-                        market_risk_premium = st.slider(
-                            "Market Risk Premium (%)",
-                            min_value=3.0,
-                            max_value=10.0,
-                            value=6.0,
-                            step=0.5
-                        ) / 100
-
-                        beta = st.number_input(
-                            "Beta",
-                            min_value=0.0,
-                            max_value=3.0,
-                            value=float(company['beta']) if company['beta'] else 1.0,
-                            step=0.1
-                        )
-
+                        st.metric("WACC (Discount Rate)", f"{discount_rate*100:.2f}%",
+                                 help="From Model Inputs Dashboard (Live Treasury + CAPM)")
                     with col2:
-                        if method_key == 'FCFF':
-                            cost_debt = st.slider(
-                                "Cost of Debt (%)",
-                                min_value=0.0,
-                                max_value=15.0,
-                                value=5.0,
-                                step=0.5
-                            ) / 100
+                        st.metric("Terminal Growth Rate", f"{terminal_growth*100:.2f}%",
+                                 help="From SGR Analysis in Dashboard")
+                    with col3:
+                        st.metric("Diluted Shares", f"{shares/1e6:.1f}M",
+                                 help="Treasury Stock Method from Dashboard")
 
-                        if use_smart_assumptions:
-                            tax_rate = smart_params['tax_rate']
-                            st.metric("Tax Rate", f"{tax_rate*100:.1f}%",
-                                     delta="AI Generated", delta_color="normal")
-                        else:
-                            tax_rate = st.slider(
-                                "Tax Rate (%)",
-                                min_value=0.0,
-                                max_value=40.0,
-                                value=float(financials.get('tax_rate', 0.21) * 100),
-                                step=1.0
-                            ) / 100
+                    st.info("💡 To modify these inputs, edit them in the Model Inputs Dashboard above, then re-run valuation.")
 
-                        if method_key == 'FCFE':
-                            net_borrowing = st.number_input(
-                                "Net Borrowing ($M)",
+                else:
+                    # =========================================================
+                    # MANUAL MODE: Show traditional input sliders
+                    # =========================================================
+                    tab1, tab2, tab3 = st.tabs(["📈 Growth & Operations", "💰 Cost of Capital", "🎯 Terminal Value"])
+
+                    with tab1:
+                        st.markdown("##### Growth & Operating Assumptions")
+
+                        col1, col2 = st.columns(2)
+
+                        with col1:
+                            # Determine revenue growth value
+                            if use_smart_assumptions:
+                                revenue_growth = smart_params['revenue_growth']
+                                st.metric("Revenue Growth Rate", f"{revenue_growth*100:.1f}%",
+                                         delta="AI Generated", delta_color="normal")
+                            elif 'selected_scenario' in st.session_state:
+                                # Use scenario value
+                                scenario_key = st.session_state['selected_scenario']
+                                default_value = VALUATION_SCENARIOS[scenario_key]['revenue_growth'] * 100
+                                revenue_growth = st.slider(
+                                    "Revenue Growth Rate (%)",
+                                    min_value=-10.0,
+                                    max_value=30.0,
+                                    value=default_value,
+                                    step=0.5,
+                                    key=f"rev_growth_{scenario_key}"
+                                ) / 100
+                            else:
+                                revenue_growth = st.slider(
+                                    "Revenue Growth Rate (%)",
+                                    min_value=-10.0,
+                                    max_value=30.0,
+                                    value=5.0,
+                                    step=0.5
+                                ) / 100
+
+                            if use_smart_assumptions:
+                                ebit_margin = smart_params['ebit_margin']
+                                st.metric("EBIT Margin", f"{ebit_margin*100:.1f}%",
+                                         delta="AI Generated", delta_color="normal")
+                            else:
+                                ebit_margin = st.slider(
+                                    "EBIT Margin (%)",
+                                    min_value=0.0,
+                                    max_value=50.0,
+                                    value=20.0,
+                                    step=1.0
+                                ) / 100
+
+                            forecast_years = st.slider(
+                                "Forecast Horizon (Years)",
+                                min_value=3,
+                                max_value=15,
+                                value=smart_params['forecast_years'] if use_smart_assumptions else 5,
+                                step=1
+                            )
+
+                        with col2:
+                            if use_smart_assumptions:
+                                capex_pct = smart_params['capex_pct']
+                                st.metric("CapEx (% of Revenue)", f"{capex_pct*100:.1f}%",
+                                         delta="AI Generated", delta_color="normal")
+                            else:
+                                capex_pct = st.slider(
+                                    "CapEx (% of Revenue)",
+                                    min_value=0.0,
+                                    max_value=20.0,
+                                    value=5.0,
+                                    step=0.5
+                                ) / 100
+
+                            if use_smart_assumptions:
+                                depreciation_pct = smart_params['depreciation_pct']
+                                st.metric("Depreciation (% of Revenue)", f"{depreciation_pct*100:.1f}%",
+                                         delta="AI Generated", delta_color="normal")
+                            else:
+                                depreciation_pct = st.slider(
+                                    "Depreciation (% of Revenue)",
+                                    min_value=0.0,
+                                    max_value=15.0,
+                                    value=3.0,
+                                    step=0.5
+                                ) / 100
+
+                            wc_change = st.number_input(
+                                "Working Capital Change ($M)",
                                 min_value=-1000.0,
                                 max_value=1000.0,
-                                value=0.0,
+                                value=float(smart_params['wc_change']) if use_smart_assumptions else 0.0,  # FIX: Ensure float
                                 step=10.0
                             ) * 1e6
 
-                with tab3:
-                    st.markdown("##### Terminal Value Assumptions")
+                    with tab2:
+                        st.markdown("##### Cost of Capital Assumptions")
 
-                    col1, col2 = st.columns(2)
+                        col1, col2 = st.columns(2)
 
-                    with col1:
-                        if use_smart_assumptions:
-                            terminal_growth = smart_params['terminal_growth']
-                            st.metric("Perpetual Growth Rate", f"{terminal_growth*100:.1f}%",
-                                     delta="AI Generated", delta_color="normal")
-                        else:
-                            terminal_growth = st.slider(
-                                "Perpetual Growth Rate (%)",
+                        with col1:
+                            risk_free = st.slider(
+                                "Risk-Free Rate (%)",
                                 min_value=0.0,
-                                max_value=5.0,
-                                value=2.5,
+                                max_value=10.0,
+                                value=4.5,
                                 step=0.1
                             ) / 100
 
-                    with col2:
-                        st.info(f"""
-                        **Terminal Value Method:** Gordon Growth Model
+                            market_risk_premium = st.slider(
+                                "Market Risk Premium (%)",
+                                min_value=3.0,
+                                max_value=10.0,
+                                value=6.0,
+                                step=0.5
+                            ) / 100
 
-                        TV = FCFₙ₊₁ / (r - g)
-                        """)
+                            beta = st.number_input(
+                                "Beta",
+                                min_value=0.0,
+                                max_value=3.0,
+                                value=float(company['beta']) if company['beta'] else 1.0,
+                                step=0.1
+                            )
+
+                        with col2:
+                            if method_key == 'FCFF':
+                                cost_debt = st.slider(
+                                    "Cost of Debt (%)",
+                                    min_value=0.0,
+                                    max_value=15.0,
+                                    value=5.0,
+                                    step=0.5
+                                ) / 100
+
+                            if use_smart_assumptions:
+                                tax_rate = smart_params['tax_rate']
+                                st.metric("Tax Rate", f"{tax_rate*100:.1f}%",
+                                         delta="AI Generated", delta_color="normal")
+                            else:
+                                tax_rate = st.slider(
+                                    "Tax Rate (%)",
+                                    min_value=0.0,
+                                    max_value=40.0,
+                                    value=float(financials.get('tax_rate', 0.21) * 100),
+                                    step=1.0
+                                ) / 100
+
+                            if method_key == 'FCFE':
+                                net_borrowing = st.number_input(
+                                    "Net Borrowing ($M)",
+                                    min_value=-1000.0,
+                                    max_value=1000.0,
+                                    value=0.0,
+                                    step=10.0
+                                ) * 1e6
+
+                    with tab3:
+                        st.markdown("##### Terminal Value Assumptions")
+
+                        col1, col2 = st.columns(2)
+
+                        with col1:
+                            if use_smart_assumptions:
+                                terminal_growth = smart_params['terminal_growth']
+                                st.metric("Perpetual Growth Rate", f"{terminal_growth*100:.1f}%",
+                                         delta="AI Generated", delta_color="normal")
+                            else:
+                                terminal_growth = st.slider(
+                                    "Perpetual Growth Rate (%)",
+                                    min_value=0.0,
+                                    max_value=5.0,
+                                    value=2.5,
+                                    step=0.1
+                                ) / 100
+
+                        with col2:
+                            st.info(f"""
+                            **Terminal Value Method:** Gordon Growth Model
+
+                            TV = FCFₙ₊₁ / (r - g)
+                            """)
 
             # =================================================================
             # DIVIDEND DISCOUNT MODELS (GORDON & MULTI-STAGE)
@@ -14623,40 +14664,83 @@ ORDER BY position_value DESC"""
                     # DCF METHODS (FCFF / FCFE)
                     # =================================================================
                     if method_key in ['FCFF', 'FCFE']:
-                        # Calculate cost of equity
-                        cost_equity = calculate_cost_of_equity(risk_free, beta, market_risk_premium)
+                        # Check if Dashboard Mode is active
+                        dashboard_active = ('dashboard_inputs' in st.session_state and
+                                           st.session_state.get('use_model_inputs_dashboard', False))
 
-                        # Calculate discount rate
-                        if method_key == 'FCFF':
-                            total_debt = financials.get('total_debt', 0)
-                            total_equity = company['market_cap']
-                            discount_rate = calculate_wacc(cost_equity, cost_debt, tax_rate, total_debt, total_equity)
-                        else:
-                            discount_rate = cost_equity
+                        if dashboard_active:
+                            # =========================================================
+                            # DASHBOARD MODE: Use pre-calculated inputs and projections
+                            # =========================================================
+                            dashboard_data = st.session_state['dashboard_inputs']
 
-                        # Get base financials
-                        base_revenue = financials.get('revenue', 0)
-                        base_ebit = financials.get('ebit', 0)
-                        base_net_income = financials.get('net_income', 0)
+                            # Extract dashboard values
+                            discount_rate = dashboard_data['wacc']
+                            terminal_growth = dashboard_data['terminal_growth']
+                            shares = dashboard_data['diluted_shares']
+                            dcf_proj_obj = dashboard_data.get('projections')
 
-                        # ENHANCED: Project cash flows with scaling D&A and CapEx
-                        if method_key == 'FCFF':
-                            projections = project_fcff_enhanced(
-                                base_revenue, base_ebit, revenue_growth, ebit_margin, tax_rate,
-                                depreciation_pct, capex_pct, wc_change, forecast_years
-                            )
-                            final_fcf = projections[-1]['fcff']
-                        else:
-                            projections = project_fcfe_enhanced(
-                                base_revenue, base_net_income, revenue_growth, tax_rate,
-                                depreciation_pct, capex_pct, wc_change, net_borrowing, forecast_years
-                            )
-                            final_fcf = projections[-1]['fcfe']
+                            # Convert DCFProjections object to legacy projection format
+                            # for compatibility with calculate_dcf_value()
+                            if dcf_proj_obj:
+                                projections = []
+                                for year in range(1, dcf_proj_obj.forecast_years + 1):
+                                    year_data = dcf_proj_obj.final_projections[year]
+                                    projections.append({
+                                        'year': year,
+                                        'revenue': year_data['revenue'],
+                                        'ebit': year_data.get('ebit', 0),
+                                        'nopat': year_data.get('nopat', 0),
+                                        'fcff': year_data.get('fcff', 0),
+                                        'fcfe': year_data.get('fcfe', 0)
+                                    })
+                                final_fcf = projections[-1]['fcff'] if method_key == 'FCFF' else projections[-1]['fcfe']
+                            else:
+                                # Fallback if projections object not available
+                                st.error("⚠️ Dashboard projections not available. Using manual calculation.")
+                                dashboard_active = False
 
-                        # Calculate terminal value
+                        if not dashboard_active:
+                            # =========================================================
+                            # MANUAL MODE: Use slider inputs and traditional calculation
+                            # =========================================================
+                            # Calculate cost of equity
+                            cost_equity = calculate_cost_of_equity(risk_free, beta, market_risk_premium)
+
+                            # Calculate discount rate
+                            if method_key == 'FCFF':
+                                total_debt = financials.get('total_debt', 0)
+                                total_equity = company['market_cap']
+                                discount_rate = calculate_wacc(cost_equity, cost_debt, tax_rate, total_debt, total_equity)
+                            else:
+                                discount_rate = cost_equity
+
+                            # Get base financials
+                            base_revenue = financials.get('revenue', 0)
+                            base_ebit = financials.get('ebit', 0)
+                            base_net_income = financials.get('net_income', 0)
+
+                            # ENHANCED: Project cash flows with scaling D&A and CapEx
+                            if method_key == 'FCFF':
+                                projections = project_fcff_enhanced(
+                                    base_revenue, base_ebit, revenue_growth, ebit_margin, tax_rate,
+                                    depreciation_pct, capex_pct, wc_change, forecast_years
+                                )
+                                final_fcf = projections[-1]['fcff']
+                            else:
+                                projections = project_fcfe_enhanced(
+                                    base_revenue, base_net_income, revenue_growth, tax_rate,
+                                    depreciation_pct, capex_pct, wc_change, net_borrowing, forecast_years
+                                )
+                                final_fcf = projections[-1]['fcfe']
+
+                            # Use shares from company data
+                            shares = company['shares_outstanding']
+
+                        # Calculate terminal value (both modes)
                         terminal_value = calculate_terminal_value(final_fcf, discount_rate, terminal_growth)
 
-                        # Calculate DCF value
+                        # Calculate DCF value (both modes)
                         net_debt = financials.get('total_debt', 0) - financials.get('cash', 0)
 
                         dcf_results = calculate_dcf_value(
@@ -14672,7 +14756,8 @@ ORDER BY position_value DESC"""
                         st.session_state['valuation_method'] = method_key
                         st.session_state['discount_rate'] = discount_rate
                         st.session_state['terminal_growth'] = terminal_growth
-                        st.session_state['used_smart_assumptions'] = use_smart_assumptions
+                        st.session_state['used_smart_assumptions'] = use_smart_assumptions if not dashboard_active else False
+                        st.session_state['used_dashboard_mode'] = dashboard_active
 
                     # =================================================================
                     # GORDON GROWTH DDM
