@@ -11800,25 +11800,13 @@ ORDER BY position_value DESC"""
         st.markdown("---")
         st.markdown("### 📊 ANALYST DASHBOARD")
 
-        # ===== P1-3: ANALYST-FIRST LAYOUT - Risk/Reward Chart is Primary =====
-        # Risk/Reward scatter takes prominence (2/3 width)
-        col_risk, col_sector = st.columns([2, 1])
-
-        with col_risk:
-            st.markdown("#### 🎯 Risk-Reward Positioning")
-            risk_reward = create_risk_reward_plot(enhanced_df)
-            if risk_reward:
-                st.plotly_chart(risk_reward, use_container_width=True, key="risk_reward_primary")
-            else:
-                st.info("Risk-reward chart will display when position data is available")
-
-        with col_sector:
-            st.markdown("#### 💼 Sector Attribution")
-            pnl_sector = create_pnl_attribution_sector(enhanced_df)
-            if pnl_sector:
-                st.plotly_chart(pnl_sector, use_container_width=True, key="sector_pnl")
-            else:
-                st.info("Sector P&L will display when holdings have sector data")
+        # ===== SECTOR ATTRIBUTION =====
+        st.markdown("#### 💼 Sector Attribution")
+        pnl_sector = create_pnl_attribution_sector(enhanced_df)
+        if pnl_sector:
+            st.plotly_chart(pnl_sector, use_container_width=True, key="sector_pnl")
+        else:
+            st.info("Sector P&L will display when holdings have sector data")
 
         # Additional position-level P&L analysis
         st.markdown("---")
@@ -12446,7 +12434,43 @@ ORDER BY position_value DESC"""
         col4.metric("📉 VaR 95%", format_percentage(var_95) if var_95 else "N/A")
         col5.metric("🔴 CVaR 95%", format_percentage(cvar_95) if cvar_95 else "N/A")
         col6.metric("⚠️ Max DD", format_percentage(max_dd) if max_dd else "N/A")
-        
+
+        st.markdown("---")
+
+        # ===== RISK-REWARD POSITIONING =====
+        st.markdown("### 🎯 Risk-Reward Analysis")
+        st.markdown("**Understand where each position sits on the risk-return spectrum**")
+
+        col_chart, col_guide = st.columns([3, 1])
+
+        with col_chart:
+            risk_reward = create_risk_reward_plot(enhanced_df)
+            if risk_reward:
+                st.plotly_chart(risk_reward, use_container_width=True, key="risk_reward_analysis")
+            else:
+                st.info("Risk-reward chart will display when position data is available")
+
+        with col_guide:
+            st.markdown("#### 📖 Interpretation Guide")
+
+            st.markdown("**🟢 Top-Right Quadrant**")
+            st.caption("High return, high risk - Growth plays")
+
+            st.markdown("**🔵 Top-Left Quadrant**")
+            st.caption("High return, low risk - IDEAL positions")
+
+            st.markdown("**🟡 Bottom-Left Quadrant**")
+            st.caption("Low return, low risk - Defensive holds")
+
+            st.markdown("**🔴 Bottom-Right Quadrant**")
+            st.caption("Low return, high risk - REVIEW URGENTLY")
+
+            st.markdown("---")
+            st.markdown("**⚡ Action Items**")
+            st.caption("• Rotate bottom-right into top-left")
+            st.caption("• Size up low-risk winners")
+            st.caption("• Trim high-risk laggards")
+
         st.markdown("---")
 
         tab1, tab2, tab3, tab4, tab5 = st.tabs([
