@@ -480,6 +480,13 @@ COLORS = {
     "loss_text": "#ff0044",
 }
 
+# ===== P1-4: STANDARD CHART HEIGHTS =====
+# Standardized height constants for consistent UI/UX across application
+CHART_HEIGHT_COMPACT = 400      # Small widgets, mini-charts, compact visualizations
+CHART_HEIGHT_STANDARD = 500     # Most dashboard charts (default for new charts)
+CHART_HEIGHT_LARGE = 600        # Primary analysis charts, yield curves, heatmaps
+CHART_HEIGHT_DEEP_DIVE = 700    # Detailed analysis pages, Monte Carlo simulations
+
 # ============================================================================
 # CHART THEME CONFIGURATION - SEAMLESS DARK MODE
 # ============================================================================
@@ -2545,7 +2552,7 @@ def create_pnl_attribution_sector(df):
         title="💼 P&L Attribution by Sector (%)",
         yaxis_title="P&L Contribution (%)",
         xaxis_title="",
-        height=450,
+        height=CHART_HEIGHT_STANDARD,  # P1-4: Standardized height
         showlegend=False
     )
 
@@ -2583,7 +2590,7 @@ def create_pnl_attribution_position(df, top_n=10):
         title=f"🎯 Top {top_n} P&L Contributors & Detractors (%)",
         xaxis_title="Return (%)",
         yaxis_title="",
-        height=500,
+        height=CHART_HEIGHT_STANDARD,  # P1-4: Standardized height
         showlegend=False,
         xaxis=dict(zeroline=True, zerolinewidth=2, zerolinecolor=COLORS['text_muted'])
     )
@@ -7133,7 +7140,7 @@ def create_top_contributors_chart(df, top_n=5):
         title="🎯 Top 5 Contributors (%)",
         xaxis_title="Total Return (%)",
         yaxis_title="",
-        height=450,  # Increased from 400 for better spacing
+        height=CHART_HEIGHT_STANDARD,  # P1-4: Standardized height
         showlegend=False,
         margin=dict(l=100, r=80, t=80, b=50)  # Increased margins to prevent cutoff
     )
@@ -7170,7 +7177,7 @@ def create_top_detractors_chart(df, top_n=5):
         title="⚠️ Top 5 Detractors (%)",
         xaxis_title="Total Return (%)",
         yaxis_title="",
-        height=450,  # Increased from 400 for better spacing
+        height=CHART_HEIGHT_STANDARD,  # P1-4: Standardized height
         showlegend=False,
         margin=dict(l=100, r=80, t=80, b=50)  # Increased margins to prevent cutoff
     )
@@ -7218,7 +7225,7 @@ def create_sector_allocation_donut(df):
             x=0.5,
             xanchor='center'
         ),
-        height=450,  # v9.7: Increased height for less clustering
+        height=CHART_HEIGHT_STANDARD,  # P1-4: Standardized height
         showlegend=True,
         legend=dict(
             orientation="v",
@@ -7790,7 +7797,7 @@ def create_risk_reward_plot(df):
         title="📈 Risk-Reward Analysis",
         xaxis_title="Risk (Annual Volatility %)",
         yaxis_title="Expected Return (Annual %)",
-        height=500
+        height=CHART_HEIGHT_STANDARD  # P1-4: Standardized height
     )
     
     apply_chart_theme(fig)
@@ -7928,7 +7935,7 @@ def create_performance_heatmap(df, period='monthly'):
             title="🔥 Monthly Performance Heatmap",
             xaxis_title="Month",
             yaxis_title="Asset",
-            height=800,
+            height=CHART_HEIGHT_DEEP_DIVE,  # P1-4: Standardized height for detailed charts
             width=1200
         )
         
