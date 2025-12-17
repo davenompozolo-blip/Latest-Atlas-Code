@@ -158,6 +158,17 @@ except ImportError as e:
     R_AVAILABLE = False
     print(f"⚠️ R analytics not available: {e}")
 
+# ATLAS REFACTORING - Phase 1 Infrastructure (Week 1)
+try:
+    from atlas_terminal.core.cache_manager import cached, cache_manager
+    from atlas_terminal.core.error_handler import safe_execute, ErrorHandler
+    from atlas_terminal.data.fetchers.market_data import market_data
+    REFACTORED_MODULES_AVAILABLE = True
+    print("✅ ATLAS Refactored Infrastructure loaded (Cache + Error + Data)")
+except ImportError as e:
+    REFACTORED_MODULES_AVAILABLE = False
+    print(f"⚠️ Refactored modules not available: {e}")
+
 warnings.filterwarnings("ignore")
 
 # ============================================================================
@@ -246,9 +257,14 @@ def search_yahoo_finance(query):
         return None
 
     try:
+        # ATLAS Refactoring - Use cached market data fetcher
         # Try direct ticker lookup first
-        ticker = yf.Ticker(query.upper())
-        info = ticker.info
+        if REFACTORED_MODULES_AVAILABLE:
+            info = market_data.get_company_info(query.upper())
+        else:
+            # Fallback to old method
+            ticker = yf.Ticker(query.upper())
+            info = ticker.info
 
         if info and info.get('symbol'):
             return [{
@@ -3200,9 +3216,17 @@ def create_pnl_attribution_position(df, top_n=10):
 
 def create_sparkline(ticker, days=30):
     """Generate mini sparkline chart for ticker (last 30 days)"""
+    # ATLAS Refactoring - Use cached market data fetcher
     try:
-        stock = yf.Ticker(ticker)
-        hist = stock.history(period=f"{days}d")
+        if REFACTORED_MODULES_AVAILABLE:
+            # Map days to period string
+            period_map = {30: "1mo", 90: "3mo", 7: "5d", 5: "5d"}
+            period = period_map.get(days, f"{days}d")
+            hist = market_data.get_stock_history(ticker, period=period, interval="1d")
+        else:
+            # Fallback to old method
+            stock = yf.Ticker(ticker)
+            hist = stock.history(period=f"{days}d")
 
         if hist.empty:
             return None
@@ -3869,10 +3893,17 @@ def get_leverage_info():
 
 @st.cache_data(ttl=300)
 def fetch_market_data(ticker):
+    # ATLAS Refactoring - Use cached market data fetcher
     try:
-        stock = yf.Ticker(ticker)
-        info = stock.info
-        hist = stock.history(period="5d")
+        if REFACTORED_MODULES_AVAILABLE:
+            info = market_data.get_company_info(ticker)
+            hist = market_data.get_stock_history(ticker, period="5d", interval="1d")
+        else:
+            # Fallback to old method
+            stock = yf.Ticker(ticker)
+            info = stock.info
+            hist = stock.history(period="5d")
+
         if hist.empty:
             return None
 
@@ -3884,9 +3915,9 @@ def fetch_market_data(ticker):
         prev_close = hist['Close'].iloc[-2] if len(hist) > 1 else current_price
         daily_change = current_price - prev_close
         daily_change_pct = (daily_change / prev_close * 100) if prev_close else 0
-        
+
         five_day_return = ((current_price / hist['Close'].iloc[0]) - 1) * 100 if len(hist) >= 5 else 0
-        
+
         company_name = info.get('longName', info.get('shortName', ticker))
         
         return {
@@ -3963,19 +3994,29 @@ def fetch_historical_data(ticker, start_date, end_date):
 @st.cache_data(ttl=3600)
 def fetch_stock_info(ticker):
     """Fetch stock information from yfinance"""
-    try:
-        stock = yf.Ticker(ticker)
-        info = stock.info
-        return info
-    except:
-        return None
+    # ATLAS Refactoring - Use cached market data fetcher
+    if REFACTORED_MODULES_AVAILABLE:
+        return market_data.get_company_info(ticker)
+    else:
+        # Fallback to old method
+        try:
+            stock = yf.Ticker(ticker)
+            info = stock.info
+            return info
+        except:
+            return None
 
 @st.cache_data(ttl=3600)
 def fetch_analyst_data(ticker):
+    # ATLAS Refactoring - Use cached market data fetcher
     try:
-        stock = yf.Ticker(ticker)
-        info = stock.info
-        
+        if REFACTORED_MODULES_AVAILABLE:
+            info = market_data.get_company_info(ticker)
+        else:
+            # Fallback to old method
+            stock = yf.Ticker(ticker)
+            info = stock.info
+
         rating = info.get('recommendationKey', 'none')
         if rating == 'none' or rating is None:
             rating = "No Coverage"
@@ -3996,10 +4037,21 @@ def fetch_analyst_data(ticker):
 @st.cache_data(ttl=3600)
 def fetch_company_financials(ticker):
     """Fetch comprehensive financial data for valuation"""
+    # ATLAS Refactoring - Use cached market data fetcher
     try:
-        stock = yf.Ticker(ticker)
-        info = stock.info
-        
+        if REFACTORED_MODULES_AVAILABLE:
+            info = market_data.get_company_info(ticker)
+            income_stmt = market_data.get_financials(ticker, statement_type="income")
+            balance_sheet = market_data.get_financials(ticker, statement_type="balance")
+            cash_flow = market_data.get_financials(ticker, statement_type="cashflow")
+        else:
+            # Fallback to old method
+            stock = yf.Ticker(ticker)
+            info = stock.info
+            income_stmt = stock.income_stmt
+            balance_sheet = stock.balance_sheet
+            cash_flow = stock.cash_flow
+
         # Basic company info
         company_data = {
             'ticker': ticker,
@@ -4013,11 +4065,6 @@ def fetch_company_financials(ticker):
             'forward_pe': info.get('forwardPE'),
             'trailing_pe': info.get('trailingPE'),
         }
-        
-        # Financial statements
-        income_stmt = stock.income_stmt
-        balance_sheet = stock.balance_sheet
-        cash_flow = stock.cash_flow
         
         # Parse financials (most recent 3 years)
         financials = {}
@@ -4742,9 +4789,14 @@ def create_valuation_summary_table(valuations_dict, current_price):
 
 def get_industry_average_pe(ticker):
     """Get industry average P/E ratio for comparison"""
+    # ATLAS Refactoring - Use cached market data fetcher
     try:
-        stock = yf.Ticker(ticker)
-        info = stock.info
+        if REFACTORED_MODULES_AVAILABLE:
+            info = market_data.get_company_info(ticker)
+        else:
+            # Fallback to old method
+            stock = yf.Ticker(ticker)
+            info = stock.info
         industry = info.get('industry', '')
 
         # Industry average P/E ratios (approximate benchmarks)
@@ -4781,9 +4833,14 @@ def get_industry_average_pe(ticker):
 
 def get_industry_average_pb(ticker):
     """Get industry average P/B ratio"""
+    # ATLAS Refactoring - Use cached market data fetcher
     try:
-        stock = yf.Ticker(ticker)
-        info = stock.info
+        if REFACTORED_MODULES_AVAILABLE:
+            info = market_data.get_company_info(ticker)
+        else:
+            # Fallback to old method
+            stock = yf.Ticker(ticker)
+            info = stock.info
         industry = info.get('industry', '')
 
         # Industry average P/B ratios
@@ -4816,9 +4873,14 @@ def get_industry_average_pb(ticker):
 
 def get_industry_average_ev_ebitda(ticker):
     """Get industry average EV/EBITDA multiple"""
+    # ATLAS Refactoring - Use cached market data fetcher
     try:
-        stock = yf.Ticker(ticker)
-        info = stock.info
+        if REFACTORED_MODULES_AVAILABLE:
+            info = market_data.get_company_info(ticker)
+        else:
+            # Fallback to old method
+            stock = yf.Ticker(ticker)
+            info = stock.info
         industry = info.get('industry', '')
 
         # Industry average EV/EBITDA multiples
@@ -10546,6 +10608,28 @@ def main():
             index=0,  # Default to "SPY"
             key="benchmark_selector"
         )
+
+    # ATLAS Refactoring - Phase 1: Cache Performance Stats
+    if REFACTORED_MODULES_AVAILABLE:
+        with st.expander("⚡ Performance Stats", expanded=False):
+            stats = cache_manager.get_stats()
+            col_a, col_b, col_c = st.columns(3)
+
+            with col_a:
+                st.metric("Cache Hit Rate", stats['hit_rate'])
+            with col_b:
+                st.metric("Cache Hits", stats['hits'])
+            with col_c:
+                st.metric("Memory Keys", stats['memory_keys'])
+
+            col_d, col_e = st.columns(2)
+            with col_d:
+                if st.button("🗑️ Clear Cache", use_container_width=True):
+                    cache_manager.clear()
+                    st.success("✅ Cache cleared!")
+                    st.rerun()
+            with col_e:
+                st.caption(f"Disk: {stats['disk_hits']} hits, {stats['disk_writes']} writes")
 
     st.markdown("---")
 
