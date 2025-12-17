@@ -4184,19 +4184,34 @@ def calculate_terminal_value(final_fcf, discount_rate, terminal_growth):
         return 0
     return final_fcf * (1 + terminal_growth) / (discount_rate - terminal_growth)
 
-def project_fcff_enhanced(base_revenue, base_ebit, revenue_growth, ebit_margin, tax_rate, 
-                         depreciation_pct, capex_pct, change_wc, forecast_years):
+def project_fcff_enhanced(base_revenue, base_ebit, revenue_growth, ebit_margin, tax_rate,
+                         depreciation_pct, capex_pct, change_wc, forecast_years, multistage_config=None):
     """
     ENHANCED: Project FCFF with D&A and CapEx scaling with revenue
+    Supports multi-stage growth modeling
     """
     projections = []
-    
+
     current_revenue = base_revenue
-    
+
     for year in range(1, forecast_years + 1):
+        # Determine growth rate for this year (multi-stage or single-stage)
+        if multistage_config and multistage_config.get('enabled'):
+            stage1_years = multistage_config['stage1_years']
+            stage2_years = multistage_config['stage2_years']
+
+            if year <= stage1_years:
+                current_growth = multistage_config['stage1_growth']
+            elif year <= stage1_years + stage2_years:
+                current_growth = multistage_config['stage2_growth']
+            else:
+                current_growth = multistage_config['stage3_growth']
+        else:
+            current_growth = revenue_growth
+
         # Grow revenue
-        current_revenue = current_revenue * (1 + revenue_growth)
-        
+        current_revenue = current_revenue * (1 + current_growth)
+
         # Calculate EBIT based on margin
         current_ebit = current_revenue * ebit_margin
         
@@ -4223,23 +4238,38 @@ def project_fcff_enhanced(base_revenue, base_ebit, revenue_growth, ebit_margin, 
     
     return projections
 
-def project_fcfe_enhanced(base_revenue, base_net_income, revenue_growth, tax_rate, 
-                         depreciation_pct, capex_pct, change_wc, net_borrowing, forecast_years):
+def project_fcfe_enhanced(base_revenue, base_net_income, revenue_growth, tax_rate,
+                         depreciation_pct, capex_pct, change_wc, net_borrowing, forecast_years, multistage_config=None):
     """
     ENHANCED: Project FCFE with D&A and CapEx scaling with revenue
+    Supports multi-stage growth modeling
     """
     projections = []
-    
+
     current_revenue = base_revenue
     current_ni = base_net_income
-    
+
     # Calculate initial NI margin
     ni_margin = current_ni / current_revenue if current_revenue > 0 else 0
-    
+
     for year in range(1, forecast_years + 1):
+        # Determine growth rate for this year (multi-stage or single-stage)
+        if multistage_config and multistage_config.get('enabled'):
+            stage1_years = multistage_config['stage1_years']
+            stage2_years = multistage_config['stage2_years']
+
+            if year <= stage1_years:
+                current_growth = multistage_config['stage1_growth']
+            elif year <= stage1_years + stage2_years:
+                current_growth = multistage_config['stage2_growth']
+            else:
+                current_growth = multistage_config['stage3_growth']
+        else:
+            current_growth = revenue_growth
+
         # Grow revenue
-        current_revenue = current_revenue * (1 + revenue_growth)
-        
+        current_revenue = current_revenue * (1 + current_growth)
+
         # Grow net income
         current_ni = current_revenue * ni_margin
         
@@ -10283,6 +10313,9 @@ class MultiSourceDataBroker:
 # ============================================================================
 
 def main():
+    # Ensure plotly.graph_objects is available in function scope
+    import plotly.graph_objects as go
+
     # ============================================================================
     # EQUITY TRACKING INITIALIZATION - CRITICAL FIX FOR LEVERAGE CALCULATIONS
     # ============================================================================
@@ -15431,9 +15464,9 @@ ORDER BY position_value DESC"""
                     # Display the full dashboard
                     dashboard_inputs = display_model_inputs_dashboard(company['ticker'])
 
-                    # Store dashboard inputs and active state in session state for DCF calculation
+                    # Store dashboard inputs in session state for DCF calculation
+                    # Note: use_model_inputs_dashboard state is already managed by the checkbox widget
                     st.session_state['dashboard_inputs'] = dashboard_inputs
-                    st.session_state['use_model_inputs_dashboard'] = True
 
                     st.markdown("---")
                     st.markdown("#### ✅ Ready to Run DCF")
@@ -15448,10 +15481,6 @@ ORDER BY position_value DESC"""
                 elif use_model_inputs_dashboard and not MODEL_INPUTS_DASHBOARD_AVAILABLE:
                     st.error("❌ Model Inputs Dashboard module not available. Using simple mode.")
                     use_model_inputs_dashboard = False
-                    st.session_state['use_model_inputs_dashboard'] = False
-                else:
-                    # Dashboard not active - clear state
-                    st.session_state['use_model_inputs_dashboard'] = False
 
             # ============================================================
             # MULTI-STAGE DCF (ATLAS v11.0)
@@ -15826,6 +15855,98 @@ ORDER BY position_value DESC"""
                                 value=smart_params['forecast_years'] if use_smart_assumptions else 5,
                                 step=1
                             )
+
+                        # Multi-Stage Growth Feature
+                        st.markdown("---")
+                        st.markdown("##### 🚀 Multi-Stage Growth (Advanced)")
+
+                        use_multistage = st.checkbox(
+                            "Enable Multi-Stage Revenue Growth",
+                            value=False,
+                            help="Model different growth phases: High Growth → Transition → Mature",
+                            key="enable_multistage_growth"
+                        )
+
+                        if use_multistage:
+                            st.info("""
+                            **Multi-Stage Growth Model**
+                            - **Stage 1 (High Growth)**: Initial years with elevated growth
+                            - **Stage 2 (Transition)**: Gradual decline to mature growth
+                            - **Stage 3 (Mature)**: Stable, long-term growth rate
+                            """)
+
+                            multistage_col1, multistage_col2 = st.columns(2)
+
+                            with multistage_col1:
+                                stage1_years = st.slider(
+                                    "Stage 1 Duration (Years)",
+                                    min_value=1,
+                                    max_value=min(10, forecast_years - 2),
+                                    value=min(3, forecast_years - 2),
+                                    step=1,
+                                    help="Number of years in high-growth phase"
+                                )
+
+                                stage1_growth = st.slider(
+                                    "Stage 1 Growth Rate (%)",
+                                    min_value=0.0,
+                                    max_value=50.0,
+                                    value=15.0,
+                                    step=1.0,
+                                    help="Revenue growth during high-growth phase"
+                                ) / 100
+
+                            with multistage_col2:
+                                stage2_years = st.slider(
+                                    "Stage 2 Duration (Years)",
+                                    min_value=1,
+                                    max_value=max(1, forecast_years - stage1_years - 1),
+                                    value=min(2, forecast_years - stage1_years - 1),
+                                    step=1,
+                                    help="Number of years in transition phase"
+                                )
+
+                                stage2_growth = st.slider(
+                                    "Stage 2 Growth Rate (%)",
+                                    min_value=0.0,
+                                    max_value=30.0,
+                                    value=8.0,
+                                    step=1.0,
+                                    help="Revenue growth during transition phase"
+                                ) / 100
+
+                            # Stage 3 is automatic - remaining years
+                            stage3_years = forecast_years - stage1_years - stage2_years
+                            stage3_growth = st.slider(
+                                f"Stage 3 Growth Rate (%) - {stage3_years} years",
+                                min_value=0.0,
+                                max_value=15.0,
+                                value=3.0,
+                                step=0.5,
+                                help="Mature/stable growth rate for remaining years"
+                            ) / 100
+
+                            # Store multi-stage config in session state
+                            st.session_state['multistage_config'] = {
+                                'enabled': True,
+                                'stage1_years': stage1_years,
+                                'stage1_growth': stage1_growth,
+                                'stage2_years': stage2_years,
+                                'stage2_growth': stage2_growth,
+                                'stage3_years': stage3_years,
+                                'stage3_growth': stage3_growth
+                            }
+
+                            # Display summary
+                            st.success(f"""
+                            **Growth Profile:**
+                            - Years 1-{stage1_years}: {stage1_growth*100:.1f}% growth (High Growth)
+                            - Years {stage1_years+1}-{stage1_years+stage2_years}: {stage2_growth*100:.1f}% growth (Transition)
+                            - Years {stage1_years+stage2_years+1}-{forecast_years}: {stage3_growth*100:.1f}% growth (Mature)
+                            """)
+                        else:
+                            # Clear multi-stage config if disabled
+                            st.session_state['multistage_config'] = {'enabled': False}
 
                         with col2:
                             if use_smart_assumptions:
@@ -16403,16 +16524,19 @@ ORDER BY position_value DESC"""
                             base_net_income = financials.get('net_income', 0)
 
                             # ENHANCED: Project cash flows with scaling D&A and CapEx
+                            # Get multi-stage config if enabled
+                            multistage_config = st.session_state.get('multistage_config', {'enabled': False})
+
                             if method_key == 'FCFF':
                                 projections = project_fcff_enhanced(
                                     base_revenue, base_ebit, revenue_growth, ebit_margin, tax_rate,
-                                    depreciation_pct, capex_pct, wc_change, forecast_years
+                                    depreciation_pct, capex_pct, wc_change, forecast_years, multistage_config
                                 )
                                 final_fcf = projections[-1]['fcff']
                             else:
                                 projections = project_fcfe_enhanced(
                                     base_revenue, base_net_income, revenue_growth, tax_rate,
-                                    depreciation_pct, capex_pct, wc_change, net_borrowing, forecast_years
+                                    depreciation_pct, capex_pct, wc_change, net_borrowing, forecast_years, multistage_config
                                 )
                                 final_fcf = projections[-1]['fcfe']
 
@@ -16679,18 +16803,19 @@ ORDER BY position_value DESC"""
                     """)
                 
                 st.markdown("---")
-                
-                # Visualizations
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    waterfall = create_dcf_waterfall(results, method)
-                    st.plotly_chart(waterfall, use_container_width=True)
-                
-                with col2:
-                    cf_chart = create_cash_flow_chart(projections, method)
-                    st.plotly_chart(cf_chart, use_container_width=True)
-                
+
+                # Visualizations (only for DCF methods)
+                if method in ['FCFF', 'FCFE'] and projections:
+                    col1, col2 = st.columns(2)
+
+                    with col1:
+                        waterfall = create_dcf_waterfall(results, method)
+                        st.plotly_chart(waterfall, use_container_width=True)
+
+                    with col2:
+                        cf_chart = create_cash_flow_chart(projections, method)
+                        st.plotly_chart(cf_chart, use_container_width=True)
+
                 # Sensitivity Analysis
                 st.markdown("---")
                 st.markdown("#### 🎯 Sensitivity Analysis")
