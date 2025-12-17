@@ -1382,47 +1382,159 @@ MARKET_RETURN = 0.10
 # Global Market Indices
 # v9.7 EXPANDED: Additional Global Indices
 GLOBAL_INDICES = {
+    # US Indices
     "^GSPC": {"name": "S&P 500", "region": "US"},
     "^NDX": {"name": "Nasdaq 100", "region": "US"},
     "^DJI": {"name": "Dow Jones", "region": "US"},
     "^RUT": {"name": "Russell 2000", "region": "US"},
+    "^VIX": {"name": "VIX Volatility", "region": "US"},
+    "^NYA": {"name": "NYSE Composite", "region": "US"},
+    "^IXIC": {"name": "Nasdaq Composite", "region": "US"},
+
+    # Europe
     "^FTSE": {"name": "FTSE 100", "region": "UK"},
+    "^FTMC": {"name": "FTSE 250", "region": "UK"},
     "^GDAXI": {"name": "DAX", "region": "Germany"},
     "^FCHI": {"name": "CAC 40", "region": "France"},
     "^STOXX50E": {"name": "Euro Stoxx 50", "region": "Europe"},
+    "^STOXX": {"name": "STOXX 600", "region": "Europe"},
+    "^AEX": {"name": "AEX Amsterdam", "region": "Netherlands"},
+    "^IBEX": {"name": "IBEX 35", "region": "Spain"},
+    "FTSEMIB.MI": {"name": "FTSE MIB", "region": "Italy"},
+    "^SSMI": {"name": "SMI Switzerland", "region": "Switzerland"},
+    "^OMX": {"name": "OMX Stockholm", "region": "Sweden"},
+    "^OMXC25": {"name": "OMX Copenhagen", "region": "Denmark"},
+
+    # Asia-Pacific
     "^N225": {"name": "Nikkei 225", "region": "Japan"},
     "^HSI": {"name": "Hang Seng", "region": "Hong Kong"},
     "000001.SS": {"name": "Shanghai Composite", "region": "China"},
+    "399001.SZ": {"name": "Shenzhen Component", "region": "China"},
     "^BSESN": {"name": "BSE Sensex", "region": "India"},
-    "^BVSP": {"name": "Bovespa", "region": "Brazil"},
-    "^AXJO": {"name": "ASX 200", "region": "Australia"},
-    "^GSPTSE": {"name": "TSX Composite", "region": "Canada"},
-    # v9.7 NEW: Additional emerging and developed markets
+    "^NSEI": {"name": "Nifty 50", "region": "India"},
     "^KS11": {"name": "KOSPI", "region": "South Korea"},
     "^TWII": {"name": "Taiwan Weighted", "region": "Taiwan"},
+    "^STI": {"name": "Straits Times", "region": "Singapore"},
     "^JKSE": {"name": "Jakarta Composite", "region": "Indonesia"},
-    "^MXX": {"name": "IPC Mexico", "region": "Mexico"}
+    "^KLSE": {"name": "KLSE Composite", "region": "Malaysia"},
+    "^SET.BK": {"name": "SET Index", "region": "Thailand"},
+    "^PSEI": {"name": "PSE Composite", "region": "Philippines"},
+    "^AXJO": {"name": "ASX 200", "region": "Australia"},
+    "^NZ50": {"name": "NZX 50", "region": "New Zealand"},
+
+    # Americas
+    "^GSPTSE": {"name": "TSX Composite", "region": "Canada"},
+    "^BVSP": {"name": "Bovespa", "region": "Brazil"},
+    "^MXX": {"name": "IPC Mexico", "region": "Mexico"},
+    "^MERV": {"name": "MERVAL Argentina", "region": "Argentina"},
+    "^IPSA": {"name": "IPSA Chile", "region": "Chile"},
+    "^IGBVL": {"name": "S&P Lima", "region": "Peru"},
+
+    # Middle East & Africa
+    "^TA125.TA": {"name": "TA-125", "region": "Israel"},
+    "^CASE30": {"name": "EGX 30", "region": "Egypt"},
+    "^JN0U.JO": {"name": "JSE Top 40", "region": "South Africa"},
+    "^TASI.SR": {"name": "Tadawul", "region": "Saudi Arabia"},
+    "DFM.DU": {"name": "DFM General", "region": "UAE"}
 }
 
-# EXPANDED: Major Cryptocurrencies
-# v9.7 EXPANDED: Additional Cryptocurrencies
+# EXPANDED: Major Cryptocurrencies (50+ coins)
 CRYPTOCURRENCIES = {
-    "BTC-USD": {"name": "Bitcoin", "category": "Crypto"},
-    "ETH-USD": {"name": "Ethereum", "category": "Crypto"},
-    "BNB-USD": {"name": "Binance Coin", "category": "Crypto"},
-    "XRP-USD": {"name": "Ripple", "category": "Crypto"},
-    "ADA-USD": {"name": "Cardano", "category": "Crypto"},
-    "SOL-USD": {"name": "Solana", "category": "Crypto"},
-    "DOGE-USD": {"name": "Dogecoin", "category": "Crypto"},
-    "MATIC-USD": {"name": "Polygon", "category": "Crypto"},
-    "DOT-USD": {"name": "Polkadot", "category": "Crypto"},
-    "AVAX-USD": {"name": "Avalanche", "category": "Crypto"},
-    # v9.7 NEW: Additional major cryptocurrencies
-    "LINK-USD": {"name": "Chainlink", "category": "Crypto"},
-    "UNI-USD": {"name": "Uniswap", "category": "Crypto"},
-    "LTC-USD": {"name": "Litecoin", "category": "Crypto"},
-    "ATOM-USD": {"name": "Cosmos", "category": "Crypto"},
-    "ALGO-USD": {"name": "Algorand", "category": "Crypto"}
+    # Large Cap (>$10B)
+    "BTC-USD": {"name": "Bitcoin", "category": "Crypto", "market_cap": "Large"},
+    "ETH-USD": {"name": "Ethereum", "category": "Crypto", "market_cap": "Large"},
+    "BNB-USD": {"name": "Binance Coin", "category": "Crypto", "market_cap": "Large"},
+    "XRP-USD": {"name": "Ripple", "category": "Crypto", "market_cap": "Large"},
+    "ADA-USD": {"name": "Cardano", "category": "Crypto", "market_cap": "Large"},
+    "SOL-USD": {"name": "Solana", "category": "Crypto", "market_cap": "Large"},
+    "DOGE-USD": {"name": "Dogecoin", "category": "Crypto", "market_cap": "Large"},
+    "MATIC-USD": {"name": "Polygon", "category": "Crypto", "market_cap": "Large"},
+    "DOT-USD": {"name": "Polkadot", "category": "Crypto", "market_cap": "Large"},
+    "AVAX-USD": {"name": "Avalanche", "category": "Crypto", "market_cap": "Large"},
+
+    # Mid Cap ($1B-$10B)
+    "LINK-USD": {"name": "Chainlink", "category": "Crypto", "market_cap": "Mid"},
+    "UNI-USD": {"name": "Uniswap", "category": "Crypto", "market_cap": "Mid"},
+    "LTC-USD": {"name": "Litecoin", "category": "Crypto", "market_cap": "Mid"},
+    "ATOM-USD": {"name": "Cosmos", "category": "Crypto", "market_cap": "Mid"},
+    "ALGO-USD": {"name": "Algorand", "category": "Crypto", "market_cap": "Mid"},
+    "FIL-USD": {"name": "Filecoin", "category": "Crypto", "market_cap": "Mid"},
+    "APT-USD": {"name": "Aptos", "category": "Crypto", "market_cap": "Mid"},
+    "NEAR-USD": {"name": "NEAR Protocol", "category": "Crypto", "market_cap": "Mid"},
+    "VET-USD": {"name": "VeChain", "category": "Crypto", "market_cap": "Mid"},
+    "ICP-USD": {"name": "Internet Computer", "category": "Crypto", "market_cap": "Mid"},
+    "HBAR-USD": {"name": "Hedera", "category": "Crypto", "market_cap": "Mid"},
+    "APE-USD": {"name": "ApeCoin", "category": "Crypto", "market_cap": "Mid"},
+    "SAND-USD": {"name": "The Sandbox", "category": "Crypto", "market_cap": "Mid"},
+    "MANA-USD": {"name": "Decentraland", "category": "Crypto", "market_cap": "Mid"},
+    "AXS-USD": {"name": "Axie Infinity", "category": "Crypto", "market_cap": "Mid"},
+
+    # DeFi
+    "AAVE-USD": {"name": "Aave", "category": "Crypto", "market_cap": "Mid"},
+    "MKR-USD": {"name": "Maker", "category": "Crypto", "market_cap": "Mid"},
+    "CRV-USD": {"name": "Curve", "category": "Crypto", "market_cap": "Mid"},
+    "COMP-USD": {"name": "Compound", "category": "Crypto", "market_cap": "Mid"},
+    "SNX-USD": {"name": "Synthetix", "category": "Crypto", "market_cap": "Mid"},
+
+    # Layer 2 & Scaling
+    "ARB-USD": {"name": "Arbitrum", "category": "Crypto", "market_cap": "Mid"},
+    "OP-USD": {"name": "Optimism", "category": "Crypto", "market_cap": "Mid"},
+    "IMX-USD": {"name": "Immutable X", "category": "Crypto", "market_cap": "Mid"},
+
+    # Privacy
+    "XMR-USD": {"name": "Monero", "category": "Crypto", "market_cap": "Mid"},
+
+    # Meme Coins
+    "SHIB-USD": {"name": "Shiba Inu", "category": "Crypto", "market_cap": "Mid"},
+    "PEPE-USD": {"name": "Pepe", "category": "Crypto", "market_cap": "Small"},
+    "FLOKI-USD": {"name": "Floki", "category": "Crypto", "market_cap": "Small"},
+
+    # Stablecoins (for reference)
+    "USDT-USD": {"name": "Tether", "category": "Stablecoin", "market_cap": "Large"},
+    "USDC-USD": {"name": "USD Coin", "category": "Stablecoin", "market_cap": "Large"},
+    "DAI-USD": {"name": "Dai", "category": "Stablecoin", "market_cap": "Large"},
+
+    # Others
+    "XLM-USD": {"name": "Stellar", "category": "Crypto", "market_cap": "Mid"},
+    "ETC-USD": {"name": "Ethereum Classic", "category": "Crypto", "market_cap": "Mid"},
+    "BCH-USD": {"name": "Bitcoin Cash", "category": "Crypto", "market_cap": "Mid"},
+    "TRX-USD": {"name": "Tron", "category": "Crypto", "market_cap": "Mid"},
+    "EOS-USD": {"name": "EOS", "category": "Crypto", "market_cap": "Mid"},
+    "XTZ-USD": {"name": "Tezos", "category": "Crypto", "market_cap": "Mid"},
+    "THETA-USD": {"name": "Theta", "category": "Crypto", "market_cap": "Mid"},
+    "FTM-USD": {"name": "Fantom", "category": "Crypto", "market_cap": "Mid"},
+    "GRT-USD": {"name": "The Graph", "category": "Crypto", "market_cap": "Mid"},
+    "RUNE-USD": {"name": "THORChain", "category": "Crypto", "market_cap": "Mid"},
+    "ENJ-USD": {"name": "Enjin Coin", "category": "Crypto", "market_cap": "Small"}
+}
+
+# FX Pairs (NEW CATEGORY)
+FX_PAIRS = {
+    # Major Pairs
+    "EURUSD=X": {"name": "EUR/USD", "category": "Major", "region": "Global"},
+    "GBPUSD=X": {"name": "GBP/USD", "category": "Major", "region": "Global"},
+    "USDJPY=X": {"name": "USD/JPY", "category": "Major", "region": "Global"},
+    "AUDUSD=X": {"name": "AUD/USD", "category": "Major", "region": "Global"},
+    "USDCAD=X": {"name": "USD/CAD", "category": "Major", "region": "Global"},
+    "USDCHF=X": {"name": "USD/CHF", "category": "Major", "region": "Global"},
+    "NZDUSD=X": {"name": "NZD/USD", "category": "Major", "region": "Global"},
+
+    # Cross Pairs
+    "EURGBP=X": {"name": "EUR/GBP", "category": "Cross", "region": "Europe"},
+    "EURJPY=X": {"name": "EUR/JPY", "category": "Cross", "region": "Global"},
+    "GBPJPY=X": {"name": "GBP/JPY", "category": "Cross", "region": "Global"},
+    "AUDJPY=X": {"name": "AUD/JPY", "category": "Cross", "region": "Asia-Pacific"},
+    "EURAUD=X": {"name": "EUR/AUD", "category": "Cross", "region": "Global"},
+
+    # Emerging Market
+    "USDMXN=X": {"name": "USD/MXN", "category": "Emerging", "region": "Americas"},
+    "USDBRL=X": {"name": "USD/BRL", "category": "Emerging", "region": "Americas"},
+    "USDCNY=X": {"name": "USD/CNY", "category": "Emerging", "region": "Asia"},
+    "USDINR=X": {"name": "USD/INR", "category": "Emerging", "region": "Asia"},
+    "USDKRW=X": {"name": "USD/KRW", "category": "Emerging", "region": "Asia"},
+    "USDTRY=X": {"name": "USD/TRY", "category": "Emerging", "region": "Middle East"},
+    "USDZAR=X": {"name": "USD/ZAR", "category": "Emerging", "region": "Africa"},
+    "USDSGD=X": {"name": "USD/SGD", "category": "Emerging", "region": "Asia"}
 }
 
 # EXPANDED: Bond Yields and Rates - COMPREHENSIVE GLOBAL COVERAGE
@@ -1467,26 +1579,49 @@ CREDIT_SPREADS = {
     "SHYG": {"name": "Short Duration High Yield", "category": "Credit"},
 }
 
-# EXPANDED: Commodities
+# EXPANDED: Commodities (50+ instruments)
 COMMODITIES = {
+    # Precious Metals
     "GC=F": {"name": "Gold", "category": "Precious Metals"},
     "SI=F": {"name": "Silver", "category": "Precious Metals"},
     "PL=F": {"name": "Platinum", "category": "Precious Metals"},
     "PA=F": {"name": "Palladium", "category": "Precious Metals"},
+    "HG=F": {"name": "Copper", "category": "Precious Metals"},
+
+    # Energy
     "CL=F": {"name": "Crude Oil WTI", "category": "Energy"},
     "BZ=F": {"name": "Brent Crude", "category": "Energy"},
     "NG=F": {"name": "Natural Gas", "category": "Energy"},
     "RB=F": {"name": "Gasoline", "category": "Energy"},
-    "HG=F": {"name": "Copper", "category": "Industrial Metals"},
+    "HO=F": {"name": "Heating Oil", "category": "Energy"},
+
+    # Industrial Metals
     "ALI=F": {"name": "Aluminum", "category": "Industrial Metals"},
+    "ZN=F": {"name": "Zinc", "category": "Industrial Metals"},
+    "NI=F": {"name": "Nickel", "category": "Industrial Metals"},
+    "PB=F": {"name": "Lead", "category": "Industrial Metals"},
+
+    # Agriculture - Grains
     "ZC=F": {"name": "Corn", "category": "Agriculture"},
     "ZW=F": {"name": "Wheat", "category": "Agriculture"},
     "ZS=F": {"name": "Soybeans", "category": "Agriculture"},
+    "ZO=F": {"name": "Oats", "category": "Agriculture"},
+    "ZR=F": {"name": "Rough Rice", "category": "Agriculture"},
+    "ZM=F": {"name": "Soybean Meal", "category": "Agriculture"},
+    "ZL=F": {"name": "Soybean Oil", "category": "Agriculture"},
+
+    # Agriculture - Softs
     "KC=F": {"name": "Coffee", "category": "Agriculture"},
     "SB=F": {"name": "Sugar", "category": "Agriculture"},
     "CC=F": {"name": "Cocoa", "category": "Agriculture"},
+    "CT=F": {"name": "Cotton", "category": "Agriculture"},
+    "OJ=F": {"name": "Orange Juice", "category": "Agriculture"},
+    "LBS=F": {"name": "Lumber", "category": "Agriculture"},
+
+    # Livestock
     "LE=F": {"name": "Live Cattle", "category": "Livestock"},
-    "GF=F": {"name": "Feeder Cattle", "category": "Livestock"}
+    "GF=F": {"name": "Feeder Cattle", "category": "Livestock"},
+    "HE=F": {"name": "Lean Hogs", "category": "Livestock"}
 }
 
 # EXPANDED: Popular Stocks (45 diverse companies - FIXED)
@@ -1550,42 +1685,339 @@ POPULAR_STOCKS = {
     "INTC": {"name": "Intel", "sector": "Technology", "category": "Tech"},
     "AMD": {"name": "AMD", "sector": "Technology", "category": "Tech"},
     "CSCO": {"name": "Cisco", "sector": "Technology", "category": "Tech"},
+
+    # Semiconductors
+    "TSM": {"name": "TSMC", "sector": "Technology", "category": "Semiconductors"},
+    "ASML": {"name": "ASML", "sector": "Technology", "category": "Semiconductors"},
+    "AVGO": {"name": "Broadcom", "sector": "Technology", "category": "Semiconductors"},
+    "QCOM": {"name": "Qualcomm", "sector": "Technology", "category": "Semiconductors"},
+    "TXN": {"name": "Texas Instruments", "sector": "Technology", "category": "Semiconductors"},
+    "MU": {"name": "Micron", "sector": "Technology", "category": "Semiconductors"},
+    "LRCX": {"name": "Lam Research", "sector": "Technology", "category": "Semiconductors"},
+    "AMAT": {"name": "Applied Materials", "sector": "Technology", "category": "Semiconductors"},
+    "KLAC": {"name": "KLA Corporation", "sector": "Technology", "category": "Semiconductors"},
+    "MRVL": {"name": "Marvell", "sector": "Technology", "category": "Semiconductors"},
+
+    # Software & Cloud
+    "NOW": {"name": "ServiceNow", "sector": "Technology", "category": "Software"},
+    "SNOW": {"name": "Snowflake", "sector": "Technology", "category": "Software"},
+    "PANW": {"name": "Palo Alto Networks", "sector": "Technology", "category": "Software"},
+    "CRWD": {"name": "CrowdStrike", "sector": "Technology", "category": "Software"},
+    "DDOG": {"name": "Datadog", "sector": "Technology", "category": "Software"},
+    "NET": {"name": "Cloudflare", "sector": "Technology", "category": "Software"},
+    "ZS": {"name": "Zscaler", "sector": "Technology", "category": "Software"},
+    "WDAY": {"name": "Workday", "sector": "Technology", "category": "Software"},
+    "TEAM": {"name": "Atlassian", "sector": "Technology", "category": "Software"},
+    "PLTR": {"name": "Palantir", "sector": "Technology", "category": "Software"},
+
+    # E-Commerce & Payments
+    "SHOP": {"name": "Shopify", "sector": "Technology", "category": "E-Commerce"},
+    "PYPL": {"name": "PayPal", "sector": "Technology", "category": "Payments"},
+    "SQ": {"name": "Block (Square)", "sector": "Technology", "category": "Payments"},
+    "COIN": {"name": "Coinbase", "sector": "Technology", "category": "Crypto"},
+    "MELI": {"name": "MercadoLibre", "sector": "Technology", "category": "E-Commerce"},
+    "SE": {"name": "Sea Limited", "sector": "Technology", "category": "E-Commerce"},
+
+    # Telecom & Media
+    "T": {"name": "AT&T", "sector": "Communication Services", "category": "Telecom"},
+    "VZ": {"name": "Verizon", "sector": "Communication Services", "category": "Telecom"},
+    "TMUS": {"name": "T-Mobile", "sector": "Communication Services", "category": "Telecom"},
+    "CMCSA": {"name": "Comcast", "sector": "Communication Services", "category": "Media"},
+    "CHTR": {"name": "Charter", "sector": "Communication Services", "category": "Telecom"},
+
+    # Biotech
+    "GILD": {"name": "Gilead", "sector": "Healthcare", "category": "Biotech"},
+    "AMGN": {"name": "Amgen", "sector": "Healthcare", "category": "Biotech"},
+    "BIIB": {"name": "Biogen", "sector": "Healthcare", "category": "Biotech"},
+    "REGN": {"name": "Regeneron", "sector": "Healthcare", "category": "Biotech"},
+    "VRTX": {"name": "Vertex", "sector": "Healthcare", "category": "Biotech"},
+    "MRNA": {"name": "Moderna", "sector": "Healthcare", "category": "Biotech"},
+    "BNTX": {"name": "BioNTech", "sector": "Healthcare", "category": "Biotech"},
+
+    # Medical Devices
+    "MDT": {"name": "Medtronic", "sector": "Healthcare", "category": "Medical Devices"},
+    "ABT": {"name": "Abbott Labs", "sector": "Healthcare", "category": "Medical Devices"},
+    "SYK": {"name": "Stryker", "sector": "Healthcare", "category": "Medical Devices"},
+    "BSX": {"name": "Boston Scientific", "sector": "Healthcare", "category": "Medical Devices"},
+    "ISRG": {"name": "Intuitive Surgical", "sector": "Healthcare", "category": "Medical Devices"},
+
+    # Insurance
+    "BRK-B": {"name": "Berkshire Hathaway", "sector": "Financial Services", "category": "Insurance"},
+    "PGR": {"name": "Progressive", "sector": "Financial Services", "category": "Insurance"},
+    "TRV": {"name": "Travelers", "sector": "Financial Services", "category": "Insurance"},
+    "AIG": {"name": "AIG", "sector": "Financial Services", "category": "Insurance"},
+    "MET": {"name": "MetLife", "sector": "Financial Services", "category": "Insurance"},
+    "PRU": {"name": "Prudential", "sector": "Financial Services", "category": "Insurance"},
+
+    # Real Estate
+    "AMT": {"name": "American Tower", "sector": "Real Estate", "category": "REITs"},
+    "PLD": {"name": "Prologis", "sector": "Real Estate", "category": "REITs"},
+    "CCI": {"name": "Crown Castle", "sector": "Real Estate", "category": "REITs"},
+    "EQIX": {"name": "Equinix", "sector": "Real Estate", "category": "REITs"},
+    "PSA": {"name": "Public Storage", "sector": "Real Estate", "category": "REITs"},
+    "SPG": {"name": "Simon Property", "sector": "Real Estate", "category": "REITs"},
+
+    # Retail
+    "TGT": {"name": "Target", "sector": "Consumer Defensive", "category": "Retail"},
+    "HD": {"name": "Home Depot", "sector": "Consumer Cyclical", "category": "Retail"},
+    "LOW": {"name": "Lowe's", "sector": "Consumer Cyclical", "category": "Retail"},
+    "TJX": {"name": "TJX Companies", "sector": "Consumer Cyclical", "category": "Retail"},
+    "ROST": {"name": "Ross Stores", "sector": "Consumer Cyclical", "category": "Retail"},
+
+    # Automotive
+    "F": {"name": "Ford", "sector": "Consumer Cyclical", "category": "Automotive"},
+    "GM": {"name": "General Motors", "sector": "Consumer Cyclical", "category": "Automotive"},
+    "RIVN": {"name": "Rivian", "sector": "Consumer Cyclical", "category": "Automotive"},
+    "LCID": {"name": "Lucid", "sector": "Consumer Cyclical", "category": "Automotive"},
+
+    # Materials
+    "LIN": {"name": "Linde", "sector": "Basic Materials", "category": "Chemicals"},
+    "APD": {"name": "Air Products", "sector": "Basic Materials", "category": "Chemicals"},
+    "SHW": {"name": "Sherwin-Williams", "sector": "Basic Materials", "category": "Chemicals"},
+    "ECL": {"name": "Ecolab", "sector": "Basic Materials", "category": "Chemicals"},
+    "DD": {"name": "DuPont", "sector": "Basic Materials", "category": "Chemicals"},
+    "NEM": {"name": "Newmont", "sector": "Basic Materials", "category": "Mining"},
+    "FCX": {"name": "Freeport-McMoRan", "sector": "Basic Materials", "category": "Mining"},
+
+    # Aerospace & Defense
+    "LMT": {"name": "Lockheed Martin", "sector": "Industrials", "category": "Aerospace"},
+    "RTX": {"name": "Raytheon", "sector": "Industrials", "category": "Aerospace"},
+    "NOC": {"name": "Northrop Grumman", "sector": "Industrials", "category": "Aerospace"},
+    "GD": {"name": "General Dynamics", "sector": "Industrials", "category": "Aerospace"},
+    "LHX": {"name": "L3Harris", "sector": "Industrials", "category": "Aerospace"},
+
+    # Transportation
+    "UNP": {"name": "Union Pacific", "sector": "Industrials", "category": "Transportation"},
+    "CSX": {"name": "CSX", "sector": "Industrials", "category": "Transportation"},
+    "NSC": {"name": "Norfolk Southern", "sector": "Industrials", "category": "Transportation"},
+    "FDX": {"name": "FedEx", "sector": "Industrials", "category": "Transportation"},
+    "DAL": {"name": "Delta Air Lines", "sector": "Industrials", "category": "Airlines"},
+    "UAL": {"name": "United Airlines", "sector": "Industrials", "category": "Airlines"},
+    "AAL": {"name": "American Airlines", "sector": "Industrials", "category": "Airlines"},
+
+    # Utilities
+    "NEE": {"name": "NextEra Energy", "sector": "Utilities", "category": "Utilities"},
+    "DUK": {"name": "Duke Energy", "sector": "Utilities", "category": "Utilities"},
+    "SO": {"name": "Southern Company", "sector": "Utilities", "category": "Utilities"},
+    "D": {"name": "Dominion Energy", "sector": "Utilities", "category": "Utilities"},
+    "AEP": {"name": "AEP", "sector": "Utilities", "category": "Utilities"},
+
+    # Oil Services
+    "HAL": {"name": "Halliburton", "sector": "Energy", "category": "Oil Services"},
+    "BKR": {"name": "Baker Hughes", "sector": "Energy", "category": "Oil Services"},
+
+    # Mid-Caps & Growth
+    "ROKU": {"name": "Roku", "sector": "Technology", "category": "Media"},
+    "ZM": {"name": "Zoom", "sector": "Technology", "category": "Software"},
+    "UBER": {"name": "Uber", "sector": "Technology", "category": "Rideshare"},
+    "LYFT": {"name": "Lyft", "sector": "Technology", "category": "Rideshare"},
+    "ABNB": {"name": "Airbnb", "sector": "Consumer Cyclical", "category": "Travel"},
+    "DASH": {"name": "DoorDash", "sector": "Consumer Cyclical", "category": "Delivery"},
+    "RBLX": {"name": "Roblox", "sector": "Technology", "category": "Gaming"},
+    "U": {"name": "Unity", "sector": "Technology", "category": "Gaming"},
+    "TTWO": {"name": "Take-Two", "sector": "Technology", "category": "Gaming"},
+    "EA": {"name": "EA", "sector": "Technology", "category": "Gaming"},
+
+    # International ADRs
+    "BABA": {"name": "Alibaba", "sector": "Technology", "category": "International"},
+    "PDD": {"name": "PDD Holdings", "sector": "Technology", "category": "International"},
+    "JD": {"name": "JD.com", "sector": "Technology", "category": "International"},
+    "NIO": {"name": "NIO", "sector": "Consumer Cyclical", "category": "International"},
+    "BIDU": {"name": "Baidu", "sector": "Technology", "category": "International"},
+    "SAP": {"name": "SAP", "sector": "Technology", "category": "International"},
+    "SNY": {"name": "Sanofi", "sector": "Healthcare", "category": "International"},
+    "NVS": {"name": "Novartis", "sector": "Healthcare", "category": "International"},
+    "UL": {"name": "Unilever", "sector": "Consumer Defensive", "category": "International"},
+    "DEO": {"name": "Diageo", "sector": "Consumer Defensive", "category": "International"},
+    "TM": {"name": "Toyota", "sector": "Consumer Cyclical", "category": "International"},
+    "SONY": {"name": "Sony", "sector": "Technology", "category": "International"},
+    "SPOT": {"name": "Spotify", "sector": "Communication Services", "category": "International"}
 }
 
-# EXPANDED: Popular ETFs (now includes thematic and sector)
+# EXPANDED: Popular ETFs (150+ funds across all categories)
 POPULAR_ETFS = {
-    # Broad Market
+    # Broad Market - Large Cap
     "SPY": {"name": "SPDR S&P 500", "category": "Broad Market", "avg_volume": 70000000},
+    "VOO": {"name": "Vanguard S&P 500", "category": "Broad Market", "avg_volume": 5000000},
+    "IVV": {"name": "iShares S&P 500", "category": "Broad Market", "avg_volume": 4000000},
     "QQQ": {"name": "Invesco QQQ", "category": "Broad Market", "avg_volume": 40000000},
-    "IWM": {"name": "Russell 2000", "category": "Broad Market", "avg_volume": 30000000},
     "VTI": {"name": "Total Stock Market", "category": "Broad Market", "avg_volume": 5000000},
-    
-    # Sector SPDRs
+    "ITOT": {"name": "iShares Total Market", "category": "Broad Market", "avg_volume": 1000000},
+    "SCHB": {"name": "Schwab US Broad Market", "category": "Broad Market", "avg_volume": 1500000},
+
+    # Mid & Small Cap
+    "IWM": {"name": "Russell 2000", "category": "Small Cap", "avg_volume": 30000000},
+    "IJH": {"name": "iShares Mid-Cap", "category": "Mid Cap", "avg_volume": 2000000},
+    "MDY": {"name": "SPDR Mid-Cap 400", "category": "Mid Cap", "avg_volume": 1000000},
+    "VB": {"name": "Vanguard Small-Cap", "category": "Small Cap", "avg_volume": 800000},
+    "IJR": {"name": "iShares Small-Cap", "category": "Small Cap", "avg_volume": 3000000},
+
+    # Sector - Technology
     "XLK": {"name": "Technology Select", "category": "Sector", "avg_volume": 15000000},
+    "VGT": {"name": "Vanguard Technology", "category": "Sector", "avg_volume": 1500000},
+    "FTEC": {"name": "Fidelity MSCI Tech", "category": "Sector", "avg_volume": 500000},
+    "SOXX": {"name": "Semiconductor", "category": "Sector", "avg_volume": 5000000},
+    "SMH": {"name": "VanEck Semiconductors", "category": "Sector", "avg_volume": 8000000},
+    "IGV": {"name": "iShares Software", "category": "Sector", "avg_volume": 1000000},
+    "CLOU": {"name": "Cloud Computing", "category": "Sector", "avg_volume": 500000},
+
+    # Sector - Financial
     "XLF": {"name": "Financial Select", "category": "Sector", "avg_volume": 50000000},
+    "VFH": {"name": "Vanguard Financials", "category": "Sector", "avg_volume": 2000000},
+    "KRE": {"name": "Regional Banks", "category": "Sector", "avg_volume": 10000000},
+    "KBE": {"name": "Bank ETF", "category": "Sector", "avg_volume": 2000000},
+
+    # Sector - Healthcare
     "XLV": {"name": "Health Care Select", "category": "Sector", "avg_volume": 10000000},
+    "VHT": {"name": "Vanguard Health Care", "category": "Sector", "avg_volume": 1000000},
+    "IBB": {"name": "Biotech", "category": "Sector", "avg_volume": 3000000},
+    "XBI": {"name": "SPDR Biotech", "category": "Sector", "avg_volume": 8000000},
+    "IHI": {"name": "Medical Devices", "category": "Sector", "avg_volume": 500000},
+    "XPH": {"name": "Pharmaceuticals", "category": "Sector", "avg_volume": 200000},
+
+    # Sector - Energy
     "XLE": {"name": "Energy Select", "category": "Sector", "avg_volume": 20000000},
+    "VDE": {"name": "Vanguard Energy", "category": "Sector", "avg_volume": 1000000},
+    "XOP": {"name": "Oil & Gas Exploration", "category": "Sector", "avg_volume": 15000000},
+    "USO": {"name": "US Oil Fund", "category": "Commodities", "avg_volume": 25000000},
+    "OIH": {"name": "Oil Services", "category": "Sector", "avg_volume": 2000000},
+
+    # Sector - Industrials
     "XLI": {"name": "Industrial Select", "category": "Sector", "avg_volume": 12000000},
+    "VIS": {"name": "Vanguard Industrials", "category": "Sector", "avg_volume": 300000},
+    "IYT": {"name": "Transportation", "category": "Sector", "avg_volume": 500000},
+    "JETS": {"name": "Airlines", "category": "Sector", "avg_volume": 5000000},
+    "ITA": {"name": "Aerospace & Defense", "category": "Sector", "avg_volume": 800000},
+
+    # Sector - Consumer
     "XLY": {"name": "Consumer Discretionary", "category": "Sector", "avg_volume": 8000000},
     "XLP": {"name": "Consumer Staples", "category": "Sector", "avg_volume": 10000000},
+    "VCR": {"name": "Vanguard Consumer Disc", "category": "Sector", "avg_volume": 300000},
+    "VDC": {"name": "Vanguard Consumer Stpl", "category": "Sector", "avg_volume": 400000},
+    "XRT": {"name": "Retail", "category": "Sector", "avg_volume": 8000000},
+
+    # Sector - Materials & Utilities
+    "XLB": {"name": "Materials Select", "category": "Sector", "avg_volume": 8000000},
     "XLU": {"name": "Utilities Select", "category": "Sector", "avg_volume": 12000000},
+    "VAW": {"name": "Vanguard Materials", "category": "Sector", "avg_volume": 300000},
+    "VPU": {"name": "Vanguard Utilities", "category": "Sector", "avg_volume": 400000},
+
+    # Real Estate
     "XLRE": {"name": "Real Estate Select", "category": "Sector", "avg_volume": 5000000},
-    
-    # Thematic
+    "VNQ": {"name": "Vanguard Real Estate", "category": "Real Estate", "avg_volume": 5000000},
+    "IYR": {"name": "iShares Real Estate", "category": "Real Estate", "avg_volume": 3000000},
+    "REET": {"name": "iShares Global REIT", "category": "Real Estate", "avg_volume": 500000},
+
+    # Communication Services
+    "XLC": {"name": "Communication Services", "category": "Sector", "avg_volume": 8000000},
+    "VOX": {"name": "Vanguard Comm Services", "category": "Sector", "avg_volume": 300000},
+
+    # Thematic - Clean Energy
+    "ICLN": {"name": "Clean Energy", "category": "Thematic", "avg_volume": 5000000},
+    "TAN": {"name": "Solar Energy", "category": "Thematic", "avg_volume": 1500000},
+    "QCLN": {"name": "Clean Energy", "category": "Thematic", "avg_volume": 2000000},
+    "PBW": {"name": "Wilderhill Clean Energy", "category": "Thematic", "avg_volume": 800000},
+    "FAN": {"name": "Wind Energy", "category": "Thematic", "avg_volume": 200000},
+
+    # Thematic - Innovation & Tech
     "ARKK": {"name": "ARK Innovation", "category": "Thematic", "avg_volume": 8000000},
     "ARKQ": {"name": "ARK Autonomous Tech", "category": "Thematic", "avg_volume": 2000000},
     "ARKW": {"name": "ARK Next Gen Internet", "category": "Thematic", "avg_volume": 1500000},
-    "ICLN": {"name": "Clean Energy", "category": "Thematic", "avg_volume": 5000000},
-    "TAN": {"name": "Solar Energy", "category": "Thematic", "avg_volume": 1500000},
-    "HACK": {"name": "Cybersecurity", "category": "Thematic", "avg_volume": 800000},
+    "ARKF": {"name": "ARK FinTech", "category": "Thematic", "avg_volume": 1000000},
+    "ARKG": {"name": "ARK Genomic", "category": "Thematic", "avg_volume": 1200000},
     "ROBO": {"name": "Robotics & AI", "category": "Thematic", "avg_volume": 500000},
+    "BOTZ": {"name": "Global Robotics", "category": "Thematic", "avg_volume": 1000000},
+    "HACK": {"name": "Cybersecurity", "category": "Thematic", "avg_volume": 800000},
+    "CIBR": {"name": "Cybersecurity & Tech", "category": "Thematic", "avg_volume": 1500000},
     "FINX": {"name": "FinTech", "category": "Thematic", "avg_volume": 300000},
-    
-    # International
-    "EEM": {"name": "Emerging Markets", "category": "International", "avg_volume": 25000000},
+    "BLOK": {"name": "Blockchain", "category": "Thematic", "avg_volume": 500000},
+
+    # Thematic - Space, Gaming, Cannabis
+    "UFO": {"name": "Space & Satellite", "category": "Thematic", "avg_volume": 100000},
+    "ESPO": {"name": "Video Game Tech", "category": "Thematic", "avg_volume": 200000},
+    "HERO": {"name": "Video Game & Esports", "category": "Thematic", "avg_volume": 150000},
+    "MSOS": {"name": "US Cannabis", "category": "Thematic", "avg_volume": 5000000},
+    "MJ": {"name": "Cannabis", "category": "Thematic", "avg_volume": 1000000},
+
+    # International - Developed Markets
     "EFA": {"name": "EAFE", "category": "International", "avg_volume": 15000000},
+    "VEA": {"name": "FTSE Developed Markets", "category": "International", "avg_volume": 8000000},
+    "IEFA": {"name": "iShares Developed ex-US", "category": "International", "avg_volume": 5000000},
+    "EWJ": {"name": "Japan", "category": "International", "avg_volume": 8000000},
+    "EWG": {"name": "Germany", "category": "International", "avg_volume": 2000000},
+    "EWU": {"name": "United Kingdom", "category": "International", "avg_volume": 5000000},
+    "EWC": {"name": "Canada", "category": "International", "avg_volume": 2000000},
+    "EWA": {"name": "Australia", "category": "International", "avg_volume": 3000000},
+    "EWY": {"name": "South Korea", "category": "International", "avg_volume": 10000000},
+    "EWT": {"name": "Taiwan", "category": "International", "avg_volume": 5000000},
+
+    # International - Emerging Markets
+    "EEM": {"name": "Emerging Markets", "category": "International", "avg_volume": 25000000},
     "VWO": {"name": "FTSE Emerging Markets", "category": "International", "avg_volume": 10000000},
+    "IEMG": {"name": "iShares Emerging Markets", "category": "International", "avg_volume": 12000000},
     "FXI": {"name": "China Large-Cap", "category": "International", "avg_volume": 20000000},
+    "MCHI": {"name": "iShares China", "category": "International", "avg_volume": 8000000},
+    "KWEB": {"name": "China Internet", "category": "International", "avg_volume": 15000000},
+    "EWZ": {"name": "Brazil", "category": "International", "avg_volume": 25000000},
+    "RSX": {"name": "Russia", "category": "International", "avg_volume": 5000000},
+    "EWW": {"name": "Mexico", "category": "International", "avg_volume": 3000000},
+    "INDA": {"name": "India", "category": "International", "avg_volume": 5000000},
+    "EWH": {"name": "Hong Kong", "category": "International", "avg_volume": 2000000},
+    "EIDO": {"name": "Indonesia", "category": "International", "avg_volume": 500000},
+    "EPHE": {"name": "Philippines", "category": "International", "avg_volume": 200000},
+    "THD": {"name": "Thailand", "category": "International", "avg_volume": 300000},
+
+    # Fixed Income - Government
+    "TLT": {"name": "20+ Year Treasury", "category": "Bonds", "avg_volume": 15000000},
+    "IEF": {"name": "7-10 Year Treasury", "category": "Bonds", "avg_volume": 8000000},
+    "SHY": {"name": "1-3 Year Treasury", "category": "Bonds", "avg_volume": 15000000},
+    "AGG": {"name": "Aggregate Bond", "category": "Bonds", "avg_volume": 10000000},
+    "BND": {"name": "Vanguard Total Bond", "category": "Bonds", "avg_volume": 5000000},
+    "TIP": {"name": "TIPS", "category": "Bonds", "avg_volume": 5000000},
+
+    # Fixed Income - Corporate
+    "LQD": {"name": "Investment Grade", "category": "Bonds", "avg_volume": 15000000},
+    "HYG": {"name": "High Yield", "category": "Bonds", "avg_volume": 20000000},
+    "JNK": {"name": "High Yield Junk", "category": "Bonds", "avg_volume": 10000000},
+    "VCSH": {"name": "Short-Term Corporate", "category": "Bonds", "avg_volume": 4000000},
+    "VCIT": {"name": "Intermediate Corporate", "category": "Bonds", "avg_volume": 3000000},
+    "VCLT": {"name": "Long-Term Corporate", "category": "Bonds", "avg_volume": 2000000},
+
+    # Fixed Income - International
+    "EMB": {"name": "Emerging Market Bonds", "category": "Bonds", "avg_volume": 15000000},
+    "BWX": {"name": "International Treasury", "category": "Bonds", "avg_volume": 1000000},
+    "BNDX": {"name": "Intl Aggregate Bond", "category": "Bonds", "avg_volume": 3000000},
+
+    # Commodity ETFs
+    "GLD": {"name": "Gold", "category": "Commodities", "avg_volume": 10000000},
+    "SLV": {"name": "Silver", "category": "Commodities", "avg_volume": 20000000},
+    "GDX": {"name": "Gold Miners", "category": "Commodities", "avg_volume": 25000000},
+    "GDXJ": {"name": "Junior Gold Miners", "category": "Commodities", "avg_volume": 15000000},
+    "UNG": {"name": "Natural Gas", "category": "Commodities", "avg_volume": 15000000},
+    "DBA": {"name": "Agriculture", "category": "Commodities", "avg_volume": 500000},
+    "DBB": {"name": "Base Metals", "category": "Commodities", "avg_volume": 300000},
+
+    # Factor - Smart Beta
+    "MTUM": {"name": "Momentum", "category": "Factor", "avg_volume": 3000000},
+    "QUAL": {"name": "Quality", "category": "Factor", "avg_volume": 2000000},
+    "SIZE": {"name": "Size Factor", "category": "Factor", "avg_volume": 500000},
+    "VLUE": {"name": "Value", "category": "Factor", "avg_volume": 2000000},
+    "USMV": {"name": "Low Volatility", "category": "Factor", "avg_volume": 5000000},
+    "SPLV": {"name": "Low Volatility", "category": "Factor", "avg_volume": 3000000},
+    "SPHD": {"name": "High Dividend", "category": "Factor", "avg_volume": 2000000},
+    "VIG": {"name": "Dividend Appreciation", "category": "Factor", "avg_volume": 3000000},
+    "VYM": {"name": "High Dividend Yield", "category": "Factor", "avg_volume": 5000000},
+    "SCHD": {"name": "Dividend ETF", "category": "Factor", "avg_volume": 5000000},
+    "DG": {"name": "Dividend Growth", "category": "Factor", "avg_volume": 1000000},
+
+    # Leveraged & Inverse (for completeness)
+    "TQQQ": {"name": "3x Nasdaq", "category": "Leveraged", "avg_volume": 80000000},
+    "SQQQ": {"name": "-3x Nasdaq", "category": "Inverse", "avg_volume": 60000000},
+    "SPXU": {"name": "-3x S&P 500", "category": "Inverse", "avg_volume": 10000000},
+    "UPRO": {"name": "3x S&P 500", "category": "Leveraged", "avg_volume": 15000000},
+    "TNA": {"name": "3x Russell 2000", "category": "Leveraged", "avg_volume": 10000000},
+    "SOXL": {"name": "3x Semiconductors", "category": "Leveraged", "avg_volume": 80000000},
+    "VXX": {"name": "VIX Short-Term", "category": "Volatility", "avg_volume": 50000000}
 }
 
 # Factor definitions
