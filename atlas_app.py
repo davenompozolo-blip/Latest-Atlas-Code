@@ -171,6 +171,271 @@ def is_valid_dataframe(df):
     """Safely check if a pandas DataFrame has valid data"""
     return df is not None and isinstance(df, pd.DataFrame) and not df.empty
 
+def make_scrollable_table(df, height=600, hide_index=True, use_container_width=True, column_config=None):
+    """
+    Make any dataframe horizontally scrollable with professional styling.
+
+    Args:
+        df: DataFrame to display
+        height: Table height in pixels (default 600)
+        hide_index: Whether to hide the index column (default True)
+        use_container_width: Whether to use full container width (default True)
+        column_config: Optional column configuration dict
+
+    Returns:
+        Streamlit dataframe component with horizontal scrolling enabled
+    """
+    # Inject CSS for horizontal scrolling
+    st.markdown(
+        """
+        <style>
+        /* Enable horizontal scrolling for all dataframes */
+        div[data-testid="stDataFrame"] > div {
+            overflow-x: auto !important;
+            max-width: 100% !important;
+        }
+
+        /* Ensure table doesn't collapse */
+        div[data-testid="stDataFrame"] table {
+            min-width: 100% !important;
+        }
+
+        /* Better scrollbar styling */
+        div[data-testid="stDataFrame"] > div::-webkit-scrollbar {
+            height: 8px;
+        }
+
+        div[data-testid="stDataFrame"] > div::-webkit-scrollbar-track {
+            background: #0a1929;
+        }
+
+        div[data-testid="stDataFrame"] > div::-webkit-scrollbar-thumb {
+            background: #00d4ff;
+            border-radius: 4px;
+        }
+
+        div[data-testid="stDataFrame"] > div::-webkit-scrollbar-thumb:hover {
+            background: #00ffcc;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+    # Display the dataframe
+    return st.dataframe(
+        df,
+        use_container_width=use_container_width,
+        hide_index=hide_index,
+        height=height,
+        column_config=column_config
+    )
+
+@st.cache_data(ttl=300)
+def search_yahoo_finance(query):
+    """
+    Search Yahoo Finance for any ticker/company with live data lookup.
+
+    Args:
+        query: Search query (ticker symbol or company name)
+
+    Returns:
+        List of matching securities with metadata, or None if not found
+    """
+    if not query or len(query) < 1:
+        return None
+
+    try:
+        # Try direct ticker lookup first
+        ticker = yf.Ticker(query.upper())
+        info = ticker.info
+
+        if info and info.get('symbol'):
+            return [{
+                'symbol': info.get('symbol', query.upper()),
+                'name': info.get('longName', info.get('shortName', query)),
+                'type': info.get('quoteType', 'Unknown'),
+                'exchange': info.get('exchange', 'N/A'),
+                'currency': info.get('currency', 'USD'),
+                'market_cap': info.get('marketCap', 0),
+                'sector': info.get('sector', 'N/A'),
+                'industry': info.get('industry', 'N/A')
+            }]
+        else:
+            return None
+    except Exception as e:
+        return None
+
+def init_watchlist():
+    """Initialize personal watchlist in session state"""
+    if 'personal_watchlist' not in st.session_state:
+        st.session_state['personal_watchlist'] = []
+        # Try loading from file
+        try:
+            import json
+            from pathlib import Path
+            watchlist_file = Path('.atlas_watchlist.json')
+            if watchlist_file.exists():
+                with open(watchlist_file, 'r') as f:
+                    st.session_state['personal_watchlist'] = json.load(f)
+        except:
+            pass
+
+def add_to_watchlist(ticker, name, asset_type='Stock'):
+    """
+    Add a ticker to personal watchlist.
+
+    Args:
+        ticker: Ticker symbol
+        name: Asset name
+        asset_type: Type of asset (Stock, ETF, Crypto, etc.)
+
+    Returns:
+        True if added, False if already exists
+    """
+    init_watchlist()
+
+    # Check if already in watchlist
+    if any(item['ticker'] == ticker for item in st.session_state['personal_watchlist']):
+        return False
+
+    # Add to watchlist
+    st.session_state['personal_watchlist'].append({
+        'ticker': ticker,
+        'name': name,
+        'type': asset_type,
+        'added_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    })
+
+    # Save to file
+    save_watchlist()
+    return True
+
+def remove_from_watchlist(ticker):
+    """Remove a ticker from personal watchlist"""
+    init_watchlist()
+    st.session_state['personal_watchlist'] = [
+        item for item in st.session_state['personal_watchlist']
+        if item['ticker'] != ticker
+    ]
+    save_watchlist()
+
+def save_watchlist():
+    """Save watchlist to file"""
+    try:
+        import json
+        with open('.atlas_watchlist.json', 'w') as f:
+            json.dump(st.session_state['personal_watchlist'], f, indent=2)
+    except:
+        pass
+
+def get_watchlist():
+    """Get current watchlist"""
+    init_watchlist()
+    return st.session_state['personal_watchlist']
+
+@st.cache_data(ttl=1800)
+def fetch_us_treasury_yields_fred():
+    """
+    Fetch US Treasury yields from FRED API (Federal Reserve Economic Data).
+
+    Returns:
+        tuple: (maturities, yields, data_source) where data_source indicates FRED, Yahoo, or Fallback
+    """
+    # FRED series IDs for various Treasury maturities
+    fred_series = {
+        "DGS1MO": 1/12,      # 1-month
+        "DGS3MO": 0.25,      # 3-month
+        "DGS6MO": 0.5,       # 6-month
+        "DGS1": 1,           # 1-year
+        "DGS2": 2,           # 2-year
+        "DGS3": 3,           # 3-year
+        "DGS5": 5,           # 5-year
+        "DGS7": 7,           # 7-year
+        "DGS10": 10,         # 10-year
+        "DGS20": 20,         # 20-year
+        "DGS30": 30          # 30-year
+    }
+
+    # Try FRED API first
+    try:
+        import requests
+
+        # Check if FRED API key is available (from secrets or environment)
+        try:
+            FRED_API_KEY = st.secrets.get("FRED_API_KEY", None)
+        except:
+            FRED_API_KEY = None
+
+        if FRED_API_KEY and FRED_API_KEY != "YOUR_API_KEY_HERE":
+            maturities = []
+            yields = []
+
+            for series_id, maturity in fred_series.items():
+                try:
+                    url = f"https://api.stlouisfed.org/fred/series/observations"
+                    params = {
+                        "series_id": series_id,
+                        "api_key": FRED_API_KEY,
+                        "file_type": "json",
+                        "sort_order": "desc",
+                        "limit": 1
+                    }
+
+                    response = requests.get(url, params=params, timeout=5)
+
+                    if response.status_code == 200:
+                        data = response.json()
+                        if data.get('observations'):
+                            latest = data['observations'][0]
+                            yield_value = float(latest['value'])
+                            maturities.append(maturity)
+                            yields.append(yield_value)
+                except:
+                    continue
+
+            # If we got good FRED data, return it
+            if len(yields) >= 5:
+                # Sort by maturity
+                sorted_data = sorted(zip(maturities, yields))
+                maturities, yields = zip(*sorted_data)
+                return list(maturities), list(yields), "FRED API"
+    except:
+        pass
+
+    # Fallback to Yahoo Finance
+    treasuries = {
+        "^IRX": 0.25,   # 3-month
+        "^FVX": 5,      # 5-year
+        "^TNX": 10,     # 10-year
+        "^TYX": 30      # 30-year
+    }
+
+    maturities = []
+    yields = []
+
+    for ticker, maturity in treasuries.items():
+        try:
+            stock = yf.Ticker(ticker)
+            hist = stock.history(period="1d")
+            if not hist.empty:
+                current_yield = hist['Close'].iloc[-1]
+                maturities.append(maturity)
+                yields.append(current_yield)
+        except:
+            continue
+
+    # If Yahoo data worked, return it
+    if len(yields) >= 3:
+        sorted_data = sorted(zip(maturities, yields))
+        maturities, yields = zip(*sorted_data)
+        return list(maturities), list(yields), "Yahoo Finance"
+
+    # Final fallback to sample data
+    maturities = [0.25, 0.5, 1, 2, 3, 5, 7, 10, 20, 30]
+    yields = [4.5, 4.4, 4.3, 4.2, 4.1, 4.0, 4.05, 4.1, 4.3, 4.4]
+    return maturities, yields, "Fallback Data"
+
 # ============================================================================
 # PAGE CONFIG
 # ============================================================================
@@ -1956,47 +2221,27 @@ def calculate_forward_rates(maturities, spot_rates):
     return forward_maturities, forward_rates
 
 def create_yield_curve():
-    """Professional US Treasury Yield Curve visualization with MORE maturities"""
-    # Treasury tickers and maturities - EXPANDED
-    treasuries = {
-        "^IRX": {"maturity": 0.25, "name": "3M"},
-        "^FVX": {"maturity": 5, "name": "5Y"},
-        "^TNX": {"maturity": 10, "name": "10Y"},
-        "^TYX": {"maturity": 30, "name": "30Y"}
-    }
+    """
+    Professional US Treasury Yield Curve visualization with multi-source data.
 
-    # Additional tickers for better curve shape
-    additional_treasuries = {
-        "^IRX": 0.25,   # 3-month
-        "SHY": 2,       # 1-3 year ETF (approximate 2Y)
-        "IEF": 7,       # 7-10 year ETF (approximate 7Y)
-        "^FVX": 5,      # 5-year
-        "^TNX": 10,     # 10-year
-        "TLT": 20,      # 20+ year ETF (approximate 20Y)
-        "^TYX": 30      # 30-year
-    }
-
-    yields_data = []
-    maturities = []
-    labels = []
-
-    for ticker, info in treasuries.items():
-        try:
-            stock = yf.Ticker(ticker)
-            hist = stock.history(period="1d")
-            if not hist.empty:
-                # Convert timezone-aware index to timezone-naive
-                if hist.index.tz is not None:
-                    hist.index = hist.index.tz_localize(None)
-                current_yield = hist['Close'].iloc[-1]
-                yields_data.append(current_yield)
-                maturities.append(info['maturity'])
-                labels.append(info['name'])
-        except:
-            continue
+    Data sources (in priority order):
+    1. FRED API (Federal Reserve) - Most accurate and comprehensive
+    2. Yahoo Finance - Backup source
+    3. Fallback data - If all sources fail
+    """
+    # Fetch yields from multi-source function
+    maturities, yields_data, data_source = fetch_us_treasury_yields_fred()
 
     if not yields_data:
         return None
+
+    # Create labels for display
+    label_map = {
+        1/12: "1M", 0.25: "3M", 0.5: "6M",
+        1: "1Y", 2: "2Y", 3: "3Y", 5: "5Y",
+        7: "7Y", 10: "10Y", 20: "20Y", 30: "30Y"
+    }
+    labels = [label_map.get(m, f"{m:.1f}Y") for m in maturities]
 
     # Sort by maturity
     sorted_data = sorted(zip(maturities, yields_data, labels))
@@ -2037,8 +2282,15 @@ def create_yield_curve():
             name='Implied Forward Rates'
         ))
 
+    # Add data source indicator to title
+    source_icon = {
+        "FRED API": "🏛️",
+        "Yahoo Finance": "📊",
+        "Fallback Data": "⚠️"
+    }.get(data_source, "📈")
+
     fig.update_layout(
-        title="📈 US Treasury Yield Curve with Forward Rates",
+        title=f"{source_icon} US Treasury Yield Curve with Forward Rates<br><sub>Data Source: {data_source}</sub>",
         xaxis_title="Maturity (Years)",
         yaxis_title="Yield (%)",
         height=500,
@@ -2053,7 +2305,7 @@ def create_yield_curve():
     )
 
     apply_chart_theme(fig)
-    return fig, list(maturities), list(yields_data)
+    return fig, list(maturities), list(yields_data), data_source
 
 @st.cache_data(ttl=3600)  # Cache for 1 hour
 def fetch_uk_gilt_yields():
@@ -9257,7 +9509,7 @@ def main():
                         save_trade_history(trade_df)
                         st.success(f"✅ Parsed {len(trade_df)} trades!")
                         show_toast(f"Trade history imported: {len(trade_df)} trades parsed successfully", toast_type="success", duration=3000)
-                        st.dataframe(trade_df.head(10), use_container_width=True, column_config=None)
+                        make_scrollable_table(trade_df.head(10), height=400, hide_index=True, use_container_width=True, column_config=None)
 
                         # Check for options that will be filtered
                         option_tickers = []
@@ -9282,7 +9534,7 @@ def main():
                                     for opt in option_tickers:
                                         st.write(f"- {opt}")
 
-                            st.dataframe(portfolio_df, use_container_width=True, column_config=None)
+                            make_scrollable_table(portfolio_df, height=400, hide_index=True, use_container_width=True, column_config=None)
         
         with col2:
             st.markdown("### 💰 Account History")
@@ -9296,7 +9548,7 @@ def main():
                         save_account_history(account_df)
                         st.success(f"✅ Parsed {len(account_df)} records!")
                         show_toast(f"Account history imported: {len(account_df)} records processed", toast_type="success", duration=3000)
-                        st.dataframe(account_df.head(10), use_container_width=True, column_config=None)
+                        make_scrollable_table(account_df.head(10), height=400, hide_index=True, use_container_width=True, column_config=None)
                         
                         leverage_info_parsed = get_leverage_info()
                         if leverage_info_parsed:
@@ -9442,7 +9694,7 @@ def main():
                     result = pd.read_sql("SELECT * FROM portfolio_positions", conn)
                     st.write(f"**Database has {len(result)} positions**")
                     if len(result) > 0:
-                        st.dataframe(result, use_container_width=True)
+                        make_scrollable_table(result, height=400, hide_index=True, use_container_width=True)
                     else:
                         st.info("No positions found in database")
                     conn.close()
@@ -9717,7 +9969,7 @@ def main():
                         trades = phoenix.load_trade_history(uploaded_file)
 
                         st.success(f"✅ Loaded {len(trades)} trades")
-                        st.dataframe(trades, use_container_width=True)
+                        make_scrollable_table(trades, height=400, hide_index=True, use_container_width=True)
 
                         # Get current prices (you'd fetch these from API)
                         tickers = trades['Ticker'].unique()
@@ -9738,7 +9990,7 @@ def main():
                         col4.metric("Total P&L", f"${portfolio['total_pnl']:,.2f}", f"{portfolio['total_return_pct']:.2f}%")
 
                         summary = phoenix.get_portfolio_summary(current_prices)
-                        st.dataframe(summary, use_container_width=True)
+                        make_scrollable_table(summary, height=400, hide_index=True, use_container_width=True)
 
                     except Exception as e:
                         st.error(f"Error: {str(e)}")
@@ -9789,11 +10041,11 @@ def main():
 
                                 st.markdown("#### Stock-Level Contribution")
                                 stock_contrib = attribution.stock_contribution()
-                                st.dataframe(stock_contrib, use_container_width=True)
+                                make_scrollable_table(stock_contrib, height=400, hide_index=True, use_container_width=True)
 
                                 st.markdown("#### Sector-Level Attribution (Brinson-Fachler Model)")
                                 sector_contrib = attribution.sector_attribution()
-                                st.dataframe(sector_contrib, use_container_width=True)
+                                make_scrollable_table(sector_contrib, height=400, hide_index=True, use_container_width=True)
 
                                 # ===== FIX #5: Calculate and Display Skill Scores =====
                                 if 'Allocation Effect' in sector_contrib.columns and 'Selection Effect' in sector_contrib.columns:
@@ -10469,7 +10721,7 @@ summary(df)""",
                         display_df = portfolio[['ticker', 'quantity', 'avg_cost', 'current_price']].copy()
                         display_df['value'] = display_df['quantity'] * display_df['current_price'].fillna(display_df['avg_cost'])
                         display_df = display_df.sort_values('value', ascending=False)
-                        st.dataframe(display_df, use_container_width=True, hide_index=True)
+                        make_scrollable_table(display_df, height=400, hide_index=True, use_container_width=True)
                     else:
                         st.info("No positions in database")
                 except Exception as e:
@@ -10482,7 +10734,7 @@ summary(df)""",
                     if len(trades) > 0:
                         recent_trades = trades.sort_values('date', ascending=False).head(10)
                         display_trades = recent_trades[['date', 'ticker', 'action', 'quantity', 'price']]
-                        st.dataframe(display_trades, use_container_width=True, hide_index=True)
+                        make_scrollable_table(display_trades, height=400, hide_index=True, use_container_width=True)
                     else:
                         st.info("No trades in database")
                 except Exception as e:
@@ -10595,7 +10847,7 @@ ORDER BY position_value DESC"""
 
                         # Display results
                         st.markdown("#### Results:")
-                        st.dataframe(result_df, use_container_width=True, hide_index=True)
+                        make_scrollable_table(result_df, height=600, hide_index=True, use_container_width=True)
 
                         # Export option
                         csv = result_df.to_csv(index=False).encode('utf-8')
@@ -10688,7 +10940,7 @@ ORDER BY position_value DESC"""
                             try:
                                 result = db.read(query_sql)
                                 st.success(f"✅ {len(result)} rows")
-                                st.dataframe(result, use_container_width=True, hide_index=True)
+                                make_scrollable_table(result, height=400, hide_index=True, use_container_width=True)
                             except Exception as e:
                                 st.error(f"Error: {e}")
 
@@ -10778,7 +11030,7 @@ ORDER BY position_value DESC"""
                 with st.expander(f"📋 {table['name']} - {table['description']}"):
                     # Create DataFrame for columns
                     schema_df = pd.DataFrame(table['columns'], columns=['Column', 'Type', 'Description'])
-                    st.dataframe(schema_df, use_container_width=True, hide_index=True)
+                    make_scrollable_table(schema_df, height=400, hide_index=True, use_container_width=True)
 
                     # Show row count
                     try:
@@ -11091,7 +11343,7 @@ ORDER BY position_value DESC"""
             if 'Total Gain/Loss %' in display_df.columns:
                 display_df['Total Gain/Loss %'] = display_df['Total Gain/Loss %'].apply(add_arrow_indicator)
 
-            st.dataframe(display_df, use_container_width=True, hide_index=True, height=500, column_config=None)
+            make_scrollable_table(display_df, height=500, hide_index=True, use_container_width=True, column_config=None)
 
             # Add explanation for dual weight columns
             if 'Weight % of Equity' in selected_columns or 'Weight % of Gross' in selected_columns:
@@ -11153,7 +11405,7 @@ ORDER BY position_value DESC"""
                     # Display enhanced table with optimization columns
                     st.markdown("### 📋 Holdings with Optimization Targets")
                     display_df_opt = style_holdings_dataframe_with_optimization(enhanced_df_with_opt)
-                    st.dataframe(display_df_opt, use_container_width=True, hide_index=True, height=500)
+                    make_scrollable_table(display_df_opt, height=500, hide_index=True, use_container_width=True)
 
         st.markdown("---")
         st.markdown("### 📊 DASHBOARD OVERVIEW")
@@ -11276,7 +11528,55 @@ ORDER BY position_value DESC"""
     elif page == "🌍 Market Watch":
         st.markdown("## 🌍 MARKET WATCH - EXCELLENCE EDITION")
         st.markdown("*Your comprehensive window into global markets, crypto, bonds, and credit conditions*")
-        
+
+        st.markdown("---")
+
+        # LIVE TICKER SEARCH
+        st.markdown("### 🔍 Live Ticker Search")
+        search_col1, search_col2 = st.columns([3, 1])
+
+        with search_col1:
+            search_query = st.text_input(
+                "Search any ticker or add to watchlist",
+                placeholder="Enter ticker symbol (e.g., AAPL, TSLA, BTC-USD)...",
+                key="ticker_search",
+                label_visibility="collapsed"
+            )
+
+        with search_col2:
+            search_button = st.button("🔍 Search", use_container_width=True, type="primary")
+
+        # Display search results
+        if (search_query and search_button) or (search_query and len(search_query) >= 2):
+            with st.spinner(f"Searching for '{search_query}'..."):
+                results = search_yahoo_finance(search_query)
+
+                if results:
+                    result = results[0]
+                    st.success(f"✅ Found: **{result['symbol']}** - {result['name']}")
+
+                    # Display quick info
+                    info_col1, info_col2, info_col3, info_col4 = st.columns(4)
+                    with info_col1:
+                        st.metric("Type", result['type'])
+                    with info_col2:
+                        st.metric("Exchange", result['exchange'])
+                    with info_col3:
+                        if result['market_cap'] > 0:
+                            st.metric("Market Cap", f"${result['market_cap']/1e9:.1f}B")
+                        else:
+                            st.metric("Currency", result['currency'])
+                    with info_col4:
+                        # Add to watchlist button
+                        if st.button(f"⭐ Add to Watchlist", key=f"add_{result['symbol']}"):
+                            if add_to_watchlist(result['symbol'], result['name'], result['type']):
+                                st.success(f"✅ Added {result['symbol']} to watchlist!")
+                                st.rerun()
+                            else:
+                                st.warning(f"⚠️ {result['symbol']} already in watchlist")
+                else:
+                    st.error(f"❌ No results found for '{search_query}'. Try a different ticker symbol.")
+
         st.markdown("---")
         st.markdown("### 🔍 Filters & Settings")
         col1, col2, col3, col4 = st.columns(4)
@@ -11294,18 +11594,97 @@ ORDER BY position_value DESC"""
             auto_refresh = st.checkbox("Auto-Refresh (5min)")
 
         st.markdown("---")
-        
+
         # EXPANDED TABS
-        tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-            "📈 Indices", 
-            "💰 Crypto", 
-            "🏦 ETFs", 
+        tab0, tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+            "⭐ My Watchlist",
+            "📈 Indices",
+            "💰 Crypto",
+            "🏦 ETFs",
             "⚡ Commodities",
             "📊 Stocks",
             "💵 Bonds & Rates",
             "🎯 Credit Spreads"
         ])
-        
+
+        # PERSONAL WATCHLIST TAB
+        with tab0:
+            st.markdown("#### ⭐ Personal Watchlist")
+
+            watchlist = get_watchlist()
+
+            if not watchlist:
+                st.info("📝 Your watchlist is empty. Use the search bar above to add tickers!")
+            else:
+                st.success(f"✅ Tracking {len(watchlist)} securities")
+
+                # Fetch live data for watchlist
+                watchlist_data = []
+
+                with st.spinner("Loading watchlist prices..."):
+                    for item in watchlist:
+                        try:
+                            ticker = yf.Ticker(item['ticker'])
+                            hist = ticker.history(period='5d')
+
+                            if not hist.empty:
+                                current_price = hist['Close'].iloc[-1]
+                                prev_close = hist['Close'].iloc[-2] if len(hist) > 1 else current_price
+                                change = current_price - prev_close
+                                change_pct = (change / prev_close * 100) if prev_close > 0 else 0
+
+                                # Get 5-day change
+                                if len(hist) >= 5:
+                                    five_day_change = ((current_price - hist['Close'].iloc[0]) / hist['Close'].iloc[0] * 100)
+                                else:
+                                    five_day_change = 0
+
+                                watchlist_data.append({
+                                    'Ticker': item['ticker'],
+                                    'Name': item['name'],
+                                    'Type': item['type'],
+                                    'Price': f"${current_price:.2f}",
+                                    'Change': f"${change:+.2f}",
+                                    'Change %': change_pct,
+                                    '5D %': five_day_change,
+                                    'Added': item['added_date']
+                                })
+                        except:
+                            # If data fetch fails, still show the item
+                            watchlist_data.append({
+                                'Ticker': item['ticker'],
+                                'Name': item['name'],
+                                'Type': item['type'],
+                                'Price': 'N/A',
+                                'Change': 'N/A',
+                                'Change %': 0,
+                                '5D %': 0,
+                                'Added': item['added_date']
+                            })
+
+                if watchlist_data:
+                    watchlist_df = pd.DataFrame(watchlist_data)
+                    make_scrollable_table(watchlist_df, height=600, hide_index=True, use_container_width=True)
+
+                    # Remove from watchlist
+                    st.markdown("---")
+                    st.markdown("##### 🗑️ Manage Watchlist")
+
+                    remove_col1, remove_col2 = st.columns([3, 1])
+
+                    with remove_col1:
+                        ticker_to_remove = st.selectbox(
+                            "Select ticker to remove",
+                            options=[item['ticker'] for item in watchlist],
+                            key="remove_ticker_select"
+                        )
+
+                    with remove_col2:
+                        if st.button("🗑️ Remove", use_container_width=True, type="secondary"):
+                            remove_from_watchlist(ticker_to_remove)
+                            st.success(f"✅ Removed {ticker_to_remove} from watchlist")
+                            st.rerun()
+
         with tab1:
             st.markdown("#### 🌍 Global Indices")
             with st.spinner("Loading indices..."):
@@ -11313,7 +11692,7 @@ ORDER BY position_value DESC"""
                 if not indices_df.empty:
                     indices_df = indices_df[indices_df['Change %'] >= filter_change]
                     display_df = create_dynamic_market_table(indices_df, {'sort_by': sort_by, 'ascending': False})
-                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=600, column_config=None)
+                    make_scrollable_table(display_df, height=600, hide_index=True, use_container_width=True, column_config=None)
                 else:
                     st.warning("No data available")
         
@@ -11324,7 +11703,7 @@ ORDER BY position_value DESC"""
                 if not crypto_df.empty:
                     crypto_df = crypto_df[crypto_df['Change %'] >= filter_change]
                     display_df = create_dynamic_market_table(crypto_df, {'sort_by': sort_by, 'ascending': False})
-                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=600, column_config=None)
+                    make_scrollable_table(display_df, height=600, hide_index=True, use_container_width=True, column_config=None)
                 else:
                     st.warning("No data available")
         
@@ -11340,7 +11719,7 @@ ORDER BY position_value DESC"""
                     if sectors:
                         etf_df = etf_df[etf_df['Category'].isin(sectors)]
                     display_df = create_dynamic_market_table(etf_df, {'sort_by': sort_by, 'ascending': False})
-                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=600, column_config=None)
+                    make_scrollable_table(display_df, height=600, hide_index=True, use_container_width=True, column_config=None)
                 else:
                     st.warning("No data available")
         
@@ -11356,7 +11735,7 @@ ORDER BY position_value DESC"""
                     if commodity_cats:
                         comm_df = comm_df[comm_df['Category'].isin(commodity_cats)]
                     display_df = create_dynamic_market_table(comm_df, {'sort_by': sort_by, 'ascending': False})
-                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=600, column_config=None)
+                    make_scrollable_table(display_df, height=600, hide_index=True, use_container_width=True, column_config=None)
                 else:
                     st.warning("No data available")
         
@@ -11372,7 +11751,7 @@ ORDER BY position_value DESC"""
                     if stock_sectors:
                         stocks_df = stocks_df[stocks_df['Category'].isin(stock_sectors)]
                     display_df = create_dynamic_market_table(stocks_df, {'sort_by': sort_by, 'ascending': False})
-                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=600, column_config=None)
+                    make_scrollable_table(display_df, height=600, hide_index=True, use_container_width=True, column_config=None)
                 else:
                     st.warning("No data available")
         
@@ -11392,11 +11771,19 @@ ORDER BY position_value DESC"""
             if selected_curve == "US Treasuries":
                 result = create_yield_curve()
                 if result:
-                    yield_curve, maturities, spot_rates = result
+                    yield_curve, maturities, spot_rates, data_source = result
 
                     # Display combined spot + forward curve
                     st.plotly_chart(yield_curve, use_container_width=True)
-                    st.caption(f"**Data Freshness:** {ATLASFormatter.format_timestamp()} • {ATLASFormatter.get_freshness_badge(2)}")
+
+                    # Show data source indicator
+                    freshness_color = {
+                        "FRED API": "🟢",
+                        "Yahoo Finance": "🟡",
+                        "Fallback Data": "🔴"
+                    }.get(data_source, "🟡")
+
+                    st.caption(f"**Data Freshness:** {ATLASFormatter.format_timestamp()} • {freshness_color} {data_source}")
                     st.info("💡 **Blue line** = Spot yields | **Green dashed** = Implied forward rates showing market expectations")
 
                     # Calculate and display spread
@@ -11447,7 +11834,7 @@ ORDER BY position_value DESC"""
                 bonds_df = fetch_market_watch_data(BOND_YIELDS)
                 if not bonds_df.empty:
                     display_df = create_dynamic_market_table(bonds_df, {'sort_by': sort_by, 'ascending': False})
-                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=400, column_config=None)
+                    make_scrollable_table(display_df, height=400, hide_index=True, use_container_width=True, column_config=None)
                 else:
                     st.warning("No data available")
         
@@ -11459,7 +11846,7 @@ ORDER BY position_value DESC"""
                 credit_df = fetch_market_watch_data(CREDIT_SPREADS)
                 if not credit_df.empty:
                     display_df = create_dynamic_market_table(credit_df, {'sort_by': sort_by, 'ascending': False})
-                    st.dataframe(display_df, use_container_width=True, hide_index=True, height=400, column_config=None)
+                    make_scrollable_table(display_df, height=400, hide_index=True, use_container_width=True, column_config=None)
                     
                     st.markdown("---")
                     st.markdown("#### 📊 Credit Market Interpretation")
@@ -11755,7 +12142,7 @@ ORDER BY position_value DESC"""
                         })
 
                     summary_df = pd.DataFrame(summary_data)
-                    st.dataframe(summary_df, use_container_width=True, hide_index=True, column_config=None)
+                    make_scrollable_table(summary_df, height=400, hide_index=True, use_container_width=True, column_config=None)
 
                     # Methodology notes
                     st.markdown("---")
@@ -12012,12 +12399,13 @@ ORDER BY position_value DESC"""
                         lambda x: f"{x:+.1f}%"
                     )
 
-                    st.dataframe(
+                    make_scrollable_table(
                         trades_only[['Ticker', 'Asset Name', 'Action', 'Shares to Trade',
                                    'Trade Value', 'Current Weight %', 'Optimal Weight %',
                                    'Weight Diff %']],
-                        use_container_width=True,
-                        hide_index=True
+                        height=600,
+                        hide_index=True,
+                        use_container_width=True
                     )
 
                     # Download button
@@ -12518,7 +12906,7 @@ ORDER BY position_value DESC"""
 
                         if comparison_metrics:
                             comp_df = pd.DataFrame(comparison_metrics)
-                            st.dataframe(comp_df, use_container_width=True, hide_index=True, column_config=None)
+                            make_scrollable_table(comp_df, height=400, hide_index=True, use_container_width=True, column_config=None)
 
                     else:
                         # Single security analysis with technical indicators
@@ -12784,7 +13172,7 @@ ORDER BY position_value DESC"""
                     risk_df['% of Portfolio Risk'] = (risk_df['Risk Contribution %'] / total_risk * 100).round(1)
 
                     # Display table
-                    st.dataframe(risk_df, use_container_width=True, hide_index=True)
+                    make_scrollable_table(risk_df, height=600, hide_index=True, use_container_width=True)
 
                     # Visualization
                     fig_risk_contrib = go.Figure(go.Bar(
@@ -13011,10 +13399,11 @@ ORDER BY position_value DESC"""
                 # Display detailed sector table
                 st.markdown("#### 📋 Sector-by-Sector Attribution")
                 sector_table = create_sector_attribution_table(attribution_results['attribution_df'])
-                st.dataframe(
+                make_scrollable_table(
                     sector_table,
-                    use_container_width=True,
+                    height=600,
                     hide_index=True,
+                    use_container_width=True,
                     column_config=None
                 )
 
@@ -13083,10 +13472,11 @@ ORDER BY position_value DESC"""
             quality_df = quality_df.sort_values('Quality Score', ascending=False)
 
             # Display quality scorecard table
-            st.dataframe(
+            make_scrollable_table(
                 quality_df,
-                use_container_width=True,
+                height=600,
                 hide_index=True,
+                use_container_width=True,
                 column_config=None
             )
 
@@ -13347,7 +13737,7 @@ ORDER BY position_value DESC"""
                         display_comparison['Optimal Weight'] = display_comparison['Optimal Weight'].apply(lambda x: f"{x:.2f}%")
                         display_comparison['Difference'] = display_comparison['Difference'].apply(lambda x: f"{x:+.2f}%")
 
-                        st.dataframe(display_comparison, use_container_width=True, hide_index=True)
+                        make_scrollable_table(display_comparison, height=600, hide_index=True, use_container_width=True)
 
                         # Calculate portfolio metrics
                         st.markdown("### 📈 Expected Performance")
@@ -13706,7 +14096,7 @@ ORDER BY position_value DESC"""
                         factor_display = factor_summary.copy()
                         factor_display['Total Contribution'] = factor_display['Total Contribution'].apply(
                             lambda x: f"{x:.4f}")
-                        st.dataframe(factor_display, use_container_width=True, hide_index=True, column_config=None)
+                        make_scrollable_table(factor_display, height=400, hide_index=True, use_container_width=True, column_config=None)
                     
                     if attr_df is not None:
                         st.markdown("### Holdings Attribution")
@@ -13717,7 +14107,7 @@ ORDER BY position_value DESC"""
                             aggfunc='sum'
                         ).round(4)
 
-                        st.dataframe(holdings_attr, use_container_width=True, column_config=None)
+                        make_scrollable_table(holdings_attr, height=600, hide_index=True, use_container_width=True, column_config=None)
                         
                         st.info("""
                         **Positive values**: Holding increases exposure
@@ -14028,7 +14418,7 @@ ORDER BY position_value DESC"""
                                 if st.button("📊 Export Projections", use_container_width=True):
                                     # Export projections to DataFrame
                                     proj_df = pd.DataFrame(projections).T
-                                    st.dataframe(proj_df, use_container_width=True)
+                                    make_scrollable_table(proj_df, height=600, hide_index=True, use_container_width=True)
 
                                     # Offer download
                                     csv = proj_df.to_csv()
@@ -14136,7 +14526,7 @@ ORDER BY position_value DESC"""
                         })
 
                     breakdown_df = pd.DataFrame(breakdown_data)
-                    st.dataframe(breakdown_df, use_container_width=True, hide_index=True)
+                    make_scrollable_table(breakdown_df, height=400, hide_index=True, use_container_width=True)
 
                     # Show excluded methods
                     if consensus_result['excluded_methods']:
@@ -15314,7 +15704,7 @@ ORDER BY position_value DESC"""
                     if col != 'Year':
                         proj_display[col] = proj_display[col].apply(format_large_number)
 
-                st.dataframe(proj_display, use_container_width=True, hide_index=True, column_config=None)
+                make_scrollable_table(proj_display, height=600, hide_index=True, use_container_width=True, column_config=None)
                 
                 st.info("💡 **Technical Note:** D&A and CapEx scale with revenue growth (as they should!)")
                 
@@ -15668,7 +16058,7 @@ ORDER BY position_value DESC"""
                         st.plotly_chart(fig, use_container_width=True)
 
                         # Table
-                        st.dataframe(weights_df, use_container_width=True, hide_index=True)
+                        make_scrollable_table(weights_df, height=400, hide_index=True, use_container_width=True)
 
                         # Current vs Optimal comparison
                         st.markdown("#### 🔄 Current vs Optimal Allocation")
@@ -15689,14 +16079,15 @@ ORDER BY position_value DESC"""
                         comparison_df['Current Weight'] = comparison_df['Current Weight'].fillna(0)
                         comparison_df['Change'] = comparison_df['Optimal Weight'] - comparison_df['Current Weight']
 
-                        st.dataframe(
+                        make_scrollable_table(
                             comparison_df.style.format({
                                 'Current Weight': '{:.2%}',
                                 'Optimal Weight': '{:.2%}',
                                 'Change': '{:+.2%}'
                             }),
-                            use_container_width=True,
-                            hide_index=True
+                            height=400,
+                            hide_index=True,
+                            use_container_width=True
                         )
 
                         st.success("✅ Portfolio optimization completed successfully!")
@@ -15860,7 +16251,7 @@ ORDER BY position_value DESC"""
             for col in ['Equity Return (%)', 'Gross Return (%)', 'Leverage Impact (%)']:
                 display_df[col] = display_df[col].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "")
 
-            st.dataframe(display_df, use_container_width=True, height=400)
+            make_scrollable_table(display_df, height=400, hide_index=True, use_container_width=True)
 
             # Export options
             st.markdown("---")
@@ -16086,7 +16477,7 @@ ORDER BY position_value DESC"""
 
                         if portfolio_df is not None and not portfolio_df.empty:
                             st.success(f"✅ Portfolio synced successfully! Found {len(portfolio_df)} positions")
-                            st.dataframe(portfolio_df, use_container_width=True)
+                            make_scrollable_table(portfolio_df, height=600, hide_index=True, use_container_width=True)
 
                             # Save to session state for use in other ATLAS modules
                             st.session_state['portfolio_data'] = portfolio_df
