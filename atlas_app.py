@@ -2051,20 +2051,180 @@ POPULAR_STOCKS = {
     "TTWO": {"name": "Take-Two", "sector": "Technology", "category": "Gaming"},
     "EA": {"name": "EA", "sector": "Technology", "category": "Gaming"},
 
-    # International ADRs
-    "BABA": {"name": "Alibaba", "sector": "Technology", "category": "International"},
-    "PDD": {"name": "PDD Holdings", "sector": "Technology", "category": "International"},
-    "JD": {"name": "JD.com", "sector": "Technology", "category": "International"},
-    "NIO": {"name": "NIO", "sector": "Consumer Cyclical", "category": "International"},
-    "BIDU": {"name": "Baidu", "sector": "Technology", "category": "International"},
-    "SAP": {"name": "SAP", "sector": "Technology", "category": "International"},
-    "SNY": {"name": "Sanofi", "sector": "Healthcare", "category": "International"},
-    "NVS": {"name": "Novartis", "sector": "Healthcare", "category": "International"},
-    "UL": {"name": "Unilever", "sector": "Consumer Defensive", "category": "International"},
-    "DEO": {"name": "Diageo", "sector": "Consumer Defensive", "category": "International"},
-    "TM": {"name": "Toyota", "sector": "Consumer Cyclical", "category": "International"},
-    "SONY": {"name": "Sony", "sector": "Technology", "category": "International"},
-    "SPOT": {"name": "Spotify", "sector": "Communication Services", "category": "International"}
+    # ===== ADDITIONAL US STOCKS (100+) =====
+
+    # More Banks & Financials
+    "USB": {"name": "US Bancorp", "sector": "Financial Services", "category": "Banking"},
+    "PNC": {"name": "PNC Financial", "sector": "Financial Services", "category": "Banking"},
+    "TFC": {"name": "Truist Financial", "sector": "Financial Services", "category": "Banking"},
+    "SCHW": {"name": "Schwab", "sector": "Financial Services", "category": "Brokerage"},
+    "BX": {"name": "Blackstone", "sector": "Financial Services", "category": "Private Equity"},
+    "KKR": {"name": "KKR", "sector": "Financial Services", "category": "Private Equity"},
+    "CME": {"name": "CME Group", "sector": "Financial Services", "category": "Exchanges"},
+    "ICE": {"name": "ICE", "sector": "Financial Services", "category": "Exchanges"},
+    "AXP": {"name": "American Express", "sector": "Financial Services", "category": "Payments"},
+
+    # More Pharma & Biotech
+    "MRK": {"name": "Merck", "sector": "Healthcare", "category": "Pharma"},
+    "BMY": {"name": "Bristol Myers", "sector": "Healthcare", "category": "Pharma"},
+    "CVS": {"name": "CVS Health", "sector": "Healthcare", "category": "Pharmacy"},
+    "CI": {"name": "Cigna", "sector": "Healthcare", "category": "Managed Care"},
+    "HUM": {"name": "Humana", "sector": "Healthcare", "category": "Managed Care"},
+    "ILMN": {"name": "Illumina", "sector": "Healthcare", "category": "Biotech"},
+    "DHR": {"name": "Danaher", "sector": "Healthcare", "category": "Life Sciences"},
+    "EW": {"name": "Edwards Lifesciences", "sector": "Healthcare", "category": "Medical Devices"},
+    "ZBH": {"name": "Zimmer Biomet", "sector": "Healthcare", "category": "Medical Devices"},
+    "BDX": {"name": "Becton Dickinson", "sector": "Healthcare", "category": "Medical Devices"},
+
+    # More Semiconductors
+    "NXPI": {"name": "NXP Semiconductors", "sector": "Technology", "category": "Semiconductors"},
+    "ADI": {"name": "Analog Devices", "sector": "Technology", "category": "Semiconductors"},
+    "ON": {"name": "ON Semiconductor", "sector": "Technology", "category": "Semiconductors"},
+    "MPWR": {"name": "Monolithic Power", "sector": "Technology", "category": "Semiconductors"},
+    "SWKS": {"name": "Skyworks", "sector": "Technology", "category": "Semiconductors"},
+    "QRVO": {"name": "Qorvo", "sector": "Technology", "category": "Semiconductors"},
+
+    # More Software
+    "DOCU": {"name": "DocuSign", "sector": "Technology", "category": "Software"},
+    "TWLO": {"name": "Twilio", "sector": "Technology", "category": "Software"},
+    "OKTA": {"name": "Okta", "sector": "Technology", "category": "Software"},
+    "MDB": {"name": "MongoDB", "sector": "Technology", "category": "Software"},
+    "FTNT": {"name": "Fortinet", "sector": "Technology", "category": "Cybersecurity"},
+    "IBM": {"name": "IBM", "sector": "Technology", "category": "IT Services"},
+
+    # More Consumer
+    "PM": {"name": "Philip Morris", "sector": "Consumer Defensive", "category": "Tobacco"},
+    "MO": {"name": "Altria", "sector": "Consumer Defensive", "category": "Tobacco"},
+    "MDLZ": {"name": "Mondelez", "sector": "Consumer Defensive", "category": "Food"},
+    "KHC": {"name": "Kraft Heinz", "sector": "Consumer Defensive", "category": "Food"},
+    "GIS": {"name": "General Mills", "sector": "Consumer Defensive", "category": "Food"},
+    "HSY": {"name": "Hershey", "sector": "Consumer Defensive", "category": "Food"},
+    "CL": {"name": "Colgate-Palmolive", "sector": "Consumer Defensive", "category": "Personal Care"},
+    "EL": {"name": "Estee Lauder", "sector": "Consumer Defensive", "category": "Personal Care"},
+    "LULU": {"name": "Lululemon", "sector": "Consumer Cyclical", "category": "Apparel"},
+    "DG": {"name": "Dollar General", "sector": "Consumer Defensive", "category": "Retail"},
+    "DLTR": {"name": "Dollar Tree", "sector": "Consumer Defensive", "category": "Retail"},
+    "YUM": {"name": "Yum Brands", "sector": "Consumer Cyclical", "category": "Restaurants"},
+    "CMG": {"name": "Chipotle", "sector": "Consumer Cyclical", "category": "Restaurants"},
+    "MAR": {"name": "Marriott", "sector": "Consumer Cyclical", "category": "Hotels"},
+    "HLT": {"name": "Hilton", "sector": "Consumer Cyclical", "category": "Hotels"},
+    "BKNG": {"name": "Booking Holdings", "sector": "Consumer Cyclical", "category": "Travel"},
+
+    # More Energy
+    "EOG": {"name": "EOG Resources", "sector": "Energy", "category": "Oil & Gas"},
+    "PXD": {"name": "Pioneer Natural", "sector": "Energy", "category": "Oil & Gas"},
+    "MPC": {"name": "Marathon Petroleum", "sector": "Energy", "category": "Refining"},
+    "PSX": {"name": "Phillips 66", "sector": "Energy", "category": "Refining"},
+    "VLO": {"name": "Valero", "sector": "Energy", "category": "Refining"},
+    "OXY": {"name": "Occidental", "sector": "Energy", "category": "Oil & Gas"},
+    "KMI": {"name": "Kinder Morgan", "sector": "Energy", "category": "Pipelines"},
+    "WMB": {"name": "Williams Companies", "sector": "Energy", "category": "Pipelines"},
+
+    # More Industrials
+    "DE": {"name": "Deere & Company", "sector": "Industrials", "category": "Machinery"},
+    "EMR": {"name": "Emerson Electric", "sector": "Industrials", "category": "Equipment"},
+    "MMM": {"name": "3M", "sector": "Industrials", "category": "Conglomerate"},
+    "HON": {"name": "Honeywell", "sector": "Industrials", "category": "Conglomerate"},
+    "LUV": {"name": "Southwest Airlines", "sector": "Industrials", "category": "Airlines"},
+
+    # More Materials
+    "DOW": {"name": "Dow Inc", "sector": "Basic Materials", "category": "Chemicals"},
+    "NUE": {"name": "Nucor", "sector": "Basic Materials", "category": "Steel"},
+    "ALB": {"name": "Albemarle", "sector": "Basic Materials", "category": "Chemicals"},
+
+    # More Real Estate
+    "O": {"name": "Realty Income", "sector": "Real Estate", "category": "REITs"},
+    "DLR": {"name": "Digital Realty", "sector": "Real Estate", "category": "REITs"},
+    "WELL": {"name": "Welltower", "sector": "Real Estate", "category": "REITs"},
+    "AVB": {"name": "AvalonBay", "sector": "Real Estate", "category": "REITs"},
+
+    # More Utilities
+    "EXC": {"name": "Exelon", "sector": "Utilities", "category": "Utilities"},
+    "XEL": {"name": "Xcel Energy", "sector": "Utilities", "category": "Utilities"},
+    "SRE": {"name": "Sempra Energy", "sector": "Utilities", "category": "Utilities"},
+    "PCG": {"name": "PG&E", "sector": "Utilities", "category": "Utilities"},
+
+    # More Insurance
+    "AFL": {"name": "Aflac", "sector": "Financial Services", "category": "Insurance"},
+    "ALL": {"name": "Allstate", "sector": "Financial Services", "category": "Insurance"},
+    "PRU": {"name": "Prudential", "sector": "Financial Services", "category": "Insurance"},
+
+    # ===== INTERNATIONAL - EUROPE (50+) =====
+
+    # United Kingdom
+    "HSBC": {"name": "HSBC Holdings", "sector": "Financial Services", "category": "International - UK"},
+    "AZN": {"name": "AstraZeneca", "sector": "Healthcare", "category": "International - UK"},
+    "GSK": {"name": "GSK", "sector": "Healthcare", "category": "International - UK"},
+    "BP": {"name": "BP", "sector": "Energy", "category": "International - UK"},
+    "SHEL": {"name": "Shell", "sector": "Energy", "category": "International - UK"},
+    "RIO": {"name": "Rio Tinto", "sector": "Basic Materials", "category": "International - UK"},
+    "BTI": {"name": "British American Tobacco", "sector": "Consumer Defensive", "category": "International - UK"},
+
+    # France
+    "TTE": {"name": "TotalEnergies", "sector": "Energy", "category": "International - France"},
+
+    # Spain
+    "SAN": {"name": "Banco Santander", "sector": "Financial Services", "category": "International - Spain"},
+
+    # Italy
+    "RACE": {"name": "Ferrari", "sector": "Consumer Cyclical", "category": "International - Italy"},
+
+    # Denmark
+    "NVO": {"name": "Novo Nordisk", "sector": "Healthcare", "category": "International - Denmark"},
+
+    # Sweden/Finland
+    "ERIC": {"name": "Ericsson", "sector": "Technology", "category": "International - Sweden"},
+    "NOK": {"name": "Nokia", "sector": "Technology", "category": "International - Finland"},
+
+    # ===== INTERNATIONAL - ASIA PACIFIC (70+) =====
+
+    # Japan
+    "NTDOY": {"name": "Nintendo", "sector": "Communication Services", "category": "International - Japan"},
+    "HMC": {"name": "Honda Motor", "sector": "Consumer Cyclical", "category": "International - Japan"},
+    "MUFG": {"name": "Mitsubishi UFJ", "sector": "Financial Services", "category": "International - Japan"},
+
+    # China & Hong Kong
+    "BABA": {"name": "Alibaba", "sector": "Technology", "category": "International - China"},
+    "TCEHY": {"name": "Tencent", "sector": "Technology", "category": "International - China"},
+    "PDD": {"name": "PDD Holdings", "sector": "Technology", "category": "International - China"},
+    "JD": {"name": "JD.com", "sector": "Technology", "category": "International - China"},
+    "BIDU": {"name": "Baidu", "sector": "Technology", "category": "International - China"},
+    "LI": {"name": "Li Auto", "sector": "Consumer Cyclical", "category": "International - China"},
+    "XPEV": {"name": "XPeng", "sector": "Consumer Cyclical", "category": "International - China"},
+    "BYDDY": {"name": "BYD", "sector": "Consumer Cyclical", "category": "International - China"},
+    "YUMC": {"name": "Yum China", "sector": "Consumer Cyclical", "category": "International - China"},
+
+    # India
+    "INFY": {"name": "Infosys", "sector": "Technology", "category": "International - India"},
+    "WIT": {"name": "Wipro", "sector": "Technology", "category": "International - India"},
+    "HDB": {"name": "HDFC Bank", "sector": "Financial Services", "category": "International - India"},
+    "IBN": {"name": "ICICI Bank", "sector": "Financial Services", "category": "International - India"},
+
+    # Australia
+    "BHP": {"name": "BHP Group", "sector": "Basic Materials", "category": "International - Australia"},
+
+    # ===== INTERNATIONAL - LATIN AMERICA (20+) =====
+
+    # Brazil
+    "PBR": {"name": "Petrobras", "sector": "Energy", "category": "International - Brazil"},
+    "VALE": {"name": "Vale", "sector": "Basic Materials", "category": "International - Brazil"},
+    "ITUB": {"name": "Itau Unibanco", "sector": "Financial Services", "category": "International - Brazil"},
+    "BBD": {"name": "Banco Bradesco", "sector": "Financial Services", "category": "International - Brazil"},
+    "ABEV": {"name": "Ambev", "sector": "Consumer Defensive", "category": "International - Brazil"},
+
+    # Mexico
+    "AMX": {"name": "America Movil", "sector": "Communication Services", "category": "International - Mexico"},
+
+    # ===== ALREADY LISTED INTERNATIONAL =====
+    "NIO": {"name": "NIO", "sector": "Consumer Cyclical", "category": "International - China"},
+    "SAP": {"name": "SAP", "sector": "Technology", "category": "International - Germany"},
+    "SNY": {"name": "Sanofi", "sector": "Healthcare", "category": "International - France"},
+    "NVS": {"name": "Novartis", "sector": "Healthcare", "category": "International - Switzerland"},
+    "UL": {"name": "Unilever", "sector": "Consumer Defensive", "category": "International - UK"},
+    "DEO": {"name": "Diageo", "sector": "Consumer Defensive", "category": "International - UK"},
+    "TM": {"name": "Toyota", "sector": "Consumer Cyclical", "category": "International - Japan"},
+    "SONY": {"name": "Sony", "sector": "Technology", "category": "International - Japan"},
+    "SPOT": {"name": "Spotify", "sector": "Communication Services", "category": "International - Sweden"}
 }
 
 # EXPANDED: Popular ETFs (150+ funds across all categories)
