@@ -1742,8 +1742,10 @@ CRYPTOCURRENCIES = {
 }
 
 # FX Pairs (NEW CATEGORY)
+# CURRENCY PAIRS - BLOOMBERG KILLER EDITION
+# 20 → 50+ FX pairs across all major categories
 FX_PAIRS = {
-    # Major Pairs
+    # ===== MAJOR PAIRS (7) =====
     "EURUSD=X": {"name": "EUR/USD", "category": "Major", "region": "Global"},
     "GBPUSD=X": {"name": "GBP/USD", "category": "Major", "region": "Global"},
     "USDJPY=X": {"name": "USD/JPY", "category": "Major", "region": "Global"},
@@ -1752,22 +1754,62 @@ FX_PAIRS = {
     "USDCHF=X": {"name": "USD/CHF", "category": "Major", "region": "Global"},
     "NZDUSD=X": {"name": "NZD/USD", "category": "Major", "region": "Global"},
 
-    # Cross Pairs
-    "EURGBP=X": {"name": "EUR/GBP", "category": "Cross", "region": "Europe"},
-    "EURJPY=X": {"name": "EUR/JPY", "category": "Cross", "region": "Global"},
-    "GBPJPY=X": {"name": "GBP/JPY", "category": "Cross", "region": "Global"},
-    "AUDJPY=X": {"name": "AUD/JPY", "category": "Cross", "region": "Asia-Pacific"},
-    "EURAUD=X": {"name": "EUR/AUD", "category": "Cross", "region": "Global"},
+    # ===== EUR CROSS PAIRS (10) =====
+    "EURGBP=X": {"name": "EUR/GBP", "category": "EUR Cross", "region": "Europe"},
+    "EURJPY=X": {"name": "EUR/JPY", "category": "EUR Cross", "region": "Global"},
+    "EURAUD=X": {"name": "EUR/AUD", "category": "EUR Cross", "region": "Global"},
+    "EURNZD=X": {"name": "EUR/NZD", "category": "EUR Cross", "region": "Global"},
+    "EURCAD=X": {"name": "EUR/CAD", "category": "EUR Cross", "region": "Global"},
+    "EURCHF=X": {"name": "EUR/CHF", "category": "EUR Cross", "region": "Europe"},
+    "EURSEK=X": {"name": "EUR/SEK", "category": "EUR Cross", "region": "Europe"},
+    "EURNOK=X": {"name": "EUR/NOK", "category": "EUR Cross", "region": "Europe"},
+    "EURDKK=X": {"name": "EUR/DKK", "category": "EUR Cross", "region": "Europe"},
+    "EURPLN=X": {"name": "EUR/PLN", "category": "EUR Cross", "region": "Europe"},
 
-    # Emerging Market
-    "USDMXN=X": {"name": "USD/MXN", "category": "Emerging", "region": "Americas"},
-    "USDBRL=X": {"name": "USD/BRL", "category": "Emerging", "region": "Americas"},
-    "USDCNY=X": {"name": "USD/CNY", "category": "Emerging", "region": "Asia"},
-    "USDINR=X": {"name": "USD/INR", "category": "Emerging", "region": "Asia"},
-    "USDKRW=X": {"name": "USD/KRW", "category": "Emerging", "region": "Asia"},
-    "USDTRY=X": {"name": "USD/TRY", "category": "Emerging", "region": "Middle East"},
-    "USDZAR=X": {"name": "USD/ZAR", "category": "Emerging", "region": "Africa"},
-    "USDSGD=X": {"name": "USD/SGD", "category": "Emerging", "region": "Asia"}
+    # ===== GBP CROSS PAIRS (5) =====
+    "GBPJPY=X": {"name": "GBP/JPY", "category": "GBP Cross", "region": "Global"},
+    "GBPAUD=X": {"name": "GBP/AUD", "category": "GBP Cross", "region": "Global"},
+    "GBPCAD=X": {"name": "GBP/CAD", "category": "GBP Cross", "region": "Global"},
+    "GBPCHF=X": {"name": "GBP/CHF", "category": "GBP Cross", "region": "Europe"},
+    "GBPNZD=X": {"name": "GBP/NZD", "category": "GBP Cross", "region": "Global"},
+
+    # ===== JPY CROSS PAIRS (5) =====
+    "AUDJPY=X": {"name": "AUD/JPY", "category": "JPY Cross", "region": "Asia-Pacific"},
+    "CADJPY=X": {"name": "CAD/JPY", "category": "JPY Cross", "region": "Global"},
+    "CHFJPY=X": {"name": "CHF/JPY", "category": "JPY Cross", "region": "Global"},
+    "NZDJPY=X": {"name": "NZD/JPY", "category": "JPY Cross", "region": "Asia-Pacific"},
+    "SGDJPY=X": {"name": "SGD/JPY", "category": "JPY Cross", "region": "Asia"},
+
+    # ===== OTHER CROSS PAIRS (5) =====
+    "AUDCAD=X": {"name": "AUD/CAD", "category": "Commodity Cross", "region": "Global"},
+    "AUDNZD=X": {"name": "AUD/NZD", "category": "Commodity Cross", "region": "Pacific"},
+    "CADCHF=X": {"name": "CAD/CHF", "category": "Cross", "region": "Global"},
+    "NZDCAD=X": {"name": "NZD/CAD", "category": "Commodity Cross", "region": "Global"},
+    "AUDCHF=X": {"name": "AUD/CHF", "category": "Cross", "region": "Global"},
+
+    # ===== EMERGING MARKET - ASIA (8) =====
+    "USDCNY=X": {"name": "USD/CNY", "category": "EM - Asia", "region": "China"},
+    "USDHKD=X": {"name": "USD/HKD", "category": "EM - Asia", "region": "Hong Kong"},
+    "USDINR=X": {"name": "USD/INR", "category": "EM - Asia", "region": "India"},
+    "USDKRW=X": {"name": "USD/KRW", "category": "EM - Asia", "region": "South Korea"},
+    "USDSGD=X": {"name": "USD/SGD", "category": "EM - Asia", "region": "Singapore"},
+    "USDTHB=X": {"name": "USD/THB", "category": "EM - Asia", "region": "Thailand"},
+    "USDPHP=X": {"name": "USD/PHP", "category": "EM - Asia", "region": "Philippines"},
+    "USDIDR=X": {"name": "USD/IDR", "category": "EM - Asia", "region": "Indonesia"},
+
+    # ===== EMERGING MARKET - LATAM (4) =====
+    "USDBRL=X": {"name": "USD/BRL", "category": "EM - LATAM", "region": "Brazil"},
+    "USDMXN=X": {"name": "USD/MXN", "category": "EM - LATAM", "region": "Mexico"},
+    "USDCLP=X": {"name": "USD/CLP", "category": "EM - LATAM", "region": "Chile"},
+    "USDARS=X": {"name": "USD/ARS", "category": "EM - LATAM", "region": "Argentina"},
+
+    # ===== EMERGING MARKET - EMEA (6) =====
+    "USDTRY=X": {"name": "USD/TRY", "category": "EM - EMEA", "region": "Turkey"},
+    "USDZAR=X": {"name": "USD/ZAR", "category": "EM - EMEA", "region": "South Africa"},
+    "USDRUB=X": {"name": "USD/RUB", "category": "EM - EMEA", "region": "Russia"},
+    "USDPLN=X": {"name": "USD/PLN", "category": "EM - EMEA", "region": "Poland"},
+    "USDHUF=X": {"name": "USD/HUF", "category": "EM - EMEA", "region": "Hungary"},
+    "USDCZK=X": {"name": "USD/CZK", "category": "EM - EMEA", "region": "Czech Republic"}
 }
 
 # EXPANDED: Bond Yields and Rates - COMPREHENSIVE GLOBAL COVERAGE
