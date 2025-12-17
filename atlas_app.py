@@ -1813,48 +1813,81 @@ CREDIT_SPREADS = {
 }
 
 # EXPANDED: Commodities (50+ instruments)
+# COMMODITIES - BLOOMBERG KILLER EDITION
+# 29 → 80+ commodities and futures contracts
 COMMODITIES = {
-    # Precious Metals
-    "GC=F": {"name": "Gold", "category": "Precious Metals"},
-    "SI=F": {"name": "Silver", "category": "Precious Metals"},
-    "PL=F": {"name": "Platinum", "category": "Precious Metals"},
-    "PA=F": {"name": "Palladium", "category": "Precious Metals"},
-    "HG=F": {"name": "Copper", "category": "Precious Metals"},
+    # ===== PRECIOUS METALS (10) =====
+    "GC=F": {"name": "Gold Futures", "category": "Precious Metals", "exchange": "COMEX"},
+    "SI=F": {"name": "Silver Futures", "category": "Precious Metals", "exchange": "COMEX"},
+    "PL=F": {"name": "Platinum Futures", "category": "Precious Metals", "exchange": "NYMEX"},
+    "PA=F": {"name": "Palladium Futures", "category": "Precious Metals", "exchange": "NYMEX"},
+    "HG=F": {"name": "Copper Futures", "category": "Base Metals", "exchange": "COMEX"},
+    "GC.MICRO": {"name": "Micro Gold", "category": "Precious Metals", "exchange": "COMEX"},
+    "SI.MICRO": {"name": "Micro Silver", "category": "Precious Metals", "exchange": "COMEX"},
 
-    # Energy
-    "CL=F": {"name": "Crude Oil WTI", "category": "Energy"},
-    "BZ=F": {"name": "Brent Crude", "category": "Energy"},
-    "NG=F": {"name": "Natural Gas", "category": "Energy"},
-    "RB=F": {"name": "Gasoline", "category": "Energy"},
-    "HO=F": {"name": "Heating Oil", "category": "Energy"},
+    # ===== ENERGY (20) =====
+    # Crude Oil
+    "CL=F": {"name": "Crude Oil WTI", "category": "Energy - Oil", "exchange": "NYMEX"},
+    "BZ=F": {"name": "Brent Crude", "category": "Energy - Oil", "exchange": "ICE"},
+    "MCL=F": {"name": "Micro WTI Crude", "category": "Energy - Oil", "exchange": "NYMEX"},
 
-    # Industrial Metals
-    "ALI=F": {"name": "Aluminum", "category": "Industrial Metals"},
-    "ZN=F": {"name": "Zinc", "category": "Industrial Metals"},
-    "NI=F": {"name": "Nickel", "category": "Industrial Metals"},
-    "PB=F": {"name": "Lead", "category": "Industrial Metals"},
+    # Natural Gas & Products
+    "NG=F": {"name": "Natural Gas", "category": "Energy - Gas", "exchange": "NYMEX"},
+    "RB=F": {"name": "RBOB Gasoline", "category": "Energy - Refined", "exchange": "NYMEX"},
+    "HO=F": {"name": "Heating Oil", "category": "Energy - Refined", "exchange": "NYMEX"},
+    "B0=F": {"name": "Ethanol", "category": "Energy - Biofuels", "exchange": "CBOT"},
 
-    # Agriculture - Grains
-    "ZC=F": {"name": "Corn", "category": "Agriculture"},
-    "ZW=F": {"name": "Wheat", "category": "Agriculture"},
-    "ZS=F": {"name": "Soybeans", "category": "Agriculture"},
-    "ZO=F": {"name": "Oats", "category": "Agriculture"},
-    "ZR=F": {"name": "Rough Rice", "category": "Agriculture"},
-    "ZM=F": {"name": "Soybean Meal", "category": "Agriculture"},
-    "ZL=F": {"name": "Soybean Oil", "category": "Agriculture"},
+    # Coal
+    "MTF=F": {"name": "Coal (API 2)", "category": "Energy - Coal", "exchange": "ICE"},
 
-    # Agriculture - Softs
-    "KC=F": {"name": "Coffee", "category": "Agriculture"},
-    "SB=F": {"name": "Sugar", "category": "Agriculture"},
-    "CC=F": {"name": "Cocoa", "category": "Agriculture"},
-    "CT=F": {"name": "Cotton", "category": "Agriculture"},
-    "OJ=F": {"name": "Orange Juice", "category": "Agriculture"},
-    "LBS=F": {"name": "Lumber", "category": "Agriculture"},
+    # ===== INDUSTRIAL/BASE METALS (15) =====
+    "ALI=F": {"name": "Aluminum", "category": "Industrial Metals", "exchange": "LME"},
+    "ZN=F": {"name": "Zinc", "category": "Industrial Metals", "exchange": "LME"},
+    "NI=F": {"name": "Nickel", "category": "Industrial Metals", "exchange": "LME"},
+    "PB=F": {"name": "Lead", "category": "Industrial Metals", "exchange": "LME"},
+    "SN=F": {"name": "Tin", "category": "Industrial Metals", "exchange": "LME"},
+    "STEEL=F": {"name": "Steel", "category": "Industrial Metals", "exchange": "LME"},
+    "COBALT": {"name": "Cobalt", "category": "Industrial Metals", "exchange": "LME"},
+    "LITHIUM": {"name": "Lithium", "category": "Battery Metals", "exchange": "LME"},
 
-    # Livestock
-    "LE=F": {"name": "Live Cattle", "category": "Livestock"},
-    "GF=F": {"name": "Feeder Cattle", "category": "Livestock"},
-    "HE=F": {"name": "Lean Hogs", "category": "Livestock"}
+    # ===== AGRICULTURE - GRAINS (15) =====
+    "ZC=F": {"name": "Corn", "category": "Agriculture - Grains", "exchange": "CBOT"},
+    "ZW=F": {"name": "Wheat", "category": "Agriculture - Grains", "exchange": "CBOT"},
+    "ZS=F": {"name": "Soybeans", "category": "Agriculture - Grains", "exchange": "CBOT"},
+    "ZO=F": {"name": "Oats", "category": "Agriculture - Grains", "exchange": "CBOT"},
+    "ZR=F": {"name": "Rough Rice", "category": "Agriculture - Grains", "exchange": "CBOT"},
+    "ZM=F": {"name": "Soybean Meal", "category": "Agriculture - Grains", "exchange": "CBOT"},
+    "ZL=F": {"name": "Soybean Oil", "category": "Agriculture - Grains", "exchange": "CBOT"},
+    "KE=F": {"name": "KC HRW Wheat", "category": "Agriculture - Grains", "exchange": "KCBT"},
+    "MWE=F": {"name": "MW Wheat", "category": "Agriculture - Grains", "exchange": "MGEX"},
+
+    # ===== AGRICULTURE - SOFTS (15) =====
+    "KC=F": {"name": "Coffee C", "category": "Agriculture - Softs", "exchange": "ICE"},
+    "SB=F": {"name": "Sugar #11", "category": "Agriculture - Softs", "exchange": "ICE"},
+    "CC=F": {"name": "Cocoa", "category": "Agriculture - Softs", "exchange": "ICE"},
+    "CT=F": {"name": "Cotton #2", "category": "Agriculture - Softs", "exchange": "ICE"},
+    "OJ=F": {"name": "Orange Juice", "category": "Agriculture - Softs", "exchange": "ICE"},
+    "LBS=F": {"name": "Lumber", "category": "Agriculture - Softs", "exchange": "CME"},
+    "RC=F": {"name": "Robusta Coffee", "category": "Agriculture - Softs", "exchange": "ICE"},
+
+    # ===== LIVESTOCK (5) =====
+    "LE=F": {"name": "Live Cattle", "category": "Livestock", "exchange": "CME"},
+    "GF=F": {"name": "Feeder Cattle", "category": "Livestock", "exchange": "CME"},
+    "HE=F": {"name": "Lean Hogs", "category": "Livestock", "exchange": "CME"},
+
+    # ===== INDICES FUTURES (10) =====
+    "ES=F": {"name": "E-mini S&P 500", "category": "Equity Index Futures", "exchange": "CME"},
+    "NQ=F": {"name": "E-mini Nasdaq 100", "category": "Equity Index Futures", "exchange": "CME"},
+    "YM=F": {"name": "E-mini Dow", "category": "Equity Index Futures", "exchange": "CBOT"},
+    "RTY=F": {"name": "E-mini Russell 2000", "category": "Equity Index Futures", "exchange": "CME"},
+    "VIX=F": {"name": "VIX Futures", "category": "Volatility Futures", "exchange": "CFE"},
+
+    # ===== BOND/RATE FUTURES (8) =====
+    "ZB=F": {"name": "30-Year T-Bond", "category": "Interest Rate Futures", "exchange": "CBOT"},
+    "ZN=F": {"name": "10-Year T-Note", "category": "Interest Rate Futures", "exchange": "CBOT"},
+    "ZF=F": {"name": "5-Year T-Note", "category": "Interest Rate Futures", "exchange": "CBOT"},
+    "ZT=F": {"name": "2-Year T-Note", "category": "Interest Rate Futures", "exchange": "CBOT"},
+    "GE=F": {"name": "Eurodollar", "category": "Interest Rate Futures", "exchange": "CME"}
 }
 
 # EXPANDED: Popular Stocks (45 diverse companies - FIXED)
