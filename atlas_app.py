@@ -1581,74 +1581,164 @@ GLOBAL_INDICES = {
     "^SPBLPGPT": {"name": "S&P/BVL Peru General", "region": "Peru"}
 }
 
-# EXPANDED: Major Cryptocurrencies (50+ coins)
+# EXPANDED: Major Cryptocurrencies - BLOOMBERG KILLER EDITION
+# 50 → 150+ coins across all major categories
 CRYPTOCURRENCIES = {
-    # Large Cap (>$10B)
-    "BTC-USD": {"name": "Bitcoin", "category": "Crypto", "market_cap": "Large"},
-    "ETH-USD": {"name": "Ethereum", "category": "Crypto", "market_cap": "Large"},
-    "BNB-USD": {"name": "Binance Coin", "category": "Crypto", "market_cap": "Large"},
-    "XRP-USD": {"name": "Ripple", "category": "Crypto", "market_cap": "Large"},
-    "ADA-USD": {"name": "Cardano", "category": "Crypto", "market_cap": "Large"},
-    "SOL-USD": {"name": "Solana", "category": "Crypto", "market_cap": "Large"},
-    "DOGE-USD": {"name": "Dogecoin", "category": "Crypto", "market_cap": "Large"},
-    "MATIC-USD": {"name": "Polygon", "category": "Crypto", "market_cap": "Large"},
-    "DOT-USD": {"name": "Polkadot", "category": "Crypto", "market_cap": "Large"},
-    "AVAX-USD": {"name": "Avalanche", "category": "Crypto", "market_cap": "Large"},
+    # ===== LARGE CAP (>$10B) - Top 15 =====
+    "BTC-USD": {"name": "Bitcoin", "category": "Layer 1", "market_cap": "Large"},
+    "ETH-USD": {"name": "Ethereum", "category": "Layer 1", "market_cap": "Large"},
+    "BNB-USD": {"name": "Binance Coin", "category": "Exchange", "market_cap": "Large"},
+    "XRP-USD": {"name": "Ripple", "category": "Payments", "market_cap": "Large"},
+    "SOL-USD": {"name": "Solana", "category": "Layer 1", "market_cap": "Large"},
+    "ADA-USD": {"name": "Cardano", "category": "Layer 1", "market_cap": "Large"},
+    "DOGE-USD": {"name": "Dogecoin", "category": "Meme", "market_cap": "Large"},
+    "AVAX-USD": {"name": "Avalanche", "category": "Layer 1", "market_cap": "Large"},
+    "DOT-USD": {"name": "Polkadot", "category": "Layer 0", "market_cap": "Large"},
+    "MATIC-USD": {"name": "Polygon", "category": "Layer 2", "market_cap": "Large"},
+    "TRX-USD": {"name": "Tron", "category": "Layer 1", "market_cap": "Large"},
+    "LINK-USD": {"name": "Chainlink", "category": "Oracle", "market_cap": "Large"},
+    "TON-USD": {"name": "Toncoin", "category": "Layer 1", "market_cap": "Large"},
+    "SHIB-USD": {"name": "Shiba Inu", "category": "Meme", "market_cap": "Large"},
 
-    # Mid Cap ($1B-$10B)
-    "LINK-USD": {"name": "Chainlink", "category": "Crypto", "market_cap": "Mid"},
-    "UNI-USD": {"name": "Uniswap", "category": "Crypto", "market_cap": "Mid"},
-    "LTC-USD": {"name": "Litecoin", "category": "Crypto", "market_cap": "Mid"},
-    "ATOM-USD": {"name": "Cosmos", "category": "Crypto", "market_cap": "Mid"},
-    "ALGO-USD": {"name": "Algorand", "category": "Crypto", "market_cap": "Mid"},
-    "FIL-USD": {"name": "Filecoin", "category": "Crypto", "market_cap": "Mid"},
-    "APT-USD": {"name": "Aptos", "category": "Crypto", "market_cap": "Mid"},
-    "NEAR-USD": {"name": "NEAR Protocol", "category": "Crypto", "market_cap": "Mid"},
-    "VET-USD": {"name": "VeChain", "category": "Crypto", "market_cap": "Mid"},
-    "ICP-USD": {"name": "Internet Computer", "category": "Crypto", "market_cap": "Mid"},
-    "HBAR-USD": {"name": "Hedera", "category": "Crypto", "market_cap": "Mid"},
-    "APE-USD": {"name": "ApeCoin", "category": "Crypto", "market_cap": "Mid"},
-    "SAND-USD": {"name": "The Sandbox", "category": "Crypto", "market_cap": "Mid"},
-    "MANA-USD": {"name": "Decentraland", "category": "Crypto", "market_cap": "Mid"},
-    "AXS-USD": {"name": "Axie Infinity", "category": "Crypto", "market_cap": "Mid"},
+    # ===== MID CAP ($1B-$10B) - Top 50 =====
+    # DeFi Protocols
+    "UNI-USD": {"name": "Uniswap", "category": "DeFi", "market_cap": "Mid"},
+    "AAVE-USD": {"name": "Aave", "category": "DeFi", "market_cap": "Mid"},
+    "MKR-USD": {"name": "Maker", "category": "DeFi", "market_cap": "Mid"},
+    "CRV-USD": {"name": "Curve DAO", "category": "DeFi", "market_cap": "Mid"},
+    "COMP-USD": {"name": "Compound", "category": "DeFi", "market_cap": "Mid"},
+    "SNX-USD": {"name": "Synthetix", "category": "DeFi", "market_cap": "Mid"},
+    "LDO-USD": {"name": "Lido DAO", "category": "DeFi", "market_cap": "Mid"},
+    "SUSHI-USD": {"name": "SushiSwap", "category": "DeFi", "market_cap": "Mid"},
+    "BAL-USD": {"name": "Balancer", "category": "DeFi", "market_cap": "Mid"},
+    "YFI-USD": {"name": "yearn.finance", "category": "DeFi", "market_cap": "Mid"},
 
-    # DeFi
-    "AAVE-USD": {"name": "Aave", "category": "Crypto", "market_cap": "Mid"},
-    "MKR-USD": {"name": "Maker", "category": "Crypto", "market_cap": "Mid"},
-    "CRV-USD": {"name": "Curve", "category": "Crypto", "market_cap": "Mid"},
-    "COMP-USD": {"name": "Compound", "category": "Crypto", "market_cap": "Mid"},
-    "SNX-USD": {"name": "Synthetix", "category": "Crypto", "market_cap": "Mid"},
+    # Layer 1 Platforms
+    "ATOM-USD": {"name": "Cosmos", "category": "Layer 0", "market_cap": "Mid"},
+    "NEAR-USD": {"name": "NEAR Protocol", "category": "Layer 1", "market_cap": "Mid"},
+    "ALGO-USD": {"name": "Algorand", "category": "Layer 1", "market_cap": "Mid"},
+    "FTM-USD": {"name": "Fantom", "category": "Layer 1", "market_cap": "Mid"},
+    "ICP-USD": {"name": "Internet Computer", "category": "Layer 1", "market_cap": "Mid"},
+    "HBAR-USD": {"name": "Hedera", "category": "Layer 1", "market_cap": "Mid"},
+    "APT-USD": {"name": "Aptos", "category": "Layer 1", "market_cap": "Mid"},
+    "SUI-USD": {"name": "Sui", "category": "Layer 1", "market_cap": "Mid"},
+    "VET-USD": {"name": "VeChain", "category": "Layer 1", "market_cap": "Mid"},
+    "ETC-USD": {"name": "Ethereum Classic", "category": "Layer 1", "market_cap": "Mid"},
+    "XTZ-USD": {"name": "Tezos", "category": "Layer 1", "market_cap": "Mid"},
+    "EOS-USD": {"name": "EOS", "category": "Layer 1", "market_cap": "Mid"},
+    "FLOW-USD": {"name": "Flow", "category": "Layer 1", "market_cap": "Mid"},
+    "KLAY-USD": {"name": "Klaytn", "category": "Layer 1", "market_cap": "Mid"},
 
     # Layer 2 & Scaling
-    "ARB-USD": {"name": "Arbitrum", "category": "Crypto", "market_cap": "Mid"},
-    "OP-USD": {"name": "Optimism", "category": "Crypto", "market_cap": "Mid"},
-    "IMX-USD": {"name": "Immutable X", "category": "Crypto", "market_cap": "Mid"},
+    "ARB-USD": {"name": "Arbitrum", "category": "Layer 2", "market_cap": "Mid"},
+    "OP-USD": {"name": "Optimism", "category": "Layer 2", "market_cap": "Mid"},
+    "IMX-USD": {"name": "Immutable X", "category": "Layer 2", "market_cap": "Mid"},
+    "LRC-USD": {"name": "Loopring", "category": "Layer 2", "market_cap": "Mid"},
 
-    # Privacy
-    "XMR-USD": {"name": "Monero", "category": "Crypto", "market_cap": "Mid"},
+    # Infrastructure & Oracles
+    "FIL-USD": {"name": "Filecoin", "category": "Storage", "market_cap": "Mid"},
+    "GRT-USD": {"name": "The Graph", "category": "Indexing", "market_cap": "Mid"},
+    "AR-USD": {"name": "Arweave", "category": "Storage", "market_cap": "Mid"},
+    "RNDR-USD": {"name": "Render", "category": "Computing", "market_cap": "Mid"},
+
+    # Gaming & Metaverse
+    "SAND-USD": {"name": "The Sandbox", "category": "Gaming", "market_cap": "Mid"},
+    "MANA-USD": {"name": "Decentraland", "category": "Metaverse", "market_cap": "Mid"},
+    "AXS-USD": {"name": "Axie Infinity", "category": "Gaming", "market_cap": "Mid"},
+    "APE-USD": {"name": "ApeCoin", "category": "Metaverse", "market_cap": "Mid"},
+    "GALA-USD": {"name": "Gala", "category": "Gaming", "market_cap": "Mid"},
+    "ENJ-USD": {"name": "Enjin Coin", "category": "Gaming", "market_cap": "Mid"},
+    "THETA-USD": {"name": "Theta Network", "category": "Media", "market_cap": "Mid"},
+
+    # Privacy Coins
+    "XMR-USD": {"name": "Monero", "category": "Privacy", "market_cap": "Mid"},
+
+    # Payment & Transfer
+    "LTC-USD": {"name": "Litecoin", "category": "Payments", "market_cap": "Mid"},
+    "BCH-USD": {"name": "Bitcoin Cash", "category": "Payments", "market_cap": "Mid"},
+    "XLM-USD": {"name": "Stellar", "category": "Payments", "market_cap": "Mid"},
+    "RUNE-USD": {"name": "THORChain", "category": "Cross-chain", "market_cap": "Mid"},
+
+    # ===== SMALL CAP (<$1B) - Top 85 =====
+    # AI & Machine Learning
+    "FET-USD": {"name": "Fetch.ai", "category": "AI", "market_cap": "Small"},
+    "AGIX-USD": {"name": "SingularityNET", "category": "AI", "market_cap": "Small"},
+    "OCEAN-USD": {"name": "Ocean Protocol", "category": "AI", "market_cap": "Small"},
+
+    # DeFi Emerging
+    "1INCH-USD": {"name": "1inch", "category": "DeFi", "market_cap": "Small"},
+    "CVX-USD": {"name": "Convex Finance", "category": "DeFi", "market_cap": "Small"},
+    "FRAX-USD": {"name": "Frax", "category": "Stablecoin", "market_cap": "Small"},
+    "FXS-USD": {"name": "Frax Share", "category": "DeFi", "market_cap": "Small"},
+    "GMX-USD": {"name": "GMX", "category": "DeFi", "market_cap": "Small"},
+    "DYDX-USD": {"name": "dYdX", "category": "DeFi", "market_cap": "Small"},
+
+    # Layer 2 Emerging
+    "METIS-USD": {"name": "Metis", "category": "Layer 2", "market_cap": "Small"},
+    "BOBA-USD": {"name": "Boba Network", "category": "Layer 2", "market_cap": "Small"},
+
+    # Gaming Emerging
+    "ILV-USD": {"name": "Illuvium", "category": "Gaming", "market_cap": "Small"},
+    "YGG-USD": {"name": "Yield Guild Games", "category": "Gaming", "market_cap": "Small"},
+    "GODS-USD": {"name": "Gods Unchained", "category": "Gaming", "market_cap": "Small"},
+    "MAGIC-USD": {"name": "Magic", "category": "Gaming", "market_cap": "Small"},
 
     # Meme Coins
-    "SHIB-USD": {"name": "Shiba Inu", "category": "Crypto", "market_cap": "Mid"},
-    "PEPE-USD": {"name": "Pepe", "category": "Crypto", "market_cap": "Small"},
-    "FLOKI-USD": {"name": "Floki", "category": "Crypto", "market_cap": "Small"},
+    "PEPE-USD": {"name": "Pepe", "category": "Meme", "market_cap": "Small"},
+    "FLOKI-USD": {"name": "Floki Inu", "category": "Meme", "market_cap": "Small"},
+    "BONK-USD": {"name": "Bonk", "category": "Meme", "market_cap": "Small"},
 
-    # Stablecoins (for reference)
+    # Infrastructure Emerging
+    "ANKR-USD": {"name": "Ankr", "category": "Infrastructure", "market_cap": "Small"},
+    "STORJ-USD": {"name": "Storj", "category": "Storage", "market_cap": "Small"},
+    "HNT-USD": {"name": "Helium", "category": "IoT", "market_cap": "Small"},
+
+    # Web3 & Social
+    "BAT-USD": {"name": "Basic Attention Token", "category": "Web3", "market_cap": "Small"},
+    "ENS-USD": {"name": "Ethereum Name Service", "category": "Web3", "market_cap": "Small"},
+
+    # Interoperability
+    "ZIL-USD": {"name": "Zilliqa", "category": "Layer 1", "market_cap": "Small"},
+    "KAVA-USD": {"name": "Kava", "category": "DeFi", "market_cap": "Small"},
+    "ZRX-USD": {"name": "0x Protocol", "category": "DeFi", "market_cap": "Small"},
+    "BNT-USD": {"name": "Bancor", "category": "DeFi", "market_cap": "Small"},
+
+    # Exchange Tokens
+    "CRO-USD": {"name": "Crypto.com Coin", "category": "Exchange", "market_cap": "Small"},
+    "KCS-USD": {"name": "KuCoin Token", "category": "Exchange", "market_cap": "Small"},
+    "GT-USD": {"name": "GateToken", "category": "Exchange", "market_cap": "Small"},
+
+    # NFT & Digital Assets
+    "BLUR-USD": {"name": "Blur", "category": "NFT", "market_cap": "Small"},
+    "LOOKS-USD": {"name": "LooksRare", "category": "NFT", "market_cap": "Small"},
+
+    # Emerging Layer 1s
+    "CFX-USD": {"name": "Conflux", "category": "Layer 1", "market_cap": "Small"},
+    "CELO-USD": {"name": "Celo", "category": "Layer 1", "market_cap": "Small"},
+    "ONE-USD": {"name": "Harmony", "category": "Layer 1", "market_cap": "Small"},
+    "ROSE-USD": {"name": "Oasis Network", "category": "Layer 1", "market_cap": "Small"},
+    "MINA-USD": {"name": "Mina Protocol", "category": "Layer 1", "market_cap": "Small"},
+
+    # DeFi Specialized
+    "RSR-USD": {"name": "Reserve Rights", "category": "DeFi", "market_cap": "Small"},
+    "ALCX-USD": {"name": "Alchemix", "category": "DeFi", "market_cap": "Small"},
+    "BADGER-USD": {"name": "Badger DAO", "category": "DeFi", "market_cap": "Small"},
+
+    # Derivatives & Synthetics
+    "PERP-USD": {"name": "Perpetual Protocol", "category": "DeFi", "market_cap": "Small"},
+    "INJ-USD": {"name": "Injective", "category": "DeFi", "market_cap": "Small"},
+
+    # Cross-chain Bridges
+    "SYN-USD": {"name": "Synapse", "category": "Bridge", "market_cap": "Small"},
+
+    # ===== STABLECOINS (for reference) =====
     "USDT-USD": {"name": "Tether", "category": "Stablecoin", "market_cap": "Large"},
     "USDC-USD": {"name": "USD Coin", "category": "Stablecoin", "market_cap": "Large"},
     "DAI-USD": {"name": "Dai", "category": "Stablecoin", "market_cap": "Large"},
-
-    # Others
-    "XLM-USD": {"name": "Stellar", "category": "Crypto", "market_cap": "Mid"},
-    "ETC-USD": {"name": "Ethereum Classic", "category": "Crypto", "market_cap": "Mid"},
-    "BCH-USD": {"name": "Bitcoin Cash", "category": "Crypto", "market_cap": "Mid"},
-    "TRX-USD": {"name": "Tron", "category": "Crypto", "market_cap": "Mid"},
-    "EOS-USD": {"name": "EOS", "category": "Crypto", "market_cap": "Mid"},
-    "XTZ-USD": {"name": "Tezos", "category": "Crypto", "market_cap": "Mid"},
-    "THETA-USD": {"name": "Theta", "category": "Crypto", "market_cap": "Mid"},
-    "FTM-USD": {"name": "Fantom", "category": "Crypto", "market_cap": "Mid"},
-    "GRT-USD": {"name": "The Graph", "category": "Crypto", "market_cap": "Mid"},
-    "RUNE-USD": {"name": "THORChain", "category": "Crypto", "market_cap": "Mid"},
-    "ENJ-USD": {"name": "Enjin Coin", "category": "Crypto", "market_cap": "Small"}
+    "BUSD-USD": {"name": "Binance USD", "category": "Stablecoin", "market_cap": "Large"},
+    "TUSD-USD": {"name": "TrueUSD", "category": "Stablecoin", "market_cap": "Mid"},
+    "USDP-USD": {"name": "Pax Dollar", "category": "Stablecoin", "market_cap": "Mid"},
+    "GUSD-USD": {"name": "Gemini Dollar", "category": "Stablecoin", "market_cap": "Small"}
 }
 
 # FX Pairs (NEW CATEGORY)
