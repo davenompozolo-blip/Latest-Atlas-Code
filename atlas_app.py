@@ -2410,7 +2410,146 @@ POPULAR_ETFS = {
     "UPRO": {"name": "3x S&P 500", "category": "Leveraged", "avg_volume": 15000000},
     "TNA": {"name": "3x Russell 2000", "category": "Leveraged", "avg_volume": 10000000},
     "SOXL": {"name": "3x Semiconductors", "category": "Leveraged", "avg_volume": 80000000},
-    "VXX": {"name": "VIX Short-Term", "category": "Volatility", "avg_volume": 50000000}
+    "VXX": {"name": "VIX Short-Term", "category": "Volatility", "avg_volume": 50000000},
+
+    # ===== ADDITIONAL ETFS (117+) =====
+
+    # More Thematic - AI & Cloud
+    "BOTZ": {"name": "Global X Robotics & AI", "category": "Thematic - AI", "avg_volume": 1000000},
+    "AIQ": {"name": "AI Powered Equity", "category": "Thematic - AI", "avg_volume": 500000},
+    "IRBO": {"name": "iShares Robotics & AI", "category": "Thematic - AI", "avg_volume": 300000},
+    "SKYY": {"name": "Cloud Computing", "category": "Thematic - Cloud", "avg_volume": 800000},
+    "WCLD": {"name": "WisdomTree Cloud", "category": "Thematic - Cloud", "avg_volume": 1200000},
+
+    # Thematic - Semiconductor & Hardware
+    "XSD": {"name": "Semiconductor", "category": "Thematic - Tech", "avg_volume": 2000000},
+    "PSI": {"name": "Semiconductor Index", "category": "Thematic - Tech", "avg_volume": 300000},
+
+    # Thematic - EV & Battery
+    "LIT": {"name": "Lithium & Battery", "category": "Thematic - EV", "avg_volume": 3000000},
+    "BATT": {"name": "Battery Tech", "category": "Thematic - EV", "avg_volume": 500000},
+    "DRIV": {"name": "Autonomous Driving", "category": "Thematic - EV", "avg_volume": 200000},
+    "IDRV": {"name": "Self-Driving EV", "category": "Thematic - EV", "avg_volume": 400000},
+
+    # Thematic - ESG & Sustainable
+    "ESGU": {"name": "ESG US Stock", "category": "Thematic - ESG", "avg_volume": 2000000},
+    "ESGV": {"name": "Vanguard ESG", "category": "Thematic - ESG", "avg_volume": 1000000},
+    "SUSL": {"name": "Sustainable Leaders", "category": "Thematic - ESG", "avg_volume": 500000},
+    "DSI": {"name": "Social Index", "category": "Thematic - ESG", "avg_volume": 400000},
+    "KRMA": {"name": "Global Sustainability", "category": "Thematic - ESG", "avg_volume": 300000},
+
+    # Thematic - Infrastructure & Construction
+    "PAVE": {"name": "US Infrastructure", "category": "Thematic - Infrastructure", "avg_volume": 1500000},
+    "IFRA": {"name": "Global Infrastructure", "category": "Thematic - Infrastructure", "avg_volume": 500000},
+    "PKB": {"name": "Building & Construction", "category": "Thematic - Infrastructure", "avg_volume": 200000},
+
+    # Thematic - Healthcare Innovation
+    "GNOM": {"name": "Genomics", "category": "Thematic - Healthcare", "avg_volume": 800000},
+    "EDOC": {"name": "Telehealth", "category": "Thematic - Healthcare", "avg_volume": 400000},
+    "XLV": {"name": "Longevity", "category": "Thematic - Healthcare", "avg_volume": 300000},
+
+    # More International - Europe
+    "EWQ": {"name": "France", "category": "International - Europe", "avg_volume": 1000000},
+    "EWI": {"name": "Italy", "category": "International - Europe", "avg_volume": 800000},
+    "EWP": {"name": "Spain", "category": "International - Europe", "avg_volume": 500000},
+    "EWL": {"name": "Switzerland", "category": "International - Europe", "avg_volume": 600000},
+    "EWN": {"name": "Netherlands", "category": "International - Europe", "avg_volume": 400000},
+    "EWD": {"name": "Sweden", "category": "International - Europe", "avg_volume": 300000},
+    "EDEN": {"name": "Denmark", "category": "International - Europe", "avg_volume": 200000},
+    "NORW": {"name": "Norway", "category": "International - Europe", "avg_volume": 150000},
+
+    # More International - Asia
+    "EWS": {"name": "Singapore", "category": "International - Asia", "avg_volume": 500000},
+    "EWM": {"name": "Malaysia", "category": "International - Asia", "avg_volume": 300000},
+    "EWZ": {"name": "South Africa", "category": "International - Africa", "avg_volume": 1000000},
+    "EWZ": {"name": "Turkey", "category": "International - EM", "avg_volume": 2000000},
+    "ERUS": {"name": "Russia", "category": "International - EM", "avg_volume": 500000},
+
+    # More Fixed Income - Duration Specific
+    "VGSH": {"name": "Short-Term Treasury", "category": "Bonds - Duration", "avg_volume": 2000000},
+    "VGIT": {"name": "Intermediate Treasury", "category": "Bonds - Duration", "avg_volume": 1500000},
+    "VGLT": {"name": "Long-Term Treasury", "category": "Bonds - Duration", "avg_volume": 1000000},
+    "EDV": {"name": "Extended Duration", "category": "Bonds - Duration", "avg_volume": 500000},
+
+    # Fixed Income - Municipal
+    "MUB": {"name": "National Muni", "category": "Bonds - Municipal", "avg_volume": 3000000},
+    "HYD": {"name": "High Yield Muni", "category": "Bonds - Municipal", "avg_volume": 1000000},
+    "VTEB": {"name": "Tax-Exempt Bond", "category": "Bonds - Municipal", "avg_volume": 2000000},
+
+    # Fixed Income - International
+    "EMLC": {"name": "EM Local Currency", "category": "Bonds - EM", "avg_volume": 1000000},
+    "PCY": {"name": "EM Sovereign Debt", "category": "Bonds - EM", "avg_volume": 800000},
+    "VWOB": {"name": "EM Govt Bonds", "category": "Bonds - EM", "avg_volume": 1500000},
+
+    # More Commodity - Metals
+    "PPLT": {"name": "Platinum", "category": "Commodities - Metals", "avg_volume": 500000},
+    "PALL": {"name": "Palladium", "category": "Commodities - Metals", "avg_volume": 300000},
+    "CPER": {"name": "Copper", "category": "Commodities - Metals", "avg_volume": 1000000},
+    "URNM": {"name": "Uranium", "category": "Commodities - Metals", "avg_volume": 2000000},
+
+    # Commodity - Agriculture
+    "CORN": {"name": "Corn", "category": "Commodities - Agriculture", "avg_volume": 500000},
+    "WEAT": {"name": "Wheat", "category": "Commodities - Agriculture", "avg_volume": 600000},
+    "SOYB": {"name": "Soybeans", "category": "Commodities - Agriculture", "avg_volume": 300000},
+    "NIB": {"name": "Cocoa", "category": "Commodities - Agriculture", "avg_volume": 100000},
+
+    # More Sector - Subsectors
+    "FHLC": {"name": "Healthcare Equipment", "category": "Sector - Healthcare", "avg_volume": 300000},
+    "IHF": {"name": "Healthcare Providers", "category": "Sector - Healthcare", "avg_volume": 200000},
+    "XES": {"name": "Oil Equipment & Services", "category": "Sector - Energy", "avg_volume": 1000000},
+    "CRAK": {"name": "Oil Refiners", "category": "Sector - Energy", "avg_volume": 500000},
+    "COPX": {"name": "Copper Miners", "category": "Sector - Materials", "avg_volume": 1500000},
+    "SIL": {"name": "Silver Miners", "category": "Sector - Materials", "avg_volume": 2000000},
+
+    # More Dividend & Income
+    "DVY": {"name": "Dow Dividend", "category": "Dividend", "avg_volume": 2000000},
+    "NOBL": {"name": "Dividend Aristocrats", "category": "Dividend", "avg_volume": 1500000},
+    "SDY": {"name": "Dividend ETF", "category": "Dividend", "avg_volume": 1000000},
+    "PFF": {"name": "Preferred Stock", "category": "Income", "avg_volume": 5000000},
+    "PFFD": {"name": "Preferred Securities", "category": "Income", "avg_volume": 800000},
+    "KBWD": {"name": "High Dividend Yield", "category": "Dividend", "avg_volume": 500000},
+
+    # More Factor - Smart Beta
+    "RSP": {"name": "S&P 500 Equal Weight", "category": "Factor - Equal Weight", "avg_volume": 5000000},
+    "QQEW": {"name": "Nasdaq Equal Weight", "category": "Factor - Equal Weight", "avg_volume": 1000000},
+    "EQWL": {"name": "Equal Weight", "category": "Factor - Equal Weight", "avg_volume": 300000},
+    "IUSV": {"name": "Value Factor", "category": "Factor - Value", "avg_volume": 2000000},
+    "IUSG": {"name": "Growth Factor", "category": "Factor - Growth", "avg_volume": 3000000},
+    "IWF": {"name": "Russell 1000 Growth", "category": "Factor - Growth", "avg_volume": 4000000},
+    "IWD": {"name": "Russell 1000 Value", "category": "Factor - Value", "avg_volume": 5000000},
+
+    # More Growth & Style
+    "VUG": {"name": "Vanguard Growth", "category": "Style - Growth", "avg_volume": 3000000},
+    "MGK": {"name": "Mega Cap Growth", "category": "Style - Growth", "avg_volume": 1000000},
+    "VTV": {"name": "Vanguard Value", "category": "Style - Value", "avg_volume": 2000000},
+    "MGV": {"name": "Mega Cap Value", "category": "Style - Value", "avg_volume": 500000},
+
+    # Currency ETFs
+    "UUP": {"name": "US Dollar Bullish", "category": "Currency", "avg_volume": 3000000},
+    "FXE": {"name": "Euro Currency", "category": "Currency", "avg_volume": 1000000},
+    "FXY": {"name": "Japanese Yen", "category": "Currency", "avg_volume": 800000},
+    "FXB": {"name": "British Pound", "category": "Currency", "avg_volume": 500000},
+    "FXA": {"name": "Australian Dollar", "category": "Currency", "avg_volume": 600000},
+    "FXC": {"name": "Canadian Dollar", "category": "Currency", "avg_volume": 400000},
+
+    # More Leveraged - Sector Specific
+    "TECL": {"name": "3x Technology", "category": "Leveraged - Sector", "avg_volume": 10000000},
+    "TPOR": {"name": "3x Transportation", "category": "Leveraged - Sector", "avg_volume": 500000},
+    "DUSL": {"name": "3x Industrials", "category": "Leveraged - Sector", "avg_volume": 300000},
+    "CURE": {"name": "3x Healthcare", "category": "Leveraged - Sector", "avg_volume": 1500000},
+    "FAS": {"name": "3x Financials", "category": "Leveraged - Sector", "avg_volume": 5000000},
+    "ERX": {"name": "3x Energy", "category": "Leveraged - Sector", "avg_volume": 2000000},
+
+    # Real Assets
+    "REET": {"name": "Real Estate", "category": "Real Assets", "avg_volume": 500000},
+    "USCI": {"name": "Commodity Index", "category": "Real Assets", "avg_volume": 1000000},
+    "PDBC": {"name": "Optimum Yield Commodity", "category": "Real Assets", "avg_volume": 2000000},
+    "DJP": {"name": "Commodity Index", "category": "Real Assets", "avg_volume": 300000},
+
+    # Alternatives
+    "MNA": {"name": "Merger Arbitrage", "category": "Alternatives", "avg_volume": 500000},
+    "QAI": {"name": "Alternative Strategies", "category": "Alternatives", "avg_volume": 300000},
+    "TAIL": {"name": "Tail Risk", "category": "Alternatives", "avg_volume": 200000}
 }
 
 # Factor definitions
