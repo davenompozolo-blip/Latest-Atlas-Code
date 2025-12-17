@@ -11790,73 +11790,28 @@ ORDER BY position_value DESC"""
 
         st.info("💡 **Tip:** Head to the Valuation House to analyze intrinsic values of any ticker!")
 
-        # Add VaR/CVaR Optimization Toggle
         st.markdown("---")
-        show_optimization = st.checkbox("🎯 Show VaR/CVaR Portfolio Optimization", value=False,
-                                       help="Calculate optimal portfolio weights to minimize tail risk")
+        st.markdown("### 📊 ANALYST DASHBOARD")
 
-        if show_optimization:
-            with st.spinner("Calculating optimal portfolio weights..."):
-                rebalancing_df, opt_metrics = calculate_var_cvar_portfolio_optimization(enhanced_df)
+        # ===== P1-3: ANALYST-FIRST LAYOUT - Risk/Reward Chart is Primary =====
+        # Risk/Reward scatter takes prominence (2/3 width)
+        col_risk, col_sector = st.columns([2, 1])
 
-                if rebalancing_df is not None and opt_metrics is not None:
-                    # Display optimization summary
-                    st.markdown("### 🎯 Portfolio Optimization Results")
-
-                    col1, col2, col3, col4 = st.columns(4)
-                    with col1:
-                        st.metric("VaR Reduction",
-                                 f"{opt_metrics['var_reduction_pct']:.1f}%",
-                                 f"{opt_metrics['current_var']:.2f}% → {opt_metrics['optimal_var']:.2f}%",
-                                 delta_color="inverse")
-
-                    with col2:
-                        st.metric("CVaR Reduction",
-                                 f"{opt_metrics['cvar_reduction_pct']:.1f}%",
-                                 f"{opt_metrics['current_cvar']:.2f}% → {opt_metrics['optimal_cvar']:.2f}%",
-                                 delta_color="inverse")
-
-                    with col3:
-                        st.metric("Sharpe Improvement",
-                                 f"+{opt_metrics['sharpe_improvement']:.2f}",
-                                 f"{opt_metrics['current_sharpe']:.2f} → {opt_metrics['optimal_sharpe']:.2f}")
-
-                    with col4:
-                        st.metric("Trades Required",
-                                 opt_metrics['total_trades'],
-                                 f"Est. Cost: ${opt_metrics['rebalancing_cost']:,.0f}")
-
-                    # Merge optimization data into enhanced_df for display
-                    enhanced_df_with_opt = enhanced_df.merge(
-                        rebalancing_df[['Ticker', 'Optimal Weight %', 'Weight Diff %',
-                                       'Shares to Trade', 'Trade Value', 'Action']],
-                        on='Ticker',
-                        how='left'
-                    )
-
-                    # Display enhanced table with optimization columns
-                    st.markdown("### 📋 Holdings with Optimization Targets")
-                    display_df_opt = style_holdings_dataframe_with_optimization(enhanced_df_with_opt)
-                    make_scrollable_table(display_df_opt, height=500, hide_index=True, use_container_width=True)
-
-        st.markdown("---")
-        st.markdown("### 📊 DASHBOARD OVERVIEW")
-
-        # ===== FIX #7: Improved Home Page Layout - Remove Top Detractors =====
-        # Two-column layout for better visibility
-        col1, col2 = st.columns(2)
-
-        with col1:
-            # P&L attribution by sector
-            pnl_sector = create_pnl_attribution_sector(enhanced_df)
-            if pnl_sector:
-                st.plotly_chart(pnl_sector, use_container_width=True)
-
-        with col2:
-            # Risk/Reward scatter - NOW LARGER!
+        with col_risk:
+            st.markdown("#### 🎯 Risk-Reward Positioning")
             risk_reward = create_risk_reward_plot(enhanced_df)
             if risk_reward:
-                st.plotly_chart(risk_reward, use_container_width=True)
+                st.plotly_chart(risk_reward, use_container_width=True, key="risk_reward_primary")
+            else:
+                st.info("Risk-reward chart will display when position data is available")
+
+        with col_sector:
+            st.markdown("#### 💼 Sector Attribution")
+            pnl_sector = create_pnl_attribution_sector(enhanced_df)
+            if pnl_sector:
+                st.plotly_chart(pnl_sector, use_container_width=True, key="sector_pnl")
+            else:
+                st.info("Sector P&L will display when holdings have sector data")
 
         # Additional position-level P&L analysis
         st.markdown("---")
@@ -11869,90 +11824,146 @@ ORDER BY position_value DESC"""
         # Performance Heatmap (full width) - Only show if meaningful data exists
         st.markdown("---")
         if should_display_monthly_heatmap(enhanced_df):
+            st.markdown("### 📅 Monthly Performance")
             perf_heatmap = create_performance_heatmap(enhanced_df)
             if perf_heatmap:
                 st.plotly_chart(perf_heatmap, use_container_width=True)
         else:
             st.info("📊 Monthly performance heatmap will be available after 2+ months of portfolio history")
-        # ===== SYSTEM TEST SECTION =====
+
+        # ===== ADVANCED TOOLS - Collapsed by default for analyst focus =====
         st.markdown("---")
-        st.markdown("### 🧪 System Test & Validation")
+        st.markdown("### 🔧 Advanced Tools")
 
-        if st.button("🧪 Run System Test", type="primary"):
-            st.markdown("#### 🔍 Test Results")
+        # VaR/CVaR Optimization in expander
+        with st.expander("🎯 VaR/CVaR Portfolio Optimization", expanded=False):
+            st.info("Calculate optimal portfolio weights to minimize tail risk (VaR/CVaR)")
 
-            col1, col2, col3 = st.columns(3)
+            if st.button("⚡ Run Optimization", type="primary", key="run_var_cvar_opt"):
+                with st.spinner("Calculating optimal portfolio weights..."):
+                    rebalancing_df, opt_metrics = calculate_var_cvar_portfolio_optimization(enhanced_df)
 
-            # Test 1: Database
-            with col1:
-                st.markdown("**Database Test**")
-                try:
-                    conn = get_db()
-                    portfolio = conn.get_portfolio()
-                    pos_count = len(portfolio)
+                    if rebalancing_df is not None and opt_metrics is not None:
+                        # Display optimization summary
+                        st.markdown("#### 📊 Optimization Results")
 
-                    if pos_count > 0:
-                        st.success(f"✅ Database: {pos_count} positions")
+                        col1, col2, col3, col4 = st.columns(4)
+                        with col1:
+                            st.metric("VaR Reduction",
+                                     f"{opt_metrics['var_reduction_pct']:.1f}%",
+                                     f"{opt_metrics['current_var']:.2f}% → {opt_metrics['optimal_var']:.2f}%",
+                                     delta_color="inverse")
+
+                        with col2:
+                            st.metric("CVaR Reduction",
+                                     f"{opt_metrics['cvar_reduction_pct']:.1f}%",
+                                     f"{opt_metrics['current_cvar']:.2f}% → {opt_metrics['optimal_cvar']:.2f}%",
+                                     delta_color="inverse")
+
+                        with col3:
+                            st.metric("Sharpe Improvement",
+                                     f"+{opt_metrics['sharpe_improvement']:.2f}",
+                                     f"{opt_metrics['current_sharpe']:.2f} → {opt_metrics['optimal_sharpe']:.2f}")
+
+                        with col4:
+                            st.metric("Trades Required",
+                                     opt_metrics['total_trades'],
+                                     f"Est. Cost: ${opt_metrics['rebalancing_cost']:,.0f}")
+
+                        # Merge optimization data into enhanced_df for display
+                        enhanced_df_with_opt = enhanced_df.merge(
+                            rebalancing_df[['Ticker', 'Optimal Weight %', 'Weight Diff %',
+                                           'Shares to Trade', 'Trade Value', 'Action']],
+                            on='Ticker',
+                            how='left'
+                        )
+
+                        # Display enhanced table with optimization columns
+                        st.markdown("#### 📋 Rebalancing Targets")
+                        display_df_opt = style_holdings_dataframe_with_optimization(enhanced_df_with_opt)
+                        make_scrollable_table(display_df_opt, height=500, hide_index=True, use_container_width=True)
                     else:
-                        st.warning("⚠️ Database: No positions")
-                except Exception as e:
-                    st.error(f"❌ Database: {str(e)}")
+                        st.error("⚠️ Unable to calculate optimization. Ensure sufficient position data exists.")
 
-            # Test 2: Imports
-            with col2:
-                st.markdown("**Import Tests**")
-                imports_ok = True
+        # System Test in expander
+        with st.expander("🧪 System Test & Validation", expanded=False):
+            st.info("Run diagnostic tests to verify ATLAS system components")
 
-                try:
-                    import plotly.express as px
-                    st.success("✅ plotly.express")
-                except:
-                    st.error("❌ plotly.express")
-                    imports_ok = False
+            if st.button("🧪 Run System Test", type="primary", key="run_system_test"):
+                st.markdown("#### 🔍 Test Results")
 
-                try:
-                    import plotly.graph_objects as go
-                    st.success("✅ plotly.graph_objects")
-                except:
-                    st.error("❌ plotly.graph_objects")
-                    imports_ok = False
+                col1, col2, col3 = st.columns(3)
 
-                try:
-                    from scipy import stats
-                    st.success("✅ scipy.stats")
-                except:
-                    st.error("❌ scipy.stats")
-                    imports_ok = False
+                # Test 1: Database
+                with col1:
+                    st.markdown("**Database Test**")
+                    try:
+                        conn = get_db()
+                        portfolio = conn.get_portfolio()
+                        pos_count = len(portfolio)
 
-            # Test 3: Portfolio data
-            with col3:
-                st.markdown("**Portfolio Test**")
-                try:
-                    portfolio_data = load_portfolio_data()
-                    if portfolio_data is not None:
-                        if isinstance(portfolio_data, pd.DataFrame):
-                            if not portfolio_data.empty:
-                                st.success(f"✅ Portfolio: {len(portfolio_data)} positions")
-                            else:
-                                st.warning("⚠️ Portfolio: Empty")
+                        if pos_count > 0:
+                            st.success(f"✅ Database: {pos_count} positions")
                         else:
-                            st.warning("⚠️ Portfolio: Not a DataFrame")
-                    else:
-                        st.warning("⚠️ Portfolio: No data")
-                except Exception as e:
-                    st.error(f"❌ Portfolio: {str(e)}")
+                            st.warning("⚠️ Database: No positions")
+                    except Exception as e:
+                        st.error(f"❌ Database: {str(e)}")
 
-            st.markdown("---")
+                # Test 2: Imports
+                with col2:
+                    st.markdown("**Import Tests**")
+                    imports_ok = True
 
-            # Test 4: Options filtering
-            st.markdown("**Options Filtering Test**")
-            test_tickers = ['AAPL', 'AU2520F50', 'TSLA', 'META2405D482.5', 'MSFT']
-            filtered = [t for t in test_tickers if is_option_ticker(t)]
+                    try:
+                        import plotly.express as px
+                        st.success("✅ plotly.express")
+                    except:
+                        st.error("❌ plotly.express")
+                        imports_ok = False
 
-            if len(filtered) == 2 and 'AU2520F50' in filtered and 'META2405D482.5' in filtered:
-                st.success(f"✅ Options filtering working: {filtered}")
-            else:
-                st.error(f"❌ Options filtering failed: {filtered}")
+                    try:
+                        import plotly.graph_objects as go
+                        st.success("✅ plotly.graph_objects")
+                    except:
+                        st.error("❌ plotly.graph_objects")
+                        imports_ok = False
+
+                    try:
+                        from scipy import stats
+                        st.success("✅ scipy.stats")
+                    except:
+                        st.error("❌ scipy.stats")
+                        imports_ok = False
+
+                # Test 3: Portfolio data
+                with col3:
+                    st.markdown("**Portfolio Test**")
+                    try:
+                        portfolio_data = load_portfolio_data()
+                        if portfolio_data is not None:
+                            if isinstance(portfolio_data, pd.DataFrame):
+                                if not portfolio_data.empty:
+                                    st.success(f"✅ Portfolio: {len(portfolio_data)} positions")
+                                else:
+                                    st.warning("⚠️ Portfolio: Empty")
+                            else:
+                                st.warning("⚠️ Portfolio: Not a DataFrame")
+                        else:
+                            st.warning("⚠️ Portfolio: No data")
+                    except Exception as e:
+                        st.error(f"❌ Portfolio: {str(e)}")
+
+                st.markdown("---")
+
+                # Test 4: Options filtering
+                st.markdown("**Options Filtering Test**")
+                test_tickers = ['AAPL', 'AU2520F50', 'TSLA', 'META2405D482.5', 'MSFT']
+                filtered = [t for t in test_tickers if is_option_ticker(t)]
+
+                if len(filtered) == 2 and 'AU2520F50' in filtered and 'META2405D482.5' in filtered:
+                    st.success(f"✅ Options filtering working: {filtered}")
+                else:
+                    st.error(f"❌ Options filtering failed: {filtered}")
 
     # ========================================================================
     # MARKET WATCH - COMPLETE REVAMP
