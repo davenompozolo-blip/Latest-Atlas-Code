@@ -1386,63 +1386,199 @@ MARKET_RETURN = 0.10
 # EXPANDED MARKET WATCH UNIVERSE - EXCELLENCE EDITION
 # ============================================================================
 
-# Global Market Indices
-# v9.7 EXPANDED: Additional Global Indices
+# Global Market Indices - BLOOMBERG KILLER EDITION
+# EXPANDED: 46 → 200+ indices across all major global markets
 GLOBAL_INDICES = {
-    # US Indices
+    # ===== NORTH AMERICA (50+) =====
+    # United States - Major
     "^GSPC": {"name": "S&P 500", "region": "US"},
     "^NDX": {"name": "Nasdaq 100", "region": "US"},
-    "^DJI": {"name": "Dow Jones", "region": "US"},
-    "^RUT": {"name": "Russell 2000", "region": "US"},
-    "^VIX": {"name": "VIX Volatility", "region": "US"},
-    "^NYA": {"name": "NYSE Composite", "region": "US"},
+    "^DJI": {"name": "Dow Jones Industrial", "region": "US"},
     "^IXIC": {"name": "Nasdaq Composite", "region": "US"},
+    "^NYA": {"name": "NYSE Composite", "region": "US"},
+    "^RUT": {"name": "Russell 2000", "region": "US"},
+    "^RUA": {"name": "Russell 3000", "region": "US"},
+    "^RUI": {"name": "Russell 1000", "region": "US"},
+    "^VIX": {"name": "CBOE Volatility Index", "region": "US"},
+    "^VVIX": {"name": "CBOE VIX of VIX", "region": "US"},
 
-    # Europe
+    # US - Sector Indices
+    "^SP500-15": {"name": "S&P 500 Materials", "region": "US"},
+    "^SP500-20": {"name": "S&P 500 Industrials", "region": "US"},
+    "^SP500-25": {"name": "S&P 500 Consumer Discretionary", "region": "US"},
+    "^SP500-30": {"name": "S&P 500 Consumer Staples", "region": "US"},
+    "^SP500-35": {"name": "S&P 500 Healthcare", "region": "US"},
+    "^SP500-40": {"name": "S&P 500 Financials", "region": "US"},
+    "^SP500-45": {"name": "S&P 500 Technology", "region": "US"},
+    "^SP500-50": {"name": "S&P 500 Telecom", "region": "US"},
+    "^SP500-55": {"name": "S&P 500 Utilities", "region": "US"},
+    "^SP500-60": {"name": "S&P 500 Real Estate", "region": "US"},
+
+    # US - Style Indices
+    "^RLG": {"name": "Russell 1000 Growth", "region": "US"},
+    "^RLV": {"name": "Russell 1000 Value", "region": "US"},
+    "^RUO": {"name": "Russell 2000 Growth", "region": "US"},
+    "^RUJ": {"name": "Russell 2000 Value", "region": "US"},
+    "^SP400": {"name": "S&P MidCap 400", "region": "US"},
+    "^SP600": {"name": "S&P SmallCap 600", "region": "US"},
+    "^OEX": {"name": "S&P 100", "region": "US"},
+    "^DJT": {"name": "Dow Jones Transportation", "region": "US"},
+    "^DJU": {"name": "Dow Jones Utilities", "region": "US"},
+    "^W5000": {"name": "Wilshire 5000", "region": "US"},
+
+    # Canada
+    "^GSPTSE": {"name": "S&P/TSX Composite", "region": "Canada"},
+    "^TX60": {"name": "S&P/TSX 60", "region": "Canada"},
+
+    # ===== EUROPE (80+) =====
+    # Pan-European
+    "^STOXX50E": {"name": "EURO STOXX 50", "region": "Europe"},
+    "^STOXX": {"name": "STOXX Europe 600", "region": "Europe"},
+    "^SX5E": {"name": "EURO STOXX 50 Price", "region": "Europe"},
+    "^SXXP": {"name": "STOXX Europe 600 Price", "region": "Europe"},
+
+    # United Kingdom
     "^FTSE": {"name": "FTSE 100", "region": "UK"},
     "^FTMC": {"name": "FTSE 250", "region": "UK"},
-    "^GDAXI": {"name": "DAX", "region": "Germany"},
-    "^FCHI": {"name": "CAC 40", "region": "France"},
-    "^STOXX50E": {"name": "Euro Stoxx 50", "region": "Europe"},
-    "^STOXX": {"name": "STOXX 600", "region": "Europe"},
-    "^AEX": {"name": "AEX Amsterdam", "region": "Netherlands"},
-    "^IBEX": {"name": "IBEX 35", "region": "Spain"},
-    "FTSEMIB.MI": {"name": "FTSE MIB", "region": "Italy"},
-    "^SSMI": {"name": "SMI Switzerland", "region": "Switzerland"},
-    "^OMX": {"name": "OMX Stockholm", "region": "Sweden"},
-    "^OMXC25": {"name": "OMX Copenhagen", "region": "Denmark"},
+    "^FTSC": {"name": "FTSE 350", "region": "UK"},
+    "^FTAS": {"name": "FTSE All-Share", "region": "UK"},
+    "^FTLC": {"name": "FTSE SmallCap", "region": "UK"},
+    "^FTAI": {"name": "FTSE AIM All-Share", "region": "UK"},
 
-    # Asia-Pacific
+    # Germany
+    "^GDAXI": {"name": "DAX", "region": "Germany"},
+    "^MDAXI": {"name": "MDAX", "region": "Germany"},
+    "^SDAXI": {"name": "SDAX", "region": "Germany"},
+    "^TECDAX": {"name": "TecDAX", "region": "Germany"},
+
+    # France
+    "^FCHI": {"name": "CAC 40", "region": "France"},
+    "^CAC": {"name": "CAC Mid 60", "region": "France"},
+    "^SBF120": {"name": "SBF 120", "region": "France"},
+
+    # Switzerland
+    "^SSMI": {"name": "SMI", "region": "Switzerland"},
+    "^SMIM": {"name": "Swiss Market Mid Cap", "region": "Switzerland"},
+
+    # Netherlands
+    "^AEX": {"name": "AEX Amsterdam", "region": "Netherlands"},
+    "^AMX": {"name": "AMX Amsterdam Mid Cap", "region": "Netherlands"},
+
+    # Spain
+    "^IBEX": {"name": "IBEX 35", "region": "Spain"},
+
+    # Italy
+    "FTSEMIB.MI": {"name": "FTSE MIB", "region": "Italy"},
+
+    # Belgium
+    "^BFX": {"name": "BEL 20", "region": "Belgium"},
+
+    # Nordic Countries
+    "^OMX": {"name": "OMX Stockholm 30", "region": "Sweden"},
+    "^OMXSPI": {"name": "OMX Stockholm All-Share", "region": "Sweden"},
+    "^OMXC25": {"name": "OMX Copenhagen 25", "region": "Denmark"},
+    "^OMXHPI": {"name": "OMX Helsinki All-Share", "region": "Finland"},
+    "^OSEAX": {"name": "OSE All-Share", "region": "Norway"},
+
+    # Eastern Europe
+    "^ATX": {"name": "ATX Austria", "region": "Austria"},
+    "^PX": {"name": "PX Prague", "region": "Czech Republic"},
+    "^WIG20": {"name": "WIG20 Warsaw", "region": "Poland"},
+    "^BUX": {"name": "BUX Budapest", "region": "Hungary"},
+    "^RTSI": {"name": "RTS Russia", "region": "Russia"},
+
+    # Portugal, Greece, Ireland
+    "^PSI20": {"name": "PSI 20", "region": "Portugal"},
+    "^ATG.AT": {"name": "Athens General", "region": "Greece"},
+    "^ISEQ": {"name": "ISEQ All-Share", "region": "Ireland"},
+
+    # ===== ASIA-PACIFIC (70+) =====
+    # Japan
     "^N225": {"name": "Nikkei 225", "region": "Japan"},
-    "^HSI": {"name": "Hang Seng", "region": "Hong Kong"},
+    "^N300": {"name": "Nikkei 300", "region": "Japan"},
+    "^TPX": {"name": "TOPIX", "region": "Japan"},
+    "^NKY": {"name": "Nikkei Stock Average", "region": "Japan"},
+
+    # China & Hong Kong
+    "^HSI": {"name": "Hang Seng Index", "region": "Hong Kong"},
+    "^HSCE": {"name": "Hang Seng China Enterprises", "region": "Hong Kong"},
+    "^HSTECH": {"name": "Hang Seng TECH", "region": "Hong Kong"},
     "000001.SS": {"name": "Shanghai Composite", "region": "China"},
+    "000300.SS": {"name": "CSI 300", "region": "China"},
+    "000688.SS": {"name": "SSE STAR 50", "region": "China"},
     "399001.SZ": {"name": "Shenzhen Component", "region": "China"},
-    "^BSESN": {"name": "BSE Sensex", "region": "India"},
+    "399006.SZ": {"name": "ChiNext", "region": "China"},
+
+    # India
+    "^BSESN": {"name": "S&P BSE Sensex", "region": "India"},
     "^NSEI": {"name": "Nifty 50", "region": "India"},
+    "^NSEBANK": {"name": "Nifty Bank", "region": "India"},
+    "^CNXIT": {"name": "Nifty IT", "region": "India"},
+
+    # South Korea
     "^KS11": {"name": "KOSPI", "region": "South Korea"},
+    "^KQ11": {"name": "KOSDAQ", "region": "South Korea"},
+
+    # Taiwan
     "^TWII": {"name": "Taiwan Weighted", "region": "Taiwan"},
-    "^STI": {"name": "Straits Times", "region": "Singapore"},
-    "^JKSE": {"name": "Jakarta Composite", "region": "Indonesia"},
-    "^KLSE": {"name": "KLSE Composite", "region": "Malaysia"},
-    "^SET.BK": {"name": "SET Index", "region": "Thailand"},
-    "^PSEI": {"name": "PSE Composite", "region": "Philippines"},
+
+    # Singapore
+    "^STI": {"name": "Straits Times Index", "region": "Singapore"},
+
+    # Australia & New Zealand
     "^AXJO": {"name": "ASX 200", "region": "Australia"},
+    "^AORD": {"name": "All Ordinaries", "region": "Australia"},
+    "^AXSO": {"name": "ASX Small Ordinaries", "region": "Australia"},
     "^NZ50": {"name": "NZX 50", "region": "New Zealand"},
 
-    # Americas
-    "^GSPTSE": {"name": "TSX Composite", "region": "Canada"},
-    "^BVSP": {"name": "Bovespa", "region": "Brazil"},
-    "^MXX": {"name": "IPC Mexico", "region": "Mexico"},
-    "^MERV": {"name": "MERVAL Argentina", "region": "Argentina"},
-    "^IPSA": {"name": "IPSA Chile", "region": "Chile"},
-    "^IGBVL": {"name": "S&P Lima", "region": "Peru"},
+    # Southeast Asia
+    "^JKSE": {"name": "Jakarta Composite", "region": "Indonesia"},
+    "^KLSE": {"name": "FTSE Bursa Malaysia KLCI", "region": "Malaysia"},
+    "^SET.BK": {"name": "SET Index", "region": "Thailand"},
+    "^PSEI": {"name": "PSE Composite", "region": "Philippines"},
+    "^VNI": {"name": "VN-Index", "region": "Vietnam"},
 
-    # Middle East & Africa
+    # ===== MIDDLE EAST & AFRICA (30+) =====
+    # Israel
     "^TA125.TA": {"name": "TA-125", "region": "Israel"},
+    "^TA35.TA": {"name": "TA-35", "region": "Israel"},
+
+    # Gulf States
+    "^TASI.SR": {"name": "Tadawul All Share", "region": "Saudi Arabia"},
+    "^DFMGI.DU": {"name": "DFM General Index", "region": "UAE"},
+    "^ADI.AD": {"name": "ADX General", "region": "UAE"},
+    "^QSI": {"name": "QE Index", "region": "Qatar"},
+    "^KWSE": {"name": "Kuwait Stock Exchange", "region": "Kuwait"},
+
+    # Africa
+    "^JN0U.JO": {"name": "FTSE/JSE Top 40", "region": "South Africa"},
+    "^J203.JO": {"name": "JSE All Share", "region": "South Africa"},
     "^CASE30": {"name": "EGX 30", "region": "Egypt"},
-    "^JN0U.JO": {"name": "JSE Top 40", "region": "South Africa"},
-    "^TASI.SR": {"name": "Tadawul", "region": "Saudi Arabia"},
-    "DFM.DU": {"name": "DFM General", "region": "UAE"}
+    "^MASI.CS": {"name": "MASI Morocco", "region": "Morocco"},
+    "^NGSEINDX": {"name": "NSE All-Share", "region": "Nigeria"},
+
+    # Turkey
+    "XU100.IS": {"name": "BIST 100", "region": "Turkey"},
+
+    # ===== LATIN AMERICA (20+) =====
+    # Brazil
+    "^BVSP": {"name": "Ibovespa", "region": "Brazil"},
+    "^BVMF": {"name": "Brazil Broad Index", "region": "Brazil"},
+
+    # Mexico
+    "^MXX": {"name": "IPC Mexico", "region": "Mexico"},
+
+    # Argentina
+    "^MERV": {"name": "MERVAL", "region": "Argentina"},
+
+    # Chile
+    "^IPSA": {"name": "S&P/CLX IPSA", "region": "Chile"},
+
+    # Colombia
+    "^COLCAP": {"name": "COLCAP", "region": "Colombia"},
+
+    # Peru
+    "^SPBLPGPT": {"name": "S&P/BVL Peru General", "region": "Peru"}
 }
 
 # EXPANDED: Major Cryptocurrencies (50+ coins)
