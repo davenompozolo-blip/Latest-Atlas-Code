@@ -12119,9 +12119,23 @@ ORDER BY position_value DESC"""
 
         with tab1:
             st.markdown("#### 🌍 Global Indices")
+
+            # Advanced filters for indices
+            index_regions = st.multiselect(
+                "Filter by Region",
+                ["US", "Europe", "Asia-Pacific", "Americas", "Middle East & Africa", "UK", "Germany", "France",
+                 "Japan", "Hong Kong", "China", "India", "Canada", "Brazil", "Australia"],
+                default=["US", "Europe", "Asia-Pacific"],
+                key="index_region_filter"
+            )
+
             with st.spinner("Loading indices..."):
                 indices_df = fetch_market_watch_data(GLOBAL_INDICES)
                 if not indices_df.empty:
+                    # Apply region filter
+                    if index_regions and 'Region' in indices_df.columns:
+                        indices_df = indices_df[indices_df['Region'].isin(index_regions)]
+                    # Apply change filter
                     indices_df = indices_df[indices_df['Change %'] >= filter_change]
                     display_df = create_dynamic_market_table(indices_df, {'sort_by': sort_by, 'ascending': False})
                     make_scrollable_table(display_df, height=600, hide_index=True, use_container_width=True, column_config=None)
@@ -12130,9 +12144,34 @@ ORDER BY position_value DESC"""
         
         with tab2:
             st.markdown("#### 🪙 Cryptocurrency Markets")
+
+            # Advanced filters for crypto
+            col_crypto1, col_crypto2 = st.columns(2)
+            with col_crypto1:
+                crypto_market_caps = st.multiselect(
+                    "Filter by Market Cap",
+                    ["Large", "Mid", "Small"],
+                    default=["Large", "Mid"],
+                    key="crypto_mcap_filter"
+                )
+            with col_crypto2:
+                crypto_categories = st.multiselect(
+                    "Filter by Type",
+                    ["Crypto", "Stablecoin"],
+                    default=["Crypto", "Stablecoin"],
+                    key="crypto_cat_filter"
+                )
+
             with st.spinner("Loading crypto..."):
                 crypto_df = fetch_market_watch_data(CRYPTOCURRENCIES)
                 if not crypto_df.empty:
+                    # Apply market cap filter
+                    if crypto_market_caps and 'Market Cap' in crypto_df.columns:
+                        crypto_df = crypto_df[crypto_df['Market Cap'].isin(crypto_market_caps)]
+                    # Apply category filter
+                    if crypto_categories and 'Category' in crypto_df.columns:
+                        crypto_df = crypto_df[crypto_df['Category'].isin(crypto_categories)]
+                    # Apply change filter
                     crypto_df = crypto_df[crypto_df['Change %'] >= filter_change]
                     display_df = create_dynamic_market_table(crypto_df, {'sort_by': sort_by, 'ascending': False})
                     make_scrollable_table(display_df, height=600, hide_index=True, use_container_width=True, column_config=None)
@@ -12141,15 +12180,23 @@ ORDER BY position_value DESC"""
         
         with tab3:
             st.markdown("#### 📦 Exchange-Traded Funds")
-            sectors = st.multiselect("Filter by Category", 
-                                     ["Broad Market", "Sector", "Thematic", "International"],
-                                     default=["Broad Market", "Sector", "Thematic"])
-            
+
+            # Comprehensive ETF category filters
+            etf_categories = st.multiselect(
+                "Filter by Category",
+                ["Broad Market", "Mid Cap", "Small Cap", "Sector", "Real Estate", "Thematic",
+                 "International", "Bonds", "Commodities", "Factor", "Leveraged", "Inverse", "Volatility"],
+                default=["Broad Market", "Sector", "Thematic", "International"],
+                key="etf_cat_filter"
+            )
+
             with st.spinner("Loading ETFs..."):
                 etf_df = fetch_market_watch_data(POPULAR_ETFS)
                 if not etf_df.empty:
-                    if sectors:
-                        etf_df = etf_df[etf_df['Category'].isin(sectors)]
+                    if etf_categories:
+                        etf_df = etf_df[etf_df['Category'].isin(etf_categories)]
+                    # Apply change filter
+                    etf_df = etf_df[etf_df['Change %'] >= filter_change]
                     display_df = create_dynamic_market_table(etf_df, {'sort_by': sort_by, 'ascending': False})
                     make_scrollable_table(display_df, height=600, hide_index=True, use_container_width=True, column_config=None)
                 else:
@@ -12157,15 +12204,22 @@ ORDER BY position_value DESC"""
         
         with tab4:
             st.markdown("#### ⛽ Commodity Markets")
-            commodity_cats = st.multiselect("Filter by Type",
-                                           ["Precious Metals", "Energy", "Industrial Metals", "Agriculture", "Livestock"],
-                                           default=["Precious Metals", "Energy"])
-            
+
+            # Commodity category filters
+            commodity_cats = st.multiselect(
+                "Filter by Type",
+                ["Precious Metals", "Energy", "Industrial Metals", "Agriculture", "Livestock"],
+                default=["Precious Metals", "Energy", "Agriculture"],
+                key="commodity_cat_filter"
+            )
+
             with st.spinner("Loading commodities..."):
                 comm_df = fetch_market_watch_data(COMMODITIES)
                 if not comm_df.empty:
                     if commodity_cats:
                         comm_df = comm_df[comm_df['Category'].isin(commodity_cats)]
+                    # Apply change filter
+                    comm_df = comm_df[comm_df['Change %'] >= filter_change]
                     display_df = create_dynamic_market_table(comm_df, {'sort_by': sort_by, 'ascending': False})
                     make_scrollable_table(display_df, height=600, hide_index=True, use_container_width=True, column_config=None)
                 else:
@@ -12173,15 +12227,27 @@ ORDER BY position_value DESC"""
         
         with tab5:
             st.markdown("#### 📈 Popular Stocks")
-            stock_sectors = st.multiselect("Filter by Category",
-                                          ["Mega Cap Tech", "Financials", "Healthcare", "Consumer", "Energy"],
-                                          default=["Mega Cap Tech", "Financials"])
-            
+
+            # Comprehensive stock category filters
+            stock_categories = st.multiselect(
+                "Filter by Category",
+                ["Mega Cap Tech", "Tech", "Semiconductors", "Software", "E-Commerce", "Payments", "Crypto",
+                 "Financials", "Insurance", "Healthcare", "Biotech", "Medical Devices",
+                 "Consumer", "Retail", "Automotive", "Travel", "Delivery",
+                 "Energy", "Oil Services", "Industrials", "Aerospace", "Transportation", "Airlines",
+                 "Materials", "Chemicals", "Mining", "Utilities", "REITs",
+                 "Telecom", "Media", "Gaming", "Rideshare", "International"],
+                default=["Mega Cap Tech", "Semiconductors", "Software", "Financials", "Healthcare"],
+                key="stock_cat_filter"
+            )
+
             with st.spinner("Loading stocks..."):
                 stocks_df = fetch_market_watch_data(POPULAR_STOCKS)
                 if not stocks_df.empty:
-                    if stock_sectors:
-                        stocks_df = stocks_df[stocks_df['Category'].isin(stock_sectors)]
+                    if stock_categories:
+                        stocks_df = stocks_df[stocks_df['Category'].isin(stock_categories)]
+                    # Apply change filter
+                    stocks_df = stocks_df[stocks_df['Change %'] >= filter_change]
                     display_df = create_dynamic_market_table(stocks_df, {'sort_by': sort_by, 'ascending': False})
                     make_scrollable_table(display_df, height=600, hide_index=True, use_container_width=True, column_config=None)
                 else:
