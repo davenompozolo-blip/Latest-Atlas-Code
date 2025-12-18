@@ -15981,11 +15981,15 @@ ORDER BY position_value DESC"""
                                 ) / 100
 
                             with multistage_col2:
+                                # Calculate max years for stage 2
+                                max_stage2 = max(2, forecast_years - stage1_years - 1)
+                                default_stage2 = min(2, max_stage2 - 1)
+
                                 stage2_years = st.slider(
                                     "Stage 2 Duration (Years)",
                                     min_value=1,
-                                    max_value=max(1, forecast_years - stage1_years - 1),
-                                    value=min(2, forecast_years - stage1_years - 1),
+                                    max_value=max_stage2,
+                                    value=max(1, default_stage2),  # Ensure value >= min_value
                                     step=1,
                                     help="Number of years in transition phase"
                                 )
@@ -17034,9 +17038,9 @@ ORDER BY position_value DESC"""
                 # Detailed Projections Table
                 st.markdown("---")
                 st.markdown("#### 📋 Detailed Cash Flow Projections")
-                
+
                 proj_df = pd.DataFrame(projections)
-                
+
                 # Format for display
                 if method == 'FCFF':
                     display_cols = ['year', 'revenue', 'ebit', 'nopat', 'depreciation', 'capex', 'change_wc', 'fcff']
@@ -17044,9 +17048,15 @@ ORDER BY position_value DESC"""
                 else:
                     display_cols = ['year', 'revenue', 'net_income', 'depreciation', 'capex', 'change_wc', 'net_borrowing', 'fcfe']
                     col_names = ['Year', 'Revenue', 'Net Income', 'D&A', 'CapEx', 'ΔWC', 'Borrowing', 'FCFE']
-                
-                proj_display = proj_df[display_cols].copy()
-                proj_display.columns = col_names
+
+                # Check if all required columns exist in projections
+                if not proj_df.empty and all(col in proj_df.columns for col in display_cols):
+                    proj_display = proj_df[display_cols].copy()
+                    proj_display.columns = col_names
+                else:
+                    # Fallback: show all available columns
+                    proj_display = proj_df.copy()
+                    st.warning(f"⚠️ Some projection columns missing. Showing available data.")
                 
                 # Format numbers
                 for col in proj_display.columns:
