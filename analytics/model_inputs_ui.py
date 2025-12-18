@@ -670,15 +670,28 @@ def display_sbc_analysis(ticker: str, forecast_years: int = 10) -> Optional[Dict
 # COMPONENT 6: PROJECTION SUMMARY (Simplified)
 # ============================================================================
 
-def display_projection_summary(projections: DCFProjections):
+def display_projection_summary(projections):
     """
     Display simplified projection summary with key metrics.
 
     Args:
-        projections: DCFProjections object
+        projections: DCFProjections object or list
     """
     st.markdown("### 6️⃣ DCF Projections Summary")
     st.markdown("*Auto-generated projections (full editing available below)*")
+
+    # CRITICAL FIX: Handle both DCFProjections object and list
+    if isinstance(projections, list):
+        # If it's a list, we can't get summary stats - show message
+        st.warning("⚠️ Projection summary unavailable - projections in legacy list format")
+        st.info("Upload new financial data to regenerate projections in proper format")
+        return
+
+    # Check if it has the get_summary_stats method (it's a DCFProjections object)
+    if not hasattr(projections, 'get_summary_stats'):
+        st.error(f"❌ Invalid projections object type: {type(projections)}")
+        st.info("Please refresh the page to reinitialize projections")
+        return
 
     stats = projections.get_summary_stats()
 
@@ -722,7 +735,7 @@ def display_projection_summary(projections: DCFProjections):
 # EDITABLE PROJECTION TABLE (CRITICAL FEATURE)
 # ============================================================================
 
-def display_editable_projection_table(projections: DCFProjections) -> DCFProjections:
+def display_editable_projection_table(projections):
     """
     Display fully editable projection table with manual override capability.
 
@@ -737,13 +750,24 @@ def display_editable_projection_table(projections: DCFProjections) -> DCFProject
     - Reset to auto button
 
     Args:
-        projections: DCFProjections object
+        projections: DCFProjections object or list
 
     Returns:
-        Updated DCFProjections object with manual overrides applied
+        Updated DCFProjections object with manual overrides applied (or original input if invalid)
     """
     st.markdown("### ✏️ Editable Projection Table")
     st.markdown("*Click any cell to manually override. FCFF recalculates automatically.*")
+
+    # CRITICAL FIX: Handle both DCFProjections object and list
+    if isinstance(projections, list):
+        st.warning("⚠️ Editable projection table unavailable - projections in legacy list format")
+        st.info("Please refresh the page or upload new financial data to regenerate projections")
+        return projections  # Return as-is
+
+    if not hasattr(projections, 'final_projections'):
+        st.error(f"❌ Invalid projections object type: {type(projections)}")
+        st.info("Please refresh the page to reinitialize projections")
+        return projections  # Return as-is
 
     # Build editable dataframe
     line_items = [
@@ -913,14 +937,25 @@ def display_editable_projection_table(projections: DCFProjections) -> DCFProject
 # CHARTS SECTION
 # ============================================================================
 
-def display_projection_charts(projections: DCFProjections):
+def display_projection_charts(projections):
     """
     Display projection visualization charts.
 
     Args:
-        projections: DCFProjections object
+        projections: DCFProjections object or list
     """
     st.markdown("### 📊 Projection Visualizations")
+
+    # CRITICAL FIX: Handle both DCFProjections object and list
+    if isinstance(projections, list):
+        st.warning("⚠️ Projection charts unavailable - projections in legacy list format")
+        st.info("Please refresh the page or upload new financial data to regenerate projections")
+        return
+
+    if not hasattr(projections, 'final_projections'):
+        st.error(f"❌ Invalid projections object type: {type(projections)}")
+        st.info("Please refresh the page to reinitialize projections")
+        return
 
     tab1, tab2, tab3, tab4 = st.tabs([
         "Revenue Growth", "FCFF Progression", "Margin Trend", "Dashboard"

@@ -3792,6 +3792,24 @@ def save_trade_history(df):
             print("⚠️ No valid trades after cleaning")
             return
 
+        # CRITICAL FIX: Normalize action values to 'BUY' or 'SELL'
+        # Database has CHECK constraint: action IN ('BUY', 'SELL')
+        # Investopedia uses values like "Stock: Buy at Market Open"
+        def normalize_action(action_str):
+            """Extract BUY or SELL from action string"""
+            action_lower = str(action_str).lower()
+            if 'buy' in action_lower:
+                return 'BUY'
+            elif 'sell' in action_lower or 'short' in action_lower:
+                return 'SELL'
+            else:
+                # Default fallback - should not happen with proper mapping
+                print(f"⚠️ Unknown action format: {action_str}, defaulting to BUY")
+                return 'BUY'
+
+        trades_df['action'] = trades_df['action'].apply(normalize_action)
+        print(f"📋 Normalized actions - sample: {trades_df['action'].head().tolist()}")
+
         # Save to database
         db.bulk_insert('trades', trades_df, if_exists='append')
         print(f"✅ Saved {len(trades_df)} trades to database")
@@ -10760,11 +10778,11 @@ def main():
                         if SQL_AVAILABLE:
                             try:
                                 db = get_db()
-                                db_count = db.query("SELECT COUNT(*) as count FROM trades").iloc[0]['count']
+                                db_count = db.read("SELECT COUNT(*) as count FROM trades").iloc[0]['count']
                                 st.success(f"💾 Database now contains {db_count} total trade records (persistent across sessions)")
 
                                 # Show last 5 trades from database to confirm
-                                last_trades = db.query("SELECT * FROM trades ORDER BY date DESC LIMIT 5")
+                                last_trades = db.read("SELECT * FROM trades ORDER BY date DESC LIMIT 5")
                                 if len(last_trades) > 0:
                                     with st.expander("🔍 Last 5 Trades in Database", expanded=False):
                                         st.dataframe(last_trades)
@@ -11950,7 +11968,7 @@ summary(df)""",
 
                 # Query trades table directly from database
                 try:
-                    trades_result = db.query("SELECT COUNT(*) as count FROM trades")
+                    trades_result = db.read("SELECT COUNT(*) as count FROM trades")
                     trades_count = trades_result.iloc[0]['count'] if len(trades_result) > 0 else 0
                 except:
                     trades_count = 0
@@ -12006,7 +12024,7 @@ summary(df)""",
                 st.markdown("##### Recent Trades")
                 try:
                     # CRITICAL FIX: Query database directly, not pickle
-                    trades = db.query("SELECT * FROM trades ORDER BY date DESC LIMIT 10")
+                    trades = db.read("SELECT * FROM trades ORDER BY date DESC LIMIT 10")
                     if len(trades) > 0:
                         display_trades = trades[['date', 'ticker', 'action', 'quantity', 'price']]
                         make_scrollable_table(display_trades, height=400, hide_index=True, use_container_width=True)
