@@ -3669,82 +3669,144 @@ def save_trade_history(df):
     with open(TRADE_HISTORY_CACHE, "wb") as f:
         pickle.dump(df, f)
 
-    # PHASE 4: Auto-save to database
-    if SQL_AVAILABLE and df is not None and len(df) > 0:
-        try:
-            db = get_db()
-            # Prepare DataFrame for database
-            trades_df = df.copy()
+    # Check if SQL is available
+    if not SQL_AVAILABLE:
+        print("⚠️ SQL not available - trades saved to pickle only")
+        import streamlit as st
+        st.warning("⚠️ Trades saved to local file only (database not available)")
+        return
 
-            # Map columns to database schema
-            # Database expects: date, ticker, action, quantity, price
-            # Try different possible column names
-            column_mapping = {}
+    if df is None or len(df) == 0:
+        print("⚠️ No trades to save")
+        return
 
-            # FIX #7: Expanded column name variations for Investopedia compatibility
-            # Date column
-            for date_col in ['Date', 'date', 'Trade Date', 'Execution Date', 'Exec Date', 'Transaction Date']:
-                if date_col in trades_df.columns:
-                    column_mapping[date_col] = 'date'
-                    break
+    try:
+        db = get_db()
+        trades_df = df.copy()
 
-            # Ticker column
-            for ticker_col in ['Ticker', 'ticker', 'Symbol', 'Underlying', 'Stock']:
-                if ticker_col in trades_df.columns:
-                    column_mapping[ticker_col] = 'ticker'
-                    break
+        # IMPROVED COLUMN MAPPING - Add all variations including "Trade Type"
+        column_mapping = {}
 
-            # Action column
-            for action_col in ['Action', 'action', 'Type', 'Side', 'Buy/Sell', 'Transaction Type', 'Direction']:
-                if action_col in trades_df.columns:
-                    column_mapping[action_col] = 'action'
-                    break
+        # Date column - ALL POSSIBLE NAMES
+        date_cols = [
+            'Date', 'date', 'DATE',
+            'Trade Date', 'Execution Date', 'Exec Date',
+            'Transaction Date', 'Settlement Date'
+        ]
+        for col in date_cols:
+            if col in trades_df.columns:
+                column_mapping[col] = 'date'
+                break
 
-            # Quantity column
-            for qty_col in ['Quantity', 'quantity', 'Shares', 'Qty', 'Amount', 'Volume', 'Size']:
-                if qty_col in trades_df.columns:
-                    column_mapping[qty_col] = 'quantity'
-                    break
+        # Ticker/Symbol column - ALL POSSIBLE NAMES
+        ticker_cols = [
+            'Ticker', 'ticker', 'TICKER',
+            'Symbol', 'symbol', 'SYMBOL',
+            'Underlying', 'Security', 'Instrument'
+        ]
+        for col in ticker_cols:
+            if col in trades_df.columns:
+                column_mapping[col] = 'ticker'
+                break
 
-            # Price column
-            for price_col in ['Price', 'price', 'Exec Price', 'Execution Price', 'Fill Price', 'Trade Price']:
-                if price_col in trades_df.columns:
-                    column_mapping[price_col] = 'price'
-                    break
+        # Action column - ALL POSSIBLE NAMES (INCLUDING "Trade Type") ⭐ CRITICAL FIX
+        action_cols = [
+            'Action', 'action', 'ACTION',
+            'Trade Type', 'TradeType', 'TRADE TYPE',  # ← FIX: Added these!
+            'Type', 'type', 'TYPE',
+            'Side', 'side', 'SIDE',
+            'Buy/Sell', 'BUY/SELL',
+            'Transaction Type', 'Trade Action'
+        ]
+        for col in action_cols:
+            if col in trades_df.columns:
+                column_mapping[col] = 'action'
+                break
 
-            # Rename columns
-            trades_df = trades_df.rename(columns=column_mapping)
+        # Quantity column - ALL POSSIBLE NAMES
+        qty_cols = [
+            'Quantity', 'quantity', 'QUANTITY',
+            'Qty', 'qty', 'QTY',
+            'Shares', 'shares', 'SHARES',
+            'Amount', 'amount', 'AMOUNT',
+            'Volume', 'volume', 'VOLUME',
+            'Size', 'size', 'SIZE'
+        ]
+        for col in qty_cols:
+            if col in trades_df.columns:
+                column_mapping[col] = 'quantity'
+                break
 
-            # Check if we have the required columns
-            required = ['date', 'ticker', 'action', 'quantity', 'price']
-            if all(col in trades_df.columns for col in required):
-                trades_df = trades_df[required]
+        # Price column - ALL POSSIBLE NAMES
+        price_cols = [
+            'Price', 'price', 'PRICE',
+            'Exec Price', 'Execution Price', 'Fill Price',
+            'Trade Price', 'Avg Price', 'Average Price'
+        ]
+        for col in price_cols:
+            if col in trades_df.columns:
+                column_mapping[col] = 'price'
+                break
 
-                # Save to database
-                db.bulk_insert('trades', trades_df, if_exists='append')
-                success_msg = f"✅ Saved {len(trades_df)} trades to database"
-                print(success_msg)
-                # Note: st.success() can't be called here as it's not in Streamlit context
-            else:
-                missing = [col for col in required if col not in trades_df.columns]
-                available = list(trades_df.columns)
-                error_msg = f"⚠️ Cannot save trades to database: missing columns {missing}. Available columns: {available}"
-                print(error_msg)
-                # Show user-friendly error in Streamlit (will appear in logs)
-                import streamlit as st
-                if hasattr(st, 'session_state'):  # Check if in Streamlit context
-                    st.warning(f"Database save skipped: missing required columns {missing}")
+        # Apply mapping
+        print(f"📋 Column mapping found: {column_mapping}")
+        trades_df = trades_df.rename(columns=column_mapping)
 
-        except Exception as e:
-            error_msg = f"⚠️ Trade history database save failed (pickle still saved): {e}"
+        # Check if we have all required columns
+        required = ['date', 'ticker', 'action', 'quantity', 'price']
+        missing = [col for col in required if col not in trades_df.columns]
+
+        if missing:
+            error_msg = f"⚠️ Cannot save to database - missing columns: {missing}"
             print(error_msg)
-            import traceback
-            print(traceback.format_exc())
-            # Show user-friendly error
+            print(f"📋 Available columns after mapping: {list(trades_df.columns)}")
             import streamlit as st
-            if hasattr(st, 'session_state'):  # Check if in Streamlit context
-                st.warning(f"Database save failed: {str(e)}")
-                st.info("Trades are saved to local cache file and will appear in the app")
+            st.error(f"❌ {error_msg}")
+            st.info(f"""
+            **Columns in uploaded file:**
+            {', '.join(df.columns)}
+
+            **Missing after mapping:**
+            {', '.join(missing)}
+
+            Trades saved to local file, but not database.
+            """)
+            return
+
+        # Select only required columns
+        trades_df = trades_df[required]
+
+        # Clean and validate data
+        # Convert date to string if it's datetime
+        if pd.api.types.is_datetime64_any_dtype(trades_df['date']):
+            trades_df['date'] = trades_df['date'].dt.strftime('%Y-%m-%d')
+
+        # Ensure numeric types
+        trades_df['quantity'] = pd.to_numeric(trades_df['quantity'], errors='coerce')
+        trades_df['price'] = pd.to_numeric(trades_df['price'], errors='coerce')
+
+        # Remove rows with NaN values
+        trades_df = trades_df.dropna()
+
+        if len(trades_df) == 0:
+            print("⚠️ No valid trades after cleaning")
+            return
+
+        # Save to database
+        db.bulk_insert('trades', trades_df, if_exists='append')
+        print(f"✅ Saved {len(trades_df)} trades to database")
+        import streamlit as st
+        st.success(f"✅ Saved {len(trades_df)} trades to database permanently!")
+
+    except Exception as e:
+        error_msg = f"⚠️ Database save failed: {e}"
+        print(error_msg)
+        import streamlit as st
+        st.error(error_msg)
+        import traceback
+        st.code(traceback.format_exc())
+        st.info("Trades are saved to local pickle file as backup")
+
 
 def load_trade_history():
     if TRADE_HISTORY_CACHE.exists():
@@ -10693,6 +10755,22 @@ def main():
 
                         save_trade_history(trade_df)
                         st.success(f"✅ Parsed {len(trade_df)} trades!")
+
+                        # CRITICAL FIX: Verify database save
+                        if SQL_AVAILABLE:
+                            try:
+                                db = get_db()
+                                db_count = db.query("SELECT COUNT(*) as count FROM trades").iloc[0]['count']
+                                st.success(f"💾 Database now contains {db_count} total trade records (persistent across sessions)")
+
+                                # Show last 5 trades from database to confirm
+                                last_trades = db.query("SELECT * FROM trades ORDER BY date DESC LIMIT 5")
+                                if len(last_trades) > 0:
+                                    with st.expander("🔍 Last 5 Trades in Database", expanded=False):
+                                        st.dataframe(last_trades)
+                            except Exception as e:
+                                st.warning(f"⚠️ Could not verify database: {e}")
+
                         show_toast(f"Trade history imported: {len(trade_df)} trades parsed successfully", toast_type="success", duration=3000)
                         make_scrollable_table(trade_df.head(10), height=400, hide_index=True, use_container_width=True, column_config=None)
 
@@ -11867,8 +11945,15 @@ summary(df)""",
             col1, col2, col3, col4 = st.columns(4)
 
             try:
+                # CRITICAL FIX: Query database directly, not pickle cache
                 portfolio_count = len(db.get_portfolio())
-                trades_count = len(db.get_trades())
+
+                # Query trades table directly from database
+                try:
+                    trades_result = db.query("SELECT COUNT(*) as count FROM trades")
+                    trades_count = trades_result.iloc[0]['count'] if len(trades_result) > 0 else 0
+                except:
+                    trades_count = 0
 
                 # Calculate additional metrics
                 if portfolio_count > 0:
@@ -11920,15 +12005,16 @@ summary(df)""",
             with col2:
                 st.markdown("##### Recent Trades")
                 try:
-                    trades = db.get_trades()
+                    # CRITICAL FIX: Query database directly, not pickle
+                    trades = db.query("SELECT * FROM trades ORDER BY date DESC LIMIT 10")
                     if len(trades) > 0:
-                        recent_trades = trades.sort_values('date', ascending=False).head(10)
-                        display_trades = recent_trades[['date', 'ticker', 'action', 'quantity', 'price']]
+                        display_trades = trades[['date', 'ticker', 'action', 'quantity', 'price']]
                         make_scrollable_table(display_trades, height=400, hide_index=True, use_container_width=True)
+                        st.caption(f"💾 Showing {len(trades)} most recent trades from database")
                     else:
-                        st.info("No trades in database")
+                        st.info("No trades in database yet. Upload trade history in Phoenix Parser.")
                 except Exception as e:
-                    st.error(f"Error: {e}")
+                    st.error(f"Error querying database: {e}")
 
             st.markdown("---")
 
