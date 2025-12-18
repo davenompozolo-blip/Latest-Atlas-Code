@@ -1008,7 +1008,15 @@ def display_model_inputs_dashboard(ticker: str) -> Dict[str, Any]:
     sbc_result = None
     if SBC_AVAILABLE:
         with st.container():
-            sbc_result = display_sbc_analysis(ticker, forecast_years=projections.forecast_years)
+            # Get forecast_years safely (handle both DCFProjections object and list)
+            if hasattr(projections, 'forecast_years'):
+                forecast_years = projections.forecast_years
+            elif isinstance(projections, list):
+                forecast_years = len(projections)
+            else:
+                forecast_years = 5  # Default fallback
+
+            sbc_result = display_sbc_analysis(ticker, forecast_years=forecast_years)
     else:
         st.info("💡 SBC integration unavailable. Install required dependencies to enable.")
 
