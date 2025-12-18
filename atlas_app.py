@@ -3681,32 +3681,33 @@ def save_trade_history(df):
             # Try different possible column names
             column_mapping = {}
 
+            # FIX #7: Expanded column name variations for Investopedia compatibility
             # Date column
-            for date_col in ['Date', 'date', 'Trade Date']:
+            for date_col in ['Date', 'date', 'Trade Date', 'Execution Date', 'Exec Date', 'Transaction Date']:
                 if date_col in trades_df.columns:
                     column_mapping[date_col] = 'date'
                     break
 
             # Ticker column
-            for ticker_col in ['Ticker', 'ticker', 'Symbol']:
+            for ticker_col in ['Ticker', 'ticker', 'Symbol', 'Underlying', 'Stock']:
                 if ticker_col in trades_df.columns:
                     column_mapping[ticker_col] = 'ticker'
                     break
 
             # Action column
-            for action_col in ['Action', 'action', 'Type', 'Side']:
+            for action_col in ['Action', 'action', 'Type', 'Side', 'Buy/Sell', 'Transaction Type', 'Direction']:
                 if action_col in trades_df.columns:
                     column_mapping[action_col] = 'action'
                     break
 
             # Quantity column
-            for qty_col in ['Quantity', 'quantity', 'Shares', 'Qty']:
+            for qty_col in ['Quantity', 'quantity', 'Shares', 'Qty', 'Amount', 'Volume', 'Size']:
                 if qty_col in trades_df.columns:
                     column_mapping[qty_col] = 'quantity'
                     break
 
             # Price column
-            for price_col in ['Price', 'price', 'Exec Price']:
+            for price_col in ['Price', 'price', 'Exec Price', 'Execution Price', 'Fill Price', 'Trade Price']:
                 if price_col in trades_df.columns:
                     column_mapping[price_col] = 'price'
                     break
@@ -3721,13 +3722,29 @@ def save_trade_history(df):
 
                 # Save to database
                 db.bulk_insert('trades', trades_df, if_exists='append')
-                print(f"✅ Saved {len(trades_df)} trades to database")
+                success_msg = f"✅ Saved {len(trades_df)} trades to database"
+                print(success_msg)
+                # Note: st.success() can't be called here as it's not in Streamlit context
             else:
                 missing = [col for col in required if col not in trades_df.columns]
-                print(f"⚠️ Cannot save trades to database: missing columns {missing}")
+                available = list(trades_df.columns)
+                error_msg = f"⚠️ Cannot save trades to database: missing columns {missing}. Available columns: {available}"
+                print(error_msg)
+                # Show user-friendly error in Streamlit (will appear in logs)
+                import streamlit as st
+                if hasattr(st, 'session_state'):  # Check if in Streamlit context
+                    st.warning(f"Database save skipped: missing required columns {missing}")
 
         except Exception as e:
-            print(f"⚠️ Trade history database save failed (pickle still saved): {e}")
+            error_msg = f"⚠️ Trade history database save failed (pickle still saved): {e}"
+            print(error_msg)
+            import traceback
+            print(traceback.format_exc())
+            # Show user-friendly error
+            import streamlit as st
+            if hasattr(st, 'session_state'):  # Check if in Streamlit context
+                st.warning(f"Database save failed: {str(e)}")
+                st.info("Trades are saved to local cache file and will appear in the app")
 
 def load_trade_history():
     if TRADE_HISTORY_CACHE.exists():
@@ -3880,14 +3897,18 @@ def get_leverage_info():
                     total_value = abs(latest_cash) + latest_margin
         else:
             total_value = abs(latest_cash) + latest_margin
-            
-        leverage_ratio = (total_value / (total_value - latest_margin)) if (total_value - latest_margin) > 0 else 1
-        
+
+        # FIX #4: Correct leverage formula - Gross Exposure / Net Equity
+        # (aligned with Leverage Tracker page calculation)
+        net_equity = total_value - latest_margin if total_value > latest_margin else total_value
+        leverage_ratio = (total_value / net_equity) if net_equity > 0 else 1.0
+
         return {
             'margin_used': latest_margin,
             'cash_balance': latest_cash,
             'leverage_ratio': leverage_ratio,
-            'total_value': total_value
+            'total_value': total_value,
+            'net_equity': net_equity  # Added for clarity
         }
     return None
 
@@ -10660,8 +10681,16 @@ def main():
             if trade_file:
                 with st.spinner("Parsing..."):
                     trade_df = parse_trade_history_file(trade_file)
-                    
+
                     if trade_df is not None:
+                        # FIX #7: Add debug output to diagnose database save issues
+                        with st.expander("🔍 Debug Info - Trade File Columns", expanded=False):
+                            st.write("**Columns in uploaded file:**")
+                            st.write(list(trade_df.columns))
+                            st.write(f"**SQL_AVAILABLE:** {SQL_AVAILABLE}")
+                            if not SQL_AVAILABLE:
+                                st.warning("⚠️ Database not available - trades will save to cache file only")
+
                         save_trade_history(trade_df)
                         st.success(f"✅ Parsed {len(trade_df)} trades!")
                         show_toast(f"Trade history imported: {len(trade_df)} trades parsed successfully", toast_type="success", duration=3000)
@@ -10943,6 +10972,11 @@ def main():
 
                     # Store in session state for other pages
                     st.session_state.leverage_tracker = tracker
+
+                    # FIX #5: Auto-update equity capital from performance history
+                    if 'current_equity' in stats:
+                        st.session_state['equity_capital'] = stats['current_equity']
+                        st.info(f"💰 Equity capital auto-set to ${stats['current_equity']:,.0f} from performance history")
 
                     # Show dashboard
                     with st.expander("📊 View Leverage Dashboard", expanded=True):
@@ -17463,51 +17497,26 @@ ORDER BY position_value DESC"""
         st.markdown("## 📊 LEVERAGE TRACKING & ANALYSIS")
         st.markdown("**Track how leverage has affected your returns over time**")
 
+        # FIX #6: Removed duplicate upload - keep uploads centralized in Phoenix Parser
         # Check if leverage tracker exists in session state
         if 'leverage_tracker' not in st.session_state:
             st.warning("⚠️ No performance history loaded")
             st.info("""
             **To use Leverage Tracking:**
 
-            1. Go to 🔥 Phoenix Parser
-            2. Upload your Investopedia performance-history.xls file
-            3. Return to this page to view full analysis
+            1. Go to 🔥 **Phoenix Parser** (in sidebar navigation)
+            2. Scroll to "📊 Leverage Tracking" section
+            3. Upload your Investopedia performance-history.xls file
+            4. Return to this page to view full analysis
 
-            **OR** upload your performance history file below:
+            The performance history upload is centralized in Phoenix Parser to keep all data uploads in one place.
             """)
 
-            # Allow upload here too
-            perf_file = st.file_uploader(
-                "📈 Upload Performance History",
-                type=['xls', 'xlsx', 'html'],
-                help="Upload your Investopedia performance-history.xls file",
-                key="leverage_upload"
-            )
+            # Show helpful navigation hint
+            st.markdown("---")
+            st.caption("💡 Tip: Use the sidebar navigation to quickly switch between pages")
 
-            if perf_file:
-                try:
-                    # Save uploaded file temporarily
-                    import tempfile
-                    with tempfile.NamedTemporaryFile(delete=False, suffix='.xls') as tmp_file:
-                        tmp_file.write(perf_file.getvalue())
-                        tmp_path = tmp_file.name
-
-                    # Parse leverage data
-                    from analytics.leverage_tracker import LeverageTracker
-
-                    tracker = LeverageTracker(tmp_path)
-
-                    if tracker.load_and_parse():
-                        st.session_state.leverage_tracker = tracker
-                        st.success("✅ Performance history loaded! Refresh to see analysis.")
-                        st.experimental_rerun()
-                    else:
-                        st.error("❌ Could not parse performance history file")
-
-                except Exception as e:
-                    st.error(f"Error loading performance history: {e}")
-                    import traceback
-                    st.code(traceback.format_exc())
+            return  # Exit early if no tracker
         else:
             # Display leverage analysis
             tracker = st.session_state.leverage_tracker
