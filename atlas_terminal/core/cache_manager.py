@@ -62,6 +62,15 @@ class CacheManager:
         Returns:
             Cached value or None if not found/expired
         """
+        # Initialize cache_stats if it doesn't exist
+        if 'cache_stats' not in st.session_state:
+            st.session_state.cache_stats = {
+                'hits': 0,
+                'misses': 0,
+                'disk_hits': 0,
+                'disk_writes': 0
+            }
+
         # Try memory cache first (fastest)
         if key in st.session_state:
             cached = st.session_state[key]
@@ -102,6 +111,15 @@ class CacheManager:
             value: Value to cache
             persist: Whether to persist to disk
         """
+        # Initialize cache_stats if it doesn't exist
+        if 'cache_stats' not in st.session_state:
+            st.session_state.cache_stats = {
+                'hits': 0,
+                'misses': 0,
+                'disk_hits': 0,
+                'disk_writes': 0
+            }
+
         cached = {
             'value': value,
             'timestamp': time.time()
@@ -141,6 +159,15 @@ class CacheManager:
 
     def get_stats(self) -> dict:
         """Get cache statistics."""
+        # Initialize cache_stats if it doesn't exist
+        if 'cache_stats' not in st.session_state:
+            st.session_state.cache_stats = {
+                'hits': 0,
+                'misses': 0,
+                'disk_hits': 0,
+                'disk_writes': 0
+            }
+
         stats = st.session_state.cache_stats
         total = stats['hits'] + stats['misses']
         hit_rate = (stats['hits'] / total * 100) if total > 0 else 0
