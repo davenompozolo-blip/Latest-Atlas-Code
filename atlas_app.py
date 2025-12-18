@@ -458,7 +458,16 @@ def fetch_us_treasury_yields_fred():
 st.set_page_config(
     page_title="ATLAS Terminal v10.0 INSTITUTIONAL",
     page_icon="🚀",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
+st.markdown(
+    """
+    <script>
+        document.documentElement.setAttribute('data-theme', 'dark');
+    </script>
+    """,
+    unsafe_allow_html=True
 )
 
 # ============================================================================
