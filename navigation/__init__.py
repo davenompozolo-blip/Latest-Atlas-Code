@@ -17,7 +17,13 @@ Adding a new page = adding one entry to PAGE_REGISTRY.
 That's it.
 """
 
-from .registry import PAGE_REGISTRY, get_available_pages, get_page_by_key
+from .registry import (
+    PAGE_REGISTRY,
+    get_available_pages,
+    get_page_by_key,
+    get_pages_by_category,
+    get_all_categories
+)
 from .router import route_to_page
 from .sidebar import render_sidebar
 
@@ -25,6 +31,8 @@ __all__ = [
     'PAGE_REGISTRY',
     'get_available_pages',
     'get_page_by_key',
+    'get_pages_by_category',
+    'get_all_categories',
     'route_to_page',
     'render_sidebar'
 ]

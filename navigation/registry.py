@@ -50,34 +50,194 @@ class PageDefinition:
 # THE REGISTRY - All pages in one place
 # ============================================================================
 
-# Placeholder handlers - will be replaced with actual page implementations
-def _placeholder_home():
-    """Placeholder for Portfolio Home - will be wired in Day 5"""
-    import streamlit as st
-    st.markdown("## 🏠 Portfolio Home")
-    st.info("📍 Navigation skeleton active - actual page will be wired in Day 5")
+# Placeholder handlers - will be wired to actual implementations in Day 5
+# These are minimal stubs that render a placeholder message
 
-def _placeholder_generic(page_name: str):
-    """Generic placeholder for other pages"""
-    import streamlit as st
-    st.markdown(f"## {page_name}")
-    st.info("📍 Navigation skeleton active - actual page will be wired in Day 5")
+def _make_placeholder(page_name: str, icon: str):
+    """Factory function to create placeholder handlers"""
+    def handler():
+        import streamlit as st
+        st.markdown(f"## {icon} {page_name}")
+        st.info(f"📍 **Navigation v2.0 Active**\n\nThis page ({page_name}) will be fully wired in Day 5 integration phase.")
+        st.markdown("""
+        **Current Status:**
+        - ✅ Page registered in navigation
+        - ✅ Routing working
+        - ⏳ Actual implementation pending
+
+        **What's Working:**
+        - Navigation structure
+        - Page selection
+        - Routing system
+        """)
+    return handler
 
 
-# THE REGISTRY
-# This will be populated with all actual pages in Day 2
+# THE REGISTRY - COMPLETE LIST OF ALL ATLAS PAGES
+#
+# This is the single source of truth for navigation.
+# Order matches current atlas_app.py horizontal nav bar.
+#
+# To add a new page:
+# 1. Add a PageDefinition here
+# 2. That's it! (handler will be wired in Day 5)
+
 PAGE_REGISTRY = [
+    # Data Input Pages
     PageDefinition(
-        key="home",
+        key="phoenix_parser",
+        title="Phoenix Parser",
+        icon="🔥",
+        handler=_make_placeholder("Phoenix Parser", "🔥"),
+        category="input",
+        requires_data=[]  # No prerequisites
+    ),
+
+    # Core Portfolio Pages
+    PageDefinition(
+        key="portfolio_home",
         title="Portfolio Home",
         icon="🏠",
-        handler=_placeholder_home,
+        handler=_make_placeholder("Portfolio Home", "🏠"),
         category="core",
         requires_data=["portfolio"]
     ),
 
-    # More pages will be added in Day 2
-    # This is just a minimal skeleton to get imports working
+    # Analytics Pages
+    PageDefinition(
+        key="v10_analytics",
+        title="v10.0 Analytics",
+        icon="🚀",
+        handler=_make_placeholder("v10.0 Analytics", "🚀"),
+        category="analytics",
+        requires_data=["portfolio"]
+    ),
+
+    PageDefinition(
+        key="r_analytics",
+        title="R Analytics",
+        icon="📊",
+        handler=_make_placeholder("R Analytics", "📊"),
+        category="analytics",
+        feature_flag="r_integration",  # May require R installation
+        requires_data=["portfolio"]
+    ),
+
+    # Database Page
+    PageDefinition(
+        key="database",
+        title="Database",
+        icon="💾",
+        handler=_make_placeholder("Database", "💾"),
+        category="system",
+        requires_data=[]  # Shows database contents
+    ),
+
+    # Market Pages
+    PageDefinition(
+        key="market_watch",
+        title="Market Watch",
+        icon="🌍",
+        handler=_make_placeholder("Market Watch", "🌍"),
+        category="markets",
+        requires_data=[]  # Market data only
+    ),
+
+    # Analysis Pages
+    PageDefinition(
+        key="risk_analysis",
+        title="Risk Analysis",
+        icon="📈",
+        handler=_make_placeholder("Risk Analysis", "📈"),
+        category="analysis",
+        requires_data=["portfolio"]
+    ),
+
+    PageDefinition(
+        key="performance_suite",
+        title="Performance Suite",
+        icon="💎",
+        handler=_make_placeholder("Performance Suite", "💎"),
+        category="analysis",
+        requires_data=["portfolio", "performance_history"]
+    ),
+
+    PageDefinition(
+        key="portfolio_deep_dive",
+        title="Portfolio Deep Dive",
+        icon="🔬",
+        handler=_make_placeholder("Portfolio Deep Dive", "🔬"),
+        category="analysis",
+        requires_data=["portfolio"]
+    ),
+
+    PageDefinition(
+        key="multi_factor_analysis",
+        title="Multi-Factor Analysis",
+        icon="📊",
+        handler=_make_placeholder("Multi-Factor Analysis", "📊"),
+        category="analysis",
+        requires_data=["portfolio"]
+    ),
+
+    # Valuation Pages
+    PageDefinition(
+        key="valuation_house",
+        title="Valuation House",
+        icon="💰",
+        handler=_make_placeholder("Valuation House", "💰"),
+        category="valuation",
+        requires_data=[]  # Self-contained
+    ),
+
+    # Optimization & Simulation Pages
+    PageDefinition(
+        key="monte_carlo_engine",
+        title="Monte Carlo Engine",
+        icon="🎲",
+        handler=_make_placeholder("Monte Carlo Engine", "🎲"),
+        category="optimization",
+        requires_data=["portfolio"]
+    ),
+
+    PageDefinition(
+        key="quant_optimizer",
+        title="Quant Optimizer",
+        icon="🧮",
+        handler=_make_placeholder("Quant Optimizer", "🧮"),
+        category="optimization",
+        requires_data=["portfolio"]
+    ),
+
+    # Tracking Pages
+    PageDefinition(
+        key="leverage_tracker",
+        title="Leverage Tracker",
+        icon="📊",
+        handler=_make_placeholder("Leverage Tracker", "📊"),
+        category="tracking",
+        requires_data=["portfolio", "performance_history"]
+    ),
+
+    PageDefinition(
+        key="investopedia_live",
+        title="Investopedia Live",
+        icon="📡",
+        handler=_make_placeholder("Investopedia Live", "📡"),
+        category="tracking",
+        feature_flag="investopedia_api",  # May require API
+        requires_data=[]
+    ),
+
+    # System Pages
+    PageDefinition(
+        key="about",
+        title="About",
+        icon="ℹ️",
+        handler=_make_placeholder("About", "ℹ️"),
+        category="system",
+        requires_data=[]  # Static content
+    ),
 ]
 
 
