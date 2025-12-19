@@ -53,6 +53,11 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
 
+# ============================================================================
+# PHASE 2A: NAVIGATION SYSTEM (New modular architecture)
+# ============================================================================
+from navigation import PAGE_REGISTRY, get_page_by_key, route_to_page
+
 # Auto-install streamlit_option_menu if missing
 try:
     from streamlit_option_menu import option_menu
@@ -10694,6 +10699,32 @@ def main():
         }
     )
 
+    # ========================================================================
+    # PHASE 2A: NAVIGATION ROUTING (Registry-Based)
+    # ========================================================================
+    # Map option_menu titles to registry keys
+    PAGE_TITLE_TO_KEY = {
+        "🔥 Phoenix Parser": "phoenix_parser",
+        "🏠 Portfolio Home": "portfolio_home",
+        "🚀 v10.0 Analytics": "v10_analytics",
+        "📊 R Analytics": "r_analytics",
+        "💾 Database": "database",
+        "🌍 Market Watch": "market_watch",
+        "📈 Risk Analysis": "risk_analysis",
+        "💎 Performance Suite": "performance_suite",
+        "🔬 Portfolio Deep Dive": "portfolio_deep_dive",
+        "📊 Multi-Factor Analysis": "multi_factor_analysis",
+        "💰 Valuation House": "valuation_house",
+        "🎲 Monte Carlo Engine": "monte_carlo_engine",
+        "🧮 Quant Optimizer": "quant_optimizer",
+        "📊 Leverage Tracker": "leverage_tracker",
+        "📡 Investopedia Live": "investopedia_live",
+        "ℹ️ About": "about"
+    }
+
+    # Get page key from selected title
+    selected_page_key = PAGE_TITLE_TO_KEY.get(page, "portfolio_home")
+
     st.markdown("---")
 
     # Time Range and Benchmark Controls (positioned below navigation)
@@ -10756,10 +10787,33 @@ def main():
         start_date = end_date - timedelta(days=days)
     
     # ========================================================================
-    # PHOENIX PARSER
+    # PHASE 2A: NAVIGATION V2 ROUTING (Experimental - can be toggled)
     # ========================================================================
-    if page == "🔥 Phoenix Parser":
-        st.markdown("## 🔥 PHOENIX MODE")
+    # Toggle between old monolithic routing and new modular navigation
+    USE_NAVIGATION_V2 = st.sidebar.checkbox(
+        "🧪 Use Navigation v2.0 (Experimental)",
+        value=False,
+        help="Enable new modular navigation system (Phase 2A)"
+    )
+
+    if USE_NAVIGATION_V2:
+        # NEW: Registry-based routing
+        st.info(f"📍 **Navigation v2.0 Active** - Routing to: `{selected_page_key}`")
+        route_to_page(selected_page_key)
+
+    else:
+        # OLD: Monolithic if/elif routing (will be deprecated after Phase 2A testing)
+        pass  # Fall through to old code below
+
+    # ========================================================================
+    # OLD NAVIGATION CODE (To be deprecated after Phase 2A complete)
+    # ========================================================================
+    if not USE_NAVIGATION_V2:  # Only run old code if v2 is disabled
+        # ====================================================================
+        # PHOENIX PARSER
+        # ====================================================================
+        if page == "🔥 Phoenix Parser":
+            st.markdown("## 🔥 PHOENIX MODE")
         
         col1, col2 = st.columns(2)
         
