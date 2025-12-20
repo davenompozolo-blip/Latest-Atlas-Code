@@ -43,6 +43,7 @@ import time
 import io
 import json
 import random
+import base64
 from datetime import datetime, timedelta, date
 from pathlib import Path
 from collections import Counter, defaultdict
@@ -10503,59 +10504,100 @@ def main():
     if 'target_leverage' not in st.session_state:
         st.session_state['target_leverage'] = 1.0  # Default no leverage
 
-    # Professional Header with Logo
-    st.markdown("""
-    <div style="text-align: center; margin-bottom: 2rem;">
-        <div style="display: inline-flex; align-items: center; justify-content: center; gap: 1rem;
-                    background: linear-gradient(135deg, rgba(0, 212, 255, 0.1) 0%, rgba(0, 128, 255, 0.1) 100%);
-                    padding: 1.5rem 3rem; border-radius: 20px; border: 2px solid rgba(0, 212, 255, 0.3);
-                    box-shadow: 0 8px 32px rgba(0, 212, 255, 0.2);">
-            <svg width="60" height="60" viewBox="0 0 100 100" style="filter: drop-shadow(0 0 10px rgba(0, 212, 255, 0.5));">
-                <defs>
-                    <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" style="stop-color:#00d4ff;stop-opacity:1" />
-                        <stop offset="50%" style="stop-color:#00ff88;stop-opacity:1" />
-                        <stop offset="100%" style="stop-color:#00d4ff;stop-opacity:1" />
-                    </linearGradient>
-                </defs>
-                <!-- Stylized "A" for ATLAS -->
-                <path d="M 50 10 L 80 90 L 65 90 L 60 75 L 40 75 L 35 90 L 20 90 Z M 45 60 L 55 60 L 50 35 Z"
-                      fill="url(#logoGradient)" stroke="#00d4ff" stroke-width="2"/>
-                <!-- Accent lines for modern touch -->
-                <line x1="30" y1="50" x2="38" y2="68" stroke="#00ff88" stroke-width="3" stroke-linecap="round"/>
-                <line x1="70" y1="50" x2="62" y2="68" stroke="#00ff88" stroke-width="3" stroke-linecap="round"/>
-            </svg>
-            <div style="text-align: left;">
-                <h1 style="margin: 0; font-size: 3em; font-weight: 900;
-                           background: linear-gradient(135deg, #00d4ff 0%, #00ff88 50%, #00d4ff 100%);
-                           background-size: 200% auto; -webkit-background-clip: text; background-clip: text;
-                           -webkit-text-fill-color: transparent;">
-                    ATLAS TERMINAL
-                </h1>
-                <div style="color: #6c8ca8; font-size: 0.9em; font-weight: 600; letter-spacing: 0.15em; margin-top: 0.25rem;">
-                    INSTITUTIONAL EDITION v10.0
+    # ============================================================================
+    # ATLAS TERMINAL HEADER - PROFESSIONAL BRANDING
+    # ============================================================================
+
+    def render_atlas_header():
+        """Render ATLAS Terminal header with shield logo and branding"""
+
+        # Load CSS animations
+        css_path = Path('ui/branding/avengers_animations.css')
+        if css_path.exists():
+            with open(css_path, 'r', encoding='utf-8') as f:
+                st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
+
+        # Load shield logo
+        logo_path = Path('ui/branding/shield_logo.svg')
+        if logo_path.exists():
+            with open(logo_path, 'rb') as f:
+                logo_base64 = base64.b64encode(f.read()).decode()
+
+            # Render complete header
+            st.markdown(f"""
+            <div style="text-align: center; padding: 40px 20px 20px 20px;">
+
+                <!-- Shield Logo with Glow -->
+                <div class="atlas-shield-logo loaded" style="display: inline-block; margin-bottom: 30px;">
+                    <img src="data:image/svg+xml;base64,{logo_base64}"
+                         width="180"
+                         style="filter: drop-shadow(0 0 20px rgba(0, 212, 255, 0.6));"
+                         alt="ATLAS Shield">
                 </div>
+
+                <!-- Main Title -->
+                <h1 style="
+                    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+                    font-size: 3.5rem;
+                    font-weight: 800;
+                    color: #00d4ff;
+                    margin: 0;
+                    letter-spacing: 0.05em;
+                    text-shadow: 0 0 30px rgba(0, 212, 255, 0.5);
+                    line-height: 1.2;
+                ">ATLAS TERMINAL</h1>
+
+                <!-- Subtitle -->
+                <p style="
+                    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+                    font-size: 0.9rem;
+                    font-weight: 300;
+                    color: #c0c8d0;
+                    margin: 10px 0 20px 0;
+                    letter-spacing: 0.2em;
+                    text-transform: uppercase;
+                ">INSTITUTIONAL EDITION v10.0</p>
+
+                <!-- Slogan -->
+                <p style="
+                    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+                    font-size: 1.1rem;
+                    font-weight: 400;
+                    color: #ffffff;
+                    margin: 0 0 30px 0;
+                    line-height: 1.5;
+                ">Institutional Intelligence. Personal Scale.</p>
+
             </div>
-        </div>
-        <p style="color: #b0c4de; font-size: 1.1em; margin-top: 1.5rem; font-weight: 500;">
-            Bloomberg Terminal-Quality Portfolio Analytics 📊 | Institutional-Grade Performance Suite 💎
-        </p>
-        <div style="display: inline-flex; gap: 1.5rem; margin-top: 0.75rem; flex-wrap: wrap; justify-content: center;">
-            <span style="background: rgba(0, 212, 255, 0.15); padding: 0.5rem 1rem; border-radius: 8px;
-                         font-size: 0.85em; font-weight: 600; color: #00d4ff; border: 1px solid rgba(0, 212, 255, 0.3);">
-                🚀 Individual Securities Analysis
-            </span>
-            <span style="background: rgba(0, 255, 136, 0.15); padding: 0.5rem 1rem; border-radius: 8px;
-                         font-size: 0.85em; font-weight: 600; color: #00ff88; border: 1px solid rgba(0, 255, 136, 0.3);">
-                📈 Risk Decomposition
-            </span>
-            <span style="background: rgba(255, 170, 0, 0.15); padding: 0.5rem 1rem; border-radius: 8px;
-                         font-size: 0.85em; font-weight: 600; color: #ffaa00; border: 1px solid rgba(255, 170, 0, 0.3);">
-                🕸️ Correlation Matrix
-            </span>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
+        else:
+            # Fallback if logo missing
+            st.markdown("""
+            <div style="text-align: center; padding: 40px 20px;">
+                <h1 style="
+                    font-family: 'Inter', sans-serif;
+                    font-size: 3.5rem;
+                    font-weight: 800;
+                    color: #00d4ff;
+                    text-shadow: 0 0 30px rgba(0, 212, 255, 0.5);
+                ">ATLAS TERMINAL</h1>
+                <p style="
+                    font-family: 'Inter', sans-serif;
+                    font-size: 0.9rem;
+                    color: #c0c8d0;
+                    letter-spacing: 0.2em;
+                    text-transform: uppercase;
+                ">INSTITUTIONAL EDITION v10.0</p>
+                <p style="
+                    font-family: 'Inter', sans-serif;
+                    font-size: 1.1rem;
+                    color: #ffffff;
+                ">Institutional Intelligence. Personal Scale.</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+    # Call the header function
+    render_atlas_header()
     
     leverage_info = get_leverage_info()
     if leverage_info:
