@@ -10550,18 +10550,6 @@ def main():
 
     # Call the header function
     render_atlas_header()
-    
-    leverage_info = get_leverage_info()
-    if leverage_info:
-        st.markdown(f"""
-        <div style="background: linear-gradient(135deg, #ff6b00 0%, #ff0044 100%);
-                    border: 2px solid #ff6b00; border-radius: 8px; padding: 10px; margin-bottom: 10px;
-                    text-align: center;">
-            <span style="color: white; font-weight: 600;">⚡ LEVERAGED ACCOUNT ⚡</span>
-            <span style="color: white; margin-left: 20px;">Margin: ${leverage_info['margin_used']:,.2f}</span>
-            <span style="color: white; margin-left: 20px;">Leverage: {leverage_info['leverage_ratio']:.2f}x</span>
-        </div>
-        """, unsafe_allow_html=True)
 
     # ============================================================================
     # CAPITAL SETTINGS - EQUITY & LEVERAGE CONFIGURATION

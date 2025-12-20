@@ -550,3 +550,270 @@ p {
 .status-warning { background: rgba(255, 217, 61, 0.2); color: var(--warning); }
 .status-danger { background: rgba(255, 0, 107, 0.2); color: var(--danger); }
 .status-info { background: rgba(0, 212, 255, 0.2); color: var(--info); }
+
+/* ============================================================================
+   FACTSET-STYLE TABLE FORMATTING
+   Clean, professional, institutional-grade tables
+   ============================================================================ */
+
+.stDataFrame, .dataframe-container, table.dataframe {
+    width: 100% !important;
+    border-collapse: separate !important;
+    border-spacing: 0 !important;
+    font-family: 'Inter', sans-serif !important;
+    background: transparent !important;
+    border-radius: 8px !important;
+    overflow: hidden !important;
+}
+
+.stDataFrame {
+    background: rgba(26, 35, 50, 0.4) !important;
+    backdrop-filter: blur(10px) !important;
+    border: 1px solid rgba(0, 212, 255, 0.15) !important;
+    border-radius: 8px !important;
+    padding: 0 !important;
+}
+
+table.dataframe thead {
+    background: linear-gradient(180deg, rgba(26, 35, 50, 0.8) 0%, rgba(26, 35, 50, 0.6) 100%) !important;
+    border-bottom: 1px solid rgba(0, 212, 255, 0.25) !important;
+}
+
+table.dataframe thead th {
+    padding: 14px 16px !important;
+    text-align: left !important;
+    font-family: 'Inter', sans-serif !important;
+    font-size: 0.75rem !important;
+    font-weight: 600 !important;
+    color: #c0c8d0 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.08em !important;
+    border: none !important;
+    background: transparent !important;
+}
+
+table.dataframe thead th:nth-child(n+2) { text-align: right !important; }
+
+table.dataframe tbody tr {
+    background: transparent !important;
+    transition: background 0.12s ease !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
+}
+
+table.dataframe tbody tr:nth-child(even) { background: rgba(255, 255, 255, 0.02) !important; }
+table.dataframe tbody tr:hover { background: rgba(0, 212, 255, 0.06) !important; }
+
+table.dataframe tbody td {
+    padding: 11px 16px !important;
+    font-family: 'Inter', sans-serif !important;
+    font-size: 0.875rem !important;
+    color: #ffffff !important;
+    border: none !important;
+    background: transparent !important;
+}
+
+table.dataframe tbody td:first-child { font-weight: 500 !important; color: #e0e8f0 !important; }
+
+table.dataframe tbody td:nth-child(n+2) {
+    text-align: right !important;
+    font-family: 'JetBrains Mono', monospace !important;
+    font-weight: 500 !important;
+    font-variant-numeric: tabular-nums !important;
+}
+
+table.dataframe tbody th {
+    padding: 11px 16px !important;
+    text-align: left !important;
+    font-family: 'Inter', sans-serif !important;
+    font-size: 0.875rem !important;
+    font-weight: 500 !important;
+    color: #c0c8d0 !important;
+    background: transparent !important;
+    border: none !important;
+}
+
+/* ============================================================================
+   CYBERPUNK AVENGERS SECTION LABELS
+   ============================================================================ */
+
+.cyber-section-header {
+    font-family: 'Inter', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #00d4ff;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    margin: 30px 0 20px 0;
+    padding-left: 20px;
+    position: relative;
+    text-shadow: 0 0 20px rgba(0, 212, 255, 0.4);
+}
+
+.cyber-section-header::before {
+    content: '▸';
+    position: absolute;
+    left: 0;
+    color: #00d4ff;
+    font-size: 1.3rem;
+    animation: pulse-glow 2s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+    0%, 100% { opacity: 0.6; text-shadow: 0 0 10px rgba(0, 212, 255, 0.3); }
+    50% { opacity: 1; text-shadow: 0 0 20px rgba(0, 212, 255, 0.6); }
+}
+
+.cyber-label {
+    font-family: 'Inter', sans-serif;
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #8890a0;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    display: inline-block;
+    padding: 4px 12px 4px 20px;
+    position: relative;
+    margin-bottom: 8px;
+    background: linear-gradient(90deg, rgba(0, 212, 255, 0.1) 0%, transparent 100%);
+    border-left: 2px solid #00d4ff;
+}
+
+.cyber-label::before {
+    content: '//';
+    position: absolute;
+    left: 6px;
+    color: #00d4ff;
+    font-weight: 900;
+    opacity: 0.6;
+}
+
+.cyber-data-label {
+    font-family: 'Inter', sans-serif;
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: #8890a0;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.cyber-status-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-family: 'Inter', sans-serif;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    position: relative;
+    overflow: hidden;
+}
+
+.cyber-status-badge::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    animation: scan 3s linear infinite;
+}
+
+@keyframes scan {
+    0% { left: -100%; }
+    100% { left: 100%; }
+}
+
+.cyber-status-badge.active {
+    background: rgba(0, 255, 157, 0.15);
+    border: 1px solid #00ff9d;
+    color: #00ff9d;
+    box-shadow: 0 0 10px rgba(0, 255, 157, 0.3);
+}
+
+.cyber-status-badge.warning {
+    background: rgba(255, 217, 61, 0.15);
+    border: 1px solid #ffd93d;
+    color: #ffd93d;
+    box-shadow: 0 0 10px rgba(255, 217, 61, 0.3);
+}
+
+.cyber-status-badge.alert {
+    background: rgba(255, 0, 107, 0.15);
+    border: 1px solid #ff006b;
+    color: #ff006b;
+    box-shadow: 0 0 10px rgba(255, 0, 107, 0.3);
+}
+
+.cyber-status-badge.info {
+    background: rgba(0, 212, 255, 0.15);
+    border: 1px solid #00d4ff;
+    color: #00d4ff;
+    box-shadow: 0 0 10px rgba(0, 212, 255, 0.3);
+}
+
+/* ============================================================================
+   ENHANCED METRIC DISPLAYS
+   ============================================================================ */
+
+.metric-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 2rem;
+    font-weight: 700;
+    color: #00d4ff;
+    text-shadow: 0 0 15px rgba(0, 212, 255, 0.4);
+    font-variant-numeric: tabular-nums;
+    line-height: 1.2;
+}
+
+.metric-change { font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; font-weight: 600; margin-left: 10px; }
+.metric-change.positive { color: #00ff9d; }
+.metric-change.positive::before { content: '▲ '; }
+.metric-change.negative { color: #ff006b; }
+.metric-change.negative::before { content: '▼ '; }
+.metric-change.neutral { color: #8890a0; }
+
+.metric-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+    margin: 20px 0;
+}
+
+.metric-card {
+    background: rgba(26, 35, 50, 0.6);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(0, 212, 255, 0.15);
+    border-radius: 12px;
+    padding: 20px;
+    transition: all 0.3s ease;
+}
+
+.metric-card:hover {
+    background: rgba(26, 35, 50, 0.8);
+    border-color: rgba(0, 212, 255, 0.4);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3), 0 0 20px rgba(0, 212, 255, 0.2);
+}
+
+.cyber-divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent 0%, rgba(0, 212, 255, 0.3) 20%, rgba(0, 212, 255, 0.5) 50%, rgba(0, 212, 255, 0.3) 80%, transparent 100%);
+    margin: 30px 0;
+    position: relative;
+}
+
+.cyber-divider::after {
+    content: '◆';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--navy-deep);
+    color: #00d4ff;
+    font-size: 0.8rem;
+    padding: 0 10px;
+}
