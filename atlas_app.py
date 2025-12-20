@@ -10523,78 +10523,24 @@ def main():
             with open(logo_path, 'rb') as f:
                 logo_base64 = base64.b64encode(f.read()).decode()
 
-            # Render complete header
-            st.markdown(f"""
-            <div style="text-align: center; padding: 40px 20px 20px 20px;">
-
-                <!-- Shield Logo with Glow -->
-                <div class="atlas-shield-logo loaded" style="display: inline-block; margin-bottom: 30px;">
-                    <img src="data:image/svg+xml;base64,{logo_base64}"
-                         width="180"
-                         style="filter: drop-shadow(0 0 20px rgba(0, 212, 255, 0.6));"
-                         alt="ATLAS Shield">
-                </div>
-
-                <!-- Main Title -->
-                <h1 style="
-                    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-                    font-size: 3.5rem;
-                    font-weight: 800;
-                    color: #00d4ff;
-                    margin: 0;
-                    letter-spacing: 0.05em;
-                    text-shadow: 0 0 30px rgba(0, 212, 255, 0.5);
-                    line-height: 1.2;
-                ">ATLAS TERMINAL</h1>
-
-                <!-- Subtitle -->
-                <p style="
-                    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-                    font-size: 0.9rem;
-                    font-weight: 300;
-                    color: #c0c8d0;
-                    margin: 10px 0 20px 0;
-                    letter-spacing: 0.2em;
-                    text-transform: uppercase;
-                ">INSTITUTIONAL EDITION v10.0</p>
-
-                <!-- Slogan -->
-                <p style="
-                    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-                    font-size: 1.1rem;
-                    font-weight: 400;
-                    color: #ffffff;
-                    margin: 0 0 30px 0;
-                    line-height: 1.5;
-                ">Institutional Intelligence. Personal Scale.</p>
-
-            </div>
-            """, unsafe_allow_html=True)
+            # Render complete header - NO INDENTATION in HTML to prevent code block rendering
+            header_html = f'''<div style="text-align: center; padding: 40px 20px 20px 20px;">
+<div class="atlas-shield-logo loaded" style="display: inline-block; margin-bottom: 30px;">
+<img src="data:image/svg+xml;base64,{logo_base64}" width="180" style="filter: drop-shadow(0 0 20px rgba(0, 212, 255, 0.6));" alt="ATLAS Shield">
+</div>
+<h1 style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; font-size: 3.5rem; font-weight: 800; color: #00d4ff; margin: 0; letter-spacing: 0.05em; text-shadow: 0 0 30px rgba(0, 212, 255, 0.5); line-height: 1.2;">ATLAS TERMINAL</h1>
+<p style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; font-size: 0.9rem; font-weight: 300; color: #c0c8d0; margin: 10px 0 20px 0; letter-spacing: 0.2em; text-transform: uppercase;">INSTITUTIONAL EDITION v10.0</p>
+<p style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; font-size: 1.1rem; font-weight: 400; color: #ffffff; margin: 0 0 30px 0; line-height: 1.5;">Institutional Intelligence. Personal Scale.</p>
+</div>'''
+            st.markdown(header_html, unsafe_allow_html=True)
         else:
             # Fallback if logo missing
-            st.markdown("""
-            <div style="text-align: center; padding: 40px 20px;">
-                <h1 style="
-                    font-family: 'Inter', sans-serif;
-                    font-size: 3.5rem;
-                    font-weight: 800;
-                    color: #00d4ff;
-                    text-shadow: 0 0 30px rgba(0, 212, 255, 0.5);
-                ">ATLAS TERMINAL</h1>
-                <p style="
-                    font-family: 'Inter', sans-serif;
-                    font-size: 0.9rem;
-                    color: #c0c8d0;
-                    letter-spacing: 0.2em;
-                    text-transform: uppercase;
-                ">INSTITUTIONAL EDITION v10.0</p>
-                <p style="
-                    font-family: 'Inter', sans-serif;
-                    font-size: 1.1rem;
-                    color: #ffffff;
-                ">Institutional Intelligence. Personal Scale.</p>
-            </div>
-            """, unsafe_allow_html=True)
+            fallback_html = '''<div style="text-align: center; padding: 40px 20px;">
+<h1 style="font-family: 'Inter', sans-serif; font-size: 3.5rem; font-weight: 800; color: #00d4ff; text-shadow: 0 0 30px rgba(0, 212, 255, 0.5);">ATLAS TERMINAL</h1>
+<p style="font-family: 'Inter', sans-serif; font-size: 0.9rem; color: #c0c8d0; letter-spacing: 0.2em; text-transform: uppercase;">INSTITUTIONAL EDITION v10.0</p>
+<p style="font-family: 'Inter', sans-serif; font-size: 1.1rem; color: #ffffff;">Institutional Intelligence. Personal Scale.</p>
+</div>'''
+            st.markdown(fallback_html, unsafe_allow_html=True)
 
     # Call the header function
     render_atlas_header()
