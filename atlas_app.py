@@ -582,10 +582,12 @@ COLORSCALES = {
 
 # ============================================================================
 # MODERN UI/UX - GLASSMORPHISM & BEAUTIFUL DESIGN
+# NOTE: Only load default theme if Avengers branding is not available
 # ============================================================================
-st.markdown("""
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&display=swap');
+if not AVENGERS_BRANDING_AVAILABLE:
+    st.markdown("""
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&display=swap');
 
     /* ============================================
        CORE FOUNDATIONS - Beautiful Basics
@@ -1413,9 +1415,12 @@ st.markdown("""
 
 </style>
 
-<!-- Note: Sidebar toggle removed - Using horizontal navigation bar for maximum screen space -->
+    <!-- Note: Sidebar toggle removed - Using horizontal navigation bar for maximum screen space -->
 
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
+else:
+    # Avengers branding is available - it will be applied in main() instead
+    pass
 
 # ============================================================================
 # CONSTANTS & CONFIG
