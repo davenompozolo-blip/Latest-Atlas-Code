@@ -248,15 +248,53 @@ class AvengersTheme:
             --font-body: {theme.fonts['body']};
         }}
 
+        /* AVENGERS THEME OVERRIDES - High specificity to override existing theme */
         body {{ background-color: var(--background) !important; color: var(--text-primary) !important; font-family: var(--font-body) !important; }}
         h1, h2, h3, h4, h5, h6 {{ font-family: var(--font-heading) !important; color: var(--text-primary) !important; }}
         a {{ color: var(--primary) !important; }}
         a:hover {{ color: var(--primary-light) !important; }}
+
         .stApp {{ background-color: var(--background) !important; }}
-        [data-testid="stSidebar"] {{ background-color: var(--background-secondary) !important; }}
-        .stButton > button {{ background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%); color: var(--text-primary); border: none; transition: all 0.3s ease; }}
-        .stButton > button:hover {{ background: linear-gradient(135deg, var(--primary-light) 0%, var(--primary) 100%); box-shadow: 0 0 20px var(--glow); transform: translateY(-2px); }}
-        [data-testid="metric-container"] {{ background-color: var(--card-background); border: 1px solid var(--primary); border-radius: 8px; padding: 1rem; box-shadow: 0 0 10px var(--glow); }}
+        .main {{ background: linear-gradient(135deg, var(--background) 0%, var(--background-secondary) 50%, var(--background) 100%) !important; }}
+
+        [data-testid="stSidebar"] {{ background-color: var(--background-secondary) !important; border-right: 2px solid var(--primary) !important; }}
+
+        .stButton > button {{
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%) !important;
+            color: var(--text-primary) !important;
+            border: 2px solid var(--primary) !important;
+            border-radius: 8px !important;
+            font-weight: 600 !important;
+            transition: all 0.3s ease !important;
+        }}
+        .stButton > button:hover {{
+            background: linear-gradient(135deg, var(--primary-light) 0%, var(--primary) 100%) !important;
+            box-shadow: 0 0 20px var(--glow) !important;
+            transform: translateY(-2px) !important;
+        }}
+
+        [data-testid="metric-container"] {{
+            background-color: var(--card-background) !important;
+            border: 2px solid var(--primary) !important;
+            border-radius: 12px !important;
+            padding: 1rem !important;
+            box-shadow: 0 0 15px var(--glow) !important;
+        }}
+
+        /* Override expanders */
+        .stExpander {{
+            background: rgba(10, 25, 41, 0.4) !important;
+            border: 2px solid var(--primary) !important;
+            border-radius: 12px !important;
+        }}
+
+        /* Override cards and containers */
+        div[data-testid="stMetric"] {{
+            background: var(--card-background) !important;
+            border: 2px solid var(--primary) !important;
+            border-radius: 12px !important;
+            box-shadow: 0 0 15px var(--glow) !important;
+        }}
         </style>
         """
 
