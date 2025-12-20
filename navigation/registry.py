@@ -15,6 +15,14 @@ Design: Declarative data > Imperative code
 from dataclasses import dataclass
 from typing import Optional, List, Callable
 
+# Import real page handlers (gradual migration from placeholders)
+try:
+    from .handlers import render_about_page
+    HANDLERS_AVAILABLE = True
+except ImportError:
+    HANDLERS_AVAILABLE = False
+    render_about_page = None
+
 @dataclass
 class PageDefinition:
     """
@@ -234,7 +242,7 @@ PAGE_REGISTRY = [
         key="about",
         title="About",
         icon="ℹ️",
-        handler=_make_placeholder("About", "ℹ️"),
+        handler=render_about_page if HANDLERS_AVAILABLE and render_about_page else _make_placeholder("About", "ℹ️"),
         category="system",
         requires_data=[]  # Static content
     ),
