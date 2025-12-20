@@ -11164,8 +11164,7 @@ def main():
 
         if not V10_MODULES_AVAILABLE:
             st.error("❌ v10.0 modules not available. Please check installation.")
-            return
-
+            st.stop()
         st.success("✅ All v10.0 Advanced Modules Loaded")
 
         # Create tabs for different v10.0 features
@@ -12464,7 +12463,7 @@ ORDER BY position_value DESC"""
         
         if portfolio_data is None or (isinstance(portfolio_data, pd.DataFrame) and portfolio_data.empty):
             st.warning("⚠️ No portfolio data. Please upload via Phoenix Parser.")
-            return
+            st.stop()
         
         df = pd.DataFrame(portfolio_data)
         
@@ -13295,7 +13294,7 @@ ORDER BY position_value DESC"""
         
         if portfolio_data is None or (isinstance(portfolio_data, pd.DataFrame) and portfolio_data.empty):
             st.warning("⚠️ No portfolio data.")
-            return
+            st.stop()
         
         df = pd.DataFrame(portfolio_data)
         enhanced_df = create_enhanced_holdings_table(df)
@@ -13306,8 +13305,7 @@ ORDER BY position_value DESC"""
             
             if not is_valid_series(portfolio_returns):
                 st.warning("Insufficient data")
-                return
-            
+                st.stop()
             sharpe = calculate_sharpe_ratio(portfolio_returns)
             sortino = calculate_sortino_ratio(portfolio_returns)
             calmar = calculate_calmar_ratio(portfolio_returns)
@@ -13942,7 +13940,7 @@ ORDER BY position_value DESC"""
 
         if portfolio_data is None or (isinstance(portfolio_data, pd.DataFrame) and portfolio_data.empty):
             st.warning("⚠️ No portfolio data.")
-            return
+            st.stop()
 
         df = pd.DataFrame(portfolio_data)
         enhanced_df = create_enhanced_holdings_table(df)
@@ -14784,7 +14782,7 @@ ORDER BY position_value DESC"""
         
         if portfolio_data is None or (isinstance(portfolio_data, pd.DataFrame) and portfolio_data.empty):
             st.warning("⚠️ No portfolio data.")
-            return
+            st.stop()
         
         df = pd.DataFrame(portfolio_data)
         enhanced_df = create_enhanced_holdings_table(df)
@@ -15517,7 +15515,7 @@ ORDER BY position_value DESC"""
         
         if portfolio_data is None or (isinstance(portfolio_data, pd.DataFrame) and portfolio_data.empty):
             st.warning("⚠️ No portfolio data.")
-            return
+            st.stop()
         
         df = pd.DataFrame(portfolio_data)
         enhanced_df = create_enhanced_holdings_table(df)
