@@ -58,6 +58,23 @@ import streamlit as st
 # ============================================================================
 from navigation import PAGE_REGISTRY, get_page_by_key, route_to_page
 
+# ============================================================================
+# AVENGERS BRANDING SYSTEM
+# ============================================================================
+try:
+    from ui.branding import (
+        apply_avengers_branding,
+        show_shield_logo,
+        create_theme_switcher,
+        HeroMode,
+        IconStyle
+    )
+    AVENGERS_BRANDING_AVAILABLE = True
+    print("✅ Avengers branding system loaded")
+except ImportError as e:
+    AVENGERS_BRANDING_AVAILABLE = False
+    print(f"⚠️ Avengers branding not available: {e}")
+
 # Auto-install streamlit_option_menu if missing
 try:
     from streamlit_option_menu import option_menu
@@ -10556,7 +10573,21 @@ def main():
         </div>
     </div>
     """, unsafe_allow_html=True)
-    
+
+    # ============================================================================
+    # AVENGERS BRANDING INITIALIZATION
+    # ============================================================================
+    if AVENGERS_BRANDING_AVAILABLE:
+        # Apply Avengers theme and animations
+        # Get current theme from session state, default to Captain America
+        current_hero = st.session_state.get('current_hero_mode', HeroMode.CAPTAIN)
+        theme_manager, icon_mapper = apply_avengers_branding(
+            hero_mode=current_hero,
+            include_logo=True,
+            include_animations=True,
+            icon_style=IconStyle.AVENGERS
+        )
+
     leverage_info = get_leverage_info()
     if leverage_info:
         st.markdown(f"""
@@ -10787,6 +10818,26 @@ def main():
         start_date = end_date - timedelta(days=days)
     
     # ========================================================================
+    # ========================================================================
+    # AVENGERS THEME SWITCHER (Sidebar)
+    # ========================================================================
+    if AVENGERS_BRANDING_AVAILABLE:
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("### 🛡️ Avengers Theme")
+
+        # Show Captain America shield logo in sidebar
+        with st.sidebar:
+            show_shield_logo(width=100, animate=True, centered=True)
+
+        # Theme switcher
+        theme_manager = create_theme_switcher()
+
+        # Store current hero mode in session state
+        if hasattr(theme_manager, 'current_mode'):
+            st.session_state['current_hero_mode'] = theme_manager.current_mode
+
+        st.sidebar.markdown("---")
+
     # PHASE 2A: NAVIGATION V2 ROUTING (Experimental - can be toggled)
     # ========================================================================
     # Toggle between old monolithic routing and new modular navigation
