@@ -10509,13 +10509,19 @@ def main():
     # ============================================================================
 
     def render_atlas_header():
-        """Render ATLAS Terminal header with shield logo and branding"""
+        """Render ATLAS Terminal header with complete UI polish"""
 
-        # Load CSS animations
-        css_path = Path('ui/branding/avengers_animations.css')
-        if css_path.exists():
-            with open(css_path, 'r', encoding='utf-8') as f:
-                st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
+        # Load BOTH CSS files - animations AND complete UI
+        css_files = [
+            'ui/branding/avengers_animations.css',
+            'ui/branding/atlas_complete_ui.css'  # NEW - Complete UI system
+        ]
+
+        for css_file in css_files:
+            css_path = Path(css_file)
+            if css_path.exists():
+                with open(css_path, 'r', encoding='utf-8') as f:
+                    st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
 
         # Load shield logo
         logo_path = Path('ui/branding/shield_logo.svg')
@@ -10523,22 +10529,22 @@ def main():
             with open(logo_path, 'rb') as f:
                 logo_base64 = base64.b64encode(f.read()).decode()
 
-            # Render complete header - NO INDENTATION in HTML to prevent code block rendering
-            header_html = f'''<div style="text-align: center; padding: 40px 20px 20px 20px;">
-<div class="atlas-shield-logo loaded" style="display: inline-block; margin-bottom: 30px;">
-<img src="data:image/svg+xml;base64,{logo_base64}" width="180" style="filter: drop-shadow(0 0 20px rgba(0, 212, 255, 0.6));" alt="ATLAS Shield">
+            # Header with seamless logo integration - NO INDENTATION to prevent code block
+            header_html = f'''<div class="atlas-header-container">
+<div class="atlas-shield-logo loaded">
+<img src="data:image/svg+xml;base64,{logo_base64}" width="200" alt="ATLAS Shield">
 </div>
-<h1 style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; font-size: 3.5rem; font-weight: 800; color: #00d4ff; margin: 0; letter-spacing: 0.05em; text-shadow: 0 0 30px rgba(0, 212, 255, 0.5); line-height: 1.2;">ATLAS TERMINAL</h1>
-<p style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; font-size: 0.9rem; font-weight: 300; color: #c0c8d0; margin: 10px 0 20px 0; letter-spacing: 0.2em; text-transform: uppercase;">INSTITUTIONAL EDITION v10.0</p>
-<p style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; font-size: 1.1rem; font-weight: 400; color: #ffffff; margin: 0 0 30px 0; line-height: 1.5;">Institutional Intelligence. Personal Scale.</p>
+<h1 style="font-family: var(--font-display, 'Inter', sans-serif); font-size: 3.5rem; font-weight: 800; color: var(--vibranium-primary, #00d4ff); margin: 30px 0 10px 0; letter-spacing: 0.05em; text-shadow: 0 0 30px var(--vibranium-glow, rgba(0, 212, 255, 0.5));">ATLAS TERMINAL</h1>
+<p style="font-family: var(--font-display, 'Inter', sans-serif); font-size: 0.9rem; font-weight: 300; color: var(--silver-medium, #c0c8d0); margin: 10px 0 20px 0; letter-spacing: 0.2em; text-transform: uppercase;">INSTITUTIONAL EDITION v10.0</p>
+<p style="font-family: var(--font-body, 'Inter', sans-serif); font-size: 1.1rem; font-weight: 400; color: var(--silver-bright, #ffffff); margin: 0 0 40px 0;">Institutional Intelligence. Personal Scale.</p>
 </div>'''
             st.markdown(header_html, unsafe_allow_html=True)
         else:
-            # Fallback if logo missing
-            fallback_html = '''<div style="text-align: center; padding: 40px 20px;">
-<h1 style="font-family: 'Inter', sans-serif; font-size: 3.5rem; font-weight: 800; color: #00d4ff; text-shadow: 0 0 30px rgba(0, 212, 255, 0.5);">ATLAS TERMINAL</h1>
-<p style="font-family: 'Inter', sans-serif; font-size: 0.9rem; color: #c0c8d0; letter-spacing: 0.2em; text-transform: uppercase;">INSTITUTIONAL EDITION v10.0</p>
-<p style="font-family: 'Inter', sans-serif; font-size: 1.1rem; color: #ffffff;">Institutional Intelligence. Personal Scale.</p>
+            # Fallback if logo file missing
+            fallback_html = '''<div class="atlas-header-container">
+<h1 style="font-family: var(--font-display, 'Inter', sans-serif); font-size: 3.5rem; font-weight: 800; color: var(--vibranium-primary, #00d4ff); text-shadow: 0 0 30px var(--vibranium-glow, rgba(0, 212, 255, 0.5));">ATLAS TERMINAL</h1>
+<p style="color: var(--silver-medium, #c0c8d0); letter-spacing: 0.2em; text-transform: uppercase;">INSTITUTIONAL EDITION v10.0</p>
+<p style="color: var(--silver-bright, #ffffff);">Institutional Intelligence. Personal Scale.</p>
 </div>'''
             st.markdown(fallback_html, unsafe_allow_html=True)
 
