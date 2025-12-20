@@ -59,7 +59,7 @@ CAPTAIN_THEME = ThemeConfig(
         info="#00d4ff",
         glow_color="rgba(0, 212, 255, 0.5)"
     ),
-    fonts={"heading": "Orbitron, sans-serif", "body": "Inter, system-ui, sans-serif"}
+    fonts={"heading": "Inter, sans-serif", "body": "Inter, sans-serif", "mono": "JetBrains Mono, monospace"}
 )
 
 # IRON MAN THEME
@@ -83,7 +83,7 @@ IRON_MAN_THEME = ThemeConfig(
         info="#4da6ff",
         glow_color="rgba(77, 166, 255, 0.5)"
     ),
-    fonts={"heading": "Rajdhani, sans-serif", "body": "Inter, system-ui, sans-serif"}
+    fonts={"heading": "Inter, sans-serif", "body": "Inter, sans-serif", "mono": "JetBrains Mono, monospace"}
 )
 
 # THOR THEME
@@ -107,7 +107,7 @@ THOR_THEME = ThemeConfig(
         info="#4169e1",
         glow_color="rgba(255, 215, 0, 0.5)"
     ),
-    fonts={"heading": "Cinzel, serif", "body": "Inter, system-ui, sans-serif"}
+    fonts={"heading": "Inter, sans-serif", "body": "Inter, sans-serif", "mono": "JetBrains Mono, monospace"}
 )
 
 # HULK THEME
@@ -131,7 +131,7 @@ HULK_THEME = ThemeConfig(
         info="#4da6ff",
         glow_color="rgba(0, 255, 157, 0.5)"
     ),
-    fonts={"heading": "Oswald, sans-serif", "body": "Inter, system-ui, sans-serif"}
+    fonts={"heading": "Inter, sans-serif", "body": "Inter, sans-serif", "mono": "JetBrains Mono, monospace"}
 )
 
 # BLACK WIDOW THEME
@@ -155,7 +155,7 @@ BLACK_WIDOW_THEME = ThemeConfig(
         info="#cc00ff",
         glow_color="rgba(255, 0, 107, 0.5)"
     ),
-    fonts={"heading": "Staatliches, sans-serif", "body": "Inter, system-ui, sans-serif"}
+    fonts={"heading": "Inter, sans-serif", "body": "Inter, sans-serif", "mono": "JetBrains Mono, monospace"}
 )
 
 # HAWKEYE THEME
@@ -179,7 +179,7 @@ HAWKEYE_THEME = ThemeConfig(
         info="#9d4dff",
         glow_color="rgba(157, 77, 255, 0.5)"
     ),
-    fonts={"heading": "Bebas Neue, sans-serif", "body": "Inter, system-ui, sans-serif"}
+    fonts={"heading": "Inter, sans-serif", "body": "Inter, sans-serif", "mono": "JetBrains Mono, monospace"}
 )
 
 # INFINITY STONES THEME
@@ -203,7 +203,7 @@ INFINITY_THEME = ThemeConfig(
         info="#00d4ff",
         glow_color="rgba(157, 77, 255, 0.5)"
     ),
-    fonts={"heading": "Exo 2, sans-serif", "body": "Inter, system-ui, sans-serif"}
+    fonts={"heading": "Inter, sans-serif", "body": "Inter, sans-serif", "mono": "JetBrains Mono, monospace"}
 )
 
 THEMES = {
@@ -220,15 +220,15 @@ class AvengersTheme:
     def __init__(self, default_mode: HeroMode = HeroMode.CAPTAIN):
         self.current_mode = default_mode
         self.current_theme = THEMES[default_mode]
-
+    
     def get_css(self) -> str:
         theme = self.current_theme
         colors = theme.colors
-
+        
         return f"""
         <style>
-        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;700&family=Cinzel:wght@400;700&family=Oswald:wght@400;700&family=Staatliches&family=Bebas+Neue&family=Exo+2:wght@400;700&display=swap');
-
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
         :root {{
             --primary: {colors.primary};
             --primary-dark: {colors.primary_dark};
@@ -246,55 +246,18 @@ class AvengersTheme:
             --glow: {colors.glow_color};
             --font-heading: {theme.fonts['heading']};
             --font-body: {theme.fonts['body']};
+            --font-mono: {theme.fonts['mono']};
         }}
-
-        /* AVENGERS THEME OVERRIDES - High specificity to override existing theme */
+        
         body {{ background-color: var(--background) !important; color: var(--text-primary) !important; font-family: var(--font-body) !important; }}
         h1, h2, h3, h4, h5, h6 {{ font-family: var(--font-heading) !important; color: var(--text-primary) !important; }}
         a {{ color: var(--primary) !important; }}
         a:hover {{ color: var(--primary-light) !important; }}
-
         .stApp {{ background-color: var(--background) !important; }}
-        .main {{ background: linear-gradient(135deg, var(--background) 0%, var(--background-secondary) 50%, var(--background) 100%) !important; }}
-
-        [data-testid="stSidebar"] {{ background-color: var(--background-secondary) !important; border-right: 2px solid var(--primary) !important; }}
-
-        .stButton > button {{
-            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%) !important;
-            color: var(--text-primary) !important;
-            border: 2px solid var(--primary) !important;
-            border-radius: 8px !important;
-            font-weight: 600 !important;
-            transition: all 0.3s ease !important;
-        }}
-        .stButton > button:hover {{
-            background: linear-gradient(135deg, var(--primary-light) 0%, var(--primary) 100%) !important;
-            box-shadow: 0 0 20px var(--glow) !important;
-            transform: translateY(-2px) !important;
-        }}
-
-        [data-testid="metric-container"] {{
-            background-color: var(--card-background) !important;
-            border: 2px solid var(--primary) !important;
-            border-radius: 12px !important;
-            padding: 1rem !important;
-            box-shadow: 0 0 15px var(--glow) !important;
-        }}
-
-        /* Override expanders */
-        .stExpander {{
-            background: rgba(10, 25, 41, 0.4) !important;
-            border: 2px solid var(--primary) !important;
-            border-radius: 12px !important;
-        }}
-
-        /* Override cards and containers */
-        div[data-testid="stMetric"] {{
-            background: var(--card-background) !important;
-            border: 2px solid var(--primary) !important;
-            border-radius: 12px !important;
-            box-shadow: 0 0 15px var(--glow) !important;
-        }}
+        [data-testid="stSidebar"] {{ background-color: var(--background-secondary) !important; }}
+        .stButton > button {{ background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%); color: var(--text-primary); border: none; transition: all 0.3s ease; }}
+        .stButton > button:hover {{ background: linear-gradient(135deg, var(--primary-light) 0%, var(--primary) 100%); box-shadow: 0 0 20px var(--glow); transform: translateY(-2px); }}
+        [data-testid="metric-container"] {{ background-color: var(--card-background); border: 1px solid var(--primary); border-radius: 8px; padding: 1rem; box-shadow: 0 0 10px var(--glow); }}
         </style>
         """
 
@@ -308,17 +271,17 @@ def create_theme_switcher():
     import streamlit as st
     if 'theme_manager' not in st.session_state:
         st.session_state.theme_manager = AvengersTheme()
-
+    
     theme_manager = st.session_state.theme_manager
     options = {f"{theme.icon} {theme.display_name}": mode for mode, theme in THEMES.items()}
-
+    
     selected = st.sidebar.selectbox("🦸 Hero Theme", options=list(options.keys()), key="theme_selector")
-
+    
     if selected:
         new_mode = options[selected]
         if new_mode != theme_manager.current_mode:
             theme_manager.current_mode = new_mode
             theme_manager.current_theme = THEMES[new_mode]
             st.rerun()
-
+    
     return theme_manager

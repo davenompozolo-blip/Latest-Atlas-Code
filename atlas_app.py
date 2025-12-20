@@ -43,6 +43,7 @@ import time
 import io
 import json
 import random
+import base64
 from datetime import datetime, timedelta, date
 from pathlib import Path
 from collections import Counter, defaultdict
@@ -10508,12 +10509,106 @@ class MultiSourceDataBroker:
 
 
 # ============================================================================
+# AVENGERS BRANDING INTEGRATION
+# ============================================================================
+
+def load_avengers_branding():
+    """Load and apply Avengers branding system"""
+
+    # Import theme system
+    from ui.branding.theme_avengers import create_theme_switcher
+
+    # Load animations CSS
+    css_path = Path('ui/branding/avengers_animations.css')
+    if css_path.exists():
+        with open(css_path, 'r') as f:
+            st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
+
+    # Create theme switcher in sidebar
+    theme_manager = create_theme_switcher()
+
+    # Apply theme CSS
+    st.markdown(theme_manager.get_css(), unsafe_allow_html=True)
+
+    # Load shield logo
+    logo_path = Path('ui/branding/shield_logo.svg')
+    if logo_path.exists():
+        with open(logo_path, 'rb') as f:
+            logo_base64 = base64.b64encode(f.read()).decode()
+
+        # Display shield logo in main header
+        st.markdown(f"""
+        <div style="text-align: center; padding: 40px 20px;">
+
+            <!-- Shield Logo (Glowing) -->
+            <div class="atlas-shield-logo loaded" style="
+                display: inline-block;
+                margin-bottom: 30px;
+            ">
+                <img src="data:image/svg+xml;base64,{logo_base64}"
+                     width="180"
+                     style="filter: drop-shadow(0 0 20px rgba(0, 212, 255, 0.6));">
+            </div>
+
+            <!-- Main Title - INTER FONT -->
+            <h1 style="
+                font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+                font-size: 3.5rem;
+                font-weight: 800;
+                color: #00d4ff;
+                margin: 0;
+                letter-spacing: 0.05em;
+                text-shadow: 0 0 30px rgba(0, 212, 255, 0.5);
+            ">ATLAS TERMINAL</h1>
+
+            <!-- Subtitle -->
+            <p style="
+                font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+                font-size: 0.9rem;
+                font-weight: 300;
+                color: #c0c8d0;
+                margin: 10px 0 20px 0;
+                letter-spacing: 0.2em;
+                text-transform: uppercase;
+            ">INSTITUTIONAL EDITION v10.0</p>
+
+            <!-- Slogan -->
+            <p style="
+                font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+                font-size: 1.1rem;
+                font-weight: 400;
+                color: #ffffff;
+                margin: 0;
+                line-height: 1.5;
+            ">Institutional Intelligence. Personal Scale.</p>
+
+        </div>
+        """, unsafe_allow_html=True)
+
+    return theme_manager
+
+def render_page_with_animation(page_function):
+    """Wrapper to add Avengers page transition"""
+    st.markdown('<div class="page-content">', unsafe_allow_html=True)
+    page_function()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# ============================================================================
 # MAIN APP - EXCELLENCE EDITION
 # ============================================================================
 
 def main():
     # Ensure plotly.graph_objects is available in function scope
     import plotly.graph_objects as go
+
+    # ============================================================================
+    # INITIALIZE AVENGERS BRANDING
+    # ============================================================================
+    try:
+        theme_manager = load_avengers_branding()
+    except Exception as e:
+        st.error(f"⚠️ Branding system error: {e}")
+        theme_manager = None
 
     # ============================================================================
     # EQUITY TRACKING INITIALIZATION - CRITICAL FIX FOR LEVERAGE CALCULATIONS
