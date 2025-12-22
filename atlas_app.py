@@ -15983,6 +15983,59 @@ def main():
                 st.markdown("Decompose portfolio performance into **Allocation** (sector timing) vs **Selection** (stock picking) skill")
                 st.info("📊 **Using GICS Level 1 Classification** - Matching S&P 500/SPY benchmark for accurate attribution")
 
+                # Check if performance history is loaded - if not, show quick upload option
+                if 'leverage_tracker' not in st.session_state or st.session_state.leverage_tracker is None:
+                    st.warning("⚠️ **Performance history not loaded** - Portfolio Return shows point-in-time holdings return, not actual return")
+
+                    with st.expander("📈 Quick Upload: Performance History (for accurate returns)", expanded=True):
+                        st.markdown("""
+                        **Upload your Investopedia performance-history.xls file** to see your actual portfolio return (+40.93%) instead of point-in-time holdings return (+3.14%).
+                        """)
+
+                        quick_perf_file = st.file_uploader(
+                            "Upload Performance History",
+                            type=['xls', 'xlsx', 'html'],
+                            help="Upload your Investopedia performance-history.xls file",
+                            key="attribution_perf_history"
+                        )
+
+                        if quick_perf_file is not None:
+                            try:
+                                import tempfile
+                                import shutil
+                                from pathlib import Path
+
+                                # Save to a persistent location
+                                perf_dir = Path(__file__).parent / 'data' / 'performance'
+                                perf_dir.mkdir(parents=True, exist_ok=True)
+                                persistent_path = perf_dir / 'performance-history.xls'
+
+                                # Write to persistent location
+                                with open(persistent_path, 'wb') as f:
+                                    f.write(quick_perf_file.getvalue())
+
+                                from analytics.leverage_tracker import LeverageTracker
+                                tracker = LeverageTracker(str(persistent_path))
+
+                                if tracker.load_and_parse():
+                                    st.session_state.leverage_tracker = tracker
+                                    stats = tracker.get_current_stats()
+                                    st.session_state['equity_capital'] = stats['current_equity']
+
+                                    # Save path for future auto-loading
+                                    try:
+                                        from config import set_performance_history_path
+                                        set_performance_history_path(str(persistent_path))
+                                    except:
+                                        pass  # Non-critical
+
+                                    st.success(f"✅ Performance history loaded and saved! Equity: ${stats['current_equity']:,.0f}")
+                                    st.rerun()  # Refresh to show updated attribution
+                                else:
+                                    st.error("❌ Could not parse performance history file")
+                            except Exception as e:
+                                st.error(f"Error: {str(e)}")
+
                 # Calculate attribution using new GICS-based function
                 try:
                     with st.spinner("Calculating GICS-based attribution..."):
