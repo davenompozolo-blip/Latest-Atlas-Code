@@ -301,14 +301,21 @@ def get_portfolio_period_return(period='1y'):
         else:
             portfolio_return = 0
 
+        # Calculate ANNUALIZED return (this is what Performance Suite displays)
+        days = (end_date - actual_start_date).days
+        n_years = days / 365.0 if days > 0 else 1
+        annualized_return = (1 + portfolio_return) ** (1/n_years) - 1 if n_years > 0 else portfolio_return
+
         return {
             'return': portfolio_return,  # As decimal (0.4093 = 40.93%)
-            'return_pct': portfolio_return * 100,  # As percentage
+            'return_pct': portfolio_return * 100,  # As percentage (total return)
+            'annualized_return': annualized_return,  # As decimal
+            'annualized_return_pct': annualized_return * 100,  # As percentage (annualized)
             'start_value': start_value,
             'end_value': end_value,
             'start_date': actual_start_date,
             'end_date': end_date,
-            'days': (end_date - actual_start_date).days
+            'days': days
         }
 
     except Exception as e:
@@ -6507,15 +6514,21 @@ def calculate_brinson_attribution_gics(portfolio_df, period='1y'):
     actual_benchmark_data = get_benchmark_period_return('SPY', period, match_portfolio_dates=True)
 
     if actual_portfolio_data is not None and actual_benchmark_data is not None:
-        # Use ACTUAL returns from performance history
-        actual_portfolio_return = actual_portfolio_data['return_pct']  # e.g., 40.93%
-        actual_benchmark_return_val = actual_benchmark_data['return_pct']  # e.g., 15.79%
-        actual_alpha = actual_portfolio_return - actual_benchmark_return_val  # e.g., 25.14%
+        # Use ANNUALIZED returns from performance history (matches Performance Suite display)
+        # This links Attribution "Portfolio Return" to Performance Suite "Annualized Return"
+        actual_portfolio_return = actual_portfolio_data.get('annualized_return_pct', actual_portfolio_data['return_pct'])  # e.g., 41.71%
+        actual_benchmark_return_val = actual_benchmark_data['return_pct']  # Benchmark total return
+
+        # Also get total returns for display
+        total_portfolio_return = actual_portfolio_data['return_pct']  # e.g., 40.93%
+
+        actual_alpha = actual_portfolio_return - actual_benchmark_return_val
         attribution_sum = total_allocation + total_selection + total_interaction
         reconciliation_diff = abs(actual_alpha - attribution_sum)
 
         validation = {
-            'portfolio_return': actual_portfolio_return,
+            'portfolio_return': actual_portfolio_return,  # ANNUALIZED return (matches Performance Suite)
+            'total_return': total_portfolio_return,  # Total return for reference
             'benchmark_return': actual_benchmark_return_val,
             'actual_alpha': actual_alpha,
             'attribution_sum': attribution_sum,
@@ -6674,7 +6687,7 @@ def display_attribution_validation(validation):
 <h4 style="color: #00d4ff; margin: 0 0 15px 0; font-family: 'Inter', sans-serif; text-transform: uppercase; letter-spacing: 0.1em;">📊 Attribution Reconciliation{source_badge}</h4>
 <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px;">
 <div style="background: rgba(10, 15, 26, 0.6); border-radius: 8px; padding: 12px; text-align: center;">
-<div style="color: #8890a0; font-size: 0.7rem; text-transform: uppercase; margin-bottom: 5px;">Portfolio Return</div>
+<div style="color: #8890a0; font-size: 0.7rem; text-transform: uppercase; margin-bottom: 5px;">Portfolio Return (Ann.)</div>
 <div style="color: {'#00ff9d' if validation['portfolio_return'] > 0 else '#ff006b'}; font-size: 1.5rem; font-weight: 700; font-family: 'JetBrains Mono', monospace;">{validation['portfolio_return']:+.2f}%</div>
 </div>
 <div style="background: rgba(10, 15, 26, 0.6); border-radius: 8px; padding: 12px; text-align: center;">
