@@ -188,6 +188,70 @@ def is_valid_dataframe(df):
     """Safely check if a pandas DataFrame has valid data"""
     return df is not None and isinstance(df, pd.DataFrame) and not df.empty
 
+
+def get_current_portfolio_metrics():
+    """
+    Extract current portfolio metrics from uploaded performance history.
+    Returns dict with equity, gross_exposure, leverage, cash, etc.
+
+    Data source: Performance history file Column F (Account Value)
+    - Row 2 (most recent) = Current equity exposure
+
+    Returns:
+        dict with keys: equity, cash, stock_value, short_value, gross_exposure,
+                       leverage, date, ytd_return, avg_leverage
+        None if performance history not loaded
+    """
+    try:
+        # Check if leverage tracker exists in session state
+        if 'leverage_tracker' in st.session_state and st.session_state.leverage_tracker is not None:
+            tracker = st.session_state.leverage_tracker
+            stats = tracker.get_current_stats()
+
+            if stats:
+                return {
+                    'equity': stats.get('current_equity', 0),
+                    'gross_exposure': stats.get('current_gross_exposure', 0),
+                    'leverage': stats.get('current_leverage', 1.0),
+                    'ytd_return': stats.get('ytd_equity_return', 0),
+                    'avg_leverage': stats.get('avg_leverage', 1.0),
+                    'max_leverage': stats.get('max_leverage', 1.0),
+                    'min_leverage': stats.get('min_leverage', 1.0),
+                    'source': 'leverage_tracker'
+                }
+
+        # Fallback: Check if equity_capital was stored directly
+        if 'equity_capital' in st.session_state and st.session_state.equity_capital:
+            return {
+                'equity': st.session_state.equity_capital,
+                'gross_exposure': st.session_state.get('gross_exposure', st.session_state.equity_capital),
+                'leverage': st.session_state.get('leverage', 1.0),
+                'ytd_return': 0,
+                'avg_leverage': 1.0,
+                'source': 'session_state'
+            }
+
+        return None
+
+    except Exception as e:
+        print(f"Error getting portfolio metrics: {e}")
+        return None
+
+
+def format_currency(value, decimals=2):
+    """Format value as currency string"""
+    if value is None:
+        return "$0.00"
+    return f"${value:,.{decimals}f}"
+
+
+def format_percentage(value, decimals=2):
+    """Format value as percentage string"""
+    if value is None:
+        return "0.00%"
+    return f"{value:.{decimals}f}%"
+
+
 def make_scrollable_table(df, height=600, hide_index=True, use_container_width=True, column_config=None):
     """
     Make any dataframe horizontally scrollable with professional styling.
@@ -11169,13 +11233,20 @@ def main():
                 else:
                     df = pd.DataFrame(portfolio_data)
     
+                    # Auto-populate from performance history
+                    metrics = get_current_portfolio_metrics()
+                    default_value = int(metrics['equity']) if metrics else 100000
+
+                    if metrics:
+                        st.success(f"📊 Using current portfolio equity: {format_currency(metrics['equity'])}")
+
                     col1, col2 = st.columns(2)
                     with col1:
                         n_simulations = st.slider("Number of Simulations", 1000, 20000, 5000, 1000)
                         n_days = st.slider("Time Horizon (days)", 30, 365, 252)
                     with col2:
                         confidence_level = st.slider("Confidence Level", 0.90, 0.99, 0.95, 0.01)
-                        initial_value = st.number_input("Portfolio Value ($)", value=100000, step=10000)
+                        initial_value = st.number_input("Portfolio Value ($)", value=default_value, step=10000, help="Auto-populated from performance history" if metrics else "Upload performance history to auto-populate")
     
                     if st.button("🎲 Run Monte Carlo Simulation", type="primary"):
                         with st.spinner("Running simulations..."):
@@ -15390,9 +15461,11 @@ def main():
             # ============================================================
             # CORRELATION HEATMAP - NEW ADDITION
             # ============================================================
+            import numpy as np  # Ensure numpy is available in this scope
+
             st.divider()
             st.subheader("🕸️ Portfolio Correlation Analysis")
-    
+
             period = st.selectbox(
                 "Correlation Period:",
                 options=['30d', '90d', '1y'],
