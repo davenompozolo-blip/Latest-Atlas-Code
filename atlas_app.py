@@ -252,6 +252,441 @@ def format_percentage(value, decimals=2):
     return f"{value:.{decimals}f}%"
 
 
+# ============================================================================
+# PHASE 2: GICS SECTOR CLASSIFICATION SYSTEM
+# Matches S&P 500 / SPY benchmark classification for accurate attribution
+# ============================================================================
+
+# GICS Level 1 Sectors (11 sectors as per S&P/MSCI standard)
+GICS_SECTORS = [
+    'Information Technology',
+    'Health Care',
+    'Financials',
+    'Consumer Discretionary',
+    'Communication Services',
+    'Industrials',
+    'Consumer Staples',
+    'Energy',
+    'Materials',
+    'Real Estate',
+    'Utilities'
+]
+
+# Map various sector names to standard GICS Level 1
+GICS_SECTOR_MAPPING = {
+    # Technology variations
+    'Technology': 'Information Technology',
+    'Tech': 'Information Technology',
+    'Software': 'Information Technology',
+    'Semiconductors': 'Information Technology',
+    'Hardware': 'Information Technology',
+    'IT': 'Information Technology',
+
+    # Healthcare variations
+    'Healthcare': 'Health Care',
+    'Health': 'Health Care',
+    'Biotech': 'Health Care',
+    'Pharmaceuticals': 'Health Care',
+    'Medical': 'Health Care',
+
+    # Financial variations
+    'Financial Services': 'Financials',
+    'Financial': 'Financials',
+    'Banking': 'Financials',
+    'Insurance': 'Financials',
+    'Banks': 'Financials',
+
+    # Consumer Discretionary variations
+    'Consumer Cyclical': 'Consumer Discretionary',
+    'Cyclical': 'Consumer Discretionary',
+    'Retail': 'Consumer Discretionary',
+    'E-commerce': 'Consumer Discretionary',
+    'Automotive': 'Consumer Discretionary',
+
+    # Communication Services variations
+    'Communication': 'Communication Services',
+    'Communications': 'Communication Services',
+    'Telecom': 'Communication Services',
+    'Media': 'Communication Services',
+    'Entertainment': 'Communication Services',
+
+    # Consumer Staples variations
+    'Consumer Defensive': 'Consumer Staples',
+    'Defensive': 'Consumer Staples',
+    'Food': 'Consumer Staples',
+    'Beverages': 'Consumer Staples',
+
+    # Materials variations
+    'Basic Materials': 'Materials',
+    'Chemicals': 'Materials',
+    'Mining': 'Materials',
+
+    # Others (already correct)
+    'Industrials': 'Industrials',
+    'Energy': 'Energy',
+    'Real Estate': 'Real Estate',
+    'Utilities': 'Utilities',
+}
+
+# Explicit overrides for major stocks (matches S&P 500 classification)
+# These are the official GICS classifications as of 2024
+STOCK_SECTOR_OVERRIDES = {
+    # Information Technology
+    'AAPL': 'Information Technology',
+    'MSFT': 'Information Technology',
+    'NVDA': 'Information Technology',
+    'AVGO': 'Information Technology',
+    'AMD': 'Information Technology',
+    'INTC': 'Information Technology',
+    'CRM': 'Information Technology',
+    'ADBE': 'Information Technology',
+    'ORCL': 'Information Technology',
+    'CSCO': 'Information Technology',
+    'ACN': 'Information Technology',
+    'IBM': 'Information Technology',
+    'QCOM': 'Information Technology',
+    'TXN': 'Information Technology',
+    'NOW': 'Information Technology',
+    'INTU': 'Information Technology',
+    'AMAT': 'Information Technology',
+    'MU': 'Information Technology',
+    'LRCX': 'Information Technology',
+    'KLAC': 'Information Technology',
+    'SNPS': 'Information Technology',
+    'CDNS': 'Information Technology',
+    'MRVL': 'Information Technology',
+    'ADI': 'Information Technology',
+    'PANW': 'Information Technology',
+    'FTNT': 'Information Technology',
+    'CRWD': 'Information Technology',
+
+    # Communication Services (NOT Tech!)
+    'GOOGL': 'Communication Services',
+    'GOOG': 'Communication Services',
+    'META': 'Communication Services',
+    'NFLX': 'Communication Services',
+    'DIS': 'Communication Services',
+    'CMCSA': 'Communication Services',
+    'T': 'Communication Services',
+    'VZ': 'Communication Services',
+    'TMUS': 'Communication Services',
+    'CHTR': 'Communication Services',
+    'EA': 'Communication Services',
+    'TTWO': 'Communication Services',
+    'WBD': 'Communication Services',
+    'PARA': 'Communication Services',
+    'FOX': 'Communication Services',
+    'FOXA': 'Communication Services',
+    'LYV': 'Communication Services',
+    'OMC': 'Communication Services',
+    'IPG': 'Communication Services',
+
+    # Consumer Discretionary (NOT Tech!)
+    'AMZN': 'Consumer Discretionary',
+    'TSLA': 'Consumer Discretionary',
+    'HD': 'Consumer Discretionary',
+    'MCD': 'Consumer Discretionary',
+    'NKE': 'Consumer Discretionary',
+    'LOW': 'Consumer Discretionary',
+    'SBUX': 'Consumer Discretionary',
+    'TJX': 'Consumer Discretionary',
+    'BKNG': 'Consumer Discretionary',
+    'CMG': 'Consumer Discretionary',
+    'ORLY': 'Consumer Discretionary',
+    'AZO': 'Consumer Discretionary',
+    'ROST': 'Consumer Discretionary',
+    'MAR': 'Consumer Discretionary',
+    'HLT': 'Consumer Discretionary',
+    'GM': 'Consumer Discretionary',
+    'F': 'Consumer Discretionary',
+    'ABNB': 'Consumer Discretionary',
+    'DHI': 'Consumer Discretionary',
+    'LEN': 'Consumer Discretionary',
+    'PHM': 'Consumer Discretionary',
+    'NVR': 'Consumer Discretionary',
+
+    # Health Care
+    'UNH': 'Health Care',
+    'JNJ': 'Health Care',
+    'LLY': 'Health Care',
+    'ABBV': 'Health Care',
+    'MRK': 'Health Care',
+    'PFE': 'Health Care',
+    'TMO': 'Health Care',
+    'ABT': 'Health Care',
+    'DHR': 'Health Care',
+    'BMY': 'Health Care',
+    'AMGN': 'Health Care',
+    'GILD': 'Health Care',
+    'VRTX': 'Health Care',
+    'REGN': 'Health Care',
+    'ISRG': 'Health Care',
+    'MDT': 'Health Care',
+    'SYK': 'Health Care',
+    'BSX': 'Health Care',
+    'ELV': 'Health Care',
+    'CI': 'Health Care',
+    'HUM': 'Health Care',
+    'CVS': 'Health Care',
+    'MCK': 'Health Care',
+
+    # Financials
+    'BRK.B': 'Financials',
+    'JPM': 'Financials',
+    'V': 'Financials',
+    'MA': 'Financials',
+    'BAC': 'Financials',
+    'WFC': 'Financials',
+    'GS': 'Financials',
+    'MS': 'Financials',
+    'BLK': 'Financials',
+    'SPGI': 'Financials',
+    'C': 'Financials',
+    'AXP': 'Financials',
+    'SCHW': 'Financials',
+    'MMC': 'Financials',
+    'CB': 'Financials',
+    'PGR': 'Financials',
+    'AON': 'Financials',
+    'CME': 'Financials',
+    'ICE': 'Financials',
+    'USB': 'Financials',
+    'PNC': 'Financials',
+    'TFC': 'Financials',
+    'COF': 'Financials',
+    'AIG': 'Financials',
+    'MET': 'Financials',
+    'PRU': 'Financials',
+    'PYPL': 'Financials',
+    'SQ': 'Financials',
+
+    # Industrials
+    'CAT': 'Industrials',
+    'RTX': 'Industrials',
+    'HON': 'Industrials',
+    'UNP': 'Industrials',
+    'UPS': 'Industrials',
+    'BA': 'Industrials',
+    'LMT': 'Industrials',
+    'DE': 'Industrials',
+    'GE': 'Industrials',
+    'MMM': 'Industrials',
+    'ETN': 'Industrials',
+    'ITW': 'Industrials',
+    'EMR': 'Industrials',
+    'FDX': 'Industrials',
+    'CSX': 'Industrials',
+    'NSC': 'Industrials',
+    'WM': 'Industrials',
+    'GD': 'Industrials',
+    'NOC': 'Industrials',
+    'PH': 'Industrials',
+    'UBER': 'Industrials',
+
+    # Consumer Staples
+    'PG': 'Consumer Staples',
+    'KO': 'Consumer Staples',
+    'PEP': 'Consumer Staples',
+    'COST': 'Consumer Staples',
+    'WMT': 'Consumer Staples',
+    'PM': 'Consumer Staples',
+    'MO': 'Consumer Staples',
+    'MDLZ': 'Consumer Staples',
+    'CL': 'Consumer Staples',
+    'EL': 'Consumer Staples',
+    'KMB': 'Consumer Staples',
+    'GIS': 'Consumer Staples',
+    'K': 'Consumer Staples',
+    'SYY': 'Consumer Staples',
+    'KHC': 'Consumer Staples',
+    'STZ': 'Consumer Staples',
+    'KR': 'Consumer Staples',
+    'TGT': 'Consumer Staples',
+
+    # Energy
+    'XOM': 'Energy',
+    'CVX': 'Energy',
+    'COP': 'Energy',
+    'SLB': 'Energy',
+    'EOG': 'Energy',
+    'MPC': 'Energy',
+    'PSX': 'Energy',
+    'VLO': 'Energy',
+    'PXD': 'Energy',
+    'OXY': 'Energy',
+    'WMB': 'Energy',
+    'KMI': 'Energy',
+    'HAL': 'Energy',
+    'DVN': 'Energy',
+    'HES': 'Energy',
+
+    # Materials
+    'LIN': 'Materials',
+    'APD': 'Materials',
+    'SHW': 'Materials',
+    'ECL': 'Materials',
+    'FCX': 'Materials',
+    'NEM': 'Materials',
+    'DOW': 'Materials',
+    'DD': 'Materials',
+    'NUE': 'Materials',
+    'VMC': 'Materials',
+    'MLM': 'Materials',
+    'PPG': 'Materials',
+
+    # Real Estate
+    'PLD': 'Real Estate',
+    'AMT': 'Real Estate',
+    'EQIX': 'Real Estate',
+    'CCI': 'Real Estate',
+    'PSA': 'Real Estate',
+    'SPG': 'Real Estate',
+    'O': 'Real Estate',
+    'WELL': 'Real Estate',
+    'DLR': 'Real Estate',
+    'AVB': 'Real Estate',
+    'EQR': 'Real Estate',
+    'VICI': 'Real Estate',
+    'IRM': 'Real Estate',
+
+    # Utilities
+    'NEE': 'Utilities',
+    'DUK': 'Utilities',
+    'SO': 'Utilities',
+    'D': 'Utilities',
+    'AEP': 'Utilities',
+    'SRE': 'Utilities',
+    'EXC': 'Utilities',
+    'XEL': 'Utilities',
+    'PEG': 'Utilities',
+    'ED': 'Utilities',
+    'WEC': 'Utilities',
+    'ES': 'Utilities',
+    'AWK': 'Utilities',
+}
+
+# Current S&P 500 sector weights (as of Dec 2024 - update quarterly)
+SPY_SECTOR_WEIGHTS = {
+    'Information Technology': 31.5,
+    'Financials': 13.2,
+    'Health Care': 11.8,
+    'Consumer Discretionary': 10.5,
+    'Communication Services': 9.2,
+    'Industrials': 8.4,
+    'Consumer Staples': 5.8,
+    'Energy': 3.6,
+    'Utilities': 2.4,
+    'Real Estate': 2.3,
+    'Materials': 2.3
+}
+
+
+def get_gics_sector(ticker):
+    """
+    Get GICS Level 1 Sector classification for a ticker.
+    Matches how SPY and other ETF benchmarks classify holdings.
+
+    Priority:
+    1. Check explicit overrides (most accurate)
+    2. Fetch from yfinance and map to GICS
+    3. Return 'Other' if unknown
+
+    Returns:
+        str: GICS Level 1 sector name
+    """
+    # Priority 1: Check overrides
+    ticker_upper = ticker.upper().strip()
+    if ticker_upper in STOCK_SECTOR_OVERRIDES:
+        return STOCK_SECTOR_OVERRIDES[ticker_upper]
+
+    # Priority 2: Fetch from yfinance and standardize
+    try:
+        stock = yf.Ticker(ticker_upper)
+        info = stock.info
+        sector = info.get('sector', 'Other')
+
+        # Map to standard GICS
+        if sector in GICS_SECTORS:
+            return sector
+        elif sector in GICS_SECTOR_MAPPING:
+            return GICS_SECTOR_MAPPING[sector]
+        else:
+            return 'Other'
+
+    except Exception as e:
+        print(f"Error getting sector for {ticker}: {e}")
+        return 'Other'
+
+
+def get_portfolio_gics_sectors(portfolio_df):
+    """
+    Apply GICS sector classification to entire portfolio.
+
+    Parameters:
+        portfolio_df: DataFrame with 'Ticker' column
+
+    Returns:
+        DataFrame with 'GICS_Sector' column added
+    """
+    df = portfolio_df.copy()
+
+    # Apply GICS classification to each ticker
+    df['GICS_Sector'] = df['Ticker'].apply(get_gics_sector)
+
+    return df
+
+
+def get_spy_sector_weights():
+    """
+    Get current SPY sector weights.
+    Returns dict with GICS Level 1 sectors and their weights (as percentages).
+    """
+    return SPY_SECTOR_WEIGHTS.copy()
+
+
+def get_benchmark_sector_returns(benchmark_ticker='SPY', period='1y'):
+    """
+    Get sector returns from benchmark ETF.
+    Uses sector ETFs as proxies for sector performance.
+
+    Parameters:
+        benchmark_ticker: Main benchmark (SPY)
+        period: Time period for returns
+
+    Returns:
+        dict: {sector: return_percentage}
+    """
+    # Sector ETF proxies
+    sector_etfs = {
+        'Information Technology': 'XLK',
+        'Financials': 'XLF',
+        'Health Care': 'XLV',
+        'Consumer Discretionary': 'XLY',
+        'Communication Services': 'XLC',
+        'Industrials': 'XLI',
+        'Consumer Staples': 'XLP',
+        'Energy': 'XLE',
+        'Materials': 'XLB',
+        'Real Estate': 'XLRE',
+        'Utilities': 'XLU'
+    }
+
+    sector_returns = {}
+
+    for sector, etf in sector_etfs.items():
+        try:
+            data = yf.Ticker(etf).history(period=period)
+            if len(data) > 0:
+                ret = (data['Close'].iloc[-1] / data['Close'].iloc[0] - 1) * 100
+                sector_returns[sector] = ret
+            else:
+                sector_returns[sector] = 0
+        except:
+            sector_returns[sector] = 0
+
+    return sector_returns
+
+
 def make_scrollable_table(df, height=600, hide_index=True, use_container_width=True, column_config=None):
     """
     Make any dataframe horizontally scrollable with professional styling.
@@ -5724,6 +6159,310 @@ def calculate_skill_score(effect_value):
         return 0.0
     else:
         return 5.0 + (effect_value / 5.0) * 5.0
+
+
+def calculate_brinson_attribution_gics(portfolio_df, period='1y'):
+    """
+    Calculate Brinson attribution using correct GICS sector classification.
+    This version matches S&P 500 / SPY benchmark classification for accurate results.
+
+    Parameters:
+    -----------
+    portfolio_df : pd.DataFrame
+        Portfolio holdings with columns: Ticker, Weight % (or Total Value), Total Gain/Loss %
+    period : str
+        Time period for returns ('1y', '6mo', '3mo', '1mo', 'ytd')
+
+    Returns:
+    --------
+    dict with:
+        - attribution_df: DataFrame with sector-level attribution
+        - stock_attribution_df: DataFrame with stock-level attribution
+        - total_allocation_effect, total_selection_effect, total_interaction_effect
+        - total_attribution
+        - allocation_skill_score, selection_skill_score
+        - validation: dict with reconciliation info
+    """
+    df = portfolio_df.copy()
+
+    # Step 1: Apply GICS sector classification
+    df['GICS_Sector'] = df['Ticker'].apply(get_gics_sector)
+
+    # Step 2: Calculate portfolio weights if not provided
+    if 'Weight %' not in df.columns:
+        if 'Total Value' in df.columns:
+            total_value = df['Total Value'].sum()
+            df['Weight %'] = (df['Total Value'] / total_value) * 100
+        else:
+            # Equal weight
+            df['Weight %'] = 100 / len(df)
+
+    # Step 3: Get benchmark weights and returns
+    benchmark_weights = get_spy_sector_weights()
+    benchmark_returns = get_benchmark_sector_returns(period=period)
+
+    # Step 4: Get benchmark total return (SPY)
+    try:
+        spy_data = yf.Ticker('SPY').history(period=period)
+        benchmark_total_return = (spy_data['Close'].iloc[-1] / spy_data['Close'].iloc[0] - 1) * 100
+    except:
+        benchmark_total_return = sum(benchmark_weights[s] / 100 * benchmark_returns.get(s, 0)
+                                     for s in benchmark_weights.keys())
+
+    # Step 5: Aggregate portfolio by GICS sector
+    # Use value-weighted returns within each sector
+    portfolio_sectors = df.groupby('GICS_Sector').agg({
+        'Weight %': 'sum',
+        'Total Gain/Loss %': lambda x: np.average(x, weights=df.loc[x.index, 'Weight %'])
+    }).reset_index()
+
+    portfolio_sectors.columns = ['Sector', 'Portfolio Weight', 'Portfolio Return']
+    portfolio_sectors['Portfolio Weight'] = portfolio_sectors['Portfolio Weight'] / 100
+
+    # Step 6: Calculate attribution for each sector
+    results = []
+
+    for _, row in portfolio_sectors.iterrows():
+        sector = row['Sector']
+
+        # Portfolio weight and return
+        wp = row['Portfolio Weight']
+        rp = row['Portfolio Return'] / 100
+
+        # Benchmark weight and return
+        wb = benchmark_weights.get(sector, 0) / 100
+        rb = benchmark_returns.get(sector, 0) / 100
+
+        # Benchmark total return
+        rb_total = benchmark_total_return / 100
+
+        # Brinson-Fachler Attribution:
+        # Allocation Effect = (wp - wb) × (rb - rb_total)
+        # Selection Effect = wp × (rp - rb)  # Using portfolio weight (Brinson-Fachler)
+        # Interaction Effect = (wp - wb) × (rp - rb)
+
+        allocation_effect = (wp - wb) * (rb - rb_total) * 100
+        selection_effect = wp * (rp - rb) * 100
+        interaction_effect = (wp - wb) * (rp - rb) * 100
+
+        results.append({
+            'Sector': sector,
+            'Portfolio Weight': wp * 100,
+            'Benchmark Weight': wb * 100,
+            'Weight Diff': (wp - wb) * 100,
+            'Portfolio Return': rp * 100,
+            'Benchmark Return': rb * 100,
+            'Return Diff': (rp - rb) * 100,
+            'Allocation Effect': allocation_effect,
+            'Selection Effect': selection_effect,
+            'Interaction Effect': interaction_effect,
+            'Total Effect': allocation_effect + selection_effect + interaction_effect
+        })
+
+    # Include sectors where portfolio has 0% but benchmark has weight
+    portfolio_sector_list = portfolio_sectors['Sector'].tolist()
+    for sector, wb in benchmark_weights.items():
+        if sector not in portfolio_sector_list and wb > 0:
+            wb_pct = wb / 100
+            rb = benchmark_returns.get(sector, 0) / 100
+            rb_total = benchmark_total_return / 100
+
+            # Portfolio has 0% in this sector
+            allocation_effect = (0 - wb_pct) * (rb - rb_total) * 100
+            selection_effect = 0  # No selection effect when no holdings
+            interaction_effect = 0
+
+            results.append({
+                'Sector': sector,
+                'Portfolio Weight': 0,
+                'Benchmark Weight': wb,
+                'Weight Diff': -wb,
+                'Portfolio Return': 0,
+                'Benchmark Return': rb * 100,
+                'Return Diff': -rb * 100,
+                'Allocation Effect': allocation_effect,
+                'Selection Effect': selection_effect,
+                'Interaction Effect': interaction_effect,
+                'Total Effect': allocation_effect
+            })
+
+    attribution_df = pd.DataFrame(results)
+    attribution_df = attribution_df.sort_values('Total Effect', ascending=False)
+
+    # Step 7: Calculate totals
+    total_allocation = attribution_df['Allocation Effect'].sum()
+    total_selection = attribution_df['Selection Effect'].sum()
+    total_interaction = attribution_df['Interaction Effect'].sum()
+    total_attribution = total_allocation + total_selection + total_interaction
+
+    # Step 8: Calculate stock-level attribution
+    stock_results = []
+    portfolio_total_return = (df['Weight %'] * df['Total Gain/Loss %']).sum() / 100
+
+    for _, row in df.iterrows():
+        ticker = row['Ticker']
+        weight = row['Weight %'] / 100
+        stock_return = row['Total Gain/Loss %'] / 100
+        sector = row['GICS_Sector']
+
+        # Benchmark return for this sector
+        sector_benchmark_return = benchmark_returns.get(sector, 0) / 100
+
+        # Contribution to portfolio return
+        contribution = weight * stock_return * 100
+
+        # Active contribution (vs if held at benchmark sector return)
+        active_contribution = weight * (stock_return - sector_benchmark_return) * 100
+
+        stock_results.append({
+            'Ticker': ticker,
+            'GICS_Sector': sector,
+            'Weight %': weight * 100,
+            'Return %': stock_return * 100,
+            'Sector Benchmark Return %': sector_benchmark_return * 100,
+            'Return vs Sector': (stock_return - sector_benchmark_return) * 100,
+            'Contribution %': contribution,
+            'Active Contribution %': active_contribution
+        })
+
+    stock_attribution_df = pd.DataFrame(stock_results)
+    stock_attribution_df = stock_attribution_df.sort_values('Active Contribution %', ascending=False)
+
+    # Step 9: Validation
+    actual_alpha = portfolio_total_return - benchmark_total_return
+    attribution_sum = total_allocation + total_selection + total_interaction
+    reconciliation_diff = abs(actual_alpha - attribution_sum)
+
+    validation = {
+        'portfolio_return': portfolio_total_return,
+        'benchmark_return': benchmark_total_return,
+        'actual_alpha': actual_alpha,
+        'attribution_sum': attribution_sum,
+        'reconciliation_diff': reconciliation_diff,
+        'is_reconciled': reconciliation_diff < 1.0  # Within 1%
+    }
+
+    return {
+        'attribution_df': attribution_df,
+        'stock_attribution_df': stock_attribution_df,
+        'total_allocation_effect': total_allocation,
+        'total_selection_effect': total_selection,
+        'total_interaction_effect': total_interaction,
+        'total_attribution': total_attribution,
+        'allocation_skill_score': calculate_skill_score(total_allocation),
+        'selection_skill_score': calculate_skill_score(total_selection),
+        'validation': validation,
+        'benchmark_weights': benchmark_weights,
+        'benchmark_returns': benchmark_returns
+    }
+
+
+def display_stock_attribution_table(stock_df):
+    """
+    Display stock-level attribution in glassmorphism styled cards.
+
+    Parameters:
+        stock_df: DataFrame from calculate_brinson_attribution_gics
+    """
+    # Top Contributors
+    top_contributors = stock_df.head(5)
+    bottom_contributors = stock_df.tail(5).iloc[::-1]  # Reverse to show worst first
+
+    top_html = """
+<div style="background: rgba(26, 35, 50, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(0, 212, 255, 0.2); border-radius: 12px; padding: 20px; margin: 10px 0;">
+<h4 style="color: #00d4ff; margin: 0 0 15px 0; font-family: 'Inter', sans-serif; text-transform: uppercase; letter-spacing: 0.1em;">🏆 Top Alpha Contributors</h4>
+<table style="width: 100%; border-collapse: collapse; font-family: 'Inter', sans-serif;">
+<tr style="border-bottom: 1px solid rgba(0, 212, 255, 0.2);">
+<th style="text-align: left; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Ticker</th>
+<th style="text-align: left; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Sector</th>
+<th style="text-align: right; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Weight</th>
+<th style="text-align: right; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Return</th>
+<th style="text-align: right; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">vs Sector</th>
+<th style="text-align: right; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Alpha Contrib</th>
+</tr>
+"""
+    for _, row in top_contributors.iterrows():
+        color = '#00ff9d' if row['Active Contribution %'] > 0 else '#ff006b'
+        top_html += f"""
+<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+<td style="padding: 10px; color: #00d4ff; font-weight: 600;">{row['Ticker']}</td>
+<td style="padding: 10px; color: #c0c8d0; font-size: 0.85rem;">{row['GICS_Sector']}</td>
+<td style="padding: 10px; color: #c0c8d0; text-align: right;">{row['Weight %']:.1f}%</td>
+<td style="padding: 10px; color: {'#00ff9d' if row['Return %'] > 0 else '#ff006b'}; text-align: right; font-family: 'JetBrains Mono', monospace;">{row['Return %']:+.1f}%</td>
+<td style="padding: 10px; color: {'#00ff9d' if row['Return vs Sector'] > 0 else '#ff006b'}; text-align: right; font-family: 'JetBrains Mono', monospace;">{row['Return vs Sector']:+.1f}%</td>
+<td style="padding: 10px; color: {color}; text-align: right; font-weight: 700; font-family: 'JetBrains Mono', monospace;">{row['Active Contribution %']:+.2f}%</td>
+</tr>
+"""
+    top_html += "</table></div>"
+
+    # Bottom Contributors
+    bottom_html = """
+<div style="background: rgba(26, 35, 50, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255, 0, 107, 0.2); border-radius: 12px; padding: 20px; margin: 10px 0;">
+<h4 style="color: #ff006b; margin: 0 0 15px 0; font-family: 'Inter', sans-serif; text-transform: uppercase; letter-spacing: 0.1em;">📉 Top Alpha Detractors</h4>
+<table style="width: 100%; border-collapse: collapse; font-family: 'Inter', sans-serif;">
+<tr style="border-bottom: 1px solid rgba(255, 0, 107, 0.2);">
+<th style="text-align: left; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Ticker</th>
+<th style="text-align: left; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Sector</th>
+<th style="text-align: right; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Weight</th>
+<th style="text-align: right; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Return</th>
+<th style="text-align: right; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">vs Sector</th>
+<th style="text-align: right; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Alpha Contrib</th>
+</tr>
+"""
+    for _, row in bottom_contributors.iterrows():
+        color = '#00ff9d' if row['Active Contribution %'] > 0 else '#ff006b'
+        bottom_html += f"""
+<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+<td style="padding: 10px; color: #ff006b; font-weight: 600;">{row['Ticker']}</td>
+<td style="padding: 10px; color: #c0c8d0; font-size: 0.85rem;">{row['GICS_Sector']}</td>
+<td style="padding: 10px; color: #c0c8d0; text-align: right;">{row['Weight %']:.1f}%</td>
+<td style="padding: 10px; color: {'#00ff9d' if row['Return %'] > 0 else '#ff006b'}; text-align: right; font-family: 'JetBrains Mono', monospace;">{row['Return %']:+.1f}%</td>
+<td style="padding: 10px; color: {'#00ff9d' if row['Return vs Sector'] > 0 else '#ff006b'}; text-align: right; font-family: 'JetBrains Mono', monospace;">{row['Return vs Sector']:+.1f}%</td>
+<td style="padding: 10px; color: {color}; text-align: right; font-weight: 700; font-family: 'JetBrains Mono', monospace;">{row['Active Contribution %']:+.2f}%</td>
+</tr>
+"""
+    bottom_html += "</table></div>"
+
+    return top_html, bottom_html
+
+
+def display_attribution_validation(validation):
+    """
+    Display attribution validation/reconciliation info.
+    """
+    is_valid = validation['is_reconciled']
+    status_color = '#00ff9d' if is_valid else '#ffd93d'
+    status_icon = '✓' if is_valid else '⚠'
+
+    html = f"""
+<div style="background: rgba(26, 35, 50, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(0, 212, 255, 0.2); border-radius: 12px; padding: 20px; margin: 20px 0;">
+<h4 style="color: #00d4ff; margin: 0 0 15px 0; font-family: 'Inter', sans-serif; text-transform: uppercase; letter-spacing: 0.1em;">📊 Attribution Reconciliation</h4>
+<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px;">
+<div style="background: rgba(10, 15, 26, 0.6); border-radius: 8px; padding: 12px; text-align: center;">
+<div style="color: #8890a0; font-size: 0.7rem; text-transform: uppercase; margin-bottom: 5px;">Portfolio Return</div>
+<div style="color: {'#00ff9d' if validation['portfolio_return'] > 0 else '#ff006b'}; font-size: 1.5rem; font-weight: 700; font-family: 'JetBrains Mono', monospace;">{validation['portfolio_return']:+.2f}%</div>
+</div>
+<div style="background: rgba(10, 15, 26, 0.6); border-radius: 8px; padding: 12px; text-align: center;">
+<div style="color: #8890a0; font-size: 0.7rem; text-transform: uppercase; margin-bottom: 5px;">Benchmark Return</div>
+<div style="color: {'#00ff9d' if validation['benchmark_return'] > 0 else '#ff006b'}; font-size: 1.5rem; font-weight: 700; font-family: 'JetBrains Mono', monospace;">{validation['benchmark_return']:+.2f}%</div>
+</div>
+<div style="background: rgba(10, 15, 26, 0.6); border-radius: 8px; padding: 12px; text-align: center;">
+<div style="color: #8890a0; font-size: 0.7rem; text-transform: uppercase; margin-bottom: 5px;">Actual Alpha</div>
+<div style="color: {'#00ff9d' if validation['actual_alpha'] > 0 else '#ff006b'}; font-size: 1.5rem; font-weight: 700; font-family: 'JetBrains Mono', monospace;">{validation['actual_alpha']:+.2f}%</div>
+</div>
+<div style="background: rgba(10, 15, 26, 0.6); border-radius: 8px; padding: 12px; text-align: center;">
+<div style="color: #8890a0; font-size: 0.7rem; text-transform: uppercase; margin-bottom: 5px;">Attribution Sum</div>
+<div style="color: {'#00ff9d' if validation['attribution_sum'] > 0 else '#ff006b'}; font-size: 1.5rem; font-weight: 700; font-family: 'JetBrains Mono', monospace;">{validation['attribution_sum']:+.2f}%</div>
+</div>
+</div>
+<div style="margin-top: 15px; padding: 10px; background: linear-gradient(90deg, rgba({status_color[1:]}, 0.1) 0%, transparent 100%); border-left: 3px solid {status_color}; border-radius: 4px;">
+<span style="color: {status_color}; font-weight: 600;">{status_icon} {'Attribution Reconciled' if is_valid else 'Minor Reconciliation Difference'}</span>
+<span style="color: #8890a0; margin-left: 10px;">Difference: {validation['reconciliation_diff']:.2f}%</span>
+</div>
+</div>
+"""
+    return html
+
 
 def calculate_brinson_attribution(portfolio_df, benchmark_weights, benchmark_returns, period='YTD'):
     """
