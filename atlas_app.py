@@ -11445,30 +11445,44 @@ def main():
     with st.expander("⚙️ CAPITAL SETTINGS (Equity & Leverage)", expanded=False):
         st.markdown("### 💰 Configure Your Capital Structure")
 
+        # AUTO-POPULATE from performance history if available
+        metrics = get_current_portfolio_metrics()
+        if metrics and metrics.get('equity', 0) > 0:
+            auto_equity = metrics['equity']
+            auto_leverage = metrics.get('leverage', 1.0)
+            st.success(f"✅ Auto-populated from performance history: ${auto_equity:,.0f} equity, {auto_leverage:.2f}x leverage")
+        else:
+            auto_equity = st.session_state.get('equity_capital', 100000.0)
+            auto_leverage = st.session_state.get('target_leverage', 1.0)
+
         col1, col2 = st.columns(2)
 
         with col1:
+            # Use unique key that updates when equity changes
+            equity_key = f"equity_input_{int(auto_equity)}"
             equity_capital = st.number_input(
                 "Your Equity Capital ($)",
                 min_value=1000.0,
                 max_value=100000000.0,
-                value=st.session_state.get('equity_capital', 100000.0),
+                value=float(auto_equity),
                 step=1000.0,
                 format="%.0f",
-                help="Your actual capital invested (not including leverage)",
-                key="equity_capital_input"
+                help="Your actual capital invested (not including leverage). Auto-populated from performance history if uploaded.",
+                key=equity_key
             )
             st.session_state['equity_capital'] = equity_capital
 
         with col2:
+            # Use unique key that updates when leverage changes
+            leverage_key = f"leverage_input_{int(auto_leverage * 100)}"
             target_leverage = st.slider(
                 "Target Leverage",
                 min_value=1.0,
                 max_value=3.0,
-                value=st.session_state.get('target_leverage', 1.0),
+                value=float(min(3.0, max(1.0, auto_leverage))),
                 step=0.1,
                 help="Total exposure / Equity ratio (1.0x = no leverage, 2.0x = 2x leverage, 3.0x = 3x leverage)",
-                key="target_leverage_input"
+                key=leverage_key
             )
             st.session_state['target_leverage'] = target_leverage
 
