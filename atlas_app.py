@@ -188,6 +188,671 @@ def is_valid_dataframe(df):
     """Safely check if a pandas DataFrame has valid data"""
     return df is not None and isinstance(df, pd.DataFrame) and not df.empty
 
+
+def get_current_portfolio_metrics():
+    """
+    Extract current portfolio metrics from uploaded performance history.
+    Returns dict with equity, gross_exposure, leverage, cash, etc.
+
+    Data source: Performance history file Column F (Account Value)
+    - Row 2 (most recent) = Current equity exposure
+
+    Returns:
+        dict with keys: equity, cash, stock_value, short_value, gross_exposure,
+                       leverage, date, ytd_return, avg_leverage
+        None if performance history not loaded
+    """
+    try:
+        # Check if leverage tracker exists in session state
+        if 'leverage_tracker' in st.session_state and st.session_state.leverage_tracker is not None:
+            tracker = st.session_state.leverage_tracker
+            stats = tracker.get_current_stats()
+
+            if stats:
+                return {
+                    'equity': stats.get('current_equity', 0),
+                    'gross_exposure': stats.get('current_gross_exposure', 0),
+                    'leverage': stats.get('current_leverage', 1.0),
+                    'ytd_return': stats.get('ytd_equity_return', 0),
+                    'avg_leverage': stats.get('avg_leverage', 1.0),
+                    'max_leverage': stats.get('max_leverage', 1.0),
+                    'min_leverage': stats.get('min_leverage', 1.0),
+                    'source': 'leverage_tracker'
+                }
+
+        # Fallback: Check if equity_capital was stored directly
+        if 'equity_capital' in st.session_state and st.session_state.equity_capital:
+            return {
+                'equity': st.session_state.equity_capital,
+                'gross_exposure': st.session_state.get('gross_exposure', st.session_state.equity_capital),
+                'leverage': st.session_state.get('leverage', 1.0),
+                'ytd_return': 0,
+                'avg_leverage': 1.0,
+                'source': 'session_state'
+            }
+
+        return None
+
+    except Exception as e:
+        print(f"Error getting portfolio metrics: {e}")
+        return None
+
+
+def get_portfolio_period_return(period='1y'):
+    """
+    Calculate actual time-weighted portfolio return from performance history.
+    This is the ACTUAL return you achieved, not point-in-time holdings return.
+
+    Parameters:
+    -----------
+    period : str
+        Time period ('1y', '6mo', '3mo', '1mo', 'ytd')
+
+    Returns:
+    --------
+    dict with: return (as decimal), start_value, end_value, start_date, end_date, days
+    None if performance history not loaded
+    """
+    try:
+        # Get leverage tracker from session state
+        if 'leverage_tracker' not in st.session_state or st.session_state.leverage_tracker is None:
+            return None
+
+        tracker = st.session_state.leverage_tracker
+        df = tracker.leverage_history
+
+        if df is None or df.empty:
+            return None
+
+        # Get most recent value (end of period)
+        end_row = df.iloc[-1]
+        end_value = end_row['Net Equity']
+        end_date = end_row['Date']
+
+        # Determine start date based on period
+        period_lower = period.lower()
+        if period_lower in ['1y', '1yr', '12m']:
+            start_date = end_date - pd.DateOffset(years=1)
+        elif period_lower in ['6m', '6mo']:
+            start_date = end_date - pd.DateOffset(months=6)
+        elif period_lower in ['3m', '3mo']:
+            start_date = end_date - pd.DateOffset(months=3)
+        elif period_lower in ['1m', '1mo']:
+            start_date = end_date - pd.DateOffset(months=1)
+        elif period_lower == 'ytd':
+            start_date = pd.Timestamp(f'{end_date.year}-01-01')
+        else:
+            # Default to 1 year
+            start_date = end_date - pd.DateOffset(years=1)
+
+        # Find closest date to start_date in historical data
+        df['_date_diff'] = abs(df['Date'] - start_date)
+        start_idx = df['_date_diff'].idxmin()
+        start_row = df.loc[start_idx]
+        start_value = start_row['Net Equity']
+        actual_start_date = start_row['Date']
+
+        # Clean up temp column
+        df.drop('_date_diff', axis=1, inplace=True)
+
+        # Calculate return
+        if start_value > 0:
+            portfolio_return = (end_value - start_value) / start_value
+        else:
+            portfolio_return = 0
+
+        return {
+            'return': portfolio_return,  # As decimal (0.4093 = 40.93%)
+            'return_pct': portfolio_return * 100,  # As percentage
+            'start_value': start_value,
+            'end_value': end_value,
+            'start_date': actual_start_date,
+            'end_date': end_date,
+            'days': (end_date - actual_start_date).days
+        }
+
+    except Exception as e:
+        print(f"Error calculating portfolio period return: {e}")
+        return None
+
+
+def get_benchmark_period_return(benchmark_ticker='SPY', period='1y', match_portfolio_dates=True):
+    """
+    Get benchmark return over same period as portfolio.
+
+    Parameters:
+    -----------
+    benchmark_ticker : str
+        Benchmark ticker (default 'SPY')
+    period : str
+        Time period
+    match_portfolio_dates : bool
+        If True, use exact same dates as portfolio performance history
+
+    Returns:
+    --------
+    dict with: return (as decimal), start_price, end_price, start_date, end_date, ticker
+    None if error
+    """
+    try:
+        import yfinance as yf
+
+        # Get portfolio dates to match exactly
+        if match_portfolio_dates:
+            portfolio_data = get_portfolio_period_return(period)
+
+            if portfolio_data is not None:
+                start_date = portfolio_data['start_date']
+                end_date = portfolio_data['end_date']
+
+                # Get benchmark data for exact same dates
+                benchmark = yf.Ticker(benchmark_ticker)
+                # Add buffer days to ensure we get data
+                hist = benchmark.history(start=start_date - pd.Timedelta(days=5),
+                                        end=end_date + pd.Timedelta(days=1))
+
+                if hist.empty:
+                    return None
+
+                # Find closest dates to portfolio dates
+                hist['_date_diff_start'] = abs(hist.index - start_date)
+                hist['_date_diff_end'] = abs(hist.index - end_date)
+
+                start_idx = hist['_date_diff_start'].idxmin()
+                end_idx = hist['_date_diff_end'].idxmin()
+
+                start_price = hist.loc[start_idx, 'Close']
+                end_price = hist.loc[end_idx, 'Close']
+                actual_start = start_idx
+                actual_end = end_idx
+
+                benchmark_return = (end_price - start_price) / start_price
+
+                return {
+                    'return': benchmark_return,  # As decimal
+                    'return_pct': benchmark_return * 100,  # As percentage
+                    'start_price': start_price,
+                    'end_price': end_price,
+                    'start_date': actual_start,
+                    'end_date': actual_end,
+                    'ticker': benchmark_ticker
+                }
+
+        # Fallback to standard period
+        benchmark = yf.Ticker(benchmark_ticker)
+        hist = benchmark.history(period=period)
+
+        if hist.empty:
+            return None
+
+        start_price = hist['Close'].iloc[0]
+        end_price = hist['Close'].iloc[-1]
+        benchmark_return = (end_price - start_price) / start_price
+
+        return {
+            'return': benchmark_return,
+            'return_pct': benchmark_return * 100,
+            'start_price': start_price,
+            'end_price': end_price,
+            'start_date': hist.index[0],
+            'end_date': hist.index[-1],
+            'ticker': benchmark_ticker
+        }
+
+    except Exception as e:
+        print(f"Error getting benchmark return: {e}")
+        return None
+
+
+def format_currency(value, decimals=2):
+    """Format value as currency string"""
+    if value is None:
+        return "$0.00"
+    return f"${value:,.{decimals}f}"
+
+
+def format_percentage(value, decimals=2):
+    """Format value as percentage string"""
+    if value is None:
+        return "0.00%"
+    return f"{value:.{decimals}f}%"
+
+
+# ============================================================================
+# PHASE 2: GICS SECTOR CLASSIFICATION SYSTEM
+# Matches S&P 500 / SPY benchmark classification for accurate attribution
+# ============================================================================
+
+# GICS Level 1 Sectors (11 sectors as per S&P/MSCI standard)
+GICS_SECTORS = [
+    'Information Technology',
+    'Health Care',
+    'Financials',
+    'Consumer Discretionary',
+    'Communication Services',
+    'Industrials',
+    'Consumer Staples',
+    'Energy',
+    'Materials',
+    'Real Estate',
+    'Utilities'
+]
+
+# Map various sector names to standard GICS Level 1
+GICS_SECTOR_MAPPING = {
+    # Technology variations
+    'Technology': 'Information Technology',
+    'Tech': 'Information Technology',
+    'Software': 'Information Technology',
+    'Semiconductors': 'Information Technology',
+    'Hardware': 'Information Technology',
+    'IT': 'Information Technology',
+
+    # Healthcare variations
+    'Healthcare': 'Health Care',
+    'Health': 'Health Care',
+    'Biotech': 'Health Care',
+    'Pharmaceuticals': 'Health Care',
+    'Medical': 'Health Care',
+
+    # Financial variations
+    'Financial Services': 'Financials',
+    'Financial': 'Financials',
+    'Banking': 'Financials',
+    'Insurance': 'Financials',
+    'Banks': 'Financials',
+
+    # Consumer Discretionary variations
+    'Consumer Cyclical': 'Consumer Discretionary',
+    'Cyclical': 'Consumer Discretionary',
+    'Retail': 'Consumer Discretionary',
+    'E-commerce': 'Consumer Discretionary',
+    'Automotive': 'Consumer Discretionary',
+
+    # Communication Services variations
+    'Communication': 'Communication Services',
+    'Communications': 'Communication Services',
+    'Telecom': 'Communication Services',
+    'Media': 'Communication Services',
+    'Entertainment': 'Communication Services',
+
+    # Consumer Staples variations
+    'Consumer Defensive': 'Consumer Staples',
+    'Defensive': 'Consumer Staples',
+    'Food': 'Consumer Staples',
+    'Beverages': 'Consumer Staples',
+
+    # Materials variations
+    'Basic Materials': 'Materials',
+    'Chemicals': 'Materials',
+    'Mining': 'Materials',
+
+    # Others (already correct)
+    'Industrials': 'Industrials',
+    'Energy': 'Energy',
+    'Real Estate': 'Real Estate',
+    'Utilities': 'Utilities',
+}
+
+# Explicit overrides for major stocks (matches S&P 500 classification)
+# These are the official GICS classifications as of 2024
+STOCK_SECTOR_OVERRIDES = {
+    # Information Technology
+    'AAPL': 'Information Technology',
+    'MSFT': 'Information Technology',
+    'NVDA': 'Information Technology',
+    'AVGO': 'Information Technology',
+    'AMD': 'Information Technology',
+    'INTC': 'Information Technology',
+    'CRM': 'Information Technology',
+    'ADBE': 'Information Technology',
+    'ORCL': 'Information Technology',
+    'CSCO': 'Information Technology',
+    'ACN': 'Information Technology',
+    'IBM': 'Information Technology',
+    'QCOM': 'Information Technology',
+    'TXN': 'Information Technology',
+    'NOW': 'Information Technology',
+    'INTU': 'Information Technology',
+    'AMAT': 'Information Technology',
+    'MU': 'Information Technology',
+    'LRCX': 'Information Technology',
+    'KLAC': 'Information Technology',
+    'SNPS': 'Information Technology',
+    'CDNS': 'Information Technology',
+    'MRVL': 'Information Technology',
+    'ADI': 'Information Technology',
+    'PANW': 'Information Technology',
+    'FTNT': 'Information Technology',
+    'CRWD': 'Information Technology',
+
+    # Communication Services (NOT Tech!)
+    'GOOGL': 'Communication Services',
+    'GOOG': 'Communication Services',
+    'META': 'Communication Services',
+    'NFLX': 'Communication Services',
+    'DIS': 'Communication Services',
+    'CMCSA': 'Communication Services',
+    'T': 'Communication Services',
+    'VZ': 'Communication Services',
+    'TMUS': 'Communication Services',
+    'CHTR': 'Communication Services',
+    'EA': 'Communication Services',
+    'TTWO': 'Communication Services',
+    'WBD': 'Communication Services',
+    'PARA': 'Communication Services',
+    'FOX': 'Communication Services',
+    'FOXA': 'Communication Services',
+    'LYV': 'Communication Services',
+    'OMC': 'Communication Services',
+    'IPG': 'Communication Services',
+
+    # Consumer Discretionary (NOT Tech!)
+    'AMZN': 'Consumer Discretionary',
+    'TSLA': 'Consumer Discretionary',
+    'HD': 'Consumer Discretionary',
+    'MCD': 'Consumer Discretionary',
+    'NKE': 'Consumer Discretionary',
+    'LOW': 'Consumer Discretionary',
+    'SBUX': 'Consumer Discretionary',
+    'TJX': 'Consumer Discretionary',
+    'BKNG': 'Consumer Discretionary',
+    'CMG': 'Consumer Discretionary',
+    'ORLY': 'Consumer Discretionary',
+    'AZO': 'Consumer Discretionary',
+    'ROST': 'Consumer Discretionary',
+    'MAR': 'Consumer Discretionary',
+    'HLT': 'Consumer Discretionary',
+    'GM': 'Consumer Discretionary',
+    'F': 'Consumer Discretionary',
+    'ABNB': 'Consumer Discretionary',
+    'DHI': 'Consumer Discretionary',
+    'LEN': 'Consumer Discretionary',
+    'PHM': 'Consumer Discretionary',
+    'NVR': 'Consumer Discretionary',
+
+    # Health Care
+    'UNH': 'Health Care',
+    'JNJ': 'Health Care',
+    'LLY': 'Health Care',
+    'ABBV': 'Health Care',
+    'MRK': 'Health Care',
+    'PFE': 'Health Care',
+    'TMO': 'Health Care',
+    'ABT': 'Health Care',
+    'DHR': 'Health Care',
+    'BMY': 'Health Care',
+    'AMGN': 'Health Care',
+    'GILD': 'Health Care',
+    'VRTX': 'Health Care',
+    'REGN': 'Health Care',
+    'ISRG': 'Health Care',
+    'MDT': 'Health Care',
+    'SYK': 'Health Care',
+    'BSX': 'Health Care',
+    'ELV': 'Health Care',
+    'CI': 'Health Care',
+    'HUM': 'Health Care',
+    'CVS': 'Health Care',
+    'MCK': 'Health Care',
+
+    # Financials
+    'BRK.B': 'Financials',
+    'JPM': 'Financials',
+    'V': 'Financials',
+    'MA': 'Financials',
+    'BAC': 'Financials',
+    'WFC': 'Financials',
+    'GS': 'Financials',
+    'MS': 'Financials',
+    'BLK': 'Financials',
+    'SPGI': 'Financials',
+    'C': 'Financials',
+    'AXP': 'Financials',
+    'SCHW': 'Financials',
+    'MMC': 'Financials',
+    'CB': 'Financials',
+    'PGR': 'Financials',
+    'AON': 'Financials',
+    'CME': 'Financials',
+    'ICE': 'Financials',
+    'USB': 'Financials',
+    'PNC': 'Financials',
+    'TFC': 'Financials',
+    'COF': 'Financials',
+    'AIG': 'Financials',
+    'MET': 'Financials',
+    'PRU': 'Financials',
+    'PYPL': 'Financials',
+    'SQ': 'Financials',
+
+    # Industrials
+    'CAT': 'Industrials',
+    'RTX': 'Industrials',
+    'HON': 'Industrials',
+    'UNP': 'Industrials',
+    'UPS': 'Industrials',
+    'BA': 'Industrials',
+    'LMT': 'Industrials',
+    'DE': 'Industrials',
+    'GE': 'Industrials',
+    'MMM': 'Industrials',
+    'ETN': 'Industrials',
+    'ITW': 'Industrials',
+    'EMR': 'Industrials',
+    'FDX': 'Industrials',
+    'CSX': 'Industrials',
+    'NSC': 'Industrials',
+    'WM': 'Industrials',
+    'GD': 'Industrials',
+    'NOC': 'Industrials',
+    'PH': 'Industrials',
+    'UBER': 'Industrials',
+
+    # Consumer Staples
+    'PG': 'Consumer Staples',
+    'KO': 'Consumer Staples',
+    'PEP': 'Consumer Staples',
+    'COST': 'Consumer Staples',
+    'WMT': 'Consumer Staples',
+    'PM': 'Consumer Staples',
+    'MO': 'Consumer Staples',
+    'MDLZ': 'Consumer Staples',
+    'CL': 'Consumer Staples',
+    'EL': 'Consumer Staples',
+    'KMB': 'Consumer Staples',
+    'GIS': 'Consumer Staples',
+    'K': 'Consumer Staples',
+    'SYY': 'Consumer Staples',
+    'KHC': 'Consumer Staples',
+    'STZ': 'Consumer Staples',
+    'KR': 'Consumer Staples',
+    'TGT': 'Consumer Staples',
+
+    # Energy
+    'XOM': 'Energy',
+    'CVX': 'Energy',
+    'COP': 'Energy',
+    'SLB': 'Energy',
+    'EOG': 'Energy',
+    'MPC': 'Energy',
+    'PSX': 'Energy',
+    'VLO': 'Energy',
+    'PXD': 'Energy',
+    'OXY': 'Energy',
+    'WMB': 'Energy',
+    'KMI': 'Energy',
+    'HAL': 'Energy',
+    'DVN': 'Energy',
+    'HES': 'Energy',
+
+    # Materials
+    'LIN': 'Materials',
+    'APD': 'Materials',
+    'SHW': 'Materials',
+    'ECL': 'Materials',
+    'FCX': 'Materials',
+    'NEM': 'Materials',
+    'DOW': 'Materials',
+    'DD': 'Materials',
+    'NUE': 'Materials',
+    'VMC': 'Materials',
+    'MLM': 'Materials',
+    'PPG': 'Materials',
+
+    # Real Estate
+    'PLD': 'Real Estate',
+    'AMT': 'Real Estate',
+    'EQIX': 'Real Estate',
+    'CCI': 'Real Estate',
+    'PSA': 'Real Estate',
+    'SPG': 'Real Estate',
+    'O': 'Real Estate',
+    'WELL': 'Real Estate',
+    'DLR': 'Real Estate',
+    'AVB': 'Real Estate',
+    'EQR': 'Real Estate',
+    'VICI': 'Real Estate',
+    'IRM': 'Real Estate',
+
+    # Utilities
+    'NEE': 'Utilities',
+    'DUK': 'Utilities',
+    'SO': 'Utilities',
+    'D': 'Utilities',
+    'AEP': 'Utilities',
+    'SRE': 'Utilities',
+    'EXC': 'Utilities',
+    'XEL': 'Utilities',
+    'PEG': 'Utilities',
+    'ED': 'Utilities',
+    'WEC': 'Utilities',
+    'ES': 'Utilities',
+    'AWK': 'Utilities',
+}
+
+# Current S&P 500 sector weights (as of Dec 2024 - update quarterly)
+SPY_SECTOR_WEIGHTS = {
+    'Information Technology': 30.5,
+    'Financials': 13.2,
+    'Health Care': 11.8,
+    'Consumer Discretionary': 10.5,
+    'Communication Services': 9.2,
+    'Industrials': 8.4,
+    'Consumer Staples': 5.8,
+    'Energy': 3.6,
+    'Utilities': 2.4,
+    'Real Estate': 2.3,
+    'Materials': 2.3
+}
+
+
+def get_gics_sector(ticker):
+    """
+    Get GICS Level 1 Sector classification for a ticker.
+    Matches how SPY and other ETF benchmarks classify holdings.
+
+    Priority:
+    1. Check explicit overrides (most accurate)
+    2. Fetch from yfinance and map to GICS
+    3. Return 'Other' if unknown
+
+    Returns:
+        str: GICS Level 1 sector name
+    """
+    # Priority 1: Check overrides
+    ticker_upper = ticker.upper().strip()
+    if ticker_upper in STOCK_SECTOR_OVERRIDES:
+        return STOCK_SECTOR_OVERRIDES[ticker_upper]
+
+    # Priority 2: Fetch from yfinance and standardize
+    try:
+        stock = yf.Ticker(ticker_upper)
+        info = stock.info
+        sector = info.get('sector', 'Other')
+
+        # Map to standard GICS
+        if sector in GICS_SECTORS:
+            return sector
+        elif sector in GICS_SECTOR_MAPPING:
+            return GICS_SECTOR_MAPPING[sector]
+        else:
+            return 'Other'
+
+    except Exception as e:
+        print(f"Error getting sector for {ticker}: {e}")
+        return 'Other'
+
+
+def get_portfolio_gics_sectors(portfolio_df):
+    """
+    Apply GICS sector classification to entire portfolio.
+
+    Parameters:
+        portfolio_df: DataFrame with 'Ticker' column
+
+    Returns:
+        DataFrame with 'GICS_Sector' column added
+    """
+    df = portfolio_df.copy()
+
+    # Apply GICS classification to each ticker
+    df['GICS_Sector'] = df['Ticker'].apply(get_gics_sector)
+
+    return df
+
+
+def get_spy_sector_weights():
+    """
+    Get current SPY sector weights.
+    Returns dict with GICS Level 1 sectors and their weights (as percentages).
+    """
+    return SPY_SECTOR_WEIGHTS.copy()
+
+
+def get_benchmark_sector_returns(benchmark_ticker='SPY', period='1y'):
+    """
+    Get sector returns from benchmark ETF.
+    Uses sector ETFs as proxies for sector performance.
+
+    Parameters:
+        benchmark_ticker: Main benchmark (SPY)
+        period: Time period for returns
+
+    Returns:
+        dict: {sector: return_percentage}
+    """
+    # Sector ETF proxies
+    sector_etfs = {
+        'Information Technology': 'XLK',
+        'Financials': 'XLF',
+        'Health Care': 'XLV',
+        'Consumer Discretionary': 'XLY',
+        'Communication Services': 'XLC',
+        'Industrials': 'XLI',
+        'Consumer Staples': 'XLP',
+        'Energy': 'XLE',
+        'Materials': 'XLB',
+        'Real Estate': 'XLRE',
+        'Utilities': 'XLU'
+    }
+
+    sector_returns = {}
+
+    for sector, etf in sector_etfs.items():
+        try:
+            data = yf.Ticker(etf).history(period=period)
+            if len(data) > 0:
+                ret = (data['Close'].iloc[-1] / data['Close'].iloc[0] - 1) * 100
+                sector_returns[sector] = ret
+            else:
+                sector_returns[sector] = 0
+        except:
+            sector_returns[sector] = 0
+
+    return sector_returns
+
+
 def make_scrollable_table(df, height=600, hide_index=True, use_container_width=True, column_config=None):
     """
     Make any dataframe horizontally scrollable with professional styling.
@@ -5563,10 +6228,15 @@ def calculate_portfolio_returns(df, start_date, end_date, equity=None):
         portfolio_series = pd.Series(portfolio_values, index=common_dates)
 
         # CRITICAL FIX: Calculate returns on EQUITY basis, not gross exposure
-        # Get equity from session state if not provided
+        # Get equity from performance history or session state if not provided
         if equity is None:
-            # Try to get from session state, fallback to initial portfolio value
-            equity = st.session_state.get('equity_capital', portfolio_values[0])
+            # Try to get from performance history first
+            metrics = get_current_portfolio_metrics()
+            if metrics and metrics.get('equity', 0) > 0:
+                equity = metrics['equity']
+            else:
+                # Fallback to session state, then initial portfolio value
+                equity = st.session_state.get('equity_capital', portfolio_values[0])
 
         # Calculate dollar changes in portfolio value
         portfolio_changes = portfolio_series.diff()
@@ -5660,6 +6330,376 @@ def calculate_skill_score(effect_value):
         return 0.0
     else:
         return 5.0 + (effect_value / 5.0) * 5.0
+
+
+def calculate_brinson_attribution_gics(portfolio_df, period='1y'):
+    """
+    Calculate Brinson attribution using correct GICS sector classification.
+    This version matches S&P 500 / SPY benchmark classification for accurate results.
+
+    Parameters:
+    -----------
+    portfolio_df : pd.DataFrame
+        Portfolio holdings with columns: Ticker, Weight % (or Total Value), Total Gain/Loss %
+    period : str
+        Time period for returns ('1y', '6mo', '3mo', '1mo', 'ytd')
+
+    Returns:
+    --------
+    dict with:
+        - attribution_df: DataFrame with sector-level attribution
+        - stock_attribution_df: DataFrame with stock-level attribution
+        - total_allocation_effect, total_selection_effect, total_interaction_effect
+        - total_attribution
+        - allocation_skill_score, selection_skill_score
+        - validation: dict with reconciliation info
+    """
+    df = portfolio_df.copy()
+
+    # Step 1: Apply GICS sector classification
+    df['GICS_Sector'] = df['Ticker'].apply(get_gics_sector)
+
+    # Step 2: Calculate portfolio weights if not provided
+    if 'Weight %' not in df.columns:
+        if 'Total Value' in df.columns:
+            total_value = df['Total Value'].sum()
+            df['Weight %'] = (df['Total Value'] / total_value) * 100
+        else:
+            # Equal weight
+            df['Weight %'] = 100 / len(df)
+
+    # Step 3: Get benchmark weights and returns
+    benchmark_weights = get_spy_sector_weights()
+    benchmark_returns = get_benchmark_sector_returns(period=period)
+
+    # Step 4: Get benchmark total return (SPY)
+    try:
+        spy_data = yf.Ticker('SPY').history(period=period)
+        benchmark_total_return = (spy_data['Close'].iloc[-1] / spy_data['Close'].iloc[0] - 1) * 100
+    except:
+        benchmark_total_return = sum(benchmark_weights[s] / 100 * benchmark_returns.get(s, 0)
+                                     for s in benchmark_weights.keys())
+
+    # Step 5: Aggregate portfolio by GICS sector
+    # Use value-weighted returns within each sector
+    portfolio_sectors = df.groupby('GICS_Sector').agg({
+        'Weight %': 'sum',
+        'Total Gain/Loss %': lambda x: np.average(x, weights=df.loc[x.index, 'Weight %'])
+    }).reset_index()
+
+    portfolio_sectors.columns = ['Sector', 'Portfolio Weight', 'Portfolio Return']
+    portfolio_sectors['Portfolio Weight'] = portfolio_sectors['Portfolio Weight'] / 100
+
+    # Step 6: Calculate attribution for each sector
+    results = []
+
+    for _, row in portfolio_sectors.iterrows():
+        sector = row['Sector']
+
+        # Portfolio weight and return
+        wp = row['Portfolio Weight']
+        rp = row['Portfolio Return'] / 100
+
+        # Benchmark weight and return
+        wb = benchmark_weights.get(sector, 0) / 100
+        rb = benchmark_returns.get(sector, 0) / 100
+
+        # Benchmark total return
+        rb_total = benchmark_total_return / 100
+
+        # Brinson-Fachler Attribution:
+        # Allocation Effect = (wp - wb) × (rb - rb_total)
+        # Selection Effect = wp × (rp - rb)  # Using portfolio weight (Brinson-Fachler)
+        # Interaction Effect = (wp - wb) × (rp - rb)
+
+        allocation_effect = (wp - wb) * (rb - rb_total) * 100
+        selection_effect = wp * (rp - rb) * 100
+        interaction_effect = (wp - wb) * (rp - rb) * 100
+
+        results.append({
+            'Sector': sector,
+            'Portfolio Weight': wp * 100,
+            'Benchmark Weight': wb * 100,
+            'Weight Diff': (wp - wb) * 100,
+            'Portfolio Return': rp * 100,
+            'Benchmark Return': rb * 100,
+            'Return Diff': (rp - rb) * 100,
+            'Allocation Effect': allocation_effect,
+            'Selection Effect': selection_effect,
+            'Interaction Effect': interaction_effect,
+            'Total Effect': allocation_effect + selection_effect + interaction_effect
+        })
+
+    # Include sectors where portfolio has 0% but benchmark has weight
+    portfolio_sector_list = portfolio_sectors['Sector'].tolist()
+    for sector, wb in benchmark_weights.items():
+        if sector not in portfolio_sector_list and wb > 0:
+            wb_pct = wb / 100
+            rb = benchmark_returns.get(sector, 0) / 100
+            rb_total = benchmark_total_return / 100
+
+            # Portfolio has 0% in this sector
+            allocation_effect = (0 - wb_pct) * (rb - rb_total) * 100
+            selection_effect = 0  # No selection effect when no holdings
+            interaction_effect = 0
+
+            results.append({
+                'Sector': sector,
+                'Portfolio Weight': 0,
+                'Benchmark Weight': wb,
+                'Weight Diff': -wb,
+                'Portfolio Return': 0,
+                'Benchmark Return': rb * 100,
+                'Return Diff': -rb * 100,
+                'Allocation Effect': allocation_effect,
+                'Selection Effect': selection_effect,
+                'Interaction Effect': interaction_effect,
+                'Total Effect': allocation_effect
+            })
+
+    attribution_df = pd.DataFrame(results)
+    attribution_df = attribution_df.sort_values('Total Effect', ascending=False)
+
+    # Step 7: Calculate totals
+    total_allocation = attribution_df['Allocation Effect'].sum()
+    total_selection = attribution_df['Selection Effect'].sum()
+    total_interaction = attribution_df['Interaction Effect'].sum()
+    total_attribution = total_allocation + total_selection + total_interaction
+
+    # Step 8: Calculate stock-level attribution
+    stock_results = []
+    portfolio_total_return = (df['Weight %'] * df['Total Gain/Loss %']).sum() / 100
+
+    for _, row in df.iterrows():
+        ticker = row['Ticker']
+        weight = row['Weight %'] / 100
+        stock_return = row['Total Gain/Loss %'] / 100
+        sector = row['GICS_Sector']
+
+        # Benchmark return for this sector
+        sector_benchmark_return = benchmark_returns.get(sector, 0) / 100
+
+        # Contribution to portfolio return
+        contribution = weight * stock_return * 100
+
+        # Active contribution (vs if held at benchmark sector return)
+        active_contribution = weight * (stock_return - sector_benchmark_return) * 100
+
+        stock_results.append({
+            'Ticker': ticker,
+            'GICS_Sector': sector,
+            'Weight %': weight * 100,
+            'Return %': stock_return * 100,
+            'Sector Benchmark Return %': sector_benchmark_return * 100,
+            'Return vs Sector': (stock_return - sector_benchmark_return) * 100,
+            'Contribution %': contribution,
+            'Active Contribution %': active_contribution
+        })
+
+    stock_attribution_df = pd.DataFrame(stock_results)
+    stock_attribution_df = stock_attribution_df.sort_values('Active Contribution %', ascending=False)
+
+    # Step 9: Validation - USE ACTUAL PERFORMANCE HISTORY RETURNS
+    # This is the CRITICAL FIX: Use actual portfolio return, not point-in-time holdings return
+
+    # Try to get actual portfolio return from performance history
+    actual_portfolio_data = get_portfolio_period_return(period)
+    actual_benchmark_data = get_benchmark_period_return('SPY', period, match_portfolio_dates=True)
+
+    if actual_portfolio_data is not None and actual_benchmark_data is not None:
+        # Use ACTUAL returns from performance history
+        actual_portfolio_return = actual_portfolio_data['return_pct']  # e.g., 40.93%
+        actual_benchmark_return_val = actual_benchmark_data['return_pct']  # e.g., 15.79%
+        actual_alpha = actual_portfolio_return - actual_benchmark_return_val  # e.g., 25.14%
+        attribution_sum = total_allocation + total_selection + total_interaction
+        reconciliation_diff = abs(actual_alpha - attribution_sum)
+
+        validation = {
+            'portfolio_return': actual_portfolio_return,
+            'benchmark_return': actual_benchmark_return_val,
+            'actual_alpha': actual_alpha,
+            'attribution_sum': attribution_sum,
+            'reconciliation_diff': reconciliation_diff,
+            'is_reconciled': reconciliation_diff < 5.0,  # Within 5% (trades/timing cause some diff)
+            'source': 'performance_history',
+            'portfolio_start': actual_portfolio_data.get('start_value'),
+            'portfolio_end': actual_portfolio_data.get('end_value'),
+            'benchmark_start': actual_benchmark_data.get('start_price'),
+            'benchmark_end': actual_benchmark_data.get('end_price'),
+            'days': actual_portfolio_data.get('days', 0)
+        }
+    else:
+        # Fallback to point-in-time holdings return (less accurate)
+        actual_alpha = portfolio_total_return - benchmark_total_return
+        attribution_sum = total_allocation + total_selection + total_interaction
+        reconciliation_diff = abs(actual_alpha - attribution_sum)
+
+        validation = {
+            'portfolio_return': portfolio_total_return,
+            'benchmark_return': benchmark_total_return,
+            'actual_alpha': actual_alpha,
+            'attribution_sum': attribution_sum,
+            'reconciliation_diff': reconciliation_diff,
+            'is_reconciled': reconciliation_diff < 1.0,
+            'source': 'point_in_time',
+            'warning': 'Using point-in-time holdings return. Upload performance history for accurate returns.'
+        }
+
+    return {
+        'attribution_df': attribution_df,
+        'stock_attribution_df': stock_attribution_df,
+        'total_allocation_effect': total_allocation,
+        'total_selection_effect': total_selection,
+        'total_interaction_effect': total_interaction,
+        'total_attribution': total_attribution,
+        'allocation_skill_score': calculate_skill_score(total_allocation),
+        'selection_skill_score': calculate_skill_score(total_selection),
+        'validation': validation,
+        'benchmark_weights': benchmark_weights,
+        'benchmark_returns': benchmark_returns
+    }
+
+
+def display_stock_attribution_table(stock_df):
+    """
+    Display stock-level attribution in glassmorphism styled cards.
+
+    Parameters:
+        stock_df: DataFrame from calculate_brinson_attribution_gics
+    """
+    # Top Contributors
+    top_contributors = stock_df.head(5)
+    bottom_contributors = stock_df.tail(5).iloc[::-1]  # Reverse to show worst first
+
+    top_html = """
+<div style="background: rgba(26, 35, 50, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(0, 212, 255, 0.2); border-radius: 12px; padding: 20px; margin: 10px 0;">
+<h4 style="color: #00d4ff; margin: 0 0 15px 0; font-family: 'Inter', sans-serif; text-transform: uppercase; letter-spacing: 0.1em;">🏆 Top Alpha Contributors</h4>
+<table style="width: 100%; border-collapse: collapse; font-family: 'Inter', sans-serif;">
+<tr style="border-bottom: 1px solid rgba(0, 212, 255, 0.2);">
+<th style="text-align: left; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Ticker</th>
+<th style="text-align: left; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Sector</th>
+<th style="text-align: right; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Weight</th>
+<th style="text-align: right; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Return</th>
+<th style="text-align: right; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">vs Sector</th>
+<th style="text-align: right; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Alpha Contrib</th>
+</tr>
+"""
+    for _, row in top_contributors.iterrows():
+        color = '#00ff9d' if row['Active Contribution %'] > 0 else '#ff006b'
+        top_html += f"""
+<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+<td style="padding: 10px; color: #00d4ff; font-weight: 600;">{row['Ticker']}</td>
+<td style="padding: 10px; color: #c0c8d0; font-size: 0.85rem;">{row['GICS_Sector']}</td>
+<td style="padding: 10px; color: #c0c8d0; text-align: right;">{row['Weight %']:.1f}%</td>
+<td style="padding: 10px; color: {'#00ff9d' if row['Return %'] > 0 else '#ff006b'}; text-align: right; font-family: 'JetBrains Mono', monospace;">{row['Return %']:+.1f}%</td>
+<td style="padding: 10px; color: {'#00ff9d' if row['Return vs Sector'] > 0 else '#ff006b'}; text-align: right; font-family: 'JetBrains Mono', monospace;">{row['Return vs Sector']:+.1f}%</td>
+<td style="padding: 10px; color: {color}; text-align: right; font-weight: 700; font-family: 'JetBrains Mono', monospace;">{row['Active Contribution %']:+.2f}%</td>
+</tr>
+"""
+    top_html += "</table></div>"
+
+    # Bottom Contributors
+    bottom_html = """
+<div style="background: rgba(26, 35, 50, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255, 0, 107, 0.2); border-radius: 12px; padding: 20px; margin: 10px 0;">
+<h4 style="color: #ff006b; margin: 0 0 15px 0; font-family: 'Inter', sans-serif; text-transform: uppercase; letter-spacing: 0.1em;">📉 Top Alpha Detractors</h4>
+<table style="width: 100%; border-collapse: collapse; font-family: 'Inter', sans-serif;">
+<tr style="border-bottom: 1px solid rgba(255, 0, 107, 0.2);">
+<th style="text-align: left; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Ticker</th>
+<th style="text-align: left; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Sector</th>
+<th style="text-align: right; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Weight</th>
+<th style="text-align: right; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Return</th>
+<th style="text-align: right; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">vs Sector</th>
+<th style="text-align: right; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Alpha Contrib</th>
+</tr>
+"""
+    for _, row in bottom_contributors.iterrows():
+        color = '#00ff9d' if row['Active Contribution %'] > 0 else '#ff006b'
+        bottom_html += f"""
+<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+<td style="padding: 10px; color: #ff006b; font-weight: 600;">{row['Ticker']}</td>
+<td style="padding: 10px; color: #c0c8d0; font-size: 0.85rem;">{row['GICS_Sector']}</td>
+<td style="padding: 10px; color: #c0c8d0; text-align: right;">{row['Weight %']:.1f}%</td>
+<td style="padding: 10px; color: {'#00ff9d' if row['Return %'] > 0 else '#ff006b'}; text-align: right; font-family: 'JetBrains Mono', monospace;">{row['Return %']:+.1f}%</td>
+<td style="padding: 10px; color: {'#00ff9d' if row['Return vs Sector'] > 0 else '#ff006b'}; text-align: right; font-family: 'JetBrains Mono', monospace;">{row['Return vs Sector']:+.1f}%</td>
+<td style="padding: 10px; color: {color}; text-align: right; font-weight: 700; font-family: 'JetBrains Mono', monospace;">{row['Active Contribution %']:+.2f}%</td>
+</tr>
+"""
+    bottom_html += "</table></div>"
+
+    return top_html, bottom_html
+
+
+def display_attribution_validation(validation):
+    """
+    Display attribution validation/reconciliation info.
+    Now shows data source (performance history vs point-in-time) and additional context.
+    """
+    is_valid = validation['is_reconciled']
+    source = validation.get('source', 'unknown')
+    is_perf_history = source == 'performance_history'
+
+    # Color coding based on data source quality
+    if is_perf_history:
+        status_color = '#00ff9d' if is_valid else '#ffd93d'
+        status_icon = '✓' if is_valid else '⚠'
+        source_badge = '<span style="background: #00d4ff; color: #0a0f1a; padding: 2px 8px; border-radius: 4px; font-size: 0.65rem; margin-left: 10px;">FROM PERFORMANCE HISTORY</span>'
+    else:
+        status_color = '#ffd93d'
+        status_icon = '⚠'
+        source_badge = '<span style="background: #ffd93d; color: #0a0f1a; padding: 2px 8px; border-radius: 4px; font-size: 0.65rem; margin-left: 10px;">POINT-IN-TIME (Upload performance history for accuracy)</span>'
+
+    # Build additional info based on source
+    additional_info = ""
+    if is_perf_history and validation.get('days'):
+        days = validation.get('days', 0)
+        portfolio_start = validation.get('portfolio_start', 0)
+        portfolio_end = validation.get('portfolio_end', 0)
+        additional_info = f"""
+<div style="margin-top: 10px; padding: 8px; background: rgba(0, 212, 255, 0.05); border-radius: 4px; font-size: 0.75rem; color: #8890a0;">
+<strong style="color: #00d4ff;">Period:</strong> {days} days |
+<strong style="color: #00d4ff;">Portfolio:</strong> ${portfolio_start:,.0f} → ${portfolio_end:,.0f}
+</div>
+"""
+
+    warning_html = ""
+    if validation.get('warning'):
+        warning_html = f"""
+<div style="margin-top: 10px; padding: 10px; background: rgba(255, 217, 61, 0.1); border-left: 3px solid #ffd93d; border-radius: 4px;">
+<span style="color: #ffd93d;">⚠️ {validation['warning']}</span>
+</div>
+"""
+
+    html = f"""
+<div style="background: rgba(26, 35, 50, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(0, 212, 255, 0.2); border-radius: 12px; padding: 20px; margin: 20px 0;">
+<h4 style="color: #00d4ff; margin: 0 0 15px 0; font-family: 'Inter', sans-serif; text-transform: uppercase; letter-spacing: 0.1em;">📊 Attribution Reconciliation{source_badge}</h4>
+<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px;">
+<div style="background: rgba(10, 15, 26, 0.6); border-radius: 8px; padding: 12px; text-align: center;">
+<div style="color: #8890a0; font-size: 0.7rem; text-transform: uppercase; margin-bottom: 5px;">Portfolio Return</div>
+<div style="color: {'#00ff9d' if validation['portfolio_return'] > 0 else '#ff006b'}; font-size: 1.5rem; font-weight: 700; font-family: 'JetBrains Mono', monospace;">{validation['portfolio_return']:+.2f}%</div>
+</div>
+<div style="background: rgba(10, 15, 26, 0.6); border-radius: 8px; padding: 12px; text-align: center;">
+<div style="color: #8890a0; font-size: 0.7rem; text-transform: uppercase; margin-bottom: 5px;">Benchmark Return (SPY)</div>
+<div style="color: {'#00ff9d' if validation['benchmark_return'] > 0 else '#ff006b'}; font-size: 1.5rem; font-weight: 700; font-family: 'JetBrains Mono', monospace;">{validation['benchmark_return']:+.2f}%</div>
+</div>
+<div style="background: rgba(10, 15, 26, 0.6); border-radius: 8px; padding: 12px; text-align: center;">
+<div style="color: #8890a0; font-size: 0.7rem; text-transform: uppercase; margin-bottom: 5px;">Actual Alpha</div>
+<div style="color: {'#00ff9d' if validation['actual_alpha'] > 0 else '#ff006b'}; font-size: 1.8rem; font-weight: 700; font-family: 'JetBrains Mono', monospace;">{validation['actual_alpha']:+.2f}%</div>
+</div>
+<div style="background: rgba(10, 15, 26, 0.6); border-radius: 8px; padding: 12px; text-align: center;">
+<div style="color: #8890a0; font-size: 0.7rem; text-transform: uppercase; margin-bottom: 5px;">Attribution Sum</div>
+<div style="color: {'#00ff9d' if validation['attribution_sum'] > 0 else '#ff006b'}; font-size: 1.5rem; font-weight: 700; font-family: 'JetBrains Mono', monospace;">{validation['attribution_sum']:+.2f}%</div>
+</div>
+</div>
+<div style="margin-top: 15px; padding: 10px; background: linear-gradient(90deg, rgba({status_color[1:]}, 0.1) 0%, transparent 100%); border-left: 3px solid {status_color}; border-radius: 4px;">
+<span style="color: {status_color}; font-weight: 600;">{status_icon} {'Attribution Reconciled' if is_valid else 'Reconciliation Difference (trades/timing)'}</span>
+<span style="color: #8890a0; margin-left: 10px;">Difference: {validation['reconciliation_diff']:.2f}%</span>
+</div>
+{additional_info}
+{warning_html}
+</div>
+"""
+    return html
+
 
 def calculate_brinson_attribution(portfolio_df, benchmark_weights, benchmark_returns, period='YTD'):
     """
@@ -5786,6 +6826,7 @@ def create_brinson_attribution_chart(attribution_results):
 def create_skill_assessment_card(attribution_results):
     """
     Create visual skill assessment comparing allocation vs selection
+    Uses glassmorphism styling to match ATLAS dashboard theme
     """
 
     allocation_score = attribution_results['allocation_skill_score']
@@ -5805,62 +6846,146 @@ def create_skill_assessment_card(attribution_results):
         primary_skill = "Balanced"
         recommendation = "Continue current strategy - both skills are comparable."
 
-    # Status emojis
-    alloc_status = '✅ Strong sector rotation' if allocation_effect > 1 else '⚠️ Neutral sector timing' if allocation_effect > -1 else '❌ Poor sector allocation'
-    select_status = '✅ Strong stock picks' if selection_effect > 1 else '⚠️ Neutral stock selection' if selection_effect > -1 else '❌ Stocks underperform sector'
+    # Status emojis and colors
+    alloc_color = '#00ff9d' if allocation_effect > 0 else '#ff006b'
+    select_color = '#00ff9d' if selection_effect > 0 else '#ff006b'
+    alloc_status = '✓ Strong sector rotation' if allocation_effect > 1 else '○ Neutral sector timing' if allocation_effect > -1 else '✗ Poor sector allocation'
+    select_status = '✓ Strong stock picks' if selection_effect > 1 else '○ Neutral stock selection' if selection_effect > -1 else '✗ Stocks underperform sector'
 
     html = f"""
-    <div style='background: linear-gradient(135deg, {COLORS['card_background']} 0%, {COLORS['card_background_alt']} 100%);
-                border: 2px solid {COLORS['neon_blue']}; border-radius: 12px; padding: 30px;
-                box-shadow: 0 0 30px {COLORS['shadow']};'>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+    </style>
+    <div style="
+        background: rgba(26, 35, 50, 0.7);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border: 1px solid rgba(0, 212, 255, 0.2);
+        border-radius: 12px;
+        padding: 24px;
+        margin: 20px 0;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    ">
+        <h3 style="
+            font-family: 'Inter', sans-serif;
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #00d4ff;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin: 0 0 20px 0;
+            text-shadow: 0 0 10px rgba(0, 212, 255, 0.3);
+        ">
+            🎯 Portfolio Management Skill Assessment
+        </h3>
 
-        <h2 style='color: {COLORS['neon_blue']}; margin-top: 0;'>🎯 Portfolio Management Skill Assessment</h2>
-
-        <div style='display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin: 20px 0;'>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
 
             <!-- Allocation Skill -->
-            <div>
-                <h3 style='color: {COLORS['text_secondary']}; font-size: 14px; margin-bottom: 10px;'>
-                    ALLOCATION SKILL (Sector Timing)
-                </h3>
-                <div style='font-size: 48px; color: {COLORS['success'] if allocation_effect > 0 else COLORS['danger']};
-                            font-weight: 700; margin: 10px 0;'>
-                    {allocation_score:.1f}/10
-                </div>
-                <div style='font-size: 18px; color: {COLORS['text_primary']}; margin: 5px 0;'>
-                    Effect: {allocation_effect:+.2f}%
-                </div>
-                <div style='color: {COLORS['text_muted']}; font-size: 13px; margin-top: 10px;'>
-                    {alloc_status}
-                </div>
+            <div style="
+                background: rgba(10, 15, 26, 0.6);
+                border: 1px solid rgba(0, 212, 255, 0.15);
+                border-radius: 8px;
+                padding: 16px;
+            ">
+                <div style="
+                    font-family: 'Inter', sans-serif;
+                    font-size: 0.75rem;
+                    font-weight: 600;
+                    color: #8890a0;
+                    text-transform: uppercase;
+                    letter-spacing: 0.1em;
+                    margin-bottom: 8px;
+                ">ALLOCATION SKILL (Sector Timing)</div>
+
+                <div style="
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 2.5rem;
+                    font-weight: 700;
+                    color: {alloc_color};
+                    text-shadow: 0 0 15px {alloc_color}40;
+                    margin: 8px 0;
+                ">{allocation_score:.1f}/10</div>
+
+                <div style="
+                    font-family: 'Inter', sans-serif;
+                    font-size: 0.9rem;
+                    color: #c0c8d0;
+                    margin-top: 8px;
+                ">Effect: {allocation_effect:+.2f}%</div>
+
+                <div style="
+                    font-family: 'Inter', sans-serif;
+                    font-size: 0.75rem;
+                    color: {alloc_color};
+                    margin-top: 8px;
+                ">{alloc_status}</div>
             </div>
 
             <!-- Selection Skill -->
-            <div>
-                <h3 style='color: {COLORS['text_secondary']}; font-size: 14px; margin-bottom: 10px;'>
-                    SELECTION SKILL (Stock Picking)
-                </h3>
-                <div style='font-size: 48px; color: {COLORS['success'] if selection_effect > 0 else COLORS['danger']};
-                            font-weight: 700; margin: 10px 0;'>
-                    {selection_score:.1f}/10
-                </div>
-                <div style='font-size: 18px; color: {COLORS['text_primary']}; margin: 5px 0;'>
-                    Effect: {selection_effect:+.2f}%
-                </div>
-                <div style='color: {COLORS['text_muted']}; font-size: 13px; margin-top: 10px;'>
-                    {select_status}
-                </div>
+            <div style="
+                background: rgba(10, 15, 26, 0.6);
+                border: 1px solid rgba(0, 212, 255, 0.15);
+                border-radius: 8px;
+                padding: 16px;
+            ">
+                <div style="
+                    font-family: 'Inter', sans-serif;
+                    font-size: 0.75rem;
+                    font-weight: 600;
+                    color: #8890a0;
+                    text-transform: uppercase;
+                    letter-spacing: 0.1em;
+                    margin-bottom: 8px;
+                ">SELECTION SKILL (Stock Picking)</div>
+
+                <div style="
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 2.5rem;
+                    font-weight: 700;
+                    color: {select_color};
+                    text-shadow: 0 0 15px {select_color}40;
+                    margin: 8px 0;
+                ">{selection_score:.1f}/10</div>
+
+                <div style="
+                    font-family: 'Inter', sans-serif;
+                    font-size: 0.9rem;
+                    color: #c0c8d0;
+                    margin-top: 8px;
+                ">Effect: {selection_effect:+.2f}%</div>
+
+                <div style="
+                    font-family: 'Inter', sans-serif;
+                    font-size: 0.75rem;
+                    color: {select_color};
+                    margin-top: 8px;
+                ">{select_status}</div>
             </div>
         </div>
 
-        <div style='background: rgba(0, 212, 255, 0.1); border-left: 4px solid {COLORS['neon_blue']};
-                    padding: 15px; border-radius: 8px; margin-top: 20px;'>
-            <h4 style='color: {COLORS['neon_blue']}; margin: 0 0 10px 0;'>
-                🏆 Primary Strength: {primary_skill}
-            </h4>
-            <p style='color: {COLORS['text_primary']}; margin: 0; font-size: 15px;'>
-                {recommendation}
-            </p>
+        <!-- Recommendation -->
+        <div style="
+            background: linear-gradient(90deg, rgba(0, 212, 255, 0.1) 0%, transparent 100%);
+            border-left: 3px solid #00d4ff;
+            padding: 12px 16px;
+            margin-top: 20px;
+            border-radius: 4px;
+        ">
+            <div style="
+                font-family: 'Inter', sans-serif;
+                font-size: 0.75rem;
+                font-weight: 700;
+                color: #00d4ff;
+                text-transform: uppercase;
+                letter-spacing: 0.1em;
+                margin-bottom: 4px;
+            ">💡 Primary Strength: {primary_skill}</div>
+            <div style="
+                font-family: 'Inter', sans-serif;
+                font-size: 0.85rem;
+                color: #c0c8d0;
+            ">{recommendation}</div>
         </div>
     </div>
     """
@@ -6064,8 +7189,12 @@ def create_enhanced_holdings_table(df):
     # CRITICAL FIX: Add DUAL weight columns (equity-based AND gross-based)
     gross_exposure = enhanced_df['Total Value'].sum()
 
-    # Get equity from session state
-    equity = st.session_state.get('equity_capital', gross_exposure)  # Fallback to gross if no equity set
+    # Get equity from performance history or session state
+    metrics = get_current_portfolio_metrics()
+    if metrics and metrics.get('equity', 0) > 0:
+        equity = metrics['equity']
+    else:
+        equity = st.session_state.get('equity_capital', gross_exposure)  # Fallback to gross if no equity set
 
     # Weight % of Equity - can exceed 100% with leverage!
     enhanced_df['Weight % of Equity'] = (enhanced_df['Total Value'] / equity * 100) if equity > 0 else 0
@@ -6429,8 +7558,12 @@ def calculate_var_cvar_portfolio_optimization(enhanced_df, confidence_level=0.95
     total_portfolio_value = current_values.sum()
 
     # CRITICAL FIX: Calculate weights relative to EQUITY, not gross exposure
-    # Get equity from session state
-    equity = st.session_state.get('equity_capital', total_portfolio_value)
+    # Get equity from performance history or session state
+    metrics = get_current_portfolio_metrics()
+    if metrics and metrics.get('equity', 0) > 0:
+        equity = metrics['equity']
+    else:
+        equity = st.session_state.get('equity_capital', total_portfolio_value)
     current_weights = current_values / equity  # Can sum > 1.0 with leverage!
 
     # Fetch historical returns for all tickers
@@ -10497,9 +11630,14 @@ def main():
     # ============================================================================
     # EQUITY TRACKING INITIALIZATION - CRITICAL FIX FOR LEVERAGE CALCULATIONS
     # ============================================================================
-    # Initialize equity tracking if not exists
+    # Initialize equity tracking from performance history if available
     if 'equity_capital' not in st.session_state:
-        st.session_state['equity_capital'] = 100000.0  # Default $100k
+        # Try to get equity from performance history first
+        metrics = get_current_portfolio_metrics()
+        if metrics and metrics.get('equity', 0) > 0:
+            st.session_state['equity_capital'] = metrics['equity']
+        else:
+            st.session_state['equity_capital'] = 100000.0  # Default $100k
 
     if 'target_leverage' not in st.session_state:
         st.session_state['target_leverage'] = 1.0  # Default no leverage
@@ -10557,30 +11695,44 @@ def main():
     with st.expander("⚙️ CAPITAL SETTINGS (Equity & Leverage)", expanded=False):
         st.markdown("### 💰 Configure Your Capital Structure")
 
+        # AUTO-POPULATE from performance history if available
+        metrics = get_current_portfolio_metrics()
+        if metrics and metrics.get('equity', 0) > 0:
+            auto_equity = metrics['equity']
+            auto_leverage = metrics.get('leverage', 1.0)
+            st.success(f"✅ Auto-populated from performance history: ${auto_equity:,.0f} equity, {auto_leverage:.2f}x leverage")
+        else:
+            auto_equity = st.session_state.get('equity_capital', 100000.0)
+            auto_leverage = st.session_state.get('target_leverage', 1.0)
+
         col1, col2 = st.columns(2)
 
         with col1:
+            # Use unique key that updates when equity changes
+            equity_key = f"equity_input_{int(auto_equity)}"
             equity_capital = st.number_input(
                 "Your Equity Capital ($)",
                 min_value=1000.0,
                 max_value=100000000.0,
-                value=st.session_state.get('equity_capital', 100000.0),
+                value=float(auto_equity),
                 step=1000.0,
                 format="%.0f",
-                help="Your actual capital invested (not including leverage)",
-                key="equity_capital_input"
+                help="Your actual capital invested (not including leverage). Auto-populated from performance history if uploaded.",
+                key=equity_key
             )
             st.session_state['equity_capital'] = equity_capital
 
         with col2:
+            # Use unique key that updates when leverage changes
+            leverage_key = f"leverage_input_{int(auto_leverage * 100)}"
             target_leverage = st.slider(
                 "Target Leverage",
                 min_value=1.0,
                 max_value=3.0,
-                value=st.session_state.get('target_leverage', 1.0),
+                value=float(min(3.0, max(1.0, auto_leverage))),
                 step=0.1,
                 help="Total exposure / Equity ratio (1.0x = no leverage, 2.0x = 2x leverage, 3.0x = 3x leverage)",
-                key="target_leverage_input"
+                key=leverage_key
             )
             st.session_state['target_leverage'] = target_leverage
 
@@ -10830,7 +11982,7 @@ def main():
                                     last_trades = db.read("SELECT * FROM trades ORDER BY date DESC LIMIT 5")
                                     if len(last_trades) > 0:
                                         with st.expander("🔍 Last 5 Trades in Database", expanded=False):
-                                            st.dataframe(last_trades)
+                                            st.dataframe(last_trades, use_container_width=True)
                                 except Exception as e:
                                     st.warning(f"⚠️ Could not verify database: {e}")
 
@@ -11169,13 +12321,20 @@ def main():
                 else:
                     df = pd.DataFrame(portfolio_data)
     
+                    # Auto-populate from performance history
+                    metrics = get_current_portfolio_metrics()
+                    default_value = int(metrics['equity']) if metrics else 100000
+
+                    if metrics:
+                        st.success(f"📊 Using current portfolio equity: {format_currency(metrics['equity'])}")
+
                     col1, col2 = st.columns(2)
                     with col1:
                         n_simulations = st.slider("Number of Simulations", 1000, 20000, 5000, 1000)
                         n_days = st.slider("Time Horizon (days)", 30, 365, 252)
                     with col2:
                         confidence_level = st.slider("Confidence Level", 0.90, 0.99, 0.95, 0.01)
-                        initial_value = st.number_input("Portfolio Value ($)", value=100000, step=10000)
+                        initial_value = st.number_input("Portfolio Value ($)", value=default_value, step=10000, help="Auto-populated from performance history" if metrics else "Upload performance history to auto-populate")
     
                     if st.button("🎲 Run Monte Carlo Simulation", type="primary"):
                         with st.spinner("Running simulations..."):
@@ -11380,61 +12539,67 @@ def main():
                                     # ===== FIX #5: Calculate and Display Skill Scores =====
                                     if 'Allocation Effect' in sector_contrib.columns and 'Selection Effect' in sector_contrib.columns:
                                         st.markdown("---")
-                                        st.markdown("#### 🎯 Portfolio Management Skill Assessment")
-    
+
                                         # Calculate total effects
                                         total_allocation = sector_contrib['Allocation Effect'].sum()
                                         total_selection = sector_contrib['Selection Effect'].sum()
                                         total_interaction = sector_contrib['Interaction Effect'].sum() if 'Interaction Effect' in sector_contrib.columns else 0
-    
+                                        total_active_return = total_allocation + total_selection + total_interaction
+
                                         # Skill scoring: 0-10 scale where 5 = neutral (0% effect)
-                                        # Each 1% positive effect = +1 point, each 1% negative effect = -1 point
                                         allocation_score = max(0, min(10, 5 + total_allocation))
                                         selection_score = max(0, min(10, 5 + total_selection))
-    
-                                        # Display skill assessment
-                                        col1, col2, col3 = st.columns(3)
-    
-                                        with col1:
-                                            st.metric(
-                                                "Allocation Skill (Sector Timing)",
-                                                f"{allocation_score:.1f}/10",
-                                                f"Effect: {total_allocation:+.2f}%"
-                                            )
-    
-                                            if allocation_score > 6:
-                                                st.success("✅ Strong sector allocation")
-                                            elif allocation_score < 4:
-                                                st.error("❌ Poor sector allocation")
-                                            else:
-                                                st.info("ℹ️ Neutral sector allocation")
-    
-                                        with col2:
-                                            st.metric(
-                                                "Selection Skill (Stock Picking)",
-                                                f"{selection_score:.1f}/10",
-                                                f"Effect: {total_selection:+.2f}%"
-                                            )
-    
-                                            if selection_score > 6:
-                                                st.success("✅ Strong stock selection")
-                                            elif selection_score < 4:
-                                                st.error("❌ Poor stock selection")
-                                            else:
-                                                st.info("ℹ️ Neutral stock selection")
-    
-                                        with col3:
-                                            total_active_return = total_allocation + total_selection + total_interaction
-                                            st.metric(
-                                                "Total Active Return",
-                                                f"{total_active_return:+.2f}%",
-                                                f"Interaction: {total_interaction:+.2f}%"
-                                            )
-    
-                                            if total_active_return > 0:
-                                                st.success("✅ Outperforming benchmark")
-                                            else:
-                                                st.error("❌ Underperforming benchmark")
+
+                                        # Determine colors and status
+                                        alloc_color = '#00ff9d' if total_allocation > 0 else '#ff006b'
+                                        select_color = '#00ff9d' if total_selection > 0 else '#ff006b'
+                                        active_color = '#00ff9d' if total_active_return > 0 else '#ff006b'
+
+                                        alloc_status = '✓ Strong sector rotation' if total_allocation > 1 else '○ Neutral' if total_allocation > -1 else '✗ Poor allocation'
+                                        select_status = '✓ Strong stock picks' if total_selection > 1 else '○ Neutral' if total_selection > -1 else '✗ Poor selection'
+
+                                        # Determine primary skill
+                                        if allocation_score > selection_score + 2:
+                                            primary_skill = "Sector Timing (Allocation)"
+                                            recommendation = "Focus on sector rotation strategies. Consider using sector ETFs."
+                                        elif selection_score > allocation_score + 2:
+                                            primary_skill = "Stock Picking (Selection)"
+                                            recommendation = "Focus on fundamental analysis. Your stock picks add value."
+                                        else:
+                                            primary_skill = "Balanced"
+                                            recommendation = "Continue current strategy - both skills are comparable."
+
+                                        # Glassmorphism styled skill assessment card
+                                        skill_html = f"""
+<div style="background: rgba(26, 35, 50, 0.7); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid rgba(0, 212, 255, 0.2); border-radius: 12px; padding: 24px; margin: 20px 0; font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;">
+<h3 style="font-family: 'Inter', sans-serif; font-size: 1.2rem; font-weight: 700; color: #00d4ff; text-transform: uppercase; letter-spacing: 0.1em; margin: 0 0 20px 0; text-shadow: 0 0 10px rgba(0, 212, 255, 0.3);">🎯 Portfolio Management Skill Assessment</h3>
+<div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
+<div style="background: rgba(10, 15, 26, 0.6); border: 1px solid rgba(0, 212, 255, 0.15); border-radius: 8px; padding: 16px;">
+<div style="font-family: 'Inter', sans-serif; font-size: 0.7rem; font-weight: 600; color: #8890a0; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px;">ALLOCATION SKILL</div>
+<div style="font-family: 'JetBrains Mono', monospace; font-size: 2rem; font-weight: 700; color: {alloc_color}; text-shadow: 0 0 15px {alloc_color}40;">{allocation_score:.1f}/10</div>
+<div style="font-family: 'Inter', sans-serif; font-size: 0.85rem; color: #c0c8d0; margin-top: 6px;">Effect: {total_allocation:+.2f}%</div>
+<div style="font-family: 'Inter', sans-serif; font-size: 0.7rem; color: {alloc_color}; margin-top: 6px;">{alloc_status}</div>
+</div>
+<div style="background: rgba(10, 15, 26, 0.6); border: 1px solid rgba(0, 212, 255, 0.15); border-radius: 8px; padding: 16px;">
+<div style="font-family: 'Inter', sans-serif; font-size: 0.7rem; font-weight: 600; color: #8890a0; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px;">SELECTION SKILL</div>
+<div style="font-family: 'JetBrains Mono', monospace; font-size: 2rem; font-weight: 700; color: {select_color}; text-shadow: 0 0 15px {select_color}40;">{selection_score:.1f}/10</div>
+<div style="font-family: 'Inter', sans-serif; font-size: 0.85rem; color: #c0c8d0; margin-top: 6px;">Effect: {total_selection:+.2f}%</div>
+<div style="font-family: 'Inter', sans-serif; font-size: 0.7rem; color: {select_color}; margin-top: 6px;">{select_status}</div>
+</div>
+<div style="background: rgba(10, 15, 26, 0.6); border: 1px solid rgba(0, 212, 255, 0.15); border-radius: 8px; padding: 16px;">
+<div style="font-family: 'Inter', sans-serif; font-size: 0.7rem; font-weight: 600; color: #8890a0; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px;">TOTAL ACTIVE RETURN</div>
+<div style="font-family: 'JetBrains Mono', monospace; font-size: 2rem; font-weight: 700; color: {active_color}; text-shadow: 0 0 15px {active_color}40;">{total_active_return:+.2f}%</div>
+<div style="font-family: 'Inter', sans-serif; font-size: 0.85rem; color: #c0c8d0; margin-top: 6px;">Interaction: {total_interaction:+.2f}%</div>
+<div style="font-family: 'Inter', sans-serif; font-size: 0.7rem; color: {active_color}; margin-top: 6px;">{'✓ Outperforming' if total_active_return > 0 else '✗ Underperforming'}</div>
+</div>
+</div>
+<div style="background: linear-gradient(90deg, rgba(0, 212, 255, 0.1) 0%, transparent 100%); border-left: 3px solid #00d4ff; padding: 12px 16px; margin-top: 20px; border-radius: 4px;">
+<div style="font-family: 'Inter', sans-serif; font-size: 0.75rem; font-weight: 700; color: #00d4ff; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px;">💡 Primary Strength: {primary_skill}</div>
+<div style="font-family: 'Inter', sans-serif; font-size: 0.85rem; color: #c0c8d0;">{recommendation}</div>
+</div>
+</div>
+"""
+                                        st.markdown(skill_html, unsafe_allow_html=True)
     
                                     st.success("✅ Attribution analysis complete")
                                 else:
@@ -12453,7 +13618,12 @@ def main():
                 enhanced_df = create_enhanced_holdings_table(df)
     
             # CRITICAL FIX: Calculate equity, gross exposure, and leverage
-            equity = st.session_state.get('equity_capital', 100000.0)
+            # Auto-populate equity from performance history
+            metrics = get_current_portfolio_metrics()
+            if metrics and metrics.get('equity', 0) > 0:
+                equity = metrics['equity']
+            else:
+                equity = st.session_state.get('equity_capital', 100000.0)
             gross_exposure = enhanced_df['Total Value'].sum()
             actual_leverage = gross_exposure / equity if equity > 0 else 1.0
             total_cost = enhanced_df['Total Cost'].sum()
@@ -13415,7 +14585,10 @@ def main():
             with tab2:
                 simulations = run_monte_carlo_simulation(portfolio_returns)
                 if simulations is not None:
-                    monte_carlo_chart, mc_stats = create_monte_carlo_chart(simulations, 100000)
+                    # Get equity from performance history for Monte Carlo initial value
+                    mc_metrics = get_current_portfolio_metrics()
+                    mc_initial_value = mc_metrics['equity'] if mc_metrics and mc_metrics.get('equity', 0) > 0 else 100000
+                    monte_carlo_chart, mc_stats = create_monte_carlo_chart(simulations, mc_initial_value)
                     
                     if monte_carlo_chart:
                         st.plotly_chart(monte_carlo_chart, use_container_width=True)
@@ -14806,36 +15979,85 @@ def main():
                         st.plotly_chart(conc_analysis, use_container_width=True)
     
             with tab4:
-                st.markdown("### 🏆 Brinson Attribution Analysis")
+                st.markdown("### 🏆 Brinson Attribution Analysis (GICS-Corrected)")
                 st.markdown("Decompose portfolio performance into **Allocation** (sector timing) vs **Selection** (stock picking) skill")
-    
-                # Validate and map sectors before attribution analysis
-                enhanced_df_validated = validate_and_map_sectors(enhanced_df.copy())
-    
-                # Get benchmark data
-                benchmark_weights = SP500_SECTOR_WEIGHTS
-                with st.spinner("Fetching benchmark sector returns..."):
-                    benchmark_returns = get_benchmark_sector_returns(period='1Y')
-    
-                # Calculate attribution
+                st.info("📊 **Using GICS Level 1 Classification** - Matching S&P 500/SPY benchmark for accurate attribution")
+
+                # Check if performance history is loaded - if not, show quick upload option
+                if 'leverage_tracker' not in st.session_state or st.session_state.leverage_tracker is None:
+                    st.warning("⚠️ **Performance history not loaded** - Portfolio Return shows point-in-time holdings return, not actual return")
+
+                    with st.expander("📈 Quick Upload: Performance History (for accurate returns)", expanded=True):
+                        st.markdown("""
+                        **Upload your Investopedia performance-history.xls file** to see your actual portfolio return (+40.93%) instead of point-in-time holdings return (+3.14%).
+                        """)
+
+                        quick_perf_file = st.file_uploader(
+                            "Upload Performance History",
+                            type=['xls', 'xlsx', 'html'],
+                            help="Upload your Investopedia performance-history.xls file",
+                            key="attribution_perf_history"
+                        )
+
+                        if quick_perf_file is not None:
+                            try:
+                                import tempfile
+                                import shutil
+                                from pathlib import Path
+
+                                # Save to a persistent location
+                                perf_dir = Path(__file__).parent / 'data' / 'performance'
+                                perf_dir.mkdir(parents=True, exist_ok=True)
+                                persistent_path = perf_dir / 'performance-history.xls'
+
+                                # Write to persistent location
+                                with open(persistent_path, 'wb') as f:
+                                    f.write(quick_perf_file.getvalue())
+
+                                from analytics.leverage_tracker import LeverageTracker
+                                tracker = LeverageTracker(str(persistent_path))
+
+                                if tracker.load_and_parse():
+                                    st.session_state.leverage_tracker = tracker
+                                    stats = tracker.get_current_stats()
+                                    st.session_state['equity_capital'] = stats['current_equity']
+
+                                    # Save path for future auto-loading
+                                    try:
+                                        from config import set_performance_history_path
+                                        set_performance_history_path(str(persistent_path))
+                                    except:
+                                        pass  # Non-critical
+
+                                    st.success(f"✅ Performance history loaded and saved! Equity: ${stats['current_equity']:,.0f}")
+                                    st.rerun()  # Refresh to show updated attribution
+                                else:
+                                    st.error("❌ Could not parse performance history file")
+                            except Exception as e:
+                                st.error(f"Error: {str(e)}")
+
+                # Calculate attribution using new GICS-based function
                 try:
-                    attribution_results = calculate_brinson_attribution(
-                        enhanced_df_validated,
-                        benchmark_weights,
-                        benchmark_returns,
-                        period='1Y'
-                    )
-    
-                    # Display skill assessment card
+                    with st.spinner("Calculating GICS-based attribution..."):
+                        attribution_results = calculate_brinson_attribution_gics(
+                            enhanced_df,
+                            period='1y'
+                        )
+
+                    # Display validation/reconciliation first (shows actual alpha)
                     import streamlit.components.v1 as components
+                    validation_html = display_attribution_validation(attribution_results['validation'])
+                    st.markdown(validation_html, unsafe_allow_html=True)
+
+                    # Display skill assessment card
                     components.html(create_skill_assessment_card(attribution_results), height=400)
-    
+
                     # Display waterfall chart
                     st.plotly_chart(create_brinson_attribution_chart(attribution_results),
                                    use_container_width=True)
-    
+
                     # Display detailed sector table
-                    st.markdown("#### 📋 Sector-by-Sector Attribution")
+                    st.markdown("#### 📋 Sector-by-Sector Attribution (GICS)")
                     sector_table = create_sector_attribution_table(attribution_results['attribution_df'])
                     make_scrollable_table(
                         sector_table,
@@ -14844,34 +16066,48 @@ def main():
                         use_container_width=True,
                         column_config=None
                     )
-    
+
+                    # Display stock-level attribution (new!)
+                    st.markdown("#### 🎯 Stock-Level Attribution")
+                    st.markdown("Individual stock contributions to alpha generation")
+                    top_html, bottom_html = display_stock_attribution_table(attribution_results['stock_attribution_df'])
+                    st.markdown(top_html, unsafe_allow_html=True)
+                    st.markdown(bottom_html, unsafe_allow_html=True)
+
                     # Explanation
-                    with st.expander("ℹ️ Understanding Brinson Attribution"):
+                    with st.expander("ℹ️ Understanding GICS-Based Brinson Attribution"):
                         st.markdown("""
                         **Brinson Attribution** breaks down your portfolio outperformance into:
-    
+
                         1. **Allocation Effect** - Your skill at sector timing
                            - Measures if you overweighted sectors that outperformed
                            - Example: Overweighting tech before a tech rally = positive allocation
-    
+
                         2. **Selection Effect** - Your skill at stock picking
                            - Measures if your stocks beat their sector average
                            - Example: Picking NVDA in tech when NVDA beats XLK = positive selection
-    
+
                         3. **Interaction Effect** - Combined benefit
                            - Being overweight the right sectors AND picking winners within them
-    
+
+                        **Key Sector Classifications (GICS Level 1):**
+                        - **AMZN, TSLA** → Consumer Discretionary (NOT Tech)
+                        - **META, GOOGL, NFLX** → Communication Services (NOT Tech)
+                        - **V, MA** → Financials (payment networks)
+
                         **Interpretation:**
                         - **High Allocation Score**: You're good at macro/sector calls → Use sector ETFs
                         - **High Selection Score**: You're good at stock picking → Focus on fundamentals
                         - **Both Low**: Consider passive indexing
-    
-                        **Benchmark**: S&P 500 sector weights and sector ETF returns (XLK, XLV, XLF, etc.)
+
+                        **Benchmark**: S&P 500 (SPY) using GICS sector classification and sector ETF returns
                         """)
-    
+
                 except Exception as e:
-                    st.error(f"Error calculating Brinson Attribution: {str(e)}")
-                    st.info("💡 Make sure your portfolio has valid sector classifications and return data.")
+                    st.error(f"Error calculating GICS-based Brinson Attribution: {str(e)}")
+                    import traceback
+                    st.code(traceback.format_exc())
+                    st.info("💡 Make sure your portfolio has valid tickers with return data.")
     
             # ============================================================
             # QUALITY SCORECARD - COMPREHENSIVE QUALITY ANALYSIS
@@ -15390,9 +16626,11 @@ def main():
             # ============================================================
             # CORRELATION HEATMAP - NEW ADDITION
             # ============================================================
+            import numpy as np  # Ensure numpy is available in this scope
+
             st.divider()
             st.subheader("🕸️ Portfolio Correlation Analysis")
-    
+
             period = st.selectbox(
                 "Correlation Period:",
                 options=['30d', '90d', '1y'],
