@@ -819,50 +819,150 @@ table.dataframe tbody th {
 }
 
 /* ============================================================================
-   FULL WIDTH LAYOUT - EDGE TO EDGE
+   FULL WIDTH LAYOUT - ULTRA-AGGRESSIVE VERSION
+   Overrides Streamlit's inline styles that resist normal CSS
    ============================================================================ */
 
-.main .block-container {
+/* Target the actual Streamlit containers with maximum specificity */
+section.main > div:first-child {
     max-width: 100% !important;
     padding-left: 2rem !important;
     padding-right: 2rem !important;
 }
 
-section.main > div {
-    max-width: 100% !important;
-    padding-left: 0 !important;
-    padding-right: 0 !important;
-}
-
-.element-container, .stMarkdown, .stDataFrame, div[data-testid="column"] {
+section.main > div:first-child > div {
     max-width: 100% !important;
 }
 
-.dataframe-container { width: 100% !important; }
+section.main > div:first-child > div > div {
+    max-width: 100% !important;
+}
 
-.js-plotly-plot, .plotly, [data-testid="stPlotlyChart"] { width: 100% !important; }
+/* Block container - multiple selectors for maximum override */
+.main .block-container,
+div.block-container,
+section.main .block-container,
+[data-testid="stAppViewContainer"] .main .block-container {
+    max-width: 100% !important;
+    width: 100% !important;
+    padding-left: 2rem !important;
+    padding-right: 2rem !important;
+}
 
-[data-testid="metric-container"] { width: 100% !important; }
+/* App view container */
+[data-testid="stAppViewContainer"],
+[data-testid="stAppViewContainer"] > div,
+[data-testid="stApp"] {
+    max-width: 100% !important;
+}
 
-div[data-testid="column"] > div { width: 100% !important; }
+/* Main content area */
+section.main,
+section.main > div,
+.main {
+    max-width: 100% !important;
+}
 
-/* Responsive Padding */
+/* All Streamlit elements */
+.element-container,
+.stMarkdown,
+.stDataFrame,
+div[data-testid="column"],
+div[data-testid="stVerticalBlock"],
+div[data-testid="stHorizontalBlock"] {
+    max-width: 100% !important;
+}
+
+/* Dataframe specific - override Streamlit's hardcoded widths */
+.stDataFrame,
+.stDataFrame > div,
+div[data-testid="stDataFrame"],
+div[data-testid="stDataFrame"] > div {
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
+/* Chart containers */
+.js-plotly-plot,
+.plotly,
+[data-testid="stPlotlyChart"],
+[data-testid="stPlotlyChart"] > div {
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
+/* Metric containers */
+[data-testid="stMetricValue"],
+[data-testid="metric-container"],
+div[data-testid="stMetric"] {
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
+/* Column blocks */
+div[data-testid="column"] {
+    max-width: 100% !important;
+}
+
+div[data-testid="column"] > div {
+    width: 100% !important;
+}
+
+/* Horizontal blocks (rows) */
+div[data-testid="stHorizontalBlock"] {
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
+/* Vertical blocks */
+div[data-testid="stVerticalBlock"] {
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
+/* Override ANY max-width set by Streamlit */
+section.main div[class*="css"],
+section.main div[style*="max-width"] {
+    max-width: 100% !important;
+}
+
+/* Responsive padding */
 @media (min-width: 2000px) {
-    .main .block-container { padding-left: 4rem !important; padding-right: 4rem !important; }
+    .main .block-container,
+    section.main > div:first-child {
+        padding-left: 4rem !important;
+        padding-right: 4rem !important;
+    }
 }
 
 @media (min-width: 1600px) and (max-width: 1999px) {
-    .main .block-container { padding-left: 3rem !important; padding-right: 3rem !important; }
+    .main .block-container,
+    section.main > div:first-child {
+        padding-left: 3rem !important;
+        padding-right: 3rem !important;
+    }
 }
 
 @media (min-width: 1200px) and (max-width: 1599px) {
-    .main .block-container { padding-left: 2rem !important; padding-right: 2rem !important; }
+    .main .block-container,
+    section.main > div:first-child {
+        padding-left: 2rem !important;
+        padding-right: 2rem !important;
+    }
 }
 
 @media (max-width: 1199px) {
-    .main .block-container { padding-left: 1.5rem !important; padding-right: 1.5rem !important; }
+    .main .block-container,
+    section.main > div:first-child {
+        padding-left: 1.5rem !important;
+        padding-right: 1.5rem !important;
+    }
 }
 
 @media (max-width: 767px) {
-    .main .block-container { padding-left: 1rem !important; padding-right: 1rem !important; }
+    .main .block-container,
+    section.main > div:first-child {
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+    }
 }
