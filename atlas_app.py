@@ -246,7 +246,7 @@ def get_portfolio_period_return(period='1y'):
     Parameters:
     -----------
     period : str
-        Time period ('1y', '6mo', '3mo', '1mo', 'ytd')
+        Time period ('1y', '6mo', '3mo', '1mo', 'ytd', 'all')
 
     Returns:
     --------
@@ -256,22 +256,38 @@ def get_portfolio_period_return(period='1y'):
     try:
         # Get leverage tracker from session state
         if 'leverage_tracker' not in st.session_state or st.session_state.leverage_tracker is None:
+            print("DEBUG: leverage_tracker not in session_state")
             return None
 
         tracker = st.session_state.leverage_tracker
         df = tracker.leverage_history
 
-        if df is None or df.empty:
+        if df is None:
+            print("DEBUG: leverage_history is None")
             return None
+
+        if isinstance(df, pd.DataFrame) and df.empty:
+            print("DEBUG: leverage_history is empty DataFrame")
+            return None
+
+        # Make a copy to avoid modifying original
+        df = df.copy()
 
         # Get most recent value (end of period)
         end_row = df.iloc[-1]
-        end_value = end_row['Net Equity']
-        end_date = end_row['Date']
+        end_value = float(end_row['Net Equity'])
+        end_date = pd.to_datetime(end_row['Date'])
+
+        # Get earliest value (start of all data)
+        earliest_row = df.iloc[0]
+        earliest_date = pd.to_datetime(earliest_row['Date'])
 
         # Determine start date based on period
         period_lower = period.lower()
-        if period_lower in ['1y', '1yr', '12m']:
+        if period_lower == 'all':
+            # Use all available data
+            start_date = earliest_date
+        elif period_lower in ['1y', '1yr', '12m']:
             start_date = end_date - pd.DateOffset(years=1)
         elif period_lower in ['6m', '6mo']:
             start_date = end_date - pd.DateOffset(months=6)
@@ -282,24 +298,30 @@ def get_portfolio_period_return(period='1y'):
         elif period_lower == 'ytd':
             start_date = pd.Timestamp(f'{end_date.year}-01-01')
         else:
-            # Default to 1 year
-            start_date = end_date - pd.DateOffset(years=1)
+            # Default to all available data
+            start_date = earliest_date
+
+        # If requested start is before earliest data, use earliest
+        if start_date < earliest_date:
+            start_date = earliest_date
 
         # Find closest date to start_date in historical data
-        df['_date_diff'] = abs(df['Date'] - start_date)
+        df['_date_diff'] = abs(pd.to_datetime(df['Date']) - start_date)
         start_idx = df['_date_diff'].idxmin()
         start_row = df.loc[start_idx]
-        start_value = start_row['Net Equity']
-        actual_start_date = start_row['Date']
-
-        # Clean up temp column
-        df.drop('_date_diff', axis=1, inplace=True)
+        start_value = float(start_row['Net Equity'])
+        actual_start_date = pd.to_datetime(start_row['Date'])
 
         # Calculate return
         if start_value > 0:
             portfolio_return = (end_value - start_value) / start_value
         else:
             portfolio_return = 0
+
+        days = (end_date - actual_start_date).days
+
+        print(f"DEBUG: Portfolio return calculated: {portfolio_return*100:.2f}% over {days} days")
+        print(f"DEBUG: Start: ${start_value:,.0f} ({actual_start_date}) → End: ${end_value:,.0f} ({end_date})")
 
         return {
             'return': portfolio_return,  # As decimal (0.4093 = 40.93%)
@@ -308,11 +330,13 @@ def get_portfolio_period_return(period='1y'):
             'end_value': end_value,
             'start_date': actual_start_date,
             'end_date': end_date,
-            'days': (end_date - actual_start_date).days
+            'days': days
         }
 
     except Exception as e:
-        print(f"Error calculating portfolio period return: {e}")
+        import traceback
+        print(f"ERROR in get_portfolio_period_return: {e}")
+        print(traceback.format_exc())
         return None
 
 
@@ -15984,58 +16008,60 @@ def main():
                 st.markdown("Decompose portfolio performance into **Allocation** (sector timing) vs **Selection** (stock picking) skill")
                 st.info("📊 **Using GICS Level 1 Classification** - Matching S&P 500/SPY benchmark for accurate attribution")
 
-                # Check if performance history is loaded - if not, show quick upload option
-                if 'leverage_tracker' not in st.session_state or st.session_state.leverage_tracker is None:
-                    st.warning("⚠️ **Performance history not loaded** - Portfolio Return shows point-in-time holdings return, not actual return")
+                # ALWAYS show upload option for performance history
+                with st.expander("📈 Upload Performance History (for accurate returns)", expanded=False):
+                    st.markdown("""
+                    **Upload your Investopedia performance-history.xls file** to see your actual portfolio return instead of point-in-time holdings return.
+                    """)
 
-                    with st.expander("📈 Quick Upload: Performance History (for accurate returns)", expanded=True):
-                        st.markdown("""
-                        **Upload your Investopedia performance-history.xls file** to see your actual portfolio return (+40.93%) instead of point-in-time holdings return (+3.14%).
-                        """)
+                    # Show current status
+                    if 'leverage_tracker' in st.session_state and st.session_state.leverage_tracker is not None:
+                        tracker = st.session_state.leverage_tracker
+                        if tracker.leverage_history is not None and not tracker.leverage_history.empty:
+                            latest = tracker.leverage_history.iloc[-1]
+                            earliest = tracker.leverage_history.iloc[0]
+                            st.success(f"✅ Performance history loaded: {len(tracker.leverage_history)} days of data")
+                            st.caption(f"Period: {earliest['Date'].strftime('%Y-%m-%d')} to {latest['Date'].strftime('%Y-%m-%d')}")
+                            st.caption(f"Start equity: ${earliest['Net Equity']:,.0f} → End equity: ${latest['Net Equity']:,.0f}")
 
-                        quick_perf_file = st.file_uploader(
-                            "Upload Performance History",
-                            type=['xls', 'xlsx', 'html'],
-                            help="Upload your Investopedia performance-history.xls file",
-                            key="attribution_perf_history"
-                        )
+                            # Calculate actual return from loaded data
+                            actual_return = (latest['Net Equity'] - earliest['Net Equity']) / earliest['Net Equity'] * 100
+                            st.metric("Actual Portfolio Return", f"{actual_return:+.2f}%")
+                        else:
+                            st.warning("⚠️ Leverage tracker exists but no data loaded")
+                    else:
+                        st.warning("⚠️ No performance history loaded yet")
 
-                        if quick_perf_file is not None:
-                            try:
-                                import tempfile
-                                import shutil
-                                from pathlib import Path
+                    quick_perf_file = st.file_uploader(
+                        "Upload Performance History",
+                        type=['xls', 'xlsx', 'html'],
+                        help="Upload your Investopedia performance-history.xls file",
+                        key="attribution_perf_history"
+                    )
 
-                                # Save to a persistent location
-                                perf_dir = Path(__file__).parent / 'data' / 'performance'
-                                perf_dir.mkdir(parents=True, exist_ok=True)
-                                persistent_path = perf_dir / 'performance-history.xls'
+                    if quick_perf_file is not None:
+                        try:
+                            from pathlib import Path
+                            perf_dir = Path(__file__).parent / 'data' / 'performance'
+                            perf_dir.mkdir(parents=True, exist_ok=True)
+                            persistent_path = perf_dir / 'performance-history.xls'
 
-                                # Write to persistent location
-                                with open(persistent_path, 'wb') as f:
-                                    f.write(quick_perf_file.getvalue())
+                            with open(persistent_path, 'wb') as f:
+                                f.write(quick_perf_file.getvalue())
 
-                                from analytics.leverage_tracker import LeverageTracker
-                                tracker = LeverageTracker(str(persistent_path))
+                            from analytics.leverage_tracker import LeverageTracker
+                            tracker = LeverageTracker(str(persistent_path))
 
-                                if tracker.load_and_parse():
-                                    st.session_state.leverage_tracker = tracker
-                                    stats = tracker.get_current_stats()
-                                    st.session_state['equity_capital'] = stats['current_equity']
-
-                                    # Save path for future auto-loading
-                                    try:
-                                        from config import set_performance_history_path
-                                        set_performance_history_path(str(persistent_path))
-                                    except:
-                                        pass  # Non-critical
-
-                                    st.success(f"✅ Performance history loaded and saved! Equity: ${stats['current_equity']:,.0f}")
-                                    st.rerun()  # Refresh to show updated attribution
-                                else:
-                                    st.error("❌ Could not parse performance history file")
-                            except Exception as e:
-                                st.error(f"Error: {str(e)}")
+                            if tracker.load_and_parse():
+                                st.session_state.leverage_tracker = tracker
+                                stats = tracker.get_current_stats()
+                                st.session_state['equity_capital'] = stats['current_equity']
+                                st.success(f"✅ Loaded! Equity: ${stats['current_equity']:,.0f}")
+                                st.rerun()
+                            else:
+                                st.error("❌ Could not parse file")
+                        except Exception as e:
+                            st.error(f"Error: {str(e)}")
 
                 # Calculate attribution using new GICS-based function
                 try:
