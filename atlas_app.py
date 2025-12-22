@@ -567,7 +567,7 @@ STOCK_SECTOR_OVERRIDES = {
 
 # Current S&P 500 sector weights (as of Dec 2024 - update quarterly)
 SPY_SECTOR_WEIGHTS = {
-    'Information Technology': 31.5,
+    'Information Technology': 30.5,
     'Financials': 13.2,
     'Health Care': 11.8,
     'Consumer Discretionary': 10.5,
