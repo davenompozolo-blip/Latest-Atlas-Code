@@ -5850,6 +5850,7 @@ def create_brinson_attribution_chart(attribution_results):
 def create_skill_assessment_card(attribution_results):
     """
     Create visual skill assessment comparing allocation vs selection
+    Uses glassmorphism styling to match ATLAS dashboard theme
     """
 
     allocation_score = attribution_results['allocation_skill_score']
@@ -5869,62 +5870,146 @@ def create_skill_assessment_card(attribution_results):
         primary_skill = "Balanced"
         recommendation = "Continue current strategy - both skills are comparable."
 
-    # Status emojis
-    alloc_status = '✅ Strong sector rotation' if allocation_effect > 1 else '⚠️ Neutral sector timing' if allocation_effect > -1 else '❌ Poor sector allocation'
-    select_status = '✅ Strong stock picks' if selection_effect > 1 else '⚠️ Neutral stock selection' if selection_effect > -1 else '❌ Stocks underperform sector'
+    # Status emojis and colors
+    alloc_color = '#00ff9d' if allocation_effect > 0 else '#ff006b'
+    select_color = '#00ff9d' if selection_effect > 0 else '#ff006b'
+    alloc_status = '✓ Strong sector rotation' if allocation_effect > 1 else '○ Neutral sector timing' if allocation_effect > -1 else '✗ Poor sector allocation'
+    select_status = '✓ Strong stock picks' if selection_effect > 1 else '○ Neutral stock selection' if selection_effect > -1 else '✗ Stocks underperform sector'
 
     html = f"""
-    <div style='background: linear-gradient(135deg, {COLORS['card_background']} 0%, {COLORS['card_background_alt']} 100%);
-                border: 2px solid {COLORS['neon_blue']}; border-radius: 12px; padding: 30px;
-                box-shadow: 0 0 30px {COLORS['shadow']};'>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+    </style>
+    <div style="
+        background: rgba(26, 35, 50, 0.7);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border: 1px solid rgba(0, 212, 255, 0.2);
+        border-radius: 12px;
+        padding: 24px;
+        margin: 20px 0;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    ">
+        <h3 style="
+            font-family: 'Inter', sans-serif;
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #00d4ff;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin: 0 0 20px 0;
+            text-shadow: 0 0 10px rgba(0, 212, 255, 0.3);
+        ">
+            🎯 Portfolio Management Skill Assessment
+        </h3>
 
-        <h2 style='color: {COLORS['neon_blue']}; margin-top: 0;'>🎯 Portfolio Management Skill Assessment</h2>
-
-        <div style='display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin: 20px 0;'>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
 
             <!-- Allocation Skill -->
-            <div>
-                <h3 style='color: {COLORS['text_secondary']}; font-size: 14px; margin-bottom: 10px;'>
-                    ALLOCATION SKILL (Sector Timing)
-                </h3>
-                <div style='font-size: 48px; color: {COLORS['success'] if allocation_effect > 0 else COLORS['danger']};
-                            font-weight: 700; margin: 10px 0;'>
-                    {allocation_score:.1f}/10
-                </div>
-                <div style='font-size: 18px; color: {COLORS['text_primary']}; margin: 5px 0;'>
-                    Effect: {allocation_effect:+.2f}%
-                </div>
-                <div style='color: {COLORS['text_muted']}; font-size: 13px; margin-top: 10px;'>
-                    {alloc_status}
-                </div>
+            <div style="
+                background: rgba(10, 15, 26, 0.6);
+                border: 1px solid rgba(0, 212, 255, 0.15);
+                border-radius: 8px;
+                padding: 16px;
+            ">
+                <div style="
+                    font-family: 'Inter', sans-serif;
+                    font-size: 0.75rem;
+                    font-weight: 600;
+                    color: #8890a0;
+                    text-transform: uppercase;
+                    letter-spacing: 0.1em;
+                    margin-bottom: 8px;
+                ">ALLOCATION SKILL (Sector Timing)</div>
+
+                <div style="
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 2.5rem;
+                    font-weight: 700;
+                    color: {alloc_color};
+                    text-shadow: 0 0 15px {alloc_color}40;
+                    margin: 8px 0;
+                ">{allocation_score:.1f}/10</div>
+
+                <div style="
+                    font-family: 'Inter', sans-serif;
+                    font-size: 0.9rem;
+                    color: #c0c8d0;
+                    margin-top: 8px;
+                ">Effect: {allocation_effect:+.2f}%</div>
+
+                <div style="
+                    font-family: 'Inter', sans-serif;
+                    font-size: 0.75rem;
+                    color: {alloc_color};
+                    margin-top: 8px;
+                ">{alloc_status}</div>
             </div>
 
             <!-- Selection Skill -->
-            <div>
-                <h3 style='color: {COLORS['text_secondary']}; font-size: 14px; margin-bottom: 10px;'>
-                    SELECTION SKILL (Stock Picking)
-                </h3>
-                <div style='font-size: 48px; color: {COLORS['success'] if selection_effect > 0 else COLORS['danger']};
-                            font-weight: 700; margin: 10px 0;'>
-                    {selection_score:.1f}/10
-                </div>
-                <div style='font-size: 18px; color: {COLORS['text_primary']}; margin: 5px 0;'>
-                    Effect: {selection_effect:+.2f}%
-                </div>
-                <div style='color: {COLORS['text_muted']}; font-size: 13px; margin-top: 10px;'>
-                    {select_status}
-                </div>
+            <div style="
+                background: rgba(10, 15, 26, 0.6);
+                border: 1px solid rgba(0, 212, 255, 0.15);
+                border-radius: 8px;
+                padding: 16px;
+            ">
+                <div style="
+                    font-family: 'Inter', sans-serif;
+                    font-size: 0.75rem;
+                    font-weight: 600;
+                    color: #8890a0;
+                    text-transform: uppercase;
+                    letter-spacing: 0.1em;
+                    margin-bottom: 8px;
+                ">SELECTION SKILL (Stock Picking)</div>
+
+                <div style="
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 2.5rem;
+                    font-weight: 700;
+                    color: {select_color};
+                    text-shadow: 0 0 15px {select_color}40;
+                    margin: 8px 0;
+                ">{selection_score:.1f}/10</div>
+
+                <div style="
+                    font-family: 'Inter', sans-serif;
+                    font-size: 0.9rem;
+                    color: #c0c8d0;
+                    margin-top: 8px;
+                ">Effect: {selection_effect:+.2f}%</div>
+
+                <div style="
+                    font-family: 'Inter', sans-serif;
+                    font-size: 0.75rem;
+                    color: {select_color};
+                    margin-top: 8px;
+                ">{select_status}</div>
             </div>
         </div>
 
-        <div style='background: rgba(0, 212, 255, 0.1); border-left: 4px solid {COLORS['neon_blue']};
-                    padding: 15px; border-radius: 8px; margin-top: 20px;'>
-            <h4 style='color: {COLORS['neon_blue']}; margin: 0 0 10px 0;'>
-                🏆 Primary Strength: {primary_skill}
-            </h4>
-            <p style='color: {COLORS['text_primary']}; margin: 0; font-size: 15px;'>
-                {recommendation}
-            </p>
+        <!-- Recommendation -->
+        <div style="
+            background: linear-gradient(90deg, rgba(0, 212, 255, 0.1) 0%, transparent 100%);
+            border-left: 3px solid #00d4ff;
+            padding: 12px 16px;
+            margin-top: 20px;
+            border-radius: 4px;
+        ">
+            <div style="
+                font-family: 'Inter', sans-serif;
+                font-size: 0.75rem;
+                font-weight: 700;
+                color: #00d4ff;
+                text-transform: uppercase;
+                letter-spacing: 0.1em;
+                margin-bottom: 4px;
+            ">💡 Primary Strength: {primary_skill}</div>
+            <div style="
+                font-family: 'Inter', sans-serif;
+                font-size: 0.85rem;
+                color: #c0c8d0;
+            ">{recommendation}</div>
         </div>
     </div>
     """
@@ -11451,61 +11536,67 @@ def main():
                                     # ===== FIX #5: Calculate and Display Skill Scores =====
                                     if 'Allocation Effect' in sector_contrib.columns and 'Selection Effect' in sector_contrib.columns:
                                         st.markdown("---")
-                                        st.markdown("#### 🎯 Portfolio Management Skill Assessment")
-    
+
                                         # Calculate total effects
                                         total_allocation = sector_contrib['Allocation Effect'].sum()
                                         total_selection = sector_contrib['Selection Effect'].sum()
                                         total_interaction = sector_contrib['Interaction Effect'].sum() if 'Interaction Effect' in sector_contrib.columns else 0
-    
+                                        total_active_return = total_allocation + total_selection + total_interaction
+
                                         # Skill scoring: 0-10 scale where 5 = neutral (0% effect)
-                                        # Each 1% positive effect = +1 point, each 1% negative effect = -1 point
                                         allocation_score = max(0, min(10, 5 + total_allocation))
                                         selection_score = max(0, min(10, 5 + total_selection))
-    
-                                        # Display skill assessment
-                                        col1, col2, col3 = st.columns(3)
-    
-                                        with col1:
-                                            st.metric(
-                                                "Allocation Skill (Sector Timing)",
-                                                f"{allocation_score:.1f}/10",
-                                                f"Effect: {total_allocation:+.2f}%"
-                                            )
-    
-                                            if allocation_score > 6:
-                                                st.success("✅ Strong sector allocation")
-                                            elif allocation_score < 4:
-                                                st.error("❌ Poor sector allocation")
-                                            else:
-                                                st.info("ℹ️ Neutral sector allocation")
-    
-                                        with col2:
-                                            st.metric(
-                                                "Selection Skill (Stock Picking)",
-                                                f"{selection_score:.1f}/10",
-                                                f"Effect: {total_selection:+.2f}%"
-                                            )
-    
-                                            if selection_score > 6:
-                                                st.success("✅ Strong stock selection")
-                                            elif selection_score < 4:
-                                                st.error("❌ Poor stock selection")
-                                            else:
-                                                st.info("ℹ️ Neutral stock selection")
-    
-                                        with col3:
-                                            total_active_return = total_allocation + total_selection + total_interaction
-                                            st.metric(
-                                                "Total Active Return",
-                                                f"{total_active_return:+.2f}%",
-                                                f"Interaction: {total_interaction:+.2f}%"
-                                            )
-    
-                                            if total_active_return > 0:
-                                                st.success("✅ Outperforming benchmark")
-                                            else:
-                                                st.error("❌ Underperforming benchmark")
+
+                                        # Determine colors and status
+                                        alloc_color = '#00ff9d' if total_allocation > 0 else '#ff006b'
+                                        select_color = '#00ff9d' if total_selection > 0 else '#ff006b'
+                                        active_color = '#00ff9d' if total_active_return > 0 else '#ff006b'
+
+                                        alloc_status = '✓ Strong sector rotation' if total_allocation > 1 else '○ Neutral' if total_allocation > -1 else '✗ Poor allocation'
+                                        select_status = '✓ Strong stock picks' if total_selection > 1 else '○ Neutral' if total_selection > -1 else '✗ Poor selection'
+
+                                        # Determine primary skill
+                                        if allocation_score > selection_score + 2:
+                                            primary_skill = "Sector Timing (Allocation)"
+                                            recommendation = "Focus on sector rotation strategies. Consider using sector ETFs."
+                                        elif selection_score > allocation_score + 2:
+                                            primary_skill = "Stock Picking (Selection)"
+                                            recommendation = "Focus on fundamental analysis. Your stock picks add value."
+                                        else:
+                                            primary_skill = "Balanced"
+                                            recommendation = "Continue current strategy - both skills are comparable."
+
+                                        # Glassmorphism styled skill assessment card
+                                        skill_html = f"""
+<div style="background: rgba(26, 35, 50, 0.7); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid rgba(0, 212, 255, 0.2); border-radius: 12px; padding: 24px; margin: 20px 0; font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;">
+<h3 style="font-family: 'Inter', sans-serif; font-size: 1.2rem; font-weight: 700; color: #00d4ff; text-transform: uppercase; letter-spacing: 0.1em; margin: 0 0 20px 0; text-shadow: 0 0 10px rgba(0, 212, 255, 0.3);">🎯 Portfolio Management Skill Assessment</h3>
+<div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
+<div style="background: rgba(10, 15, 26, 0.6); border: 1px solid rgba(0, 212, 255, 0.15); border-radius: 8px; padding: 16px;">
+<div style="font-family: 'Inter', sans-serif; font-size: 0.7rem; font-weight: 600; color: #8890a0; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px;">ALLOCATION SKILL</div>
+<div style="font-family: 'JetBrains Mono', monospace; font-size: 2rem; font-weight: 700; color: {alloc_color}; text-shadow: 0 0 15px {alloc_color}40;">{allocation_score:.1f}/10</div>
+<div style="font-family: 'Inter', sans-serif; font-size: 0.85rem; color: #c0c8d0; margin-top: 6px;">Effect: {total_allocation:+.2f}%</div>
+<div style="font-family: 'Inter', sans-serif; font-size: 0.7rem; color: {alloc_color}; margin-top: 6px;">{alloc_status}</div>
+</div>
+<div style="background: rgba(10, 15, 26, 0.6); border: 1px solid rgba(0, 212, 255, 0.15); border-radius: 8px; padding: 16px;">
+<div style="font-family: 'Inter', sans-serif; font-size: 0.7rem; font-weight: 600; color: #8890a0; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px;">SELECTION SKILL</div>
+<div style="font-family: 'JetBrains Mono', monospace; font-size: 2rem; font-weight: 700; color: {select_color}; text-shadow: 0 0 15px {select_color}40;">{selection_score:.1f}/10</div>
+<div style="font-family: 'Inter', sans-serif; font-size: 0.85rem; color: #c0c8d0; margin-top: 6px;">Effect: {total_selection:+.2f}%</div>
+<div style="font-family: 'Inter', sans-serif; font-size: 0.7rem; color: {select_color}; margin-top: 6px;">{select_status}</div>
+</div>
+<div style="background: rgba(10, 15, 26, 0.6); border: 1px solid rgba(0, 212, 255, 0.15); border-radius: 8px; padding: 16px;">
+<div style="font-family: 'Inter', sans-serif; font-size: 0.7rem; font-weight: 600; color: #8890a0; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px;">TOTAL ACTIVE RETURN</div>
+<div style="font-family: 'JetBrains Mono', monospace; font-size: 2rem; font-weight: 700; color: {active_color}; text-shadow: 0 0 15px {active_color}40;">{total_active_return:+.2f}%</div>
+<div style="font-family: 'Inter', sans-serif; font-size: 0.85rem; color: #c0c8d0; margin-top: 6px;">Interaction: {total_interaction:+.2f}%</div>
+<div style="font-family: 'Inter', sans-serif; font-size: 0.7rem; color: {active_color}; margin-top: 6px;">{'✓ Outperforming' if total_active_return > 0 else '✗ Underperforming'}</div>
+</div>
+</div>
+<div style="background: linear-gradient(90deg, rgba(0, 212, 255, 0.1) 0%, transparent 100%); border-left: 3px solid #00d4ff; padding: 12px 16px; margin-top: 20px; border-radius: 4px;">
+<div style="font-family: 'Inter', sans-serif; font-size: 0.75rem; font-weight: 700; color: #00d4ff; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px;">💡 Primary Strength: {primary_skill}</div>
+<div style="font-family: 'Inter', sans-serif; font-size: 0.85rem; color: #c0c8d0;">{recommendation}</div>
+</div>
+</div>
+"""
+                                        st.markdown(skill_html, unsafe_allow_html=True)
     
                                     st.success("✅ Attribution analysis complete")
                                 else:
