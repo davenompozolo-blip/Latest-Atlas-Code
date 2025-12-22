@@ -18010,34 +18010,45 @@ def main():
                                 # DASHBOARD MODE: Use pre-calculated inputs and projections
                                 # =========================================================
                                 dashboard_data = st.session_state['dashboard_inputs']
-    
-                                # Extract dashboard values
-                                discount_rate = dashboard_data['wacc']
-                                terminal_growth = dashboard_data['terminal_growth']
-                                shares = dashboard_data['diluted_shares']
-                                dcf_proj_obj = dashboard_data.get('projections')
-    
-                                # Convert DCFProjections object to legacy projection format
-                                # for compatibility with calculate_dcf_value()
-                                if dcf_proj_obj:
-                                    projections = []
-                                    for year in range(1, dcf_proj_obj.forecast_years + 1):
-                                        year_data = dcf_proj_obj.final_projections[year]
-                                        projections.append({
-                                            'year': year,
-                                            'revenue': year_data['revenue'],
-                                            'ebit': year_data.get('ebit', 0),
-                                            'nopat': year_data.get('nopat', 0),
-                                            'fcff': year_data.get('fcff', 0),
-                                            'fcfe': year_data.get('fcfe', 0)
-                                        })
-                                    final_fcf = projections[-1]['fcff'] if method_key == 'FCFF' else projections[-1]['fcfe']
-                                else:
-                                    # Fallback if projections object not available
-                                    st.error("⚠️ Dashboard projections not available. Using manual calculation.")
-                                    dashboard_active = False
-    
-                            if not dashboard_active:
+
+                                 # Extract dashboard values (UNCHANGED)
+                                 discount_rate = dashboard_data['wacc']
+                                 terminal_growth = dashboard_data['terminal_growth']
+                                 shares = dashboard_data['diluted_shares']
+                                 
+                                 # Handle dashboard DCF projections (multi-scenario safe)
+                                 dcf_proj_list = dashboard_data.get('projections')
+                                 
+                                 if dcf_proj_list:
+                                     projections = []
+                                     final_fcfs = {}
+                                 
+                                     for dcf_proj_obj in dcf_proj_list:
+                                         scenario = getattr(dcf_proj_obj, 'scenario_name', 'base')
+                                 
+                                         for year in range(1, dcf_proj_obj.forecast_years + 1):
+                                             year_data = dcf_proj_obj.final_projections[year]
+                                             projections.append({
+                                                 'scenario': scenario,
+                                                 'year': year,
+                                                 'revenue': year_data['revenue'],
+                                                 'ebit': year_data.get('ebit', 0),
+                                                 'nopat': year_data.get('nopat', 0),
+                                                 'fcff': year_data.get('fcff', 0),
+                                                 'fcfe': year_data.get('fcfe', 0)
+                                             })
+                                 
+                                         # Store terminal-year FCF per scenario
+                                         last_year = dcf_proj_obj.forecast_years
+                                         final_fcfs[scenario] = (
+                                             dcf_proj_obj.final_projections[last_year]['fcff']
+                                             if method_key == 'FCFF'
+                                             else dcf_proj_obj.final_projections[last_year]['fcfe']
+                                         )
+                                 else:
+                                     st.error("⚠️ Dashboard projections not available. Using manual calculation.")
+                                     dashboard_active = False
+
                                 # =========================================================
                                 # MANUAL MODE: Use slider inputs and traditional calculation
                                 # =========================================================
