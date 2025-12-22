@@ -6062,10 +6062,15 @@ def calculate_portfolio_returns(df, start_date, end_date, equity=None):
         portfolio_series = pd.Series(portfolio_values, index=common_dates)
 
         # CRITICAL FIX: Calculate returns on EQUITY basis, not gross exposure
-        # Get equity from session state if not provided
+        # Get equity from performance history or session state if not provided
         if equity is None:
-            # Try to get from session state, fallback to initial portfolio value
-            equity = st.session_state.get('equity_capital', portfolio_values[0])
+            # Try to get from performance history first
+            metrics = get_current_portfolio_metrics()
+            if metrics and metrics.get('equity', 0) > 0:
+                equity = metrics['equity']
+            else:
+                # Fallback to session state, then initial portfolio value
+                equity = st.session_state.get('equity_capital', portfolio_values[0])
 
         # Calculate dollar changes in portfolio value
         portfolio_changes = portfolio_series.diff()
@@ -6952,8 +6957,12 @@ def create_enhanced_holdings_table(df):
     # CRITICAL FIX: Add DUAL weight columns (equity-based AND gross-based)
     gross_exposure = enhanced_df['Total Value'].sum()
 
-    # Get equity from session state
-    equity = st.session_state.get('equity_capital', gross_exposure)  # Fallback to gross if no equity set
+    # Get equity from performance history or session state
+    metrics = get_current_portfolio_metrics()
+    if metrics and metrics.get('equity', 0) > 0:
+        equity = metrics['equity']
+    else:
+        equity = st.session_state.get('equity_capital', gross_exposure)  # Fallback to gross if no equity set
 
     # Weight % of Equity - can exceed 100% with leverage!
     enhanced_df['Weight % of Equity'] = (enhanced_df['Total Value'] / equity * 100) if equity > 0 else 0
@@ -7317,8 +7326,12 @@ def calculate_var_cvar_portfolio_optimization(enhanced_df, confidence_level=0.95
     total_portfolio_value = current_values.sum()
 
     # CRITICAL FIX: Calculate weights relative to EQUITY, not gross exposure
-    # Get equity from session state
-    equity = st.session_state.get('equity_capital', total_portfolio_value)
+    # Get equity from performance history or session state
+    metrics = get_current_portfolio_metrics()
+    if metrics and metrics.get('equity', 0) > 0:
+        equity = metrics['equity']
+    else:
+        equity = st.session_state.get('equity_capital', total_portfolio_value)
     current_weights = current_values / equity  # Can sum > 1.0 with leverage!
 
     # Fetch historical returns for all tickers
@@ -11385,9 +11398,14 @@ def main():
     # ============================================================================
     # EQUITY TRACKING INITIALIZATION - CRITICAL FIX FOR LEVERAGE CALCULATIONS
     # ============================================================================
-    # Initialize equity tracking if not exists
+    # Initialize equity tracking from performance history if available
     if 'equity_capital' not in st.session_state:
-        st.session_state['equity_capital'] = 100000.0  # Default $100k
+        # Try to get equity from performance history first
+        metrics = get_current_portfolio_metrics()
+        if metrics and metrics.get('equity', 0) > 0:
+            st.session_state['equity_capital'] = metrics['equity']
+        else:
+            st.session_state['equity_capital'] = 100000.0  # Default $100k
 
     if 'target_leverage' not in st.session_state:
         st.session_state['target_leverage'] = 1.0  # Default no leverage
@@ -13368,7 +13386,12 @@ def main():
                 enhanced_df = create_enhanced_holdings_table(df)
     
             # CRITICAL FIX: Calculate equity, gross exposure, and leverage
-            equity = st.session_state.get('equity_capital', 100000.0)
+            # Auto-populate equity from performance history
+            metrics = get_current_portfolio_metrics()
+            if metrics and metrics.get('equity', 0) > 0:
+                equity = metrics['equity']
+            else:
+                equity = st.session_state.get('equity_capital', 100000.0)
             gross_exposure = enhanced_df['Total Value'].sum()
             actual_leverage = gross_exposure / equity if equity > 0 else 1.0
             total_cost = enhanced_df['Total Cost'].sum()
@@ -14330,7 +14353,10 @@ def main():
             with tab2:
                 simulations = run_monte_carlo_simulation(portfolio_returns)
                 if simulations is not None:
-                    monte_carlo_chart, mc_stats = create_monte_carlo_chart(simulations, 100000)
+                    # Get equity from performance history for Monte Carlo initial value
+                    mc_metrics = get_current_portfolio_metrics()
+                    mc_initial_value = mc_metrics['equity'] if mc_metrics and mc_metrics.get('equity', 0) > 0 else 100000
+                    monte_carlo_chart, mc_stats = create_monte_carlo_chart(simulations, mc_initial_value)
                     
                     if monte_carlo_chart:
                         st.plotly_chart(monte_carlo_chart, use_container_width=True)
@@ -15721,36 +15747,32 @@ def main():
                         st.plotly_chart(conc_analysis, use_container_width=True)
     
             with tab4:
-                st.markdown("### 🏆 Brinson Attribution Analysis")
+                st.markdown("### 🏆 Brinson Attribution Analysis (GICS-Corrected)")
                 st.markdown("Decompose portfolio performance into **Allocation** (sector timing) vs **Selection** (stock picking) skill")
-    
-                # Validate and map sectors before attribution analysis
-                enhanced_df_validated = validate_and_map_sectors(enhanced_df.copy())
-    
-                # Get benchmark data
-                benchmark_weights = SP500_SECTOR_WEIGHTS
-                with st.spinner("Fetching benchmark sector returns..."):
-                    benchmark_returns = get_benchmark_sector_returns(period='1Y')
-    
-                # Calculate attribution
+                st.info("📊 **Using GICS Level 1 Classification** - Matching S&P 500/SPY benchmark for accurate attribution")
+
+                # Calculate attribution using new GICS-based function
                 try:
-                    attribution_results = calculate_brinson_attribution(
-                        enhanced_df_validated,
-                        benchmark_weights,
-                        benchmark_returns,
-                        period='1Y'
-                    )
-    
-                    # Display skill assessment card
+                    with st.spinner("Calculating GICS-based attribution..."):
+                        attribution_results = calculate_brinson_attribution_gics(
+                            enhanced_df,
+                            period='1y'
+                        )
+
+                    # Display validation/reconciliation first (shows actual alpha)
                     import streamlit.components.v1 as components
+                    validation_html = display_attribution_validation(attribution_results['validation'])
+                    st.markdown(validation_html, unsafe_allow_html=True)
+
+                    # Display skill assessment card
                     components.html(create_skill_assessment_card(attribution_results), height=400)
-    
+
                     # Display waterfall chart
                     st.plotly_chart(create_brinson_attribution_chart(attribution_results),
                                    use_container_width=True)
-    
+
                     # Display detailed sector table
-                    st.markdown("#### 📋 Sector-by-Sector Attribution")
+                    st.markdown("#### 📋 Sector-by-Sector Attribution (GICS)")
                     sector_table = create_sector_attribution_table(attribution_results['attribution_df'])
                     make_scrollable_table(
                         sector_table,
@@ -15759,34 +15781,48 @@ def main():
                         use_container_width=True,
                         column_config=None
                     )
-    
+
+                    # Display stock-level attribution (new!)
+                    st.markdown("#### 🎯 Stock-Level Attribution")
+                    st.markdown("Individual stock contributions to alpha generation")
+                    top_html, bottom_html = display_stock_attribution_table(attribution_results['stock_attribution_df'])
+                    st.markdown(top_html, unsafe_allow_html=True)
+                    st.markdown(bottom_html, unsafe_allow_html=True)
+
                     # Explanation
-                    with st.expander("ℹ️ Understanding Brinson Attribution"):
+                    with st.expander("ℹ️ Understanding GICS-Based Brinson Attribution"):
                         st.markdown("""
                         **Brinson Attribution** breaks down your portfolio outperformance into:
-    
+
                         1. **Allocation Effect** - Your skill at sector timing
                            - Measures if you overweighted sectors that outperformed
                            - Example: Overweighting tech before a tech rally = positive allocation
-    
+
                         2. **Selection Effect** - Your skill at stock picking
                            - Measures if your stocks beat their sector average
                            - Example: Picking NVDA in tech when NVDA beats XLK = positive selection
-    
+
                         3. **Interaction Effect** - Combined benefit
                            - Being overweight the right sectors AND picking winners within them
-    
+
+                        **Key Sector Classifications (GICS Level 1):**
+                        - **AMZN, TSLA** → Consumer Discretionary (NOT Tech)
+                        - **META, GOOGL, NFLX** → Communication Services (NOT Tech)
+                        - **V, MA** → Financials (payment networks)
+
                         **Interpretation:**
                         - **High Allocation Score**: You're good at macro/sector calls → Use sector ETFs
                         - **High Selection Score**: You're good at stock picking → Focus on fundamentals
                         - **Both Low**: Consider passive indexing
-    
-                        **Benchmark**: S&P 500 sector weights and sector ETF returns (XLK, XLV, XLF, etc.)
+
+                        **Benchmark**: S&P 500 (SPY) using GICS sector classification and sector ETF returns
                         """)
-    
+
                 except Exception as e:
-                    st.error(f"Error calculating Brinson Attribution: {str(e)}")
-                    st.info("💡 Make sure your portfolio has valid sector classifications and return data.")
+                    st.error(f"Error calculating GICS-based Brinson Attribution: {str(e)}")
+                    import traceback
+                    st.code(traceback.format_exc())
+                    st.info("💡 Make sure your portfolio has valid tickers with return data.")
     
             # ============================================================
             # QUALITY SCORECARD - COMPREHENSIVE QUALITY ANALYSIS
