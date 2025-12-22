@@ -11648,6 +11648,7 @@ def main():
 
     def render_atlas_header():
         """Render ATLAS Terminal header with complete UI polish"""
+        from pathlib import Path  # Import here to avoid scope issues
 
         # Load BOTH CSS files - animations AND complete UI
         css_files = [
