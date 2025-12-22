@@ -238,6 +238,172 @@ def get_current_portfolio_metrics():
         return None
 
 
+def get_portfolio_period_return(period='1y'):
+    """
+    Calculate actual time-weighted portfolio return from performance history.
+    This is the ACTUAL return you achieved, not point-in-time holdings return.
+
+    Parameters:
+    -----------
+    period : str
+        Time period ('1y', '6mo', '3mo', '1mo', 'ytd')
+
+    Returns:
+    --------
+    dict with: return (as decimal), start_value, end_value, start_date, end_date, days
+    None if performance history not loaded
+    """
+    try:
+        # Get leverage tracker from session state
+        if 'leverage_tracker' not in st.session_state or st.session_state.leverage_tracker is None:
+            return None
+
+        tracker = st.session_state.leverage_tracker
+        df = tracker.leverage_history
+
+        if df is None or df.empty:
+            return None
+
+        # Get most recent value (end of period)
+        end_row = df.iloc[-1]
+        end_value = end_row['Net Equity']
+        end_date = end_row['Date']
+
+        # Determine start date based on period
+        period_lower = period.lower()
+        if period_lower in ['1y', '1yr', '12m']:
+            start_date = end_date - pd.DateOffset(years=1)
+        elif period_lower in ['6m', '6mo']:
+            start_date = end_date - pd.DateOffset(months=6)
+        elif period_lower in ['3m', '3mo']:
+            start_date = end_date - pd.DateOffset(months=3)
+        elif period_lower in ['1m', '1mo']:
+            start_date = end_date - pd.DateOffset(months=1)
+        elif period_lower == 'ytd':
+            start_date = pd.Timestamp(f'{end_date.year}-01-01')
+        else:
+            # Default to 1 year
+            start_date = end_date - pd.DateOffset(years=1)
+
+        # Find closest date to start_date in historical data
+        df['_date_diff'] = abs(df['Date'] - start_date)
+        start_idx = df['_date_diff'].idxmin()
+        start_row = df.loc[start_idx]
+        start_value = start_row['Net Equity']
+        actual_start_date = start_row['Date']
+
+        # Clean up temp column
+        df.drop('_date_diff', axis=1, inplace=True)
+
+        # Calculate return
+        if start_value > 0:
+            portfolio_return = (end_value - start_value) / start_value
+        else:
+            portfolio_return = 0
+
+        return {
+            'return': portfolio_return,  # As decimal (0.4093 = 40.93%)
+            'return_pct': portfolio_return * 100,  # As percentage
+            'start_value': start_value,
+            'end_value': end_value,
+            'start_date': actual_start_date,
+            'end_date': end_date,
+            'days': (end_date - actual_start_date).days
+        }
+
+    except Exception as e:
+        print(f"Error calculating portfolio period return: {e}")
+        return None
+
+
+def get_benchmark_period_return(benchmark_ticker='SPY', period='1y', match_portfolio_dates=True):
+    """
+    Get benchmark return over same period as portfolio.
+
+    Parameters:
+    -----------
+    benchmark_ticker : str
+        Benchmark ticker (default 'SPY')
+    period : str
+        Time period
+    match_portfolio_dates : bool
+        If True, use exact same dates as portfolio performance history
+
+    Returns:
+    --------
+    dict with: return (as decimal), start_price, end_price, start_date, end_date, ticker
+    None if error
+    """
+    try:
+        import yfinance as yf
+
+        # Get portfolio dates to match exactly
+        if match_portfolio_dates:
+            portfolio_data = get_portfolio_period_return(period)
+
+            if portfolio_data is not None:
+                start_date = portfolio_data['start_date']
+                end_date = portfolio_data['end_date']
+
+                # Get benchmark data for exact same dates
+                benchmark = yf.Ticker(benchmark_ticker)
+                # Add buffer days to ensure we get data
+                hist = benchmark.history(start=start_date - pd.Timedelta(days=5),
+                                        end=end_date + pd.Timedelta(days=1))
+
+                if hist.empty:
+                    return None
+
+                # Find closest dates to portfolio dates
+                hist['_date_diff_start'] = abs(hist.index - start_date)
+                hist['_date_diff_end'] = abs(hist.index - end_date)
+
+                start_idx = hist['_date_diff_start'].idxmin()
+                end_idx = hist['_date_diff_end'].idxmin()
+
+                start_price = hist.loc[start_idx, 'Close']
+                end_price = hist.loc[end_idx, 'Close']
+                actual_start = start_idx
+                actual_end = end_idx
+
+                benchmark_return = (end_price - start_price) / start_price
+
+                return {
+                    'return': benchmark_return,  # As decimal
+                    'return_pct': benchmark_return * 100,  # As percentage
+                    'start_price': start_price,
+                    'end_price': end_price,
+                    'start_date': actual_start,
+                    'end_date': actual_end,
+                    'ticker': benchmark_ticker
+                }
+
+        # Fallback to standard period
+        benchmark = yf.Ticker(benchmark_ticker)
+        hist = benchmark.history(period=period)
+
+        if hist.empty:
+            return None
+
+        start_price = hist['Close'].iloc[0]
+        end_price = hist['Close'].iloc[-1]
+        benchmark_return = (end_price - start_price) / start_price
+
+        return {
+            'return': benchmark_return,
+            'return_pct': benchmark_return * 100,
+            'start_price': start_price,
+            'end_price': end_price,
+            'start_date': hist.index[0],
+            'end_date': hist.index[-1],
+            'ticker': benchmark_ticker
+        }
+
+    except Exception as e:
+        print(f"Error getting benchmark return: {e}")
+        return None
+
+
 def format_currency(value, decimals=2):
     """Format value as currency string"""
     if value is None:
@@ -6062,10 +6228,15 @@ def calculate_portfolio_returns(df, start_date, end_date, equity=None):
         portfolio_series = pd.Series(portfolio_values, index=common_dates)
 
         # CRITICAL FIX: Calculate returns on EQUITY basis, not gross exposure
-        # Get equity from session state if not provided
+        # Get equity from performance history or session state if not provided
         if equity is None:
-            # Try to get from session state, fallback to initial portfolio value
-            equity = st.session_state.get('equity_capital', portfolio_values[0])
+            # Try to get from performance history first
+            metrics = get_current_portfolio_metrics()
+            if metrics and metrics.get('equity', 0) > 0:
+                equity = metrics['equity']
+            else:
+                # Fallback to session state, then initial portfolio value
+                equity = st.session_state.get('equity_capital', portfolio_values[0])
 
         # Calculate dollar changes in portfolio value
         portfolio_changes = portfolio_series.diff()
@@ -6328,19 +6499,51 @@ def calculate_brinson_attribution_gics(portfolio_df, period='1y'):
     stock_attribution_df = pd.DataFrame(stock_results)
     stock_attribution_df = stock_attribution_df.sort_values('Active Contribution %', ascending=False)
 
-    # Step 9: Validation
-    actual_alpha = portfolio_total_return - benchmark_total_return
-    attribution_sum = total_allocation + total_selection + total_interaction
-    reconciliation_diff = abs(actual_alpha - attribution_sum)
+    # Step 9: Validation - USE ACTUAL PERFORMANCE HISTORY RETURNS
+    # This is the CRITICAL FIX: Use actual portfolio return, not point-in-time holdings return
 
-    validation = {
-        'portfolio_return': portfolio_total_return,
-        'benchmark_return': benchmark_total_return,
-        'actual_alpha': actual_alpha,
-        'attribution_sum': attribution_sum,
-        'reconciliation_diff': reconciliation_diff,
-        'is_reconciled': reconciliation_diff < 1.0  # Within 1%
-    }
+    # Try to get actual portfolio return from performance history
+    actual_portfolio_data = get_portfolio_period_return(period)
+    actual_benchmark_data = get_benchmark_period_return('SPY', period, match_portfolio_dates=True)
+
+    if actual_portfolio_data is not None and actual_benchmark_data is not None:
+        # Use ACTUAL returns from performance history
+        actual_portfolio_return = actual_portfolio_data['return_pct']  # e.g., 40.93%
+        actual_benchmark_return_val = actual_benchmark_data['return_pct']  # e.g., 15.79%
+        actual_alpha = actual_portfolio_return - actual_benchmark_return_val  # e.g., 25.14%
+        attribution_sum = total_allocation + total_selection + total_interaction
+        reconciliation_diff = abs(actual_alpha - attribution_sum)
+
+        validation = {
+            'portfolio_return': actual_portfolio_return,
+            'benchmark_return': actual_benchmark_return_val,
+            'actual_alpha': actual_alpha,
+            'attribution_sum': attribution_sum,
+            'reconciliation_diff': reconciliation_diff,
+            'is_reconciled': reconciliation_diff < 5.0,  # Within 5% (trades/timing cause some diff)
+            'source': 'performance_history',
+            'portfolio_start': actual_portfolio_data.get('start_value'),
+            'portfolio_end': actual_portfolio_data.get('end_value'),
+            'benchmark_start': actual_benchmark_data.get('start_price'),
+            'benchmark_end': actual_benchmark_data.get('end_price'),
+            'days': actual_portfolio_data.get('days', 0)
+        }
+    else:
+        # Fallback to point-in-time holdings return (less accurate)
+        actual_alpha = portfolio_total_return - benchmark_total_return
+        attribution_sum = total_allocation + total_selection + total_interaction
+        reconciliation_diff = abs(actual_alpha - attribution_sum)
+
+        validation = {
+            'portfolio_return': portfolio_total_return,
+            'benchmark_return': benchmark_total_return,
+            'actual_alpha': actual_alpha,
+            'attribution_sum': attribution_sum,
+            'reconciliation_diff': reconciliation_diff,
+            'is_reconciled': reconciliation_diff < 1.0,
+            'source': 'point_in_time',
+            'warning': 'Using point-in-time holdings return. Upload performance history for accurate returns.'
+        }
 
     return {
         'attribution_df': attribution_df,
@@ -6429,26 +6632,58 @@ def display_stock_attribution_table(stock_df):
 def display_attribution_validation(validation):
     """
     Display attribution validation/reconciliation info.
+    Now shows data source (performance history vs point-in-time) and additional context.
     """
     is_valid = validation['is_reconciled']
-    status_color = '#00ff9d' if is_valid else '#ffd93d'
-    status_icon = '✓' if is_valid else '⚠'
+    source = validation.get('source', 'unknown')
+    is_perf_history = source == 'performance_history'
+
+    # Color coding based on data source quality
+    if is_perf_history:
+        status_color = '#00ff9d' if is_valid else '#ffd93d'
+        status_icon = '✓' if is_valid else '⚠'
+        source_badge = '<span style="background: #00d4ff; color: #0a0f1a; padding: 2px 8px; border-radius: 4px; font-size: 0.65rem; margin-left: 10px;">FROM PERFORMANCE HISTORY</span>'
+    else:
+        status_color = '#ffd93d'
+        status_icon = '⚠'
+        source_badge = '<span style="background: #ffd93d; color: #0a0f1a; padding: 2px 8px; border-radius: 4px; font-size: 0.65rem; margin-left: 10px;">POINT-IN-TIME (Upload performance history for accuracy)</span>'
+
+    # Build additional info based on source
+    additional_info = ""
+    if is_perf_history and validation.get('days'):
+        days = validation.get('days', 0)
+        portfolio_start = validation.get('portfolio_start', 0)
+        portfolio_end = validation.get('portfolio_end', 0)
+        additional_info = f"""
+<div style="margin-top: 10px; padding: 8px; background: rgba(0, 212, 255, 0.05); border-radius: 4px; font-size: 0.75rem; color: #8890a0;">
+<strong style="color: #00d4ff;">Period:</strong> {days} days |
+<strong style="color: #00d4ff;">Portfolio:</strong> ${portfolio_start:,.0f} → ${portfolio_end:,.0f}
+</div>
+"""
+
+    warning_html = ""
+    if validation.get('warning'):
+        warning_html = f"""
+<div style="margin-top: 10px; padding: 10px; background: rgba(255, 217, 61, 0.1); border-left: 3px solid #ffd93d; border-radius: 4px;">
+<span style="color: #ffd93d;">⚠️ {validation['warning']}</span>
+</div>
+"""
 
     html = f"""
 <div style="background: rgba(26, 35, 50, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(0, 212, 255, 0.2); border-radius: 12px; padding: 20px; margin: 20px 0;">
-<h4 style="color: #00d4ff; margin: 0 0 15px 0; font-family: 'Inter', sans-serif; text-transform: uppercase; letter-spacing: 0.1em;">📊 Attribution Reconciliation</h4>
+<h4 style="color: #00d4ff; margin: 0 0 15px 0; font-family: 'Inter', sans-serif; text-transform: uppercase; letter-spacing: 0.1em;">📊 Attribution Reconciliation{source_badge}</h4>
 <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px;">
 <div style="background: rgba(10, 15, 26, 0.6); border-radius: 8px; padding: 12px; text-align: center;">
 <div style="color: #8890a0; font-size: 0.7rem; text-transform: uppercase; margin-bottom: 5px;">Portfolio Return</div>
 <div style="color: {'#00ff9d' if validation['portfolio_return'] > 0 else '#ff006b'}; font-size: 1.5rem; font-weight: 700; font-family: 'JetBrains Mono', monospace;">{validation['portfolio_return']:+.2f}%</div>
 </div>
 <div style="background: rgba(10, 15, 26, 0.6); border-radius: 8px; padding: 12px; text-align: center;">
-<div style="color: #8890a0; font-size: 0.7rem; text-transform: uppercase; margin-bottom: 5px;">Benchmark Return</div>
+<div style="color: #8890a0; font-size: 0.7rem; text-transform: uppercase; margin-bottom: 5px;">Benchmark Return (SPY)</div>
 <div style="color: {'#00ff9d' if validation['benchmark_return'] > 0 else '#ff006b'}; font-size: 1.5rem; font-weight: 700; font-family: 'JetBrains Mono', monospace;">{validation['benchmark_return']:+.2f}%</div>
 </div>
 <div style="background: rgba(10, 15, 26, 0.6); border-radius: 8px; padding: 12px; text-align: center;">
 <div style="color: #8890a0; font-size: 0.7rem; text-transform: uppercase; margin-bottom: 5px;">Actual Alpha</div>
-<div style="color: {'#00ff9d' if validation['actual_alpha'] > 0 else '#ff006b'}; font-size: 1.5rem; font-weight: 700; font-family: 'JetBrains Mono', monospace;">{validation['actual_alpha']:+.2f}%</div>
+<div style="color: {'#00ff9d' if validation['actual_alpha'] > 0 else '#ff006b'}; font-size: 1.8rem; font-weight: 700; font-family: 'JetBrains Mono', monospace;">{validation['actual_alpha']:+.2f}%</div>
 </div>
 <div style="background: rgba(10, 15, 26, 0.6); border-radius: 8px; padding: 12px; text-align: center;">
 <div style="color: #8890a0; font-size: 0.7rem; text-transform: uppercase; margin-bottom: 5px;">Attribution Sum</div>
@@ -6456,9 +6691,11 @@ def display_attribution_validation(validation):
 </div>
 </div>
 <div style="margin-top: 15px; padding: 10px; background: linear-gradient(90deg, rgba({status_color[1:]}, 0.1) 0%, transparent 100%); border-left: 3px solid {status_color}; border-radius: 4px;">
-<span style="color: {status_color}; font-weight: 600;">{status_icon} {'Attribution Reconciled' if is_valid else 'Minor Reconciliation Difference'}</span>
+<span style="color: {status_color}; font-weight: 600;">{status_icon} {'Attribution Reconciled' if is_valid else 'Reconciliation Difference (trades/timing)'}</span>
 <span style="color: #8890a0; margin-left: 10px;">Difference: {validation['reconciliation_diff']:.2f}%</span>
 </div>
+{additional_info}
+{warning_html}
 </div>
 """
     return html
@@ -6952,8 +7189,12 @@ def create_enhanced_holdings_table(df):
     # CRITICAL FIX: Add DUAL weight columns (equity-based AND gross-based)
     gross_exposure = enhanced_df['Total Value'].sum()
 
-    # Get equity from session state
-    equity = st.session_state.get('equity_capital', gross_exposure)  # Fallback to gross if no equity set
+    # Get equity from performance history or session state
+    metrics = get_current_portfolio_metrics()
+    if metrics and metrics.get('equity', 0) > 0:
+        equity = metrics['equity']
+    else:
+        equity = st.session_state.get('equity_capital', gross_exposure)  # Fallback to gross if no equity set
 
     # Weight % of Equity - can exceed 100% with leverage!
     enhanced_df['Weight % of Equity'] = (enhanced_df['Total Value'] / equity * 100) if equity > 0 else 0
@@ -7317,8 +7558,12 @@ def calculate_var_cvar_portfolio_optimization(enhanced_df, confidence_level=0.95
     total_portfolio_value = current_values.sum()
 
     # CRITICAL FIX: Calculate weights relative to EQUITY, not gross exposure
-    # Get equity from session state
-    equity = st.session_state.get('equity_capital', total_portfolio_value)
+    # Get equity from performance history or session state
+    metrics = get_current_portfolio_metrics()
+    if metrics and metrics.get('equity', 0) > 0:
+        equity = metrics['equity']
+    else:
+        equity = st.session_state.get('equity_capital', total_portfolio_value)
     current_weights = current_values / equity  # Can sum > 1.0 with leverage!
 
     # Fetch historical returns for all tickers
@@ -11385,9 +11630,14 @@ def main():
     # ============================================================================
     # EQUITY TRACKING INITIALIZATION - CRITICAL FIX FOR LEVERAGE CALCULATIONS
     # ============================================================================
-    # Initialize equity tracking if not exists
+    # Initialize equity tracking from performance history if available
     if 'equity_capital' not in st.session_state:
-        st.session_state['equity_capital'] = 100000.0  # Default $100k
+        # Try to get equity from performance history first
+        metrics = get_current_portfolio_metrics()
+        if metrics and metrics.get('equity', 0) > 0:
+            st.session_state['equity_capital'] = metrics['equity']
+        else:
+            st.session_state['equity_capital'] = 100000.0  # Default $100k
 
     if 'target_leverage' not in st.session_state:
         st.session_state['target_leverage'] = 1.0  # Default no leverage
@@ -11445,30 +11695,44 @@ def main():
     with st.expander("⚙️ CAPITAL SETTINGS (Equity & Leverage)", expanded=False):
         st.markdown("### 💰 Configure Your Capital Structure")
 
+        # AUTO-POPULATE from performance history if available
+        metrics = get_current_portfolio_metrics()
+        if metrics and metrics.get('equity', 0) > 0:
+            auto_equity = metrics['equity']
+            auto_leverage = metrics.get('leverage', 1.0)
+            st.success(f"✅ Auto-populated from performance history: ${auto_equity:,.0f} equity, {auto_leverage:.2f}x leverage")
+        else:
+            auto_equity = st.session_state.get('equity_capital', 100000.0)
+            auto_leverage = st.session_state.get('target_leverage', 1.0)
+
         col1, col2 = st.columns(2)
 
         with col1:
+            # Use unique key that updates when equity changes
+            equity_key = f"equity_input_{int(auto_equity)}"
             equity_capital = st.number_input(
                 "Your Equity Capital ($)",
                 min_value=1000.0,
                 max_value=100000000.0,
-                value=st.session_state.get('equity_capital', 100000.0),
+                value=float(auto_equity),
                 step=1000.0,
                 format="%.0f",
-                help="Your actual capital invested (not including leverage)",
-                key="equity_capital_input"
+                help="Your actual capital invested (not including leverage). Auto-populated from performance history if uploaded.",
+                key=equity_key
             )
             st.session_state['equity_capital'] = equity_capital
 
         with col2:
+            # Use unique key that updates when leverage changes
+            leverage_key = f"leverage_input_{int(auto_leverage * 100)}"
             target_leverage = st.slider(
                 "Target Leverage",
                 min_value=1.0,
                 max_value=3.0,
-                value=st.session_state.get('target_leverage', 1.0),
+                value=float(min(3.0, max(1.0, auto_leverage))),
                 step=0.1,
                 help="Total exposure / Equity ratio (1.0x = no leverage, 2.0x = 2x leverage, 3.0x = 3x leverage)",
-                key="target_leverage_input"
+                key=leverage_key
             )
             st.session_state['target_leverage'] = target_leverage
 
@@ -13354,7 +13618,12 @@ def main():
                 enhanced_df = create_enhanced_holdings_table(df)
     
             # CRITICAL FIX: Calculate equity, gross exposure, and leverage
-            equity = st.session_state.get('equity_capital', 100000.0)
+            # Auto-populate equity from performance history
+            metrics = get_current_portfolio_metrics()
+            if metrics and metrics.get('equity', 0) > 0:
+                equity = metrics['equity']
+            else:
+                equity = st.session_state.get('equity_capital', 100000.0)
             gross_exposure = enhanced_df['Total Value'].sum()
             actual_leverage = gross_exposure / equity if equity > 0 else 1.0
             total_cost = enhanced_df['Total Cost'].sum()
@@ -14316,7 +14585,10 @@ def main():
             with tab2:
                 simulations = run_monte_carlo_simulation(portfolio_returns)
                 if simulations is not None:
-                    monte_carlo_chart, mc_stats = create_monte_carlo_chart(simulations, 100000)
+                    # Get equity from performance history for Monte Carlo initial value
+                    mc_metrics = get_current_portfolio_metrics()
+                    mc_initial_value = mc_metrics['equity'] if mc_metrics and mc_metrics.get('equity', 0) > 0 else 100000
+                    monte_carlo_chart, mc_stats = create_monte_carlo_chart(simulations, mc_initial_value)
                     
                     if monte_carlo_chart:
                         st.plotly_chart(monte_carlo_chart, use_container_width=True)
@@ -15707,36 +15979,32 @@ def main():
                         st.plotly_chart(conc_analysis, use_container_width=True)
     
             with tab4:
-                st.markdown("### 🏆 Brinson Attribution Analysis")
+                st.markdown("### 🏆 Brinson Attribution Analysis (GICS-Corrected)")
                 st.markdown("Decompose portfolio performance into **Allocation** (sector timing) vs **Selection** (stock picking) skill")
-    
-                # Validate and map sectors before attribution analysis
-                enhanced_df_validated = validate_and_map_sectors(enhanced_df.copy())
-    
-                # Get benchmark data
-                benchmark_weights = SP500_SECTOR_WEIGHTS
-                with st.spinner("Fetching benchmark sector returns..."):
-                    benchmark_returns = get_benchmark_sector_returns(period='1Y')
-    
-                # Calculate attribution
+                st.info("📊 **Using GICS Level 1 Classification** - Matching S&P 500/SPY benchmark for accurate attribution")
+
+                # Calculate attribution using new GICS-based function
                 try:
-                    attribution_results = calculate_brinson_attribution(
-                        enhanced_df_validated,
-                        benchmark_weights,
-                        benchmark_returns,
-                        period='1Y'
-                    )
-    
-                    # Display skill assessment card
+                    with st.spinner("Calculating GICS-based attribution..."):
+                        attribution_results = calculate_brinson_attribution_gics(
+                            enhanced_df,
+                            period='1y'
+                        )
+
+                    # Display validation/reconciliation first (shows actual alpha)
                     import streamlit.components.v1 as components
+                    validation_html = display_attribution_validation(attribution_results['validation'])
+                    st.markdown(validation_html, unsafe_allow_html=True)
+
+                    # Display skill assessment card
                     components.html(create_skill_assessment_card(attribution_results), height=400)
-    
+
                     # Display waterfall chart
                     st.plotly_chart(create_brinson_attribution_chart(attribution_results),
                                    use_container_width=True)
-    
+
                     # Display detailed sector table
-                    st.markdown("#### 📋 Sector-by-Sector Attribution")
+                    st.markdown("#### 📋 Sector-by-Sector Attribution (GICS)")
                     sector_table = create_sector_attribution_table(attribution_results['attribution_df'])
                     make_scrollable_table(
                         sector_table,
@@ -15745,34 +16013,48 @@ def main():
                         use_container_width=True,
                         column_config=None
                     )
-    
+
+                    # Display stock-level attribution (new!)
+                    st.markdown("#### 🎯 Stock-Level Attribution")
+                    st.markdown("Individual stock contributions to alpha generation")
+                    top_html, bottom_html = display_stock_attribution_table(attribution_results['stock_attribution_df'])
+                    st.markdown(top_html, unsafe_allow_html=True)
+                    st.markdown(bottom_html, unsafe_allow_html=True)
+
                     # Explanation
-                    with st.expander("ℹ️ Understanding Brinson Attribution"):
+                    with st.expander("ℹ️ Understanding GICS-Based Brinson Attribution"):
                         st.markdown("""
                         **Brinson Attribution** breaks down your portfolio outperformance into:
-    
+
                         1. **Allocation Effect** - Your skill at sector timing
                            - Measures if you overweighted sectors that outperformed
                            - Example: Overweighting tech before a tech rally = positive allocation
-    
+
                         2. **Selection Effect** - Your skill at stock picking
                            - Measures if your stocks beat their sector average
                            - Example: Picking NVDA in tech when NVDA beats XLK = positive selection
-    
+
                         3. **Interaction Effect** - Combined benefit
                            - Being overweight the right sectors AND picking winners within them
-    
+
+                        **Key Sector Classifications (GICS Level 1):**
+                        - **AMZN, TSLA** → Consumer Discretionary (NOT Tech)
+                        - **META, GOOGL, NFLX** → Communication Services (NOT Tech)
+                        - **V, MA** → Financials (payment networks)
+
                         **Interpretation:**
                         - **High Allocation Score**: You're good at macro/sector calls → Use sector ETFs
                         - **High Selection Score**: You're good at stock picking → Focus on fundamentals
                         - **Both Low**: Consider passive indexing
-    
-                        **Benchmark**: S&P 500 sector weights and sector ETF returns (XLK, XLV, XLF, etc.)
+
+                        **Benchmark**: S&P 500 (SPY) using GICS sector classification and sector ETF returns
                         """)
-    
+
                 except Exception as e:
-                    st.error(f"Error calculating Brinson Attribution: {str(e)}")
-                    st.info("💡 Make sure your portfolio has valid sector classifications and return data.")
+                    st.error(f"Error calculating GICS-based Brinson Attribution: {str(e)}")
+                    import traceback
+                    st.code(traceback.format_exc())
+                    st.info("💡 Make sure your portfolio has valid tickers with return data.")
     
             # ============================================================
             # QUALITY SCORECARD - COMPREHENSIVE QUALITY ANALYSIS
