@@ -10830,7 +10830,7 @@ def main():
                                     last_trades = db.read("SELECT * FROM trades ORDER BY date DESC LIMIT 5")
                                     if len(last_trades) > 0:
                                         with st.expander("🔍 Last 5 Trades in Database", expanded=False):
-                                            st.dataframe(last_trades)
+                                            st.dataframe(last_trades, use_container_width=True)
                                 except Exception as e:
                                     st.warning(f"⚠️ Could not verify database: {e}")
 
