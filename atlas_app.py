@@ -7584,7 +7584,7 @@ def calculate_historical_stress_test(enhanced_df):
 
     return results
 
-def calculate_var_cvar_portfolio_optimization(enhanced_df, confidence_level=0.95, lookback_days=252, max_position=0.25, min_position=0.02, target_leverage=1.0):
+def calculate_var_cvar_portfolio_optimization(enhanced_df, confidence_level=0.95, lookback_days=252, max_position=0.25, min_position=0.02, target_leverage=1.0, risk_profile_config=None):
     """
     Calculate optimal portfolio weights to minimize CVaR (Conditional Value at Risk)
 
@@ -7592,6 +7592,7 @@ def calculate_var_cvar_portfolio_optimization(enhanced_df, confidence_level=0.95
     to find weights that minimize tail risk while maintaining diversification.
 
     FIXED v11.0: Added leverage constraint support. Leverage = sum of absolute weights.
+    PHASE 3: Added gradual rebalancing with turnover and position change limits.
 
     Args:
         enhanced_df: Enhanced holdings dataframe with current positions
@@ -7600,6 +7601,7 @@ def calculate_var_cvar_portfolio_optimization(enhanced_df, confidence_level=0.95
         max_position: Maximum position size per security (default 25%)
         min_position: Minimum meaningful position size (default 2%)
         target_leverage: Target portfolio leverage (default 1.0 = no leverage)
+        risk_profile_config: Optional dict from RiskProfile.get_config() for gradual rebalancing
 
     Returns:
         tuple: (rebalancing_df, optimization_metrics)
@@ -7677,21 +7679,35 @@ def calculate_var_cvar_portfolio_optimization(enhanced_df, confidence_level=0.95
     def objective(weights):
         return calculate_portfolio_cvar(weights, returns_matrix, confidence_level)
 
-    # FIXED v11.0: Leverage constraint using absolute sum of weights
-    def leverage_constraint(w, target_lev):
-        """Leverage = sum of absolute weights"""
-        return np.abs(w).sum() - target_lev
+    # PHASE 3: Use gradual rebalancing constraints if risk_profile_config provided
+    if risk_profile_config is not None:
+        # Use realistic constraints with turnover and position change limits
+        constraints = build_realistic_constraints(current_weights, risk_profile_config, target_leverage)
+        bounds = build_position_bounds(current_weights, risk_profile_config, n_assets)
 
-    # Production-grade constraints
-    constraints = [
-        {'type': 'eq', 'fun': leverage_constraint, 'args': (target_leverage,)}
-    ]
+        # Use current weights as starting point (closer to feasible solution)
+        initial_weights = current_weights.copy()
+        # Ensure initial weights are within bounds
+        for i, (lb, ub) in enumerate(bounds):
+            initial_weights[i] = np.clip(initial_weights[i], lb, ub)
+        # Re-normalize to target leverage
+        if initial_weights.sum() > 0:
+            initial_weights = initial_weights * (target_leverage / initial_weights.sum())
+    else:
+        # Legacy mode: simple constraints without turnover limits
+        def leverage_constraint(w, target_lev):
+            """Leverage = sum of absolute weights"""
+            return np.abs(w).sum() - target_lev
 
-    # Use user-specified bounds
-    bounds = tuple((0.0, max_position) for _ in range(n_assets))
+        constraints = [
+            {'type': 'eq', 'fun': leverage_constraint, 'args': (target_leverage,)}
+        ]
 
-    # Initial guess (scaled by leverage)
-    initial_weights = np.ones(n_assets) * (target_leverage / n_assets)
+        # Use user-specified bounds
+        bounds = tuple((0.0, max_position) for _ in range(n_assets))
+
+        # Initial guess (scaled by leverage)
+        initial_weights = np.ones(n_assets) * (target_leverage / n_assets)
 
     # Run optimization
     result = minimize(
@@ -7707,6 +7723,11 @@ def calculate_var_cvar_portfolio_optimization(enhanced_df, confidence_level=0.95
         st.warning(f"Optimization converged with warning: {result.message}")
 
     optimal_weights = result.x
+
+    # PHASE 3: Apply minimum trade threshold to avoid uneconomical trades
+    if risk_profile_config is not None:
+        min_trade_threshold = risk_profile_config.get('min_trade_threshold', 0.01)
+        optimal_weights = apply_trade_threshold(optimal_weights, current_weights, min_trade_threshold)
 
     # Calculate current and optimal risk metrics
     current_portfolio_returns = returns_matrix @ current_weights
@@ -7752,21 +7773,29 @@ def calculate_var_cvar_portfolio_optimization(enhanced_df, confidence_level=0.95
     rebalancing_df = pd.DataFrame(rebalancing_data)
     rebalancing_df = rebalancing_df.sort_values('Priority', ascending=False)
 
+    # Calculate actual turnover
+    actual_turnover = np.sum(np.abs(optimal_weights - current_weights)) / 2
+
     # Calculate optimization metrics
     optimization_metrics = {
         'current_var': current_var * 100,
         'optimal_var': optimal_var * 100,
-        'var_reduction_pct': abs((optimal_var - current_var) / abs(current_var)) * 100,
+        'var_reduction_pct': abs((optimal_var - current_var) / abs(current_var)) * 100 if current_var != 0 else 0,
         'current_cvar': current_cvar * 100,
         'optimal_cvar': optimal_cvar * 100,
-        'cvar_reduction_pct': abs((optimal_cvar - current_cvar) / abs(current_cvar)) * 100,
+        'cvar_reduction_pct': abs((optimal_cvar - current_cvar) / abs(current_cvar)) * 100 if current_cvar != 0 else 0,
         'current_sharpe': current_sharpe,
         'optimal_sharpe': optimal_sharpe,
         'sharpe_improvement': optimal_sharpe - current_sharpe,
         'total_trades': len(rebalancing_df[rebalancing_df['Action'] != 'HOLD']),
         'rebalancing_cost': abs(rebalancing_df['Trade Value'].sum()),
         'buy_trades': len(rebalancing_df[rebalancing_df['Action'] == 'BUY']),
-        'sell_trades': len(rebalancing_df[rebalancing_df['Action'] == 'SELL'])
+        'sell_trades': len(rebalancing_df[rebalancing_df['Action'] == 'SELL']),
+        # PHASE 3: Gradual rebalancing metrics
+        'actual_turnover_pct': actual_turnover * 100,
+        'max_position_change': np.max(np.abs(optimal_weights - current_weights)) * 100,
+        'gradual_rebalancing': risk_profile_config is not None,
+        'rebalance_style': risk_profile_config.get('rebalance_frequency', 'one-time') if risk_profile_config else 'one-time'
     }
 
     return rebalancing_df, optimization_metrics
@@ -7823,6 +7852,12 @@ class RiskProfile:
             # DIVERSIFICATION PRIORITY
             'acceptable_sharpe_ratio': 0.90,   # Accept 90% of max Sharpe for diversification
             'diversification_priority': 'maximum',
+
+            # PHASE 3: GRADUAL REBALANCING CONSTRAINTS
+            'max_turnover_per_rebalance': 0.15,   # Max 15% portfolio turnover per rebalance
+            'max_position_change': 0.03,          # Max 3% change per position per rebalance
+            'min_trade_threshold': 0.005,         # Don't trade if change < 0.5%
+            'rebalance_frequency': 'quarterly',   # Suggested rebalance frequency
         },
 
         'moderate': {
@@ -7854,6 +7889,12 @@ class RiskProfile:
             # DIVERSIFICATION PRIORITY
             'acceptable_sharpe_ratio': 0.95,   # Accept 95% of max Sharpe
             'diversification_priority': 'high',
+
+            # PHASE 3: GRADUAL REBALANCING CONSTRAINTS
+            'max_turnover_per_rebalance': 0.25,   # Max 25% portfolio turnover per rebalance
+            'max_position_change': 0.05,          # Max 5% change per position per rebalance
+            'min_trade_threshold': 0.01,          # Don't trade if change < 1%
+            'rebalance_frequency': 'monthly',     # Suggested rebalance frequency
         },
 
         'aggressive': {
@@ -7885,6 +7926,12 @@ class RiskProfile:
             # DIVERSIFICATION PRIORITY
             'acceptable_sharpe_ratio': 0.98,   # Accept 98% of max Sharpe
             'diversification_priority': 'moderate',
+
+            # PHASE 3: GRADUAL REBALANCING CONSTRAINTS
+            'max_turnover_per_rebalance': 0.40,   # Max 40% portfolio turnover per rebalance
+            'max_position_change': 0.08,          # Max 8% change per position per rebalance
+            'min_trade_threshold': 0.015,         # Don't trade if change < 1.5%
+            'rebalance_frequency': 'weekly',      # Suggested rebalance frequency
         }
     }
 
@@ -7939,6 +7986,116 @@ def calculate_risk_adjusted_limits(returns_df, max_position_base, risk_budget_pe
         position_limits.append((0, adjusted_max))
 
     return position_limits
+
+
+# ============================================================================
+# PHASE 3: GRADUAL REBALANCING CONSTRAINT BUILDERS
+# ============================================================================
+# These functions create realistic constraints that prevent "all or nothing"
+# recommendations and produce gradual, professional rebalancing suggestions.
+# ============================================================================
+
+def build_realistic_constraints(current_weights, risk_profile_config, target_leverage=1.0):
+    """
+    Build optimization constraints that enforce gradual portfolio changes.
+
+    Key Constraints:
+    1. Turnover Limit: Total portfolio change cannot exceed max_turnover_per_rebalance
+    2. Leverage: Sum of absolute weights must equal target leverage
+
+    Args:
+        current_weights: numpy array of current portfolio weights
+        risk_profile_config: dict from RiskProfile.get_config()
+        target_leverage: Target portfolio leverage (default 1.0)
+
+    Returns:
+        list: scipy.optimize constraint dicts
+    """
+    max_turnover = risk_profile_config.get('max_turnover_per_rebalance', 0.25)
+
+    constraints = []
+
+    # 1. Leverage constraint: sum of absolute weights = target
+    def leverage_constraint(w):
+        return np.abs(w).sum() - target_leverage
+    constraints.append({'type': 'eq', 'fun': leverage_constraint})
+
+    # 2. Turnover constraint: total change limited
+    # Turnover = sum of |new_weight - old_weight| / 2 (divide by 2 because buying = selling)
+    def turnover_constraint(w):
+        turnover = np.sum(np.abs(w - current_weights)) / 2
+        return max_turnover - turnover  # Must be >= 0
+    constraints.append({'type': 'ineq', 'fun': turnover_constraint})
+
+    return constraints
+
+
+def build_position_bounds(current_weights, risk_profile_config, n_assets):
+    """
+    Build position bounds that respect maximum change per position.
+
+    Instead of allowing 0% to 25% for every position, this function creates
+    bounds like: current_weight ± max_position_change, capped at [0, max_position].
+
+    This prevents the optimizer from making drastic changes to any single position.
+
+    Args:
+        current_weights: numpy array of current portfolio weights
+        risk_profile_config: dict from RiskProfile.get_config()
+        n_assets: number of assets in portfolio
+
+    Returns:
+        tuple: bounds for scipy.optimize (list of (min, max) tuples)
+    """
+    max_position = risk_profile_config.get('max_position_base', 0.25)
+    max_change = risk_profile_config.get('max_position_change', 0.05)
+    min_trade = risk_profile_config.get('min_trade_threshold', 0.01)
+
+    bounds = []
+    for i in range(n_assets):
+        curr_w = current_weights[i] if i < len(current_weights) else 0
+
+        # Calculate allowed range: current ± max_change
+        lower = max(0.0, curr_w - max_change)
+        upper = min(max_position, curr_w + max_change)
+
+        # If current weight is below min_trade threshold, allow going to 0
+        if curr_w < min_trade:
+            lower = 0.0
+
+        bounds.append((lower, upper))
+
+    return tuple(bounds)
+
+
+def apply_trade_threshold(optimal_weights, current_weights, min_trade_threshold):
+    """
+    Apply minimum trade threshold to avoid tiny, uneconomical trades.
+
+    If the weight change is smaller than min_trade_threshold, keep current weight.
+    This prevents generating trades for $50 changes that cost $10 in commissions.
+
+    Args:
+        optimal_weights: numpy array of optimized weights
+        current_weights: numpy array of current weights
+        min_trade_threshold: minimum change to trigger a trade
+
+    Returns:
+        numpy array: adjusted optimal weights with small changes zeroed out
+    """
+    adjusted = optimal_weights.copy()
+
+    for i in range(len(optimal_weights)):
+        weight_change = abs(optimal_weights[i] - current_weights[i])
+        if weight_change < min_trade_threshold:
+            adjusted[i] = current_weights[i]
+
+    # Re-normalize to ensure weights sum to target
+    total = adjusted.sum()
+    if total > 0:
+        adjusted = adjusted * (optimal_weights.sum() / total)
+
+    return adjusted
 
 
 def calculate_max_risk_contrib(weights, returns_df):
@@ -14911,8 +15068,12 @@ def main():
                         st.error(f"❌ Cannot optimize: Max position too small. With {len(enhanced_df)} assets and {max_position_var*100:.0f}% max, portfolio cannot reach 100%")
                     else:
                         with st.spinner("Running portfolio optimization..."):
+                            # PHASE 3: Pass risk profile config for gradual rebalancing
+                            # Only use gradual constraints if NOT using manual override
+                            gradual_config = None if use_manual_var else config_var
                             rebalancing_df, opt_metrics = calculate_var_cvar_portfolio_optimization(
-                                enhanced_df, confidence, lookback, max_position_var, min_position_var
+                                enhanced_df, confidence, lookback, max_position_var, min_position_var,
+                                risk_profile_config=gradual_config
                             )
     
                         if rebalancing_df is not None:
@@ -14957,7 +15118,33 @@ def main():
                     with col4:
                         st.metric("Buy Trades", opt_metrics['buy_trades'])
                         st.metric("Sell Trades", opt_metrics['sell_trades'])
-    
+
+                    # PHASE 3: Display Gradual Rebalancing Metrics
+                    if opt_metrics.get('gradual_rebalancing'):
+                        st.markdown("---")
+                        st.markdown("#### 🔄 Gradual Rebalancing Metrics")
+
+                        col_t1, col_t2, col_t3, col_t4 = st.columns(4)
+                        with col_t1:
+                            st.metric("Portfolio Turnover",
+                                     f"{opt_metrics.get('actual_turnover_pct', 0):.1f}%",
+                                     help="Total portfolio value being traded")
+                        with col_t2:
+                            st.metric("Max Position Change",
+                                     f"{opt_metrics.get('max_position_change', 0):.1f}%",
+                                     help="Largest weight change for any single position")
+                        with col_t3:
+                            st.metric("Rebalance Style",
+                                     opt_metrics.get('rebalance_style', 'one-time').title(),
+                                     help="Suggested rebalancing frequency")
+                        with col_t4:
+                            st.metric("Active Trades",
+                                     opt_metrics['total_trades'],
+                                     help="Positions requiring trades")
+
+                        st.info("💡 **Gradual Rebalancing Active**: Changes are constrained to prevent drastic portfolio reshuffling. "
+                               "Multiple rebalancing cycles may be needed to reach optimal allocation.")
+
                     # 🎯 NEW v10.3: Realism Scoring & Portfolio Insights
                     st.markdown("---")
                     st.markdown("#### 🎯 Portfolio Quality Assessment")
