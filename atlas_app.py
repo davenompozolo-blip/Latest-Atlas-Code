@@ -15414,9 +15414,10 @@ def main():
                         rebalance_style = opt_metrics.get('rebalance_style', 'one-time')
 
                         # Calculate how many rebalancing cycles needed to reach optimal
+                        import math
                         max_allowed_turnover = config_var.get('max_turnover_per_rebalance', 0.25) * 100
-                        if turnover_pct > 0:
-                            cycles_needed = max(1, int(np.ceil(turnover_pct / max_allowed_turnover)))
+                        if turnover_pct > 0 and max_allowed_turnover > 0:
+                            cycles_needed = max(1, int(math.ceil(turnover_pct / max_allowed_turnover)))
                         else:
                             cycles_needed = 0
 
@@ -18241,11 +18242,12 @@ To maintain gradual transitions:
                                     step=0.5
                                 ) / 100
     
+                                beta_value = float(company['beta']) if company['beta'] else 1.0
                                 beta = st.number_input(
                                     "Beta",
-                                    min_value=0.0,
+                                    min_value=-1.0,
                                     max_value=3.0,
-                                    value=float(company['beta']) if company['beta'] else 1.0,
+                                    value=max(-1.0, min(3.0, beta_value)),
                                     step=0.1
                                 )
     
@@ -18724,36 +18726,42 @@ To maintain gradual transitions:
                                 if dcf_proj_obj:
                                     projections = []
                                     # Handle both list of projections and single projection object
-                                    if isinstance(dcf_proj_obj, list):
-                                        # It's a list - use first item or iterate
-                                        proj_item = dcf_proj_obj[0] if dcf_proj_obj else None
-                                        if proj_item and hasattr(proj_item, 'forecast_years'):
+                                    if isinstance(dcf_proj_obj, list) and len(dcf_proj_obj) > 0:
+                                        # It's a non-empty list - use first item
+                                        proj_item = dcf_proj_obj[0]
+                                        if proj_item and hasattr(proj_item, 'forecast_years') and hasattr(proj_item, 'final_projections'):
                                             for year in range(1, proj_item.forecast_years + 1):
-                                                year_data = proj_item.final_projections[year]
+                                                year_data = proj_item.final_projections.get(year, {}) if isinstance(proj_item.final_projections, dict) else {}
                                                 projections.append({
                                                     'year': year,
-                                                    'revenue': year_data['revenue'],
+                                                    'revenue': year_data.get('revenue', 0),
                                                     'ebit': year_data.get('ebit', 0),
                                                     'nopat': year_data.get('nopat', 0),
                                                     'fcff': year_data.get('fcff', 0),
                                                     'fcfe': year_data.get('fcfe', 0)
                                                 })
-                                    elif hasattr(dcf_proj_obj, 'forecast_years'):
-                                        # It's a single projection object
+                                        else:
+                                            st.warning("⚠️ List projections format not recognized. Using manual calculation.")
+                                            dashboard_active = False
+                                    elif not isinstance(dcf_proj_obj, list) and hasattr(dcf_proj_obj, 'forecast_years') and hasattr(dcf_proj_obj, 'final_projections'):
+                                        # It's a single projection object with required attributes
                                         for year in range(1, dcf_proj_obj.forecast_years + 1):
-                                            year_data = dcf_proj_obj.final_projections[year]
+                                            year_data = dcf_proj_obj.final_projections.get(year, {}) if isinstance(dcf_proj_obj.final_projections, dict) else {}
                                             projections.append({
                                                 'year': year,
-                                                'revenue': year_data['revenue'],
+                                                'revenue': year_data.get('revenue', 0),
                                                 'ebit': year_data.get('ebit', 0),
                                                 'nopat': year_data.get('nopat', 0),
                                                 'fcff': year_data.get('fcff', 0),
                                                 'fcfe': year_data.get('fcfe', 0)
                                             })
+                                    else:
+                                        st.warning(f"⚠️ Projections format not recognized. Using manual calculation.")
+                                        dashboard_active = False
 
                                     if projections:
                                         final_fcf = projections[-1]['fcff'] if method_key == 'FCFF' else projections[-1]['fcfe']
-                                    else:
+                                    elif dashboard_active:  # Only show error if we haven't already warned
                                         st.error("⚠️ Could not parse projections. Using manual calculation.")
                                         dashboard_active = False
                                 else:
@@ -18766,6 +18774,24 @@ To maintain gradual transitions:
                                 # =========================================================
                                 # MANUAL MODE: Use slider inputs and traditional calculation
                                 # =========================================================
+                                # Ensure default values exist if sliders weren't rendered
+                                try:
+                                    _ = risk_free
+                                except (NameError, UnboundLocalError):
+                                    risk_free = 0.045  # 4.5% default
+                                try:
+                                    _ = beta
+                                except (NameError, UnboundLocalError):
+                                    beta = 1.0  # Market beta default
+                                try:
+                                    _ = market_risk_premium
+                                except (NameError, UnboundLocalError):
+                                    market_risk_premium = 0.06  # 6% default
+                                try:
+                                    _ = cost_debt
+                                except (NameError, UnboundLocalError):
+                                    cost_debt = 0.05  # 5% default
+
                                 # Calculate cost of equity
                                 cost_equity = calculate_cost_of_equity(risk_free, beta, market_risk_premium)
     
