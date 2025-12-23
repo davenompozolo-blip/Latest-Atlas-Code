@@ -16131,7 +16131,104 @@ def main():
                     st.markdown("#### 🎯 Stock-Level Attribution")
                     st.markdown("Individual stock contributions to alpha generation")
                     top_html, bottom_html = display_stock_attribution_table(attribution_results['stock_attribution_df'])
+
+                    # Top 10 Contributors
                     st.markdown(top_html, unsafe_allow_html=True)
+
+                    # === FULL PORTFOLIO ATTRIBUTION TABLE ===
+                    st.markdown("---")
+                    st.markdown("#### 📊 Full Portfolio Attribution")
+                    st.markdown("""
+                    View complete attribution for all positions. Sort by any column to identify:
+                    - 🎯 **Emerging winners** (positive alpha, building momentum)
+                    - ⚠️ **Early warnings** (negative alpha starting to drag)
+                    - 📈 **Position sizing opportunities** (high alpha, low weight)
+                    - 📉 **Trim candidates** (negative alpha, high weight)
+                    """)
+
+                    full_df = attribution_results['stock_attribution_df'].copy()
+
+                    with st.expander("📊 View Full Portfolio Attribution Table (All Positions)", expanded=False):
+                        # Add Over/Under Weight column
+                        full_df['Over/Under %'] = full_df['Weight %'] - full_df['Index Weight %']
+
+                        # Display columns
+                        display_cols = ['Ticker', 'GICS_Sector', 'Weight %', 'Index Weight %', 'Over/Under %',
+                                       'Return %', 'Return vs Sector', 'Active Contribution %']
+
+                        st.dataframe(
+                            full_df[display_cols].style.format({
+                                'Weight %': '{:.1f}%',
+                                'Index Weight %': '{:.1f}%',
+                                'Over/Under %': '{:+.1f}%',
+                                'Return %': '{:+.1f}%',
+                                'Return vs Sector': '{:+.1f}%',
+                                'Active Contribution %': '{:+.2f}%'
+                            }).background_gradient(subset=['Active Contribution %'], cmap='RdYlGn'),
+                            use_container_width=True,
+                            height=500,
+                            hide_index=True
+                        )
+
+                        # Summary statistics
+                        col1, col2, col3, col4 = st.columns(4)
+
+                        positive_count = (full_df['Active Contribution %'] > 0).sum()
+                        negative_count = (full_df['Active Contribution %'] < 0).sum()
+                        total_alpha = full_df['Active Contribution %'].sum()
+                        avg_alpha = full_df['Active Contribution %'].mean()
+
+                        with col1:
+                            st.metric("✅ Positive Contributors", f"{positive_count}",
+                                     delta=f"{positive_count}/{len(full_df)} positions")
+                        with col2:
+                            st.metric("❌ Negative Contributors", f"{negative_count}",
+                                     delta=f"{negative_count}/{len(full_df)} positions", delta_color="inverse")
+                        with col3:
+                            st.metric("📊 Total Alpha", f"{total_alpha:+.2f}%")
+                        with col4:
+                            st.metric("📈 Avg Alpha/Position", f"{avg_alpha:+.2f}%")
+
+                    # === PORTFOLIO INSIGHTS ===
+                    st.markdown("#### 💡 Portfolio Insights")
+
+                    # Analyze data for insights
+                    overweight_negative = full_df[(full_df['Over/Under %'] > 1) & (full_df['Active Contribution %'] < -0.1)]
+                    underweight_positive = full_df[(full_df['Index Weight %'] > 0) & (full_df['Over/Under %'] < -0.5) & (full_df['Active Contribution %'] > 0.1)]
+                    not_in_spy_positive = full_df[(full_df['Index Weight %'] == 0) & (full_df['Active Contribution %'] > 0.1)]
+
+                    ins_col1, ins_col2, ins_col3 = st.columns(3)
+
+                    with ins_col1:
+                        if len(overweight_negative) > 0:
+                            st.warning(f"⚠️ **{len(overweight_negative)} Trim Candidates**")
+                            st.caption("Overweight + Negative Alpha")
+                            for _, row in overweight_negative.head(3).iterrows():
+                                st.markdown(f"• **{row['Ticker']}**: {row['Weight %']:.1f}% wt, {row['Active Contribution %']:+.2f}% α")
+                        else:
+                            st.success("✅ No overweight losers")
+
+                    with ins_col2:
+                        if len(underweight_positive) > 0:
+                            st.info(f"📈 **{len(underweight_positive)} Build Candidates**")
+                            st.caption("Underweight + Positive Alpha")
+                            for _, row in underweight_positive.head(3).iterrows():
+                                st.markdown(f"• **{row['Ticker']}**: {row['Weight %']:.1f}% wt, {row['Active Contribution %']:+.2f}% α")
+                        else:
+                            st.info("ℹ️ No underweight winners")
+
+                    with ins_col3:
+                        if len(not_in_spy_positive) > 0:
+                            st.success(f"💎 **{len(not_in_spy_positive)} Alpha Generators**")
+                            st.caption("Non-SPY + Positive Alpha")
+                            for _, row in not_in_spy_positive.head(3).iterrows():
+                                st.markdown(f"• **{row['Ticker']}**: {row['Weight %']:.1f}% wt, {row['Active Contribution %']:+.2f}% α")
+                        else:
+                            st.info("ℹ️ All alpha from SPY positions")
+
+                    st.markdown("---")
+
+                    # Top 10 Detractors
                     st.markdown(bottom_html, unsafe_allow_html=True)
 
                     # Explanation
@@ -18054,17 +18151,39 @@ def main():
                                 # for compatibility with calculate_dcf_value()
                                 if dcf_proj_obj:
                                     projections = []
-                                    for year in range(1, dcf_proj_obj.forecast_years + 1):
-                                        year_data = dcf_proj_obj.final_projections[year]
-                                        projections.append({
-                                            'year': year,
-                                            'revenue': year_data['revenue'],
-                                            'ebit': year_data.get('ebit', 0),
-                                            'nopat': year_data.get('nopat', 0),
-                                            'fcff': year_data.get('fcff', 0),
-                                            'fcfe': year_data.get('fcfe', 0)
-                                        })
-                                    final_fcf = projections[-1]['fcff'] if method_key == 'FCFF' else projections[-1]['fcfe']
+                                    # Handle both list of projections and single projection object
+                                    if isinstance(dcf_proj_obj, list):
+                                        # It's a list - use first item or iterate
+                                        proj_item = dcf_proj_obj[0] if dcf_proj_obj else None
+                                        if proj_item and hasattr(proj_item, 'forecast_years'):
+                                            for year in range(1, proj_item.forecast_years + 1):
+                                                year_data = proj_item.final_projections[year]
+                                                projections.append({
+                                                    'year': year,
+                                                    'revenue': year_data['revenue'],
+                                                    'ebit': year_data.get('ebit', 0),
+                                                    'nopat': year_data.get('nopat', 0),
+                                                    'fcff': year_data.get('fcff', 0),
+                                                    'fcfe': year_data.get('fcfe', 0)
+                                                })
+                                    elif hasattr(dcf_proj_obj, 'forecast_years'):
+                                        # It's a single projection object
+                                        for year in range(1, dcf_proj_obj.forecast_years + 1):
+                                            year_data = dcf_proj_obj.final_projections[year]
+                                            projections.append({
+                                                'year': year,
+                                                'revenue': year_data['revenue'],
+                                                'ebit': year_data.get('ebit', 0),
+                                                'nopat': year_data.get('nopat', 0),
+                                                'fcff': year_data.get('fcff', 0),
+                                                'fcfe': year_data.get('fcfe', 0)
+                                            })
+
+                                    if projections:
+                                        final_fcf = projections[-1]['fcff'] if method_key == 'FCFF' else projections[-1]['fcfe']
+                                    else:
+                                        st.error("⚠️ Could not parse projections. Using manual calculation.")
+                                        dashboard_active = False
                                 else:
                                     # Fallback if projections object not available
                                     st.error("⚠️ Dashboard projections not available. Using manual calculation.")
