@@ -15022,6 +15022,83 @@ def main():
                 with col3:
                     if st.button("🔄 Run Optimization", type="primary", key="run_var_opt"):
                         st.session_state['run_optimization'] = True
+
+                # PHASE 3 DAY 2: Strategy Comparison Panel
+                with st.expander("📊 Compare All Strategy Levels", expanded=False):
+                    st.markdown("### Strategy Level Comparison")
+                    st.caption("Compare how each risk profile affects your optimization constraints")
+
+                    # Get configs for all three profiles
+                    conservative_cfg = RiskProfile.get_config('conservative', 'cvar_minimization')
+                    moderate_cfg = RiskProfile.get_config('moderate', 'cvar_minimization')
+                    aggressive_cfg = RiskProfile.get_config('aggressive', 'cvar_minimization')
+
+                    # Create comparison table
+                    comparison_data = {
+                        'Parameter': [
+                            'Max Position Size',
+                            'Min Holdings Required',
+                            'Risk Budget Per Asset',
+                            'Max Turnover Per Rebalance',
+                            'Max Position Change',
+                            'Trade Threshold',
+                            'Rebalance Frequency',
+                            'Philosophy'
+                        ],
+                        '🛡️ Conservative': [
+                            f"{conservative_cfg['max_position_base']*100:.0f}%",
+                            f"{conservative_cfg['min_diversification']} holdings",
+                            f"{conservative_cfg['risk_budget_per_asset']*100:.0f}%",
+                            f"{conservative_cfg.get('max_turnover_per_rebalance', 0.15)*100:.0f}%",
+                            f"{conservative_cfg.get('max_position_change', 0.03)*100:.0f}%",
+                            f"{conservative_cfg.get('min_trade_threshold', 0.005)*100:.1f}%",
+                            conservative_cfg.get('rebalance_frequency', 'quarterly').title(),
+                            'Capital Preservation'
+                        ],
+                        '⚖️ Moderate': [
+                            f"{moderate_cfg['max_position_base']*100:.0f}%",
+                            f"{moderate_cfg['min_diversification']} holdings",
+                            f"{moderate_cfg['risk_budget_per_asset']*100:.0f}%",
+                            f"{moderate_cfg.get('max_turnover_per_rebalance', 0.25)*100:.0f}%",
+                            f"{moderate_cfg.get('max_position_change', 0.05)*100:.0f}%",
+                            f"{moderate_cfg.get('min_trade_threshold', 0.01)*100:.1f}%",
+                            moderate_cfg.get('rebalance_frequency', 'monthly').title(),
+                            'Balanced Growth'
+                        ],
+                        '🚀 Aggressive': [
+                            f"{aggressive_cfg['max_position_base']*100:.0f}%",
+                            f"{aggressive_cfg['min_diversification']} holdings",
+                            f"{aggressive_cfg['risk_budget_per_asset']*100:.0f}%",
+                            f"{aggressive_cfg.get('max_turnover_per_rebalance', 0.40)*100:.0f}%",
+                            f"{aggressive_cfg.get('max_position_change', 0.08)*100:.0f}%",
+                            f"{aggressive_cfg.get('min_trade_threshold', 0.015)*100:.1f}%",
+                            aggressive_cfg.get('rebalance_frequency', 'weekly').title(),
+                            'Maximum Returns'
+                        ]
+                    }
+                    comparison_df = pd.DataFrame(comparison_data)
+                    st.dataframe(comparison_df, hide_index=True, use_container_width=True)
+
+                    # Highlight the selected profile
+                    selected_name = {'conservative': 'Conservative', 'moderate': 'Moderate', 'aggressive': 'Aggressive'}[risk_profile_var]
+                    st.success(f"✅ **Currently Selected:** {selected_name} - {config_var.get('philosophy', 'N/A')}")
+
+                    # Quick selection buttons
+                    st.markdown("#### Quick Select")
+                    quick_col1, quick_col2, quick_col3 = st.columns(3)
+                    with quick_col1:
+                        if st.button("🛡️ Use Conservative", key="quick_conservative", use_container_width=True):
+                            st.session_state['risk_profile_var'] = 'conservative'
+                            st.rerun()
+                    with quick_col2:
+                        if st.button("⚖️ Use Moderate", key="quick_moderate", use_container_width=True):
+                            st.session_state['risk_profile_var'] = 'moderate'
+                            st.rerun()
+                    with quick_col3:
+                        if st.button("🚀 Use Aggressive", key="quick_aggressive", use_container_width=True):
+                            st.session_state['risk_profile_var'] = 'aggressive'
+                            st.rerun()
+
     
                 # Advanced: Manual Override (collapsed by default)
                 with st.expander("🔧 Advanced: Manual Position Constraints Override"):
@@ -15144,6 +15221,66 @@ def main():
 
                         st.info("💡 **Gradual Rebalancing Active**: Changes are constrained to prevent drastic portfolio reshuffling. "
                                "Multiple rebalancing cycles may be needed to reach optimal allocation.")
+
+                        # PHASE 3 DAY 2: Professional Rebalancing Recommendation
+                        st.markdown("---")
+                        st.markdown("#### 💼 Professional Rebalancing Recommendation")
+
+                        # Generate recommendation based on turnover and position changes
+                        turnover_pct = opt_metrics.get('actual_turnover_pct', 0)
+                        max_change = opt_metrics.get('max_position_change', 0)
+                        rebalance_style = opt_metrics.get('rebalance_style', 'one-time')
+
+                        # Calculate how many rebalancing cycles needed to reach optimal
+                        max_allowed_turnover = config_var.get('max_turnover_per_rebalance', 0.25) * 100
+                        if turnover_pct > 0:
+                            cycles_needed = max(1, int(np.ceil(turnover_pct / max_allowed_turnover)))
+                        else:
+                            cycles_needed = 0
+
+                        if cycles_needed <= 1:
+                            turnover_limit = config_var.get('max_turnover_per_rebalance', 0.25) * 100
+                            rec_text = f"""**Single Rebalance Recommended**
+
+Your portfolio changes are within the {turnover_limit:.0f}% turnover limit for your **{risk_profile_var.title()}** profile.
+You can implement all recommended trades in a single session.
+
+**Suggested Approach:**
+1. Execute all BUY orders first (provides immediate exposure)
+2. Execute SELL orders to fund the buys
+3. Review positions after 1-2 weeks to confirm alignment"""
+                            st.markdown(rec_text)
+                        else:
+                            per_cycle = turnover_pct / cycles_needed
+                            rec_text = f"""**Multi-Cycle Rebalancing Recommended** ({cycles_needed} cycles)
+
+Your target allocation requires {turnover_pct:.1f}% total turnover, exceeding the {max_allowed_turnover:.0f}% limit per rebalance.
+To maintain gradual transitions:
+
+**Suggested Approach:**
+1. **Cycle 1 (Now):** Execute highest priority trades (~{per_cycle:.1f}% turnover)
+2. **Cycle 2 ({rebalance_style}):** Re-optimize and execute next batch
+3. **Repeat** until target allocation is achieved
+
+**Priority Order:**
+- Reduce most overweight positions first (de-risk)
+- Build underweight positions gradually (dollar-cost averaging benefit)"""
+                            st.markdown(rec_text)
+
+                        # Trade priority list
+                        with st.expander("📋 Trade Priority Breakdown"):
+                            # Show top priority trades
+                            priority_trades = rebalancing_df[rebalancing_df['Action'] != 'HOLD'].head(10)
+                            if len(priority_trades) > 0:
+                                st.markdown("**Top 10 Priority Trades:**")
+                                for _, row in priority_trades.iterrows():
+                                    action_emoji = "🟢" if row['Action'] == 'BUY' else "🔴"
+                                    weight_change = row['Weight Diff %']
+                                    trade_val = row['Trade Value']
+                                    st.markdown(f"{action_emoji} **{row['Ticker']}**: {row['Action']} {abs(row['Shares to Trade']):,} shares "
+                                              f"({weight_change:+.1f}% weight, ${abs(trade_val):,.0f})")
+                            else:
+                                st.info("No trades required - portfolio is already optimally allocated!")
 
                     # 🎯 NEW v10.3: Realism Scoring & Portfolio Insights
                     st.markdown("---")
