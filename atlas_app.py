@@ -8098,6 +8098,188 @@ def apply_trade_threshold(optimal_weights, current_weights, min_trade_threshold)
     return adjusted
 
 
+# ============================================================================
+# PHASE 3 DAY 3: EXPERT WISDOM RULES
+# ============================================================================
+# Professional portfolio management heuristics that supplement mathematical
+# optimization with real-world constraints and best practices.
+# ============================================================================
+
+EXPERT_WISDOM_RULES = {
+    'single_stock_concentration': {
+        'name': 'Single Stock Concentration',
+        'description': 'No single stock should exceed 25% of portfolio',
+        'threshold': 0.25,
+        'severity': 'high',
+        'recommendation': 'Consider reducing position to improve diversification'
+    },
+    'top_3_concentration': {
+        'name': 'Top 3 Concentration',
+        'description': 'Top 3 holdings should not exceed 50% of portfolio',
+        'threshold': 0.50,
+        'severity': 'medium',
+        'recommendation': 'Portfolio may be too concentrated in a few names'
+    },
+    'sector_concentration': {
+        'name': 'Sector Concentration',
+        'description': 'Single sector should not exceed 35% of portfolio',
+        'threshold': 0.35,
+        'severity': 'medium',
+        'recommendation': 'Consider diversifying across more sectors'
+    },
+    'minimum_diversification': {
+        'name': 'Minimum Diversification',
+        'description': 'Portfolio should have at least 10 meaningful positions',
+        'threshold': 10,
+        'severity': 'medium',
+        'recommendation': 'Add more positions to improve diversification'
+    },
+    'tiny_position_warning': {
+        'name': 'Tiny Positions',
+        'description': 'Positions below 1% may not be worth the tracking effort',
+        'threshold': 0.01,
+        'severity': 'low',
+        'recommendation': 'Consider eliminating or building up tiny positions'
+    },
+    'high_volatility_exposure': {
+        'name': 'High Volatility Exposure',
+        'description': 'High-volatility stocks (>40% annualized) should have reduced weight',
+        'threshold': 0.40,
+        'severity': 'medium',
+        'recommendation': 'Consider reducing exposure to highly volatile names'
+    },
+    'correlation_cluster': {
+        'name': 'Correlation Cluster',
+        'description': 'Avoid having too many highly correlated positions',
+        'threshold': 0.80,
+        'severity': 'medium',
+        'recommendation': 'Positions are highly correlated - diversification benefit is limited'
+    }
+}
+
+
+def check_expert_wisdom(optimal_weights, tickers, returns_df, risk_profile_config=None):
+    """
+    Check portfolio against expert wisdom rules and return violations/warnings.
+
+    Args:
+        optimal_weights: numpy array of optimized weights
+        tickers: list of ticker symbols
+        returns_df: DataFrame of historical returns
+        risk_profile_config: optional risk profile configuration
+
+    Returns:
+        dict: Contains 'violations' (list of rule violations) and 'score' (wisdom score 0-100)
+    """
+    violations = []
+    n_assets = len(optimal_weights)
+
+    # Rule 1: Single stock concentration
+    max_weight = np.max(optimal_weights)
+    if max_weight > EXPERT_WISDOM_RULES['single_stock_concentration']['threshold']:
+        max_ticker = tickers[np.argmax(optimal_weights)]
+        violations.append({
+            'rule': 'single_stock_concentration',
+            'severity': 'high',
+            'message': f"⚠️ **{max_ticker}** has {max_weight*100:.1f}% weight - exceeds 25% single stock limit",
+            'ticker': max_ticker,
+            'value': max_weight
+        })
+
+    # Rule 2: Top 3 concentration
+    sorted_weights = np.sort(optimal_weights)[::-1]
+    top_3_weight = sorted_weights[:3].sum()
+    if top_3_weight > EXPERT_WISDOM_RULES['top_3_concentration']['threshold']:
+        top_3_idx = np.argsort(optimal_weights)[::-1][:3]
+        top_3_tickers = [tickers[i] for i in top_3_idx]
+        violations.append({
+            'rule': 'top_3_concentration',
+            'severity': 'medium',
+            'message': f"⚠️ Top 3 holdings ({', '.join(top_3_tickers)}) = {top_3_weight*100:.1f}% - exceeds 50% limit",
+            'tickers': top_3_tickers,
+            'value': top_3_weight
+        })
+
+    # Rule 3: Minimum diversification (count meaningful positions)
+    meaningful_positions = np.sum(optimal_weights >= 0.02)  # 2% threshold
+    min_required = risk_profile_config.get('min_diversification', 10) if risk_profile_config else 10
+    if meaningful_positions < min_required:
+        violations.append({
+            'rule': 'minimum_diversification',
+            'severity': 'medium',
+            'message': f"⚠️ Only {meaningful_positions} meaningful positions (>2%) - target is {min_required}+",
+            'value': meaningful_positions
+        })
+
+    # Rule 4: Tiny positions warning
+    tiny_positions = []
+    for i, w in enumerate(optimal_weights):
+        if 0 < w < EXPERT_WISDOM_RULES['tiny_position_warning']['threshold']:
+            tiny_positions.append(tickers[i])
+    if len(tiny_positions) > 3:
+        violations.append({
+            'rule': 'tiny_position_warning',
+            'severity': 'low',
+            'message': f"💡 {len(tiny_positions)} positions below 1% - consider consolidating: {', '.join(tiny_positions[:5])}{'...' if len(tiny_positions) > 5 else ''}",
+            'tickers': tiny_positions,
+            'value': len(tiny_positions)
+        })
+
+    # Rule 5: High volatility exposure
+    if returns_df is not None and len(returns_df) > 0:
+        vols = returns_df.std() * np.sqrt(252)
+        high_vol_tickers = []
+        for i, ticker in enumerate(tickers):
+            if ticker in vols.index:
+                if vols[ticker] > EXPERT_WISDOM_RULES['high_volatility_exposure']['threshold']:
+                    if optimal_weights[i] > 0.10:  # Only warn if >10% position
+                        high_vol_tickers.append((ticker, vols[ticker], optimal_weights[i]))
+
+        if high_vol_tickers:
+            for ticker, vol, weight in high_vol_tickers:
+                violations.append({
+                    'rule': 'high_volatility_exposure',
+                    'severity': 'medium',
+                    'message': f"⚠️ **{ticker}** has {vol*100:.0f}% volatility with {weight*100:.1f}% weight - consider reducing",
+                    'ticker': ticker,
+                    'value': {'volatility': vol, 'weight': weight}
+                })
+
+    # Calculate wisdom score (0-100)
+    high_violations = sum(1 for v in violations if v['severity'] == 'high')
+    medium_violations = sum(1 for v in violations if v['severity'] == 'medium')
+    low_violations = sum(1 for v in violations if v['severity'] == 'low')
+
+    # Scoring: start at 100, deduct for violations
+    score = 100
+    score -= high_violations * 20
+    score -= medium_violations * 10
+    score -= low_violations * 5
+    score = max(0, min(100, score))
+
+    return {
+        'violations': violations,
+        'score': score,
+        'high_count': high_violations,
+        'medium_count': medium_violations,
+        'low_count': low_violations
+    }
+
+
+def get_wisdom_grade(score):
+    """Convert wisdom score to letter grade with description."""
+    if score >= 90:
+        return 'A', 'Excellent', '🟢'
+    elif score >= 80:
+        return 'B', 'Good', '🟢'
+    elif score >= 70:
+        return 'C', 'Acceptable', '🟡'
+    elif score >= 60:
+        return 'D', 'Needs Improvement', '🟠'
+    else:
+        return 'F', 'Poor', '🔴'
+
+
 def calculate_max_risk_contrib(weights, returns_df):
     """Calculate maximum risk contribution from any single asset"""
     cov_matrix = returns_df.cov() * 252
@@ -15281,6 +15463,72 @@ To maintain gradual transitions:
                                               f"({weight_change:+.1f}% weight, ${abs(trade_val):,.0f})")
                             else:
                                 st.info("No trades required - portfolio is already optimally allocated!")
+
+                        # PHASE 3 DAY 3: Expert Wisdom Check
+                        st.markdown("---")
+                        st.markdown("#### 🧠 Expert Wisdom Check")
+                        st.caption("Professional portfolio management heuristics")
+
+                        # Get optimal weights and check against wisdom rules
+                        opt_weights = rebalancing_df['Optimal Weight %'].values / 100
+                        opt_tickers = rebalancing_df['Ticker'].tolist()
+
+                        # Try to get returns data for volatility analysis
+                        try:
+                            wisdom_returns = pd.DataFrame()
+                            end_dt = datetime.now()
+                            start_dt = end_dt - timedelta(days=252)
+                            for t in opt_tickers[:20]:  # Limit for performance
+                                hist = fetch_historical_data(t, start_dt, end_dt)
+                                if hist is not None and len(hist) > 1:
+                                    wisdom_returns[t] = hist['Close'].pct_change().dropna()
+                            wisdom_returns = wisdom_returns.dropna()
+                        except:
+                            wisdom_returns = None
+
+                        wisdom_result = check_expert_wisdom(
+                            opt_weights,
+                            opt_tickers,
+                            wisdom_returns,
+                            config_var if not use_manual_var else None
+                        )
+
+                        # Display wisdom score
+                        grade, grade_desc, grade_emoji = get_wisdom_grade(wisdom_result['score'])
+                        col_w1, col_w2, col_w3 = st.columns([1, 2, 2])
+
+                        with col_w1:
+                            st.metric(
+                                "Wisdom Score",
+                                f"{grade}",
+                                f"{wisdom_result['score']}/100",
+                                help="Score based on professional portfolio management best practices"
+                            )
+
+                        with col_w2:
+                            st.markdown(f"**{grade_emoji} {grade_desc}**")
+                            st.caption(f"High: {wisdom_result['high_count']} | Medium: {wisdom_result['medium_count']} | Low: {wisdom_result['low_count']}")
+
+                        with col_w3:
+                            if wisdom_result['score'] >= 80:
+                                st.success("Portfolio follows professional best practices")
+                            elif wisdom_result['score'] >= 60:
+                                st.warning("Some areas for improvement identified")
+                            else:
+                                st.error("Significant deviations from best practices")
+
+                        # Display violations
+                        if wisdom_result['violations']:
+                            with st.expander(f"📋 View {len(wisdom_result['violations'])} Wisdom Insights", expanded=True):
+                                for v in wisdom_result['violations']:
+                                    if v['severity'] == 'high':
+                                        st.error(v['message'])
+                                    elif v['severity'] == 'medium':
+                                        st.warning(v['message'])
+                                    else:
+                                        st.info(v['message'])
+                        else:
+                            st.success("✅ No wisdom rule violations detected - portfolio follows all best practices!")
 
                     # 🎯 NEW v10.3: Realism Scoring & Portfolio Insights
                     st.markdown("---")
