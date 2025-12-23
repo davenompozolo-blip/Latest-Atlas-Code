@@ -18726,36 +18726,42 @@ To maintain gradual transitions:
                                 if dcf_proj_obj:
                                     projections = []
                                     # Handle both list of projections and single projection object
-                                    if isinstance(dcf_proj_obj, list):
-                                        # It's a list - use first item or iterate
-                                        proj_item = dcf_proj_obj[0] if dcf_proj_obj else None
-                                        if proj_item and hasattr(proj_item, 'forecast_years'):
+                                    if isinstance(dcf_proj_obj, list) and len(dcf_proj_obj) > 0:
+                                        # It's a non-empty list - use first item
+                                        proj_item = dcf_proj_obj[0]
+                                        if proj_item and hasattr(proj_item, 'forecast_years') and hasattr(proj_item, 'final_projections'):
                                             for year in range(1, proj_item.forecast_years + 1):
-                                                year_data = proj_item.final_projections[year]
+                                                year_data = proj_item.final_projections.get(year, {}) if isinstance(proj_item.final_projections, dict) else {}
                                                 projections.append({
                                                     'year': year,
-                                                    'revenue': year_data['revenue'],
+                                                    'revenue': year_data.get('revenue', 0),
                                                     'ebit': year_data.get('ebit', 0),
                                                     'nopat': year_data.get('nopat', 0),
                                                     'fcff': year_data.get('fcff', 0),
                                                     'fcfe': year_data.get('fcfe', 0)
                                                 })
-                                    elif hasattr(dcf_proj_obj, 'forecast_years'):
-                                        # It's a single projection object
+                                        else:
+                                            st.warning("⚠️ List projections format not recognized. Using manual calculation.")
+                                            dashboard_active = False
+                                    elif not isinstance(dcf_proj_obj, list) and hasattr(dcf_proj_obj, 'forecast_years') and hasattr(dcf_proj_obj, 'final_projections'):
+                                        # It's a single projection object with required attributes
                                         for year in range(1, dcf_proj_obj.forecast_years + 1):
-                                            year_data = dcf_proj_obj.final_projections[year]
+                                            year_data = dcf_proj_obj.final_projections.get(year, {}) if isinstance(dcf_proj_obj.final_projections, dict) else {}
                                             projections.append({
                                                 'year': year,
-                                                'revenue': year_data['revenue'],
+                                                'revenue': year_data.get('revenue', 0),
                                                 'ebit': year_data.get('ebit', 0),
                                                 'nopat': year_data.get('nopat', 0),
                                                 'fcff': year_data.get('fcff', 0),
                                                 'fcfe': year_data.get('fcfe', 0)
                                             })
+                                    else:
+                                        st.warning(f"⚠️ Projections format not recognized. Using manual calculation.")
+                                        dashboard_active = False
 
                                     if projections:
                                         final_fcf = projections[-1]['fcff'] if method_key == 'FCFF' else projections[-1]['fcfe']
-                                    else:
+                                    elif dashboard_active:  # Only show error if we haven't already warned
                                         st.error("⚠️ Could not parse projections. Using manual calculation.")
                                         dashboard_active = False
                                 else:
