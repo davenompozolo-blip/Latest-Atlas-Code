@@ -6500,11 +6500,29 @@ def calculate_brinson_attribution_gics(portfolio_df, period='1y'):
     stock_results = []
     portfolio_total_return = (df['Weight %'] * df['Total Gain/Loss %']).sum() / 100
 
+    # SPY weights for major holdings (approximate, as of recent data)
+    SPY_WEIGHTS = {
+        'AAPL': 7.0, 'MSFT': 6.5, 'NVDA': 5.5, 'GOOGL': 3.5, 'GOOG': 3.5,
+        'AMZN': 3.5, 'META': 2.5, 'TSLA': 2.0, 'BRK.B': 1.7, 'LLY': 1.5,
+        'V': 1.2, 'JPM': 1.15, 'UNH': 1.1, 'XOM': 1.05, 'MA': 1.0,
+        'JNJ': 0.95, 'PG': 0.9, 'AVGO': 0.9, 'HD': 0.85, 'CVX': 0.8,
+        'MRK': 0.75, 'ABBV': 0.75, 'COST': 0.7, 'PEP': 0.7, 'KO': 0.65,
+        'BAC': 0.65, 'NFLX': 0.6, 'CRM': 0.6, 'AMD': 0.55, 'WMT': 0.55,
+        'ADBE': 0.5, 'TMO': 0.5, 'DIS': 0.5, 'ACN': 0.45, 'CSCO': 0.45,
+        'ABT': 0.45, 'VZ': 0.4, 'T': 0.4, 'ORCL': 0.4, 'INTC': 0.4,
+        'WFC': 0.4, 'C': 0.35, 'QCOM': 0.35, 'UPS': 0.35, 'PM': 0.35,
+        'MS': 0.3, 'GS': 0.3, 'AXP': 0.3, 'BA': 0.3, 'CAT': 0.3,
+        'IBM': 0.3, 'NOW': 0.3, 'BKR': 0.25, 'NVT': 0.2,
+    }
+
     for _, row in df.iterrows():
         ticker = row['Ticker']
         weight = row['Weight %'] / 100
         stock_return = row['Total Gain/Loss %'] / 100
         sector = row['GICS_Sector']
+
+        # Get SPY index weight (0 if not in index)
+        index_weight = SPY_WEIGHTS.get(ticker, 0.0)
 
         # Benchmark return for this sector
         sector_benchmark_return = benchmark_returns.get(sector, 0) / 100
@@ -6519,6 +6537,7 @@ def calculate_brinson_attribution_gics(portfolio_df, period='1y'):
             'Ticker': ticker,
             'GICS_Sector': sector,
             'Weight %': weight * 100,
+            'Index Weight %': index_weight,  # SPY weight
             'Return %': stock_return * 100,
             'Sector Benchmark Return %': sector_benchmark_return * 100,
             'Return vs Sector': (stock_return - sector_benchmark_return) * 100,
@@ -6592,9 +6611,9 @@ def display_stock_attribution_table(stock_df):
     Parameters:
         stock_df: DataFrame from calculate_brinson_attribution_gics
     """
-    # Top Contributors
-    top_contributors = stock_df.head(5)
-    bottom_contributors = stock_df.tail(5).iloc[::-1]  # Reverse to show worst first
+    # Top Contributors - Show Top 10
+    top_contributors = stock_df.head(10)
+    bottom_contributors = stock_df.tail(10).iloc[::-1]  # Reverse to show worst first
 
     top_html = """
 <div style="background: rgba(26, 35, 50, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(0, 212, 255, 0.2); border-radius: 12px; padding: 20px; margin: 10px 0;">
@@ -6604,6 +6623,7 @@ def display_stock_attribution_table(stock_df):
 <th style="text-align: left; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Ticker</th>
 <th style="text-align: left; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Sector</th>
 <th style="text-align: right; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Weight</th>
+<th style="text-align: right; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Index Wt</th>
 <th style="text-align: right; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Return</th>
 <th style="text-align: right; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">vs Sector</th>
 <th style="text-align: right; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Alpha Contrib</th>
@@ -6611,11 +6631,13 @@ def display_stock_attribution_table(stock_df):
 """
     for _, row in top_contributors.iterrows():
         color = '#00ff9d' if row['Active Contribution %'] > 0 else '#ff006b'
+        index_wt = row.get('Index Weight %', 0)
         top_html += f"""
 <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
 <td style="padding: 10px; color: #00d4ff; font-weight: 600;">{row['Ticker']}</td>
 <td style="padding: 10px; color: #c0c8d0; font-size: 0.85rem;">{row['GICS_Sector']}</td>
 <td style="padding: 10px; color: #c0c8d0; text-align: right;">{row['Weight %']:.1f}%</td>
+<td style="padding: 10px; color: #8890a0; text-align: right;">{index_wt:.1f}%</td>
 <td style="padding: 10px; color: {'#00ff9d' if row['Return %'] > 0 else '#ff006b'}; text-align: right; font-family: 'JetBrains Mono', monospace;">{row['Return %']:+.1f}%</td>
 <td style="padding: 10px; color: {'#00ff9d' if row['Return vs Sector'] > 0 else '#ff006b'}; text-align: right; font-family: 'JetBrains Mono', monospace;">{row['Return vs Sector']:+.1f}%</td>
 <td style="padding: 10px; color: {color}; text-align: right; font-weight: 700; font-family: 'JetBrains Mono', monospace;">{row['Active Contribution %']:+.2f}%</td>
@@ -6632,6 +6654,7 @@ def display_stock_attribution_table(stock_df):
 <th style="text-align: left; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Ticker</th>
 <th style="text-align: left; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Sector</th>
 <th style="text-align: right; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Weight</th>
+<th style="text-align: right; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Index Wt</th>
 <th style="text-align: right; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Return</th>
 <th style="text-align: right; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">vs Sector</th>
 <th style="text-align: right; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Alpha Contrib</th>
@@ -6639,11 +6662,13 @@ def display_stock_attribution_table(stock_df):
 """
     for _, row in bottom_contributors.iterrows():
         color = '#00ff9d' if row['Active Contribution %'] > 0 else '#ff006b'
+        index_wt = row.get('Index Weight %', 0)
         bottom_html += f"""
 <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
 <td style="padding: 10px; color: #ff006b; font-weight: 600;">{row['Ticker']}</td>
 <td style="padding: 10px; color: #c0c8d0; font-size: 0.85rem;">{row['GICS_Sector']}</td>
 <td style="padding: 10px; color: #c0c8d0; text-align: right;">{row['Weight %']:.1f}%</td>
+<td style="padding: 10px; color: #8890a0; text-align: right;">{index_wt:.1f}%</td>
 <td style="padding: 10px; color: {'#00ff9d' if row['Return %'] > 0 else '#ff006b'}; text-align: right; font-family: 'JetBrains Mono', monospace;">{row['Return %']:+.1f}%</td>
 <td style="padding: 10px; color: {'#00ff9d' if row['Return vs Sector'] > 0 else '#ff006b'}; text-align: right; font-family: 'JetBrains Mono', monospace;">{row['Return vs Sector']:+.1f}%</td>
 <td style="padding: 10px; color: {color}; text-align: right; font-weight: 700; font-family: 'JetBrains Mono', monospace;">{row['Active Contribution %']:+.2f}%</td>
