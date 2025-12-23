@@ -6529,45 +6529,32 @@ def calculate_brinson_attribution_gics(portfolio_df, period='1y'):
     stock_attribution_df = pd.DataFrame(stock_results)
     stock_attribution_df = stock_attribution_df.sort_values('Active Contribution %', ascending=False)
 
-    # Step 9: Validation - USE ACTUAL PERFORMANCE HISTORY RETURNS
-    # This is the CRITICAL FIX: Use actual portfolio return, not point-in-time holdings return
+    # Step 9: Validation - LINK TO PERFORMANCE SUITE
+    # PRIORITY: Use Performance Suite's annualized return if available (session state)
+    # This ensures Attribution shows the EXACT SAME value as Performance Suite
 
-    # Try to get actual portfolio return from performance history
-    actual_portfolio_data = get_portfolio_period_return(period)
-    actual_benchmark_data = get_benchmark_period_return('SPY', period, match_portfolio_dates=True)
+    # CHECK SESSION STATE FIRST - This is the linked value from Performance Suite
+    performance_suite_return = st.session_state.get('portfolio_annualized_return')
 
-    if actual_portfolio_data is not None and actual_benchmark_data is not None:
-        # LINK TO PERFORMANCE SUITE: Get the EXACT value displayed there
-        # This ensures Attribution shows the SAME value as Performance Suite "Annualized Return"
-        actual_portfolio_return = st.session_state.get('portfolio_annualized_return',
-                                                        actual_portfolio_data.get('annualized_return_pct',
-                                                        actual_portfolio_data['return_pct']))
-        actual_benchmark_return_val = actual_benchmark_data['return_pct']  # Benchmark total return
-
-        # Also get total returns for display
-        total_portfolio_return = actual_portfolio_data['return_pct']  # e.g., 40.93%
-
+    if performance_suite_return is not None:
+        # USE PERFORMANCE SUITE VALUE - This is the correct linked value
+        actual_portfolio_return = performance_suite_return
+        actual_benchmark_return_val = benchmark_total_return  # Use benchmark from holdings
         actual_alpha = actual_portfolio_return - actual_benchmark_return_val
         attribution_sum = total_allocation + total_selection + total_interaction
         reconciliation_diff = abs(actual_alpha - attribution_sum)
 
         validation = {
-            'portfolio_return': actual_portfolio_return,  # ANNUALIZED return (matches Performance Suite)
-            'total_return': total_portfolio_return,  # Total return for reference
+            'portfolio_return': actual_portfolio_return,  # FROM PERFORMANCE SUITE
             'benchmark_return': actual_benchmark_return_val,
             'actual_alpha': actual_alpha,
             'attribution_sum': attribution_sum,
             'reconciliation_diff': reconciliation_diff,
-            'is_reconciled': reconciliation_diff < 5.0,  # Within 5% (trades/timing cause some diff)
-            'source': 'performance_history',
-            'portfolio_start': actual_portfolio_data.get('start_value'),
-            'portfolio_end': actual_portfolio_data.get('end_value'),
-            'benchmark_start': actual_benchmark_data.get('start_price'),
-            'benchmark_end': actual_benchmark_data.get('end_price'),
-            'days': actual_portfolio_data.get('days', 0)
+            'is_reconciled': reconciliation_diff < 5.0,
+            'source': 'performance_suite',  # Indicates linked to Performance Suite
         }
     else:
-        # Fallback to point-in-time holdings return (less accurate)
+        # Fallback to point-in-time holdings return (if Performance Suite not visited yet)
         actual_alpha = portfolio_total_return - benchmark_total_return
         attribution_sum = total_allocation + total_selection + total_interaction
         reconciliation_diff = abs(actual_alpha - attribution_sum)
@@ -6580,7 +6567,7 @@ def calculate_brinson_attribution_gics(portfolio_df, period='1y'):
             'reconciliation_diff': reconciliation_diff,
             'is_reconciled': reconciliation_diff < 1.0,
             'source': 'point_in_time',
-            'warning': 'Using point-in-time holdings return. Upload performance history for accurate returns.'
+            'warning': 'Visit Performance Suite first to see accurate returns.'
         }
 
     return {
@@ -6674,21 +6661,25 @@ def display_attribution_validation(validation):
     """
     is_valid = validation['is_reconciled']
     source = validation.get('source', 'unknown')
-    is_perf_history = source == 'performance_history'
 
     # Color coding based on data source quality
-    if is_perf_history:
+    if source == 'performance_suite':
+        # LINKED TO PERFORMANCE SUITE - Best quality
+        status_color = '#00ff9d' if is_valid else '#ffd93d'
+        status_icon = '✓' if is_valid else '⚠'
+        source_badge = '<span style="background: #00ff9d; color: #0a0f1a; padding: 2px 8px; border-radius: 4px; font-size: 0.65rem; margin-left: 10px;">LINKED TO PERFORMANCE SUITE</span>'
+    elif source == 'performance_history':
         status_color = '#00ff9d' if is_valid else '#ffd93d'
         status_icon = '✓' if is_valid else '⚠'
         source_badge = '<span style="background: #00d4ff; color: #0a0f1a; padding: 2px 8px; border-radius: 4px; font-size: 0.65rem; margin-left: 10px;">FROM PERFORMANCE HISTORY</span>'
     else:
         status_color = '#ffd93d'
         status_icon = '⚠'
-        source_badge = '<span style="background: #ffd93d; color: #0a0f1a; padding: 2px 8px; border-radius: 4px; font-size: 0.65rem; margin-left: 10px;">POINT-IN-TIME (Upload performance history for accuracy)</span>'
+        source_badge = '<span style="background: #ffd93d; color: #0a0f1a; padding: 2px 8px; border-radius: 4px; font-size: 0.65rem; margin-left: 10px;">POINT-IN-TIME (Visit Performance Suite first)</span>'
 
     # Build additional info based on source
     additional_info = ""
-    if is_perf_history and validation.get('days'):
+    if source == 'performance_history' and validation.get('days'):
         days = validation.get('days', 0)
         portfolio_start = validation.get('portfolio_start', 0)
         portfolio_end = validation.get('portfolio_end', 0)
