@@ -18151,17 +18151,39 @@ def main():
                                 # for compatibility with calculate_dcf_value()
                                 if dcf_proj_obj:
                                     projections = []
-                                    for year in range(1, dcf_proj_obj.forecast_years + 1):
-                                        year_data = dcf_proj_obj.final_projections[year]
-                                        projections.append({
-                                            'year': year,
-                                            'revenue': year_data['revenue'],
-                                            'ebit': year_data.get('ebit', 0),
-                                            'nopat': year_data.get('nopat', 0),
-                                            'fcff': year_data.get('fcff', 0),
-                                            'fcfe': year_data.get('fcfe', 0)
-                                        })
-                                    final_fcf = projections[-1]['fcff'] if method_key == 'FCFF' else projections[-1]['fcfe']
+                                    # Handle both list of projections and single projection object
+                                    if isinstance(dcf_proj_obj, list):
+                                        # It's a list - use first item or iterate
+                                        proj_item = dcf_proj_obj[0] if dcf_proj_obj else None
+                                        if proj_item and hasattr(proj_item, 'forecast_years'):
+                                            for year in range(1, proj_item.forecast_years + 1):
+                                                year_data = proj_item.final_projections[year]
+                                                projections.append({
+                                                    'year': year,
+                                                    'revenue': year_data['revenue'],
+                                                    'ebit': year_data.get('ebit', 0),
+                                                    'nopat': year_data.get('nopat', 0),
+                                                    'fcff': year_data.get('fcff', 0),
+                                                    'fcfe': year_data.get('fcfe', 0)
+                                                })
+                                    elif hasattr(dcf_proj_obj, 'forecast_years'):
+                                        # It's a single projection object
+                                        for year in range(1, dcf_proj_obj.forecast_years + 1):
+                                            year_data = dcf_proj_obj.final_projections[year]
+                                            projections.append({
+                                                'year': year,
+                                                'revenue': year_data['revenue'],
+                                                'ebit': year_data.get('ebit', 0),
+                                                'nopat': year_data.get('nopat', 0),
+                                                'fcff': year_data.get('fcff', 0),
+                                                'fcfe': year_data.get('fcfe', 0)
+                                            })
+
+                                    if projections:
+                                        final_fcf = projections[-1]['fcff'] if method_key == 'FCFF' else projections[-1]['fcfe']
+                                    else:
+                                        st.error("⚠️ Could not parse projections. Using manual calculation.")
+                                        dashboard_active = False
                                 else:
                                     # Fallback if projections object not available
                                     st.error("⚠️ Dashboard projections not available. Using manual calculation.")
