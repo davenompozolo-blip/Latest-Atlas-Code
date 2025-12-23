@@ -6537,9 +6537,11 @@ def calculate_brinson_attribution_gics(portfolio_df, period='1y'):
     actual_benchmark_data = get_benchmark_period_return('SPY', period, match_portfolio_dates=True)
 
     if actual_portfolio_data is not None and actual_benchmark_data is not None:
-        # Use ANNUALIZED returns from performance history (matches Performance Suite display)
-        # This links Attribution "Portfolio Return" to Performance Suite "Annualized Return"
-        actual_portfolio_return = actual_portfolio_data.get('annualized_return_pct', actual_portfolio_data['return_pct'])  # e.g., 41.71%
+        # LINK TO PERFORMANCE SUITE: Get the EXACT value displayed there
+        # This ensures Attribution shows the SAME value as Performance Suite "Annualized Return"
+        actual_portfolio_return = st.session_state.get('portfolio_annualized_return',
+                                                        actual_portfolio_data.get('annualized_return_pct',
+                                                        actual_portfolio_data['return_pct']))
         actual_benchmark_return_val = actual_benchmark_data['return_pct']  # Benchmark total return
 
         # Also get total returns for display
@@ -15164,7 +15166,10 @@ def main():
                     total_return = (1 + portfolio_returns).prod() - 1
                     n_years = len(portfolio_returns) / 252
                     annualized_return = (1 + total_return) ** (1/n_years) - 1 if n_years > 0 else 0
-    
+
+                    # STORE FOR ATTRIBUTION SECTION TO USE
+                    st.session_state['portfolio_annualized_return'] = annualized_return * 100
+
                     with col1:
                         st.metric(
                             "Annualized Return",
