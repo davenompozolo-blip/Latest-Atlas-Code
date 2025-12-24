@@ -17,11 +17,19 @@ from typing import Optional, List, Callable
 
 # Import real page handlers (gradual migration from placeholders)
 try:
-    from .handlers import render_about_page
+    from .handlers import (
+        render_about_page,
+        render_market_watch_page,
+        render_database_page,
+        render_investopedia_live_page
+    )
     HANDLERS_AVAILABLE = True
 except ImportError:
     HANDLERS_AVAILABLE = False
     render_about_page = None
+    render_market_watch_page = None
+    render_database_page = None
+    render_investopedia_live_page = None
 
 @dataclass
 class PageDefinition:
@@ -136,7 +144,7 @@ PAGE_REGISTRY = [
         key="database",
         title="Database",
         icon="💾",
-        handler=_make_placeholder("Database", "💾"),
+        handler=render_database_page,
         category="system",
         requires_data=[]  # Shows database contents
     ),
@@ -146,7 +154,7 @@ PAGE_REGISTRY = [
         key="market_watch",
         title="Market Watch",
         icon="🌍",
-        handler=_make_placeholder("Market Watch", "🌍"),
+        handler=render_market_watch_page,
         category="markets",
         requires_data=[]  # Market data only
     ),
@@ -231,7 +239,7 @@ PAGE_REGISTRY = [
         key="investopedia_live",
         title="Investopedia Live",
         icon="📡",
-        handler=_make_placeholder("Investopedia Live", "📡"),
+        handler=render_investopedia_live_page,
         category="tracking",
         feature_flag="investopedia_api",  # May require API
         requires_data=[]
