@@ -12385,6 +12385,28 @@ def main():
         help="Enable new modular navigation system (Phase 2A)"
     )
 
+    # ========================================================================
+    # ATLAS REFACTORING: Cache Performance Stats Display
+    # ========================================================================
+    if REFACTORED_MODULES_AVAILABLE:
+        with st.sidebar.expander("📊 Cache Performance", expanded=False):
+            cache_stats = cache_manager.get_stats()
+
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Hits", cache_stats['hits'], help="Cache hits")
+            with col2:
+                st.metric("Misses", cache_stats['misses'], help="Cache misses")
+
+            st.metric("Hit Rate", cache_stats['hit_rate'], help="Cache efficiency")
+            st.caption(f"💾 Disk: {cache_stats['disk_hits']} reads, {cache_stats['disk_writes']} writes")
+            st.caption(f"🧠 Memory: {cache_stats['memory_keys']} cached items")
+
+            if st.button("🗑️ Clear Cache", key="clear_cache_btn"):
+                cache_manager.clear()
+                st.success("Cache cleared!")
+                st.rerun()
+
     if USE_NAVIGATION_V2:
         # NEW: Registry-based routing
         st.info(f"📍 **Navigation v2.0 Active** - Routing to: `{selected_page_key}`")
