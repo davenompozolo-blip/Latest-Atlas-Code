@@ -21,7 +21,10 @@ try:
         render_about_page,
         render_market_watch_page,
         render_database_page,
-        render_investopedia_live_page
+        render_investopedia_live_page,
+        render_multi_factor_analysis_page,
+        render_monte_carlo_engine_page,
+        render_quant_optimizer_page
     )
     HANDLERS_AVAILABLE = True
 except ImportError:
@@ -30,6 +33,9 @@ except ImportError:
     render_market_watch_page = None
     render_database_page = None
     render_investopedia_live_page = None
+    render_multi_factor_analysis_page = None
+    render_monte_carlo_engine_page = None
+    render_quant_optimizer_page = None
 
 @dataclass
 class PageDefinition:
@@ -191,7 +197,7 @@ PAGE_REGISTRY = [
         key="multi_factor_analysis",
         title="Multi-Factor Analysis",
         icon="📊",
-        handler=_make_placeholder("Multi-Factor Analysis", "📊"),
+        handler=render_multi_factor_analysis_page,
         category="analysis",
         requires_data=["portfolio"]
     ),
@@ -211,7 +217,7 @@ PAGE_REGISTRY = [
         key="monte_carlo_engine",
         title="Monte Carlo Engine",
         icon="🎲",
-        handler=_make_placeholder("Monte Carlo Engine", "🎲"),
+        handler=render_monte_carlo_engine_page,
         category="optimization",
         requires_data=["portfolio"]
     ),
@@ -220,7 +226,7 @@ PAGE_REGISTRY = [
         key="quant_optimizer",
         title="Quant Optimizer",
         icon="🧮",
-        handler=_make_placeholder("Quant Optimizer", "🧮"),
+        handler=render_quant_optimizer_page,
         category="optimization",
         requires_data=["portfolio"]
     ),
