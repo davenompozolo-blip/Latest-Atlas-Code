@@ -13,6 +13,8 @@ from .investopedia_live import render_investopedia_live_page
 from .multi_factor_analysis import render_multi_factor_analysis_page
 from .monte_carlo_engine import render_monte_carlo_engine_page
 from .quant_optimizer import render_quant_optimizer_page
+from .leverage_tracker import render_leverage_tracker_page
+from .phoenix_parser import render_phoenix_parser_page
 
 __all__ = [
     'render_about_page',
@@ -21,5 +23,7 @@ __all__ = [
     'render_investopedia_live_page',
     'render_multi_factor_analysis_page',
     'render_monte_carlo_engine_page',
-    'render_quant_optimizer_page'
+    'render_quant_optimizer_page',
+    'render_leverage_tracker_page',
+    'render_phoenix_parser_page'
 ]
