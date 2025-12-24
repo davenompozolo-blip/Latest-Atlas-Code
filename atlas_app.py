@@ -455,7 +455,14 @@ def get_benchmark_period_return(benchmark_ticker='SPY', period='1y', match_portf
         return result
 
     except Exception as e:
-        print(f"Error getting benchmark return: {e}")
+        # ATLAS Refactoring: User-friendly error handling
+        if REFACTORED_MODULES_AVAILABLE:
+            ErrorHandler.handle_error(
+                error=e,
+                context=f"fetching benchmark returns for {benchmark_ticker}",
+                fallback_value=None,
+                show_traceback=False
+            )
         return None
 
 
@@ -849,7 +856,14 @@ def get_gics_sector(ticker):
         return result
 
     except Exception as e:
-        print(f"Error getting sector for {ticker}: {e}")
+        # ATLAS Refactoring: User-friendly error handling
+        if REFACTORED_MODULES_AVAILABLE:
+            ErrorHandler.handle_error(
+                error=e,
+                context=f"classifying sector for {ticker_upper}",
+                fallback_value='Other',
+                show_traceback=False
+            )
         return 'Other'
 
 
@@ -4791,7 +4805,7 @@ def fetch_market_data(ticker):
         five_day_return = ((current_price / hist['Close'].iloc[0]) - 1) * 100 if len(hist) >= 5 else 0
 
         company_name = info.get('longName', info.get('shortName', ticker))
-        
+
         return {
             "price": current_price,
             "daily_change": daily_change,
@@ -4806,7 +4820,15 @@ def fetch_market_data(ticker):
             "52_week_high": info.get('fiftyTwoWeekHigh', None),
             "52_week_low": info.get('fiftyTwoWeekLow', None)
         }
-    except:
+    except Exception as e:
+        # ATLAS Refactoring: User-friendly error handling
+        if REFACTORED_MODULES_AVAILABLE:
+            ErrorHandler.handle_error(
+                error=e,
+                context=f"fetching market data for {ticker}",
+                fallback_value=None,
+                show_traceback=False
+            )
         return None
 
 def is_option_ticker(ticker):
@@ -4867,16 +4889,24 @@ def fetch_historical_data(ticker, start_date, end_date):
 def fetch_stock_info(ticker):
     """Fetch stock information from yfinance"""
     # ATLAS Refactoring - Use cached market data fetcher
-    if REFACTORED_MODULES_AVAILABLE:
-        return market_data.get_company_info(ticker)
-    else:
-        # Fallback to old method
-        try:
+    try:
+        if REFACTORED_MODULES_AVAILABLE:
+            return market_data.get_company_info(ticker)
+        else:
+            # Fallback to old method
             stock = yf.Ticker(ticker)
             info = stock.info
             return info
-        except:
-            return None
+    except Exception as e:
+        # ATLAS Refactoring: User-friendly error handling
+        if REFACTORED_MODULES_AVAILABLE:
+            ErrorHandler.handle_error(
+                error=e,
+                context=f"fetching stock information for {ticker}",
+                fallback_value=None,
+                show_traceback=False
+            )
+        return None
 
 @st.cache_data(ttl=3600)
 def fetch_analyst_data(ticker):
@@ -4892,14 +4922,22 @@ def fetch_analyst_data(ticker):
         rating = info.get('recommendationKey', 'none')
         if rating == 'none' or rating is None:
             rating = "No Coverage"
-        
+
         return {
             'rating': rating.upper() if rating != "No Coverage" else rating,
             'target_price': info.get('targetMeanPrice'),
             'num_analysts': info.get('numberOfAnalystOpinions', 0),
             'success': True
         }
-    except:
+    except Exception as e:
+        # ATLAS Refactoring: User-friendly error handling
+        if REFACTORED_MODULES_AVAILABLE:
+            ErrorHandler.handle_error(
+                error=e,
+                context=f"fetching analyst data for {ticker}",
+                fallback_value={'success': False, 'rating': 'No Coverage', 'target_price': None},
+                show_traceback=False
+            )
         return {'success': False, 'rating': 'No Coverage', 'target_price': None}
 
 # ============================================================================
@@ -4980,6 +5018,14 @@ def fetch_company_financials(ticker):
         }
         
     except Exception as e:
+        # ATLAS Refactoring: User-friendly error handling
+        if REFACTORED_MODULES_AVAILABLE:
+            ErrorHandler.handle_error(
+                error=e,
+                context=f"fetching financial statements for {ticker}",
+                fallback_value={'success': False, 'error': str(e)},
+                show_traceback=False
+            )
         return {
             'success': False,
             'error': str(e)
