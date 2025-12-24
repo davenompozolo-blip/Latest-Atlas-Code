@@ -375,6 +375,13 @@ def get_benchmark_period_return(benchmark_ticker='SPY', period='1y', match_portf
                 start_date = portfolio_data['start_date']
                 end_date = portfolio_data['end_date']
 
+                # ATLAS Refactoring: Check cache first (1 hour TTL for benchmark data)
+                if REFACTORED_MODULES_AVAILABLE:
+                    cache_key = cache_manager.get_cache_key('benchmark_return', benchmark_ticker, str(start_date), str(end_date))
+                    cached_result = cache_manager.get(cache_key, ttl=3600)
+                    if cached_result is not None:
+                        return cached_result
+
                 # Get benchmark data for exact same dates
                 benchmark = yf.Ticker(benchmark_ticker)
                 # Add buffer days to ensure we get data
@@ -398,7 +405,7 @@ def get_benchmark_period_return(benchmark_ticker='SPY', period='1y', match_portf
 
                 benchmark_return = (end_price - start_price) / start_price
 
-                return {
+                result = {
                     'return': benchmark_return,  # As decimal
                     'return_pct': benchmark_return * 100,  # As percentage
                     'start_price': start_price,
@@ -408,7 +415,19 @@ def get_benchmark_period_return(benchmark_ticker='SPY', period='1y', match_portf
                     'ticker': benchmark_ticker
                 }
 
-        # Fallback to standard period
+                # Cache the result
+                if REFACTORED_MODULES_AVAILABLE:
+                    cache_manager.set(cache_key, result, persist=True)
+
+                return result
+
+        # Fallback to standard period - also cache this
+        if REFACTORED_MODULES_AVAILABLE:
+            cache_key = cache_manager.get_cache_key('benchmark_return_period', benchmark_ticker, period)
+            cached_result = cache_manager.get(cache_key, ttl=3600)
+            if cached_result is not None:
+                return cached_result
+
         benchmark = yf.Ticker(benchmark_ticker)
         hist = benchmark.history(period=period)
 
@@ -419,7 +438,7 @@ def get_benchmark_period_return(benchmark_ticker='SPY', period='1y', match_portf
         end_price = hist['Close'].iloc[-1]
         benchmark_return = (end_price - start_price) / start_price
 
-        return {
+        result = {
             'return': benchmark_return,
             'return_pct': benchmark_return * 100,
             'start_price': start_price,
@@ -428,6 +447,12 @@ def get_benchmark_period_return(benchmark_ticker='SPY', period='1y', match_portf
             'end_date': hist.index[-1],
             'ticker': benchmark_ticker
         }
+
+        # Cache the result
+        if REFACTORED_MODULES_AVAILABLE:
+            cache_manager.set(cache_key, result, persist=True)
+
+        return result
 
     except Exception as e:
         print(f"Error getting benchmark return: {e}")
@@ -784,8 +809,9 @@ def get_gics_sector(ticker):
 
     Priority:
     1. Check explicit overrides (most accurate)
-    2. Fetch from yfinance and map to GICS
-    3. Return 'Other' if unknown
+    2. Check cache (fast, avoids API call)
+    3. Fetch from yfinance and map to GICS
+    4. Return 'Other' if unknown
 
     Returns:
         str: GICS Level 1 sector name
@@ -795,7 +821,14 @@ def get_gics_sector(ticker):
     if ticker_upper in STOCK_SECTOR_OVERRIDES:
         return STOCK_SECTOR_OVERRIDES[ticker_upper]
 
-    # Priority 2: Fetch from yfinance and standardize
+    # Priority 2: Check cache (6 hour TTL for sector data)
+    if REFACTORED_MODULES_AVAILABLE:
+        cache_key = cache_manager.get_cache_key('gics_sector', ticker_upper)
+        cached_sector = cache_manager.get(cache_key, ttl=21600)  # 6 hours
+        if cached_sector is not None:
+            return cached_sector
+
+    # Priority 3: Fetch from yfinance and standardize
     try:
         stock = yf.Ticker(ticker_upper)
         info = stock.info
@@ -803,11 +836,17 @@ def get_gics_sector(ticker):
 
         # Map to standard GICS
         if sector in GICS_SECTORS:
-            return sector
+            result = sector
         elif sector in GICS_SECTOR_MAPPING:
-            return GICS_SECTOR_MAPPING[sector]
+            result = GICS_SECTOR_MAPPING[sector]
         else:
-            return 'Other'
+            result = 'Other'
+
+        # Cache the result
+        if REFACTORED_MODULES_AVAILABLE:
+            cache_manager.set(cache_key, result, persist=True)
+
+        return result
 
     except Exception as e:
         print(f"Error getting sector for {ticker}: {e}")
@@ -852,6 +891,13 @@ def get_benchmark_sector_returns(benchmark_ticker='SPY', period='1y'):
     Returns:
         dict: {sector: return_percentage}
     """
+    # ATLAS Refactoring: Check cache first (6 hour TTL for sector returns)
+    if REFACTORED_MODULES_AVAILABLE:
+        cache_key = cache_manager.get_cache_key('benchmark_sector_returns', benchmark_ticker, period)
+        cached_result = cache_manager.get(cache_key, ttl=21600)  # 6 hours
+        if cached_result is not None:
+            return cached_result
+
     # Sector ETF proxies
     sector_etfs = {
         'Information Technology': 'XLK',
@@ -871,14 +917,29 @@ def get_benchmark_sector_returns(benchmark_ticker='SPY', period='1y'):
 
     for sector, etf in sector_etfs.items():
         try:
+            # Check individual ETF cache first
+            if REFACTORED_MODULES_AVAILABLE:
+                etf_cache_key = cache_manager.get_cache_key('sector_etf_return', etf, period)
+                cached_etf = cache_manager.get(etf_cache_key, ttl=21600)
+                if cached_etf is not None:
+                    sector_returns[sector] = cached_etf
+                    continue
+
             data = yf.Ticker(etf).history(period=period)
             if len(data) > 0:
                 ret = (data['Close'].iloc[-1] / data['Close'].iloc[0] - 1) * 100
                 sector_returns[sector] = ret
+                # Cache individual ETF result
+                if REFACTORED_MODULES_AVAILABLE:
+                    cache_manager.set(etf_cache_key, ret, persist=True)
             else:
                 sector_returns[sector] = 0
         except:
             sector_returns[sector] = 0
+
+    # Cache the complete result
+    if REFACTORED_MODULES_AVAILABLE:
+        cache_manager.set(cache_key, sector_returns, persist=True)
 
     return sector_returns
 
@@ -12323,6 +12384,28 @@ def main():
         value=False,
         help="Enable new modular navigation system (Phase 2A)"
     )
+
+    # ========================================================================
+    # ATLAS REFACTORING: Cache Performance Stats Display
+    # ========================================================================
+    if REFACTORED_MODULES_AVAILABLE:
+        with st.sidebar.expander("📊 Cache Performance", expanded=False):
+            cache_stats = cache_manager.get_stats()
+
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Hits", cache_stats['hits'], help="Cache hits")
+            with col2:
+                st.metric("Misses", cache_stats['misses'], help="Cache misses")
+
+            st.metric("Hit Rate", cache_stats['hit_rate'], help="Cache efficiency")
+            st.caption(f"💾 Disk: {cache_stats['disk_hits']} reads, {cache_stats['disk_writes']} writes")
+            st.caption(f"🧠 Memory: {cache_stats['memory_keys']} cached items")
+
+            if st.button("🗑️ Clear Cache", key="clear_cache_btn"):
+                cache_manager.clear()
+                st.success("Cache cleared!")
+                st.rerun()
 
     if USE_NAVIGATION_V2:
         # NEW: Registry-based routing
