@@ -15,6 +15,7 @@ from .monte_carlo_engine import render_monte_carlo_engine_page
 from .quant_optimizer import render_quant_optimizer_page
 from .leverage_tracker import render_leverage_tracker_page
 from .phoenix_parser import render_phoenix_parser_page
+from .r_analytics import render_r_analytics_page
 
 __all__ = [
     'render_about_page',
@@ -25,5 +26,6 @@ __all__ = [
     'render_monte_carlo_engine_page',
     'render_quant_optimizer_page',
     'render_leverage_tracker_page',
-    'render_phoenix_parser_page'
+    'render_phoenix_parser_page',
+    'render_r_analytics_page'
 ]

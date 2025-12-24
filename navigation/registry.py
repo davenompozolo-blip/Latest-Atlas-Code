@@ -26,7 +26,8 @@ try:
         render_monte_carlo_engine_page,
         render_quant_optimizer_page,
         render_leverage_tracker_page,
-        render_phoenix_parser_page
+        render_phoenix_parser_page,
+        render_r_analytics_page
     )
     HANDLERS_AVAILABLE = True
 except ImportError:
@@ -40,6 +41,7 @@ except ImportError:
     render_quant_optimizer_page = None
     render_leverage_tracker_page = None
     render_phoenix_parser_page = None
+    render_r_analytics_page = None
 
 @dataclass
 class PageDefinition:
@@ -143,7 +145,7 @@ PAGE_REGISTRY = [
         key="r_analytics",
         title="R Analytics",
         icon="📊",
-        handler=_make_placeholder("R Analytics", "📊"),
+        handler=render_r_analytics_page,
         category="analytics",
         feature_flag="r_integration",  # May require R installation
         requires_data=["portfolio"]
