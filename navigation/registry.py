@@ -27,7 +27,13 @@ try:
         render_quant_optimizer_page,
         render_leverage_tracker_page,
         render_phoenix_parser_page,
-        render_r_analytics_page
+        render_r_analytics_page,
+        render_v10_analytics_page,
+        render_portfolio_home_page,
+        render_risk_analysis_page,
+        render_performance_suite_page,
+        render_portfolio_deep_dive_page,
+        render_valuation_house_page
     )
     HANDLERS_AVAILABLE = True
 except ImportError:
@@ -42,6 +48,12 @@ except ImportError:
     render_leverage_tracker_page = None
     render_phoenix_parser_page = None
     render_r_analytics_page = None
+    render_v10_analytics_page = None
+    render_portfolio_home_page = None
+    render_risk_analysis_page = None
+    render_performance_suite_page = None
+    render_portfolio_deep_dive_page = None
+    render_valuation_house_page = None
 
 @dataclass
 class PageDefinition:
@@ -126,7 +138,7 @@ PAGE_REGISTRY = [
         key="portfolio_home",
         title="Portfolio Home",
         icon="🏠",
-        handler=_make_placeholder("Portfolio Home", "🏠"),
+        handler=render_portfolio_home_page,
         category="core",
         requires_data=["portfolio"]
     ),
@@ -136,7 +148,7 @@ PAGE_REGISTRY = [
         key="v10_analytics",
         title="v10.0 Analytics",
         icon="🚀",
-        handler=_make_placeholder("v10.0 Analytics", "🚀"),
+        handler=render_v10_analytics_page,
         category="analytics",
         requires_data=["portfolio"]
     ),
@@ -176,7 +188,7 @@ PAGE_REGISTRY = [
         key="risk_analysis",
         title="Risk Analysis",
         icon="📈",
-        handler=_make_placeholder("Risk Analysis", "📈"),
+        handler=render_risk_analysis_page,
         category="analysis",
         requires_data=["portfolio"]
     ),
@@ -185,7 +197,7 @@ PAGE_REGISTRY = [
         key="performance_suite",
         title="Performance Suite",
         icon="💎",
-        handler=_make_placeholder("Performance Suite", "💎"),
+        handler=render_performance_suite_page,
         category="analysis",
         requires_data=["portfolio", "performance_history"]
     ),
@@ -194,7 +206,7 @@ PAGE_REGISTRY = [
         key="portfolio_deep_dive",
         title="Portfolio Deep Dive",
         icon="🔬",
-        handler=_make_placeholder("Portfolio Deep Dive", "🔬"),
+        handler=render_portfolio_deep_dive_page,
         category="analysis",
         requires_data=["portfolio"]
     ),
@@ -213,7 +225,7 @@ PAGE_REGISTRY = [
         key="valuation_house",
         title="Valuation House",
         icon="💰",
-        handler=_make_placeholder("Valuation House", "💰"),
+        handler=render_valuation_house_page,
         category="valuation",
         requires_data=[]  # Self-contained
     ),
