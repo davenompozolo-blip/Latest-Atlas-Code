@@ -784,8 +784,9 @@ def get_gics_sector(ticker):
 
     Priority:
     1. Check explicit overrides (most accurate)
-    2. Fetch from yfinance and map to GICS
-    3. Return 'Other' if unknown
+    2. Check cache (fast, avoids API call)
+    3. Fetch from yfinance and map to GICS
+    4. Return 'Other' if unknown
 
     Returns:
         str: GICS Level 1 sector name
@@ -795,7 +796,14 @@ def get_gics_sector(ticker):
     if ticker_upper in STOCK_SECTOR_OVERRIDES:
         return STOCK_SECTOR_OVERRIDES[ticker_upper]
 
-    # Priority 2: Fetch from yfinance and standardize
+    # Priority 2: Check cache (6 hour TTL for sector data)
+    if REFACTORED_MODULES_AVAILABLE:
+        cache_key = cache_manager.get_cache_key('gics_sector', ticker_upper)
+        cached_sector = cache_manager.get(cache_key, ttl=21600)  # 6 hours
+        if cached_sector is not None:
+            return cached_sector
+
+    # Priority 3: Fetch from yfinance and standardize
     try:
         stock = yf.Ticker(ticker_upper)
         info = stock.info
@@ -803,11 +811,17 @@ def get_gics_sector(ticker):
 
         # Map to standard GICS
         if sector in GICS_SECTORS:
-            return sector
+            result = sector
         elif sector in GICS_SECTOR_MAPPING:
-            return GICS_SECTOR_MAPPING[sector]
+            result = GICS_SECTOR_MAPPING[sector]
         else:
-            return 'Other'
+            result = 'Other'
+
+        # Cache the result
+        if REFACTORED_MODULES_AVAILABLE:
+            cache_manager.set(cache_key, result, persist=True)
+
+        return result
 
     except Exception as e:
         print(f"Error getting sector for {ticker}: {e}")
