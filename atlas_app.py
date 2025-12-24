@@ -17966,17 +17966,20 @@ To maintain gradual transitions:
                                 with col2:
                                     if st.button("📊 Export Projections", use_container_width=True):
                                         # Export projections to DataFrame
-                                        proj_df = pd.DataFrame(projections).T
-                                        make_scrollable_table(proj_df, height=600, hide_index=True, use_container_width=True)
-    
-                                        # Offer download
-                                        csv = proj_df.to_csv()
-                                        st.download_button(
-                                            "💾 Download CSV",
-                                            csv,
-                                            f"{ticker_input}_multistage_projections.csv",
-                                            "text/csv"
-                                        )
+                                        if projections and isinstance(projections, (list, dict)):
+                                            proj_df = pd.DataFrame(projections).T
+                                            make_scrollable_table(proj_df, height=600, hide_index=True, use_container_width=True)
+
+                                            # Offer download
+                                            csv = proj_df.to_csv()
+                                            st.download_button(
+                                                "💾 Download CSV",
+                                                csv,
+                                                f"{ticker_input}_multistage_projections.csv",
+                                                "text/csv"
+                                            )
+                                        else:
+                                            st.error("⚠️ No projections data available to export")
     
                     elif use_multistage_dcf and not MULTISTAGE_DCF_AVAILABLE:
                         st.error("❌ Multi-Stage DCF module not available.")
@@ -18943,6 +18946,36 @@ To maintain gradual transitions:
                                 except (NameError, UnboundLocalError):
                                     tax_rate = financials.get('tax_rate', 0.21)  # Use financial data or 21% default
 
+                                # Ensure growth and projection parameters exist
+                                try:
+                                    _ = revenue_growth
+                                except (NameError, UnboundLocalError):
+                                    revenue_growth = 0.05  # 5% default
+                                try:
+                                    _ = ebit_margin
+                                except (NameError, UnboundLocalError):
+                                    ebit_margin = 0.20  # 20% default
+                                try:
+                                    _ = forecast_years
+                                except (NameError, UnboundLocalError):
+                                    forecast_years = 5  # 5 years default
+                                try:
+                                    _ = depreciation_pct
+                                except (NameError, UnboundLocalError):
+                                    depreciation_pct = 0.03  # 3% of revenue default
+                                try:
+                                    _ = capex_pct
+                                except (NameError, UnboundLocalError):
+                                    capex_pct = 0.04  # 4% of revenue default
+                                try:
+                                    _ = wc_change
+                                except (NameError, UnboundLocalError):
+                                    wc_change = 0  # No change default
+                                try:
+                                    _ = net_borrowing
+                                except (NameError, UnboundLocalError):
+                                    net_borrowing = 0  # No net borrowing default
+
                                 # Calculate cost of equity
                                 cost_equity = calculate_cost_of_equity(risk_free, beta, market_risk_premium)
     
@@ -19386,8 +19419,13 @@ To maintain gradual transitions:
                     # Detailed Projections Table
                     st.markdown("---")
                     st.markdown("#### 📋 Detailed Cash Flow Projections")
-    
-                    proj_df = pd.DataFrame(projections)
+
+                    # Ensure projections is in correct format for DataFrame
+                    if projections and isinstance(projections, list):
+                        proj_df = pd.DataFrame(projections)
+                    else:
+                        st.warning("⚠️ Projections data not available in expected format")
+                        proj_df = pd.DataFrame()  # Empty DataFrame
     
                     # Format for display
                     if method == 'FCFF':
