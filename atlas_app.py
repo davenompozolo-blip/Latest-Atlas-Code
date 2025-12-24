@@ -5161,16 +5161,32 @@ def project_fcff_enhanced(base_revenue, base_ebit, revenue_growth, ebit_margin, 
 
     for year in range(1, forecast_years + 1):
         # Determine growth rate for this year (multi-stage or single-stage)
-        if multistage_config and multistage_config.get('enabled'):
-            stage1_years = multistage_config['stage1_years']
-            stage2_years = multistage_config['stage2_years']
-
-            if year <= stage1_years:
-                current_growth = multistage_config['stage1_growth']
-            elif year <= stage1_years + stage2_years:
-                current_growth = multistage_config['stage2_growth']
+        # Handle both dict and object types for multistage_config
+        if multistage_config:
+            if isinstance(multistage_config, dict):
+                enabled = multistage_config.get('enabled', False)
+                stage1_years = multistage_config.get('stage1_years', 0)
+                stage2_years = multistage_config.get('stage2_years', 0)
+                stage1_growth = multistage_config.get('stage1_growth', revenue_growth)
+                stage2_growth = multistage_config.get('stage2_growth', revenue_growth)
+                stage3_growth = multistage_config.get('stage3_growth', revenue_growth)
             else:
-                current_growth = multistage_config['stage3_growth']
+                enabled = getattr(multistage_config, 'enabled', False)
+                stage1_years = getattr(multistage_config, 'stage1_years', 0)
+                stage2_years = getattr(multistage_config, 'stage2_years', 0)
+                stage1_growth = getattr(multistage_config, 'stage1_growth', revenue_growth)
+                stage2_growth = getattr(multistage_config, 'stage2_growth', revenue_growth)
+                stage3_growth = getattr(multistage_config, 'stage3_growth', revenue_growth)
+
+            if enabled:
+                if year <= stage1_years:
+                    current_growth = stage1_growth
+                elif year <= stage1_years + stage2_years:
+                    current_growth = stage2_growth
+                else:
+                    current_growth = stage3_growth
+            else:
+                current_growth = revenue_growth
         else:
             current_growth = revenue_growth
 
@@ -5219,16 +5235,32 @@ def project_fcfe_enhanced(base_revenue, base_net_income, revenue_growth, tax_rat
 
     for year in range(1, forecast_years + 1):
         # Determine growth rate for this year (multi-stage or single-stage)
-        if multistage_config and multistage_config.get('enabled'):
-            stage1_years = multistage_config['stage1_years']
-            stage2_years = multistage_config['stage2_years']
-
-            if year <= stage1_years:
-                current_growth = multistage_config['stage1_growth']
-            elif year <= stage1_years + stage2_years:
-                current_growth = multistage_config['stage2_growth']
+        # Handle both dict and object types for multistage_config
+        if multistage_config:
+            if isinstance(multistage_config, dict):
+                enabled = multistage_config.get('enabled', False)
+                stage1_years = multistage_config.get('stage1_years', 0)
+                stage2_years = multistage_config.get('stage2_years', 0)
+                stage1_growth = multistage_config.get('stage1_growth', revenue_growth)
+                stage2_growth = multistage_config.get('stage2_growth', revenue_growth)
+                stage3_growth = multistage_config.get('stage3_growth', revenue_growth)
             else:
-                current_growth = multistage_config['stage3_growth']
+                enabled = getattr(multistage_config, 'enabled', False)
+                stage1_years = getattr(multistage_config, 'stage1_years', 0)
+                stage2_years = getattr(multistage_config, 'stage2_years', 0)
+                stage1_growth = getattr(multistage_config, 'stage1_growth', revenue_growth)
+                stage2_growth = getattr(multistage_config, 'stage2_growth', revenue_growth)
+                stage3_growth = getattr(multistage_config, 'stage3_growth', revenue_growth)
+
+            if enabled:
+                if year <= stage1_years:
+                    current_growth = stage1_growth
+                elif year <= stage1_years + stage2_years:
+                    current_growth = stage2_growth
+                else:
+                    current_growth = stage3_growth
+            else:
+                current_growth = revenue_growth
         else:
             current_growth = revenue_growth
 
