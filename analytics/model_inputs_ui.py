@@ -200,7 +200,7 @@ def display_sgr_analysis(financial_data: dict, roe: float,
     with col1:
         payout_ratio = st.number_input(
             "Dividend Payout Ratio (%)",
-            value=sgr_results['payout_ratio'] * 100,
+            value=float(sgr_results['payout_ratio'] * 100),
             min_value=0.0,
             max_value=100.0,
             format="%.1f",
