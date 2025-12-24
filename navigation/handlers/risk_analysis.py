@@ -31,8 +31,24 @@ def render_risk_analysis_page():
         calculate_portfolio_returns,
         get_current_portfolio_metrics
     )
-    from utils.formatting import format_percentage, format_currency, ATLASFormatter
-    from utils.ui_components import make_scrollable_table, show_toast
+    from utils.formatting import format_percentage, format_currency
+
+    # Component imports - Phase 2 Day 5
+    from ui.components import (
+        # Tables
+        make_scrollable_table,
+        # Metrics
+        ATLASFormatter,
+        # Charts - Risk Analysis
+        create_risk_reward_plot,
+        create_rolling_var_cvar_chart,
+        create_monte_carlo_chart,
+        create_rolling_metrics_chart,
+        create_underwater_plot,
+        apply_chart_theme
+    )
+
+    from utils.ui_components import show_toast
     from analytics.performance import (
         calculate_sharpe_ratio,
         calculate_sortino_ratio,
@@ -43,20 +59,15 @@ def render_risk_analysis_page():
         is_valid_series,
         calculate_benchmark_returns
     )
+    # Non-extracted visualization functions remain in analytics.visualization
     from analytics.visualization import (
-        create_risk_reward_plot,
         create_var_waterfall,
         create_var_cvar_distribution,
         create_risk_parity_analysis,
         create_efficient_frontier,
         create_drawdown_distribution,
-        create_rolling_var_cvar_chart,
-        create_monte_carlo_chart,
-        create_rolling_metrics_chart,
-        create_underwater_plot,
         create_risk_contribution_sunburst,
-        create_correlation_network,
-        apply_chart_theme
+        create_correlation_network
     )
     from analytics.stochastic import run_monte_carlo_simulation
     from analytics.stress_testing import calculate_historical_stress_test

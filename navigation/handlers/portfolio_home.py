@@ -32,18 +32,25 @@ def render_portfolio_home_page():
         validate_portfolio_data,
         is_option_ticker
     )
-    from utils.formatting import format_currency, format_percentage, add_arrow_indicator, ATLASFormatter
-    from utils.ui_components import make_scrollable_table
-    from analytics.performance import calculate_performance_metrics, is_valid_series
-    from analytics.visualization import (
+    from utils.formatting import format_currency, format_percentage, add_arrow_indicator
+
+    # Component imports - Phase 2 Day 5
+    from ui.components import (
+        # Tables
+        make_scrollable_table,
+        style_holdings_dataframe_with_optimization,
+        # Metrics
         create_signal_health_badge,
         create_risk_snapshot,
+        ATLASFormatter,
+        # Charts
         create_pnl_attribution_sector,
         create_pnl_attribution_position,
-        create_performance_heatmap,
-        should_display_monthly_heatmap,
-        style_holdings_dataframe_with_optimization
+        create_performance_heatmap
     )
+
+    from analytics.performance import calculate_performance_metrics, is_valid_series
+    from analytics.visualization import should_display_monthly_heatmap  # Utility function, not extracted
     from analytics.optimization import calculate_var_cvar_portfolio_optimization
     from database.manager import get_db
     from config.theme import COLORS
