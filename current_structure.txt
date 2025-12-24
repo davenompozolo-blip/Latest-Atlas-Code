@@ -1,0 +1,114 @@
+ATLAS TERMINAL - CURRENT DIRECTORY STRUCTURE
+=============================================
+
+Latest-Atlas-Code/
+│
+├── 📄 atlas_app.py (20,378 lines) ⚠️ MONOLITHIC ENTRY POINT
+├── 📄 requirements.txt
+├── 📄 Dockerfile
+│
+├── 📁 navigation/ ✅ Phase 2A - Modular Navigation v2.0
+│   ├── __init__.py (Navigation subsystem exports)
+│   ├── registry.py (Page registry - single source of truth)
+│   ├── router.py (Page routing logic)
+│   ├── sidebar.py (Sidebar rendering)
+│   ├── page_handlers.py
+│   └── 📁 handlers/ (16 page handler modules)
+│       ├── portfolio_home.py ✅ MIGRATED TO COMPONENTS
+│       ├── risk_analysis.py ✅ MIGRATED TO COMPONENTS
+│       ├── performance_suite.py
+│       ├── portfolio_deep_dive.py
+│       ├── valuation_house.py
+│       ├── v10_analytics.py
+│       ├── market_watch.py
+│       ├── database.py
+│       ├── phoenix_parser.py
+│       ├── leverage_tracker.py
+│       ├── quant_optimizer.py
+│       ├── multi_factor_analysis.py
+│       ├── investopedia_live.py
+│       ├── monte_carlo_engine.py
+│       ├── r_analytics.py
+│       └── about.py
+│
+├── 📁 ui/ ✅ Phase 2 Day 5 - Component Library
+│   ├── __init__.py
+│   ├── atlas_enhanced_components.py (Legacy components)
+│   ├── 📁 components/ ✅ NEW - MODULAR COMPONENT LIBRARY
+│   │   ├── __init__.py (Exports 30+ functions)
+│   │   ├── tables.py (180 lines, 3 functions + helpers)
+│   │   ├── metrics.py (480 lines, 4 functions + ATLASFormatter)
+│   │   └── charts.py (1,068 lines, 18 chart functions)
+│   └── 📁 branding/
+│       ├── atlas_complete_ui.css (~2000 lines) ⚠️ MONOLITHIC
+│       └── avengers_animations.css
+│
+├── 📁 analytics/ (Business logic & calculations)
+│   ├── Performance metrics
+│   ├── Attribution analysis
+│   ├── Risk calculations
+│   └── Visualization (⚠️ Being migrated to ui/components)
+│
+├── 📁 valuation/
+│   ├── DCF valuation engine
+│   └── Financial modeling
+│
+├── 📁 risk_analytics/
+│   ├── Monte Carlo simulation
+│   └── Risk metrics
+│
+├── 📁 portfolio_tools/
+│   └── Phoenix mode & portfolio utilities
+│
+├── 📁 data/
+│   ├── migrations/
+│   └── queries/
+│
+├── 📁 investopedia_integration/
+│   └── Paper trading integration
+│
+├── 📁 multi_source_data/
+│   └── Multi-source data fetching
+│
+├── 📁 quant_optimizer/
+│   └── Portfolio optimization
+│
+├── 📁 r_analytics/
+│   ├── scripts/
+│   └── R integration layer
+│
+├── 📁 patches/
+│   └── System patches
+│
+├── 📁 tests/
+│   └── Test suite
+│
+└── 📁 atlas_terminal/ (Alternative structure - appears unused)
+    ├── core/
+    ├── data/
+    │   ├── fetchers/
+    │   └── validators/
+    ├── pages/
+    ├── ui/
+    │   ├── components/
+    │   ├── layouts/
+    │   └── themes/
+    └── utils/
+
+KEY OBSERVATIONS:
+=================
+✅ Component library successfully extracted (Phase 2 Day 5 complete)
+✅ Modular navigation system in place (Navigation v2.0)
+⚠️ Main entry point is 20K line monolithic file
+⚠️ CSS is single 2K line file
+⚠️ Dual navigation systems coexist (legacy + v2.0)
+⚠️ No config/ directory (settings hardcoded)
+⚠️ No .streamlit/ config directory
+
+ACTIVE SYSTEM:
+=============
+Entry Point: atlas_app.py
+Navigation: streamlit-option-menu (horizontal bar)
+Styling: ui/branding/atlas_complete_ui.css
+Components: ui/components/ (tables, metrics, charts)
+Pages: navigation/handlers/ (16 modular handlers)
