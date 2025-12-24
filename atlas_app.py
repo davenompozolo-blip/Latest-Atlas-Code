@@ -11378,9 +11378,27 @@ def create_dcf_waterfall(dcf_results, method='FCFF'):
 
 def create_cash_flow_chart(projections, method='FCFF'):
     """Create bar chart of projected cash flows - ENHANCED THEMING"""
-    
+
+    # Handle DCFProjections object or list
+    if not isinstance(projections, list):
+        # If projections is a DCFProjections object, convert it to list format
+        if hasattr(projections, 'forecast_years') and hasattr(projections, 'final_projections'):
+            proj_list = []
+            for year in range(1, projections.forecast_years + 1):
+                year_data = projections.final_projections.get(year, {}) if isinstance(projections.final_projections, dict) else {}
+                proj_list.append({
+                    'year': year,
+                    'fcff': year_data.get('fcff', 0),
+                    'fcfe': year_data.get('fcfe', 0)
+                })
+            projections = proj_list
+        else:
+            # Can't convert, return empty chart
+            st.warning("⚠️ Projections data format not recognized. Cannot display cash flow chart.")
+            return go.Figure()
+
     cf_key = 'fcff' if method == 'FCFF' else 'fcfe'
-    
+
     years = [proj['year'] for proj in projections]
     cash_flows = [proj[cf_key] for proj in projections]
     
@@ -18920,6 +18938,10 @@ To maintain gradual transitions:
                                     _ = cost_debt
                                 except (NameError, UnboundLocalError):
                                     cost_debt = 0.05  # 5% default
+                                try:
+                                    _ = tax_rate
+                                except (NameError, UnboundLocalError):
+                                    tax_rate = financials.get('tax_rate', 0.21)  # Use financial data or 21% default
 
                                 # Calculate cost of equity
                                 cost_equity = calculate_cost_of_equity(risk_free, beta, market_risk_premium)
