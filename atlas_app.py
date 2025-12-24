@@ -375,6 +375,13 @@ def get_benchmark_period_return(benchmark_ticker='SPY', period='1y', match_portf
                 start_date = portfolio_data['start_date']
                 end_date = portfolio_data['end_date']
 
+                # ATLAS Refactoring: Check cache first (1 hour TTL for benchmark data)
+                if REFACTORED_MODULES_AVAILABLE:
+                    cache_key = cache_manager.get_cache_key('benchmark_return', benchmark_ticker, str(start_date), str(end_date))
+                    cached_result = cache_manager.get(cache_key, ttl=3600)
+                    if cached_result is not None:
+                        return cached_result
+
                 # Get benchmark data for exact same dates
                 benchmark = yf.Ticker(benchmark_ticker)
                 # Add buffer days to ensure we get data
@@ -398,7 +405,7 @@ def get_benchmark_period_return(benchmark_ticker='SPY', period='1y', match_portf
 
                 benchmark_return = (end_price - start_price) / start_price
 
-                return {
+                result = {
                     'return': benchmark_return,  # As decimal
                     'return_pct': benchmark_return * 100,  # As percentage
                     'start_price': start_price,
@@ -408,7 +415,19 @@ def get_benchmark_period_return(benchmark_ticker='SPY', period='1y', match_portf
                     'ticker': benchmark_ticker
                 }
 
-        # Fallback to standard period
+                # Cache the result
+                if REFACTORED_MODULES_AVAILABLE:
+                    cache_manager.set(cache_key, result, persist=True)
+
+                return result
+
+        # Fallback to standard period - also cache this
+        if REFACTORED_MODULES_AVAILABLE:
+            cache_key = cache_manager.get_cache_key('benchmark_return_period', benchmark_ticker, period)
+            cached_result = cache_manager.get(cache_key, ttl=3600)
+            if cached_result is not None:
+                return cached_result
+
         benchmark = yf.Ticker(benchmark_ticker)
         hist = benchmark.history(period=period)
 
@@ -419,7 +438,7 @@ def get_benchmark_period_return(benchmark_ticker='SPY', period='1y', match_portf
         end_price = hist['Close'].iloc[-1]
         benchmark_return = (end_price - start_price) / start_price
 
-        return {
+        result = {
             'return': benchmark_return,
             'return_pct': benchmark_return * 100,
             'start_price': start_price,
@@ -428,6 +447,12 @@ def get_benchmark_period_return(benchmark_ticker='SPY', period='1y', match_portf
             'end_date': hist.index[-1],
             'ticker': benchmark_ticker
         }
+
+        # Cache the result
+        if REFACTORED_MODULES_AVAILABLE:
+            cache_manager.set(cache_key, result, persist=True)
+
+        return result
 
     except Exception as e:
         print(f"Error getting benchmark return: {e}")
@@ -866,6 +891,13 @@ def get_benchmark_sector_returns(benchmark_ticker='SPY', period='1y'):
     Returns:
         dict: {sector: return_percentage}
     """
+    # ATLAS Refactoring: Check cache first (6 hour TTL for sector returns)
+    if REFACTORED_MODULES_AVAILABLE:
+        cache_key = cache_manager.get_cache_key('benchmark_sector_returns', benchmark_ticker, period)
+        cached_result = cache_manager.get(cache_key, ttl=21600)  # 6 hours
+        if cached_result is not None:
+            return cached_result
+
     # Sector ETF proxies
     sector_etfs = {
         'Information Technology': 'XLK',
@@ -885,14 +917,29 @@ def get_benchmark_sector_returns(benchmark_ticker='SPY', period='1y'):
 
     for sector, etf in sector_etfs.items():
         try:
+            # Check individual ETF cache first
+            if REFACTORED_MODULES_AVAILABLE:
+                etf_cache_key = cache_manager.get_cache_key('sector_etf_return', etf, period)
+                cached_etf = cache_manager.get(etf_cache_key, ttl=21600)
+                if cached_etf is not None:
+                    sector_returns[sector] = cached_etf
+                    continue
+
             data = yf.Ticker(etf).history(period=period)
             if len(data) > 0:
                 ret = (data['Close'].iloc[-1] / data['Close'].iloc[0] - 1) * 100
                 sector_returns[sector] = ret
+                # Cache individual ETF result
+                if REFACTORED_MODULES_AVAILABLE:
+                    cache_manager.set(etf_cache_key, ret, persist=True)
             else:
                 sector_returns[sector] = 0
         except:
             sector_returns[sector] = 0
+
+    # Cache the complete result
+    if REFACTORED_MODULES_AVAILABLE:
+        cache_manager.set(cache_key, sector_returns, persist=True)
 
     return sector_returns
 
