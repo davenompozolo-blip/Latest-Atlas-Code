@@ -24,7 +24,10 @@ try:
         render_investopedia_live_page,
         render_multi_factor_analysis_page,
         render_monte_carlo_engine_page,
-        render_quant_optimizer_page
+        render_quant_optimizer_page,
+        render_leverage_tracker_page,
+        render_phoenix_parser_page,
+        render_r_analytics_page
     )
     HANDLERS_AVAILABLE = True
 except ImportError:
@@ -36,6 +39,9 @@ except ImportError:
     render_multi_factor_analysis_page = None
     render_monte_carlo_engine_page = None
     render_quant_optimizer_page = None
+    render_leverage_tracker_page = None
+    render_phoenix_parser_page = None
+    render_r_analytics_page = None
 
 @dataclass
 class PageDefinition:
@@ -110,7 +116,7 @@ PAGE_REGISTRY = [
         key="phoenix_parser",
         title="Phoenix Parser",
         icon="🔥",
-        handler=_make_placeholder("Phoenix Parser", "🔥"),
+        handler=render_phoenix_parser_page,
         category="input",
         requires_data=[]  # No prerequisites
     ),
@@ -139,7 +145,7 @@ PAGE_REGISTRY = [
         key="r_analytics",
         title="R Analytics",
         icon="📊",
-        handler=_make_placeholder("R Analytics", "📊"),
+        handler=render_r_analytics_page,
         category="analytics",
         feature_flag="r_integration",  # May require R installation
         requires_data=["portfolio"]
@@ -236,7 +242,7 @@ PAGE_REGISTRY = [
         key="leverage_tracker",
         title="Leverage Tracker",
         icon="📊",
-        handler=_make_placeholder("Leverage Tracker", "📊"),
+        handler=render_leverage_tracker_page,
         category="tracking",
         requires_data=["portfolio", "performance_history"]
     ),
