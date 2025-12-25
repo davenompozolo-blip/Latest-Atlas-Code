@@ -14301,6 +14301,15 @@ def main():
                 perf_text = 'Underperforming'
                 perf_icon = '↓'
 
+            # === DIAGNOSTIC TEST ===
+            st.markdown("**🔍 DIAGNOSTIC: Testing HTML Rendering**")
+            st.markdown(
+                "<div style='background: rgba(16,185,129,0.2); padding: 1rem; border-radius: 12px; color: #6ee7b7; margin-bottom: 1rem;'>✓ If you see a GREEN BOX, HTML rendering works</div>",
+                unsafe_allow_html=True
+            )
+            st.markdown("---")
+            # === END DIAGNOSTIC ===
+
             badge_group([
                 {'text': f'Leverage: {lev_text}', 'type': lev_status, 'size': 'md', 'icon': lev_icon},
                 {'text': f'{perf_text} ({total_gl_pct:+.1f}%)', 'type': perf_status, 'size': 'md', 'icon': perf_icon},
@@ -14500,7 +14509,6 @@ def main():
                 atlas_table(
                     display_df,
                     title="Current Holdings",
-                    subtitle=f"{len(display_df)} positions • ${gross_exposure:,.0f} gross exposure",
                     hoverable=True,
                     height=500
                 )
