@@ -219,14 +219,7 @@ def atlas_table(
     </div>
     """
 
-    # DEBUG: Show what we're about to render
-    st.write(f"[DEBUG] atlas_table rendering {len(df)} rows, {len(df.columns)} columns")
-    st.write(f"[DEBUG] HTML length: {len(full_html)} chars")
-    st.write(f"[DEBUG] Title: {title}")
-
     st.markdown(full_html, unsafe_allow_html=True)
-
-    st.write("[DEBUG] ✓ st.markdown called successfully")
 
 
 def atlas_table_with_badges(
