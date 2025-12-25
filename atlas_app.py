@@ -14301,20 +14301,33 @@ def main():
                 perf_text = 'Underperforming'
                 perf_icon = '↓'
 
-            # === DIAGNOSTIC TEST ===
-            st.markdown("**🔍 DIAGNOSTIC: Testing HTML Rendering**")
-            st.markdown(
-                "<div style='background: rgba(16,185,129,0.2); padding: 1rem; border-radius: 12px; color: #6ee7b7; margin-bottom: 1rem;'>✓ If you see a GREEN BOX, HTML rendering works</div>",
-                unsafe_allow_html=True
-            )
-            st.markdown("---")
-            # === END DIAGNOSTIC ===
+            # INLINE BADGES - Direct HTML rendering (bypassing badge_group function)
+            # Build badge HTML based on status
+            if lev_status == 'success':
+                lev_colors = {'bg': 'rgba(16,185,129,0.2)', 'border': 'rgba(16,185,129,0.4)', 'text': '#6ee7b7'}
+            elif lev_status == 'warning':
+                lev_colors = {'bg': 'rgba(245,158,11,0.2)', 'border': 'rgba(245,158,11,0.4)', 'text': '#fcd34d'}
+            else:
+                lev_colors = {'bg': 'rgba(239,68,68,0.2)', 'border': 'rgba(239,68,68,0.4)', 'text': '#fca5a5'}
 
-            badge_group([
-                {'text': f'Leverage: {lev_text}', 'type': lev_status, 'size': 'md', 'icon': lev_icon},
-                {'text': f'{perf_text} ({total_gl_pct:+.1f}%)', 'type': perf_status, 'size': 'md', 'icon': perf_icon},
-                {'text': f'{len(enhanced_df)} Positions', 'type': 'neutral', 'size': 'md'},
-            ])
+            if perf_status == 'success':
+                perf_colors = {'bg': 'rgba(16,185,129,0.2)', 'border': 'rgba(16,185,129,0.4)', 'text': '#6ee7b7'}
+            elif perf_status == 'info':
+                perf_colors = {'bg': 'rgba(59,130,246,0.2)', 'border': 'rgba(59,130,246,0.4)', 'text': '#93c5fd'}
+            elif perf_status == 'warning':
+                perf_colors = {'bg': 'rgba(245,158,11,0.2)', 'border': 'rgba(245,158,11,0.4)', 'text': '#fcd34d'}
+            else:
+                perf_colors = {'bg': 'rgba(239,68,68,0.2)', 'border': 'rgba(239,68,68,0.4)', 'text': '#fca5a5'}
+
+            neutral_colors = {'bg': 'rgba(148,163,184,0.15)', 'border': 'rgba(148,163,184,0.3)', 'text': '#cbd5e1'}
+
+            st.markdown(f"""
+            <div style='display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.5rem;'>
+                <span style='display: inline-block; padding: 0.375rem 1rem; font-size: 0.875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; border-radius: 12px; background: {lev_colors['bg']}; border: 1px solid {lev_colors['border']}; color: {lev_colors['text']}; transition: all 0.2s ease;'>{lev_icon} Leverage: {lev_text}</span>
+                <span style='display: inline-block; padding: 0.375rem 1rem; font-size: 0.875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; border-radius: 12px; background: {perf_colors['bg']}; border: 1px solid {perf_colors['border']}; color: {perf_colors['text']}; transition: all 0.2s ease;'>{perf_icon} {perf_text} ({total_gl_pct:+.1f}%)</span>
+                <span style='display: inline-block; padding: 0.375rem 1rem; font-size: 0.875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; border-radius: 12px; background: {neutral_colors['bg']}; border: 1px solid {neutral_colors['border']}; color: {neutral_colors['text']}; transition: all 0.2s ease;'>{len(enhanced_df)} Positions</span>
+            </div>
+            """, unsafe_allow_html=True)
 
             st.markdown("---")
     
