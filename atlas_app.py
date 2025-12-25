@@ -62,6 +62,17 @@ from navigation import PAGE_REGISTRY, get_page_by_key, route_to_page
 # PHASE 1B: VERTICAL SIDEBAR NAVIGATION (Fomo-inspired)
 from ui.components import render_sidebar_navigation
 
+# PHASE 2A: ENHANCED COMPONENTS (Fomo-inspired)
+from ui.components import (
+    # Badges
+    badge, render_badge, badge_group,
+    # Enhanced Tables
+    atlas_table, atlas_table_with_badges,
+    # Chart Theme
+    create_line_chart, create_performance_chart,
+    ATLAS_TEMPLATE, ATLAS_COLORS
+)
+
 # Auto-install streamlit_option_menu if missing
 try:
     from streamlit_option_menu import option_menu
@@ -14253,7 +14264,49 @@ def main():
                     delta=leverage_delta,
                     help="Gross Exposure ÷ Equity"
                 )
-    
+
+            # PHASE 2A: Add status badges for leverage and performance
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            # Determine leverage status
+            lev_diff = abs(actual_leverage - target_lev)
+            if lev_diff < 0.1:
+                lev_status = 'success'
+                lev_text = 'On Target'
+                lev_icon = '✓'
+            elif lev_diff < 0.3:
+                lev_status = 'warning'
+                lev_text = 'Near Target'
+                lev_icon = '⚠️'
+            else:
+                lev_status = 'danger'
+                lev_text = 'Off Target'
+                lev_icon = '!'
+
+            # Determine performance status
+            if total_gl_pct > 5:
+                perf_status = 'success'
+                perf_text = 'Strong Performance'
+                perf_icon = '↑'
+            elif total_gl_pct > 0:
+                perf_status = 'info'
+                perf_text = 'Positive'
+                perf_icon = '↗'
+            elif total_gl_pct > -5:
+                perf_status = 'warning'
+                perf_text = 'Slight Loss'
+                perf_icon = '↘'
+            else:
+                perf_status = 'danger'
+                perf_text = 'Underperforming'
+                perf_icon = '↓'
+
+            badge_group([
+                {'text': f'Leverage: {lev_text}', 'type': lev_status, 'size': 'md', 'icon': lev_icon},
+                {'text': f'{perf_text} ({total_gl_pct:+.1f}%)', 'type': perf_status, 'size': 'md', 'icon': perf_icon},
+                {'text': f'{len(enhanced_df)} Positions', 'type': 'neutral', 'size': 'md'},
+            ])
+
             st.markdown("---")
     
             # Second row: Performance Metrics (ALL on equity basis)
@@ -14421,29 +14474,36 @@ def main():
                     help="Choose which columns to show in the holdings table"
                 )
     
-            # Display holdings table
+            # Display holdings table (PHASE 2A: Enhanced with atlas_table)
             if selected_columns:
                 # Create display dataframe with selected columns
                 display_df = enhanced_df[selected_columns].copy()
-    
+
                 # Format columns appropriately
                 pct_cols = [col for col in selected_columns if '%' in col]
                 for col in pct_cols:
                     if col in display_df.columns:
                         display_df[col] = display_df[col].apply(lambda x: format_percentage(x) if pd.notna(x) else 'N/A')
-    
+
                 currency_cols = ['Avg Cost', 'Current Price', 'Daily P&L $', 'Total Gain/Loss $', 'Price Target']
                 for col in currency_cols:
                     if col in display_df.columns:
                         display_df[col] = display_df[col].apply(lambda x: format_currency(x) if pd.notna(x) else 'N/A')
-    
+
                 # Add arrow indicators for change columns
                 if 'Daily Change %' in display_df.columns:
                     display_df['Daily Change %'] = display_df['Daily Change %'].apply(add_arrow_indicator)
                 if 'Total Gain/Loss %' in display_df.columns:
                     display_df['Total Gain/Loss %'] = display_df['Total Gain/Loss %'].apply(add_arrow_indicator)
-    
-                make_scrollable_table(display_df, height=500, hide_index=True, use_container_width=True, column_config=None)
+
+                # PHASE 2A: Use enhanced glassmorphic table
+                atlas_table(
+                    display_df,
+                    title="Current Holdings",
+                    subtitle=f"{len(display_df)} positions • ${gross_exposure:,.0f} gross exposure",
+                    hoverable=True,
+                    height=500
+                )
     
                 # Add explanation for dual weight columns
                 if 'Weight % of Equity' in selected_columns or 'Weight % of Gross' in selected_columns:
@@ -14465,16 +14525,20 @@ def main():
             st.markdown("#### 💼 Sector Attribution")
             pnl_sector = create_pnl_attribution_sector(enhanced_df)
             if pnl_sector:
+                # PHASE 2A: Apply ATLAS template
+                pnl_sector.update_layout(template=ATLAS_TEMPLATE)
                 st.plotly_chart(pnl_sector, use_container_width=True, key="sector_pnl")
             else:
                 st.info("Sector P&L will display when holdings have sector data")
-    
+
             # Additional position-level P&L analysis
             st.markdown("---")
             st.markdown("### 💼 Top Contributors")
-    
+
             pnl_position = create_pnl_attribution_position(enhanced_df, top_n=10)
             if pnl_position:
+                # PHASE 2A: Apply ATLAS template
+                pnl_position.update_layout(template=ATLAS_TEMPLATE)
                 st.plotly_chart(pnl_position, use_container_width=True)
     
             # Performance Heatmap (full width) - Only show if meaningful data exists
@@ -14483,6 +14547,8 @@ def main():
                 st.markdown("### 📅 Monthly Performance")
                 perf_heatmap = create_performance_heatmap(enhanced_df)
                 if perf_heatmap:
+                    # PHASE 2A: Apply ATLAS template
+                    perf_heatmap.update_layout(template=ATLAS_TEMPLATE)
                     st.plotly_chart(perf_heatmap, use_container_width=True)
             else:
                 st.info("📊 Monthly performance heatmap will be available after 2+ months of portfolio history")
