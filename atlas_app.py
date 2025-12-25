@@ -59,6 +59,9 @@ import streamlit as st
 # ============================================================================
 from navigation import PAGE_REGISTRY, get_page_by_key, route_to_page
 
+# PHASE 1B: VERTICAL SIDEBAR NAVIGATION (Fomo-inspired)
+from ui.components import render_sidebar_navigation
+
 # Auto-install streamlit_option_menu if missing
 try:
     from streamlit_option_menu import option_menu
@@ -1235,7 +1238,7 @@ st.set_page_config(
     page_title="ATLAS Terminal v10.0 INSTITUTIONAL",
     page_icon="🚀",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"  # Phase 1B: Show vertical sidebar
 )
 st.markdown(
     """
@@ -12326,63 +12329,73 @@ def main():
         """)
 
     # ============================================================================
-    # HORIZONTAL NAVIGATION BAR - MAXIMUM SCREEN SPACE UTILIZATION
+    # PHASE 1B: VERTICAL SIDEBAR NAVIGATION - FOMO-INSPIRED AESTHETICS
     # ============================================================================
+    # Replaces horizontal navigation with glassmorphic vertical sidebar
+    # Location: ui/components/sidebar_nav.py
 
-    # Horizontal Navigation Menu (positioned at top for better hierarchy)
-    page = option_menu(
-        menu_title=None,
-        options=[
-            "🔥 Phoenix Parser",
-            "🏠 Portfolio Home",
-            "🚀 v10.0 Analytics",
-            "📊 R Analytics",
-            "💾 Database",
-            "🌍 Market Watch",
-            "📈 Risk Analysis",
-            "💎 Performance Suite",
-            "🔬 Portfolio Deep Dive",
-            "📊 Multi-Factor Analysis",
-            "💰 Valuation House",
-            "🎲 Monte Carlo Engine",
-            "🧮 Quant Optimizer",
-            "📊 Leverage Tracker",
-            "📡 Investopedia Live",
-            "ℹ️ About"
-        ],
-        icons=["fire", "house-fill", "rocket-takeoff-fill", "graph-up-arrow", "database-fill", "globe", "graph-up", "gem", "microscope", "bar-chart-fill", "cash-coin", "dice-5-fill", "calculator-fill", "graph-up", "broadcast", "info-circle-fill"],
-        menu_icon="cast",
-        default_index=0,
-        orientation="horizontal",  # KEY: Horizontal layout
-        styles={
-            "container": {
-                "padding": "0!important",
-                "background-color": "rgba(10, 25, 41, 0.4)",
-                "border-radius": "10px",
-                "margin-bottom": "20px"
-            },
-            "icon": {
-                "color": "#00d4ff",
-                "font-size": "18px"
-            },
-            "nav-link": {
-                "font-size": "14px",
-                "text-align": "center",
-                "margin": "0px",
-                "padding": "12px 16px",
-                "border-radius": "8px",
-                "--hover-color": "rgba(0, 212, 255, 0.15)",
-                "color": "#ffffff",
-                "white-space": "nowrap"
-            },
-            "nav-link-selected": {
-                "background-color": "#00d4ff",
-                "color": "#000000",
-                "font-weight": "600",
-                "box-shadow": "0 4px 12px rgba(0, 212, 255, 0.3)"
-            }
-        }
-    )
+    page = render_sidebar_navigation(default_page="Portfolio Home")
+
+    # ============================================================================
+    # LEGACY HORIZONTAL NAVIGATION (DEPRECATED - PHASE 1B)
+    # ============================================================================
+    # Preserved for reference and potential rollback
+    # Remove after successful testing of vertical sidebar
+
+    # # Horizontal Navigation Menu (positioned at top for better hierarchy)
+    # page = option_menu(
+    #     menu_title=None,
+    #     options=[
+    #         "🔥 Phoenix Parser",
+    #         "🏠 Portfolio Home",
+    #         "🚀 v10.0 Analytics",
+    #         "📊 R Analytics",
+    #         "💾 Database",
+    #         "🌍 Market Watch",
+    #         "📈 Risk Analysis",
+    #         "💎 Performance Suite",
+    #         "🔬 Portfolio Deep Dive",
+    #         "📊 Multi-Factor Analysis",
+    #         "💰 Valuation House",
+    #         "🎲 Monte Carlo Engine",
+    #         "🧮 Quant Optimizer",
+    #         "📊 Leverage Tracker",
+    #         "📡 Investopedia Live",
+    #         "ℹ️ About"
+    #     ],
+    #     icons=["fire", "house-fill", "rocket-takeoff-fill", "graph-up-arrow", "database-fill", "globe", "graph-up", "gem", "microscope", "bar-chart-fill", "cash-coin", "dice-5-fill", "calculator-fill", "graph-up", "broadcast", "info-circle-fill"],
+    #     menu_icon="cast",
+    #     default_index=0,
+    #     orientation="horizontal",  # KEY: Horizontal layout
+    #     styles={
+    #         "container": {
+    #             "padding": "0!important",
+    #             "background-color": "rgba(10, 25, 41, 0.4)",
+    #             "border-radius": "10px",
+    #             "margin-bottom": "20px"
+    #         },
+    #         "icon": {
+    #             "color": "#00d4ff",
+    #             "font-size": "18px"
+    #         },
+    #         "nav-link": {
+    #             "font-size": "14px",
+    #             "text-align": "center",
+    #             "margin": "0px",
+    #             "padding": "12px 16px",
+    #             "border-radius": "8px",
+    #             "--hover-color": "rgba(0, 212, 255, 0.15)",
+    #             "color": "#ffffff",
+    #             "white-space": "nowrap"
+    #         },
+    #         "nav-link-selected": {
+    #             "background-color": "#00d4ff",
+    #             "color": "#000000",
+    #             "font-weight": "600",
+    #             "box-shadow": "0 4px 12px rgba(0, 212, 255, 0.3)"
+    #         }
+    #     }
+    # )
 
     # ========================================================================
     # PHASE 2A: NAVIGATION ROUTING (Registry-Based)
