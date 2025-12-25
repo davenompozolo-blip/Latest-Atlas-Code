@@ -12226,7 +12226,10 @@ def main():
 <div class="atlas-shield-logo loaded">
 <img src="data:image/svg+xml;base64,{logo_base64}" width="200" alt="ATLAS Shield">
 </div>
-<h1 style="font-family: var(--font-display, 'Inter', sans-serif); font-size: 3.5rem; font-weight: 800; color: var(--vibranium-primary, #00d4ff); margin: 30px 0 10px 0; letter-spacing: 0.05em; text-shadow: 0 0 30px var(--vibranium-glow, rgba(0, 212, 255, 0.5));">ATLAS TERMINAL</h1>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&display=swap');
+</style>
+<h1 style="font-family: 'Orbitron', monospace; font-size: 3.5rem; font-weight: 900; margin: 30px 0 10px 0; letter-spacing: 0.15em; color: transparent; -webkit-text-stroke: 2px #00d4ff; text-stroke: 2px #00d4ff; text-shadow: 0 0 10px #00d4ff, 0 0 20px #00d4ff, 0 0 30px #00d4ff, 0 0 40px #6366f1, 0 0 70px #8b5cf6, 0 0 80px #8b5cf6; filter: brightness(1.2);">ATLAS TERMINAL</h1>
 <p style="font-family: var(--font-display, 'Inter', sans-serif); font-size: 0.9rem; font-weight: 300; color: var(--silver-medium, #c0c8d0); margin: 10px 0 20px 0; letter-spacing: 0.2em; text-transform: uppercase;">INSTITUTIONAL EDITION v10.0</p>
 <p style="font-family: var(--font-body, 'Inter', sans-serif); font-size: 1.1rem; font-weight: 400; color: var(--silver-bright, #ffffff); margin: 0 0 40px 0;">Institutional Intelligence. Personal Scale.</p>
 </div>'''
@@ -12234,7 +12237,10 @@ def main():
         else:
             # Fallback if logo file missing
             fallback_html = '''<div class="atlas-header-container">
-<h1 style="font-family: var(--font-display, 'Inter', sans-serif); font-size: 3.5rem; font-weight: 800; color: var(--vibranium-primary, #00d4ff); text-shadow: 0 0 30px var(--vibranium-glow, rgba(0, 212, 255, 0.5));">ATLAS TERMINAL</h1>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&display=swap');
+</style>
+<h1 style="font-family: 'Orbitron', monospace; font-size: 3.5rem; font-weight: 900; letter-spacing: 0.15em; color: transparent; -webkit-text-stroke: 2px #00d4ff; text-stroke: 2px #00d4ff; text-shadow: 0 0 10px #00d4ff, 0 0 20px #00d4ff, 0 0 30px #00d4ff, 0 0 40px #6366f1, 0 0 70px #8b5cf6, 0 0 80px #8b5cf6; filter: brightness(1.2);">ATLAS TERMINAL</h1>
 <p style="color: var(--silver-medium, #c0c8d0); letter-spacing: 0.2em; text-transform: uppercase;">INSTITUTIONAL EDITION v10.0</p>
 <p style="color: var(--silver-bright, #ffffff);">Institutional Intelligence. Personal Scale.</p>
 </div>'''
