@@ -35,6 +35,18 @@ from .tables_enhanced import (
     atlas_table_with_badges
 )
 
+# Enhanced Chart Theme (Phase 2A)
+from .charts_theme import (
+    ATLAS_TEMPLATE,
+    ATLAS_COLORS,
+    COLOR_SEQUENCE,
+    create_line_chart,
+    create_bar_chart,
+    create_performance_chart,
+    create_heatmap,
+    apply_neon_glow
+)
+
 # Metrics Module
 from .metrics import (
     ATLASFormatter,
@@ -113,6 +125,16 @@ __all__ = [
     # Enhanced Tables (Phase 2A)
     'atlas_table',
     'atlas_table_with_badges',
+
+    # Enhanced Chart Theme (Phase 2A)
+    'ATLAS_TEMPLATE',
+    'ATLAS_COLORS',
+    'COLOR_SEQUENCE',
+    'create_line_chart',
+    'create_bar_chart',
+    'create_performance_chart',
+    'create_heatmap',
+    'apply_neon_glow',
 
     # Metrics
     'ATLASFormatter',
