@@ -2,12 +2,22 @@
 ATLAS Terminal - UI Components Package
 Phase 2 Day 5 - Reusable Component Library
 Phase 1B - Sidebar Navigation Component
+Phase 2A - Badge Pills & Enhanced Components
 
-Centralized UI components for charts, metrics, tables, and navigation.
+Centralized UI components for charts, metrics, tables, navigation, and badges.
 """
 
 # Navigation Module (Phase 1B)
 from .sidebar_nav import render_sidebar_navigation
+
+# Badge Module (Phase 2A)
+from .badges import (
+    badge,
+    render_badge,
+    badge_group,
+    BadgeType,
+    BadgeSize
+)
 
 # Tables Module
 from .tables import (
@@ -17,6 +27,12 @@ from .tables import (
     add_arrow_indicator,
     format_percentage,
     format_currency
+)
+
+# Enhanced Tables Module (Phase 2A)
+from .tables_enhanced import (
+    atlas_table,
+    atlas_table_with_badges
 )
 
 # Metrics Module
@@ -79,6 +95,13 @@ __all__ = [
     # Navigation (Phase 1B)
     'render_sidebar_navigation',
 
+    # Badges (Phase 2A)
+    'badge',
+    'render_badge',
+    'badge_group',
+    'BadgeType',
+    'BadgeSize',
+
     # Tables
     'make_scrollable_table',
     'style_holdings_dataframe',
@@ -86,6 +109,10 @@ __all__ = [
     'add_arrow_indicator',
     'format_percentage',
     'format_currency',
+
+    # Enhanced Tables (Phase 2A)
+    'atlas_table',
+    'atlas_table_with_badges',
 
     # Metrics
     'ATLASFormatter',
