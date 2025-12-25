@@ -81,25 +81,25 @@ def render_sidebar_navigation(default_page: str = "Portfolio Home") -> str:
             options=[
                 "🔥 Phoenix Parser",
                 "🏠 Portfolio Home",
-                "🔍 Portfolio Deep Dive",
-                "📊 Performance Suite",
-                "📈 Multi-Factor Analysis",
-                "📉 R Analytics",
-                "🔬 Valuation House",
-                "🎲 Monte Carlo Engine",
-                "⚖️ Quant Optimizer",
-                "📊 Leverage Tracker",
-                "📡 Risk Analysis",
+                "🚀 v10.0 Analytics",
+                "📊 R Analytics",
                 "💾 Database",
-                "🌐 Market Watch",
-                "📚 Investopedia Live",
-                "ℹ️ About"
+                "🌍 Market Watch",
+                "📈 Risk Analysis",
+                "💎 Performance Suite",
+                "🔬 Portfolio Deep Dive",
+                "📊 Multi-Factor Analysis",
+                "💰 Valuation House",
+                "🎲 Monte Carlo Engine",
+                "🧮 Quant Optimizer",
+                "📊 Leverage Tracker",
+                "📡 Investopedia Live"
             ],
             icons=[
-                "fire", "house", "search", "bar-chart", "graph-up",
-                "activity", "currency-dollar", "dice-5", "sliders",
-                "speedometer", "shield-check", "database", "globe",
-                "book", "info-circle"
+                "fire", "house-fill", "rocket-takeoff-fill", "graph-up-arrow",
+                "database-fill", "globe", "graph-up", "gem", "microscope",
+                "bar-chart-fill", "cash-coin", "dice-5-fill", "calculator-fill",
+                "graph-up", "broadcast"
             ],
             menu_icon="terminal",
             default_index=1,  # Portfolio Home is default
