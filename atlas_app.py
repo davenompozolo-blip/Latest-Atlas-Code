@@ -14268,6 +14268,22 @@ def main():
             # PHASE 2A: Add status badges for leverage and performance
             st.markdown("<br>", unsafe_allow_html=True)
 
+            # INLINE TEST: Verify basic HTML rendering works
+            st.markdown("**Test 1:** Basic HTML rendering", unsafe_allow_html=True)
+            st.markdown("<div style='background: rgba(99,102,241,0.2); padding: 1rem; border-radius: 8px; color: #a5b4fc;'>✓ If you see this styled box, HTML rendering works!</div>", unsafe_allow_html=True)
+
+            st.markdown("**Test 2:** Direct badge HTML (bypassing component function)", unsafe_allow_html=True)
+            test_badge_html = "<span style='display: inline-block; padding: 0.375rem 1rem; font-size: 0.875rem; font-weight: 600; border-radius: 12px; background: rgba(16,185,129,0.2); border: 1px solid rgba(16,185,129,0.4); color: #6ee7b7;'>✓ TEST BADGE</span>"
+            st.markdown(test_badge_html, unsafe_allow_html=True)
+
+            st.markdown("**Test 3:** Using badge_group component function", unsafe_allow_html=True)
+            badge_group([
+                {'text': 'TEST', 'type': 'success', 'size': 'md', 'icon': '✓'},
+            ])
+
+            st.markdown("---")
+            st.markdown("**ACTUAL BADGES (if Test 3 worked, these should too):**")
+
             # Determine leverage status
             lev_diff = abs(actual_leverage - target_lev)
             if lev_diff < 0.1:
