@@ -1,9 +1,12 @@
 """
-ATLAS Terminal - Enhanced Fomo-Inspired Table Functions
-Phase 2A Component Enhancements
+ATLAS Terminal - Enhanced Table Component
+Fomo-inspired data tables with glassmorphic styling, badges, and hover effects
 
-Premium glassmorphic tables with badges, hover effects, and professional polish.
-This module extends the base tables.py with Fomo-inspired styling.
+Created: December 2024
+Phase: 2A - Component Transformation
+Author: Hlobo
+
+IMPORTANT: These functions render directly to Streamlit - they do NOT return HTML strings.
 """
 
 import streamlit as st
@@ -12,317 +15,328 @@ from typing import Optional, Dict, List
 import hashlib
 
 
-# Fomo-Inspired Color Palette
-COLORS = {
-    'bg_glass': 'rgba(21, 25, 50, 0.6)',
-    'bg_hover': 'rgba(99, 102, 241, 0.1)',
-    'border': 'rgba(99, 102, 241, 0.15)',
-    'border_hover': 'rgba(99, 102, 241, 0.3)',
-    'text_primary': '#f8fafc',
-    'text_secondary': '#94a3b8',
-    'text_muted': '#64748b',
-    'accent_primary': '#6366f1',
-    'accent_cyan': '#00d4ff',
-    'success': '#10b981',
-    'danger': '#ef4444',
-    'warning': '#f59e0b',
-}
-
-
 def atlas_table(
     df: pd.DataFrame,
     title: Optional[str] = None,
-    subtitle: Optional[str] = None,
-    hoverable: bool = True,
-    striped: bool = False,
-    compact: bool = False,
+    height: Optional[int] = None,
     show_index: bool = False,
-    height: Optional[int] = None
+    striped: bool = True,
+    hoverable: bool = True,
+    compact: bool = False
 ) -> None:
     """
-    Render DataFrame with Fomo-inspired glassmorphic styling
+    Render enhanced data table with Fomo-inspired styling.
+
+    IMPORTANT: This function renders directly to Streamlit - it does NOT return anything.
 
     Args:
         df: DataFrame to display
         title: Optional table title with gradient styling
-        subtitle: Optional subtitle text
-        hoverable: Enable row hover glow effects (default True)
-        striped: Enable zebra row striping (default False)
-        compact: Use compact row spacing (default False)
-        show_index: Show DataFrame index (default False)
-        height: Optional fixed height in pixels
+        height: Optional max height (enables scrolling)
+        show_index: Show DataFrame index column
+        striped: Enable zebra striping
+        hoverable: Enable row hover effects
+        compact: Use compact spacing
 
     Features:
-        - Glassmorphic container with backdrop blur
-        - Gradient borders and hover effects
-        - Professional typography
+        - Glassmorphic container
+        - Gradient accent borders
+        - Hover row highlighting
         - Responsive design
-        - Smooth transitions
+        - Professional typography
 
     Example:
-        >>> atlas_table(holdings_df, title="Portfolio Holdings", hoverable=True)
+        >>> df = pd.DataFrame({'Asset': ['AAPL', 'GOOGL'], 'Price': [173.81, 314.09]})
+        >>> atlas_table(df, title="Current Holdings", hoverable=True)
     """
 
-    # Generate unique table ID
-    table_id = f"atlas_tbl_{hashlib.md5(str(df.head()).encode()).hexdigest()[:8]}"
+    if df.empty:
+        st.warning("No data to display")
+        return
 
-    # Title section
+    # Generate unique ID for this table instance
+    table_id = f"atlas_tbl_{abs(hash(str(df.head()) + str(title)))}"
+
+    # Styling configurations
+    padding = '0.5rem 0.75rem' if compact else '0.875rem 1rem'
+    height_style = f"max-height: {height}px; overflow-y: auto;" if height else ""
+
+    # Title HTML
+    title_html = ""
     if title:
         title_html = f"""
-        <div style='margin-bottom: 1rem;'>
-            <h3 style='
-                font-size: 1.25rem;
-                font-weight: 700;
-                margin: 0 0 0.25rem 0;
-                background: linear-gradient(135deg, {COLORS['accent_cyan']} 0%, {COLORS['accent_primary']} 100%);
-                -webkit-background-clip: text;
-                -webkit-text-fill-color: transparent;
-                background-clip: text;
-            '>{title}</h3>
-            {f"<p style='color: {COLORS['text_muted']}; font-size: 0.875rem; margin: 0;'>{subtitle}</p>" if subtitle else ''}
-        </div>
+        <h3 style='
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #f8fafc;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, #00d4ff 0%, #6366f1 50%, #8b5cf6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        '>{title}</h3>
         """
-        st.markdown(title_html, unsafe_allow_html=True)
 
-    # Table styling
-    row_height = '2.5rem' if compact else '3rem'
-    hover_effect = f"""
-        .{table_id} tbody tr:hover {{
-            background: {COLORS['bg_hover']} !important;
-            transform: translateX(4px);
-            box-shadow: -2px 0 0 {COLORS['accent_primary']};
-        }}
-    """ if hoverable else ""
+    # Convert DataFrame to HTML
+    df_html = df.to_html(
+        index=show_index,
+        escape=False,
+        classes=f'dataframe {table_id}_inner',
+        border=0
+    )
 
-    striped_effect = f"""
-        .{table_id} tbody tr:nth-child(even) {{
-            background: rgba(255, 255, 255, 0.02);
-        }}
-    """ if striped else ""
-
-    table_css = f"""
+    # Component CSS
+    component_css = f"""
     <style>
-        /* Table Container - Glassmorphic */
-        .{table_id}-container {{
-            background: {COLORS['bg_glass']};
+        .{table_id} {{
+            background: rgba(21, 25, 50, 0.6);
             backdrop-filter: blur(20px) saturate(180%);
             -webkit-backdrop-filter: blur(20px) saturate(180%);
-            border-radius: 16px;
-            border: 1px solid {COLORS['border']};
+            border-radius: 12px;
+            border: 1px solid rgba(99, 102, 241, 0.15);
             padding: 1.5rem;
-            overflow: hidden;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-            transition: border-color 0.3s ease;
-        }}
-
-        .{table_id}-container:hover {{
-            border-color: {COLORS['border_hover']};
-        }}
-
-        /* Table Wrapper - Scrollable */
-        .{table_id}-wrapper {{
+            margin-bottom: 1.5rem;
+            {height_style}
+            position: relative;
             overflow-x: auto;
-            overflow-y: auto;
-            {f'max-height: {height}px;' if height else ''}
-            border-radius: 8px;
         }}
 
-        /* Table Base */
-        .{table_id} {{
+        .{table_id}::before {{
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, #00d4ff 0%, #6366f1 50%, #8b5cf6 100%);
+            opacity: 0.5;
+        }}
+
+        .{table_id}_inner {{
             width: 100%;
             border-collapse: collapse;
             font-size: 0.875rem;
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         }}
 
-        /* Table Header */
-        .{table_id} thead {{
-            position: sticky;
-            top: 0;
-            z-index: 10;
-            background: rgba(21, 25, 50, 0.95);
-            backdrop-filter: blur(10px);
-        }}
-
-        .{table_id} thead th {{
+        .{table_id}_inner thead th {{
             text-align: left;
-            padding: 0.875rem 1rem;
-            color: {COLORS['text_secondary']};
+            padding: {padding};
+            color: #94a3b8;
             font-weight: 600;
             font-size: 0.75rem;
             text-transform: uppercase;
             letter-spacing: 0.05em;
-            border-bottom: 2px solid {COLORS['border']};
-            white-space: nowrap;
+            border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+            background: rgba(10, 14, 39, 0.4);
+            position: sticky;
+            top: 0;
+            z-index: 10;
         }}
 
-        /* Table Body */
-        .{table_id} tbody tr {{
-            border-bottom: 1px solid rgba(99, 102, 241, 0.05);
+        .{table_id}_inner tbody tr {{
+            border-bottom: 1px solid rgba(99, 102, 241, 0.08);
             transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         }}
 
-        {hover_effect}
-        {striped_effect}
+        {'.{}_inner tbody tr:nth-child(even) {{ background: rgba(99, 102, 241, 0.03); }}'.format(table_id) if striped else ''}
 
-        .{table_id} tbody td {{
-            padding: 0.875rem 1rem;
-            color: {COLORS['text_primary']};
-            height: {row_height};
-            vertical-align: middle;
+        {'''.{}_inner tbody tr:hover {{
+            background: rgba(99, 102, 241, 0.12);
+            transform: translateX(4px);
+            border-left: 2px solid rgba(99, 102, 241, 0.6);
+        }}'''.format(table_id) if hoverable else ''}
+
+        .{table_id}_inner tbody td {{
+            padding: {padding};
+            color: #f8fafc;
         }}
 
-        /* Numeric columns alignment */
-        .{table_id} tbody td.numeric {{
-            text-align: right;
-            font-family: 'JetBrains Mono', 'Consolas', monospace;
+        .{table_id}_inner tbody td:first-child {{
+            font-weight: 500;
+            color: #e2e8f0;
+        }}
+
+        /* Number formatting */
+        .{table_id}_inner tbody td[style*="text-align: right"],
+        .{table_id}_inner tbody td[style*="text-align:right"] {{
+            font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
             font-variant-numeric: tabular-nums;
         }}
 
-        /* Scrollbar Styling */
-        .{table_id}-wrapper::-webkit-scrollbar {{
-            width: 8px;
+        /* Scrollbar styling */
+        .{table_id}::-webkit-scrollbar {{
             height: 8px;
+            width: 8px;
         }}
 
-        .{table_id}-wrapper::-webkit-scrollbar-track {{
+        .{table_id}::-webkit-scrollbar-track {{
             background: rgba(10, 14, 39, 0.4);
             border-radius: 4px;
         }}
 
-        .{table_id}-wrapper::-webkit-scrollbar-thumb {{
-            background: linear-gradient(135deg, {COLORS['accent_cyan']}, {COLORS['accent_primary']});
+        .{table_id}::-webkit-scrollbar-thumb {{
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
             border-radius: 4px;
         }}
 
-        .{table_id}-wrapper::-webkit-scrollbar-thumb:hover {{
-            background: linear-gradient(135deg, {COLORS['accent_primary']}, #8b5cf6);
+        .{table_id}::-webkit-scrollbar-thumb:hover {{
+            background: linear-gradient(135deg, #8b5cf6, #a855f7);
         }}
     </style>
     """
 
-    # Convert DataFrame to HTML
-    html_table = df.to_html(
-        index=show_index,
-        escape=False,
-        classes=table_id,
-        border=0
-    )
-
-    # Wrap in container
+    # Complete HTML
     full_html = f"""
-    {table_css}
-    <div class='{table_id}-container'>
-        <div class='{table_id}-wrapper'>
-            {html_table}
-        </div>
+    {component_css}
+    <div class='{table_id}'>
+        {title_html}
+        {df_html}
     </div>
     """
 
+    # ✅ CRITICAL: This calls st.markdown() and returns None
     st.markdown(full_html, unsafe_allow_html=True)
 
 
 def atlas_table_with_badges(
     df: pd.DataFrame,
+    badge_columns: List[str],
     title: Optional[str] = None,
-    badge_column: Optional[str] = None,
-    badge_mapping: Optional[Dict[str, str]] = None
+    **kwargs
 ) -> None:
     """
-    Render table with badge pills in specified column
+    Render table with automatic badge pill formatting for specified columns.
+
+    IMPORTANT: This function renders directly to Streamlit - it does NOT return anything.
 
     Args:
         df: DataFrame to display
+        badge_columns: List of column names to format as badges
         title: Optional table title
-        badge_column: Column name to render as badges
-        badge_mapping: Map column values to badge types
-                      e.g., {'BUY': 'success', 'SELL': 'danger', 'HOLD': 'neutral'}
+        **kwargs: Additional arguments passed to atlas_table()
+
+    Note:
+        This creates a copy of the DataFrame and formats badge columns as HTML.
+        Badge type is determined by cell value patterns (success/warning/danger).
 
     Example:
-        >>> badge_mapping = {'BUY': 'success', 'SELL': 'danger', 'HOLD': 'neutral'}
-        >>> atlas_table_with_badges(trades_df, "Trades", "Action", badge_mapping)
+        >>> df = pd.DataFrame({
+        >>>     'Asset': ['AAPL', 'GOOGL'],
+        >>>     'Type': ['Stock', 'Stock'],
+        >>>     'Status': ['Active', 'Active']
+        >>> })
+        >>> atlas_table_with_badges(df, badge_columns=['Type', 'Status'])
     """
-    # Import badge function
-    from .badges import badge
 
     # Create copy to avoid modifying original
-    display_df = df.copy()
+    df_display = df.copy()
 
-    # Apply badges if specified
-    if badge_column and badge_column in display_df.columns and badge_mapping:
-        display_df[badge_column] = display_df[badge_column].apply(
-            lambda x: badge(
-                text=str(x),
-                badge_type=badge_mapping.get(x, 'neutral'),
-                size='sm'
-            ) if pd.notna(x) else ''
-        )
+    # Format badge columns
+    for col in badge_columns:
+        if col in df_display.columns:
+            df_display[col] = df_display[col].apply(_format_as_badge)
 
-    # Render with atlas_table
-    atlas_table(display_df, title=title, hoverable=True)
+    # Render using standard atlas_table
+    atlas_table(df_display, title=title, **kwargs)
+
+
+def _format_as_badge(value) -> str:
+    """
+    Internal helper: Convert cell value to badge HTML.
+
+    Determines badge type based on value content:
+    - Success keywords: active, approved, success, positive, up
+    - Warning keywords: pending, review, caution, moderate
+    - Danger keywords: inactive, rejected, error, negative, down
+    - Default: neutral
+    """
+    if pd.isna(value):
+        return ""
+
+    value_str = str(value).lower()
+
+    # Determine badge type based on content
+    if any(word in value_str for word in ['active', 'approved', 'success', 'positive', 'up', '✓']):
+        badge_type = 'success'
+    elif any(word in value_str for word in ['pending', 'review', 'caution', 'moderate', 'warning']):
+        badge_type = 'warning'
+    elif any(word in value_str for word in ['inactive', 'rejected', 'error', 'negative', 'down', '✗']):
+        badge_type = 'danger'
+    elif any(word in value_str for word in ['primary', 'main', 'important']):
+        badge_type = 'primary'
+    else:
+        badge_type = 'neutral'
+
+    # Color configurations (matching badges.py)
+    colors = {
+        'success': {'bg': 'rgba(16, 185, 129, 0.2)', 'border': 'rgba(16, 185, 129, 0.4)', 'text': '#6ee7b7'},
+        'warning': {'bg': 'rgba(245, 158, 11, 0.2)', 'border': 'rgba(245, 158, 11, 0.4)', 'text': '#fcd34d'},
+        'danger': {'bg': 'rgba(239, 68, 68, 0.2)', 'border': 'rgba(239, 68, 68, 0.4)', 'text': '#fca5a5'},
+        'primary': {'bg': 'rgba(99, 102, 241, 0.2)', 'border': 'rgba(99, 102, 241, 0.4)', 'text': '#a5b4fc'},
+        'neutral': {'bg': 'rgba(148, 163, 184, 0.15)', 'border': 'rgba(148, 163, 184, 0.3)', 'text': '#cbd5e1'}
+    }
+
+    color = colors.get(badge_type, colors['neutral'])
+
+    return f"""<span style='
+        display: inline-block;
+        padding: 0.25rem 0.75rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        border-radius: 12px;
+        background: {color['bg']};
+        border: 1px solid {color['border']};
+        color: {color['text']};
+        white-space: nowrap;
+    '>{value}</span>"""
 
 
 # ==================== COMPONENT TESTING ====================
 if __name__ == "__main__":
     """
-    Test enhanced table functions
+    Test the table components in isolation
     Run with: streamlit run ui/components/tables_enhanced.py
     """
     st.set_page_config(
-        page_title="ATLAS - Enhanced Tables Test",
-        page_icon="📊",
-        layout="wide",
-        initial_sidebar_state="collapsed"
+        page_title="ATLAS - Table Component Test",
+        layout="wide"
     )
 
-    st.title("📊 ATLAS Enhanced Tables - Test Suite")
-    st.markdown("---")
+    st.title("📊 ATLAS Table Component Tests")
 
     # Sample data
-    sample_df = pd.DataFrame({
-        'Ticker': ['AAPL', 'GOOGL', 'MSFT', 'AMZN', 'TSLA', 'META', 'NVDA'],
-        'Asset Name': ['Apple Inc.', 'Alphabet Inc.', 'Microsoft Corp.',
-                       'Amazon.com Inc.', 'Tesla Inc.', 'Meta Platforms', 'NVIDIA Corp.'],
-        'Shares': [100, 50, 75, 30, 25, 40, 20],
-        'Price': [185.50, 142.30, 378.90, 151.20, 242.50, 487.30, 495.20],
-        'Return %': [15.2, -3.4, 8.7, -1.2, 22.5, 12.3, 35.8],
-        'Weight %': [22.5, 15.3, 18.7, 12.1, 8.9, 11.2, 11.3],
-        'Action': ['HOLD', 'SELL', 'BUY', 'HOLD', 'BUY', 'HOLD', 'BUY']
-    })
-
-    # Test 1: Basic table
-    st.subheader("Basic Glassmorphic Table")
-    atlas_table(sample_df, title="Portfolio Holdings", subtitle="Top 7 positions by weight")
-
-    st.markdown("---")
-
-    # Test 2: Compact table
-    st.subheader("Compact Table with Hover")
-    atlas_table(sample_df, title="Compact View", compact=True, hoverable=True)
-
-    st.markdown("---")
-
-    # Test 3: Table with badges
-    st.subheader("Table with Badge Pills")
-    badge_mapping = {
-        'BUY': 'success',
-        'SELL': 'danger',
-        'HOLD': 'neutral'
+    holdings_data = {
+        'Ticker': ['AAPL', 'GOOGL', 'MSFT', 'TSLA', 'AMZN'],
+        'Asset Name': ['Apple Inc.', 'Alphabet Inc.', 'Microsoft Corp.', 'Tesla Inc.', 'Amazon.com Inc.'],
+        'Shares': [50, 30, 75, 20, 40],
+        'Price': [173.81, 314.09, 378.91, 251.05, 178.25],
+        'Value': [8690.50, 9422.70, 28418.25, 5021.00, 7130.00],
+        'Return %': [15.3, -2.1, 8.7, 22.5, -5.2],
+        'Status': ['Active', 'Active', 'Active', 'Active', 'Active']
     }
-    atlas_table_with_badges(
-        sample_df,
-        title="Trading Signals",
-        badge_column="Action",
-        badge_mapping=badge_mapping
-    )
+
+    df = pd.DataFrame(holdings_data)
+
+    st.header("1. Basic Table (atlas_table)")
+    atlas_table(df, title="Portfolio Holdings", hoverable=True, striped=True)
 
     st.markdown("---")
 
-    # Test 4: Fixed height scrollable
-    large_df = pd.concat([sample_df] * 10, ignore_index=True)
-    st.subheader("Fixed Height Scrollable Table")
-    atlas_table(large_df, title="Scrollable View (300px)", height=300, striped=True)
+    st.header("2. Compact Table")
+    atlas_table(df.head(3), title="Top 3 Holdings", compact=True)
 
     st.markdown("---")
-    st.success("✅ Enhanced tables test complete!")
-    st.info("**Usage:** Import with `from ui.components.tables_enhanced import atlas_table, atlas_table_with_badges`")
+
+    st.header("3. Table with Badges (atlas_table_with_badges)")
+    atlas_table_with_badges(df, badge_columns=['Status'], title="Holdings with Status Badges")
+
+    st.markdown("---")
+
+    st.header("4. Scrollable Table (fixed height)")
+    large_df = pd.concat([df] * 3, ignore_index=True)
+    atlas_table(large_df, title="Scrollable Holdings", height=300)
+
+    st.success("✅ All table components rendering correctly!")
