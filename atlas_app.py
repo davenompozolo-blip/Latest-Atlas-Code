@@ -14233,62 +14233,23 @@ def main():
             total_gl_pct = (total_gl / equity) * 100 if equity > 0 else 0  # Return on equity
             daily_pl = enhanced_df['Daily P&L $'].sum()
     
-            # First row: Capital Structure - REFINED PREMIUM DESIGN
-            st.markdown("""
-            <h2 style='font-size: 1.5rem; font-weight: 700; color: #f8fafc; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem;'>
-                <span style='font-size: 1.25rem;'>💰</span>
-                <span style='background: linear-gradient(135deg, #00d4ff 0%, #6366f1 50%, #8b5cf6 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;'>Capital Structure</span>
-            </h2>
-            """, unsafe_allow_html=True)
-
+            # ==================== CAPITAL STRUCTURE ====================
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown('<h2 style="font-size: 1.5rem; font-weight: 700; color: #f8fafc; margin-bottom: 1.5rem;"><span style="font-size: 1.25rem;">💰</span> <span style="background: linear-gradient(135deg, #00d4ff, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Capital Structure</span></h2>', unsafe_allow_html=True)
+            
             col1, col2, col3 = st.columns(3)
-
-            # CARD 1: Your Equity - FIXED SINGLE-LINE CSS
+            
             with col1:
-                st.markdown(f"""
-                <div style='background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(21, 25, 50, 0.95) 100%); backdrop-filter: blur(24px) saturate(180%); border-radius: 24px; border: 1px solid rgba(99, 102, 241, 0.2); padding: 2rem 1.75rem; transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2); position: relative; overflow: hidden;' onmouseover="this.style.transform='translateY(-6px) scale(1.02)'; this.style.boxShadow='0 20px 48px rgba(99,102,241,0.3)'; this.style.borderColor='rgba(99,102,241,0.4)';" onmouseout="this.style.transform='translateY(0) scale(1)'; this.style.boxShadow='0 4px 24px rgba(0,0,0,0.2)'; this.style.borderColor='rgba(99,102,241,0.2)';">
-                    <div style='position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 100%); opacity: 0.8;'></div>
-                    <div style='display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;'>
-                        <span style='font-size: 1.1rem; opacity: 0.9;'>💼</span>
-                        <p style='font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; margin: 0; font-weight: 600;'>YOUR EQUITY</p>
-                    </div>
-                    <h3 style='font-size: 2.75rem; font-weight: 800; color: #f8fafc; margin: 0.75rem 0; line-height: 1;'>{format_currency(equity)}</h3>
-                </div>
-                """, unsafe_allow_html=True)
-
-            # CARD 2: Gross Exposure - FIXED SINGLE-LINE CSS
+                st.markdown(f'<div style="background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(99,102,241,0.2); padding: 2rem 1.75rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #6366f1, #8b5cf6); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;"><span style="font-size: 1.1rem;">💼</span><p style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; margin: 0; font-weight: 600;">YOUR EQUITY</p></div><h3 style="font-size: 2.75rem; font-weight: 800; color: #f8fafc; margin: 0.75rem 0; line-height: 1;">${equity:,.2f}</h3></div>', unsafe_allow_html=True)
+            
             with col2:
                 vs_equity_pct = ((gross_exposure/equity - 1)*100) if equity > 0 else 0
-                st.markdown(f"""
-                <div style='background: linear-gradient(135deg, rgba(6, 182, 212, 0.08) 0%, rgba(21, 25, 50, 0.95) 100%); backdrop-filter: blur(24px) saturate(180%); border-radius: 24px; border: 1px solid rgba(6, 182, 212, 0.2); padding: 2rem 1.75rem; transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2); position: relative; overflow: hidden;' onmouseover="this.style.transform='translateY(-6px) scale(1.02)'; this.style.boxShadow='0 20px 48px rgba(6,182,212,0.3)'; this.style.borderColor='rgba(6,182,212,0.4)';" onmouseout="this.style.transform='translateY(0) scale(1)'; this.style.boxShadow='0 4px 24px rgba(0,0,0,0.2)'; this.style.borderColor='rgba(6,182,212,0.2)';">
-                    <div style='position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4 0%, #3b82f6 100%); opacity: 0.8;'></div>
-                    <div style='display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;'>
-                        <span style='font-size: 1.1rem; opacity: 0.9;'>📊</span>
-                        <p style='font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; margin: 0; font-weight: 600;'>GROSS EXPOSURE</p>
-                    </div>
-                    <h3 style='font-size: 2.75rem; font-weight: 800; color: #f8fafc; margin: 0.75rem 0 1rem 0; line-height: 1;'>{format_currency(gross_exposure)}</h3>
-                    <div style='display: inline-block; padding: 0.5rem 1rem; background: rgba(16, 185, 129, 0.12); border-radius: 12px; border: 1px solid rgba(16, 185, 129, 0.25);'>
-                        <p style='font-size: 0.8rem; color: #6ee7b7; margin: 0; font-weight: 600;'>↑ vs Equity: +{vs_equity_pct:.1f}%</p>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-
-            # CARD 3: Actual Leverage - FIXED SINGLE-LINE CSS
+                st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 2rem 1.75rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #3b82f6); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;"><span style="font-size: 1.1rem;">📊</span><p style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; margin: 0; font-weight: 600;">GROSS EXPOSURE</p></div><h3 style="font-size: 2.75rem; font-weight: 800; color: #f8fafc; margin: 0.75rem 0 1rem 0; line-height: 1;">${gross_exposure:,.2f}</h3><div style="display: inline-block; padding: 0.5rem 1rem; background: rgba(16,185,129,0.12); border-radius: 12px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.8rem; color: #6ee7b7; margin: 0; font-weight: 600;">↑ vs Equity: +{vs_equity_pct:.1f}%</p></div></div>', unsafe_allow_html=True)
+            
             with col3:
-                target_lev = st.session_state.get('target_leverage', 1.0)
-                st.markdown(f"""
-                <div style='background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(21, 25, 50, 0.95) 100%); backdrop-filter: blur(24px) saturate(180%); border-radius: 24px; border: 1px solid rgba(16, 185, 129, 0.2); padding: 2rem 1.75rem; transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2); position: relative; overflow: hidden;' onmouseover="this.style.transform='translateY(-6px) scale(1.02)'; this.style.boxShadow='0 20px 48px rgba(16,185,129,0.35), 0 0 40px rgba(16,185,129,0.2)'; this.style.borderColor='rgba(16,185,129,0.4)';" onmouseout="this.style.transform='translateY(0) scale(1)'; this.style.boxShadow='0 4px 24px rgba(0,0,0,0.2)'; this.style.borderColor='rgba(16,185,129,0.2)';">
-                    <div style='position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981 0%, #059669 100%); opacity: 0.8;'></div>
-                    <div style='display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;'>
-                        <span style='font-size: 1.1rem; opacity: 0.9;'>⚡</span>
-                        <p style='font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; margin: 0; font-weight: 600;'>ACTUAL LEVERAGE</p>
-                    </div>
-                    <h3 style='font-size: 2.75rem; font-weight: 800; color: #10b981; margin: 0.75rem 0 1rem 0; text-shadow: 0 0 24px rgba(16, 185, 129, 0.5); line-height: 1;'>{actual_leverage:.2f}x</h3>
-                    <div style='display: inline-block; padding: 0.5rem 1rem; background: rgba(16, 185, 129, 0.12); border-radius: 12px; border: 1px solid rgba(16, 185, 129, 0.25);'>
-                        <p style='font-size: 0.8rem; color: #6ee7b7; margin: 0; font-weight: 600;'>↑ Target: {target_lev:.1f}x</p>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
+                st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 2rem 1.75rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;"><span style="font-size: 1.1rem;">⚡</span><p style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; margin: 0; font-weight: 600;">ACTUAL LEVERAGE</p></div><h3 style="font-size: 2.75rem; font-weight: 800; color: #10b981; margin: 0.75rem 0 1rem 0; text-shadow: 0 0 24px rgba(16,185,129,0.5); line-height: 1;">{actual_leverage:.2f}x</h3><div style="display: inline-block; padding: 0.5rem 1rem; background: rgba(16,185,129,0.12); border-radius: 12px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.8rem; color: #6ee7b7; margin: 0; font-weight: 600;">↑ Target: 1.7x</p></div></div>', unsafe_allow_html=True)
+            
+            st.markdown("<br>", unsafe_allow_html=True)
 
             # PHASE 2A: Add status badges for leverage and performance
             st.markdown("<br>", unsafe_allow_html=True)
@@ -14356,209 +14317,42 @@ def main():
 
             st.markdown("---")
 
-            # Second row: Performance Metrics - REFINED PREMIUM DESIGN (6 CARDS)
-            st.markdown("""
-            <h2 style='font-size: 1.5rem; font-weight: 700; color: #f8fafc; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem;'>
-                <span style='font-size: 1.25rem;'>📊</span>
-                <span style='background: linear-gradient(135deg, #00d4ff 0%, #6366f1 50%, #8b5cf6 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;'>Performance (on Equity Basis)</span>
-            </h2>
-            """, unsafe_allow_html=True)
-
+            # ==================== PERFORMANCE (ON EQUITY BASIS) ====================
+            st.markdown('<h2 style="font-size: 1.5rem; font-weight: 700; color: #f8fafc; margin-bottom: 1.5rem;"><span style="font-size: 1.25rem;">📊</span> <span style="background: linear-gradient(135deg, #00d4ff, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Performance (on Equity Basis)</span></h2>', unsafe_allow_html=True)
+            
             col1, col2, col3, col4, col5, col6 = st.columns(6)
-
-            # Card 1: Portfolio Return (Equity) - FIXED SINGLE-LINE CSS
+            
+            # Card 1: Portfolio Return (Equity)
             with col1:
-                roe_positive = total_gl >= 0
-                roe_color = '#10b981' if roe_positive else '#ef4444'
-                roe_bg = 'rgba(16, 185, 129, 0.08)' if roe_positive else 'rgba(239, 68, 68, 0.08)'
-                roe_border = 'rgba(16, 185, 129, 0.2)' if roe_positive else 'rgba(239, 68, 68, 0.2)'
-                roe_glow = f'0 0 24px rgba(16, 185, 129, 0.5)' if roe_positive else ''
-                roe_gradient = '#10b981 0%, #059669 100%' if roe_positive else '#ef4444 0%, #dc2626 100%'
-
-                st.markdown(f"""
-                <div style='background: linear-gradient(135deg, {roe_bg} 0%, rgba(21, 25, 50, 0.95) 100%); backdrop-filter: blur(24px) saturate(180%); border-radius: 24px; border: 1px solid {roe_border}; padding: 1.75rem 1.5rem; transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2); position: relative; overflow: hidden; min-height: 180px;' onmouseover="this.style.transform='translateY(-6px) scale(1.02)'; this.style.boxShadow='0 20px 48px rgba(16,185,129,0.35), 0 0 40px rgba(16,185,129,0.2)'; this.style.borderColor='rgba(16,185,129,0.4)';" onmouseout="this.style.transform='translateY(0) scale(1)'; this.style.boxShadow='0 4px 24px rgba(0,0,0,0.2)'; this.style.borderColor='{roe_border}';">
-                    <div style='position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, {roe_gradient}); opacity: 0.8;'></div>
-                    <div style='display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;'>
-                        <span style='font-size: 1rem; opacity: 0.9;'>📈</span>
-                        <p style='font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;'>PORTFOLIO RETURN (EQUITY)</p>
-                    </div>
-                    <h3 style='font-size: 2.5rem; font-weight: 800; color: {roe_color}; margin: 0.5rem 0; text-shadow: {roe_glow}; line-height: 1;'>{format_percentage(total_gl_pct)}</h3>
-                </div>
-                """, unsafe_allow_html=True)
-
-            # Card 2: Daily P&L - REFINED ROUNDER DESIGN
+                roe_color = '#10b981' if total_gl >= 0 else '#ef4444'
+                roe_glow = '0 0 24px rgba(16,185,129,0.5)' if total_gl >= 0 else ''
+                st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 180px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📈</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">PORTFOLIO RETURN (EQUITY)</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {roe_color}; margin: 0.5rem 0; text-shadow: {roe_glow}; line-height: 1;">{format_percentage(total_gl_pct)}</h3></div>', unsafe_allow_html=True)
+            
+            # Card 2: Daily P&L
             with col2:
-                daily_positive = daily_pl >= 0
-                daily_color = '#10b981' if daily_positive else '#ef4444'
-                daily_arrow = '▲' if daily_positive else '▼'
-
-                st.markdown(f"""
-                <div style='background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(21, 25, 50, 0.95) 100%); backdrop-filter: blur(24px) saturate(180%); border-radius: 24px; border: 1px solid rgba(99, 102, 241, 0.2); padding: 1.75rem 1.5rem; transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2); position: relative; overflow: hidden; min-height: 180px;'
-                onmouseover="
-                    this.style.transform='translateY(-6px) scale(1.02)';
-                    this.style.boxShadow='0 20px 48px rgba(99,102,241,0.3)';
-                    this.style.borderColor='rgba(99,102,241,0.4)';
-                "
-                onmouseout="
-                    this.style.transform='translateY(0) scale(1)';
-                    this.style.boxShadow='0 4px 24px rgba(0,0,0,0.2)';
-                    this.style.borderColor='rgba(99,102,241,0.2)';
-                ">
-                    <div style='position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 100%); opacity: 0.8;'></div>
-
-                    <div style='display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;'>
-                        <span style='font-size: 1rem; opacity: 0.9;'>💰</span>
-                        <p style='font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;'>DAILY P&L</p>
-                    </div>
-
-                    <h3 style='font-size: 2.5rem; font-weight: 800; background: linear-gradient(135deg, #00d4ff 0%, #6366f1 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin: 0.5rem 0 0.75rem 0; line-height: 1;'>{format_currency(daily_pl)}</h3>
-
-                    <div style='display: inline-block; padding: 0.4rem 0.75rem; background: rgba(99, 102, 241, 0.12); border-radius: 10px; border: 1px solid rgba(99, 102, 241, 0.25);'>
-                        <p style='font-size: 0.7rem; color: #a5b4fc; margin: 0; font-weight: 500;'>{daily_arrow} Today</p>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-
-            # Card 3: Total P&L - NEW CARD - REFINED ROUNDER DESIGN
+                daily_color = '#10b981' if daily_pl >= 0 else '#ef4444'
+                st.markdown(f'<div style="background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(99,102,241,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 180px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #6366f1, #8b5cf6); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💰</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">DAILY P&L</p></div><h3 style="font-size: 2.5rem; font-weight: 800; background: linear-gradient(135deg, #00d4ff, #6366f1); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{format_currency(daily_pl)}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(99,102,241,0.12); border-radius: 10px; border: 1px solid rgba(99,102,241,0.25);"><p style="font-size: 0.7rem; color: #a5b4fc; margin: 0; font-weight: 500;">▲ Today</p></div></div>', unsafe_allow_html=True)
+            
+            # Card 3: Total P&L
             with col3:
-                total_pnl_positive = total_gl >= 0
-                total_pnl_color = '#10b981' if total_pnl_positive else '#ef4444'
-                total_pnl_bg = 'rgba(16, 185, 129, 0.08)' if total_pnl_positive else 'rgba(239, 68, 68, 0.08)'
-                total_pnl_border = 'rgba(16, 185, 129, 0.2)' if total_pnl_positive else 'rgba(239, 68, 68, 0.2)'
-                total_pnl_glow = f'0 0 24px rgba(16, 185, 129, 0.5)' if total_pnl_positive else ''
-                total_pnl_gradient = '#10b981 0%, #059669 100%' if total_pnl_positive else '#ef4444 0%, #dc2626 100%'
-                total_pnl_arrow = '↑' if total_pnl_positive else '↓'
-
-                st.markdown(f"""
-                <div style='background: linear-gradient(135deg, {total_pnl_bg} 0%, rgba(21, 25, 50, 0.95) 100%); backdrop-filter: blur(24px) saturate(180%); border-radius: 24px; border: 1px solid {total_pnl_border}; padding: 1.75rem 1.5rem; transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2); position: relative; overflow: hidden; min-height: 180px;'
-                onmouseover="
-                    this.style.transform='translateY(-6px) scale(1.02)';
-                    this.style.boxShadow='0 20px 48px {total_pnl_border.replace('0.2', '0.35')}, 0 0 40px {total_pnl_border}';
-                    this.style.borderColor='{total_pnl_border.replace('0.2', '0.4')}';
-                "
-                onmouseout="
-                    this.style.transform='translateY(0) scale(1)';
-                    this.style.boxShadow='0 4px 24px rgba(0,0,0,0.2)';
-                    this.style.borderColor='{total_pnl_border}';
-                ">
-                    <div style='position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, {total_pnl_gradient}); opacity: 0.8;'></div>
-
-                    <div style='display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;'>
-                        <span style='font-size: 1rem; opacity: 0.9;'>💵</span>
-                        <p style='font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;'>TOTAL P&L</p>
-                    </div>
-
-                    <h3 style='font-size: 2.5rem; font-weight: 800; color: {total_pnl_color}; margin: 0.5rem 0 0.75rem 0; text-shadow: {total_pnl_glow}; line-height: 1;'>{format_currency(total_gl)}</h3>
-
-                    <div style='display: inline-block; padding: 0.4rem 0.75rem; background: {total_pnl_bg.replace('0.08', '0.12')};
-                        border-radius: 10px;
-                        border: 1px solid {total_pnl_border.replace('0.2', '0.25')};
-                    '>
-                        <p style='font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;'>{total_pnl_arrow} All Time</p>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-
-            # Card 4: Total Cost Basis - REFINED ROUNDER DESIGN
+                st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 180px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💵</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">TOTAL P&L</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #10b981; margin: 0.5rem 0 0.75rem 0; text-shadow: 0 0 24px rgba(16,185,129,0.5); line-height: 1;">{format_currency(total_gl)}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">↑ All Time</p></div></div>', unsafe_allow_html=True)
+            
+            # Card 4: Total Cost Basis
             with col4:
-                st.markdown(f"""
-                <div style='background: linear-gradient(135deg, rgba(6, 182, 212, 0.08) 0%, rgba(21, 25, 50, 0.95) 100%); backdrop-filter: blur(24px) saturate(180%); border-radius: 24px; border: 1px solid rgba(6, 182, 212, 0.2); padding: 1.75rem 1.5rem; transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2); position: relative; overflow: hidden; min-height: 180px;'
-                onmouseover="
-                    this.style.transform='translateY(-6px) scale(1.02)';
-                    this.style.boxShadow='0 20px 48px rgba(6,182,212,0.3)';
-                    this.style.borderColor='rgba(6,182,212,0.4)';
-                "
-                onmouseout="
-                    this.style.transform='translateY(0) scale(1)';
-                    this.style.boxShadow='0 4px 24px rgba(0,0,0,0.2)';
-                    this.style.borderColor='rgba(6,182,212,0.2)';
-                ">
-                    <div style='position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4 0%, #3b82f6 100%); opacity: 0.8;'></div>
-
-                    <div style='display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;'>
-                        <span style='font-size: 1rem; opacity: 0.9;'>💼</span>
-                        <p style='font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;'>TOTAL COST BASIS</p>
-                    </div>
-
-                    <h3 style='font-size: 2.5rem; font-weight: 800; color: #67e8f9; margin: 0.5rem 0 0.75rem 0; line-height: 1;'>{format_currency(total_cost)}</h3>
-
-                    <div style='display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6, 182, 212, 0.12); border-radius: 10px; border: 1px solid rgba(6, 182, 212, 0.25);'>
-                        <p style='font-size: 0.7rem; color: #a5f3fc; margin: 0; font-weight: 500;'>Investment</p>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-
-            # Card 5: Unrealized G/L - REFINED ROUNDER DESIGN
+                st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 180px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #3b82f6); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💼</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">TOTAL COST BASIS</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #67e8f9; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{format_currency(total_cost)}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #a5f3fc; margin: 0; font-weight: 500;">Investment</p></div></div>', unsafe_allow_html=True)
+            
+            # Card 5: Unrealized G/L
             with col5:
                 cost_gl = gross_exposure - total_cost
-                cost_gl_pct = (cost_gl / total_cost) * 100 if total_cost > 0 else 0
-                ugl_positive = cost_gl >= 0
-                ugl_color = '#10b981' if ugl_positive else '#ef4444'
-                ugl_bg = 'rgba(16, 185, 129, 0.08)' if ugl_positive else 'rgba(239, 68, 68, 0.08)'
-                ugl_border = 'rgba(16, 185, 129, 0.2)' if ugl_positive else 'rgba(239, 68, 68, 0.2)'
-                ugl_glow = f'0 0 24px rgba(16, 185, 129, 0.5)' if ugl_positive else ''
-                ugl_gradient = '#10b981 0%, #059669 100%' if ugl_positive else '#ef4444 0%, #dc2626 100%'
-                ugl_arrow = '↑' if ugl_positive else '↓'
-
-                st.markdown(f"""
-                <div style='background: linear-gradient(135deg, {ugl_bg} 0%, rgba(21, 25, 50, 0.95) 100%); backdrop-filter: blur(24px) saturate(180%); border-radius: 24px; border: 1px solid {ugl_border}; padding: 1.75rem 1.5rem; transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2); position: relative; overflow: hidden; min-height: 180px;'
-                onmouseover="
-                    this.style.transform='translateY(-6px) scale(1.02)';
-                    this.style.boxShadow='0 20px 48px {ugl_border.replace('0.2', '0.35')}, 0 0 40px {ugl_border}';
-                    this.style.borderColor='{ugl_border.replace('0.2', '0.4')}';
-                "
-                onmouseout="
-                    this.style.transform='translateY(0) scale(1)';
-                    this.style.boxShadow='0 4px 24px rgba(0,0,0,0.2)';
-                    this.style.borderColor='{ugl_border}';
-                ">
-                    <div style='position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, {ugl_gradient}); opacity: 0.8;'></div>
-
-                    <div style='display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;'>
-                        <span style='font-size: 1rem; opacity: 0.9;'>📊</span>
-                        <p style='font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;'>UNREALIZED G/L</p>
-                    </div>
-
-                    <h3 style='font-size: 2.5rem; font-weight: 800; color: {ugl_color}; margin: 0.5rem 0 0.75rem 0; text-shadow: {ugl_glow}; line-height: 1;'>{format_currency(cost_gl)}</h3>
-
-                    <div style='display: inline-block; padding: 0.4rem 0.75rem; background: {ugl_bg.replace('0.08', '0.12')};
-                        border-radius: 10px;
-                        border: 1px solid {ugl_border.replace('0.2', '0.25')};
-                    '>
-                        <p style='font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;'>{ugl_arrow} {format_percentage(cost_gl_pct)}</p>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-
-            # Card 6: Positions - REFINED ROUNDER DESIGN
+                cost_gl_pct = (cost_gl / total_cost * 100) if total_cost > 0 else 0
+                st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 180px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📊</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">UNREALIZED G/L</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #10b981; margin: 0.5rem 0 0.75rem 0; text-shadow: 0 0 24px rgba(16,185,129,0.5); line-height: 1;">{format_currency(cost_gl)}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">↑ {cost_gl_pct:.2f}%</p></div></div>', unsafe_allow_html=True)
+            
+            # Card 6: Positions
             with col6:
-                st.markdown(f"""
-                <div style='background: linear-gradient(135deg, rgba(139, 92, 246, 0.08) 0%, rgba(21, 25, 50, 0.95) 100%); backdrop-filter: blur(24px) saturate(180%); border-radius: 24px; border: 1px solid rgba(139, 92, 246, 0.2); padding: 1.75rem 1.5rem; transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2); position: relative; overflow: hidden; min-height: 180px;'
-                onmouseover="
-                    this.style.transform='translateY(-6px) scale(1.02)';
-                    this.style.boxShadow='0 20px 48px rgba(139,92,246,0.3)';
-                    this.style.borderColor='rgba(139,92,246,0.4)';
-                "
-                onmouseout="
-                    this.style.transform='translateY(0) scale(1)';
-                    this.style.boxShadow='0 4px 24px rgba(0,0,0,0.2)';
-                    this.style.borderColor='rgba(139,92,246,0.2)';
-                ">
-                    <div style='position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6 0%, #a855f7 100%); opacity: 0.8;'></div>
+                st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 180px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📍</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">POSITIONS</p></div><h3 style="font-size: 2.5rem; font-weight: 800; background: linear-gradient(135deg, #8b5cf6, #a855f7); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{len(enhanced_df)}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 500;">Holdings</p></div></div>', unsafe_allow_html=True)
+            
+            st.markdown("<br>", unsafe_allow_html=True)
 
-                    <div style='display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;'>
-                        <span style='font-size: 1rem; opacity: 0.9;'>📍</span>
-                        <p style='font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;'>POSITIONS</p>
-                    </div>
-
-                    <h3 style='font-size: 2.5rem; font-weight: 800; background: linear-gradient(135deg, #8b5cf6 0%, #a855f7 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin: 0.5rem 0 0.75rem 0; line-height: 1;'>{len(enhanced_df)}</h3>
-
-                    <div style='display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139, 92, 246, 0.12); border-radius: 10px; border: 1px solid rgba(139, 92, 246, 0.25);'>
-                        <p style='font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 500;'>Holdings</p>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-    
             # Info box explaining the metrics
             with st.expander("ℹ️ Understanding Your Leveraged Portfolio", expanded=False):
                 st.info(f"""
