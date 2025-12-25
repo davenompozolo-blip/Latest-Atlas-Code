@@ -14236,34 +14236,116 @@ def main():
             total_gl_pct = (total_gl / equity) * 100 if equity > 0 else 0  # Return on equity
             daily_pl = enhanced_df['Daily P&L $'].sum()
     
-            # First row: Capital Structure (NEW - shows equity vs gross distinction)
-            st.markdown("### 💰 Capital Structure")
+            # First row: Capital Structure - PREMIUM DESIGN
+            st.markdown("""
+            <h2 style='
+                font-size: 1.5rem;
+                font-weight: 700;
+                color: #f8fafc;
+                margin-bottom: 1.5rem;
+                display: flex;
+                align-items: center;
+                gap: 0.75rem;
+            '>
+                <span style='font-size: 1.25rem;'>💰</span>
+                <span style='
+                    background: linear-gradient(135deg, #00d4ff 0%, #6366f1 50%, #8b5cf6 100%);
+                    -webkit-background-clip: text;
+                    -webkit-text-fill-color: transparent;
+                '>Capital Structure</span>
+            </h2>
+            """, unsafe_allow_html=True)
+
             col1, col2, col3 = st.columns(3)
-    
+
+            # CARD 1: Your Equity
             with col1:
-                st.metric(
-                    "💰 Your Equity",
-                    format_currency(equity),
-                    help="Your actual capital invested"
-                )
-    
+                st.markdown(f"""
+                <div style='
+                    background: linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(21, 25, 50, 0.8) 100%);
+                    backdrop-filter: blur(20px) saturate(180%);
+                    border-radius: 16px;
+                    border: 1px solid rgba(99, 102, 241, 0.3);
+                    padding: 1.5rem 1.25rem;
+                    transition: all 0.3s ease;
+                    min-height: 140px;
+                    position: relative;
+                '
+                onmouseover="this.style.transform='translateY(-4px)'; this.style.boxShadow='0 12px 40px rgba(99,102,241,0.25)'"
+                onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
+                    <div style='position: absolute; top: 0; left: 0; right: 0; height: 2px;
+                                background: linear-gradient(90deg, #6366f1, #8b5cf6); border-radius: 16px 16px 0 0;'></div>
+                    <div style='display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;'>
+                        <span style='font-size: 1rem;'>💼</span>
+                        <p style='font-size: 0.65rem; color: #94a3b8; text-transform: uppercase;
+                                  letter-spacing: 0.1em; margin: 0; font-weight: 700;'>YOUR EQUITY</p>
+                    </div>
+                    <h3 style='font-size: 2.5rem; font-weight: 800; color: #f8fafc; margin: 0.5rem 0; line-height: 1;'>{format_currency(equity)}</h3>
+                </div>
+                """, unsafe_allow_html=True)
+
+            # CARD 2: Gross Exposure
             with col2:
-                st.metric(
-                    "📊 Gross Exposure",
-                    format_currency(gross_exposure),
-                    delta=f"vs Equity: {((gross_exposure/equity - 1)*100):+.1f}%" if equity > 0 else None,
-                    help="Total market value of all positions (includes leverage)"
-                )
-    
+                vs_equity_pct = ((gross_exposure/equity - 1)*100) if equity > 0 else 0
+                st.markdown(f"""
+                <div style='
+                    background: linear-gradient(135deg, rgba(6, 182, 212, 0.05) 0%, rgba(21, 25, 50, 0.8) 100%);
+                    backdrop-filter: blur(20px) saturate(180%);
+                    border-radius: 16px;
+                    border: 1px solid rgba(6, 182, 212, 0.3);
+                    padding: 1.5rem 1.25rem;
+                    transition: all 0.3s ease;
+                    min-height: 140px;
+                    position: relative;
+                '
+                onmouseover="this.style.transform='translateY(-4px)'; this.style.boxShadow='0 12px 40px rgba(6,182,212,0.25)'"
+                onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
+                    <div style='position: absolute; top: 0; left: 0; right: 0; height: 2px;
+                                background: linear-gradient(90deg, #06b6d4, #3b82f6); border-radius: 16px 16px 0 0;'></div>
+                    <div style='display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;'>
+                        <span style='font-size: 1rem;'>📊</span>
+                        <p style='font-size: 0.65rem; color: #94a3b8; text-transform: uppercase;
+                                  letter-spacing: 0.1em; margin: 0; font-weight: 700;'>GROSS EXPOSURE</p>
+                    </div>
+                    <h3 style='font-size: 2.5rem; font-weight: 800; color: #f8fafc; margin: 0.5rem 0; line-height: 1;'>{format_currency(gross_exposure)}</h3>
+                    <div style='padding: 0.375rem 0.625rem; background: rgba(16,185,129,0.1);
+                                border-radius: 6px; border: 1px solid rgba(16,185,129,0.2); margin-top: 0.5rem;'>
+                        <p style='font-size: 0.75rem; color: #6ee7b7; margin: 0; font-weight: 600;'>↑ vs Equity: +{vs_equity_pct:.1f}%</p>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            # CARD 3: Actual Leverage
             with col3:
                 target_lev = st.session_state.get('target_leverage', 1.0)
-                leverage_delta = f"Target: {target_lev:.1f}x"
-                st.metric(
-                    "⚡ Actual Leverage",
-                    f"{actual_leverage:.2f}x",
-                    delta=leverage_delta,
-                    help="Gross Exposure ÷ Equity"
-                )
+                st.markdown(f"""
+                <div style='
+                    background: linear-gradient(135deg, rgba(16, 185, 129, 0.05) 0%, rgba(21, 25, 50, 0.8) 100%);
+                    backdrop-filter: blur(20px) saturate(180%);
+                    border-radius: 16px;
+                    border: 1px solid rgba(16, 185, 129, 0.3);
+                    padding: 1.5rem 1.25rem;
+                    transition: all 0.3s ease;
+                    min-height: 140px;
+                    position: relative;
+                '
+                onmouseover="this.style.transform='translateY(-4px)'; this.style.boxShadow='0 12px 40px rgba(16,185,129,0.25)'"
+                onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
+                    <div style='position: absolute; top: 0; left: 0; right: 0; height: 2px;
+                                background: linear-gradient(90deg, #10b981, #059669); border-radius: 16px 16px 0 0;'></div>
+                    <div style='display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;'>
+                        <span style='font-size: 1rem;'>⚡</span>
+                        <p style='font-size: 0.65rem; color: #94a3b8; text-transform: uppercase;
+                                  letter-spacing: 0.1em; margin: 0; font-weight: 700;'>ACTUAL LEVERAGE</p>
+                    </div>
+                    <h3 style='font-size: 2.5rem; font-weight: 800; color: #10b981; margin: 0.5rem 0;
+                                text-shadow: 0 0 20px rgba(16,185,129,0.4); line-height: 1;'>{actual_leverage:.2f}x</h3>
+                    <div style='padding: 0.375rem 0.625rem; background: rgba(16,185,129,0.1);
+                                border-radius: 6px; border: 1px solid rgba(16,185,129,0.2); margin-top: 0.5rem;'>
+                        <p style='font-size: 0.75rem; color: #6ee7b7; margin: 0; font-weight: 600;'>↑ Target: {target_lev:.1f}x</p>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
 
             # PHASE 2A: Add status badges for leverage and performance
             st.markdown("<br>", unsafe_allow_html=True)
@@ -14355,98 +14437,46 @@ def main():
 
             col1, col2, col3, col4, col5 = st.columns(5, gap="large")
 
-            # Card 1: Return on Equity - DYNAMIC
+            # Card 1: Return on Equity - PREMIUM DESIGN
             with col1:
                 roe_positive = total_gl >= 0
                 roe_color = '#10b981' if roe_positive else '#ef4444'
                 roe_bg = 'rgba(16, 185, 129, 0.05)' if roe_positive else 'rgba(239, 68, 68, 0.05)'
                 roe_border = 'rgba(16, 185, 129, 0.3)' if roe_positive else 'rgba(239, 68, 68, 0.3)'
-                roe_shadow = 'rgba(16, 185, 129, 0.1)' if roe_positive else 'rgba(239, 68, 68, 0.1)'
-                roe_gradient = '#10b981 0%, #059669 100%' if roe_positive else '#ef4444 0%, #dc2626 100%'
+                roe_glow = f'0 0 20px {roe_color}40' if roe_positive else ''
+                roe_gradient = '#10b981, #059669' if roe_positive else '#ef4444, #dc2626'
                 roe_arrow = '↑' if roe_positive else '↓'
 
                 st.markdown(f"""
                 <div style='
-                    position: relative;
                     background: linear-gradient(135deg, {roe_bg} 0%, rgba(21, 25, 50, 0.8) 100%);
                     backdrop-filter: blur(20px) saturate(180%);
-                    -webkit-backdrop-filter: blur(20px) saturate(180%);
-                    border-radius: 20px;
+                    border-radius: 16px;
                     border: 1px solid {roe_border};
-                    padding: 2rem 1.5rem;
-                    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-                    box-shadow: 0 8px 32px {roe_shadow};
-                    height: 100%;
-                    min-height: 180px;
+                    padding: 1.5rem 1.25rem;
+                    transition: all 0.3s ease;
+                    min-height: 140px;
+                    position: relative;
                 '
-                onmouseover="
-                    this.style.transform='translateY(-8px)';
-                    this.style.boxShadow='0 20px 60px {roe_shadow.replace('0.1', '0.3')}';
-                    this.style.borderColor='{roe_border.replace('0.3', '0.6')}';
-                "
-                onmouseout="
-                    this.style.transform='translateY(0)';
-                    this.style.boxShadow='0 8px 32px {roe_shadow}';
-                    this.style.borderColor='{roe_border}';
-                ">
-                    <div style='
-                        position: absolute;
-                        top: 0;
-                        left: 0;
-                        right: 0;
-                        height: 3px;
-                        background: linear-gradient(90deg, {roe_gradient});
-                        border-radius: 20px 20px 0 0;
-                    '></div>
-
-                    <div style='
-                        display: flex;
-                        align-items: center;
-                        gap: 0.5rem;
-                        margin-bottom: 1rem;
-                    '>
-                        <span style='font-size: 1.25rem;'>📈</span>
-                        <p style='
-                            font-size: 0.7rem;
-                            color: #94a3b8;
-                            text-transform: uppercase;
-                            letter-spacing: 0.1em;
-                            margin: 0;
-                            font-weight: 700;
-                        '>RETURN ON EQUITY</p>
+                onmouseover="this.style.transform='translateY(-4px)'; this.style.boxShadow='0 12px 40px {roe_border.replace('0.3', '0.25')}'"
+                onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
+                    <div style='position: absolute; top: 0; left: 0; right: 0; height: 2px;
+                                background: linear-gradient(90deg, {roe_gradient}); border-radius: 16px 16px 0 0;'></div>
+                    <div style='display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;'>
+                        <span style='font-size: 1rem;'>📈</span>
+                        <p style='font-size: 0.65rem; color: #94a3b8; text-transform: uppercase;
+                                  letter-spacing: 0.1em; margin: 0; font-weight: 700;'>RETURN ON EQUITY</p>
                     </div>
-
-                    <h3 style='
-                        font-size: 3rem;
-                        font-weight: 800;
-                        color: {roe_color};
-                        margin: 1rem 0 0.75rem 0;
-                        text-shadow: 0 0 30px {roe_shadow.replace('0.1', '0.5')};
-                        line-height: 1;
-                    '>{format_percentage(total_gl_pct)}</h3>
-
-                    <div style='
-                        display: flex;
-                        align-items: center;
-                        gap: 0.5rem;
-                        padding: 0.5rem 0.75rem;
-                        background: {roe_bg.replace('0.05', '0.1')};
-                        border-radius: 8px;
-                        border: 1px solid {roe_border.replace('0.3', '0.2')};
-                    '>
-                        <span style='color: {roe_color}; font-size: 0.875rem;'>{roe_arrow}</span>
-                        <p style='
-                            font-size: 0.875rem;
-                            color: {roe_color if roe_positive else '#fca5a5'};
-                            margin: 0;
-                            font-weight: 600;
-                            font-family: "JetBrains Mono", monospace;
-                        '>{format_currency(total_gl)}</p>
+                    <h3 style='font-size: 2.5rem; font-weight: 800; color: {roe_color};
+                               margin: 0.5rem 0; line-height: 1; text-shadow: {roe_glow};'>{format_percentage(total_gl_pct)}</h3>
+                    <div style='display: inline-block; padding: 0.25rem 0.75rem; background: {roe_bg.replace('0.05', '0.15')};
+                                border-radius: 12px; border: 1px solid {roe_border.replace('0.3', '0.2')};'>
+                        <span style='font-size: 0.75rem; color: {roe_color}; font-weight: 600;'>{roe_arrow} {format_currency(total_gl)}</span>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
 
-            # Card 2: Daily P&L - DYNAMIC
+            # Card 2: Daily P&L - PREMIUM DESIGN
             with col2:
                 daily_positive = daily_pl >= 0
                 daily_color = '#10b981' if daily_positive else '#ef4444'
@@ -14454,166 +14484,66 @@ def main():
 
                 st.markdown(f"""
                 <div style='
-                    position: relative;
                     background: linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(21, 25, 50, 0.8) 100%);
                     backdrop-filter: blur(20px) saturate(180%);
-                    -webkit-backdrop-filter: blur(20px) saturate(180%);
-                    border-radius: 20px;
+                    border-radius: 16px;
                     border: 1px solid rgba(99, 102, 241, 0.3);
-                    padding: 2rem 1.5rem;
-                    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-                    box-shadow: 0 8px 32px rgba(99, 102, 241, 0.1);
-                    height: 100%;
-                    min-height: 180px;
+                    padding: 1.5rem 1.25rem;
+                    transition: all 0.3s ease;
+                    min-height: 140px;
+                    position: relative;
                 '
-                onmouseover="
-                    this.style.transform='translateY(-8px)';
-                    this.style.boxShadow='0 20px 60px rgba(99, 102, 241, 0.3)';
-                    this.style.borderColor='rgba(99, 102, 241, 0.6)';
-                "
-                onmouseout="
-                    this.style.transform='translateY(0)';
-                    this.style.boxShadow='0 8px 32px rgba(99, 102, 241, 0.1)';
-                    this.style.borderColor='rgba(99, 102, 241, 0.3)';
-                ">
-                    <div style='
-                        position: absolute;
-                        top: 0;
-                        left: 0;
-                        right: 0;
-                        height: 3px;
-                        background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 100%);
-                        border-radius: 20px 20px 0 0;
-                    '></div>
-
-                    <div style='
-                        display: flex;
-                        align-items: center;
-                        gap: 0.5rem;
-                        margin-bottom: 1rem;
-                    '>
-                        <span style='font-size: 1.25rem;'>💰</span>
-                        <p style='
-                            font-size: 0.7rem;
-                            color: #94a3b8;
-                            text-transform: uppercase;
-                            letter-spacing: 0.1em;
-                            margin: 0;
-                            font-weight: 700;
-                        '>DAILY P&L</p>
+                onmouseover="this.style.transform='translateY(-4px)'; this.style.boxShadow='0 12px 40px rgba(99,102,241,0.25)'"
+                onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
+                    <div style='position: absolute; top: 0; left: 0; right: 0; height: 2px;
+                                background: linear-gradient(90deg, #6366f1, #8b5cf6); border-radius: 16px 16px 0 0;'></div>
+                    <div style='display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;'>
+                        <span style='font-size: 1rem;'>💰</span>
+                        <p style='font-size: 0.65rem; color: #94a3b8; text-transform: uppercase;
+                                  letter-spacing: 0.1em; margin: 0; font-weight: 700;'>DAILY P&L</p>
                     </div>
-
-                    <h3 style='
-                        font-size: 3rem;
-                        font-weight: 800;
-                        background: linear-gradient(135deg, #00d4ff 0%, #6366f1 100%);
-                        -webkit-background-clip: text;
-                        -webkit-text-fill-color: transparent;
-                        margin: 1rem 0 0.75rem 0;
-                        line-height: 1;
-                    '>{format_currency(daily_pl)}</h3>
-
-                    <div style='
-                        display: flex;
-                        align-items: center;
-                        gap: 0.5rem;
-                        padding: 0.5rem 0.75rem;
-                        background: rgba(99, 102, 241, 0.1);
-                        border-radius: 8px;
-                        border: 1px solid rgba(99, 102, 241, 0.2);
-                    '>
-                        <span style='color: {daily_color}; font-size: 0.875rem;'>{daily_arrow}</span>
-                        <p style='
-                            font-size: 0.875rem;
-                            color: #c7d2fe;
-                            margin: 0;
-                            font-weight: 500;
-                        '>Today</p>
+                    <h3 style='font-size: 2.5rem; font-weight: 800;
+                               background: linear-gradient(135deg, #00d4ff, #6366f1);
+                               -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+                               margin: 0.5rem 0; line-height: 1;'>{format_currency(daily_pl)}</h3>
+                    <div style='display: inline-block; padding: 0.25rem 0.75rem; background: rgba(99, 102, 241, 0.15);
+                                border-radius: 12px; border: 1px solid rgba(99, 102, 241, 0.2);'>
+                        <span style='font-size: 0.75rem; color: {daily_color}; font-weight: 600;'>{daily_arrow} Today</span>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
 
-            # Card 3: Total Cost Basis
+            # Card 3: Total Cost Basis - PREMIUM DESIGN
             with col3:
                 st.markdown(f"""
                 <div style='
-                    position: relative;
                     background: linear-gradient(135deg, rgba(6, 182, 212, 0.05) 0%, rgba(21, 25, 50, 0.8) 100%);
                     backdrop-filter: blur(20px) saturate(180%);
-                    -webkit-backdrop-filter: blur(20px) saturate(180%);
-                    border-radius: 20px;
+                    border-radius: 16px;
                     border: 1px solid rgba(6, 182, 212, 0.3);
-                    padding: 2rem 1.5rem;
-                    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-                    box-shadow: 0 8px 32px rgba(6, 182, 212, 0.1);
-                    height: 100%;
-                    min-height: 180px;
+                    padding: 1.5rem 1.25rem;
+                    transition: all 0.3s ease;
+                    min-height: 140px;
+                    position: relative;
                 '
-                onmouseover="
-                    this.style.transform='translateY(-8px)';
-                    this.style.boxShadow='0 20px 60px rgba(6, 182, 212, 0.3)';
-                    this.style.borderColor='rgba(6, 182, 212, 0.6)';
-                "
-                onmouseout="
-                    this.style.transform='translateY(0)';
-                    this.style.boxShadow='0 8px 32px rgba(6, 182, 212, 0.1)';
-                    this.style.borderColor='rgba(6, 182, 212, 0.3)';
-                ">
-                    <div style='
-                        position: absolute;
-                        top: 0;
-                        left: 0;
-                        right: 0;
-                        height: 3px;
-                        background: linear-gradient(90deg, #06b6d4 0%, #3b82f6 100%);
-                        border-radius: 20px 20px 0 0;
-                    '></div>
-
-                    <div style='
-                        display: flex;
-                        align-items: center;
-                        gap: 0.5rem;
-                        margin-bottom: 1rem;
-                    '>
-                        <span style='font-size: 1.25rem;'>💼</span>
-                        <p style='
-                            font-size: 0.7rem;
-                            color: #94a3b8;
-                            text-transform: uppercase;
-                            letter-spacing: 0.1em;
-                            margin: 0;
-                            font-weight: 700;
-                        '>TOTAL COST BASIS</p>
+                onmouseover="this.style.transform='translateY(-4px)'; this.style.boxShadow='0 12px 40px rgba(6,182,212,0.25)'"
+                onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
+                    <div style='position: absolute; top: 0; left: 0; right: 0; height: 2px;
+                                background: linear-gradient(90deg, #06b6d4, #3b82f6); border-radius: 16px 16px 0 0;'></div>
+                    <div style='display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;'>
+                        <span style='font-size: 1rem;'>💼</span>
+                        <p style='font-size: 0.65rem; color: #94a3b8; text-transform: uppercase;
+                                  letter-spacing: 0.1em; margin: 0; font-weight: 700;'>TOTAL COST BASIS</p>
                     </div>
-
-                    <h3 style='
-                        font-size: 3rem;
-                        font-weight: 800;
-                        color: #67e8f9;
-                        margin: 1rem 0 0.75rem 0;
-                        line-height: 1;
-                    '>{format_currency(total_cost)}</h3>
-
-                    <div style='
-                        display: flex;
-                        align-items: center;
-                        gap: 0.5rem;
-                        padding: 0.5rem 0.75rem;
-                        background: rgba(6, 182, 212, 0.1);
-                        border-radius: 8px;
-                        border: 1px solid rgba(6, 182, 212, 0.2);
-                    '>
-                        <p style='
-                            font-size: 0.875rem;
-                            color: #a5f3fc;
-                            margin: 0;
-                            font-weight: 500;
-                        '>Investment</p>
+                    <h3 style='font-size: 2.5rem; font-weight: 800; color: #67e8f9; margin: 0.5rem 0; line-height: 1;'>{format_currency(total_cost)}</h3>
+                    <div style='display: inline-block; padding: 0.25rem 0.75rem; background: rgba(6, 182, 212, 0.15);
+                                border-radius: 12px; border: 1px solid rgba(6, 182, 212, 0.2);'>
+                        <span style='font-size: 0.75rem; color: #a5f3fc; font-weight: 600;'>Investment</span>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
 
-            # Card 4: Unrealized G/L - DYNAMIC
+            # Card 4: Unrealized G/L - PREMIUM DESIGN
             with col4:
                 cost_gl = gross_exposure - total_cost
                 cost_gl_pct = (cost_gl / total_cost) * 100 if total_cost > 0 else 0
@@ -14621,168 +14551,68 @@ def main():
                 ugl_color = '#10b981' if ugl_positive else '#ef4444'
                 ugl_bg = 'rgba(16, 185, 129, 0.05)' if ugl_positive else 'rgba(239, 68, 68, 0.05)'
                 ugl_border = 'rgba(16, 185, 129, 0.3)' if ugl_positive else 'rgba(239, 68, 68, 0.3)'
-                ugl_shadow = 'rgba(16, 185, 129, 0.1)' if ugl_positive else 'rgba(239, 68, 68, 0.1)'
-                ugl_gradient = '#10b981 0%, #059669 100%' if ugl_positive else '#ef4444 0%, #dc2626 100%'
+                ugl_glow = f'0 0 20px {ugl_color}40' if ugl_positive else ''
+                ugl_gradient = '#10b981, #059669' if ugl_positive else '#ef4444, #dc2626'
                 ugl_arrow = '↑' if ugl_positive else '↓'
 
                 st.markdown(f"""
                 <div style='
-                    position: relative;
                     background: linear-gradient(135deg, {ugl_bg} 0%, rgba(21, 25, 50, 0.8) 100%);
                     backdrop-filter: blur(20px) saturate(180%);
-                    -webkit-backdrop-filter: blur(20px) saturate(180%);
-                    border-radius: 20px;
+                    border-radius: 16px;
                     border: 1px solid {ugl_border};
-                    padding: 2rem 1.5rem;
-                    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-                    box-shadow: 0 8px 32px {ugl_shadow};
-                    height: 100%;
-                    min-height: 180px;
+                    padding: 1.5rem 1.25rem;
+                    transition: all 0.3s ease;
+                    min-height: 140px;
+                    position: relative;
                 '
-                onmouseover="
-                    this.style.transform='translateY(-8px)';
-                    this.style.boxShadow='0 20px 60px {ugl_shadow.replace('0.1', '0.3')}';
-                    this.style.borderColor='{ugl_border.replace('0.3', '0.6')}';
-                "
-                onmouseout="
-                    this.style.transform='translateY(0)';
-                    this.style.boxShadow='0 8px 32px {ugl_shadow}';
-                    this.style.borderColor='{ugl_border}';
-                ">
-                    <div style='
-                        position: absolute;
-                        top: 0;
-                        left: 0;
-                        right: 0;
-                        height: 3px;
-                        background: linear-gradient(90deg, {ugl_gradient});
-                        border-radius: 20px 20px 0 0;
-                    '></div>
-
-                    <div style='
-                        display: flex;
-                        align-items: center;
-                        gap: 0.5rem;
-                        margin-bottom: 1rem;
-                    '>
-                        <span style='font-size: 1.25rem;'>📊</span>
-                        <p style='
-                            font-size: 0.7rem;
-                            color: #94a3b8;
-                            text-transform: uppercase;
-                            letter-spacing: 0.1em;
-                            margin: 0;
-                            font-weight: 700;
-                        '>UNREALIZED G/L</p>
+                onmouseover="this.style.transform='translateY(-4px)'; this.style.boxShadow='0 12px 40px {ugl_border.replace('0.3', '0.25')}'"
+                onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
+                    <div style='position: absolute; top: 0; left: 0; right: 0; height: 2px;
+                                background: linear-gradient(90deg, {ugl_gradient}); border-radius: 16px 16px 0 0;'></div>
+                    <div style='display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;'>
+                        <span style='font-size: 1rem;'>📊</span>
+                        <p style='font-size: 0.65rem; color: #94a3b8; text-transform: uppercase;
+                                  letter-spacing: 0.1em; margin: 0; font-weight: 700;'>UNREALIZED G/L</p>
                     </div>
-
-                    <h3 style='
-                        font-size: 3rem;
-                        font-weight: 800;
-                        color: {ugl_color};
-                        margin: 1rem 0 0.75rem 0;
-                        text-shadow: 0 0 30px {ugl_shadow.replace('0.1', '0.5')};
-                        line-height: 1;
-                    '>{format_currency(cost_gl)}</h3>
-
-                    <div style='
-                        display: flex;
-                        align-items: center;
-                        gap: 0.5rem;
-                        padding: 0.5rem 0.75rem;
-                        background: {ugl_bg.replace('0.05', '0.1')};
-                        border-radius: 8px;
-                        border: 1px solid {ugl_border.replace('0.3', '0.2')};
-                    '>
-                        <span style='color: {ugl_color}; font-size: 0.875rem;'>{ugl_arrow}</span>
-                        <p style='
-                            font-size: 0.875rem;
-                            color: {ugl_color if ugl_positive else '#fca5a5'};
-                            margin: 0;
-                            font-weight: 600;
-                        '>{format_percentage(cost_gl_pct)}</p>
+                    <h3 style='font-size: 2.5rem; font-weight: 800; color: {ugl_color};
+                               margin: 0.5rem 0; line-height: 1; text-shadow: {ugl_glow};'>{format_currency(cost_gl)}</h3>
+                    <div style='display: inline-block; padding: 0.25rem 0.75rem; background: {ugl_bg.replace('0.05', '0.15')};
+                                border-radius: 12px; border: 1px solid {ugl_border.replace('0.3', '0.2')};'>
+                        <span style='font-size: 0.75rem; color: {ugl_color}; font-weight: 600;'>{ugl_arrow} {format_percentage(cost_gl_pct)}</span>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
 
-            # Card 5: Positions
+            # Card 5: Positions - PREMIUM DESIGN
             with col5:
                 st.markdown(f"""
                 <div style='
-                    position: relative;
                     background: linear-gradient(135deg, rgba(139, 92, 246, 0.05) 0%, rgba(21, 25, 50, 0.8) 100%);
                     backdrop-filter: blur(20px) saturate(180%);
-                    -webkit-backdrop-filter: blur(20px) saturate(180%);
-                    border-radius: 20px;
+                    border-radius: 16px;
                     border: 1px solid rgba(139, 92, 246, 0.3);
-                    padding: 2rem 1.5rem;
-                    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-                    box-shadow: 0 8px 32px rgba(139, 92, 246, 0.1);
-                    height: 100%;
-                    min-height: 180px;
+                    padding: 1.5rem 1.25rem;
+                    transition: all 0.3s ease;
+                    min-height: 140px;
+                    position: relative;
                 '
-                onmouseover="
-                    this.style.transform='translateY(-8px)';
-                    this.style.boxShadow='0 20px 60px rgba(139, 92, 246, 0.3)';
-                    this.style.borderColor='rgba(139, 92, 246, 0.6)';
-                "
-                onmouseout="
-                    this.style.transform='translateY(0)';
-                    this.style.boxShadow='0 8px 32px rgba(139, 92, 246, 0.1)';
-                    this.style.borderColor='rgba(139, 92, 246, 0.3)';
-                ">
-                    <div style='
-                        position: absolute;
-                        top: 0;
-                        left: 0;
-                        right: 0;
-                        height: 3px;
-                        background: linear-gradient(90deg, #8b5cf6 0%, #a855f7 100%);
-                        border-radius: 20px 20px 0 0;
-                    '></div>
-
-                    <div style='
-                        display: flex;
-                        align-items: center;
-                        gap: 0.5rem;
-                        margin-bottom: 1rem;
-                    '>
-                        <span style='font-size: 1.25rem;'>📍</span>
-                        <p style='
-                            font-size: 0.7rem;
-                            color: #94a3b8;
-                            text-transform: uppercase;
-                            letter-spacing: 0.1em;
-                            margin: 0;
-                            font-weight: 700;
-                        '>POSITIONS</p>
+                onmouseover="this.style.transform='translateY(-4px)'; this.style.boxShadow='0 12px 40px rgba(139,92,246,0.25)'"
+                onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
+                    <div style='position: absolute; top: 0; left: 0; right: 0; height: 2px;
+                                background: linear-gradient(90deg, #8b5cf6, #a855f7); border-radius: 16px 16px 0 0;'></div>
+                    <div style='display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;'>
+                        <span style='font-size: 1rem;'>📍</span>
+                        <p style='font-size: 0.65rem; color: #94a3b8; text-transform: uppercase;
+                                  letter-spacing: 0.1em; margin: 0; font-weight: 700;'>POSITIONS</p>
                     </div>
-
-                    <h3 style='
-                        font-size: 3rem;
-                        font-weight: 800;
-                        background: linear-gradient(135deg, #8b5cf6 0%, #a855f7 100%);
-                        -webkit-background-clip: text;
-                        -webkit-text-fill-color: transparent;
-                        margin: 1rem 0 0.75rem 0;
-                        line-height: 1;
-                    '>{len(enhanced_df)}</h3>
-
-                    <div style='
-                        display: flex;
-                        align-items: center;
-                        gap: 0.5rem;
-                        padding: 0.5rem 0.75rem;
-                        background: rgba(139, 92, 246, 0.1);
-                        border-radius: 8px;
-                        border: 1px solid rgba(139, 92, 246, 0.2);
-                    '>
-                        <p style='
-                            font-size: 0.875rem;
-                            color: #d8b4fe;
-                            margin: 0;
-                            font-weight: 500;
-                        '>Holdings</p>
+                    <h3 style='font-size: 2.5rem; font-weight: 800;
+                               background: linear-gradient(135deg, #8b5cf6, #a855f7);
+                               -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+                               margin: 0.5rem 0; line-height: 1;'>{len(enhanced_df)}</h3>
+                    <div style='display: inline-block; padding: 0.25rem 0.75rem; background: rgba(139, 92, 246, 0.15);
+                                border-radius: 12px; border: 1px solid rgba(139, 92, 246, 0.2);'>
+                        <span style='font-size: 0.75rem; color: #d8b4fe; font-weight: 600;'>Holdings</span>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
