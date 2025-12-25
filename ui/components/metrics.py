@@ -112,7 +112,7 @@ def create_risk_snapshot(df, portfolio_returns):
     <div style='background: linear-gradient(135deg, {COLORS['card_background']} 0%, {COLORS['card_background_alt']} 100%);
                 border: 2px solid {COLORS['neon_blue']}; border-radius: 12px; padding: 20px; margin: 10px 0;
                 box-shadow: 0 0 30px {COLORS['shadow']};'>
-        <h3 style='color: {COLORS['neon_blue']}; margin: 0 0 15px 0; font-size: 18px;'>¡ Risk Snapshot</h3>
+        <h3 style='color: {COLORS['neon_blue']}; margin: 0 0 15px 0; font-size: 18px;'>ðŸ“Š Risk Snapshot</h3>
         <div style='display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px;'>
             <div>
                 <div style='color: {COLORS['text_muted']}; font-size: 11px; text-transform: uppercase;'>Portfolio Beta</div>
@@ -129,7 +129,7 @@ def create_risk_snapshot(df, portfolio_returns):
             <div>
                 <div style='color: {COLORS['text_muted']}; font-size: 11px; text-transform: uppercase;'>Top Exposures</div>
                 <div style='color: {COLORS['text_primary']}; font-size: 13px; line-height: 1.6; margin-top: 5px;'>
-                    {'<br>'.join([f"" {row['Ticker']} ({row['Weight %']:.1f}%)" for _, row in top_3.iterrows()])}
+                    {'<br>'.join([f"â–ª {row['Ticker']} ({row['Weight %']:.1f}%)" for _, row in top_3.iterrows()])}
                 </div>
             </div>
         </div>
@@ -171,15 +171,15 @@ def calculate_signal_health(metrics):
 
     if percentage >= 80:
         status = 'GREEN'
-        emoji = '=â'
+        emoji = 'âœ…'
         label = 'HEALTHY'
     elif percentage >= 50:
         status = 'YELLOW'
-        emoji = '=á'
+        emoji = 'âš ï¸'
         label = 'CAUTION'
     else:
         status = 'RED'
-        emoji = '=4'
+        emoji = 'ðŸ”´'
         label = 'AT RISK'
 
     return status, percentage, f"{emoji} {label}"
@@ -232,8 +232,8 @@ def create_skill_assessment_card(attribution_results):
     # Status emojis and colors
     alloc_color = '#00ff9d' if allocation_effect > 0 else '#ff006b'
     select_color = '#00ff9d' if selection_effect > 0 else '#ff006b'
-    alloc_status = ' Strong sector rotation' if allocation_effect > 1 else 'Ë Neutral sector timing' if allocation_effect > -1 else ' Poor sector allocation'
-    select_status = ' Strong stock picks' if selection_effect > 1 else 'Ë Neutral stock selection' if selection_effect > -1 else ' Stocks underperform sector'
+    alloc_status = ' Strong sector rotation' if allocation_effect > 1 else 'ï¿½ Neutral sector timing' if allocation_effect > -1 else ' Poor sector allocation'
+    select_status = ' Strong stock picks' if selection_effect > 1 else 'ï¿½ Neutral stock selection' if selection_effect > -1 else ' Stocks underperform sector'
 
     html = f"""
     <style>
@@ -259,7 +259,7 @@ def create_skill_assessment_card(attribution_results):
             margin: 0 0 20px 0;
             text-shadow: 0 0 10px rgba(0, 212, 255, 0.3);
         ">
-            <¯ Portfolio Management Skill Assessment
+            <ï¿½ Portfolio Management Skill Assessment
         </h3>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
@@ -363,7 +363,7 @@ def create_skill_assessment_card(attribution_results):
                 text-transform: uppercase;
                 letter-spacing: 0.1em;
                 margin-bottom: 4px;
-            ">=¡ Primary Strength: {primary_skill}</div>
+            ">=ï¿½ Primary Strength: {primary_skill}</div>
             <div style="
                 font-family: 'Inter', sans-serif;
                 font-size: 0.85rem;
@@ -420,7 +420,7 @@ def create_performance_dashboard(metrics):
     fig.update_layout(
         height=700,
         showlegend=False,
-        title_text="=Ê Performance Dashboard"
+        title_text="=ï¿½ Performance Dashboard"
     )
 
     apply_chart_theme(fig)
