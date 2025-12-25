@@ -1,12 +1,15 @@
 """
 ATLAS Terminal - Tables Component Library
 Phase 2 Day 5 - Data Table Components
+Phase 2A - Enhanced Fomo-Inspired Tables
 
-Reusable table display and styling functions.
+Reusable table display and styling functions with glassmorphic design.
 """
 
 import streamlit as st
 import pandas as pd
+from typing import Optional, Dict, List, Literal
+import hashlib
 
 
 # Helper function for arrow indicators

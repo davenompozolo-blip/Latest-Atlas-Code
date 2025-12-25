@@ -29,6 +29,12 @@ from .tables import (
     format_currency
 )
 
+# Enhanced Tables Module (Phase 2A)
+from .tables_enhanced import (
+    atlas_table,
+    atlas_table_with_badges
+)
+
 # Metrics Module
 from .metrics import (
     ATLASFormatter,
@@ -103,6 +109,10 @@ __all__ = [
     'add_arrow_indicator',
     'format_percentage',
     'format_currency',
+
+    # Enhanced Tables (Phase 2A)
+    'atlas_table',
+    'atlas_table_with_badges',
 
     # Metrics
     'ATLASFormatter',
