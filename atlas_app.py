@@ -14518,12 +14518,26 @@ def main():
                 if 'Total Gain/Loss %' in display_df.columns:
                     display_df['Total Gain/Loss %'] = display_df['Total Gain/Loss %'].apply(add_arrow_indicator)
 
-                # PHASE 2A: Use enhanced glassmorphic table
-                atlas_table(
+                # PHASE 2A: Enhanced table with inline HTML (bypassing atlas_table function)
+                st.markdown(f"""
+                <h3 style='
+                    font-size: 1.25rem;
+                    font-weight: 700;
+                    color: #f8fafc;
+                    margin-bottom: 1rem;
+                    background: linear-gradient(135deg, #00d4ff 0%, #6366f1 50%, #8b5cf6 100%);
+                    -webkit-background-clip: text;
+                    -webkit-text-fill-color: transparent;
+                    background-clip: text;
+                '>Current Holdings</h3>
+                """, unsafe_allow_html=True)
+
+                # Use Streamlit's native dataframe with custom styling
+                st.dataframe(
                     display_df,
-                    title="Current Holdings",
-                    hoverable=True,
-                    height=500
+                    use_container_width=True,
+                    height=500,
+                    hide_index=True
                 )
     
                 # Add explanation for dual weight columns
