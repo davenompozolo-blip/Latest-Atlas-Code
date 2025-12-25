@@ -1,9 +1,13 @@
 """
 ATLAS Terminal - UI Components Package
 Phase 2 Day 5 - Reusable Component Library
+Phase 1B - Sidebar Navigation Component
 
-Centralized UI components for charts, metrics, and tables.
+Centralized UI components for charts, metrics, tables, and navigation.
 """
+
+# Navigation Module (Phase 1B)
+from .sidebar_nav import render_sidebar_navigation
 
 # Tables Module
 from .tables import (
@@ -72,6 +76,9 @@ from .charts import (
 )
 
 __all__ = [
+    # Navigation (Phase 1B)
+    'render_sidebar_navigation',
+
     # Tables
     'make_scrollable_table',
     'style_holdings_dataframe',
