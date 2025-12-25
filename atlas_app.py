@@ -14330,49 +14330,102 @@ def main():
             """, unsafe_allow_html=True)
 
             st.markdown("---")
-    
-            # Second row: Performance Metrics (ALL on equity basis)
+
+            # Second row: Performance Metrics (ALL on equity basis) - FOMO STYLED
             st.markdown("### 📈 Performance (on Equity Basis)")
+
+            # Create glassmorphic metric cards
             col1, col2, col3, col4, col5 = st.columns(5)
-    
+
             with col1:
-                st.metric(
-                    "Return on Equity",
-                    format_percentage(total_gl_pct),
-                    delta=format_currency(total_gl),
-                    help="Total return calculated on YOUR equity (leverage amplified)"
-                )
-    
+                delta_color = '#10b981' if total_gl >= 0 else '#ef4444'
+                st.markdown(f"""
+                <div style='
+                    background: rgba(21,25,50,0.6);
+                    backdrop-filter: blur(20px);
+                    border-radius: 12px;
+                    border: 1px solid rgba(99,102,241,0.15);
+                    padding: 1.5rem;
+                    transition: all 0.3s ease;
+                    height: 100%;
+                '>
+                    <p style='font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; margin-top: 0;'>Return on Equity</p>
+                    <h2 style='font-size: 2rem; font-weight: 700; background: linear-gradient(135deg, #00d4ff 0%, #6366f1 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin: 0;'>{format_percentage(total_gl_pct)}</h2>
+                    <p style='font-size: 0.875rem; color: {delta_color}; margin-top: 0.5rem; margin-bottom: 0;'>{format_currency(total_gl)}</p>
+                </div>
+                """, unsafe_allow_html=True)
+
             with col2:
-                st.metric(
-                    "Daily P&L",
-                    format_currency(daily_pl),
-                    help="Today's profit/loss across all positions"
-                )
-    
+                daily_color = '#10b981' if daily_pl >= 0 else '#ef4444'
+                st.markdown(f"""
+                <div style='
+                    background: rgba(21,25,50,0.6);
+                    backdrop-filter: blur(20px);
+                    border-radius: 12px;
+                    border: 1px solid rgba(99,102,241,0.15);
+                    padding: 1.5rem;
+                    transition: all 0.3s ease;
+                    height: 100%;
+                '>
+                    <p style='font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; margin-top: 0;'>Daily P&L</p>
+                    <h2 style='font-size: 2rem; font-weight: 700; color: #f8fafc; margin: 0;'>{format_currency(daily_pl)}</h2>
+                    <p style='font-size: 0.875rem; color: {daily_color}; margin-top: 0.5rem; margin-bottom: 0;'>{"▲" if daily_pl >= 0 else "▼"} Today</p>
+                </div>
+                """, unsafe_allow_html=True)
+
             with col3:
-                st.metric(
-                    "Total Cost Basis",
-                    format_currency(total_cost),
-                    help="Total amount paid for all positions"
-                )
-    
+                st.markdown(f"""
+                <div style='
+                    background: rgba(21,25,50,0.6);
+                    backdrop-filter: blur(20px);
+                    border-radius: 12px;
+                    border: 1px solid rgba(99,102,241,0.15);
+                    padding: 1.5rem;
+                    transition: all 0.3s ease;
+                    height: 100%;
+                '>
+                    <p style='font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; margin-top: 0;'>Total Cost Basis</p>
+                    <h2 style='font-size: 2rem; font-weight: 700; color: #f8fafc; margin: 0;'>{format_currency(total_cost)}</h2>
+                    <p style='font-size: 0.875rem; color: #94a3b8; margin-top: 0.5rem; margin-bottom: 0;'>Investment</p>
+                </div>
+                """, unsafe_allow_html=True)
+
             with col4:
                 cost_gl = gross_exposure - total_cost
                 cost_gl_pct = (cost_gl / total_cost) * 100 if total_cost > 0 else 0
-                st.metric(
-                    "Unrealized G/L",
-                    format_currency(cost_gl),
-                    delta=format_percentage(cost_gl_pct),
-                    help="Current value vs cost basis"
-                )
-    
+                ugl_color = '#10b981' if cost_gl >= 0 else '#ef4444'
+                st.markdown(f"""
+                <div style='
+                    background: rgba(21,25,50,0.6);
+                    backdrop-filter: blur(20px);
+                    border-radius: 12px;
+                    border: 1px solid rgba(99,102,241,0.15);
+                    padding: 1.5rem;
+                    transition: all 0.3s ease;
+                    height: 100%;
+                '>
+                    <p style='font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; margin-top: 0;'>Unrealized G/L</p>
+                    <h2 style='font-size: 2rem; font-weight: 700; color: #f8fafc; margin: 0;'>{format_currency(cost_gl)}</h2>
+                    <p style='font-size: 0.875rem; color: {ugl_color}; margin-top: 0.5rem; margin-bottom: 0;'>{format_percentage(cost_gl_pct)}</p>
+                </div>
+                """, unsafe_allow_html=True)
+
             with col5:
-                st.metric(
-                    "📊 Positions",
-                    len(enhanced_df),
-                    help="Number of holdings in portfolio"
-                )
+                st.markdown(f"""
+                <div style='
+                    background: rgba(21,25,50,0.6);
+                    backdrop-filter: blur(20px);
+                    border-radius: 12px;
+                    border: 1px solid rgba(99,102,241,0.15);
+                    padding: 1.5rem;
+                    transition: all 0.3s ease;
+                    height: 100%;
+                '>
+                    <p style='font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; margin-top: 0;'>📊 Positions</p>
+                    <h2 style='font-size: 2rem; font-weight: 700; color: #f8fafc; margin: 0;'>{len(enhanced_df)}</h2>
+                    <p style='font-size: 0.875rem; color: #94a3b8; margin-top: 0.5rem; margin-bottom: 0;'>Holdings</p>
+                </div>
+                """, unsafe_allow_html=True)
     
             # Info box explaining the metrics
             with st.expander("ℹ️ Understanding Your Leveraged Portfolio", expanded=False):
