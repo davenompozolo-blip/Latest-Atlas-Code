@@ -975,27 +975,53 @@ section.main div[style*="max-width"] {
 
 /* ==================== SIDEBAR BACKGROUND ==================== */
 section[data-testid="stSidebar"] {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    min-width: 280px !important;
+    max-width: 280px !important;
     background: linear-gradient(180deg, #0a0e27 0%, #151932 100%) !important;
     border-right: 1px solid rgba(99, 102, 241, 0.15) !important;
+    transform: translateX(0) !important;
+    transition: none !important;
 }
 
 section[data-testid="stSidebar"] > div:first-child {
     background: transparent !important;
     padding-top: 1rem;
+    display: block !important;
+    visibility: visible !important;
+}
+
+/* Hide sidebar collapse button - sidebar always visible */
+button[kind="header"] {
+    display: none !important;
+}
+
+[data-testid="collapsedControl"] {
+    display: none !important;
 }
 
 /* Sidebar content wrapper */
 section[data-testid="stSidebar"] .block-container {
     padding-top: 0;
+    display: block !important;
+    visibility: visible !important;
 }
 
 /* ==================== MAIN CONTENT AREA ==================== */
+/* Adjust main content to account for always-visible sidebar */
 .main .block-container {
     padding-top: 2rem;
     padding-left: 2rem;
     padding-right: 2rem;
     padding-bottom: 2rem;
     max-width: 100%;
+    margin-left: 0 !important;
+}
+
+.main {
+    margin-left: 280px !important;
 }
 
 /* ==================== ENHANCED SCROLLBAR ==================== */
