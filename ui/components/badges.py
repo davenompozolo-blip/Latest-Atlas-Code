@@ -160,19 +160,31 @@ def badge_group(badges: list, spacing: str = '0.5rem'):
         >>>     {'text': 'High Risk', 'type': 'warning', 'icon': '⚠️'}
         >>> ])
     """
-    badges_html = ""
-    for b in badges:
-        badges_html += badge(
-            text=b.get('text', ''),
-            badge_type=b.get('type', 'primary'),
-            size=b.get('size', 'sm'),
-            icon=b.get('icon'),
-            glow=b.get('glow', False)
-        )
-        badges_html += f"<span style='margin-right: {spacing};'></span>"
+    try:
+        badges_html = ""
+        for b in badges:
+            badges_html += badge(
+                text=b.get('text', ''),
+                badge_type=b.get('type', 'primary'),
+                size=b.get('size', 'sm'),
+                icon=b.get('icon'),
+                glow=b.get('glow', False)
+            )
+            badges_html += f"<span style='margin-right: {spacing};'></span>"
 
-    st.markdown(f"<div style='display: flex; align-items: center; flex-wrap: wrap;'>{badges_html}</div>",
-                unsafe_allow_html=True)
+        final_html = f"<div style='display: flex; align-items: center; flex-wrap: wrap;'>{badges_html}</div>"
+
+        # DEBUG: Show what we're about to render
+        st.write(f"[DEBUG] Rendering {len(badges)} badges")
+        st.write(f"[DEBUG] HTML length: {len(final_html)} chars")
+
+        st.markdown(final_html, unsafe_allow_html=True)
+
+        st.write("[DEBUG] ✓ st.markdown called successfully")
+    except Exception as e:
+        st.error(f"[ERROR] badge_group failed: {str(e)}")
+        import traceback
+        st.code(traceback.format_exc())
 
 
 # ==================== COMPONENT TESTING ====================
