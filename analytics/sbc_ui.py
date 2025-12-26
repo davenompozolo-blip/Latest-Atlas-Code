@@ -108,34 +108,26 @@ def display_sbc_detection_results(ticker: str, sbc_data: Dict) -> bool:
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        st.metric(
-            "Latest SBC",
-            f"${sbc_info['latest_sbc']/1e9:.2f}B" if sbc_info['latest_sbc'] > 1e9
-            else f"${sbc_info['latest_sbc']/1e6:.1f}M",
-            help="Most recent annual SBC"
-        )
+        sbc_value = f"${sbc_info['latest_sbc']/1e9:.2f}B" if sbc_info['latest_sbc'] > 1e9 else f"${sbc_info['latest_sbc']/1e6:.1f}M"
+        sbc_color = '#ef4444' if sbc_info['latest_sbc'] > 1e9 else '#fbbf24'
+        sbc_status = 'High SBC' if sbc_info['latest_sbc'] > 1e9 else 'Moderate SBC'
+        st.markdown(f'<div style="background: linear-gradient(135deg, rgba(239,68,68,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(239,68,68,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #ef4444, #dc2626); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💰</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">LATEST SBC</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {sbc_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{sbc_value}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(239,68,68,0.12); border-radius: 10px; border: 1px solid rgba(239,68,68,0.25);"><p style="font-size: 0.7rem; color: #fca5a5; margin: 0; font-weight: 600;">{sbc_status}</p></div></div>', unsafe_allow_html=True)
 
     with col2:
-        st.metric(
-            "Latest SBC %",
-            f"{sbc_info['latest_sbc_pct']:.2f}%",
-            help="SBC as % of revenue"
-        )
+        sbc_pct_color = '#ef4444' if sbc_info['latest_sbc_pct'] > 5.0 else ('#fbbf24' if sbc_info['latest_sbc_pct'] > 3.0 else '#10b981')
+        sbc_pct_status = 'Very High' if sbc_info['latest_sbc_pct'] > 5.0 else ('High' if sbc_info['latest_sbc_pct'] > 3.0 else 'Acceptable')
+        st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📊</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">LATEST SBC %</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {sbc_pct_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{sbc_info["latest_sbc_pct"]:.2f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">{sbc_pct_status}</p></div></div>', unsafe_allow_html=True)
 
     with col3:
-        st.metric(
-            "Avg SBC %",
-            f"{sbc_info['avg_sbc_pct']:.2f}%",
-            help="Average SBC % over available years"
-        )
+        avg_sbc_color = '#ef4444' if sbc_info['avg_sbc_pct'] > 5.0 else ('#fbbf24' if sbc_info['avg_sbc_pct'] > 3.0 else '#10b981')
+        avg_sbc_status = 'Very High' if sbc_info['avg_sbc_pct'] > 5.0 else ('High' if sbc_info['avg_sbc_pct'] > 3.0 else 'Acceptable')
+        st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #0891b2); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📈</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">AVG SBC %</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {avg_sbc_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{sbc_info["avg_sbc_pct"]:.2f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #67e8f9; margin: 0; font-weight: 600;">{avg_sbc_status}</p></div></div>', unsafe_allow_html=True)
 
     with col4:
-        materiality = "🔴 High" if sbc_info['is_material'] else "🟢 Low"
-        st.metric(
-            "Materiality",
-            materiality,
-            help="High if avg SBC > 3% of revenue"
-        )
+        materiality_color = '#ef4444' if sbc_info['is_material'] else '#10b981'
+        materiality_value = "High" if sbc_info['is_material'] else "Low"
+        materiality_icon = "🔴" if sbc_info['is_material'] else "🟢"
+        st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">{materiality_icon}</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">MATERIALITY</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {materiality_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{materiality_icon} {materiality_value}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">SBC Impact</p></div></div>', unsafe_allow_html=True)
 
     # Historical data table
     if sbc_info['years_available'] > 0:

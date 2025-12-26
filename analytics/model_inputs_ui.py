@@ -525,26 +525,15 @@ def display_diluted_shares(financial_data: dict, market_data: dict) -> float:
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        st.metric(
-            "Basic Shares",
-            f"{dilution_data['basic_shares']/1e6:.1f}M",
-            help="Shares currently outstanding"
-        )
+        st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📊</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">BASIC SHARES</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #10b981; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{dilution_data["basic_shares"]/1e6:.1f}M</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">Currently Outstanding</p></div></div>', unsafe_allow_html=True)
 
     with col2:
-        st.metric(
-            "Dilution",
-            f"+{dilution_data['total_dilution']/1e6:.1f}M",
-            delta=f"{dilution_data['dilution_pct']*100:.1f}%",
-            help="Additional shares from options and RSUs"
-        )
+        dilution_color = '#ef4444' if dilution_data['dilution_pct'] > 0.10 else ('#fbbf24' if dilution_data['dilution_pct'] > 0.05 else '#10b981')
+        dilution_status = f"+{dilution_data['dilution_pct']*100:.1f}%"
+        st.markdown(f'<div style="background: linear-gradient(135deg, rgba(239,68,68,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(239,68,68,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #ef4444, #dc2626); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">⚠️</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">DILUTION</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {dilution_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">+{dilution_data["total_dilution"]/1e6:.1f}M</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(239,68,68,0.12); border-radius: 10px; border: 1px solid rgba(239,68,68,0.25);"><p style="font-size: 0.7rem; color: #fca5a5; margin: 0; font-weight: 600;">{dilution_status}</p></div></div>', unsafe_allow_html=True)
 
     with col3:
-        st.metric(
-            "Diluted Shares",
-            f"{dilution_data['diluted_shares']/1e6:.1f}M",
-            help="Total shares for valuation"
-        )
+        st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💎</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">DILUTED SHARES</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #8b5cf6; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{dilution_data["diluted_shares"]/1e6:.1f}M</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">For Valuation</p></div></div>', unsafe_allow_html=True)
 
     # Breakdown
     with st.expander("🔍 Show Dilution Breakdown"):
@@ -679,32 +668,20 @@ def display_projection_summary(projections):
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        st.metric(
-            "Revenue CAGR",
-            f"{stats['revenue_cagr']*100:.1f}%",
-            help="Compound annual growth rate"
-        )
+        cagr_color = '#10b981' if stats['revenue_cagr'] > 0.10 else ('#fbbf24' if stats['revenue_cagr'] > 0.05 else '#ef4444')
+        cagr_status = 'High Growth' if stats['revenue_cagr'] > 0.10 else ('Moderate' if stats['revenue_cagr'] > 0.05 else 'Slow Growth')
+        st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📈</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">REVENUE CAGR</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {cagr_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{stats["revenue_cagr"]*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{cagr_status}</p></div></div>', unsafe_allow_html=True)
 
     with col2:
-        st.metric(
-            "Avg EBIT Margin",
-            f"{stats['avg_ebit_margin']*100:.1f}%",
-            help="Average over forecast period"
-        )
+        margin_color = '#10b981' if stats['avg_ebit_margin'] > 0.20 else ('#fbbf24' if stats['avg_ebit_margin'] > 0.10 else '#ef4444')
+        margin_status = 'High Margin' if stats['avg_ebit_margin'] > 0.20 else ('Healthy' if stats['avg_ebit_margin'] > 0.10 else 'Low Margin')
+        st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💼</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">AVG EBIT MARGIN</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {margin_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{stats["avg_ebit_margin"]*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">{margin_status}</p></div></div>', unsafe_allow_html=True)
 
     with col3:
-        st.metric(
-            "Total FCFF",
-            f"${stats['total_fcff']/1e9:.1f}B",
-            help="Sum of 5-year projections"
-        )
+        st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #0891b2); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💰</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">TOTAL FCFF</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #06b6d4; margin: 0.5rem 0 0.75rem 0; line-height: 1;">${stats["total_fcff"]/1e9:.1f}B</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #67e8f9; margin: 0; font-weight: 600;">5-Year Sum</p></div></div>', unsafe_allow_html=True)
 
     with col4:
-        st.metric(
-            "Terminal FCFF",
-            f"${stats['terminal_fcff']/1e9:.1f}B",
-            help="Final year free cash flow"
-        )
+        st.markdown(f'<div style="background: linear-gradient(135deg, rgba(236,72,153,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(236,72,153,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #ec4899, #db2777); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🎯</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">TERMINAL FCFF</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #ec4899; margin: 0.5rem 0 0.75rem 0; line-height: 1;">${stats["terminal_fcff"]/1e9:.1f}B</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(236,72,153,0.12); border-radius: 10px; border: 1px solid rgba(236,72,153,0.25);"><p style="font-size: 0.7rem; color: #f9a8d4; margin: 0; font-weight: 600;">Final Year</p></div></div>', unsafe_allow_html=True)
 
     # Quick preview table
     with st.expander("📋 Preview Projections"):
