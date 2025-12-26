@@ -86,12 +86,19 @@ class LeverageTracker:
 
         latest = self.leverage_history.iloc[-1]
 
+        # Calculate YTD returns (from start of current year)
+        current_year = latest['Date'].year
+        year_start = self.leverage_history[self.leverage_history['Date'].dt.year == current_year].iloc[0]
+
+        ytd_equity_return = ((latest['Net Equity'] - year_start['Net Equity']) / year_start['Net Equity']) * 100 if year_start['Net Equity'] > 0 else 0
+        ytd_gross_return = ((latest['Gross Exposure'] - year_start['Gross Exposure']) / year_start['Gross Exposure']) * 100 if year_start['Gross Exposure'] > 0 else 0
+
         return {
             'current_leverage': latest['Leverage Ratio'],
             'current_equity': latest['Net Equity'],
             'current_gross_exposure': latest['Gross Exposure'],
-            'ytd_equity_return': latest['Cumulative Equity Return (%)'],
-            'ytd_gross_return': latest['Cumulative Gross Return (%)'],
+            'ytd_equity_return': ytd_equity_return,
+            'ytd_gross_return': ytd_gross_return,
             'avg_leverage': self.leverage_history['Leverage Ratio'].mean(),
             'max_leverage': self.leverage_history['Leverage Ratio'].max(),
             'min_leverage': self.leverage_history['Leverage Ratio'].min(),
@@ -297,7 +304,7 @@ Leverage Impact = (Leverage - 1) × Gross Return
                 = ({latest['Leverage Ratio']:.2f} - 1) × {latest['Gross Return (%)']:.2f}%
                 = {latest['Leverage Impact (%)']:.2f}%
 
-Interpretation: Leverage {'amplified' if latest['Leverage Impact (%)'] > 0 else 'dampened'} returns by {abs(latest['Leverage Impact (%)']):. 2f}%
+Interpretation: Leverage {'amplified' if latest['Leverage Impact (%)'] > 0 else 'dampened'} returns by {abs(latest['Leverage Impact (%)']):.2f}%
 ```
 
 #### **4. HISTORICAL STATISTICS**

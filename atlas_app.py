@@ -12803,7 +12803,7 @@ def main():
 
             # ===== FIX #8: LEVERAGE TRACKING FEATURE =====
             st.markdown("---")
-            st.markdown("### 📊 Leverage Tracking (Optional)")
+            st.markdown('<h2 style="font-size: 1.5rem; font-weight: 700; color: #f8fafc; margin-bottom: 1.5rem;"><span style="font-size: 1.25rem;">📊</span> <span style="background: linear-gradient(135deg, #00d4ff, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Leverage Tracking (Optional)</span></h2>', unsafe_allow_html=True)
             st.info("📈 Upload your Investopedia performance-history.xls file to enable leverage analysis")
 
             perf_history_file = st.file_uploader(
@@ -12835,33 +12835,23 @@ def main():
 
                         col1, col2, col3, col4 = st.columns(4)
 
+                        # Preview Card 1: Current Leverage
                         with col1:
-                            st.metric(
-                                "Current Leverage",
-                                f"{stats['current_leverage']:.2f}x",
-                                help="Gross Exposure / Net Equity"
-                            )
+                            lev_color = '#10b981' if abs(stats['current_leverage'] - 1.7) < 0.3 else '#ef4444'
+                            st.markdown(f'<div style="background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(99,102,241,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #6366f1, #8b5cf6); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">⚡</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">CURRENT LEVERAGE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {lev_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{stats["current_leverage"]:.2f}x</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(99,102,241,0.12); border-radius: 10px; border: 1px solid rgba(99,102,241,0.25);"><p style="font-size: 0.7rem; color: #a5b4fc; margin: 0; font-weight: 600;">Target: 1.7x</p></div></div>', unsafe_allow_html=True)
 
+                        # Preview Card 2: Net Equity
                         with col2:
-                            st.metric(
-                                "Net Equity",
-                                f"${stats['current_equity']:,.0f}",
-                                help="Account Value (Column F)"
-                            )
+                            st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💰</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">NET EQUITY</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #10b981; margin: 0.5rem 0 0.75rem 0; text-shadow: 0 0 24px rgba(16,185,129,0.5); line-height: 1;">${stats["current_equity"]:,.0f}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">Your Capital</p></div></div>', unsafe_allow_html=True)
 
+                        # Preview Card 3: Gross Exposure
                         with col3:
-                            st.metric(
-                                "Gross Exposure",
-                                f"${stats['current_gross_exposure']:,.0f}",
-                                help="Total position value"
-                            )
+                            exposure_pct = ((stats['current_gross_exposure'] / stats['current_equity'] - 1) * 100) if stats['current_equity'] > 0 else 0
+                            st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #3b82f6); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📊</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">GROSS EXPOSURE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #67e8f9; margin: 0.5rem 0 0.75rem 0; line-height: 1;">${stats["current_gross_exposure"]:,.0f}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #a5f3fc; margin: 0; font-weight: 600;">+{exposure_pct:.0f}% vs Equity</p></div></div>', unsafe_allow_html=True)
 
+                        # Preview Card 4: Avg Leverage
                         with col4:
-                            st.metric(
-                                "Avg Leverage",
-                                f"{stats['avg_leverage']:.2f}x",
-                                help="Historical average"
-                            )
+                            st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #3b82f6); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📊</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">AVG LEVERAGE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #67e8f9; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{stats["avg_leverage"]:.2f}x</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #a5f3fc; margin: 0; font-weight: 600;">Historical Avg</p></div></div>', unsafe_allow_html=True)
 
                         # Store in session state for other pages
                         st.session_state.leverage_tracker = tracker
