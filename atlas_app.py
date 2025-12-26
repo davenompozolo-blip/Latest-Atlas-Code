@@ -16981,7 +16981,12 @@ To maintain gradual transitions:
 
                             # Calculate actual return from loaded data
                             actual_return = (latest['Net Equity'] - earliest['Net Equity']) / earliest['Net Equity'] * 100
-                            st.metric("Actual Portfolio Return", f"{actual_return:+.2f}%")
+
+                            # Display as premium card
+                            actual_ret_color = '#10b981' if actual_return > 0 else '#ef4444'
+                            actual_ret_glow = '0 0 24px rgba(16,185,129,0.5)' if actual_return > 0 else '0 0 24px rgba(239,68,68,0.5)'
+                            actual_ret_status = 'Profitable Period' if actual_return > 0 else 'Loss Period'
+                            st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📈</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">ACTUAL PORTFOLIO RETURN</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {actual_ret_color}; margin: 0.5rem 0 0.75rem 0; text-shadow: {actual_ret_glow}; line-height: 1;">{actual_return:+.2f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{actual_ret_status}</p></div></div>', unsafe_allow_html=True)
                         else:
                             st.warning("⚠️ Leverage tracker exists but no data loaded")
                     else:
@@ -17093,6 +17098,8 @@ To maintain gradual transitions:
                         )
 
                         # Summary statistics
+                        st.markdown('<h3 style="font-size: 1.25rem; font-weight: 700; color: #f8fafc; margin-top: 1.5rem; margin-bottom: 1rem;"><span style="background: linear-gradient(135deg, #10b981, #059669); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">📊 Attribution Summary</span></h3>', unsafe_allow_html=True)
+
                         col1, col2, col3, col4 = st.columns(4)
 
                         positive_count = (full_df['Active Contribution %'] > 0).sum()
@@ -17101,15 +17108,25 @@ To maintain gradual transitions:
                         avg_alpha = full_df['Active Contribution %'].mean()
 
                         with col1:
-                            st.metric("✅ Positive Contributors", f"{positive_count}",
-                                     delta=f"{positive_count}/{len(full_df)} positions")
+                            pos_pct = (positive_count / len(full_df)) * 100
+                            pos_status = 'Strong' if pos_pct > 60 else ('Balanced' if pos_pct > 40 else 'Weak')
+                            st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">✅</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">POSITIVE CONTRIBUTORS</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #10b981; margin: 0.5rem 0 0.75rem 0; text-shadow: 0 0 24px rgba(16,185,129,0.5); line-height: 1;">{positive_count}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{pos_pct:.0f}% - {pos_status}</p></div></div>', unsafe_allow_html=True)
+
                         with col2:
-                            st.metric("❌ Negative Contributors", f"{negative_count}",
-                                     delta=f"{negative_count}/{len(full_df)} positions", delta_color="inverse")
+                            neg_pct = (negative_count / len(full_df)) * 100
+                            neg_status = 'High Drag' if neg_pct > 50 else ('Moderate' if neg_pct > 30 else 'Low Drag')
+                            st.markdown(f'<div style="background: linear-gradient(135deg, rgba(239,68,68,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(239,68,68,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #ef4444, #dc2626); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">❌</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">NEGATIVE CONTRIBUTORS</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #ef4444; margin: 0.5rem 0 0.75rem 0; text-shadow: 0 0 24px rgba(239,68,68,0.5); line-height: 1;">{negative_count}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(239,68,68,0.12); border-radius: 10px; border: 1px solid rgba(239,68,68,0.25);"><p style="font-size: 0.7rem; color: #fca5a5; margin: 0; font-weight: 600;">{neg_pct:.0f}% - {neg_status}</p></div></div>', unsafe_allow_html=True)
+
                         with col3:
-                            st.metric("📊 Total Alpha", f"{total_alpha:+.2f}%")
+                            alpha_color = '#10b981' if total_alpha > 0 else '#ef4444'
+                            alpha_glow = '0 0 24px rgba(16,185,129,0.5)' if total_alpha > 0 else '0 0 24px rgba(239,68,68,0.5)'
+                            alpha_status = 'Outperforming' if total_alpha > 0 else 'Underperforming'
+                            st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📊</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">TOTAL ALPHA</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {alpha_color}; margin: 0.5rem 0 0.75rem 0; text-shadow: {alpha_glow}; line-height: 1;">{total_alpha:+.2f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">{alpha_status}</p></div></div>', unsafe_allow_html=True)
+
                         with col4:
-                            st.metric("📈 Avg Alpha/Position", f"{avg_alpha:+.2f}%")
+                            avg_alpha_color = '#10b981' if avg_alpha > 0 else '#ef4444'
+                            avg_alpha_status = 'Positive Avg' if avg_alpha > 0 else 'Negative Avg'
+                            st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #3b82f6); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📈</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">AVG ALPHA/POSITION</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {avg_alpha_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{avg_alpha:+.2f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #a5f3fc; margin: 0; font-weight: 600;">{avg_alpha_status}</p></div></div>', unsafe_allow_html=True)
 
                     # === PORTFOLIO INSIGHTS ===
                     st.markdown("#### 💡 Portfolio Insights")
