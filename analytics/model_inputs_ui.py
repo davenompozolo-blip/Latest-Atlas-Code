@@ -108,19 +108,14 @@ def display_dupont_analysis(financial_data: dict) -> dict:
 
     col1, col2 = st.columns(2)
     with col1:
-        st.metric(
-            "Return on Equity (ROE)",
-            f"{roe_calculated * 100:.2f}%",
-            help="Net Margin × Asset Turnover × Financial Leverage"
-        )
+        roe_color = '#10b981' if roe_calculated > 0.15 else ('#fbbf24' if roe_calculated > 0.10 else '#ef4444')
+        roe_status = 'Excellent' if roe_calculated > 0.15 else ('Good' if roe_calculated > 0.10 else 'Fair')
+        st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📊</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">RETURN ON EQUITY (ROE)</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {roe_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{roe_calculated * 100:.2f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{roe_status}</p></div></div>', unsafe_allow_html=True)
 
     with col2:
-        st.metric(
-            "Direct ROE",
-            f"{dupont['roe_direct'] * 100:.2f}%",
-            delta="✅ Match" if dupont['verification_check'] else "⚠️ Check",
-            help="Net Income / Total Equity (verification)"
-        )
+        direct_roe_color = '#10b981' if dupont['roe_direct'] > 0.15 else ('#fbbf24' if dupont['roe_direct'] > 0.10 else '#ef4444')
+        direct_roe_status = "✅ Match" if dupont['verification_check'] else "⚠️ Check"
+        st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">✅</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">DIRECT ROE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {direct_roe_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{dupont["roe_direct"] * 100:.2f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">{direct_roe_status}</p></div></div>', unsafe_allow_html=True)
 
     # Expandable calculation workings
     with st.expander("📊 Show Detailed Calculation Workings"):
@@ -210,11 +205,9 @@ def display_sgr_analysis(financial_data: dict, roe: float,
 
     with col2:
         plowback = 100 - (payout_ratio * 100)
-        st.metric(
-            "Plowback Ratio",
-            f"{plowback:.1f}%",
-            help="1 - Payout Ratio (amount reinvested)"
-        )
+        plowback_color = '#10b981' if plowback > 70 else ('#fbbf24' if plowback > 40 else '#ef4444')
+        plowback_status = 'High Retention' if plowback > 70 else ('Moderate' if plowback > 40 else 'High Payout')
+        st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #0891b2); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💰</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">PLOWBACK RATIO</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {plowback_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{plowback:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #67e8f9; margin: 0; font-weight: 600;">{plowback_status}</p></div></div>', unsafe_allow_html=True)
 
     # Calculate SGR with user inputs
     sgr = plowback/100 * roe
@@ -224,25 +217,17 @@ def display_sgr_analysis(financial_data: dict, roe: float,
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        st.metric(
-            "Sustainable Growth Rate",
-            f"{sgr * 100:.2f}%",
-            help="Plowback Ratio × ROE"
-        )
+        sgr_color = '#10b981' if sgr < 0.10 else ('#fbbf24' if sgr < 0.15 else '#ef4444')
+        sgr_status = 'Sustainable' if sgr < 0.10 else ('Moderate' if sgr < 0.15 else 'Aggressive')
+        st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📈</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">SUSTAINABLE GROWTH RATE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {sgr_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{sgr * 100:.2f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{sgr_status}</p></div></div>', unsafe_allow_html=True)
 
     with col2:
-        st.metric(
-            "Long-Term GDP Growth",
-            f"{sgr_results['gdp_growth'] * 100:.1f}%",
-            help="US historical average"
-        )
+        st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🌍</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">LONG-TERM GDP GROWTH</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #8b5cf6; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{sgr_results["gdp_growth"] * 100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">US Historical Avg</p></div></div>', unsafe_allow_html=True)
 
     with col3:
-        st.metric(
-            "Recommended Terminal",
-            f"{sgr_results['terminal_growth_suggested'] * 100:.2f}%",
-            help="Based on SGR and economic constraints"
-        )
+        rec_term_color = '#10b981' if sgr_results['terminal_growth_suggested'] <= 0.03 else ('#fbbf24' if sgr_results['terminal_growth_suggested'] <= 0.05 else '#ef4444')
+        rec_term_status = 'Conservative' if sgr_results['terminal_growth_suggested'] <= 0.03 else ('Moderate' if sgr_results['terminal_growth_suggested'] <= 0.05 else 'Aggressive')
+        st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🎯</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">RECOMMENDED TERMINAL</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {rec_term_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{sgr_results["terminal_growth_suggested"] * 100:.2f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{rec_term_status}</p></div></div>', unsafe_allow_html=True)
 
     # Terminal growth guidance
     st.markdown("---")
@@ -352,11 +337,9 @@ def display_cost_of_capital(financial_data: dict, market_data: dict) -> dict:
         # Show live risk-free rate with update info
         rf_value = wacc_data['risk_free_rate']
 
-        st.metric(
-            "Risk-Free Rate",
-            f"{rf_value*100:.2f}%",
-            help=f"US 10-Year Treasury Yield\nSource: {wacc_data['rf_data']['source']}\nDate: {wacc_data['rf_data']['date']}"
-        )
+        rf_color = '#10b981' if rf_value < 0.04 else ('#fbbf24' if rf_value < 0.06 else '#ef4444')
+        rf_status = 'Low Rates' if rf_value < 0.04 else ('Moderate Rates' if rf_value < 0.06 else 'High Rates')
+        st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📊</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">RISK-FREE RATE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {rf_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{rf_value*100:.2f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{rf_status}</p></div></div>', unsafe_allow_html=True)
 
         if wacc_data['rf_data']['success']:
             st.success(f"✅ Live ({wacc_data['rf_data']['date']})")
@@ -398,11 +381,9 @@ def display_cost_of_capital(financial_data: dict, market_data: dict) -> dict:
     cost_of_equity = rf_value + beta * mrp
 
     st.markdown("---")
-    st.metric(
-        "Cost of Equity",
-        f"{cost_of_equity*100:.2f}%",
-        help="Risk-Free + Beta × Market Risk Premium"
-    )
+    coe_wacc_color = '#10b981' if cost_of_equity < 0.08 else ('#fbbf24' if cost_of_equity < 0.12 else '#ef4444')
+    coe_wacc_status = 'Low Cost' if cost_of_equity < 0.08 else ('Average Cost' if cost_of_equity < 0.12 else 'High Cost')
+    st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💹</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">COST OF EQUITY</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {coe_wacc_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{cost_of_equity*100:.2f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">{coe_wacc_status}</p></div></div>', unsafe_allow_html=True)
 
     # Cost of debt section
     st.markdown("#### Cost of Debt")
@@ -429,11 +410,9 @@ def display_cost_of_capital(financial_data: dict, market_data: dict) -> dict:
 
     after_tax_debt = cost_of_debt * (1 - tax_rate)
 
-    st.metric(
-        "After-Tax Cost of Debt",
-        f"{after_tax_debt*100:.2f}%",
-        help="Pre-Tax Cost × (1 - Tax Rate)"
-    )
+    atcd_color = '#10b981' if after_tax_debt < 0.03 else ('#fbbf24' if after_tax_debt < 0.05 else '#ef4444')
+    atcd_status = 'Low Cost' if after_tax_debt < 0.03 else ('Average Cost' if after_tax_debt < 0.05 else 'High Cost')
+    st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #0891b2); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💰</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">AFTER-TAX COST OF DEBT</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {atcd_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{after_tax_debt*100:.2f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #67e8f9; margin: 0; font-weight: 600;">{atcd_status}</p></div></div>', unsafe_allow_html=True)
 
     # Capital structure
     st.markdown("#### Capital Structure")
@@ -443,13 +422,13 @@ def display_cost_of_capital(financial_data: dict, market_data: dict) -> dict:
     total_value = wacc_data['total_debt'] + wacc_data['market_cap']
 
     with col1:
-        st.metric("Total Debt", f"${wacc_data['total_debt']/1e9:.2f}B")
+        st.markdown(f'<div style="background: linear-gradient(135deg, rgba(239,68,68,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(239,68,68,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #ef4444, #dc2626); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🏦</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">TOTAL DEBT</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #ef4444; margin: 0.5rem 0 0.75rem 0; line-height: 1;">${wacc_data["total_debt"]/1e9:.2f}B</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(239,68,68,0.12); border-radius: 10px; border: 1px solid rgba(239,68,68,0.25);"><p style="font-size: 0.7rem; color: #fca5a5; margin: 0; font-weight: 600;">Leverage</p></div></div>', unsafe_allow_html=True)
 
     with col2:
-        st.metric("Market Cap", f"${wacc_data['market_cap']/1e9:.2f}B")
+        st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💰</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">MARKET CAP</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #10b981; margin: 0.5rem 0 0.75rem 0; line-height: 1;">${wacc_data["market_cap"]/1e9:.2f}B</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">Equity Value</p></div></div>', unsafe_allow_html=True)
 
     with col3:
-        st.metric("Total Value", f"${total_value/1e9:.2f}B")
+        st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📊</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">TOTAL VALUE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #8b5cf6; margin: 0.5rem 0 0.75rem 0; line-height: 1;">${total_value/1e9:.2f}B</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">Enterprise Value</p></div></div>', unsafe_allow_html=True)
 
     # WACC calculation
     wacc = (wacc_data['equity_weight'] * cost_of_equity) + \
@@ -460,17 +439,19 @@ def display_cost_of_capital(financial_data: dict, market_data: dict) -> dict:
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        st.metric("Equity Weight", f"{wacc_data['equity_weight']*100:.1f}%")
+        eq_wt_color = '#10b981' if wacc_data['equity_weight'] > 0.70 else ('#fbbf24' if wacc_data['equity_weight'] > 0.50 else '#ef4444')
+        eq_wt_status = 'Low Leverage' if wacc_data['equity_weight'] > 0.70 else ('Moderate' if wacc_data['equity_weight'] > 0.50 else 'High Leverage')
+        st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📊</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">EQUITY WEIGHT</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {eq_wt_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{wacc_data["equity_weight"]*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{eq_wt_status}</p></div></div>', unsafe_allow_html=True)
 
     with col2:
-        st.metric("Debt Weight", f"{wacc_data['debt_weight']*100:.1f}%")
+        debt_wt_color = '#10b981' if wacc_data['debt_weight'] < 0.30 else ('#fbbf24' if wacc_data['debt_weight'] < 0.50 else '#ef4444')
+        debt_wt_status = 'Low Leverage' if wacc_data['debt_weight'] < 0.30 else ('Moderate' if wacc_data['debt_weight'] < 0.50 else 'High Leverage')
+        st.markdown(f'<div style="background: linear-gradient(135deg, rgba(239,68,68,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(239,68,68,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #ef4444, #dc2626); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">⚖️</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">DEBT WEIGHT</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {debt_wt_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{wacc_data["debt_weight"]*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(239,68,68,0.12); border-radius: 10px; border: 1px solid rgba(239,68,68,0.25);"><p style="font-size: 0.7rem; color: #fca5a5; margin: 0; font-weight: 600;">{debt_wt_status}</p></div></div>', unsafe_allow_html=True)
 
     with col3:
-        st.metric(
-            "WACC",
-            f"{wacc*100:.2f}%",
-            help="Weighted Average Cost of Capital"
-        )
+        wacc_color = '#10b981' if wacc < 0.08 else ('#fbbf24' if wacc < 0.12 else '#ef4444')
+        wacc_status = 'Low Cost' if wacc < 0.08 else ('Average Cost' if wacc < 0.12 else 'High Cost')
+        st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #0891b2); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💎</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">WACC</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {wacc_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{wacc*100:.2f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #67e8f9; margin: 0; font-weight: 600;">{wacc_status}</p></div></div>', unsafe_allow_html=True)
 
     # Calculation workings
     with st.expander("📊 Show Calculation Workings"):
