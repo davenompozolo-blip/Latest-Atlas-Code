@@ -128,12 +128,38 @@ def render_r_analytics_page():
 
         return
 
-    # Initialize R analytics
+    # Initialize R analytics with auto-installation
     try:
-        r = get_r()
-        st.success("✅ R Analytics Engine Ready")
+        with st.spinner("Initializing R Analytics (auto-installing packages if needed)..."):
+            from analytics.r_integration import check_and_install_r_packages
+
+            # Auto-install missing packages
+            required_packages = ['rugarch', 'copula', 'xts']
+
+            # Show installation progress
+            install_container = st.empty()
+            install_status = {}
+
+            for pkg in required_packages:
+                install_container.info(f"📦 Checking {pkg}...")
+                status = check_and_install_r_packages([pkg], verbose=False)
+                install_status.update(status)
+
+            install_container.empty()
+
+            # Check results
+            if all(install_status.values()):
+                r = get_r()
+                st.success("✅ R Analytics Engine Ready (all packages installed)")
+            else:
+                failed_packages = [pkg for pkg, status in install_status.items() if not status]
+                st.warning(f"⚠️ Some packages failed to install: {', '.join(failed_packages)}")
+                st.info("Attempting to use R Analytics anyway - some features may be limited")
+                r = get_r()
+
     except Exception as e:
         st.error(f"Error initializing R: {str(e)}")
+        st.info("Try running: `R -e \"install.packages(c('rugarch', 'copula', 'xts'))\"`")
         return
 
     # Create tabs
