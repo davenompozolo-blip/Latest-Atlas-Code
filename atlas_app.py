@@ -17950,11 +17950,40 @@ To maintain gradual transitions:
                 st.markdown(f"### 📊 {company['name']} ({company['ticker']})")
                 
                 col1, col2, col3, col4, col5 = st.columns(5)
-                col1.metric("Current Price", format_currency(company['current_price']))
-                col2.metric("Market Cap", format_large_number(company['market_cap']))
-                col3.metric("Sector", company['sector'])
-                col4.metric("Beta", f"{company['beta']:.2f}")
-                col5.metric("Forward P/E", f"{company.get('forward_pe', 'N/A'):.1f}" if company.get('forward_pe') else "N/A")
+
+                # Current Price
+                with col1:
+                    st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💰</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">CURRENT PRICE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #10b981; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{format_currency(company["current_price"])}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">Market Price</p></div></div>', unsafe_allow_html=True)
+
+                # Market Cap
+                with col2:
+                    mkt_cap_b = company['market_cap'] / 1e9 if company['market_cap'] > 0 else 0
+                    mkt_cap_tier = 'Large Cap' if mkt_cap_b > 10 else ('Mid Cap' if mkt_cap_b > 2 else 'Small Cap')
+                    st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📊</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">MARKET CAP</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #8b5cf6; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{format_large_number(company["market_cap"])}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">{mkt_cap_tier}</p></div></div>', unsafe_allow_html=True)
+
+                # Sector
+                with col3:
+                    st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #0891b2); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🏢</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">SECTOR</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #06b6d4; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{company["sector"]}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #67e8f9; margin: 0; font-weight: 600;">Industry Class</p></div></div>', unsafe_allow_html=True)
+
+                # Beta
+                with col4:
+                    beta_val = company['beta']
+                    beta_color = '#10b981' if beta_val < 1.0 else ('#fbbf24' if beta_val < 1.5 else '#ef4444')
+                    beta_status = 'Low Volatility' if beta_val < 1.0 else ('Market Average' if beta_val < 1.5 else 'High Volatility')
+                    st.markdown(f'<div style="background: linear-gradient(135deg, rgba(245,158,11,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(245,158,11,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #f59e0b, #d97706); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📈</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">BETA</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {beta_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{beta_val:.2f}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(245,158,11,0.12); border-radius: 10px; border: 1px solid rgba(245,158,11,0.25);"><p style="font-size: 0.7rem; color: #fbbf24; margin: 0; font-weight: 600;">{beta_status}</p></div></div>', unsafe_allow_html=True)
+
+                # Forward P/E
+                with col5:
+                    fwd_pe = company.get('forward_pe', None)
+                    if fwd_pe and fwd_pe != 'N/A':
+                        fwd_pe_color = '#10b981' if fwd_pe < 15 else ('#fbbf24' if fwd_pe < 25 else '#ef4444')
+                        fwd_pe_status = 'Undervalued' if fwd_pe < 15 else ('Fair Value' if fwd_pe < 25 else 'Expensive')
+                        fwd_pe_display = f"{fwd_pe:.1f}"
+                    else:
+                        fwd_pe_color = '#94a3b8'
+                        fwd_pe_status = 'No Data'
+                        fwd_pe_display = 'N/A'
+                    st.markdown(f'<div style="background: linear-gradient(135deg, rgba(239,68,68,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(239,68,68,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #ef4444, #dc2626); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💹</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">FORWARD P/E</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {fwd_pe_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{fwd_pe_display}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(239,68,68,0.12); border-radius: 10px; border: 1px solid rgba(239,68,68,0.25);"><p style="font-size: 0.7rem; color: #fca5a5; margin: 0; font-weight: 600;">{fwd_pe_status}</p></div></div>', unsafe_allow_html=True)
                 
                 st.markdown("---")
     
@@ -18251,32 +18280,25 @@ To maintain gradual transitions:
                         # Display main result
                         st.markdown("---")
                         col1, col2, col3 = st.columns(3)
-    
+
+                        # Consensus Fair Value
                         with col1:
                             upside_pct = ((consensus_result['consensus_value'] / company['current_price'] - 1) * 100) if company['current_price'] > 0 else 0
-                            st.metric(
-                                "Consensus Fair Value",
-                                f"${consensus_result['consensus_value']:.2f}",
-                                delta=f"{upside_pct:+.1f}%" if company['current_price'] > 0 else None
-                            )
-    
+                            consensus_color = '#10b981' if upside_pct > 20 else ('#fbbf24' if upside_pct > -20 else '#ef4444')
+                            consensus_status = 'Undervalued' if upside_pct > 20 else ('Fair Value' if upside_pct > -20 else 'Overvalued')
+                            st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🎯</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">CONSENSUS FAIR VALUE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {consensus_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">${consensus_result["consensus_value"]:.2f}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{consensus_status} ({upside_pct:+.1f}%)</p></div></div>', unsafe_allow_html=True)
+
+                        # Confidence Score
                         with col2:
-                            confidence_color = (
-                                "🟢" if consensus_result['confidence_score'] >= 70
-                                else "🟡" if consensus_result['confidence_score'] >= 50
-                                else "🔴"
-                            )
-                            st.metric(
-                                "Confidence Score",
-                                f"{confidence_color} {consensus_result['confidence_score']:.0f}/100"
-                            )
-                            st.caption(f"Based on {consensus_result['method_count']} valid methods")
-    
+                            confidence_score = consensus_result['confidence_score']
+                            confidence_color_hex = '#10b981' if confidence_score >= 70 else ('#fbbf24' if confidence_score >= 50 else '#ef4444')
+                            confidence_emoji = "🟢" if confidence_score >= 70 else ("🟡" if confidence_score >= 50 else "🔴")
+                            confidence_label = 'High Confidence' if confidence_score >= 70 else ('Moderate' if confidence_score >= 50 else 'Low Confidence')
+                            st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📊</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">CONFIDENCE SCORE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {confidence_color_hex}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{confidence_emoji} {confidence_score:.0f}/100</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">{confidence_label} ({consensus_result["method_count"]} methods)</p></div></div>', unsafe_allow_html=True)
+
+                        # Current Price
                         with col3:
-                            st.metric(
-                                "Current Price",
-                                f"${company['current_price']:.2f}"
-                            )
+                            st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #0891b2); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💰</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">CURRENT PRICE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #06b6d4; margin: 0.5rem 0 0.75rem 0; line-height: 1;">${company["current_price"]:.2f}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #67e8f9; margin: 0; font-weight: 600;">Market Price</p></div></div>', unsafe_allow_html=True)
     
                             if upside_pct > 20:
                                 st.success("🚀 Potentially undervalued")
@@ -18403,15 +18425,23 @@ To maintain gradual transitions:
     
                         # Display what we're using (read-only summary)
                         col1, col2, col3 = st.columns(3)
+
+                        # WACC (Discount Rate)
                         with col1:
-                            st.metric("WACC (Discount Rate)", f"{discount_rate*100:.2f}%",
-                                     help="From Model Inputs Dashboard (Live Treasury + CAPM)")
+                            wacc_color = '#10b981' if discount_rate < 0.08 else ('#fbbf24' if discount_rate < 0.12 else '#ef4444')
+                            wacc_status = 'Low Cost' if discount_rate < 0.08 else ('Average Cost' if discount_rate < 0.12 else 'High Cost')
+                            st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💹</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">WACC (DISCOUNT RATE)</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {wacc_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{discount_rate*100:.2f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">{wacc_status}</p></div></div>', unsafe_allow_html=True)
+
+                        # Terminal Growth Rate
                         with col2:
-                            st.metric("Terminal Growth Rate", f"{terminal_growth*100:.2f}%",
-                                     help="From SGR Analysis in Dashboard")
+                            tgr_color = '#10b981' if terminal_growth < 0.03 else ('#fbbf24' if terminal_growth < 0.05 else '#ef4444')
+                            tgr_status = 'Conservative' if terminal_growth < 0.03 else ('Moderate' if terminal_growth < 0.05 else 'Aggressive')
+                            st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📈</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">TERMINAL GROWTH RATE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {tgr_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{terminal_growth*100:.2f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{tgr_status}</p></div></div>', unsafe_allow_html=True)
+
+                        # Diluted Shares
                         with col3:
-                            st.metric("Diluted Shares", f"{shares/1e6:.1f}M",
-                                     help="Treasury Stock Method from Dashboard")
+                            shares_m = shares / 1e6
+                            st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #0891b2); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🔢</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">DILUTED SHARES</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #06b6d4; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{shares_m:.1f}M</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #67e8f9; margin: 0; font-weight: 600;">Treasury Stock Method</p></div></div>', unsafe_allow_html=True)
     
                         st.info("💡 To modify these inputs, edit them in the Model Inputs Dashboard above, then re-run valuation.")
     
@@ -19459,24 +19489,31 @@ To maintain gradual transitions:
                         show_toast(toast_msg, toast_type=toast_type, duration=5000)
                     
                     col1, col2, col3, col4 = st.columns(4)
-                    
-                    col1.metric(
-                        "Intrinsic Value",
-                        format_currency(intrinsic_value),
-                        delta=format_percentage(upside_downside) if abs(upside_downside) < 1000 else "±∞"
-                    )
-                    
-                    col2.metric("Current Price", format_currency(current_price))
-                    
-                    col3.metric(
-                        "Upside/Downside",
-                        format_percentage(upside_downside) if abs(upside_downside) < 1000 else "±∞",
-                        delta="Undervalued" if upside_downside > 0 else "Overvalued"
-                    )
-    
+
+                    # Intrinsic Value
+                    with col1:
+                        intrinsic_color = '#10b981' if upside_downside > 20 else ('#fbbf24' if upside_downside > -20 else '#ef4444')
+                        intrinsic_status = 'Undervalued' if upside_downside > 20 else ('Fair Value' if upside_downside > -20 else 'Overvalued')
+                        st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💎</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">INTRINSIC VALUE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {intrinsic_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{format_currency(intrinsic_value)}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{intrinsic_status}</p></div></div>', unsafe_allow_html=True)
+
+                    # Current Price
+                    with col2:
+                        st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💰</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">CURRENT PRICE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #8b5cf6; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{format_currency(current_price)}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">Market Price</p></div></div>', unsafe_allow_html=True)
+
+                    # Upside/Downside
+                    with col3:
+                        upside_display = format_percentage(upside_downside) if abs(upside_downside) < 1000 else "±∞"
+                        upside_color = '#10b981' if upside_downside > 20 else ('#fbbf24' if upside_downside > -20 else '#ef4444')
+                        upside_label = 'Strong Upside' if upside_downside > 20 else ('Fair Value' if upside_downside > -20 else 'Downside Risk')
+                        st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #0891b2); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📊</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">UPSIDE/DOWNSIDE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {upside_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{upside_display}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #67e8f9; margin: 0; font-weight: 600;">{upside_label}</p></div></div>', unsafe_allow_html=True)
+
+                    # Discount Rate
                     # v9.7 FIX: Safe access to session_state with defaults
                     discount_rate = st.session_state.get('discount_rate', results.get('discount_rate', 0.10))
-                    col4.metric("Discount Rate", ATLASFormatter.format_yield(discount_rate * 100, decimals=1))
+                    with col4:
+                        disc_color = '#10b981' if discount_rate < 0.08 else ('#fbbf24' if discount_rate < 0.12 else '#ef4444')
+                        disc_status = 'Low Risk' if discount_rate < 0.08 else ('Moderate Risk' if discount_rate < 0.12 else 'High Risk')
+                        st.markdown(f'<div style="background: linear-gradient(135deg, rgba(245,158,11,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(245,158,11,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #f59e0b, #d97706); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💹</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">DISCOUNT RATE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {disc_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{ATLASFormatter.format_yield(discount_rate * 100, decimals=1)}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(245,158,11,0.12); border-radius: 10px; border: 1px solid rgba(245,158,11,0.25);"><p style="font-size: 0.7rem; color: #fbbf24; margin: 0; font-weight: 600;">{disc_status}</p></div></div>', unsafe_allow_html=True)
                     
                     # Valuation interpretation
                     st.markdown("---")
