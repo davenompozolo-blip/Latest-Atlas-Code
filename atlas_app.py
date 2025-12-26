@@ -16015,7 +16015,7 @@ To maintain gradual transitions:
             from scipy import stats
             import numpy as np
     
-            st.title("📊 Performance Suite")
+            st.markdown('<h1 style="font-size: 2.5rem; font-weight: 800; color: #f8fafc; margin-bottom: 0.5rem;"><span style="font-size: 2rem;">💎</span> <span style="background: linear-gradient(135deg, #00d4ff, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">PERFORMANCE SUITE</span></h1>', unsafe_allow_html=True)
     
             portfolio_data = load_portfolio_data()
     
@@ -16042,13 +16042,13 @@ To maintain gradual transitions:
             # TAB 1: PORTFOLIO PERFORMANCE (Enhanced)
             # ============================================================
             with tab1:
-                st.subheader("Portfolio Performance Metrics")
+                st.markdown('<h2 style="font-size: 1.5rem; font-weight: 700; color: #f8fafc; margin-bottom: 1.5rem;"><span style="font-size: 1.25rem;">📈</span> <span style="background: linear-gradient(135deg, #00d4ff, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Portfolio Performance Metrics</span></h2>', unsafe_allow_html=True)
     
                 if portfolio_returns is not None and len(portfolio_returns) > 0:
     
                     # === KEY METRICS GRID ===
                     col1, col2, col3, col4 = st.columns(4)
-    
+
                     # Total Return
                     total_return = (1 + portfolio_returns).prod() - 1
                     n_years = len(portfolio_returns) / 252
@@ -16057,44 +16057,40 @@ To maintain gradual transitions:
                     # STORE FOR ATTRIBUTION SECTION TO USE
                     st.session_state['portfolio_annualized_return'] = annualized_return * 100
 
+                    # Card 1: Annualized Return
                     with col1:
-                        st.metric(
-                            "Annualized Return",
-                            f"{annualized_return*100:.2f}%",
-                            delta=f"{(total_return*100):.2f}% total"
-                        )
-    
+                        return_color = '#10b981' if annualized_return > 0 else '#ef4444'
+                        return_glow = '0 0 24px rgba(16,185,129,0.5)' if annualized_return > 0 else '0 0 24px rgba(239,68,68,0.5)'
+                        st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📈</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">ANNUALIZED RETURN</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {return_color}; margin: 0.5rem 0 0.75rem 0; text-shadow: {return_glow}; line-height: 1;">{annualized_return*100:.2f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{total_return*100:.2f}% Total</p></div></div>', unsafe_allow_html=True)
+
                     # Volatility
                     annualized_vol = portfolio_returns.std() * np.sqrt(252)
-    
+
+                    # Card 2: Annualized Volatility
                     with col2:
-                        st.metric(
-                            "Annualized Volatility",
-                            f"{annualized_vol*100:.2f}%"
-                        )
-    
+                        vol_color = '#67e8f9' if annualized_vol < 0.20 else ('#fbbf24' if annualized_vol < 0.30 else '#ef4444')
+                        vol_status = 'Low Vol' if annualized_vol < 0.20 else ('Moderate' if annualized_vol < 0.30 else 'High Vol')
+                        st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #3b82f6); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📊</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">ANNUALIZED VOLATILITY</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {vol_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{annualized_vol*100:.2f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #a5f3fc; margin: 0; font-weight: 600;">{vol_status}</p></div></div>', unsafe_allow_html=True)
+
                     # Sharpe Ratio
                     sharpe = calculate_sharpe_ratio(portfolio_returns)
-    
+
+                    # Card 3: Sharpe Ratio
                     with col3:
-                        sharpe_color = "normal" if sharpe and sharpe > 1.0 else "inverse"
-                        sharpe_delta = "Excellent" if sharpe and sharpe > 1.5 else ("Good" if sharpe and sharpe > 1.0 else "Fair")
-                        st.metric(
-                            "Sharpe Ratio",
-                            f"{sharpe:.2f}" if sharpe else "N/A",
-                            delta=sharpe_delta if sharpe else None,
-                            delta_color=sharpe_color if sharpe else "off"
-                        )
-    
+                        sharpe_color = '#10b981' if sharpe and sharpe > 1.0 else ('#a5b4fc' if sharpe and sharpe > 0 else '#ef4444')
+                        sharpe_delta = 'Excellent' if sharpe and sharpe > 1.5 else ('Good' if sharpe and sharpe > 1.0 else 'Fair')
+                        sharpe_val = f"{sharpe:.2f}" if sharpe else "N/A"
+                        st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🔥</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">SHARPE RATIO</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {sharpe_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{sharpe_val}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">{sharpe_delta}</p></div></div>', unsafe_allow_html=True)
+
                     # Max Drawdown
                     max_dd = calculate_max_drawdown(portfolio_returns)
-    
+
+                    # Card 4: Max Drawdown
                     with col4:
-                        st.metric(
-                            "Max Drawdown",
-                            f"{max_dd:.2f}%" if max_dd else "N/A",
-                            delta_color="inverse"
-                        )
+                        maxdd_color = '#ef4444' if max_dd and abs(max_dd) > 30 else ('#fbbf24' if max_dd and abs(max_dd) > 20 else '#10b981')
+                        maxdd_val = f"{max_dd:.2f}%" if max_dd else "N/A"
+                        maxdd_status = '⚠️ Severe' if max_dd and abs(max_dd) > 30 else ('⚡ Moderate' if max_dd and abs(max_dd) > 20 else '✓ Low')
+                        st.markdown(f'<div style="background: linear-gradient(135deg, rgba(245,158,11,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(245,158,11,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #f59e0b, #d97706); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">⚠️</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">MAX DRAWDOWN</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {maxdd_color}; margin: 0.5rem 0 0.75rem 0; text-shadow: 0 0 24px rgba(245,158,11,0.5); line-height: 1;">{maxdd_val}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(245,158,11,0.12); border-radius: 10px; border: 1px solid rgba(245,158,11,0.25);"><p style="font-size: 0.7rem; color: #fcd34d; margin: 0; font-weight: 600;">{maxdd_status}</p></div></div>', unsafe_allow_html=True)
     
                     st.divider()
     
