@@ -19971,7 +19971,7 @@ To maintain gradual transitions:
         # LEVERAGE TRACKER (v11.0) - NEW FEATURE
         # ========================================================================
         elif page == "📊 Leverage Tracker":
-            st.markdown("## 📊 LEVERAGE TRACKING & ANALYSIS")
+            st.markdown('<h1 style="font-size: 2.5rem; font-weight: 800; color: #f8fafc; margin-bottom: 0.5rem;"><span style="font-size: 2rem;">📊</span> <span style="background: linear-gradient(135deg, #00d4ff, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">LEVERAGE TRACKING & ANALYSIS</span></h1>', unsafe_allow_html=True)
             st.markdown("**Track how leverage has affected your returns over time**")
     
             # FIX #6: Removed duplicate upload - keep uploads centralized in Phoenix Parser
@@ -20000,79 +20000,62 @@ To maintain gradual transitions:
                 stats = tracker.get_current_stats()
     
                 # Header metrics
-                st.markdown("### 📊 Current Statistics")
-    
+                st.markdown('<h2 style="font-size: 1.5rem; font-weight: 700; color: #f8fafc; margin-bottom: 1.5rem;"><span style="font-size: 1.25rem;">📊</span> <span style="background: linear-gradient(135deg, #00d4ff, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Current Statistics</span></h2>', unsafe_allow_html=True)
+
                 col1, col2, col3, col4, col5 = st.columns(5)
-    
+
+                # Card 1: Current Leverage
                 with col1:
-                    st.metric(
-                        "Current Leverage",
-                        f"{stats['current_leverage']:.2f}x",
-                        help="Gross Exposure / Net Equity"
-                    )
+                    lev_color = '#10b981' if abs(stats['current_leverage'] - 1.7) < 0.3 else '#ef4444'
+                    st.markdown(f'<div style="background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(99,102,241,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #6366f1, #8b5cf6); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">⚡</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">CURRENT LEVERAGE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {lev_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{stats["current_leverage"]:.2f}x</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(99,102,241,0.12); border-radius: 10px; border: 1px solid rgba(99,102,241,0.25);"><p style="font-size: 0.7rem; color: #a5b4fc; margin: 0; font-weight: 600;">Target: 1.7x</p></div></div>', unsafe_allow_html=True)
     
+                # Card 2: Net Equity
                 with col2:
-                    st.metric(
-                        "Net Equity",
-                        f"${stats['current_equity']:,.0f}",
-                        help="Your actual capital"
-                    )
+                    st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💰</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">NET EQUITY</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #10b981; margin: 0.5rem 0 0.75rem 0; text-shadow: 0 0 24px rgba(16,185,129,0.5); line-height: 1;">${stats["current_equity"]:,.0f}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">Your Capital</p></div></div>', unsafe_allow_html=True)
     
+                # Card 3: Gross Exposure
                 with col3:
-                    st.metric(
-                        "Gross Exposure",
-                        f"${stats['current_gross_exposure']:,.0f}",
-                        help="Total position value"
-                    )
+                    exposure_pct = ((stats['current_gross_exposure'] / stats['current_equity'] - 1) * 100) if stats['current_equity'] > 0 else 0
+                    st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #3b82f6); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📊</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">GROSS EXPOSURE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #67e8f9; margin: 0.5rem 0 0.75rem 0; line-height: 1;">${stats["current_gross_exposure"]:,.0f}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #a5f3fc; margin: 0; font-weight: 600;">+{exposure_pct:.0f}% vs Equity</p></div></div>', unsafe_allow_html=True)
     
+                # Card 4: YTD Equity Return
                 with col4:
-                    st.metric(
-                        "YTD Equity Return",
-                        f"{stats['ytd_equity_return']:.1f}%",
-                        help="Return on your capital"
-                    )
+                    ytd_color = '#10b981' if stats['ytd_equity_return'] >= 0 else '#ef4444'
+                    ytd_glow = '0 0 24px rgba(16,185,129,0.5)' if stats['ytd_equity_return'] >= 0 else '0 0 24px rgba(239,68,68,0.5)'
+                    st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📈</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">YTD EQUITY RETURN</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {ytd_color}; margin: 0.5rem 0 0.75rem 0; text-shadow: {ytd_glow}; line-height: 1;">{stats["ytd_equity_return"]:+.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">On Your Capital</p></div></div>', unsafe_allow_html=True)
     
+                # Card 5: YTD Gross Return
                 with col5:
-                    st.metric(
-                        "YTD Gross Return",
-                        f"{stats['ytd_gross_return']:.1f}%",
-                        help="Portfolio performance"
-                    )
+                    gross_color = '#10b981' if stats['ytd_gross_return'] >= 0 else '#ef4444'
+                    gross_glow = '0 0 24px rgba(16,185,129,0.5)' if stats['ytd_gross_return'] >= 0 else '0 0 24px rgba(239,68,68,0.5)'
+                    st.markdown(f'<div style="background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(99,102,241,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #6366f1, #8b5cf6); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💎</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">YTD GROSS RETURN</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {gross_color}; margin: 0.5rem 0 0.75rem 0; text-shadow: {gross_glow}; line-height: 1;">{stats["ytd_gross_return"]:+.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(99,102,241,0.12); border-radius: 10px; border: 1px solid rgba(99,102,241,0.25);"><p style="font-size: 0.7rem; color: #a5b4fc; margin: 0; font-weight: 600;">Portfolio Perf</p></div></div>', unsafe_allow_html=True)
     
                 # Additional stats row
+                st.markdown("<br>", unsafe_allow_html=True)
                 col1, col2, col3 = st.columns(3)
-    
+
+                # Card 6: Average Leverage
                 with col1:
-                    st.metric(
-                        "Average Leverage",
-                        f"{stats['avg_leverage']:.2f}x",
-                        help="Historical average"
-                    )
+                    st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #3b82f6); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📊</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">AVERAGE LEVERAGE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #67e8f9; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{stats["avg_leverage"]:.2f}x</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #a5f3fc; margin: 0; font-weight: 600;">Historical Avg</p></div></div>', unsafe_allow_html=True)
     
+                # Card 7: Max Leverage
                 with col2:
-                    st.metric(
-                        "Max Leverage",
-                        f"{stats['max_leverage']:.2f}x",
-                        help="Highest leverage used"
-                    )
+                    st.markdown(f'<div style="background: linear-gradient(135deg, rgba(239,68,68,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(239,68,68,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #ef4444, #dc2626); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">⚠️</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">MAX LEVERAGE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #ef4444; margin: 0.5rem 0 0.75rem 0; text-shadow: 0 0 24px rgba(239,68,68,0.5); line-height: 1;">{stats["max_leverage"]:.2f}x</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(239,68,68,0.12); border-radius: 10px; border: 1px solid rgba(239,68,68,0.25);"><p style="font-size: 0.7rem; color: #fca5a5; margin: 0; font-weight: 600;">Peak Risk</p></div></div>', unsafe_allow_html=True)
     
+                # Card 8: Min Leverage
                 with col3:
-                    st.metric(
-                        "Min Leverage",
-                        f"{stats['min_leverage']:.2f}x",
-                        help="Lowest leverage"
-                    )
+                    st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">✅</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">MIN LEVERAGE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #10b981; margin: 0.5rem 0 0.75rem 0; text-shadow: 0 0 24px rgba(16,185,129,0.5); line-height: 1;">{stats["min_leverage"]:.2f}x</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">Conservative</p></div></div>', unsafe_allow_html=True)
     
                 # Dashboard
                 st.markdown("---")
-                st.markdown("### 📊 6-Chart Leverage Dashboard")
+                st.markdown('<h2 style="font-size: 1.5rem; font-weight: 700; color: #f8fafc; margin-bottom: 1.5rem;"><span style="font-size: 1.25rem;">📊</span> <span style="background: linear-gradient(135deg, #00d4ff, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">6-Chart Leverage Dashboard</span></h2>', unsafe_allow_html=True)
     
                 fig = tracker.create_leverage_dashboard()
                 st.plotly_chart(fig, use_container_width=True)
     
                 # Workings
                 st.markdown("---")
-                st.markdown("### 🧮 Calculation Workings")
+                st.markdown('<h2 style="font-size: 1.5rem; font-weight: 700; color: #f8fafc; margin-bottom: 1.5rem;"><span style="font-size: 1.25rem;">🧮</span> <span style="background: linear-gradient(135deg, #00d4ff, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Calculation Workings</span></h2>', unsafe_allow_html=True)
                 st.markdown("**See exactly how leverage is calculated**")
     
                 workings = tracker.create_workings_display()
@@ -20080,7 +20063,7 @@ To maintain gradual transitions:
     
                 # Historical data table
                 st.markdown("---")
-                st.markdown("### 📋 Historical Data Table")
+                st.markdown('<h2 style="font-size: 1.5rem; font-weight: 700; color: #f8fafc; margin-bottom: 1.5rem;"><span style="font-size: 1.25rem;">📋</span> <span style="background: linear-gradient(135deg, #00d4ff, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Historical Data Table</span></h2>', unsafe_allow_html=True)
     
                 display_df = tracker.leverage_history[[
                     'Date', 'Net Equity', 'Gross Exposure', 'Leverage Ratio',
@@ -20100,7 +20083,7 @@ To maintain gradual transitions:
     
                 # Export options
                 st.markdown("---")
-                st.markdown("### 💾 Export Options")
+                st.markdown('<h2 style="font-size: 1.5rem; font-weight: 700; color: #f8fafc; margin-bottom: 1.5rem;"><span style="font-size: 1.25rem;">💾</span> <span style="background: linear-gradient(135deg, #00d4ff, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Export Options</span></h2>', unsafe_allow_html=True)
     
                 col1, col2 = st.columns(2)
     
