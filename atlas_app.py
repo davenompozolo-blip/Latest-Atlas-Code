@@ -18757,8 +18757,9 @@ To maintain gradual transitions:
     
                         if use_smart_assumptions:
                             cost_of_equity_ddm = smart_params.get('cost_of_equity', 0.10)
-                            st.metric("Cost of Equity", f"{cost_of_equity_ddm*100:.1f}%",
-                                     delta="AI Generated", delta_color="normal")
+                            coe_ddm_color = '#10b981' if cost_of_equity_ddm < 0.08 else ('#fbbf24' if cost_of_equity_ddm < 0.12 else '#ef4444')
+                            coe_ddm_status = 'Low Cost' if cost_of_equity_ddm < 0.08 else ('Average Cost' if cost_of_equity_ddm < 0.12 else 'High Cost')
+                            st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💹</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">COST OF EQUITY</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {coe_ddm_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{cost_of_equity_ddm*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">{coe_ddm_status} • AI Generated</p></div></div>', unsafe_allow_html=True)
                         else:
                             risk_free_ddm = st.slider(
                                 "Risk-Free Rate (%)",
@@ -18793,8 +18794,9 @@ To maintain gradual transitions:
                     with col2:
                         if use_smart_assumptions:
                             growth_rate_ddm = smart_params.get('dividend_growth', 0.03)
-                            st.metric("Dividend Growth Rate", f"{growth_rate_ddm*100:.1f}%",
-                                     delta="AI Generated", delta_color="normal")
+                            div_gr_color = '#10b981' if growth_rate_ddm <= 0.03 else ('#fbbf24' if growth_rate_ddm <= 0.05 else '#ef4444')
+                            div_gr_status = 'Conservative' if growth_rate_ddm <= 0.03 else ('Moderate' if growth_rate_ddm <= 0.05 else 'Aggressive')
+                            st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📊</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">DIVIDEND GROWTH RATE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {div_gr_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{growth_rate_ddm*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{div_gr_status} • AI Generated</p></div></div>', unsafe_allow_html=True)
                         else:
                             growth_rate_ddm = st.slider(
                                 "Perpetual Dividend Growth Rate (%)",
@@ -18839,8 +18841,9 @@ To maintain gradual transitions:
     
                         if use_smart_assumptions:
                             cost_of_equity_ms = smart_params.get('cost_of_equity', 0.10)
-                            st.metric("Cost of Equity", f"{cost_of_equity_ms*100:.1f}%",
-                                     delta="AI Generated", delta_color="normal")
+                            coe_ms_color = '#10b981' if cost_of_equity_ms < 0.08 else ('#fbbf24' if cost_of_equity_ms < 0.12 else '#ef4444')
+                            coe_ms_status = 'Low Cost' if cost_of_equity_ms < 0.08 else ('Average Cost' if cost_of_equity_ms < 0.12 else 'High Cost')
+                            st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💹</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">COST OF EQUITY</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {coe_ms_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{cost_of_equity_ms*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">{coe_ms_status} • AI Generated</p></div></div>', unsafe_allow_html=True)
                         else:
                             risk_free_ms = st.slider(
                                 "Risk-Free Rate (%)",
@@ -18878,9 +18881,16 @@ To maintain gradual transitions:
                             high_growth_years = smart_params.get('high_growth_years', 5)
                             stable_growth_rate = smart_params.get('stable_growth_rate', 0.03)
     
-                            st.metric("High Growth Rate", f"{high_growth_rate*100:.1f}%", delta="AI Generated")
-                            st.metric("High Growth Years", f"{high_growth_years} years", delta="AI Generated")
-                            st.metric("Stable Growth Rate", f"{stable_growth_rate*100:.1f}%", delta="AI Generated")
+                            # High Growth Rate
+                            hgr_color = '#fbbf24' if high_growth_rate > 0.10 else ('#10b981' if high_growth_rate > 0.05 else '#ef4444')
+                            hgr_status = 'Aggressive' if high_growth_rate > 0.10 else ('Moderate' if high_growth_rate > 0.05 else 'Conservative')
+                            st.markdown(f'<div style="background: linear-gradient(135deg, rgba(245,158,11,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(245,158,11,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #f59e0b, #d97706); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🚀</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">HIGH GROWTH RATE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {hgr_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{high_growth_rate*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(245,158,11,0.12); border-radius: 10px; border: 1px solid rgba(245,158,11,0.25);"><p style="font-size: 0.7rem; color: #fbbf24; margin: 0; font-weight: 600;">{hgr_status} • AI Generated</p></div></div>', unsafe_allow_html=True)
+                            # High Growth Years
+                            st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #0891b2); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">⏱️</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">HIGH GROWTH YEARS</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #06b6d4; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{high_growth_years} years</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #67e8f9; margin: 0; font-weight: 600;">Growth Period • AI Generated</p></div></div>', unsafe_allow_html=True)
+                            # Stable Growth Rate
+                            sgr_color = '#10b981' if stable_growth_rate <= 0.03 else ('#fbbf24' if stable_growth_rate <= 0.05 else '#ef4444')
+                            sgr_status = 'Conservative' if stable_growth_rate <= 0.03 else ('Moderate' if stable_growth_rate <= 0.05 else 'Aggressive')
+                            st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📉</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">STABLE GROWTH RATE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {sgr_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{stable_growth_rate*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{sgr_status} • AI Generated</p></div></div>', unsafe_allow_html=True)
                         else:
                             high_growth_rate = st.slider(
                                 "High Growth Rate (%)",
@@ -18931,8 +18941,9 @@ To maintain gradual transitions:
     
                         if use_smart_assumptions:
                             roe = smart_params.get('roe', 0.15)
-                            st.metric("Return on Equity (ROE)", f"{roe*100:.1f}%",
-                                     delta="AI Generated", delta_color="normal")
+                            roe_color = '#10b981' if roe > 0.15 else ('#fbbf24' if roe > 0.10 else '#ef4444')
+                            roe_status = 'Excellent' if roe > 0.15 else ('Good' if roe > 0.10 else 'Fair')
+                            st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💎</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">RETURN ON EQUITY (ROE)</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {roe_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{roe*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{roe_status} • AI Generated</p></div></div>', unsafe_allow_html=True)
                         else:
                             roe = st.slider(
                                 "Return on Equity - ROE (%)",
@@ -18955,8 +18966,9 @@ To maintain gradual transitions:
                     with col2:
                         if use_smart_assumptions:
                             cost_of_equity_ri = smart_params.get('cost_of_equity', 0.10)
-                            st.metric("Cost of Equity", f"{cost_of_equity_ri*100:.1f}%",
-                                     delta="AI Generated", delta_color="normal")
+                            coe_ri_color = '#10b981' if cost_of_equity_ri < 0.08 else ('#fbbf24' if cost_of_equity_ri < 0.12 else '#ef4444')
+                            coe_ri_status = 'Low Cost' if cost_of_equity_ri < 0.08 else ('Average Cost' if cost_of_equity_ri < 0.12 else 'High Cost')
+                            st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💹</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">COST OF EQUITY</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {coe_ri_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{cost_of_equity_ri*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">{coe_ri_status} • AI Generated</p></div></div>', unsafe_allow_html=True)
                         else:
                             risk_free_ri = st.slider(
                                 "Risk-Free Rate (%)",
@@ -18990,8 +19002,9 @@ To maintain gradual transitions:
     
                         if use_smart_assumptions:
                             growth_rate_ri = smart_params.get('terminal_growth', 0.025)
-                            st.metric("Terminal Growth Rate", f"{growth_rate_ri*100:.1f}%",
-                                     delta="AI Generated", delta_color="normal")
+                            tgr_ri_color = '#10b981' if growth_rate_ri <= 0.03 else ('#fbbf24' if growth_rate_ri <= 0.05 else '#ef4444')
+                            tgr_ri_status = 'Conservative' if growth_rate_ri <= 0.03 else ('Moderate' if growth_rate_ri <= 0.05 else 'Aggressive')
+                            st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #0891b2); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🎯</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">TERMINAL GROWTH RATE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {tgr_ri_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{growth_rate_ri*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #67e8f9; margin: 0; font-weight: 600;">{tgr_ri_status} • AI Generated</p></div></div>', unsafe_allow_html=True)
                         else:
                             growth_rate_ri = st.slider(
                                 "Terminal Growth Rate (%)",
