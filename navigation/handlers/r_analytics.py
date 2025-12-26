@@ -128,38 +128,58 @@ def render_r_analytics_page():
 
         return
 
-    # Initialize R analytics with auto-installation
+    # Initialize R analytics and check for missing packages
     try:
-        with st.spinner("Initializing R Analytics (auto-installing packages if needed)..."):
-            from analytics.r_integration import check_and_install_r_packages
+        from rpy2.robjects.packages import importr
+        from rpy2.rinterface_lib.embedded import RRuntimeError
 
-            # Auto-install missing packages
-            required_packages = ['rugarch', 'copula', 'xts']
+        r = get_r()
 
-            # Show installation progress
-            install_container = st.empty()
-            install_status = {}
+        # Check which packages are missing
+        required_packages = ['rugarch', 'copula', 'xts']
+        missing_packages = []
 
-            for pkg in required_packages:
-                install_container.info(f"📦 Checking {pkg}...")
-                status = check_and_install_r_packages([pkg], verbose=False)
-                install_status.update(status)
+        for pkg in required_packages:
+            try:
+                importr(pkg)
+            except RRuntimeError:
+                missing_packages.append(pkg)
 
-            install_container.empty()
+        if missing_packages:
+            st.error(f"❌ Missing R packages: {', '.join(missing_packages)}")
 
-            # Check results
-            if all(install_status.values()):
-                r = get_r()
-                st.success("✅ R Analytics Engine Ready (all packages installed)")
-            else:
-                failed_packages = [pkg for pkg, status in install_status.items() if not status]
-                st.warning(f"⚠️ Some packages failed to install: {', '.join(failed_packages)}")
-                st.info("Attempting to use R Analytics anyway - some features may be limited")
-                r = get_r()
+            st.markdown("""
+            ### 📦 Quick Fix
+
+            **Run this command in your terminal (outside Streamlit):**
+
+            ```bash
+            sudo R -e "install.packages(c('rugarch', 'copula', 'xts'), repos='https://cloud.r-project.org')"
+            ```
+
+            **Or use the automated setup script:**
+
+            ```bash
+            sudo bash setup_r_analytics.sh
+            ```
+
+            **Why can't this auto-install?**
+            - R packages require system-level write permissions
+            - Streamlit apps run without sudo access
+            - Installation needs to happen outside the app
+
+            ⏱️ **Time required:** 5-10 minutes for all packages
+
+            🔄 **After installation:** Restart ATLAS Terminal and refresh this page
+            """)
+
+            return
+        else:
+            st.success("✅ R Analytics Engine Ready")
 
     except Exception as e:
         st.error(f"Error initializing R: {str(e)}")
-        st.info("Try running: `R -e \"install.packages(c('rugarch', 'copula', 'xts'))\"`")
+        st.info("Try running: `sudo bash setup_r_analytics.sh`")
         return
 
     # Create tabs
