@@ -27,8 +27,6 @@ try:
         render_quant_optimizer_page,
         render_leverage_tracker_page,
         render_phoenix_parser_page,
-        render_r_analytics_page,
-        render_v10_analytics_page,
         render_portfolio_home_page,
         render_risk_analysis_page,
         render_performance_suite_page,
@@ -47,8 +45,6 @@ except ImportError:
     render_quant_optimizer_page = None
     render_leverage_tracker_page = None
     render_phoenix_parser_page = None
-    render_r_analytics_page = None
-    render_v10_analytics_page = None
     render_portfolio_home_page = None
     render_risk_analysis_page = None
     render_performance_suite_page = None
@@ -140,26 +136,6 @@ PAGE_REGISTRY = [
         icon="🏠",
         handler=render_portfolio_home_page,
         category="core",
-        requires_data=["portfolio"]
-    ),
-
-    # Analytics Pages
-    PageDefinition(
-        key="v10_analytics",
-        title="v10.0 Analytics",
-        icon="🚀",
-        handler=render_v10_analytics_page,
-        category="analytics",
-        requires_data=["portfolio"]
-    ),
-
-    PageDefinition(
-        key="r_analytics",
-        title="R Analytics",
-        icon="📊",
-        handler=render_r_analytics_page,
-        category="analytics",
-        feature_flag="r_integration",  # May require R installation
         requires_data=["portfolio"]
     ),
 
