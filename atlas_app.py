@@ -4792,12 +4792,18 @@ def get_leverage_info():
 def fetch_market_data(ticker):
     # ATLAS Refactoring - Use cached market data fetcher
     try:
+        # Import ticker conversion utility
+        from modules import convert_ee_ticker_to_yahoo
+
+        # Convert Easy Equities ticker to Yahoo Finance format
+        yahoo_ticker = convert_ee_ticker_to_yahoo(ticker)
+
         if REFACTORED_MODULES_AVAILABLE:
-            info = market_data.get_company_info(ticker)
-            hist = market_data.get_stock_history(ticker, period="5d", interval="1d")
+            info = market_data.get_company_info(yahoo_ticker)
+            hist = market_data.get_stock_history(yahoo_ticker, period="5d", interval="1d")
         else:
             # Fallback to old method
-            stock = yf.Ticker(ticker)
+            stock = yf.Ticker(yahoo_ticker)
             info = stock.info
             hist = stock.history(period="5d")
 
@@ -4885,7 +4891,13 @@ def classify_ticker_sector(ticker, default_sector):
 @st.cache_data(ttl=600)
 def fetch_historical_data(ticker, start_date, end_date):
     try:
-        stock = yf.Ticker(ticker)
+        # Import ticker conversion utility
+        from modules import convert_ee_ticker_to_yahoo
+
+        # Convert Easy Equities ticker to Yahoo Finance format
+        yahoo_ticker = convert_ee_ticker_to_yahoo(ticker)
+
+        stock = yf.Ticker(yahoo_ticker)
         hist = stock.history(start=start_date, end=end_date)
         if not hist.empty:
             # Convert timezone-aware index to timezone-naive to prevent comparison errors
@@ -4901,11 +4913,17 @@ def fetch_stock_info(ticker):
     """Fetch stock information from yfinance"""
     # ATLAS Refactoring - Use cached market data fetcher
     try:
+        # Import ticker conversion utility
+        from modules import convert_ee_ticker_to_yahoo
+
+        # Convert Easy Equities ticker to Yahoo Finance format
+        yahoo_ticker = convert_ee_ticker_to_yahoo(ticker)
+
         if REFACTORED_MODULES_AVAILABLE:
-            return market_data.get_company_info(ticker)
+            return market_data.get_company_info(yahoo_ticker)
         else:
             # Fallback to old method
-            stock = yf.Ticker(ticker)
+            stock = yf.Ticker(yahoo_ticker)
             info = stock.info
             return info
     except Exception as e:
