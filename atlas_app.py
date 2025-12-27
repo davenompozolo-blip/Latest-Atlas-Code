@@ -7348,7 +7348,18 @@ def calculate_benchmark_returns(benchmark_ticker, start_date, end_date):
 
 def create_enhanced_holdings_table(df):
     enhanced_df = df.copy()
-    
+
+    # Normalize column names for Easy Equities compatibility
+    # Easy Equities uses different column names than manual uploads
+    column_mapping = {
+        'Cost_Basis': 'Avg Cost',        # Easy Equities → ATLAS
+        'Market_Value': 'Total Value',   # Easy Equities → ATLAS (if needed)
+    }
+
+    for ee_col, atlas_col in column_mapping.items():
+        if ee_col in enhanced_df.columns and atlas_col not in enhanced_df.columns:
+            enhanced_df[atlas_col] = enhanced_df[ee_col]
+
     for idx, row in enhanced_df.iterrows():
         ticker = row['Ticker']
         market_data = fetch_market_data(ticker)
@@ -12137,10 +12148,23 @@ class MultiSourceDataBroker:
 
         if source == 'yahoo':
             try:
-                data = yf.download(ticker, period=period, progress=False)
+                # Import ticker conversion utility
+                from modules import convert_ee_ticker_to_yahoo
+
+                # Convert Easy Equities ticker to Yahoo Finance format
+                yahoo_ticker = convert_ee_ticker_to_yahoo(ticker)
+
+                # Fetch data with converted ticker
+                data = yf.download(yahoo_ticker, period=period, progress=False)
+
+                # Add metadata
+                if not data.empty:
+                    data.attrs['original_ticker'] = ticker
+                    data.attrs['yahoo_ticker'] = yahoo_ticker
+
                 return data
             except Exception as e:
-                st.error(f"Yahoo Finance error: {str(e)}")
+                st.error(f"Yahoo Finance error for {ticker}: {str(e)}")
                 return None
 
         elif source == 'alpha_vantage' and self.alpha_vantage_key:
