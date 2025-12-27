@@ -160,6 +160,25 @@ def sync_easy_equities_portfolio(
     # 5. Create DataFrame
     df = pd.DataFrame(portfolio_data)
 
+    # DIAGNOSTIC: Verify EE sync output (remove after debugging)
+    import streamlit as st
+    st.write("🔍 **DEBUG: Easy Equities Sync Output**")
+    st.write(f"Number of positions: {len(df)}")
+    st.write(f"Columns: {df.columns.tolist()}")
+
+    # Check totals IMMEDIATELY after sync
+    st.write("📊 **Totals from EE Sync (should match EE app exactly):**")
+    st.write(f"- Market_Value sum: R{df['Market_Value'].sum():,.2f}")
+    st.write(f"- Purchase_Value sum: R{df['Purchase_Value'].sum():,.2f}")
+    st.write(f"- Unrealized_PnL sum: R{df['Unrealized_PnL'].sum():,.2f}")
+    st.write(f"- Unrealized_PnL %: {(df['Unrealized_PnL'].sum() / df['Purchase_Value'].sum() * 100):.2f}%")
+
+    # Show first 3 rows for verification
+    st.write("**First 3 positions:**")
+    st.dataframe(df.head(3)[['Ticker', 'Shares', 'Current_Price', 'Market_Value', 'Purchase_Value', 'Unrealized_PnL_Pct']])
+
+    st.warning("⚠️ **VERIFY:** Does Market_Value sum match your Easy Equities app? If NO, EE sync is broken. If YES, ATLAS is corrupting it later.")
+
     # 6. Add metadata as DataFrame attributes
     df.attrs['source'] = 'easy_equities'
     df.attrs['account_name'] = account.name

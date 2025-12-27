@@ -7369,11 +7369,16 @@ def create_enhanced_holdings_table(df):
 
     enhanced_df = df.copy()
 
+    # Check if this is an Easy Equities portfolio
+    is_ee_portfolio = enhanced_df.attrs.get('source') == 'easy_equities'
+
     # Normalize column names for Easy Equities compatibility
     # Easy Equities uses different column names than manual uploads
     column_mapping = {
         'Cost_Basis': 'Avg Cost',        # Easy Equities → ATLAS
         'Market_Value': 'Total Value',   # Easy Equities → ATLAS (if needed)
+        'Purchase_Value': 'Total Cost',  # Easy Equities → ATLAS
+        'Current_Price': 'Current Price', # Ensure consistent naming
     }
 
     for ee_col, atlas_col in column_mapping.items():
@@ -7383,46 +7388,73 @@ def create_enhanced_holdings_table(df):
     # Add display ticker column (Phase 1 Fix)
     enhanced_df['Display Ticker'] = enhanced_df['Ticker'].apply(format_ticker_for_display)
 
-    for idx, row in enhanced_df.iterrows():
-        ticker = row['Ticker']
-        market_data = fetch_market_data(ticker)
-        
-        if market_data:
-            enhanced_df.at[idx, 'Asset Name'] = market_data['company_name']
-            enhanced_df.at[idx, 'Current Price'] = market_data['price']
-            enhanced_df.at[idx, 'Daily Change'] = market_data['daily_change']
-            enhanced_df.at[idx, 'Daily Change %'] = market_data['daily_change_pct']
-            enhanced_df.at[idx, '5D Return %'] = market_data['five_day_return']
-            enhanced_df.at[idx, 'Beta'] = market_data.get('beta', 'N/A')
-            enhanced_df.at[idx, 'Volume'] = market_data.get('volume', 0)
-            base_sector = market_data.get('sector', 'Unknown')
-            enhanced_df.at[idx, 'Sector'] = classify_ticker_sector(ticker, base_sector)
-        else:
-            enhanced_df.at[idx, 'Asset Name'] = ticker
-            enhanced_df.at[idx, 'Sector'] = 'Other'
-        
-        analyst_data = fetch_analyst_data(ticker)
-        if analyst_data['success']:
-            enhanced_df.at[idx, 'Analyst Rating'] = analyst_data['rating']
-            enhanced_df.at[idx, 'Price Target'] = analyst_data['target_price']
-        else:
-            enhanced_df.at[idx, 'Analyst Rating'] = 'No Coverage'
+    # For Easy Equities portfolios, skip Yahoo Finance enrichment and use EE's data directly
+    if not is_ee_portfolio:
+        # Only enrich with Yahoo Finance data for manual uploads
+        for idx, row in enhanced_df.iterrows():
+            ticker = row['Ticker']
+            market_data = fetch_market_data(ticker)
 
-        # Calculate Quality Score
-        info = fetch_stock_info(ticker)
-        if info:
-            enhanced_df.at[idx, 'Quality Score'] = calculate_quality_score(ticker, info)
-        else:
-            enhanced_df.at[idx, 'Quality Score'] = 5.0
+            if market_data:
+                enhanced_df.at[idx, 'Asset Name'] = market_data['company_name']
+                enhanced_df.at[idx, 'Current Price'] = market_data['price']
+                enhanced_df.at[idx, 'Daily Change'] = market_data['daily_change']
+                enhanced_df.at[idx, 'Daily Change %'] = market_data['daily_change_pct']
+                enhanced_df.at[idx, '5D Return %'] = market_data['five_day_return']
+                enhanced_df.at[idx, 'Beta'] = market_data.get('beta', 'N/A')
+                enhanced_df.at[idx, 'Volume'] = market_data.get('volume', 0)
+                base_sector = market_data.get('sector', 'Unknown')
+                enhanced_df.at[idx, 'Sector'] = classify_ticker_sector(ticker, base_sector)
+            else:
+                enhanced_df.at[idx, 'Asset Name'] = ticker
+                enhanced_df.at[idx, 'Sector'] = 'Other'
 
-    enhanced_df['Sector'] = enhanced_df['Sector'].fillna('Other')
-    enhanced_df['Shares'] = enhanced_df['Shares'].round(0).astype(int)
+            analyst_data = fetch_analyst_data(ticker)
+            if analyst_data['success']:
+                enhanced_df.at[idx, 'Analyst Rating'] = analyst_data['rating']
+                enhanced_df.at[idx, 'Price Target'] = analyst_data['target_price']
+            else:
+                enhanced_df.at[idx, 'Analyst Rating'] = 'No Coverage'
 
-    enhanced_df['Total Cost'] = enhanced_df['Shares'] * enhanced_df['Avg Cost']
-    enhanced_df['Total Value'] = enhanced_df['Shares'] * enhanced_df['Current Price']
-    enhanced_df['Total Gain/Loss $'] = enhanced_df['Total Value'] - enhanced_df['Total Cost']
-    enhanced_df['Total Gain/Loss %'] = ((enhanced_df['Current Price'] - enhanced_df['Avg Cost']) / enhanced_df['Avg Cost']) * 100
-    enhanced_df['Daily P&L $'] = enhanced_df['Shares'] * enhanced_df['Daily Change']
+            # Calculate Quality Score
+            info = fetch_stock_info(ticker)
+            if info:
+                enhanced_df.at[idx, 'Quality Score'] = calculate_quality_score(ticker, info)
+            else:
+                enhanced_df.at[idx, 'Quality Score'] = 5.0
+
+        enhanced_df['Sector'] = enhanced_df['Sector'].fillna('Other')
+        enhanced_df['Shares'] = enhanced_df['Shares'].round(0).astype(int)
+
+        # For manual uploads, calculate values from shares and prices
+        enhanced_df['Total Cost'] = enhanced_df['Shares'] * enhanced_df['Avg Cost']
+        enhanced_df['Total Value'] = enhanced_df['Shares'] * enhanced_df['Current Price']
+        enhanced_df['Total Gain/Loss $'] = enhanced_df['Total Value'] - enhanced_df['Total Cost']
+        enhanced_df['Total Gain/Loss %'] = ((enhanced_df['Current Price'] - enhanced_df['Avg Cost']) / enhanced_df['Avg Cost']) * 100
+        enhanced_df['Daily P&L $'] = enhanced_df['Shares'] * enhanced_df['Daily Change']
+    else:
+        # For Easy Equities portfolios, use EE's values directly - DON'T RECALCULATE!
+        # EE already provides correct Total Value, Total Cost, Unrealized_PnL
+
+        # Map EE columns to ATLAS display columns
+        if 'Unrealized_PnL' in enhanced_df.columns:
+            enhanced_df['Total Gain/Loss $'] = enhanced_df['Unrealized_PnL']
+
+        if 'Unrealized_PnL_Pct' in enhanced_df.columns:
+            enhanced_df['Total Gain/Loss %'] = enhanced_df['Unrealized_PnL_Pct']
+
+        # For Daily P&L, we need Yahoo Finance data (EE doesn't provide this)
+        # But we'll set to 0 for now to avoid corrupting other values
+        if 'Daily P&L $' not in enhanced_df.columns:
+            enhanced_df['Daily P&L $'] = 0.0
+
+        # Set basic fields if missing
+        if 'Asset Name' not in enhanced_df.columns:
+            enhanced_df['Asset Name'] = enhanced_df.get('Name', enhanced_df['Ticker'])
+        if 'Sector' not in enhanced_df.columns:
+            enhanced_df['Sector'] = 'Other'
+        if 'Quality Score' not in enhanced_df.columns:
+            enhanced_df['Quality Score'] = 5.0
 
     # CRITICAL FIX: Add DUAL weight columns (equity-based AND gross-based)
     gross_exposure = enhanced_df['Total Value'].sum()
