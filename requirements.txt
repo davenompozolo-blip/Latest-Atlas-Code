@@ -14,3 +14,7 @@ numpy>=1.24.0
 # ATLAS v11.0 - SQL & R Integration
 sqlalchemy>=2.0.0
 rpy2>=3.5.0
+
+# Easy Equities Integration
+easy-equities-client>=0.5.0
+beautifulsoup4>=4.12.0
