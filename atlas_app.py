@@ -480,11 +480,11 @@ def get_benchmark_period_return(benchmark_ticker='SPY', period='1y', match_portf
         return None
 
 
-def format_currency(value, decimals=2):
+def format_currency(value, decimals=2, currency_symbol='$'):
     """Format value as currency string"""
     if value is None:
-        return "$0.00"
-    return f"${value:,.{decimals}f}"
+        return f"{currency_symbol}0.00"
+    return f"{currency_symbol}{value:,.{decimals}f}"
 
 
 def format_percentage(value, decimals=2):
@@ -3475,22 +3475,22 @@ def format_percentage(value, decimals=2):
         return "N/A"
     return f"{value:.{decimals}f}%"
 
-def format_currency(value):
+def format_currency(value, currency_symbol='$'):
     if pd.isna(value) or value is None:
         return "N/A"
-    return f"${value:,.2f}"
+    return f"{currency_symbol}{value:,.2f}"
 
-def format_large_number(value):
+def format_large_number(value, currency_symbol='$'):
     """Format large numbers with B/M/K suffix"""
     if pd.isna(value) or value is None:
         return "N/A"
     if abs(value) >= 1e9:
-        return f"${value/1e9:.2f}B"
+        return f"{currency_symbol}{value/1e9:.2f}B"
     elif abs(value) >= 1e6:
-        return f"${value/1e6:.2f}M"
+        return f"{currency_symbol}{value/1e6:.2f}M"
     elif abs(value) >= 1e3:
-        return f"${value/1e3:.2f}K"
-    return f"${value:.2f}"
+        return f"{currency_symbol}{value/1e3:.2f}K"
+    return f"{currency_symbol}{value:.2f}"
 
 def add_arrow_indicator(value):
     try:
@@ -7365,6 +7365,8 @@ def calculate_benchmark_returns(benchmark_ticker, start_date, end_date):
 # ============================================================================
 
 def create_enhanced_holdings_table(df):
+    from modules import format_ticker_for_display
+
     enhanced_df = df.copy()
 
     # Normalize column names for Easy Equities compatibility
@@ -7377,6 +7379,9 @@ def create_enhanced_holdings_table(df):
     for ee_col, atlas_col in column_mapping.items():
         if ee_col in enhanced_df.columns and atlas_col not in enhanced_df.columns:
             enhanced_df[atlas_col] = enhanced_df[ee_col]
+
+    # Add display ticker column (Phase 1 Fix)
+    enhanced_df['Display Ticker'] = enhanced_df['Ticker'].apply(format_ticker_for_display)
 
     for idx, row in enhanced_df.iterrows():
         ticker = row['Ticker']
@@ -14464,15 +14469,19 @@ def main():
         # ========================================================================
         elif page == "🏠 Portfolio Home":
             st.markdown("## 🏠 PORTFOLIO HOME")
-            
+
             portfolio_data = load_portfolio_data()
-            
+
             if portfolio_data is None or (isinstance(portfolio_data, pd.DataFrame) and portfolio_data.empty):
                 st.warning("⚠️ No portfolio data. Please upload via Phoenix Parser.")
                 st.stop()
-            
+
             df = pd.DataFrame(portfolio_data)
-            
+
+            # Get currency symbol from portfolio metadata (Phase 1 Fix)
+            currency_symbol = df.attrs.get('currency_symbol', '$')
+            currency = df.attrs.get('currency', 'USD')
+
             with st.spinner("Loading..."):
                 enhanced_df = create_enhanced_holdings_table(df)
     
@@ -14500,11 +14509,11 @@ def main():
             
             with col1:
                 equity_growth_pct = ((equity - 100000) / 100000 * 100) if equity > 0 else 0
-                st.markdown(f'<div style="background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(99,102,241,0.2); padding: 2rem 1.75rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); position: relative; overflow: hidden; min-height: 200px;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #6366f1, #8b5cf6); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;"><span style="font-size: 1.1rem;">💼</span><p style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; margin: 0; font-weight: 600;">YOUR EQUITY</p></div><h3 style="font-size: 2.75rem; font-weight: 800; color: #f8fafc; margin: 0.75rem 0 1rem 0; line-height: 1;">${equity:,.2f}</h3><div style="display: inline-block; padding: 0.5rem 1rem; background: rgba(99,102,241,0.12); border-radius: 12px; border: 1px solid rgba(99,102,241,0.25);"><p style="font-size: 0.8rem; color: #a5b4fc; margin: 0; font-weight: 600;">↑ Growth: +{equity_growth_pct:.1f}%</p></div></div>', unsafe_allow_html=True)
-            
+                st.markdown(f'<div style="background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(99,102,241,0.2); padding: 2rem 1.75rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); position: relative; overflow: hidden; min-height: 200px;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #6366f1, #8b5cf6); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;"><span style="font-size: 1.1rem;">💼</span><p style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; margin: 0; font-weight: 600;">YOUR EQUITY</p></div><h3 style="font-size: 2.75rem; font-weight: 800; color: #f8fafc; margin: 0.75rem 0 1rem 0; line-height: 1;">{currency_symbol}{equity:,.2f}</h3><div style="display: inline-block; padding: 0.5rem 1rem; background: rgba(99,102,241,0.12); border-radius: 12px; border: 1px solid rgba(99,102,241,0.25);"><p style="font-size: 0.8rem; color: #a5b4fc; margin: 0; font-weight: 600;">↑ Growth: +{equity_growth_pct:.1f}%</p></div></div>', unsafe_allow_html=True)
+
             with col2:
                 vs_equity_pct = ((gross_exposure/equity - 1)*100) if equity > 0 else 0
-                st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 2rem 1.75rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #3b82f6); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;"><span style="font-size: 1.1rem;">📊</span><p style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; margin: 0; font-weight: 600;">GROSS EXPOSURE</p></div><h3 style="font-size: 2.75rem; font-weight: 800; color: #f8fafc; margin: 0.75rem 0 1rem 0; line-height: 1;">${gross_exposure:,.2f}</h3><div style="display: inline-block; padding: 0.5rem 1rem; background: rgba(16,185,129,0.12); border-radius: 12px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.8rem; color: #6ee7b7; margin: 0; font-weight: 600;">↑ vs Equity: +{vs_equity_pct:.1f}%</p></div></div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 2rem 1.75rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #3b82f6); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;"><span style="font-size: 1.1rem;">📊</span><p style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; margin: 0; font-weight: 600;">GROSS EXPOSURE</p></div><h3 style="font-size: 2.75rem; font-weight: 800; color: #f8fafc; margin: 0.75rem 0 1rem 0; line-height: 1;">{currency_symbol}{gross_exposure:,.2f}</h3><div style="display: inline-block; padding: 0.5rem 1rem; background: rgba(16,185,129,0.12); border-radius: 12px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.8rem; color: #6ee7b7; margin: 0; font-weight: 600;">↑ vs Equity: +{vs_equity_pct:.1f}%</p></div></div>', unsafe_allow_html=True)
             
             with col3:
                 st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 2rem 1.75rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;"><span style="font-size: 1.1rem;">⚡</span><p style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; margin: 0; font-weight: 600;">ACTUAL LEVERAGE</p></div><h3 style="font-size: 2.75rem; font-weight: 800; color: #10b981; margin: 0.75rem 0 1rem 0; text-shadow: 0 0 24px rgba(16,185,129,0.5); line-height: 1;">{actual_leverage:.2f}x</h3><div style="display: inline-block; padding: 0.5rem 1rem; background: rgba(16,185,129,0.12); border-radius: 12px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.8rem; color: #6ee7b7; margin: 0; font-weight: 600;">↑ Target: 1.7x</p></div></div>', unsafe_allow_html=True)
@@ -14587,27 +14596,27 @@ def main():
             with col1:
                 roe_color = '#10b981' if total_gl >= 0 else '#ef4444'
                 roe_glow = '0 0 24px rgba(16,185,129,0.5)' if total_gl >= 0 else ''
-                st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📈</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">PORTFOLIO RETURN</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {roe_color}; margin: 0.5rem 0 0.75rem 0; text-shadow: {roe_glow}; line-height: 1;">{format_percentage(total_gl_pct)}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">↑ {format_currency(total_gl)}</p></div></div>', unsafe_allow_html=True)
-            
+                st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📈</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">PORTFOLIO RETURN</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {roe_color}; margin: 0.5rem 0 0.75rem 0; text-shadow: {roe_glow}; line-height: 1;">{format_percentage(total_gl_pct)}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">↑ {format_currency(total_gl, currency_symbol=currency_symbol)}</p></div></div>', unsafe_allow_html=True)
+
             # Card 2: Daily P&L
             with col2:
                 daily_color = '#10b981' if daily_pl >= 0 else '#ef4444'
-                st.markdown(f'<div style="background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(99,102,241,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #6366f1, #8b5cf6); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💰</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">DAILY P&L</p></div><h3 style="font-size: 2.5rem; font-weight: 800; background: linear-gradient(135deg, #00d4ff, #6366f1); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{format_currency(daily_pl)}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(99,102,241,0.12); border-radius: 10px; border: 1px solid rgba(99,102,241,0.25);"><p style="font-size: 0.7rem; color: #a5b4fc; margin: 0; font-weight: 500;">▲ Today</p></div></div>', unsafe_allow_html=True)
-            
+                st.markdown(f'<div style="background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(99,102,241,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #6366f1, #8b5cf6); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💰</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">DAILY P&L</p></div><h3 style="font-size: 2.5rem; font-weight: 800; background: linear-gradient(135deg, #00d4ff, #6366f1); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{format_currency(daily_pl, currency_symbol=currency_symbol)}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(99,102,241,0.12); border-radius: 10px; border: 1px solid rgba(99,102,241,0.25);"><p style="font-size: 0.7rem; color: #a5b4fc; margin: 0; font-weight: 500;">▲ Today</p></div></div>', unsafe_allow_html=True)
+
             # Card 3: Total P&L
             with col3:
                 total_pnl_pct = (total_gl / 100000 * 100) if total_gl != 0 else 0  # Assuming $100k starting capital
-                st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💵</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">TOTAL P&L</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #10b981; margin: 0.5rem 0 0.75rem 0; text-shadow: 0 0 24px rgba(16,185,129,0.5); line-height: 1;">{format_currency(total_gl)}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">↑ +{total_pnl_pct:.1f}% from Start</p></div></div>', unsafe_allow_html=True)
-            
+                st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💵</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">TOTAL P&L</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #10b981; margin: 0.5rem 0 0.75rem 0; text-shadow: 0 0 24px rgba(16,185,129,0.5); line-height: 1;">{format_currency(total_gl, currency_symbol=currency_symbol)}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">↑ +{total_pnl_pct:.1f}% from Start</p></div></div>', unsafe_allow_html=True)
+
             # Card 4: Total Cost Basis
             with col4:
-                st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #3b82f6); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💼</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">TOTAL COST BASIS</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #67e8f9; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{format_currency(total_cost)}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #a5f3fc; margin: 0; font-weight: 500;">Investment</p></div></div>', unsafe_allow_html=True)
-            
+                st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #3b82f6); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💼</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">TOTAL COST BASIS</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #67e8f9; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{format_currency(total_cost, currency_symbol=currency_symbol)}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #a5f3fc; margin: 0; font-weight: 500;">Investment</p></div></div>', unsafe_allow_html=True)
+
             # Card 5: Unrealized G/L
             with col5:
                 cost_gl = gross_exposure - total_cost
                 cost_gl_pct = (cost_gl / total_cost * 100) if total_cost > 0 else 0
-                st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📊</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">UNREALIZED G/L</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #10b981; margin: 0.5rem 0 0.75rem 0; text-shadow: 0 0 24px rgba(16,185,129,0.5); line-height: 1;">{format_currency(cost_gl)}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">↑ {cost_gl_pct:.2f}%</p></div></div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📊</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">UNREALIZED G/L</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #10b981; margin: 0.5rem 0 0.75rem 0; text-shadow: 0 0 24px rgba(16,185,129,0.5); line-height: 1;">{format_currency(cost_gl, currency_symbol=currency_symbol)}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">↑ {cost_gl_pct:.2f}%</p></div></div>', unsafe_allow_html=True)
             
             # Card 6: Positions
             with col6:
@@ -14619,17 +14628,17 @@ def main():
             with st.expander("ℹ️ Understanding Your Leveraged Portfolio", expanded=False):
                 st.info(f"""
                 **Capital Structure:**
-                - **Equity:** Your actual capital = ${equity:,.0f}
-                - **Gross Exposure:** Total position values = ${gross_exposure:,.0f}
-                - **Leverage:** {actual_leverage:.2f}x means ${actual_leverage:.2f} of market exposure per $1 of equity
-    
+                - **Equity:** Your actual capital = {currency_symbol}{equity:,.0f}
+                - **Gross Exposure:** Total position values = {currency_symbol}{gross_exposure:,.0f}
+                - **Leverage:** {actual_leverage:.2f}x means {currency_symbol}{actual_leverage:.2f} of market exposure per {currency_symbol}1 of equity
+
                 **Returns Calculation:**
                 - **Return on Equity:** {total_gl_pct:.2f}% is calculated as (Current Value - Initial Equity) / Equity
                 - With {actual_leverage:.2f}x leverage, market moves are amplified {actual_leverage:.2f}x
                 - A 10% market gain becomes ~{actual_leverage*10:.1f}% return on your equity
-    
+
                 **Risk:**
-                - VaR, CVaR, and all risk metrics are applied to your ${equity:,.0f} equity, not gross exposure
+                - VaR, CVaR, and all risk metrics are applied to your {currency_symbol}{equity:,.0f} equity, not gross exposure
                 - Leverage amplifies BOTH gains and losses proportionally
                 """)
     
@@ -14708,19 +14717,19 @@ def main():
     
             # Column selector for interactive table customization
             with st.expander("⚙️ Customize Columns", expanded=False):
-                # Define all available columns
+                # Define all available columns (Phase 1 Fix: Use Display Ticker)
                 ALL_COLUMNS = [
-                    'Ticker', 'Asset Name', 'Shares', 'Avg Cost', 'Current Price',
+                    'Display Ticker', 'Asset Name', 'Shares', 'Avg Cost', 'Current Price',
                     'Daily Change %', '5D Return %', 'YTD Return %',
                     'Weight % of Equity', 'Weight % of Gross', 'Weight %',
                     'Daily P&L $', 'Total Gain/Loss $', 'Total Gain/Loss %',
                     'Beta', 'Analyst Rating', 'Quality Score', 'Sector',
                     'Price Target', 'Volume'
                 ]
-    
+
                 # Default columns to show (include both new weight columns)
                 DEFAULT_COLUMNS = [
-                    'Ticker', 'Asset Name', 'Shares', 'Current Price',
+                    'Display Ticker', 'Asset Name', 'Shares', 'Current Price',
                     'Daily Change %', '5D Return %',
                     'Weight % of Equity', 'Weight % of Gross',
                     'Total Gain/Loss $', 'Total Gain/Loss %', 'Quality Score'
@@ -14751,7 +14760,7 @@ def main():
                 currency_cols = ['Avg Cost', 'Current Price', 'Daily P&L $', 'Total Gain/Loss $', 'Price Target']
                 for col in currency_cols:
                     if col in display_df.columns:
-                        display_df[col] = display_df[col].apply(lambda x: format_currency(x) if pd.notna(x) else 'N/A')
+                        display_df[col] = display_df[col].apply(lambda x: format_currency(x, currency_symbol=currency_symbol) if pd.notna(x) else 'N/A')
 
                 # Add arrow indicators for change columns
                 if 'Daily Change %' in display_df.columns:
@@ -14776,8 +14785,8 @@ def main():
                 if 'Weight % of Equity' in selected_columns or 'Weight % of Gross' in selected_columns:
                     st.caption(f"""
                     **Understanding Position Weights:**
-                    - **Weight % of Equity**: Position value as % of your ${equity:,.0f} equity (can exceed 100% with {actual_leverage:.2f}x leverage!)
-                    - **Weight % of Gross**: Position value as % of ${gross_exposure:,.0f} gross exposure (always sums to 100%)
+                    - **Weight % of Equity**: Position value as % of your {currency_symbol}{equity:,.0f} equity (can exceed 100% with {actual_leverage:.2f}x leverage!)
+                    - **Weight % of Gross**: Position value as % of {currency_symbol}{gross_exposure:,.0f} gross exposure (always sums to 100%)
                     - With {actual_leverage:.2f}x leverage, a 50% equity weight = {50/actual_leverage:.1f}% gross weight
                     """)
             else:

@@ -9,7 +9,9 @@ from .ticker_utils import (
     fetch_stock_history,
     fetch_stock_history_with_fallback,
     fetch_current_price,
-    test_ticker_conversion
+    test_ticker_conversion,
+    format_ticker_for_display,
+    format_ticker_with_exchange
 )
 
 __all__ = [
@@ -18,5 +20,7 @@ __all__ = [
     'fetch_stock_history',
     'fetch_stock_history_with_fallback',
     'fetch_current_price',
-    'test_ticker_conversion'
+    'test_ticker_conversion',
+    'format_ticker_for_display',
+    'format_ticker_with_exchange'
 ]

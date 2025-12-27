@@ -170,6 +170,11 @@ def sync_easy_equities_portfolio(
     df.attrs['total_purchase_value'] = df['Purchase_Value'].sum()
     df.attrs['total_unrealized_pnl'] = df['Unrealized_PnL'].sum()
 
+    # Currency metadata (Phase 1 Fix)
+    df.attrs['currency'] = 'ZAR'
+    df.attrs['currency_symbol'] = 'R'
+    df.attrs['has_trade_history'] = False  # EE sync provides snapshot only
+
     return df
 
 
