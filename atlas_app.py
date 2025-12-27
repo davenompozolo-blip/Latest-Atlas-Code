@@ -15056,9 +15056,13 @@ def main():
                     watchlist_data = []
     
                     with st.spinner("Loading watchlist prices..."):
+                        from modules import convert_ee_ticker_to_yahoo
+
                         for item in watchlist:
                             try:
-                                ticker = yf.Ticker(item['ticker'])
+                                # Convert ticker format
+                                yahoo_ticker = convert_ee_ticker_to_yahoo(item['ticker'])
+                                ticker = yf.Ticker(yahoo_ticker)
                                 hist = ticker.history(period='5d')
     
                                 if not hist.empty:
