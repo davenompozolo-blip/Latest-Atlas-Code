@@ -12548,93 +12548,311 @@ def main():
         # ====================================================================
         if page == "🔥 Phoenix Parser":
             st.markdown("## 🔥 PHOENIX MODE")
-        
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.markdown("### 📊 Trade History")
-                trade_file = st.file_uploader("Upload Trade History", type=['xls', 'xlsx'], key="trade")
+
+            # ===== NEW: PORTFOLIO DATA SOURCE TOGGLE =====
+            st.markdown("### 📊 Portfolio Data Source")
+
+            portfolio_mode = st.radio(
+                "**Select how you want to import your portfolio data:**",
+                options=["📁 Classic Mode (Excel Upload)", "🔗 Easy Equities (Live Sync)"],
+                horizontal=True,
+                key="portfolio_data_source_mode",
+                help="Classic: Upload trade/account history Excel files | Easy Equities: Sync directly from your EE account"
+            )
+
+            st.divider()
+
+            # ===== CLASSIC MODE: Original Excel Upload (Existing Code) =====
+            if portfolio_mode == "📁 Classic Mode (Excel Upload)":
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    st.markdown("### 📊 Trade History")
+                    trade_file = st.file_uploader("Upload Trade History", type=['xls', 'xlsx'], key="trade")
                 
-                if trade_file:
-                    with st.spinner("Parsing..."):
-                        trade_df = parse_trade_history_file(trade_file)
+                    if trade_file:
+                        with st.spinner("Parsing..."):
+                            trade_df = parse_trade_history_file(trade_file)
 
-                        if trade_df is not None:
-                            # FIX #7: Add debug output to diagnose database save issues
-                            with st.expander("🔍 Debug Info - Trade File Columns", expanded=False):
-                                st.write("**Columns in uploaded file:**")
-                                st.write(list(trade_df.columns))
-                                st.write(f"**SQL_AVAILABLE:** {SQL_AVAILABLE}")
-                                if not SQL_AVAILABLE:
-                                    st.warning("⚠️ Database not available - trades will save to cache file only")
+                            if trade_df is not None:
+                                # FIX #7: Add debug output to diagnose database save issues
+                                with st.expander("🔍 Debug Info - Trade File Columns", expanded=False):
+                                    st.write("**Columns in uploaded file:**")
+                                    st.write(list(trade_df.columns))
+                                    st.write(f"**SQL_AVAILABLE:** {SQL_AVAILABLE}")
+                                    if not SQL_AVAILABLE:
+                                        st.warning("⚠️ Database not available - trades will save to cache file only")
 
-                            save_trade_history(trade_df)
-                            st.success(f"✅ Parsed {len(trade_df)} trades!")
+                                save_trade_history(trade_df)
+                                st.success(f"✅ Parsed {len(trade_df)} trades!")
 
-                            # CRITICAL FIX: Verify database save
-                            if SQL_AVAILABLE:
-                                try:
-                                    db = get_db()
-                                    db_count = db.read("SELECT COUNT(*) as count FROM trades").iloc[0]['count']
-                                    st.success(f"💾 Database now contains {db_count} total trade records (persistent across sessions)")
+                                # CRITICAL FIX: Verify database save
+                                if SQL_AVAILABLE:
+                                    try:
+                                        db = get_db()
+                                        db_count = db.read("SELECT COUNT(*) as count FROM trades").iloc[0]['count']
+                                        st.success(f"💾 Database now contains {db_count} total trade records (persistent across sessions)")
 
-                                    # Show last 5 trades from database to confirm
-                                    last_trades = db.read("SELECT * FROM trades ORDER BY date DESC LIMIT 5")
-                                    if len(last_trades) > 0:
-                                        with st.expander("🔍 Last 5 Trades in Database", expanded=False):
-                                            st.dataframe(last_trades, use_container_width=True)
-                                except Exception as e:
-                                    st.warning(f"⚠️ Could not verify database: {e}")
+                                        # Show last 5 trades from database to confirm
+                                        last_trades = db.read("SELECT * FROM trades ORDER BY date DESC LIMIT 5")
+                                        if len(last_trades) > 0:
+                                            with st.expander("🔍 Last 5 Trades in Database", expanded=False):
+                                                st.dataframe(last_trades, use_container_width=True)
+                                    except Exception as e:
+                                        st.warning(f"⚠️ Could not verify database: {e}")
 
-                            show_toast(f"Trade history imported: {len(trade_df)} trades parsed successfully", toast_type="success", duration=3000)
-                            make_scrollable_table(trade_df.head(10), height=400, hide_index=True, use_container_width=True, column_config=None)
+                                show_toast(f"Trade history imported: {len(trade_df)} trades parsed successfully", toast_type="success", duration=3000)
+                                make_scrollable_table(trade_df.head(10), height=400, hide_index=True, use_container_width=True, column_config=None)
 
-                            # Check for options that will be filtered
-                            option_tickers = []
-                            if 'Symbol' in trade_df.columns:
-                                unique_symbols = trade_df['Symbol'].unique()
-                                option_tickers = [ticker for ticker in unique_symbols if is_option_ticker(ticker)]
+                                # Check for options that will be filtered
+                                option_tickers = []
+                                if 'Symbol' in trade_df.columns:
+                                    unique_symbols = trade_df['Symbol'].unique()
+                                    option_tickers = [ticker for ticker in unique_symbols if is_option_ticker(ticker)]
 
-                            portfolio_df = calculate_portfolio_from_trades(trade_df)
-                            if len(portfolio_df) > 0:
-                                save_portfolio_data(portfolio_df.to_dict('records'))
-                                st.success(f"🎉 Portfolio rebuilt! {len(portfolio_df)} positions")
-                                show_toast(f"🔥 Phoenix reconstruction complete: {len(portfolio_df)} positions rebuilt", toast_type="success", duration=4000)
+                                portfolio_df = calculate_portfolio_from_trades(trade_df)
+                                if len(portfolio_df) > 0:
+                                    save_portfolio_data(portfolio_df.to_dict('records'))
+                                    st.success(f"🎉 Portfolio rebuilt! {len(portfolio_df)} positions")
+                                    show_toast(f"🔥 Phoenix reconstruction complete: {len(portfolio_df)} positions rebuilt", toast_type="success", duration=4000)
 
-                                # Show filtered options if any
-                                if option_tickers:
-                                    with st.expander(f"🗑️ Filtered {len(option_tickers)} option symbols"):
-                                        st.info("""
-                                        **Options automatically excluded from equity portfolio:**
+                                    # Show filtered options if any
+                                    if option_tickers:
+                                        with st.expander(f"🗑️ Filtered {len(option_tickers)} option symbols"):
+                                            st.info("""
+                                            **Options automatically excluded from equity portfolio:**
 
-                                        These option positions are excluded from equity analysis:
-                                        """)
-                                        for opt in option_tickers:
-                                            st.write(f"- {opt}")
+                                            These option positions are excluded from equity analysis:
+                                            """)
+                                            for opt in option_tickers:
+                                                st.write(f"- {opt}")
 
-                                make_scrollable_table(portfolio_df, height=400, hide_index=True, use_container_width=True, column_config=None)
+                                    make_scrollable_table(portfolio_df, height=400, hide_index=True, use_container_width=True, column_config=None)
             
-            with col2:
-                st.markdown("### 💰 Account History")
-                account_file = st.file_uploader("Upload Account History", type=['xls', 'xlsx'], key="account")
+                with col2:
+                    st.markdown("### 💰 Account History")
+                    account_file = st.file_uploader("Upload Account History", type=['xls', 'xlsx'], key="account")
                 
-                if account_file:
-                    with st.spinner("Parsing..."):
-                        account_df = parse_account_history_file(account_file)
+                    if account_file:
+                        with st.spinner("Parsing..."):
+                            account_df = parse_account_history_file(account_file)
                         
-                        if account_df is not None:
-                            save_account_history(account_df)
-                            st.success(f"✅ Parsed {len(account_df)} records!")
-                            show_toast(f"Account history imported: {len(account_df)} records processed", toast_type="success", duration=3000)
-                            make_scrollable_table(account_df.head(10), height=400, hide_index=True, use_container_width=True, column_config=None)
+                            if account_df is not None:
+                                save_account_history(account_df)
+                                st.success(f"✅ Parsed {len(account_df)} records!")
+                                show_toast(f"Account history imported: {len(account_df)} records processed", toast_type="success", duration=3000)
+                                make_scrollable_table(account_df.head(10), height=400, hide_index=True, use_container_width=True, column_config=None)
                             
-                            leverage_info_parsed = get_leverage_info()
-                            if leverage_info_parsed:
-                                st.info(f"""
-                                💡 Leverage Detected:
-                                - Margin: ${leverage_info_parsed['margin_used']:,.2f}
-                                - Leverage: {leverage_info_parsed['leverage_ratio']:.2f}x
-                                """)
+                                leverage_info_parsed = get_leverage_info()
+                                if leverage_info_parsed:
+                                    st.info(f"""
+                                    💡 Leverage Detected:
+                                    - Margin: ${leverage_info_parsed['margin_used']:,.2f}
+                                    - Leverage: {leverage_info_parsed['leverage_ratio']:.2f}x
+                                    """)
+
+            # ===== EASY EQUITIES MODE: Live Portfolio Sync (NEW) =====
+            elif portfolio_mode == "🔗 Easy Equities (Live Sync)":
+                st.subheader("🔗 Sync Portfolio from Easy Equities")
+
+                # Info box about security
+                st.info(
+                    "🔒 **Secure Connection:** Your Easy Equities credentials are used once to fetch "
+                    "portfolio data and are NOT stored. Data is synced in real-time from your account."
+                )
+
+                # Import Easy Equities sync module
+                try:
+                    from modules.easy_equities_sync import (
+                        sync_easy_equities_portfolio,
+                        get_account_summary,
+                        list_available_accounts
+                    )
+                    EE_MODULE_AVAILABLE = True
+                except ImportError as e:
+                    EE_MODULE_AVAILABLE = False
+                    st.error(f"❌ Easy Equities module not available: {e}")
+                    st.info("Please ensure easy-equities-client is installed: `pip install easy-equities-client`")
+
+                if EE_MODULE_AVAILABLE:
+                    # Login form
+                    with st.form("ee_login_form"):
+                        col1, col2 = st.columns(2)
+
+                        with col1:
+                            ee_username = st.text_input(
+                                "Easy Equities Username",
+                                placeholder="Your EE username",
+                                key="ee_username_input",
+                                help="Your Easy Equities login username"
+                            )
+
+                        with col2:
+                            ee_password = st.text_input(
+                                "Easy Equities Password",
+                                type="password",
+                                placeholder="Your EE password",
+                                key="ee_password_input",
+                                help="Your Easy Equities password (not stored)"
+                            )
+
+                        # Account selection (optional)
+                        show_account_selector = st.checkbox(
+                            "Select specific account (optional)",
+                            help="If you have multiple EE accounts (ZAR, USD, TFSA, etc.), you can choose which one to sync",
+                            key="show_ee_account_selector"
+                        )
+
+                        account_index = 5  # Default to Demo ZAR for testing
+                        selected_account_name = "First available account"
+
+                        if show_account_selector and ee_username and ee_password:
+                            try:
+                                with st.spinner("Fetching your accounts..."):
+                                    accounts = list_available_accounts(ee_username, ee_password)
+
+                                account_options = [f"{acc['name']} (ID: {acc['id']})" for acc in accounts]
+                                selected = st.selectbox(
+                                    "Select Account to Sync",
+                                    account_options,
+                                    key="ee_account_selector"
+                                )
+                                account_index = account_options.index(selected)
+                                selected_account_name = accounts[account_index]['name']
+
+                            except Exception as e:
+                                st.warning(f"⚠️ Could not fetch accounts: {str(e)}")
+                                st.caption("Using default account selection")
+
+                        # Sync button
+                        submit_button = st.form_submit_button(
+                            "🔄 Sync Portfolio from Easy Equities",
+                            use_container_width=True,
+                            type="primary"
+                        )
+
+                    # Process sync when button clicked
+                    if submit_button:
+                        if not ee_username or not ee_password:
+                            st.error("❌ Please enter both username and password")
+                        else:
+                            with st.spinner(f"🔄 Syncing portfolio from Easy Equities ({selected_account_name})..."):
+                                try:
+                                    # Sync portfolio data
+                                    df = sync_easy_equities_portfolio(
+                                        username=ee_username,
+                                        password=ee_password,
+                                        account_index=account_index
+                                    )
+
+                                    # Store in session state (same format as Excel upload)
+                                    st.session_state['portfolio_df'] = df
+                                    st.session_state['portfolio_source'] = 'easy_equities'
+
+                                    # Also save to portfolio data for persistence
+                                    save_portfolio_data(df.to_dict('records'))
+
+                                    # Get account summary for display
+                                    summary = get_account_summary(ee_username, ee_password, account_index)
+
+                                    # Success message
+                                    st.success(
+                                        f"✅ Successfully synced **{len(df)}** positions from "
+                                        f"**{summary['account_name']}** (Account: {summary['account_number']})"
+                                    )
+
+                                    show_toast(
+                                        f"🎉 Easy Equities sync complete: {len(df)} positions imported!",
+                                        toast_type="success",
+                                        duration=4000
+                                    )
+
+                                    # Portfolio preview section
+                                    st.markdown("---")
+                                    st.subheader("📊 Synced Portfolio Preview")
+
+                                    # Summary metrics in cards
+                                    metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
+
+                                    total_market_value = df['Market_Value'].sum()
+                                    total_purchase_value = df['Purchase_Value'].sum()
+                                    total_pnl = df['Unrealized_PnL'].sum()
+                                    pnl_pct = (total_pnl / total_purchase_value * 100) if total_purchase_value > 0 else 0
+
+                                    with metric_col1:
+                                        st.metric(
+                                            "Total Positions",
+                                            f"{len(df)}",
+                                            help="Number of holdings in portfolio"
+                                        )
+
+                                    with metric_col2:
+                                        st.metric(
+                                            "Market Value",
+                                            f"R{total_market_value:,.2f}",
+                                            help="Current total value of all holdings"
+                                        )
+
+                                    with metric_col3:
+                                        st.metric(
+                                            "Total Invested",
+                                            f"R{total_purchase_value:,.2f}",
+                                            help="Total amount invested (cost basis)"
+                                        )
+
+                                    with metric_col4:
+                                        st.metric(
+                                            "Total P&L",
+                                            f"R{total_pnl:,.2f}",
+                                            delta=f"{pnl_pct:+.2f}%",
+                                            help="Unrealized profit/loss"
+                                        )
+
+                                    # Show dataframe preview
+                                    st.markdown("##### Holdings Details")
+                                    preview_df = df[[
+                                        'Ticker', 'Name', 'Shares', 'Cost_Basis',
+                                        'Current_Price', 'Market_Value', 'Unrealized_PnL', 'Unrealized_PnL_Pct'
+                                    ]].copy()
+
+                                    # Format columns for display
+                                    preview_df['Shares'] = preview_df['Shares'].apply(lambda x: f"{x:.4f}")
+                                    preview_df['Cost_Basis'] = preview_df['Cost_Basis'].apply(lambda x: f"R{x:.2f}")
+                                    preview_df['Current_Price'] = preview_df['Current_Price'].apply(lambda x: f"R{x:.2f}")
+                                    preview_df['Market_Value'] = preview_df['Market_Value'].apply(lambda x: f"R{x:,.2f}")
+                                    preview_df['Unrealized_PnL'] = preview_df['Unrealized_PnL'].apply(lambda x: f"R{x:,.2f}")
+                                    preview_df['Unrealized_PnL_Pct'] = preview_df['Unrealized_PnL_Pct'].apply(lambda x: f"{x:+.2f}%")
+
+                                    make_scrollable_table(
+                                        preview_df,
+                                        height=400,
+                                        hide_index=True,
+                                        use_container_width=True,
+                                        column_config=None
+                                    )
+
+                                    # Sync timestamp
+                                    import pandas as pd
+                                    sync_time = df.attrs.get('sync_timestamp', pd.Timestamp.now())
+                                    st.caption(f"📅 Last synced: {sync_time.strftime('%Y-%m-%d %H:%M:%S')} | Source: Easy Equities API")
+
+                                    st.success("✅ Portfolio data is now available for all ATLAS analysis modules!")
+
+                                except Exception as e:
+                                    st.error(f"❌ Sync failed: {str(e)}")
+                                    st.info(
+                                        "**Troubleshooting Steps:**\n\n"
+                                        "1. Verify your Easy Equities credentials are correct\n"
+                                        "2. Check that your selected account has holdings\n"
+                                        "3. Ensure stable internet connection\n"
+                                        "4. Try selecting a different account if you have multiple\n"
+                                        "5. Check if Easy Equities platform is accessible"
+                                    )
+
+                                    # Show debug info in expander
+                                    with st.expander("🔍 Technical Error Details"):
+                                        import traceback
+                                        st.code(traceback.format_exc())
 
             # PHASE 4: Database Management Section
             st.markdown("---")
