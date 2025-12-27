@@ -12832,7 +12832,6 @@ def main():
                                     )
 
                                     # Sync timestamp
-                                    import pandas as pd
                                     sync_time = df.attrs.get('sync_timestamp', pd.Timestamp.now())
                                     st.caption(f"📅 Last synced: {sync_time.strftime('%Y-%m-%d %H:%M:%S')} | Source: Easy Equities API")
 
