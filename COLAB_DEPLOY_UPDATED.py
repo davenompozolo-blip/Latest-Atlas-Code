@@ -4,7 +4,8 @@
 # ============================================================================
 
 print("🚀 Installing required packages...")
-!pip install -q streamlit pyngrok yfinance plotly scikit-learn scipy networkx openpyxl xlsxwriter
+!pip install -q streamlit pyngrok yfinance plotly scikit-learn scipy networkx openpyxl xlsxwriter beautifulsoup4
+!pip install -q --no-deps easy-equities-client
 
 print("\n📥 Downloading ATLAS Terminal v10.0 INSTITUTIONAL (Latest Build)...")
 import urllib.request
