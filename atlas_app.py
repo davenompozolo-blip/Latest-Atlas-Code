@@ -7462,6 +7462,23 @@ def create_enhanced_holdings_table(df):
         if 'Quality Score' not in enhanced_df.columns:
             enhanced_df['Quality Score'] = 5.0
 
+        # CRITICAL FIX: Add all expected columns that Yahoo Finance would provide
+        # Other modules expect these columns to exist even if we don't have real data
+        if 'Beta' not in enhanced_df.columns:
+            enhanced_df['Beta'] = 1.0  # Neutral beta for EE stocks
+        if 'Daily Change' not in enhanced_df.columns:
+            enhanced_df['Daily Change'] = 0.0
+        if 'Daily Change %' not in enhanced_df.columns:
+            enhanced_df['Daily Change %'] = 0.0
+        if '5D Return %' not in enhanced_df.columns:
+            enhanced_df['5D Return %'] = 0.0
+        if 'Volume' not in enhanced_df.columns:
+            enhanced_df['Volume'] = 0
+        if 'Analyst Rating' not in enhanced_df.columns:
+            enhanced_df['Analyst Rating'] = 'No Coverage'
+        if 'Price Target' not in enhanced_df.columns:
+            enhanced_df['Price Target'] = None
+
     # CRITICAL FIX: Add DUAL weight columns (equity-based AND gross-based)
     gross_exposure = enhanced_df['Total Value'].sum()
 
