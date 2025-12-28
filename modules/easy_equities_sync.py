@@ -122,19 +122,42 @@ def sync_easy_equities_portfolio(
     # 4. Convert holdings to ATLAS DataFrame format
     portfolio_data = []
 
+    # DIAGNOSTIC: Show raw API data for first holding
+    import streamlit as st
+    if holdings:
+        st.write("🔍 **DEBUG: Raw Easy Equities API Response (First Position)**")
+        st.json(holdings[0])  # Show raw JSON from API
+        st.write("---")
+
     for holding in holdings:
         # Extract raw data from Easy Equities format
         ticker = holding.get('contract_code', 'UNKNOWN')
         name = holding.get('name', 'Unknown Security')
+
+        # DIAGNOSTIC: Show raw values before parsing
+        st.write(f"**{ticker} - Raw API Values:**")
+        st.write(f"- purchase_value (raw): `{holding.get('purchase_value')}`")
+        st.write(f"- current_value (raw): `{holding.get('current_value')}`")
+        st.write(f"- current_price (raw): `{holding.get('current_price')}`")
 
         # Parse ZAR currency values
         purchase_value = parse_zar_value(holding.get('purchase_value', 'R0'))
         current_value = parse_zar_value(holding.get('current_value', 'R0'))
         current_price = parse_zar_value(holding.get('current_price', 'R0'))
 
+        st.write(f"**After parse_zar_value:**")
+        st.write(f"- purchase_value (parsed): {purchase_value}")
+        st.write(f"- current_value (parsed): {current_value}")
+        st.write(f"- current_price (parsed): {current_price}")
+
         # Calculate shares (reverse engineer from values)
         # Since include_shares=False, we calculate: shares = current_value / current_price
         shares = current_value / current_price if current_price > 0 else 0
+
+        st.write(f"**Calculated:**")
+        st.write(f"- shares: {shares} (current_value / current_price = {current_value} / {current_price})")
+        st.write(f"- Expected for BAT: 10 shares, R932.10 price, R9,321.00 value")
+        st.write("---")
 
         # Calculate cost basis (average purchase price per share)
         cost_basis = purchase_value / shares if shares > 0 else 0
