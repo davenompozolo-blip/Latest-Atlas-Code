@@ -14508,7 +14508,9 @@ def main():
                 st.warning("⚠️ No portfolio data. Please upload via Phoenix Parser.")
                 st.stop()
 
-            df = pd.DataFrame(portfolio_data)
+            # CRITICAL FIX: Don't wrap in pd.DataFrame() - it destroys attrs!
+            # load_portfolio_data() already returns a DataFrame with attrs intact
+            df = portfolio_data
 
             # Get currency symbol from portfolio metadata (Phase 1 Fix)
             currency_symbol = df.attrs.get('currency_symbol', '$')
