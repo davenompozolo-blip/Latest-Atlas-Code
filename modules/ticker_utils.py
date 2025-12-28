@@ -276,3 +276,65 @@ def clear_ticker_cache():
     """Clear the ticker conversion cache"""
     global _TICKER_CACHE
     _TICKER_CACHE = {}
+
+
+# ==============================================================================
+# TICKER DISPLAY FORMATTING (Phase 1 Fix)
+# ==============================================================================
+
+def format_ticker_for_display(ticker: str) -> str:
+    """
+    Convert ticker to clean display format (remove exchange prefixes)
+
+    Examples:
+        >>> format_ticker_for_display("EQU.ZA.BTI")
+        'BTI'
+        >>> format_ticker_for_display("EQU.ZA.STXNDQ")
+        'STXNDQ'
+        >>> format_ticker_for_display("EC10.EC.EC10")
+        'EC10'
+        >>> format_ticker_for_display("AAPL")
+        'AAPL'
+    """
+    if ticker.startswith("EQU.ZA."):
+        return ticker.replace("EQU.ZA.", "")
+    elif ticker.startswith("EQU.US."):
+        return ticker.replace("EQU.US.", "")
+    elif ticker.startswith("EQU.UK."):
+        return ticker.replace("EQU.UK.", "")
+    elif ticker.startswith("EQU.AU."):
+        return ticker.replace("EQU.AU.", "")
+    elif ticker.startswith("EC10."):
+        return ticker.split(".")[0]  # Just the crypto code
+    else:
+        return ticker
+
+
+def format_ticker_with_exchange(ticker: str) -> str:
+    """
+    Convert ticker to display format with exchange suffix
+
+    Examples:
+        >>> format_ticker_with_exchange("EQU.ZA.BTI")
+        'BTI (JSE)'
+        >>> format_ticker_with_exchange("EQU.US.AAPL")
+        'AAPL (NYSE)'
+        >>> format_ticker_with_exchange("EC10.EC.EC10")
+        'EC10 (Crypto)'
+    """
+    if ticker.startswith("EQU.ZA."):
+        base = ticker.replace("EQU.ZA.", "")
+        return f"{base} (JSE)"
+    elif ticker.startswith("EQU.US."):
+        base = ticker.replace("EQU.US.", "")
+        return f"{base} (NYSE)"
+    elif ticker.startswith("EQU.UK."):
+        base = ticker.replace("EQU.UK.", "")
+        return f"{base} (LSE)"
+    elif ticker.startswith("EQU.AU."):
+        base = ticker.replace("EQU.AU.", "")
+        return f"{base} (ASX)"
+    elif ticker.startswith("EC10."):
+        return ticker.split(".")[0] + " (Crypto)"
+    else:
+        return ticker

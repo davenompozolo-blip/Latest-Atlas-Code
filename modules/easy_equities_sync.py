@@ -107,9 +107,10 @@ def sync_easy_equities_portfolio(
     account = accounts[account_index]
 
     # 3. Get holdings from selected account
-    # CRITICAL: Use include_shares=False to avoid parsing errors
+    # CRITICAL: Use include_shares=True to get accurate share counts from EE
+    # This avoids calculation errors from price format issues (cents vs rands)
     try:
-        holdings = client.accounts.holdings(account.id, include_shares=False)
+        holdings = client.accounts.holdings(account.id, include_shares=True)
     except Exception as e:
         raise Exception(f"Failed to retrieve holdings: {str(e)}")
 
@@ -122,22 +123,54 @@ def sync_easy_equities_portfolio(
     # 4. Convert holdings to ATLAS DataFrame format
     portfolio_data = []
 
+    # DIAGNOSTIC: Show raw API data for first holding
+    import streamlit as st
+    if holdings:
+        st.write("🔍 **DEBUG: Raw Easy Equities API Response (First Position)**")
+        st.json(holdings[0])  # Show raw JSON from API
+        st.write("---")
+
     for holding in holdings:
         # Extract raw data from Easy Equities format
         ticker = holding.get('contract_code', 'UNKNOWN')
         name = holding.get('name', 'Unknown Security')
 
-        # Parse ZAR currency values
+        # DIAGNOSTIC: Show raw values before parsing
+        st.write(f"**{ticker} - Raw API Values:**")
+        st.write(f"- purchase_value (raw): `{holding.get('purchase_value')}`")
+        st.write(f"- current_value (raw): `{holding.get('current_value')}`")
+        st.write(f"- current_price (raw): `{holding.get('current_price')}`")
+        st.write(f"- shares (raw): `{holding.get('shares', 'NOT PROVIDED')}`")
+
+        # ROBUST FIX: Use total values directly, get shares from API
+        # Parse ZAR currency values (totals are always correct)
         purchase_value = parse_zar_value(holding.get('purchase_value', 'R0'))
         current_value = parse_zar_value(holding.get('current_value', 'R0'))
-        current_price = parse_zar_value(holding.get('current_price', 'R0'))
 
-        # Calculate shares (reverse engineer from values)
-        # Since include_shares=False, we calculate: shares = current_value / current_price
-        shares = current_value / current_price if current_price > 0 else 0
+        # Get shares directly from API (should be provided with include_shares=True)
+        shares = holding.get('shares', 0)
 
-        # Calculate cost basis (average purchase price per share)
+        # If shares not provided by API, fall back to calculation
+        # But use current_value (which is always correct) to reverse-engineer
+        if shares == 0:
+            current_price_raw = parse_zar_value(holding.get('current_price', 'R0'))
+            shares = current_value / current_price_raw if current_price_raw > 0 else 0
+            st.warning(f"⚠️ Shares not provided by API for {ticker}, calculated from totals")
+
+        st.write(f"**After parsing:**")
+        st.write(f"- purchase_value: R{purchase_value:,.2f}")
+        st.write(f"- current_value: R{current_value:,.2f}")
+        st.write(f"- shares: {shares}")
+
+        # Calculate per-share values FROM totals (not from API prices which might be wrong format)
         cost_basis = purchase_value / shares if shares > 0 else 0
+        current_price = current_value / shares if shares > 0 else 0
+
+        st.write(f"**Calculated per-share values (from totals):**")
+        st.write(f"- cost_basis: R{cost_basis:,.2f} (purchase_value / shares)")
+        st.write(f"- current_price: R{current_price:,.2f} (current_value / shares)")
+        st.write(f"**Verification:** {shares} × R{current_price:,.2f} = R{shares * current_price:,.2f} (should equal current_value: R{current_value:,.2f})")
+        st.write("---")
 
         # Calculate profit/loss metrics
         unrealized_pnl = current_value - purchase_value
@@ -160,6 +193,25 @@ def sync_easy_equities_portfolio(
     # 5. Create DataFrame
     df = pd.DataFrame(portfolio_data)
 
+    # DIAGNOSTIC: Verify EE sync output (remove after debugging)
+    import streamlit as st
+    st.write("🔍 **DEBUG: Easy Equities Sync Output**")
+    st.write(f"Number of positions: {len(df)}")
+    st.write(f"Columns: {df.columns.tolist()}")
+
+    # Check totals IMMEDIATELY after sync
+    st.write("📊 **Totals from EE Sync (should match EE app exactly):**")
+    st.write(f"- Market_Value sum: R{df['Market_Value'].sum():,.2f}")
+    st.write(f"- Purchase_Value sum: R{df['Purchase_Value'].sum():,.2f}")
+    st.write(f"- Unrealized_PnL sum: R{df['Unrealized_PnL'].sum():,.2f}")
+    st.write(f"- Unrealized_PnL %: {(df['Unrealized_PnL'].sum() / df['Purchase_Value'].sum() * 100):.2f}%")
+
+    # Show first 3 rows for verification
+    st.write("**First 3 positions:**")
+    st.dataframe(df.head(3)[['Ticker', 'Shares', 'Current_Price', 'Market_Value', 'Purchase_Value', 'Unrealized_PnL_Pct']])
+
+    st.warning("⚠️ **VERIFY:** Does Market_Value sum match your Easy Equities app? If NO, EE sync is broken. If YES, ATLAS is corrupting it later.")
+
     # 6. Add metadata as DataFrame attributes
     df.attrs['source'] = 'easy_equities'
     df.attrs['account_name'] = account.name
@@ -169,6 +221,11 @@ def sync_easy_equities_portfolio(
     df.attrs['total_market_value'] = df['Market_Value'].sum()
     df.attrs['total_purchase_value'] = df['Purchase_Value'].sum()
     df.attrs['total_unrealized_pnl'] = df['Unrealized_PnL'].sum()
+
+    # Currency metadata (Phase 1 Fix)
+    df.attrs['currency'] = 'ZAR'
+    df.attrs['currency_symbol'] = 'R'
+    df.attrs['has_trade_history'] = False  # EE sync provides snapshot only
 
     return df
 
