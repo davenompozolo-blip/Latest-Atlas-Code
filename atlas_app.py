@@ -7370,7 +7370,13 @@ def create_enhanced_holdings_table(df):
     enhanced_df = df.copy()
 
     # Check if this is an Easy Equities portfolio
-    is_ee_portfolio = enhanced_df.attrs.get('source') == 'easy_equities'
+    # CRITICAL FIX: Check BOTH attrs AND EE-specific columns
+    # attrs are lost when data is saved/loaded via pickle/database
+    # So we also check for EE-specific columns that only exist in EE portfolios
+    is_ee_portfolio = (
+        enhanced_df.attrs.get('source') == 'easy_equities' or  # Fresh from sync
+        'Market_Value' in enhanced_df.columns  # Loaded from storage (attrs lost but columns preserved)
+    )
 
     # Normalize column names for Easy Equities compatibility
     # Easy Equities uses different column names than manual uploads
@@ -12828,6 +12834,11 @@ def main():
                                     st.session_state['portfolio_df'] = df
                                     st.session_state['portfolio_source'] = 'easy_equities'
 
+                                    # CRITICAL FIX: Store currency in session_state for persistence
+                                    # This ensures currency propagates to all ATLAS modules
+                                    st.session_state['currency'] = df.attrs.get('currency', 'ZAR')
+                                    st.session_state['currency_symbol'] = df.attrs.get('currency_symbol', 'R')
+
                                     # Also save to portfolio data for persistence
                                     save_portfolio_data(df.to_dict('records'))
 
@@ -14502,7 +14513,13 @@ def main():
         elif page == "🏠 Portfolio Home":
             st.markdown("## 🏠 PORTFOLIO HOME")
 
-            portfolio_data = load_portfolio_data()
+            # CRITICAL FIX: Check session_state FIRST for fresh EE data
+            # load_portfolio_data() loads from database/pickle which loses attrs and some EE columns
+            # session_state has the complete data with attrs intact from the latest sync
+            if 'portfolio_df' in st.session_state and st.session_state['portfolio_df'] is not None and len(st.session_state['portfolio_df']) > 0:
+                portfolio_data = st.session_state['portfolio_df']
+            else:
+                portfolio_data = load_portfolio_data()
 
             if portfolio_data is None or (isinstance(portfolio_data, pd.DataFrame) and portfolio_data.empty):
                 st.warning("⚠️ No portfolio data. Please upload via Phoenix Parser.")
@@ -14513,22 +14530,30 @@ def main():
             df = portfolio_data
 
             # Get currency symbol from portfolio metadata (Phase 1 Fix)
-            currency_symbol = df.attrs.get('currency_symbol', '$')
-            currency = df.attrs.get('currency', 'USD')
+            # CRITICAL FIX: Check attrs first, then session_state as fallback (attrs lost during save/load)
+            currency_symbol = df.attrs.get('currency_symbol') or st.session_state.get('currency_symbol', '$')
+            currency = df.attrs.get('currency') or st.session_state.get('currency', 'USD')
 
             # DIAGNOSTIC: Verify data isn't corrupted between sync and display
             st.write("=" * 50)
             st.write("🔍 DIAGNOSTIC: Portfolio Home Data Integrity Check")
             st.write("=" * 50)
 
+            # Show data source and detection info
+            st.write("**Data Source Info:**")
+            st.write(f"- Source attr: {df.attrs.get('source', 'NOT SET')}")
+            st.write(f"- Has Market_Value column: {'Market_Value' in df.columns}")
+            st.write(f"- Session state currency: {st.session_state.get('currency_symbol', 'NOT SET')}")
+            st.write(f"- Active currency: {currency_symbol}")
+
             # Check raw DataFrame values
             st.write("**RAW DataFrame (from EE sync):**")
             if 'Market_Value' in df.columns:
-                st.write(f"- Market_Value sum: R{df['Market_Value'].sum():,.2f}")
+                st.write(f"- Market_Value sum: {currency_symbol}{df['Market_Value'].sum():,.2f}")
             if 'Purchase_Value' in df.columns:
-                st.write(f"- Purchase_Value sum: R{df['Purchase_Value'].sum():,.2f}")
+                st.write(f"- Purchase_Value sum: {currency_symbol}{df['Purchase_Value'].sum():,.2f}")
             if 'Unrealized_PnL' in df.columns:
-                st.write(f"- Unrealized_PnL sum: R{df['Unrealized_PnL'].sum():,.2f}")
+                st.write(f"- Unrealized_PnL sum: {currency_symbol}{df['Unrealized_PnL'].sum():,.2f}")
 
             with st.spinner("Loading..."):
                 enhanced_df = create_enhanced_holdings_table(df)
@@ -14536,11 +14561,11 @@ def main():
             # After enhancement - check if values were corrupted
             st.write("**AFTER create_enhanced_holdings_table():**")
             if 'Total Value' in enhanced_df.columns:
-                st.write(f"- Total Value sum: R{enhanced_df['Total Value'].sum():,.2f}")
+                st.write(f"- Total Value sum: {currency_symbol}{enhanced_df['Total Value'].sum():,.2f}")
             if 'Total Cost' in enhanced_df.columns:
-                st.write(f"- Total Cost sum: R{enhanced_df['Total Cost'].sum():,.2f}")
+                st.write(f"- Total Cost sum: {currency_symbol}{enhanced_df['Total Cost'].sum():,.2f}")
             if 'Total Gain/Loss $' in enhanced_df.columns:
-                st.write(f"- Total Gain/Loss sum: R{enhanced_df['Total Gain/Loss $'].sum():,.2f}")
+                st.write(f"- Total Gain/Loss sum: {currency_symbol}{enhanced_df['Total Gain/Loss $'].sum():,.2f}")
 
             # Critical comparison
             raw_market = df.get('Market_Value', pd.Series([0])).sum()
@@ -14548,11 +14573,11 @@ def main():
 
             if abs(raw_market - enhanced_market) > 1:
                 st.error(f"❌ CORRUPTION DETECTED!")
-                st.error(f"   Raw: R{raw_market:,.2f}")
-                st.error(f"   Enhanced: R{enhanced_market:,.2f}")
-                st.error(f"   Difference: R{abs(raw_market - enhanced_market):,.2f}")
+                st.error(f"   Raw: {currency_symbol}{raw_market:,.2f}")
+                st.error(f"   Enhanced: {currency_symbol}{enhanced_market:,.2f}")
+                st.error(f"   Difference: {currency_symbol}{abs(raw_market - enhanced_market):,.2f}")
             else:
-                st.success(f"✅ Data integrity OK: R{raw_market:,.2f}")
+                st.success(f"✅ Data integrity OK: {currency_symbol}{raw_market:,.2f}")
 
             st.write("=" * 50)
 
