@@ -7394,73 +7394,100 @@ def create_enhanced_holdings_table(df):
     # Add display ticker column (Phase 1 Fix)
     enhanced_df['Display Ticker'] = enhanced_df['Ticker'].apply(format_ticker_for_display)
 
-    # For Easy Equities portfolios, skip Yahoo Finance enrichment and use EE's data directly
-    if not is_ee_portfolio:
-        # Only enrich with Yahoo Finance data for manual uploads
-        for idx, row in enhanced_df.iterrows():
-            ticker = row['Ticker']
-            market_data = fetch_market_data(ticker)
+    # Enrich with Yahoo Finance data for ALL portfolios (both manual and EE)
+    # We need Beta, Daily Change, Sector, etc. even for EE portfolios
+    for idx, row in enhanced_df.iterrows():
+        ticker = row['Ticker']
+
+        # Convert EE ticker format to Yahoo Finance format for API calls
+        # EQU.ZA.BTI → BTI.JO (for JSE stocks)
+        yahoo_ticker = ticker
+        if ticker.startswith('EQU.ZA.'):
+            # Extract base ticker and add .JO for JSE
+            base_ticker = ticker.replace('EQU.ZA.', '')
+            yahoo_ticker = f"{base_ticker}.JO"
+        elif ticker.startswith('EC10.EC.'):
+            # EasyCrypto tickers - skip Yahoo Finance (crypto)
+            yahoo_ticker = None
+
+        if yahoo_ticker:
+            market_data = fetch_market_data(yahoo_ticker)
 
             if market_data:
-                enhanced_df.at[idx, 'Asset Name'] = market_data['company_name']
-                enhanced_df.at[idx, 'Current Price'] = market_data['price']
+                # Only set Asset Name if not already set (EE provides 'Name')
+                if 'Asset Name' not in enhanced_df.columns or pd.isna(enhanced_df.at[idx, 'Asset Name']):
+                    enhanced_df.at[idx, 'Asset Name'] = market_data['company_name']
+
+                # Set market data (Beta, Daily Change, etc.)
                 enhanced_df.at[idx, 'Daily Change'] = market_data['daily_change']
                 enhanced_df.at[idx, 'Daily Change %'] = market_data['daily_change_pct']
                 enhanced_df.at[idx, '5D Return %'] = market_data['five_day_return']
-                enhanced_df.at[idx, 'Beta'] = market_data.get('beta', 'N/A')
+                enhanced_df.at[idx, 'Beta'] = market_data.get('beta', 1.0)
                 enhanced_df.at[idx, 'Volume'] = market_data.get('volume', 0)
                 base_sector = market_data.get('sector', 'Unknown')
-                enhanced_df.at[idx, 'Sector'] = classify_ticker_sector(ticker, base_sector)
+                enhanced_df.at[idx, 'Sector'] = classify_ticker_sector(yahoo_ticker, base_sector)
+
+                # For EE portfolios, DON'T overwrite Current Price
+                # EE's price is accurate for their platform, Yahoo might differ
+                if not is_ee_portfolio:
+                    enhanced_df.at[idx, 'Current Price'] = market_data['price']
             else:
-                enhanced_df.at[idx, 'Asset Name'] = ticker
+                # Yahoo Finance fetch failed - set defaults
+                enhanced_df.at[idx, 'Asset Name'] = enhanced_df.at[idx, 'Asset Name'] if 'Asset Name' in enhanced_df.columns else ticker
                 enhanced_df.at[idx, 'Sector'] = 'Other'
+                enhanced_df.at[idx, 'Beta'] = 1.0
+                enhanced_df.at[idx, 'Daily Change'] = 0.0
+                enhanced_df.at[idx, 'Daily Change %'] = 0.0
+                enhanced_df.at[idx, '5D Return %'] = 0.0
+                enhanced_df.at[idx, 'Volume'] = 0
 
-            analyst_data = fetch_analyst_data(ticker)
-            if analyst_data['success']:
-                enhanced_df.at[idx, 'Analyst Rating'] = analyst_data['rating']
-                enhanced_df.at[idx, 'Price Target'] = analyst_data['target_price']
-            else:
-                enhanced_df.at[idx, 'Analyst Rating'] = 'No Coverage'
+        # Fetch analyst data for all portfolios
+        analyst_data = fetch_analyst_data(yahoo_ticker if yahoo_ticker else ticker)
+        if analyst_data['success']:
+            enhanced_df.at[idx, 'Analyst Rating'] = analyst_data['rating']
+            enhanced_df.at[idx, 'Price Target'] = analyst_data['target_price']
+        else:
+            enhanced_df.at[idx, 'Analyst Rating'] = 'No Coverage'
+            enhanced_df.at[idx, 'Price Target'] = None
 
-            # Calculate Quality Score
-            info = fetch_stock_info(ticker)
-            if info:
-                enhanced_df.at[idx, 'Quality Score'] = calculate_quality_score(ticker, info)
-            else:
-                enhanced_df.at[idx, 'Quality Score'] = 5.0
+        # Calculate Quality Score for all portfolios
+        info = fetch_stock_info(yahoo_ticker if yahoo_ticker else ticker)
+        if info:
+            enhanced_df.at[idx, 'Quality Score'] = calculate_quality_score(ticker, info)
+        else:
+            enhanced_df.at[idx, 'Quality Score'] = 5.0
 
-        enhanced_df['Sector'] = enhanced_df['Sector'].fillna('Other')
+    enhanced_df['Sector'] = enhanced_df['Sector'].fillna('Other')
+
+    # CRITICAL SPLIT: Different calculation logic for manual vs EE portfolios
+    if not is_ee_portfolio:
+        # MANUAL UPLOADS: Calculate totals from shares × prices
         enhanced_df['Shares'] = enhanced_df['Shares'].round(0).astype(int)
-
-        # For manual uploads, calculate values from shares and prices
         enhanced_df['Total Cost'] = enhanced_df['Shares'] * enhanced_df['Avg Cost']
         enhanced_df['Total Value'] = enhanced_df['Shares'] * enhanced_df['Current Price']
         enhanced_df['Total Gain/Loss $'] = enhanced_df['Total Value'] - enhanced_df['Total Cost']
         enhanced_df['Total Gain/Loss %'] = ((enhanced_df['Current Price'] - enhanced_df['Avg Cost']) / enhanced_df['Avg Cost']) * 100
         enhanced_df['Daily P&L $'] = enhanced_df['Shares'] * enhanced_df['Daily Change']
     else:
-        # For Easy Equities portfolios, use EE's values directly - DON'T RECALCULATE!
+        # EASY EQUITIES: Use EE's totals directly - DON'T RECALCULATE!
         # EE already provides correct Total Value, Total Cost, Unrealized_PnL
 
-        # Map EE columns to ATLAS display columns
+        # Map EE columns to ATLAS display columns (already done in column_mapping above)
         if 'Unrealized_PnL' in enhanced_df.columns:
             enhanced_df['Total Gain/Loss $'] = enhanced_df['Unrealized_PnL']
 
         if 'Unrealized_PnL_Pct' in enhanced_df.columns:
             enhanced_df['Total Gain/Loss %'] = enhanced_df['Unrealized_PnL_Pct']
 
-        # For Daily P&L, we need Yahoo Finance data (EE doesn't provide this)
-        # But we'll set to 0 for now to avoid corrupting other values
-        if 'Daily P&L $' not in enhanced_df.columns:
+        # For Daily P&L, calculate from Yahoo Finance Daily Change if available
+        if 'Daily Change' in enhanced_df.columns and 'Shares' in enhanced_df.columns:
+            enhanced_df['Daily P&L $'] = enhanced_df['Shares'] * enhanced_df['Daily Change']
+        else:
             enhanced_df['Daily P&L $'] = 0.0
 
-        # Set basic fields if missing
-        if 'Asset Name' not in enhanced_df.columns:
-            enhanced_df['Asset Name'] = enhanced_df.get('Name', enhanced_df['Ticker'])
-        if 'Sector' not in enhanced_df.columns:
-            enhanced_df['Sector'] = 'Other'
-        if 'Quality Score' not in enhanced_df.columns:
-            enhanced_df['Quality Score'] = 5.0
+        # Set Asset Name from EE's 'Name' column if available
+        if 'Name' in enhanced_df.columns and 'Asset Name' not in enhanced_df.columns:
+            enhanced_df['Asset Name'] = enhanced_df['Name']
 
     # CRITICAL FIX: Add DUAL weight columns (equity-based AND gross-based)
     gross_exposure = enhanced_df['Total Value'].sum()
