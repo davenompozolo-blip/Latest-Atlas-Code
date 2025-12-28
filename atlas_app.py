@@ -12866,6 +12866,40 @@ def main():
                                     st.session_state['currency'] = df.attrs.get('currency', 'ZAR')
                                     st.session_state['currency_symbol'] = df.attrs.get('currency_symbol', 'R')
 
+                                    # ========== AUTO-ENRICHMENT AND SNAPSHOT ==========
+                                    # Import enrichment modules and enrich portfolio with Yahoo Finance data
+                                    try:
+                                        from modules.ee_enrichment import (
+                                            enrich_portfolio,
+                                            auto_snapshot_on_sync,
+                                            get_snapshot_stats
+                                        )
+
+                                        # Auto-enrich portfolio with Yahoo Finance data
+                                        with st.spinner("Enriching portfolio with Yahoo Finance data..."):
+                                            enriched_df, enrichment_data = enrich_portfolio(df, period='1y')
+
+                                            # Store enriched data in session state
+                                            st.session_state['enriched_portfolio_df'] = enriched_df
+                                            st.session_state['enrichment_data'] = enrichment_data
+
+                                            enriched_count = enrichment_data.get('tickers_enriched', 0)
+                                            total_count = enrichment_data.get('tickers_total', 0)
+
+                                            st.success(f"Enriched {enriched_count}/{total_count} positions with Yahoo Finance data")
+
+                                        # Auto-save daily snapshot
+                                        snapshot_saved = auto_snapshot_on_sync(df, enriched_df)
+                                        if snapshot_saved:
+                                            stats = get_snapshot_stats()
+                                            st.info(f"Daily snapshot saved ({stats.get('snapshot_count', 1)} days of history)")
+
+                                    except ImportError as e:
+                                        st.warning(f"Enrichment modules not available: {e}")
+                                    except Exception as e:
+                                        st.warning(f"Auto-enrichment skipped: {e}")
+                                    # ========== END AUTO-ENRICHMENT ==========
+
                                     # Also save to portfolio data for persistence
                                     save_portfolio_data(df.to_dict('records'))
 
