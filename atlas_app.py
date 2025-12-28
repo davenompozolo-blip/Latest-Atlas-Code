@@ -14514,8 +14514,45 @@ def main():
             currency_symbol = df.attrs.get('currency_symbol', '$')
             currency = df.attrs.get('currency', 'USD')
 
+            # DIAGNOSTIC: Verify data isn't corrupted between sync and display
+            st.write("=" * 50)
+            st.write("🔍 DIAGNOSTIC: Portfolio Home Data Integrity Check")
+            st.write("=" * 50)
+
+            # Check raw DataFrame values
+            st.write("**RAW DataFrame (from EE sync):**")
+            if 'Market_Value' in df.columns:
+                st.write(f"- Market_Value sum: R{df['Market_Value'].sum():,.2f}")
+            if 'Purchase_Value' in df.columns:
+                st.write(f"- Purchase_Value sum: R{df['Purchase_Value'].sum():,.2f}")
+            if 'Unrealized_PnL' in df.columns:
+                st.write(f"- Unrealized_PnL sum: R{df['Unrealized_PnL'].sum():,.2f}")
+
             with st.spinner("Loading..."):
                 enhanced_df = create_enhanced_holdings_table(df)
+
+            # After enhancement - check if values were corrupted
+            st.write("**AFTER create_enhanced_holdings_table():**")
+            if 'Total Value' in enhanced_df.columns:
+                st.write(f"- Total Value sum: R{enhanced_df['Total Value'].sum():,.2f}")
+            if 'Total Cost' in enhanced_df.columns:
+                st.write(f"- Total Cost sum: R{enhanced_df['Total Cost'].sum():,.2f}")
+            if 'Total Gain/Loss $' in enhanced_df.columns:
+                st.write(f"- Total Gain/Loss sum: R{enhanced_df['Total Gain/Loss $'].sum():,.2f}")
+
+            # Critical comparison
+            raw_market = df.get('Market_Value', pd.Series([0])).sum()
+            enhanced_market = enhanced_df.get('Total Value', pd.Series([0])).sum()
+
+            if abs(raw_market - enhanced_market) > 1:
+                st.error(f"❌ CORRUPTION DETECTED!")
+                st.error(f"   Raw: R{raw_market:,.2f}")
+                st.error(f"   Enhanced: R{enhanced_market:,.2f}")
+                st.error(f"   Difference: R{abs(raw_market - enhanced_market):,.2f}")
+            else:
+                st.success(f"✅ Data integrity OK: R{raw_market:,.2f}")
+
+            st.write("=" * 50)
 
             # FIX 3: Use Easy Equities' P&L directly - don't recalculate!
             # EE already provides correct values, just sum them up
