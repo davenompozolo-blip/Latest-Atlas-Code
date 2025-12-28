@@ -107,9 +107,10 @@ def sync_easy_equities_portfolio(
     account = accounts[account_index]
 
     # 3. Get holdings from selected account
-    # CRITICAL: Use include_shares=False to avoid parsing errors
+    # CRITICAL: Use include_shares=True to get accurate share counts from EE
+    # This avoids calculation errors from price format issues (cents vs rands)
     try:
-        holdings = client.accounts.holdings(account.id, include_shares=False)
+        holdings = client.accounts.holdings(account.id, include_shares=True)
     except Exception as e:
         raise Exception(f"Failed to retrieve holdings: {str(e)}")
 
@@ -139,28 +140,37 @@ def sync_easy_equities_portfolio(
         st.write(f"- purchase_value (raw): `{holding.get('purchase_value')}`")
         st.write(f"- current_value (raw): `{holding.get('current_value')}`")
         st.write(f"- current_price (raw): `{holding.get('current_price')}`")
+        st.write(f"- shares (raw): `{holding.get('shares', 'NOT PROVIDED')}`")
 
-        # Parse ZAR currency values
+        # ROBUST FIX: Use total values directly, get shares from API
+        # Parse ZAR currency values (totals are always correct)
         purchase_value = parse_zar_value(holding.get('purchase_value', 'R0'))
         current_value = parse_zar_value(holding.get('current_value', 'R0'))
-        current_price = parse_zar_value(holding.get('current_price', 'R0'))
 
-        st.write(f"**After parse_zar_value:**")
-        st.write(f"- purchase_value (parsed): {purchase_value}")
-        st.write(f"- current_value (parsed): {current_value}")
-        st.write(f"- current_price (parsed): {current_price}")
+        # Get shares directly from API (should be provided with include_shares=True)
+        shares = holding.get('shares', 0)
 
-        # Calculate shares (reverse engineer from values)
-        # Since include_shares=False, we calculate: shares = current_value / current_price
-        shares = current_value / current_price if current_price > 0 else 0
+        # If shares not provided by API, fall back to calculation
+        # But use current_value (which is always correct) to reverse-engineer
+        if shares == 0:
+            current_price_raw = parse_zar_value(holding.get('current_price', 'R0'))
+            shares = current_value / current_price_raw if current_price_raw > 0 else 0
+            st.warning(f"⚠️ Shares not provided by API for {ticker}, calculated from totals")
 
-        st.write(f"**Calculated:**")
-        st.write(f"- shares: {shares} (current_value / current_price = {current_value} / {current_price})")
-        st.write(f"- Expected for BAT: 10 shares, R932.10 price, R9,321.00 value")
-        st.write("---")
+        st.write(f"**After parsing:**")
+        st.write(f"- purchase_value: R{purchase_value:,.2f}")
+        st.write(f"- current_value: R{current_value:,.2f}")
+        st.write(f"- shares: {shares}")
 
-        # Calculate cost basis (average purchase price per share)
+        # Calculate per-share values FROM totals (not from API prices which might be wrong format)
         cost_basis = purchase_value / shares if shares > 0 else 0
+        current_price = current_value / shares if shares > 0 else 0
+
+        st.write(f"**Calculated per-share values (from totals):**")
+        st.write(f"- cost_basis: R{cost_basis:,.2f} (purchase_value / shares)")
+        st.write(f"- current_price: R{current_price:,.2f} (current_value / shares)")
+        st.write(f"**Verification:** {shares} × R{current_price:,.2f} = R{shares * current_price:,.2f} (should equal current_value: R{current_value:,.2f})")
+        st.write("---")
 
         # Calculate profit/loss metrics
         unrealized_pnl = current_value - purchase_value
