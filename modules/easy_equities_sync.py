@@ -107,12 +107,34 @@ def sync_easy_equities_portfolio(
     account = accounts[account_index]
 
     # 3. Get holdings from selected account
-    # CRITICAL: Use include_shares=True to get accurate share counts from EE
-    # This avoids calculation errors from price format issues (cents vs rands)
+    # Try with include_shares=True first (best), fallback to False if it fails
+    import streamlit as st
+
+    holdings = None
+    include_shares_worked = False
+
     try:
+        st.info("🔄 Attempting to fetch holdings with share counts (include_shares=True)...")
         holdings = client.accounts.holdings(account.id, include_shares=True)
+        include_shares_worked = True
+        st.success("✅ Successfully fetched holdings with share counts!")
     except Exception as e:
-        raise Exception(f"Failed to retrieve holdings: {str(e)}")
+        st.warning(f"⚠️ Failed with include_shares=True: {str(e)}")
+        st.info("🔄 Retrying without share counts (include_shares=False)...")
+        try:
+            holdings = client.accounts.holdings(account.id, include_shares=False)
+            st.success("✅ Successfully fetched holdings (without share counts, will calculate)")
+        except Exception as e2:
+            raise Exception(
+                f"Failed to retrieve holdings from Easy Equities.\n\n"
+                f"Error with include_shares=True: {str(e)}\n"
+                f"Error with include_shares=False: {str(e2)}\n\n"
+                f"This might indicate:\n"
+                f"- Easy Equities website structure changed\n"
+                f"- Account authentication issue\n"
+                f"- Network connectivity problem\n"
+                f"- Library needs updating"
+            )
 
     if not holdings:
         raise Exception(
@@ -142,20 +164,23 @@ def sync_easy_equities_portfolio(
         st.write(f"- current_price (raw): `{holding.get('current_price')}`")
         st.write(f"- shares (raw): `{holding.get('shares', 'NOT PROVIDED')}`")
 
-        # ROBUST FIX: Use total values directly, get shares from API
+        # ROBUST FIX: Use total values directly, get shares from API if available
         # Parse ZAR currency values (totals are always correct)
         purchase_value = parse_zar_value(holding.get('purchase_value', 'R0'))
         current_value = parse_zar_value(holding.get('current_value', 'R0'))
 
-        # Get shares directly from API (should be provided with include_shares=True)
-        shares = holding.get('shares', 0)
+        # Get shares from API if available (include_shares=True succeeded)
+        shares = holding.get('shares', 0) if include_shares_worked else 0
 
-        # If shares not provided by API, fall back to calculation
-        # But use current_value (which is always correct) to reverse-engineer
+        # If shares not provided by API, calculate from current_value / current_price
         if shares == 0:
             current_price_raw = parse_zar_value(holding.get('current_price', 'R0'))
-            shares = current_value / current_price_raw if current_price_raw > 0 else 0
-            st.warning(f"⚠️ Shares not provided by API for {ticker}, calculated from totals")
+            if current_price_raw > 0:
+                shares = current_value / current_price_raw
+                st.info(f"ℹ️ {ticker}: Calculated shares from totals ({current_value} / {current_price_raw} = {shares:.2f})")
+            else:
+                st.error(f"❌ {ticker}: Cannot determine shares (no price data)")
+                shares = 0
 
         st.write(f"**After parsing:**")
         st.write(f"- purchase_value: R{purchase_value:,.2f}")
