@@ -85,46 +85,10 @@ def sync_easy_equities_portfolio(
     """
 
     # 1. Authenticate with Easy Equities
-    import streamlit as st
-
     client = EasyEquitiesClient()
-
-    st.info("🔐 Authenticating with Easy Equities...")
-
     try:
-        # Try authentication with detailed error reporting
         client.login(username=username, password=password)
-        st.success("✅ Authentication successful!")
-
-    except AttributeError as e:
-        # Library method signature might have changed
-        st.error(f"❌ Library error: {str(e)}")
-        raise Exception(
-            f"Easy Equities client library error.\n\n"
-            f"This might indicate the library needs updating.\n"
-            f"Error: {str(e)}\n\n"
-            f"Try: pip install --upgrade easy-equities-client"
-        )
-
     except Exception as e:
-        # Authentication failed - provide detailed guidance
-        error_msg = str(e).lower()
-
-        st.error(f"❌ Authentication failed: {str(e)}")
-
-        # Provide specific guidance based on error
-        if "login failed" in error_msg or "authentication" in error_msg:
-            st.warning("**Possible causes:**")
-            st.write("1. Incorrect username or password")
-            st.write("2. Easy Equities website changed (library needs update)")
-            st.write("3. Account locked or requires password reset")
-            st.write("4. Two-factor authentication enabled")
-
-            st.info("**Try these solutions:**")
-            st.write("1. Verify credentials work on easyequities.co.za")
-            st.write("2. Run: `!pip install --upgrade easy-equities-client`")
-            st.write("3. Check if 2FA is enabled (might not be supported)")
-
         raise Exception(f"Authentication failed: {str(e)}")
 
     # 2. Get user's accounts
