@@ -10295,18 +10295,33 @@ def create_rolling_var_cvar_chart(returns, window=60):
 def create_risk_contribution_sunburst(df):
     """Risk contribution sunburst - ENHANCED THEMING"""
     risk_data = []
-    
+
     for _, row in df.iterrows():
-        ticker = row['Ticker']
-        weight = row['Weight %']
-        sector = row['Sector']
-        
+        ticker = row.get('Ticker', 'Unknown')
+        # Handle missing or zero Weight %
+        weight = row.get('Weight %', 0)
+        if pd.isna(weight) or weight <= 0:
+            # Try to calculate weight from Total Value
+            if 'Total Value' in df.columns:
+                total_portfolio = df['Total Value'].sum()
+                if total_portfolio > 0:
+                    weight = (row.get('Total Value', 0) / total_portfolio) * 100
+                else:
+                    weight = 0
+            else:
+                weight = 0
+
+        sector = row.get('Sector', 'Unknown')
+        if pd.isna(sector) or sector == '':
+            sector = 'Unknown'
+
         hist_data = fetch_historical_data(ticker, datetime.now() - timedelta(days=365), datetime.now())
         if hist_data is not None and len(hist_data) > 30:
             returns = hist_data['Close'].pct_change().dropna()
             vol = returns.std() * np.sqrt(252) * 100
-            risk_contribution = weight * vol
-            
+            # Ensure positive risk contribution (use absolute value, minimum 0.01)
+            risk_contribution = max(abs(weight * vol), 0.01) if weight > 0 else 0.01
+
             risk_data.append({
                 'Ticker': ticker,
                 'Sector': sector,
@@ -10314,24 +10329,33 @@ def create_risk_contribution_sunburst(df):
                 'Volatility': vol,
                 'Risk Contribution': risk_contribution
             })
-    
+
     if not risk_data:
         return None
-    
+
     risk_df = pd.DataFrame(risk_data)
-    
-    fig = px.sunburst(
-        risk_df,
-        path=['Sector', 'Ticker'],
-        values='Risk Contribution',
-        color='Volatility',
-        color_continuous_scale='RdYlGn_r',
-        title="☀️ Risk Contribution Sunburst"
-    )
-    
-    fig.update_layout(height=600)
-    apply_chart_theme(fig)
-    return fig
+
+    # Safety check: ensure Risk Contribution sum is positive
+    total_risk = risk_df['Risk Contribution'].sum()
+    if total_risk <= 0:
+        return None
+
+    try:
+        fig = px.sunburst(
+            risk_df,
+            path=['Sector', 'Ticker'],
+            values='Risk Contribution',
+            color='Volatility',
+            color_continuous_scale='RdYlGn_r',
+            title="Risk Contribution Sunburst"
+        )
+
+        fig.update_layout(height=600)
+        apply_chart_theme(fig)
+        return fig
+    except Exception as e:
+        print(f"Sunburst chart failed: {e}")
+        return None
 
 def create_risk_reward_plot(df):
     """Risk-reward scatter plot - ENHANCED THEMING"""
@@ -15538,15 +15562,23 @@ def main():
         # ========================================================================
         elif page == "📈 Risk Analysis":
             st.markdown('<h1 style="font-size: 2.5rem; font-weight: 800; color: #f8fafc; margin-bottom: 0.5rem;"><span style="font-size: 2rem;">📈</span> <span style="background: linear-gradient(135deg, #00d4ff, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">RISK ANALYSIS - WORLD CLASS</span></h1>', unsafe_allow_html=True)
-            
-            portfolio_data = load_portfolio_data()
-            
+
+            # CRITICAL FIX: Check session_state FIRST for fresh EE data
+            if 'portfolio_df' in st.session_state and st.session_state['portfolio_df'] is not None and len(st.session_state['portfolio_df']) > 0:
+                portfolio_data = st.session_state['portfolio_df']
+            else:
+                portfolio_data = load_portfolio_data()
+
             if portfolio_data is None or (isinstance(portfolio_data, pd.DataFrame) and portfolio_data.empty):
-                st.warning("⚠️ No portfolio data.")
+                st.warning("No portfolio data available.")
                 st.stop()
-            
-            df = pd.DataFrame(portfolio_data)
+
+            # Don't wrap in pd.DataFrame() - it destroys attrs
+            df = portfolio_data if isinstance(portfolio_data, pd.DataFrame) else pd.DataFrame(portfolio_data)
             enhanced_df = create_enhanced_holdings_table(df)
+
+            # Get currency from session state
+            currency_symbol = df.attrs.get('currency_symbol') or st.session_state.get('currency_symbol', '$')
             
             with st.spinner("Calculating..."):
                 portfolio_returns = calculate_portfolio_returns(df, start_date, end_date)
@@ -16455,17 +16487,25 @@ To maintain gradual transitions:
             import plotly.express as px
             from scipy import stats
             import numpy as np
-    
+
             st.markdown('<h1 style="font-size: 2.5rem; font-weight: 800; color: #f8fafc; margin-bottom: 0.5rem;"><span style="font-size: 2rem;">💎</span> <span style="background: linear-gradient(135deg, #00d4ff, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">PERFORMANCE SUITE</span></h1>', unsafe_allow_html=True)
-    
-            portfolio_data = load_portfolio_data()
-    
+
+            # CRITICAL FIX: Check session_state FIRST for fresh EE data
+            if 'portfolio_df' in st.session_state and st.session_state['portfolio_df'] is not None and len(st.session_state['portfolio_df']) > 0:
+                portfolio_data = st.session_state['portfolio_df']
+            else:
+                portfolio_data = load_portfolio_data()
+
             if portfolio_data is None or (isinstance(portfolio_data, pd.DataFrame) and portfolio_data.empty):
-                st.warning("⚠️ No portfolio data.")
+                st.warning("No portfolio data available.")
                 st.stop()
-    
-            df = pd.DataFrame(portfolio_data)
+
+            # Don't wrap in pd.DataFrame() - it destroys attrs
+            df = portfolio_data if isinstance(portfolio_data, pd.DataFrame) else pd.DataFrame(portfolio_data)
             enhanced_df = create_enhanced_holdings_table(df)
+
+            # Get currency from session state
+            currency_symbol = df.attrs.get('currency_symbol') or st.session_state.get('currency_symbol', '$')
     
             with st.spinner("Calculating portfolio metrics..."):
                 portfolio_returns = calculate_portfolio_returns(df, start_date, end_date)
@@ -17353,15 +17393,23 @@ To maintain gradual transitions:
         elif page == "🔬 Portfolio Deep Dive":
             st.markdown("## 🔬 PORTFOLIO DEEP DIVE - ENHANCED")
             st.markdown("---")
-    
-            portfolio_data = load_portfolio_data()
-            
+
+            # CRITICAL FIX: Check session_state FIRST for fresh EE data
+            if 'portfolio_df' in st.session_state and st.session_state['portfolio_df'] is not None and len(st.session_state['portfolio_df']) > 0:
+                portfolio_data = st.session_state['portfolio_df']
+            else:
+                portfolio_data = load_portfolio_data()
+
             if portfolio_data is None or (isinstance(portfolio_data, pd.DataFrame) and portfolio_data.empty):
-                st.warning("⚠️ No portfolio data.")
+                st.warning("No portfolio data available.")
                 st.stop()
-            
-            df = pd.DataFrame(portfolio_data)
+
+            # Don't wrap in pd.DataFrame() - it destroys attrs
+            df = portfolio_data if isinstance(portfolio_data, pd.DataFrame) else pd.DataFrame(portfolio_data)
             enhanced_df = create_enhanced_holdings_table(df)
+
+            # Get currency from session state
+            currency_symbol = df.attrs.get('currency_symbol') or st.session_state.get('currency_symbol', '$')
     
             tab1, tab2, tab3, tab4 = st.tabs([
                 "🎯 Attribution", "🔄 Sector Rotation", "📊 Concentration", "🏆 Brinson Attribution"
@@ -20227,14 +20275,23 @@ To maintain gradual transitions:
         elif page == "🎲 Monte Carlo Engine":
             st.markdown("### 🎲 Monte Carlo Simulation Engine")
             st.markdown("**Advanced Stochastic Modeling with Geometric Brownian Motion**")
-    
-            portfolio_data = load_portfolio_data()
-    
-            # ✅ FIX: Proper DataFrame empty check
-            if portfolio_data is None or (isinstance(portfolio_data, pd.DataFrame) and portfolio_data.empty):
-                st.warning("⚠️ Please upload portfolio data via Phoenix Parser first")
+
+            # CRITICAL FIX: Check session_state FIRST for fresh EE data
+            if 'portfolio_df' in st.session_state and st.session_state['portfolio_df'] is not None and len(st.session_state['portfolio_df']) > 0:
+                portfolio_data = st.session_state['portfolio_df']
             else:
-                st.success(f"✅ Portfolio loaded: {len(portfolio_data)} positions")
+                portfolio_data = load_portfolio_data()
+
+            # Get currency from session state
+            currency_symbol = st.session_state.get('currency_symbol', '$')
+            if isinstance(portfolio_data, pd.DataFrame):
+                currency_symbol = portfolio_data.attrs.get('currency_symbol') or currency_symbol
+
+            # Proper DataFrame empty check
+            if portfolio_data is None or (isinstance(portfolio_data, pd.DataFrame) and portfolio_data.empty):
+                st.warning("Please upload portfolio data via Phoenix Parser first")
+            else:
+                st.success(f"Portfolio loaded: {len(portfolio_data)} positions")
     
                 # Configuration
                 col1, col2, col3 = st.columns(3)
@@ -20442,17 +20499,26 @@ To maintain gradual transitions:
             import plotly.graph_objects as go
             import plotly.express as px
             import numpy as np
-    
+
             st.markdown("### 🧮 Quantitative Portfolio Optimizer")
             st.markdown("**Advanced Optimization using Multivariable Calculus & Analytical Gradients**")
-    
-            portfolio_data = load_portfolio_data()
-    
-            # ✅ FIX: Proper DataFrame empty check
-            if portfolio_data is None or (isinstance(portfolio_data, pd.DataFrame) and portfolio_data.empty):
-                st.warning("⚠️ Please upload portfolio data via Phoenix Parser first")
+
+            # CRITICAL FIX: Check session_state FIRST for fresh EE data
+            if 'portfolio_df' in st.session_state and st.session_state['portfolio_df'] is not None and len(st.session_state['portfolio_df']) > 0:
+                portfolio_data = st.session_state['portfolio_df']
             else:
-                st.success(f"✅ Portfolio loaded: {len(portfolio_data)} positions")
+                portfolio_data = load_portfolio_data()
+
+            # Get currency from session state
+            currency_symbol = st.session_state.get('currency_symbol', '$')
+            if isinstance(portfolio_data, pd.DataFrame):
+                currency_symbol = portfolio_data.attrs.get('currency_symbol') or currency_symbol
+
+            # Proper DataFrame empty check
+            if portfolio_data is None or (isinstance(portfolio_data, pd.DataFrame) and portfolio_data.empty):
+                st.warning("Please upload portfolio data via Phoenix Parser first")
+            else:
+                st.success(f"Portfolio loaded: {len(portfolio_data)} positions")
     
                 # Configuration
                 col1, col2, col3 = st.columns(3)
