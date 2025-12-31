@@ -73,6 +73,18 @@ from ui.components import (
     ATLAS_TEMPLATE, ATLAS_COLORS
 )
 
+# ============================================================================
+# BROKER INTEGRATION SYSTEM (Alpaca, Easy Equities, Manual Entry)
+# ============================================================================
+try:
+    from atlas_broker_manager import BrokerManager, ManualPortfolioAdapter
+    from atlas_broker_manager import display_manual_portfolio_editor
+    BROKER_MANAGER_AVAILABLE = True
+    print("✅ Broker Manager loaded (Alpaca, Easy Equities, Manual Entry)")
+except ImportError as e:
+    BROKER_MANAGER_AVAILABLE = False
+    print(f"⚠️ Broker Manager not available: {e}")
+
 # Auto-install streamlit_option_menu if missing
 try:
     from streamlit_option_menu import option_menu
@@ -4456,6 +4468,76 @@ def load_portfolio_data():
             return data
 
     return pd.DataFrame()  # ✅ FIX: Return empty DataFrame instead of empty list
+
+
+def get_portfolio_from_broker_or_legacy():
+    """
+    NEW: Unified portfolio data loader - checks broker adapter first, then falls back to legacy load
+
+    This function enables the new multi-broker system (Alpaca, Easy Equities, Manual Entry)
+    while maintaining backward compatibility with existing Phoenix Parser workflow.
+
+    Priority:
+    1. Check if broker adapter is active (Alpaca/EE/Manual) → use adapter.get_positions()
+    2. Check if fresh data in session_state['portfolio_df'] → use that
+    3. Fall back to load_portfolio_data() (SQL/pickle)
+
+    Returns:
+    --------
+    pd.DataFrame : Portfolio positions in ATLAS format
+    """
+    # Priority 1: Check for active broker adapter
+    if BROKER_MANAGER_AVAILABLE and 'active_broker' in st.session_state and st.session_state.active_broker:
+        try:
+            # Get the adapter based on broker type
+            broker_key = st.session_state.active_broker
+
+            if broker_key == 'manual' and 'manual_configured' in st.session_state:
+                adapter = ManualPortfolioAdapter()
+                positions = adapter.get_positions()
+                if not positions.empty:
+                    print(f"✅ Loaded {len(positions)} positions from Manual Entry")
+                    return positions
+
+            elif broker_key == 'alpaca' and 'alpaca_adapter' in st.session_state:
+                adapter = st.session_state.alpaca_adapter
+                positions = adapter.get_positions()
+                if not positions.empty:
+                    print(f"✅ Loaded {len(positions)} positions from Alpaca Markets")
+                    # Convert Alpaca format to ATLAS format
+                    atlas_format = positions.rename(columns={
+                        'ticker': 'Ticker',
+                        'quantity': 'Shares',
+                        'avg_cost': 'Avg Cost',
+                        'current_price': 'Current Price',
+                        'market_value': 'Market Value',
+                        'cost_basis': 'Cost Basis',
+                        'unrealized_pl': 'Unrealized P&L',
+                        'unrealized_plpc': 'Unrealized P&L %',
+                        'weight': 'Weight %'
+                    })
+                    return atlas_format
+
+            elif broker_key == 'easy_equities' and 'ee_adapter' in st.session_state:
+                adapter = st.session_state.ee_adapter
+                positions = adapter.get_positions()
+                if not positions.empty:
+                    print(f"✅ Loaded {len(positions)} positions from Easy Equities")
+                    return positions
+
+        except Exception as e:
+            print(f"⚠️ Broker data load failed: {e}, falling back to legacy")
+
+    # Priority 2: Check session_state for fresh Phoenix Parser data
+    if 'portfolio_df' in st.session_state and st.session_state['portfolio_df'] is not None:
+        if len(st.session_state['portfolio_df']) > 0:
+            print(f"✅ Using fresh data from session_state ({len(st.session_state['portfolio_df'])} positions)")
+            return st.session_state['portfolio_df']
+
+    # Priority 3: Fall back to legacy load (SQL → pickle)
+    print("📂 Loading from legacy system (SQL/pickle)")
+    return load_portfolio_data()
+
 
 def save_trade_history(df):
     """
@@ -12477,6 +12559,25 @@ def main():
         - **Returns:** Calculated on your ${equity_capital:,.0f} equity (leverage amplifies % returns)
         - **Risk Metrics:** VaR/CVaR applied to your equity, not gross exposure
         """)
+
+    # ============================================================================
+    # BROKER CONNECTION SYSTEM - Multi-broker support
+    # ============================================================================
+    # NEW: Alpaca Markets, Easy Equities, or Manual Entry
+    if BROKER_MANAGER_AVAILABLE:
+        with st.sidebar:
+            st.markdown("---")
+            with st.expander("🏦 Broker Connection", expanded=False):
+                broker_manager = BrokerManager()
+                broker_manager.display_broker_selection()
+
+                # Show active broker status
+                broker_manager.display_active_broker_status()
+
+                # If manual entry is selected, show the editor
+                if st.session_state.get('active_broker') == 'manual':
+                    st.markdown("---")
+                    display_manual_portfolio_editor()
 
     # ============================================================================
     # PHASE 1B: VERTICAL SIDEBAR NAVIGATION - FOMO-INSPIRED AESTHETICS
