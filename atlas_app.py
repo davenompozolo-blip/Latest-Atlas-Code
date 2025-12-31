@@ -258,34 +258,8 @@ with st.sidebar:
                 except:
                     has_secrets = False
 
-                if not has_secrets:
-                    # No secrets - show manual entry
-                    st.info("💡 Enter your Alpaca API credentials")
-
-                    with st.form("alpaca_credentials"):
-                        api_key = st.text_input("API Key", type="password")
-                        secret_key = st.text_input("Secret Key", type="password")
-                        use_paper = st.checkbox("Paper Trading", value=True)
-                        submitted = st.form_submit_button("Connect")
-
-                        if submitted and api_key and secret_key:
-                            with st.spinner("Connecting..."):
-                                try:
-                                    adapter = AlpacaAdapter(api_key, secret_key, paper=use_paper)
-                                    success, message = adapter.test_connection()
-
-                                    if success:
-                                        st.session_state.active_broker = 'alpaca'
-                                        st.session_state.alpaca_adapter = adapter
-                                        st.session_state.alpaca_configured = True
-                                        st.success("✅ Connected!")
-                                        st.rerun()
-                                    else:
-                                        st.error(f"Connection failed: {message}")
-                                except Exception as e:
-                                    st.error(f"Error: {str(e)}")
-                else:
-                    # Has secrets - auto-connect
+                if has_secrets:
+                    # Has secrets - auto-connect immediately
                     with st.spinner("Connecting to Alpaca..."):
                         try:
                             adapter = AlpacaAdapter(api_key, secret_key, paper=True)
@@ -301,6 +275,47 @@ with st.sidebar:
                                 st.error(f"Connection failed: {message}")
                         except Exception as e:
                             st.error(f"Error: {str(e)}")
+                else:
+                    # No secrets - set flag to show form
+                    st.session_state.show_alpaca_form = True
+                    st.rerun()
+
+            # Show Alpaca credentials form if needed (OUTSIDE button callback)
+            if st.session_state.get('show_alpaca_form', False):
+                st.info("💡 Enter your Alpaca API credentials")
+
+                with st.form("alpaca_credentials"):
+                    api_key = st.text_input("API Key", type="password")
+                    secret_key = st.text_input("Secret Key", type="password")
+                    use_paper = st.checkbox("Paper Trading", value=True)
+
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        submitted = st.form_submit_button("Connect", type="primary", use_container_width=True)
+                    with col2:
+                        cancelled = st.form_submit_button("Cancel", use_container_width=True)
+
+                    if cancelled:
+                        st.session_state.show_alpaca_form = False
+                        st.rerun()
+
+                    if submitted and api_key and secret_key:
+                        with st.spinner("Connecting..."):
+                            try:
+                                adapter = AlpacaAdapter(api_key, secret_key, paper=use_paper)
+                                success, message = adapter.test_connection()
+
+                                if success:
+                                    st.session_state.active_broker = 'alpaca'
+                                    st.session_state.alpaca_adapter = adapter
+                                    st.session_state.alpaca_configured = True
+                                    st.session_state.show_alpaca_form = False
+                                    st.success("✅ Connected!")
+                                    st.rerun()
+                                else:
+                                    st.error(f"Connection failed: {message}")
+                            except Exception as e:
+                                st.error(f"Error: {str(e)}")
 
     st.markdown("---")
 
