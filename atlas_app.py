@@ -250,28 +250,57 @@ with st.sidebar:
 
             # Alpaca Markets
             if st.button("🦙 Alpaca Markets", use_container_width=True, type="primary"):
-                with st.spinner("Connecting to Alpaca..."):
-                    try:
-                        # Auto-connect with paper trading credentials
-                        adapter = AlpacaAdapter(
-                            api_key=st.secrets.get("alpaca_key", ""),
-                            secret_key=st.secrets.get("alpaca_secret", ""),
-                            paper=True
-                        )
+                # Check if we have secrets
+                try:
+                    api_key = st.secrets.get("alpaca_key", "")
+                    secret_key = st.secrets.get("alpaca_secret", "")
+                    has_secrets = api_key and secret_key
+                except:
+                    has_secrets = False
 
-                        success, message = adapter.test_connection()
+                if not has_secrets:
+                    # No secrets - show manual entry
+                    st.info("💡 Enter your Alpaca API credentials")
 
-                        if success:
-                            st.session_state.active_broker = 'alpaca'
-                            st.session_state.alpaca_adapter = adapter
-                            st.session_state.alpaca_configured = True
-                            st.success("✅ Connected!")
-                            st.rerun()
-                        else:
-                            st.error(f"Connection failed: {message}")
-                    except Exception as e:
-                        st.error(f"Error: {str(e)}")
-                        st.info("Add API keys to `.streamlit/secrets.toml`")
+                    with st.form("alpaca_credentials"):
+                        api_key = st.text_input("API Key", type="password")
+                        secret_key = st.text_input("Secret Key", type="password")
+                        use_paper = st.checkbox("Paper Trading", value=True)
+                        submitted = st.form_submit_button("Connect")
+
+                        if submitted and api_key and secret_key:
+                            with st.spinner("Connecting..."):
+                                try:
+                                    adapter = AlpacaAdapter(api_key, secret_key, paper=use_paper)
+                                    success, message = adapter.test_connection()
+
+                                    if success:
+                                        st.session_state.active_broker = 'alpaca'
+                                        st.session_state.alpaca_adapter = adapter
+                                        st.session_state.alpaca_configured = True
+                                        st.success("✅ Connected!")
+                                        st.rerun()
+                                    else:
+                                        st.error(f"Connection failed: {message}")
+                                except Exception as e:
+                                    st.error(f"Error: {str(e)}")
+                else:
+                    # Has secrets - auto-connect
+                    with st.spinner("Connecting to Alpaca..."):
+                        try:
+                            adapter = AlpacaAdapter(api_key, secret_key, paper=True)
+                            success, message = adapter.test_connection()
+
+                            if success:
+                                st.session_state.active_broker = 'alpaca'
+                                st.session_state.alpaca_adapter = adapter
+                                st.session_state.alpaca_configured = True
+                                st.success("✅ Connected!")
+                                st.rerun()
+                            else:
+                                st.error(f"Connection failed: {message}")
+                        except Exception as e:
+                            st.error(f"Error: {str(e)}")
 
     st.markdown("---")
 
@@ -307,8 +336,84 @@ with st.sidebar:
 # MAIN CONTENT AREA
 # ============================================================================
 
-# Phoenix Mode Header
-st.markdown('<div class="phoenix-header">🔥 PHOENIX MODE 🔥</div>', unsafe_allow_html=True)
+# ATLAS Terminal Header - Professional Branding
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&display=swap');
+
+.atlas-terminal-header {
+    text-align: center;
+    padding: 2rem 0;
+    margin-bottom: 2rem;
+}
+
+.atlas-main-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 3.5rem;
+    font-weight: 900;
+    margin: 30px 0 10px 0;
+    letter-spacing: 0.15em;
+    color: transparent;
+    -webkit-text-stroke: 2px #00b8e6;
+    text-stroke: 2px #00b8e6;
+    text-shadow: 0 0 10px #00b8e6, 0 0 20px #00b8e6, 0 0 30px #00b8e6, 0 0 40px #6366f1, 0 0 70px #8b5cf6, 0 0 80px #8b5cf6;
+    filter: brightness(1.2);
+    animation: glow 2s ease-in-out infinite alternate;
+}
+
+@keyframes glow {
+    from {
+        text-shadow: 0 0 10px #00b8e6, 0 0 20px #00b8e6, 0 0 30px #00b8e6, 0 0 40px #6366f1;
+    }
+    to {
+        text-shadow: 0 0 20px #00b8e6, 0 0 30px #00b8e6, 0 0 40px #00b8e6, 0 0 50px #6366f1, 0 0 60px #8b5cf6;
+    }
+}
+
+.atlas-version {
+    font-family: 'Orbitron', monospace;
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: #00d4ff;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    margin: 10px 0;
+}
+
+.atlas-tagline {
+    font-family: 'Inter', sans-serif;
+    font-size: 1.1rem;
+    color: #94a3b8;
+    margin-top: 0.5rem;
+    font-weight: 400;
+}
+
+.phoenix-badge {
+    display: inline-block;
+    background: linear-gradient(90deg, #ff6b35 0%, #f7931e 50%, #ff6b35 100%);
+    padding: 0.5rem 1.5rem;
+    border-radius: 25px;
+    font-weight: 700;
+    font-size: 1.1rem;
+    color: white;
+    margin: 1rem 0;
+    box-shadow: 0 4px 15px rgba(255, 107, 53, 0.4);
+    animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+</style>
+
+<div class="atlas-terminal-header">
+    <h1 class="atlas-main-title">ATLAS TERMINAL</h1>
+    <p class="atlas-version">v10.0 Institutional Edition</p>
+    <div class="phoenix-badge">🔥 PHOENIX MODE 🔥</div>
+    <p class="atlas-tagline">Institutional Intelligence. Personal Scale.</p>
+</div>
+""", unsafe_allow_html=True)
 
 # ============================================================================
 # ROUTING LOGIC
@@ -319,43 +424,69 @@ if not st.session_state.get('active_broker'):
     # NOT CONNECTED - SHOW ONBOARDING
     # ========================================================================
 
-    st.title("Welcome to ATLAS Terminal v10.0")
-    st.markdown("### Professional-Grade Portfolio Analytics Platform")
+    st.markdown("""
+    <div style="text-align: center; padding: 2rem 0;">
+        <h2 style="font-size: 2.5rem; background: linear-gradient(135deg, #00d4ff, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: 800;">
+            Welcome to the Future of Portfolio Analytics
+        </h2>
+        <p style="font-size: 1.2rem; color: #94a3b8; margin-top: 1rem;">
+            Bloomberg Terminal quality. Personal scale. Zero complexity.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
 
     st.markdown("---")
 
-    # Feature overview
+    # Feature overview with enhanced styling
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        st.markdown("#### 📊 Real-Time Analytics")
         st.markdown("""
-        - Live portfolio tracking
-        - Performance attribution
-        - Risk decomposition
-        - Sector allocation
-        - Factor analysis
-        """)
+        <div style="background: linear-gradient(135deg, rgba(99,102,241,0.1), rgba(21,25,50,0.95));
+                    border-radius: 16px; padding: 1.5rem; border: 1px solid rgba(99,102,241,0.2);
+                    box-shadow: 0 4px 24px rgba(0,0,0,0.2);">
+            <h3 style="color: #00d4ff; font-size: 1.3rem; margin-bottom: 1rem;">📊 Real-Time Analytics</h3>
+            <ul style="color: #cbd5e1; line-height: 1.8;">
+                <li>Live portfolio tracking</li>
+                <li>Performance attribution</li>
+                <li>Risk decomposition</li>
+                <li>Sector allocation</li>
+                <li>Factor analysis</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
 
     with col2:
-        st.markdown("#### 🧮 Advanced Valuation")
         st.markdown("""
-        - DCF modeling
-        - Monte Carlo simulation
-        - Scenario analysis
-        - Fair value estimates
-        - Sensitivity analysis
-        """)
+        <div style="background: linear-gradient(135deg, rgba(6,182,212,0.1), rgba(21,25,50,0.95));
+                    border-radius: 16px; padding: 1.5rem; border: 1px solid rgba(6,182,212,0.2);
+                    box-shadow: 0 4px 24px rgba(0,0,0,0.2);">
+            <h3 style="color: #00d4ff; font-size: 1.3rem; margin-bottom: 1rem;">🧮 Advanced Valuation</h3>
+            <ul style="color: #cbd5e1; line-height: 1.8;">
+                <li>DCF modeling</li>
+                <li>Monte Carlo simulation</li>
+                <li>Scenario analysis</li>
+                <li>Fair value estimates</li>
+                <li>Sensitivity analysis</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
 
     with col3:
-        st.markdown("#### ⚖️ Optimization")
         st.markdown("""
-        - Mean-variance optimization
-        - Risk parity
-        - Black-Litterman
-        - Efficient frontier
-        - Rebalancing tools
-        """)
+        <div style="background: linear-gradient(135deg, rgba(16,185,129,0.1), rgba(21,25,50,0.95));
+                    border-radius: 16px; padding: 1.5rem; border: 1px solid rgba(16,185,129,0.2);
+                    box-shadow: 0 4px 24px rgba(0,0,0,0.2);">
+            <h3 style="color: #00d4ff; font-size: 1.3rem; margin-bottom: 1rem;">⚖️ Optimization</h3>
+            <ul style="color: #cbd5e1; line-height: 1.8;">
+                <li>Mean-variance optimization</li>
+                <li>Risk parity</li>
+                <li>Black-Litterman</li>
+                <li>Efficient frontier</li>
+                <li>Rebalancing tools</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
 
     st.markdown("---")
 
