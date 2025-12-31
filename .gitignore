@@ -45,3 +45,4 @@ Thumbs.db
 *.csv
 *.xlsx
 *.db
+.streamlit/secrets.toml
