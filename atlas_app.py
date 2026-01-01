@@ -12230,6 +12230,126 @@ class QuantOptimizer:
 
         return optimal_weights, optimal_sharpe, result
 
+    def generate_rebalancing_plan(self, optimal_weights, portfolio_data, currency_symbol='$'):
+        """
+        Generate detailed rebalancing plan with BUY/SELL/HOLD actions.
+
+        Args:
+            optimal_weights: Optimal portfolio weights from optimization
+            portfolio_data: Current portfolio DataFrame
+            currency_symbol: Currency symbol for display
+
+        Returns:
+            tuple: (rebalancing_df, metrics_dict)
+        """
+        # Detect ticker column name
+        ticker_column = 'Symbol' if 'Symbol' in portfolio_data.columns else 'Ticker'
+
+        # Get tickers from returns data (this is what was optimized)
+        optimized_tickers = list(self.returns.columns)
+
+        # Filter portfolio data to only include optimized tickers
+        portfolio_data = portfolio_data[portfolio_data[ticker_column].isin(optimized_tickers)].copy()
+
+        # Calculate current portfolio value and weights
+        if 'Quantity' in portfolio_data.columns and 'Current Price' in portfolio_data.columns:
+            portfolio_data['Total Value'] = portfolio_data['Quantity'] * portfolio_data['Current Price']
+        elif 'Total Value' not in portfolio_data.columns:
+            # Fallback: use market value if available
+            if 'Market Value' in portfolio_data.columns:
+                portfolio_data['Total Value'] = portfolio_data['Market Value']
+            else:
+                # Cannot generate rebalancing plan without position values
+                return None, None
+
+        total_portfolio_value = portfolio_data['Total Value'].sum()
+        portfolio_data['Current Weight'] = portfolio_data['Total Value'] / total_portfolio_value
+
+        # Build rebalancing dataframe
+        rebalancing_data = []
+        total_buy_value = 0
+        total_sell_value = 0
+
+        for i, ticker in enumerate(optimized_tickers):
+            # Get current position data
+            ticker_data = portfolio_data[portfolio_data[ticker_column] == ticker]
+
+            if ticker_data.empty:
+                # New position to add
+                current_weight = 0
+                current_value = 0
+                current_shares = 0
+                current_price = 0  # Would need to fetch
+            else:
+                current_weight = ticker_data['Current Weight'].values[0]
+                current_value = ticker_data['Total Value'].values[0]
+                current_shares = ticker_data['Quantity'].values[0] if 'Quantity' in ticker_data.columns else 0
+                current_price = ticker_data['Current Price'].values[0] if 'Current Price' in ticker_data.columns else 0
+
+            # Optimal position
+            optimal_weight = optimal_weights[i]
+            optimal_value = optimal_weight * total_portfolio_value
+            weight_diff = optimal_weight - current_weight
+
+            # Calculate trade details
+            if current_price > 0:
+                optimal_shares = optimal_value / current_price
+                shares_to_trade = optimal_shares - current_shares
+                trade_value = shares_to_trade * current_price
+            else:
+                optimal_shares = 0
+                shares_to_trade = 0
+                trade_value = 0
+
+            # Determine action (only flag if trade is meaningful > $100 or > 5 shares)
+            if abs(trade_value) > 100 or abs(shares_to_trade) > 5:
+                if shares_to_trade > 0:
+                    action = 'BUY'
+                    total_buy_value += abs(trade_value)
+                else:
+                    action = 'SELL'
+                    total_sell_value += abs(trade_value)
+            else:
+                action = 'HOLD'
+
+            rebalancing_data.append({
+                'Ticker': ticker,
+                'Current Weight (%)': current_weight * 100,
+                'Optimal Weight (%)': optimal_weight * 100,
+                'Weight Diff (%)': weight_diff * 100,
+                'Current Shares': int(current_shares),
+                'Target Shares': int(optimal_shares),
+                'Shares to Trade': int(shares_to_trade),
+                'Trade Value': trade_value,
+                'Action': action,
+                'Priority': abs(trade_value)  # For sorting
+            })
+
+        rebalancing_df = pd.DataFrame(rebalancing_data)
+        rebalancing_df = rebalancing_df.sort_values('Priority', ascending=False)
+
+        # Calculate metrics
+        buy_trades = len(rebalancing_df[rebalancing_df['Action'] == 'BUY'])
+        sell_trades = len(rebalancing_df[rebalancing_df['Action'] == 'SELL'])
+        hold_positions = len(rebalancing_df[rebalancing_df['Action'] == 'HOLD'])
+
+        # Estimate trading costs (assume 0.1% per trade)
+        trading_cost = (total_buy_value + total_sell_value) * 0.001
+
+        metrics = {
+            'total_portfolio_value': total_portfolio_value,
+            'buy_trades': buy_trades,
+            'sell_trades': sell_trades,
+            'hold_positions': hold_positions,
+            'total_buy_value': total_buy_value,
+            'total_sell_value': total_sell_value,
+            'estimated_trading_cost': trading_cost,
+            'total_trades': buy_trades + sell_trades,
+            'turnover_pct': (total_buy_value + total_sell_value) / (2 * total_portfolio_value) * 100 if total_portfolio_value > 0 else 0
+        }
+
+        return rebalancing_df, metrics
+
 
 class EnhancedDCFEngine:
     """
@@ -20993,137 +21113,209 @@ To maintain gradual transitions:
                     with col3:
                         max_weight = st.number_input("Max Weight per Asset", min_value=0.20, max_value=1.0, value=0.40, step=0.05, format="%.2f", key="classic_max")
 
-                if st.button("🚀 Optimize Portfolio (Max Sharpe Ratio)", type="primary", key="classic_optimize"):
-                    with st.spinner("Running optimization with analytical gradients..."):
-                        try:
-                            # ===== FIX #5: Handle Symbol vs Ticker column name =====
-                            ticker_column = 'Symbol' if 'Symbol' in portfolio_data.columns else 'Ticker'
-                            print(f"🎯 Detected ticker column: '{ticker_column}'")
+                    if st.button("🚀 Optimize Portfolio (Max Sharpe Ratio)", type="primary", key="classic_optimize"):
+                        with st.spinner("Running optimization with analytical gradients..."):
+                            try:
+                                # ===== FIX #5: Handle Symbol vs Ticker column name =====
+                                ticker_column = 'Symbol' if 'Symbol' in portfolio_data.columns else 'Ticker'
+                                print(f"🎯 Detected ticker column: '{ticker_column}'")
     
-                            # Get tickers
-                            tickers = portfolio_data[ticker_column].unique().tolist()
-                            print(f"🎯 Optimizing portfolio with {len(tickers)} tickers")
+                                # Get tickers
+                                tickers = portfolio_data[ticker_column].unique().tolist()
+                                print(f"🎯 Optimizing portfolio with {len(tickers)} tickers")
     
-                            # Download historical data
-                            hist_data = yf.download(tickers, period='2y', progress=False)['Close']
+                                # Download historical data
+                                hist_data = yf.download(tickers, period='2y', progress=False)['Close']
     
-                            if isinstance(hist_data, pd.Series):
-                                hist_data = hist_data.to_frame()
+                                if isinstance(hist_data, pd.Series):
+                                    hist_data = hist_data.to_frame()
     
-                            # Calculate returns
-                            returns = hist_data.pct_change().dropna()
+                                # Calculate returns
+                                returns = hist_data.pct_change().dropna()
     
-                            # Initialize QuantOptimizer
-                            optimizer = QuantOptimizer(returns_data=returns, risk_free_rate=risk_free_rate)
+                                # Initialize QuantOptimizer
+                                optimizer = QuantOptimizer(returns_data=returns, risk_free_rate=risk_free_rate)
     
-                            # Run optimization
-                            optimal_weights, optimal_sharpe, result = optimizer.optimize_max_sharpe(
-                                min_weight=min_weight,
-                                max_weight=max_weight
-                            )
+                                # Run optimization
+                                optimal_weights, optimal_sharpe, result = optimizer.optimize_max_sharpe(
+                                    min_weight=min_weight,
+                                    max_weight=max_weight
+                                )
     
-                            # Calculate optimal portfolio metrics
-                            optimal_return, optimal_vol = optimizer.portfolio_metrics(optimal_weights)
+                                # Calculate optimal portfolio metrics
+                                optimal_return, optimal_vol = optimizer.portfolio_metrics(optimal_weights)
     
-                            # Display results
-                            st.markdown("---")
-                            st.markdown("#### 🎯 Optimization Results")
+                                # Display results
+                                st.markdown("---")
+                                st.markdown("#### 🎯 Optimization Results")
     
-                            # Key metrics
-                            col1, col2, col3, col4 = st.columns(4)
+                                # Key metrics
+                                col1, col2, col3, col4 = st.columns(4)
 
-                            # Maximum Sharpe Ratio
-                            with col1:
-                                sharpe_color = '#10b981' if optimal_sharpe > 2.0 else ('#fbbf24' if optimal_sharpe > 1.0 else '#ef4444')
-                                sharpe_status = 'Excellent' if optimal_sharpe > 2.0 else ('Good' if optimal_sharpe > 1.0 else 'Fair')
-                                st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🎯</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">MAXIMUM SHARPE RATIO</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {sharpe_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{optimal_sharpe:.3f}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">{sharpe_status}</p></div></div>', unsafe_allow_html=True)
+                                # Maximum Sharpe Ratio
+                                with col1:
+                                    sharpe_color = '#10b981' if optimal_sharpe > 2.0 else ('#fbbf24' if optimal_sharpe > 1.0 else '#ef4444')
+                                    sharpe_status = 'Excellent' if optimal_sharpe > 2.0 else ('Good' if optimal_sharpe > 1.0 else 'Fair')
+                                    st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🎯</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">MAXIMUM SHARPE RATIO</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {sharpe_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{optimal_sharpe:.3f}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">{sharpe_status}</p></div></div>', unsafe_allow_html=True)
 
-                            # Expected Return
-                            with col2:
-                                ret_color = '#10b981' if optimal_return > 0.10 else ('#fbbf24' if optimal_return > 0.05 else '#ef4444')
-                                ret_status = 'Strong Growth' if optimal_return > 0.10 else ('Moderate Growth' if optimal_return > 0.05 else 'Low Growth')
-                                st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📈</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">EXPECTED RETURN</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {ret_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{optimal_return:+.2%}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{ret_status}</p></div></div>', unsafe_allow_html=True)
+                                # Expected Return
+                                with col2:
+                                    ret_color = '#10b981' if optimal_return > 0.10 else ('#fbbf24' if optimal_return > 0.05 else '#ef4444')
+                                    ret_status = 'Strong Growth' if optimal_return > 0.10 else ('Moderate Growth' if optimal_return > 0.05 else 'Low Growth')
+                                    st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📈</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">EXPECTED RETURN</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {ret_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{optimal_return:+.2%}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{ret_status}</p></div></div>', unsafe_allow_html=True)
 
-                            # Volatility
-                            with col3:
-                                vol_color = '#10b981' if optimal_vol < 0.15 else ('#fbbf24' if optimal_vol < 0.25 else '#ef4444')
-                                vol_status = 'Low Risk' if optimal_vol < 0.15 else ('Moderate Risk' if optimal_vol < 0.25 else 'High Risk')
-                                st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #0891b2); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📊</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">VOLATILITY</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {vol_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{optimal_vol:.2%}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #67e8f9; margin: 0; font-weight: 600;">{vol_status}</p></div></div>', unsafe_allow_html=True)
+                                # Volatility
+                                with col3:
+                                    vol_color = '#10b981' if optimal_vol < 0.15 else ('#fbbf24' if optimal_vol < 0.25 else '#ef4444')
+                                    vol_status = 'Low Risk' if optimal_vol < 0.15 else ('Moderate Risk' if optimal_vol < 0.25 else 'High Risk')
+                                    st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #0891b2); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📊</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">VOLATILITY</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {vol_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{optimal_vol:.2%}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #67e8f9; margin: 0; font-weight: 600;">{vol_status}</p></div></div>', unsafe_allow_html=True)
 
-                            # Convergence
-                            with col4:
-                                convergence_val = "Success" if result.success else "Warning"
-                                convergence_color = '#10b981' if result.success else '#fbbf24'
-                                convergence_icon = '✅' if result.success else '⚠️'
-                                st.markdown(f'<div style="background: linear-gradient(135deg, rgba(245,158,11,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(245,158,11,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #f59e0b, #d97706); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🔄</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">CONVERGENCE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {convergence_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{convergence_icon}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(245,158,11,0.12); border-radius: 10px; border: 1px solid rgba(245,158,11,0.25);"><p style="font-size: 0.7rem; color: #fbbf24; margin: 0; font-weight: 600;">{convergence_val}</p></div></div>', unsafe_allow_html=True)
+                                # Convergence
+                                with col4:
+                                    convergence_val = "Success" if result.success else "Warning"
+                                    convergence_color = '#10b981' if result.success else '#fbbf24'
+                                    convergence_icon = '✅' if result.success else '⚠️'
+                                    st.markdown(f'<div style="background: linear-gradient(135deg, rgba(245,158,11,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(245,158,11,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #f59e0b, #d97706); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🔄</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">CONVERGENCE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {convergence_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{convergence_icon}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(245,158,11,0.12); border-radius: 10px; border: 1px solid rgba(245,158,11,0.25);"><p style="font-size: 0.7rem; color: #fbbf24; margin: 0; font-weight: 600;">{convergence_val}</p></div></div>', unsafe_allow_html=True)
     
-                            # Optimal weights
-                            st.markdown("#### 📊 Optimal Portfolio Weights")
+                                # Optimal weights
+                                st.markdown("#### 📊 Optimal Portfolio Weights")
     
-                            weights_df = pd.DataFrame({
-                                'Symbol': returns.columns,
-                                'Optimal Weight': optimal_weights,
-                                'Weight %': [f"{w:.2%}" for w in optimal_weights]
-                            }).sort_values('Optimal Weight', ascending=False)
+                                weights_df = pd.DataFrame({
+                                    'Symbol': returns.columns,
+                                    'Optimal Weight': optimal_weights,
+                                    'Weight %': [f"{w:.2%}" for w in optimal_weights]
+                                }).sort_values('Optimal Weight', ascending=False)
     
-                            # Visualization
-                            fig = go.Figure()
-                            fig.add_trace(go.Bar(
-                                x=weights_df['Symbol'],
-                                y=weights_df['Optimal Weight'],
-                                marker_color='#00d4ff',
-                                text=weights_df['Weight %'],
-                                textposition='outside'
-                            ))
+                                # Visualization
+                                fig = go.Figure()
+                                fig.add_trace(go.Bar(
+                                    x=weights_df['Symbol'],
+                                    y=weights_df['Optimal Weight'],
+                                    marker_color='#00d4ff',
+                                    text=weights_df['Weight %'],
+                                    textposition='outside'
+                                ))
     
-                            fig.update_layout(
-                                title="Optimal Portfolio Allocation (Maximum Sharpe Ratio)",
-                                xaxis_title="Symbol",
-                                yaxis_title="Weight",
-                                height=400
-                            )
-                            apply_chart_theme(fig)
-                            st.plotly_chart(fig, use_container_width=True)
+                                fig.update_layout(
+                                    title="Optimal Portfolio Allocation (Maximum Sharpe Ratio)",
+                                    xaxis_title="Symbol",
+                                    yaxis_title="Weight",
+                                    height=400
+                                )
+                                apply_chart_theme(fig)
+                                st.plotly_chart(fig, use_container_width=True)
     
-                            # Table
-                            make_scrollable_table(weights_df, height=400, hide_index=True, use_container_width=True)
+                                # Table
+                                make_scrollable_table(weights_df, height=400, hide_index=True, use_container_width=True)
+
+                                # ===================================================================
+                                # REBALANCING PLAN (from Risk Analysis VaR/CVaR optimizer)
+                                # ===================================================================
+                                st.markdown("---")
+                                st.markdown("#### 🔄 Rebalancing Plan")
+
+                                # Generate rebalancing plan with BUY/SELL/HOLD actions
+                                rebalancing_df, rebalance_metrics = optimizer.generate_rebalancing_plan(
+                                    optimal_weights,
+                                    portfolio_data,
+                                    currency_symbol
+                                )
+
+                                if rebalancing_df is not None and rebalance_metrics is not None:
+                                    # Display rebalancing metrics
+                                    col1, col2, col3, col4 = st.columns(4)
+
+                                    with col1:
+                                        st.metric(
+                                            "Total Trades",
+                                            rebalance_metrics['total_trades'],
+                                            f"{rebalance_metrics['buy_trades']} BUY / {rebalance_metrics['sell_trades']} SELL"
+                                        )
+
+                                    with col2:
+                                        st.metric(
+                                            "Turnover",
+                                            f"{rebalance_metrics['turnover_pct']:.1f}%",
+                                            help="Percentage of portfolio being rebalanced"
+                                        )
+
+                                    with col3:
+                                        st.metric(
+                                            "Buy Value",
+                                            f"{currency_symbol}{rebalance_metrics['total_buy_value']:,.0f}",
+                                            help="Total value of BUY orders"
+                                        )
+
+                                    with col4:
+                                        st.metric(
+                                            "Trading Cost (est.)",
+                                            f"{currency_symbol}{rebalance_metrics['estimated_trading_cost']:,.0f}",
+                                            help="Estimated trading costs (0.1% of turnover)"
+                                        )
+
+                                    # Display rebalancing table
+                                    st.markdown("**Rebalancing Actions:**")
+
+                                    # Style the dataframe
+                                    def color_action(val):
+                                        if val == 'BUY':
+                                            return 'background-color: rgba(16,185,129,0.2); color: #10b981'
+                                        elif val == 'SELL':
+                                            return 'background-color: rgba(239,68,68,0.2); color: #ef4444'
+                                        else:
+                                            return 'background-color: rgba(148,163,184,0.1); color: #94a3b8'
+
+                                    styled_rebalance_df = rebalancing_df[['Ticker', 'Current Weight (%)', 'Optimal Weight (%)',
+                                                                          'Weight Diff (%)', 'Shares to Trade', 'Trade Value', 'Action']].style.applymap(
+                                        color_action, subset=['Action']
+                                    ).format({
+                                        'Current Weight (%)': '{:.2f}%',
+                                        'Optimal Weight (%)': '{:.2f}%',
+                                        'Weight Diff (%)': '{:+.2f}%',
+                                        'Trade Value': f'{currency_symbol}{{:,.0f}}'
+                                    })
+
+                                    make_scrollable_table(styled_rebalance_df, height=400, hide_index=True, use_container_width=True)
+
+                                    st.success("✅ Portfolio optimization completed successfully!")
+                                    st.info("💡 This optimization uses analytical gradients (∂Sharpe/∂w_i) and SLSQP algorithm for maximum precision")
+                                else:
+                                    # Fallback to simple comparison if rebalancing plan fails
+                                    st.markdown("#### 🔄 Current vs Optimal Allocation")
+
+                                    total_value = (portfolio_data['Quantity'] * portfolio_data['Current Price']).sum()
+                                    portfolio_data['Current Weight'] = (portfolio_data['Quantity'] * portfolio_data['Current Price']) / total_value
+
+                                    comparison_df = pd.DataFrame({
+                                        'Symbol': returns.columns
+                                    })
+
+                                    comparison_df['Optimal Weight'] = optimal_weights
+                                    comparison_df = comparison_df.merge(
+                                        portfolio_data[['Symbol', 'Current Weight']],
+                                        on='Symbol',
+                                        how='left'
+                                    )
+                                    comparison_df['Current Weight'] = comparison_df['Current Weight'].fillna(0)
+                                    comparison_df['Change'] = comparison_df['Optimal Weight'] - comparison_df['Current Weight']
+
+                                    make_scrollable_table(
+                                        comparison_df.style.format({
+                                            'Current Weight': '{:.2%}',
+                                            'Optimal Weight': '{:.2%}',
+                                            'Change': '{:+.2%}'
+                                        }),
+                                        height=400,
+                                        hide_index=True,
+                                        use_container_width=True
+                                    )
+
+                                    st.success("✅ Portfolio optimization completed successfully!")
+                                    st.info("💡 This optimization uses analytical gradients (∂Sharpe/∂w_i) and SLSQP algorithm for maximum precision")
     
-                            # Current vs Optimal comparison
-                            st.markdown("#### 🔄 Current vs Optimal Allocation")
-    
-                            total_value = (portfolio_data['Quantity'] * portfolio_data['Current Price']).sum()
-                            portfolio_data['Current Weight'] = (portfolio_data['Quantity'] * portfolio_data['Current Price']) / total_value
-    
-                            comparison_df = pd.DataFrame({
-                                'Symbol': returns.columns
-                            })
-    
-                            comparison_df['Optimal Weight'] = optimal_weights
-                            comparison_df = comparison_df.merge(
-                                portfolio_data[['Symbol', 'Current Weight']],
-                                on='Symbol',
-                                how='left'
-                            )
-                            comparison_df['Current Weight'] = comparison_df['Current Weight'].fillna(0)
-                            comparison_df['Change'] = comparison_df['Optimal Weight'] - comparison_df['Current Weight']
-    
-                            make_scrollable_table(
-                                comparison_df.style.format({
-                                    'Current Weight': '{:.2%}',
-                                    'Optimal Weight': '{:.2%}',
-                                    'Change': '{:+.2%}'
-                                }),
-                                height=400,
-                                hide_index=True,
-                                use_container_width=True
-                            )
-    
-                            st.success("✅ Portfolio optimization completed successfully!")
-                            st.info("💡 This optimization uses analytical gradients (∂Sharpe/∂w_i) and SLSQP algorithm for maximum precision")
-    
-                        except Exception as e:
-                            st.error(f"❌ Optimization error: {str(e)}")
-                            st.info("💡 Ensure your portfolio has at least 2 positions with sufficient historical data")
+                            except Exception as e:
+                                st.error(f"❌ Optimization error: {str(e)}")
+                                st.info("💡 Ensure your portfolio has at least 2 positions with sufficient historical data")
 
                 with opt_tab2:
                     st.markdown("#### PM-Grade Portfolio Optimization")
