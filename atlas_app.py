@@ -21098,7 +21098,7 @@ To maintain gradual transitions:
                 st.markdown("---")
 
                 # Optimization method selection
-                opt_tab1, opt_tab2 = st.tabs(["📊 Classic Sharpe", "🎯 PM-Grade (Sortino)"])
+                opt_tab1, opt_tab2, opt_tab3 = st.tabs(["📊 Classic Sharpe", "🎯 PM-Grade (Sortino)", "🎯 Position-Aware Rebalancing"])
 
                 with opt_tab1:
                     st.markdown("#### Classic Mean-Variance Optimization")
@@ -22038,6 +22038,264 @@ To maintain gradual transitions:
                                     with st.expander("Error Details"):
                                         st.code(traceback.format_exc())
                                     st.info("💡 Ensure your portfolio has at least 3 positions with 2 years of historical data")
+
+                with opt_tab3:
+                    st.markdown("#### Position-Aware Portfolio Rebalancing")
+                    st.caption("Optimize FROM your current positions with exact trade recommendations")
+
+                    st.info("""
+                    **🎯 Position-Aware Features:**
+                    - **Knows Current Holdings**: Optimizes from where you are TODAY
+                    - **Exact Trades**: Shows BUY/SELL/HOLD actions with dollar amounts
+                    - **Transaction Costs**: Accounts for spread and market impact
+                    - **Drift Constraints**: Limits max change per position (realistic)
+                    - **Net Benefit**: Only rebalances if improvement > costs
+
+                    **Philosophy:** Ground optimization in reality, not theory
+                    """)
+
+                    # Configuration
+                    col1, col2, col3 = st.columns(3)
+
+                    with col1:
+                        max_drift = st.slider(
+                            "Max Position Change",
+                            min_value=5,
+                            max_value=30,
+                            value=10,
+                            step=5,
+                            help="Maximum % change per position (e.g., 10% = can move from 20% to 30%)",
+                            key="position_max_drift"
+                        ) / 100
+
+                    with col2:
+                        objective_choice = st.selectbox(
+                            "Optimization Objective",
+                            ['Sortino Ratio', 'Sharpe Ratio', 'Min Volatility'],
+                            help="Sortino focuses on downside risk only",
+                            key="position_objective"
+                        )
+
+                        objective_map = {
+                            'Sortino Ratio': 'sortino',
+                            'Sharpe Ratio': 'sharpe',
+                            'Min Volatility': 'min_volatility'
+                        }
+                        objective = objective_map[objective_choice]
+
+                    with col3:
+                        max_position = st.number_input(
+                            "Max Weight per Asset",
+                            min_value=0.10,
+                            max_value=1.0,
+                            value=0.40,
+                            step=0.05,
+                            format="%.2f",
+                            key="position_max_weight"
+                        )
+
+                    if st.button("🎯 Generate Rebalancing Plan", type="primary", key="position_optimize"):
+                        with st.spinner("Analyzing current portfolio and generating trades..."):
+                            try:
+                                from position_aware_optimizer import PositionAwareOptimizer
+
+                                # Get tickers
+                                ticker_column = 'Symbol' if 'Symbol' in portfolio_data.columns else 'Ticker'
+                                tickers = portfolio_data[ticker_column].unique().tolist()
+
+                                # Download historical data
+                                hist_data = yf.download(tickers, period='2y', progress=False)['Close']
+
+                                if isinstance(hist_data, pd.Series):
+                                    hist_data = hist_data.to_frame()
+
+                                # Calculate returns
+                                returns = hist_data.pct_change().dropna()
+
+                                # Calculate current portfolio
+                                if 'Total Value' in portfolio_data.columns:
+                                    total_value = portfolio_data['Total Value'].sum()
+                                else:
+                                    total_value = (portfolio_data['Quantity'] * portfolio_data['Current Price']).sum()
+
+                                current_portfolio = {}
+                                current_prices = {}
+
+                                for ticker in tickers:
+                                    ticker_data = portfolio_data[portfolio_data[ticker_column] == ticker]
+                                    if len(ticker_data) > 0:
+                                        if 'Total Value' in ticker_data.columns:
+                                            ticker_value = ticker_data['Total Value'].sum()
+                                        else:
+                                            ticker_value = (ticker_data['Quantity'] * ticker_data['Current Price']).sum()
+
+                                        current_portfolio[ticker] = ticker_value / total_value
+
+                                        # Get current price
+                                        if 'Current Price' in ticker_data.columns:
+                                            current_prices[ticker] = ticker_data['Current Price'].iloc[0]
+
+                                # Initialize Position-Aware Optimizer
+                                optimizer = PositionAwareOptimizer(
+                                    current_portfolio=current_portfolio,
+                                    returns_df=returns,
+                                    portfolio_value=total_value,
+                                    current_prices=current_prices
+                                )
+
+                                # Run optimization
+                                results = optimizer.optimize_from_current(
+                                    max_drift=max_drift,
+                                    objective=objective,
+                                    max_weight=max_position
+                                )
+
+                                # ================================================================
+                                # DISPLAY RESULTS
+                                # ================================================================
+
+                                st.markdown("---")
+                                st.markdown("### 📊 Rebalancing Analysis")
+
+                                # Recommendation banner
+                                if results['recommendation'] == 'REBALANCE':
+                                    st.success(f"""
+                                    ✅ **REBALANCING RECOMMENDED**
+
+                                    Net Benefit: **{currency_symbol}{results['net_benefit']:,.0f}**
+
+                                    Expected improvement ({results['improvement']['metric_name']}: {results['improvement']['metric_delta']:+.3f})
+                                    exceeds transaction costs ({currency_symbol}{results['costs']['total']:,.0f}).
+                                    """)
+                                else:
+                                    st.warning(f"""
+                                    ⏸️ **HOLD CURRENT POSITIONS**
+
+                                    Net Benefit: **{currency_symbol}{results['net_benefit']:,.0f}**
+
+                                    Transaction costs ({currency_symbol}{results['costs']['total']:,.0f}) outweigh expected benefit
+                                    ({results['improvement']['metric_name']}: {results['improvement']['metric_delta']:+.3f}).
+                                    """)
+
+                                # Current vs Target Metrics
+                                st.markdown("#### 📈 Portfolio Metrics Comparison")
+
+                                col1, col2 = st.columns(2)
+
+                                with col1:
+                                    st.markdown("**Current Portfolio**")
+                                    current_m = results['current_metrics']
+                                    st.metric("Annual Return", f"{current_m['annual_return']:.2%}")
+                                    st.metric("Volatility", f"{current_m['annual_volatility']:.2%}")
+                                    st.metric("Sharpe Ratio", f"{current_m['sharpe_ratio']:.3f}")
+                                    st.metric("Sortino Ratio", f"{current_m['sortino_ratio']:.3f}")
+                                    st.metric("VaR 95%", f"{current_m['var_95']:.2%}")
+
+                                with col2:
+                                    st.markdown("**Target Portfolio**")
+                                    target_m = results['target_metrics']
+                                    st.metric("Annual Return", f"{target_m['annual_return']:.2%}",
+                                             delta=f"{results['improvement']['return_delta']:+.2%}")
+                                    st.metric("Volatility", f"{target_m['annual_volatility']:.2%}",
+                                             delta=f"{results['improvement']['volatility_delta']:+.2%}",
+                                             delta_color="inverse")
+                                    st.metric("Sharpe Ratio", f"{target_m['sharpe_ratio']:.3f}",
+                                             delta=f"{results['improvement']['sharpe_delta']:+.3f}")
+                                    st.metric("Sortino Ratio", f"{target_m['sortino_ratio']:.3f}",
+                                             delta=f"{results['improvement']['sortino_delta']:+.3f}")
+                                    st.metric("VaR 95%", f"{target_m['var_95']:.2%}",
+                                             delta=f"{(target_m['var_95'] - current_m['var_95']):+.2%}",
+                                             delta_color="inverse")
+
+                                # Transaction Cost Breakdown
+                                st.markdown("---")
+                                st.markdown("#### 💰 Transaction Cost Analysis")
+
+                                cost_col1, cost_col2, cost_col3, cost_col4 = st.columns(4)
+
+                                with cost_col1:
+                                    st.metric("Spread Cost", f"{currency_symbol}{results['costs']['spread']:,.0f}",
+                                             help="Bid-ask spread cost (~5 bps)")
+
+                                with cost_col2:
+                                    st.metric("Market Impact", f"{currency_symbol}{results['costs']['impact']:,.0f}",
+                                             help="Price impact of large trades")
+
+                                with cost_col3:
+                                    st.metric("Commission", f"{currency_symbol}{results['costs']['commission']:,.0f}",
+                                             help="Broker commissions (usually $0)")
+
+                                with cost_col4:
+                                    st.metric("Total Cost", f"{currency_symbol}{results['costs']['total']:,.0f}",
+                                             help="Total transaction costs")
+
+                                # Trade Details
+                                if results['trades']:
+                                    st.markdown("---")
+                                    st.markdown("#### 📝 Required Trades")
+
+                                    st.caption(f"**{len(results['trades'])} trades required** | Sorted by dollar amount (largest first)")
+
+                                    # Create trades DataFrame
+                                    trades_display = []
+                                    for trade in results['trades']:
+                                        trades_display.append({
+                                            'Action': trade['action'],
+                                            'Ticker': trade['ticker'],
+                                            'Current Weight': f"{trade['current_weight']:.2%}",
+                                            'Target Weight': f"{trade['target_weight']:.2%}",
+                                            'Change': f"{trade['delta_weight']:+.2%}",
+                                            'Current Shares': f"{trade['current_shares']:,}",
+                                            'Target Shares': f"{trade['target_shares']:,}",
+                                            'Shares to Trade': f"{trade['delta_shares']:,}",
+                                            'Dollar Amount': f"{currency_symbol}{trade['delta_value']:,.0f}",
+                                            'Price': f"{currency_symbol}{trade['price']:.2f}"
+                                        })
+
+                                    trades_df = pd.DataFrame(trades_display)
+
+                                    # Style the dataframe
+                                    def color_action_row(row):
+                                        if row['Action'] == 'BUY':
+                                            return ['background-color: rgba(16,185,129,0.1)'] * len(row)
+                                        else:
+                                            return ['background-color: rgba(239,68,68,0.1)'] * len(row)
+
+                                    styled_trades = trades_df.style.apply(color_action_row, axis=1)
+
+                                    st.dataframe(styled_trades, use_container_width=True, hide_index=True)
+
+                                    # Download trades as CSV
+                                    csv = trades_df.to_csv(index=False)
+                                    st.download_button(
+                                        label="📥 Download Trade List (CSV)",
+                                        data=csv,
+                                        file_name="rebalancing_trades.csv",
+                                        mime="text/csv"
+                                    )
+
+                                else:
+                                    st.info("✅ No trades required - portfolio is already optimal within drift constraints")
+
+                                # Portfolio turnover
+                                turnover = optimizer.calculate_turnover(
+                                    np.array([results['target_weights'][ticker] for ticker in returns.columns])
+                                )
+
+                                st.markdown("---")
+                                st.info(f"""
+                                **Portfolio Turnover:** {turnover:.1%}
+
+                                This represents the percentage of your portfolio that would be traded.
+                                Lower turnover = lower costs and tax impact.
+                                """)
+
+                            except Exception as e:
+                                st.error(f"❌ Position-aware optimization error: {str(e)}")
+                                import traceback
+                                with st.expander("Error Details"):
+                                    st.code(traceback.format_exc())
+                                st.info("💡 Ensure your portfolio has at least 2 positions with sufficient historical data")
 
         # ========================================================================
         # LEVERAGE TRACKER (v11.0) - NEW FEATURE
