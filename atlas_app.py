@@ -22447,11 +22447,27 @@ To maintain gradual transitions:
                             key="position_max_weight"
                         )
 
+                    # Regime-Aware Toggle (Phase 3)
+                    st.markdown("---")
+                    use_regime_awareness = st.checkbox(
+                        "🌐 Use Regime-Aware Optimization",
+                        value=True,
+                        help="Apply market regime detection to tilt sector allocations based on current market conditions",
+                        key="use_regime_awareness"
+                    )
+
+                    if use_regime_awareness:
+                        st.info("""
+                        **🌐 Regime-Aware Enhancement:**
+                        - Detects current market regime (RISK-ON, RISK-OFF, TRANSITIONAL, NEUTRAL)
+                        - Applies sector tilts based on regime (e.g., overweight Tech in RISK-ON)
+                        - Adjusts expected returns using regime overlay
+                        - Provides regime context for each trade
+                        """)
+
                     if st.button("🎯 Generate Rebalancing Plan", type="primary", key="position_optimize"):
                         with st.spinner("Analyzing current portfolio and generating trades..."):
                             try:
-                                from position_aware_optimizer import PositionAwareOptimizer
-
                                 # Get tickers
                                 ticker_column = 'Symbol' if 'Symbol' in portfolio_data.columns else 'Ticker'
                                 tickers = portfolio_data[ticker_column].unique().tolist()
@@ -22488,26 +22504,137 @@ To maintain gradual transitions:
                                         if 'Current Price' in ticker_data.columns:
                                             current_prices[ticker] = ticker_data['Current Price'].iloc[0]
 
-                                # Initialize Position-Aware Optimizer
-                                optimizer = PositionAwareOptimizer(
-                                    current_portfolio=current_portfolio,
-                                    returns_df=returns,
-                                    portfolio_value=total_value,
-                                    current_prices=current_prices
-                                )
+                                # ================================================================
+                                # REGIME-AWARE OR STANDARD OPTIMIZATION
+                                # ================================================================
+                                if use_regime_awareness:
+                                    from regime_aware_optimizer import RegimeAwarePositionOptimizer
 
-                                # Run optimization
-                                results = optimizer.optimize_from_current(
-                                    max_drift=max_drift,
-                                    objective=objective,
-                                    max_weight=max_position
-                                )
+                                    # Create sector map from yfinance data
+                                    st.info("🔍 Fetching sector data for regime analysis...")
+                                    sector_map = {}
+                                    for ticker in tickers:
+                                        try:
+                                            stock = yf.Ticker(ticker)
+                                            info = stock.info
+                                            sector_map[ticker] = info.get('sector', 'Unknown')
+                                        except:
+                                            sector_map[ticker] = 'Unknown'
+
+                                    # Initialize Regime-Aware Optimizer
+                                    optimizer = RegimeAwarePositionOptimizer(
+                                        current_portfolio=current_portfolio,
+                                        returns_df=returns,
+                                        sector_map=sector_map,
+                                        portfolio_value=total_value,
+                                        current_prices=current_prices
+                                    )
+
+                                    # Run regime-aware optimization
+                                    results = optimizer.optimize_with_regime_awareness(
+                                        max_drift=max_drift,
+                                        objective=objective,
+                                        max_weight=max_position,
+                                        use_regime_tilts=True
+                                    )
+
+                                else:
+                                    from position_aware_optimizer import PositionAwareOptimizer
+
+                                    # Initialize Position-Aware Optimizer
+                                    optimizer = PositionAwareOptimizer(
+                                        current_portfolio=current_portfolio,
+                                        returns_df=returns,
+                                        portfolio_value=total_value,
+                                        current_prices=current_prices
+                                    )
+
+                                    # Run optimization
+                                    results = optimizer.optimize_from_current(
+                                        max_drift=max_drift,
+                                        objective=objective,
+                                        max_weight=max_position
+                                    )
 
                                 # ================================================================
                                 # DISPLAY RESULTS
                                 # ================================================================
 
                                 st.markdown("---")
+
+                                # ================================================================
+                                # REGIME CLASSIFICATION (if regime-aware)
+                                # ================================================================
+                                if use_regime_awareness and 'regime' in results:
+                                    regime_info = results['regime']
+                                    regime = regime_info['regime']
+                                    regime_label = regime_info['regime_label']
+                                    confidence = regime_info['confidence']
+                                    score = regime_info['score']
+                                    max_score = regime_info['max_score']
+
+                                    # Regime banner colors
+                                    regime_colors = {
+                                        'risk_on': ('#10b981', '🟢'),
+                                        'risk_off': ('#ef4444', '🔴'),
+                                        'transitional': ('#f59e0b', '🟡'),
+                                        'neutral': ('#94a3b8', '⚪')
+                                    }
+                                    banner_color, regime_emoji = regime_colors.get(regime, ('#94a3b8', '⚪'))
+
+                                    st.markdown(f"""
+                                    <div style="background: linear-gradient(135deg, rgba(139,92,246,0.12), rgba(21,25,50,0.95));
+                                                backdrop-filter: blur(24px); border-radius: 16px;
+                                                border: 2px solid {banner_color}; padding: 1.5rem;
+                                                box-shadow: 0 4px 24px rgba(0,0,0,0.3); margin-bottom: 1.5rem;">
+                                        <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem;">
+                                            <span style="font-size: 2rem;">{regime_emoji}</span>
+                                            <div>
+                                                <h3 style="margin: 0; color: {banner_color}; font-size: 1.5rem; font-weight: 800;">
+                                                    {regime_label} REGIME DETECTED
+                                                </h3>
+                                                <p style="margin: 0.25rem 0 0 0; color: #94a3b8; font-size: 0.9rem;">
+                                                    Confidence: {confidence:.0f}% | Score: {score:+d}/{max_score}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    """, unsafe_allow_html=True)
+
+                                    # Regime reasoning and sector tilts
+                                    with st.expander("🌐 Regime Analysis Details", expanded=False):
+                                        st.markdown("**Market Indicators:**")
+                                        for reason in regime_info['reasoning']:
+                                            st.markdown(f"• {reason}")
+
+                                        st.markdown("---")
+                                        st.markdown("**Sector Tilts Applied:**")
+
+                                        sector_tilts = results.get('sector_tilts', {})
+                                        if sector_tilts:
+                                            tilt_data = []
+                                            for sector, tilt in sorted(sector_tilts.items(), key=lambda x: x[1], reverse=True):
+                                                if tilt > 1.0:
+                                                    action = "OVERWEIGHT"
+                                                    color = "🟢"
+                                                elif tilt < 1.0:
+                                                    action = "UNDERWEIGHT"
+                                                    color = "🔴"
+                                                else:
+                                                    action = "NEUTRAL"
+                                                    color = "⚪"
+
+                                                tilt_data.append({
+                                                    ' ': color,
+                                                    'Sector': sector,
+                                                    'Tilt': f"{tilt:.2f}x",
+                                                    'Action': action,
+                                                    'Weight Change': f"{(tilt - 1.0) * 100:+.0f}%"
+                                                })
+
+                                            tilt_df = pd.DataFrame(tilt_data)
+                                            st.dataframe(tilt_df, use_container_width=True, hide_index=True)
+
                                 st.markdown("### 📊 Rebalancing Analysis")
 
                                 # Recommendation banner
@@ -22617,6 +22744,41 @@ To maintain gradual transitions:
                                     styled_trades = trades_df.style.apply(color_action_row, axis=1)
 
                                     st.dataframe(styled_trades, use_container_width=True, hide_index=True)
+
+                                    # Regime-aware trade rationales
+                                    if use_regime_awareness and 'trade_rationales' in results:
+                                        st.markdown("---")
+                                        st.markdown("#### 🌐 Trade Rationales (Regime Context)")
+
+                                        for rationale in results['trade_rationales']:
+                                            ticker = rationale['ticker']
+                                            action = rationale['action']
+                                            sector = rationale['sector']
+                                            tilt = rationale['tilt']
+                                            reason = rationale['reason']
+
+                                            # Color based on action
+                                            if action == 'BUY':
+                                                icon = '📈'
+                                                color = '#10b981'
+                                            else:
+                                                icon = '📉'
+                                                color = '#ef4444'
+
+                                            st.markdown(f"""
+                                            <div style="background: linear-gradient(135deg, rgba(139,92,246,0.05), rgba(21,25,50,0.95));
+                                                        border-left: 4px solid {color}; padding: 1rem; margin-bottom: 0.75rem;
+                                                        border-radius: 8px;">
+                                                <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
+                                                    <span style="font-size: 1.25rem;">{icon}</span>
+                                                    <strong style="color: {color}; font-size: 1rem;">{action} {ticker}</strong>
+                                                    <span style="color: #94a3b8; font-size: 0.85rem;">({sector} | Tilt: {tilt:.2f}x)</span>
+                                                </div>
+                                                <p style="margin: 0; color: #cbd5e1; font-size: 0.9rem; line-height: 1.5;">
+                                                    {reason}
+                                                </p>
+                                            </div>
+                                            """, unsafe_allow_html=True)
 
                                     # Download trades as CSV
                                     csv = trades_df.to_csv(index=False)
