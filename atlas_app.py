@@ -12230,6 +12230,126 @@ class QuantOptimizer:
 
         return optimal_weights, optimal_sharpe, result
 
+    def generate_rebalancing_plan(self, optimal_weights, portfolio_data, currency_symbol='$'):
+        """
+        Generate detailed rebalancing plan with BUY/SELL/HOLD actions.
+
+        Args:
+            optimal_weights: Optimal portfolio weights from optimization
+            portfolio_data: Current portfolio DataFrame
+            currency_symbol: Currency symbol for display
+
+        Returns:
+            tuple: (rebalancing_df, metrics_dict)
+        """
+        # Detect ticker column name
+        ticker_column = 'Symbol' if 'Symbol' in portfolio_data.columns else 'Ticker'
+
+        # Get tickers from returns data (this is what was optimized)
+        optimized_tickers = list(self.returns.columns)
+
+        # Filter portfolio data to only include optimized tickers
+        portfolio_data = portfolio_data[portfolio_data[ticker_column].isin(optimized_tickers)].copy()
+
+        # Calculate current portfolio value and weights
+        if 'Quantity' in portfolio_data.columns and 'Current Price' in portfolio_data.columns:
+            portfolio_data['Total Value'] = portfolio_data['Quantity'] * portfolio_data['Current Price']
+        elif 'Total Value' not in portfolio_data.columns:
+            # Fallback: use market value if available
+            if 'Market Value' in portfolio_data.columns:
+                portfolio_data['Total Value'] = portfolio_data['Market Value']
+            else:
+                # Cannot generate rebalancing plan without position values
+                return None, None
+
+        total_portfolio_value = portfolio_data['Total Value'].sum()
+        portfolio_data['Current Weight'] = portfolio_data['Total Value'] / total_portfolio_value
+
+        # Build rebalancing dataframe
+        rebalancing_data = []
+        total_buy_value = 0
+        total_sell_value = 0
+
+        for i, ticker in enumerate(optimized_tickers):
+            # Get current position data
+            ticker_data = portfolio_data[portfolio_data[ticker_column] == ticker]
+
+            if ticker_data.empty:
+                # New position to add
+                current_weight = 0
+                current_value = 0
+                current_shares = 0
+                current_price = 0  # Would need to fetch
+            else:
+                current_weight = ticker_data['Current Weight'].values[0]
+                current_value = ticker_data['Total Value'].values[0]
+                current_shares = ticker_data['Quantity'].values[0] if 'Quantity' in ticker_data.columns else 0
+                current_price = ticker_data['Current Price'].values[0] if 'Current Price' in ticker_data.columns else 0
+
+            # Optimal position
+            optimal_weight = optimal_weights[i]
+            optimal_value = optimal_weight * total_portfolio_value
+            weight_diff = optimal_weight - current_weight
+
+            # Calculate trade details
+            if current_price > 0:
+                optimal_shares = optimal_value / current_price
+                shares_to_trade = optimal_shares - current_shares
+                trade_value = shares_to_trade * current_price
+            else:
+                optimal_shares = 0
+                shares_to_trade = 0
+                trade_value = 0
+
+            # Determine action (only flag if trade is meaningful > $100 or > 5 shares)
+            if abs(trade_value) > 100 or abs(shares_to_trade) > 5:
+                if shares_to_trade > 0:
+                    action = 'BUY'
+                    total_buy_value += abs(trade_value)
+                else:
+                    action = 'SELL'
+                    total_sell_value += abs(trade_value)
+            else:
+                action = 'HOLD'
+
+            rebalancing_data.append({
+                'Ticker': ticker,
+                'Current Weight (%)': current_weight * 100,
+                'Optimal Weight (%)': optimal_weight * 100,
+                'Weight Diff (%)': weight_diff * 100,
+                'Current Shares': int(current_shares),
+                'Target Shares': int(optimal_shares),
+                'Shares to Trade': int(shares_to_trade),
+                'Trade Value': trade_value,
+                'Action': action,
+                'Priority': abs(trade_value)  # For sorting
+            })
+
+        rebalancing_df = pd.DataFrame(rebalancing_data)
+        rebalancing_df = rebalancing_df.sort_values('Priority', ascending=False)
+
+        # Calculate metrics
+        buy_trades = len(rebalancing_df[rebalancing_df['Action'] == 'BUY'])
+        sell_trades = len(rebalancing_df[rebalancing_df['Action'] == 'SELL'])
+        hold_positions = len(rebalancing_df[rebalancing_df['Action'] == 'HOLD'])
+
+        # Estimate trading costs (assume 0.1% per trade)
+        trading_cost = (total_buy_value + total_sell_value) * 0.001
+
+        metrics = {
+            'total_portfolio_value': total_portfolio_value,
+            'buy_trades': buy_trades,
+            'sell_trades': sell_trades,
+            'hold_positions': hold_positions,
+            'total_buy_value': total_buy_value,
+            'total_sell_value': total_sell_value,
+            'estimated_trading_cost': trading_cost,
+            'total_trades': buy_trades + sell_trades,
+            'turnover_pct': (total_buy_value + total_sell_value) / (2 * total_portfolio_value) * 100 if total_portfolio_value > 0 else 0
+        }
+
+        return rebalancing_df, metrics
+
 
 class EnhancedDCFEngine:
     """
@@ -21087,39 +21207,111 @@ To maintain gradual transitions:
     
                                 # Table
                                 make_scrollable_table(weights_df, height=400, hide_index=True, use_container_width=True)
-    
-                                # Current vs Optimal comparison
-                                st.markdown("#### 🔄 Current vs Optimal Allocation")
-    
-                                total_value = (portfolio_data['Quantity'] * portfolio_data['Current Price']).sum()
-                                portfolio_data['Current Weight'] = (portfolio_data['Quantity'] * portfolio_data['Current Price']) / total_value
-    
-                                comparison_df = pd.DataFrame({
-                                    'Symbol': returns.columns
-                                })
-    
-                                comparison_df['Optimal Weight'] = optimal_weights
-                                comparison_df = comparison_df.merge(
-                                    portfolio_data[['Symbol', 'Current Weight']],
-                                    on='Symbol',
-                                    how='left'
+
+                                # ===================================================================
+                                # REBALANCING PLAN (from Risk Analysis VaR/CVaR optimizer)
+                                # ===================================================================
+                                st.markdown("---")
+                                st.markdown("#### 🔄 Rebalancing Plan")
+
+                                # Generate rebalancing plan with BUY/SELL/HOLD actions
+                                rebalancing_df, rebalance_metrics = optimizer.generate_rebalancing_plan(
+                                    optimal_weights,
+                                    portfolio_data,
+                                    currency_symbol
                                 )
-                                comparison_df['Current Weight'] = comparison_df['Current Weight'].fillna(0)
-                                comparison_df['Change'] = comparison_df['Optimal Weight'] - comparison_df['Current Weight']
-    
-                                make_scrollable_table(
-                                    comparison_df.style.format({
-                                        'Current Weight': '{:.2%}',
-                                        'Optimal Weight': '{:.2%}',
-                                        'Change': '{:+.2%}'
-                                    }),
-                                    height=400,
-                                    hide_index=True,
-                                    use_container_width=True
-                                )
-    
-                                st.success("✅ Portfolio optimization completed successfully!")
-                                st.info("💡 This optimization uses analytical gradients (∂Sharpe/∂w_i) and SLSQP algorithm for maximum precision")
+
+                                if rebalancing_df is not None and rebalance_metrics is not None:
+                                    # Display rebalancing metrics
+                                    col1, col2, col3, col4 = st.columns(4)
+
+                                    with col1:
+                                        st.metric(
+                                            "Total Trades",
+                                            rebalance_metrics['total_trades'],
+                                            f"{rebalance_metrics['buy_trades']} BUY / {rebalance_metrics['sell_trades']} SELL"
+                                        )
+
+                                    with col2:
+                                        st.metric(
+                                            "Turnover",
+                                            f"{rebalance_metrics['turnover_pct']:.1f}%",
+                                            help="Percentage of portfolio being rebalanced"
+                                        )
+
+                                    with col3:
+                                        st.metric(
+                                            "Buy Value",
+                                            f"{currency_symbol}{rebalance_metrics['total_buy_value']:,.0f}",
+                                            help="Total value of BUY orders"
+                                        )
+
+                                    with col4:
+                                        st.metric(
+                                            "Trading Cost (est.)",
+                                            f"{currency_symbol}{rebalance_metrics['estimated_trading_cost']:,.0f}",
+                                            help="Estimated trading costs (0.1% of turnover)"
+                                        )
+
+                                    # Display rebalancing table
+                                    st.markdown("**Rebalancing Actions:**")
+
+                                    # Style the dataframe
+                                    def color_action(val):
+                                        if val == 'BUY':
+                                            return 'background-color: rgba(16,185,129,0.2); color: #10b981'
+                                        elif val == 'SELL':
+                                            return 'background-color: rgba(239,68,68,0.2); color: #ef4444'
+                                        else:
+                                            return 'background-color: rgba(148,163,184,0.1); color: #94a3b8'
+
+                                    styled_rebalance_df = rebalancing_df[['Ticker', 'Current Weight (%)', 'Optimal Weight (%)',
+                                                                          'Weight Diff (%)', 'Shares to Trade', 'Trade Value', 'Action']].style.applymap(
+                                        color_action, subset=['Action']
+                                    ).format({
+                                        'Current Weight (%)': '{:.2f}%',
+                                        'Optimal Weight (%)': '{:.2f}%',
+                                        'Weight Diff (%)': '{:+.2f}%',
+                                        'Trade Value': f'{currency_symbol}{{:,.0f}}'
+                                    })
+
+                                    make_scrollable_table(styled_rebalance_df, height=400, hide_index=True, use_container_width=True)
+
+                                    st.success("✅ Portfolio optimization completed successfully!")
+                                    st.info("💡 This optimization uses analytical gradients (∂Sharpe/∂w_i) and SLSQP algorithm for maximum precision")
+                                else:
+                                    # Fallback to simple comparison if rebalancing plan fails
+                                    st.markdown("#### 🔄 Current vs Optimal Allocation")
+
+                                    total_value = (portfolio_data['Quantity'] * portfolio_data['Current Price']).sum()
+                                    portfolio_data['Current Weight'] = (portfolio_data['Quantity'] * portfolio_data['Current Price']) / total_value
+
+                                    comparison_df = pd.DataFrame({
+                                        'Symbol': returns.columns
+                                    })
+
+                                    comparison_df['Optimal Weight'] = optimal_weights
+                                    comparison_df = comparison_df.merge(
+                                        portfolio_data[['Symbol', 'Current Weight']],
+                                        on='Symbol',
+                                        how='left'
+                                    )
+                                    comparison_df['Current Weight'] = comparison_df['Current Weight'].fillna(0)
+                                    comparison_df['Change'] = comparison_df['Optimal Weight'] - comparison_df['Current Weight']
+
+                                    make_scrollable_table(
+                                        comparison_df.style.format({
+                                            'Current Weight': '{:.2%}',
+                                            'Optimal Weight': '{:.2%}',
+                                            'Change': '{:+.2%}'
+                                        }),
+                                        height=400,
+                                        hide_index=True,
+                                        use_container_width=True
+                                    )
+
+                                    st.success("✅ Portfolio optimization completed successfully!")
+                                    st.info("💡 This optimization uses analytical gradients (∂Sharpe/∂w_i) and SLSQP algorithm for maximum precision")
     
                             except Exception as e:
                                 st.error(f"❌ Optimization error: {str(e)}")
