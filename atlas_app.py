@@ -13296,7 +13296,7 @@ def main():
                                                 # Show dataframe preview
                                                 st.markdown("##### Holdings Details")
                                                 preview_df = df[[
-                                                    'Symbol', 'Quantity', 'Avg_Cost',
+                                                    'Ticker', 'Quantity', 'Avg_Cost',
                                                     'Current_Price', 'Market_Value', 'Unrealized_PnL', 'Unrealized_PnL_Pct'
                                                 ]].copy()
 
