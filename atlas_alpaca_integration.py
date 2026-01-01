@@ -46,10 +46,15 @@ class AlpacaAdapter:
         paper : bool
             Use paper trading (True) or live trading (False)
         """
-        if not ALPACA_AVAILABLE:
+        # Try dynamic import in case package was installed after module loaded
+        try:
+            from alpaca.trading.client import TradingClient
+            from alpaca.data.historical import StockHistoricalDataClient
+        except ImportError as e:
             raise ImportError(
                 "alpaca-py package is not installed. "
-                "Install it with: pip install alpaca-py"
+                "Install it with: pip install alpaca-py\n"
+                f"Error: {e}"
             )
 
         self.api_key = api_key
