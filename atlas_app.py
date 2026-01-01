@@ -20993,137 +20993,137 @@ To maintain gradual transitions:
                     with col3:
                         max_weight = st.number_input("Max Weight per Asset", min_value=0.20, max_value=1.0, value=0.40, step=0.05, format="%.2f", key="classic_max")
 
-                if st.button("🚀 Optimize Portfolio (Max Sharpe Ratio)", type="primary", key="classic_optimize"):
-                    with st.spinner("Running optimization with analytical gradients..."):
-                        try:
-                            # ===== FIX #5: Handle Symbol vs Ticker column name =====
-                            ticker_column = 'Symbol' if 'Symbol' in portfolio_data.columns else 'Ticker'
-                            print(f"🎯 Detected ticker column: '{ticker_column}'")
+                    if st.button("🚀 Optimize Portfolio (Max Sharpe Ratio)", type="primary", key="classic_optimize"):
+                        with st.spinner("Running optimization with analytical gradients..."):
+                            try:
+                                # ===== FIX #5: Handle Symbol vs Ticker column name =====
+                                ticker_column = 'Symbol' if 'Symbol' in portfolio_data.columns else 'Ticker'
+                                print(f"🎯 Detected ticker column: '{ticker_column}'")
     
-                            # Get tickers
-                            tickers = portfolio_data[ticker_column].unique().tolist()
-                            print(f"🎯 Optimizing portfolio with {len(tickers)} tickers")
+                                # Get tickers
+                                tickers = portfolio_data[ticker_column].unique().tolist()
+                                print(f"🎯 Optimizing portfolio with {len(tickers)} tickers")
     
-                            # Download historical data
-                            hist_data = yf.download(tickers, period='2y', progress=False)['Close']
+                                # Download historical data
+                                hist_data = yf.download(tickers, period='2y', progress=False)['Close']
     
-                            if isinstance(hist_data, pd.Series):
-                                hist_data = hist_data.to_frame()
+                                if isinstance(hist_data, pd.Series):
+                                    hist_data = hist_data.to_frame()
     
-                            # Calculate returns
-                            returns = hist_data.pct_change().dropna()
+                                # Calculate returns
+                                returns = hist_data.pct_change().dropna()
     
-                            # Initialize QuantOptimizer
-                            optimizer = QuantOptimizer(returns_data=returns, risk_free_rate=risk_free_rate)
+                                # Initialize QuantOptimizer
+                                optimizer = QuantOptimizer(returns_data=returns, risk_free_rate=risk_free_rate)
     
-                            # Run optimization
-                            optimal_weights, optimal_sharpe, result = optimizer.optimize_max_sharpe(
-                                min_weight=min_weight,
-                                max_weight=max_weight
-                            )
+                                # Run optimization
+                                optimal_weights, optimal_sharpe, result = optimizer.optimize_max_sharpe(
+                                    min_weight=min_weight,
+                                    max_weight=max_weight
+                                )
     
-                            # Calculate optimal portfolio metrics
-                            optimal_return, optimal_vol = optimizer.portfolio_metrics(optimal_weights)
+                                # Calculate optimal portfolio metrics
+                                optimal_return, optimal_vol = optimizer.portfolio_metrics(optimal_weights)
     
-                            # Display results
-                            st.markdown("---")
-                            st.markdown("#### 🎯 Optimization Results")
+                                # Display results
+                                st.markdown("---")
+                                st.markdown("#### 🎯 Optimization Results")
     
-                            # Key metrics
-                            col1, col2, col3, col4 = st.columns(4)
+                                # Key metrics
+                                col1, col2, col3, col4 = st.columns(4)
 
-                            # Maximum Sharpe Ratio
-                            with col1:
-                                sharpe_color = '#10b981' if optimal_sharpe > 2.0 else ('#fbbf24' if optimal_sharpe > 1.0 else '#ef4444')
-                                sharpe_status = 'Excellent' if optimal_sharpe > 2.0 else ('Good' if optimal_sharpe > 1.0 else 'Fair')
-                                st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🎯</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">MAXIMUM SHARPE RATIO</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {sharpe_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{optimal_sharpe:.3f}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">{sharpe_status}</p></div></div>', unsafe_allow_html=True)
+                                # Maximum Sharpe Ratio
+                                with col1:
+                                    sharpe_color = '#10b981' if optimal_sharpe > 2.0 else ('#fbbf24' if optimal_sharpe > 1.0 else '#ef4444')
+                                    sharpe_status = 'Excellent' if optimal_sharpe > 2.0 else ('Good' if optimal_sharpe > 1.0 else 'Fair')
+                                    st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🎯</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">MAXIMUM SHARPE RATIO</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {sharpe_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{optimal_sharpe:.3f}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">{sharpe_status}</p></div></div>', unsafe_allow_html=True)
 
-                            # Expected Return
-                            with col2:
-                                ret_color = '#10b981' if optimal_return > 0.10 else ('#fbbf24' if optimal_return > 0.05 else '#ef4444')
-                                ret_status = 'Strong Growth' if optimal_return > 0.10 else ('Moderate Growth' if optimal_return > 0.05 else 'Low Growth')
-                                st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📈</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">EXPECTED RETURN</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {ret_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{optimal_return:+.2%}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{ret_status}</p></div></div>', unsafe_allow_html=True)
+                                # Expected Return
+                                with col2:
+                                    ret_color = '#10b981' if optimal_return > 0.10 else ('#fbbf24' if optimal_return > 0.05 else '#ef4444')
+                                    ret_status = 'Strong Growth' if optimal_return > 0.10 else ('Moderate Growth' if optimal_return > 0.05 else 'Low Growth')
+                                    st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📈</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">EXPECTED RETURN</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {ret_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{optimal_return:+.2%}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{ret_status}</p></div></div>', unsafe_allow_html=True)
 
-                            # Volatility
-                            with col3:
-                                vol_color = '#10b981' if optimal_vol < 0.15 else ('#fbbf24' if optimal_vol < 0.25 else '#ef4444')
-                                vol_status = 'Low Risk' if optimal_vol < 0.15 else ('Moderate Risk' if optimal_vol < 0.25 else 'High Risk')
-                                st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #0891b2); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📊</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">VOLATILITY</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {vol_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{optimal_vol:.2%}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #67e8f9; margin: 0; font-weight: 600;">{vol_status}</p></div></div>', unsafe_allow_html=True)
+                                # Volatility
+                                with col3:
+                                    vol_color = '#10b981' if optimal_vol < 0.15 else ('#fbbf24' if optimal_vol < 0.25 else '#ef4444')
+                                    vol_status = 'Low Risk' if optimal_vol < 0.15 else ('Moderate Risk' if optimal_vol < 0.25 else 'High Risk')
+                                    st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #0891b2); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📊</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">VOLATILITY</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {vol_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{optimal_vol:.2%}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #67e8f9; margin: 0; font-weight: 600;">{vol_status}</p></div></div>', unsafe_allow_html=True)
 
-                            # Convergence
-                            with col4:
-                                convergence_val = "Success" if result.success else "Warning"
-                                convergence_color = '#10b981' if result.success else '#fbbf24'
-                                convergence_icon = '✅' if result.success else '⚠️'
-                                st.markdown(f'<div style="background: linear-gradient(135deg, rgba(245,158,11,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(245,158,11,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #f59e0b, #d97706); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🔄</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">CONVERGENCE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {convergence_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{convergence_icon}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(245,158,11,0.12); border-radius: 10px; border: 1px solid rgba(245,158,11,0.25);"><p style="font-size: 0.7rem; color: #fbbf24; margin: 0; font-weight: 600;">{convergence_val}</p></div></div>', unsafe_allow_html=True)
+                                # Convergence
+                                with col4:
+                                    convergence_val = "Success" if result.success else "Warning"
+                                    convergence_color = '#10b981' if result.success else '#fbbf24'
+                                    convergence_icon = '✅' if result.success else '⚠️'
+                                    st.markdown(f'<div style="background: linear-gradient(135deg, rgba(245,158,11,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(245,158,11,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #f59e0b, #d97706); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🔄</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">CONVERGENCE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {convergence_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{convergence_icon}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(245,158,11,0.12); border-radius: 10px; border: 1px solid rgba(245,158,11,0.25);"><p style="font-size: 0.7rem; color: #fbbf24; margin: 0; font-weight: 600;">{convergence_val}</p></div></div>', unsafe_allow_html=True)
     
-                            # Optimal weights
-                            st.markdown("#### 📊 Optimal Portfolio Weights")
+                                # Optimal weights
+                                st.markdown("#### 📊 Optimal Portfolio Weights")
     
-                            weights_df = pd.DataFrame({
-                                'Symbol': returns.columns,
-                                'Optimal Weight': optimal_weights,
-                                'Weight %': [f"{w:.2%}" for w in optimal_weights]
-                            }).sort_values('Optimal Weight', ascending=False)
+                                weights_df = pd.DataFrame({
+                                    'Symbol': returns.columns,
+                                    'Optimal Weight': optimal_weights,
+                                    'Weight %': [f"{w:.2%}" for w in optimal_weights]
+                                }).sort_values('Optimal Weight', ascending=False)
     
-                            # Visualization
-                            fig = go.Figure()
-                            fig.add_trace(go.Bar(
-                                x=weights_df['Symbol'],
-                                y=weights_df['Optimal Weight'],
-                                marker_color='#00d4ff',
-                                text=weights_df['Weight %'],
-                                textposition='outside'
-                            ))
+                                # Visualization
+                                fig = go.Figure()
+                                fig.add_trace(go.Bar(
+                                    x=weights_df['Symbol'],
+                                    y=weights_df['Optimal Weight'],
+                                    marker_color='#00d4ff',
+                                    text=weights_df['Weight %'],
+                                    textposition='outside'
+                                ))
     
-                            fig.update_layout(
-                                title="Optimal Portfolio Allocation (Maximum Sharpe Ratio)",
-                                xaxis_title="Symbol",
-                                yaxis_title="Weight",
-                                height=400
-                            )
-                            apply_chart_theme(fig)
-                            st.plotly_chart(fig, use_container_width=True)
+                                fig.update_layout(
+                                    title="Optimal Portfolio Allocation (Maximum Sharpe Ratio)",
+                                    xaxis_title="Symbol",
+                                    yaxis_title="Weight",
+                                    height=400
+                                )
+                                apply_chart_theme(fig)
+                                st.plotly_chart(fig, use_container_width=True)
     
-                            # Table
-                            make_scrollable_table(weights_df, height=400, hide_index=True, use_container_width=True)
+                                # Table
+                                make_scrollable_table(weights_df, height=400, hide_index=True, use_container_width=True)
     
-                            # Current vs Optimal comparison
-                            st.markdown("#### 🔄 Current vs Optimal Allocation")
+                                # Current vs Optimal comparison
+                                st.markdown("#### 🔄 Current vs Optimal Allocation")
     
-                            total_value = (portfolio_data['Quantity'] * portfolio_data['Current Price']).sum()
-                            portfolio_data['Current Weight'] = (portfolio_data['Quantity'] * portfolio_data['Current Price']) / total_value
+                                total_value = (portfolio_data['Quantity'] * portfolio_data['Current Price']).sum()
+                                portfolio_data['Current Weight'] = (portfolio_data['Quantity'] * portfolio_data['Current Price']) / total_value
     
-                            comparison_df = pd.DataFrame({
-                                'Symbol': returns.columns
-                            })
+                                comparison_df = pd.DataFrame({
+                                    'Symbol': returns.columns
+                                })
     
-                            comparison_df['Optimal Weight'] = optimal_weights
-                            comparison_df = comparison_df.merge(
-                                portfolio_data[['Symbol', 'Current Weight']],
-                                on='Symbol',
-                                how='left'
-                            )
-                            comparison_df['Current Weight'] = comparison_df['Current Weight'].fillna(0)
-                            comparison_df['Change'] = comparison_df['Optimal Weight'] - comparison_df['Current Weight']
+                                comparison_df['Optimal Weight'] = optimal_weights
+                                comparison_df = comparison_df.merge(
+                                    portfolio_data[['Symbol', 'Current Weight']],
+                                    on='Symbol',
+                                    how='left'
+                                )
+                                comparison_df['Current Weight'] = comparison_df['Current Weight'].fillna(0)
+                                comparison_df['Change'] = comparison_df['Optimal Weight'] - comparison_df['Current Weight']
     
-                            make_scrollable_table(
-                                comparison_df.style.format({
-                                    'Current Weight': '{:.2%}',
-                                    'Optimal Weight': '{:.2%}',
-                                    'Change': '{:+.2%}'
-                                }),
-                                height=400,
-                                hide_index=True,
-                                use_container_width=True
-                            )
+                                make_scrollable_table(
+                                    comparison_df.style.format({
+                                        'Current Weight': '{:.2%}',
+                                        'Optimal Weight': '{:.2%}',
+                                        'Change': '{:+.2%}'
+                                    }),
+                                    height=400,
+                                    hide_index=True,
+                                    use_container_width=True
+                                )
     
-                            st.success("✅ Portfolio optimization completed successfully!")
-                            st.info("💡 This optimization uses analytical gradients (∂Sharpe/∂w_i) and SLSQP algorithm for maximum precision")
+                                st.success("✅ Portfolio optimization completed successfully!")
+                                st.info("💡 This optimization uses analytical gradients (∂Sharpe/∂w_i) and SLSQP algorithm for maximum precision")
     
-                        except Exception as e:
-                            st.error(f"❌ Optimization error: {str(e)}")
-                            st.info("💡 Ensure your portfolio has at least 2 positions with sufficient historical data")
+                            except Exception as e:
+                                st.error(f"❌ Optimization error: {str(e)}")
+                                st.info("💡 Ensure your portfolio has at least 2 positions with sufficient historical data")
 
                 with opt_tab2:
                     st.markdown("#### PM-Grade Portfolio Optimization")
