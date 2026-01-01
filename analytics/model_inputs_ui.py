@@ -370,10 +370,10 @@ def display_cost_of_capital(financial_data: dict, market_data: dict) -> dict:
         beta = st.number_input(
             "Beta (Levered)",
             value=wacc_data['beta'],
-            min_value=0.1,
+            min_value=-1.0,
             max_value=3.0,
-            format="%.2f",
-            help="Systematic risk relative to market",
+            format="%.3f",
+            help="Systematic risk relative to market (negative = inverse correlation, <0.5 = defensive, 0.5-1.5 = typical, >1.5 = aggressive)",
             key="beta_input"
         )
 
