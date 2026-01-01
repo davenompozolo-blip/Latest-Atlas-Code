@@ -21732,6 +21732,300 @@ To maintain gradual transitions:
                                         # Display optimization results
                                         display_optimization_results(results, tickers)
 
+                                        # ===================================================================
+                                        # MONTE CARLO PORTFOLIO SIMULATION (PM-GRADE)
+                                        # Compare Current vs PM-Grade Optimized Portfolio
+                                        # ===================================================================
+                                        st.markdown("---")
+                                        st.markdown("#### 🎲 Monte Carlo Portfolio Simulation")
+                                        st.caption("Stochastic forecasting with probability-weighted returns for current vs PM-optimized portfolios")
+
+                                        # Monte Carlo configuration
+                                        mc_col1, mc_col2, mc_col3 = st.columns(3)
+                                        with mc_col1:
+                                            n_simulations_pm = st.number_input(
+                                                "Number of Simulations",
+                                                min_value=1000,
+                                                max_value=50000,
+                                                value=10000,
+                                                step=1000,
+                                                key="mc_simulations_pm"
+                                            )
+                                        with mc_col2:
+                                            time_horizon_pm = st.number_input(
+                                                "Time Horizon (days)",
+                                                min_value=30,
+                                                max_value=756,
+                                                value=252,
+                                                step=30,
+                                                key="mc_horizon_pm"
+                                            )
+                                        with mc_col3:
+                                            use_prob_returns_pm = st.checkbox(
+                                                "Use Probability-Weighted Returns",
+                                                value=True,
+                                                help="Use quant probability weighting with momentum and vol adjustments",
+                                                key="mc_prob_returns_pm"
+                                            )
+
+                                        if st.button("🚀 Run Monte Carlo Simulation", type="secondary", key="run_mc_pm"):
+                                            with st.spinner("Running Monte Carlo simulations for PM-grade portfolio..."):
+                                                try:
+                                                    from analytics.stochastic import PortfolioMonteCarloEngine
+
+                                                    # Calculate current portfolio weights
+                                                    if 'Total Value' in portfolio_data.columns:
+                                                        total_value = portfolio_data['Total Value'].sum()
+                                                    else:
+                                                        total_value = (portfolio_data['Quantity'] * portfolio_data['Current Price']).sum()
+
+                                                    current_weights_dict = {}
+                                                    for ticker in tickers:
+                                                        ticker_data = portfolio_data[portfolio_data[ticker_column] == ticker]
+                                                        if len(ticker_data) > 0:
+                                                            if 'Total Value' in ticker_data.columns:
+                                                                ticker_value = ticker_data['Total Value'].sum()
+                                                            else:
+                                                                ticker_value = (ticker_data['Quantity'] * ticker_data['Current Price']).sum()
+                                                            current_weights_dict[ticker] = ticker_value / total_value
+                                                        else:
+                                                            current_weights_dict[ticker] = 0.0
+
+                                                    # Create aligned current weights array
+                                                    current_weights = np.array([current_weights_dict.get(ticker, 0.0) for ticker in returns.columns])
+
+                                                    # Get PM-optimized weights
+                                                    pm_weights = results['weights']
+
+                                                    # Initialize Monte Carlo engine
+                                                    mc_engine = PortfolioMonteCarloEngine(
+                                                        returns=returns,
+                                                        current_weights=current_weights,
+                                                        tickers=list(returns.columns),
+                                                        initial_portfolio_value=total_value
+                                                    )
+
+                                                    # Run comparison simulation
+                                                    comparison_results = mc_engine.compare_portfolios(
+                                                        optimized_weights=pm_weights,
+                                                        n_simulations=n_simulations_pm,
+                                                        time_horizon_days=time_horizon_pm,
+                                                        random_seed=42
+                                                    )
+
+                                                    # Display comparison metrics
+                                                    st.markdown("##### 📊 Portfolio Comparison: Current vs PM-Optimized")
+
+                                                    # Key improvements
+                                                    improvement = comparison_results['improvement']
+
+                                                    imp_col1, imp_col2, imp_col3, imp_col4 = st.columns(4)
+
+                                                    with imp_col1:
+                                                        delta_return = improvement['expected_return_improvement']
+                                                        delta_color = "normal" if delta_return > 0 else "inverse"
+                                                        st.metric(
+                                                            "Expected Return Δ",
+                                                            f"{delta_return:+.2%}",
+                                                            delta=f"{delta_return:+.2%}",
+                                                            delta_color=delta_color
+                                                        )
+
+                                                    with imp_col2:
+                                                        delta_sortino = improvement['sortino_improvement']
+                                                        delta_color = "normal" if delta_sortino > 0 else "inverse"
+                                                        st.metric(
+                                                            "Sortino Ratio Δ",
+                                                            f"{delta_sortino:+.3f}",
+                                                            delta=f"{delta_sortino:+.3f}",
+                                                            delta_color=delta_color,
+                                                            help="PM-Grade focuses on Sortino (downside risk only)"
+                                                        )
+
+                                                    with imp_col3:
+                                                        delta_var = improvement['var_95_improvement']
+                                                        delta_color = "normal" if delta_var > 0 else "inverse"
+                                                        st.metric(
+                                                            "VaR 95% Δ (Risk Reduction)",
+                                                            f"{delta_var:+.2%}",
+                                                            delta=f"{delta_var:+.2%}",
+                                                            delta_color=delta_color,
+                                                            help="Positive = less downside risk"
+                                                        )
+
+                                                    with imp_col4:
+                                                        delta_sharpe = improvement['sharpe_improvement']
+                                                        delta_color = "normal" if delta_sharpe > 0 else "inverse"
+                                                        st.metric(
+                                                            "Sharpe Ratio Δ",
+                                                            f"{delta_sharpe:+.3f}",
+                                                            delta=f"{delta_sharpe:+.3f}",
+                                                            delta_color=delta_color
+                                                        )
+
+                                                    # Side-by-side comparison
+                                                    st.markdown("##### 📈 Detailed Comparison")
+
+                                                    comp_col1, comp_col2 = st.columns(2)
+
+                                                    with comp_col1:
+                                                        st.markdown("**Current Portfolio (Monte Carlo)**")
+                                                        current_mc = comparison_results['current'].metrics
+                                                        mc_data_current = {
+                                                            'Metric': [
+                                                                'Expected Return',
+                                                                'Volatility',
+                                                                'Sortino Ratio',
+                                                                'Sharpe Ratio',
+                                                                'VaR 95%',
+                                                                'CVaR 95%',
+                                                                'Probability of Profit'
+                                                            ],
+                                                            'Value': [
+                                                                f"{current_mc['expected_return']:.2%}",
+                                                                f"{current_mc['volatility']:.2%}",
+                                                                f"{current_mc['sortino_ratio']:.3f}",
+                                                                f"{current_mc['sharpe_ratio']:.3f}",
+                                                                f"{current_mc['var_95_pct']:.2%}",
+                                                                f"{current_mc['cvar_95_pct']:.2%}",
+                                                                f"{comparison_results['current'].probabilities['Probability of Profit']:.1f}%"
+                                                            ]
+                                                        }
+                                                        st.dataframe(pd.DataFrame(mc_data_current), hide_index=True, use_container_width=True)
+
+                                                    with comp_col2:
+                                                        st.markdown("**PM-Optimized Portfolio (Monte Carlo)**")
+                                                        optimized_mc = comparison_results['optimized'].metrics
+                                                        mc_data_optimized = {
+                                                            'Metric': [
+                                                                'Expected Return',
+                                                                'Volatility',
+                                                                'Sortino Ratio',
+                                                                'Sharpe Ratio',
+                                                                'VaR 95%',
+                                                                'CVaR 95%',
+                                                                'Probability of Profit'
+                                                            ],
+                                                            'Value': [
+                                                                f"{optimized_mc['expected_return']:.2%}",
+                                                                f"{optimized_mc['volatility']:.2%}",
+                                                                f"{optimized_mc['sortino_ratio']:.3f}",
+                                                                f"{optimized_mc['sharpe_ratio']:.3f}",
+                                                                f"{optimized_mc['var_95_pct']:.2%}",
+                                                                f"{optimized_mc['cvar_95_pct']:.2%}",
+                                                                f"{comparison_results['optimized'].probabilities['Probability of Profit']:.1f}%"
+                                                            ]
+                                                        }
+                                                        st.dataframe(pd.DataFrame(mc_data_optimized), hide_index=True, use_container_width=True)
+
+                                                    # Return distribution comparison
+                                                    st.markdown("##### 📊 Return Distribution Comparison")
+
+                                                    fig_dist = go.Figure()
+
+                                                    # Current portfolio
+                                                    fig_dist.add_trace(go.Histogram(
+                                                        x=comparison_results['current'].final_returns,
+                                                        nbinsx=50,
+                                                        name='Current Portfolio',
+                                                        marker_color='rgba(239,68,68,0.6)',
+                                                        opacity=0.7
+                                                    ))
+
+                                                    # PM-optimized portfolio
+                                                    fig_dist.add_trace(go.Histogram(
+                                                        x=comparison_results['optimized'].final_returns,
+                                                        nbinsx=50,
+                                                        name='PM-Optimized Portfolio',
+                                                        marker_color='rgba(139,92,246,0.6)',
+                                                        opacity=0.7
+                                                    ))
+
+                                                    # Add VaR lines
+                                                    fig_dist.add_vline(
+                                                        x=current_mc['var_95_pct'],
+                                                        line_dash="dash",
+                                                        line_color="rgba(239,68,68,0.8)",
+                                                        annotation_text=f"Current VaR: {current_mc['var_95_pct']:.2%}"
+                                                    )
+
+                                                    fig_dist.add_vline(
+                                                        x=optimized_mc['var_95_pct'],
+                                                        line_dash="dash",
+                                                        line_color="rgba(139,92,246,0.8)",
+                                                        annotation_text=f"PM-Optimized VaR: {optimized_mc['var_95_pct']:.2%}"
+                                                    )
+
+                                                    fig_dist.update_layout(
+                                                        title=f"Return Distribution: Current vs PM-Optimized ({n_simulations_pm:,} simulations, {time_horizon_pm} days)",
+                                                        xaxis_title="Portfolio Return",
+                                                        yaxis_title="Frequency",
+                                                        barmode='overlay',
+                                                        height=500
+                                                    )
+                                                    apply_chart_theme(fig_dist)
+                                                    st.plotly_chart(fig_dist, use_container_width=True)
+
+                                                    # Portfolio paths
+                                                    st.markdown("##### 📈 Portfolio Value Paths")
+
+                                                    fig_paths = go.Figure()
+
+                                                    # Sample paths
+                                                    n_sample = min(50, n_simulations_pm)
+                                                    for i in range(n_sample):
+                                                        fig_paths.add_trace(go.Scatter(
+                                                            y=comparison_results['current'].portfolio_paths[i, :],
+                                                            mode='lines',
+                                                            line=dict(width=0.5, color='rgba(239,68,68,0.1)'),
+                                                            showlegend=False,
+                                                            hoverinfo='skip'
+                                                        ))
+
+                                                    for i in range(n_sample):
+                                                        fig_paths.add_trace(go.Scatter(
+                                                            y=comparison_results['optimized'].portfolio_paths[i, :],
+                                                            mode='lines',
+                                                            line=dict(width=0.5, color='rgba(139,92,246,0.1)'),
+                                                            showlegend=False,
+                                                            hoverinfo='skip'
+                                                        ))
+
+                                                    # Mean paths
+                                                    mean_current = comparison_results['current'].portfolio_paths.mean(axis=0)
+                                                    mean_optimized = comparison_results['optimized'].portfolio_paths.mean(axis=0)
+
+                                                    fig_paths.add_trace(go.Scatter(
+                                                        y=mean_current,
+                                                        mode='lines',
+                                                        name='Current (Mean)',
+                                                        line=dict(width=3, color='#ef4444')
+                                                    ))
+
+                                                    fig_paths.add_trace(go.Scatter(
+                                                        y=mean_optimized,
+                                                        mode='lines',
+                                                        name='PM-Optimized (Mean)',
+                                                        line=dict(width=3, color='#8b5cf6')
+                                                    ))
+
+                                                    fig_paths.update_layout(
+                                                        title="Portfolio Value Evolution: Current vs PM-Optimized",
+                                                        xaxis_title="Days",
+                                                        yaxis_title="Portfolio Value",
+                                                        height=500
+                                                    )
+                                                    apply_chart_theme(fig_paths)
+                                                    st.plotly_chart(fig_paths, use_container_width=True)
+
+                                                    st.success("✅ Monte Carlo simulation completed!")
+                                                    st.info(f"💡 Simulation used {'probability-weighted' if use_prob_returns_pm else 'historical'} returns with regime awareness and asymmetric risk modeling")
+
+                                                except Exception as e:
+                                                    st.error(f"❌ Monte Carlo simulation error: {str(e)}")
+                                                    import traceback
+                                                    st.code(traceback.format_exc())
+
                                         # Store in session state
                                         st.session_state['pm_optimization_results'] = results
 
