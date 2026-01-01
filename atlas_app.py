@@ -149,6 +149,24 @@ except ImportError as e:
     MODEL_INPUTS_DASHBOARD_AVAILABLE = False
     print(f"⚠️ Model Inputs Dashboard not available: {e}")
 
+# ============================================================================
+# INSTITUTIONAL-GRADE DCF ENHANCEMENTS (January 2026)
+# ============================================================================
+try:
+    from atlas_dcf_institutional import (
+        DCFAssumptionManager,
+        DCFValidator,
+        RobustDCFEngine,
+        MonteCarloDCF,
+        display_validation_warnings,
+        display_monte_carlo_results
+    )
+    INSTITUTIONAL_DCF_AVAILABLE = True
+    print("✅ Institutional-Grade DCF Enhancements loaded")
+except ImportError as e:
+    INSTITUTIONAL_DCF_AVAILABLE = False
+    print(f"⚠️ Institutional DCF not available: {e}")
+
 # ATLAS v11.0 SBC Integration
 try:
     from analytics.sbc_forecaster import (
@@ -20121,7 +20139,42 @@ To maintain gradual transitions:
                                     final_fcf = projections[-1]['fcff'] if method_key == 'FCFF' else projections[-1]['fcfe']
     
                                     st.info(f"✅ SBC integrated into valuation. Avg SBC: {config.starting_sbc_pct_revenue:.1f}% of revenue")
-    
+
+                            # =================================================================
+                            # INSTITUTIONAL-GRADE DCF VALIDATION (January 2026)
+                            # =================================================================
+                            if INSTITUTIONAL_DCF_AVAILABLE:
+                                st.markdown("---")
+                                st.markdown("#### 🎯 Assumption Validation")
+
+                                # Collect assumptions for validation
+                                assumptions_for_validation = {
+                                    'revenue_growth': revenue_growth if not dashboard_active else (projections[-1]['revenue'] / projections[0]['revenue']) ** (1/len(projections)) - 1,
+                                    'ebitda_margin': ebit_margin if not dashboard_active else 0.25,  # Estimate from projections
+                                    'terminal_growth': terminal_growth,
+                                    'wacc': discount_rate,
+                                    'tax_rate': tax_rate if not dashboard_active else financials.get('tax_rate', 0.21),
+                                    'capex_pct': capex_pct if not dashboard_active else 0.05,
+                                    'nwc_change': wc_change if not dashboard_active else 0,
+                                }
+
+                                # Run validation
+                                validator = DCFValidator()
+                                validation_result = validator.validate_assumptions(
+                                    assumptions=assumptions_for_validation,
+                                    company={
+                                        'ticker': company['ticker'],
+                                        'sector': company['sector'],
+                                        'market_cap': company['market_cap']
+                                    },
+                                    sector=company['sector']
+                                )
+
+                                # Display validation warnings
+                                display_validation_warnings(validation_result)
+
+                                st.markdown("---")
+
                             # Calculate terminal value (both modes)
                             terminal_value = calculate_terminal_value(final_fcf, discount_rate, terminal_growth)
     
@@ -20374,7 +20427,82 @@ To maintain gradual transitions:
                         terminal_growth
                     )
                     st.plotly_chart(sensitivity, use_container_width=True)
-    
+
+                    # ============================================================
+                    # MONTE CARLO SIMULATION (INSTITUTIONAL-GRADE)
+                    # ============================================================
+                    if method in ['FCFF', 'FCFE'] and INSTITUTIONAL_DCF_AVAILABLE:
+                        st.markdown("---")
+                        st.markdown("#### 🎲 Monte Carlo Simulation")
+
+                        st.info("""
+                        **🎯 Uncertainty Quantification**
+
+                        Instead of a single point estimate, Monte Carlo simulation runs 1000+ scenarios
+                        with varying assumptions to show the range of possible fair values.
+
+                        This provides:
+                        • P5 (5th percentile) - Pessimistic case
+                        • P25 (25th percentile) - Conservative case
+                        • Median (50th percentile) - Base case
+                        • P75 (75th percentile) - Optimistic case
+                        • P95 (95th percentile) - Bull case
+                        """)
+
+                        if st.button("🎲 Run Monte Carlo Simulation (1000 scenarios)", type="secondary", use_container_width=True):
+                            with st.spinner("Running 1000 Monte Carlo simulations..."):
+                                try:
+                                    # Create RobustDCFEngine
+                                    assumption_manager = DCFAssumptionManager()
+
+                                    # Set base assumptions from current DCF
+                                    assumption_manager.set('revenue_growth', revenue_growth if not dashboard_active else (projections[-1]['revenue'] / projections[0]['revenue']) ** (1/len(projections)) - 1)
+                                    assumption_manager.set('ebitda_margin', ebit_margin if not dashboard_active else 0.25)
+                                    assumption_manager.set('terminal_growth', terminal_growth)
+                                    assumption_manager.set('wacc', discount_rate)
+                                    assumption_manager.set('tax_rate', tax_rate if not dashboard_active else financials.get('tax_rate', 0.21))
+                                    assumption_manager.set('capex_pct', capex_pct if not dashboard_active else 0.05)
+                                    assumption_manager.set('nwc_change', wc_change if not dashboard_active else 0)
+
+                                    # Create engine
+                                    robust_engine = RobustDCFEngine(
+                                        assumptions=assumption_manager,
+                                        validator=DCFValidator(),
+                                        company_data={
+                                            'ticker': company['ticker'],
+                                            'sector': company['sector'],
+                                            'market_cap': company['market_cap'],
+                                            'shares_outstanding': shares,
+                                            'revenue': financials.get('revenue', 0),
+                                            'ebit': financials.get('ebit', 0),
+                                            'net_income': financials.get('net_income', 0),
+                                            'total_debt': financials.get('total_debt', 0),
+                                            'cash': financials.get('cash', 0),
+                                        }
+                                    )
+
+                                    # Run Monte Carlo
+                                    mc = MonteCarloDCF()
+                                    mc_results = mc.run_simulation(robust_engine, n_simulations=1000)
+
+                                    if mc_results['success']:
+                                        # Display results
+                                        display_monte_carlo_results(mc_results, current_price)
+
+                                        # Store in session state
+                                        st.session_state['monte_carlo_results'] = mc_results
+
+                                        st.success("✅ Monte Carlo simulation complete!")
+                                    else:
+                                        st.error(f"❌ Monte Carlo simulation failed: {mc_results.get('error', 'Unknown error')}")
+
+                                except Exception as e:
+                                    st.error(f"❌ Monte Carlo simulation error: {str(e)}")
+                                    import traceback
+                                    with st.expander("Error Details"):
+                                        st.code(traceback.format_exc())
+
+
                     # ============================================================
                     # DCF TRAP DETECTION SYSTEM (ATLAS v11.0)
                     # ============================================================
