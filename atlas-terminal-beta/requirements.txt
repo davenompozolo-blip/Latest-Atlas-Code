@@ -1,0 +1,20 @@
+# ATLAS Terminal Beta - Core Dependencies
+streamlit==1.31.0
+streamlit-option-menu==0.3.6
+
+# Data & Analysis
+pandas==2.1.4
+numpy==1.26.3
+scipy==1.11.4
+openpyxl==3.1.2
+
+# Visualization
+plotly==5.18.0
+
+# Market Data & Brokers
+yfinance==0.2.35
+alpaca-py==0.43.0
+
+# Testing
+pytest==7.4.3
+pytest-cov==4.1.0
