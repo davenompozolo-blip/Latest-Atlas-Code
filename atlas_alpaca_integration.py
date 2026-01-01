@@ -126,17 +126,18 @@ class AlpacaAdapter:
 
         Returns:
         --------
-        pd.DataFrame : Portfolio positions with columns:
-            - ticker: Stock symbol
-            - quantity: Number of shares
-            - avg_cost: Average purchase price
-            - current_price: Current market price
-            - market_value: Current position value
-            - cost_basis: Total cost basis
-            - unrealized_pl: Unrealized profit/loss ($)
-            - unrealized_plpc: Unrealized profit/loss (%)
-            - weight: Portfolio weight (%)
-            - side: long/short
+        pd.DataFrame : Portfolio positions with ATLAS column format:
+            - Symbol: Stock ticker
+            - Quantity: Number of shares
+            - Avg_Cost: Average purchase price
+            - Current_Price: Current market price
+            - Market_Value: Current position value
+            - Purchase_Value: Total cost basis
+            - Unrealized_PnL: Unrealized profit/loss ($)
+            - Unrealized_PnL_Pct: Unrealized profit/loss (%)
+            - Daily_PnL: Daily change in position value ($)
+            - Weight_Pct: Portfolio weight (%)
+            - Side: long/short
         """
         try:
             positions = self.trading_client.get_all_positions()
@@ -144,30 +145,43 @@ class AlpacaAdapter:
             if not positions:
                 return pd.DataFrame()
 
-            # Get account for portfolio value
+            # Get account for portfolio value and daily P&L calculation
             account = self.get_account_summary()
             portfolio_value = account.get('portfolio_value', 1)
 
             positions_data = []
             for pos in positions:
+                # Calculate daily P&L from intraday data
+                qty = float(pos.qty)
+                current_price = float(pos.current_price)
+                change_today = float(pos.change_today or 0)  # Price change today
+                daily_pl = qty * change_today  # Daily P&L in dollars
+
                 positions_data.append({
-                    'ticker': pos.symbol,
-                    'quantity': float(pos.qty),
-                    'avg_cost': float(pos.avg_entry_price),
-                    'current_price': float(pos.current_price),
-                    'market_value': float(pos.market_value),
-                    'cost_basis': float(pos.cost_basis),
-                    'unrealized_pl': float(pos.unrealized_pl),
-                    'unrealized_plpc': float(pos.unrealized_plpc) * 100,  # Convert to percentage
-                    'weight': (float(pos.market_value) / portfolio_value) * 100,
-                    'side': pos.side,
-                    'exchange': pos.exchange,
+                    'Symbol': pos.symbol,
+                    'Quantity': qty,
+                    'Avg_Cost': float(pos.avg_entry_price),
+                    'Current_Price': current_price,
+                    'Market_Value': float(pos.market_value),
+                    'Purchase_Value': float(pos.cost_basis),
+                    'Unrealized_PnL': float(pos.unrealized_pl),
+                    'Unrealized_PnL_Pct': float(pos.unrealized_plpc) * 100,
+                    'Daily_PnL': daily_pl,
+                    'Weight_Pct': (float(pos.market_value) / portfolio_value) * 100,
+                    'Side': pos.side,
+                    'Exchange': pos.exchange,
                 })
 
             df = pd.DataFrame(positions_data)
 
             # Sort by weight descending
-            df = df.sort_values('weight', ascending=False).reset_index(drop=True)
+            df = df.sort_values('Weight_Pct', ascending=False).reset_index(drop=True)
+
+            # Add ATLAS metadata attributes
+            df.attrs['source'] = 'alpaca'
+            df.attrs['currency'] = 'USD'
+            df.attrs['currency_symbol'] = '$'
+            df.attrs['account_type'] = self.account_type
 
             return df
 
