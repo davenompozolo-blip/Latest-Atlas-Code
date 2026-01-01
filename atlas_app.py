@@ -13296,12 +13296,12 @@ def main():
                                                 # Show dataframe preview
                                                 st.markdown("##### Holdings Details")
                                                 preview_df = df[[
-                                                    'Ticker', 'Quantity', 'Avg_Cost',
+                                                    'Ticker', 'Shares', 'Avg_Cost',
                                                     'Current_Price', 'Market_Value', 'Unrealized_PnL', 'Unrealized_PnL_Pct'
                                                 ]].copy()
 
                                                 # Format columns for display
-                                                preview_df['Quantity'] = preview_df['Quantity'].apply(lambda x: f"{x:.4f}")
+                                                preview_df['Shares'] = preview_df['Shares'].apply(lambda x: f"{x:.4f}")
                                                 preview_df['Avg_Cost'] = preview_df['Avg_Cost'].apply(lambda x: f"${x:.2f}")
                                                 preview_df['Current_Price'] = preview_df['Current_Price'].apply(lambda x: f"${x:.2f}")
                                                 preview_df['Market_Value'] = preview_df['Market_Value'].apply(lambda x: f"${x:,.2f}")

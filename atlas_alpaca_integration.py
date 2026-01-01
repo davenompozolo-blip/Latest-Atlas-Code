@@ -128,7 +128,7 @@ class AlpacaAdapter:
         --------
         pd.DataFrame : Portfolio positions with ATLAS column format:
             - Ticker: Stock ticker symbol
-            - Quantity: Number of shares
+            - Shares: Number of shares
             - Avg_Cost: Average purchase price
             - Current_Price: Current market price
             - Market_Value: Current position value
@@ -159,7 +159,7 @@ class AlpacaAdapter:
 
                 positions_data.append({
                     'Ticker': pos.symbol,  # Use 'Ticker' to match ATLAS format
-                    'Quantity': qty,
+                    'Shares': qty,  # Use 'Shares' to match ATLAS format (not 'Quantity')
                     'Avg_Cost': float(pos.avg_entry_price),
                     'Current_Price': current_price,
                     'Market_Value': float(pos.market_value),
