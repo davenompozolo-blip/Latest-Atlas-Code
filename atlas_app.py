@@ -183,6 +183,24 @@ except ImportError as e:
     SBC_AVAILABLE = False
     print(f"⚠️ SBC Integration not available: {e}")
 
+# ============================================================================
+# PM-GRADE PORTFOLIO OPTIMIZATION (January 2026)
+# ============================================================================
+try:
+    from atlas_pm_optimization import (
+        PMGradeOptimizer,
+        AsymmetricRiskOptimizer,
+        MarketRegimeDetector,
+        ForwardLookingReturns,
+        display_regime_analysis,
+        display_optimization_results
+    )
+    PM_OPTIMIZATION_AVAILABLE = True
+    print("✅ PM-Grade Optimization loaded")
+except ImportError as e:
+    PM_OPTIMIZATION_AVAILABLE = False
+    print(f"⚠️ PM-Grade Optimization not available: {e}")
+
 # ATLAS v11.0 Multi-Stage DCF
 try:
     from analytics.multistage_ui import (
@@ -20956,17 +20974,26 @@ To maintain gradual transitions:
                 st.warning("Please upload portfolio data via Phoenix Parser first")
             else:
                 st.success(f"Portfolio loaded: {len(portfolio_data)} positions")
-    
-                # Configuration
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    risk_free_rate = st.number_input("Risk-Free Rate", min_value=0.0, max_value=0.10, value=0.04, step=0.001, format="%.3f")
-                with col2:
-                    min_weight = st.number_input("Min Weight per Asset", min_value=0.0, max_value=0.20, value=0.01, step=0.01, format="%.2f")
-                with col3:
-                    max_weight = st.number_input("Max Weight per Asset", min_value=0.20, max_value=1.0, value=0.40, step=0.05, format="%.2f")
-    
-                if st.button("🚀 Optimize Portfolio (Max Sharpe Ratio)", type="primary"):
+
+                st.markdown("---")
+
+                # Optimization method selection
+                opt_tab1, opt_tab2 = st.tabs(["📊 Classic Sharpe", "🎯 PM-Grade (Sortino)"])
+
+                with opt_tab1:
+                    st.markdown("#### Classic Mean-Variance Optimization")
+                    st.caption("Traditional Sharpe ratio optimization (penalizes all volatility)")
+
+                    # Configuration
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        risk_free_rate = st.number_input("Risk-Free Rate", min_value=0.0, max_value=0.10, value=0.04, step=0.001, format="%.3f", key="classic_rf")
+                    with col2:
+                        min_weight = st.number_input("Min Weight per Asset", min_value=0.0, max_value=0.20, value=0.01, step=0.01, format="%.2f", key="classic_min")
+                    with col3:
+                        max_weight = st.number_input("Max Weight per Asset", min_value=0.20, max_value=1.0, value=0.40, step=0.05, format="%.2f", key="classic_max")
+
+                if st.button("🚀 Optimize Portfolio (Max Sharpe Ratio)", type="primary", key="classic_optimize"):
                     with st.spinner("Running optimization with analytical gradients..."):
                         try:
                             # ===== FIX #5: Handle Symbol vs Ticker column name =====
@@ -21097,7 +21124,113 @@ To maintain gradual transitions:
                         except Exception as e:
                             st.error(f"❌ Optimization error: {str(e)}")
                             st.info("💡 Ensure your portfolio has at least 2 positions with sufficient historical data")
-    
+
+                with opt_tab2:
+                    st.markdown("#### PM-Grade Portfolio Optimization")
+                    st.caption("Institutional-grade optimization using Sortino ratio, regime awareness, and forward-looking returns")
+
+                    if not PM_OPTIMIZATION_AVAILABLE:
+                        st.error("❌ PM-Grade Optimization module not available")
+                        st.info("The PM optimization module failed to load. Using classic optimization only.")
+                    else:
+                        st.info("""
+                        **🎯 PM-Grade Features:**
+                        - **Asymmetric Risk**: Sortino ratio (doesn't penalize upside volatility)
+                        - **Regime Awareness**: Detects growth/value and risk-on/off environments
+                        - **Forward-Looking Returns**: Blends momentum, trend, and mean reversion
+                        - **PM-Level Thinking**: Qualitative overlays on quantitative optimization
+
+                        **Philosophy:** Think like a PM, optimize like a quant
+                        """)
+
+                        # Strategy selection
+                        col1, col2, col3 = st.columns(3)
+
+                        with col1:
+                            strategy = st.selectbox(
+                                "Investment Strategy",
+                                ['aggressive', 'balanced', 'defensive'],
+                                format_func=lambda x: {
+                                    'aggressive': '🚀 Aggressive (High Growth)',
+                                    'balanced': '⚖️ Balanced (Growth + Defense)',
+                                    'defensive': '🛡️ Defensive (Capital Preservation)'
+                                }[x],
+                                key="pm_strategy"
+                            )
+
+                        with col2:
+                            # Max concentration per position
+                            max_position = {
+                                'aggressive': 0.40,
+                                'balanced': 0.25,
+                                'defensive': 0.15
+                            }[strategy]
+                            st.metric("Max Position Size", f"{max_position:.0%}")
+
+                        with col3:
+                            # Risk-free rate
+                            rf_rate = st.number_input(
+                                "Risk-Free Rate",
+                                min_value=0.0,
+                                max_value=0.10,
+                                value=0.02,
+                                step=0.001,
+                                format="%.3f",
+                                key="pm_rf"
+                            )
+
+                        if st.button("🚀 Run PM-Grade Optimization", type="primary", key="pm_optimize"):
+                            with st.spinner("Running PM-grade optimization..."):
+                                try:
+                                    # Get tickers
+                                    ticker_column = 'Symbol' if 'Symbol' in portfolio_data.columns else 'Ticker'
+                                    tickers = portfolio_data[ticker_column].unique().tolist()
+
+                                    # Download historical data
+                                    hist_data = yf.download(tickers, period='2y', progress=False)['Close']
+
+                                    if isinstance(hist_data, pd.Series):
+                                        hist_data = hist_data.to_frame()
+
+                                    # Calculate returns
+                                    returns = hist_data.pct_change().dropna()
+
+                                    # Create sector map (simplified - you can enhance this)
+                                    sector_map = {}
+                                    for ticker in tickers:
+                                        try:
+                                            ticker_info = yf.Ticker(ticker)
+                                            sector = ticker_info.info.get('sector', 'Unknown')
+                                            sector_map[ticker] = sector
+                                        except:
+                                            sector_map[ticker] = 'Unknown'
+
+                                    # Initialize PM-grade optimizer
+                                    optimizer = PMGradeOptimizer(returns, sector_map)
+
+                                    # Run optimization
+                                    results = optimizer.optimize(strategy=strategy)
+
+                                    if results['optimization_success']:
+                                        # Display regime analysis
+                                        display_regime_analysis(results['regime'])
+
+                                        # Display optimization results
+                                        display_optimization_results(results, tickers)
+
+                                        # Store in session state
+                                        st.session_state['pm_optimization_results'] = results
+
+                                    else:
+                                        st.error("❌ Optimization did not converge. Try adjusting parameters.")
+
+                                except Exception as e:
+                                    st.error(f"❌ PM Optimization error: {str(e)}")
+                                    import traceback
+                                    with st.expander("Error Details"):
+                                        st.code(traceback.format_exc())
+                                    st.info("💡 Ensure your portfolio has at least 3 positions with 2 years of historical data")
+
         # ========================================================================
         # LEVERAGE TRACKER (v11.0) - NEW FEATURE
         # ========================================================================
