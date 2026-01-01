@@ -46,6 +46,12 @@ class AlpacaAdapter:
         paper : bool
             Use paper trading (True) or live trading (False)
         """
+        if not ALPACA_AVAILABLE:
+            raise ImportError(
+                "alpaca-py package is not installed. "
+                "Install it with: pip install alpaca-py"
+            )
+
         self.api_key = api_key
         self.secret_key = secret_key
         self.paper = paper
