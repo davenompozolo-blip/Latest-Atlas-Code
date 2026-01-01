@@ -639,25 +639,47 @@ class PMGradeOptimizer:
 
             # Downside deviation (backward-looking)
             portfolio_returns_hist = (self.returns * weights).sum(axis=1)
-            downside = portfolio_returns_hist[portfolio_returns_hist < 0].std() * np.sqrt(252)
+            downside_returns = portfolio_returns_hist[portfolio_returns_hist < 0]
 
-            if downside == 0 or np.isnan(downside):
-                return -portfolio_return * 10
+            # Handle edge cases
+            if len(downside_returns) == 0:
+                # No downside - use overall volatility with penalty
+                downside = portfolio_returns_hist.std() * np.sqrt(252)
+                # Apply penalty for using volatility instead of downside
+                penalty = 0.5
+            else:
+                downside = downside_returns.std() * np.sqrt(252)
+                penalty = 1.0
 
-            sortino = (portfolio_return - 0.02) / downside
+            # Add small regularization to prevent numerical issues
+            downside = max(downside, 1e-6)
+
+            sortino = (portfolio_return - 0.02) / downside * penalty
 
             return -sortino
 
         initial_weights = np.ones(n_assets) / n_assets
 
+        # Try optimization with relaxed tolerance first
         result = minimize(
             objective,
             initial_weights,
             method='SLSQP',
             bounds=bounds,
             constraints=constraints,
-            options={'maxiter': 2000, 'ftol': 1e-9}
+            options={'maxiter': 3000, 'ftol': 1e-6}  # Relaxed tolerance
         )
+
+        # If failed, try again with even more relaxed settings
+        if not result.success:
+            result = minimize(
+                objective,
+                initial_weights,
+                method='SLSQP',
+                bounds=bounds,
+                constraints=constraints,
+                options={'maxiter': 5000, 'ftol': 1e-4}  # Very relaxed
+            )
 
         # Calculate final metrics
         final_weights = result.x
