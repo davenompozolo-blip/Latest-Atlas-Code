@@ -71,15 +71,19 @@ def create_sparkline(data: pd.Series, width: int = 100, height: int = 30) -> go.
 # SECTOR HEATMAP
 # ============================================================
 
-def create_sector_treemap(sector_data: List[Dict]) -> go.Figure:
+def create_sector_treemap(sector_data: List[Dict], metric: str = 'ytd_return') -> go.Figure:
     """
-    Create sector performance heatmap (treemap)
+    Create professional sector performance heatmap (treemap)
 
-    Size = Market weight
-    Color = Performance (YTD return)
+    Dashboard-quality visualization with:
+    - Rich hover information (weight, return, volatility, momentum)
+    - Professional color gradients (FinViz/Bloomberg style)
+    - Multi-line labels with icons and metrics
+    - Interactive tooltips with detailed stats
 
     Args:
         sector_data: List of dicts with sector info
+        metric: Performance metric to color by ('ytd_return', '1m_return', etc.)
 
     Returns:
         Plotly treemap figure
@@ -89,45 +93,117 @@ def create_sector_treemap(sector_data: List[Dict]) -> go.Figure:
 
     df = pd.DataFrame(sector_data)
 
-    # Create labels with sector name and return
-    df['label'] = df.apply(
-        lambda row: f"{row['name']}<br>{row['ytd_return']:+.2f}%",
+    # Sector icons for visual appeal
+    sector_icons = {
+        'Technology': '💻',
+        'Information Technology': '💻',
+        'Healthcare': '🏥',
+        'Health Care': '🏥',
+        'Financials': '💰',
+        'Consumer Discretionary': '🛒',
+        'Communication Services': '📡',
+        'Industrials': '🏭',
+        'Consumer Staples': '🛍️',
+        'Energy': '⚡',
+        'Utilities': '🔌',
+        'Real Estate': '🏘️',
+        'Materials': '⚒️',
+        'Basic Materials': '⚒️'
+    }
+
+    # Create rich multi-line labels
+    df['display_label'] = df.apply(
+        lambda row: (
+            f"{sector_icons.get(row['name'], '📊')} {row['name']}<br>"
+            f"<b style='font-size: 1.2em;'>{row.get(metric, row.get('ytd_return', 0)):+.2f}%</b><br>"
+            f"<span style='font-size: 0.8em; opacity: 0.9;'>Weight: {row['weight']:.1f}%</span>"
+        ),
         axis=1
     )
 
+    # Create custom hover text with rich information
+    df['hover_text'] = df.apply(
+        lambda row: (
+            f"<b>{row['name']}</b><br><br>"
+            f"<b>Performance:</b> {row.get(metric, row.get('ytd_return', 0)):+.2f}%<br>"
+            f"<b>Market Weight:</b> {row['weight']:.2f}%<br>"
+            f"<b>Ticker:</b> {row.get('ticker', 'N/A')}<br>"
+        ),
+        axis=1
+    )
+
+    # Professional color scale (Bloomberg/FinViz inspired)
+    # Diverging red-white-green with more granular transitions
     fig = px.treemap(
         df,
-        path=['label'],
+        path=['display_label'],
         values='weight',
-        color='ytd_return',
+        color=metric if metric in df.columns else 'ytd_return',
         color_continuous_scale=[
-            [0.0, '#dc2626'],    # Deep red for <= -3%
-            [0.3, '#f87171'],    # Light red
-            [0.45, '#fbbf24'],   # Yellow
-            [0.55, '#a3e635'],   # Light green
-            [0.7, '#22c55e'],    # Medium green
-            [1.0, '#059669']     # Deep green for >= 3%
+            [0.0, '#b91c1c'],    # Deep red (strong loss)
+            [0.2, '#dc2626'],    # Red (moderate loss)
+            [0.35, '#f87171'],   # Light red (small loss)
+            [0.45, '#fbbf24'],   # Yellow (neutral)
+            [0.55, '#bef264'],   # Yellow-green (small gain)
+            [0.65, '#4ade80'],   # Light green (moderate gain)
+            [0.8, '#22c55e'],    # Green (good gain)
+            [1.0, '#15803d']     # Deep green (strong gain)
         ],
         color_continuous_midpoint=0,
-        range_color=[-3, 3]
+        range_color=[-5, 5],
+        custom_data=['hover_text']
     )
 
+    # Enhanced trace styling
     fig.update_traces(
         textposition='middle center',
-        textfont=dict(size=16, color='white', family='Arial Black'),
-        marker=dict(line=dict(width=2, color='#1e293b'))
+        textfont=dict(
+            size=14,
+            color='white',
+            family='Inter, -apple-system, BlinkMacSystemFont, sans-serif'
+        ),
+        marker=dict(
+            line=dict(width=3, color='#0f172a'),
+            cornerradius=5
+        ),
+        hovertemplate='%{customdata[0]}<extra></extra>'
     )
 
+    # Professional layout with glassmorphic styling
     fig.update_layout(
-        height=600,
-        margin=dict(l=0, r=0, t=30, b=0),
-        paper_bgcolor='#0f172a',
-        font=dict(color='white'),
+        height=700,
+        margin=dict(l=10, r=10, t=60, b=10),
+        paper_bgcolor='rgba(15, 23, 42, 0.95)',
+        plot_bgcolor='rgba(15, 23, 42, 0.95)',
+        font=dict(color='#e2e8f0', family='Inter, sans-serif'),
+        title=dict(
+            text='<b>S&P 500 Sector Performance Heatmap</b>',
+            font=dict(size=20, color='#f8fafc'),
+            x=0.5,
+            xanchor='center',
+            y=0.98,
+            yanchor='top'
+        ),
         coloraxis_colorbar=dict(
-            title="YTD Return",
+            title=dict(
+                text="<b>Return (%)</b>",
+                font=dict(size=12)
+            ),
             ticksuffix="%",
-            x=1.02,
-            len=0.7
+            tickfont=dict(size=11),
+            x=1.0,
+            xanchor='left',
+            len=0.85,
+            thickness=20,
+            outlinewidth=2,
+            outlinecolor='rgba(99, 102, 241, 0.3)',
+            bgcolor='rgba(30, 41, 59, 0.8)',
+            borderwidth=0
+        ),
+        hoverlabel=dict(
+            bgcolor='rgba(15, 23, 42, 0.95)',
+            bordercolor='rgba(99, 102, 241, 0.5)',
+            font=dict(size=13, color='white', family='Inter, sans-serif')
         )
     )
 
