@@ -19068,7 +19068,179 @@ To maintain gradual transitions:
                     elif use_model_inputs_dashboard and not MODEL_INPUTS_DASHBOARD_AVAILABLE:
                         st.error("❌ Model Inputs Dashboard module not available. Using simple mode.")
                         use_model_inputs_dashboard = False
-    
+
+                # ============================================================
+                # REGIME-AWARE DCF (PHASE 4)
+                # ============================================================
+                if method_key in ['FCFF', 'FCFE']:
+                    st.markdown("---")
+                    st.markdown("#### 🌐 Regime-Aware DCF (Phase 4)")
+
+                    use_regime_aware_dcf = st.checkbox(
+                        "🌐 Apply Market Regime Overlay to DCF",
+                        value=False,
+                        help="Adjust WACC and terminal growth based on current market regime",
+                        key="use_regime_aware_dcf"
+                    )
+
+                    if use_regime_aware_dcf:
+                        st.info("""
+                        **🌐 Regime-Aware DCF Active**
+
+                        Market regime impacts valuation assumptions:
+                        - **RISK-ON**: Lower WACC (-50 bps), Higher terminal growth (+25 bps) → More aggressive valuation
+                        - **RISK-OFF**: Higher WACC (+100 bps), Lower terminal growth (-50 bps) → More conservative valuation
+                        - **TRANSITIONAL**: Moderate adjustments (+25 bps WACC, -10 bps growth)
+                        - **NEUTRAL**: No adjustments (baseline DCF)
+
+                        Philosophy: "Cost of capital and growth expectations depend on market conditions"
+                        """)
+
+                        # Detect market regime
+                        with st.spinner("🔍 Detecting market regime..."):
+                            try:
+                                from dcf_regime_overlay import DCFRegimeOverlay
+
+                                regime_overlay = DCFRegimeOverlay()
+
+                                # Get baseline WACC and terminal growth
+                                if use_model_inputs_dashboard and 'dashboard_inputs' in st.session_state:
+                                    baseline_wacc = st.session_state['dashboard_inputs']['wacc']
+                                    baseline_terminal_growth = st.session_state['dashboard_inputs']['terminal_growth']
+                                else:
+                                    # Use default values if dashboard not active
+                                    baseline_wacc = 0.10  # 10% default
+                                    baseline_terminal_growth = 0.025  # 2.5% default
+
+                                # Detect regime and get adjustments
+                                regime_result = regime_overlay.detect_and_adjust(
+                                    baseline_wacc=baseline_wacc,
+                                    baseline_terminal_growth=baseline_terminal_growth,
+                                    apply_adjustments=True
+                                )
+
+                                # Store in session state for DCF calculation
+                                st.session_state['regime_dcf_result'] = regime_result
+
+                                # Display regime classification
+                                regime_info = regime_result['regime_info']
+                                regime = regime_info['regime']
+                                regime_label = regime_info['regime_label']
+                                confidence = regime_info['confidence']
+                                score = regime_info['score']
+                                max_score = regime_info['max_score']
+
+                                # Regime banner colors
+                                regime_colors = {
+                                    'risk_on': ('#10b981', '🟢'),
+                                    'risk_off': ('#ef4444', '🔴'),
+                                    'transitional': ('#f59e0b', '🟡'),
+                                    'neutral': ('#94a3b8', '⚪')
+                                }
+                                banner_color, regime_emoji = regime_colors.get(regime, ('#94a3b8', '⚪'))
+
+                                st.markdown(f"""
+                                <div style="background: linear-gradient(135deg, rgba(139,92,246,0.12), rgba(21,25,50,0.95));
+                                            backdrop-filter: blur(24px); border-radius: 16px;
+                                            border: 2px solid {banner_color}; padding: 1.5rem;
+                                            box-shadow: 0 4px 24px rgba(0,0,0,0.3); margin: 1.5rem 0;">
+                                    <div style="display: flex; align-items: center; gap: 1rem;">
+                                        <span style="font-size: 2rem;">{regime_emoji}</span>
+                                        <div>
+                                            <h3 style="margin: 0; color: {banner_color}; font-size: 1.5rem; font-weight: 800;">
+                                                {regime_label} REGIME
+                                            </h3>
+                                            <p style="margin: 0.25rem 0 0 0; color: #94a3b8; font-size: 0.9rem;">
+                                                Confidence: {confidence:.0f}% | Score: {score:+d}/{max_score}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                                """, unsafe_allow_html=True)
+
+                                # DCF Adjustments Summary
+                                st.markdown("#### 📊 DCF Input Adjustments")
+
+                                col1, col2 = st.columns(2)
+
+                                with col1:
+                                    st.markdown("**WACC Adjustment**")
+                                    wacc_delta = regime_result['wacc_adjustment_bps']
+                                    wacc_color = '#ef4444' if wacc_delta > 0 else ('#10b981' if wacc_delta < 0 else '#94a3b8')
+                                    st.metric(
+                                        "Baseline WACC",
+                                        f"{regime_result['baseline_wacc']:.2%}",
+                                        delta=None
+                                    )
+                                    st.metric(
+                                        "Regime-Adjusted WACC",
+                                        f"{regime_result['adjusted_wacc']:.2%}",
+                                        delta=f"{wacc_delta:+d} bps",
+                                        delta_color="inverse"  # Higher WACC is bad
+                                    )
+                                    st.caption(f"💡 {regime_result['wacc_explanation']}")
+
+                                with col2:
+                                    st.markdown("**Terminal Growth Adjustment**")
+                                    tg_delta = regime_result['terminal_growth_adjustment_bps']
+                                    tg_color = '#10b981' if tg_delta > 0 else ('#ef4444' if tg_delta < 0 else '#94a3b8')
+                                    st.metric(
+                                        "Baseline Terminal Growth",
+                                        f"{regime_result['baseline_terminal_growth']:.2%}",
+                                        delta=None
+                                    )
+                                    st.metric(
+                                        "Regime-Adjusted Growth",
+                                        f"{regime_result['adjusted_terminal_growth']:.2%}",
+                                        delta=f"{tg_delta:+d} bps",
+                                        delta_color="normal"  # Higher growth is good
+                                    )
+                                    st.caption(f"💡 {regime_result['terminal_growth_explanation']}")
+
+                                # Valuation Impact Summary
+                                impact = regime_result['valuation_impact']
+                                if impact == 'AGGRESSIVE':
+                                    impact_color = '#10b981'
+                                    impact_icon = '📈'
+                                    impact_msg = "Regime-adjusted inputs will produce HIGHER valuation (lower discount rate + higher growth)"
+                                elif impact == 'CONSERVATIVE':
+                                    impact_color = '#ef4444'
+                                    impact_icon = '📉'
+                                    impact_msg = "Regime-adjusted inputs will produce LOWER valuation (higher discount rate + lower growth)"
+                                elif impact == 'MODERATELY CONSERVATIVE':
+                                    impact_color = '#f59e0b'
+                                    impact_icon = '⚠️'
+                                    impact_msg = "Regime-adjusted inputs will produce MODERATELY LOWER valuation"
+                                else:
+                                    impact_color = '#94a3b8'
+                                    impact_icon = '➖'
+                                    impact_msg = "Regime-adjusted inputs will produce SIMILAR valuation (minimal adjustments)"
+
+                                st.markdown(f"""
+                                <div style="background: rgba(139,92,246,0.08); border-left: 4px solid {impact_color};
+                                            padding: 1rem; margin: 1rem 0; border-radius: 8px;">
+                                    <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                        <span style="font-size: 1.5rem;">{impact_icon}</span>
+                                        <div>
+                                            <strong style="color: {impact_color}; font-size: 1.1rem;">
+                                                {impact} VALUATION
+                                            </strong>
+                                            <p style="margin: 0.25rem 0 0 0; color: #cbd5e1; font-size: 0.9rem;">
+                                                {impact_msg}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                                """, unsafe_allow_html=True)
+
+                            except Exception as e:
+                                st.error(f"❌ Error detecting market regime: {str(e)}")
+                                import traceback
+                                with st.expander("Error Details"):
+                                    st.code(traceback.format_exc())
+                                st.info("💡 Regime-aware DCF disabled. Using baseline inputs.")
+                                use_regime_aware_dcf = False
+
                 # ============================================================
                 # MULTI-STAGE DCF (ATLAS v11.0)
                 # ============================================================
@@ -19147,15 +19319,25 @@ To maintain gradual transitions:
                                                     'diluted_shares',
                                                     company.get('shares_outstanding', 1e9)
                                                 )
-    
+
                                                 # Calculate net debt
                                                 net_debt = financials.get('total_debt', 0) - financials.get('cash', 0)
-    
+
+                                                # Get WACC and terminal growth (regime-adjusted if enabled)
+                                                if use_regime_aware_dcf and 'regime_dcf_result' in st.session_state:
+                                                    regime_result = st.session_state['regime_dcf_result']
+                                                    dcf_wacc = regime_result['adjusted_wacc']
+                                                    dcf_terminal_growth = regime_result['adjusted_terminal_growth']
+                                                    st.info(f"🌐 Using regime-adjusted inputs: WACC={dcf_wacc:.2%}, Terminal Growth={dcf_terminal_growth:.2%}")
+                                                else:
+                                                    dcf_wacc = multistage_config.wacc
+                                                    dcf_terminal_growth = multistage_config.terminal_growth_rate
+
                                                 # Run multi-stage DCF
                                                 dcf_result = calculate_multistage_dcf(
                                                     projections=projections,
-                                                    terminal_growth=multistage_config.terminal_growth_rate,
-                                                    wacc=multistage_config.wacc,
+                                                    terminal_growth=dcf_terminal_growth,
+                                                    wacc=dcf_wacc,
                                                     diluted_shares=diluted_shares,
                                                     net_debt=net_debt
                                                 )
