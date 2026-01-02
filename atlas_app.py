@@ -22685,10 +22685,20 @@ To maintain gradual transitions:
                                 returns = hist_data.pct_change().dropna()
 
                                 # Calculate current portfolio
+                                # Detect quantity column name (flexible: Shares, Quantity, Qty)
+                                qty_col = None
+                                for col in ['Shares', 'Quantity', 'Qty', 'shares', 'quantity', 'qty']:
+                                    if col in portfolio_data.columns:
+                                        qty_col = col
+                                        break
+
                                 if 'Total Value' in portfolio_data.columns:
                                     total_value = portfolio_data['Total Value'].sum()
+                                elif qty_col and 'Current Price' in portfolio_data.columns:
+                                    total_value = (portfolio_data[qty_col] * portfolio_data['Current Price']).sum()
                                 else:
-                                    total_value = (portfolio_data['Quantity'] * portfolio_data['Current Price']).sum()
+                                    st.error("❌ Portfolio data must have either 'Total Value' or both quantity column (Shares/Quantity/Qty) and 'Current Price'")
+                                    st.stop()
 
                                 current_portfolio = {}
                                 current_prices = {}
@@ -22698,8 +22708,10 @@ To maintain gradual transitions:
                                     if len(ticker_data) > 0:
                                         if 'Total Value' in ticker_data.columns:
                                             ticker_value = ticker_data['Total Value'].sum()
+                                        elif qty_col and 'Current Price' in ticker_data.columns:
+                                            ticker_value = (ticker_data[qty_col] * ticker_data['Current Price']).sum()
                                         else:
-                                            ticker_value = (ticker_data['Quantity'] * ticker_data['Current Price']).sum()
+                                            ticker_value = 0
 
                                         current_portfolio[ticker] = ticker_value / total_value
 
