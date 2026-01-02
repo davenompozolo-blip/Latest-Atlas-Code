@@ -21262,7 +21262,7 @@ To maintain gradual transitions:
             # Sub-navigation for Market Watch
             market_watch_tab = st.radio(
                 "Select View",
-                ["📊 Overview", "📈 Stocks", "🏢 Sectors", "📅 Economic Calendar"],
+                ["📊 Overview", "📈 Stocks", "🏢 Sectors", "📅 Economic Calendar", "📰 News"],
                 horizontal=True,
                 key="market_watch_nav"
             )

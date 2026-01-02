@@ -268,3 +268,6 @@ def render_market_watch_page(market_watch_page: str):
         render_sectors_page()
     elif market_watch_page == "📅 Economic Calendar":
         render_economic_calendar_page()
+    elif market_watch_page == "📰 News":
+        from news_aggregator import render_news_feed
+        render_news_feed()
