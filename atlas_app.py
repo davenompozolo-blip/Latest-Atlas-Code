@@ -21250,6 +21250,25 @@ To maintain gradual transitions:
                             st.info("💡 Ensure your portfolio has valid data and multiple positions")
 
         # ========================================================================
+        # MARKET WATCH (ATLAS Market Watch Integration)
+        # ========================================================================
+        elif page == "🌍 Market Watch":
+            from market_watch_components import render_market_watch_page
+
+            st.markdown('<h1 style="font-size: 2.5rem; font-weight: 800; color: #f8fafc; margin-bottom: 0.5rem;"><span style="font-size: 2rem;">🌍</span> <span style="background: linear-gradient(135deg, #00d4ff, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">MARKET WATCH</span></h1>', unsafe_allow_html=True)
+
+            # Sub-navigation for Market Watch
+            market_watch_tab = st.radio(
+                "Select View",
+                ["📊 Overview", "📈 Stocks", "🏢 Sectors", "📅 Economic Calendar"],
+                horizontal=True,
+                key="market_watch_nav"
+            )
+
+            # Render selected page
+            render_market_watch_page(market_watch_tab)
+
+        # ========================================================================
         # MARKET REGIME DETECTOR (Phase 2)
         # ========================================================================
         elif page == "🌐 Market Regime":
