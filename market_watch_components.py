@@ -312,6 +312,163 @@ def render_sectors_page():
         st.warning("Unable to fetch sector data")
         return
 
+    # ============================================================
+    # SECTOR TREND DETECTION & ALERTS (Priority 3, Item 8)
+    # ============================================================
+
+    st.markdown("---")
+    st.markdown("### 🚨 Trend Detection & Momentum Alerts")
+
+    # Analyze trends and detect momentum/reversals
+    momentum_alerts = []
+    reversal_alerts = []
+
+    for sector in sector_data:
+        ytd = sector.get('ytd_return', 0)
+
+        # MOMENTUM DETECTION
+        # Strong bullish momentum (>5% YTD)
+        if ytd > 5:
+            momentum_alerts.append({
+                'sector': sector['name'],
+                'type': 'Strong Bullish Momentum',
+                'emoji': '🚀',
+                'color': '#22c55e',
+                'return': ytd,
+                'signal': f"+{ytd:.2f}% YTD - Strong uptrend"
+            })
+        # Strong bearish momentum (<-5% YTD)
+        elif ytd < -5:
+            momentum_alerts.append({
+                'sector': sector['name'],
+                'type': 'Strong Bearish Momentum',
+                'emoji': '📉',
+                'color': '#ef4444',
+                'return': ytd,
+                'signal': f"{ytd:.2f}% YTD - Strong downtrend"
+            })
+        # Moderate momentum (2-5%)
+        elif ytd > 2:
+            momentum_alerts.append({
+                'sector': sector['name'],
+                'type': 'Moderate Bullish',
+                'emoji': '📈',
+                'color': '#10b981',
+                'return': ytd,
+                'signal': f"+{ytd:.2f}% YTD - Building momentum"
+            })
+
+        # REVERSAL DETECTION (Simulated - in production would compare to historical averages)
+        # For demonstration: Sectors near 0% might be reversing
+        if -2 < ytd < 2 and ytd != 0:
+            direction = "Bullish" if ytd > 0 else "Bearish"
+            reversal_alerts.append({
+                'sector': sector['name'],
+                'type': f'Potential {direction} Reversal',
+                'emoji': '🔄',
+                'color': '#f59e0b',
+                'return': ytd,
+                'signal': f"{ytd:+.2f}% YTD - Consolidating near zero, watch for breakout"
+            })
+
+    # Display alerts in professional cards
+    alert_col1, alert_col2 = st.columns(2)
+
+    with alert_col1:
+        st.markdown("#### 🚀 Momentum Alerts")
+
+        if momentum_alerts:
+            for alert in sorted(momentum_alerts, key=lambda x: abs(x['return']), reverse=True)[:5]:
+                st.markdown(f"""
+                <div style="
+                    background: linear-gradient(135deg, rgba(30,41,59,0.95), rgba(15,23,42,0.98));
+                    border-left: 4px solid {alert['color']};
+                    padding: 0.875rem;
+                    border-radius: 0.75rem;
+                    margin-bottom: 0.625rem;
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+                ">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+                        <span style="font-size: 1.5rem;">{alert['emoji']}</span>
+                        <span style="
+                            background: {alert['color']};
+                            color: #0f172a;
+                            padding: 0.25rem 0.625rem;
+                            border-radius: 0.375rem;
+                            font-size: 0.7rem;
+                            font-weight: 700;
+                            text-transform: uppercase;
+                        ">{alert['type']}</span>
+                    </div>
+                    <p style="margin: 0; font-size: 1rem; font-weight: 600; color: #f8fafc;">
+                        {alert['sector']}
+                    </p>
+                    <p style="margin: 0.375rem 0 0 0; font-size: 0.85rem; color: #cbd5e1;">
+                        {alert['signal']}
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.info("📊 No significant momentum detected. Markets in consolidation phase.")
+
+    with alert_col2:
+        st.markdown("#### 🔄 Reversal Watch")
+
+        if reversal_alerts:
+            for alert in reversal_alerts[:5]:
+                st.markdown(f"""
+                <div style="
+                    background: linear-gradient(135deg, rgba(30,41,59,0.95), rgba(15,23,42,0.98));
+                    border-left: 4px solid {alert['color']};
+                    padding: 0.875rem;
+                    border-radius: 0.75rem;
+                    margin-bottom: 0.625rem;
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+                ">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+                        <span style="font-size: 1.5rem;">{alert['emoji']}</span>
+                        <span style="
+                            background: {alert['color']};
+                            color: #0f172a;
+                            padding: 0.25rem 0.625rem;
+                            border-radius: 0.375rem;
+                            font-size: 0.7rem;
+                            font-weight: 700;
+                            text-transform: uppercase;
+                        ">{alert['type']}</span>
+                    </div>
+                    <p style="margin: 0; font-size: 1rem; font-weight: 600; color: #f8fafc;">
+                        {alert['sector']}
+                    </p>
+                    <p style="margin: 0.375rem 0 0 0; font-size: 0.85rem; color: #cbd5e1;">
+                        {alert['signal']}
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.info("🔍 No reversals detected. Sectors maintaining their trends.")
+
+    # Summary metrics for trend detection
+    st.markdown("---")
+    metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
+
+    with metric_col1:
+        bullish_count = sum(1 for a in momentum_alerts if 'Bullish' in a['type'])
+        st.metric("🐂 Bullish Momentum", bullish_count, help="Sectors showing upward momentum")
+
+    with metric_col2:
+        bearish_count = sum(1 for a in momentum_alerts if 'Bearish' in a['type'])
+        st.metric("🐻 Bearish Momentum", bearish_count, help="Sectors showing downward momentum")
+
+    with metric_col3:
+        st.metric("🔄 Reversals Watch", len(reversal_alerts), help="Sectors near potential trend changes")
+
+    with metric_col4:
+        total_alerts = len(momentum_alerts) + len(reversal_alerts)
+        st.metric("🚨 Total Alerts", total_alerts, help="All active trend signals")
+
+    st.markdown("---")
+
     # Sector icons mapping
     sector_icons = {
         'Technology': '💻',
