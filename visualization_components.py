@@ -138,13 +138,14 @@ def create_sector_treemap(sector_data: List[Dict]) -> go.Figure:
 # INDEX MINI CHARTS
 # ============================================================
 
-def create_mini_index_chart(ticker: str, period: str = '1d') -> go.Figure:
+def create_mini_index_chart(ticker: str, period: str = '1d', show_dates: bool = False) -> go.Figure:
     """
     Create small chart for index display in sidebar
 
     Args:
         ticker: Index ticker
-        period: Time period
+        period: Time period (1D, 5D, 1M, 3M, 6M, 1Y)
+        show_dates: Whether to show date labels on x-axis
 
     Returns:
         Plotly figure
@@ -152,8 +153,20 @@ def create_mini_index_chart(ticker: str, period: str = '1d') -> go.Figure:
     import yfinance as yf
 
     try:
+        # Map period to yfinance format and interval
+        period_map = {
+            '1D': ('1d', '5m'),
+            '5D': ('5d', '15m'),
+            '1M': ('1mo', '1d'),
+            '3M': ('3mo', '1d'),
+            '6M': ('6mo', '1d'),
+            '1Y': ('1y', '1d')
+        }
+
+        yf_period, interval = period_map.get(period.upper(), ('1d', '5m'))
+
         index = yf.Ticker(ticker)
-        hist = index.history(period=period, interval='5m' if period == '1d' else '1d')
+        hist = index.history(period=yf_period, interval=interval)
 
         if hist.empty:
             return go.Figure()
@@ -171,16 +184,36 @@ def create_mini_index_chart(ticker: str, period: str = '1d') -> go.Figure:
             fill='tozeroy',
             fillcolor=f'rgba({"16,185,129" if color == "#10b981" else "239,68,68"},0.1)',
             showlegend=False,
-            hovertemplate='%{y:.2f}<extra></extra>'
+            hovertemplate='<b>%{x|%b %d, %Y}</b><br>%{y:.2f}<extra></extra>'
         ))
 
+        # Configure x-axis based on show_dates parameter
+        xaxis_config = {
+            'showgrid': True if show_dates else False,
+            'gridcolor': 'rgba(99, 102, 241, 0.1)',
+            'visible': show_dates
+        }
+
+        if show_dates:
+            xaxis_config.update({
+                'showticklabels': True,
+                'tickformat': '%b %d' if period in ['1D', '5D'] else '%b %Y',
+                'tickfont': dict(size=9, color='#94a3b8'),
+                'tickangle': -45
+            })
+
         fig.update_layout(
-            height=80,
-            margin=dict(l=0, r=0, t=0, b=0),
-            xaxis=dict(visible=False, showgrid=False),
-            yaxis=dict(visible=False, showgrid=False),
+            height=80 if not show_dates else 120,
+            margin=dict(l=0, r=0, t=0, b=30 if show_dates else 0),
+            xaxis=xaxis_config,
+            yaxis=dict(
+                visible=show_dates,
+                showgrid=True if show_dates else False,
+                gridcolor='rgba(99, 102, 241, 0.1)',
+                tickfont=dict(size=9, color='#94a3b8')
+            ),
             paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(15, 23, 42, 0.5)' if show_dates else 'rgba(0,0,0,0)',
             hovermode='x unified'
         )
 

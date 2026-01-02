@@ -105,6 +105,60 @@ def render_overview_page():
     # Major Indices Section
     st.markdown("### 🌍 Major Indices")
 
+    # Time frame selector (sleek buttons matching navigation style)
+    st.markdown("""
+        <style>
+        /* Time frame selector styling */
+        div[data-testid="stRadio"][key="chart_timeframe"] > div {
+            gap: 0.5rem;
+        }
+
+        div[data-testid="stRadio"][key="chart_timeframe"] > div > label {
+            background: linear-gradient(135deg, rgba(21, 25, 50, 0.6), rgba(15, 23, 42, 0.8));
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(99, 102, 241, 0.15);
+            border-radius: 0.5rem;
+            padding: 0.5rem 1rem;
+            color: #94a3b8;
+            font-weight: 500;
+            font-size: 0.85rem;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+        }
+
+        div[data-testid="stRadio"][key="chart_timeframe"] > div > label:hover {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.15));
+            border-color: rgba(99, 102, 241, 0.3);
+            color: #f8fafc;
+            transform: translateY(-1px);
+        }
+
+        div[data-testid="stRadio"][key="chart_timeframe"] > div > label[data-checked="true"] {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(139, 92, 246, 0.25));
+            border: 1px solid rgba(99, 102, 241, 0.5);
+            color: #f8fafc;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);
+        }
+
+        div[data-testid="stRadio"][key="chart_timeframe"] input[type="radio"] {
+            display: none;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+    chart_timeframe = st.radio(
+        "Chart Time Frame",
+        ["1D", "5D", "1M", "3M", "6M", "1Y"],
+        index=2,  # Default to 1M
+        horizontal=True,
+        label_visibility="collapsed",
+        key="chart_timeframe",
+        help="Select time period for index charts"
+    )
+
+    st.markdown("<div style='margin: 0.75rem 0;'></div>", unsafe_allow_html=True)
+
     col1, col2, col3 = st.columns(3)
 
     regions = ['Americas', 'Europe', 'Asia']
@@ -128,10 +182,14 @@ def render_overview_page():
                                    unsafe_allow_html=True)
 
                     with idx_col2:
-                        # Mini chart
-                        if index.get('history') is not None and not index['history'].empty:
-                            mini_chart = create_sparkline(index['history']['Close'])
-                            st.plotly_chart(mini_chart, use_container_width=True, key=f"spark_{index['ticker']}")
+                        # Enhanced chart with time frame selection and date labels
+                        from visualization_components import create_mini_index_chart
+                        mini_chart = create_mini_index_chart(
+                            index['ticker'],
+                            period=chart_timeframe,
+                            show_dates=True
+                        )
+                        st.plotly_chart(mini_chart, use_container_width=True, key=f"chart_{index['ticker']}_{chart_timeframe}")
 
                     st.markdown("<hr style='margin: 0.5rem 0; opacity: 0.2;'>", unsafe_allow_html=True)
 
