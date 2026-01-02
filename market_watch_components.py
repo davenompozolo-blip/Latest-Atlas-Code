@@ -301,9 +301,10 @@ def render_stocks_page():
 # ============================================================
 
 def render_sectors_page():
-    """Sector analysis page"""
+    """Sector analysis page with professional styling"""
 
     st.title("🏢 Sector Analysis")
+    st.caption("S&P 500 sector performance tracking with real-time market data")
 
     sector_data = get_sector_performance()
 
@@ -311,41 +312,129 @@ def render_sectors_page():
         st.warning("Unable to fetch sector data")
         return
 
+    # Sector icons mapping
+    sector_icons = {
+        'Technology': '💻',
+        'Information Technology': '💻',
+        'Healthcare': '🏥',
+        'Health Care': '🏥',
+        'Financials': '💰',
+        'Consumer Discretionary': '🛒',
+        'Communication Services': '📡',
+        'Industrials': '🏭',
+        'Consumer Staples': '🛍️',
+        'Energy': '⚡',
+        'Utilities': '🔌',
+        'Real Estate': '🏘️',
+        'Materials': '⚒️',
+        'Basic Materials': '⚒️'
+    }
+
     col1, col2 = st.columns([1, 2])
 
     with col1:
-        st.markdown("### Sector Performance")
+        st.markdown("### 📊 Performance Rankings")
 
-        for sector in sector_data:
-            with st.container():
-                st.markdown(f"**{sector['name']}**")
+        # Sort sectors by performance
+        sorted_sectors = sorted(sector_data, key=lambda x: x['ytd_return'], reverse=True)
 
-                metric_col1, metric_col2 = st.columns(2)
+        for idx, sector in enumerate(sorted_sectors):
+            # Determine rank badge color
+            if idx == 0:
+                rank_color = '#22c55e'  # Green for #1
+                rank_emoji = '🥇'
+            elif idx == 1:
+                rank_color = '#94a3b8'  # Silver for #2
+                rank_emoji = '🥈'
+            elif idx == 2:
+                rank_color = '#f59e0b'  # Bronze for #3
+                rank_emoji = '🥉'
+            else:
+                rank_color = '#64748b'
+                rank_emoji = f"#{idx + 1}"
 
-                with metric_col1:
-                    st.caption(f"Weight: {sector['weight']:.2f}%")
+            # Performance color
+            perf_color = '#10b981' if sector['ytd_return'] >= 0 else '#ef4444'
 
-                with metric_col2:
-                    change_color = 'color: #10b981' if sector['ytd_return'] >= 0 else 'color: #ef4444'
-                    st.markdown(f"<span style='{change_color}'>YTD: {sector['ytd_return']:+.2f}%</span>",
-                               unsafe_allow_html=True)
+            # Professional sector card matching news feed style
+            st.markdown(f"""
+            <div style="
+                background: linear-gradient(135deg, rgba(30,41,59,0.95), rgba(15,23,42,0.98));
+                border-left: 4px solid {perf_color};
+                padding: 1rem;
+                border-radius: 0.75rem;
+                margin-bottom: 0.75rem;
+                box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+            ">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                    <span style="
+                        font-size: 1.1rem;
+                        font-weight: 600;
+                        color: #f8fafc;
+                    ">{sector_icons.get(sector['name'], '📊')} {sector['name']}</span>
+                    <span style="
+                        background: {rank_color};
+                        color: #0f172a;
+                        padding: 0.25rem 0.5rem;
+                        border-radius: 0.375rem;
+                        font-size: 0.75rem;
+                        font-weight: 600;
+                    ">{rank_emoji}</span>
+                </div>
 
-                # Progress bar for weight
-                st.progress(sector['weight'] / 100)
-                st.markdown("<hr style='margin: 0.5rem 0; opacity: 0.2;'>", unsafe_allow_html=True)
+                <div style="display: flex; justify-content: space-between; margin-top: 0.75rem;">
+                    <div>
+                        <p style="margin: 0; font-size: 0.75rem; color: #94a3b8;">YTD Return</p>
+                        <p style="margin: 0.25rem 0 0 0; font-size: 1.5rem; font-weight: 700; color: {perf_color};">
+                            {sector['ytd_return']:+.2f}%
+                        </p>
+                    </div>
+                    <div style="text-align: right;">
+                        <p style="margin: 0; font-size: 0.75rem; color: #94a3b8;">Market Weight</p>
+                        <p style="margin: 0.25rem 0 0 0; font-size: 1.1rem; font-weight: 600; color: #cbd5e1;">
+                            {sector['weight']:.2f}%
+                        </p>
+                    </div>
+                </div>
+
+                <div style="margin-top: 0.75rem; background: rgba(99, 102, 241, 0.1); border-radius: 0.5rem; height: 8px; overflow: hidden;">
+                    <div style="
+                        background: linear-gradient(90deg, #6366f1, #8b5cf6);
+                        height: 100%;
+                        width: {min(sector['weight'] * 3.33, 100)}%;
+                        border-radius: 0.5rem;
+                    "></div>
+                </div>
+                <p style="margin: 0.25rem 0 0 0; font-size: 0.7rem; color: #64748b; text-align: right;">
+                    Relative to max weight (30%)
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
 
     with col2:
-        st.markdown("### Sector Heatmap")
+        st.markdown("### 🗺️ Interactive Heatmap")
 
         treemap = create_sector_treemap(sector_data)
         st.plotly_chart(treemap, use_container_width=True)
 
-        st.caption("""
-        **How to read this chart:**
-        - Size = Market weight (larger = more important)
-        - Color = Performance (green = positive, red = negative)
-        - Click sectors to drill down
-        """)
+        # Professional info card
+        st.markdown("""
+        <div style="
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.05));
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            border-radius: 0.75rem;
+            padding: 1rem;
+            margin-top: 1rem;
+        ">
+            <p style="margin: 0; font-size: 0.9rem; color: #cbd5e1; line-height: 1.6;">
+                <b style="color: #f8fafc;">💡 How to use this heatmap:</b><br>
+                • <b>Size</b> represents market weight (larger = more important to S&P 500)<br>
+                • <b>Color</b> shows YTD performance (green = gains, red = losses)<br>
+                • <b>Hover</b> for detailed sector statistics and metrics<br>
+                • Click sectors to explore deeper (when drill-down enabled)
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
 
 
 # ============================================================
