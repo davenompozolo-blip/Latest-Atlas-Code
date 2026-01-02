@@ -85,6 +85,7 @@ def render_sidebar_navigation(default_page: str = "Portfolio Home") -> str:
                 "📊 R Analytics",
                 "💾 Database",
                 "🌍 Market Watch",
+                "🌐 Market Regime",
                 "📈 Risk Analysis",
                 "💎 Performance Suite",
                 "🔬 Portfolio Deep Dive",
@@ -97,7 +98,7 @@ def render_sidebar_navigation(default_page: str = "Portfolio Home") -> str:
             ],
             icons=[
                 "fire", "house-fill", "rocket-takeoff-fill", "graph-up-arrow",
-                "database-fill", "globe", "graph-up", "gem", "microscope",
+                "database-fill", "globe", "globe2", "graph-up", "gem", "microscope",
                 "bar-chart-fill", "cash-coin", "dice-5-fill", "calculator-fill",
                 "graph-up", "broadcast"
             ],
