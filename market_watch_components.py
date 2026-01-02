@@ -175,13 +175,66 @@ def render_stocks_page():
     st.title("📈 Stock Screeners")
     st.caption("Professional stock screening with 1,000+ stocks (S&P 500 + NASDAQ-100 + curated growth stocks)")
 
-    # Tabs for different views
-    tab1, tab2 = st.tabs(["🔍 Advanced Screener", "⚡ Quick Screens"])
+    # Custom CSS for sleek navigation buttons (matching sidebar style)
+    st.markdown("""
+        <style>
+        /* Override Streamlit's default radio button styling */
+        div[data-testid="stRadio"] > div {
+            gap: 0.75rem;
+        }
 
-    with tab1:
+        div[data-testid="stRadio"] > div > label {
+            background: linear-gradient(135deg, rgba(21, 25, 50, 0.6), rgba(15, 23, 42, 0.8));
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(99, 102, 241, 0.15);
+            border-radius: 0.75rem;
+            padding: 0.75rem 1.5rem;
+            color: #94a3b8;
+            font-weight: 500;
+            font-size: 0.9rem;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        div[data-testid="stRadio"] > div > label:hover {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.15));
+            border-color: rgba(99, 102, 241, 0.3);
+            color: #f8fafc;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+        }
+
+        div[data-testid="stRadio"] > div > label[data-checked="true"] {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(139, 92, 246, 0.25));
+            border: 1px solid rgba(99, 102, 241, 0.5);
+            color: #f8fafc;
+            font-weight: 600;
+            box-shadow: 0 6px 16px rgba(99, 102, 241, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        }
+
+        /* Hide the radio input circles */
+        div[data-testid="stRadio"] input[type="radio"] {
+            display: none;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+    # Sleek button navigation (replacing tabs)
+    screener_view = st.radio(
+        "Screener Type",
+        ["🔍 Advanced Screener", "⚡ Quick Screens"],
+        horizontal=True,
+        label_visibility="collapsed",
+        key="stock_screener_nav"
+    )
+
+    st.markdown("<div style='margin: 1rem 0;'></div>", unsafe_allow_html=True)
+
+    # Render selected view
+    if screener_view == "🔍 Advanced Screener":
         render_advanced_stock_screener()
-
-    with tab2:
+    else:
         render_prebuilt_screeners()
 
 
