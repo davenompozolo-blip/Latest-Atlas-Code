@@ -15611,9 +15611,11 @@ def main():
                         st.error(f"❌ Options filtering failed: {filtered}")
     
         # ========================================================================
-        # MARKET WATCH - COMPLETE REVAMP
+        # MARKET WATCH - COMPLETE REVAMP (DEPRECATED - Replaced by ATLAS Market Watch at line ~21255)
         # ========================================================================
-        elif page == "🌍 Market Watch":
+        # OLD MARKET WATCH DISABLED - Now using ATLAS Market Watch with institutional features
+        # See atlas_app.py line 21255 for new implementation
+        elif page == "🌍 Market Watch (OLD - DISABLED)":
             st.markdown("## 🌍 MARKET WATCH - EXCELLENCE EDITION")
             st.markdown("*Your comprehensive window into global markets, crypto, bonds, and credit conditions*")
     
