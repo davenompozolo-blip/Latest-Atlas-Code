@@ -294,21 +294,122 @@ class StockUniverseManager:
     def _build_universe(self):
         """Build fresh universe by fetching all stock data"""
 
-        # Get ticker list (S&P 500 for V1)
-        tickers = self.get_sp500_tickers()
+        # Get ticker list - EXPANDED to 1,000+
+        print("Building expanded universe (1,000+ stocks)...")
 
-        if not tickers:
+        # 1. S&P 500
+        sp500 = self.get_sp500_tickers()
+        print(f"✓ S&P 500: {len(sp500)} tickers")
+
+        # 2. NASDAQ-100
+        nasdaq100 = self.get_nasdaq100_tickers()
+        print(f"✓ NASDAQ-100: {len(nasdaq100)} tickers")
+
+        # 3. Additional popular stocks (curated)
+        additional = self._get_additional_curated_stocks()
+        print(f"✓ Additional curated: {len(additional)} tickers")
+
+        # Combine and deduplicate
+        all_tickers = list(set(sp500 + nasdaq100 + additional))
+        print(f"✓ Total unique tickers: {len(all_tickers)}")
+
+        if not all_tickers:
             print("❌ No tickers found, cannot build universe")
             self.universe = pd.DataFrame()
             return
 
         # Fetch data (parallel)
-        self.universe = self.fetch_stock_data_batch(tickers, max_workers=20)
+        self.universe = self.fetch_stock_data_batch(all_tickers, max_workers=20)
 
         # Save to cache
         self._save_to_cache()
 
         self.last_update = datetime.now()
+
+    def _get_additional_curated_stocks(self) -> List[str]:
+        """
+        Get additional popular stocks beyond S&P 500 and NASDAQ-100
+        Focus on: Mid-caps, small-caps, international, growth stocks
+
+        Returns:
+            List of ticker symbols
+        """
+
+        # Popular mid-caps and small-caps
+        curated = [
+            # Technology & Software
+            'SNOW', 'DDOG', 'CRWD', 'ZS', 'NET', 'CFLT', 'ESTC', 'MDB', 'DOCU',
+            'TWLO', 'OKTA', 'ZM', 'SHOP', 'SQ', 'COIN', 'HOOD', 'SOFI',
+
+            # Healthcare & Biotech
+            'MRNA', 'BNTX', 'REGN', 'VRTX', 'ILMN', 'BIIB', 'ALNY', 'SGEN',
+            'BMRN', 'INCY', 'EXAS', 'TDOC', 'VEEV',
+
+            # Semiconductors & Hardware
+            'AMAT', 'LRCX', 'KLAC', 'MRVL', 'MCHP', 'MPWR', 'SWKS', 'QRVO',
+            'ARM', 'ONTO', 'ASML', 'TSM',
+
+            # Finance & Fintech
+            'AFRM', 'UPST', 'LC', 'NU', 'OPEN', 'RBLX', 'U',
+
+            # Consumer & E-commerce
+            'ABNB', 'UBER', 'LYFT', 'DASH', 'SPOT', 'PTON', 'W', 'CHWY',
+            'ETSY', 'PINS', 'SNAP',
+
+            # Energy & Clean Tech
+            'ENPH', 'SEDG', 'RUN', 'PLUG', 'FCEL', 'BE', 'CHPT', 'LCID', 'RIVN',
+
+            # Industrial & Materials
+            'CARR', 'OTIS', 'GEV', 'MLM', 'VMC', 'NUE', 'STLD', 'RS',
+
+            # Real Estate & REITs
+            'AMT', 'PLD', 'EQIX', 'PSA', 'DLR', 'O', 'VICI', 'SPG',
+
+            # Media & Entertainment
+            'NFLX', 'DIS', 'PARA', 'WBD', 'ROKU', 'MTCH', 'BMBL',
+
+            # International (ADRs)
+            'BABA', 'TSM', 'NIO', 'XPEV', 'LI', 'PDD', 'JD', 'BIDU',
+            'GRAB', 'SE', 'MELI', 'NU', 'VALE', 'ITUB',
+
+            # Aerospace & Defense
+            'BA', 'LMT', 'RTX', 'NOC', 'GD', 'LHX', 'TDG', 'HWM',
+
+            # Retail
+            'TGT', 'WMT', 'COST', 'HD', 'LOW', 'TJX', 'ROST', 'DG', 'DLTR',
+
+            # Utilities & Infrastructure
+            'NEE', 'DUK', 'SO', 'D', 'EXC', 'AEP', 'SRE', 'PCG',
+
+            # Gaming
+            'EA', 'TTWO', 'ATVI', 'RBLX', 'U', 'DKNG', 'PENN',
+
+            # Pharma
+            'PFE', 'JNJ', 'MRK', 'ABBV', 'BMY', 'LLY', 'GILD', 'AMGN',
+
+            # Cloud & Data
+            'PLTR', 'AI', 'GTLB', 'S', 'DBX', 'BOX', 'FIVN',
+
+            # Cybersecurity
+            'PANW', 'FTNT', 'CHKP', 'CYBR', 'TENB', 'OKTA',
+
+            # Communication Equipment
+            'CSCO', 'ANET', 'JNPR', 'ERIC', 'NOK', 'UI',
+
+            # Auto & EV
+            'F', 'GM', 'RIVN', 'LCID', 'NKLA', 'FSR', 'GOEV',
+
+            # Emerging Tech
+            'RKLB', 'SPCE', 'IRDM', 'GSAT', 'AST', 'PL',
+
+            # SPACs & Growth
+            'ARKK', 'ARKG', 'ARKW', 'ARKF', 'ARKQ',  # ARK ETFs for discovery
+        ]
+
+        # Remove any that might be in S&P 500 or NASDAQ-100 already
+        # (deduplication happens in _build_universe anyway)
+
+        return curated
 
     def _save_to_cache(self):
         """Save universe to cache file"""

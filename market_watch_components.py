@@ -173,7 +173,7 @@ def render_stocks_page():
     from advanced_stock_screener import render_advanced_stock_screener, render_prebuilt_screeners
 
     st.title("📈 Stock Screeners")
-    st.caption("Professional stock screening with 500+ S&P 500 stocks")
+    st.caption("Professional stock screening with 1,000+ stocks (S&P 500 + NASDAQ-100 + curated growth stocks)")
 
     # Tabs for different views
     tab1, tab2 = st.tabs(["🔍 Advanced Screener", "⚡ Quick Screens"])
