@@ -242,48 +242,11 @@ def render_sectors_page():
 # ============================================================
 
 def render_economic_calendar_page():
-    """Economic calendar page - CRITICAL FOR REGIME DETECTION"""
+    """Economic calendar page - Enhanced with filters and historical data"""
 
-    st.title("📅 Economic Calendar")
+    from enhanced_economic_calendar import render_enhanced_economic_calendar
 
-    st.markdown("""
-    <div style="background: #1e293b; padding: 1rem; border-radius: 0.5rem; border-left: 4px solid #3b82f6;">
-    <strong>📊 This Week's Major U.S. Economic Reports</strong><br>
-    Key events that drive market regime and portfolio positioning
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    # Get calendar data
-    calendar_data = get_economic_calendar()
-
-    if calendar_data:
-        for day_name, events_df in calendar_data.items():
-            st.markdown(f"### {day_name}")
-
-            if not events_df.empty:
-                # Format the dataframe
-                st.dataframe(
-                    events_df,
-                    use_container_width=True,
-                    hide_index=True
-                )
-            else:
-                st.info("No major events scheduled")
-
-            st.markdown("---")
-    else:
-        st.info("""
-        📅 **Economic calendar data unavailable**
-
-        To enable this feature:
-        1. Install investpy: `pip install investpy`
-        2. Or integrate with Trading Economics API
-        3. Or enable MarketWatch scraping
-
-        This is a critical feature for regime detection!
-        """)
+    render_enhanced_economic_calendar()
 
 
 # ============================================================
