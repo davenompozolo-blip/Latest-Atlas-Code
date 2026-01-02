@@ -168,58 +168,21 @@ def render_overview_page():
 # ============================================================
 
 def render_stocks_page():
-    """Stock screeners page"""
+    """Stock screeners page - Advanced screener with 500+ stocks"""
+
+    from advanced_stock_screener import render_advanced_stock_screener, render_prebuilt_screeners
 
     st.title("📈 Stock Screeners")
+    st.caption("Professional stock screening with 500+ S&P 500 stocks")
 
-    # Tabs for different screeners
-    tab1, tab2, tab3 = st.tabs(["📊 Most Active", "🚀 Top Gainers", "📉 Top Losers"])
+    # Tabs for different views
+    tab1, tab2 = st.tabs(["🔍 Advanced Screener", "⚡ Quick Screens"])
 
     with tab1:
-        st.markdown("### Most Actively Traded Stocks")
-
-        df = get_most_active_stocks(limit=25)
-
-        if not df.empty:
-            # Format the dataframe
-            display_df = df.copy()
-            display_df['Price'] = display_df['Price'].apply(lambda x: f"${x:.2f}")
-            display_df['Change'] = display_df['Change'].apply(lambda x: f"${x:+.2f}")
-            display_df['Change %'] = display_df['Change %'].apply(lambda x: f"{x:+.2f}%")
-            display_df['Volume'] = display_df['Volume'].apply(lambda x: f"{x:,}")
-            display_df['Market Cap'] = display_df['Market Cap'].apply(format_large_number)
-
-            st.dataframe(display_df, use_container_width=True, hide_index=True, height=600)
+        render_advanced_stock_screener()
 
     with tab2:
-        st.markdown("### Top Gaining Stocks Today")
-
-        df = get_top_gainers(limit=25)
-
-        if not df.empty:
-            display_df = df.copy()
-            display_df['Price'] = display_df['Price'].apply(lambda x: f"${x:.2f}")
-            display_df['Change'] = display_df['Change'].apply(lambda x: f"${x:+.2f}")
-            display_df['Change %'] = display_df['Change %'].apply(lambda x: f"{x:+.2f}%")
-            display_df['Volume'] = display_df['Volume'].apply(lambda x: f"{x:,}")
-            display_df['Market Cap'] = display_df['Market Cap'].apply(format_large_number)
-
-            st.dataframe(display_df, use_container_width=True, hide_index=True, height=600)
-
-    with tab3:
-        st.markdown("### Top Losing Stocks Today")
-
-        df = get_top_losers(limit=25)
-
-        if not df.empty:
-            display_df = df.copy()
-            display_df['Price'] = display_df['Price'].apply(lambda x: f"${x:.2f}")
-            display_df['Change'] = display_df['Change'].apply(lambda x: f"${x:+.2f}")
-            display_df['Change %'] = display_df['Change %'].apply(lambda x: f"{x:+.2f}%")
-            display_df['Volume'] = display_df['Volume'].apply(lambda x: f"{x:,}")
-            display_df['Market Cap'] = display_df['Market Cap'].apply(lambda x: f"{x:.2f}")
-
-            st.dataframe(display_df, use_container_width=True, hide_index=True, height=600)
+        render_prebuilt_screeners()
 
 
 # ============================================================
