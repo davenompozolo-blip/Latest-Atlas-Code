@@ -12,8 +12,15 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 from typing import List, Dict
-import feedparser
 from urllib.parse import urlparse
+
+# Handle feedparser import gracefully
+try:
+    import feedparser
+    FEEDPARSER_AVAILABLE = True
+except ImportError:
+    FEEDPARSER_AVAILABLE = False
+    feedparser = None
 
 
 class NewsAggregator:
@@ -139,6 +146,20 @@ def render_news_feed():
 
     st.markdown("### 📰 Live Market News")
     st.caption("Real-time news aggregated from leading financial publishers")
+
+    # Check if feedparser is available
+    if not FEEDPARSER_AVAILABLE:
+        st.warning("""
+        ⚠️ **News Feed Unavailable**
+
+        The `feedparser` package is not installed. To enable news aggregation, install it with:
+        ```
+        pip install feedparser
+        ```
+
+        Note: Some environments may have compatibility issues with this package.
+        """)
+        return
 
     # ============================================================
     # FILTERS

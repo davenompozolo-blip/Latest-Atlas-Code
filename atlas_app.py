@@ -21259,12 +21259,72 @@ To maintain gradual transitions:
 
             st.markdown('<h1 style="font-size: 2.5rem; font-weight: 800; color: #f8fafc; margin-bottom: 0.5rem;"><span style="font-size: 2rem;">🌍</span> <span style="background: linear-gradient(135deg, #00d4ff, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">MARKET WATCH</span></h1>', unsafe_allow_html=True)
 
+            # ============================================================
+            # SLEEK GRADIENT BUTTON NAVIGATION (NO CIRCLES)
+            # ============================================================
+            st.markdown("""
+            <style>
+            /* Market Watch Navigation - Sleek Gradient Buttons */
+            div[data-testid="stRadio"][aria-label="Select View"] > div {
+                flex-direction: row !important;
+                gap: 0.75rem;
+                flex-wrap: wrap;
+            }
+
+            div[data-testid="stRadio"][aria-label="Select View"] > div > label {
+                background: linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.9) 100%);
+                padding: 0.75rem 1.5rem;
+                border-radius: 0.75rem;
+                cursor: pointer;
+                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                border: 1px solid rgba(59, 130, 246, 0.2);
+                backdrop-filter: blur(10px);
+                color: #94a3b8;
+                font-weight: 500;
+                font-size: 0.9rem;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+            }
+
+            div[data-testid="stRadio"][aria-label="Select View"] > div > label:hover {
+                background: linear-gradient(135deg, rgba(51, 65, 85, 0.9) 0%, rgba(30, 41, 59, 0.95) 100%);
+                border-color: rgba(59, 130, 246, 0.5);
+                transform: translateY(-2px);
+                box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+                color: #f8fafc;
+            }
+
+            div[data-testid="stRadio"][aria-label="Select View"] > div > label[data-checked="true"] {
+                background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+                border-color: #3b82f6;
+                box-shadow: 0 4px 16px rgba(59, 130, 246, 0.4);
+                transform: translateY(-2px);
+                color: #ffffff;
+                font-weight: 600;
+            }
+
+            /* Hide the radio button circles completely */
+            div[data-testid="stRadio"][aria-label="Select View"] > div > label > div:first-child {
+                display: none !important;
+            }
+
+            div[data-testid="stRadio"][aria-label="Select View"] input[type="radio"] {
+                display: none !important;
+            }
+
+            /* Hide label visibility */
+            div[data-testid="stRadio"][aria-label="Select View"] > label {
+                display: none !important;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+
             # Sub-navigation for Market Watch
             market_watch_tab = st.radio(
                 "Select View",
                 ["📊 Overview", "📈 Stocks", "🏢 Sectors", "📅 Economic Calendar", "📰 News"],
                 horizontal=True,
-                key="market_watch_nav"
+                key="market_watch_nav",
+                label_visibility="collapsed"
             )
 
             # Render selected page

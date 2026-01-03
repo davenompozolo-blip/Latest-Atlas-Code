@@ -131,12 +131,13 @@ def render_overview_page():
     # Time frame selector (sleek buttons matching navigation style)
     st.markdown("""
         <style>
-        /* Time frame selector styling */
-        div[data-testid="stRadio"][key="chart_timeframe"] > div {
+        /* Time frame selector styling - Hide radio circles */
+        div[data-testid="stRadio"][aria-label="Chart Time Frame"] > div {
             gap: 0.5rem;
+            flex-wrap: wrap;
         }
 
-        div[data-testid="stRadio"][key="chart_timeframe"] > div > label {
+        div[data-testid="stRadio"][aria-label="Chart Time Frame"] > div > label {
             background: linear-gradient(135deg, rgba(21, 25, 50, 0.6), rgba(15, 23, 42, 0.8));
             backdrop-filter: blur(10px);
             border: 1px solid rgba(99, 102, 241, 0.15);
@@ -149,14 +150,14 @@ def render_overview_page():
             cursor: pointer;
         }
 
-        div[data-testid="stRadio"][key="chart_timeframe"] > div > label:hover {
+        div[data-testid="stRadio"][aria-label="Chart Time Frame"] > div > label:hover {
             background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.15));
             border-color: rgba(99, 102, 241, 0.3);
             color: #f8fafc;
             transform: translateY(-1px);
         }
 
-        div[data-testid="stRadio"][key="chart_timeframe"] > div > label[data-checked="true"] {
+        div[data-testid="stRadio"][aria-label="Chart Time Frame"] > div > label[data-checked="true"] {
             background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(139, 92, 246, 0.25));
             border: 1px solid rgba(99, 102, 241, 0.5);
             color: #f8fafc;
@@ -164,8 +165,13 @@ def render_overview_page():
             box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);
         }
 
-        div[data-testid="stRadio"][key="chart_timeframe"] input[type="radio"] {
-            display: none;
+        /* Hide radio circles */
+        div[data-testid="stRadio"][aria-label="Chart Time Frame"] > div > label > div:first-child {
+            display: none !important;
+        }
+
+        div[data-testid="stRadio"][aria-label="Chart Time Frame"] input[type="radio"] {
+            display: none !important;
         }
         </style>
     """, unsafe_allow_html=True)
@@ -173,38 +179,134 @@ def render_overview_page():
     chart_timeframe = st.radio(
         "Chart Time Frame",
         ["1D", "5D", "1M", "3M", "6M", "1Y"],
-        index=2,  # Default to 1M
+        index=1,  # Default to 5D for more detail
         horizontal=True,
         label_visibility="collapsed",
         key="chart_timeframe",
         help="Select time period for index charts"
     )
 
+    # Map time frame to yfinance parameters (more data points for detail)
+    period_map = {
+        '1D': {'period': '1d', 'interval': '5m'},
+        '5D': {'period': '5d', 'interval': '15m'},
+        '1M': {'period': '1mo', 'interval': '1h'},
+        '3M': {'period': '3mo', 'interval': '1d'},
+        '6M': {'period': '6mo', 'interval': '1d'},
+        '1Y': {'period': '1y', 'interval': '1d'}
+    }
+
     st.markdown("<div style='margin: 0.75rem 0;'></div>", unsafe_allow_html=True)
 
-    col1, col2, col3 = st.columns(3)
+    # Import plotly for sparkline charts
+    import plotly.graph_objects as go
+    import yfinance as yf
 
-    regions = ['Americas', 'Europe', 'Asia']
-    cols = [col1, col2, col3]
+    # Define indices by region with more comprehensive list
+    indices_by_region = {
+        'Americas': [
+            {'name': 'S&P 500', 'ticker': '^GSPC'},
+            {'name': 'Dow 30', 'ticker': '^DJI'},
+            {'name': 'Nasdaq', 'ticker': '^IXIC'},
+            {'name': 'Russell 2000', 'ticker': '^RUT'},
+        ],
+        'Europe': [
+            {'name': 'EURO STOXX 50', 'ticker': '^STOXX50E'},
+            {'name': 'DAX (Germany)', 'ticker': '^GDAXI'},
+            {'name': 'FTSE 100 (UK)', 'ticker': '^FTSE'},
+            {'name': 'CAC 40 (France)', 'ticker': '^FCHI'},
+        ],
+        'Asia': [
+            {'name': 'Nikkei 225', 'ticker': '^N225'},
+            {'name': 'Hang Seng', 'ticker': '^HSI'},
+            {'name': 'SSE Composite', 'ticker': '000001.SS'},
+            {'name': 'KOSPI', 'ticker': '^KS11'},
+        ]
+    }
 
-    from ui_components import create_index_card
+    for region_name, indices in indices_by_region.items():
+        st.markdown(f"#### {region_name}")
 
-    for region, col in zip(regions, cols):
-        with col:
-            st.markdown(f"#### {region}")
-            indices = get_indices_data(region)
+        cols = st.columns(len(indices))
 
-            for index in indices[:5]:  # Top 5 per region
-                # Use professional index card
-                index_card = create_index_card(
-                    name=index['display_name'],
-                    ticker=index['ticker'],
-                    price=index['price'],
-                    change=index['change'],
-                    change_pct=index['change_pct'],
-                    icon="📈" if index['change'] >= 0 else "📉"
-                )
-                st.markdown(index_card, unsafe_allow_html=True)
+        for col, index_info in zip(cols, indices):
+            with col:
+                try:
+                    # Fetch data with appropriate interval for detail
+                    ticker = yf.Ticker(index_info['ticker'])
+                    hist = ticker.history(**period_map[chart_timeframe])
+
+                    if not hist.empty and len(hist) > 1:
+                        # Current price and change
+                        current_price = hist['Close'].iloc[-1]
+                        prev_price = hist['Close'].iloc[0]  # First price in period
+                        change = current_price - prev_price
+                        change_pct = (change / prev_price * 100) if prev_price > 0 else 0
+
+                        # Determine colors based on performance
+                        trend_color = '#10b981' if change_pct >= 0 else '#ef4444'
+                        fill_color = 'rgba(16, 185, 129, 0.1)' if change_pct >= 0 else 'rgba(239, 68, 68, 0.1)'
+
+                        # Create detailed sparkline chart
+                        fig = go.Figure()
+
+                        fig.add_trace(go.Scatter(
+                            x=hist.index,
+                            y=hist['Close'],
+                            mode='lines',
+                            line=dict(
+                                color=trend_color,
+                                width=2
+                            ),
+                            fill='tozeroy',
+                            fillcolor=fill_color,
+                            hovertemplate='%{y:,.2f}<br>%{x|%b %d, %H:%M}<extra></extra>'
+                        ))
+
+                        fig.update_layout(
+                            height=100,
+                            margin=dict(l=0, r=0, t=0, b=20),
+                            xaxis=dict(
+                                showgrid=False,
+                                showticklabels=True,
+                                tickfont=dict(size=8, color='#64748b'),
+                                tickformat='%b %d' if chart_timeframe in ['1M', '3M', '6M', '1Y'] else '%H:%M'
+                            ),
+                            yaxis=dict(showgrid=False, showticklabels=False),
+                            paper_bgcolor='rgba(0,0,0,0)',
+                            plot_bgcolor='rgba(0,0,0,0)',
+                            hovermode='x unified'
+                        )
+
+                        # Display index name with icon
+                        icon = "📈" if change_pct >= 0 else "📉"
+                        st.markdown(f"**{icon} {index_info['name']}**")
+
+                        # Display sparkline chart
+                        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+
+                        # Display metrics below chart
+                        metric_col1, metric_col2 = st.columns(2)
+                        with metric_col1:
+                            st.markdown(f"""
+                            <div style="text-align: center;">
+                                <p style="margin: 0; font-size: 0.7rem; color: #94a3b8;">Price</p>
+                                <p style="margin: 0; font-size: 1rem; font-weight: 600; color: #f8fafc;">{current_price:,.2f}</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+                        with metric_col2:
+                            st.markdown(f"""
+                            <div style="text-align: center;">
+                                <p style="margin: 0; font-size: 0.7rem; color: #94a3b8;">Change</p>
+                                <p style="margin: 0; font-size: 1rem; font-weight: 600; color: {trend_color};">{change_pct:+.2f}%</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+
+                    else:
+                        st.warning(f"No data: {index_info['name']}")
+
+                except Exception as e:
+                    st.error(f"Error: {index_info['name']}")
 
     st.markdown("---")
 
