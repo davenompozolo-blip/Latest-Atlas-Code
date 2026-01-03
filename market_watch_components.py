@@ -313,159 +313,208 @@ def render_sectors_page():
         return
 
     # ============================================================
-    # SECTOR TREND DETECTION & ALERTS (Priority 3, Item 8)
+    # INSTITUTIONAL-GRADE TREND DETECTION (Priority 3, Item 8)
     # ============================================================
 
     st.markdown("---")
-    st.markdown("### 🚨 Trend Detection & Momentum Alerts")
+    st.markdown("### 🚨 Institutional-Grade Trend Detection & Momentum Alerts")
+    st.caption("Statistical analysis using z-scores, moving averages, relative strength, and significance testing")
 
-    # Analyze trends and detect momentum/reversals
-    momentum_alerts = []
-    reversal_alerts = []
+    # Import institutional-grade analyzer
+    from sector_trend_analyzer import SectorTrendAnalyzer
 
-    for sector in sector_data:
-        ytd = sector.get('ytd_return', 0)
+    # Initialize analyzer
+    analyzer = SectorTrendAnalyzer()
 
-        # MOMENTUM DETECTION
-        # Strong bullish momentum (>5% YTD)
-        if ytd > 5:
-            momentum_alerts.append({
-                'sector': sector['name'],
-                'type': 'Strong Bullish Momentum',
-                'emoji': '🚀',
-                'color': '#22c55e',
-                'return': ytd,
-                'signal': f"+{ytd:.2f}% YTD - Strong uptrend"
-            })
-        # Strong bearish momentum (<-5% YTD)
-        elif ytd < -5:
-            momentum_alerts.append({
-                'sector': sector['name'],
-                'type': 'Strong Bearish Momentum',
-                'emoji': '📉',
-                'color': '#ef4444',
-                'return': ytd,
-                'signal': f"{ytd:.2f}% YTD - Strong downtrend"
-            })
-        # Moderate momentum (2-5%)
-        elif ytd > 2:
-            momentum_alerts.append({
-                'sector': sector['name'],
-                'type': 'Moderate Bullish',
-                'emoji': '📈',
-                'color': '#10b981',
-                'return': ytd,
-                'signal': f"+{ytd:.2f}% YTD - Building momentum"
-            })
+    # Analyze each sector with comprehensive metrics
+    high_confidence_signals = []
 
-        # REVERSAL DETECTION (Simulated - in production would compare to historical averages)
-        # For demonstration: Sectors near 0% might be reversing
-        if -2 < ytd < 2 and ytd != 0:
-            direction = "Bullish" if ytd > 0 else "Bearish"
-            reversal_alerts.append({
-                'sector': sector['name'],
-                'type': f'Potential {direction} Reversal',
-                'emoji': '🔄',
-                'color': '#f59e0b',
-                'return': ytd,
-                'signal': f"{ytd:+.2f}% YTD - Consolidating near zero, watch for breakout"
-            })
+    # Show loading indicator
+    with st.spinner('Running comprehensive statistical analysis across all sectors...'):
+        for sector in sector_data:
+            # Run institutional-grade analysis
+            result = analyzer.analyze_sector(sector['name'], benchmark_ticker='SPY')
 
-    # Display alerts in professional cards
-    alert_col1, alert_col2 = st.columns(2)
+            # Filter for high-confidence signals (>50%)
+            if 'confidence' in result and result['confidence'] >= 50:
+                high_confidence_signals.append(result)
 
-    with alert_col1:
-        st.markdown("#### 🚀 Momentum Alerts")
+    # Display high-confidence signals
+    if high_confidence_signals:
+        # Sort by confidence
+        high_confidence_signals.sort(key=lambda x: x.get('confidence', 0), reverse=True)
 
-        if momentum_alerts:
-            for alert in sorted(momentum_alerts, key=lambda x: abs(x['return']), reverse=True)[:5]:
-                st.markdown(f"""
-                <div style="
-                    background: linear-gradient(135deg, rgba(30,41,59,0.95), rgba(15,23,42,0.98));
-                    border-left: 4px solid {alert['color']};
-                    padding: 0.875rem;
-                    border-radius: 0.75rem;
-                    margin-bottom: 0.625rem;
-                    box-shadow: 0 4px 6px rgba(0,0,0,0.2);
-                ">
-                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
-                        <span style="font-size: 1.5rem;">{alert['emoji']}</span>
-                        <span style="
-                            background: {alert['color']};
-                            color: #0f172a;
-                            padding: 0.25rem 0.625rem;
-                            border-radius: 0.375rem;
-                            font-size: 0.7rem;
-                            font-weight: 700;
-                            text-transform: uppercase;
-                        ">{alert['type']}</span>
+        # Split into bullish/bearish/other
+        bullish_signals = [s for s in high_confidence_signals if 'BULLISH' in s.get('signal_type', '')]
+        bearish_signals = [s for s in high_confidence_signals if 'BEARISH' in s.get('signal_type', '')]
+        other_signals = [s for s in high_confidence_signals if s not in bullish_signals and s not in bearish_signals]
+
+        # Display in two columns
+        alert_col1, alert_col2 = st.columns(2)
+
+        with alert_col1:
+            st.markdown("#### 🚀 Bullish Signals (High Confidence)")
+
+            if bullish_signals:
+                for signal in bullish_signals[:5]:  # Top 5
+                    st.markdown(f"""
+                    <div style="
+                        background: linear-gradient(135deg, rgba(16,185,129,0.15), rgba(15,23,42,0.98));
+                        border-left: 4px solid {signal['color']};
+                        padding: 1rem;
+                        border-radius: 0.75rem;
+                        margin-bottom: 0.75rem;
+                        box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+                    ">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+                            <span style="font-size: 1.75rem;">{signal['emoji']}</span>
+                            <div style="text-align: right;">
+                                <div style="
+                                    background: {signal['color']};
+                                    color: #0f172a;
+                                    padding: 0.25rem 0.625rem;
+                                    border-radius: 0.375rem;
+                                    font-size: 0.7rem;
+                                    font-weight: 700;
+                                    text-transform: uppercase;
+                                    margin-bottom: 0.25rem;
+                                ">{signal['signal_type'].replace('_', ' ')}</div>
+                                <div style="
+                                    font-size: 0.75rem;
+                                    color: #10b981;
+                                    font-weight: 600;
+                                ">Confidence: {signal['confidence']:.0f}%</div>
+                            </div>
+                        </div>
+
+                        <p style="margin: 0; font-size: 1.1rem; font-weight: 600; color: #f8fafc;">
+                            {signal['sector']} ({signal['ticker']})
+                        </p>
+
+                        <p style="margin: 0.5rem 0 0 0; font-size: 0.9rem; color: #cbd5e1; line-height: 1.4;">
+                            {signal['message']}
+                        </p>
+
+                        <div style="
+                            margin-top: 0.75rem;
+                            padding: 0.625rem;
+                            background: rgba(99, 102, 241, 0.1);
+                            border-radius: 0.5rem;
+                            font-size: 0.75rem;
+                            color: #94a3b8;
+                            line-height: 1.5;
+                        ">
+                            {signal['explanation']}
+                        </div>
                     </div>
-                    <p style="margin: 0; font-size: 1rem; font-weight: 600; color: #f8fafc;">
-                        {alert['sector']}
-                    </p>
-                    <p style="margin: 0.375rem 0 0 0; font-size: 0.85rem; color: #cbd5e1;">
-                        {alert['signal']}
-                    </p>
-                </div>
-                """, unsafe_allow_html=True)
-        else:
-            st.info("📊 No significant momentum detected. Markets in consolidation phase.")
+                    """, unsafe_allow_html=True)
+            else:
+                st.info("📊 No high-confidence bullish signals detected.")
 
-    with alert_col2:
-        st.markdown("#### 🔄 Reversal Watch")
+        with alert_col2:
+            st.markdown("#### 📉 Bearish & Consolidation Signals")
 
-        if reversal_alerts:
-            for alert in reversal_alerts[:5]:
-                st.markdown(f"""
-                <div style="
-                    background: linear-gradient(135deg, rgba(30,41,59,0.95), rgba(15,23,42,0.98));
-                    border-left: 4px solid {alert['color']};
-                    padding: 0.875rem;
-                    border-radius: 0.75rem;
-                    margin-bottom: 0.625rem;
-                    box-shadow: 0 4px 6px rgba(0,0,0,0.2);
-                ">
-                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
-                        <span style="font-size: 1.5rem;">{alert['emoji']}</span>
-                        <span style="
-                            background: {alert['color']};
-                            color: #0f172a;
-                            padding: 0.25rem 0.625rem;
-                            border-radius: 0.375rem;
-                            font-size: 0.7rem;
-                            font-weight: 700;
-                            text-transform: uppercase;
-                        ">{alert['type']}</span>
+            # Show bearish first, then consolidation
+            combined_signals = bearish_signals + other_signals
+
+            if combined_signals:
+                for signal in combined_signals[:5]:  # Top 5
+                    bg_color = 'rgba(239,68,68,0.15)' if 'BEARISH' in signal.get('signal_type', '') else 'rgba(245,158,11,0.15)'
+                    text_color = '#ef4444' if 'BEARISH' in signal.get('signal_type', '') else '#f59e0b'
+
+                    st.markdown(f"""
+                    <div style="
+                        background: linear-gradient(135deg, {bg_color}, rgba(15,23,42,0.98));
+                        border-left: 4px solid {signal['color']};
+                        padding: 1rem;
+                        border-radius: 0.75rem;
+                        margin-bottom: 0.75rem;
+                        box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+                    ">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+                            <span style="font-size: 1.75rem;">{signal['emoji']}</span>
+                            <div style="text-align: right;">
+                                <div style="
+                                    background: {signal['color']};
+                                    color: #0f172a;
+                                    padding: 0.25rem 0.625rem;
+                                    border-radius: 0.375rem;
+                                    font-size: 0.7rem;
+                                    font-weight: 700;
+                                    text-transform: uppercase;
+                                    margin-bottom: 0.25rem;
+                                ">{signal['signal_type'].replace('_', ' ')}</div>
+                                <div style="
+                                    font-size: 0.75rem;
+                                    color: {text_color};
+                                    font-weight: 600;
+                                ">Confidence: {signal['confidence']:.0f}%</div>
+                            </div>
+                        </div>
+
+                        <p style="margin: 0; font-size: 1.1rem; font-weight: 600; color: #f8fafc;">
+                            {signal['sector']} ({signal['ticker']})
+                        </p>
+
+                        <p style="margin: 0.5rem 0 0 0; font-size: 0.9rem; color: #cbd5e1; line-height: 1.4;">
+                            {signal['message']}
+                        </p>
+
+                        <div style="
+                            margin-top: 0.75rem;
+                            padding: 0.625rem;
+                            background: rgba(99, 102, 241, 0.1);
+                            border-radius: 0.5rem;
+                            font-size: 0.75rem;
+                            color: #94a3b8;
+                            line-height: 1.5;
+                        ">
+                            {signal['explanation']}
+                        </div>
                     </div>
-                    <p style="margin: 0; font-size: 1rem; font-weight: 600; color: #f8fafc;">
-                        {alert['sector']}
-                    </p>
-                    <p style="margin: 0.375rem 0 0 0; font-size: 0.85rem; color: #cbd5e1;">
-                        {alert['signal']}
-                    </p>
-                </div>
-                """, unsafe_allow_html=True)
-        else:
-            st.info("🔍 No reversals detected. Sectors maintaining their trends.")
+                    """, unsafe_allow_html=True)
+            else:
+                st.info("🔍 No bearish or consolidation signals above confidence threshold.")
 
-    # Summary metrics for trend detection
+    else:
+        st.warning("⚠️ No high-confidence signals detected. Market in neutral consolidation phase.")
+
+    # Summary metrics
     st.markdown("---")
     metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
 
+    bullish_count = len([s for s in high_confidence_signals if 'BULLISH' in s.get('signal_type', '')])
+    bearish_count = len([s for s in high_confidence_signals if 'BEARISH' in s.get('signal_type', '')])
+    consolidation_count = len([s for s in high_confidence_signals if 'CONSOLIDATION' in s.get('signal_type', '')])
+
     with metric_col1:
-        bullish_count = sum(1 for a in momentum_alerts if 'Bullish' in a['type'])
-        st.metric("🐂 Bullish Momentum", bullish_count, help="Sectors showing upward momentum")
+        st.metric(
+            "🐂 Bullish Signals",
+            bullish_count,
+            help="Sectors with statistically significant bullish momentum (confidence >50%)"
+        )
 
     with metric_col2:
-        bearish_count = sum(1 for a in momentum_alerts if 'Bearish' in a['type'])
-        st.metric("🐻 Bearish Momentum", bearish_count, help="Sectors showing downward momentum")
+        st.metric(
+            "🐻 Bearish Signals",
+            bearish_count,
+            help="Sectors with statistically significant bearish momentum (confidence >50%)"
+        )
 
     with metric_col3:
-        st.metric("🔄 Reversals Watch", len(reversal_alerts), help="Sectors near potential trend changes")
+        st.metric(
+            "🔄 Consolidation",
+            consolidation_count,
+            help="Sectors in consolidation phase - potential breakout setups"
+        )
 
     with metric_col4:
-        total_alerts = len(momentum_alerts) + len(reversal_alerts)
-        st.metric("🚨 Total Alerts", total_alerts, help="All active trend signals")
+        avg_confidence = sum(s.get('confidence', 0) for s in high_confidence_signals) / len(high_confidence_signals) if high_confidence_signals else 0
+        st.metric(
+            "📊 Avg Confidence",
+            f"{avg_confidence:.0f}%",
+            help="Average confidence level across all high-conviction signals"
+        )
 
     st.markdown("---")
 
