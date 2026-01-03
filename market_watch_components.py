@@ -5,7 +5,15 @@ ATLAS Market Watch - UI Components
 Streamlit UI components for Market Watch integration
 
 Author: ATLAS Development Team
-Version: 1.0.0
+Version: 2.1.0 (Jan 2026 - HTML Rendering Fix)
+
+CRITICAL: All HTML cards MUST be rendered with:
+    st.markdown(html, unsafe_allow_html=True)
+
+NEVER use st.write() for HTML content - it will show raw HTML!
+
+Last Updated: 2026-01-03
+Build: 20260103-001
 """
 
 import streamlit as st
@@ -687,13 +695,14 @@ def render_sectors_page():
 
     st.markdown("---")
 
-    # Sector icons mapping
+    # Sector icons mapping (covers all variations of sector names)
     sector_icons = {
         'Technology': '💻',
         'Information Technology': '💻',
         'Healthcare': '🏥',
         'Health Care': '🏥',
         'Financials': '💰',
+        'Financial Services': '💰',  # Added for XLF compatibility
         'Consumer Discretionary': '🛒',
         'Communication Services': '📡',
         'Industrials': '🏭',

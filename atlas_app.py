@@ -21258,6 +21258,8 @@ To maintain gradual transitions:
             from market_watch_components import render_market_watch_page
 
             st.markdown('<h1 style="font-size: 2.5rem; font-weight: 800; color: #f8fafc; margin-bottom: 0.5rem;"><span style="font-size: 2rem;">🌍</span> <span style="background: linear-gradient(135deg, #00d4ff, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">MARKET WATCH</span></h1>', unsafe_allow_html=True)
+            # Build version indicator (helps verify latest code is loaded)
+            st.caption("Build: 2026.01.03-v2 | HTML Fix Applied ✓")
 
             # ============================================================
             # NUCLEAR CSS FIX - COMPLETE CIRCLE REMOVAL
