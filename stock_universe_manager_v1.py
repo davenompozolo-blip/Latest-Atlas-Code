@@ -330,84 +330,132 @@ class StockUniverseManager:
         """
         Get additional popular stocks beyond S&P 500 and NASDAQ-100
         Focus on: Mid-caps, small-caps, international, growth stocks
+        EXPANDED: 500+ additional stocks to reach 1,000+ total universe
 
         Returns:
             List of ticker symbols
         """
 
-        # Popular mid-caps and small-caps
+        # Expanded curated list - 500+ stocks
         curated = [
-            # Technology & Software
+            # Technology & Software (Expanded)
             'SNOW', 'DDOG', 'CRWD', 'ZS', 'NET', 'CFLT', 'ESTC', 'MDB', 'DOCU',
-            'TWLO', 'OKTA', 'ZM', 'SHOP', 'SQ', 'COIN', 'HOOD', 'SOFI',
+            'TWLO', 'OKTA', 'ZM', 'SHOP', 'SQ', 'COIN', 'HOOD', 'SOFI', 'PATH',
+            'BILL', 'NCNO', 'FOUR', 'SMAR', 'PCOR', 'DUOL', 'DOCN', 'ASAN', 'PLAN',
+            'WIX', 'MOMO', 'YALLA', 'RDDT', 'RBLX', 'BIGC', 'SPSC', 'BLKB',
 
-            # Healthcare & Biotech
+            # Healthcare & Biotech (Expanded)
             'MRNA', 'BNTX', 'REGN', 'VRTX', 'ILMN', 'BIIB', 'ALNY', 'SGEN',
-            'BMRN', 'INCY', 'EXAS', 'TDOC', 'VEEV',
+            'BMRN', 'INCY', 'EXAS', 'TDOC', 'VEEV', 'LEGN', 'NTRA', 'RARE',
+            'UTHR', 'SRPT', 'FOLD', 'ARWR', 'BEAM', 'EDIT', 'NTLA', 'CRSP',
+            'BLUE', 'SAGE', 'PCRX', 'HALO', 'ARVN', 'IMVT', 'RVMD', 'KPTI',
+            'IMUX', 'IGMS', 'RGNX', 'AKRO', 'MDGL', 'PTCT', 'BBIO', 'CPRX',
 
-            # Semiconductors & Hardware
+            # Semiconductors & Hardware (Expanded)
             'AMAT', 'LRCX', 'KLAC', 'MRVL', 'MCHP', 'MPWR', 'SWKS', 'QRVO',
-            'ARM', 'ONTO', 'ASML', 'TSM',
+            'ARM', 'ONTO', 'ASML', 'TSM', 'UMC', 'SLAB', 'SITM', 'POWI',
+            'CRUS', 'MXIM', 'SMCI', 'NVST', 'WOLF', 'MTSI', 'ALGM', 'DIOD',
+            'AMBA', 'COHU', 'AOSL', 'UCTT', 'FORM', 'PLAB', 'ACLS', 'ICHR',
 
-            # Finance & Fintech
-            'AFRM', 'UPST', 'LC', 'NU', 'OPEN', 'RBLX', 'U',
+            # Finance & Fintech (Expanded)
+            'AFRM', 'UPST', 'LC', 'NU', 'OPEN', 'SOFI', 'HOOD', 'LPRO',
+            'SQ', 'PYPL', 'V', 'MA', 'AXP', 'DFS', 'COF', 'ALLY',
+            'NAVI', 'TREE', 'QFIN', 'TIGR', 'FUTU', 'LDI', 'GBCI', 'WAFD',
+            'UMBF', 'FFIN', 'WTFC', 'TFSL', 'TOWN', 'WASH', 'NWBI', 'EGBN',
 
-            # Consumer & E-commerce
+            # Consumer & E-commerce (Expanded)
             'ABNB', 'UBER', 'LYFT', 'DASH', 'SPOT', 'PTON', 'W', 'CHWY',
-            'ETSY', 'PINS', 'SNAP',
+            'ETSY', 'PINS', 'SNAP', 'MELI', 'CARG', 'REAL', 'CVNA', 'VROOM',
+            'CARS', 'LAZY', 'FTCH', 'RVLV', 'PRTS', 'LULU', 'FIVE', 'OLLI',
+            'BIG', 'BBBY', 'GME', 'EXPR', 'KOSS', 'AMC', 'FIZZ', 'WING',
+            'BJRI', 'TXRH', 'CAKE', 'DRI', 'BLMN', 'CHUY', 'PZZA', 'PLAY',
 
-            # Energy & Clean Tech
+            # Energy & Clean Tech (Expanded)
             'ENPH', 'SEDG', 'RUN', 'PLUG', 'FCEL', 'BE', 'CHPT', 'LCID', 'RIVN',
+            'NEE', 'DUK', 'SO', 'AEP', 'EXC', 'SRE', 'D', 'PCG', 'XEL',
+            'OXY', 'DVN', 'FANG', 'MRO', 'APA', 'EOG', 'PXD', 'COP', 'HAL',
+            'SLB', 'BKR', 'NOV', 'HP', 'RIG', 'PTEN', 'CLB', 'FTI', 'WHD',
 
-            # Industrial & Materials
+            # Industrial & Materials (Expanded)
             'CARR', 'OTIS', 'GEV', 'MLM', 'VMC', 'NUE', 'STLD', 'RS',
+            'CAT', 'DE', 'CMI', 'PH', 'ETN', 'EMR', 'ROK', 'DOV', 'FTV',
+            'ITW', 'IEX', 'AME', 'GGG', 'ROP', 'GNRC', 'BLDR', 'AZEK',
+            'TREX', 'BECN', 'BLD', 'MLI', 'SSD', 'VMI', 'IBP', 'GRC',
 
-            # Real Estate & REITs
+            # Real Estate & REITs (Expanded)
             'AMT', 'PLD', 'EQIX', 'PSA', 'DLR', 'O', 'VICI', 'SPG',
+            'AVB', 'EQR', 'MAA', 'ESS', 'UDR', 'CPT', 'AIV', 'IRT',
+            'BXP', 'SLG', 'VNO', 'KRC', 'CUZ', 'DEI', 'HIW', 'PGRE',
+            'STOR', 'EPRT', 'ADC', 'CUBE', 'NSA', 'EXR', 'LSI', 'REXR',
 
-            # Media & Entertainment
-            'NFLX', 'DIS', 'PARA', 'WBD', 'ROKU', 'MTCH', 'BMBL',
+            # Media & Entertainment (Expanded)
+            'NFLX', 'DIS', 'PARA', 'WBD', 'ROKU', 'MTCH', 'BMBL', 'ANGI',
+            'IAC', 'MGNI', 'PUBM', 'CRTO', 'TTD', 'APPS', 'GRPN', 'YELP',
+            'TRIP', 'EXPE', 'BKNG', 'MMYT', 'TCOM', 'DESP', 'TZOO', 'PCLN',
 
-            # International (ADRs)
+            # International (ADRs - Expanded)
             'BABA', 'TSM', 'NIO', 'XPEV', 'LI', 'PDD', 'JD', 'BIDU',
-            'GRAB', 'SE', 'MELI', 'NU', 'VALE', 'ITUB',
+            'GRAB', 'SE', 'MELI', 'NU', 'VALE', 'ITUB', 'BBD', 'ABEV',
+            'ASAI', 'PAGS', 'STNE', 'BRFS', 'SBS', 'CBD', 'ERJ', 'GOL',
+            'CIG', 'ELP', 'TEO', 'TLK', 'YRD', 'VIPS', 'WB', 'BILI',
+            'IQ', 'TME', 'HUYA', 'DOYU', 'DADA', 'MNSO', 'TUYA', 'RLX',
 
-            # Aerospace & Defense
+            # Aerospace & Defense (Expanded)
             'BA', 'LMT', 'RTX', 'NOC', 'GD', 'LHX', 'TDG', 'HWM',
+            'TXT', 'HON', 'GE', 'AXON', 'CW', 'HII', 'WWD', 'AVAV',
+            'KTOS', 'AIR', 'HXL', 'SPR', 'TGI', 'MOG-A', 'MOG-B', 'SAIC',
 
-            # Retail
+            # Retail (Expanded)
             'TGT', 'WMT', 'COST', 'HD', 'LOW', 'TJX', 'ROST', 'DG', 'DLTR',
+            'FIVE', 'OLLI', 'BIG', 'BBBY', 'KSS', 'M', 'JWN', 'BOOT', 'FL',
+            'DKS', 'HIBB', 'BGFV', 'SCVL', 'GCO', 'PSMT', 'ANF', 'AEO',
+            'URBN', 'GPS', 'ZUMZ', 'TLYS', 'SHOO', 'WWW', 'CROX', 'DECK',
 
-            # Utilities & Infrastructure
+            # Utilities & Infrastructure (Expanded)
             'NEE', 'DUK', 'SO', 'D', 'EXC', 'AEP', 'SRE', 'PCG',
+            'ED', 'XEL', 'WEC', 'ES', 'FE', 'ETR', 'CMS', 'CNP',
+            'NI', 'LNT', 'EVRG', 'OGE', 'POR', 'NWE', 'AVA', 'BKH',
+            'SJW', 'AWR', 'MSEX', 'ARTNA', 'CPK', 'AWK', 'WTRG', 'CWT',
 
-            # Gaming
-            'EA', 'TTWO', 'ATVI', 'RBLX', 'U', 'DKNG', 'PENN',
+            # Gaming (Expanded)
+            'EA', 'TTWO', 'ATVI', 'RBLX', 'U', 'DKNG', 'PENN', 'CZR',
+            'MGM', 'WYNN', 'LVS', 'MLCO', 'BYD', 'RSI', 'GENI', 'BALY',
+            'EVRI', 'FUBO', 'SKLZ', 'GMBL', 'ACEL', 'SRAD', 'LTRX', 'ACHR',
 
-            # Pharma
+            # Pharma (Expanded)
             'PFE', 'JNJ', 'MRK', 'ABBV', 'BMY', 'LLY', 'GILD', 'AMGN',
+            'ZTS', 'VTRS', 'TAK', 'SNY', 'GSK', 'NVS', 'AZN', 'TEVA',
+            'MYL', 'PRGO', 'ENDP', 'Jazz', 'HZNP', 'AMRX', 'SUPN', 'PCRX',
 
-            # Cloud & Data
-            'PLTR', 'AI', 'GTLB', 'S', 'DBX', 'BOX', 'FIVN',
+            # Cloud & Data (Expanded)
+            'PLTR', 'AI', 'GTLB', 'S', 'DBX', 'BOX', 'FIVN', 'NCNO',
+            'PATH', 'DT', 'SNOW', 'DDOG', 'ESTC', 'MDB', 'CFLT', 'NET',
+            'TWLO', 'BAND', 'RNG', 'PD', 'NEWR', 'SUMO', 'APPF', 'TENB',
 
-            # Cybersecurity
-            'PANW', 'FTNT', 'CHKP', 'CYBR', 'TENB', 'OKTA',
+            # Cybersecurity (Expanded)
+            'PANW', 'FTNT', 'CHKP', 'CYBR', 'TENB', 'OKTA', 'ZS', 'CRWD',
+            'S', 'RPD', 'QLYS', 'VRNS', 'SAIL', 'PING', 'ESGR', 'SCWX',
 
-            # Communication Equipment
-            'CSCO', 'ANET', 'JNPR', 'ERIC', 'NOK', 'UI',
+            # Communication Equipment (Expanded)
+            'CSCO', 'ANET', 'JNPR', 'ERIC', 'NOK', 'UI', 'COMM', 'VIAV',
+            'FNSR', 'LITE', 'OCLR', 'CIEN', 'INFN', 'EXTR', 'NTGR', 'CALX',
 
-            # Auto & EV
-            'F', 'GM', 'RIVN', 'LCID', 'NKLA', 'FSR', 'GOEV',
+            # Auto & EV (Expanded)
+            'F', 'GM', 'RIVN', 'LCID', 'NKLA', 'FSR', 'GOEV', 'WKHS',
+            'RIDE', 'HYLN', 'BLNK', 'CHPT', 'EVGO', 'QS', 'LEV', 'ARVL',
+            'PTRA', 'HYLN', 'HYZN', 'MVST', 'KPLT', 'SES', 'INDI', 'MULN',
 
-            # Emerging Tech
-            'RKLB', 'SPCE', 'IRDM', 'GSAT', 'AST', 'PL',
+            # Emerging Tech (Expanded)
+            'RKLB', 'SPCE', 'IRDM', 'GSAT', 'AST', 'PL', 'LUNR', 'ASTS',
+            'VORB', 'ASTR', 'BKSY', 'SATS', 'GILT', 'MAXR', 'IRDM', 'GRMN',
 
-            # SPACs & Growth
-            'ARKK', 'ARKG', 'ARKW', 'ARKF', 'ARKQ',  # ARK ETFs for discovery
+            # Additional Mid/Small Caps
+            'CVNA', 'APPS', 'RDFN', 'PTON', 'BYND', 'OUST', 'VLDR', 'LIDR',
+            'LAZR', 'INVZ', 'OUST', 'AEVA', 'PRED', 'MRAI', 'AEYE', 'OUST',
         ]
 
-        # Remove any that might be in S&P 500 or NASDAQ-100 already
-        # (deduplication happens in _build_universe anyway)
+        # Remove duplicates (deduplication happens in _build_universe anyway)
+        curated = list(set(curated))
 
         return curated
 
