@@ -1,16 +1,65 @@
 """
-ATLAS UI Components
-===================
+═══════════════════════════════════════════════════════════════════════════════
+ATLAS TERMINAL - OFFICIAL UI COMPONENT LIBRARY
+═══════════════════════════════════════════════════════════════════════════════
 
-Standardized card components matching "new design" specification
-- Colored left borders
-- Icons in top-left
-- Gradient text for values
-- Professional hover effects
-- Glassmorphic backgrounds
+This is THE OFFICIAL design system for ATLAS Terminal.
 
-Author: ATLAS Development Team
-Version: 1.0.0
+ALL new features, pages, and components MUST use the card designs defined in
+this file. NO EXCEPTIONS.
+
+═══════════════════════════════════════════════════════════════════════════════
+DESIGN VERSION: v2.0 (Gradient Borders + Icons + Glassmorphic)
+LAST UPDATED: January 2026
+DESIGN LEAD: Hlobo
+═══════════════════════════════════════════════════════════════════════════════
+
+KEY DESIGN PRINCIPLES:
+═══════════════════════════════════════════════════════════════════════════════
+
+1. ALWAYS use create_metric_card() for ALL metric displays
+2. ALWAYS use st.markdown(card, unsafe_allow_html=True) to render
+3. NEVER use st.write() for HTML content - it will show raw HTML!
+4. ALL cards have:
+   - Colored left border (4px solid)
+   - Icon + title in top-left
+   - Gradient background (glassmorphic)
+   - Hover animations
+   - Box shadow effects
+
+═══════════════════════════════════════════════════════════════════════════════
+USAGE EXAMPLE:
+═══════════════════════════════════════════════════════════════════════════════
+
+    from ui_components import create_metric_card
+
+    # Create card
+    card = create_metric_card(
+        title="VIX",
+        value="14.51",
+        change="-0.44",
+        icon="📊",
+        border_color="#3b82f6"
+    )
+
+    # Render (CRITICAL: MUST use st.markdown with unsafe_allow_html=True)
+    st.markdown(card, unsafe_allow_html=True)  # ← CORRECT
+
+    # NEVER DO THIS:
+    # st.write(card)  # ← WRONG! Shows raw HTML!
+
+═══════════════════════════════════════════════════════════════════════════════
+COMMON BORDER COLORS:
+═══════════════════════════════════════════════════════════════════════════════
+
+    #3b82f6 - Blue (primary, default)
+    #10b981 - Green (positive/success)
+    #ef4444 - Red (negative/error)
+    #f59e0b - Amber (warning)
+    #8b5cf6 - Purple (info)
+    #06b6d4 - Cyan (secondary)
+
+═══════════════════════════════════════════════════════════════════════════════
 """
 
 import streamlit as st
@@ -18,17 +67,28 @@ import streamlit as st
 
 def create_metric_card(title: str, value: str, change: str = None, icon: str = "📊", border_color: str = "#3b82f6") -> str:
     """
-    Standardized metric card matching "new design"
+    THE STANDARD metric card for ATLAS Terminal.
+
+    USE THIS FOR ALL METRICS - NO EXCEPTIONS.
+
+    Design: Gradient background + colored left border + icon + hover effect
 
     Args:
-        title: Card title/label (e.g., "VIX", "Portfolio Value")
-        value: Main value to display (e.g., "14.51", "$108,796.47")
-        change: Optional change value (e.g., "-0.44", "+0.43%")
-        icon: Emoji icon for card
-        border_color: Left border color (hex)
+        title (str): Card label (e.g., "VIX", "Total Stocks", "Portfolio Value")
+        value (str): Main value to display (e.g., "14.51", "1,243", "$108,796")
+        change (str, optional): Change indicator (e.g., "-0.44", "+2.5%")
+        icon (str): Emoji icon (default: 📊)
+        border_color (str): Hex color for left border (default: #3b82f6)
 
     Returns:
-        HTML string for card
+        str: HTML string
+
+    CRITICAL: Render with st.markdown(card, unsafe_allow_html=True)
+              NEVER use st.write() - it will show raw HTML!
+
+    Example:
+        >>> card = create_metric_card("VIX", "14.51", "-0.44", "📊", "#3b82f6")
+        >>> st.markdown(card, unsafe_allow_html=True)
     """
 
     # Determine change color

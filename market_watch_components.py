@@ -186,15 +186,52 @@ def render_overview_page():
         help="Select time period for index charts"
     )
 
-    # Map time frame to yfinance parameters (more data points for detail)
-    period_map = {
-        '1D': {'period': '1d', 'interval': '5m'},
-        '5D': {'period': '5d', 'interval': '15m'},
-        '1M': {'period': '1mo', 'interval': '1h'},
-        '3M': {'period': '3mo', 'interval': '1d'},
-        '6M': {'period': '6mo', 'interval': '1d'},
-        '1Y': {'period': '1y', 'interval': '1d'}
+    # ============================================================
+    # SMART PERIOD FETCHING - Works on weekends/holidays
+    # ============================================================
+    # Fetch MORE data than requested, then filter to show recent trading
+    # This ensures charts never show flat lines
+
+    smart_period_map = {
+        '1D': {
+            'period': '5d',       # Fetch 5 days to ensure we have recent trading day
+            'interval': '5m',
+            'display_points': 78,  # One trading day = 6.5 hours = 78 five-minute bars
+            'x_format': '%H:%M'
+        },
+        '5D': {
+            'period': '1mo',      # Fetch 1 month to ensure we have 5 trading days
+            'interval': '15m',
+            'display_points': 130,  # 5 days × 26 fifteen-minute bars per day
+            'x_format': '%b %d'
+        },
+        '1M': {
+            'period': '3mo',      # Fetch 3 months
+            'interval': '1h',
+            'display_points': 168,  # ~21 trading days × 8 hours
+            'x_format': '%b %d'
+        },
+        '3M': {
+            'period': '6mo',
+            'interval': '1d',
+            'display_points': 63,   # ~63 trading days
+            'x_format': '%b %d'
+        },
+        '6M': {
+            'period': '1y',
+            'interval': '1d',
+            'display_points': 126,  # ~126 trading days
+            'x_format': '%b'
+        },
+        '1Y': {
+            'period': '2y',
+            'interval': '1d',
+            'display_points': 252,  # ~252 trading days
+            'x_format': '%b %Y'
+        }
     }
+
+    period_config = smart_period_map[chart_timeframe]
 
     st.markdown("<div style='margin: 0.75rem 0;'></div>", unsafe_allow_html=True)
 
@@ -232,75 +269,87 @@ def render_overview_page():
         for col, index_info in zip(cols, indices):
             with col:
                 try:
-                    # Fetch data with appropriate interval for detail
+                    # Fetch data with extended lookback for weekend/holiday coverage
                     ticker = yf.Ticker(index_info['ticker'])
-                    hist = ticker.history(**period_map[chart_timeframe])
+                    hist = ticker.history(
+                        period=period_config['period'],
+                        interval=period_config['interval']
+                    )
 
                     if not hist.empty and len(hist) > 1:
-                        # Current price and change
-                        current_price = hist['Close'].iloc[-1]
-                        prev_price = hist['Close'].iloc[0]  # First price in period
-                        change = current_price - prev_price
-                        change_pct = (change / prev_price * 100) if prev_price > 0 else 0
+                        # Filter to display window (most recent N trading points)
+                        # This ensures we show recent trading data even on weekends
+                        display_points = min(period_config['display_points'], len(hist))
+                        hist_filtered = hist.tail(display_points)
 
-                        # Determine colors based on performance
-                        trend_color = '#10b981' if change_pct >= 0 else '#ef4444'
-                        fill_color = 'rgba(16, 185, 129, 0.1)' if change_pct >= 0 else 'rgba(239, 68, 68, 0.1)'
+                        if len(hist_filtered) > 1:
+                            # Current price and change (from filtered data)
+                            current_price = hist_filtered['Close'].iloc[-1]
+                            prev_price = hist_filtered['Close'].iloc[0]  # Start of display window
+                            change = current_price - prev_price
+                            change_pct = (change / prev_price * 100) if prev_price > 0 else 0
 
-                        # Create detailed sparkline chart
-                        fig = go.Figure()
+                            # Determine colors based on performance
+                            trend_color = '#10b981' if change_pct >= 0 else '#ef4444'
+                            fill_color = 'rgba(16, 185, 129, 0.1)' if change_pct >= 0 else 'rgba(239, 68, 68, 0.1)'
 
-                        fig.add_trace(go.Scatter(
-                            x=hist.index,
-                            y=hist['Close'],
-                            mode='lines',
-                            line=dict(
-                                color=trend_color,
-                                width=2
-                            ),
-                            fill='tozeroy',
-                            fillcolor=fill_color,
-                            hovertemplate='%{y:,.2f}<br>%{x|%b %d, %H:%M}<extra></extra>'
-                        ))
+                            # Create detailed sparkline chart
+                            fig = go.Figure()
 
-                        fig.update_layout(
-                            height=100,
-                            margin=dict(l=0, r=0, t=0, b=20),
-                            xaxis=dict(
-                                showgrid=False,
-                                showticklabels=True,
-                                tickfont=dict(size=8, color='#64748b'),
-                                tickformat='%b %d' if chart_timeframe in ['1M', '3M', '6M', '1Y'] else '%H:%M'
-                            ),
-                            yaxis=dict(showgrid=False, showticklabels=False),
-                            paper_bgcolor='rgba(0,0,0,0)',
-                            plot_bgcolor='rgba(0,0,0,0)',
-                            hovermode='x unified'
-                        )
+                            fig.add_trace(go.Scatter(
+                                x=hist_filtered.index,
+                                y=hist_filtered['Close'],
+                                mode='lines',
+                                line=dict(
+                                    color=trend_color,
+                                    width=2
+                                ),
+                                fill='tozeroy',
+                                fillcolor=fill_color,
+                                hovertemplate='%{y:,.2f}<br>%{x|%b %d, %H:%M}<extra></extra>'
+                            ))
 
-                        # Display index name with icon
-                        icon = "📈" if change_pct >= 0 else "📉"
-                        st.markdown(f"**{icon} {index_info['name']}**")
+                            fig.update_layout(
+                                height=100,
+                                margin=dict(l=0, r=0, t=0, b=20),
+                                xaxis=dict(
+                                    showgrid=False,
+                                    showticklabels=True,
+                                    tickfont=dict(size=8, color='#64748b'),
+                                    tickformat=period_config['x_format'],
+                                    nticks=4  # Show 4 date labels for clarity
+                                ),
+                                yaxis=dict(showgrid=False, showticklabels=False),
+                                paper_bgcolor='rgba(0,0,0,0)',
+                                plot_bgcolor='rgba(0,0,0,0)',
+                                hovermode='x unified'
+                            )
 
-                        # Display sparkline chart
-                        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+                            # Display index name with icon
+                            icon = "📈" if change_pct >= 0 else "📉"
+                            st.markdown(f"**{icon} {index_info['name']}**")
 
-                        # Display metrics below chart
-                        metric_col1, metric_col2 = st.columns(2)
-                        with metric_col1:
-                            st.markdown(f"""
-                            <div style="text-align: center;">
-                                <p style="margin: 0; font-size: 0.7rem; color: #94a3b8;">Price</p>
-                                <p style="margin: 0; font-size: 1rem; font-weight: 600; color: #f8fafc;">{current_price:,.2f}</p>
-                            </div>
-                            """, unsafe_allow_html=True)
-                        with metric_col2:
-                            st.markdown(f"""
-                            <div style="text-align: center;">
-                                <p style="margin: 0; font-size: 0.7rem; color: #94a3b8;">Change</p>
-                                <p style="margin: 0; font-size: 1rem; font-weight: 600; color: {trend_color};">{change_pct:+.2f}%</p>
-                            </div>
-                            """, unsafe_allow_html=True)
+                            # Display sparkline chart
+                            st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+
+                            # Display metrics below chart
+                            metric_col1, metric_col2 = st.columns(2)
+                            with metric_col1:
+                                st.markdown(f"""
+                                <div style="text-align: center;">
+                                    <p style="margin: 0; font-size: 0.7rem; color: #94a3b8;">Price</p>
+                                    <p style="margin: 0; font-size: 1rem; font-weight: 600; color: #f8fafc;">{current_price:,.2f}</p>
+                                </div>
+                                """, unsafe_allow_html=True)
+                            with metric_col2:
+                                st.markdown(f"""
+                                <div style="text-align: center;">
+                                    <p style="margin: 0; font-size: 0.7rem; color: #94a3b8;">Change</p>
+                                    <p style="margin: 0; font-size: 1rem; font-weight: 600; color: {trend_color};">{change_pct:+.2f}%</p>
+                                </div>
+                                """, unsafe_allow_html=True)
+                        else:
+                            st.warning(f"Limited data: {index_info['name']}")
 
                     else:
                         st.warning(f"No data: {index_info['name']}")

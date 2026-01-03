@@ -21260,60 +21260,106 @@ To maintain gradual transitions:
             st.markdown('<h1 style="font-size: 2.5rem; font-weight: 800; color: #f8fafc; margin-bottom: 0.5rem;"><span style="font-size: 2rem;">🌍</span> <span style="background: linear-gradient(135deg, #00d4ff, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">MARKET WATCH</span></h1>', unsafe_allow_html=True)
 
             # ============================================================
-            # SLEEK GRADIENT BUTTON NAVIGATION (NO CIRCLES)
+            # NUCLEAR CSS FIX - COMPLETE CIRCLE REMOVAL
             # ============================================================
             st.markdown("""
             <style>
-            /* Market Watch Navigation - Sleek Gradient Buttons */
-            div[data-testid="stRadio"][aria-label="Select View"] > div {
-                flex-direction: row !important;
-                gap: 0.75rem;
-                flex-wrap: wrap;
+            /* ========================================================== */
+            /* NUCLEAR OPTION: Force remove ALL radio button circles     */
+            /* This is the comprehensive fix that completely removes     */
+            /* any visual indication of circles in the navigation        */
+            /* ========================================================== */
+
+            /* Hide the actual radio input - absolute positioning */
+            div[data-testid="stRadio"][aria-label="Select View"] input[type="radio"] {
+                position: absolute !important;
+                opacity: 0 !important;
+                pointer-events: none !important;
+                width: 0 !important;
+                height: 0 !important;
+                margin: 0 !important;
+                padding: 0 !important;
             }
 
-            div[data-testid="stRadio"][aria-label="Select View"] > div > label {
-                background: linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.9) 100%);
-                padding: 0.75rem 1.5rem;
-                border-radius: 0.75rem;
-                cursor: pointer;
-                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-                border: 1px solid rgba(59, 130, 246, 0.2);
-                backdrop-filter: blur(10px);
-                color: #94a3b8;
-                font-weight: 500;
-                font-size: 0.9rem;
-                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-            }
-
-            div[data-testid="stRadio"][aria-label="Select View"] > div > label:hover {
-                background: linear-gradient(135deg, rgba(51, 65, 85, 0.9) 0%, rgba(30, 41, 59, 0.95) 100%);
-                border-color: rgba(59, 130, 246, 0.5);
-                transform: translateY(-2px);
-                box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
-                color: #f8fafc;
-            }
-
-            div[data-testid="stRadio"][aria-label="Select View"] > div > label[data-checked="true"] {
-                background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-                border-color: #3b82f6;
-                box-shadow: 0 4px 16px rgba(59, 130, 246, 0.4);
-                transform: translateY(-2px);
-                color: #ffffff;
-                font-weight: 600;
-            }
-
-            /* Hide the radio button circles completely */
+            /* Hide the circle indicator div - NUCLEAR */
             div[data-testid="stRadio"][aria-label="Select View"] > div > label > div:first-child {
                 display: none !important;
+                visibility: hidden !important;
+                opacity: 0 !important;
+                width: 0 !important;
+                height: 0 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                position: absolute !important;
+                left: -9999px !important;
             }
 
-            div[data-testid="stRadio"][aria-label="Select View"] input[type="radio"] {
+            /* Force remove any SVG circles (Streamlit sometimes uses these) */
+            div[data-testid="stRadio"][aria-label="Select View"] svg {
                 display: none !important;
             }
 
-            /* Hide label visibility */
+            /* Force remove any circle-like elements */
+            div[data-testid="stRadio"][aria-label="Select View"] [class*="circle"],
+            div[data-testid="stRadio"][aria-label="Select View"] [class*="radio"],
+            div[data-testid="stRadio"][aria-label="Select View"] [class*="indicator"] {
+                display: none !important;
+            }
+
+            /* Layout - horizontal with gap */
+            div[data-testid="stRadio"][aria-label="Select View"] > div {
+                flex-direction: row !important;
+                gap: 0.75rem !important;
+                flex-wrap: wrap !important;
+                justify-content: flex-start !important;
+            }
+
+            /* Hide the label above radio group */
             div[data-testid="stRadio"][aria-label="Select View"] > label {
                 display: none !important;
+            }
+
+            /* Gradient button styling */
+            div[data-testid="stRadio"][aria-label="Select View"] > div > label {
+                background: linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.9) 100%) !important;
+                padding: 0.75rem 1.5rem !important;
+                border-radius: 0.5rem !important;
+                cursor: pointer !important;
+                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+                border: 1px solid rgba(59, 130, 246, 0.2) !important;
+                backdrop-filter: blur(10px) !important;
+                color: #e2e8f0 !important;
+                font-weight: 500 !important;
+                font-size: 0.875rem !important;
+                user-select: none !important;
+            }
+
+            /* Hover state */
+            div[data-testid="stRadio"][aria-label="Select View"] > div > label:hover {
+                background: linear-gradient(135deg, rgba(51, 65, 85, 0.9) 0%, rgba(30, 41, 59, 0.95) 100%) !important;
+                border-color: rgba(59, 130, 246, 0.5) !important;
+                transform: translateY(-2px) !important;
+                box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2) !important;
+            }
+
+            /* Selected state */
+            div[data-testid="stRadio"][aria-label="Select View"] > div > label[data-checked="true"] {
+                background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+                border-color: #3b82f6 !important;
+                box-shadow: 0 4px 16px rgba(59, 130, 246, 0.4) !important;
+                transform: translateY(-2px) !important;
+                color: white !important;
+            }
+
+            /* Ensure text content inherits color properly */
+            div[data-testid="stRadio"][aria-label="Select View"] > div > label > div {
+                color: inherit !important;
+            }
+
+            div[data-testid="stRadio"][aria-label="Select View"] > div > label > div:last-child {
+                display: flex !important;
+                visibility: visible !important;
+                opacity: 1 !important;
             }
             </style>
             """, unsafe_allow_html=True)
