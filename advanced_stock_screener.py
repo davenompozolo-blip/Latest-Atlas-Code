@@ -52,19 +52,39 @@ def render_advanced_stock_screener():
             st.error("❌ Stock universe not loaded. Please refresh the page.")
             return
 
-        # Show universe stats
+        # Show universe stats with professional cards
+        from ui_components import create_metric_card
+
         col1, col2, col3 = st.columns(3)
 
         with col1:
-            st.metric("Total Stocks", f"{len(manager.universe):,}")
+            card = create_metric_card(
+                title="TOTAL STOCKS",
+                value=f"{len(manager.universe):,}",
+                icon="📊",
+                border_color="#6366f1"
+            )
+            st.markdown(card, unsafe_allow_html=True)
 
         with col2:
-            st.metric("Sectors", len(manager.get_available_sectors()))
+            card = create_metric_card(
+                title="SECTORS",
+                value=f"{len(manager.get_available_sectors())}",
+                icon="🏢",
+                border_color="#06b6d4"
+            )
+            st.markdown(card, unsafe_allow_html=True)
 
         with col3:
             if manager.last_update:
                 age_minutes = int((pd.Timestamp.now() - manager.last_update).total_seconds() / 60)
-                st.metric("Data Age", f"{age_minutes} min")
+                card = create_metric_card(
+                    title="DATA AGE",
+                    value=f"{age_minutes} min",
+                    icon="⏱️",
+                    border_color="#10b981"
+                )
+                st.markdown(card, unsafe_allow_html=True)
 
     except Exception as e:
         st.error(f"❌ Error loading stock universe: {e}")

@@ -20,7 +20,9 @@ from visualization_components import *
 # ============================================================
 
 def display_regime_banner():
-    """Display current market regime at top of page"""
+    """Display current market regime at top of page with professional cards"""
+
+    from ui_components import create_regime_card, create_metric_card
 
     st.markdown("### 🌍 Market Regime")
 
@@ -49,43 +51,64 @@ def display_regime_banner():
     # Classify regime
     if score >= 2:
         regime = "RISK-ON"
-        regime_color = "🟢"
-        bg_color = "#064e3b"
     elif score <= -2:
         regime = "RISK-OFF"
-        regime_color = "🔴"
-        bg_color = "#7f1d1d"
     else:
         regime = "NEUTRAL"
-        regime_color = "🟡"
-        bg_color = "#78350f"
 
-    # Display banner
-    col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
+    # Display professional regime card
+    col1, col2 = st.columns([2, 3])
 
     with col1:
-        st.markdown(f"""
-        <div style="background: {bg_color}; padding: 1rem; border-radius: 0.5rem; text-align: center;">
-            <h2 style="margin: 0;">{regime_color} {regime}</h2>
-            <p style="margin: 0.5rem 0 0 0; font-size: 0.9em; opacity: 0.8;">Current Market Regime</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col2:
-        vix_val = vix if vix else 0
-        st.metric("VIX", f"{vix_val:.2f}",
-                 delta=f"{indicators.get('vix', {}).get('change', 0):+.2f}")
-
-    with col3:
+        # Large regime card
         curve_val = yields.get('curve', 0) if yields else 0
-        st.metric("Yield Curve", f"{curve_val:+.2f}%",
-                 help="10Y - 2Y spread")
-
-    with col4:
         breadth = indicators.get('breadth', {})
         breadth_val = breadth.get('breadth', 0) if breadth else 0
-        st.metric("Market Breadth", f"{breadth_val:+.2f}%",
-                 help="RSP - SPY performance")
+        vix_val = vix if vix else 0
+
+        regime_card = create_regime_card(
+            regime_status=regime,
+            score=score,
+            vix=vix_val,
+            yield_curve=curve_val,
+            breadth=breadth_val
+        )
+        st.markdown(regime_card, unsafe_allow_html=True)
+
+    with col2:
+        # Individual metric cards
+        metric_col1, metric_col2, metric_col3 = st.columns(3)
+
+        with metric_col1:
+            vix_change = indicators.get('vix', {}).get('change', 0)
+            vix_card = create_metric_card(
+                title="VIX",
+                value=f"{vix_val:.2f}",
+                change=f"{vix_change:+.2f}",
+                icon="📊",
+                border_color="#3b82f6"
+            )
+            st.markdown(vix_card, unsafe_allow_html=True)
+
+        with metric_col2:
+            yield_card = create_metric_card(
+                title="YIELD CURVE",
+                value=f"{curve_val:+.2f}%",
+                change=None,
+                icon="📈",
+                border_color="#06b6d4"
+            )
+            st.markdown(yield_card, unsafe_allow_html=True)
+
+        with metric_col3:
+            breadth_card = create_metric_card(
+                title="MARKET BREADTH",
+                value=f"{breadth_val:+.2f}%",
+                change=None,
+                icon="🎯",
+                border_color="#10b981"
+            )
+            st.markdown(breadth_card, unsafe_allow_html=True)
 
     st.markdown("---")
 
@@ -164,34 +187,24 @@ def render_overview_page():
     regions = ['Americas', 'Europe', 'Asia']
     cols = [col1, col2, col3]
 
+    from ui_components import create_index_card
+
     for region, col in zip(regions, cols):
         with col:
             st.markdown(f"#### {region}")
             indices = get_indices_data(region)
 
             for index in indices[:5]:  # Top 5 per region
-                with st.container():
-                    idx_col1, idx_col2 = st.columns([3, 1])
-
-                    with idx_col1:
-                        st.markdown(f"**{index['display_name']}**")
-                        st.markdown(f"${index['price']:,.2f}")
-
-                        change_color = 'color: #10b981' if index['change'] >= 0 else 'color: #ef4444'
-                        st.markdown(f"<span style='{change_color}'>{index['change']:+.2f} ({index['change_pct']:+.2f}%)</span>",
-                                   unsafe_allow_html=True)
-
-                    with idx_col2:
-                        # Enhanced chart with time frame selection and date labels
-                        from visualization_components import create_mini_index_chart
-                        mini_chart = create_mini_index_chart(
-                            index['ticker'],
-                            period=chart_timeframe,
-                            show_dates=True
-                        )
-                        st.plotly_chart(mini_chart, use_container_width=True, key=f"chart_{index['ticker']}_{chart_timeframe}")
-
-                    st.markdown("<hr style='margin: 0.5rem 0; opacity: 0.2;'>", unsafe_allow_html=True)
+                # Use professional index card
+                index_card = create_index_card(
+                    name=index['display_name'],
+                    ticker=index['ticker'],
+                    price=index['price'],
+                    change=index['change'],
+                    change_pct=index['change_pct'],
+                    icon="📈" if index['change'] >= 0 else "📉"
+                )
+                st.markdown(index_card, unsafe_allow_html=True)
 
     st.markdown("---")
 
