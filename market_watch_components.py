@@ -388,7 +388,12 @@ def render_stocks_page():
 
         /* Hide the radio input circles */
         div[data-testid="stRadio"] input[type="radio"] {
-            display: none;
+            display: none !important;
+        }
+
+        /* Hide the circle indicator inside labels */
+        div[data-testid="stRadio"] > div > label > div:first-child {
+            display: none !important;
         }
         </style>
     """, unsafe_allow_html=True)
