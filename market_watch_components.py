@@ -42,6 +42,18 @@ def display_regime_banner():
 
     st.markdown("### 🌍 Market Regime")
 
+    # ============================================================
+    # DIAGNOSTIC TEST: HTML rendering inside this function
+    # If you see this WITH styling, HTML works in display_regime_banner()
+    # ============================================================
+    st.markdown("""
+    <div style="background: rgba(59, 130, 246, 0.2); border-left: 4px solid #3b82f6;
+                padding: 0.5rem 1rem; border-radius: 0.5rem; margin-bottom: 1rem;">
+        <span style="color: #3b82f6; font-weight: 600;">🔍 Test A (Before Columns):</span>
+        <span style="color: #94a3b8;"> HTML works in display_regime_banner() function</span>
+    </div>
+    """, unsafe_allow_html=True)
+
     # Get regime indicators
     indicators = get_regime_indicators()
 
@@ -76,6 +88,15 @@ def display_regime_banner():
     col1, col2 = st.columns([2, 3])
 
     with col1:
+        # DIAGNOSTIC TEST B: Inside column
+        st.markdown("""
+        <div style="background: rgba(139, 92, 246, 0.2); border-left: 4px solid #8b5cf6;
+                    padding: 0.5rem 1rem; border-radius: 0.5rem; margin-bottom: 0.5rem;">
+            <span style="color: #8b5cf6; font-weight: 600;">🔍 Test B (Inside Column):</span>
+            <span style="color: #94a3b8;"> HTML works inside st.columns()</span>
+        </div>
+        """, unsafe_allow_html=True)
+
         # Large regime card
         curve_val = yields.get('curve', 0) if yields else 0
         breadth = indicators.get('breadth', {})
@@ -89,6 +110,8 @@ def display_regime_banner():
             yield_curve=curve_val,
             breadth=breadth_val
         )
+        # DIAGNOSTIC: Show the actual HTML being generated
+        st.caption(f"DEBUG: regime_card type = {type(regime_card).__name__}, len = {len(regime_card) if regime_card else 0}")
         st.markdown(regime_card, unsafe_allow_html=True)
 
     with col2:
@@ -96,6 +119,14 @@ def display_regime_banner():
         metric_col1, metric_col2, metric_col3 = st.columns(3)
 
         with metric_col1:
+            # DIAGNOSTIC TEST C: Nested column
+            st.markdown("""
+            <div style="background: rgba(16, 185, 129, 0.2); border-left: 4px solid #10b981;
+                        padding: 0.25rem 0.5rem; border-radius: 0.25rem; margin-bottom: 0.25rem; font-size: 0.7rem;">
+                <span style="color: #10b981;">🔍 Test C</span>
+            </div>
+            """, unsafe_allow_html=True)
+
             vix_change = indicators.get('vix', {}).get('change', 0)
             vix_card = create_metric_card(
                 title="VIX",
@@ -104,6 +135,7 @@ def display_regime_banner():
                 icon="📊",
                 border_color="#3b82f6"
             )
+            st.caption(f"DEBUG: vix_card type = {type(vix_card).__name__}")
             st.markdown(vix_card, unsafe_allow_html=True)
 
         with metric_col2:
