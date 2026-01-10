@@ -21259,26 +21259,7 @@ To maintain gradual transitions:
 
             st.markdown('<h1 style="font-size: 2.5rem; font-weight: 800; color: #f8fafc; margin-bottom: 0.5rem;"><span style="font-size: 2rem;">🌍</span> <span style="background: linear-gradient(135deg, #00d4ff, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">MARKET WATCH</span></h1>', unsafe_allow_html=True)
             # Build version indicator (helps verify latest code is loaded)
-            st.caption("Build: 2026.01.08-v3 | HTML Rendering Verified ✓")
-
-            # ============================================================
-            # DIAGNOSTIC: HTML Rendering Test Card
-            # If you see this card WITH styling (green border, gradient bg),
-            # HTML rendering is working. If you see raw HTML code, there's
-            # a Streamlit configuration issue.
-            # ============================================================
-            st.markdown("""
-            <div style="
-                background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(15, 23, 42, 0.95));
-                border-left: 4px solid #10b981;
-                padding: 0.75rem 1rem;
-                border-radius: 0.5rem;
-                margin-bottom: 1rem;
-            ">
-                <span style="color: #10b981; font-weight: 600;">✅ HTML Rendering Test:</span>
-                <span style="color: #94a3b8;"> If you see this styled (green border), HTML is working correctly.</span>
-            </div>
-            """, unsafe_allow_html=True)
+            st.caption("Build: 2026.01.10-v1 | Production Ready")
 
             # ============================================================
             # NUCLEAR CSS FIX - COMPLETE CIRCLE REMOVAL
