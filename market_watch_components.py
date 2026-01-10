@@ -112,6 +112,21 @@ def display_regime_banner():
         )
         # DIAGNOSTIC: Show the actual HTML being generated
         st.caption(f"DEBUG: regime_card type = {type(regime_card).__name__}, len = {len(regime_card) if regime_card else 0}")
+
+        # DIAGNOSTIC TEST D: Simple static HTML (no function call)
+        st.markdown('<div style="background:#1e293b;padding:8px;border-left:3px solid #f59e0b;border-radius:4px;color:#f59e0b;font-weight:bold;">🔍 Test D: Static HTML</div>', unsafe_allow_html=True)
+
+        # DIAGNOSTIC TEST E: Try the exact same card HTML directly
+        test_html = f"""
+        <div style="background: linear-gradient(135deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.98));
+                    padding: 1rem; border-radius: 0.5rem; border-left: 4px solid #10b981;">
+            <span style="color: #10b981; font-size: 1.5rem;">🔍</span>
+            <span style="color: #f8fafc; font-weight: bold;"> Test E: Dynamic HTML Variable</span>
+        </div>
+        """
+        st.markdown(test_html, unsafe_allow_html=True)
+
+        # Now render the actual regime_card
         st.markdown(regime_card, unsafe_allow_html=True)
 
     with col2:
