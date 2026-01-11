@@ -27,6 +27,7 @@ Build: 20260108-001
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+from textwrap import dedent
 from market_data_fetcher import *
 from visualization_components import *
 
@@ -87,44 +88,31 @@ def display_regime_banner():
     col1, col2 = st.columns([2, 3])
 
     with col1:
-        # INLINE REGIME CARD (no function call)
-        st.markdown(f"""
-        <div style="
-            background: linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%);
-            padding: 2rem;
-            border-radius: 0.75rem;
-            border-left: 6px solid {regime_color};
-            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
-            backdrop-filter: blur(10px);
-        ">
-            <div style="display: flex; align-items: center; margin-bottom: 1rem;">
-                <span style="font-size: 2.5rem; margin-right: 1rem;">{regime_emoji}</span>
-                <div>
-                    <h2 style="margin: 0; font-size: 2rem; font-weight: 700; color: {regime_color};">
-                        {regime}
-                    </h2>
-                    <p style="margin: 0.25rem 0 0 0; font-size: 0.875rem; color: #94a3b8;">
-                        Current Market Regime | Score: {score:+d}/10
-                    </p>
-                </div>
-            </div>
-
-            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-top: 1rem;">
-                <div>
-                    <p style="margin: 0; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase;">VIX</p>
-                    <p style="margin: 0.25rem 0 0 0; font-size: 1.25rem; font-weight: 600; color: white;">{vix_val:.2f}</p>
-                </div>
-                <div>
-                    <p style="margin: 0; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase;">Yield Curve</p>
-                    <p style="margin: 0.25rem 0 0 0; font-size: 1.25rem; font-weight: 600; color: white;">{curve_val:+.2f}%</p>
-                </div>
-                <div>
-                    <p style="margin: 0; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase;">Breadth</p>
-                    <p style="margin: 0.25rem 0 0 0; font-size: 1.25rem; font-weight: 600; color: white;">{breadth_val:+.2f}%</p>
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        # INLINE REGIME CARD - HTML with no leading whitespace
+        regime_html = f"""<div style="background: linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%); padding: 2rem; border-radius: 0.75rem; border-left: 6px solid {regime_color}; box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2); backdrop-filter: blur(10px);">
+<div style="display: flex; align-items: center; margin-bottom: 1rem;">
+<span style="font-size: 2.5rem; margin-right: 1rem;">{regime_emoji}</span>
+<div>
+<h2 style="margin: 0; font-size: 2rem; font-weight: 700; color: {regime_color};">{regime}</h2>
+<p style="margin: 0.25rem 0 0 0; font-size: 0.875rem; color: #94a3b8;">Current Market Regime | Score: {score:+d}/10</p>
+</div>
+</div>
+<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-top: 1rem;">
+<div>
+<p style="margin: 0; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase;">VIX</p>
+<p style="margin: 0.25rem 0 0 0; font-size: 1.25rem; font-weight: 600; color: white;">{vix_val:.2f}</p>
+</div>
+<div>
+<p style="margin: 0; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase;">Yield Curve</p>
+<p style="margin: 0.25rem 0 0 0; font-size: 1.25rem; font-weight: 600; color: white;">{curve_val:+.2f}%</p>
+</div>
+<div>
+<p style="margin: 0; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase;">Breadth</p>
+<p style="margin: 0.25rem 0 0 0; font-size: 1.25rem; font-weight: 600; color: white;">{breadth_val:+.2f}%</p>
+</div>
+</div>
+</div>"""
+        st.markdown(regime_html, unsafe_allow_html=True)
 
     with col2:
         # Individual metric cards - INLINE (no function call)
@@ -702,57 +690,20 @@ def render_sectors_page():
 
             if bullish_signals:
                 for signal in bullish_signals[:5]:  # Top 5
-                    st.markdown(f"""
-                    <div style="
-                        background: linear-gradient(135deg, rgba(16,185,129,0.15), rgba(15,23,42,0.98));
-                        border-left: 4px solid {signal['color']};
-                        padding: 1rem;
-                        border-radius: 0.75rem;
-                        margin-bottom: 0.75rem;
-                        box-shadow: 0 4px 6px rgba(0,0,0,0.2);
-                    ">
-                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
-                            <span style="font-size: 1.75rem;">{signal['emoji']}</span>
-                            <div style="text-align: right;">
-                                <div style="
-                                    background: {signal['color']};
-                                    color: #0f172a;
-                                    padding: 0.25rem 0.625rem;
-                                    border-radius: 0.375rem;
-                                    font-size: 0.7rem;
-                                    font-weight: 700;
-                                    text-transform: uppercase;
-                                    margin-bottom: 0.25rem;
-                                ">{signal['signal_type'].replace('_', ' ')}</div>
-                                <div style="
-                                    font-size: 0.75rem;
-                                    color: #10b981;
-                                    font-weight: 600;
-                                ">Confidence: {signal['confidence']:.0f}%</div>
-                            </div>
-                        </div>
-
-                        <p style="margin: 0; font-size: 1.1rem; font-weight: 600; color: #f8fafc;">
-                            {signal['sector']} ({signal['ticker']})
-                        </p>
-
-                        <p style="margin: 0.5rem 0 0 0; font-size: 0.9rem; color: #cbd5e1; line-height: 1.4;">
-                            {signal['message']}
-                        </p>
-
-                        <div style="
-                            margin-top: 0.75rem;
-                            padding: 0.625rem;
-                            background: rgba(99, 102, 241, 0.1);
-                            border-radius: 0.5rem;
-                            font-size: 0.75rem;
-                            color: #94a3b8;
-                            line-height: 1.5;
-                        ">
-                            {signal['explanation']}
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    signal_type_clean = signal['signal_type'].replace('_', ' ')
+                    bullish_html = f"""<div style="background: linear-gradient(135deg, rgba(16,185,129,0.15), rgba(15,23,42,0.98)); border-left: 4px solid {signal['color']}; padding: 1rem; border-radius: 0.75rem; margin-bottom: 0.75rem; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">
+<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+<span style="font-size: 1.75rem;">{signal['emoji']}</span>
+<div style="text-align: right;">
+<div style="background: {signal['color']}; color: #0f172a; padding: 0.25rem 0.625rem; border-radius: 0.375rem; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; margin-bottom: 0.25rem;">{signal_type_clean}</div>
+<div style="font-size: 0.75rem; color: #10b981; font-weight: 600;">Confidence: {signal['confidence']:.0f}%</div>
+</div>
+</div>
+<p style="margin: 0; font-size: 1.1rem; font-weight: 600; color: #f8fafc;">{signal['sector']} ({signal['ticker']})</p>
+<p style="margin: 0.5rem 0 0 0; font-size: 0.9rem; color: #cbd5e1; line-height: 1.4;">{signal['message']}</p>
+<div style="margin-top: 0.75rem; padding: 0.625rem; background: rgba(99, 102, 241, 0.1); border-radius: 0.5rem; font-size: 0.75rem; color: #94a3b8; line-height: 1.5;">{signal['explanation']}</div>
+</div>"""
+                    st.markdown(bullish_html, unsafe_allow_html=True)
             else:
                 st.info("📊 No high-confidence bullish signals detected.")
 
@@ -766,58 +717,20 @@ def render_sectors_page():
                 for signal in combined_signals[:5]:  # Top 5
                     bg_color = 'rgba(239,68,68,0.15)' if 'BEARISH' in signal.get('signal_type', '') else 'rgba(245,158,11,0.15)'
                     text_color = '#ef4444' if 'BEARISH' in signal.get('signal_type', '') else '#f59e0b'
-
-                    st.markdown(f"""
-                    <div style="
-                        background: linear-gradient(135deg, {bg_color}, rgba(15,23,42,0.98));
-                        border-left: 4px solid {signal['color']};
-                        padding: 1rem;
-                        border-radius: 0.75rem;
-                        margin-bottom: 0.75rem;
-                        box-shadow: 0 4px 6px rgba(0,0,0,0.2);
-                    ">
-                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
-                            <span style="font-size: 1.75rem;">{signal['emoji']}</span>
-                            <div style="text-align: right;">
-                                <div style="
-                                    background: {signal['color']};
-                                    color: #0f172a;
-                                    padding: 0.25rem 0.625rem;
-                                    border-radius: 0.375rem;
-                                    font-size: 0.7rem;
-                                    font-weight: 700;
-                                    text-transform: uppercase;
-                                    margin-bottom: 0.25rem;
-                                ">{signal['signal_type'].replace('_', ' ')}</div>
-                                <div style="
-                                    font-size: 0.75rem;
-                                    color: {text_color};
-                                    font-weight: 600;
-                                ">Confidence: {signal['confidence']:.0f}%</div>
-                            </div>
-                        </div>
-
-                        <p style="margin: 0; font-size: 1.1rem; font-weight: 600; color: #f8fafc;">
-                            {signal['sector']} ({signal['ticker']})
-                        </p>
-
-                        <p style="margin: 0.5rem 0 0 0; font-size: 0.9rem; color: #cbd5e1; line-height: 1.4;">
-                            {signal['message']}
-                        </p>
-
-                        <div style="
-                            margin-top: 0.75rem;
-                            padding: 0.625rem;
-                            background: rgba(99, 102, 241, 0.1);
-                            border-radius: 0.5rem;
-                            font-size: 0.75rem;
-                            color: #94a3b8;
-                            line-height: 1.5;
-                        ">
-                            {signal['explanation']}
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    signal_type_clean = signal['signal_type'].replace('_', ' ')
+                    bearish_html = f"""<div style="background: linear-gradient(135deg, {bg_color}, rgba(15,23,42,0.98)); border-left: 4px solid {signal['color']}; padding: 1rem; border-radius: 0.75rem; margin-bottom: 0.75rem; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">
+<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+<span style="font-size: 1.75rem;">{signal['emoji']}</span>
+<div style="text-align: right;">
+<div style="background: {signal['color']}; color: #0f172a; padding: 0.25rem 0.625rem; border-radius: 0.375rem; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; margin-bottom: 0.25rem;">{signal_type_clean}</div>
+<div style="font-size: 0.75rem; color: {text_color}; font-weight: 600;">Confidence: {signal['confidence']:.0f}%</div>
+</div>
+</div>
+<p style="margin: 0; font-size: 1.1rem; font-weight: 600; color: #f8fafc;">{signal['sector']} ({signal['ticker']})</p>
+<p style="margin: 0.5rem 0 0 0; font-size: 0.9rem; color: #cbd5e1; line-height: 1.4;">{signal['message']}</p>
+<div style="margin-top: 0.75rem; padding: 0.625rem; background: rgba(99, 102, 241, 0.1); border-radius: 0.5rem; font-size: 0.75rem; color: #94a3b8; line-height: 1.5;">{signal['explanation']}</div>
+</div>"""
+                    st.markdown(bearish_html, unsafe_allow_html=True)
             else:
                 st.info("🔍 No bearish or consolidation signals above confidence threshold.")
 
@@ -908,60 +821,29 @@ def render_sectors_page():
             # Performance color
             perf_color = '#10b981' if sector['ytd_return'] >= 0 else '#ef4444'
 
-            # Professional sector card matching news feed style
-            st.markdown(f"""
-            <div style="
-                background: linear-gradient(135deg, rgba(30,41,59,0.95), rgba(15,23,42,0.98));
-                border-left: 4px solid {perf_color};
-                padding: 1rem;
-                border-radius: 0.75rem;
-                margin-bottom: 0.75rem;
-                box-shadow: 0 4px 6px rgba(0,0,0,0.2);
-            ">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                    <span style="
-                        font-size: 1.1rem;
-                        font-weight: 600;
-                        color: #f8fafc;
-                    ">{sector_icons.get(sector['name'], '📊')} {sector['name']}</span>
-                    <span style="
-                        background: {rank_color};
-                        color: #0f172a;
-                        padding: 0.25rem 0.5rem;
-                        border-radius: 0.375rem;
-                        font-size: 0.75rem;
-                        font-weight: 600;
-                    ">{rank_emoji}</span>
-                </div>
-
-                <div style="display: flex; justify-content: space-between; margin-top: 0.75rem;">
-                    <div>
-                        <p style="margin: 0; font-size: 0.75rem; color: #94a3b8;">YTD Return</p>
-                        <p style="margin: 0.25rem 0 0 0; font-size: 1.5rem; font-weight: 700; color: {perf_color};">
-                            {sector['ytd_return']:+.2f}%
-                        </p>
-                    </div>
-                    <div style="text-align: right;">
-                        <p style="margin: 0; font-size: 0.75rem; color: #94a3b8;">Market Weight</p>
-                        <p style="margin: 0.25rem 0 0 0; font-size: 1.1rem; font-weight: 600; color: #cbd5e1;">
-                            {sector['weight']:.2f}%
-                        </p>
-                    </div>
-                </div>
-
-                <div style="margin-top: 0.75rem; background: rgba(99, 102, 241, 0.1); border-radius: 0.5rem; height: 8px; overflow: hidden;">
-                    <div style="
-                        background: linear-gradient(90deg, #6366f1, #8b5cf6);
-                        height: 100%;
-                        width: {min(sector['weight'] * 3.33, 100)}%;
-                        border-radius: 0.5rem;
-                    "></div>
-                </div>
-                <p style="margin: 0.25rem 0 0 0; font-size: 0.7rem; color: #64748b; text-align: right;">
-                    Relative to max weight (30%)
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
+            # Professional sector card - HTML with no leading whitespace
+            sector_icon = sector_icons.get(sector['name'], '📊')
+            sector_html = f"""<div style="background: linear-gradient(135deg, rgba(30,41,59,0.95), rgba(15,23,42,0.98)); border-left: 4px solid {perf_color}; padding: 1rem; border-radius: 0.75rem; margin-bottom: 0.75rem; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+<span style="font-size: 1.1rem; font-weight: 600; color: #f8fafc;">{sector_icon} {sector['name']}</span>
+<span style="background: {rank_color}; color: #0f172a; padding: 0.25rem 0.5rem; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 600;">{rank_emoji}</span>
+</div>
+<div style="display: flex; justify-content: space-between; margin-top: 0.75rem;">
+<div>
+<p style="margin: 0; font-size: 0.75rem; color: #94a3b8;">YTD Return</p>
+<p style="margin: 0.25rem 0 0 0; font-size: 1.5rem; font-weight: 700; color: {perf_color};">{sector['ytd_return']:+.2f}%</p>
+</div>
+<div style="text-align: right;">
+<p style="margin: 0; font-size: 0.75rem; color: #94a3b8;">Market Weight</p>
+<p style="margin: 0.25rem 0 0 0; font-size: 1.1rem; font-weight: 600; color: #cbd5e1;">{sector['weight']:.2f}%</p>
+</div>
+</div>
+<div style="margin-top: 0.75rem; background: rgba(99, 102, 241, 0.1); border-radius: 0.5rem; height: 8px; overflow: hidden;">
+<div style="background: linear-gradient(90deg, #6366f1, #8b5cf6); height: 100%; width: {min(sector['weight'] * 3.33, 100)}%; border-radius: 0.5rem;"></div>
+</div>
+<p style="margin: 0.25rem 0 0 0; font-size: 0.7rem; color: #64748b; text-align: right;">Relative to max weight (30%)</p>
+</div>"""
+            st.markdown(sector_html, unsafe_allow_html=True)
 
     with col2:
         st.markdown("### 🗺️ Interactive Heatmap")
