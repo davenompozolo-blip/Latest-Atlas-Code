@@ -254,6 +254,8 @@ def render_enhanced_economic_calendar():
     # UPCOMING HIGH-IMPACT EVENTS (Top Banner)
     # ============================================================
 
+    # Convert date column to datetime for comparison (fixes TypeError)
+    events['date'] = pd.to_datetime(events['date'], errors='coerce')
     future_events = events[events['date'] > datetime.now()]
     high_impact_upcoming = future_events[future_events['importance'] == 'High'].head(3)
 
