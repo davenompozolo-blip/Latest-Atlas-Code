@@ -243,54 +243,17 @@ def render_news_feed():
     for headline in headlines:
         time_ago = aggregator.get_time_ago(headline['published'])
 
-        # News card
-        st.markdown(f"""
-        <div style="
-            background: linear-gradient(135deg, rgba(30,41,59,0.95), rgba(15,23,42,0.98));
-            border-left: 4px solid {headline['color']};
-            padding: 1.25rem;
-            border-radius: 0.75rem;
-            margin-bottom: 1rem;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
-        ">
-            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
-                <span style="
-                    background: {headline['color']};
-                    color: #0f172a;
-                    padding: 0.25rem 0.75rem;
-                    border-radius: 0.375rem;
-                    font-size: 0.75rem;
-                    font-weight: 600;
-                    text-transform: uppercase;
-                ">{headline['source']}</span>
-                <span style="
-                    color: #94a3b8;
-                    font-size: 0.8rem;
-                ">{time_ago}</span>
-            </div>
-
-            <h3 style="
-                margin: 0.75rem 0;
-                font-size: 1.1rem;
-                color: #f8fafc;
-                line-height: 1.5;
-            ">{headline['title']}</h3>
-
-            <p style="
-                margin: 0.5rem 0 1rem 0;
-                color: #cbd5e1;
-                font-size: 0.9rem;
-                line-height: 1.6;
-            ">{headline['summary']}</p>
-
-            <a href="{headline['link']}" target="_blank" style="
-                color: {headline['color']};
-                text-decoration: none;
-                font-size: 0.875rem;
-                font-weight: 500;
-            ">Read More →</a>
-        </div>
-        """, unsafe_allow_html=True)
+        # News card - HTML with no leading whitespace
+        news_card = f"""<div style="background: linear-gradient(135deg, rgba(30,41,59,0.95), rgba(15,23,42,0.98)); border-left: 4px solid {headline['color']}; padding: 1.25rem; border-radius: 0.75rem; margin-bottom: 1rem; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">
+<div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
+<span style="background: {headline['color']}; color: #0f172a; padding: 0.25rem 0.75rem; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;">{headline['source']}</span>
+<span style="color: #94a3b8; font-size: 0.8rem;">{time_ago}</span>
+</div>
+<h3 style="margin: 0.75rem 0; font-size: 1.1rem; color: #f8fafc; line-height: 1.5;">{headline['title']}</h3>
+<p style="margin: 0.5rem 0 1rem 0; color: #cbd5e1; font-size: 0.9rem; line-height: 1.6;">{headline['summary']}</p>
+<a href="{headline['link']}" target="_blank" style="color: {headline['color']}; text-decoration: none; font-size: 0.875rem; font-weight: 500;">Read More →</a>
+</div>"""
+        st.markdown(news_card, unsafe_allow_html=True)
 
     # ============================================================
     # SUMMARY STATS
