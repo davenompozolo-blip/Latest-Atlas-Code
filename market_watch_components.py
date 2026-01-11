@@ -38,8 +38,6 @@ from visualization_components import *
 def display_regime_banner():
     """Display current market regime at top of page with professional cards"""
 
-    from ui_components import create_regime_card, create_metric_card
-
     st.markdown("### 🌍 Market Regime")
 
     # Get regime indicators
@@ -67,64 +65,147 @@ def display_regime_banner():
     # Classify regime
     if score >= 2:
         regime = "RISK-ON"
+        regime_emoji = "🟢"
+        regime_color = "#10b981"
     elif score <= -2:
         regime = "RISK-OFF"
+        regime_emoji = "🔴"
+        regime_color = "#ef4444"
     else:
         regime = "NEUTRAL"
+        regime_emoji = "🟡"
+        regime_color = "#fbbf24"
 
-    # Display professional regime card
+    # Get values
+    curve_val = yields.get('curve', 0) if yields else 0
+    breadth = indicators.get('breadth', {})
+    breadth_val = breadth.get('breadth', 0) if breadth else 0
+    vix_val = vix if vix else 0
+    vix_change = indicators.get('vix', {}).get('change', 0)
+
+    # Display cards using columns
     col1, col2 = st.columns([2, 3])
 
     with col1:
-        # Large regime card
-        curve_val = yields.get('curve', 0) if yields else 0
-        breadth = indicators.get('breadth', {})
-        breadth_val = breadth.get('breadth', 0) if breadth else 0
-        vix_val = vix if vix else 0
+        # INLINE REGIME CARD (no function call)
+        st.markdown(f"""
+        <div style="
+            background: linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%);
+            padding: 2rem;
+            border-radius: 0.75rem;
+            border-left: 6px solid {regime_color};
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(10px);
+        ">
+            <div style="display: flex; align-items: center; margin-bottom: 1rem;">
+                <span style="font-size: 2.5rem; margin-right: 1rem;">{regime_emoji}</span>
+                <div>
+                    <h2 style="margin: 0; font-size: 2rem; font-weight: 700; color: {regime_color};">
+                        {regime}
+                    </h2>
+                    <p style="margin: 0.25rem 0 0 0; font-size: 0.875rem; color: #94a3b8;">
+                        Current Market Regime | Score: {score:+d}/10
+                    </p>
+                </div>
+            </div>
 
-        regime_card = create_regime_card(
-            regime_status=regime,
-            score=score,
-            vix=vix_val,
-            yield_curve=curve_val,
-            breadth=breadth_val
-        )
-        st.markdown(regime_card, unsafe_allow_html=True)
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-top: 1rem;">
+                <div>
+                    <p style="margin: 0; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase;">VIX</p>
+                    <p style="margin: 0.25rem 0 0 0; font-size: 1.25rem; font-weight: 600; color: white;">{vix_val:.2f}</p>
+                </div>
+                <div>
+                    <p style="margin: 0; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase;">Yield Curve</p>
+                    <p style="margin: 0.25rem 0 0 0; font-size: 1.25rem; font-weight: 600; color: white;">{curve_val:+.2f}%</p>
+                </div>
+                <div>
+                    <p style="margin: 0; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase;">Breadth</p>
+                    <p style="margin: 0.25rem 0 0 0; font-size: 1.25rem; font-weight: 600; color: white;">{breadth_val:+.2f}%</p>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
     with col2:
-        # Individual metric cards
+        # Individual metric cards - INLINE (no function call)
         metric_col1, metric_col2, metric_col3 = st.columns(3)
 
         with metric_col1:
-            vix_change = indicators.get('vix', {}).get('change', 0)
-            vix_card = create_metric_card(
-                title="VIX",
-                value=f"{vix_val:.2f}",
-                change=f"{vix_change:+.2f}",
-                icon="📊",
-                border_color="#3b82f6"
-            )
-            st.markdown(vix_card, unsafe_allow_html=True)
+            # VIX card - INLINE
+            vix_change_color = "#10b981" if vix_change >= 0 else "#ef4444"
+            vix_change_prefix = "↑" if vix_change >= 0 else "↓"
+            st.markdown(f"""
+            <div style="
+                background: linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%);
+                padding: 1.5rem;
+                border-radius: 0.75rem;
+                border-left: 4px solid #3b82f6;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                height: 100%;
+            ">
+                <div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
+                    <span style="font-size: 1.25rem; margin-right: 0.5rem;">📊</span>
+                    <p style="margin: 0; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+                              letter-spacing: 0.05em; color: #94a3b8;">VIX</p>
+                </div>
+                <h2 style="margin: 0.5rem 0 0 0; font-size: 2rem; font-weight: 700;
+                           background: linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%);
+                           -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+                    {vix_val:.2f}
+                </h2>
+                <p style="margin: 0.5rem 0 0 0; font-size: 0.875rem; color: {vix_change_color}; font-weight: 600;">
+                    {vix_change_prefix} {vix_change:+.2f}
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
 
         with metric_col2:
-            yield_card = create_metric_card(
-                title="YIELD CURVE",
-                value=f"{curve_val:+.2f}%",
-                change=None,
-                icon="📈",
-                border_color="#06b6d4"
-            )
-            st.markdown(yield_card, unsafe_allow_html=True)
+            # Yield Curve card - INLINE
+            st.markdown(f"""
+            <div style="
+                background: linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%);
+                padding: 1.5rem;
+                border-radius: 0.75rem;
+                border-left: 4px solid #06b6d4;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                height: 100%;
+            ">
+                <div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
+                    <span style="font-size: 1.25rem; margin-right: 0.5rem;">📈</span>
+                    <p style="margin: 0; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+                              letter-spacing: 0.05em; color: #94a3b8;">YIELD CURVE</p>
+                </div>
+                <h2 style="margin: 0.5rem 0 0 0; font-size: 2rem; font-weight: 700;
+                           background: linear-gradient(135deg, #06b6d4 0%, #06b6d4 100%);
+                           -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+                    {curve_val:+.2f}%
+                </h2>
+            </div>
+            """, unsafe_allow_html=True)
 
         with metric_col3:
-            breadth_card = create_metric_card(
-                title="MARKET BREADTH",
-                value=f"{breadth_val:+.2f}%",
-                change=None,
-                icon="🎯",
-                border_color="#10b981"
-            )
-            st.markdown(breadth_card, unsafe_allow_html=True)
+            # Breadth card - INLINE
+            st.markdown(f"""
+            <div style="
+                background: linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%);
+                padding: 1.5rem;
+                border-radius: 0.75rem;
+                border-left: 4px solid #10b981;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                height: 100%;
+            ">
+                <div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
+                    <span style="font-size: 1.25rem; margin-right: 0.5rem;">🎯</span>
+                    <p style="margin: 0; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+                              letter-spacing: 0.05em; color: #94a3b8;">MARKET BREADTH</p>
+                </div>
+                <h2 style="margin: 0.5rem 0 0 0; font-size: 2rem; font-weight: 700;
+                           background: linear-gradient(135deg, #10b981 0%, #06b6d4 100%);
+                           -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+                    {breadth_val:+.2f}%
+                </h2>
+            </div>
+            """, unsafe_allow_html=True)
 
     st.markdown("---")
 
@@ -144,50 +225,84 @@ def render_overview_page():
     # Major Indices Section
     st.markdown("### 🌍 Major Indices")
 
-    # Time frame selector (sleek buttons matching navigation style)
+    # NUCLEAR CSS - Complete circle removal for time frame selector
     st.markdown("""
         <style>
-        /* Time frame selector styling - Hide radio circles */
+        /* ============================================================ */
+        /* NUCLEAR OPTION: Force remove ALL radio button circles       */
+        /* For Chart Time Frame selector                               */
+        /* ============================================================ */
+
+        /* Hide the actual radio input - ABSOLUTE */
+        div[data-testid="stRadio"][aria-label="Chart Time Frame"] input[type="radio"] {
+            position: absolute !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+            width: 0 !important;
+            height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+
+        /* Hide the circle indicator div - NUCLEAR */
+        div[data-testid="stRadio"][aria-label="Chart Time Frame"] > div > label > div:first-child {
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+            width: 0 !important;
+            height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            position: absolute !important;
+            left: -9999px !important;
+        }
+
+        /* Force remove any SVG circles */
+        div[data-testid="stRadio"][aria-label="Chart Time Frame"] svg {
+            display: none !important;
+        }
+
+        /* Layout */
         div[data-testid="stRadio"][aria-label="Chart Time Frame"] > div {
             gap: 0.5rem;
             flex-wrap: wrap;
         }
 
+        /* Button styling */
         div[data-testid="stRadio"][aria-label="Chart Time Frame"] > div > label {
-            background: linear-gradient(135deg, rgba(21, 25, 50, 0.6), rgba(15, 23, 42, 0.8));
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(99, 102, 241, 0.15);
-            border-radius: 0.5rem;
-            padding: 0.5rem 1rem;
-            color: #94a3b8;
-            font-weight: 500;
-            font-size: 0.85rem;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            cursor: pointer;
+            background: linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.9) 100%) !important;
+            backdrop-filter: blur(10px) !important;
+            border: 1px solid rgba(99, 102, 241, 0.15) !important;
+            border-radius: 0.5rem !important;
+            padding: 0.5rem 1rem !important;
+            color: #94a3b8 !important;
+            font-weight: 500 !important;
+            font-size: 0.85rem !important;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+            cursor: pointer !important;
         }
 
         div[data-testid="stRadio"][aria-label="Chart Time Frame"] > div > label:hover {
-            background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.15));
-            border-color: rgba(99, 102, 241, 0.3);
-            color: #f8fafc;
-            transform: translateY(-1px);
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.15)) !important;
+            border-color: rgba(99, 102, 241, 0.3) !important;
+            color: #f8fafc !important;
+            transform: translateY(-1px) !important;
         }
 
         div[data-testid="stRadio"][aria-label="Chart Time Frame"] > div > label[data-checked="true"] {
-            background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(139, 92, 246, 0.25));
-            border: 1px solid rgba(99, 102, 241, 0.5);
-            color: #f8fafc;
-            font-weight: 600;
-            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+            border: 1px solid rgba(99, 102, 241, 0.5) !important;
+            color: white !important;
+            font-weight: 600 !important;
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25) !important;
         }
 
-        /* Hide radio circles */
-        div[data-testid="stRadio"][aria-label="Chart Time Frame"] > div > label > div:first-child {
-            display: none !important;
-        }
-
-        div[data-testid="stRadio"][aria-label="Chart Time Frame"] input[type="radio"] {
-            display: none !important;
+        /* Ensure text is visible */
+        div[data-testid="stRadio"][aria-label="Chart Time Frame"] > div > label > div:last-child {
+            display: flex !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+            color: inherit !important;
         }
         </style>
     """, unsafe_allow_html=True)
@@ -413,52 +528,97 @@ def render_stocks_page():
     st.title("📈 Stock Screeners")
     st.caption("Professional stock screening with 1,000+ stocks (S&P 500 + NASDAQ-100 + curated growth stocks)")
 
-    # Custom CSS for sleek navigation buttons (matching sidebar style)
+    # NUCLEAR CSS - Complete circle removal for ALL radio buttons
     st.markdown("""
         <style>
-        /* Override Streamlit's default radio button styling */
-        div[data-testid="stRadio"] > div {
-            gap: 0.75rem;
-        }
+        /* ============================================================ */
+        /* NUCLEAR OPTION: Force remove ALL radio button circles       */
+        /* Applied globally to all radio buttons in Market Watch       */
+        /* ============================================================ */
 
-        div[data-testid="stRadio"] > div > label {
-            background: linear-gradient(135deg, rgba(21, 25, 50, 0.6), rgba(15, 23, 42, 0.8));
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(99, 102, 241, 0.15);
-            border-radius: 0.75rem;
-            padding: 0.75rem 1.5rem;
-            color: #94a3b8;
-            font-weight: 500;
-            font-size: 0.9rem;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            cursor: pointer;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-        }
-
-        div[data-testid="stRadio"] > div > label:hover {
-            background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.15));
-            border-color: rgba(99, 102, 241, 0.3);
-            color: #f8fafc;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
-        }
-
-        div[data-testid="stRadio"] > div > label[data-checked="true"] {
-            background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(139, 92, 246, 0.25));
-            border: 1px solid rgba(99, 102, 241, 0.5);
-            color: #f8fafc;
-            font-weight: 600;
-            box-shadow: 0 6px 16px rgba(99, 102, 241, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
-        }
-
-        /* Hide the radio input circles */
+        /* Hide the actual radio input - ABSOLUTE */
         div[data-testid="stRadio"] input[type="radio"] {
-            display: none !important;
+            position: absolute !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+            width: 0 !important;
+            height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
         }
 
-        /* Hide the circle indicator inside labels */
+        /* Hide the circle indicator div - NUCLEAR */
         div[data-testid="stRadio"] > div > label > div:first-child {
             display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+            width: 0 !important;
+            height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            position: absolute !important;
+            left: -9999px !important;
+        }
+
+        /* Force remove any SVG circles */
+        div[data-testid="stRadio"] svg {
+            display: none !important;
+        }
+
+        /* Force remove any circle-like elements */
+        div[data-testid="stRadio"] [class*="circle"],
+        div[data-testid="stRadio"] [class*="radio"],
+        div[data-testid="stRadio"] [class*="indicator"] {
+            display: none !important;
+        }
+
+        /* Layout - horizontal with gap */
+        div[data-testid="stRadio"] > div {
+            flex-direction: row !important;
+            gap: 0.75rem !important;
+            flex-wrap: wrap !important;
+        }
+
+        /* Gradient button styling */
+        div[data-testid="stRadio"] > div > label {
+            background: linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.9) 100%) !important;
+            padding: 0.75rem 1.5rem !important;
+            border-radius: 0.75rem !important;
+            cursor: pointer !important;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+            border: 1px solid rgba(59, 130, 246, 0.2) !important;
+            backdrop-filter: blur(10px) !important;
+            color: #94a3b8 !important;
+            font-weight: 500 !important;
+            font-size: 0.9rem !important;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+        }
+
+        /* Hover state */
+        div[data-testid="stRadio"] > div > label:hover {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.15)) !important;
+            border-color: rgba(99, 102, 241, 0.4) !important;
+            color: #f8fafc !important;
+            transform: translateY(-2px) !important;
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25) !important;
+        }
+
+        /* Selected state */
+        div[data-testid="stRadio"] > div > label[data-checked="true"] {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+            border-color: #3b82f6 !important;
+            box-shadow: 0 4px 16px rgba(59, 130, 246, 0.4) !important;
+            transform: translateY(-2px) !important;
+            color: white !important;
+            font-weight: 600 !important;
+        }
+
+        /* Ensure text content inherits color properly */
+        div[data-testid="stRadio"] > div > label > div:last-child {
+            display: flex !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+            color: inherit !important;
         }
         </style>
     """, unsafe_allow_html=True)

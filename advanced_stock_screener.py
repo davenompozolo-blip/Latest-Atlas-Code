@@ -52,39 +52,84 @@ def render_advanced_stock_screener():
             st.error("❌ Stock universe not loaded. Please refresh the page.")
             return
 
-        # Show universe stats with professional cards
-        from ui_components import create_metric_card
-
+        # Show universe stats with professional cards - INLINE HTML
         col1, col2, col3 = st.columns(3)
 
         with col1:
-            card = create_metric_card(
-                title="TOTAL STOCKS",
-                value=f"{len(manager.universe):,}",
-                icon="📊",
-                border_color="#6366f1"
-            )
-            st.markdown(card, unsafe_allow_html=True)
+            # TOTAL STOCKS card - INLINE
+            total_stocks = len(manager.universe)
+            st.markdown(f"""
+            <div style="
+                background: linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%);
+                padding: 1.5rem;
+                border-radius: 0.75rem;
+                border-left: 4px solid #6366f1;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                height: 100%;
+            ">
+                <div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
+                    <span style="font-size: 1.25rem; margin-right: 0.5rem;">📊</span>
+                    <p style="margin: 0; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+                              letter-spacing: 0.05em; color: #94a3b8;">TOTAL STOCKS</p>
+                </div>
+                <h2 style="margin: 0.5rem 0 0 0; font-size: 2rem; font-weight: 700;
+                           background: linear-gradient(135deg, #6366f1 0%, #06b6d4 100%);
+                           -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+                    {total_stocks:,}
+                </h2>
+            </div>
+            """, unsafe_allow_html=True)
 
         with col2:
-            card = create_metric_card(
-                title="SECTORS",
-                value=f"{len(manager.get_available_sectors())}",
-                icon="🏢",
-                border_color="#06b6d4"
-            )
-            st.markdown(card, unsafe_allow_html=True)
+            # SECTORS card - INLINE
+            num_sectors = len(manager.get_available_sectors())
+            st.markdown(f"""
+            <div style="
+                background: linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%);
+                padding: 1.5rem;
+                border-radius: 0.75rem;
+                border-left: 4px solid #06b6d4;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                height: 100%;
+            ">
+                <div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
+                    <span style="font-size: 1.25rem; margin-right: 0.5rem;">🏢</span>
+                    <p style="margin: 0; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+                              letter-spacing: 0.05em; color: #94a3b8;">SECTORS</p>
+                </div>
+                <h2 style="margin: 0.5rem 0 0 0; font-size: 2rem; font-weight: 700;
+                           background: linear-gradient(135deg, #06b6d4 0%, #06b6d4 100%);
+                           -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+                    {num_sectors}
+                </h2>
+            </div>
+            """, unsafe_allow_html=True)
 
         with col3:
+            # DATA AGE card - INLINE
             if manager.last_update:
                 age_minutes = int((pd.Timestamp.now() - manager.last_update).total_seconds() / 60)
-                card = create_metric_card(
-                    title="DATA AGE",
-                    value=f"{age_minutes} min",
-                    icon="⏱️",
-                    border_color="#10b981"
-                )
-                st.markdown(card, unsafe_allow_html=True)
+                st.markdown(f"""
+                <div style="
+                    background: linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%);
+                    padding: 1.5rem;
+                    border-radius: 0.75rem;
+                    border-left: 4px solid #10b981;
+                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                    height: 100%;
+                ">
+                    <div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
+                        <span style="font-size: 1.25rem; margin-right: 0.5rem;">⏱️</span>
+                        <p style="margin: 0; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+                                  letter-spacing: 0.05em; color: #94a3b8;">DATA AGE</p>
+                    </div>
+                    <h2 style="margin: 0.5rem 0 0 0; font-size: 2rem; font-weight: 700;
+                               background: linear-gradient(135deg, #10b981 0%, #06b6d4 100%);
+                               -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+                        {age_minutes} min
+                    </h2>
+                </div>
+                """, unsafe_allow_html=True)
 
     except Exception as e:
         st.error(f"❌ Error loading stock universe: {e}")
