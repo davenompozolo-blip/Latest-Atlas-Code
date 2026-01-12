@@ -311,13 +311,21 @@ def render_enhanced_economic_calendar():
     if 'importance' in display_df.columns:
         display_df['Importance'] = display_df['importance']
 
-    # Format actual, forecast, previous if they exist
+    # Format actual, forecast, previous if they exist (handle both strings and numbers)
+    def format_value(x):
+        if pd.isna(x) or x == '' or x is None:
+            return "-"
+        try:
+            return f"{float(x):.2f}%"
+        except (ValueError, TypeError):
+            return str(x)  # Already a string, return as-is
+
     if 'actual' in display_df.columns:
-        display_df['Actual'] = display_df['actual'].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
+        display_df['Actual'] = display_df['actual'].apply(format_value)
     if 'forecast' in display_df.columns:
-        display_df['Forecast'] = display_df['forecast'].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
+        display_df['Forecast'] = display_df['forecast'].apply(format_value)
     if 'previous' in display_df.columns:
-        display_df['Previous'] = display_df['previous'].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
+        display_df['Previous'] = display_df['previous'].apply(format_value)
 
     # Select display columns
     display_columns = ['Date', 'Time', 'Event', 'Country', 'Importance']
