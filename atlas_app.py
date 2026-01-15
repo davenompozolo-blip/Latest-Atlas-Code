@@ -73,6 +73,33 @@ from ui.components import (
     ATLAS_TEMPLATE, ATLAS_COLORS
 )
 
+# ATLAS v12.0: Professional Blue Theme System
+try:
+    from ui.theme import (
+        ATLAS_COLORS as PROFESSIONAL_COLORS,
+        CHART_COLORS as PROFESSIONAL_CHART_COLORS,
+        CHART_FILLS,
+        FONTS,
+        SPACING,
+        CHART_LAYOUT,
+        get_color,
+        get_semantic_color,
+        format_percentage as fmt_pct,
+        format_currency as fmt_curr,
+    )
+    from ui.charts_professional import (
+        apply_atlas_theme as apply_professional_theme,
+        create_performance_chart as create_pro_performance_chart,
+        create_bar_chart as create_pro_bar_chart,
+        create_donut_chart as create_pro_donut_chart,
+        create_gauge_chart as create_pro_gauge_chart,
+    )
+    PROFESSIONAL_THEME_AVAILABLE = True
+    print("✅ Professional Blue Theme System loaded")
+except ImportError as e:
+    PROFESSIONAL_THEME_AVAILABLE = False
+    print(f"⚠️ Professional Theme not available: {e}")
+
 # ============================================================================
 # BROKER INTEGRATION SYSTEM (Alpaca, Easy Equities, Manual Entry)
 # ============================================================================
@@ -9952,10 +9979,10 @@ def create_sector_allocation_donut(df):
     apply_chart_theme(fig)
     return fig
 
-def create_professional_sector_allocation_pie(df):
+def create_professional_sector_allocation_pie(df, use_professional_theme=True):
     """
     PROFESSIONAL sector allocation pie chart - Institutional grade
-    - Clean, modern design
+    - Clean, modern design (Professional Blue or Dark theme)
     - Proper label positioning
     - Subtle gradients
     - No clutter
@@ -9967,34 +9994,42 @@ def create_professional_sector_allocation_pie(df):
     # Sort by value
     sector_pct = sector_pct.sort_values(ascending=False)
 
-    # Professional color palette (consistent with ATLAS theme)
-    colors = [
-        '#00d4ff',  # Neon blue
-        '#0080ff',  # Electric blue
-        '#00ffcc',  # Teal
-        '#00ff88',  # Success green
-        '#ffaa00',  # Warning orange
-        '#ff6b00',  # Orange
-        '#b794f6',  # Purple
-        '#ff00ff',  # Pink
-        '#00d4ff',  # Loop back
-        '#0080ff',
-        '#00ffcc'
-    ]
+    # Use Professional Blue theme if available
+    if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
+        # Professional Blue palette (clean, light background)
+        colors = PROFESSIONAL_CHART_COLORS[:len(sector_pct)]
+        text_color = PROFESSIONAL_COLORS['dark']
+        border_color = 'white'
+        paper_bg = 'white'
+        plot_bg = 'white'
+        legend_font_color = PROFESSIONAL_COLORS['dark_medium']
+        title_color = PROFESSIONAL_COLORS['dark']
+    else:
+        # Fallback to dark neon theme
+        colors = [
+            '#00d4ff', '#0080ff', '#00ffcc', '#00ff88', '#ffaa00',
+            '#ff6b00', '#b794f6', '#ff00ff', '#00d4ff', '#0080ff', '#00ffcc'
+        ][:len(sector_pct)]
+        text_color = '#ffffff'
+        border_color = '#000000'
+        paper_bg = 'rgba(0, 0, 0, 0)'
+        plot_bg = 'rgba(10, 25, 41, 0.3)'
+        legend_font_color = '#ffffff'
+        title_color = '#ffffff'
 
     fig = go.Figure(data=[go.Pie(
         labels=sector_pct.index,
         values=sector_pct.values,
-        hole=0.5,  # Donut style - more modern
+        hole=0.4,  # Donut style - more modern
         marker=dict(
-            colors=colors[:len(sector_pct)],
-            line=dict(color='#000000', width=2)  # Clean borders
+            colors=colors,
+            line=dict(color=border_color, width=2)  # Clean borders
         ),
-        textposition='auto',
+        textposition='outside' if use_professional_theme else 'auto',
         textinfo='label+percent',
         textfont=dict(
-            size=13,
-            color='#ffffff',
+            size=12,
+            color=text_color,
             family='Inter, sans-serif'
         ),
         hovertemplate=(
@@ -10009,9 +10044,9 @@ def create_professional_sector_allocation_pie(df):
     fig.update_layout(
         title=dict(
             text='Sector Allocation',
-            font=dict(size=20, color='#ffffff', family='Inter'),
-            x=0.5,
-            xanchor='center'
+            font=dict(size=16, color=title_color, family='Inter'),
+            x=0.02,
+            xanchor='left'
         ),
         showlegend=True,
         legend=dict(
@@ -10020,13 +10055,13 @@ def create_professional_sector_allocation_pie(df):
             y=0.5,
             xanchor="right",
             x=1.15,
-            bgcolor='rgba(0,0,0,0)',
-            font=dict(size=12, color='#ffffff')
+            bgcolor='rgba(255,255,255,0)' if use_professional_theme else 'rgba(0,0,0,0)',
+            font=dict(size=11, color=legend_font_color)
         ),
-        paper_bgcolor='rgba(0, 0, 0, 0)',
-        plot_bgcolor='rgba(10, 25, 41, 0.3)',
-        height=500,
-        margin=dict(l=20, r=150, t=80, b=20)
+        paper_bgcolor=paper_bg,
+        plot_bgcolor=plot_bg,
+        height=450,
+        margin=dict(l=20, r=150, t=60, b=20)
     )
 
     return fig
@@ -11284,33 +11319,68 @@ def create_holdings_attribution_waterfall(df):
     apply_chart_theme(fig)
     return fig
 
-def create_concentration_gauge(df):
-    """Concentration gauge - ENHANCED THEMING"""
+def create_concentration_gauge(df, use_professional_theme=True):
+    """Concentration gauge - Professional Blue or Dark theme"""
     top_5_weight = df.nlargest(5, 'Weight %')['Weight %'].sum()
-    
+
+    # Use Professional Blue theme if available
+    if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
+        bar_color = PROFESSIONAL_COLORS['primary']
+        success_color = PROFESSIONAL_COLORS['success_light']
+        warning_color = PROFESSIONAL_COLORS['warning_light']
+        danger_color = PROFESSIONAL_COLORS['danger_light']
+        title_color = PROFESSIONAL_COLORS['dark']
+        number_color = PROFESSIONAL_COLORS['dark']
+        paper_bg = 'white'
+        delta_color = PROFESSIONAL_COLORS['warning']
+        threshold_color = PROFESSIONAL_COLORS['danger']
+        tick_color = PROFESSIONAL_COLORS['muted']
+    else:
+        bar_color = COLORS['neon_blue']
+        success_color = COLORS['success']
+        warning_color = COLORS['warning']
+        danger_color = COLORS['danger']
+        title_color = '#ffffff'
+        number_color = '#ffffff'
+        paper_bg = 'rgba(0, 0, 0, 0)'
+        delta_color = COLORS['warning']
+        threshold_color = 'red'
+        tick_color = '#94a3b8'
+
     fig = go.Figure(go.Indicator(
         mode="gauge+number+delta",
         value=top_5_weight,
-        title={'text': "Top 5 Concentration"},
-        delta={'reference': 50, 'increasing': {'color': COLORS['warning']}},
+        title={'text': "Top 5 Concentration", 'font': {'color': title_color, 'size': 16, 'family': 'Inter'}},
+        number={'font': {'color': number_color, 'size': 32, 'family': 'JetBrains Mono'}},
+        delta={'reference': 50, 'increasing': {'color': delta_color}},
         gauge={
-            'axis': {'range': [None, 100]},
-            'bar': {'color': COLORS['neon_blue']},
+            'axis': {'range': [0, 100], 'tickfont': {'color': tick_color, 'size': 10}},
+            'bar': {'color': bar_color, 'thickness': 0.75},
+            'bgcolor': '#ECEFF1' if use_professional_theme else 'rgba(0,0,0,0)',
+            'borderwidth': 0,
             'steps': [
-                {'range': [0, 30], 'color': COLORS['success']},
-                {'range': [30, 50], 'color': COLORS['warning']},
-                {'range': [50, 100], 'color': COLORS['danger']}
+                {'range': [0, 30], 'color': success_color},
+                {'range': [30, 50], 'color': warning_color},
+                {'range': [50, 100], 'color': danger_color}
             ],
             'threshold': {
-                'line': {'color': "red", 'width': 4},
+                'line': {'color': threshold_color, 'width': 3},
                 'thickness': 0.75,
                 'value': 70
             }
         }
     ))
-    
-    fig.update_layout(height=400)
-    apply_chart_theme(fig)
+
+    fig.update_layout(
+        height=350,
+        paper_bgcolor=paper_bg,
+        plot_bgcolor=paper_bg,
+        font={'family': 'Inter, sans-serif'}
+    )
+
+    if not use_professional_theme:
+        apply_chart_theme(fig)
+
     return fig
 
 def create_concentration_analysis(df):
@@ -17788,39 +17858,91 @@ To maintain gradual transitions:
     
                     # === CUMULATIVE RETURN COMPARISON ===
                     st.subheader("📈 Cumulative Performance vs Benchmark")
-    
+
                     port_cumulative = (1 + port_aligned).cumprod() - 1
                     bench_cumulative = (1 + bench_aligned).cumprod() - 1
-    
+
                     fig_cumulative = go.Figure()
-    
+
+                    # Use Professional Blue theme if available
+                    if PROFESSIONAL_THEME_AVAILABLE:
+                        portfolio_color = PROFESSIONAL_COLORS['primary']
+                        benchmark_color = PROFESSIONAL_COLORS['muted']
+                        fill_color = get_color('primary', 0.15)
+                        title_color = PROFESSIONAL_COLORS['dark']
+                        text_color = PROFESSIONAL_COLORS['dark_medium']
+                        grid_color = PROFESSIONAL_COLORS['light_medium']
+                        paper_bg = 'white'
+                        plot_bg = 'white'
+                    else:
+                        portfolio_color = '#00d4ff'
+                        benchmark_color = '#ffaa00'
+                        fill_color = 'rgba(0, 212, 255, 0.1)'
+                        title_color = '#ffffff'
+                        text_color = '#ffffff'
+                        grid_color = 'rgba(99, 102, 241, 0.1)'
+                        paper_bg = 'rgba(0, 0, 0, 0)'
+                        plot_bg = 'rgba(10, 25, 41, 0.3)'
+
+                    # Portfolio line with area fill
                     fig_cumulative.add_trace(go.Scatter(
                         x=port_cumulative.index,
                         y=port_cumulative.values * 100,
                         mode='lines',
-                        line=dict(color='#00d4ff', width=2),
-                        name='Your Portfolio'
+                        line=dict(color=portfolio_color, width=3, shape='spline'),
+                        fill='tozeroy',
+                        fillcolor=fill_color,
+                        name='Your Portfolio',
+                        hovertemplate='<b>Portfolio</b><br>%{x}<br>%{y:.2f}%<extra></extra>'
                     ))
-    
+
+                    # Benchmark line (dashed)
                     fig_cumulative.add_trace(go.Scatter(
                         x=bench_cumulative.index,
                         y=bench_cumulative.values * 100,
                         mode='lines',
-                        line=dict(color='#ffaa00', width=2, dash='dash'),
-                        name='SPY Benchmark'
+                        line=dict(color=benchmark_color, width=2, dash='dash', shape='spline'),
+                        name='SPY Benchmark',
+                        hovertemplate='<b>Benchmark</b><br>%{x}<br>%{y:.2f}%<extra></extra>'
                     ))
-    
+
                     fig_cumulative.update_layout(
-                        title="Cumulative Returns Comparison",
-                        xaxis_title="Date",
-                        yaxis_title="Cumulative Return (%)",
-                        height=500,
-                        paper_bgcolor='rgba(0, 0, 0, 0)',
-                        plot_bgcolor='rgba(10, 25, 41, 0.3)',
-                        font=dict(color='#ffffff'),
-                        hovermode='x unified'
+                        title=dict(
+                            text="Cumulative Returns Comparison",
+                            font=dict(size=16, color=title_color, family='Inter'),
+                            x=0.02,
+                            xanchor='left'
+                        ),
+                        xaxis=dict(
+                            title="Date",
+                            showgrid=False,
+                            tickfont=dict(size=10, color=text_color),
+                            linecolor=grid_color
+                        ),
+                        yaxis=dict(
+                            title="Cumulative Return (%)",
+                            showgrid=True,
+                            gridcolor=grid_color,
+                            tickfont=dict(size=10, color=text_color),
+                            linecolor=grid_color,
+                            zeroline=True,
+                            zerolinecolor=grid_color
+                        ),
+                        height=450,
+                        paper_bgcolor=paper_bg,
+                        plot_bgcolor=plot_bg,
+                        font=dict(color=text_color, family='Inter'),
+                        hovermode='x unified',
+                        legend=dict(
+                            orientation='h',
+                            yanchor='bottom',
+                            y=1.02,
+                            xanchor='right',
+                            x=1
+                        ),
+                        margin=dict(l=60, r=30, t=80, b=50)
                     )
-    
+
                     st.plotly_chart(fig_cumulative, use_container_width=True)
     
                     st.divider()
