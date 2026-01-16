@@ -7154,9 +7154,10 @@ def calculate_brinson_attribution(portfolio_df, benchmark_weights, benchmark_ret
         'selection_skill_score': calculate_skill_score(total_selection)
     }
 
-def create_brinson_attribution_chart(attribution_results):
+def create_brinson_attribution_chart(attribution_results, use_professional_theme=True):
     """
     Create waterfall chart showing allocation, selection, and interaction effects
+    Professional Blue theme with clean styling
     """
 
     # Aggregate by effect type
@@ -7164,6 +7165,26 @@ def create_brinson_attribution_chart(attribution_results):
     total_selection = attribution_results['total_selection_effect']
     total_interaction = attribution_results['total_interaction_effect']
     total = attribution_results['total_attribution']
+
+    # Theme colors
+    if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
+        connector_color = PROFESSIONAL_COLORS['muted']
+        success_color = PROFESSIONAL_COLORS['success']
+        danger_color = PROFESSIONAL_COLORS['danger']
+        total_color = PROFESSIONAL_COLORS['primary']
+        title_color = PROFESSIONAL_COLORS['dark']
+        text_color = PROFESSIONAL_COLORS['dark_medium']
+        paper_bg = 'white'
+        grid_color = PROFESSIONAL_COLORS['light_medium']
+    else:
+        connector_color = COLORS['neon_blue']
+        success_color = COLORS['success']
+        danger_color = COLORS['danger']
+        total_color = COLORS['electric_blue']
+        title_color = '#ffffff'
+        text_color = '#ffffff'
+        paper_bg = 'rgba(0, 0, 0, 0)'
+        grid_color = 'rgba(99, 102, 241, 0.1)'
 
     fig = go.Figure(go.Waterfall(
         name="Attribution",
@@ -7174,20 +7195,29 @@ def create_brinson_attribution_chart(attribution_results):
         text=[f"{total_allocation:+.2f}%", f"{total_selection:+.2f}%",
               f"{total_interaction:+.2f}%", f"{total:.2f}%"],
         textposition="outside",
-        connector={"line": {"color": COLORS['neon_blue'], "width": 2}},
-        decreasing={"marker": {"color": COLORS['danger']}},
-        increasing={"marker": {"color": COLORS['success']}},
-        totals={"marker": {"color": COLORS['electric_blue']}}
+        textfont=dict(size=12, family='JetBrains Mono', color=text_color),
+        connector={"line": {"color": connector_color, "width": 2}},
+        decreasing={"marker": {"color": danger_color}},
+        increasing={"marker": {"color": success_color}},
+        totals={"marker": {"color": total_color}}
     ))
 
     fig.update_layout(
-        title="📊 Brinson Attribution: Portfolio Outperformance Breakdown",
-        yaxis_title="Effect (%)",
-        height=500,
-        showlegend=False
+        title=dict(text="📊 Brinson Attribution: Portfolio Outperformance Breakdown",
+                   font=dict(size=16, color=title_color, family='Inter'), x=0.02, xanchor='left'),
+        yaxis=dict(title="Effect (%)", showgrid=True, gridcolor=grid_color,
+                   tickfont=dict(size=10, color=text_color)),
+        xaxis=dict(tickfont=dict(size=10, color=text_color)),
+        height=450,
+        showlegend=False,
+        paper_bgcolor=paper_bg,
+        plot_bgcolor=paper_bg,
+        font=dict(family='Inter', color=text_color),
+        margin=dict(l=60, r=30, t=60, b=50)
     )
 
-    apply_chart_theme(fig)
+    if not use_professional_theme:
+        apply_chart_theme(fig)
     return fig
 
 def create_skill_assessment_card(attribution_results):
@@ -9843,9 +9873,25 @@ def calculate_portfolio_correlations(df, period='90d'):
 # WORLD-CLASS VISUALIZATIONS - ENHANCED WITH SEAMLESS THEMING
 # ============================================================================
 
-def create_top_contributors_chart(df, top_n=5):
-    """FIXED: Top contributors in PERCENTAGE terms with improved spacing"""
+def create_top_contributors_chart(df, top_n=5, use_professional_theme=True):
+    """Top contributors in PERCENTAGE terms - Professional Blue theme"""
     top_contributors = df.nlargest(top_n, 'Total Gain/Loss %')[['Ticker', 'Asset Name', 'Total Gain/Loss $', 'Total Gain/Loss %']]
+
+    # Theme colors
+    if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
+        bar_color = PROFESSIONAL_COLORS['success']
+        border_color = 'rgba(67, 160, 71, 0.3)'
+        title_color = PROFESSIONAL_COLORS['dark']
+        text_color = PROFESSIONAL_COLORS['dark_medium']
+        paper_bg = 'white'
+        grid_color = PROFESSIONAL_COLORS['light_medium']
+    else:
+        bar_color = COLORS['success']
+        border_color = COLORS['border']
+        title_color = '#ffffff'
+        text_color = '#ffffff'
+        paper_bg = 'rgba(0, 0, 0, 0)'
+        grid_color = 'rgba(99, 102, 241, 0.1)'
 
     fig = go.Figure()
 
@@ -9854,35 +9900,52 @@ def create_top_contributors_chart(df, top_n=5):
         y=top_contributors['Ticker'],
         orientation='h',
         marker=dict(
-            color=COLORS['success'],
-            line=dict(color=COLORS['border'], width=2)
+            color=bar_color,
+            line=dict(color=border_color, width=1)
         ),
-        text=[f"{x:.1f}%" for x in top_contributors['Total Gain/Loss %']],
-        textposition='outside',  # Changed from 'auto' for better visibility
-        textfont=dict(size=12),
+        text=[f"{x:+.1f}%" for x in top_contributors['Total Gain/Loss %']],
+        textposition='outside',
+        textfont=dict(size=11, family='JetBrains Mono', color=text_color),
         hovertemplate='<b>%{y}</b><br>Return: %{x:.2f}%<extra></extra>',
-        width=0.6  # Slightly thinner bars for better spacing
+        width=0.6
     ))
 
     fig.update_layout(
-        title="🎯 Top 5 Contributors (%)",
-        xaxis_title="Total Return (%)",
-        yaxis_title="",
-        height=CHART_HEIGHT_STANDARD,  # P1-4: Standardized height
+        title=dict(text="🎯 Top 5 Contributors", font=dict(size=16, color=title_color, family='Inter'), x=0.02, xanchor='left'),
+        xaxis=dict(title="Total Return (%)", showgrid=True, gridcolor=grid_color,
+                   tickfont=dict(size=10, color=text_color, family='JetBrains Mono')),
+        yaxis=dict(tickfont=dict(size=11, color=text_color)),
+        height=350,
         showlegend=False,
-        margin=dict(l=100, r=80, t=80, b=50)  # Increased margins to prevent cutoff
+        paper_bgcolor=paper_bg,
+        plot_bgcolor=paper_bg,
+        font=dict(family='Inter', color=text_color),
+        margin=dict(l=80, r=60, t=60, b=50)
     )
 
-    # Ensure labels are fully visible
-    fig.update_xaxes(tickfont=dict(size=12))
-    fig.update_yaxes(tickfont=dict(size=12))
-
-    apply_chart_theme(fig)
+    if not use_professional_theme:
+        apply_chart_theme(fig)
     return fig
 
-def create_top_detractors_chart(df, top_n=5):
-    """FIXED: Top detractors in PERCENTAGE terms with improved spacing"""
+def create_top_detractors_chart(df, top_n=5, use_professional_theme=True):
+    """Top detractors in PERCENTAGE terms - Professional Blue theme"""
     top_detractors = df.nsmallest(top_n, 'Total Gain/Loss %')[['Ticker', 'Asset Name', 'Total Gain/Loss $', 'Total Gain/Loss %']]
+
+    # Theme colors
+    if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
+        bar_color = PROFESSIONAL_COLORS['danger']
+        border_color = 'rgba(229, 57, 53, 0.3)'
+        title_color = PROFESSIONAL_COLORS['dark']
+        text_color = PROFESSIONAL_COLORS['dark_medium']
+        paper_bg = 'white'
+        grid_color = PROFESSIONAL_COLORS['light_medium']
+    else:
+        bar_color = COLORS['danger']
+        border_color = COLORS['border']
+        title_color = '#ffffff'
+        text_color = '#ffffff'
+        paper_bg = 'rgba(0, 0, 0, 0)'
+        grid_color = 'rgba(99, 102, 241, 0.1)'
 
     fig = go.Figure()
 
@@ -9891,30 +9954,31 @@ def create_top_detractors_chart(df, top_n=5):
         y=top_detractors['Ticker'],
         orientation='h',
         marker=dict(
-            color=COLORS['danger'],
-            line=dict(color=COLORS['border'], width=2)
+            color=bar_color,
+            line=dict(color=border_color, width=1)
         ),
         text=[f"{x:.1f}%" for x in top_detractors['Total Gain/Loss %']],
-        textposition='outside',  # Changed from 'auto' for better visibility
-        textfont=dict(size=12),
+        textposition='outside',
+        textfont=dict(size=11, family='JetBrains Mono', color=text_color),
         hovertemplate='<b>%{y}</b><br>Loss: %{x:.2f}%<extra></extra>',
-        width=0.6  # Slightly thinner bars for better spacing
+        width=0.6
     ))
 
     fig.update_layout(
-        title="⚠️ Top 5 Detractors (%)",
-        xaxis_title="Total Return (%)",
-        yaxis_title="",
-        height=CHART_HEIGHT_STANDARD,  # P1-4: Standardized height
+        title=dict(text="⚠️ Top 5 Detractors", font=dict(size=16, color=title_color, family='Inter'), x=0.02, xanchor='left'),
+        xaxis=dict(title="Total Return (%)", showgrid=True, gridcolor=grid_color,
+                   tickfont=dict(size=10, color=text_color, family='JetBrains Mono')),
+        yaxis=dict(tickfont=dict(size=11, color=text_color)),
+        height=350,
         showlegend=False,
-        margin=dict(l=100, r=80, t=80, b=50)  # Increased margins to prevent cutoff
+        paper_bgcolor=paper_bg,
+        plot_bgcolor=paper_bg,
+        font=dict(family='Inter', color=text_color),
+        margin=dict(l=80, r=60, t=60, b=50)
     )
 
-    # Ensure labels are fully visible
-    fig.update_xaxes(tickfont=dict(size=12))
-    fig.update_yaxes(tickfont=dict(size=12))
-
-    apply_chart_theme(fig)
+    if not use_professional_theme:
+        apply_chart_theme(fig)
     return fig
 
 def create_sector_allocation_donut(df):
@@ -10136,53 +10200,88 @@ def create_professional_sector_allocation_bar(df):
 
     return fig
 
-def create_rolling_metrics_chart(returns, window=60):
-    """Rolling metrics visualization - ENHANCED THEMING"""
+def create_rolling_metrics_chart(returns, window=60, use_professional_theme=True):
+    """Rolling metrics visualization - Professional Blue theme"""
     if not is_valid_series(returns) or len(returns) < window:
         return None
-    
+
     rolling_vol = returns.rolling(window).std() * np.sqrt(252) * 100
     rolling_sharpe = (returns.rolling(window).mean() * 252 - RISK_FREE_RATE) / (returns.rolling(window).std() * np.sqrt(252))
-    
+
+    # Theme colors
+    if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
+        vol_color = PROFESSIONAL_COLORS['danger']
+        vol_fill = 'rgba(229, 57, 53, 0.15)'
+        sharpe_color = PROFESSIONAL_COLORS['primary']
+        sharpe_fill = 'rgba(30, 136, 229, 0.15)'
+        line_color = PROFESSIONAL_COLORS['muted']
+        title_color = PROFESSIONAL_COLORS['dark']
+        text_color = PROFESSIONAL_COLORS['dark_medium']
+        paper_bg = 'white'
+        grid_color = PROFESSIONAL_COLORS['light_medium']
+    else:
+        vol_color = COLORS['danger']
+        vol_fill = 'rgba(255, 0, 68, 0.2)'
+        sharpe_color = COLORS['neon_blue']
+        sharpe_fill = 'rgba(0, 212, 255, 0.2)'
+        line_color = COLORS['text_muted']
+        title_color = '#ffffff'
+        text_color = '#ffffff'
+        paper_bg = 'rgba(0, 0, 0, 0)'
+        grid_color = 'rgba(99, 102, 241, 0.1)'
+
     fig = make_subplots(
         rows=2, cols=1,
         subplot_titles=('Rolling Volatility (60-Day)', 'Rolling Sharpe Ratio (60-Day)'),
         vertical_spacing=0.15
     )
-    
+
     fig.add_trace(
         go.Scatter(
             x=rolling_vol.index,
             y=rolling_vol.values,
             fill='tozeroy',
-            fillcolor='rgba(255, 0, 68, 0.2)',
-            line=dict(color=COLORS['danger'], width=2),
+            fillcolor=vol_fill,
+            line=dict(color=vol_color, width=2, shape='spline'),
             name='Volatility'
         ),
         row=1, col=1
     )
-    
+
     fig.add_trace(
         go.Scatter(
             x=rolling_sharpe.index,
             y=rolling_sharpe.values,
             fill='tozeroy',
-            fillcolor='rgba(0, 212, 255, 0.2)',
-            line=dict(color=COLORS['neon_blue'], width=2),
+            fillcolor=sharpe_fill,
+            line=dict(color=sharpe_color, width=2, shape='spline'),
             name='Sharpe Ratio'
         ),
         row=2, col=1
     )
-    
-    fig.add_hline(y=0, line_dash="dash", line_color=COLORS['text_muted'], row=2, col=1)
-    
+
+    fig.add_hline(y=0, line_dash="dash", line_color=line_color, row=2, col=1)
+
     fig.update_layout(
-        height=600,
+        height=550,
         showlegend=False,
-        title_text="📊 Rolling Risk Metrics"
+        title=dict(text="📊 Rolling Risk Metrics", font=dict(size=16, color=title_color, family='Inter'), x=0.02, xanchor='left'),
+        paper_bgcolor=paper_bg,
+        plot_bgcolor=paper_bg,
+        font=dict(family='Inter', color=text_color),
+        margin=dict(l=60, r=30, t=60, b=40)
     )
-    
-    apply_chart_theme(fig)
+
+    # Update axes styling
+    fig.update_xaxes(showgrid=True, gridcolor=grid_color, tickfont=dict(size=10, color=text_color))
+    fig.update_yaxes(showgrid=True, gridcolor=grid_color, tickfont=dict(size=10, color=text_color, family='JetBrains Mono'))
+
+    # Update subplot titles
+    for annotation in fig['layout']['annotations']:
+        annotation['font'] = dict(size=12, color=title_color, family='Inter')
+
+    if not use_professional_theme:
+        apply_chart_theme(fig)
     return fig
 
 def create_underwater_plot(returns):
@@ -10234,42 +10333,63 @@ def create_underwater_plot(returns):
     apply_chart_theme(fig)
     return fig
 
-def create_var_waterfall(returns):
-    """VaR/CVaR waterfall chart - ENHANCED THEMING"""
+def create_var_waterfall(returns, use_professional_theme=True):
+    """VaR/CVaR waterfall chart - Professional Blue theme"""
     if not is_valid_series(returns) or len(returns) < 2:
         return None
-    
+
     var_90 = calculate_var(returns, 0.90)
     var_95 = calculate_var(returns, 0.95)
     var_99 = calculate_var(returns, 0.99)
     cvar_95 = calculate_cvar(returns, 0.95)
-    
+
     categories = ['VaR 90%', 'VaR 95%', 'VaR 99%', 'CVaR 95%']
     values = [var_90, var_95, var_99, cvar_95]
-    
-    colors_list = [COLORS['warning'], COLORS['orange'], COLORS['danger'], COLORS['danger']]
-    
+
+    # Theme colors - graduated risk scale
+    if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
+        colors_list = [PROFESSIONAL_COLORS['warning'], '#F57C00', PROFESSIONAL_COLORS['danger'], PROFESSIONAL_COLORS['danger']]
+        border_color = 'rgba(255, 255, 255, 0.5)'
+        title_color = PROFESSIONAL_COLORS['dark']
+        text_color = PROFESSIONAL_COLORS['dark_medium']
+        paper_bg = 'white'
+        grid_color = PROFESSIONAL_COLORS['light_medium']
+    else:
+        colors_list = [COLORS['warning'], COLORS['orange'], COLORS['danger'], COLORS['danger']]
+        border_color = COLORS['border']
+        title_color = '#ffffff'
+        text_color = '#ffffff'
+        paper_bg = 'rgba(0, 0, 0, 0)'
+        grid_color = 'rgba(99, 102, 241, 0.1)'
+
     fig = go.Figure()
-    
+
     fig.add_trace(go.Bar(
         x=categories,
         y=values,
         marker=dict(
             color=colors_list,
-            line=dict(color=COLORS['border'], width=2)
+            line=dict(color=border_color, width=1)
         ),
         text=[f"{v:.2f}%" for v in values],
-        textposition='outside'
+        textposition='outside',
+        textfont=dict(size=11, family='JetBrains Mono', color=text_color)
     ))
-    
+
     fig.update_layout(
-        title="⚠️ Value at Risk Waterfall",
-        xaxis_title="Risk Measure",
-        yaxis_title="Expected Loss (%)",
-        height=500
+        title=dict(text="⚠️ Value at Risk Analysis", font=dict(size=16, color=title_color, family='Inter'), x=0.02, xanchor='left'),
+        xaxis=dict(title="Risk Measure", showgrid=False, tickfont=dict(size=11, color=text_color)),
+        yaxis=dict(title="Expected Loss (%)", showgrid=True, gridcolor=grid_color,
+                   tickfont=dict(size=10, color=text_color, family='JetBrains Mono')),
+        height=400,
+        paper_bgcolor=paper_bg,
+        plot_bgcolor=paper_bg,
+        font=dict(family='Inter', color=text_color),
+        margin=dict(l=60, r=30, t=60, b=50)
     )
-    
-    apply_chart_theme(fig)
+
+    if not use_professional_theme:
+        apply_chart_theme(fig)
     return fig
 
 # v9.7 NEW FEATURE: VaR/CVaR on Return Distribution
@@ -10378,11 +10498,8 @@ def create_var_cvar_distribution(returns):
     return fig
 
 # v9.7 NEW FEATURE: Rolling VaR/CVaR Time Series
-def create_rolling_var_cvar_chart(returns, window=60):
-    """
-    NEW IN v9.7: Rolling VaR and CVaR time series visualization
-    Shows how tail risk metrics evolve over time
-    """
+def create_rolling_var_cvar_chart(returns, window=60, use_professional_theme=True):
+    """Rolling VaR and CVaR time series - Professional Blue theme"""
     if not is_valid_series(returns) or len(returns) < window:
         return None
 
@@ -10404,6 +10521,26 @@ def create_rolling_var_cvar_chart(returns, window=60):
     if not rolling_var_95:
         return None
 
+    # Theme colors
+    if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
+        var_color = PROFESSIONAL_COLORS['warning']
+        cvar_color = PROFESSIONAL_COLORS['danger']
+        line_color = PROFESSIONAL_COLORS['muted']
+        title_color = PROFESSIONAL_COLORS['dark']
+        text_color = PROFESSIONAL_COLORS['dark_medium']
+        paper_bg = 'white'
+        grid_color = PROFESSIONAL_COLORS['light_medium']
+        legend_bg = 'rgba(255, 255, 255, 0.9)'
+    else:
+        var_color = COLORS['orange']
+        cvar_color = COLORS['danger']
+        line_color = COLORS['text_muted']
+        title_color = '#ffffff'
+        text_color = '#ffffff'
+        paper_bg = 'rgba(0, 0, 0, 0)'
+        grid_color = 'rgba(99, 102, 241, 0.1)'
+        legend_bg = 'rgba(0, 0, 0, 0)'
+
     fig = go.Figure()
 
     # Add VaR trace
@@ -10411,7 +10548,7 @@ def create_rolling_var_cvar_chart(returns, window=60):
         x=dates,
         y=rolling_var_95,
         name='VaR 95%',
-        line=dict(color=COLORS['orange'], width=2),
+        line=dict(color=var_color, width=2, shape='spline'),
         mode='lines'
     ))
 
@@ -10420,29 +10557,37 @@ def create_rolling_var_cvar_chart(returns, window=60):
         x=dates,
         y=rolling_cvar_95,
         name='CVaR 95%',
-        line=dict(color=COLORS['danger'], width=2, dash='dash'),
+        line=dict(color=cvar_color, width=2, dash='dash', shape='spline'),
         mode='lines'
     ))
 
     # Add zero line
-    fig.add_hline(y=0, line_dash="dot", line_color=COLORS['text_muted'], line_width=1)
+    fig.add_hline(y=0, line_dash="dot", line_color=line_color, line_width=1)
 
     fig.update_layout(
-        title=f"📊 Rolling VaR & CVaR Evolution ({window}-Day Window)",
-        xaxis_title="Date",
-        yaxis_title="Expected Loss (%)",
-        height=500,
+        title=dict(text=f"📊 Rolling VaR & CVaR ({window}-Day)", font=dict(size=16, color=title_color, family='Inter'), x=0.02, xanchor='left'),
+        xaxis=dict(title="Date", showgrid=True, gridcolor=grid_color, tickfont=dict(size=10, color=text_color)),
+        yaxis=dict(title="Expected Loss (%)", showgrid=True, gridcolor=grid_color,
+                   tickfont=dict(size=10, color=text_color, family='JetBrains Mono')),
+        height=450,
         hovermode='x unified',
+        paper_bgcolor=paper_bg,
+        plot_bgcolor=paper_bg,
+        font=dict(family='Inter', color=text_color),
+        margin=dict(l=60, r=30, t=60, b=50),
         legend=dict(
             orientation="h",
             yanchor="bottom",
             y=1.02,
             xanchor="right",
-            x=1
+            x=1,
+            bgcolor=legend_bg,
+            font=dict(size=11, color=text_color)
         )
     )
 
-    apply_chart_theme(fig)
+    if not use_professional_theme:
+        apply_chart_theme(fig)
     return fig
 
 def create_risk_contribution_sunburst(df):
@@ -10601,8 +10746,8 @@ def should_display_monthly_heatmap(df):
     except:
         return False
 
-def create_performance_heatmap(df, period='monthly'):
-    """v9.7 ENHANCED: Performance heatmap with improved incomplete month filtering"""
+def create_performance_heatmap(df, period='monthly', use_professional_theme=True):
+    """Performance heatmap - Professional Blue theme"""
     try:
         portfolio_values = {}
 
@@ -10677,59 +10822,93 @@ def create_performance_heatmap(df, period='monthly'):
             matrix = filtered_matrix
             print(f"✅ Filtered heatmap: kept {len(filtered_months)} non-empty months")
 
+        # Theme colors
+        if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
+            title_color = PROFESSIONAL_COLORS['dark']
+            text_color = PROFESSIONAL_COLORS['dark_medium']
+            paper_bg = 'white'
+            colorscale = [[0, PROFESSIONAL_COLORS['danger']], [0.5, '#FFFFFF'], [1, PROFESSIONAL_COLORS['success']]]
+        else:
+            title_color = '#ffffff'
+            text_color = '#ffffff'
+            paper_bg = 'rgba(0, 0, 0, 0)'
+            colorscale = 'RdYlGn'
+
         fig = go.Figure(data=go.Heatmap(
             z=matrix,
             x=months,
             y=tickers,
-            colorscale='RdYlGn',
+            colorscale=colorscale,
             zmid=0,
             zmin=-20,
             zmax=20,
             text=np.round(matrix, 1),
             texttemplate='%{text}%',
-            textfont={"size": 14},
-            colorbar=dict(title="Return %")
+            textfont={"size": 11, "family": "JetBrains Mono"},
+            colorbar=dict(title="Return %", tickfont=dict(family='JetBrains Mono', size=10))
         ))
-        
+
         fig.update_layout(
-            title="🔥 Monthly Performance Heatmap",
-            xaxis_title="Month",
-            yaxis_title="Asset",
-            height=CHART_HEIGHT_DEEP_DIVE,  # P1-4: Standardized height for detailed charts
-            width=1200
+            title=dict(text="🔥 Monthly Performance Heatmap", font=dict(size=16, color=title_color, family='Inter'), x=0.02, xanchor='left'),
+            xaxis=dict(title="Month", tickfont=dict(size=10, color=text_color)),
+            yaxis=dict(title="Asset", tickfont=dict(size=10, color=text_color)),
+            height=550,
+            paper_bgcolor=paper_bg,
+            plot_bgcolor=paper_bg,
+            font=dict(family='Inter', color=text_color),
+            margin=dict(l=80, r=80, t=60, b=50)
         )
-        
-        apply_chart_theme(fig)
+
+        if not use_professional_theme:
+            apply_chart_theme(fig)
         return fig
     except Exception as e:
         st.error(f"Error: {str(e)}")
         return None
 
-def create_portfolio_heatmap(df):
-    """Portfolio treemap - ENHANCED THEMING"""
+def create_portfolio_heatmap(df, use_professional_theme=True):
+    """Portfolio treemap - Professional Blue theme"""
     df_viz = df[['Ticker', 'Asset Name', 'Weight %', 'Total Gain/Loss %', 'Sector']].copy()
     df_viz['Sector'] = df_viz['Sector'].fillna('Other')
     df_viz = df_viz.dropna()
-    
+
     if df_viz.empty:
         return None
-    
+
+    # Theme colors
+    if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
+        title_color = PROFESSIONAL_COLORS['dark']
+        text_color = PROFESSIONAL_COLORS['dark_medium']
+        paper_bg = 'white'
+        colorscale = [[0, PROFESSIONAL_COLORS['danger']], [0.5, '#FFFFFF'], [1, PROFESSIONAL_COLORS['success']]]
+    else:
+        title_color = '#ffffff'
+        text_color = '#ffffff'
+        paper_bg = 'rgba(0, 0, 0, 0)'
+        colorscale = 'RdYlGn'
+
     fig = px.treemap(
         df_viz,
         path=[px.Constant("Portfolio"), 'Sector', 'Ticker'],
         values='Weight %',
         color='Total Gain/Loss %',
-        color_continuous_scale='RdYlGn',
+        color_continuous_scale=colorscale,
         color_continuous_midpoint=0,
         hover_data={'Asset Name': True, 'Total Gain/Loss %': ':.2f'}
     )
-    
+
     fig.update_layout(
-        title="🗺️ Portfolio Heatmap",
-        height=700
+        title=dict(text="🗺️ Portfolio Heatmap", font=dict(size=16, color=title_color, family='Inter'), x=0.02, xanchor='left'),
+        height=600,
+        paper_bgcolor=paper_bg,
+        font=dict(family='Inter', color=text_color),
+        margin=dict(l=20, r=20, t=60, b=30)
     )
-    
-    apply_chart_theme(fig)
+
+    fig.update_traces(textfont=dict(family='Inter', size=11))
+
+    if not use_professional_theme:
+        apply_chart_theme(fig)
     return fig
 
 @st.cache_data(ttl=600)
@@ -10744,14 +10923,30 @@ def fetch_ticker_performance(ticker, start_date, end_date):
     except:
         return None, None
 
-def create_interactive_performance_chart(tickers, start_date, end_date):
-    """Interactive performance chart - ENHANCED THEMING"""
+def create_interactive_performance_chart(tickers, start_date, end_date, use_professional_theme=True):
+    """Interactive performance chart - Professional Blue theme"""
     fig = go.Figure()
-    
-    colors = [COLORS['neon_blue'], COLORS['electric_blue'], COLORS['teal'], 
-              COLORS['success'], COLORS['warning'], COLORS['danger'],
-              COLORS['purple'], COLORS['pink'], COLORS['orange']]
-    
+
+    # Theme colors
+    if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
+        colors = PROFESSIONAL_CHART_COLORS
+        line_color = PROFESSIONAL_COLORS['muted']
+        title_color = PROFESSIONAL_COLORS['dark']
+        text_color = PROFESSIONAL_COLORS['dark_medium']
+        paper_bg = 'white'
+        grid_color = PROFESSIONAL_COLORS['light_medium']
+        legend_bg = 'rgba(255, 255, 255, 0.9)'
+    else:
+        colors = [COLORS['neon_blue'], COLORS['electric_blue'], COLORS['teal'],
+                  COLORS['success'], COLORS['warning'], COLORS['danger'],
+                  COLORS['purple'], COLORS['pink'], COLORS['orange']]
+        line_color = COLORS['text_muted']
+        title_color = '#ffffff'
+        text_color = '#ffffff'
+        paper_bg = 'rgba(0, 0, 0, 0)'
+        grid_color = 'rgba(99, 102, 241, 0.1)'
+        legend_bg = 'rgba(0, 0, 0, 0)'
+
     for idx, ticker in enumerate(tickers):
         cumulative, data = fetch_ticker_performance(ticker, start_date, end_date)
         if cumulative is not None:
@@ -10760,24 +10955,38 @@ def create_interactive_performance_chart(tickers, start_date, end_date):
                 y=cumulative.values,
                 mode='lines',
                 name=ticker,
-                line=dict(width=2.5, color=colors[idx % len(colors)])
+                line=dict(width=2, color=colors[idx % len(colors)], shape='spline')
             ))
-    
+
     if not fig.data:
         return None
-    
+
     fig.update_layout(
-        title="📈 Interactive Performance Comparison",
-        xaxis_title="Date",
-        yaxis_title="Cumulative Return (%)",
-        height=600,
+        title=dict(text="📈 Performance Comparison", font=dict(size=16, color=title_color, family='Inter'), x=0.02, xanchor='left'),
+        xaxis=dict(title="Date", showgrid=True, gridcolor=grid_color, tickfont=dict(size=10, color=text_color)),
+        yaxis=dict(title="Cumulative Return (%)", showgrid=True, gridcolor=grid_color,
+                   tickfont=dict(size=10, color=text_color, family='JetBrains Mono')),
+        height=500,
         hovermode='x unified',
-        legend=dict(x=0.01, y=0.99)
+        paper_bgcolor=paper_bg,
+        plot_bgcolor=paper_bg,
+        font=dict(family='Inter', color=text_color),
+        margin=dict(l=60, r=30, t=60, b=50),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="left",
+            x=0,
+            bgcolor=legend_bg,
+            font=dict(size=11, color=text_color)
+        )
     )
-    
-    fig.add_hline(y=0, line_dash="dash", line_color=COLORS['text_muted'], line_width=1)
-    
-    apply_chart_theme(fig)
+
+    fig.add_hline(y=0, line_dash="dash", line_color=line_color, line_width=1)
+
+    if not use_professional_theme:
+        apply_chart_theme(fig)
     return fig
 
 def run_monte_carlo_simulation(returns, initial_value=100000, days=252, simulations=1000):
@@ -10798,42 +11007,75 @@ def run_monte_carlo_simulation(returns, initial_value=100000, days=252, simulati
     
     return np.array(simulation_results)
 
-def create_monte_carlo_chart(simulation_results, initial_value=100000):
+def create_monte_carlo_chart(simulation_results, initial_value=100000, use_professional_theme=True):
     if simulation_results is None:
         return None, None
-    
+
+    # Theme colors
+    if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
+        sim_color = 'rgba(30, 136, 229, 0.1)'
+        colors_pct = [PROFESSIONAL_COLORS['danger'], PROFESSIONAL_COLORS['warning'],
+                      PROFESSIONAL_COLORS['primary'], '#00ACC1', PROFESSIONAL_COLORS['success']]
+        title_color = PROFESSIONAL_COLORS['dark']
+        text_color = PROFESSIONAL_COLORS['dark_medium']
+        paper_bg = 'white'
+        grid_color = PROFESSIONAL_COLORS['light_medium']
+        legend_bg = 'rgba(255, 255, 255, 0.9)'
+    else:
+        sim_color = COLORS['electric_blue']
+        colors_pct = [COLORS['danger'], COLORS['warning'], COLORS['info'],
+                      COLORS['teal'], COLORS['success']]
+        title_color = '#ffffff'
+        text_color = '#ffffff'
+        paper_bg = 'rgba(0, 0, 0, 0)'
+        grid_color = 'rgba(99, 102, 241, 0.1)'
+        legend_bg = 'rgba(0, 0, 0, 0)'
+
     fig = go.Figure()
-    
+
     for i in range(min(100, len(simulation_results))):
         fig.add_trace(go.Scatter(
             y=simulation_results[i],
             mode='lines',
-            line=dict(width=0.5, color=COLORS['electric_blue']),
-            opacity=0.1,
+            line=dict(width=0.5, color=sim_color),
+            opacity=0.1 if not use_professional_theme else 1,
             showlegend=False
         ))
-    
+
     percentiles = [5, 25, 50, 75, 95]
-    colors_pct = [COLORS['danger'], COLORS['warning'], COLORS['info'], 
-                  COLORS['teal'], COLORS['success']]
-    
+
     for p, color in zip(percentiles, colors_pct):
         values = np.percentile(simulation_results, p, axis=0)
         fig.add_trace(go.Scatter(
             y=values,
             mode='lines',
-            line=dict(width=3, color=color),
+            line=dict(width=2.5, color=color, shape='spline'),
             name=f'{p}th Percentile'
         ))
-    
+
     fig.update_layout(
-        title="🎲 Monte Carlo Simulation",
-        xaxis_title="Trading Days",
-        yaxis_title="Portfolio Value ($)",
-        height=500
+        title=dict(text="🎲 Monte Carlo Simulation", font=dict(size=16, color=title_color, family='Inter'), x=0.02, xanchor='left'),
+        xaxis=dict(title="Trading Days", showgrid=True, gridcolor=grid_color, tickfont=dict(size=10, color=text_color)),
+        yaxis=dict(title="Portfolio Value ($)", showgrid=True, gridcolor=grid_color,
+                   tickfont=dict(size=10, color=text_color, family='JetBrains Mono')),
+        height=450,
+        paper_bgcolor=paper_bg,
+        plot_bgcolor=paper_bg,
+        font=dict(family='Inter', color=text_color),
+        margin=dict(l=70, r=30, t=60, b=50),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1,
+            bgcolor=legend_bg,
+            font=dict(size=10, color=text_color)
+        )
     )
-    
-    apply_chart_theme(fig)
+
+    if not use_professional_theme:
+        apply_chart_theme(fig)
     
     final_values = simulation_results[:, -1]
     stats = {
@@ -11227,8 +11469,8 @@ def create_dynamic_market_table(df, filters=None):
 # PORTFOLIO DEEP DIVE - ENHANCED
 # ============================================================================
 
-def create_sector_rotation_heatmap(df, start_date, end_date):
-    """Sector rotation heatmap - FIXED DATETIME COMPARISON"""
+def create_sector_rotation_heatmap(df, start_date, end_date, use_professional_theme=True):
+    """Sector rotation heatmap - Professional Blue theme"""
     sector_returns = {}
 
     # FIX: Make end_date_cutoff timezone-naive
@@ -11267,56 +11509,100 @@ def create_sector_rotation_heatmap(df, start_date, end_date):
     for sector in sectors:
         matrix.append(sector_avg[sector].values)
     
+    # Theme colors
+    if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
+        title_color = PROFESSIONAL_COLORS['dark']
+        text_color = PROFESSIONAL_COLORS['dark_medium']
+        paper_bg = 'white'
+        colorscale = [[0, PROFESSIONAL_COLORS['danger']], [0.5, '#FFFFFF'], [1, PROFESSIONAL_COLORS['success']]]
+    else:
+        title_color = '#ffffff'
+        text_color = '#ffffff'
+        paper_bg = 'rgba(0, 0, 0, 0)'
+        colorscale = 'RdYlGn'
+
     fig = go.Figure(data=go.Heatmap(
         z=matrix,
         x=[m.strftime('%b %Y') for m in months],
         y=sectors,
-        colorscale='RdYlGn',
+        colorscale=colorscale,
         zmid=0,
         text=np.round(matrix, 1),
         texttemplate='%{text}%',
-        textfont={"size": 11},
-        colorbar=dict(title="Return %")
+        textfont={"size": 10, "family": "JetBrains Mono"},
+        colorbar=dict(title="Return %", tickfont=dict(family='JetBrains Mono', size=10))
     ))
-    
+
     fig.update_layout(
-        title="🔄 Sector Rotation Heatmap",
-        xaxis_title="Month",
-        yaxis_title="Sector",
-        height=500
+        title=dict(text="🔄 Sector Rotation Heatmap", font=dict(size=16, color=title_color, family='Inter'), x=0.02, xanchor='left'),
+        xaxis=dict(title="Month", tickfont=dict(size=10, color=text_color)),
+        yaxis=dict(title="Sector", tickfont=dict(size=10, color=text_color)),
+        height=450,
+        paper_bgcolor=paper_bg,
+        plot_bgcolor=paper_bg,
+        font=dict(family='Inter', color=text_color),
+        margin=dict(l=100, r=80, t=60, b=50)
     )
-    
-    apply_chart_theme(fig)
+
+    if not use_professional_theme:
+        apply_chart_theme(fig)
     return fig
 
-def create_holdings_attribution_waterfall(df):
-    """Holdings attribution waterfall - ENHANCED THEMING"""
+def create_holdings_attribution_waterfall(df, use_professional_theme=True):
+    """Holdings attribution waterfall - Professional Blue theme"""
     top_contributors = df.nlargest(10, 'Total Gain/Loss $')
-    
+
     tickers = top_contributors['Ticker'].tolist()
     contributions = top_contributors['Total Gain/Loss $'].tolist()
-    
+
+    # Theme colors
+    if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
+        connector_color = PROFESSIONAL_COLORS['muted']
+        success_color = PROFESSIONAL_COLORS['success']
+        danger_color = PROFESSIONAL_COLORS['danger']
+        total_color = PROFESSIONAL_COLORS['primary']
+        title_color = PROFESSIONAL_COLORS['dark']
+        text_color = PROFESSIONAL_COLORS['dark_medium']
+        paper_bg = 'white'
+        grid_color = PROFESSIONAL_COLORS['light_medium']
+    else:
+        connector_color = COLORS['neon_blue']
+        success_color = COLORS['success']
+        danger_color = COLORS['danger']
+        total_color = COLORS['electric_blue']
+        title_color = '#ffffff'
+        text_color = '#ffffff'
+        paper_bg = 'rgba(0, 0, 0, 0)'
+        grid_color = 'rgba(99, 102, 241, 0.1)'
+
     fig = go.Figure()
-    
+
     fig.add_trace(go.Waterfall(
         name="Attribution",
         orientation="v",
         x=tickers,
         y=contributions,
-        connector={"line": {"color": COLORS['neon_blue']}},
-        decreasing={"marker": {"color": COLORS['danger']}},
-        increasing={"marker": {"color": COLORS['success']}},
-        totals={"marker": {"color": COLORS['electric_blue']}}
+        textfont=dict(size=10, family='JetBrains Mono', color=text_color),
+        connector={"line": {"color": connector_color, "width": 2}},
+        decreasing={"marker": {"color": danger_color}},
+        increasing={"marker": {"color": success_color}},
+        totals={"marker": {"color": total_color}}
     ))
-    
+
     fig.update_layout(
-        title="💧 Holdings Attribution Waterfall",
-        xaxis_title="Ticker",
-        yaxis_title="Contribution ($)",
-        height=500
+        title=dict(text="💧 Holdings Attribution Waterfall", font=dict(size=16, color=title_color, family='Inter'), x=0.02, xanchor='left'),
+        xaxis=dict(title="Ticker", tickfont=dict(size=10, color=text_color)),
+        yaxis=dict(title="Contribution ($)", showgrid=True, gridcolor=grid_color,
+                   tickfont=dict(size=10, color=text_color, family='JetBrains Mono')),
+        height=400,
+        paper_bgcolor=paper_bg,
+        plot_bgcolor=paper_bg,
+        font=dict(family='Inter', color=text_color),
+        margin=dict(l=70, r=30, t=60, b=50)
     )
-    
-    apply_chart_theme(fig)
+
+    if not use_professional_theme:
+        apply_chart_theme(fig)
     return fig
 
 def create_concentration_gauge(df, use_professional_theme=True):
@@ -11419,18 +11705,32 @@ def create_concentration_analysis(df):
 # MULTI-FACTOR ANALYSIS - ENHANCED
 # ============================================================================
 
-def create_factor_momentum_chart(factor_data):
-    """Factor momentum chart - ENHANCED THEMING"""
+def create_factor_momentum_chart(factor_data, use_professional_theme=True):
+    """Factor momentum chart - Professional Blue theme"""
     if factor_data is None or 'factor_returns' not in factor_data:
         return None
-    
+
     factor_returns = factor_data['factor_returns']
-    
+
+    # Theme colors
+    if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
+        colors = PROFESSIONAL_CHART_COLORS
+        title_color = PROFESSIONAL_COLORS['dark']
+        text_color = PROFESSIONAL_COLORS['dark_medium']
+        paper_bg = 'white'
+        grid_color = PROFESSIONAL_COLORS['light_medium']
+        legend_bg = 'rgba(255, 255, 255, 0.9)'
+    else:
+        colors = [COLORS['neon_blue'], COLORS['electric_blue'], COLORS['teal'],
+                  COLORS['success'], COLORS['purple'], COLORS['pink']]
+        title_color = '#ffffff'
+        text_color = '#ffffff'
+        paper_bg = 'rgba(0, 0, 0, 0)'
+        grid_color = 'rgba(99, 102, 241, 0.1)'
+        legend_bg = 'rgba(0, 0, 0, 0)'
+
     fig = go.Figure()
-    
-    colors = [COLORS['neon_blue'], COLORS['electric_blue'], COLORS['teal'], 
-              COLORS['success'], COLORS['purple'], COLORS['pink']]
-    
+
     for idx, factor in enumerate(FACTOR_DEFINITIONS.keys()):
         if factor in factor_returns.columns:
             cumulative = (1 + factor_returns[factor]).cumprod() - 1
@@ -11439,19 +11739,33 @@ def create_factor_momentum_chart(factor_data):
                 y=cumulative.values * 100,
                 mode='lines',
                 name=factor,
-                line=dict(width=2, color=colors[idx % len(colors)])
+                line=dict(width=2, color=colors[idx % len(colors)], shape='spline')
             ))
-    
+
     fig.update_layout(
-        title="📈 Factor Momentum",
-        xaxis_title="Date",
-        yaxis_title="Cumulative Return (%)",
-        height=600,
+        title=dict(text="📈 Factor Momentum", font=dict(size=16, color=title_color, family='Inter'), x=0.02, xanchor='left'),
+        xaxis=dict(title="Date", showgrid=True, gridcolor=grid_color, tickfont=dict(size=10, color=text_color)),
+        yaxis=dict(title="Cumulative Return (%)", showgrid=True, gridcolor=grid_color,
+                   tickfont=dict(size=10, color=text_color, family='JetBrains Mono')),
+        height=500,
         hovermode='x unified',
-        legend=dict(x=0.02, y=0.98)
+        paper_bgcolor=paper_bg,
+        plot_bgcolor=paper_bg,
+        font=dict(family='Inter', color=text_color),
+        margin=dict(l=60, r=30, t=60, b=50),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="left",
+            x=0,
+            bgcolor=legend_bg,
+            font=dict(size=11, color=text_color)
+        )
     )
-    
-    apply_chart_theme(fig)
+
+    if not use_professional_theme:
+        apply_chart_theme(fig)
     return fig
 
 def create_factor_exposure_radar(exposures):
@@ -11697,12 +12011,12 @@ def create_performance_dashboard(metrics):
 # VALUATION HOUSE VISUALIZATIONS - ENHANCED
 # ============================================================================
 
-def create_dcf_waterfall(dcf_results, method='FCFF'):
-    """Create waterfall chart showing DCF buildup - ENHANCED THEMING"""
-    
+def create_dcf_waterfall(dcf_results, method='FCFF', use_professional_theme=True):
+    """Create waterfall chart showing DCF buildup - Professional Blue theme"""
+
     categories = ['PV of Cash Flows', 'PV of Terminal Value']
     values = [dcf_results['total_pv_cash_flows'], dcf_results['pv_terminal']]
-    
+
     if method == 'FCFF':
         categories.append('Enterprise Value')
         categories.append('Less: Net Debt')
@@ -11710,28 +12024,54 @@ def create_dcf_waterfall(dcf_results, method='FCFF'):
         values.append(dcf_results['enterprise_value'])
         values.append(-dcf_results.get('net_debt', 0))
         values.append(dcf_results['equity_value'])
-    
+
+    # Theme colors
+    if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
+        connector_color = PROFESSIONAL_COLORS['muted']
+        success_color = PROFESSIONAL_COLORS['success']
+        danger_color = PROFESSIONAL_COLORS['danger']
+        title_color = PROFESSIONAL_COLORS['dark']
+        text_color = PROFESSIONAL_COLORS['dark_medium']
+        paper_bg = 'white'
+        grid_color = PROFESSIONAL_COLORS['light_medium']
+    else:
+        connector_color = COLORS['neon_blue']
+        success_color = COLORS['success']
+        danger_color = COLORS['danger']
+        title_color = '#ffffff'
+        text_color = '#ffffff'
+        paper_bg = 'rgba(0, 0, 0, 0)'
+        grid_color = 'rgba(99, 102, 241, 0.1)'
+
     fig = go.Figure(go.Waterfall(
         name="DCF Buildup",
         orientation="v",
         x=categories,
         y=values,
-        connector={"line": {"color": COLORS['neon_blue']}},
-        decreasing={"marker": {"color": COLORS['danger']}},
-        increasing={"marker": {"color": COLORS['success']}},
+        textfont=dict(size=10, family='JetBrains Mono', color=text_color),
+        connector={"line": {"color": connector_color, "width": 2}},
+        decreasing={"marker": {"color": danger_color}},
+        increasing={"marker": {"color": success_color}},
     ))
-    
+
     fig.update_layout(
-        title=f"💎 {method} Valuation Buildup",
-        yaxis_title="Value ($)",
-        height=500
+        title=dict(text=f"💎 {method} Valuation Buildup", font=dict(size=16, color=title_color, family='Inter'), x=0.02, xanchor='left'),
+        xaxis=dict(tickfont=dict(size=10, color=text_color)),
+        yaxis=dict(title="Value ($)", showgrid=True, gridcolor=grid_color,
+                   tickfont=dict(size=10, color=text_color, family='JetBrains Mono')),
+        height=450,
+        paper_bgcolor=paper_bg,
+        plot_bgcolor=paper_bg,
+        font=dict(family='Inter', color=text_color),
+        margin=dict(l=70, r=30, t=60, b=50)
     )
-    
-    apply_chart_theme(fig)
+
+    if not use_professional_theme:
+        apply_chart_theme(fig)
     return fig
 
-def create_cash_flow_chart(projections, method='FCFF'):
-    """Create bar chart of projected cash flows - ENHANCED THEMING"""
+def create_cash_flow_chart(projections, method='FCFF', use_professional_theme=True):
+    """Create bar chart of projected cash flows - Professional Blue theme"""
 
     # Handle DCFProjections object or list
     if not isinstance(projections, list):
@@ -11755,25 +12095,48 @@ def create_cash_flow_chart(projections, method='FCFF'):
 
     years = [proj['year'] for proj in projections]
     cash_flows = [proj[cf_key] for proj in projections]
-    
+
+    # Theme colors
+    if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
+        bar_color = PROFESSIONAL_COLORS['primary']
+        border_color = 'rgba(30, 136, 229, 0.3)'
+        title_color = PROFESSIONAL_COLORS['dark']
+        text_color = PROFESSIONAL_COLORS['dark_medium']
+        paper_bg = 'white'
+        grid_color = PROFESSIONAL_COLORS['light_medium']
+    else:
+        bar_color = COLORS['electric_blue']
+        border_color = COLORS['border']
+        title_color = '#ffffff'
+        text_color = '#ffffff'
+        paper_bg = 'rgba(0, 0, 0, 0)'
+        grid_color = 'rgba(99, 102, 241, 0.1)'
+
     fig = go.Figure()
-    
+
     fig.add_trace(go.Bar(
         x=years,
         y=cash_flows,
-        marker_color=COLORS['electric_blue'],
+        marker_color=bar_color,
         name=method,
-        marker=dict(line=dict(color=COLORS['border'], width=2))
+        marker=dict(line=dict(color=border_color, width=1)),
+        textfont=dict(size=10, family='JetBrains Mono')
     ))
-    
+
     fig.update_layout(
-        title=f"📊 Projected {method} by Year",
-        xaxis_title="Year",
-        yaxis_title=f"{method} ($)",
-        height=400
+        title=dict(text=f"📊 Projected {method} by Year", font=dict(size=16, color=title_color, family='Inter'), x=0.02, xanchor='left'),
+        xaxis=dict(title="Year", tickfont=dict(size=10, color=text_color)),
+        yaxis=dict(title=f"{method} ($)", showgrid=True, gridcolor=grid_color,
+                   tickfont=dict(size=10, color=text_color, family='JetBrains Mono')),
+        height=350,
+        paper_bgcolor=paper_bg,
+        plot_bgcolor=paper_bg,
+        font=dict(family='Inter', color=text_color),
+        margin=dict(l=70, r=30, t=60, b=50)
     )
-    
-    apply_chart_theme(fig)
+
+    if not use_professional_theme:
+        apply_chart_theme(fig)
     return fig
 
 def create_sensitivity_table(base_price, base_discount, base_terminal):
