@@ -1393,6 +1393,13 @@ st.markdown("""
 .major-indices-container .stPlotlyChart {
     border: 1px solid rgba(99, 102, 241, 0.2) !important;
     box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2) !important;
+    background: rgba(21, 25, 50, 0.6) !important;
+}
+
+/* Override hover state for Major Indices too */
+.major-indices-container .stPlotlyChart:hover {
+    border: 1px solid rgba(99, 102, 241, 0.35) !important;
+    box-shadow: 0 6px 28px rgba(0, 0, 0, 0.25) !important;
 }
 </style>
 """, unsafe_allow_html=True)
