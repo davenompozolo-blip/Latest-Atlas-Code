@@ -173,7 +173,8 @@ def render_overview_page():
     # Regime banner
     display_regime_banner()
 
-    # Major Indices Section
+    # Major Indices Section - wrapped in container for subtle borders (not neon)
+    st.markdown('<div class="major-indices-container">', unsafe_allow_html=True)
     st.markdown("### 🌍 Major Indices")
 
     # NUCLEAR CSS - Complete circle removal for time frame selector
@@ -438,6 +439,9 @@ def render_overview_page():
 
                 except Exception as e:
                     st.error(f"Error: {index_info['name']}")
+
+    # Close Major Indices container
+    st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown("---")
 
