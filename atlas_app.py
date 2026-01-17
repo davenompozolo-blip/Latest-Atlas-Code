@@ -1341,12 +1341,12 @@ st.markdown(
 st.markdown("""
 <style>
 /* Global neon border styling for all Plotly chart containers */
-/* UPDATED: Reduced padding/margins to prevent chart cutoff */
+/* UPDATED: Minimal padding to maximize chart space */
 .stPlotlyChart {
     border: 2px solid rgba(0, 188, 212, 0.5) !important;
     border-radius: 12px !important;
-    padding: 4px !important;
-    margin: 8px 0 !important;
+    padding: 2px !important;
+    margin: 6px 0 !important;
     box-shadow:
         0 0 15px rgba(0, 188, 212, 0.3),
         0 0 30px rgba(0, 188, 212, 0.15),
@@ -1400,6 +1400,55 @@ st.markdown("""
 .major-indices-container .stPlotlyChart:hover {
     border: 1px solid rgba(99, 102, 241, 0.35) !important;
     box-shadow: 0 6px 28px rgba(0, 0, 0, 0.25) !important;
+}
+
+/* ============================================
+   DROPDOWN / SELECTBOX TEXT VISIBILITY FIX
+   ============================================ */
+
+/* Main selectbox container text */
+.stSelectbox > div > div {
+    color: #FFFFFF !important;
+}
+
+/* Selected value display */
+.stSelectbox div[data-baseweb="select"] > div {
+    background-color: #1a1d29 !important;
+    color: #FFFFFF !important;
+    border-color: rgba(99, 102, 241, 0.3) !important;
+}
+
+/* Dropdown popover background */
+[data-baseweb="popover"] {
+    background-color: #1a1d29 !important;
+    border: 1px solid rgba(99, 102, 241, 0.3) !important;
+}
+
+/* Dropdown list items */
+[data-baseweb="popover"] li {
+    background-color: #1a1d29 !important;
+    color: #FFFFFF !important;
+}
+
+/* Dropdown list items hover */
+[data-baseweb="popover"] li:hover {
+    background-color: #2a2d39 !important;
+}
+
+/* Selectbox label */
+.stSelectbox label {
+    color: #FFFFFF !important;
+}
+
+/* Multiselect styling */
+.stMultiSelect div[data-baseweb="select"] > div {
+    background-color: #1a1d29 !important;
+    color: #FFFFFF !important;
+}
+
+.stMultiSelect span[data-baseweb="tag"] {
+    background-color: rgba(99, 102, 241, 0.3) !important;
+    color: #FFFFFF !important;
 }
 </style>
 """, unsafe_allow_html=True)
