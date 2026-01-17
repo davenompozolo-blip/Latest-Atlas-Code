@@ -19584,8 +19584,11 @@ To maintain gradual transitions:
                                     impact_msg = "Regime-adjusted inputs will produce SIMILAR valuation (minimal adjustments)"
 
                                 st.markdown(f"""
-                                <div style="background: rgba(139,92,246,0.08); border-left: 4px solid {impact_color};
-                                            padding: 1rem; margin: 1rem 0; border-radius: 8px;">
+                                <div style="background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(21,25,50,0.95));
+                                            backdrop-filter: blur(24px); padding: 1.25rem; margin: 1rem 0; border-radius: 20px;
+                                            border: 1px solid rgba(99,102,241,0.2); box-shadow: 0 4px 24px rgba(0,0,0,0.2);
+                                            position: relative; overflow: hidden;">
+                                    <div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, {impact_color}, #6366f1); opacity: 0.8;"></div>
                                     <div style="display: flex; align-items: center; gap: 0.75rem;">
                                         <span style="font-size: 1.5rem;">{impact_icon}</span>
                                         <div>
@@ -21839,7 +21842,11 @@ To maintain gradual transitions:
                             border_color = "#94a3b8"
 
                         st.markdown(f"""
-                        <div style="background: {banner_color}; border-left: 4px solid {border_color}; padding: 1.5rem; border-radius: 8px; margin-bottom: 1rem;">
+                        <div style="background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(21,25,50,0.95));
+                                    backdrop-filter: blur(24px); padding: 1.5rem; border-radius: 20px; margin-bottom: 1rem;
+                                    border: 1px solid rgba(99,102,241,0.2); box-shadow: 0 4px 24px rgba(0,0,0,0.2);
+                                    position: relative; overflow: hidden;">
+                            <div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, {border_color}, #6366f1); opacity: 0.8;"></div>
                             <h2 style="margin: 0; color: #f8fafc; font-size: 1.75rem;">
                                 {regime_color} <strong>{regime_label}</strong>
                             </h2>
@@ -23469,9 +23476,11 @@ To maintain gradual transitions:
                                                 color = '#ef4444'
 
                                             st.markdown(f"""
-                                            <div style="background: linear-gradient(135deg, rgba(139,92,246,0.05), rgba(21,25,50,0.95));
-                                                        border-left: 4px solid {color}; padding: 1rem; margin-bottom: 0.75rem;
-                                                        border-radius: 8px;">
+                                            <div style="background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(21,25,50,0.95));
+                                                        backdrop-filter: blur(24px); padding: 1rem; margin-bottom: 0.75rem;
+                                                        border-radius: 20px; border: 1px solid rgba(99,102,241,0.2);
+                                                        box-shadow: 0 4px 24px rgba(0,0,0,0.2); position: relative; overflow: hidden;">
+                                                <div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, {color}, #6366f1); opacity: 0.8;"></div>
                                                 <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
                                                     <span style="font-size: 1.25rem;">{icon}</span>
                                                     <strong style="color: {color}; font-size: 1rem;">{action} {ticker}</strong>

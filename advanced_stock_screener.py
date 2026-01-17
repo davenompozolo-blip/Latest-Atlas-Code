@@ -56,17 +56,21 @@ def render_advanced_stock_screener():
         col1, col2, col3 = st.columns(3)
 
         with col1:
-            # TOTAL STOCKS card - INLINE
+            # TOTAL STOCKS card - Capital Structure style with top gradient bar
             total_stocks = len(manager.universe)
             st.markdown(f"""
             <div style="
-                background: linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%);
-                padding: 1.5rem;
-                border-radius: 0.75rem;
-                border-left: 4px solid #6366f1;
-                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(21,25,50,0.95));
+                backdrop-filter: blur(24px);
+                padding: 1.25rem;
+                border-radius: 20px;
+                border: 1px solid rgba(99,102,241,0.2);
+                box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
                 height: 100%;
+                position: relative;
+                overflow: hidden;
             ">
+                <div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #6366f1, #06b6d4); opacity: 0.8;"></div>
                 <div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
                     <span style="font-size: 1.25rem; margin-right: 0.5rem;">📊</span>
                     <p style="margin: 0; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
@@ -81,17 +85,21 @@ def render_advanced_stock_screener():
             """, unsafe_allow_html=True)
 
         with col2:
-            # SECTORS card - INLINE
+            # SECTORS card - Capital Structure style with top gradient bar
             num_sectors = len(manager.get_available_sectors())
             st.markdown(f"""
             <div style="
-                background: linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%);
-                padding: 1.5rem;
-                border-radius: 0.75rem;
-                border-left: 4px solid #06b6d4;
-                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(21,25,50,0.95));
+                backdrop-filter: blur(24px);
+                padding: 1.25rem;
+                border-radius: 20px;
+                border: 1px solid rgba(99,102,241,0.2);
+                box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
                 height: 100%;
+                position: relative;
+                overflow: hidden;
             ">
+                <div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #6366f1); opacity: 0.8;"></div>
                 <div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
                     <span style="font-size: 1.25rem; margin-right: 0.5rem;">🏢</span>
                     <p style="margin: 0; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
@@ -106,18 +114,22 @@ def render_advanced_stock_screener():
             """, unsafe_allow_html=True)
 
         with col3:
-            # DATA AGE card - INLINE
+            # DATA AGE card - Capital Structure style with top gradient bar
             if manager.last_update:
                 age_minutes = int((pd.Timestamp.now() - manager.last_update).total_seconds() / 60)
                 st.markdown(f"""
                 <div style="
-                    background: linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%);
-                    padding: 1.5rem;
-                    border-radius: 0.75rem;
-                    border-left: 4px solid #10b981;
-                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                    background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(21,25,50,0.95));
+                    backdrop-filter: blur(24px);
+                    padding: 1.25rem;
+                    border-radius: 20px;
+                    border: 1px solid rgba(99,102,241,0.2);
+                    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
                     height: 100%;
+                    position: relative;
+                    overflow: hidden;
                 ">
+                    <div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #06b6d4); opacity: 0.8;"></div>
                     <div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
                         <span style="font-size: 1.25rem; margin-right: 0.5rem;">⏱️</span>
                         <p style="margin: 0; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
