@@ -271,16 +271,21 @@ def render_enhanced_economic_calendar():
 
                 st.markdown(f"""
                 <div style="
-                    background: linear-gradient(135deg, rgba(239,68,68,0.15), rgba(220,38,38,0.1));
-                    border-left: 4px solid #ef4444;
-                    padding: 1rem;
-                    border-radius: 0.5rem;
+                    background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(21,25,50,0.95));
+                    backdrop-filter: blur(24px);
+                    padding: 1.25rem;
+                    border-radius: 20px;
+                    border: 1px solid rgba(239,68,68,0.3);
+                    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
                     margin-bottom: 0.5rem;
+                    position: relative;
+                    overflow: hidden;
                 ">
-                    <p style="margin: 0; font-size: 0.75rem; opacity: 0.8;">
+                    <div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #ef4444, #f59e0b); opacity: 0.8;"></div>
+                    <p style="margin: 0; font-size: 0.75rem; color: #94a3b8;">
                         {event['date'].strftime('%b %d, %Y')} • {event.get('time', 'TBD')}
                     </p>
-                    <h4 style="margin: 0.25rem 0; font-size: 0.95rem;">
+                    <h4 style="margin: 0.25rem 0; font-size: 0.95rem; color: #f8fafc;">
                         {event['event']}
                     </h4>
                     <p style="margin: 0.5rem 0 0 0; font-size: 0.8rem; color: #fca5a5;">

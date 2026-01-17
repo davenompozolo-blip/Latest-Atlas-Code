@@ -108,21 +108,25 @@ def create_metric_card(title: str, value: str, change: str = None, icon: str = "
 
     html = f"""
     <div style="
-        background: linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%);
-        padding: 1.5rem;
-        border-radius: 0.75rem;
-        border-left: 4px solid {border_color};
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
-        backdrop-filter: blur(10px);
+        background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(21,25,50,0.95));
+        backdrop-filter: blur(24px);
+        padding: 1.25rem;
+        border-radius: 20px;
+        border: 1px solid rgba(99,102,241,0.2);
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
         height: 100%;
+        position: relative;
+        overflow: hidden;
         transition: transform 0.2s, box-shadow 0.2s;
-    " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 8px 12px rgba(0,0,0,0.15)';"
-       onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 6px rgba(0,0,0,0.1)';">
+    " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 8px 24px rgba(0,0,0,0.3)';"
+       onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 24px rgba(0,0,0,0.2)';">
+
+        <div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, {border_color}, #6366f1); opacity: 0.8;"></div>
 
         <div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
             <span style="font-size: 1.25rem; margin-right: 0.5rem;">{icon}</span>
             <p style="margin: 0; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
-                      letter-spacing: 0.05em; color: #94a3b8; opacity: 0.9;">
+                      letter-spacing: 0.05em; color: #94a3b8;">
                 {title}
             </p>
         </div>
@@ -175,13 +179,16 @@ def create_regime_card(regime_status: str, score: int, vix: float, yield_curve: 
 
     html = f"""
     <div style="
-        background: linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%);
+        background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(21,25,50,0.95));
+        backdrop-filter: blur(24px);
         padding: 2rem;
-        border-radius: 0.75rem;
-        border-left: 6px solid {accent_color};
-        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
-        backdrop-filter: blur(10px);
+        border-radius: 20px;
+        border: 1px solid rgba(99,102,241,0.2);
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+        position: relative;
+        overflow: hidden;
     ">
+        <div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, {accent_color}, #6366f1); opacity: 0.8;"></div>
         <div style="display: flex; align-items: center; margin-bottom: 1rem;">
             <span style="font-size: 2.5rem; margin-right: 1rem;">{emoji}</span>
             <div>
@@ -235,14 +242,17 @@ def create_index_card(name: str, ticker: str, price: float, change: float, chang
 
     html = f"""
     <div style="
-        background: linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%);
+        background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(21,25,50,0.95));
+        backdrop-filter: blur(24px);
         padding: 1.25rem;
-        border-radius: 0.75rem;
-        border-left: 4px solid {border_color};
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        backdrop-filter: blur(10px);
+        border-radius: 20px;
+        border: 1px solid rgba(99,102,241,0.2);
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
         margin-bottom: 0.75rem;
+        position: relative;
+        overflow: hidden;
     ">
+        <div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, {border_color}, #6366f1); opacity: 0.8;"></div>
         <div style="display: flex; justify-content: space-between; align-items: center;">
             <div>
                 <div style="display: flex; align-items: center; margin-bottom: 0.25rem;">

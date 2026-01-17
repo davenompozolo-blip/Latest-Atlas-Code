@@ -173,7 +173,8 @@ def render_overview_page():
     # Regime banner
     display_regime_banner()
 
-    # Major Indices Section
+    # Major Indices Section - wrapped in container for subtle borders (not neon)
+    st.markdown('<div class="major-indices-container">', unsafe_allow_html=True)
     st.markdown("### 🌍 Major Indices")
 
     # NUCLEAR CSS - Complete circle removal for time frame selector
@@ -321,6 +322,28 @@ def render_overview_page():
     import plotly.graph_objects as go
     import yfinance as yf
 
+    # ============================================================
+    # CACHED DATA FETCHING - Prevents API rate limiting
+    # ============================================================
+    @st.cache_data(ttl=300, show_spinner=False)  # Cache for 5 minutes
+    def fetch_index_data(ticker: str, period: str, interval: str):
+        """
+        Fetch index data with caching to prevent rate limiting
+
+        Returns:
+            tuple: (dates, prices, success)
+        """
+        try:
+            ticker_obj = yf.Ticker(ticker)
+            hist = ticker_obj.history(period=period, interval=interval)
+
+            if hist.empty or len(hist) < 2:
+                return None, None, False
+
+            return hist.index.tolist(), hist['Close'].tolist(), True
+        except Exception as e:
+            return None, None, False
+
     # Define indices by region with more comprehensive list
     indices_by_region = {
         'Americas': [
@@ -351,42 +374,52 @@ def render_overview_page():
         for col, index_info in zip(cols, indices):
             with col:
                 try:
-                    # Fetch data with extended lookback for weekend/holiday coverage
-                    ticker = yf.Ticker(index_info['ticker'])
-                    hist = ticker.history(
-                        period=period_config['period'],
-                        interval=period_config['interval']
+                    # Fetch data using cached function to prevent API rate limiting
+                    dates, prices, success = fetch_index_data(
+                        index_info['ticker'],
+                        period_config['period'],
+                        period_config['interval']
                     )
 
-                    if not hist.empty and len(hist) > 1:
+                    if success and prices and len(prices) > 1:
                         # Filter to display window (most recent N trading points)
-                        # This ensures we show recent trading data even on weekends
-                        display_points = min(period_config['display_points'], len(hist))
-                        hist_filtered = hist.tail(display_points)
+                        display_points = min(period_config['display_points'], len(prices))
+                        dates_filtered = dates[-display_points:]
+                        prices_filtered = prices[-display_points:]
 
-                        if len(hist_filtered) > 1:
+                        if len(prices_filtered) > 1:
                             # Current price and change (from filtered data)
-                            current_price = hist_filtered['Close'].iloc[-1]
-                            prev_price = hist_filtered['Close'].iloc[0]  # Start of display window
+                            current_price = prices_filtered[-1]
+                            prev_price = prices_filtered[0]  # Start of display window
                             change = current_price - prev_price
                             change_pct = (change / prev_price * 100) if prev_price > 0 else 0
 
                             # Determine colors based on performance
                             trend_color = '#10b981' if change_pct >= 0 else '#ef4444'
-                            fill_color = 'rgba(16, 185, 129, 0.1)' if change_pct >= 0 else 'rgba(239, 68, 68, 0.1)'
+                            fill_color = 'rgba(16, 185, 129, 0.15)' if change_pct >= 0 else 'rgba(239, 68, 68, 0.15)'
 
-                            # Create detailed sparkline chart
+                            # Calculate y-axis range to show actual price movements
+                            # Add 5% padding to min/max for better visualization
+                            price_min = min(prices_filtered)
+                            price_max = max(prices_filtered)
+                            price_range = price_max - price_min
+                            y_padding = price_range * 0.1 if price_range > 0 else price_min * 0.01
+                            y_min = price_min - y_padding
+                            y_max = price_max + y_padding
+
+                            # Create sparkline chart with ACTUAL price movements visible
                             fig = go.Figure()
 
+                            # Add area fill RELATIVE TO MIN (not zero!) so movements are visible
                             fig.add_trace(go.Scatter(
-                                x=hist_filtered.index,
-                                y=hist_filtered['Close'],
+                                x=dates_filtered,
+                                y=prices_filtered,
                                 mode='lines',
                                 line=dict(
                                     color=trend_color,
-                                    width=2
+                                    width=2.5
                                 ),
-                                fill='tozeroy',
+                                fill='toself',
                                 fillcolor=fill_color,
                                 hovertemplate='%{y:,.2f}<br>%{x|%b %d, %H:%M}<extra></extra>'
                             ))
@@ -399,9 +432,14 @@ def render_overview_page():
                                     showticklabels=True,
                                     tickfont=dict(size=8, color='#64748b'),
                                     tickformat=period_config['x_format'],
-                                    nticks=4  # Show 4 date labels for clarity
+                                    nticks=4
                                 ),
-                                yaxis=dict(showgrid=False, showticklabels=False),
+                                yaxis=dict(
+                                    showgrid=False,
+                                    showticklabels=False,
+                                    range=[y_min, y_max],  # CRITICAL: Auto-range to show movements!
+                                    fixedrange=True
+                                ),
                                 paper_bgcolor='rgba(0,0,0,0)',
                                 plot_bgcolor='rgba(0,0,0,0)',
                                 hovermode='x unified'
@@ -438,6 +476,9 @@ def render_overview_page():
 
                 except Exception as e:
                     st.error(f"Error: {index_info['name']}")
+
+    # Close Major Indices container
+    st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown("---")
 

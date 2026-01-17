@@ -1341,17 +1341,31 @@ st.markdown(
 st.markdown("""
 <style>
 /* Global neon border styling for all Plotly chart containers */
+/* UPDATED: Reduced padding/margins to prevent chart cutoff */
 .stPlotlyChart {
     border: 2px solid rgba(0, 188, 212, 0.5) !important;
     border-radius: 12px !important;
-    padding: 8px !important;
-    margin: 12px 0 !important;
+    padding: 4px !important;
+    margin: 8px 0 !important;
     box-shadow:
         0 0 15px rgba(0, 188, 212, 0.3),
         0 0 30px rgba(0, 188, 212, 0.15),
         inset 0 0 20px rgba(0, 188, 212, 0.05) !important;
     background: linear-gradient(135deg, rgba(26, 29, 41, 0.95), rgba(20, 23, 35, 0.9)) !important;
     transition: all 0.3s ease !important;
+    overflow: visible !important;
+}
+
+/* Ensure chart canvas doesn't overflow */
+.stPlotlyChart > div {
+    height: 100% !important;
+    overflow: visible !important;
+}
+
+/* Fix chart inner container */
+.stPlotlyChart iframe,
+.stPlotlyChart .js-plotly-plot {
+    overflow: visible !important;
 }
 
 .stPlotlyChart:hover {
@@ -1373,6 +1387,19 @@ st.markdown("""
 
 .modebar-group .modebar-btn:hover path {
     fill: #00BCD4 !important;
+}
+
+/* Exception: Major Indices use subtle borders (not neon) */
+.major-indices-container .stPlotlyChart {
+    border: 1px solid rgba(99, 102, 241, 0.2) !important;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2) !important;
+    background: rgba(21, 25, 50, 0.6) !important;
+}
+
+/* Override hover state for Major Indices too */
+.major-indices-container .stPlotlyChart:hover {
+    border: 1px solid rgba(99, 102, 241, 0.35) !important;
+    box-shadow: 0 6px 28px rgba(0, 0, 0, 0.25) !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -10891,7 +10918,7 @@ def create_performance_heatmap(df, period='monthly', use_professional_theme=True
             title_color = '#FFFFFF'
             text_color = '#FFFFFF'
             paper_bg = '#1a1d29'
-            colorscale = [[0, '#FF1744'], [0.5, '#FFFFFF'], [1, '#00E676']]
+            colorscale = [[0, '#B71C1C'], [0.25, '#E53935'], [0.45, '#424242'], [0.55, '#616161'], [0.75, '#66BB6A'], [1, '#2E7D32']]
         else:
             title_color = '#ffffff'
             text_color = '#ffffff'
@@ -10944,7 +10971,7 @@ def create_portfolio_heatmap(df, use_professional_theme=True):
         title_color = '#FFFFFF'
         text_color = '#FFFFFF'
         paper_bg = '#1a1d29'
-        colorscale = [[0, '#FF1744'], [0.5, '#FFFFFF'], [1, '#00E676']]
+        colorscale = [[0, '#B71C1C'], [0.25, '#E53935'], [0.45, '#424242'], [0.55, '#616161'], [0.75, '#66BB6A'], [1, '#2E7D32']]
     else:
         title_color = '#ffffff'
         text_color = '#ffffff'
@@ -11578,7 +11605,7 @@ def create_sector_rotation_heatmap(df, start_date, end_date, use_professional_th
         title_color = '#FFFFFF'
         text_color = '#FFFFFF'
         paper_bg = '#1a1d29'
-        colorscale = [[0, '#FF1744'], [0.5, '#FFFFFF'], [1, '#00E676']]
+        colorscale = [[0, '#B71C1C'], [0.25, '#E53935'], [0.45, '#424242'], [0.55, '#616161'], [0.75, '#66BB6A'], [1, '#2E7D32']]
     else:
         title_color = '#ffffff'
         text_color = '#ffffff'
@@ -13256,13 +13283,46 @@ def main():
     selected_page_key = PAGE_TITLE_TO_KEY.get(page, "portfolio_home")
 
     # ============================================================================
-    # DEFAULT DATE RANGE AND BENCHMARK (UI removed for cleaner homepage)
+    # SIDEBAR SETTINGS - Time Range and Benchmark controls
     # ============================================================================
-    # Default to 1 year lookback and SPY benchmark
-    selected_range = "1Y"
-    selected_benchmark = "SPY"
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=365)
+    with st.sidebar:
+        st.markdown("---")
+        st.markdown("### ⚙️ Settings")
+
+        # Time Range Selector
+        date_options = ["1D", "1W", "1M", "3M", "6M", "YTD", "1Y", "3Y", "5Y", "MAX"]
+        selected_range = st.selectbox(
+            "📅 Time Range",
+            date_options,
+            index=6,  # Default to "1Y"
+            key="sidebar_time_range"
+        )
+
+        # Benchmark Selector
+        benchmark_options = ["SPY", "QQQ", "DIA", "IWM", "VTI", "ACWI"]
+        selected_benchmark = st.selectbox(
+            "🎯 Benchmark",
+            benchmark_options,
+            index=0,  # Default to "SPY"
+            key="sidebar_benchmark"
+        )
+
+        # Store in session state for use throughout app
+        st.session_state['selected_range'] = selected_range
+        st.session_state['selected_benchmark'] = selected_benchmark
+
+    # Calculate date range based on selection
+    if selected_range == "YTD":
+        start_date = datetime(datetime.now().year, 1, 1)
+        end_date = datetime.now()
+    elif selected_range == "MAX":
+        start_date = datetime(2000, 1, 1)
+        end_date = datetime.now()
+    else:
+        days_map = {"1D": 1, "1W": 7, "1M": 30, "3M": 90, "6M": 180, "1Y": 365, "3Y": 1095, "5Y": 1825}
+        days = days_map.get(selected_range, 365)
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=days)
     
     # ========================================================================
     # PHASE 2A: NAVIGATION V2 ROUTING (Experimental - can be toggled)
@@ -15435,52 +15495,9 @@ def main():
             currency_symbol = df.attrs.get('currency_symbol') or st.session_state.get('currency_symbol', '$')
             currency = df.attrs.get('currency') or st.session_state.get('currency', 'USD')
 
-            # DIAGNOSTIC: Verify data isn't corrupted between sync and display
-            st.write("=" * 50)
-            st.write("🔍 DIAGNOSTIC: Portfolio Home Data Integrity Check")
-            st.write("=" * 50)
-
-            # Show data source and detection info
-            st.write("**Data Source Info:**")
-            st.write(f"- Source attr: {df.attrs.get('source', 'NOT SET')}")
-            st.write(f"- Has Market_Value column: {'Market_Value' in df.columns}")
-            st.write(f"- Session state currency: {st.session_state.get('currency_symbol', 'NOT SET')}")
-            st.write(f"- Active currency: {currency_symbol}")
-
-            # Check raw DataFrame values
-            st.write("**RAW DataFrame (from EE sync):**")
-            if 'Market_Value' in df.columns:
-                st.write(f"- Market_Value sum: {currency_symbol}{df['Market_Value'].sum():,.2f}")
-            if 'Purchase_Value' in df.columns:
-                st.write(f"- Purchase_Value sum: {currency_symbol}{df['Purchase_Value'].sum():,.2f}")
-            if 'Unrealized_PnL' in df.columns:
-                st.write(f"- Unrealized_PnL sum: {currency_symbol}{df['Unrealized_PnL'].sum():,.2f}")
-
+            # Process holdings data (removed diagnostic display for cleaner UI)
             with st.spinner("Loading..."):
                 enhanced_df = create_enhanced_holdings_table(df)
-
-            # After enhancement - check if values were corrupted
-            st.write("**AFTER create_enhanced_holdings_table():**")
-            if 'Total Value' in enhanced_df.columns:
-                st.write(f"- Total Value sum: {currency_symbol}{enhanced_df['Total Value'].sum():,.2f}")
-            if 'Total Cost' in enhanced_df.columns:
-                st.write(f"- Total Cost sum: {currency_symbol}{enhanced_df['Total Cost'].sum():,.2f}")
-            if 'Total Gain/Loss $' in enhanced_df.columns:
-                st.write(f"- Total Gain/Loss sum: {currency_symbol}{enhanced_df['Total Gain/Loss $'].sum():,.2f}")
-
-            # Critical comparison
-            raw_market = df.get('Market_Value', pd.Series([0])).sum()
-            enhanced_market = enhanced_df.get('Total Value', pd.Series([0])).sum()
-
-            if abs(raw_market - enhanced_market) > 1:
-                st.error(f"❌ CORRUPTION DETECTED!")
-                st.error(f"   Raw: {currency_symbol}{raw_market:,.2f}")
-                st.error(f"   Enhanced: {currency_symbol}{enhanced_market:,.2f}")
-                st.error(f"   Difference: {currency_symbol}{abs(raw_market - enhanced_market):,.2f}")
-            else:
-                st.success(f"✅ Data integrity OK: {currency_symbol}{raw_market:,.2f}")
-
-            st.write("=" * 50)
 
             # FIX 3: Use Easy Equities' P&L directly - don't recalculate!
             # EE already provides correct values, just sum them up
@@ -15620,95 +15637,27 @@ def main():
                 st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📍</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">POSITIONS</p></div><h3 style="font-size: 2.5rem; font-weight: 800; background: linear-gradient(135deg, #8b5cf6, #a855f7); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{len(enhanced_df)}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 500;">Holdings</p></div></div>', unsafe_allow_html=True)
             
             st.markdown("<br>", unsafe_allow_html=True)
-
-            # Info box explaining the metrics
-            with st.expander("ℹ️ Understanding Your Portfolio Metrics", expanded=False):
-                st.info(f"""
-                **Portfolio Summary:**
-                - **Portfolio Value:** Current market value = {currency_symbol}{current_value:,.0f}
-                - **Total Invested:** Amount you've invested = {currency_symbol}{total_invested:,.0f}
-                - **Total P&L:** Profit/Loss = {currency_symbol}{total_pnl:,.2f} (+{total_pnl_pct:.2f}%)
-
-                **Returns Calculation:**
-                - **Return:** {total_pnl_pct:.2f}% calculated as (Current Value - Total Invested) / Total Invested
-                - These values come directly from Easy Equities' calculations
-                - Individual position P&L percentages are also from Easy Equities
-
-                **Note:**
-                - Easy Equities portfolios are not leveraged (1.0x exposure)
-                - All values are in {currency} ({currency_symbol})
-                """)
-    
-            # v9.7 NEW FEATURE: Data Quality Indicator
-            validation_result = validate_portfolio_data(portfolio_data)
-            quality_score = validation_result['data_quality_score']
-    
-            if quality_score >= 90:
-                quality_color = COLORS['success']
-                quality_status = "EXCELLENT"
-            elif quality_score >= 75:
-                quality_color = COLORS['info']
-                quality_status = "GOOD"
-            elif quality_score >= 60:
-                quality_color = COLORS['warning']
-                quality_status = "FAIR"
-            else:
-                quality_color = COLORS['danger']
-                quality_status = "POOR"
-    
-            st.markdown(f"""
-            <div style='background: linear-gradient(135deg, {COLORS['card_background']} 0%, {COLORS['card_background_alt']} 100%);
-                        border-left: 4px solid {quality_color};
-                        padding: 12px 20px;
-                        border-radius: 8px;
-                        margin: 15px 0;'>
-                <div style='display: flex; align-items: center; justify-content: space-between;'>
-                    <div>
-                        <span style='color: {COLORS['text_muted']}; font-size: 12px;'>🆕 v9.7 DATA QUALITY SCORE</span>
-                        <span style='color: {quality_color}; font-size: 24px; font-weight: 700; margin-left: 15px;'>{quality_score}/100</span>
-                        <span style='color: {quality_color}; font-size: 14px; font-weight: 600; margin-left: 10px;'>{quality_status}</span>
-                    </div>
-                    <div style='text-align: right; color: {COLORS['text_secondary']}; font-size: 11px;'>
-                        {validation_result['complete_rows']}/{validation_result['total_rows']} Complete Rows
-                        {f"<br/><span style='color: {COLORS['danger']};'>⚠️ {len(validation_result['issues'])} Issues</span>" if validation_result['issues'] else ""}
-                        {f"<br/><span style='color: {COLORS['warning']};'>⚡ {len(validation_result['warnings'])} Warnings</span>" if validation_result['warnings'] else ""}
-                    </div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-    
-            if validation_result['issues'] or validation_result['warnings']:
-                with st.expander("🔍 View Data Quality Details", expanded=False):
-                    if validation_result['issues']:
-                        st.error("**Issues Found:**")
-                        for issue in validation_result['issues']:
-                            st.write(f"- {issue}")
-                    if validation_result['warnings']:
-                        st.warning("**Warnings:**")
-                        for warning in validation_result['warnings']:
-                            st.write(f"- {warning}")
-    
             st.markdown("---")
     
-            # Risk Snapshot & Signal Health
+            # Risk Snapshot & Signal Health (collapsed by default for cleaner UI)
             portfolio_returns = calculate_portfolio_returns(df, start_date, end_date)
-    
-            col_health, col_snapshot = st.columns([1, 3])
-    
-            with col_health:
-                # Calculate metrics for health indicator
-                if is_valid_series(portfolio_returns):
-                    metrics = calculate_performance_metrics(enhanced_df, portfolio_returns, None)
-                    health_badge = create_signal_health_badge(metrics)
-                    st.markdown("### 🎯 Portfolio Health")
-                    st.markdown(health_badge, unsafe_allow_html=True)
-                    st.caption(f"**Last Updated:** {ATLASFormatter.format_timestamp()}")
-    
-            with col_snapshot:
-                # Risk Snapshot
-                risk_snapshot_html = create_risk_snapshot(enhanced_df, portfolio_returns)
-                st.markdown(risk_snapshot_html, unsafe_allow_html=True)
-    
+
+            with st.expander("🎯 Portfolio Health & Risk Snapshot", expanded=False):
+                col_health, col_snapshot = st.columns([1, 3])
+
+                with col_health:
+                    # Calculate metrics for health indicator
+                    if is_valid_series(portfolio_returns):
+                        metrics = calculate_performance_metrics(enhanced_df, portfolio_returns, None)
+                        health_badge = create_signal_health_badge(metrics)
+                        st.markdown(health_badge, unsafe_allow_html=True)
+                        st.caption(f"**Last Updated:** {ATLASFormatter.format_timestamp()}")
+
+                with col_snapshot:
+                    # Risk Snapshot
+                    risk_snapshot_html = create_risk_snapshot(enhanced_df, portfolio_returns)
+                    st.markdown(risk_snapshot_html, unsafe_allow_html=True)
+
             st.markdown("---")
             st.markdown("### 📋 Holdings")
     
@@ -15770,6 +15719,24 @@ def main():
                 <h3 style='font-size: 1.25rem; font-weight: 700; color: #f8fafc; margin-bottom: 1rem; background: linear-gradient(135deg, #00d4ff 0%, #6366f1 50%, #8b5cf6 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;'>Current Holdings</h3>
                 """, unsafe_allow_html=True)
 
+                # Add neon border styling to holdings table container
+                st.markdown("""
+                <style>
+                .holdings-table-container {
+                    border: 2px solid rgba(0, 188, 212, 0.5);
+                    border-radius: 12px;
+                    padding: 8px;
+                    margin: 12px 0;
+                    box-shadow:
+                        0 0 15px rgba(0, 188, 212, 0.3),
+                        0 0 30px rgba(0, 188, 212, 0.15),
+                        inset 0 0 20px rgba(0, 188, 212, 0.05);
+                    background: linear-gradient(135deg, rgba(26, 29, 41, 0.95), rgba(20, 23, 35, 0.9));
+                }
+                </style>
+                <div class="holdings-table-container">
+                """, unsafe_allow_html=True)
+
                 # Use Streamlit's native dataframe with custom styling
                 st.dataframe(
                     display_df,
@@ -15777,7 +15744,10 @@ def main():
                     height=500,
                     hide_index=True
                 )
-    
+
+                # Close the neon border container
+                st.markdown("</div>", unsafe_allow_html=True)
+
                 # Add explanation for dual weight columns
                 if 'Weight % of Equity' in selected_columns or 'Weight % of Gross' in selected_columns:
                     st.caption(f"""
@@ -19621,8 +19591,11 @@ To maintain gradual transitions:
                                     impact_msg = "Regime-adjusted inputs will produce SIMILAR valuation (minimal adjustments)"
 
                                 st.markdown(f"""
-                                <div style="background: rgba(139,92,246,0.08); border-left: 4px solid {impact_color};
-                                            padding: 1rem; margin: 1rem 0; border-radius: 8px;">
+                                <div style="background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(21,25,50,0.95));
+                                            backdrop-filter: blur(24px); padding: 1.25rem; margin: 1rem 0; border-radius: 20px;
+                                            border: 1px solid rgba(99,102,241,0.2); box-shadow: 0 4px 24px rgba(0,0,0,0.2);
+                                            position: relative; overflow: hidden;">
+                                    <div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, {impact_color}, #6366f1); opacity: 0.8;"></div>
                                     <div style="display: flex; align-items: center; gap: 0.75rem;">
                                         <span style="font-size: 1.5rem;">{impact_icon}</span>
                                         <div>
@@ -21876,7 +21849,11 @@ To maintain gradual transitions:
                             border_color = "#94a3b8"
 
                         st.markdown(f"""
-                        <div style="background: {banner_color}; border-left: 4px solid {border_color}; padding: 1.5rem; border-radius: 8px; margin-bottom: 1rem;">
+                        <div style="background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(21,25,50,0.95));
+                                    backdrop-filter: blur(24px); padding: 1.5rem; border-radius: 20px; margin-bottom: 1rem;
+                                    border: 1px solid rgba(99,102,241,0.2); box-shadow: 0 4px 24px rgba(0,0,0,0.2);
+                                    position: relative; overflow: hidden;">
+                            <div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, {border_color}, #6366f1); opacity: 0.8;"></div>
                             <h2 style="margin: 0; color: #f8fafc; font-size: 1.75rem;">
                                 {regime_color} <strong>{regime_label}</strong>
                             </h2>
@@ -23506,9 +23483,11 @@ To maintain gradual transitions:
                                                 color = '#ef4444'
 
                                             st.markdown(f"""
-                                            <div style="background: linear-gradient(135deg, rgba(139,92,246,0.05), rgba(21,25,50,0.95));
-                                                        border-left: 4px solid {color}; padding: 1rem; margin-bottom: 0.75rem;
-                                                        border-radius: 8px;">
+                                            <div style="background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(21,25,50,0.95));
+                                                        backdrop-filter: blur(24px); padding: 1rem; margin-bottom: 0.75rem;
+                                                        border-radius: 20px; border: 1px solid rgba(99,102,241,0.2);
+                                                        box-shadow: 0 4px 24px rgba(0,0,0,0.2); position: relative; overflow: hidden;">
+                                                <div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, {color}, #6366f1); opacity: 0.8;"></div>
                                                 <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
                                                     <span style="font-size: 1.25rem;">{icon}</span>
                                                     <strong style="color: {color}; font-size: 1rem;">{action} {ticker}</strong>
