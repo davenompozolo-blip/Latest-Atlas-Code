@@ -1336,6 +1336,48 @@ st.markdown(
 )
 
 # ============================================================================
+# NEON CHART BORDER STYLING - Global CSS for all Plotly charts
+# ============================================================================
+st.markdown("""
+<style>
+/* Global neon border styling for all Plotly chart containers */
+.stPlotlyChart {
+    border: 2px solid rgba(0, 188, 212, 0.5) !important;
+    border-radius: 12px !important;
+    padding: 8px !important;
+    margin: 12px 0 !important;
+    box-shadow:
+        0 0 15px rgba(0, 188, 212, 0.3),
+        0 0 30px rgba(0, 188, 212, 0.15),
+        inset 0 0 20px rgba(0, 188, 212, 0.05) !important;
+    background: linear-gradient(135deg, rgba(26, 29, 41, 0.95), rgba(20, 23, 35, 0.9)) !important;
+    transition: all 0.3s ease !important;
+}
+
+.stPlotlyChart:hover {
+    border-color: rgba(0, 188, 212, 0.8) !important;
+    box-shadow:
+        0 0 20px rgba(0, 188, 212, 0.5),
+        0 0 40px rgba(0, 188, 212, 0.3),
+        inset 0 0 25px rgba(0, 188, 212, 0.1) !important;
+}
+
+/* Ensure dark backgrounds on Plotly modebar */
+.modebar-container {
+    background: transparent !important;
+}
+
+.modebar-group .modebar-btn path {
+    fill: rgba(255, 255, 255, 0.6) !important;
+}
+
+.modebar-group .modebar-btn:hover path {
+    fill: #00BCD4 !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ============================================================================
 # PROFESSIONAL THEME SYSTEM - ENHANCED FOR SEAMLESS CHARTS
 # ============================================================================
 
