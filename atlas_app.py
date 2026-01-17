@@ -1336,6 +1336,48 @@ st.markdown(
 )
 
 # ============================================================================
+# NEON CHART BORDER STYLING - Global CSS for all Plotly charts
+# ============================================================================
+st.markdown("""
+<style>
+/* Global neon border styling for all Plotly chart containers */
+.stPlotlyChart {
+    border: 2px solid rgba(0, 188, 212, 0.5) !important;
+    border-radius: 12px !important;
+    padding: 8px !important;
+    margin: 12px 0 !important;
+    box-shadow:
+        0 0 15px rgba(0, 188, 212, 0.3),
+        0 0 30px rgba(0, 188, 212, 0.15),
+        inset 0 0 20px rgba(0, 188, 212, 0.05) !important;
+    background: linear-gradient(135deg, rgba(26, 29, 41, 0.95), rgba(20, 23, 35, 0.9)) !important;
+    transition: all 0.3s ease !important;
+}
+
+.stPlotlyChart:hover {
+    border-color: rgba(0, 188, 212, 0.8) !important;
+    box-shadow:
+        0 0 20px rgba(0, 188, 212, 0.5),
+        0 0 40px rgba(0, 188, 212, 0.3),
+        inset 0 0 25px rgba(0, 188, 212, 0.1) !important;
+}
+
+/* Ensure dark backgrounds on Plotly modebar */
+.modebar-container {
+    background: transparent !important;
+}
+
+.modebar-group .modebar-btn path {
+    fill: rgba(255, 255, 255, 0.6) !important;
+}
+
+.modebar-group .modebar-btn:hover path {
+    fill: #00BCD4 !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ============================================================================
 # PROFESSIONAL THEME SYSTEM - ENHANCED FOR SEAMLESS CHARTS
 # ============================================================================
 
@@ -1397,21 +1439,43 @@ CHART_THEME = {
 }
 
 def apply_chart_theme(fig):
-    """Apply seamless dark theme to any Plotly figure"""
+    """Apply dark theme with neon cyan accents to any Plotly figure
+
+    IMPORTANT: This function is called on ALL charts to ensure:
+    - Dark background (#1a1d29)
+    - White text for all labels
+    - Subtle grid lines
+    - Proper contrast on dark pages
+    """
     fig.update_layout(
-        paper_bgcolor='rgba(0, 0, 0, 0)',
-        plot_bgcolor='rgba(10, 25, 41, 0.3)',
-        font=dict(color=COLORS['text_primary'], family='Inter, sans-serif'),
+        paper_bgcolor='#1a1d29',
+        plot_bgcolor='#1a1d29',
+        font=dict(color='#FFFFFF', family='Inter, sans-serif'),
+        title=dict(font=dict(color='#FFFFFF')),
         xaxis=dict(
-            gridcolor=COLORS['chart_grid'],
-            linecolor=COLORS['chart_grid'],
-            zerolinecolor=COLORS['chart_grid']
+            gridcolor='rgba(255, 255, 255, 0.1)',
+            linecolor='rgba(255, 255, 255, 0.2)',
+            zerolinecolor='rgba(255, 255, 255, 0.1)',
+            tickfont=dict(color='#FFFFFF'),
+            title=dict(font=dict(color='#FFFFFF')),
         ),
         yaxis=dict(
-            gridcolor=COLORS['chart_grid'],
-            linecolor=COLORS['chart_grid'],
-            zerolinecolor=COLORS['chart_grid']
-        )
+            gridcolor='rgba(255, 255, 255, 0.1)',
+            linecolor='rgba(255, 255, 255, 0.2)',
+            zerolinecolor='rgba(255, 255, 255, 0.1)',
+            tickfont=dict(color='#FFFFFF'),
+            title=dict(font=dict(color='#FFFFFF')),
+        ),
+        hoverlabel=dict(
+            bgcolor='#1a1d29',
+            font=dict(color='#FFFFFF'),
+            bordercolor='#00BCD4',
+        ),
+        legend=dict(
+            font=dict(color='#FFFFFF'),
+            bgcolor='rgba(26, 29, 41, 0.8)',
+            bordercolor='rgba(0, 188, 212, 0.3)',
+        ),
     )
     return fig
 
@@ -7168,14 +7232,14 @@ def create_brinson_attribution_chart(attribution_results, use_professional_theme
 
     # Theme colors
     if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
-        connector_color = PROFESSIONAL_COLORS['muted']
-        success_color = PROFESSIONAL_COLORS['success']
-        danger_color = PROFESSIONAL_COLORS['danger']
-        total_color = PROFESSIONAL_COLORS['primary']
-        title_color = PROFESSIONAL_COLORS['dark']
-        text_color = PROFESSIONAL_COLORS['dark_medium']
-        paper_bg = 'white'
-        grid_color = PROFESSIONAL_COLORS['light_medium']
+        connector_color = 'rgba(255, 255, 255, 0.5)'
+        success_color = '#00E676'
+        danger_color = '#FF1744'
+        total_color = '#00BCD4'
+        title_color = '#FFFFFF'
+        text_color = '#FFFFFF'
+        paper_bg = '#1a1d29'
+        grid_color = 'rgba(255, 255, 255, 0.1)'
     else:
         connector_color = COLORS['neon_blue']
         success_color = COLORS['success']
@@ -9879,12 +9943,12 @@ def create_top_contributors_chart(df, top_n=5, use_professional_theme=True):
 
     # Theme colors
     if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
-        bar_color = PROFESSIONAL_COLORS['success']
+        bar_color = '#00E676'
         border_color = 'rgba(67, 160, 71, 0.3)'
-        title_color = PROFESSIONAL_COLORS['dark']
-        text_color = PROFESSIONAL_COLORS['dark_medium']
-        paper_bg = 'white'
-        grid_color = PROFESSIONAL_COLORS['light_medium']
+        title_color = '#FFFFFF'
+        text_color = '#FFFFFF'
+        paper_bg = '#1a1d29'
+        grid_color = 'rgba(255, 255, 255, 0.1)'
     else:
         bar_color = COLORS['success']
         border_color = COLORS['border']
@@ -9933,12 +9997,12 @@ def create_top_detractors_chart(df, top_n=5, use_professional_theme=True):
 
     # Theme colors
     if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
-        bar_color = PROFESSIONAL_COLORS['danger']
+        bar_color = '#FF1744'
         border_color = 'rgba(229, 57, 53, 0.3)'
-        title_color = PROFESSIONAL_COLORS['dark']
-        text_color = PROFESSIONAL_COLORS['dark_medium']
-        paper_bg = 'white'
-        grid_color = PROFESSIONAL_COLORS['light_medium']
+        title_color = '#FFFFFF'
+        text_color = '#FFFFFF'
+        paper_bg = '#1a1d29'
+        grid_color = 'rgba(255, 255, 255, 0.1)'
     else:
         bar_color = COLORS['danger']
         border_color = COLORS['border']
@@ -10058,16 +10122,16 @@ def create_professional_sector_allocation_pie(df, use_professional_theme=True):
     # Sort by value
     sector_pct = sector_pct.sort_values(ascending=False)
 
-    # Use Professional Blue theme if available
+    # Use dark theme if available
     if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
-        # Professional Blue palette (clean, light background)
+        # Dark theme with neon colors
         colors = PROFESSIONAL_CHART_COLORS[:len(sector_pct)]
-        text_color = PROFESSIONAL_COLORS['dark']
-        border_color = 'white'
-        paper_bg = 'white'
-        plot_bg = 'white'
-        legend_font_color = PROFESSIONAL_COLORS['dark_medium']
-        title_color = PROFESSIONAL_COLORS['dark']
+        text_color = '#FFFFFF'
+        border_color = '#1a1d29'
+        paper_bg = '#1a1d29'
+        plot_bg = '#1a1d29'
+        legend_font_color = '#FFFFFF'
+        title_color = '#FFFFFF'
     else:
         # Fallback to dark neon theme
         colors = [
@@ -10210,15 +10274,15 @@ def create_rolling_metrics_chart(returns, window=60, use_professional_theme=True
 
     # Theme colors
     if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
-        vol_color = PROFESSIONAL_COLORS['danger']
+        vol_color = '#FF1744'
         vol_fill = 'rgba(229, 57, 53, 0.15)'
-        sharpe_color = PROFESSIONAL_COLORS['primary']
+        sharpe_color = '#00BCD4'
         sharpe_fill = 'rgba(30, 136, 229, 0.15)'
-        line_color = PROFESSIONAL_COLORS['muted']
-        title_color = PROFESSIONAL_COLORS['dark']
-        text_color = PROFESSIONAL_COLORS['dark_medium']
-        paper_bg = 'white'
-        grid_color = PROFESSIONAL_COLORS['light_medium']
+        line_color = 'rgba(255, 255, 255, 0.5)'
+        title_color = '#FFFFFF'
+        text_color = '#FFFFFF'
+        paper_bg = '#1a1d29'
+        grid_color = 'rgba(255, 255, 255, 0.1)'
     else:
         vol_color = COLORS['danger']
         vol_fill = 'rgba(255, 0, 68, 0.2)'
@@ -10348,12 +10412,12 @@ def create_var_waterfall(returns, use_professional_theme=True):
 
     # Theme colors - graduated risk scale
     if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
-        colors_list = [PROFESSIONAL_COLORS['warning'], '#F57C00', PROFESSIONAL_COLORS['danger'], PROFESSIONAL_COLORS['danger']]
+        colors_list = ['#FFC400', '#F57C00', '#FF1744', '#FF1744']
         border_color = 'rgba(255, 255, 255, 0.5)'
-        title_color = PROFESSIONAL_COLORS['dark']
-        text_color = PROFESSIONAL_COLORS['dark_medium']
-        paper_bg = 'white'
-        grid_color = PROFESSIONAL_COLORS['light_medium']
+        title_color = '#FFFFFF'
+        text_color = '#FFFFFF'
+        paper_bg = '#1a1d29'
+        grid_color = 'rgba(255, 255, 255, 0.1)'
     else:
         colors_list = [COLORS['warning'], COLORS['orange'], COLORS['danger'], COLORS['danger']]
         border_color = COLORS['border']
@@ -10523,14 +10587,14 @@ def create_rolling_var_cvar_chart(returns, window=60, use_professional_theme=Tru
 
     # Theme colors
     if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
-        var_color = PROFESSIONAL_COLORS['warning']
-        cvar_color = PROFESSIONAL_COLORS['danger']
-        line_color = PROFESSIONAL_COLORS['muted']
-        title_color = PROFESSIONAL_COLORS['dark']
-        text_color = PROFESSIONAL_COLORS['dark_medium']
-        paper_bg = 'white'
-        grid_color = PROFESSIONAL_COLORS['light_medium']
-        legend_bg = 'rgba(255, 255, 255, 0.9)'
+        var_color = '#FFC400'
+        cvar_color = '#FF1744'
+        line_color = 'rgba(255, 255, 255, 0.5)'
+        title_color = '#FFFFFF'
+        text_color = '#FFFFFF'
+        paper_bg = '#1a1d29'
+        grid_color = 'rgba(255, 255, 255, 0.1)'
+        legend_bg = 'rgba(26, 29, 41, 0.9)'
     else:
         var_color = COLORS['orange']
         cvar_color = COLORS['danger']
@@ -10824,10 +10888,10 @@ def create_performance_heatmap(df, period='monthly', use_professional_theme=True
 
         # Theme colors
         if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
-            title_color = PROFESSIONAL_COLORS['dark']
-            text_color = PROFESSIONAL_COLORS['dark_medium']
-            paper_bg = 'white'
-            colorscale = [[0, PROFESSIONAL_COLORS['danger']], [0.5, '#FFFFFF'], [1, PROFESSIONAL_COLORS['success']]]
+            title_color = '#FFFFFF'
+            text_color = '#FFFFFF'
+            paper_bg = '#1a1d29'
+            colorscale = [[0, '#FF1744'], [0.5, '#FFFFFF'], [1, '#00E676']]
         else:
             title_color = '#ffffff'
             text_color = '#ffffff'
@@ -10877,10 +10941,10 @@ def create_portfolio_heatmap(df, use_professional_theme=True):
 
     # Theme colors
     if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
-        title_color = PROFESSIONAL_COLORS['dark']
-        text_color = PROFESSIONAL_COLORS['dark_medium']
-        paper_bg = 'white'
-        colorscale = [[0, PROFESSIONAL_COLORS['danger']], [0.5, '#FFFFFF'], [1, PROFESSIONAL_COLORS['success']]]
+        title_color = '#FFFFFF'
+        text_color = '#FFFFFF'
+        paper_bg = '#1a1d29'
+        colorscale = [[0, '#FF1744'], [0.5, '#FFFFFF'], [1, '#00E676']]
     else:
         title_color = '#ffffff'
         text_color = '#ffffff'
@@ -10930,12 +10994,12 @@ def create_interactive_performance_chart(tickers, start_date, end_date, use_prof
     # Theme colors
     if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
         colors = PROFESSIONAL_CHART_COLORS
-        line_color = PROFESSIONAL_COLORS['muted']
-        title_color = PROFESSIONAL_COLORS['dark']
-        text_color = PROFESSIONAL_COLORS['dark_medium']
-        paper_bg = 'white'
-        grid_color = PROFESSIONAL_COLORS['light_medium']
-        legend_bg = 'rgba(255, 255, 255, 0.9)'
+        line_color = 'rgba(255, 255, 255, 0.5)'
+        title_color = '#FFFFFF'
+        text_color = '#FFFFFF'
+        paper_bg = '#1a1d29'
+        grid_color = 'rgba(255, 255, 255, 0.1)'
+        legend_bg = 'rgba(26, 29, 41, 0.9)'
     else:
         colors = [COLORS['neon_blue'], COLORS['electric_blue'], COLORS['teal'],
                   COLORS['success'], COLORS['warning'], COLORS['danger'],
@@ -11014,13 +11078,13 @@ def create_monte_carlo_chart(simulation_results, initial_value=100000, use_profe
     # Theme colors
     if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
         sim_color = 'rgba(30, 136, 229, 0.1)'
-        colors_pct = [PROFESSIONAL_COLORS['danger'], PROFESSIONAL_COLORS['warning'],
-                      PROFESSIONAL_COLORS['primary'], '#00ACC1', PROFESSIONAL_COLORS['success']]
-        title_color = PROFESSIONAL_COLORS['dark']
-        text_color = PROFESSIONAL_COLORS['dark_medium']
-        paper_bg = 'white'
-        grid_color = PROFESSIONAL_COLORS['light_medium']
-        legend_bg = 'rgba(255, 255, 255, 0.9)'
+        colors_pct = ['#FF1744', '#FFC400',
+                      '#00BCD4', '#00ACC1', '#00E676']
+        title_color = '#FFFFFF'
+        text_color = '#FFFFFF'
+        paper_bg = '#1a1d29'
+        grid_color = 'rgba(255, 255, 255, 0.1)'
+        legend_bg = 'rgba(26, 29, 41, 0.9)'
     else:
         sim_color = COLORS['electric_blue']
         colors_pct = [COLORS['danger'], COLORS['warning'], COLORS['info'],
@@ -11511,10 +11575,10 @@ def create_sector_rotation_heatmap(df, start_date, end_date, use_professional_th
     
     # Theme colors
     if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
-        title_color = PROFESSIONAL_COLORS['dark']
-        text_color = PROFESSIONAL_COLORS['dark_medium']
-        paper_bg = 'white'
-        colorscale = [[0, PROFESSIONAL_COLORS['danger']], [0.5, '#FFFFFF'], [1, PROFESSIONAL_COLORS['success']]]
+        title_color = '#FFFFFF'
+        text_color = '#FFFFFF'
+        paper_bg = '#1a1d29'
+        colorscale = [[0, '#FF1744'], [0.5, '#FFFFFF'], [1, '#00E676']]
     else:
         title_color = '#ffffff'
         text_color = '#ffffff'
@@ -11557,14 +11621,14 @@ def create_holdings_attribution_waterfall(df, use_professional_theme=True):
 
     # Theme colors
     if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
-        connector_color = PROFESSIONAL_COLORS['muted']
-        success_color = PROFESSIONAL_COLORS['success']
-        danger_color = PROFESSIONAL_COLORS['danger']
-        total_color = PROFESSIONAL_COLORS['primary']
-        title_color = PROFESSIONAL_COLORS['dark']
-        text_color = PROFESSIONAL_COLORS['dark_medium']
-        paper_bg = 'white'
-        grid_color = PROFESSIONAL_COLORS['light_medium']
+        connector_color = 'rgba(255, 255, 255, 0.5)'
+        success_color = '#00E676'
+        danger_color = '#FF1744'
+        total_color = '#00BCD4'
+        title_color = '#FFFFFF'
+        text_color = '#FFFFFF'
+        paper_bg = '#1a1d29'
+        grid_color = 'rgba(255, 255, 255, 0.1)'
     else:
         connector_color = COLORS['neon_blue']
         success_color = COLORS['success']
@@ -11609,18 +11673,18 @@ def create_concentration_gauge(df, use_professional_theme=True):
     """Concentration gauge - Professional Blue or Dark theme"""
     top_5_weight = df.nlargest(5, 'Weight %')['Weight %'].sum()
 
-    # Use Professional Blue theme if available
+    # Use dark theme if available
     if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
-        bar_color = PROFESSIONAL_COLORS['primary']
-        success_color = PROFESSIONAL_COLORS['success_light']
-        warning_color = PROFESSIONAL_COLORS['warning_light']
-        danger_color = PROFESSIONAL_COLORS['danger_light']
-        title_color = PROFESSIONAL_COLORS['dark']
-        number_color = PROFESSIONAL_COLORS['dark']
-        paper_bg = 'white'
-        delta_color = PROFESSIONAL_COLORS['warning']
-        threshold_color = PROFESSIONAL_COLORS['danger']
-        tick_color = PROFESSIONAL_COLORS['muted']
+        bar_color = '#00BCD4'
+        success_color = '#69F0AE'  # Light green
+        warning_color = '#FFD740'  # Light amber
+        danger_color = '#FF5252'   # Light red
+        title_color = '#FFFFFF'
+        number_color = '#FFFFFF'
+        paper_bg = '#1a1d29'
+        delta_color = '#FFC400'
+        threshold_color = '#FF1744'
+        tick_color = 'rgba(255, 255, 255, 0.5)'
     else:
         bar_color = COLORS['neon_blue']
         success_color = COLORS['success']
@@ -11642,7 +11706,7 @@ def create_concentration_gauge(df, use_professional_theme=True):
         gauge={
             'axis': {'range': [0, 100], 'tickfont': {'color': tick_color, 'size': 10}},
             'bar': {'color': bar_color, 'thickness': 0.75},
-            'bgcolor': '#ECEFF1' if use_professional_theme else 'rgba(0,0,0,0)',
+            'bgcolor': '#242838' if use_professional_theme else 'rgba(0,0,0,0)',
             'borderwidth': 0,
             'steps': [
                 {'range': [0, 30], 'color': success_color},
@@ -11715,11 +11779,11 @@ def create_factor_momentum_chart(factor_data, use_professional_theme=True):
     # Theme colors
     if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
         colors = PROFESSIONAL_CHART_COLORS
-        title_color = PROFESSIONAL_COLORS['dark']
-        text_color = PROFESSIONAL_COLORS['dark_medium']
-        paper_bg = 'white'
-        grid_color = PROFESSIONAL_COLORS['light_medium']
-        legend_bg = 'rgba(255, 255, 255, 0.9)'
+        title_color = '#FFFFFF'
+        text_color = '#FFFFFF'
+        paper_bg = '#1a1d29'
+        grid_color = 'rgba(255, 255, 255, 0.1)'
+        legend_bg = 'rgba(26, 29, 41, 0.9)'
     else:
         colors = [COLORS['neon_blue'], COLORS['electric_blue'], COLORS['teal'],
                   COLORS['success'], COLORS['purple'], COLORS['pink']]
@@ -12027,13 +12091,13 @@ def create_dcf_waterfall(dcf_results, method='FCFF', use_professional_theme=True
 
     # Theme colors
     if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
-        connector_color = PROFESSIONAL_COLORS['muted']
-        success_color = PROFESSIONAL_COLORS['success']
-        danger_color = PROFESSIONAL_COLORS['danger']
-        title_color = PROFESSIONAL_COLORS['dark']
-        text_color = PROFESSIONAL_COLORS['dark_medium']
-        paper_bg = 'white'
-        grid_color = PROFESSIONAL_COLORS['light_medium']
+        connector_color = 'rgba(255, 255, 255, 0.5)'
+        success_color = '#00E676'
+        danger_color = '#FF1744'
+        title_color = '#FFFFFF'
+        text_color = '#FFFFFF'
+        paper_bg = '#1a1d29'
+        grid_color = 'rgba(255, 255, 255, 0.1)'
     else:
         connector_color = COLORS['neon_blue']
         success_color = COLORS['success']
@@ -12098,12 +12162,12 @@ def create_cash_flow_chart(projections, method='FCFF', use_professional_theme=Tr
 
     # Theme colors
     if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
-        bar_color = PROFESSIONAL_COLORS['primary']
+        bar_color = '#00BCD4'
         border_color = 'rgba(30, 136, 229, 0.3)'
-        title_color = PROFESSIONAL_COLORS['dark']
-        text_color = PROFESSIONAL_COLORS['dark_medium']
-        paper_bg = 'white'
-        grid_color = PROFESSIONAL_COLORS['light_medium']
+        title_color = '#FFFFFF'
+        text_color = '#FFFFFF'
+        paper_bg = '#1a1d29'
+        grid_color = 'rgba(255, 255, 255, 0.1)'
     else:
         bar_color = COLORS['electric_blue']
         border_color = COLORS['border']
@@ -13065,89 +13129,16 @@ def main():
     render_atlas_header()
 
     # ============================================================================
-    # CAPITAL SETTINGS - EQUITY & LEVERAGE CONFIGURATION
+    # CAPITAL SETTINGS - Auto-populated from session state (UI removed for cleaner homepage)
     # ============================================================================
-    with st.expander("⚙️ CAPITAL SETTINGS (Equity & Leverage)", expanded=False):
-        st.markdown("### 💰 Configure Your Capital Structure")
-
-        # AUTO-POPULATE from performance history if available
-        metrics = get_current_portfolio_metrics()
-        if metrics and metrics.get('equity', 0) > 0:
-            auto_equity = metrics['equity']
-            auto_leverage = metrics.get('leverage', 1.0)
-            st.success(f"✅ Auto-populated from performance history: ${auto_equity:,.0f} equity, {auto_leverage:.2f}x leverage")
-        else:
-            auto_equity = st.session_state.get('equity_capital', 100000.0)
-            auto_leverage = st.session_state.get('target_leverage', 1.0)
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            # Use unique key that updates when equity changes
-            equity_key = f"equity_input_{int(auto_equity)}"
-            equity_capital = st.number_input(
-                "Your Equity Capital ($)",
-                min_value=1000.0,
-                max_value=100000000.0,
-                value=float(auto_equity),
-                step=1000.0,
-                format="%.0f",
-                help="Your actual capital invested (not including leverage). Auto-populated from performance history if uploaded.",
-                key=equity_key
-            )
-            st.session_state['equity_capital'] = equity_capital
-
-        with col2:
-            # Use unique key that updates when leverage changes
-            leverage_key = f"leverage_input_{int(auto_leverage * 100)}"
-            target_leverage = st.slider(
-                "Target Leverage",
-                min_value=1.0,
-                max_value=3.0,
-                value=float(min(3.0, max(1.0, auto_leverage))),
-                step=0.1,
-                help="Total exposure / Equity ratio (1.0x = no leverage, 2.0x = 2x leverage, 3.0x = 3x leverage)",
-                key=leverage_key
-            )
-            st.session_state['target_leverage'] = target_leverage
-
-        # Display calculated structure
-        gross_exposure_estimate = equity_capital * target_leverage
-
-        st.markdown("---")
-        st.markdown("### 📊 Your Portfolio Structure")
-
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-            st.metric(
-                "💰 Equity Capital",
-                f"${equity_capital:,.0f}",
-                help="Your actual invested capital"
-            )
-
-        with col2:
-            st.metric(
-                "⚡ Target Leverage",
-                f"{target_leverage:.1f}x",
-                help="Exposure multiplier"
-            )
-
-        with col3:
-            st.metric(
-                "📊 Target Gross Exposure",
-                f"${gross_exposure_estimate:,.0f}",
-                help="Total market exposure with leverage"
-            )
-
-        st.info(f"""
-        **Understanding Your Settings:**
-        - **Equity:** Your actual capital = ${equity_capital:,.0f}
-        - **Leverage:** {target_leverage:.1f}x means ${target_leverage:.2f} of market exposure per $1 of equity
-        - **Gross Exposure:** Total position values = ${gross_exposure_estimate:,.0f}
-        - **Returns:** Calculated on your ${equity_capital:,.0f} equity (leverage amplifies % returns)
-        - **Risk Metrics:** VaR/CVaR applied to your equity, not gross exposure
-        """)
+    # Capital settings now auto-populated from performance history
+    metrics = get_current_portfolio_metrics()
+    if metrics and metrics.get('equity', 0) > 0:
+        st.session_state['equity_capital'] = metrics['equity']
+        st.session_state['target_leverage'] = metrics.get('leverage', 1.0)
+    elif 'equity_capital' not in st.session_state:
+        st.session_state['equity_capital'] = 100000.0
+        st.session_state['target_leverage'] = 1.0
 
     # ============================================================================
     # BROKER CONNECTION SYSTEM - Multi-broker support
@@ -13264,66 +13255,14 @@ def main():
     # Get page key from selected title
     selected_page_key = PAGE_TITLE_TO_KEY.get(page, "portfolio_home")
 
-    st.markdown("---")
-
-    # Time Range and Benchmark Controls (positioned below navigation)
-    col1, col2 = st.columns(2)
-
-    with col1:
-        # Time Range Control
-        date_options = ["1D", "1W", "1M", "3M", "6M", "YTD", "1Y", "3Y", "5Y", "MAX"]
-        selected_range = st.selectbox(
-            "📅 Time Range",
-            date_options,
-            index=6,  # Default to "1Y"
-            key="time_range_selector"
-        )
-
-    with col2:
-        # Benchmark Control
-        benchmark_options = ["SPY", "QQQ", "DIA", "IWM", "VTI", "ACWI"]
-        selected_benchmark = st.selectbox(
-            "🎯 Benchmark",
-            benchmark_options,
-            index=0,  # Default to "SPY"
-            key="benchmark_selector"
-        )
-
-    # ATLAS Refactoring - Phase 1: Cache Performance Stats
-    if REFACTORED_MODULES_AVAILABLE:
-        with st.expander("⚡ Performance Stats", expanded=False):
-            stats = cache_manager.get_stats()
-            col_a, col_b, col_c = st.columns(3)
-
-            with col_a:
-                st.metric("Cache Hit Rate", stats['hit_rate'])
-            with col_b:
-                st.metric("Cache Hits", stats['hits'])
-            with col_c:
-                st.metric("Memory Keys", stats['memory_keys'])
-
-            col_d, col_e = st.columns(2)
-            with col_d:
-                if st.button("🗑️ Clear Cache", use_container_width=True):
-                    cache_manager.clear()
-                    st.success("✅ Cache cleared!")
-                    st.rerun()
-            with col_e:
-                st.caption(f"Disk: {stats['disk_hits']} hits, {stats['disk_writes']} writes")
-
-    st.markdown("---")
-
-    if selected_range == "YTD":
-        start_date = datetime(datetime.now().year, 1, 1)
-        end_date = datetime.now()
-    elif selected_range == "MAX":
-        start_date = datetime(2000, 1, 1)
-        end_date = datetime.now()
-    else:
-        days_map = {"1D": 1, "1W": 7, "1M": 30, "3M": 90, "6M": 180, "1Y": 365, "3Y": 1095, "5Y": 1825}
-        days = days_map.get(selected_range, 365)
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=days)
+    # ============================================================================
+    # DEFAULT DATE RANGE AND BENCHMARK (UI removed for cleaner homepage)
+    # ============================================================================
+    # Default to 1 year lookback and SPY benchmark
+    selected_range = "1Y"
+    selected_benchmark = "SPY"
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=365)
     
     # ========================================================================
     # PHASE 2A: NAVIGATION V2 ROUTING (Experimental - can be toggled)
@@ -13334,28 +13273,6 @@ def main():
         value=False,
         help="Enable new modular navigation system (Phase 2A)"
     )
-
-    # ========================================================================
-    # ATLAS REFACTORING: Cache Performance Stats Display
-    # ========================================================================
-    if REFACTORED_MODULES_AVAILABLE:
-        with st.sidebar.expander("📊 Cache Performance", expanded=False):
-            cache_stats = cache_manager.get_stats()
-
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("Hits", cache_stats['hits'], help="Cache hits")
-            with col2:
-                st.metric("Misses", cache_stats['misses'], help="Cache misses")
-
-            st.metric("Hit Rate", cache_stats['hit_rate'], help="Cache efficiency")
-            st.caption(f"💾 Disk: {cache_stats['disk_hits']} reads, {cache_stats['disk_writes']} writes")
-            st.caption(f"🧠 Memory: {cache_stats['memory_keys']} cached items")
-
-            if st.button("🗑️ Clear Cache", key="clear_cache_btn"):
-                cache_manager.clear()
-                st.success("Cache cleared!")
-                st.rerun()
 
     if USE_NAVIGATION_V2:
         # NEW: Registry-based routing
@@ -18227,16 +18144,16 @@ To maintain gradual transitions:
 
                     fig_cumulative = go.Figure()
 
-                    # Use Professional Blue theme if available
+                    # Use dark theme if available
                     if PROFESSIONAL_THEME_AVAILABLE:
-                        portfolio_color = PROFESSIONAL_COLORS['primary']
-                        benchmark_color = PROFESSIONAL_COLORS['muted']
+                        portfolio_color = '#00BCD4'
+                        benchmark_color = 'rgba(255, 255, 255, 0.5)'
                         fill_color = get_color('primary', 0.15)
-                        title_color = PROFESSIONAL_COLORS['dark']
-                        text_color = PROFESSIONAL_COLORS['dark_medium']
-                        grid_color = PROFESSIONAL_COLORS['light_medium']
-                        paper_bg = 'white'
-                        plot_bg = 'white'
+                        title_color = '#FFFFFF'
+                        text_color = '#FFFFFF'
+                        grid_color = 'rgba(255, 255, 255, 0.1)'
+                        paper_bg = '#1a1d29'
+                        plot_bg = '#1a1d29'
                     else:
                         portfolio_color = '#00d4ff'
                         benchmark_color = '#ffaa00'

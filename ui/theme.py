@@ -1,13 +1,13 @@
 """
-ATLAS Design System V1.0 - Professional Blue Theme
-====================================================
+ATLAS Design System V2.0 - Dark Theme with Neon Cyan Accents
+=============================================================
 "One Living, Breathing Soul"
 
 Complete design specification for visual consistency:
-- Professional Blue color palette (Stripe-inspired)
-- Inter typography
-- 8px spacing grid
-- Clean chart styling
+- Dark theme with neon cyan borders
+- White text on dark backgrounds
+- Semantic colors (green gains, red losses)
+- Professional appearance
 
 Created: January 2026
 Author: Hlobo & Claude
@@ -16,72 +16,85 @@ Author: Hlobo & Claude
 from typing import Dict, Optional
 
 # =============================================================================
-# COLOR PALETTE - Professional Blue
+# COLOR PALETTE - Dark Theme with Neon Cyan Accents
 # =============================================================================
 
 ATLAS_COLORS = {
     # Core Brand Colors
-    'primary': '#1E88E5',        # Main blue - CTAs, highlights, key data
-    'primary_light': '#42A5F5',  # Lighter blue - hover states, accents
-    'primary_dark': '#1565C0',   # Darker blue - pressed states, emphasis
+    'primary': '#00BCD4',            # Neon cyan - main accent
+    'primary_light': '#00E5FF',      # Lighter cyan - hover states
+    'primary_dark': '#0097A7',       # Darker cyan - pressed states
 
     # Secondary Accent
-    'secondary': '#00ACC1',      # Teal - secondary actions, diversity
-    'secondary_light': '#26C6DA', # Light teal - accents
+    'secondary': '#7C4DFF',          # Purple - secondary actions
+    'secondary_light': '#B388FF',    # Light purple - accents
 
     # Semantic Colors (Data)
-    'success': '#43A047',        # Green - positive returns, gains
-    'success_light': '#66BB6A',  # Light green - mild positive
-    'warning': '#FB8C00',        # Orange - caution, neutral
-    'warning_light': '#FFA726',  # Light orange - mild caution
-    'danger': '#E53935',         # Red - losses, alerts
-    'danger_light': '#EF5350',   # Light red - mild negative
+    'success': '#00E676',            # Bright green - positive returns, gains
+    'success_light': '#69F0AE',      # Light green - mild positive
+    'warning': '#FFC400',            # Amber - caution, neutral
+    'warning_light': '#FFD740',      # Light amber - mild caution
+    'danger': '#FF1744',             # Bright red - losses, alerts
+    'danger_light': '#FF5252',       # Light red - mild negative
 
-    # Neutral Colors (UI)
-    'dark': '#263238',           # Text, headings, strong emphasis
-    'dark_medium': '#37474F',    # Secondary text
-    'light': '#ECEFF1',          # Backgrounds, containers
-    'light_medium': '#CFD8DC',   # Borders, dividers
-    'muted': '#90A4AE',          # Tertiary text, disabled states
+    # Dark Theme Colors
+    'dark': '#1a1d29',               # Primary dark background
+    'dark_medium': '#242838',        # Slightly lighter dark
+    'dark_light': '#2d3143',         # Card backgrounds
 
-    # Backgrounds
-    'background': '#FFFFFF',     # Main background
-    'surface': '#F5F7FA',        # Card/container background
-    'surface_elevated': '#FFFFFF', # Elevated cards (white on gray)
+    # Text Colors (on dark backgrounds)
+    'text_primary': '#FFFFFF',       # Primary text - white
+    'text_secondary': 'rgba(255, 255, 255, 0.7)',  # Secondary text
+    'text_muted': 'rgba(255, 255, 255, 0.5)',      # Muted text
+    'text_disabled': 'rgba(255, 255, 255, 0.3)',  # Disabled text
+
+    # Borders
+    'border': 'rgba(0, 188, 212, 0.3)',            # Subtle cyan border
+    'border_hover': 'rgba(0, 188, 212, 0.5)',     # Hover border
+    'border_glow': 'rgba(0, 188, 212, 0.4)',      # Glow border
+
+    # Grid colors
+    'grid': 'rgba(255, 255, 255, 0.1)',           # Subtle grid
+    'grid_dark': 'rgba(255, 255, 255, 0.05)',    # Very subtle grid
+
+    # Chart backgrounds (DARK)
+    'chart_bg': '#1a1d29',           # Chart background
+    'paper_bg': '#1a1d29',           # Paper background
 
     # Additional accent colors for charts
-    'purple': '#7E57C2',         # Additional series
-    'pink': '#EC407A',           # Accent
-    'teal': '#26A69A',           # Alternative green-blue
+    'purple': '#7C4DFF',
+    'pink': '#FF4081',
+    'teal': '#1DE9B6',
+    'orange': '#FF9100',
 }
 
 # Chart-specific color sequence (ordered by importance)
 CHART_COLORS = [
-    '#1E88E5',  # Primary blue (main data series)
-    '#00ACC1',  # Teal (secondary series)
-    '#43A047',  # Green (positive series)
-    '#FB8C00',  # Orange (neutral/warning series)
-    '#E53935',  # Red (negative series)
-    '#7E57C2',  # Purple (additional series)
-    '#EC407A',  # Pink (additional)
-    '#26A69A',  # Teal variant
+    '#00BCD4',  # Cyan (main data series)
+    '#00E676',  # Green (positive series)
+    '#7C4DFF',  # Purple (secondary series)
+    '#FF9100',  # Orange (warning series)
+    '#FF1744',  # Red (negative series)
+    '#1DE9B6',  # Teal (additional)
+    '#FF4081',  # Pink (additional)
+    '#FFC400',  # Amber (additional)
 ]
 
-# Semi-transparent fills for area charts (20% opacity)
+# Semi-transparent fills for area charts (15% opacity on dark)
 CHART_FILLS = [
-    'rgba(30, 136, 229, 0.2)',   # Primary blue fill
-    'rgba(0, 172, 193, 0.2)',    # Teal fill
-    'rgba(67, 160, 71, 0.2)',    # Green fill
-    'rgba(251, 140, 0, 0.2)',    # Orange fill
-    'rgba(229, 57, 53, 0.2)',    # Red fill
-    'rgba(126, 87, 194, 0.2)',   # Purple fill
+    'rgba(0, 188, 212, 0.15)',    # Cyan fill
+    'rgba(0, 230, 118, 0.15)',    # Green fill
+    'rgba(124, 77, 255, 0.15)',   # Purple fill
+    'rgba(255, 145, 0, 0.15)',    # Orange fill
+    'rgba(255, 23, 68, 0.15)',    # Red fill
+    'rgba(29, 233, 182, 0.15)',   # Teal fill
 ]
 
 # Gradient definitions (top to bottom)
 CHART_GRADIENTS = {
-    'primary': ['rgba(30, 136, 229, 0.4)', 'rgba(30, 136, 229, 0.0)'],
-    'success': ['rgba(67, 160, 71, 0.4)', 'rgba(67, 160, 71, 0.0)'],
-    'danger': ['rgba(229, 57, 53, 0.4)', 'rgba(229, 57, 53, 0.0)'],
+    'primary': ['rgba(0, 188, 212, 0.3)', 'rgba(0, 188, 212, 0.0)'],
+    'success': ['rgba(0, 230, 118, 0.3)', 'rgba(0, 230, 118, 0.0)'],
+    'danger': ['rgba(255, 23, 68, 0.3)', 'rgba(255, 23, 68, 0.0)'],
 }
 
 
@@ -107,10 +120,10 @@ FONT_SIZES = {
 }
 
 FONT_WEIGHTS = {
-    'normal': 400,    # Body text
-    'medium': 500,    # Emphasis, labels
-    'semibold': 600,  # Headings, important text
-    'bold': 700,      # Strong emphasis, titles
+    'normal': 400,
+    'medium': 500,
+    'semibold': 600,
+    'bold': 700,
 }
 
 
@@ -119,78 +132,120 @@ FONT_WEIGHTS = {
 # =============================================================================
 
 SPACING = {
-    'xs': 4,      # 0.5 × 8px - Tight spacing (button padding)
-    'sm': 8,      # 1 × 8px - Related elements
-    'md': 16,     # 2 × 8px - Standard margin (DEFAULT)
-    'lg': 24,     # 3 × 8px - Section spacing
-    'xl': 32,     # 4 × 8px - Major sections
-    'xxl': 48,    # 6 × 8px - Page sections
-    '3xl': 64,    # 8 × 8px - Hero sections
+    'xs': 4,      # 0.5 × 8px
+    'sm': 8,      # 1 × 8px
+    'md': 16,     # 2 × 8px (DEFAULT)
+    'lg': 24,     # 3 × 8px
+    'xl': 32,     # 4 × 8px
+    'xxl': 48,    # 6 × 8px
+    '3xl': 64,    # 8 × 8px
 }
 
 
 # =============================================================================
-# CARD STYLES
+# CARD STYLES - Dark Theme with Neon Border
 # =============================================================================
 
 CARD_STYLE = {
-    'background': ATLAS_COLORS['surface_elevated'],
-    'border': f"1px solid {ATLAS_COLORS['light_medium']}",
-    'border_radius': 8,
+    'background': 'linear-gradient(135deg, rgba(26, 29, 41, 0.95) 0%, rgba(20, 23, 35, 0.95) 100%)',
+    'border': '1px solid rgba(0, 188, 212, 0.3)',
+    'border_radius': 12,
     'padding': SPACING['lg'],
-    'box_shadow': '0 1px 3px rgba(0, 0, 0, 0.06)',
+    'box_shadow': '''
+        0 2px 8px rgba(0, 0, 0, 0.3),
+        0 0 1px rgba(0, 188, 212, 0.5),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05)
+    ''',
 }
 
 CARD_HOVER = {
-    'box_shadow': '0 4px 12px rgba(0, 0, 0, 0.08)',
+    'border': '1px solid rgba(0, 188, 212, 0.5)',
+    'box_shadow': '''
+        0 4px 16px rgba(0, 0, 0, 0.4),
+        0 0 8px rgba(0, 188, 212, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08)
+    ''',
     'transform': 'translateY(-2px)',
+}
+
+# Neon border variants
+CARD_BORDER_COLORS = {
+    'cyan': 'rgba(0, 188, 212, 0.4)',
+    'purple': 'rgba(124, 77, 255, 0.4)',
+    'green': 'rgba(0, 230, 118, 0.4)',
+    'red': 'rgba(255, 23, 68, 0.4)',
+    'amber': 'rgba(255, 196, 0, 0.4)',
 }
 
 
 # =============================================================================
-# CHART LAYOUT (Plotly base configuration)
+# CHART LAYOUT - DARK THEME (Plotly base configuration)
 # =============================================================================
 
 CHART_LAYOUT = {
+    # Font - WHITE TEXT
     'font': {
         'family': FONTS['family'],
         'size': FONT_SIZES['sm'],
-        'color': ATLAS_COLORS['dark_medium']
+        'color': '#FFFFFF',  # WHITE for visibility
     },
-    'plot_bgcolor': 'white',
-    'paper_bgcolor': 'white',
+
+    # Backgrounds - DARK
+    'plot_bgcolor': '#1a1d29',
+    'paper_bgcolor': '#1a1d29',
+
+    # Margins
     'margin': {'l': 60, 't': 50, 'r': 30, 'b': 50},
+
+    # Title - WHITE TEXT
     'title': {
         'font': {
             'family': FONTS['family'],
             'size': FONT_SIZES['md'],
-            'color': ATLAS_COLORS['dark']
+            'color': '#FFFFFF',
         },
         'x': 0.02,
         'xanchor': 'left',
     },
+
+    # Hover labels - DARK BG with WHITE TEXT
     'hoverlabel': {
-        'bgcolor': ATLAS_COLORS['dark'],
+        'bgcolor': '#1a1d29',
         'font': {
             'family': FONTS['family'],
             'size': FONT_SIZES['sm'],
-            'color': 'white'
+            'color': '#FFFFFF',
         },
-        'bordercolor': ATLAS_COLORS['dark'],
+        'bordercolor': '#00BCD4',
     },
+
+    # X Axis - WHITE TEXT, SUBTLE GRID
     'xaxis': {
-        'showgrid': False,  # No vertical gridlines (Stripe style)
+        'showgrid': True,
+        'gridcolor': 'rgba(255, 255, 255, 0.1)',
         'zeroline': False,
-        'tickfont': {'size': FONT_SIZES['xs'], 'color': ATLAS_COLORS['muted']},
-        'linecolor': ATLAS_COLORS['light_medium'],
+        'tickfont': {'size': FONT_SIZES['xs'], 'color': '#FFFFFF'},
+        'linecolor': 'rgba(255, 255, 255, 0.2)',
+        'title': {'font': {'color': '#FFFFFF'}},
     },
+
+    # Y Axis - WHITE TEXT, SUBTLE GRID
     'yaxis': {
         'showgrid': True,
-        'gridcolor': ATLAS_COLORS['light_medium'],
+        'gridcolor': 'rgba(255, 255, 255, 0.1)',
         'gridwidth': 1,
         'zeroline': False,
-        'tickfont': {'size': FONT_SIZES['xs'], 'color': ATLAS_COLORS['muted']},
-        'linecolor': ATLAS_COLORS['light_medium'],
+        'tickfont': {'size': FONT_SIZES['xs'], 'color': '#FFFFFF'},
+        'linecolor': 'rgba(255, 255, 255, 0.2)',
+        'title': {'font': {'color': '#FFFFFF'}},
+    },
+
+    # Legend - WHITE TEXT
+    'legend': {
+        'font': {'color': '#FFFFFF'},
+        'bgcolor': 'rgba(26, 29, 41, 0.8)',
+        'bordercolor': 'rgba(0, 188, 212, 0.3)',
+        'borderwidth': 1,
     },
 }
 
@@ -209,68 +264,67 @@ CHART_HEIGHTS = {
 
 
 # =============================================================================
+# NEON BORDER CSS STYLES
+# =============================================================================
+
+NEON_CHART_CSS = """
+<style>
+.neon-chart-container {
+    border: 2px solid #00BCD4;
+    border-radius: 8px;
+    padding: 16px;
+    box-shadow:
+        0 0 10px rgba(0, 188, 212, 0.3),
+        0 0 20px rgba(0, 188, 212, 0.2),
+        inset 0 0 10px rgba(0, 188, 212, 0.1);
+    background: #1a1d29;
+    margin: 16px 0;
+}
+
+.neon-chart-title {
+    color: #FFFFFF;
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    font-family: 'Inter', sans-serif;
+}
+</style>
+"""
+
+
+# =============================================================================
 # HELPER FUNCTIONS
 # =============================================================================
 
 def get_color(color_name: str, opacity: float = 1.0) -> str:
     """
     Get color from palette with optional opacity.
-
-    Args:
-        color_name: Key from ATLAS_COLORS dict
-        opacity: Float between 0.0 and 1.0
-
-    Returns:
-        Color string (hex or rgba)
-
-    Example:
-        >>> get_color('primary')
-        '#1E88E5'
-        >>> get_color('primary', 0.5)
-        'rgba(30, 136, 229, 0.5)'
     """
     color = ATLAS_COLORS.get(color_name, ATLAS_COLORS['primary'])
     if opacity < 1.0:
         # Convert hex to rgba
-        r = int(color[1:3], 16)
-        g = int(color[3:5], 16)
-        b = int(color[5:7], 16)
-        return f'rgba({r}, {g}, {b}, {opacity})'
+        if color.startswith('#'):
+            r = int(color[1:3], 16)
+            g = int(color[3:5], 16)
+            b = int(color[5:7], 16)
+            return f'rgba({r}, {g}, {b}, {opacity})'
     return color
 
 
 def get_semantic_color(value: float) -> str:
     """
     Get semantic color based on positive/negative value.
-
-    Args:
-        value: Numeric value (positive = green, negative = red)
-
-    Returns:
-        Color hex string
-
-    Example:
-        >>> get_semantic_color(10.5)
-        '#43A047'  # success green
-        >>> get_semantic_color(-5.2)
-        '#E53935'  # danger red
     """
     if value > 0:
         return ATLAS_COLORS['success']
     elif value < 0:
         return ATLAS_COLORS['danger']
-    return ATLAS_COLORS['muted']
+    return ATLAS_COLORS['text_muted']
 
 
 def get_chart_color(index: int) -> str:
     """
     Get chart color by index (cycles through CHART_COLORS).
-
-    Args:
-        index: Series index (0-based)
-
-    Returns:
-        Color hex string
     """
     return CHART_COLORS[index % len(CHART_COLORS)]
 
@@ -278,14 +332,6 @@ def get_chart_color(index: int) -> str:
 def format_percentage(value: float, decimals: int = 2, show_sign: bool = True) -> str:
     """
     Format percentage consistently.
-
-    Args:
-        value: Numeric value
-        decimals: Decimal places
-        show_sign: Include + sign for positive values
-
-    Returns:
-        Formatted string like "+12.50%" or "12.50%"
     """
     if value is None:
         return "N/A"
@@ -296,13 +342,6 @@ def format_percentage(value: float, decimals: int = 2, show_sign: bool = True) -
 def format_currency(value: float, decimals: int = 0) -> str:
     """
     Format currency consistently with abbreviations.
-
-    Args:
-        value: Numeric value
-        decimals: Decimal places
-
-    Returns:
-        Formatted string like "$1.5M" or "$125K"
     """
     if value is None:
         return "N/A"
@@ -319,12 +358,6 @@ def format_currency(value: float, decimals: int = 0) -> str:
 def format_large_number(value: float) -> str:
     """
     Format large numbers with abbreviations (no currency symbol).
-
-    Args:
-        value: Numeric value
-
-    Returns:
-        Formatted string like "1.5B" or "125K"
     """
     if value is None:
         return "N/A"
@@ -338,75 +371,137 @@ def format_large_number(value: float) -> str:
         return f"{value:,.0f}"
 
 
+def apply_dark_theme_to_chart(fig):
+    """
+    Apply dark theme to any Plotly figure.
+
+    IMPORTANT: Call this on EVERY chart to ensure consistency.
+
+    Args:
+        fig: Plotly figure object
+
+    Returns:
+        Styled figure with dark theme
+    """
+    fig.update_layout(
+        plot_bgcolor='#1a1d29',
+        paper_bgcolor='#1a1d29',
+        font=dict(color='#FFFFFF', family=FONTS['family']),
+        title=dict(font=dict(color='#FFFFFF')),
+        hoverlabel=dict(
+            bgcolor='#1a1d29',
+            font=dict(color='#FFFFFF'),
+            bordercolor='#00BCD4',
+        ),
+    )
+
+    # Update axes
+    fig.update_xaxes(
+        showgrid=True,
+        gridcolor='rgba(255, 255, 255, 0.1)',
+        tickfont=dict(color='#FFFFFF'),
+        linecolor='rgba(255, 255, 255, 0.2)',
+        title=dict(font=dict(color='#FFFFFF')),
+    )
+
+    fig.update_yaxes(
+        showgrid=True,
+        gridcolor='rgba(255, 255, 255, 0.1)',
+        tickfont=dict(color='#FFFFFF'),
+        linecolor='rgba(255, 255, 255, 0.2)',
+        title=dict(font=dict(color='#FFFFFF')),
+    )
+
+    return fig
+
+
 # =============================================================================
-# CSS STYLES FOR STREAMLIT
+# CSS STYLES FOR STREAMLIT - DARK THEME
 # =============================================================================
 
 def get_atlas_css() -> str:
     """
-    Get CSS string for ATLAS styling in Streamlit.
-
-    Usage in Streamlit:
-        st.markdown(f"<style>{get_atlas_css()}</style>", unsafe_allow_html=True)
+    Get CSS string for ATLAS dark theme styling in Streamlit.
     """
     return f"""
-    /* ATLAS Professional Blue Theme CSS */
+    /* ATLAS Dark Theme CSS */
 
-    /* Typography */
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
 
     body, .stApp {{
         font-family: {FONTS['family']};
+        background-color: #1a1d29;
     }}
 
-    /* Card styling */
+    /* Professional Card styling - Dark Theme */
     .atlas-card {{
-        background: {CARD_STYLE['background']};
-        border: {CARD_STYLE['border']};
-        border-radius: {CARD_STYLE['border_radius']}px;
-        padding: {CARD_STYLE['padding']}px;
-        box-shadow: {CARD_STYLE['box_shadow']};
-        transition: all 0.2s ease;
+        background: linear-gradient(135deg, rgba(26, 29, 41, 0.95) 0%, rgba(20, 23, 35, 0.95) 100%);
+        border: 1px solid rgba(0, 188, 212, 0.3);
+        border-top: 2px solid rgba(0, 188, 212, 0.4);
+        border-radius: 12px;
+        padding: 24px;
+        box-shadow:
+            0 2px 8px rgba(0, 0, 0, 0.3),
+            0 0 1px rgba(0, 188, 212, 0.5);
+        transition: all 0.3s ease;
     }}
 
     .atlas-card:hover {{
-        box-shadow: {CARD_HOVER['box_shadow']};
-        transform: {CARD_HOVER['transform']};
+        border-color: rgba(0, 188, 212, 0.5);
+        box-shadow:
+            0 4px 16px rgba(0, 0, 0, 0.4),
+            0 0 8px rgba(0, 188, 212, 0.4);
+        transform: translateY(-2px);
+    }}
+
+    /* Neon Chart Container */
+    .neon-chart-container {{
+        border: 2px solid #00BCD4;
+        border-radius: 8px;
+        padding: 16px;
+        box-shadow:
+            0 0 10px rgba(0, 188, 212, 0.3),
+            0 0 20px rgba(0, 188, 212, 0.2);
+        background: #1a1d29;
+        margin: 16px 0;
+    }}
+
+    /* Text colors on dark */
+    .atlas-text-primary {{
+        color: #FFFFFF;
+    }}
+
+    .atlas-text-muted {{
+        color: rgba(255, 255, 255, 0.5);
     }}
 
     /* Metric styling */
     .atlas-metric {{
         font-family: {FONTS['mono']};
-        font-weight: {FONT_WEIGHTS['semibold']};
+        font-weight: 600;
+        color: #00BCD4;
     }}
 
     /* Success/Danger colors */
     .atlas-success {{
-        color: {ATLAS_COLORS['success']};
+        color: #00E676;
     }}
 
     .atlas-danger {{
-        color: {ATLAS_COLORS['danger']};
+        color: #FF1744;
     }}
 
     .atlas-warning {{
-        color: {ATLAS_COLORS['warning']};
+        color: #FFC400;
     }}
 
-    /* Page fade-in animation */
-    @keyframes fadeInUp {{
-        from {{
-            opacity: 0;
-            transform: translateY(10px);
-        }}
-        to {{
-            opacity: 1;
-            transform: translateY(0);
-        }}
-    }}
-
-    .atlas-animate {{
-        animation: fadeInUp 0.3s ease-out;
+    /* Gradient text for values */
+    .atlas-gradient-text {{
+        background: linear-gradient(135deg, #00BCD4 0%, #00E5FF 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
     }}
     """
 
@@ -421,6 +516,7 @@ __all__ = [
     'CHART_COLORS',
     'CHART_FILLS',
     'CHART_GRADIENTS',
+    'CARD_BORDER_COLORS',
 
     # Typography
     'FONTS',
@@ -434,6 +530,9 @@ __all__ = [
     'CHART_LAYOUT',
     'CHART_HEIGHTS',
 
+    # CSS
+    'NEON_CHART_CSS',
+
     # Helper functions
     'get_color',
     'get_semantic_color',
@@ -441,5 +540,6 @@ __all__ = [
     'format_percentage',
     'format_currency',
     'format_large_number',
+    'apply_dark_theme_to_chart',
     'get_atlas_css',
 ]
