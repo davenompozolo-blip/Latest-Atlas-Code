@@ -88,26 +88,28 @@ def display_regime_banner():
     col1, col2 = st.columns([2, 3])
 
     with col1:
-        # INLINE REGIME CARD - HTML with no leading whitespace
-        regime_html = f"""<div style="background: linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%); padding: 2rem; border-radius: 0.75rem; border-left: 6px solid {regime_color}; box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2); backdrop-filter: blur(10px);">
+        # INLINE REGIME CARD - Capital Structure style with top gradient bar
+        regime_gradient = f"linear-gradient(90deg, {regime_color}, #6366f1)"
+        regime_html = f"""<div style="background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(99,102,241,0.2); padding: 2rem 1.75rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); position: relative; overflow: hidden;">
+<div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: {regime_gradient}; opacity: 0.8;"></div>
 <div style="display: flex; align-items: center; margin-bottom: 1rem;">
 <span style="font-size: 2.5rem; margin-right: 1rem;">{regime_emoji}</span>
 <div>
-<h2 style="margin: 0; font-size: 2rem; font-weight: 700; color: {regime_color};">{regime}</h2>
+<h2 style="margin: 0; font-size: 2rem; font-weight: 700; color: {regime_color}; text-shadow: 0 0 20px {regime_color}40;">{regime}</h2>
 <p style="margin: 0.25rem 0 0 0; font-size: 0.875rem; color: #94a3b8;">Current Market Regime | Score: {score:+d}/10</p>
 </div>
 </div>
 <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-top: 1rem;">
 <div>
-<p style="margin: 0; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase;">VIX</p>
+<p style="margin: 0; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em;">VIX</p>
 <p style="margin: 0.25rem 0 0 0; font-size: 1.25rem; font-weight: 600; color: white;">{vix_val:.2f}</p>
 </div>
 <div>
-<p style="margin: 0; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase;">Yield Curve</p>
+<p style="margin: 0; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em;">Yield Curve</p>
 <p style="margin: 0.25rem 0 0 0; font-size: 1.25rem; font-weight: 600; color: white;">{curve_val:+.2f}%</p>
 </div>
 <div>
-<p style="margin: 0; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase;">Breadth</p>
+<p style="margin: 0; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em;">Breadth</p>
 <p style="margin: 0.25rem 0 0 0; font-size: 1.25rem; font-weight: 600; color: white;">{breadth_val:+.2f}%</p>
 </div>
 </div>
@@ -119,81 +121,42 @@ def display_regime_banner():
         metric_col1, metric_col2, metric_col3 = st.columns(3)
 
         with metric_col1:
-            # VIX card - INLINE
+            # VIX card - Capital Structure style
             vix_change_color = "#10b981" if vix_change >= 0 else "#ef4444"
             vix_change_prefix = "↑" if vix_change >= 0 else "↓"
-            st.markdown(f"""
-            <div style="
-                background: linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%);
-                padding: 1.5rem;
-                border-radius: 0.75rem;
-                border-left: 4px solid #3b82f6;
-                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-                height: 100%;
-            ">
-                <div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
-                    <span style="font-size: 1.25rem; margin-right: 0.5rem;">📊</span>
-                    <p style="margin: 0; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
-                              letter-spacing: 0.05em; color: #94a3b8;">VIX</p>
-                </div>
-                <h2 style="margin: 0.5rem 0 0 0; font-size: 2rem; font-weight: 700;
-                           background: linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%);
-                           -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
-                    {vix_val:.2f}
-                </h2>
-                <p style="margin: 0.5rem 0 0 0; font-size: 0.875rem; color: {vix_change_color}; font-weight: 600;">
-                    {vix_change_prefix} {vix_change:+.2f}
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(f"""<div style="background: linear-gradient(135deg, rgba(59,130,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(59,130,246,0.2); padding: 1.5rem 1.25rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); position: relative; overflow: hidden; height: 100%;">
+<div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #3b82f6, #06b6d4); opacity: 0.8;"></div>
+<div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
+<span style="font-size: 1.1rem;">📊</span>
+<p style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; margin: 0; font-weight: 600;">VIX</p>
+</div>
+<h3 style="font-size: 2.25rem; font-weight: 800; margin: 0.5rem 0; line-height: 1; background: linear-gradient(135deg, #3b82f6, #06b6d4); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">{vix_val:.2f}</h3>
+<div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(59,130,246,0.12); border-radius: 12px; border: 1px solid rgba(59,130,246,0.25);">
+<p style="font-size: 0.8rem; color: {vix_change_color}; margin: 0; font-weight: 600;">{vix_change_prefix} {vix_change:+.2f}</p>
+</div>
+</div>""", unsafe_allow_html=True)
 
         with metric_col2:
-            # Yield Curve card - INLINE
-            st.markdown(f"""
-            <div style="
-                background: linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%);
-                padding: 1.5rem;
-                border-radius: 0.75rem;
-                border-left: 4px solid #06b6d4;
-                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-                height: 100%;
-            ">
-                <div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
-                    <span style="font-size: 1.25rem; margin-right: 0.5rem;">📈</span>
-                    <p style="margin: 0; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
-                              letter-spacing: 0.05em; color: #94a3b8;">YIELD CURVE</p>
-                </div>
-                <h2 style="margin: 0.5rem 0 0 0; font-size: 2rem; font-weight: 700;
-                           background: linear-gradient(135deg, #06b6d4 0%, #06b6d4 100%);
-                           -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
-                    {curve_val:+.2f}%
-                </h2>
-            </div>
-            """, unsafe_allow_html=True)
+            # Yield Curve card - Capital Structure style
+            st.markdown(f"""<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.5rem 1.25rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); position: relative; overflow: hidden; height: 100%;">
+<div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #3b82f6); opacity: 0.8;"></div>
+<div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
+<span style="font-size: 1.1rem;">📈</span>
+<p style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; margin: 0; font-weight: 600;">YIELD CURVE</p>
+</div>
+<h3 style="font-size: 2.25rem; font-weight: 800; margin: 0.5rem 0; line-height: 1; background: linear-gradient(135deg, #06b6d4, #3b82f6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">{curve_val:+.2f}%</h3>
+</div>""", unsafe_allow_html=True)
 
         with metric_col3:
-            # Breadth card - INLINE
-            st.markdown(f"""
-            <div style="
-                background: linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%);
-                padding: 1.5rem;
-                border-radius: 0.75rem;
-                border-left: 4px solid #10b981;
-                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-                height: 100%;
-            ">
-                <div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
-                    <span style="font-size: 1.25rem; margin-right: 0.5rem;">🎯</span>
-                    <p style="margin: 0; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
-                              letter-spacing: 0.05em; color: #94a3b8;">MARKET BREADTH</p>
-                </div>
-                <h2 style="margin: 0.5rem 0 0 0; font-size: 2rem; font-weight: 700;
-                           background: linear-gradient(135deg, #10b981 0%, #06b6d4 100%);
-                           -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
-                    {breadth_val:+.2f}%
-                </h2>
-            </div>
-            """, unsafe_allow_html=True)
+            # Breadth card - Capital Structure style
+            st.markdown(f"""<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.5rem 1.25rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); position: relative; overflow: hidden; height: 100%;">
+<div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #06b6d4); opacity: 0.8;"></div>
+<div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
+<span style="font-size: 1.1rem;">🎯</span>
+<p style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; margin: 0; font-weight: 600;">MARKET BREADTH</p>
+</div>
+<h3 style="font-size: 2.25rem; font-weight: 800; margin: 0.5rem 0; line-height: 1; background: linear-gradient(135deg, #10b981, #06b6d4); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">{breadth_val:+.2f}%</h3>
+</div>""", unsafe_allow_html=True)
 
     st.markdown("---")
 
@@ -691,17 +654,18 @@ def render_sectors_page():
             if bullish_signals:
                 for signal in bullish_signals[:5]:  # Top 5
                     signal_type_clean = signal['signal_type'].replace('_', ' ')
-                    bullish_html = f"""<div style="background: linear-gradient(135deg, rgba(16,185,129,0.15), rgba(15,23,42,0.98)); border-left: 4px solid {signal['color']}; padding: 1rem; border-radius: 0.75rem; margin-bottom: 0.75rem; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">
+                    bullish_html = f"""<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 20px; border: 1px solid rgba(16,185,129,0.2); padding: 1.25rem 1rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); position: relative; overflow: hidden; margin-bottom: 0.75rem;">
+<div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, {signal['color']}, #10b981); opacity: 0.8;"></div>
 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
 <span style="font-size: 1.75rem;">{signal['emoji']}</span>
 <div style="text-align: right;">
-<div style="background: {signal['color']}; color: #0f172a; padding: 0.25rem 0.625rem; border-radius: 0.375rem; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; margin-bottom: 0.25rem;">{signal_type_clean}</div>
+<div style="background: {signal['color']}; color: #0f172a; padding: 0.25rem 0.625rem; border-radius: 8px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; margin-bottom: 0.25rem;">{signal_type_clean}</div>
 <div style="font-size: 0.75rem; color: #10b981; font-weight: 600;">Confidence: {signal['confidence']:.0f}%</div>
 </div>
 </div>
 <p style="margin: 0; font-size: 1.1rem; font-weight: 600; color: #f8fafc;">{signal['sector']} ({signal['ticker']})</p>
 <p style="margin: 0.5rem 0 0 0; font-size: 0.9rem; color: #cbd5e1; line-height: 1.4;">{signal['message']}</p>
-<div style="margin-top: 0.75rem; padding: 0.625rem; background: rgba(99, 102, 241, 0.1); border-radius: 0.5rem; font-size: 0.75rem; color: #94a3b8; line-height: 1.5;">{signal['explanation']}</div>
+<div style="margin-top: 0.75rem; padding: 0.625rem; background: rgba(99, 102, 241, 0.1); border-radius: 10px; font-size: 0.75rem; color: #94a3b8; line-height: 1.5;">{signal['explanation']}</div>
 </div>"""
                     st.markdown(bullish_html, unsafe_allow_html=True)
             else:
@@ -715,20 +679,22 @@ def render_sectors_page():
 
             if combined_signals:
                 for signal in combined_signals[:5]:  # Top 5
-                    bg_color = 'rgba(239,68,68,0.15)' if 'BEARISH' in signal.get('signal_type', '') else 'rgba(245,158,11,0.15)'
+                    bg_color = 'rgba(239,68,68,0.08)' if 'BEARISH' in signal.get('signal_type', '') else 'rgba(245,158,11,0.08)'
+                    border_color = 'rgba(239,68,68,0.2)' if 'BEARISH' in signal.get('signal_type', '') else 'rgba(245,158,11,0.2)'
                     text_color = '#ef4444' if 'BEARISH' in signal.get('signal_type', '') else '#f59e0b'
                     signal_type_clean = signal['signal_type'].replace('_', ' ')
-                    bearish_html = f"""<div style="background: linear-gradient(135deg, {bg_color}, rgba(15,23,42,0.98)); border-left: 4px solid {signal['color']}; padding: 1rem; border-radius: 0.75rem; margin-bottom: 0.75rem; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">
+                    bearish_html = f"""<div style="background: linear-gradient(135deg, {bg_color}, rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 20px; border: 1px solid {border_color}; padding: 1.25rem 1rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); position: relative; overflow: hidden; margin-bottom: 0.75rem;">
+<div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, {signal['color']}, {text_color}); opacity: 0.8;"></div>
 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
 <span style="font-size: 1.75rem;">{signal['emoji']}</span>
 <div style="text-align: right;">
-<div style="background: {signal['color']}; color: #0f172a; padding: 0.25rem 0.625rem; border-radius: 0.375rem; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; margin-bottom: 0.25rem;">{signal_type_clean}</div>
+<div style="background: {signal['color']}; color: #0f172a; padding: 0.25rem 0.625rem; border-radius: 8px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; margin-bottom: 0.25rem;">{signal_type_clean}</div>
 <div style="font-size: 0.75rem; color: {text_color}; font-weight: 600;">Confidence: {signal['confidence']:.0f}%</div>
 </div>
 </div>
 <p style="margin: 0; font-size: 1.1rem; font-weight: 600; color: #f8fafc;">{signal['sector']} ({signal['ticker']})</p>
 <p style="margin: 0.5rem 0 0 0; font-size: 0.9rem; color: #cbd5e1; line-height: 1.4;">{signal['message']}</p>
-<div style="margin-top: 0.75rem; padding: 0.625rem; background: rgba(99, 102, 241, 0.1); border-radius: 0.5rem; font-size: 0.75rem; color: #94a3b8; line-height: 1.5;">{signal['explanation']}</div>
+<div style="margin-top: 0.75rem; padding: 0.625rem; background: rgba(99, 102, 241, 0.1); border-radius: 10px; font-size: 0.75rem; color: #94a3b8; line-height: 1.5;">{signal['explanation']}</div>
 </div>"""
                     st.markdown(bearish_html, unsafe_allow_html=True)
             else:
@@ -821,27 +787,28 @@ def render_sectors_page():
             # Performance color
             perf_color = '#10b981' if sector['ytd_return'] >= 0 else '#ef4444'
 
-            # Professional sector card - HTML with no leading whitespace
+            # Professional sector card - Capital Structure style with top gradient bar
             sector_icon = sector_icons.get(sector['name'], '📊')
-            sector_html = f"""<div style="background: linear-gradient(135deg, rgba(30,41,59,0.95), rgba(15,23,42,0.98)); border-left: 4px solid {perf_color}; padding: 1rem; border-radius: 0.75rem; margin-bottom: 0.75rem; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">
+            sector_gradient = f"linear-gradient(90deg, {perf_color}, #6366f1)"
+            sector_html = f"""<div style="background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 20px; border: 1px solid rgba(99,102,241,0.2); padding: 1.25rem 1rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); position: relative; overflow: hidden; margin-bottom: 0.75rem;">
+<div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: {sector_gradient}; opacity: 0.8;"></div>
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
 <span style="font-size: 1.1rem; font-weight: 600; color: #f8fafc;">{sector_icon} {sector['name']}</span>
-<span style="background: {rank_color}; color: #0f172a; padding: 0.25rem 0.5rem; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 600;">{rank_emoji}</span>
+<span style="background: {rank_color}; color: #0f172a; padding: 0.25rem 0.5rem; border-radius: 8px; font-size: 0.75rem; font-weight: 600;">{rank_emoji}</span>
 </div>
 <div style="display: flex; justify-content: space-between; margin-top: 0.75rem;">
 <div>
-<p style="margin: 0; font-size: 0.75rem; color: #94a3b8;">YTD Return</p>
-<p style="margin: 0.25rem 0 0 0; font-size: 1.5rem; font-weight: 700; color: {perf_color};">{sector['ytd_return']:+.2f}%</p>
+<p style="margin: 0; font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em;">YTD Return</p>
+<p style="margin: 0.25rem 0 0 0; font-size: 1.5rem; font-weight: 700; color: {perf_color}; text-shadow: 0 0 20px {perf_color}40;">{sector['ytd_return']:+.2f}%</p>
 </div>
 <div style="text-align: right;">
-<p style="margin: 0; font-size: 0.75rem; color: #94a3b8;">Market Weight</p>
+<p style="margin: 0; font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em;">Market Weight</p>
 <p style="margin: 0.25rem 0 0 0; font-size: 1.1rem; font-weight: 600; color: #cbd5e1;">{sector['weight']:.2f}%</p>
 </div>
 </div>
-<div style="margin-top: 0.75rem; background: rgba(99, 102, 241, 0.1); border-radius: 0.5rem; height: 8px; overflow: hidden;">
-<div style="background: linear-gradient(90deg, #6366f1, #8b5cf6); height: 100%; width: {min(sector['weight'] * 3.33, 100)}%; border-radius: 0.5rem;"></div>
+<div style="margin-top: 0.75rem; background: rgba(99, 102, 241, 0.1); border-radius: 8px; height: 6px; overflow: hidden;">
+<div style="background: linear-gradient(90deg, #6366f1, #8b5cf6); height: 100%; width: {min(sector['weight'] * 3.33, 100)}%; border-radius: 8px;"></div>
 </div>
-<p style="margin: 0.25rem 0 0 0; font-size: 0.7rem; color: #64748b; text-align: right;">Relative to max weight (30%)</p>
 </div>"""
             st.markdown(sector_html, unsafe_allow_html=True)
 
@@ -851,24 +818,17 @@ def render_sectors_page():
         treemap = create_sector_treemap(sector_data)
         st.plotly_chart(treemap, use_container_width=True)
 
-        # Professional info card
-        st.markdown("""
-        <div style="
-            background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.05));
-            border: 1px solid rgba(99, 102, 241, 0.2);
-            border-radius: 0.75rem;
-            padding: 1rem;
-            margin-top: 1rem;
-        ">
-            <p style="margin: 0; font-size: 0.9rem; color: #cbd5e1; line-height: 1.6;">
-                <b style="color: #f8fafc;">💡 How to use this heatmap:</b><br>
-                • <b>Size</b> represents market weight (larger = more important to S&P 500)<br>
-                • <b>Color</b> shows YTD performance (green = gains, red = losses)<br>
-                • <b>Hover</b> for detailed sector statistics and metrics<br>
-                • Click sectors to explore deeper (when drill-down enabled)
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
+        # Professional info card - Capital Structure style
+        st.markdown("""<div style="background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 20px; border: 1px solid rgba(99,102,241,0.2); padding: 1.25rem 1rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); position: relative; overflow: hidden; margin-top: 1rem;">
+<div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #6366f1, #8b5cf6); opacity: 0.8;"></div>
+<p style="margin: 0; font-size: 0.9rem; color: #cbd5e1; line-height: 1.6;">
+<b style="color: #f8fafc;">💡 How to use this heatmap:</b><br>
+• <b>Size</b> represents market weight (larger = more important to S&P 500)<br>
+• <b>Color</b> shows YTD performance (green = gains, red = losses)<br>
+• <b>Hover</b> for detailed sector statistics and metrics<br>
+• Click sectors to explore deeper (when drill-down enabled)
+</p>
+</div>""", unsafe_allow_html=True)
 
 
 # ============================================================
