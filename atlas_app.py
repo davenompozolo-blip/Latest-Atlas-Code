@@ -13087,89 +13087,16 @@ def main():
     render_atlas_header()
 
     # ============================================================================
-    # CAPITAL SETTINGS - EQUITY & LEVERAGE CONFIGURATION
+    # CAPITAL SETTINGS - Auto-populated from session state (UI removed for cleaner homepage)
     # ============================================================================
-    with st.expander("⚙️ CAPITAL SETTINGS (Equity & Leverage)", expanded=False):
-        st.markdown("### 💰 Configure Your Capital Structure")
-
-        # AUTO-POPULATE from performance history if available
-        metrics = get_current_portfolio_metrics()
-        if metrics and metrics.get('equity', 0) > 0:
-            auto_equity = metrics['equity']
-            auto_leverage = metrics.get('leverage', 1.0)
-            st.success(f"✅ Auto-populated from performance history: ${auto_equity:,.0f} equity, {auto_leverage:.2f}x leverage")
-        else:
-            auto_equity = st.session_state.get('equity_capital', 100000.0)
-            auto_leverage = st.session_state.get('target_leverage', 1.0)
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            # Use unique key that updates when equity changes
-            equity_key = f"equity_input_{int(auto_equity)}"
-            equity_capital = st.number_input(
-                "Your Equity Capital ($)",
-                min_value=1000.0,
-                max_value=100000000.0,
-                value=float(auto_equity),
-                step=1000.0,
-                format="%.0f",
-                help="Your actual capital invested (not including leverage). Auto-populated from performance history if uploaded.",
-                key=equity_key
-            )
-            st.session_state['equity_capital'] = equity_capital
-
-        with col2:
-            # Use unique key that updates when leverage changes
-            leverage_key = f"leverage_input_{int(auto_leverage * 100)}"
-            target_leverage = st.slider(
-                "Target Leverage",
-                min_value=1.0,
-                max_value=3.0,
-                value=float(min(3.0, max(1.0, auto_leverage))),
-                step=0.1,
-                help="Total exposure / Equity ratio (1.0x = no leverage, 2.0x = 2x leverage, 3.0x = 3x leverage)",
-                key=leverage_key
-            )
-            st.session_state['target_leverage'] = target_leverage
-
-        # Display calculated structure
-        gross_exposure_estimate = equity_capital * target_leverage
-
-        st.markdown("---")
-        st.markdown("### 📊 Your Portfolio Structure")
-
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-            st.metric(
-                "💰 Equity Capital",
-                f"${equity_capital:,.0f}",
-                help="Your actual invested capital"
-            )
-
-        with col2:
-            st.metric(
-                "⚡ Target Leverage",
-                f"{target_leverage:.1f}x",
-                help="Exposure multiplier"
-            )
-
-        with col3:
-            st.metric(
-                "📊 Target Gross Exposure",
-                f"${gross_exposure_estimate:,.0f}",
-                help="Total market exposure with leverage"
-            )
-
-        st.info(f"""
-        **Understanding Your Settings:**
-        - **Equity:** Your actual capital = ${equity_capital:,.0f}
-        - **Leverage:** {target_leverage:.1f}x means ${target_leverage:.2f} of market exposure per $1 of equity
-        - **Gross Exposure:** Total position values = ${gross_exposure_estimate:,.0f}
-        - **Returns:** Calculated on your ${equity_capital:,.0f} equity (leverage amplifies % returns)
-        - **Risk Metrics:** VaR/CVaR applied to your equity, not gross exposure
-        """)
+    # Capital settings now auto-populated from performance history
+    metrics = get_current_portfolio_metrics()
+    if metrics and metrics.get('equity', 0) > 0:
+        st.session_state['equity_capital'] = metrics['equity']
+        st.session_state['target_leverage'] = metrics.get('leverage', 1.0)
+    elif 'equity_capital' not in st.session_state:
+        st.session_state['equity_capital'] = 100000.0
+        st.session_state['target_leverage'] = 1.0
 
     # ============================================================================
     # BROKER CONNECTION SYSTEM - Multi-broker support
@@ -13286,66 +13213,14 @@ def main():
     # Get page key from selected title
     selected_page_key = PAGE_TITLE_TO_KEY.get(page, "portfolio_home")
 
-    st.markdown("---")
-
-    # Time Range and Benchmark Controls (positioned below navigation)
-    col1, col2 = st.columns(2)
-
-    with col1:
-        # Time Range Control
-        date_options = ["1D", "1W", "1M", "3M", "6M", "YTD", "1Y", "3Y", "5Y", "MAX"]
-        selected_range = st.selectbox(
-            "📅 Time Range",
-            date_options,
-            index=6,  # Default to "1Y"
-            key="time_range_selector"
-        )
-
-    with col2:
-        # Benchmark Control
-        benchmark_options = ["SPY", "QQQ", "DIA", "IWM", "VTI", "ACWI"]
-        selected_benchmark = st.selectbox(
-            "🎯 Benchmark",
-            benchmark_options,
-            index=0,  # Default to "SPY"
-            key="benchmark_selector"
-        )
-
-    # ATLAS Refactoring - Phase 1: Cache Performance Stats
-    if REFACTORED_MODULES_AVAILABLE:
-        with st.expander("⚡ Performance Stats", expanded=False):
-            stats = cache_manager.get_stats()
-            col_a, col_b, col_c = st.columns(3)
-
-            with col_a:
-                st.metric("Cache Hit Rate", stats['hit_rate'])
-            with col_b:
-                st.metric("Cache Hits", stats['hits'])
-            with col_c:
-                st.metric("Memory Keys", stats['memory_keys'])
-
-            col_d, col_e = st.columns(2)
-            with col_d:
-                if st.button("🗑️ Clear Cache", use_container_width=True):
-                    cache_manager.clear()
-                    st.success("✅ Cache cleared!")
-                    st.rerun()
-            with col_e:
-                st.caption(f"Disk: {stats['disk_hits']} hits, {stats['disk_writes']} writes")
-
-    st.markdown("---")
-
-    if selected_range == "YTD":
-        start_date = datetime(datetime.now().year, 1, 1)
-        end_date = datetime.now()
-    elif selected_range == "MAX":
-        start_date = datetime(2000, 1, 1)
-        end_date = datetime.now()
-    else:
-        days_map = {"1D": 1, "1W": 7, "1M": 30, "3M": 90, "6M": 180, "1Y": 365, "3Y": 1095, "5Y": 1825}
-        days = days_map.get(selected_range, 365)
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=days)
+    # ============================================================================
+    # DEFAULT DATE RANGE AND BENCHMARK (UI removed for cleaner homepage)
+    # ============================================================================
+    # Default to 1 year lookback and SPY benchmark
+    selected_range = "1Y"
+    selected_benchmark = "SPY"
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=365)
     
     # ========================================================================
     # PHASE 2A: NAVIGATION V2 ROUTING (Experimental - can be toggled)
@@ -13356,28 +13231,6 @@ def main():
         value=False,
         help="Enable new modular navigation system (Phase 2A)"
     )
-
-    # ========================================================================
-    # ATLAS REFACTORING: Cache Performance Stats Display
-    # ========================================================================
-    if REFACTORED_MODULES_AVAILABLE:
-        with st.sidebar.expander("📊 Cache Performance", expanded=False):
-            cache_stats = cache_manager.get_stats()
-
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("Hits", cache_stats['hits'], help="Cache hits")
-            with col2:
-                st.metric("Misses", cache_stats['misses'], help="Cache misses")
-
-            st.metric("Hit Rate", cache_stats['hit_rate'], help="Cache efficiency")
-            st.caption(f"💾 Disk: {cache_stats['disk_hits']} reads, {cache_stats['disk_writes']} writes")
-            st.caption(f"🧠 Memory: {cache_stats['memory_keys']} cached items")
-
-            if st.button("🗑️ Clear Cache", key="clear_cache_btn"):
-                cache_manager.clear()
-                st.success("Cache cleared!")
-                st.rerun()
 
     if USE_NAVIGATION_V2:
         # NEW: Registry-based routing
