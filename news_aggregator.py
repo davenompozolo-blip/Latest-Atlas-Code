@@ -93,13 +93,40 @@ class NewsAggregator:
                         summary = re.sub('<[^<]+?>', '', summary)
                         summary = summary[:200] + '...' if len(summary) > 200 else summary
 
+                    # Extract thumbnail image from various RSS formats
+                    image_url = None
+                    try:
+                        # Try media_content (common in RSS 2.0)
+                        if hasattr(entry, 'media_content') and entry.media_content:
+                            for media in entry.media_content:
+                                if media.get('type', '').startswith('image') or media.get('medium') == 'image':
+                                    image_url = media.get('url')
+                                    break
+                        # Try media_thumbnail
+                        if not image_url and hasattr(entry, 'media_thumbnail') and entry.media_thumbnail:
+                            image_url = entry.media_thumbnail[0].get('url')
+                        # Try enclosure
+                        if not image_url and hasattr(entry, 'enclosures') and entry.enclosures:
+                            for enc in entry.enclosures:
+                                if enc.get('type', '').startswith('image'):
+                                    image_url = enc.get('href') or enc.get('url')
+                                    break
+                        # Try to extract from summary HTML
+                        if not image_url and summary:
+                            img_match = re.search(r'<img[^>]+src=["\']([^"\']+)["\']', entry.get('summary', ''))
+                            if img_match:
+                                image_url = img_match.group(1)
+                    except Exception:
+                        pass
+
                     headline = {
                         'title': entry.title,
                         'source': source_name,
                         'link': entry.link,
                         'published': published,
                         'summary': summary,
-                        'color': source_info['color']
+                        'color': source_info['color'],
+                        'image': image_url
                     }
 
                     all_headlines.append(headline)
@@ -242,14 +269,37 @@ def render_news_feed():
 
     for headline in headlines:
         time_ago = aggregator.get_time_ago(headline['published'])
+        image_url = headline.get('image')
 
-        # News card - HTML with no leading whitespace
-        news_card = f"""<div style="background: linear-gradient(135deg, rgba(30,41,59,0.95), rgba(15,23,42,0.98)); border-left: 4px solid {headline['color']}; padding: 1.25rem; border-radius: 0.75rem; margin-bottom: 1rem; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">
+        # News card with image - Capital Structure style with top gradient bar
+        if image_url:
+            # Card with thumbnail image on left
+            news_card = f"""<div style="background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 20px; border: 1px solid rgba(99,102,241,0.2); padding: 1.25rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); position: relative; overflow: hidden; margin-bottom: 1rem;">
+<div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, {headline['color']}, #6366f1); opacity: 0.8;"></div>
+<div style="display: flex; gap: 1rem;">
+<div style="flex-shrink: 0; width: 120px; height: 80px; border-radius: 12px; overflow: hidden; border: 1px solid rgba(99,102,241,0.2);">
+<img src="{image_url}" alt="{headline['source']}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.parentElement.style.display='none'">
+</div>
+<div style="flex-grow: 1;">
 <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
-<span style="background: {headline['color']}; color: #0f172a; padding: 0.25rem 0.75rem; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;">{headline['source']}</span>
+<span style="background: {headline['color']}; color: #0f172a; padding: 0.25rem 0.75rem; border-radius: 8px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;">{headline['source']}</span>
 <span style="color: #94a3b8; font-size: 0.8rem;">{time_ago}</span>
 </div>
-<h3 style="margin: 0.75rem 0; font-size: 1.1rem; color: #f8fafc; line-height: 1.5;">{headline['title']}</h3>
+<h3 style="margin: 0.5rem 0; font-size: 1.1rem; color: #f8fafc; line-height: 1.4;">{headline['title']}</h3>
+<p style="margin: 0.25rem 0 0.75rem 0; color: #cbd5e1; font-size: 0.85rem; line-height: 1.5;">{headline['summary']}</p>
+<a href="{headline['link']}" target="_blank" style="color: {headline['color']}; text-decoration: none; font-size: 0.875rem; font-weight: 500;">Read More →</a>
+</div>
+</div>
+</div>"""
+        else:
+            # Card without image
+            news_card = f"""<div style="background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 20px; border: 1px solid rgba(99,102,241,0.2); padding: 1.25rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); position: relative; overflow: hidden; margin-bottom: 1rem;">
+<div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, {headline['color']}, #6366f1); opacity: 0.8;"></div>
+<div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
+<span style="background: {headline['color']}; color: #0f172a; padding: 0.25rem 0.75rem; border-radius: 8px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;">{headline['source']}</span>
+<span style="color: #94a3b8; font-size: 0.8rem;">{time_ago}</span>
+</div>
+<h3 style="margin: 0.75rem 0; font-size: 1.1rem; color: #f8fafc; line-height: 1.4;">{headline['title']}</h3>
 <p style="margin: 0.5rem 0 1rem 0; color: #cbd5e1; font-size: 0.9rem; line-height: 1.6;">{headline['summary']}</p>
 <a href="{headline['link']}" target="_blank" style="color: {headline['color']}; text-decoration: none; font-size: 0.875rem; font-weight: 500;">Read More →</a>
 </div>"""
