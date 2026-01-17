@@ -213,25 +213,58 @@ class AlpacaAdapter:
             end_date = datetime.now()
             start_date = end_date - timedelta(days=days)
 
-            # Get portfolio history
-            history = self.trading_client.get_portfolio_history(
-                date_start=start_date,
-                date_end=end_date,
-                timeframe=timeframe
-            )
+            # Get portfolio history with retry logic
+            max_retries = 3
+            history = None
 
-            # Convert to DataFrame
+            for attempt in range(max_retries):
+                try:
+                    history = self.trading_client.get_portfolio_history(
+                        date_start=start_date,
+                        date_end=end_date,
+                        timeframe=timeframe
+                    )
+                    break
+                except Exception as retry_err:
+                    if attempt == max_retries - 1:
+                        raise retry_err
+                    import time
+                    time.sleep(1)  # Wait 1 second before retry
+
+            # Handle empty or None history
+            if history is None:
+                st.warning("📊 No portfolio history available yet. Start trading to build history.")
+                return pd.DataFrame()
+
+            # Check if we have valid data
+            if not hasattr(history, 'timestamp') or history.timestamp is None or len(history.timestamp) == 0:
+                st.info("📊 Portfolio history is empty. This is normal for new accounts.")
+                return pd.DataFrame()
+
+            # Convert to DataFrame with safe access
             df = pd.DataFrame({
                 'timestamp': pd.to_datetime(history.timestamp, unit='s'),
-                'equity': history.equity,
-                'profit_loss': history.profit_loss,
-                'profit_loss_pct': history.profit_loss_pct,
+                'equity': history.equity if history.equity is not None else [],
+                'profit_loss': history.profit_loss if history.profit_loss is not None else [],
+                'profit_loss_pct': history.profit_loss_pct if history.profit_loss_pct is not None else [],
             })
+
+            # Filter out any rows with NaN values
+            df = df.dropna()
+
+            if df.empty:
+                st.info("📊 Portfolio history data is incomplete. This may resolve after market activity.")
 
             return df
 
         except Exception as e:
-            st.error(f"Error fetching portfolio history: {str(e)}")
+            error_msg = str(e).lower()
+            if 'rate limit' in error_msg:
+                st.warning("⏳ API rate limit reached. Please wait a moment and try again.")
+            elif 'unauthorized' in error_msg or 'authentication' in error_msg:
+                st.error("🔑 API authentication failed. Please check your credentials.")
+            else:
+                st.warning(f"📊 Unable to fetch portfolio history: {str(e)[:100]}")
             return pd.DataFrame()
 
     def get_historical_bars(self,
@@ -340,17 +373,27 @@ class AlpacaAdapter:
             history = self.get_portfolio_history(days=days, timeframe='1Day')
 
             if history.empty:
-                return pd.Series()
+                return pd.Series(dtype=float)
 
-            # Calculate returns
-            returns = history['equity'].pct_change().dropna()
-            returns.index = history['timestamp'][1:]
+            # Ensure equity column exists and has valid data
+            if 'equity' not in history.columns or len(history) < 2:
+                return pd.Series(dtype=float)
+
+            # Calculate returns, handling edge cases
+            equity = history['equity'].astype(float)
+            returns = equity.pct_change().dropna()
+
+            # Filter out infinite values (from zero divisions)
+            returns = returns.replace([np.inf, -np.inf], np.nan).dropna()
+
+            if len(returns) > 0:
+                returns.index = history['timestamp'].iloc[1:len(returns)+1]
 
             return returns
 
         except Exception as e:
-            st.error(f"Error calculating returns: {str(e)}")
-            return pd.Series()
+            # Silent fail for returns - don't show error to user
+            return pd.Series(dtype=float)
 
     def get_risk_metrics(self, days: int = 252) -> Dict:
         """
@@ -368,38 +411,57 @@ class AlpacaAdapter:
         try:
             returns = self.calculate_returns(days=days)
 
-            if returns.empty or len(returns) < 2:
-                return {}
+            # Return default metrics if insufficient data
+            if returns.empty or len(returns) < 5:
+                return {
+                    'sharpe_ratio': 0.0,
+                    'sortino_ratio': 0.0,
+                    'max_drawdown': 0.0,
+                    'volatility': 0.0,
+                    'var_95': 0.0,
+                    'calmar_ratio': 0.0,
+                    'mean_return': 0.0,
+                    'std_return': 0.0,
+                    'total_return': 0.0,
+                    'data_points': len(returns),
+                    'insufficient_data': True,
+                }
 
             # Annualization factor
             periods_per_year = 252
 
-            # Basic statistics
-            mean_return = returns.mean() * periods_per_year
-            std_return = returns.std() * np.sqrt(periods_per_year)
+            # Basic statistics with safe defaults
+            mean_return = float(returns.mean() * periods_per_year) if not np.isnan(returns.mean()) else 0.0
+            std_return = float(returns.std() * np.sqrt(periods_per_year)) if not np.isnan(returns.std()) else 0.0
 
             # Sharpe Ratio (assuming 0% risk-free rate)
-            sharpe = mean_return / std_return if std_return > 0 else 0
+            sharpe = mean_return / std_return if std_return > 0 else 0.0
 
             # Sortino Ratio (downside deviation)
             downside_returns = returns[returns < 0]
-            downside_std = downside_returns.std() * np.sqrt(periods_per_year)
-            sortino = mean_return / downside_std if downside_std > 0 else 0
+            if len(downside_returns) > 0:
+                downside_std = float(downside_returns.std() * np.sqrt(periods_per_year))
+                sortino = mean_return / downside_std if downside_std > 0 else 0.0
+            else:
+                sortino = 0.0
 
             # Maximum Drawdown
             cumulative = (1 + returns).cumprod()
             running_max = cumulative.expanding().max()
             drawdown = (cumulative - running_max) / running_max
-            max_drawdown = drawdown.min()
+            max_drawdown = float(drawdown.min()) if len(drawdown) > 0 else 0.0
 
             # Volatility
             volatility = std_return
 
             # Value at Risk (95% confidence)
-            var_95 = returns.quantile(0.05)
+            var_95 = float(returns.quantile(0.05)) if len(returns) > 0 else 0.0
 
             # Calmar Ratio
-            calmar = (mean_return / abs(max_drawdown)) if max_drawdown != 0 else 0
+            calmar = (mean_return / abs(max_drawdown)) if max_drawdown != 0 else 0.0
+
+            # Total return
+            total_return = float(cumulative.iloc[-1] - 1) if len(cumulative) > 0 else 0.0
 
             return {
                 'sharpe_ratio': sharpe,
@@ -410,12 +472,27 @@ class AlpacaAdapter:
                 'calmar_ratio': calmar,
                 'mean_return': mean_return,
                 'std_return': std_return,
-                'total_return': (cumulative.iloc[-1] - 1) if len(cumulative) > 0 else 0,
+                'total_return': total_return,
+                'data_points': len(returns),
+                'insufficient_data': False,
             }
 
         except Exception as e:
-            st.error(f"Error calculating risk metrics: {str(e)}")
-            return {}
+            # Return zeroed metrics instead of error
+            return {
+                'sharpe_ratio': 0.0,
+                'sortino_ratio': 0.0,
+                'max_drawdown': 0.0,
+                'volatility': 0.0,
+                'var_95': 0.0,
+                'calmar_ratio': 0.0,
+                'mean_return': 0.0,
+                'std_return': 0.0,
+                'total_return': 0.0,
+                'data_points': 0,
+                'insufficient_data': True,
+                'error': str(e)[:100],
+            }
 
     def search_assets(self, query: str, asset_class: str = "us_equity") -> pd.DataFrame:
         """
