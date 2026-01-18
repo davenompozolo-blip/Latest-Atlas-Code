@@ -132,22 +132,22 @@ def create_sector_treemap(sector_data: List[Dict], metric: str = 'ytd_return') -
         axis=1
     )
 
-    # Professional color scale (Bloomberg/FinViz inspired)
-    # Diverging red-white-green with more granular transitions
+    # Professional color scale (Bloomberg/FinViz inspired) - MUTED for dark theme
+    # Diverging red-green with softer tones that work better on dark backgrounds
     fig = px.treemap(
         df,
         path=['display_label'],
         values='weight',
         color=metric if metric in df.columns else 'ytd_return',
         color_continuous_scale=[
-            [0.0, '#b91c1c'],    # Deep red (strong loss)
-            [0.2, '#dc2626'],    # Red (moderate loss)
-            [0.35, '#f87171'],   # Light red (small loss)
-            [0.45, '#fbbf24'],   # Yellow (neutral)
-            [0.55, '#bef264'],   # Yellow-green (small gain)
-            [0.65, '#4ade80'],   # Light green (moderate gain)
-            [0.8, '#22c55e'],    # Green (good gain)
-            [1.0, '#15803d']     # Deep green (strong gain)
+            [0.0, '#991b1b'],    # Deep muted red (strong loss)
+            [0.2, '#b91c1c'],    # Muted red (moderate loss)
+            [0.35, '#dc2626'],   # Red (small loss)
+            [0.45, '#a16207'],   # Amber (neutral-negative)
+            [0.55, '#65a30d'],   # Olive green (neutral-positive)
+            [0.65, '#16a34a'],   # Muted green (moderate gain)
+            [0.8, '#15803d'],    # Forest green (good gain)
+            [1.0, '#166534']     # Deep muted green (strong gain)
         ],
         color_continuous_midpoint=0,
         range_color=[-5, 5],
