@@ -425,7 +425,7 @@ def render_overview_page():
                             ))
 
                             fig.update_layout(
-                                height=140,  # Increased from 100 for better visibility with borders
+                                height=160,  # Increased further for better visibility
                                 margin=dict(l=0, r=0, t=5, b=25),  # Added top margin, increased bottom
                                 xaxis=dict(
                                     showgrid=False,
