@@ -1404,51 +1404,119 @@ st.markdown("""
 
 /* ============================================
    DROPDOWN / SELECTBOX TEXT VISIBILITY FIX
+   COMPREHENSIVE - Targets ALL selectbox elements
    ============================================ */
 
-/* Main selectbox container text */
-.stSelectbox > div > div {
+/* Main selectbox wrapper */
+.stSelectbox {
     color: #FFFFFF !important;
 }
 
-/* Selected value display */
-.stSelectbox div[data-baseweb="select"] > div {
+/* Fix the select control and its children */
+.stSelectbox [data-baseweb="select"] {
     background-color: #1a1d29 !important;
-    color: #FFFFFF !important;
     border-color: rgba(99, 102, 241, 0.3) !important;
 }
 
-/* Dropdown popover background */
-[data-baseweb="popover"] {
-    background-color: #1a1d29 !important;
-    border: 1px solid rgba(99, 102, 241, 0.3) !important;
-}
-
-/* Dropdown list items */
-[data-baseweb="popover"] li {
-    background-color: #1a1d29 !important;
+/* The actual selected value text - CRITICAL */
+.stSelectbox [data-baseweb="select"] span {
     color: #FFFFFF !important;
 }
 
-/* Dropdown list items hover */
-[data-baseweb="popover"] li:hover {
-    background-color: #2a2d39 !important;
+/* Input element inside select */
+.stSelectbox [data-baseweb="select"] input {
+    color: #FFFFFF !important;
+    -webkit-text-fill-color: #FFFFFF !important;
+}
+
+/* The value container */
+.stSelectbox [data-baseweb="select"] > div {
+    color: #FFFFFF !important;
+    background-color: #1a1d29 !important;
+}
+
+/* Single value display */
+.stSelectbox [data-baseweb="select"] [data-testid="stSelectbox"] {
+    color: #FFFFFF !important;
+}
+
+/* Fix placeholder and selected text */
+.stSelectbox div[data-baseweb="select"] div[aria-selected="true"],
+.stSelectbox div[data-baseweb="select"] div[class*="singleValue"],
+.stSelectbox div[data-baseweb="select"] div[class*="placeholder"] {
+    color: #FFFFFF !important;
+}
+
+/* Dropdown arrow icon */
+.stSelectbox svg {
+    fill: #FFFFFF !important;
 }
 
 /* Selectbox label */
 .stSelectbox label {
     color: #FFFFFF !important;
+    font-weight: 500 !important;
 }
 
-/* Multiselect styling */
-.stMultiSelect div[data-baseweb="select"] > div {
+/* Dropdown popover/menu background */
+[data-baseweb="popover"],
+[data-baseweb="menu"],
+[data-baseweb="select"] [data-baseweb="popover"] {
+    background-color: #1a1d29 !important;
+    border: 1px solid rgba(99, 102, 241, 0.3) !important;
+}
+
+/* Dropdown menu list */
+[data-baseweb="menu"] ul,
+[data-baseweb="popover"] ul {
+    background-color: #1a1d29 !important;
+}
+
+/* All dropdown options */
+[data-baseweb="menu"] li,
+[data-baseweb="popover"] li,
+[role="option"] {
     background-color: #1a1d29 !important;
     color: #FFFFFF !important;
 }
 
-.stMultiSelect span[data-baseweb="tag"] {
+/* Dropdown option hover */
+[data-baseweb="menu"] li:hover,
+[data-baseweb="popover"] li:hover,
+[role="option"]:hover {
+    background-color: rgba(99, 102, 241, 0.2) !important;
+    color: #00BCD4 !important;
+}
+
+/* Selected dropdown option */
+[role="option"][aria-selected="true"] {
+    background-color: rgba(99, 102, 241, 0.3) !important;
+    color: #00BCD4 !important;
+}
+
+/* Multiselect styling */
+.stMultiSelect [data-baseweb="select"] {
+    background-color: #1a1d29 !important;
+}
+
+.stMultiSelect [data-baseweb="select"] > div {
+    background-color: #1a1d29 !important;
+    color: #FFFFFF !important;
+}
+
+.stMultiSelect [data-baseweb="tag"] {
     background-color: rgba(99, 102, 241, 0.3) !important;
     color: #FFFFFF !important;
+}
+
+.stMultiSelect [data-baseweb="tag"] span {
+    color: #FFFFFF !important;
+}
+
+/* Ensure nothing clips text */
+.stSelectbox *,
+.stMultiSelect * {
+    overflow: visible !important;
 }
 </style>
 """, unsafe_allow_html=True)
