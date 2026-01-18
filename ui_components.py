@@ -20,10 +20,11 @@ KEY DESIGN PRINCIPLES:
 1. ALWAYS use create_metric_card() for ALL metric displays
 2. ALWAYS use st.markdown(card, unsafe_allow_html=True) to render
 3. NEVER use st.write() for HTML content - it will show raw HTML!
-4. ALL cards have:
-   - Colored left border (4px solid)
+4. ALL cards have (Capital Structure style):
+   - TOP gradient bar (3px, horizontal gradient)
    - Icon + title in top-left
-   - Gradient background (glassmorphic)
+   - Glassmorphic background (backdrop-filter: blur)
+   - 20-24px border radius
    - Hover animations
    - Box shadow effects
 

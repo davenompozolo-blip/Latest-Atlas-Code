@@ -1513,6 +1513,44 @@ st.markdown("""
     color: #FFFFFF !important;
 }
 
+/* Multiselect X button (remove tag) - VISIBLE and STYLED */
+.stMultiSelect [data-baseweb="tag"] svg,
+.stMultiSelect [data-baseweb="tag"] [role="button"] {
+    color: #FFFFFF !important;
+    fill: #FFFFFF !important;
+    opacity: 0.8 !important;
+    cursor: pointer !important;
+    transition: all 0.2s ease !important;
+}
+
+.stMultiSelect [data-baseweb="tag"] svg:hover,
+.stMultiSelect [data-baseweb="tag"] [role="button"]:hover {
+    opacity: 1 !important;
+    color: #ef4444 !important;
+    fill: #ef4444 !important;
+}
+
+/* Better padding for dropdown text */
+.stSelectbox [data-baseweb="select"] > div {
+    padding: 8px 12px !important;
+    min-height: 42px !important;
+}
+
+/* Dropdown menu option padding */
+[data-baseweb="menu"] li,
+[role="option"] {
+    padding: 10px 16px !important;
+    line-height: 1.4 !important;
+}
+
+/* Better multiselect tag spacing */
+.stMultiSelect [data-baseweb="tag"] {
+    padding: 4px 8px !important;
+    margin: 2px 4px 2px 0 !important;
+    gap: 6px !important;
+    border-radius: 6px !important;
+}
+
 /* Ensure nothing clips text */
 .stSelectbox *,
 .stMultiSelect * {
@@ -1771,6 +1809,16 @@ st.markdown("""
         height: 70%;
         background: linear-gradient(180deg, #00d4ff, #00ff88);
         border-radius: 2px;
+    }
+
+    /* EXCEPTION: Remove left border pseudo-element from h2 inside custom HTML cards */
+    /* This prevents the global h2::before from appearing on regime cards, metric cards, etc. */
+    div[style*="backdrop-filter"] h2::before,
+    div[style*="border-radius: 24px"] h2::before,
+    div[style*="border-radius: 20px"] h2::before,
+    .stMarkdown div[style*="background:"] h2::before {
+        display: none !important;
+        content: none !important;
     }
 
     h3 {
@@ -13247,39 +13295,50 @@ def main():
             with open(new_logo_path, 'rb') as f:
                 logo_base64 = base64.b64encode(f.read()).decode()
             logo_mime = "image/png"
-            logo_width = 250
+            logo_width = 70  # Compact FactSet-style size
         elif old_logo_path.exists():
             # Fall back to old shield logo
             with open(old_logo_path, 'rb') as f:
                 logo_base64 = base64.b64encode(f.read()).decode()
             logo_mime = "image/svg+xml"
-            logo_width = 200
+            logo_width = 60
         else:
             logo_base64 = None
 
         if logo_base64:
-            # Header with seamless logo integration - NO INDENTATION to prevent code block
-            header_html = f'''<div class="atlas-header-container">
-<div class="atlas-shield-logo loaded">
-<img src="data:{logo_mime};base64,{logo_base64}" width="{logo_width}" alt="ATLAS" style="filter: drop-shadow(0 0 25px rgba(0, 188, 212, 0.6)) drop-shadow(0 0 50px rgba(99, 102, 241, 0.4));">
+            # FactSet-style compact header with logo on left, text on right
+            # Horizontal layout for professional look
+            header_html = f'''<div style="display: flex; align-items: center; justify-content: flex-start; gap: 1.25rem; padding: 1rem 0 1.5rem 0; border-bottom: 1px solid rgba(99, 102, 241, 0.2); margin-bottom: 1.5rem;">
+<div style="flex-shrink: 0;">
+<img src="data:{logo_mime};base64,{logo_base64}" width="{logo_width}" alt="ATLAS" style="filter: drop-shadow(0 0 15px rgba(0, 188, 212, 0.5)) drop-shadow(0 0 30px rgba(99, 102, 241, 0.3)); opacity: 0.95;">
 </div>
+<div style="flex-grow: 1;">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&display=swap');
 </style>
-<h1 style="font-family: 'Orbitron', monospace; font-size: 3.5rem; font-weight: 900; margin: 30px 0 10px 0; letter-spacing: 0.15em; color: transparent; -webkit-text-stroke: 2px #00b8e6; text-stroke: 2px #00b8e6; text-shadow: 0 0 10px #00b8e6, 0 0 20px #00b8e6, 0 0 30px #00b8e6, 0 0 40px #6366f1, 0 0 70px #8b5cf6, 0 0 80px #8b5cf6; filter: brightness(1.2);">ATLAS TERMINAL</h1>
-<p style="font-family: var(--font-display, 'Inter', sans-serif); font-size: 0.9rem; font-weight: 300; color: var(--silver-medium, #c0c8d0); margin: 10px 0 20px 0; letter-spacing: 0.2em; text-transform: uppercase;">INSTITUTIONAL EDITION v10.0</p>
-<p style="font-family: var(--font-body, 'Inter', sans-serif); font-size: 1.1rem; font-weight: 400; color: var(--silver-bright, #ffffff); margin: 0 0 40px 0;">Institutional Intelligence. Personal Scale.</p>
+<h1 style="font-family: 'Orbitron', monospace; font-size: 1.75rem; font-weight: 800; margin: 0; letter-spacing: 0.1em; color: transparent; -webkit-text-stroke: 1.5px #00b8e6; text-stroke: 1.5px #00b8e6; text-shadow: 0 0 8px #00b8e6, 0 0 15px #00b8e6, 0 0 25px #6366f1; filter: brightness(1.1); line-height: 1.2; padding-left: 0 !important;">ATLAS TERMINAL</h1>
+<p style="margin: 0.25rem 0 0 0; font-size: 0.7rem; font-weight: 500; color: #94a3b8; letter-spacing: 0.15em; text-transform: uppercase;">INSTITUTIONAL EDITION v10.0</p>
+</div>
+<div style="text-align: right; flex-shrink: 0;">
+<p style="margin: 0; font-size: 0.75rem; color: #64748b;">Institutional Intelligence.</p>
+<p style="margin: 0; font-size: 0.75rem; color: #64748b;">Personal Scale.</p>
+</div>
 </div>'''
             st.markdown(header_html, unsafe_allow_html=True)
         else:
-            # Fallback if logo file missing
-            fallback_html = '''<div class="atlas-header-container">
+            # Fallback if logo file missing - compact style
+            fallback_html = '''<div style="display: flex; align-items: center; justify-content: flex-start; gap: 1.25rem; padding: 1rem 0 1.5rem 0; border-bottom: 1px solid rgba(99, 102, 241, 0.2); margin-bottom: 1.5rem;">
+<div style="flex-grow: 1;">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&display=swap');
 </style>
-<h1 style="font-family: 'Orbitron', monospace; font-size: 3.5rem; font-weight: 900; letter-spacing: 0.15em; color: transparent; -webkit-text-stroke: 2px #00b8e6; text-stroke: 2px #00b8e6; text-shadow: 0 0 10px #00b8e6, 0 0 20px #00b8e6, 0 0 30px #00b8e6, 0 0 40px #6366f1, 0 0 70px #8b5cf6, 0 0 80px #8b5cf6; filter: brightness(1.2);">ATLAS TERMINAL</h1>
-<p style="color: var(--silver-medium, #c0c8d0); letter-spacing: 0.2em; text-transform: uppercase;">INSTITUTIONAL EDITION v10.0</p>
-<p style="color: var(--silver-bright, #ffffff);">Institutional Intelligence. Personal Scale.</p>
+<h1 style="font-family: 'Orbitron', monospace; font-size: 1.75rem; font-weight: 800; margin: 0; letter-spacing: 0.1em; color: transparent; -webkit-text-stroke: 1.5px #00b8e6; text-stroke: 1.5px #00b8e6; text-shadow: 0 0 8px #00b8e6, 0 0 15px #00b8e6, 0 0 25px #6366f1; filter: brightness(1.1); line-height: 1.2; padding-left: 0 !important;">ATLAS TERMINAL</h1>
+<p style="margin: 0.25rem 0 0 0; font-size: 0.7rem; font-weight: 500; color: #94a3b8; letter-spacing: 0.15em; text-transform: uppercase;">INSTITUTIONAL EDITION v10.0</p>
+</div>
+<div style="text-align: right; flex-shrink: 0;">
+<p style="margin: 0; font-size: 0.75rem; color: #64748b;">Institutional Intelligence.</p>
+<p style="margin: 0; font-size: 0.75rem; color: #64748b;">Personal Scale.</p>
+</div>
 </div>'''
             st.markdown(fallback_html, unsafe_allow_html=True)
 

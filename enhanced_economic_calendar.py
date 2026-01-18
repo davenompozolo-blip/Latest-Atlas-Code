@@ -202,21 +202,40 @@ def render_enhanced_economic_calendar():
         st.session_state['calendar_end'] = datetime.combine(end_date, datetime.max.time())
 
     # ============================================================
-    # IMPORTANCE FILTER
+    # FILTERS ROW - Geography + Importance
     # ============================================================
 
-    st.markdown("#### 🎯 Event Importance")
+    filter_col1, filter_col2 = st.columns(2)
 
-    col1, col2, col3 = st.columns(3)
+    with filter_col1:
+        st.markdown("#### 🌍 Geography")
 
-    with col1:
-        show_high = st.checkbox("🔴 High Impact", value=True, help="Fed decisions, Jobs, GDP, CPI")
+        # Geography filter with major economies
+        geography_options = [
+            'United States', 'Euro Zone', 'United Kingdom', 'Japan',
+            'China', 'Germany', 'France', 'Canada', 'Australia'
+        ]
 
-    with col2:
-        show_medium = st.checkbox("🟡 Medium Impact", value=True, help="PMI, Retail Sales, Industrial Production")
+        selected_geographies = st.multiselect(
+            "Select Regions",
+            options=geography_options,
+            default=['United States'],
+            help="Filter events by country/region"
+        )
 
-    with col3:
-        show_low = st.checkbox("🟢 Low Impact", value=False, help="Housing, Consumer Confidence")
+    with filter_col2:
+        st.markdown("#### 🎯 Event Importance")
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            show_high = st.checkbox("🔴 High Impact", value=True, help="Fed decisions, Jobs, GDP, CPI")
+
+        with col2:
+            show_medium = st.checkbox("🟡 Medium Impact", value=True, help="PMI, Retail Sales, Industrial Production")
+
+        with col3:
+            show_low = st.checkbox("🟢 Low Impact", value=False, help="Housing, Consumer Confidence")
 
     # Build importance filter
     importances = []
@@ -235,11 +254,11 @@ def render_enhanced_economic_calendar():
     start = st.session_state.get('calendar_start', datetime.now())
     end = st.session_state.get('calendar_end', datetime.now() + timedelta(days=7))
 
-    # Fetch events
+    # Fetch events with selected geographies
     events = calendar.get_events(
         start_date=start,
         end_date=end,
-        countries=['United States'],  # Can add more countries later
+        countries=selected_geographies if selected_geographies else ['United States'],
         importances=importances
     )
 
