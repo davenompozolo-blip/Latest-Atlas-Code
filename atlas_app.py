@@ -13170,16 +13170,30 @@ def main():
                 with open(css_path, 'r', encoding='utf-8') as f:
                     st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
 
-        # Load shield logo
-        logo_path = Path('ui/branding/shield_logo.svg')
-        if logo_path.exists():
-            with open(logo_path, 'rb') as f:
-                logo_base64 = base64.b64encode(f.read()).decode()
+        # Load NEW Avengers-style logo (PNG) or fall back to shield logo (SVG)
+        new_logo_path = Path('ui/branding/atlas_logo_new.png')
+        old_logo_path = Path('ui/branding/shield_logo.svg')
 
+        if new_logo_path.exists():
+            # Use new Avengers-style logo
+            with open(new_logo_path, 'rb') as f:
+                logo_base64 = base64.b64encode(f.read()).decode()
+            logo_mime = "image/png"
+            logo_width = 250
+        elif old_logo_path.exists():
+            # Fall back to old shield logo
+            with open(old_logo_path, 'rb') as f:
+                logo_base64 = base64.b64encode(f.read()).decode()
+            logo_mime = "image/svg+xml"
+            logo_width = 200
+        else:
+            logo_base64 = None
+
+        if logo_base64:
             # Header with seamless logo integration - NO INDENTATION to prevent code block
             header_html = f'''<div class="atlas-header-container">
 <div class="atlas-shield-logo loaded">
-<img src="data:image/svg+xml;base64,{logo_base64}" width="200" alt="ATLAS Shield">
+<img src="data:{logo_mime};base64,{logo_base64}" width="{logo_width}" alt="ATLAS" style="filter: drop-shadow(0 0 25px rgba(0, 188, 212, 0.6)) drop-shadow(0 0 50px rgba(99, 102, 241, 0.4));">
 </div>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&display=swap');
