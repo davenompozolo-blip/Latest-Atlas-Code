@@ -88,74 +88,71 @@ def display_regime_banner():
     col1, col2 = st.columns([2, 3])
 
     with col1:
-        # INLINE REGIME CARD - Capital Structure style with top gradient bar
-        regime_gradient = f"linear-gradient(90deg, {regime_color}, #6366f1)"
-        regime_html = f"""<div style="background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(99,102,241,0.2); padding: 2rem 1.75rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); position: relative; overflow: hidden;">
-<div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: {regime_gradient}; opacity: 0.8;"></div>
+        # FIGMA REDESIGN: Subtle gray border with accent dot
+        regime_html = f"""<div style="background: rgba(15, 21, 32, 0.6); backdrop-filter: blur(20px); border-radius: 12px; border: 1px solid rgb(31, 41, 55); padding: 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.3); position: relative; overflow: hidden;">
+<div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
+<div style="width: 10px; height: 10px; border-radius: 50%; background: {regime_color}; opacity: 0.8; box-shadow: 0 0 10px {regime_color};"></div>
+<p style="margin: 0; font-size: 0.75rem; font-weight: 500; color: rgb(156, 163, 175); font-family: 'JetBrains Mono', monospace; text-transform: uppercase; letter-spacing: 0.1em;">Market Regime</p>
+</div>
 <div style="display: flex; align-items: center; margin-bottom: 1rem;">
-<span style="font-size: 2.5rem; margin-right: 1rem;">{regime_emoji}</span>
+<span style="font-size: 2rem; margin-right: 0.75rem;">{regime_emoji}</span>
 <div>
-<h2 style="margin: 0; font-size: 2rem; font-weight: 700; color: {regime_color}; text-shadow: 0 0 20px {regime_color}40;">{regime}</h2>
-<p style="margin: 0.25rem 0 0 0; font-size: 0.875rem; color: #94a3b8;">Current Market Regime | Score: {score:+d}/10</p>
+<h2 style="margin: 0; font-size: 1.5rem; font-weight: 600; color: {regime_color}; font-family: 'JetBrains Mono', monospace;">{regime}</h2>
+<p style="margin: 0.25rem 0 0 0; font-size: 0.75rem; color: rgb(107, 114, 128); font-family: 'JetBrains Mono', monospace;">Score: {score:+d}/10</p>
 </div>
 </div>
-<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-top: 1rem;">
+<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid rgb(31, 41, 55);">
 <div>
-<p style="margin: 0; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em;">VIX</p>
-<p style="margin: 0.25rem 0 0 0; font-size: 1.25rem; font-weight: 600; color: white;">{vix_val:.2f}</p>
+<p style="margin: 0; font-size: 0.7rem; color: rgb(107, 114, 128); text-transform: uppercase; letter-spacing: 0.05em; font-family: 'JetBrains Mono', monospace;">VIX</p>
+<p style="margin: 0.25rem 0 0 0; font-size: 1.25rem; font-weight: 600; color: rgb(229, 231, 235); font-family: 'JetBrains Mono', monospace;">{vix_val:.2f}</p>
 </div>
 <div>
-<p style="margin: 0; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em;">Yield Curve</p>
-<p style="margin: 0.25rem 0 0 0; font-size: 1.25rem; font-weight: 600; color: white;">{curve_val:+.2f}%</p>
+<p style="margin: 0; font-size: 0.7rem; color: rgb(107, 114, 128); text-transform: uppercase; letter-spacing: 0.05em; font-family: 'JetBrains Mono', monospace;">Yield Curve</p>
+<p style="margin: 0.25rem 0 0 0; font-size: 1.25rem; font-weight: 600; color: rgb(229, 231, 235); font-family: 'JetBrains Mono', monospace;">{curve_val:+.2f}%</p>
 </div>
 <div>
-<p style="margin: 0; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em;">Breadth</p>
-<p style="margin: 0.25rem 0 0 0; font-size: 1.25rem; font-weight: 600; color: white;">{breadth_val:+.2f}%</p>
+<p style="margin: 0; font-size: 0.7rem; color: rgb(107, 114, 128); text-transform: uppercase; letter-spacing: 0.05em; font-family: 'JetBrains Mono', monospace;">Breadth</p>
+<p style="margin: 0.25rem 0 0 0; font-size: 1.25rem; font-weight: 600; color: rgb(229, 231, 235); font-family: 'JetBrains Mono', monospace;">{breadth_val:+.2f}%</p>
 </div>
 </div>
 </div>"""
         st.markdown(regime_html, unsafe_allow_html=True)
 
     with col2:
-        # Individual metric cards - INLINE (no function call)
+        # FIGMA REDESIGN: Individual metric cards with subtle gray borders
         metric_col1, metric_col2, metric_col3 = st.columns(3)
 
         with metric_col1:
-            # VIX card - Capital Structure style
+            # VIX card - Figma style
             vix_change_color = "#10b981" if vix_change >= 0 else "#ef4444"
             vix_change_prefix = "↑" if vix_change >= 0 else "↓"
-            st.markdown(f"""<div style="background: linear-gradient(135deg, rgba(59,130,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(59,130,246,0.2); padding: 1.5rem 1.25rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); position: relative; overflow: hidden; height: 100%;">
-<div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #3b82f6, #06b6d4); opacity: 0.8;"></div>
+            st.markdown(f"""<div style="background: rgba(15, 21, 32, 0.6); backdrop-filter: blur(20px); border-radius: 12px; border: 1px solid rgb(31, 41, 55); padding: 1.25rem; box-shadow: 0 4px 24px rgba(0,0,0,0.3); height: 100%;">
 <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
-<span style="font-size: 1.1rem;">📊</span>
-<p style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; margin: 0; font-weight: 600;">VIX</p>
+<span style="font-size: 1rem;">📊</span>
+<p style="font-size: 0.7rem; color: rgb(107, 114, 128); text-transform: uppercase; letter-spacing: 0.1em; margin: 0; font-weight: 500; font-family: 'JetBrains Mono', monospace;">VIX</p>
 </div>
-<h3 style="font-size: 2.25rem; font-weight: 800; margin: 0.5rem 0; line-height: 1; background: linear-gradient(135deg, #3b82f6, #06b6d4); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">{vix_val:.2f}</h3>
-<div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(59,130,246,0.12); border-radius: 12px; border: 1px solid rgba(59,130,246,0.25);">
-<p style="font-size: 0.8rem; color: {vix_change_color}; margin: 0; font-weight: 600;">{vix_change_prefix} {vix_change:+.2f}</p>
-</div>
+<h3 style="font-size: 1.75rem; font-weight: 600; margin: 0.5rem 0; line-height: 1; color: rgb(229, 231, 235); font-family: 'JetBrains Mono', monospace;">{vix_val:.2f}</h3>
+<p style="font-size: 0.8rem; color: {vix_change_color}; margin: 0.5rem 0 0 0; font-weight: 600; font-family: 'JetBrains Mono', monospace;">{vix_change_prefix} {vix_change:+.2f}</p>
 </div>""", unsafe_allow_html=True)
 
         with metric_col2:
-            # Yield Curve card - Capital Structure style
-            st.markdown(f"""<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.5rem 1.25rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); position: relative; overflow: hidden; height: 100%;">
-<div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #3b82f6); opacity: 0.8;"></div>
+            # Yield Curve card - Figma style
+            st.markdown(f"""<div style="background: rgba(15, 21, 32, 0.6); backdrop-filter: blur(20px); border-radius: 12px; border: 1px solid rgb(31, 41, 55); padding: 1.25rem; box-shadow: 0 4px 24px rgba(0,0,0,0.3); height: 100%;">
 <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
-<span style="font-size: 1.1rem;">📈</span>
-<p style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; margin: 0; font-weight: 600;">YIELD CURVE</p>
+<span style="font-size: 1rem;">📈</span>
+<p style="font-size: 0.7rem; color: rgb(107, 114, 128); text-transform: uppercase; letter-spacing: 0.1em; margin: 0; font-weight: 500; font-family: 'JetBrains Mono', monospace;">YIELD CURVE</p>
 </div>
-<h3 style="font-size: 2.25rem; font-weight: 800; margin: 0.5rem 0; line-height: 1; background: linear-gradient(135deg, #06b6d4, #3b82f6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">{curve_val:+.2f}%</h3>
+<h3 style="font-size: 1.75rem; font-weight: 600; margin: 0.5rem 0; line-height: 1; color: rgb(229, 231, 235); font-family: 'JetBrains Mono', monospace;">{curve_val:+.2f}%</h3>
 </div>""", unsafe_allow_html=True)
 
         with metric_col3:
-            # Breadth card - Capital Structure style
-            st.markdown(f"""<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.5rem 1.25rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); position: relative; overflow: hidden; height: 100%;">
-<div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #06b6d4); opacity: 0.8;"></div>
+            # Breadth card - Figma style
+            st.markdown(f"""<div style="background: rgba(15, 21, 32, 0.6); backdrop-filter: blur(20px); border-radius: 12px; border: 1px solid rgb(31, 41, 55); padding: 1.25rem; box-shadow: 0 4px 24px rgba(0,0,0,0.3); height: 100%;">
 <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
-<span style="font-size: 1.1rem;">🎯</span>
-<p style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; margin: 0; font-weight: 600;">MARKET BREADTH</p>
+<span style="font-size: 1rem;">🎯</span>
+<p style="font-size: 0.7rem; color: rgb(107, 114, 128); text-transform: uppercase; letter-spacing: 0.1em; margin: 0; font-weight: 500; font-family: 'JetBrains Mono', monospace;">MARKET BREADTH</p>
 </div>
-<h3 style="font-size: 2.25rem; font-weight: 800; margin: 0.5rem 0; line-height: 1; background: linear-gradient(135deg, #10b981, #06b6d4); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">{breadth_val:+.2f}%</h3>
+<h3 style="font-size: 1.75rem; font-weight: 600; margin: 0.5rem 0; line-height: 1; color: rgb(229, 231, 235); font-family: 'JetBrains Mono', monospace;">{breadth_val:+.2f}%</h3>
 </div>""", unsafe_allow_html=True)
 
     st.markdown("---")
