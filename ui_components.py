@@ -107,39 +107,36 @@ def create_metric_card(title: str, value: str, change: str = None, icon: str = "
         change_color = "#94a3b8"
         change_prefix = ""
 
+    # FIGMA REDESIGN: Subtle gray border, JetBrains Mono typography
     html = f"""
     <div style="
-        background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(21,25,50,0.95));
-        backdrop-filter: blur(24px);
-        padding: 1.25rem;
-        border-radius: 20px;
-        border: 1px solid rgba(99,102,241,0.2);
-        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+        background: rgba(15, 21, 32, 0.6);
+        backdrop-filter: blur(20px);
+        padding: 1.5rem;
+        border-radius: 12px;
+        border: 1px solid rgb(31, 41, 55);
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
         height: 100%;
         position: relative;
         overflow: hidden;
-        transition: transform 0.2s, box-shadow 0.2s;
-    " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 8px 24px rgba(0,0,0,0.3)';"
-       onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 24px rgba(0,0,0,0.2)';">
+        transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+    " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 8px 32px rgba(0,0,0,0.4)'; this.style.borderColor='rgb(55, 65, 81)';"
+       onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 24px rgba(0,0,0,0.3)'; this.style.borderColor='rgb(31, 41, 55)';">
 
-        <div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, {border_color}, #6366f1); opacity: 0.8;"></div>
-
-        <div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
+        <div style="display: flex; align-items: center; margin-bottom: 0.75rem;">
             <span style="font-size: 1.25rem; margin-right: 0.5rem;">{icon}</span>
-            <p style="margin: 0; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
-                      letter-spacing: 0.05em; color: #94a3b8;">
+            <p style="margin: 0; font-size: 0.7rem; font-weight: 500; text-transform: uppercase;
+                      letter-spacing: 0.1em; color: rgb(156, 163, 175); font-family: 'JetBrains Mono', monospace;">
                 {title}
             </p>
         </div>
 
-        <h2 style="margin: 0.5rem 0 0 0; font-size: 2rem; font-weight: 700;
-                   background: linear-gradient(135deg, {border_color} 0%, #06b6d4 100%);
-                   -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-                   background-clip: text;">
+        <h2 style="margin: 0.5rem 0 0 0; font-size: 1.75rem; font-weight: 600;
+                   color: rgb(229, 231, 235); font-family: 'JetBrains Mono', monospace;">
             {value}
         </h2>
 
-        {f'''<p style="margin: 0.5rem 0 0 0; font-size: 0.875rem; color: {change_color}; font-weight: 600;">
+        {f'''<p style="margin: 0.5rem 0 0 0; font-size: 0.875rem; color: {change_color}; font-weight: 600; font-family: 'JetBrains Mono', monospace;">
             {change_prefix} {change}
         </p>''' if change else ''}
     </div>
@@ -178,42 +175,49 @@ def create_regime_card(regime_status: str, score: int, vix: float, yield_curve: 
     emoji = emoji_map.get(regime_status, '🟡')
     accent_color = color_map.get(regime_status, '#fbbf24')
 
+    # FIGMA REDESIGN: Subtle border with accent dot instead of colored border
     html = f"""
     <div style="
-        background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(21,25,50,0.95));
-        backdrop-filter: blur(24px);
-        padding: 2rem;
-        border-radius: 20px;
-        border: 1px solid rgba(99,102,241,0.2);
-        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+        background: rgba(15, 21, 32, 0.6);
+        backdrop-filter: blur(20px);
+        padding: 1.5rem;
+        border-radius: 12px;
+        border: 1px solid rgb(31, 41, 55);
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
         position: relative;
         overflow: hidden;
+        transition: all 0.3s ease;
     ">
-        <div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, {accent_color}, #6366f1); opacity: 0.8;"></div>
+        <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
+            <div style="width: 10px; height: 10px; border-radius: 50%; background: {accent_color}; opacity: 0.8; box-shadow: 0 0 10px {accent_color};"></div>
+            <h3 style="margin: 0; font-size: 0.875rem; font-weight: 500; color: rgb(156, 163, 175); font-family: 'JetBrains Mono', monospace; text-transform: uppercase; letter-spacing: 0.1em;">
+                Market Regime
+            </h3>
+        </div>
         <div style="display: flex; align-items: center; margin-bottom: 1rem;">
-            <span style="font-size: 2.5rem; margin-right: 1rem;">{emoji}</span>
+            <span style="font-size: 2rem; margin-right: 0.75rem;">{emoji}</span>
             <div>
-                <h2 style="margin: 0; font-size: 2rem; font-weight: 700; color: {accent_color};">
+                <h2 style="margin: 0; font-size: 1.5rem; font-weight: 600; color: {accent_color}; font-family: 'JetBrains Mono', monospace;">
                     {regime_status}
                 </h2>
-                <p style="margin: 0.25rem 0 0 0; font-size: 0.875rem; color: #94a3b8;">
-                    Current Market Regime | Score: {score:+d}/10
+                <p style="margin: 0.25rem 0 0 0; font-size: 0.75rem; color: rgb(107, 114, 128); font-family: 'JetBrains Mono', monospace;">
+                    Score: {score:+d}/10
                 </p>
             </div>
         </div>
 
-        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-top: 1rem;">
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid rgb(31, 41, 55);">
             <div>
-                <p style="margin: 0; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase;">VIX</p>
-                <p style="margin: 0.25rem 0 0 0; font-size: 1.25rem; font-weight: 600; color: white;">{vix:.2f}</p>
+                <p style="margin: 0; font-size: 0.7rem; color: rgb(107, 114, 128); text-transform: uppercase; letter-spacing: 0.05em; font-family: 'JetBrains Mono', monospace;">VIX</p>
+                <p style="margin: 0.25rem 0 0 0; font-size: 1.25rem; font-weight: 600; color: rgb(229, 231, 235); font-family: 'JetBrains Mono', monospace;">{vix:.2f}</p>
             </div>
             <div>
-                <p style="margin: 0; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase;">Yield Curve</p>
-                <p style="margin: 0.25rem 0 0 0; font-size: 1.25rem; font-weight: 600; color: white;">{yield_curve:+.2f}%</p>
+                <p style="margin: 0; font-size: 0.7rem; color: rgb(107, 114, 128); text-transform: uppercase; letter-spacing: 0.05em; font-family: 'JetBrains Mono', monospace;">Yield Curve</p>
+                <p style="margin: 0.25rem 0 0 0; font-size: 1.25rem; font-weight: 600; color: rgb(229, 231, 235); font-family: 'JetBrains Mono', monospace;">{yield_curve:+.2f}%</p>
             </div>
             <div>
-                <p style="margin: 0; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase;">Breadth</p>
-                <p style="margin: 0.25rem 0 0 0; font-size: 1.25rem; font-weight: 600; color: white;">{breadth:+.2f}%</p>
+                <p style="margin: 0; font-size: 0.7rem; color: rgb(107, 114, 128); text-transform: uppercase; letter-spacing: 0.05em; font-family: 'JetBrains Mono', monospace;">Breadth</p>
+                <p style="margin: 0.25rem 0 0 0; font-size: 1.25rem; font-weight: 600; color: rgb(229, 231, 235); font-family: 'JetBrains Mono', monospace;">{breadth:+.2f}%</p>
             </div>
         </div>
     </div>
@@ -238,39 +242,40 @@ def create_index_card(name: str, ticker: str, price: float, change: float, chang
     """
 
     change_color = "#10b981" if change >= 0 else "#ef4444"
-    border_color = "#10b981" if change >= 0 else "#ef4444"
     arrow = "↑" if change >= 0 else "↓"
 
+    # FIGMA REDESIGN: Subtle gray border with JetBrains Mono
     html = f"""
     <div style="
-        background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(21,25,50,0.95));
-        backdrop-filter: blur(24px);
-        padding: 1.25rem;
-        border-radius: 20px;
-        border: 1px solid rgba(99,102,241,0.2);
-        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+        background: rgba(15, 21, 32, 0.6);
+        backdrop-filter: blur(20px);
+        padding: 1rem;
+        border-radius: 12px;
+        border: 1px solid rgb(31, 41, 55);
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
         margin-bottom: 0.75rem;
         position: relative;
         overflow: hidden;
-    ">
-        <div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, {border_color}, #6366f1); opacity: 0.8;"></div>
+        transition: all 0.2s ease;
+    " onmouseover="this.style.borderColor='rgb(55, 65, 81)'; this.style.transform='translateY(-2px)';"
+       onmouseout="this.style.borderColor='rgb(31, 41, 55)'; this.style.transform='translateY(0)';">
         <div style="display: flex; justify-content: space-between; align-items: center;">
             <div>
                 <div style="display: flex; align-items: center; margin-bottom: 0.25rem;">
                     <span style="font-size: 1rem; margin-right: 0.5rem;">{icon}</span>
-                    <p style="margin: 0; font-size: 0.9rem; font-weight: 600; color: #f8fafc;">
+                    <p style="margin: 0; font-size: 0.875rem; font-weight: 500; color: rgb(229, 231, 235); font-family: 'JetBrains Mono', monospace;">
                         {name}
                     </p>
                 </div>
-                <p style="margin: 0; font-size: 0.75rem; color: #94a3b8;">
+                <p style="margin: 0; font-size: 0.7rem; color: rgb(107, 114, 128); font-family: 'JetBrains Mono', monospace;">
                     {ticker}
                 </p>
             </div>
             <div style="text-align: right;">
-                <p style="margin: 0; font-size: 1.25rem; font-weight: 700; color: white;">
+                <p style="margin: 0; font-size: 1.25rem; font-weight: 600; color: rgb(229, 231, 235); font-family: 'JetBrains Mono', monospace;">
                     ${price:,.2f}
                 </p>
-                <p style="margin: 0.25rem 0 0 0; font-size: 0.875rem; color: {change_color}; font-weight: 600;">
+                <p style="margin: 0.25rem 0 0 0; font-size: 0.875rem; color: {change_color}; font-weight: 600; font-family: 'JetBrains Mono', monospace;">
                     {arrow} {change:+.2f} ({change_pct:+.2f}%)
                 </p>
             </div>
@@ -294,42 +299,37 @@ def create_stock_screener_summary_card(total_stocks: int, filters_active: int, r
         HTML string for summary card
     """
 
+    # FIGMA REDESIGN: Subtle gray border with JetBrains Mono
     html = f"""
     <div style="
-        background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.05));
-        border: 1px solid rgba(99, 102, 241, 0.2);
-        border-radius: 0.75rem;
+        background: rgba(15, 21, 32, 0.6);
+        border: 1px solid rgb(31, 41, 55);
+        border-radius: 12px;
         padding: 1.5rem;
         margin-bottom: 1rem;
     ">
         <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem;">
             <div>
-                <p style="margin: 0; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">
+                <p style="margin: 0; font-size: 0.7rem; color: rgb(107, 114, 128); text-transform: uppercase; letter-spacing: 0.1em; font-family: 'JetBrains Mono', monospace;">
                     Total Stocks
                 </p>
-                <p style="margin: 0.5rem 0 0 0; font-size: 1.75rem; font-weight: 700;
-                           background: linear-gradient(135deg, #6366f1, #8b5cf6);
-                           -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+                <p style="margin: 0.5rem 0 0 0; font-size: 1.5rem; font-weight: 600; color: rgb(229, 231, 235); font-family: 'JetBrains Mono', monospace;">
                     {total_stocks:,}
                 </p>
             </div>
             <div>
-                <p style="margin: 0; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">
+                <p style="margin: 0; font-size: 0.7rem; color: rgb(107, 114, 128); text-transform: uppercase; letter-spacing: 0.1em; font-family: 'JetBrains Mono', monospace;">
                     Filters Active
                 </p>
-                <p style="margin: 0.5rem 0 0 0; font-size: 1.75rem; font-weight: 700;
-                           background: linear-gradient(135deg, #06b6d4, #3b82f6);
-                           -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+                <p style="margin: 0.5rem 0 0 0; font-size: 1.5rem; font-weight: 600; color: rgb(229, 231, 235); font-family: 'JetBrains Mono', monospace;">
                     {filters_active}
                 </p>
             </div>
             <div>
-                <p style="margin: 0; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">
+                <p style="margin: 0; font-size: 0.7rem; color: rgb(107, 114, 128); text-transform: uppercase; letter-spacing: 0.1em; font-family: 'JetBrains Mono', monospace;">
                     Results Found
                 </p>
-                <p style="margin: 0.5rem 0 0 0; font-size: 1.75rem; font-weight: 700;
-                           background: linear-gradient(135deg, #10b981, #22c55e);
-                           -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+                <p style="margin: 0.5rem 0 0 0; font-size: 1.5rem; font-weight: 600; color: rgb(229, 231, 235); font-family: 'JetBrains Mono', monospace;">
                     {results_count:,}
                 </p>
             </div>

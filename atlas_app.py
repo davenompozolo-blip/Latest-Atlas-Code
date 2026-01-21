@@ -1336,22 +1336,18 @@ st.markdown(
 )
 
 # ============================================================================
-# NEON CHART BORDER STYLING - Global CSS for all Plotly charts
+# FIGMA REDESIGN: Subtle chart borders (no neon glow)
 # ============================================================================
 st.markdown("""
 <style>
-/* Global neon border styling for all Plotly chart containers */
-/* UPDATED: Minimal padding to maximize chart space */
+/* FIGMA REDESIGN: Subtle gray borders for all charts */
 .stPlotlyChart {
-    border: 2px solid rgba(0, 188, 212, 0.5) !important;
+    border: 1px solid rgb(31, 41, 55) !important;
     border-radius: 12px !important;
-    padding: 2px !important;
-    margin: 6px 0 !important;
-    box-shadow:
-        0 0 15px rgba(0, 188, 212, 0.3),
-        0 0 30px rgba(0, 188, 212, 0.15),
-        inset 0 0 20px rgba(0, 188, 212, 0.05) !important;
-    background: linear-gradient(135deg, rgba(26, 29, 41, 0.95), rgba(20, 23, 35, 0.9)) !important;
+    padding: 4px !important;
+    margin: 8px 0 !important;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3) !important;
+    background: rgba(15, 21, 32, 0.6) !important;
     transition: all 0.3s ease !important;
     overflow: visible !important;
 }
@@ -1369,11 +1365,8 @@ st.markdown("""
 }
 
 .stPlotlyChart:hover {
-    border-color: rgba(0, 188, 212, 0.8) !important;
-    box-shadow:
-        0 0 20px rgba(0, 188, 212, 0.5),
-        0 0 40px rgba(0, 188, 212, 0.3),
-        inset 0 0 25px rgba(0, 188, 212, 0.1) !important;
+    border-color: rgb(55, 65, 81) !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4) !important;
 }
 
 /* Ensure dark backgrounds on Plotly modebar */
@@ -1386,20 +1379,20 @@ st.markdown("""
 }
 
 .modebar-group .modebar-btn:hover path {
-    fill: #00BCD4 !important;
+    fill: #22d3ee !important;
 }
 
-/* Exception: Major Indices use subtle borders (not neon) */
+/* Major Indices - same subtle style */
 .major-indices-container .stPlotlyChart {
-    border: 1px solid rgba(99, 102, 241, 0.2) !important;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2) !important;
-    background: rgba(21, 25, 50, 0.6) !important;
+    border: 1px solid rgb(31, 41, 55) !important;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3) !important;
+    background: rgba(15, 21, 32, 0.6) !important;
 }
 
 /* Override hover state for Major Indices too */
 .major-indices-container .stPlotlyChart:hover {
-    border: 1px solid rgba(99, 102, 241, 0.35) !important;
-    box-shadow: 0 6px 28px rgba(0, 0, 0, 0.25) !important;
+    border: 1px solid rgb(55, 65, 81) !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4) !important;
 }
 
 /* ============================================
@@ -1674,16 +1667,21 @@ COLORSCALES = {
 # ============================================================================
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@300;400;500;600;700&display=swap');
 
     /* ============================================
-       CORE FOUNDATIONS - Beautiful Basics
+       CORE FOUNDATIONS - Figma Redesign
        ============================================ */
 
     * {
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* FIGMA REDESIGN: All headings use JetBrains Mono */
+    h1, h2, h3, h4, h5, h6 {
+        font-family: 'JetBrains Mono', monospace !important;
     }
 
     code, pre, .monospace {
@@ -1713,7 +1711,7 @@ st.markdown("""
     .block-container {
         position: relative !important;
         z-index: 100 !important;
-        padding-top: 3rem !important;
+        padding-top: 2rem !important;
         padding-bottom: 3rem !important;
         max-width: 1400px !important;
     }
@@ -1733,82 +1731,63 @@ st.markdown("""
     }
 
     /* ============================================
-       GLASSMORPHISM CARDS - Modern Aesthetic
+       FIGMA REDESIGN: Cards with subtle borders
        ============================================ */
 
-    /* FIXED: Removed over-broad stMarkdownContainer selector to prevent text overlap */
+    /* Streamlit metric cards - subtle gray borders */
     div[data-testid="stMetric"],
     .stExpander {
-        background: rgba(10, 25, 41, 0.4) !important;
+        background: rgba(15, 21, 32, 0.6) !important;
         backdrop-filter: blur(20px) saturate(180%) !important;
         -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
-        border: 1px solid rgba(0, 212, 255, 0.15) !important;
-        border-radius: 16px !important;
+        border: 1px solid rgb(31, 41, 55) !important;
+        border-radius: 12px !important;
         padding: 24px !important;
-        box-shadow:
-            0 8px 32px 0 rgba(0, 0, 0, 0.37),
-            inset 0 1px 0 0 rgba(255, 255, 255, 0.05) !important;
-        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3) !important;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
     }
 
     div[data-testid="stMetric"]:hover,
     .stExpander:hover {
-        transform: translateY(-4px) !important;
-        border-color: rgba(0, 212, 255, 0.4) !important;
-        box-shadow:
-            0 12px 48px 0 rgba(0, 212, 255, 0.2),
-            0 0 0 1px rgba(0, 212, 255, 0.1),
-            inset 0 1px 0 0 rgba(255, 255, 255, 0.1) !important;
+        transform: translateY(-2px) !important;
+        border-color: rgb(55, 65, 81) !important;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4) !important;
     }
 
     /* ============================================
-       TYPOGRAPHY - Crisp & Modern
+       FIGMA REDESIGN: Typography with JetBrains Mono
        ============================================ */
 
     h1 {
-        font-weight: 900 !important;
-        font-size: 3.5em !important;
-        letter-spacing: -0.02em !important;
-        line-height: 1.1 !important;
+        font-family: 'JetBrains Mono', monospace !important;
+        font-weight: 600 !important;
+        font-size: 1.75rem !important;
+        letter-spacing: 0.05em !important;
+        line-height: 1.2 !important;
         margin-bottom: 0.5em !important;
-        /* Fallback color for browsers that don't support background-clip */
-        color: #00d4ff !important;
-        background: linear-gradient(135deg, #00d4ff 0%, #00ff88 50%, #00d4ff 100%);
-        background-size: 200% auto;
-        background-clip: text;
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        animation: shimmer 3s linear infinite;
-        /* Prevent duplicate rendering */
-        text-shadow: none !important;
-    }
-
-    @keyframes shimmer {
-        0% { background-position: 0% center; }
-        100% { background-position: 200% center; }
+        color: #22d3ee !important;
+        /* Remove shimmer animation for cleaner look */
+        background: none !important;
+        -webkit-text-fill-color: #22d3ee !important;
+        text-shadow: 0 0 30px rgba(34, 211, 238, 0.3) !important;
     }
 
     h2 {
-        font-weight: 700 !important;
-        font-size: 2em !important;
-        color: #ffffff !important;
-        letter-spacing: -0.01em !important;
+        font-family: 'JetBrains Mono', monospace !important;
+        font-weight: 500 !important;
+        font-size: 1.125rem !important;
+        color: rgb(229, 231, 235) !important;
+        letter-spacing: 0.025em !important;
         margin-top: 1.5em !important;
         margin-bottom: 0.75em !important;
         position: relative;
-        padding-left: 20px;
+        padding-left: 0 !important;
     }
 
+    /* FIGMA: Remove the left bar pseudo-element from h2 */
     h2::before {
-        content: '';
-        position: absolute;
-        left: 0;
-        top: 50%;
-        transform: translateY(-50%);
-        width: 4px;
-        height: 70%;
-        background: linear-gradient(180deg, #00d4ff, #00ff88);
-        border-radius: 2px;
+        display: none !important;
+        content: none !important;
     }
 
     /* EXCEPTION: Remove left border pseudo-element from h2 inside custom HTML cards */
@@ -1822,12 +1801,21 @@ st.markdown("""
     }
 
     h3 {
-        font-weight: 600 !important;
-        font-size: 1.4em !important;
-        color: #00d4ff !important;
-        letter-spacing: -0.01em !important;
+        font-family: 'JetBrains Mono', monospace !important;
+        font-weight: 500 !important;
+        font-size: 1rem !important;
+        color: rgb(156, 163, 175) !important;
+        letter-spacing: 0.025em !important;
         margin-top: 1.2em !important;
         margin-bottom: 0.6em !important;
+    }
+
+    h4, h5, h6 {
+        font-family: 'JetBrains Mono', monospace !important;
+        font-weight: 500 !important;
+        font-size: 0.875rem !important;
+        color: rgb(156, 163, 175) !important;
+        letter-spacing: 0.025em !important;
     }
 
     p {
