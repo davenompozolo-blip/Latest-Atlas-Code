@@ -1349,10 +1349,10 @@ section.main > div { max-width: 100% !important; padding: 0 !important; }
 .row-widget > div:first-child { padding-left: 0 !important; }
 .row-widget > div:last-child { padding-right: 0 !important; }
 
-/* ===== COMPACT SIDEBAR ===== */
-[data-testid="stSidebar"] { width: 220px !important; min-width: 220px !important; }
-[data-testid="stSidebar"] > div:first-child { width: 220px !important; }
-[data-testid="stSidebar"] .element-container { margin-bottom: 0.2rem !important; }
+/* ===== WIDER SIDEBAR (breathing room) ===== */
+[data-testid="stSidebar"] { width: 280px !important; min-width: 280px !important; }
+[data-testid="stSidebar"] > div:first-child { width: 280px !important; }
+[data-testid="stSidebar"] .element-container { margin-bottom: 0.3rem !important; }
 
 /* ===== FULL WIDTH COMPONENTS ===== */
 .stColumn, .stColumns { width: 100% !important; }
