@@ -1326,6 +1326,55 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"  # Phase 1B: Show vertical sidebar
 )
+
+# ============================================================================
+# PREMIUM LAYOUT - MAXIMUM SCREEN REAL ESTATE (Bloomberg/FactSet density)
+# ============================================================================
+st.markdown("""
+<style>
+/* ===== REMOVE STREAMLIT CHROME ===== */
+header[data-testid="stHeader"] { display: none !important; }
+footer { display: none !important; }
+.stDeployButton { display: none !important; }
+
+/* ===== MAXIMIZE MAIN CONTENT ===== */
+.main { padding: 0 !important; margin: 0 !important; }
+.main .block-container { max-width: 100% !important; padding: 0.5rem 1rem !important; margin: 0 !important; }
+section.main > div { max-width: 100% !important; padding: 0 !important; }
+
+/* ===== TIGHT SPACING ===== */
+.element-container { margin-bottom: 0.4rem !important; }
+.row-widget { margin: 0 !important; padding: 0 !important; }
+.row-widget > div { padding: 0 0.25rem !important; }
+.row-widget > div:first-child { padding-left: 0 !important; }
+.row-widget > div:last-child { padding-right: 0 !important; }
+
+/* ===== COMPACT SIDEBAR ===== */
+[data-testid="stSidebar"] { width: 220px !important; min-width: 220px !important; }
+[data-testid="stSidebar"] > div:first-child { width: 220px !important; }
+[data-testid="stSidebar"] .element-container { margin-bottom: 0.2rem !important; }
+
+/* ===== FULL WIDTH COMPONENTS ===== */
+.stColumn, .stColumns { width: 100% !important; }
+.js-plotly-plot, .plotly, .stDataFrame { width: 100% !important; }
+
+/* ===== OPTIMIZE VERTICAL ===== */
+.main .block-container { padding-top: 0.25rem !important; padding-bottom: 0.25rem !important; }
+.main .block-container > div:first-child { margin-top: 0 !important; }
+
+/* ===== COMPACT COMPONENTS ===== */
+div[data-testid="stMetricValue"] { font-size: 1.4rem !important; }
+div[data-testid="stMetricLabel"] { font-size: 0.8rem !important; }
+.streamlit-expanderHeader, .streamlit-expanderContent { padding: 0.4rem !important; }
+.stTabs [data-baseweb="tab-list"] { gap: 0.4rem !important; }
+.stTabs [data-baseweb="tab"] { padding: 0.4rem 0.8rem !important; }
+hr { margin: 0.4rem 0 !important; }
+
+/* ===== RESPONSIVE ===== */
+@media (min-width: 1920px) { .main .block-container { padding: 0.5rem 1.5rem !important; } }
+</style>
+""", unsafe_allow_html=True)
+
 st.markdown(
     """
     <script>
