@@ -2084,13 +2084,18 @@ st.markdown("""
     }
 
     /* ============================================
-       HIDE SIDEBAR - Using Horizontal Navigation
+       LAYOUT OPTIMIZATION - FIT LIKE A GLOVE
        ============================================ */
 
-    /* Sidebar - VISIBLE by default */
+    /* Compact sidebar - more space for content */
     section[data-testid="stSidebar"] {
         display: block !important;
-        min-width: 250px;
+        width: 220px !important;
+        min-width: 220px !important;
+    }
+
+    [data-testid="stSidebar"] > div:first-child {
+        width: 220px !important;
     }
 
     /* Show sidebar collapse button */
@@ -2099,15 +2104,51 @@ st.markdown("""
     }
 
     /* ============================================
-       HORIZONTAL NAVIGATION - RESPONSIVE DESIGN
+       STRETCH CONTENT TO FILL SCREEN
        ============================================ */
 
-    /* Ensure full-width content area */
+    /* Full-width content area */
     .main .block-container {
-        max-width: 100%;
-        padding-left: 2rem;
-        padding-right: 2rem;
+        max-width: 100% !important;
+        padding: 1rem 2rem !important;
     }
+
+    .main {
+        padding: 0 !important;
+        min-height: 100vh;
+    }
+
+    /* Remove extra spacing */
+    .element-container {
+        margin-bottom: 0.5rem !important;
+    }
+
+    .row-widget {
+        margin: 0 !important;
+    }
+
+    .row-widget > div {
+        padding: 0 0.5rem !important;
+    }
+
+    /* Optimize columns */
+    .stColumn {
+        padding: 0 0.5rem !important;
+    }
+
+    /* Hide Streamlit header for more space */
+    header[data-testid="stHeader"] {
+        display: none;
+    }
+
+    /* Compact sidebar content spacing */
+    [data-testid="stSidebar"] .element-container {
+        margin-bottom: 0.25rem !important;
+    }
+
+    /* ============================================
+       HORIZONTAL NAVIGATION - RESPONSIVE DESIGN
+       ============================================ */
 
     /* Professional header styling */
     h1 {
