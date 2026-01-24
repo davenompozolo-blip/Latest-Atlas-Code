@@ -13298,12 +13298,15 @@ def main():
                     display_manual_portfolio_editor()
 
     # ============================================================================
-    # PHASE 1B: VERTICAL SIDEBAR NAVIGATION - FOMO-INSPIRED AESTHETICS
+    # PHASE 1B: VERTICAL SIDEBAR NAVIGATION
     # ============================================================================
-    # Replaces horizontal navigation with glassmorphic vertical sidebar
-    # Location: ui/components/sidebar_nav.py
-
-    page = render_sidebar_navigation(default_page="Portfolio Home")
+    try:
+        page = render_sidebar_navigation(default_page="Portfolio Home")
+    except Exception as e:
+        # Fallback sidebar if render_sidebar_navigation fails
+        with st.sidebar:
+            st.markdown("""<div style="text-align: center; padding: 1rem; border-bottom: 1px solid rgb(31, 41, 55); margin-bottom: 1rem;"><h2 style="font-family: 'JetBrains Mono', monospace; color: #22d3ee; margin: 0; font-size: 1.2rem;">ATLAS</h2><p style="font-family: 'JetBrains Mono', monospace; color: rgb(107, 114, 128); font-size: 0.7rem; margin: 0;">Analytics Terminal</p></div>""", unsafe_allow_html=True)
+            page = st.radio("Navigation", ["Portfolio Home", "Phoenix Parser", "Market Watch", "Stock Screener", "Valuation House"], label_visibility="collapsed")
 
     # ============================================================================
     # LEGACY HORIZONTAL NAVIGATION (DEPRECATED - PHASE 1B)
