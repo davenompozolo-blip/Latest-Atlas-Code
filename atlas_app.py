@@ -1328,7 +1328,7 @@ st.set_page_config(
 )
 
 # ============================================================================
-# PREMIUM LAYOUT - MAXIMUM SCREEN REAL ESTATE (Bloomberg/FactSet density)
+# PREMIUM LAYOUT - ULTRA-AGGRESSIVE SPACING (NO GAPS ANYWHERE)
 # ============================================================================
 st.markdown("""
 <style>
@@ -1337,41 +1337,42 @@ header[data-testid="stHeader"] { display: none !important; }
 footer { display: none !important; }
 .stDeployButton { display: none !important; }
 
-/* ===== MAXIMIZE MAIN CONTENT ===== */
+/* ===== ZERO PADDING MAIN CONTAINER ===== */
 .main { padding: 0 !important; margin: 0 !important; }
-.main .block-container { max-width: 100% !important; padding: 0.5rem 1rem !important; margin: 0 !important; }
-section.main > div { max-width: 100% !important; padding: 0 !important; }
+.main .block-container { max-width: 100% !important; padding: 0.25rem 0.5rem !important; margin: 0 !important; padding-top: 0 !important; }
+section.main > div { max-width: 100% !important; padding: 0 !important; margin: 0 !important; }
 
-/* ===== TIGHT SPACING ===== */
-.element-container { margin-bottom: 0.4rem !important; }
-.row-widget { margin: 0 !important; padding: 0 !important; }
-.row-widget > div { padding: 0 0.25rem !important; }
+/* ===== FIRST ELEMENT TOUCHES TOP ===== */
+.main .block-container > div:first-child { margin-top: 0 !important; padding-top: 0 !important; }
+
+/* ===== ULTRA-TIGHT SPACING ===== */
+.element-container { margin-bottom: 0.25rem !important; margin-top: 0 !important; width: 100% !important; }
+.row-widget { margin: 0 !important; padding: 0 !important; width: 100% !important; }
+.row-widget > div { padding: 0 0.15rem !important; }
 .row-widget > div:first-child { padding-left: 0 !important; }
 .row-widget > div:last-child { padding-right: 0 !important; }
 
-/* ===== WIDER SIDEBAR (breathing room) ===== */
+/* ===== COLUMNS TOUCH EDGES ===== */
+div[data-testid="column"] { padding: 0 0.15rem !important; }
+div[data-testid="column"]:first-child { padding-left: 0 !important; }
+div[data-testid="column"]:last-child { padding-right: 0 !important; }
+
+/* ===== WIDER SIDEBAR (280px) ===== */
 [data-testid="stSidebar"] { width: 280px !important; min-width: 280px !important; }
 [data-testid="stSidebar"] > div:first-child { width: 280px !important; }
-[data-testid="stSidebar"] .element-container { margin-bottom: 0.3rem !important; }
+[data-testid="stSidebar"] .element-container { margin-bottom: 0.25rem !important; }
 
 /* ===== FULL WIDTH COMPONENTS ===== */
 .stColumn, .stColumns { width: 100% !important; }
 .js-plotly-plot, .plotly, .stDataFrame { width: 100% !important; }
 
-/* ===== OPTIMIZE VERTICAL ===== */
-.main .block-container { padding-top: 0.25rem !important; padding-bottom: 0.25rem !important; }
-.main .block-container > div:first-child { margin-top: 0 !important; }
-
 /* ===== COMPACT COMPONENTS ===== */
 div[data-testid="stMetricValue"] { font-size: 1.4rem !important; }
 div[data-testid="stMetricLabel"] { font-size: 0.8rem !important; }
-.streamlit-expanderHeader, .streamlit-expanderContent { padding: 0.4rem !important; }
-.stTabs [data-baseweb="tab-list"] { gap: 0.4rem !important; }
-.stTabs [data-baseweb="tab"] { padding: 0.4rem 0.8rem !important; }
-hr { margin: 0.4rem 0 !important; }
-
-/* ===== RESPONSIVE ===== */
-@media (min-width: 1920px) { .main .block-container { padding: 0.5rem 1.5rem !important; } }
+.streamlit-expanderHeader, .streamlit-expanderContent { padding: 0.3rem !important; }
+.stTabs [data-baseweb="tab-list"] { gap: 0.3rem !important; }
+.stTabs [data-baseweb="tab"] { padding: 0.3rem 0.6rem !important; }
+hr { margin: 0.25rem 0 !important; }
 </style>
 """, unsafe_allow_html=True)
 
