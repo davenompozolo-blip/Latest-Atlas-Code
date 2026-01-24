@@ -13240,6 +13240,12 @@ def main():
     import plotly.graph_objects as go
 
     # ============================================================================
+    # SIDEBAR - RENDER IMMEDIATELY TO FORCE VISIBILITY
+    # ============================================================================
+    with st.sidebar:
+        st.markdown("""<div style="text-align: center; padding: 1rem 0; border-bottom: 1px solid rgb(31, 41, 55); margin-bottom: 1rem;"><h2 style="font-family: 'JetBrains Mono', monospace; color: #22d3ee; margin: 0; font-size: 1.3rem; letter-spacing: 0.1em;">ATLAS</h2><p style="font-family: 'JetBrains Mono', monospace; color: rgb(107, 114, 128); font-size: 0.7rem; margin: 0.25rem 0 0 0;">Analytics Terminal v10.0</p></div>""", unsafe_allow_html=True)
+
+    # ============================================================================
     # EQUITY TRACKING INITIALIZATION - CRITICAL FIX FOR LEVERAGE CALCULATIONS
     # ============================================================================
     # Initialize equity tracking from performance history if available
