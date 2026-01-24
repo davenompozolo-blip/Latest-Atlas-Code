@@ -2136,15 +2136,15 @@ st.markdown("""
        LAYOUT OPTIMIZATION - FIT LIKE A GLOVE
        ============================================ */
 
-    /* Compact sidebar - more space for content */
+    /* Wider sidebar - 280px for breathing room */
     section[data-testid="stSidebar"] {
         display: block !important;
-        width: 220px !important;
-        min-width: 220px !important;
+        width: 280px !important;
+        min-width: 280px !important;
     }
 
     [data-testid="stSidebar"] > div:first-child {
-        width: 220px !important;
+        width: 280px !important;
     }
 
     /* Show sidebar collapse button */
