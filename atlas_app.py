@@ -13259,76 +13259,80 @@ def main():
     # ============================================================================
 
     def render_atlas_header():
-        """Render ATLAS Terminal header with complete UI polish"""
-        from pathlib import Path  # Import here to avoid scope issues
+        """
+        FIGMA REDESIGN: Clean header with JetBrains Mono typography
+        - Three-zone layout: Logo left, Title center, Tagline right
+        - JetBrains Mono font (NOT Orbitron)
+        - Clean cyan color (#22d3ee) - no text-stroke effects
+        - Subtle gray border
+        """
+        from pathlib import Path
 
-        # Load BOTH CSS files - animations AND complete UI
-        css_files = [
-            'ui/branding/avengers_animations.css',
-            'ui/branding/atlas_complete_ui.css'  # NEW - Complete UI system
-        ]
-
-        for css_file in css_files:
-            css_path = Path(css_file)
-            if css_path.exists():
-                with open(css_path, 'r', encoding='utf-8') as f:
-                    st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
-
-        # Load NEW Avengers-style logo (PNG) or fall back to shield logo (SVG)
-        new_logo_path = Path('ui/branding/atlas_logo_new.png')
-        old_logo_path = Path('ui/branding/shield_logo.svg')
-
-        if new_logo_path.exists():
-            # Use new Avengers-style logo
-            with open(new_logo_path, 'rb') as f:
+        # Load logo
+        logo_path = Path('ui/branding/atlas_logo_new.png')
+        if logo_path.exists():
+            with open(logo_path, 'rb') as f:
                 logo_base64 = base64.b64encode(f.read()).decode()
-            logo_mime = "image/png"
-            logo_width = 70  # Compact FactSet-style size
-        elif old_logo_path.exists():
-            # Fall back to old shield logo
-            with open(old_logo_path, 'rb') as f:
-                logo_base64 = base64.b64encode(f.read()).decode()
-            logo_mime = "image/svg+xml"
-            logo_width = 60
+            logo_html = f'<img src="data:image/png;base64,{logo_base64}" width="56" alt="ATLAS" style="opacity: 0.9;">'
         else:
-            logo_base64 = None
+            # Fallback: Simple "A" logo
+            logo_html = '''<div style="width: 3.5rem; height: 3.5rem; background: linear-gradient(135deg, rgba(34,211,238,0.2), rgba(59,130,246,0.2)); border-radius: 0.5rem; display: flex; align-items: center; justify-content: center;">
+                <span style="font-family: 'JetBrains Mono', monospace; font-size: 2rem; font-weight: 700; color: #22d3ee;">A</span>
+            </div>'''
 
-        if logo_base64:
-            # FactSet-style compact header with logo on left, text on right
-            # Horizontal layout for professional look
-            header_html = f'''<div style="display: flex; align-items: center; justify-content: flex-start; gap: 1.25rem; padding: 1rem 0 1.5rem 0; border-bottom: 1px solid rgba(99, 102, 241, 0.2); margin-bottom: 1.5rem;">
-<div style="flex-shrink: 0;">
-<img src="data:{logo_mime};base64,{logo_base64}" width="{logo_width}" alt="ATLAS" style="filter: drop-shadow(0 0 15px rgba(0, 188, 212, 0.5)) drop-shadow(0 0 30px rgba(99, 102, 241, 0.3)); opacity: 0.95;">
-</div>
-<div style="flex-grow: 1;">
+        # FIGMA HEADER: Three-zone layout with JetBrains Mono
+        header_html = f'''
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap');
 </style>
-<h1 style="font-family: 'Orbitron', monospace; font-size: 1.75rem; font-weight: 800; margin: 0; letter-spacing: 0.1em; color: transparent; -webkit-text-stroke: 1.5px #00b8e6; text-stroke: 1.5px #00b8e6; text-shadow: 0 0 8px #00b8e6, 0 0 15px #00b8e6, 0 0 25px #6366f1; filter: brightness(1.1); line-height: 1.2; padding-left: 0 !important;">ATLAS TERMINAL</h1>
-<p style="margin: 0.25rem 0 0 0; font-size: 0.7rem; font-weight: 500; color: #94a3b8; letter-spacing: 0.15em; text-transform: uppercase;">INSTITUTIONAL EDITION v10.0</p>
-</div>
-<div style="text-align: right; flex-shrink: 0;">
-<p style="margin: 0; font-size: 0.75rem; color: #64748b;">Institutional Intelligence.</p>
-<p style="margin: 0; font-size: 0.75rem; color: #64748b;">Personal Scale.</p>
-</div>
+<div style="
+    background: linear-gradient(to right, #0f1520, #0a0e1a, #0a0e1a);
+    padding: 1.5rem 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid rgb(31, 41, 55);
+    margin-bottom: 1.5rem;
+">
+    <!-- Zone 1: Logo -->
+    <div style="display: flex; align-items: center; gap: 1rem;">
+        {logo_html}
+        <div>
+            <h1 style="
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 1.5rem;
+                font-weight: 600;
+                color: #22d3ee;
+                margin: 0;
+                letter-spacing: 0.05em;
+            ">ATLAS TERMINAL</h1>
+            <p style="
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 0.7rem;
+                color: rgb(107, 114, 128);
+                margin: 0.25rem 0 0 0;
+                letter-spacing: 0.1em;
+            ">INSTITUTIONAL EDITION</p>
+        </div>
+    </div>
+
+    <!-- Zone 2: Tagline (right) -->
+    <div style="text-align: right;">
+        <p style="
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            color: rgb(156, 163, 175);
+            margin: 0;
+        ">Institutional Intelligence.</p>
+        <p style="
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            color: rgb(156, 163, 175);
+            margin: 0;
+        ">Personal Scale.</p>
+    </div>
 </div>'''
-            st.markdown(header_html, unsafe_allow_html=True)
-        else:
-            # Fallback if logo file missing - compact style
-            fallback_html = '''<div style="display: flex; align-items: center; justify-content: flex-start; gap: 1.25rem; padding: 1rem 0 1.5rem 0; border-bottom: 1px solid rgba(99, 102, 241, 0.2); margin-bottom: 1.5rem;">
-<div style="flex-grow: 1;">
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&display=swap');
-</style>
-<h1 style="font-family: 'Orbitron', monospace; font-size: 1.75rem; font-weight: 800; margin: 0; letter-spacing: 0.1em; color: transparent; -webkit-text-stroke: 1.5px #00b8e6; text-stroke: 1.5px #00b8e6; text-shadow: 0 0 8px #00b8e6, 0 0 15px #00b8e6, 0 0 25px #6366f1; filter: brightness(1.1); line-height: 1.2; padding-left: 0 !important;">ATLAS TERMINAL</h1>
-<p style="margin: 0.25rem 0 0 0; font-size: 0.7rem; font-weight: 500; color: #94a3b8; letter-spacing: 0.15em; text-transform: uppercase;">INSTITUTIONAL EDITION v10.0</p>
-</div>
-<div style="text-align: right; flex-shrink: 0;">
-<p style="margin: 0; font-size: 0.75rem; color: #64748b;">Institutional Intelligence.</p>
-<p style="margin: 0; font-size: 0.75rem; color: #64748b;">Personal Scale.</p>
-</div>
-</div>'''
-            st.markdown(fallback_html, unsafe_allow_html=True)
+        st.markdown(header_html, unsafe_allow_html=True)
 
     # Call the header function
     render_atlas_header()
