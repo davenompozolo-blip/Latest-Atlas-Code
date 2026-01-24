@@ -9,9 +9,18 @@ ALL new features, pages, and components MUST use the card designs defined in
 this file. NO EXCEPTIONS.
 
 ═══════════════════════════════════════════════════════════════════════════════
-DESIGN VERSION: v2.0 (Gradient Borders + Icons + Glassmorphic)
+DESIGN VERSION: v3.0 (Figma Redesign - JetBrains Mono + Subtle Gray Borders)
 LAST UPDATED: January 2026
 DESIGN LEAD: Hlobo
+
+FIGMA REDESIGN SPECS:
+- Typography: JetBrains Mono for ALL headings
+- Borders: 1px solid rgb(31, 41, 55) - subtle gray, NOT neon
+- Border hover: rgb(55, 65, 81)
+- Background: rgba(15, 21, 32, 0.6)
+- Text Primary: rgb(229, 231, 235)
+- Text Secondary: rgb(156, 163, 175)
+- Accent Dots: 10px circles with glow for status indicators
 ═══════════════════════════════════════════════════════════════════════════════
 
 KEY DESIGN PRINCIPLES:
