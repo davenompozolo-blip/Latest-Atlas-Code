@@ -13255,33 +13255,19 @@ def main():
         st.session_state['target_leverage'] = 1.0  # Default no leverage
 
     # ============================================================================
-    # ATLAS TERMINAL HEADER - PROFESSIONAL BRANDING
+    # ATLAS TERMINAL HEADER - FIGMA REDESIGN (JetBrains Mono)
     # ============================================================================
 
     def render_atlas_header():
         """
-        FIGMA REDESIGN: Clean header with JetBrains Mono typography
+        FIGMA REDESIGN: Clean header with JetBrains Mono typography.
         - Three-zone layout: Logo left, Title center, Tagline right
         - JetBrains Mono font (NOT Orbitron)
-        - Clean cyan color (#22d3ee) - no text-stroke effects
-        - Subtle gray border
+        - Clean cyan color (#22d3ee) without neon glow effects
+        - Subtle gray border (rgb(31, 41, 55))
         """
-        from pathlib import Path
-
-        # Load logo
-        logo_path = Path('ui/branding/atlas_logo_new.png')
-        if logo_path.exists():
-            with open(logo_path, 'rb') as f:
-                logo_base64 = base64.b64encode(f.read()).decode()
-            logo_html = f'<img src="data:image/png;base64,{logo_base64}" width="56" alt="ATLAS" style="opacity: 0.9;">'
-        else:
-            # Fallback: Simple "A" logo
-            logo_html = '''<div style="width: 3.5rem; height: 3.5rem; background: linear-gradient(135deg, rgba(34,211,238,0.2), rgba(59,130,246,0.2)); border-radius: 0.5rem; display: flex; align-items: center; justify-content: center;">
-                <span style="font-family: 'JetBrains Mono', monospace; font-size: 2rem; font-weight: 700; color: #22d3ee;">A</span>
-            </div>'''
-
-        # FIGMA HEADER: Three-zone layout with JetBrains Mono
-        header_html = f'''
+        # FIGMA HEADER HTML
+        header_html = '''
 <style>
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap');
 </style>
@@ -13294,9 +13280,28 @@ def main():
     border-bottom: 1px solid rgb(31, 41, 55);
     margin-bottom: 1.5rem;
 ">
-    <!-- Zone 1: Logo -->
+    <!-- LEFT: Logo + Title -->
     <div style="display: flex; align-items: center; gap: 1rem;">
-        {logo_html}
+        <!-- Simple "A" Logo -->
+        <div style="
+            width: 3.5rem;
+            height: 3.5rem;
+            background: linear-gradient(135deg, rgba(34,211,238,0.15), rgba(59,130,246,0.15));
+            border: 1px solid rgba(34, 211, 238, 0.3);
+            border-radius: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        ">
+            <span style="
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 1.75rem;
+                font-weight: 700;
+                color: #22d3ee;
+            ">A</span>
+        </div>
+
+        <!-- Title -->
         <div>
             <h1 style="
                 font-family: 'JetBrains Mono', monospace;
@@ -13316,19 +13321,21 @@ def main():
         </div>
     </div>
 
-    <!-- Zone 2: Tagline (right) -->
+    <!-- RIGHT: Tagline -->
     <div style="text-align: right;">
         <p style="
             font-family: 'JetBrains Mono', monospace;
             font-size: 0.75rem;
             color: rgb(156, 163, 175);
             margin: 0;
+            line-height: 1.4;
         ">Institutional Intelligence.</p>
         <p style="
             font-family: 'JetBrains Mono', monospace;
             font-size: 0.75rem;
             color: rgb(156, 163, 175);
             margin: 0;
+            line-height: 1.4;
         ">Personal Scale.</p>
     </div>
 </div>'''
