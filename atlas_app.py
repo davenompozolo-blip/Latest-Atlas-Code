@@ -13259,87 +13259,9 @@ def main():
     # ============================================================================
 
     def render_atlas_header():
-        """
-        FIGMA REDESIGN: Clean header with JetBrains Mono typography.
-        - Three-zone layout: Logo left, Title center, Tagline right
-        - JetBrains Mono font (NOT Orbitron)
-        - Clean cyan color (#22d3ee) without neon glow effects
-        - Subtle gray border (rgb(31, 41, 55))
-        """
-        # FIGMA HEADER HTML
-        header_html = '''
-<style>
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap');
-</style>
-<div style="
-    background: linear-gradient(to right, #0f1520, #0a0e1a, #0a0e1a);
-    padding: 1.5rem 2rem;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    border-bottom: 1px solid rgb(31, 41, 55);
-    margin-bottom: 1.5rem;
-">
-    <!-- LEFT: Logo + Title -->
-    <div style="display: flex; align-items: center; gap: 1rem;">
-        <!-- Simple "A" Logo -->
-        <div style="
-            width: 3.5rem;
-            height: 3.5rem;
-            background: linear-gradient(135deg, rgba(34,211,238,0.15), rgba(59,130,246,0.15));
-            border: 1px solid rgba(34, 211, 238, 0.3);
-            border-radius: 0.5rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        ">
-            <span style="
-                font-family: 'JetBrains Mono', monospace;
-                font-size: 1.75rem;
-                font-weight: 700;
-                color: #22d3ee;
-            ">A</span>
-        </div>
-
-        <!-- Title -->
-        <div>
-            <h1 style="
-                font-family: 'JetBrains Mono', monospace;
-                font-size: 1.5rem;
-                font-weight: 600;
-                color: #22d3ee;
-                margin: 0;
-                letter-spacing: 0.05em;
-            ">ATLAS TERMINAL</h1>
-            <p style="
-                font-family: 'JetBrains Mono', monospace;
-                font-size: 0.7rem;
-                color: rgb(107, 114, 128);
-                margin: 0.25rem 0 0 0;
-                letter-spacing: 0.1em;
-            ">INSTITUTIONAL EDITION</p>
-        </div>
-    </div>
-
-    <!-- RIGHT: Tagline -->
-    <div style="text-align: right;">
-        <p style="
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.75rem;
-            color: rgb(156, 163, 175);
-            margin: 0;
-            line-height: 1.4;
-        ">Institutional Intelligence.</p>
-        <p style="
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.75rem;
-            color: rgb(156, 163, 175);
-            margin: 0;
-            line-height: 1.4;
-        ">Personal Scale.</p>
-    </div>
-</div>'''
-        st.markdown(header_html, unsafe_allow_html=True)
+        """FIGMA REDESIGN: Clean header with JetBrains Mono typography."""
+        # Single-line styles to fix Streamlit HTML parsing
+        st.markdown("""<style>@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap');</style><div style="background: linear-gradient(to right, #0f1520, #0a0e1a, #0a0e1a); padding: 1.5rem 2rem; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgb(31, 41, 55); margin-bottom: 1.5rem;"><div style="display: flex; align-items: center; gap: 1rem;"><div style="width: 3.5rem; height: 3.5rem; background: linear-gradient(135deg, rgba(34,211,238,0.15), rgba(59,130,246,0.15)); border: 1px solid rgba(34, 211, 238, 0.3); border-radius: 0.5rem; display: flex; align-items: center; justify-content: center;"><span style="font-family: 'JetBrains Mono', monospace; font-size: 1.75rem; font-weight: 700; color: #22d3ee;">A</span></div><div><h1 style="font-family: 'JetBrains Mono', monospace; font-size: 1.5rem; font-weight: 600; color: #22d3ee; margin: 0; letter-spacing: 0.05em;">ATLAS TERMINAL</h1><p style="font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: rgb(107, 114, 128); margin: 0.25rem 0 0 0; letter-spacing: 0.1em;">INSTITUTIONAL EDITION</p></div></div><div style="text-align: right;"><p style="font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: rgb(156, 163, 175); margin: 0; line-height: 1.4;">Institutional Intelligence.</p><p style="font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: rgb(156, 163, 175); margin: 0; line-height: 1.4;">Personal Scale.</p></div></div>""", unsafe_allow_html=True)
 
     # Call the header function
     render_atlas_header()
