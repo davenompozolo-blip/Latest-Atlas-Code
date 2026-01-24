@@ -2087,17 +2087,15 @@ st.markdown("""
        HIDE SIDEBAR - Using Horizontal Navigation
        ============================================ */
 
+    /* Sidebar - VISIBLE by default */
     section[data-testid="stSidebar"] {
-        display: none !important;
+        display: block !important;
+        min-width: 250px;
     }
 
-    /* Hide sidebar collapse button */
-    button[kind="header"] {
-        display: none !important;
-    }
-
+    /* Show sidebar collapse button */
     [data-testid="collapsedControl"] {
-        display: none !important;
+        display: block !important;
     }
 
     /* ============================================
