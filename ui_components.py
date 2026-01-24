@@ -300,42 +300,37 @@ def create_stock_screener_summary_card(total_stocks: int, filters_active: int, r
         HTML string for summary card
     """
 
+    # FIGMA REDESIGN: Subtle gray border with JetBrains Mono
     html = f"""
     <div style="
-        background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.05));
-        border: 1px solid rgba(99, 102, 241, 0.2);
-        border-radius: 0.75rem;
+        background: rgba(15, 21, 32, 0.6);
+        border: 1px solid rgb(31, 41, 55);
+        border-radius: 12px;
         padding: 1.5rem;
         margin-bottom: 1rem;
     ">
         <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem;">
             <div>
-                <p style="margin: 0; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">
+                <p style="margin: 0; font-size: 0.7rem; color: rgb(107, 114, 128); text-transform: uppercase; letter-spacing: 0.1em; font-family: 'JetBrains Mono', monospace;">
                     Total Stocks
                 </p>
-                <p style="margin: 0.5rem 0 0 0; font-size: 1.75rem; font-weight: 700;
-                           background: linear-gradient(135deg, #6366f1, #8b5cf6);
-                           -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+                <p style="margin: 0.5rem 0 0 0; font-size: 1.5rem; font-weight: 600; color: rgb(229, 231, 235); font-family: 'JetBrains Mono', monospace;">
                     {total_stocks:,}
                 </p>
             </div>
             <div>
-                <p style="margin: 0; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">
+                <p style="margin: 0; font-size: 0.7rem; color: rgb(107, 114, 128); text-transform: uppercase; letter-spacing: 0.1em; font-family: 'JetBrains Mono', monospace;">
                     Filters Active
                 </p>
-                <p style="margin: 0.5rem 0 0 0; font-size: 1.75rem; font-weight: 700;
-                           background: linear-gradient(135deg, #06b6d4, #3b82f6);
-                           -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+                <p style="margin: 0.5rem 0 0 0; font-size: 1.5rem; font-weight: 600; color: rgb(229, 231, 235); font-family: 'JetBrains Mono', monospace;">
                     {filters_active}
                 </p>
             </div>
             <div>
-                <p style="margin: 0; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">
+                <p style="margin: 0; font-size: 0.7rem; color: rgb(107, 114, 128); text-transform: uppercase; letter-spacing: 0.1em; font-family: 'JetBrains Mono', monospace;">
                     Results Found
                 </p>
-                <p style="margin: 0.5rem 0 0 0; font-size: 1.75rem; font-weight: 700;
-                           background: linear-gradient(135deg, #10b981, #22c55e);
-                           -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+                <p style="margin: 0.5rem 0 0 0; font-size: 1.5rem; font-weight: 600; color: rgb(229, 231, 235); font-family: 'JetBrains Mono', monospace;">
                     {results_count:,}
                 </p>
             </div>
