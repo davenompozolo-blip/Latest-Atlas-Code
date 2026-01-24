@@ -13358,6 +13358,32 @@ def main():
         # Single-line styles to fix Streamlit HTML parsing
         st.markdown("""<style>@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap');</style><div style="background: linear-gradient(to right, #0f1520, #0a0e1a, #0a0e1a); padding: 1.5rem 2rem; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgb(31, 41, 55); margin-bottom: 1.5rem;"><div style="display: flex; align-items: center; gap: 1rem;"><div style="width: 3.5rem; height: 3.5rem; background: linear-gradient(135deg, rgba(34,211,238,0.15), rgba(59,130,246,0.15)); border: 1px solid rgba(34, 211, 238, 0.3); border-radius: 0.5rem; display: flex; align-items: center; justify-content: center;"><span style="font-family: 'JetBrains Mono', monospace; font-size: 1.75rem; font-weight: 700; color: #22d3ee;">A</span></div><div><h1 style="font-family: 'JetBrains Mono', monospace; font-size: 1.5rem; font-weight: 600; color: #22d3ee; margin: 0; letter-spacing: 0.05em;">ATLAS TERMINAL</h1><p style="font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: rgb(107, 114, 128); margin: 0.25rem 0 0 0; letter-spacing: 0.1em;">INSTITUTIONAL EDITION</p></div></div><div style="text-align: right;"><p style="font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: rgb(156, 163, 175); margin: 0; line-height: 1.4;">Institutional Intelligence.</p><p style="font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: rgb(156, 163, 175); margin: 0; line-height: 1.4;">Personal Scale.</p></div></div>""", unsafe_allow_html=True)
 
+    def render_data_source_cards():
+        """FIGMA REDESIGN: Clickable cards for data source selection."""
+        if 'portfolio_data_source_mode' not in st.session_state:
+            st.session_state['portfolio_data_source_mode'] = "📁 Classic Mode (Excel Upload)"
+
+        sources = [
+            {"key": "📁 Classic Mode (Excel Upload)", "icon": "📁", "title": "Classic Mode", "desc": "Upload Excel files"},
+            {"key": "🔗 Easy Equities (Live Sync)", "icon": "🔗", "title": "Easy Equities", "desc": "Live broker sync"},
+            {"key": "🦙 Alpaca Markets (Live Sync)", "icon": "🦙", "title": "Alpaca Markets", "desc": "Live broker sync"}
+        ]
+
+        cols = st.columns(3)
+        for i, source in enumerate(sources):
+            with cols[i]:
+                is_selected = st.session_state['portfolio_data_source_mode'] == source['key']
+                border_color = "rgba(34, 211, 238, 0.5)" if is_selected else "rgb(31, 41, 55)"
+                bg_color = "rgba(34, 211, 238, 0.1)" if is_selected else "transparent"
+
+                if st.button(f"{source['icon']} {source['title']}", key=f"src_{i}", use_container_width=True):
+                    st.session_state['portfolio_data_source_mode'] = source['key']
+                    st.rerun()
+
+                st.markdown(f"""<div style="text-align: center; padding: 0.5rem; background: {bg_color}; border: 1px solid {border_color}; border-radius: 0.5rem; margin-top: -0.5rem;"><p style="font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: rgb(156, 163, 175); margin: 0;">{source['desc']}</p></div>""", unsafe_allow_html=True)
+
+        return st.session_state['portfolio_data_source_mode']
+
     # Call the header function
     render_atlas_header()
 
@@ -13562,17 +13588,9 @@ def main():
         if page == "🔥 Phoenix Parser":
             st.markdown("## 🔥 PHOENIX MODE")
 
-            # ===== NEW: PORTFOLIO DATA SOURCE TOGGLE =====
+            # ===== FIGMA REDESIGN: Portfolio Data Source Cards =====
             st.markdown("### 📊 Portfolio Data Source")
-
-            portfolio_mode = st.radio(
-                "**Select how you want to import your portfolio data:**",
-                options=["📁 Classic Mode (Excel Upload)", "🔗 Easy Equities (Live Sync)", "🦙 Alpaca Markets (Live Sync)"],
-                horizontal=True,
-                key="portfolio_data_source_mode",
-                help="Classic: Upload trade/account history Excel files | Easy Equities: Sync from EE account | Alpaca: Sync from Alpaca broker"
-            )
-
+            portfolio_mode = render_data_source_cards()
             st.divider()
 
             # ===== CLASSIC MODE: Original Excel Upload (Existing Code) =====
