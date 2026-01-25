@@ -1334,8 +1334,10 @@ st.markdown("""
 <style>
 /* ===== REMOVE STREAMLIT CHROME ===== */
 header[data-testid="stHeader"] { display: none !important; }
-footer { display: none !important; }
+footer { display: none !important; visibility: hidden !important; }
 .stDeployButton { display: none !important; }
+.viewerBadge_container__r5tak { display: none !important; }
+.stMainBlockContainer { padding-bottom: 0 !important; }
 
 /* ===== ZERO PADDING MAIN CONTAINER ===== */
 .main { padding: 0 !important; margin: 0 !important; }
@@ -11160,12 +11162,12 @@ def create_performance_heatmap(df, period='monthly', use_professional_theme=True
             title_color = '#FFFFFF'
             text_color = '#FFFFFF'
             paper_bg = '#1a1d29'
-            colorscale = [[0, '#B71C1C'], [0.25, '#E53935'], [0.45, '#424242'], [0.55, '#616161'], [0.75, '#66BB6A'], [1, '#2E7D32']]
+            colorscale = [[0, '#ec4899'], [0.25, '#a855f7'], [0.5, '#1e293b'], [0.75, '#06b6d4'], [1, '#10b981']]
         else:
             title_color = '#ffffff'
             text_color = '#ffffff'
             paper_bg = 'rgba(0, 0, 0, 0)'
-            colorscale = 'RdYlGn'
+            colorscale = [[0, '#ec4899'], [0.25, '#a855f7'], [0.5, '#1e293b'], [0.75, '#06b6d4'], [1, '#10b981']]
 
         fig = go.Figure(data=go.Heatmap(
             z=matrix,
@@ -11177,15 +11179,15 @@ def create_performance_heatmap(df, period='monthly', use_professional_theme=True
             zmax=20,
             text=np.round(matrix, 1),
             texttemplate='%{text}%',
-            textfont={"size": 11, "family": "JetBrains Mono"},
-            colorbar=dict(title="Return %", tickfont=dict(family='JetBrains Mono', size=10))
+            textfont={"size": 11, "family": "JetBrains Mono", "color": "white"},
+            colorbar=dict(title="Return %", tickfont=dict(family='JetBrains Mono', size=10, color='white'), titlefont=dict(family='JetBrains Mono', size=11, color='white'))
         ))
 
         fig.update_layout(
             title=dict(text="🔥 Monthly Performance Heatmap", font=dict(size=16, color=title_color, family='Inter'), x=0.02, xanchor='left'),
             xaxis=dict(title="Month", tickfont=dict(size=10, color=text_color)),
             yaxis=dict(title="Asset", tickfont=dict(size=10, color=text_color)),
-            height=550,
+            height=600,
             paper_bgcolor=paper_bg,
             plot_bgcolor=paper_bg,
             font=dict(family='Inter', color=text_color),
@@ -11213,12 +11215,12 @@ def create_portfolio_heatmap(df, use_professional_theme=True):
         title_color = '#FFFFFF'
         text_color = '#FFFFFF'
         paper_bg = '#1a1d29'
-        colorscale = [[0, '#B71C1C'], [0.25, '#E53935'], [0.45, '#424242'], [0.55, '#616161'], [0.75, '#66BB6A'], [1, '#2E7D32']]
+        colorscale = [[0, '#ec4899'], [0.25, '#a855f7'], [0.5, '#1e293b'], [0.75, '#06b6d4'], [1, '#10b981']]
     else:
         title_color = '#ffffff'
         text_color = '#ffffff'
         paper_bg = 'rgba(0, 0, 0, 0)'
-        colorscale = 'RdYlGn'
+        colorscale = [[0, '#ec4899'], [0.25, '#a855f7'], [0.5, '#1e293b'], [0.75, '#06b6d4'], [1, '#10b981']]
 
     fig = px.treemap(
         df_viz,
@@ -11842,17 +11844,17 @@ def create_sector_rotation_heatmap(df, start_date, end_date, use_professional_th
     for sector in sectors:
         matrix.append(sector_avg[sector].values)
     
-    # Theme colors
+    # Theme colors - Magenta-Cyan gradient (vibrant, LinkedIn-ready)
     if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
         title_color = '#FFFFFF'
         text_color = '#FFFFFF'
         paper_bg = '#1a1d29'
-        colorscale = [[0, '#B71C1C'], [0.25, '#E53935'], [0.45, '#424242'], [0.55, '#616161'], [0.75, '#66BB6A'], [1, '#2E7D32']]
+        colorscale = [[0, '#ec4899'], [0.25, '#a855f7'], [0.5, '#1e293b'], [0.75, '#06b6d4'], [1, '#10b981']]
     else:
         title_color = '#ffffff'
         text_color = '#ffffff'
         paper_bg = 'rgba(0, 0, 0, 0)'
-        colorscale = 'RdYlGn'
+        colorscale = [[0, '#ec4899'], [0.25, '#a855f7'], [0.5, '#1e293b'], [0.75, '#06b6d4'], [1, '#10b981']]
 
     fig = go.Figure(data=go.Heatmap(
         z=matrix,
@@ -11862,8 +11864,8 @@ def create_sector_rotation_heatmap(df, start_date, end_date, use_professional_th
         zmid=0,
         text=np.round(matrix, 1),
         texttemplate='%{text}%',
-        textfont={"size": 10, "family": "JetBrains Mono"},
-        colorbar=dict(title="Return %", tickfont=dict(family='JetBrains Mono', size=10))
+        textfont={"size": 10, "family": "JetBrains Mono", "color": "white"},
+        colorbar=dict(title="Return %", tickfont=dict(family='JetBrains Mono', size=10, color='white'), titlefont=dict(family='JetBrains Mono', size=11, color='white'))
     ))
 
     fig.update_layout(
@@ -13333,6 +13335,8 @@ def main():
     # ============================================================================
     with st.sidebar:
         st.markdown("""<div style="text-align: center; padding: 1rem 0; border-bottom: 1px solid rgb(31, 41, 55); margin-bottom: 1rem;"><h2 style="font-family: 'JetBrains Mono', monospace; color: #22d3ee; margin: 0; font-size: 1.3rem; letter-spacing: 0.1em;">ATLAS</h2><p style="font-family: 'JetBrains Mono', monospace; color: rgb(107, 114, 128); font-size: 0.7rem; margin: 0.25rem 0 0 0;">Analytics Terminal v10.0</p></div>""", unsafe_allow_html=True)
+        # Footer at bottom of sidebar
+        st.markdown("""<div style="position: fixed; bottom: 0; left: 0; width: 280px; background: #0f1520; border-top: 1px solid rgb(31, 41, 55); padding: 0.75rem 1rem; text-align: center; z-index: 999;"><p style="font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: rgb(107, 114, 128); margin: 0 0 0.25rem 0;">Built with ❤️ by <span style="color: #22d3ee;">Hlobo</span></p><p style="font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; color: rgb(75, 85, 99); margin: 0;">Powered by Streamlit</p></div>""", unsafe_allow_html=True)
 
     # ============================================================================
     # EQUITY TRACKING INITIALIZATION - CRITICAL FIX FOR LEVERAGE CALCULATIONS
@@ -15853,7 +15857,7 @@ def main():
 
             # Card 4: Total Cost Basis
             with col4:
-                st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #3b82f6); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💼</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">TOTAL COST BASIS</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #67e8f9; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{format_currency(total_cost, currency_symbol=currency_symbol)}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #a5f3fc; margin: 0; font-weight: 500;">Investment</p></div></div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #3b82f6); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💼</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">COST BASIS</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #67e8f9; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{format_currency(total_cost, currency_symbol=currency_symbol)}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #a5f3fc; margin: 0; font-weight: 500;">Investment</p></div></div>', unsafe_allow_html=True)
 
             # Card 5: Unrealized G/L (using EE's already-calculated values)
             with col5:
