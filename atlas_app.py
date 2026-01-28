@@ -1334,10 +1334,17 @@ st.markdown("""
 <style>
 /* ===== REMOVE STREAMLIT CHROME ===== */
 header[data-testid="stHeader"] { display: none !important; }
-footer { display: none !important; visibility: hidden !important; }
+footer { display: none !important; visibility: hidden !important; height: 0 !important; overflow: hidden !important; }
 .stDeployButton { display: none !important; }
-.viewerBadge_container__r5tak { display: none !important; }
+.viewerBadge_container__r5tak,
+.viewerBadge_container__1QSAt,
+.viewerBadge_link__1S137,
+.viewerBadge_text__1JaDK { display: none !important; visibility: hidden !important; }
 .stMainBlockContainer { padding-bottom: 0 !important; }
+div[data-testid="stBottom"] { display: none !important; }
+[data-testid="stStatusWidget"] { display: none !important; }
+#MainMenu { display: none !important; }
+[class*="footer"], [class*="Footer"], [data-testid*="footer"], [data-testid*="Footer"] { display: none !important; visibility: hidden !important; height: 0 !important; overflow: hidden !important; }
 
 /* ===== ZERO PADDING MAIN CONTAINER ===== */
 .main { padding: 0 !important; margin: 0 !important; }
@@ -2585,9 +2592,10 @@ st.markdown("""
        HIDE STREAMLIT BRANDING
        ============================================ */
 
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
+    #MainMenu {visibility: hidden; display: none !important;}
+    footer {visibility: hidden; display: none !important; height: 0 !important;}
     header {visibility: hidden;}
+    div[data-testid="stBottom"] {display: none !important; visibility: hidden !important;}
 
 </style>
 
@@ -13335,8 +13343,8 @@ def main():
     # ============================================================================
     with st.sidebar:
         st.markdown("""<div style="text-align: center; padding: 1rem 0; border-bottom: 1px solid rgb(31, 41, 55); margin-bottom: 1rem;"><h2 style="font-family: 'JetBrains Mono', monospace; color: #22d3ee; margin: 0; font-size: 1.3rem; letter-spacing: 0.1em;">ATLAS</h2><p style="font-family: 'JetBrains Mono', monospace; color: rgb(107, 114, 128); font-size: 0.7rem; margin: 0.25rem 0 0 0;">Analytics Terminal v10.0</p></div>""", unsafe_allow_html=True)
-        # Footer at bottom of sidebar
-        st.markdown("""<div style="position: fixed; bottom: 0; left: 0; width: 280px; background: #0f1520; border-top: 1px solid rgb(31, 41, 55); padding: 0.75rem 1rem; text-align: center; z-index: 999;"><p style="font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: rgb(107, 114, 128); margin: 0 0 0.25rem 0;">Built with ❤️ by <span style="color: #22d3ee;">Hlobo</span></p><p style="font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; color: rgb(75, 85, 99); margin: 0;">Powered by Streamlit</p></div>""", unsafe_allow_html=True)
+        # ATLAS-styled footer at bottom of sidebar
+        st.markdown("""<div style="position: fixed; bottom: 0; left: 0; width: 280px; background: linear-gradient(180deg, transparent 0%, #0f1520 20%); padding: 1.5rem 1rem 1rem 1rem; z-index: 999;"><div style="background: rgba(31, 41, 55, 0.3); border: 1px solid rgb(31, 41, 55); border-radius: 0.5rem; padding: 0.75rem; text-align: center;"><p style="font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: rgb(156, 163, 175); margin: 0 0 0.35rem 0; letter-spacing: 0.025em;">Built with <span style="color: #ec4899;">&#10084;</span> by <span style="color: #22d3ee; font-weight: 600;">Hlobo</span></p><p style="font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; color: rgb(107, 114, 128); margin: 0; letter-spacing: 0.025em;">Powered by <span style="color: rgb(156, 163, 175);">Streamlit</span></p></div></div>""", unsafe_allow_html=True)
 
     # ============================================================================
     # EQUITY TRACKING INITIALIZATION - CRITICAL FIX FOR LEVERAGE CALCULATIONS
