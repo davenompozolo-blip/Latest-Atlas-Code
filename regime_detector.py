@@ -153,8 +153,8 @@ class QuantitativeRegimeDetector:
             tnx = yf.Ticker("^TNX")
             tnx_data = tnx.history(period='3mo')
 
-            # 2-year Treasury (use ^IRX as proxy, or calculate from ^TNX)
-            # Note: ^IRX is 13-week, we'll use it as approximation
+            # Short-term Treasury: ^IRX is 13-week T-Bill (annualized yield)
+            # Used as short-term rate proxy for yield curve slope
             irx = yf.Ticker("^IRX")
             irx_data = irx.history(period='3mo')
 
@@ -162,7 +162,14 @@ class QuantitativeRegimeDetector:
                 return {'error': 'Treasury data not available'}
 
             current_10y = tnx_data['Close'].iloc[-1]
-            current_2y = irx_data['Close'].iloc[-1] * 4  # Approximate 2Y from 13-week
+            # ^IRX already reports annualized yield - DO NOT multiply
+            current_2y = irx_data['Close'].iloc[-1]
+
+            # Validate yields are in reasonable range (0-15%)
+            if current_10y < 0 or current_10y > 15:
+                return {'error': f'10Y yield {current_10y:.2f}% outside valid range'}
+            if current_2y < 0 or current_2y > 15:
+                return {'error': f'Short-term yield {current_2y:.2f}% outside valid range'}
 
             # Yield curve
             yield_curve = current_10y - current_2y

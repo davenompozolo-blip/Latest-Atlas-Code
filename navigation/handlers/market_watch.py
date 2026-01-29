@@ -380,18 +380,24 @@ def render_market_watch_page():
                 st.caption(f"**Data Freshness:** {ATLASFormatter.format_timestamp()} • {freshness_color} {data_source}")
                 st.info("💡 **Blue line** = Spot yields | **Green dashed** = Implied forward rates showing market expectations")
 
-                # Calculate and display spread
-                treasuries_10y = yf.Ticker("^TNX")
-                treasuries_2y = yf.Ticker("^FVX")
+                # Calculate and display yield curve spread (10Y vs short-term)
+                treasuries_10y = yf.Ticker("^TNX")   # 10-year Treasury
+                treasuries_st = yf.Ticker("^IRX")    # 13-week T-Bill (short-term proxy)
                 try:
                     hist_10y = treasuries_10y.history(period="1d")
-                    hist_2y = treasuries_2y.history(period="1d")
-                    if not hist_10y.empty and not hist_2y.empty:
-                        spread_10y_2y = hist_10y['Close'].iloc[-1] - hist_2y['Close'].iloc[-1]
-                        if spread_10y_2y > 0:
-                            st.success(f"✅ 10Y-5Y Spread: **+{spread_10y_2y:.2f}%** (Normal - Positive slope)")
+                    hist_st = treasuries_st.history(period="1d")
+                    if not hist_10y.empty and not hist_st.empty:
+                        val_10y = hist_10y['Close'].iloc[-1]
+                        val_st = hist_st['Close'].iloc[-1]  # Already annualized
+                        # Validate before displaying
+                        if 0 < val_10y < 15 and 0 < val_st < 15:
+                            spread = val_10y - val_st
+                            if spread > 0:
+                                st.success(f"✅ 10Y-2Y Spread: **+{spread:.2f}%** (Normal - Positive slope)")
+                            else:
+                                st.error(f"⚠️ 10Y-2Y Spread: **{spread:.2f}%** (INVERTED - Potential recession signal)")
                         else:
-                            st.error(f"⚠️ 10Y-5Y Spread: **{spread_10y_2y:.2f}%** (INVERTED - Potential recession signal)")
+                            st.warning("⚠️ Yield data outside valid range - verify data source")
                 except:
                     pass
 

@@ -554,18 +554,28 @@ def get_regime_indicators() -> Dict:
 
     # 2. Treasury Yields
     try:
-        tnx_data = get_ticker_data('^TNX')  # 10-year
-        irx_data = get_ticker_data('^IRX')  # 2-year
+        tnx_data = get_ticker_data('^TNX')  # 10-year Treasury
+        irx_data = get_ticker_data('^IRX')  # 13-week T-Bill (short-term proxy)
 
         if tnx_data and irx_data:
-            yield_curve = tnx_data['price'] - irx_data['price']
+            ten_y = tnx_data['price']
+            short_term = irx_data['price']  # Already annualized, do NOT multiply
 
-            indicators['yields'] = {
-                '10y': tnx_data['price'],
-                '2y': irx_data['price'],
-                'curve': yield_curve,
-                '10y_change': tnx_data['change']
-            }
+            # Validate yields are in reasonable range (0-15%)
+            if ten_y is not None and (ten_y < 0 or ten_y > 15):
+                ten_y = None
+            if short_term is not None and (short_term < 0 or short_term > 15):
+                short_term = None
+
+            if ten_y is not None and short_term is not None:
+                yield_curve = ten_y - short_term
+
+                indicators['yields'] = {
+                    '10y': ten_y,
+                    '2y': short_term,
+                    'curve': yield_curve,
+                    '10y_change': tnx_data['change']
+                }
     except:
         indicators['yields'] = None
 
