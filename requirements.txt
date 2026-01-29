@@ -21,3 +21,8 @@ beautifulsoup4>=4.12.0
 
 # Alpaca Markets Integration
 alpaca-py>=0.43.0
+
+# Market Watch & News dependencies
+tqdm>=4.65.0
+feedparser>=6.0.0
+investpy>=1.0.8

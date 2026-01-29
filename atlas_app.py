@@ -11183,7 +11183,7 @@ def create_performance_heatmap(df, period='monthly', use_professional_theme=True
             text=np.round(matrix, 1),
             texttemplate='%{text}%',
             textfont={"size": 11, "family": "JetBrains Mono", "color": "white"},
-            colorbar=dict(title="Return %", tickfont=dict(family='JetBrains Mono', size=10, color='white'), titlefont=dict(family='JetBrains Mono', size=11, color='white'))
+            colorbar=dict(title=dict(text="Return %", font=dict(family='JetBrains Mono', size=11, color='white')), tickfont=dict(family='JetBrains Mono', size=10, color='white'))
         ))
 
         fig.update_layout(
@@ -11868,7 +11868,7 @@ def create_sector_rotation_heatmap(df, start_date, end_date, use_professional_th
         text=np.round(matrix, 1),
         texttemplate='%{text}%',
         textfont={"size": 10, "family": "JetBrains Mono", "color": "white"},
-        colorbar=dict(title="Return %", tickfont=dict(family='JetBrains Mono', size=10, color='white'), titlefont=dict(family='JetBrains Mono', size=11, color='white'))
+        colorbar=dict(title=dict(text="Return %", font=dict(family='JetBrains Mono', size=11, color='white')), tickfont=dict(family='JetBrains Mono', size=10, color='white'))
     ))
 
     fig.update_layout(
