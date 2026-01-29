@@ -1380,14 +1380,46 @@ hr { margin: 0.25rem 0 !important; }
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown(
-    """
-    <script>
-        document.documentElement.setAttribute('data-theme', 'dark');
-    </script>
-    """,
-    unsafe_allow_html=True
-)
+# Full-width enforcement via st.html() - JavaScript executes here unlike st.markdown()
+st.html("""
+<script>
+(function() {
+    function forceFullWidth() {
+        document.querySelectorAll('.block-container').forEach(function(el) {
+            el.style.setProperty('max-width', '100%', 'important');
+            el.style.setProperty('width', '100%', 'important');
+        });
+        document.querySelectorAll('section.main > div').forEach(function(el) {
+            el.style.setProperty('max-width', '100%', 'important');
+            el.style.setProperty('width', '100%', 'important');
+        });
+        document.querySelectorAll('[style*="max-width"]').forEach(function(el) {
+            if (!el.closest('[data-testid="stSidebar"]')) {
+                el.style.setProperty('max-width', '100%', 'important');
+            }
+        });
+    }
+    forceFullWidth();
+    window.addEventListener('load', function() {
+        forceFullWidth();
+        setTimeout(forceFullWidth, 100);
+        setTimeout(forceFullWidth, 500);
+        setTimeout(forceFullWidth, 1000);
+    });
+    var observer = new MutationObserver(function(mutations) {
+        for (var i = 0; i < mutations.length; i++) {
+            if (mutations[i].attributeName === 'style' || mutations[i].addedNodes.length > 0) {
+                forceFullWidth();
+                return;
+            }
+        }
+    });
+    if (document.body) {
+        observer.observe(document.body, { attributes: true, attributeFilter: ['style'], childList: true, subtree: true });
+    }
+})();
+</script>
+""", unsafe_allow_javascript=True)
 
 # ============================================================================
 # FIGMA REDESIGN: Subtle chart borders (no neon glow)
