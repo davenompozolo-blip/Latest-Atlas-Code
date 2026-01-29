@@ -18,6 +18,12 @@ from dataclasses import dataclass
 from datetime import datetime
 import yfinance as yf
 
+try:
+    from utils.yield_data_fetcher import YieldDataFetcher
+    YIELD_FETCHER_AVAILABLE = True
+except ImportError:
+    YIELD_FETCHER_AVAILABLE = False
+
 
 @dataclass
 class TrapWarning:
@@ -136,16 +142,30 @@ class DCFTrapDetector:
 
         # Flag 1: WACC vs Risk-Free Rate
         try:
-            # Get 10-year Treasury yield (using ^TNX)
-            tnx = yf.Ticker("^TNX")
-            treasury_10y = tnx.history(period='5d')['Close'].iloc[-1] / 100  # TNX is in percentage
-            metrics['treasury_10y'] = treasury_10y
+            treasury_10y = None
 
-            min_wacc = treasury_10y + 0.02  # Treasury + 200 bps
-            metrics['min_acceptable_wacc'] = min_wacc
+            # Primary: YieldDataFetcher (FRED -> Yahoo -> fallback)
+            if YIELD_FETCHER_AVAILABLE:
+                fetcher = YieldDataFetcher()
+                yields = fetcher.get_current_yields()
+                val_10y = yields.get('10Y')
+                if val_10y is not None and 0 < val_10y < 15:
+                    treasury_10y = val_10y / 100  # Convert to decimal
 
-            if wacc < min_wacc:
-                flags.append(f"WACC ({wacc:.2%}) < Risk-Free + 2% ({min_wacc:.2%})")
+            # Fallback: Direct Yahoo
+            if treasury_10y is None:
+                tnx = yf.Ticker("^TNX")
+                raw = tnx.history(period='5d')['Close'].iloc[-1]
+                if 0 < raw < 15:
+                    treasury_10y = raw / 100
+
+            if treasury_10y is not None:
+                metrics['treasury_10y'] = treasury_10y
+                min_wacc = treasury_10y + 0.02  # Treasury + 200 bps
+                metrics['min_acceptable_wacc'] = min_wacc
+
+                if wacc < min_wacc:
+                    flags.append(f"WACC ({wacc:.2%}) < Risk-Free + 2% ({min_wacc:.2%})")
         except:
             pass
 

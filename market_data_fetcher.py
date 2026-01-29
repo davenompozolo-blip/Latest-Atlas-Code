@@ -23,6 +23,12 @@ import streamlit as st
 from typing import Dict, List, Optional, Tuple
 import json
 
+try:
+    from utils.yield_data_fetcher import YieldDataFetcher
+    YIELD_FETCHER_AVAILABLE = True
+except ImportError:
+    YIELD_FETCHER_AVAILABLE = False
+
 
 # ============================================================
 # MARKET DATA CONSTANTS
@@ -552,30 +558,48 @@ def get_regime_indicators() -> Dict:
     except:
         indicators['vix'] = None
 
-    # 2. Treasury Yields
+    # 2. Treasury Yields (FRED API primary, Yahoo Finance fallback)
     try:
-        tnx_data = get_ticker_data('^TNX')  # 10-year Treasury
-        irx_data = get_ticker_data('^IRX')  # 13-week T-Bill (short-term proxy)
+        ten_y = None
+        short_term = None
+        ten_y_change = 0.0
 
-        if tnx_data and irx_data:
-            ten_y = tnx_data['price']
-            short_term = irx_data['price']  # Already annualized, do NOT multiply
+        # Primary: Use YieldDataFetcher (FRED -> Yahoo -> fallback)
+        if YIELD_FETCHER_AVAILABLE:
+            fetcher = YieldDataFetcher()
+            yields = fetcher.get_current_yields()
+            is_valid, warnings = fetcher.validate_yields(yields)
 
-            # Validate yields are in reasonable range (0-15%)
-            if ten_y is not None and (ten_y < 0 or ten_y > 15):
-                ten_y = None
-            if short_term is not None and (short_term < 0 or short_term > 15):
-                short_term = None
+            ten_y = yields.get('10Y')
+            short_term = yields.get('2Y') or yields.get('3M')
 
-            if ten_y is not None and short_term is not None:
+            # Get change from Yahoo for 10Y
+            tnx_data = get_ticker_data('^TNX')
+            if tnx_data:
+                ten_y_change = tnx_data['change']
+
+        # Fallback: Direct Yahoo Finance
+        if ten_y is None or short_term is None:
+            tnx_data = get_ticker_data('^TNX')
+            irx_data = get_ticker_data('^IRX')
+
+            if tnx_data and irx_data:
+                ten_y = tnx_data['price']
+                short_term = irx_data['price']  # Already annualized
+                ten_y_change = tnx_data['change']
+
+        # Validate and store
+        if ten_y is not None and short_term is not None:
+            if 0 <= ten_y <= 15 and 0 <= short_term <= 15:
                 yield_curve = ten_y - short_term
-
                 indicators['yields'] = {
                     '10y': ten_y,
                     '2y': short_term,
                     'curve': yield_curve,
-                    '10y_change': tnx_data['change']
+                    '10y_change': ten_y_change
                 }
+            else:
+                indicators['yields'] = None
     except:
         indicators['yields'] = None
 

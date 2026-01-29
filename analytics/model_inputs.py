@@ -17,6 +17,12 @@ import requests
 from datetime import datetime
 from typing import Dict, Any, Optional
 
+try:
+    from utils.yield_data_fetcher import YieldDataFetcher
+    YIELD_FETCHER_AVAILABLE = True
+except ImportError:
+    YIELD_FETCHER_AVAILABLE = False
+
 
 # ============================================================================
 # COMPONENT 1: DuPont ROE ANALYSIS
@@ -160,32 +166,52 @@ def get_live_treasury_yield() -> dict:
     """
     Fetch current US 10-year Treasury yield (risk-free rate).
 
-    Multiple data sources with fallback:
-    1. yfinance (^TNX ticker)
-    2. Fallback to recent historical average if APIs fail
+    Data source priority:
+    1. FRED API via YieldDataFetcher (official Fed data)
+    2. Yahoo Finance via YieldDataFetcher fallback
+    3. Direct yfinance (^TNX ticker)
+    4. Hardcoded fallback
 
     Returns:
         dict with yield data and metadata
     """
-    # Method 1: Try yfinance
+    # Method 1: YieldDataFetcher (FRED -> Yahoo -> fallback)
+    if YIELD_FETCHER_AVAILABLE:
+        try:
+            fetcher = YieldDataFetcher()
+            yields = fetcher.get_current_yields()
+            ten_y = yields.get('10Y')
+
+            if ten_y is not None and 0 < ten_y < 15:
+                return {
+                    'yield': ten_y / 100,  # Convert to decimal (4.23% -> 0.0423)
+                    'date': datetime.now().strftime('%Y-%m-%d'),
+                    'source': fetcher.source,
+                    'success': True
+                }
+        except Exception as e:
+            print(f"YieldDataFetcher failed: {e}")
+
+    # Method 2: Direct yfinance fallback
     try:
-        tnx = yf.Ticker("^TNX")  # 10-Year Treasury Note Yield
+        tnx = yf.Ticker("^TNX")
         hist = tnx.history(period="5d")
 
         if not hist.empty:
             yield_value = hist['Close'].iloc[-1] / 100  # TNX is in percentage points
 
-            return {
-                'yield': yield_value,
-                'date': datetime.now().strftime('%Y-%m-%d'),
-                'source': 'yfinance (^TNX)',
-                'success': True
-            }
+            if 0 < yield_value < 0.15:  # Sanity check (0-15%)
+                return {
+                    'yield': yield_value,
+                    'date': datetime.now().strftime('%Y-%m-%d'),
+                    'source': 'yfinance (^TNX)',
+                    'success': True
+                }
     except Exception as e:
         print(f"yfinance failed: {e}")
 
-    # Method 2: Fallback to reasonable default
-    print("API failed, using fallback value")
+    # Method 3: Hardcoded fallback
+    print("All yield APIs failed, using fallback value")
     return {
         'yield': 0.0425,  # 4.25% as reasonable recent average
         'date': 'N/A',

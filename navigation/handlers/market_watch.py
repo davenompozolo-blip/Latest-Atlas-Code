@@ -24,6 +24,12 @@ def render_market_watch_page():
     import pandas as pd
     from datetime import datetime
 
+    try:
+        from utils.yield_data_fetcher import YieldDataFetcher
+        YIELD_FETCHER_AVAILABLE = True
+    except ImportError:
+        YIELD_FETCHER_AVAILABLE = False
+
     # Import helper functions
     from utils.ui_components import show_toast, make_scrollable_table
     from utils.market_data import (
@@ -380,24 +386,39 @@ def render_market_watch_page():
                 st.caption(f"**Data Freshness:** {ATLASFormatter.format_timestamp()} • {freshness_color} {data_source}")
                 st.info("💡 **Blue line** = Spot yields | **Green dashed** = Implied forward rates showing market expectations")
 
-                # Calculate and display yield curve spread (10Y vs short-term)
-                treasuries_10y = yf.Ticker("^TNX")   # 10-year Treasury
-                treasuries_st = yf.Ticker("^IRX")    # 13-week T-Bill (short-term proxy)
+                # Calculate and display yield curve spread using YieldDataFetcher
                 try:
-                    hist_10y = treasuries_10y.history(period="1d")
-                    hist_st = treasuries_st.history(period="1d")
-                    if not hist_10y.empty and not hist_st.empty:
-                        val_10y = hist_10y['Close'].iloc[-1]
-                        val_st = hist_st['Close'].iloc[-1]  # Already annualized
-                        # Validate before displaying
-                        if 0 < val_10y < 15 and 0 < val_st < 15:
-                            spread = val_10y - val_st
+                    if YIELD_FETCHER_AVAILABLE:
+                        fetcher = YieldDataFetcher()
+                        yields = fetcher.get_current_yields()
+                        is_valid, warnings = fetcher.validate_yields(yields)
+
+                        val_10y = yields.get('10Y')
+                        val_2y = yields.get('2Y') or yields.get('3M')
+
+                        if val_10y is not None and val_2y is not None and is_valid:
+                            spread = val_10y - val_2y
+                            source = fetcher.source
                             if spread > 0:
-                                st.success(f"✅ 10Y-2Y Spread: **+{spread:.2f}%** (Normal - Positive slope)")
+                                st.success(f"✅ 10Y-2Y Spread: **+{spread:.2f}%** (Normal - Positive slope) • Source: {source}")
                             else:
-                                st.error(f"⚠️ 10Y-2Y Spread: **{spread:.2f}%** (INVERTED - Potential recession signal)")
-                        else:
-                            st.warning("⚠️ Yield data outside valid range - verify data source")
+                                st.error(f"⚠️ 10Y-2Y Spread: **{spread:.2f}%** (INVERTED - Potential recession signal) • Source: {source}")
+                        elif not is_valid:
+                            for w in warnings:
+                                st.warning(f"⚠️ {w}")
+                    else:
+                        # Direct Yahoo fallback
+                        hist_10y = yf.Ticker("^TNX").history(period="1d")
+                        hist_st = yf.Ticker("^IRX").history(period="1d")
+                        if not hist_10y.empty and not hist_st.empty:
+                            val_10y = hist_10y['Close'].iloc[-1]
+                            val_st = hist_st['Close'].iloc[-1]
+                            if 0 < val_10y < 15 and 0 < val_st < 15:
+                                spread = val_10y - val_st
+                                if spread > 0:
+                                    st.success(f"✅ 10Y-2Y Spread: **+{spread:.2f}%** (Normal - Positive slope)")
+                                else:
+                                    st.error(f"⚠️ 10Y-2Y Spread: **{spread:.2f}%** (INVERTED - Potential recession signal)")
                 except:
                     pass
 
