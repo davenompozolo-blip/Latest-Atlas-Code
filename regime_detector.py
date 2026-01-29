@@ -26,6 +26,12 @@ import numpy as np
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime, timedelta
 
+try:
+    from utils.yield_data_fetcher import YieldDataFetcher
+    YIELD_FETCHER_AVAILABLE = True
+except ImportError:
+    YIELD_FETCHER_AVAILABLE = False
+
 
 class QuantitativeRegimeDetector:
     """
@@ -137,7 +143,12 @@ class QuantitativeRegimeDetector:
 
     def _fetch_treasury_yields(self) -> Dict:
         """
-        Fetch Treasury yields and calculate yield curve
+        Fetch Treasury yields and calculate yield curve.
+
+        Data source priority:
+        1. FRED API via YieldDataFetcher (official Fed data, exact maturities)
+        2. Yahoo Finance via YieldDataFetcher fallback
+        3. Direct Yahoo Finance as last resort
 
         Yield Curve (10Y - 2Y):
         - Inverted (<0): Recession signal (RISK-OFF)
@@ -149,26 +160,57 @@ class QuantitativeRegimeDetector:
         - Falling fast: Flight to safety
         """
         try:
-            # 10-year Treasury
-            tnx = yf.Ticker("^TNX")
-            tnx_data = tnx.history(period='3mo')
+            current_10y = None
+            current_2y = None
+            yield_change_1m = 0.0
 
-            # 2-year Treasury (use ^IRX as proxy, or calculate from ^TNX)
-            # Note: ^IRX is 13-week, we'll use it as approximation
-            irx = yf.Ticker("^IRX")
-            irx_data = irx.history(period='3mo')
+            # Primary: Use YieldDataFetcher (FRED -> Yahoo -> fallback)
+            if YIELD_FETCHER_AVAILABLE:
+                fetcher = YieldDataFetcher()
+                yields = fetcher.get_current_yields()
 
-            if len(tnx_data) == 0 or len(irx_data) == 0:
+                # Validate the data
+                is_valid, warnings = fetcher.validate_yields(yields)
+                if not is_valid:
+                    print(f"⚠️ Yield validation warnings: {warnings}")
+
+                current_10y = yields.get('10Y')
+                current_2y = yields.get('2Y') or yields.get('3M')
+
+                # Get yield movement from Yahoo (need historical data)
+                try:
+                    tnx = yf.Ticker("^TNX")
+                    tnx_data = tnx.history(period='3mo')
+                    if len(tnx_data) > 0:
+                        yield_change_1m = tnx_data['Close'].iloc[-1] - tnx_data['Close'].iloc[0]
+                except Exception:
+                    yield_change_1m = 0.0
+
+            # Fallback: Direct Yahoo Finance if YieldDataFetcher unavailable
+            if current_10y is None or current_2y is None:
+                tnx = yf.Ticker("^TNX")
+                tnx_data = tnx.history(period='3mo')
+                irx = yf.Ticker("^IRX")
+                irx_data = irx.history(period='3mo')
+
+                if len(tnx_data) == 0 or len(irx_data) == 0:
+                    return {'error': 'Treasury data not available'}
+
+                current_10y = tnx_data['Close'].iloc[-1]
+                # ^IRX is 13-week T-Bill, already annualized - DO NOT multiply
+                current_2y = irx_data['Close'].iloc[-1]
+                yield_change_1m = current_10y - tnx_data['Close'].iloc[0]
+
+            # Final validation
+            if current_10y is None or current_2y is None:
                 return {'error': 'Treasury data not available'}
+            if current_10y < 0 or current_10y > 15:
+                return {'error': f'10Y yield {current_10y:.2f}% outside valid range (0-15%)'}
+            if current_2y < 0 or current_2y > 15:
+                return {'error': f'2Y yield {current_2y:.2f}% outside valid range (0-15%)'}
 
-            current_10y = tnx_data['Close'].iloc[-1]
-            current_2y = irx_data['Close'].iloc[-1] * 4  # Approximate 2Y from 13-week
-
-            # Yield curve
+            # Yield curve spread
             yield_curve = current_10y - current_2y
-
-            # Yield change over 1 month
-            yield_change_1m = current_10y - tnx_data['Close'].iloc[0]
 
             # Interpret yield curve
             if yield_curve < 0:
