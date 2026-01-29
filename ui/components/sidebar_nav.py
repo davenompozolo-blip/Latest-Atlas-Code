@@ -144,31 +144,6 @@ def render_sidebar_navigation(default_page: str = "Portfolio Home") -> str:
             }
         )
 
-        # ==================== SIDEBAR FOOTER ====================
-        st.markdown("""
-            <div style='
-                position: fixed;
-                bottom: 0.5rem;
-                left: 0.5rem;
-                width: calc(100% - 1rem);
-                text-align: center;
-                color: #64748b;
-                font-size: 0.65rem;
-                padding: 0.5rem;
-                background: rgba(21, 25, 50, 0.9);
-                backdrop-filter: blur(10px);
-                border-radius: 0.5rem;
-                border: 1px solid rgba(99, 102, 241, 0.1);
-            '>
-                <p style='margin: 0; font-weight: 500; font-size: 0.65rem;'>
-                    Built with <span style='color: #ef4444;'>❤️</span> by Hlobo
-                </p>
-                <p style='margin: 0.15rem 0 0 0; font-size: 0.6rem; color: #475569;'>
-                    Powered by Streamlit
-                </p>
-            </div>
-        """, unsafe_allow_html=True)
-
     return selected
 
 

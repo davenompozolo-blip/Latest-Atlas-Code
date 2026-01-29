@@ -1334,8 +1334,10 @@ st.markdown("""
 <style>
 /* ===== REMOVE STREAMLIT CHROME ===== */
 header[data-testid="stHeader"] { display: none !important; }
+footer { display: none !important; visibility: hidden !important; height: 0 !important; overflow: hidden !important; }
 .stDeployButton { display: none !important; }
 .stMainBlockContainer { padding-bottom: 0 !important; }
+div[data-testid="stBottom"] { display: none !important; visibility: hidden !important; height: 0 !important; }
 [data-testid="stStatusWidget"] { display: none !important; }
 #MainMenu { display: none !important; }
 
@@ -2586,7 +2588,9 @@ st.markdown("""
        ============================================ */
 
     #MainMenu {visibility: hidden; display: none !important;}
+    footer {visibility: hidden; display: none !important; height: 0 !important;}
     header {visibility: hidden;}
+    div[data-testid="stBottom"] {display: none !important; visibility: hidden !important;}
 
 </style>
 
