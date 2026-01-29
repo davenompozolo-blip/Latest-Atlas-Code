@@ -16,7 +16,12 @@ import os
 from typing import List, Dict
 from datetime import datetime, timedelta
 import concurrent.futures
-from tqdm import tqdm
+try:
+    from tqdm import tqdm
+except ImportError:
+    # Fallback: simple no-op wrapper when tqdm is not installed
+    def tqdm(iterable, **kwargs):
+        return iterable
 
 
 class StockUniverseManager:
