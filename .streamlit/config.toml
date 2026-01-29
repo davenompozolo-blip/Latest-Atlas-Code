@@ -43,6 +43,7 @@ base = "dark"
 [client]
 # Client-side settings
 showErrorDetails = true
+showFooter = false
 toolbarMode = "minimal"
 
 [runner]
