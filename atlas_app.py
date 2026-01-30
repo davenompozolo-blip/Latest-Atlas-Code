@@ -13438,9 +13438,6 @@ def main():
     # ============================================================================
     # SIDEBAR - RENDER IMMEDIATELY TO FORCE VISIBILITY
     # ============================================================================
-    with st.sidebar:
-        st.markdown("""<div style="text-align: center; padding: 1rem 0; border-bottom: 1px solid rgb(31, 41, 55); margin-bottom: 1rem;"><h2 style="font-family: 'JetBrains Mono', monospace; color: #22d3ee; margin: 0; font-size: 1.3rem; letter-spacing: 0.1em;">ATLAS</h2><p style="font-family: 'JetBrains Mono', monospace; color: rgb(107, 114, 128); font-size: 0.7rem; margin: 0.25rem 0 0 0;">Analytics Terminal v10.0</p></div>""", unsafe_allow_html=True)
-
     # ============================================================================
     # EQUITY TRACKING INITIALIZATION - CRITICAL FIX FOR LEVERAGE CALCULATIONS
     # ============================================================================
@@ -13463,7 +13460,7 @@ def main():
     def render_atlas_header():
         """FIGMA REDESIGN: Clean header with JetBrains Mono typography."""
         # Single-line styles to fix Streamlit HTML parsing
-        st.markdown("""<style>@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap');</style><div style="background: linear-gradient(to right, #0f1520, #0a0e1a, #0a0e1a); padding: 0.75rem 1.5rem; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgb(31, 41, 55); margin-bottom: 0.75rem;"><div style="display: flex; align-items: center; gap: 0.75rem;"><div style="width: 2.5rem; height: 2.5rem; background: linear-gradient(135deg, rgba(34,211,238,0.15), rgba(59,130,246,0.15)); border: 1px solid rgba(34, 211, 238, 0.3); border-radius: 0.5rem; display: flex; align-items: center; justify-content: center;"><span style="font-family: 'JetBrains Mono', monospace; font-size: 1.25rem; font-weight: 700; color: #22d3ee;">A</span></div><div><h1 style="font-family: 'JetBrains Mono', monospace; font-size: 1.15rem; font-weight: 600; color: #22d3ee; margin: 0; letter-spacing: 0.05em;">ATLAS TERMINAL</h1><p style="font-family: 'JetBrains Mono', monospace; font-size: 0.6rem; color: rgb(107, 114, 128); margin: 0.15rem 0 0 0; letter-spacing: 0.1em;">INSTITUTIONAL EDITION</p></div></div><div style="text-align: right;"><p style="font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; color: rgb(156, 163, 175); margin: 0; line-height: 1.3;">Institutional Intelligence.</p><p style="font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; color: rgb(156, 163, 175); margin: 0; line-height: 1.3;">Personal Scale.</p></div></div>""", unsafe_allow_html=True)
+        st.markdown("""<style>@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap');</style><div style="background: linear-gradient(to right, #0f1520, #0a0e1a, #0a0e1a); padding: 0.75rem 1.5rem; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(31, 41, 55, 0.5); margin-bottom: 0.75rem; opacity: 0.6; transition: opacity 0.3s ease;" onmouseenter="this.style.opacity='0.85'" onmouseleave="this.style.opacity='0.6'"><div style="display: flex; align-items: center; gap: 0.75rem;"><div style="width: 2.5rem; height: 2.5rem; background: linear-gradient(135deg, rgba(34,211,238,0.08), rgba(59,130,246,0.08)); border: 1px solid rgba(34, 211, 238, 0.15); border-radius: 0.5rem; display: flex; align-items: center; justify-content: center;"><span style="font-family: 'JetBrains Mono', monospace; font-size: 1.25rem; font-weight: 700; color: rgba(34, 211, 238, 0.5);">A</span></div><div><h1 style="font-family: 'JetBrains Mono', monospace; font-size: 1.15rem; font-weight: 500; color: rgba(34, 211, 238, 0.45); margin: 0; letter-spacing: 0.08em;">ATLAS TERMINAL</h1><p style="font-family: 'JetBrains Mono', monospace; font-size: 0.6rem; color: rgba(255, 255, 255, 0.25); margin: 0.15rem 0 0 0; letter-spacing: 0.1em;">INSTITUTIONAL EDITION</p></div></div><div style="text-align: right;"><p style="font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; color: rgba(255, 255, 255, 0.2); margin: 0; line-height: 1.3;">Institutional Intelligence.</p><p style="font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; color: rgba(255, 255, 255, 0.2); margin: 0; line-height: 1.3;">Personal Scale.</p></div></div>""", unsafe_allow_html=True)
 
     def render_data_source_cards():
         """FIGMA REDESIGN: Clickable cards for data source selection."""
@@ -13507,25 +13504,6 @@ def main():
         st.session_state['target_leverage'] = 1.0
 
     # ============================================================================
-    # BROKER CONNECTION SYSTEM - Multi-broker support
-    # ============================================================================
-    # NEW: Alpaca Markets, Easy Equities, or Manual Entry
-    if BROKER_MANAGER_AVAILABLE:
-        with st.sidebar:
-            st.markdown("---")
-            with st.expander("🏦 Broker Connection", expanded=False):
-                broker_manager = BrokerManager()
-                broker_manager.display_broker_selection()
-
-                # Show active broker status
-                broker_manager.display_active_broker_status()
-
-                # If manual entry is selected, show the editor
-                if st.session_state.get('active_broker') == 'manual':
-                    st.markdown("---")
-                    display_manual_portfolio_editor()
-
-    # ============================================================================
     # PHASE 1B: VERTICAL SIDEBAR NAVIGATION
     # ============================================================================
     try:
@@ -13533,7 +13511,6 @@ def main():
     except Exception as e:
         # Fallback sidebar if render_sidebar_navigation fails
         with st.sidebar:
-            st.markdown("""<div style="text-align: center; padding: 1rem; border-bottom: 1px solid rgb(31, 41, 55); margin-bottom: 1rem;"><h2 style="font-family: 'JetBrains Mono', monospace; color: #22d3ee; margin: 0; font-size: 1.2rem;">ATLAS</h2><p style="font-family: 'JetBrains Mono', monospace; color: rgb(107, 114, 128); font-size: 0.7rem; margin: 0;">Analytics Terminal</p></div>""", unsafe_allow_html=True)
             page = st.radio("Navigation", ["Portfolio Home", "Phoenix Parser", "Market Watch", "Stock Screener", "Valuation House"], label_visibility="collapsed")
 
     # ============================================================================
