@@ -1377,6 +1377,76 @@ div[data-testid="stMetricLabel"] { font-size: 0.8rem !important; }
 .stTabs [data-baseweb="tab-list"] { gap: 0.3rem !important; }
 .stTabs [data-baseweb="tab"] { padding: 0.3rem 0.6rem !important; }
 hr { margin: 0.25rem 0 !important; }
+
+/* ===== RESPONSIVE METRIC CARDS ===== */
+/* Card labels - prevent text wrapping, responsive sizing */
+div[data-testid="column"] p[style*="text-transform: uppercase"] {
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    font-size: clamp(0.5rem, 0.9vw, 0.65rem) !important;
+}
+
+/* Card values - responsive sizing */
+div[data-testid="column"] h3[style*="font-weight: 800"] {
+    font-size: clamp(1.4rem, 2.2vw, 2.5rem) !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+}
+
+/* Card containers - reduce padding and min-height for density */
+div[data-testid="column"] > div > div > div[style*="backdrop-filter"] {
+    padding: clamp(1rem, 1.5vw, 1.75rem) clamp(0.75rem, 1.2vw, 1.5rem) !important;
+    min-height: clamp(140px, 15vw, 200px) !important;
+    border-radius: 16px !important;
+}
+
+/* Card status badges - tighter */
+div[data-testid="column"] div[style*="border-radius: 10px"] p,
+div[data-testid="column"] div[style*="border-radius: 12px"] p {
+    font-size: clamp(0.55rem, 0.8vw, 0.7rem) !important;
+    white-space: nowrap !important;
+}
+
+/* Capital structure cards - also scale values */
+div[data-testid="column"] h3[style*="font-size: 2.75rem"] {
+    font-size: clamp(1.6rem, 2.5vw, 2.75rem) !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+}
+
+/* ===== RESPONSIVE BREAKPOINTS ===== */
+@media (max-width: 1599px) {
+    div[data-testid="column"] h3[style*="font-weight: 800"] {
+        font-size: clamp(1.2rem, 2vw, 1.8rem) !important;
+    }
+    div[data-testid="column"] h3[style*="font-size: 2.75rem"] {
+        font-size: clamp(1.4rem, 2.2vw, 2rem) !important;
+    }
+}
+
+@media (max-width: 1199px) {
+    div[data-testid="column"] p[style*="text-transform: uppercase"] {
+        font-size: 0.55rem !important;
+        letter-spacing: 0.04em !important;
+    }
+    div[data-testid="column"] h3[style*="font-weight: 800"] {
+        font-size: 1.1rem !important;
+    }
+    div[data-testid="column"] > div > div > div[style*="backdrop-filter"] {
+        padding: 0.75rem !important;
+        min-height: 120px !important;
+    }
+}
+
+/* ===== COMPACT SECTION HEADERS ===== */
+h2[style*="font-size: 1.5rem"] {
+    font-size: clamp(1rem, 1.4vw, 1.5rem) !important;
+    margin-bottom: 0.75rem !important;
+    margin-top: 0.5rem !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -13393,7 +13463,7 @@ def main():
     def render_atlas_header():
         """FIGMA REDESIGN: Clean header with JetBrains Mono typography."""
         # Single-line styles to fix Streamlit HTML parsing
-        st.markdown("""<style>@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap');</style><div style="background: linear-gradient(to right, #0f1520, #0a0e1a, #0a0e1a); padding: 1.5rem 2rem; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgb(31, 41, 55); margin-bottom: 1.5rem;"><div style="display: flex; align-items: center; gap: 1rem;"><div style="width: 3.5rem; height: 3.5rem; background: linear-gradient(135deg, rgba(34,211,238,0.15), rgba(59,130,246,0.15)); border: 1px solid rgba(34, 211, 238, 0.3); border-radius: 0.5rem; display: flex; align-items: center; justify-content: center;"><span style="font-family: 'JetBrains Mono', monospace; font-size: 1.75rem; font-weight: 700; color: #22d3ee;">A</span></div><div><h1 style="font-family: 'JetBrains Mono', monospace; font-size: 1.5rem; font-weight: 600; color: #22d3ee; margin: 0; letter-spacing: 0.05em;">ATLAS TERMINAL</h1><p style="font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: rgb(107, 114, 128); margin: 0.25rem 0 0 0; letter-spacing: 0.1em;">INSTITUTIONAL EDITION</p></div></div><div style="text-align: right;"><p style="font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: rgb(156, 163, 175); margin: 0; line-height: 1.4;">Institutional Intelligence.</p><p style="font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: rgb(156, 163, 175); margin: 0; line-height: 1.4;">Personal Scale.</p></div></div>""", unsafe_allow_html=True)
+        st.markdown("""<style>@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap');</style><div style="background: linear-gradient(to right, #0f1520, #0a0e1a, #0a0e1a); padding: 0.75rem 1.5rem; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgb(31, 41, 55); margin-bottom: 0.75rem;"><div style="display: flex; align-items: center; gap: 0.75rem;"><div style="width: 2.5rem; height: 2.5rem; background: linear-gradient(135deg, rgba(34,211,238,0.15), rgba(59,130,246,0.15)); border: 1px solid rgba(34, 211, 238, 0.3); border-radius: 0.5rem; display: flex; align-items: center; justify-content: center;"><span style="font-family: 'JetBrains Mono', monospace; font-size: 1.25rem; font-weight: 700; color: #22d3ee;">A</span></div><div><h1 style="font-family: 'JetBrains Mono', monospace; font-size: 1.15rem; font-weight: 600; color: #22d3ee; margin: 0; letter-spacing: 0.05em;">ATLAS TERMINAL</h1><p style="font-family: 'JetBrains Mono', monospace; font-size: 0.6rem; color: rgb(107, 114, 128); margin: 0.15rem 0 0 0; letter-spacing: 0.1em;">INSTITUTIONAL EDITION</p></div></div><div style="text-align: right;"><p style="font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; color: rgb(156, 163, 175); margin: 0; line-height: 1.3;">Institutional Intelligence.</p><p style="font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; color: rgb(156, 163, 175); margin: 0; line-height: 1.3;">Personal Scale.</p></div></div>""", unsafe_allow_html=True)
 
     def render_data_source_cards():
         """FIGMA REDESIGN: Clickable cards for data source selection."""
