@@ -11270,12 +11270,12 @@ def create_performance_heatmap(df, period='monthly', use_professional_theme=True
             title_color = '#FFFFFF'
             text_color = '#FFFFFF'
             paper_bg = '#1a1d29'
-            colorscale = [[0, '#ec4899'], [0.25, '#a855f7'], [0.5, '#1e293b'], [0.75, '#06b6d4'], [1, '#10b981']]
+            colorscale = 'Spectral_r'
         else:
             title_color = '#ffffff'
             text_color = '#ffffff'
             paper_bg = 'rgba(0, 0, 0, 0)'
-            colorscale = [[0, '#ec4899'], [0.25, '#a855f7'], [0.5, '#1e293b'], [0.75, '#06b6d4'], [1, '#10b981']]
+            colorscale = 'Spectral_r'
 
         fig = go.Figure(data=go.Heatmap(
             z=matrix,
@@ -11957,12 +11957,12 @@ def create_sector_rotation_heatmap(df, start_date, end_date, use_professional_th
         title_color = '#FFFFFF'
         text_color = '#FFFFFF'
         paper_bg = '#1a1d29'
-        colorscale = [[0, '#ec4899'], [0.25, '#a855f7'], [0.5, '#1e293b'], [0.75, '#06b6d4'], [1, '#10b981']]
+        colorscale = 'Spectral_r'
     else:
         title_color = '#ffffff'
         text_color = '#ffffff'
         paper_bg = 'rgba(0, 0, 0, 0)'
-        colorscale = [[0, '#ec4899'], [0.25, '#a855f7'], [0.5, '#1e293b'], [0.75, '#06b6d4'], [1, '#10b981']]
+        colorscale = 'Spectral_r'
 
     fig = go.Figure(data=go.Heatmap(
         z=matrix,
@@ -12603,7 +12603,7 @@ def create_sensitivity_table(base_price, base_discount, base_terminal):
         z=sensitivity_matrix,
         x=[f"{dr:.1%}" for dr in discount_rates],
         y=[f"{tg:.1%}" for tg in terminal_growth_rates],
-        colorscale='RdYlGn',
+        colorscale='Spectral_r',
         text=[[f"${v:.2f}" for v in row] for row in sensitivity_matrix],
         texttemplate='%{text}',
         textfont={"size": 10},
@@ -15251,7 +15251,7 @@ def main():
                                         labels=dict(color="Correlation"),
                                         x=corr_matrix.columns,
                                         y=corr_matrix.columns,
-                                        color_continuous_scale='RdBu_r',
+                                        color_continuous_scale='Spectral_r',
                                         zmin=-1, zmax=1
                                     )
                                     fig.update_layout(
@@ -19405,7 +19405,7 @@ To maintain gradual transitions:
                     z=correlation_matrix.values,
                     x=correlation_matrix.columns,
                     y=correlation_matrix.index,
-                    colorscale='RdYlGn',
+                    colorscale='Spectral_r',
                     zmid=0,
                     zmin=-1,
                     zmax=1,

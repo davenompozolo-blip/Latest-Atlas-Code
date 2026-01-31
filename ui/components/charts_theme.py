@@ -323,7 +323,7 @@ def create_performance_chart(
 def create_heatmap(
     data: pd.DataFrame,
     title: Optional[str] = None,
-    colorscale: str = 'RdYlGn'
+    colorscale: str = 'Spectral_r'
 ) -> go.Figure:
     """
     Create correlation/performance heatmap

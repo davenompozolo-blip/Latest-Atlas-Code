@@ -673,7 +673,7 @@ elif page == "🎯 Risk Analytics":
         st.subheader("🔥 Correlation Matrix")
         corr = returns.corr()
 
-        fig = go.Figure(data=go.Heatmap(z=corr.values, x=corr.columns, y=corr.columns, colorscale='RdYlGn', zmid=0))
+        fig = go.Figure(data=go.Heatmap(z=corr.values, x=corr.columns, y=corr.columns, colorscale='Spectral_r', zmid=0))
         fig.update_layout(title="Asset Correlation Heatmap", template='plotly_dark')
         st.plotly_chart(fig, use_container_width=True)
 
