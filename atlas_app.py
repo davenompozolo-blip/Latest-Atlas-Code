@@ -5562,78 +5562,168 @@ def fetch_analyst_data(ticker):
 # ============================================================================
 
 @st.cache_data(ttl=3600)
+def _safe_lookup(df, col, field_names):
+    """Lookup a value from a DataFrame trying multiple field name variants."""
+    if isinstance(field_names, str):
+        field_names = [field_names]
+    for name in field_names:
+        if name in df.index:
+            val = df.loc[name, col]
+            if pd.notna(val):
+                return float(val)
+    return 0
+
 def fetch_company_financials(ticker):
-    """Fetch comprehensive financial data for valuation"""
-    # ATLAS Refactoring - Use cached market data fetcher
+    """Fetch comprehensive financial data for valuation.
+
+    Uses yfinance with robust field name fallbacks to handle variations
+    across different companies and sectors (pharma, biotech, etc.).
+    Falls back to direct yfinance if refactored module returns empty data.
+    """
     try:
+        # Try refactored module first, then direct yfinance as fallback
+        info = {}
+        income_stmt = pd.DataFrame()
+        balance_sheet = pd.DataFrame()
+        cash_flow = pd.DataFrame()
+
         if REFACTORED_MODULES_AVAILABLE:
             info = market_data.get_company_info(ticker)
             income_stmt = market_data.get_financials(ticker, statement_type="income")
             balance_sheet = market_data.get_financials(ticker, statement_type="balance")
             cash_flow = market_data.get_financials(ticker, statement_type="cashflow")
-        else:
-            # Fallback to old method
-            stock = yf.Ticker(ticker)
-            info = stock.info
-            income_stmt = stock.income_stmt
-            balance_sheet = stock.balance_sheet
-            cash_flow = stock.cash_flow
 
-        # Basic company info
+        # Direct yfinance fallback if refactored module returned empty data
+        if not info or income_stmt.empty:
+            stock = yf.Ticker(ticker)
+            if not info:
+                info = stock.info or {}
+            if income_stmt.empty:
+                income_stmt = stock.income_stmt if hasattr(stock, 'income_stmt') and stock.income_stmt is not None else stock.financials
+            if balance_sheet.empty:
+                balance_sheet = stock.balance_sheet
+            if cash_flow.empty:
+                cash_flow = stock.cashflow if hasattr(stock, 'cashflow') else stock.cash_flow
+
+        # Ensure DataFrames are valid
+        if income_stmt is None:
+            income_stmt = pd.DataFrame()
+        if balance_sheet is None:
+            balance_sheet = pd.DataFrame()
+        if cash_flow is None:
+            cash_flow = pd.DataFrame()
+
+        # Basic company info - try multiple key names for price
+        current_price = info.get('currentPrice') or info.get('regularMarketPrice') or info.get('previousClose', 0)
+        shares = info.get('sharesOutstanding') or info.get('impliedSharesOutstanding', 0)
+
         company_data = {
             'ticker': ticker,
-            'name': info.get('longName', ticker),
+            'name': info.get('longName') or info.get('shortName', ticker),
             'sector': info.get('sector', 'Unknown'),
             'industry': info.get('industry', 'Unknown'),
-            'current_price': info.get('currentPrice', 0),
+            'current_price': current_price,
             'market_cap': info.get('marketCap', 0),
-            'shares_outstanding': info.get('sharesOutstanding', 0),
+            'shares_outstanding': shares,
             'beta': info.get('beta', 1.0),
             'forward_pe': info.get('forwardPE'),
             'trailing_pe': info.get('trailingPE'),
         }
-        
-        # Parse financials (most recent 3 years)
+
+        # Parse financials with robust field name fallbacks
         financials = {}
-        
-        if not income_stmt.empty:
-            # Get most recent year
+
+        if isinstance(income_stmt, pd.DataFrame) and not income_stmt.empty:
             latest_col = income_stmt.columns[0]
-            
-            financials['revenue'] = income_stmt.loc['Total Revenue', latest_col] if 'Total Revenue' in income_stmt.index else 0
-            financials['ebit'] = income_stmt.loc['EBIT', latest_col] if 'EBIT' in income_stmt.index else 0
-            financials['net_income'] = income_stmt.loc['Net Income', latest_col] if 'Net Income' in income_stmt.index else 0
-            financials['tax_expense'] = income_stmt.loc['Tax Provision', latest_col] if 'Tax Provision' in income_stmt.index else 0
-            
+
+            # Revenue: try multiple field names (varies by company/sector)
+            financials['revenue'] = _safe_lookup(income_stmt, latest_col, [
+                'Total Revenue', 'Revenue', 'Operating Revenue',
+                'Total Revenue And Other Operating Revenues'
+            ])
+            # EBIT: try multiple field names
+            financials['ebit'] = _safe_lookup(income_stmt, latest_col, [
+                'EBIT', 'Operating Income', 'Operating Income Loss',
+                'Normalized EBITDA', 'Total Operating Income As Reported'
+            ])
+            # Net Income
+            financials['net_income'] = _safe_lookup(income_stmt, latest_col, [
+                'Net Income', 'Net Income Common Stockholders',
+                'Net Income From Continuing Operations',
+                'Net Income Common Stockholders Net Income'
+            ])
+            # Tax
+            financials['tax_expense'] = _safe_lookup(income_stmt, latest_col, [
+                'Tax Provision', 'Income Tax Expense', 'Tax Rate For Calcs',
+                'Current Income Tax Expense', 'Tax Effect Of Unusual Items'
+            ])
+
             # Calculate tax rate
-            if financials['ebit'] != 0:
+            if financials['ebit'] != 0 and financials['tax_expense'] != 0:
                 financials['tax_rate'] = abs(financials['tax_expense'] / financials['ebit'])
+                financials['tax_rate'] = min(financials['tax_rate'], 0.40)  # Cap at 40%
             else:
                 financials['tax_rate'] = 0.21  # Default US corporate tax rate
-                
-        if not balance_sheet.empty:
+
+        if isinstance(balance_sheet, pd.DataFrame) and not balance_sheet.empty:
             latest_col = balance_sheet.columns[0]
-            
-            financials['total_debt'] = balance_sheet.loc['Total Debt', latest_col] if 'Total Debt' in balance_sheet.index else 0
-            financials['cash'] = balance_sheet.loc['Cash And Cash Equivalents', latest_col] if 'Cash And Cash Equivalents' in balance_sheet.index else 0
-            financials['total_equity'] = balance_sheet.loc['Total Equity Gross Minority Interest', latest_col] if 'Total Equity Gross Minority Interest' in balance_sheet.index else 0
-            
-        if not cash_flow.empty:
+
+            financials['total_debt'] = _safe_lookup(balance_sheet, latest_col, [
+                'Total Debt', 'Long Term Debt', 'Long Term Debt And Capital Lease Obligation',
+                'Total Non Current Liabilities Net Minority Interest',
+                'Current Debt And Capital Lease Obligation', 'Net Debt'
+            ])
+            financials['cash'] = _safe_lookup(balance_sheet, latest_col, [
+                'Cash And Cash Equivalents', 'Cash Cash Equivalents And Short Term Investments',
+                'Cash Financial', 'Cash And Short Term Investments',
+                'Cash Equivalents', 'Cash'
+            ])
+            financials['total_equity'] = _safe_lookup(balance_sheet, latest_col, [
+                'Total Equity Gross Minority Interest', 'Stockholders Equity',
+                'Total Stockholders Equity', 'Common Stock Equity',
+                'Total Capitalization', 'Tangible Book Value'
+            ])
+
+        if isinstance(cash_flow, pd.DataFrame) and not cash_flow.empty:
             latest_col = cash_flow.columns[0]
-            
-            financials['capex'] = abs(cash_flow.loc['Capital Expenditure', latest_col]) if 'Capital Expenditure' in cash_flow.index else 0
-            financials['depreciation'] = cash_flow.loc['Depreciation And Amortization', latest_col] if 'Depreciation And Amortization' in cash_flow.index else 0
-            financials['operating_cf'] = cash_flow.loc['Operating Cash Flow', latest_col] if 'Operating Cash Flow' in cash_flow.index else 0
-        
+
+            capex_val = _safe_lookup(cash_flow, latest_col, [
+                'Capital Expenditure', 'Capital Expenditures',
+                'Purchase Of Property Plant And Equipment',
+                'Net PPE Purchase And Sale'
+            ])
+            financials['capex'] = abs(capex_val) if capex_val else 0
+
+            financials['depreciation'] = _safe_lookup(cash_flow, latest_col, [
+                'Depreciation And Amortization', 'Depreciation',
+                'Depreciation Amortization Depletion',
+                'Depreciation And Amortization In Income Statement'
+            ])
+            financials['operating_cf'] = _safe_lookup(cash_flow, latest_col, [
+                'Operating Cash Flow', 'Cash Flow From Continuing Operating Activities',
+                'Total Cash From Operating Activities',
+                'Net Cash Provided By Operating Activities'
+            ])
+
         # Calculate working capital change (simplified)
         financials['change_wc'] = 0  # User can adjust
-        
+
+        # Check if we got enough data for a meaningful valuation
+        has_revenue = financials.get('revenue', 0) != 0
+        has_price = company_data['current_price'] != 0
+
+        if not has_revenue and not has_price:
+            return {
+                'success': False,
+                'error': f"No financial data available for {ticker}. The ticker may be invalid or data is not available on Yahoo Finance."
+            }
+
         return {
             'company': company_data,
             'financials': financials,
             'success': True
         }
-        
+
     except Exception as e:
         # ATLAS Refactoring: User-friendly error handling
         if REFACTORED_MODULES_AVAILABLE:
