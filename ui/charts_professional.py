@@ -195,11 +195,11 @@ def _style_waterfall_chart(fig: go.Figure) -> None:
 
 
 def _style_heatmap_chart(fig: go.Figure) -> None:
-    """Apply heatmap chart specific styling - RdYlGn colorscale centered at 0."""
+    """Apply heatmap chart specific styling - Spectral colorscale centered at 0."""
     for trace in fig.data:
         if isinstance(trace, go.Heatmap):
             trace.update(
-                colorscale='RdYlGn',
+                colorscale='Spectral_r',
                 zmid=0,
                 textfont={'size': FONT_SIZES['sm'], 'family': FONTS['family']},
                 colorbar={

@@ -438,7 +438,7 @@ def create_valuation_sensitivity_heatmap(base_wacc: float, base_terminal: float,
         z=z_values,
         x=[f"{w*100:.1f}%" for w in wacc_range],
         y=[f"{t*100:.1f}%" for t in terminal_range],
-        colorscale='RdYlGn',
+        colorscale='Spectral_r',
         hovertemplate='WACC: %{x}<br>Terminal: %{y}<br>Value: $%{z:.2f}<extra></extra>',
         colorbar=dict(title="Valuation ($)")
     ))
