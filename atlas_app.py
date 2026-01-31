@@ -54,6 +54,14 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
 
+# PHASE 1 REFACTORING: Centralized configuration
+from app.config import (
+    COLORS, CHART_HEIGHT_COMPACT, CHART_HEIGHT_STANDARD,
+    CHART_HEIGHT_LARGE, CHART_HEIGHT_DEEP_DIVE, CHART_THEME,
+    CACHE_DIR, PORTFOLIO_CACHE, TRADE_HISTORY_CACHE,
+    ACCOUNT_HISTORY_CACHE, RISK_FREE_RATE, MARKET_RETURN
+)
+
 # ============================================================================
 # PHASE 2A: NAVIGATION SYSTEM (New modular architecture)
 # ============================================================================
@@ -1713,64 +1721,8 @@ st.markdown("""
 
 # ============================================================================
 # PROFESSIONAL THEME SYSTEM - ENHANCED FOR SEAMLESS CHARTS
+# NOTE: COLORS, CHART_HEIGHT_*, CHART_THEME now imported from app.config
 # ============================================================================
-
-COLORS = {
-    "background": "#000000",
-    "card_background": "#0a1929",
-    "card_background_alt": "#050f17",
-    "neon_blue": "#00d4ff",
-    "electric_blue": "#0080ff",
-    "teal": "#00ffcc",
-    "cyan": "#00ffff",
-    "success": "#00ff88",
-    "warning": "#ffaa00",
-    "danger": "#ff0044",
-    "info": "#00d4ff",
-    "purple": "#b794f6",
-    "pink": "#ff00ff",
-    "orange": "#ff6b00",
-    "chart_primary": "#00d4ff",
-    "chart_secondary": "#0080ff",
-    "chart_accent": "#00ffcc",
-    "chart_grid": "#1a3a52",
-    "text_primary": "#ffffff",
-    "text_secondary": "#b0c4de",
-    "text_muted": "#6c8ca8",
-    "border": "#00d4ff",
-    "shadow": "rgba(0, 212, 255, 0.3)",
-    "shadow_strong": "rgba(0, 212, 255, 0.6)",
-    "gain_bg": "rgba(0, 255, 136, 0.15)",
-    "gain_text": "#00ff88",
-    "loss_bg": "rgba(255, 0, 68, 0.15)",
-    "loss_text": "#ff0044",
-}
-
-# ===== P1-4: STANDARD CHART HEIGHTS =====
-# Standardized height constants for consistent UI/UX across application
-CHART_HEIGHT_COMPACT = 400      # Small widgets, mini-charts, compact visualizations
-CHART_HEIGHT_STANDARD = 500     # Most dashboard charts (default for new charts)
-CHART_HEIGHT_LARGE = 600        # Primary analysis charts, yield curves, heatmaps
-CHART_HEIGHT_DEEP_DIVE = 700    # Detailed analysis pages, Monte Carlo simulations
-
-# ============================================================================
-# CHART THEME CONFIGURATION - SEAMLESS DARK MODE
-# ============================================================================
-CHART_THEME = {
-    'paper_bgcolor': 'rgba(0, 0, 0, 0)',  # Transparent background
-    'plot_bgcolor': 'rgba(10, 25, 41, 0.3)',  # Semi-transparent plot area
-    'font': {'color': COLORS['text_primary'], 'family': 'Inter, sans-serif'},
-    'xaxis': {
-        'gridcolor': COLORS['chart_grid'],
-        'linecolor': COLORS['chart_grid'],
-        'zerolinecolor': COLORS['chart_grid']
-    },
-    'yaxis': {
-        'gridcolor': COLORS['chart_grid'],
-        'linecolor': COLORS['chart_grid'],
-        'zerolinecolor': COLORS['chart_grid']
-    }
-}
 
 def apply_chart_theme(fig):
     """Apply dark theme with neon cyan accents to any Plotly figure
@@ -2704,16 +2656,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============================================================================
-# CONSTANTS & CONFIG
+# CONSTANTS & CONFIG - Now imported from app.config
 # ============================================================================
-CACHE_DIR = Path.home() / ".atlas_cache"
-CACHE_DIR.mkdir(exist_ok=True)
-PORTFOLIO_CACHE = CACHE_DIR / "portfolio.pkl"
-TRADE_HISTORY_CACHE = CACHE_DIR / "trade_history.pkl"
-ACCOUNT_HISTORY_CACHE = CACHE_DIR / "account_history.pkl"
-
-RISK_FREE_RATE = 0.045
-MARKET_RETURN = 0.10
 
 # ============================================================================
 # EXPANDED MARKET WATCH UNIVERSE - EXCELLENCE EDITION
