@@ -562,19 +562,8 @@ def get_benchmark_period_return(benchmark_ticker='SPY', period='1y', match_portf
             )
         return None
 
-
-def format_currency(value, decimals=2, currency_symbol='$'):
-    """Format value as currency string"""
-    if value is None:
-        return f"{currency_symbol}0.00"
-    return f"{currency_symbol}{value:,.{decimals}f}"
-
-
-def format_percentage(value, decimals=2):
-    """Format value as percentage string"""
-    if value is None:
-        return "0.00%"
-    return f"{value:.{decimals}f}%"
+# Formatting utilities - imported from utils/formatting.py
+from utils.formatting import format_currency, format_percentage, format_large_number, add_arrow_indicator
 
 
 # ============================================================================
@@ -1357,41 +1346,9 @@ from data.instruments import (
 
 
 # ============================================================================
-# HELPER FUNCTIONS
+# HELPER FUNCTIONS - format_currency, format_percentage, format_large_number,
+# add_arrow_indicator now imported from utils/formatting.py
 # ============================================================================
-
-def format_percentage(value, decimals=2):
-    if pd.isna(value) or value is None:
-        return "N/A"
-    return f"{value:.{decimals}f}%"
-
-def format_currency(value, currency_symbol='$'):
-    if pd.isna(value) or value is None:
-        return "N/A"
-    return f"{currency_symbol}{value:,.2f}"
-
-def format_large_number(value, currency_symbol='$'):
-    """Format large numbers with B/M/K suffix"""
-    if pd.isna(value) or value is None:
-        return "N/A"
-    if abs(value) >= 1e9:
-        return f"{currency_symbol}{value/1e9:.2f}B"
-    elif abs(value) >= 1e6:
-        return f"{currency_symbol}{value/1e6:.2f}M"
-    elif abs(value) >= 1e3:
-        return f"{currency_symbol}{value/1e3:.2f}K"
-    return f"{currency_symbol}{value:.2f}"
-
-def add_arrow_indicator(value):
-    try:
-        val = float(str(value).replace('%', '').replace('$', '').replace(',', ''))
-        if val > 0:
-            return f"▲ {value}"
-        elif val < 0:
-            return f"▼ {value}"
-        return f"─ {value}"
-    except:
-        return value
 
 def show_toast(message, toast_type="info", duration=3000):
     """Display a professional toast notification"""
