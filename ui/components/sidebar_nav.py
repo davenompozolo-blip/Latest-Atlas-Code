@@ -37,7 +37,7 @@ def render_sidebar_navigation(default_page: str = "Portfolio Home") -> str:
 
     with st.sidebar:
         # ==================== ATLAS BRANDING HEADER ====================
-        st.markdown("""<div style="text-align: center; padding: 0.75rem 0 0.6rem 0; border-bottom: 1px solid rgba(99, 102, 241, 0.15); margin-bottom: 0.75rem;"><div style="font-family: 'JetBrains Mono', monospace; font-size: 1.1rem; font-weight: 700; letter-spacing: 0.12em; margin: 0; color: #22d3ee; line-height: 1.2;">ATLAS</div><div style="font-family: 'JetBrains Mono', monospace; color: #64748b; font-size: 0.65rem; margin: 0.15rem 0 0 0; font-weight: 400; letter-spacing: 0.05em;">Analytics Terminal</div></div>""", unsafe_allow_html=True)
+        st.markdown("""<div style="text-align: center; padding: 1rem 0 0.75rem 0; border-bottom: 1px solid rgba(99, 102, 241, 0.15); margin-bottom: 0.75rem;"><div style="font-family: 'JetBrains Mono', monospace; font-size: 1.3rem; font-weight: 700; letter-spacing: 0.12em; margin: 0; color: #22d3ee; line-height: 1.2;">ATLAS</div><div style="font-family: 'JetBrains Mono', monospace; color: rgb(107, 114, 128); font-size: 0.7rem; margin: 0.25rem 0 0 0; font-weight: 400; letter-spacing: 0.05em;">Analytics Terminal</div></div>""", unsafe_allow_html=True)
 
         # ==================== MAIN NAVIGATION MENU ====================
         selected = option_menu(
