@@ -1010,6 +1010,59 @@ st.set_page_config(
 from ui.atlas_css import init_atlas_css
 init_atlas_css()
 
+# ============================================================================
+# CHART THEME FUNCTION & COLORSCALES
+# ============================================================================
+
+def apply_chart_theme(fig):
+    """Apply dark theme with neon cyan accents to any Plotly figure
+
+    IMPORTANT: This function is called on ALL charts to ensure:
+    - Dark background (#1a1d29)
+    - White text for all labels
+    - Subtle grid lines
+    - Proper contrast on dark pages
+    """
+    fig.update_layout(
+        paper_bgcolor='#1a1d29',
+        plot_bgcolor='#1a1d29',
+        font=dict(color='#FFFFFF', family='Inter, sans-serif'),
+        title=dict(font=dict(color='#FFFFFF')),
+        xaxis=dict(
+            gridcolor='rgba(255, 255, 255, 0.1)',
+            linecolor='rgba(255, 255, 255, 0.2)',
+            zerolinecolor='rgba(255, 255, 255, 0.1)',
+            tickfont=dict(color='#FFFFFF'),
+            title=dict(font=dict(color='#FFFFFF')),
+        ),
+        yaxis=dict(
+            gridcolor='rgba(255, 255, 255, 0.1)',
+            linecolor='rgba(255, 255, 255, 0.2)',
+            zerolinecolor='rgba(255, 255, 255, 0.1)',
+            tickfont=dict(color='#FFFFFF'),
+            title=dict(font=dict(color='#FFFFFF')),
+        ),
+        hoverlabel=dict(
+            bgcolor='#1a1d29',
+            font=dict(color='#FFFFFF'),
+            bordercolor='#00BCD4',
+        ),
+        legend=dict(
+            font=dict(color='#FFFFFF'),
+            bgcolor='rgba(26, 29, 41, 0.8)',
+            bordercolor='rgba(0, 188, 212, 0.3)',
+        ),
+    )
+    return fig
+
+COLORSCALES = {
+    "viridis": px.colors.sequential.Viridis,
+    "plasma": px.colors.sequential.Plasma,
+    "turbo": px.colors.sequential.Turbo,
+    "rdylgn": px.colors.diverging.RdYlGn,
+    "spectral": px.colors.diverging.Spectral,
+}
+
 
 # ============================================================================
 # CONSTANTS & CONFIG - Now imported from app.config
