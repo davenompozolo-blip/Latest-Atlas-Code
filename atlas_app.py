@@ -16565,8 +16565,7 @@ To maintain gradual transitions:
                     texttemplate='%{text}',
                     textfont={"size": 10, "color": "#000000"},
                     colorbar=dict(
-                        title="Correlation",
-                        titleside="right",
+                        title=dict(text="Correlation", side="right"),
                         tickmode="linear",
                         tick0=-1,
                         dtick=0.5
@@ -18617,7 +18616,7 @@ To maintain gradual transitions:
                             with st.spinner("Running 1000 Monte Carlo simulations..."):
                                 try:
                                     # Create RobustDCFEngine
-                                    assumption_manager = DCFAssumptionManager()
+                                    assumption_manager = DCFAssumptionManager(company_data=company, financials=financials)
 
                                     # Set base assumptions from current DCF
                                     assumption_manager.set('revenue_growth', revenue_growth if not dashboard_active else (projections[-1]['revenue'] / projections[0]['revenue']) ** (1/len(projections)) - 1)
@@ -18893,7 +18892,18 @@ To maintain gradual transitions:
                 st.warning("Please upload portfolio data via Phoenix Parser first")
             else:
                 st.success(f"Portfolio loaded: {len(portfolio_data)} positions")
-    
+
+                # Normalize quantity column name to 'Quantity' for consistency
+                if 'Quantity' not in portfolio_data.columns:
+                    for _qcol in ['Shares', 'quantity', 'shares', 'Qty', 'qty', 'QUANTITY']:
+                        if _qcol in portfolio_data.columns:
+                            portfolio_data['Quantity'] = portfolio_data[_qcol]
+                            break
+
+                if 'Quantity' not in portfolio_data.columns and 'Total Value' not in portfolio_data.columns:
+                    st.error("❌ Portfolio data missing quantity column (Quantity/Shares/Qty) and 'Total Value'. Please check your data.")
+                    st.stop()
+
                 # Configuration
                 col1, col2, col3 = st.columns(3)
                 with col1:
