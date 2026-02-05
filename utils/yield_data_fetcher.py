@@ -41,6 +41,9 @@ class YieldDataFetcher:
     Includes comprehensive validation to catch data integrity issues.
     """
 
+    # Hardcoded FRED API key for local testing - replace with secrets in production
+    _EMBEDDED_API_KEY = "1b56dae2052715336cd3e3d3ef8b4f81"
+
     # FRED series codes for Treasury yields
     FRED_SERIES = {
         '1M': 'DGS1MO',
@@ -99,6 +102,10 @@ class YieldDataFetcher:
             # Try environment variable
             if not self.api_key:
                 self.api_key = os.environ.get("FRED_API_KEY", None)
+
+            # Fall back to embedded key for local testing
+            if not self.api_key:
+                self.api_key = self._EMBEDDED_API_KEY
 
         # Clean up placeholder values
         if self.api_key in (None, "", "YOUR_API_KEY_HERE", "your_api_key_here"):
