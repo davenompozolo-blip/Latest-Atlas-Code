@@ -74,11 +74,23 @@ CHART_THEME = {
 
 
 # ============================================================================
-# CACHE CONFIGURATION
+# CACHE CONFIGURATION - MUST BE OUTSIDE REPO DIRECTORY
 # ============================================================================
+import tempfile
+import os
 
-CACHE_DIR = Path.home() / ".atlas_cache"
-CACHE_DIR.mkdir(exist_ok=True)
+# Use temp directory on Streamlit Cloud, home directory locally
+if os.environ.get('STREAMLIT_SERVER_HEADLESS'):
+    # We're on Streamlit Cloud - use temp directory
+    CACHE_DIR = Path(tempfile.gettempdir()) / "atlas_cache"
+else:
+    # Local development
+    CACHE_DIR = Path.home() / ".atlas_cache"
+
+# Create cache directory
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+# Cache file paths - ALL outside repo
 PORTFOLIO_CACHE = CACHE_DIR / "portfolio.pkl"
 TRADE_HISTORY_CACHE = CACHE_DIR / "trade_history.pkl"
 ACCOUNT_HISTORY_CACHE = CACHE_DIR / "account_history.pkl"
