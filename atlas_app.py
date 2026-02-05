@@ -2507,3 +2507,11 @@ def main():
         elif page == "ℹ️ About":
             from ui.pages.about import render_about
             render_about()
+
+
+# ============================================================================
+# RUN THE APP
+# ============================================================================
+print("[BOOT] Calling main()...", flush=True)
+main()
+print("[BOOT] main() completed", flush=True)
