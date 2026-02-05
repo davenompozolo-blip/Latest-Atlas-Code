@@ -11,8 +11,8 @@ from utils.formatting import format_currency, format_percentage, add_arrow_indic
 
 def render_portfolio_home(start_date, end_date):
     """Render the Portfolio Home page."""
-    # Lazy imports to avoid circular dependency with atlas_app
-    from atlas_app import (
+    # Import from core module to avoid circular dependency with atlas_app
+    from core import (
         load_portfolio_data,
         create_enhanced_holdings_table,
         calculate_portfolio_returns,
