@@ -11,8 +11,8 @@ from utils.formatting import format_currency, format_percentage, format_large_nu
 
 def render_leverage_tracker(start_date, end_date):
     """Render the Leverage Tracker page."""
-    # Lazy imports to avoid circular dependency with atlas_app
-    from core import *
+    # Import only what's needed from core
+    from core import load_portfolio_data, get_leverage_info, ATLASFormatter
     from ui.components import ATLAS_TEMPLATE
 
     st.markdown('<h1 style="font-size: 2.5rem; font-weight: 800; color: #f8fafc; margin-bottom: 0.5rem;"><span style="font-size: 2rem;">📊</span> <span style="background: linear-gradient(135deg, #00d4ff, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">LEVERAGE TRACKING & ANALYSIS</span></h1>', unsafe_allow_html=True)

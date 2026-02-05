@@ -11,8 +11,8 @@ from utils.formatting import format_currency, format_percentage, format_large_nu
 
 def render_investopedia_live():
     """Render the Investopedia Live page."""
-    # Lazy imports to avoid circular dependency with atlas_app
-    from core import *
+    # Import only what's needed from core
+    from core import load_portfolio_data, save_portfolio_data
     from ui.components import ATLAS_TEMPLATE
 
     st.markdown("### 📡 Investopedia Paper Trading Integration")

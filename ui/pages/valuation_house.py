@@ -12,7 +12,7 @@ from utils.formatting import format_currency, format_percentage, format_large_nu
 def render_valuation_house(start_date, end_date):
     """Render the Valuation House page."""
     # Lazy imports to avoid circular dependency with atlas_app
-    from core import *
+    from core import ATLASFormatter
     from ui.components import ATLAS_TEMPLATE
 
     st.markdown("### Professional DCF Valuation Engine with Smart Assumptions")

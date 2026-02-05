@@ -12,7 +12,7 @@ from utils.formatting import format_currency, format_percentage, format_large_nu
 def render_phoenix_parser():
     """Render the Phoenix Parser page."""
     # Import from core module to avoid circular dependency with atlas_app
-    from core import *
+    from core import ATLASFormatter
     from ui.components import ATLAS_TEMPLATE
     # Also need render_data_source_cards which is defined in atlas_app main()
     # For now, define a simple version here

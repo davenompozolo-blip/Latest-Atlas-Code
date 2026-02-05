@@ -12,7 +12,7 @@ from utils.formatting import format_currency, format_percentage, format_large_nu
 def render_performance_suite(start_date, end_date, selected_benchmark):
     """Render the Performance Suite page."""
     # Lazy imports to avoid circular dependency with atlas_app
-    from core import *
+    from core import ATLASFormatter
     from ui.components import ATLAS_TEMPLATE
 
     import plotly.graph_objects as go

@@ -11,8 +11,8 @@ from utils.formatting import format_currency, format_percentage, format_large_nu
 
 def render_market_watch():
     """Render the Market Watch page."""
-    # Import from core module to avoid circular dependency with atlas_app
-    from core import *
+    # Import only what's needed from core
+    from core import ATLASFormatter
     from ui.components import ATLAS_TEMPLATE
 
 

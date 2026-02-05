@@ -12,7 +12,7 @@ from utils.formatting import format_currency, format_percentage, format_large_nu
 def render_v10_analytics():
     """Render the v10.0 Analytics page."""
     # Lazy imports to avoid circular dependency with atlas_app
-    from core import *
+    from core import ATLASFormatter
     from ui.components import ATLAS_TEMPLATE
 
     st.markdown("## 🚀 ATLAS v10.0 ADVANCED ANALYTICS")
