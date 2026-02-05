@@ -12,8 +12,7 @@ from utils.formatting import format_currency, format_percentage, format_large_nu
 def render_portfolio_deep_dive(start_date, end_date):
     """Render the Portfolio Deep Dive page."""
     # Lazy imports to avoid circular dependency with atlas_app
-    import atlas_app as _app
-    globals().update({k: v for k, v in _app.__dict__.items() if not k.startswith('_')})
+    from core import *
     from ui.components import ATLAS_TEMPLATE
 
     st.markdown("---")

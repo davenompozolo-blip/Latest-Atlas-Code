@@ -11,10 +11,22 @@ from utils.formatting import format_currency, format_percentage, format_large_nu
 
 def render_phoenix_parser():
     """Render the Phoenix Parser page."""
-    # Lazy imports to avoid circular dependency with atlas_app
-    import atlas_app as _app
-    globals().update({k: v for k, v in _app.__dict__.items() if not k.startswith('_')})
+    # Import from core module to avoid circular dependency with atlas_app
+    from core import *
     from ui.components import ATLAS_TEMPLATE
+    # Also need render_data_source_cards which is defined in atlas_app main()
+    # For now, define a simple version here
+    def render_data_source_cards():
+        if 'portfolio_data_source_mode' not in st.session_state:
+            st.session_state['portfolio_data_source_mode'] = "📁 Classic Mode (Excel Upload)"
+        sources = ["📁 Classic Mode (Excel Upload)", "🔗 Easy Equities (Live Sync)", "🦙 Alpaca Markets (Live Sync)"]
+        cols = st.columns(3)
+        for i, src in enumerate(sources):
+            with cols[i]:
+                if st.button(src.split(" ")[0] + " " + src.split("(")[0].split(" ", 1)[1].strip(), key=f"src_{i}", use_container_width=True):
+                    st.session_state['portfolio_data_source_mode'] = src
+                    st.rerun()
+        return st.session_state['portfolio_data_source_mode']
 
     st.markdown("## 🔥 PHOENIX MODE")
 
