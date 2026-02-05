@@ -36,6 +36,13 @@ PRODUCTION STATUS: VERIFIED AND TESTED
 VERSION: 10.0
 """
 
+# ============================================================================
+# EARLY BOOT DIAGNOSTICS - TRACE IMPORT FAILURES
+# ============================================================================
+import sys
+print(f"[BOOT] Python {sys.version}", flush=True)
+print(f"[BOOT] Starting imports...", flush=True)
+
 import pickle
 import warnings
 import re
@@ -53,8 +60,10 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
+print(f"[BOOT] Standard libs + streamlit OK", flush=True)
 
 # PHASE 1 REFACTORING: Centralized configuration
+print(f"[BOOT] Importing app.config...", flush=True)
 from app.config import (
     COLORS, CHART_HEIGHT_COMPACT, CHART_HEIGHT_STANDARD,
     CHART_HEIGHT_LARGE, CHART_HEIGHT_DEEP_DIVE, CHART_THEME,
@@ -65,12 +74,17 @@ from app.config import (
 # ============================================================================
 # PHASE 2A: NAVIGATION SYSTEM (New modular architecture)
 # ============================================================================
+print(f"[BOOT] Importing navigation...", flush=True)
 from navigation import PAGE_REGISTRY, get_page_by_key, route_to_page
+print(f"[BOOT] navigation OK", flush=True)
 
 # PHASE 1B: VERTICAL SIDEBAR NAVIGATION (Fomo-inspired)
+print(f"[BOOT] Importing ui.components...", flush=True)
 from ui.components import render_sidebar_navigation
+print(f"[BOOT] ui.components OK", flush=True)
 
 # PHASE 2A: ENHANCED COMPONENTS (Fomo-inspired)
+print(f"[BOOT] Importing ui.components extended...", flush=True)
 from ui.components import (
     # Badges
     badge, render_badge, badge_group,
@@ -80,8 +94,10 @@ from ui.components import (
     create_line_chart, create_performance_chart,
     ATLAS_TEMPLATE, ATLAS_COLORS
 )
+print(f"[BOOT] ui.components extended OK", flush=True)
 
 # ATLAS v12.0: Professional Blue Theme System
+print(f"[BOOT] Importing ui.theme...", flush=True)
 try:
     from ui.theme import (
         ATLAS_COLORS as PROFESSIONAL_COLORS,
@@ -107,10 +123,12 @@ try:
 except ImportError as e:
     PROFESSIONAL_THEME_AVAILABLE = False
     print(f"⚠️ Professional Theme not available: {e}")
+print(f"[BOOT] ui.theme done", flush=True)
 
 # ============================================================================
 # BROKER INTEGRATION SYSTEM (Alpaca, Easy Equities, Manual Entry)
 # ============================================================================
+print(f"[BOOT] Importing broker manager...", flush=True)
 try:
     from atlas_broker_manager import BrokerManager, ManualPortfolioAdapter
     from atlas_broker_manager import display_manual_portfolio_editor
@@ -119,8 +137,10 @@ try:
 except ImportError as e:
     BROKER_MANAGER_AVAILABLE = False
     print(f"⚠️ Broker Manager not available: {e}")
+print(f"[BOOT] broker manager done", flush=True)
 
 # Auto-install streamlit_option_menu if missing
+print(f"[BOOT] Importing streamlit_option_menu...", flush=True)
 try:
     from streamlit_option_menu import option_menu
 except ImportError:
@@ -130,7 +150,9 @@ except ImportError:
     subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "streamlit-option-menu>=0.3.6"])
     from streamlit_option_menu import option_menu
     print("✅ streamlit-option-menu installed successfully!")
+print(f"[BOOT] streamlit_option_menu done", flush=True)
 
+print(f"[BOOT] Importing yfinance, scipy, sklearn...", flush=True)
 import yfinance as yf
 from scipy import stats
 from scipy.optimize import minimize
@@ -138,8 +160,10 @@ import networkx as nx
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from sklearn.linear_model import LinearRegression
+print(f"[BOOT] yfinance, scipy, sklearn OK", flush=True)
 
 # ATLAS v10.0 Advanced Modules
+print(f"[BOOT] Importing v10.0 modules...", flush=True)
 try:
     from valuation.atlas_dcf_engine import DCFValuation
     from risk_analytics.atlas_monte_carlo import MonteCarloSimulation
@@ -271,6 +295,10 @@ try:
 except ImportError as e:
     REFACTORED_MODULES_AVAILABLE = False
     print(f"⚠️ Refactored modules not available: {e}")
+
+print(f"[BOOT] ========================================", flush=True)
+print(f"[BOOT] ALL IMPORTS COMPLETE - Starting app...", flush=True)
+print(f"[BOOT] ========================================", flush=True)
 
 warnings.filterwarnings("ignore")
 
