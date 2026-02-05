@@ -11,8 +11,7 @@ from utils.formatting import format_currency, format_percentage, format_large_nu
 
 def render_about():
     """Render the About page."""
-    # Lazy imports to avoid circular dependency with atlas_app
-    from core import *
+    # About page uses minimal imports - no core functions needed
     from ui.components import ATLAS_TEMPLATE
 
     st.markdown("### ℹ️ ATLAS Terminal v9.7 ULTIMATE EDITION")

@@ -11,9 +11,16 @@ from utils.formatting import format_currency, format_percentage, format_large_nu
 
 def render_database():
     """Render the Database page."""
-    # Lazy imports to avoid circular dependency with atlas_app
-    from core import *
+    # Import database functions from core
+    from core import get_db
     from ui.components import ATLAS_TEMPLATE
+
+    # Check SQL availability
+    try:
+        from data import get_db as _db_check
+        SQL_AVAILABLE = True
+    except ImportError:
+        SQL_AVAILABLE = False
 
     st.markdown("## 💾 DATABASE MANAGEMENT")
 

@@ -12,7 +12,7 @@ from utils.formatting import format_currency, format_percentage, format_large_nu
 def render_risk_analysis(start_date, end_date, selected_benchmark):
     """Render the Risk Analysis page."""
     # Lazy imports to avoid circular dependency with atlas_app
-    from core import *
+    from core import ATLASFormatter
     from ui.components import ATLAS_TEMPLATE
 
 
