@@ -1,15 +1,37 @@
+# ============================================================================
+# ATLAS TERMINAL v10.0 - Streamlit Configuration
+# ============================================================================
+
 [server]
 headless = true
+port = 8501
+enableCORS = false
+enableXsrfProtection = true
+maxUploadSize = 200
 fileWatcherType = "none"
 runOnSave = false
-enableCORS = false
-enableXsrfProtection = false
 
 [browser]
 gatherUsageStats = false
+serverAddress = "localhost"
+serverPort = 8501
 
-[runner]
-fastReruns = false
+[theme]
+# ATLAS Terminal Dark Theme
+primaryColor = "#00d4ff"
+backgroundColor = "#0a0e27"
+secondaryBackgroundColor = "#151932"
+textColor = "#f8fafc"
+font = "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+base = "dark"
 
 [client]
 showErrorDetails = true
+toolbarMode = "minimal"
+
+[runner]
+magicEnabled = true
+fastReruns = false
+
+[logger]
+level = "info"
