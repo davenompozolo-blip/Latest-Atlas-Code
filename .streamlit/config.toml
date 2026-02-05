@@ -1,93 +1,15 @@
-# ============================================================================
-# ATLAS TERMINAL v10.0 - Streamlit Configuration
-# ============================================================================
-# Complete configuration for Google Colab and production environments
-# Matches the ATLAS dark theme with vibranium accent colors
-# Created: December 2024
-# ============================================================================
-
 [server]
-# Server settings for optimal performance
 headless = true
-port = 8501
+fileWatcherType = "none"
+runOnSave = false
 enableCORS = false
-enableXsrfProtection = true
-maxUploadSize = 200
+enableXsrfProtection = false
 
 [browser]
-# Browser and UI behavior
 gatherUsageStats = false
-serverAddress = "localhost"
-serverPort = 8501
-
-[theme]
-# ATLAS Terminal Dark Theme - Institutional Edition
-# Based on ATLAS_COLORS palette from ui/components/charts_theme.py
-
-# Primary brand color - Vibranium (cyan/blue glow)
-primaryColor = "#00d4ff"
-
-# Background colors - Deep space dark theme
-backgroundColor = "#0a0e27"        # Main background (bg_dark)
-secondaryBackgroundColor = "#151932"  # Cards, sidebars, inputs (bg_plot)
-
-# Text colors
-textColor = "#f8fafc"              # Primary text (text_primary)
-
-# Font family - Professional sans-serif stack
-font = "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-
-# Base theme foundation
-base = "dark"
-
-[client]
-# Client-side settings
-showErrorDetails = true
-showFooter = false
-toolbarMode = "minimal"
 
 [runner]
-# Script execution settings
-magicEnabled = true
-fastReruns = true
+fastReruns = false
 
-[logger]
-# Logging configuration
-level = "info"
-
-# ============================================================================
-# USAGE INSTRUCTIONS FOR GOOGLE COLAB:
-# ============================================================================
-# 1. Create a .streamlit directory in your Colab workspace:
-#    !mkdir -p /content/.streamlit
-#
-# 2. Copy this file to that directory:
-#    with open('/content/.streamlit/config.toml', 'w') as f:
-#        f.write('''[paste this entire file content]''')
-#
-# 3. Launch Streamlit with the config:
-#    !streamlit run atlas_app.py --server.headless=true --server.enableCORS=false
-#
-# ALTERNATIVE: Set environment variables in Colab:
-#    import os
-#    os.environ['STREAMLIT_THEME_PRIMARY_COLOR'] = '#00d4ff'
-#    os.environ['STREAMLIT_THEME_BACKGROUND_COLOR'] = '#0a0e27'
-#    os.environ['STREAMLIT_THEME_SECONDARY_BACKGROUND_COLOR'] = '#151932'
-#    os.environ['STREAMLIT_THEME_TEXT_COLOR'] = '#f8fafc'
-#    os.environ['STREAMLIT_THEME_BASE'] = 'dark'
-# ============================================================================
-
-# ============================================================================
-# COLOR REFERENCE - ATLAS Palette
-# ============================================================================
-# Vibranium (Primary): #00d4ff
-# Indigo:              #6366f1
-# Purple:              #8b5cf6
-# Success:             #10b981
-# Warning:             #f59e0b
-# Danger:              #ef4444
-# Text Primary:        #f8fafc
-# Text Secondary:      #94a3b8
-# Background Dark:     #0a0e27
-# Background Plot:     #151932
-# ============================================================================
+[client]
+showErrorDetails = true

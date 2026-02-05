@@ -387,6 +387,25 @@ st.set_page_config(
     initial_sidebar_state="expanded"  # Phase 1B: Show vertical sidebar
 )
 
+# =============================================================================
+# RERUN LOOP PROTECTION - DO NOT REMOVE
+# =============================================================================
+import os as _os
+
+# Debug: Log each execution
+_boot_id = f"pid={_os.getpid()} ts={time.time():.3f}"
+print(f"ATLAS BOOT: {_boot_id}")
+
+# Prevent infinite rerun loops
+if 'app_initialized' not in st.session_state:
+    st.session_state.app_initialized = True
+    st.session_state.boot_count = 1
+else:
+    st.session_state.boot_count += 1
+    if st.session_state.boot_count > 10:
+        st.error("Rerun loop detected! App has rerun more than 10 times.")
+        st.stop()
+
 # ============================================================================
 # CSS/JS STYLING - Extracted to ui/atlas_css.py (Phase 1 Refactoring)
 # ============================================================================
