@@ -29,6 +29,7 @@ def render_valuation_house(start_date, end_date):
         calculate_peer_multiples,
         calculate_sotp_valuation,
         calculate_smart_assumptions,
+        calculate_consensus_valuation,
     )
     from ui.components import ATLAS_TEMPLATE
 
