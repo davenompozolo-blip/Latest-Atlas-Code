@@ -53,7 +53,7 @@ except ImportError:
     STOCK_SECTOR_OVERRIDES = {}
     SPY_SECTOR_WEIGHTS = {}
 
-# SQL database availability check (required by load_portfolio_data, save_portfolio_data, etc.)
+# SQL database availability check (required by save_portfolio_data, save_trade_history, etc.)
 try:
     from data.atlas_db import get_db
     SQL_AVAILABLE = True
@@ -61,6 +61,9 @@ except ImportError:
     SQL_AVAILABLE = False
     def get_db():
         return None
+
+# Cross-module imports (functions used in this file but defined in sibling modules)
+from .fetchers import fetch_historical_data
 
 
 def _lazy_atlas():

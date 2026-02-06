@@ -53,6 +53,13 @@ except ImportError:
     STOCK_SECTOR_OVERRIDES = {}
     SPY_SECTOR_WEIGHTS = {}
 
+# Cross-module imports (functions used in this file but defined in sibling modules)
+from .calculations import (
+    calculate_portfolio_max_drawdown,
+    calculate_performance_metric,
+    calculate_max_risk_contrib_pct,
+)
+
 
 def _lazy_atlas():
     """Lazy import of atlas_app to avoid circular imports."""

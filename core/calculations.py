@@ -53,6 +53,10 @@ except ImportError:
     STOCK_SECTOR_OVERRIDES = {}
     SPY_SECTOR_WEIGHTS = {}
 
+# Cross-module imports (functions used in this file but defined in sibling modules)
+from .fetchers import fetch_historical_data
+from .data_loading import is_valid_series, is_option_ticker, get_gics_sector
+
 
 def _lazy_atlas():
     """Lazy import of atlas_app to avoid circular imports."""
