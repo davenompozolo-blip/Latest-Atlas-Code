@@ -65,6 +65,22 @@ except ImportError:
 # Cross-module imports (functions used in this file but defined in sibling modules)
 from .fetchers import fetch_historical_data
 
+# Refactored infrastructure availability (originally defined in atlas_app.py)
+try:
+    from atlas_terminal.data.fetchers.market_data import market_data
+    REFACTORED_MODULES_AVAILABLE = True
+except ImportError:
+    REFACTORED_MODULES_AVAILABLE = False
+    market_data = None
+
+# Broker manager availability (originally defined in atlas_app.py)
+try:
+    from atlas_broker_manager import BrokerManager, ManualPortfolioAdapter
+    BROKER_MANAGER_AVAILABLE = True
+except ImportError:
+    BROKER_MANAGER_AVAILABLE = False
+    ManualPortfolioAdapter = None
+
 
 def _lazy_atlas():
     """Lazy import of atlas_app to avoid circular imports."""
