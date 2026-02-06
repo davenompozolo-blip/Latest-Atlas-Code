@@ -33,6 +33,42 @@ def render_valuation_house(start_date, end_date):
     )
     from ui.components import ATLAS_TEMPLATE
 
+    # Valuation scenario presets (extracted from atlas_app.py)
+    VALUATION_SCENARIOS = {
+        'BEAR': {
+            'name': '🐻 Bear Case',
+            'revenue_growth': -0.05,
+            'terminal_growth': 0.015,
+            'risk_premium': 0.08,
+            'capex_pct': 0.07,
+            'description': 'Conservative: Negative growth, higher risk premium, elevated capex'
+        },
+        'BASE': {
+            'name': '📊 Base Case',
+            'revenue_growth': 0.05,
+            'terminal_growth': 0.025,
+            'risk_premium': 0.06,
+            'capex_pct': 0.05,
+            'description': 'Realistic: Moderate growth assumptions, normal operating conditions'
+        },
+        'BULL': {
+            'name': '🚀 Bull Case',
+            'revenue_growth': 0.15,
+            'terminal_growth': 0.035,
+            'risk_premium': 0.05,
+            'capex_pct': 0.04,
+            'description': 'Optimistic: High growth, lower risk premium, efficient capex'
+        }
+    }
+
+    # Model Inputs Dashboard (optional analytics module)
+    try:
+        from analytics.model_inputs_ui import display_model_inputs_dashboard
+        MODEL_INPUTS_DASHBOARD_AVAILABLE = True
+    except ImportError:
+        MODEL_INPUTS_DASHBOARD_AVAILABLE = False
+        display_model_inputs_dashboard = None
+
     # Optional DCF Regime Overlay
     try:
         from dcf_regime_overlay import DCFRegimeOverlay
