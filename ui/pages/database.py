@@ -12,7 +12,7 @@ from utils.formatting import format_currency, format_percentage, format_large_nu
 def render_database():
     """Render the Database page."""
     # Import database functions from core
-    from core import get_db
+    from core import get_db, make_scrollable_table
     from ui.components import ATLAS_TEMPLATE
 
     # Check SQL availability

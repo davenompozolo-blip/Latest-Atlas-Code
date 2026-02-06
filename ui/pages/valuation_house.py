@@ -12,8 +12,31 @@ from utils.formatting import format_currency, format_percentage, format_large_nu
 def render_valuation_house(start_date, end_date):
     """Render the Valuation House page."""
     # Lazy imports to avoid circular dependency with atlas_app
-    from core import ATLASFormatter
+    from core import (
+        # Data Functions
+        ATLASFormatter,
+        fetch_company_financials,
+        fetch_peer_companies,
+        fetch_analyst_data,
+        # Calculation Functions
+        calculate_dcf_value,
+        calculate_wacc,
+        calculate_cost_of_equity,
+        calculate_terminal_value,
+        calculate_gordon_growth_ddm,
+        calculate_multistage_ddm,
+        calculate_residual_income,
+        calculate_peer_multiples,
+        calculate_sotp_valuation,
+        calculate_smart_assumptions,
+    )
     from ui.components import ATLAS_TEMPLATE
+
+    # Optional DCF Regime Overlay
+    try:
+        from dcf_regime_overlay import DCFRegimeOverlay
+    except ImportError:
+        DCFRegimeOverlay = None
 
     st.markdown("### Professional DCF Valuation Engine with Smart Assumptions")
 

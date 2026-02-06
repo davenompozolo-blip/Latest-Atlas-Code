@@ -126,6 +126,7 @@ from .charts import (
     style_holdings_dataframe,
     style_holdings_dataframe_with_optimization,
     should_display_monthly_heatmap,
+    apply_chart_theme,
 )
 
 # Database access

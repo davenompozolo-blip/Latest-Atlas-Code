@@ -12,8 +12,69 @@ from utils.formatting import format_currency, format_percentage, format_large_nu
 def render_risk_analysis(start_date, end_date, selected_benchmark):
     """Render the Risk Analysis page."""
     # Lazy imports to avoid circular dependency with atlas_app
-    from core import ATLASFormatter
+    from core import (
+        ATLASFormatter, load_portfolio_data, create_enhanced_holdings_table,
+        calculate_portfolio_returns, calculate_benchmark_returns, is_valid_series,
+        calculate_sharpe_ratio, calculate_sortino_ratio, calculate_calmar_ratio,
+        calculate_var, calculate_max_drawdown, calculate_cvar, apply_chart_theme,
+        make_scrollable_table, calculate_var_cvar_portfolio_optimization,
+        fetch_historical_data, OptimizationExplainer, RobustPortfolioOptimizer,
+        check_expert_wisdom, validate_portfolio_realism, get_current_portfolio_metrics,
+        calculate_historical_stress_test,
+        # Chart functions
+        create_risk_reward_plot, create_var_waterfall, create_var_cvar_distribution,
+        create_risk_parity_analysis, create_efficient_frontier, create_drawdown_distribution,
+        create_rolling_var_cvar_chart, create_monte_carlo_chart, create_rolling_metrics_chart,
+        create_underwater_plot, create_risk_contribution_sunburst, create_correlation_network
+    )
     from ui.components import ATLAS_TEMPLATE
+    from datetime import datetime, timedelta
+    import plotly.graph_objects as go
+    import numpy as np
+
+    # Try to import RiskProfile and get_wisdom_grade
+    try:
+        from core.optimizers import RiskProfile, get_wisdom_grade
+    except ImportError:
+        try:
+            from core import RiskProfile, get_wisdom_grade
+        except ImportError:
+            # Fallback stubs
+            class RiskProfile:
+                @staticmethod
+                def get_config(profile, strategy):
+                    return {
+                        'max_position_base': 0.25,
+                        'min_diversification': 8,
+                        'risk_budget_per_asset': 0.12,
+                        'max_turnover_per_rebalance': 0.25,
+                        'max_position_change': 0.05,
+                        'min_trade_threshold': 0.01,
+                        'rebalance_frequency': 'monthly'
+                    }
+
+            def get_wisdom_grade(score):
+                if score >= 80:
+                    return ("A", "Excellent", "🟢")
+                elif score >= 60:
+                    return ("B", "Good", "🟡")
+                else:
+                    return ("C", "Fair", "🔴")
+
+    # Stub for show_toast - may be in atlas_app.py
+    def show_toast(msg, toast_type="info", duration=3000):
+        """Fallback toast implementation"""
+        if toast_type == "warning":
+            st.warning(msg)
+        elif toast_type == "success":
+            st.success(msg)
+        else:
+            st.info(msg)
+
+    # Stub for run_monte_carlo_simulation - may be in atlas_app.py
+    def run_monte_carlo_simulation(returns):
+        """Stub - needs implementation"""
+        return None
 
 
     # CRITICAL FIX: Check session_state FIRST for fresh EE data

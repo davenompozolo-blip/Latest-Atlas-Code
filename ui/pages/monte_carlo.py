@@ -12,8 +12,12 @@ from utils.formatting import format_currency, format_percentage, format_large_nu
 def render_monte_carlo():
     """Render the Monte Carlo Engine page."""
     # Lazy imports to avoid circular dependency with atlas_app
-    from core import ATLASFormatter
+    from core import ATLASFormatter, load_portfolio_data, apply_chart_theme
     from ui.components import ATLAS_TEMPLATE
+    from analytics.stochastic import StochasticEngine
+    import plotly.graph_objects as go
+    import yfinance as yf
+    import numpy as np
 
     st.markdown("**Advanced Stochastic Modeling with Geometric Brownian Motion**")
 
