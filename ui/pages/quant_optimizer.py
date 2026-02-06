@@ -12,12 +12,50 @@ from utils.formatting import format_currency, format_percentage, format_large_nu
 def render_quant_optimizer(start_date, end_date, selected_benchmark):
     """Render the Quant Optimizer page."""
     # Lazy imports to avoid circular dependency with atlas_app
-    from core import ATLASFormatter
+    from core import ATLASFormatter, load_portfolio_data, apply_chart_theme, make_scrollable_table
     from ui.components import ATLAS_TEMPLATE
-
     import plotly.graph_objects as go
     import plotly.express as px
     import numpy as np
+    import yfinance as yf
+
+    # Try to import optimizer classes - these may not exist yet
+    QuantOptimizer = None
+    PMGradeOptimizer = None
+    PositionAwareOptimizer = None
+    RegimeAwarePositionOptimizer = None
+    PM_OPTIMIZATION_AVAILABLE = False
+
+    # Try to import from atlas_app or core (these classes might be in atlas_app.py)
+    try:
+        import atlas_app
+        if hasattr(atlas_app, 'QuantOptimizer'):
+            QuantOptimizer = atlas_app.QuantOptimizer
+        if hasattr(atlas_app, 'PMGradeOptimizer'):
+            PMGradeOptimizer = atlas_app.PMGradeOptimizer
+            PM_OPTIMIZATION_AVAILABLE = True
+        if hasattr(atlas_app, 'PositionAwareOptimizer'):
+            PositionAwareOptimizer = atlas_app.PositionAwareOptimizer
+        if hasattr(atlas_app, 'RegimeAwarePositionOptimizer'):
+            RegimeAwarePositionOptimizer = atlas_app.RegimeAwarePositionOptimizer
+    except ImportError:
+        pass
+
+    # Stub functions for PM-grade features (these are in atlas_app.py)
+    def display_regime_analysis(regime):
+        """Display regime analysis results"""
+        st.info(f"Regime detected: {regime.get('regime', 'Unknown')}")
+
+    def display_optimization_results(results, tickers):
+        """Display optimization results"""
+        st.success("Optimization completed")
+        if 'weights' in results:
+            weights_df = pd.DataFrame({
+                'Ticker': tickers,
+                'Weight': results['weights'],
+                'Weight %': [f"{w:.2%}" for w in results['weights']]
+            })
+            st.dataframe(weights_df)
 
     st.markdown("### 🧮 Quantitative Portfolio Optimizer")
     st.markdown("**Advanced Optimization using Multivariable Calculus & Analytical Gradients**")

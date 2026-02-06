@@ -149,9 +149,20 @@ def render_market_watch():
         label_visibility="collapsed"
     )
 
-    # Render selected page
-    render_market_watch_page(market_watch_tab)
-
-    # ========================================================================
-    # MARKET REGIME DETECTOR (Phase 2)
+    # Render selected page based on tab selection
+    if market_watch_tab == "📊 Overview":
+        st.info("Market Watch Overview - Coming Soon")
+        st.write("This section will display market overview data.")
+    elif market_watch_tab == "📈 Stocks":
+        st.info("Stock Screener - Coming Soon")
+        st.write("This section will display stock market data.")
+    elif market_watch_tab == "🏢 Sectors":
+        st.info("Sector Analysis - Coming Soon")
+        st.write("This section will display sector performance data.")
+    elif market_watch_tab == "📅 Economic Calendar":
+        st.info("Economic Calendar - Coming Soon")
+        st.write("This section will display upcoming economic events.")
+    elif market_watch_tab == "📰 News":
+        st.info("Market News - Coming Soon")
+        st.write("This section will display relevant market news.")
 

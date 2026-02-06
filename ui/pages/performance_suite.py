@@ -12,13 +12,26 @@ from utils.formatting import format_currency, format_percentage, format_large_nu
 def render_performance_suite(start_date, end_date, selected_benchmark):
     """Render the Performance Suite page."""
     # Lazy imports to avoid circular dependency with atlas_app
-    from core import ATLASFormatter
+    from core import (
+        ATLASFormatter, load_portfolio_data, create_enhanced_holdings_table,
+        calculate_portfolio_returns, calculate_sharpe_ratio, calculate_max_drawdown,
+        calculate_sortino_ratio, calculate_calmar_ratio, calculate_var,
+        apply_chart_theme, make_scrollable_table, fetch_historical_data
+    )
     from ui.components import ATLAS_TEMPLATE
-
+    from datetime import datetime, timedelta
     import plotly.graph_objects as go
     import plotly.express as px
     from scipy import stats
     import numpy as np
+
+    # Try to import optional functions
+    try:
+        from core import calculate_benchmark_returns
+    except ImportError:
+        def calculate_benchmark_returns(benchmark, start_date, end_date):
+            """Fallback benchmark returns"""
+            return None
 
     st.markdown('<h1 style="font-size: 2.5rem; font-weight: 800; color: #f8fafc; margin-bottom: 0.5rem;"><span style="font-size: 2rem;">💎</span> <span style="background: linear-gradient(135deg, #00d4ff, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">PERFORMANCE SUITE</span></h1>', unsafe_allow_html=True)
 

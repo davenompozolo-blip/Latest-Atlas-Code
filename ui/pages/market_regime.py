@@ -42,7 +42,46 @@ def render_market_regime():
     if st.session_state.get('fetch_regime') or auto_refresh:
         with st.spinner("Fetching real-time market indicators..."):
             try:
-                from regime_detector import QuantitativeRegimeDetector
+                # Try to import regime detector, create stub if not available
+                try:
+                    from regime_detector import QuantitativeRegimeDetector
+                except ImportError:
+                    # Stub for QuantitativeRegimeDetector
+                    class QuantitativeRegimeDetector:
+                        def detect_regime(self):
+                            from datetime import datetime
+                            return {
+                                'regime': 'neutral',
+                                'regime_label': 'NEUTRAL MARKET',
+                                'regime_color': '⚪',
+                                'confidence': 50,
+                                'score': 0,
+                                'max_score': 10,
+                                'indicators': {
+                                    'vix': {'error': True},
+                                    'yields': {'error': True},
+                                    'credit_spreads': {'error': True},
+                                    'breadth': {'error': True},
+                                    'momentum': {'error': True}
+                                },
+                                'reasoning': ['Regime detector not available - install required modules'],
+                                'timestamp': datetime.now()
+                            }
+
+                        def get_sector_tilts(self, regime):
+                            return {
+                                'Technology': 1.0,
+                                'Healthcare': 1.0,
+                                'Financials': 1.0,
+                                'Consumer Discretionary': 1.0,
+                                'Communication Services': 1.0,
+                                'Industrials': 1.0,
+                                'Consumer Staples': 1.0,
+                                'Energy': 1.0,
+                                'Utilities': 1.0,
+                                'Real Estate': 1.0,
+                                'Materials': 1.0
+                            }
 
                 # Initialize detector
                 detector = QuantitativeRegimeDetector()

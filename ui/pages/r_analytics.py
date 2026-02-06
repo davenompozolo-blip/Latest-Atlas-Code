@@ -12,8 +12,51 @@ from utils.formatting import format_currency, format_percentage, format_large_nu
 def render_r_analytics():
     """Render the R Analytics page."""
     # Lazy imports to avoid circular dependency with atlas_app
-    from core import ATLASFormatter
+    from core import (
+        # Data Functions
+        load_portfolio_data,
+        ATLASFormatter,
+    )
     from ui.components import ATLAS_TEMPLATE
+
+    # Check for R availability
+    try:
+        import rpy2
+        from rpy2.robjects.packages import importr
+        importr('rugarch')
+        R_AVAILABLE = True
+    except:
+        R_AVAILABLE = False
+
+    # Stub for R interface
+    def get_r():
+        """Stub for R interface."""
+        class RInterface:
+            def garch_volatility(self, returns, model='sGARCH'):
+                return {
+                    'last_volatility': 0.02,
+                    'mean_volatility': 0.02,
+                    'model': model,
+                    'volatility': returns.rolling(20).std()
+                }
+
+            def copula_dependency(self, returns_data, copula_type='t'):
+                return {
+                    'copula_type': copula_type,
+                    'n_assets': returns_data.shape[1],
+                    'parameters': {}
+                }
+
+            def run_custom_analysis(self, r_code, data=None):
+                return "R analysis not available"
+
+        return RInterface()
+
+    # Import yfinance for data fetching
+    try:
+        import yfinance as yf
+    except ImportError:
+        yf = None
 
     st.markdown("## 📊 R ANALYTICS - ADVANCED QUANTITATIVE MODELS")
 

@@ -12,8 +12,32 @@ from utils.formatting import format_currency, format_percentage, format_large_nu
 def render_phoenix_parser():
     """Render the Phoenix Parser page."""
     # Import from core module to avoid circular dependency with atlas_app
-    from core import ATLASFormatter
+    from core import (
+        ATLASFormatter, parse_trade_history_file, save_trade_history,
+        get_db, make_scrollable_table, is_option_ticker,
+        calculate_portfolio_from_trades, save_portfolio_data,
+        parse_account_history_file, save_account_history,
+        load_portfolio_data
+    )
     from ui.components import ATLAS_TEMPLATE
+
+    # Check if SQL is available
+    try:
+        get_db()
+        SQL_AVAILABLE = True
+    except:
+        SQL_AVAILABLE = False
+
+    # Stub for show_toast - may be in atlas_app.py
+    def show_toast(msg, toast_type="info", duration=3000):
+        """Fallback toast implementation"""
+        if toast_type == "warning":
+            st.warning(msg)
+        elif toast_type == "success":
+            st.success(msg)
+        else:
+            st.info(msg)
+
     # Also need render_data_source_cards which is defined in atlas_app main()
     # For now, define a simple version here
     def render_data_source_cards():

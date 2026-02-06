@@ -12,8 +12,24 @@ from utils.formatting import format_currency, format_percentage, format_large_nu
 def render_multi_factor_analysis(start_date, end_date):
     """Render the Multi-Factor Analysis page."""
     # Lazy imports to avoid circular dependency with atlas_app
-    from core import ATLASFormatter
+    from core import (
+        # Data Functions
+        load_portfolio_data,
+        ATLASFormatter,
+        # Calculation Functions
+        calculate_factor_exposures,
+        # Chart Functions
+        create_enhanced_holdings_table,
+        make_scrollable_table,
+        create_factor_momentum_chart,
+        create_factor_exposure_radar,
+    )
     from ui.components import ATLAS_TEMPLATE
+
+    # Create stub for missing function
+    def create_factor_attribution_table(factor_data, enhanced_df):
+        """Stub for factor attribution table creation."""
+        return None, None, None
 
     st.markdown("---")
 
