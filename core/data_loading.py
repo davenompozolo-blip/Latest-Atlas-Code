@@ -609,44 +609,39 @@ def save_portfolio_data(data):
 
 def load_portfolio_data():
     """
-    Load portfolio data from DATABASE FIRST, fallback to pickle
-    This implements Phase 4: SQL-first loading
+    Load portfolio data from session state or pickle cache.
+
+    Returns:
+        pd.DataFrame or None: Portfolio data if available, None otherwise.
+
+    Load Order:
+        1. Session state (user's current session data)
+        2. Pickle cache (persisted from previous sessions)
+        3. None (no data available - user needs to upload via Phoenix Parser)
     """
-    # PHASE 4: Try database first
-    if SQL_AVAILABLE:
+    # 1. Check session state first (current session data)
+    if 'portfolio_df' in st.session_state:
+        df = st.session_state['portfolio_df']
+        if df is not None and isinstance(df, pd.DataFrame) and not df.empty:
+            return df
+
+    # 2. Check pickle cache (persisted data)
+    cache_dir = Path('.cache')
+    cache_file = cache_dir / 'portfolio.pkl'
+
+    if cache_file.exists():
         try:
-            db = get_db()
-            df = db.get_portfolio()
-
-            if len(df) > 0:
-                # Convert database format back to app format
-                column_mapping = {
-                    'ticker': 'Ticker',
-                    'quantity': 'Shares',
-                    'avg_cost': 'Avg Cost',  # Standard column name in app
-                    'current_price': 'Current Price'
-                }
-
-                df = df.rename(columns={
-                    k: v for k, v in column_mapping.items() if k in df.columns
-                })
-
-                print(f"✅ Loaded {len(df)} positions from database")
-                return df  # ✅ FIX: Return DataFrame instead of list
+            df = pd.read_pickle(cache_file)
+            if df is not None and isinstance(df, pd.DataFrame) and not df.empty:
+                # Also restore to session state for consistency
+                st.session_state['portfolio_df'] = df
+                return df
         except Exception as e:
-            print(f"⚠️ Database load failed, falling back to pickle: {e}")
+            # Log but don't crash - just continue to return None
+            print(f"⚠️ Could not load cached portfolio: {e}")
 
-    # Fallback to pickle
-    if PORTFOLIO_CACHE.exists():
-        with open(PORTFOLIO_CACHE, "rb") as f:
-            data = pickle.load(f)
-            print(f"✅ Loaded {len(data)} positions from pickle cache")
-            # ✅ FIX: Convert to DataFrame if it's a list
-            if isinstance(data, list):
-                return pd.DataFrame(data)
-            return data
-
-    return pd.DataFrame()  # ✅ FIX: Return empty DataFrame instead of empty list
+    # 3. No data available
+    return None
 
 
 def get_portfolio_from_broker_or_legacy():
