@@ -53,13 +53,10 @@ except ImportError:
     STOCK_SECTOR_OVERRIDES = {}
     SPY_SECTOR_WEIGHTS = {}
 
-# Refactored infrastructure availability (originally defined in atlas_app.py)
-try:
-    from atlas_terminal.data.fetchers.market_data import market_data
-    REFACTORED_MODULES_AVAILABLE = True
-except ImportError:
-    REFACTORED_MODULES_AVAILABLE = False
-    market_data = None
+# Shared constants and feature flags
+from .constants import (
+    REFACTORED_MODULES_AVAILABLE, market_data, ErrorHandler,
+)
 
 
 def _lazy_atlas():

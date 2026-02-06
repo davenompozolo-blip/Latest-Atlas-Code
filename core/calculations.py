@@ -30,6 +30,11 @@ try:
 except ImportError:
     pass
 
+try:
+    from sklearn.linear_model import LinearRegression
+except ImportError:
+    LinearRegression = None
+
 from app.config import (
     COLORS, CHART_HEIGHT_COMPACT, CHART_HEIGHT_STANDARD,
     CHART_HEIGHT_LARGE, CHART_HEIGHT_DEEP_DIVE, CHART_THEME,
@@ -39,11 +44,12 @@ from app.config import (
 from utils.formatting import format_currency, format_percentage, format_large_number, add_arrow_indicator
 
 try:
-    from data.instruments import POPULAR_STOCKS, POPULAR_ETFS, GLOBAL_INDICES
+    from data.instruments import POPULAR_STOCKS, POPULAR_ETFS, GLOBAL_INDICES, FACTOR_DEFINITIONS
 except ImportError:
     POPULAR_STOCKS = {}
     POPULAR_ETFS = {}
     GLOBAL_INDICES = {}
+    FACTOR_DEFINITIONS = {}
 
 try:
     from data.sectors import GICS_SECTORS, GICS_SECTOR_MAPPING, STOCK_SECTOR_OVERRIDES, SPY_SECTOR_WEIGHTS
@@ -53,17 +59,19 @@ except ImportError:
     STOCK_SECTOR_OVERRIDES = {}
     SPY_SECTOR_WEIGHTS = {}
 
+# Shared constants and feature flags
+from .constants import (
+    REFACTORED_MODULES_AVAILABLE, market_data, ErrorHandler,
+    VALUATION_CONSTRAINTS,
+)
+
 # Cross-module imports (functions used in this file but defined in sibling modules)
 from .fetchers import fetch_historical_data
-from .data_loading import is_valid_series, is_option_ticker, get_gics_sector
-
-# Refactored infrastructure availability (originally defined in atlas_app.py)
-try:
-    from atlas_terminal.data.fetchers.market_data import market_data
-    REFACTORED_MODULES_AVAILABLE = True
-except ImportError:
-    REFACTORED_MODULES_AVAILABLE = False
-    market_data = None
+from .data_loading import (
+    is_valid_series, is_option_ticker, get_gics_sector,
+    get_current_portfolio_metrics, get_spy_sector_weights,
+    get_benchmark_sector_returns,
+)
 
 
 def _lazy_atlas():
@@ -1694,6 +1702,8 @@ def calculate_var_cvar_portfolio_optimization(enhanced_df, confidence_level=0.95
         tuple: (rebalancing_df, optimization_metrics)
     """
     from scipy.optimize import minimize
+    # Lazy import to avoid circular dependency (optimizers imports from calculations)
+    from .optimizers import build_realistic_constraints, build_position_bounds, apply_trade_threshold
 
     # Get current portfolio composition
     tickers = enhanced_df['Ticker'].tolist()

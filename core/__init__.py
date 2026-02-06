@@ -4,6 +4,15 @@ Exports all shared functions for use by page modules.
 This breaks the circular import cycle with atlas_app.py.
 """
 
+# Shared constants and feature flags (must be first - other modules depend on these)
+from .constants import (
+    REFACTORED_MODULES_AVAILABLE, SQL_AVAILABLE, BROKER_MANAGER_AVAILABLE,
+    market_data, ErrorHandler, cache_manager, cached, safe_execute,
+    get_db, ManualPortfolioAdapter, BrokerManager,
+    PROFESSIONAL_THEME_AVAILABLE, PROFESSIONAL_CHART_COLORS,
+    VALUATION_CONSTRAINTS, EXPERT_WISDOM_RULES,
+)
+
 # Data Loading Functions
 from .data_loading import (
     load_portfolio_data,
@@ -128,13 +137,6 @@ from .charts import (
     should_display_monthly_heatmap,
     apply_chart_theme,
 )
-
-# Database access
-try:
-    from data import get_db
-except ImportError:
-    def get_db():
-        return None
 
 # Fetcher Functions
 from .fetchers import *
