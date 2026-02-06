@@ -53,6 +53,28 @@ except ImportError:
     STOCK_SECTOR_OVERRIDES = {}
     SPY_SECTOR_WEIGHTS = {}
 
+# Cross-module imports (functions used in this file but defined in sibling modules)
+from .fetchers import (
+    fetch_market_data,
+    fetch_analyst_data,
+    fetch_stock_info,
+    fetch_historical_data,
+    fetch_us_treasury_yields_fred,
+    fetch_ticker_performance,
+)
+from .data_loading import (
+    is_valid_series,
+    classify_ticker_sector,
+    ATLASFormatter,
+)
+from .calculations import (
+    calculate_signal_health,
+    calculate_forward_rates,
+    calculate_quality_score,
+    calculate_var,
+    calculate_cvar,
+)
+
 
 def _lazy_atlas():
     """Lazy import of atlas_app to avoid circular imports."""
