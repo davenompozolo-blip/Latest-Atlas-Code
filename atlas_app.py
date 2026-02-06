@@ -1947,6 +1947,7 @@ def main():
     # OLD NAVIGATION CODE (To be deprecated after Phase 2A complete)
     # ========================================================================
     if not USE_NAVIGATION_V2:  # Only run old code if v2 is disabled
+      try:
         # ====================================================================
         # PHOENIX PARSER
         # ====================================================================
@@ -2518,6 +2519,12 @@ def main():
         elif page == "ℹ️ About":
             from ui.pages.about import render_about
             render_about()
+
+      except Exception as _page_error:
+        import traceback
+        st.error(f"**Page Error:** {type(_page_error).__name__}: {_page_error}")
+        with st.expander("Full Traceback", expanded=False):
+            st.code(traceback.format_exc())
 
 
 # ============================================================================

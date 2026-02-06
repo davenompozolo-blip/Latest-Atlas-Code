@@ -12,12 +12,13 @@ from utils.formatting import format_currency, format_percentage, format_large_nu
 def render_phoenix_parser():
     """Render the Phoenix Parser page."""
     # Import from core module to avoid circular dependency with atlas_app
+    from datetime import datetime
     from core import (
         ATLASFormatter, parse_trade_history_file, save_trade_history,
         get_db, make_scrollable_table, is_option_ticker,
         calculate_portfolio_from_trades, save_portfolio_data,
         parse_account_history_file, save_account_history,
-        load_portfolio_data
+        load_portfolio_data, get_leverage_info,
     )
     from ui.components import ATLAS_TEMPLATE
 

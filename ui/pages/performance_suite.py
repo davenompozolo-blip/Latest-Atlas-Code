@@ -16,9 +16,12 @@ def render_performance_suite(start_date, end_date, selected_benchmark):
         ATLASFormatter, load_portfolio_data, create_enhanced_holdings_table,
         calculate_portfolio_returns, calculate_sharpe_ratio, calculate_max_drawdown,
         calculate_sortino_ratio, calculate_calmar_ratio, calculate_var, calculate_cvar,
+        calculate_information_ratio,
         apply_chart_theme, make_scrollable_table, fetch_historical_data,
         create_professional_sector_allocation_pie,
+        PROFESSIONAL_THEME_AVAILABLE,
     )
+    from ui.theme import get_color
     from ui.components import ATLAS_TEMPLATE
     from datetime import datetime, timedelta
     import plotly.graph_objects as go
