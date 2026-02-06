@@ -5,6 +5,8 @@ Extracted from atlas_app.py (Phase 4).
 import math
 import json
 import pickle
+import random
+import time
 import warnings
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -16,8 +18,14 @@ import streamlit as st
 try:
     import plotly.graph_objects as go
     import plotly.express as px
+    from plotly.subplots import make_subplots
 except ImportError:
     pass
+
+try:
+    import networkx as nx
+except ImportError:
+    nx = None
 
 try:
     import yfinance as yf
@@ -39,11 +47,12 @@ from app.config import (
 from utils.formatting import format_currency, format_percentage, format_large_number, add_arrow_indicator
 
 try:
-    from data.instruments import POPULAR_STOCKS, POPULAR_ETFS, GLOBAL_INDICES
+    from data.instruments import POPULAR_STOCKS, POPULAR_ETFS, GLOBAL_INDICES, FACTOR_DEFINITIONS
 except ImportError:
     POPULAR_STOCKS = {}
     POPULAR_ETFS = {}
     GLOBAL_INDICES = {}
+    FACTOR_DEFINITIONS = {}
 
 try:
     from data.sectors import GICS_SECTORS, GICS_SECTOR_MAPPING, STOCK_SECTOR_OVERRIDES, SPY_SECTOR_WEIGHTS
@@ -52,6 +61,12 @@ except ImportError:
     GICS_SECTOR_MAPPING = {}
     STOCK_SECTOR_OVERRIDES = {}
     SPY_SECTOR_WEIGHTS = {}
+
+# Shared constants and feature flags
+from .constants import (
+    REFACTORED_MODULES_AVAILABLE, market_data, ErrorHandler,
+    PROFESSIONAL_THEME_AVAILABLE, PROFESSIONAL_CHART_COLORS,
+)
 
 # Cross-module imports (functions used in this file but defined in sibling modules)
 from .fetchers import (
@@ -66,6 +81,7 @@ from .data_loading import (
     is_valid_series,
     classify_ticker_sector,
     ATLASFormatter,
+    get_current_portfolio_metrics,
 )
 from .calculations import (
     calculate_signal_health,
@@ -74,14 +90,6 @@ from .calculations import (
     calculate_var,
     calculate_cvar,
 )
-
-# Refactored infrastructure availability (originally defined in atlas_app.py)
-try:
-    from atlas_terminal.data.fetchers.market_data import market_data
-    REFACTORED_MODULES_AVAILABLE = True
-except ImportError:
-    REFACTORED_MODULES_AVAILABLE = False
-    market_data = None
 
 
 def _lazy_atlas():

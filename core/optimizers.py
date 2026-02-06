@@ -53,6 +53,9 @@ except ImportError:
     STOCK_SECTOR_OVERRIDES = {}
     SPY_SECTOR_WEIGHTS = {}
 
+# Shared constants and feature flags
+from .constants import EXPERT_WISDOM_RULES
+
 # Cross-module imports (functions used in this file but defined in sibling modules)
 from .calculations import (
     calculate_portfolio_max_drawdown,

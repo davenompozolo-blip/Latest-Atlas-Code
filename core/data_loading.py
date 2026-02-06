@@ -39,11 +39,12 @@ from app.config import (
 from utils.formatting import format_currency, format_percentage, format_large_number, add_arrow_indicator
 
 try:
-    from data.instruments import POPULAR_STOCKS, POPULAR_ETFS, GLOBAL_INDICES
+    from data.instruments import POPULAR_STOCKS, POPULAR_ETFS, GLOBAL_INDICES, ETF_SECTORS
 except ImportError:
     POPULAR_STOCKS = {}
     POPULAR_ETFS = {}
     GLOBAL_INDICES = {}
+    ETF_SECTORS = {}
 
 try:
     from data.sectors import GICS_SECTORS, GICS_SECTOR_MAPPING, STOCK_SECTOR_OVERRIDES, SPY_SECTOR_WEIGHTS
@@ -53,33 +54,15 @@ except ImportError:
     STOCK_SECTOR_OVERRIDES = {}
     SPY_SECTOR_WEIGHTS = {}
 
-# SQL database availability check (required by save_portfolio_data, save_trade_history, etc.)
-try:
-    from data.atlas_db import get_db
-    SQL_AVAILABLE = True
-except ImportError:
-    SQL_AVAILABLE = False
-    def get_db():
-        return None
+# Shared constants and feature flags
+from .constants import (
+    REFACTORED_MODULES_AVAILABLE, market_data, ErrorHandler, cache_manager,
+    SQL_AVAILABLE, get_db,
+    BROKER_MANAGER_AVAILABLE, ManualPortfolioAdapter,
+)
 
 # Cross-module imports (functions used in this file but defined in sibling modules)
 from .fetchers import fetch_historical_data
-
-# Refactored infrastructure availability (originally defined in atlas_app.py)
-try:
-    from atlas_terminal.data.fetchers.market_data import market_data
-    REFACTORED_MODULES_AVAILABLE = True
-except ImportError:
-    REFACTORED_MODULES_AVAILABLE = False
-    market_data = None
-
-# Broker manager availability (originally defined in atlas_app.py)
-try:
-    from atlas_broker_manager import BrokerManager, ManualPortfolioAdapter
-    BROKER_MANAGER_AVAILABLE = True
-except ImportError:
-    BROKER_MANAGER_AVAILABLE = False
-    ManualPortfolioAdapter = None
 
 
 def _lazy_atlas():
