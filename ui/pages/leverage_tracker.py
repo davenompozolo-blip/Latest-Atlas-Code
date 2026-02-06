@@ -152,7 +152,7 @@ def render_leverage_tracker(start_date, end_date):
             if st.button("🔄 Clear Leverage Data"):
                 del st.session_state.leverage_tracker
                 st.success("✅ Leverage data cleared. Upload a new file to continue.")
-                st.experimental_rerun()
+                st.rerun()
 
     # ========================================================================
     # INVESTOPEDIA LIVE (v11.0) - FIXED TWO-STAGE AUTH

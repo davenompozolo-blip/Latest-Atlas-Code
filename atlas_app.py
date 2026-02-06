@@ -424,14 +424,23 @@ import os as _os
 _boot_id = f"pid={_os.getpid()} ts={time.time():.3f}"
 print(f"ATLAS BOOT: {_boot_id}")
 
-# Prevent infinite rerun loops
+# Prevent infinite rerun loops (rapid successive reruns within 2 seconds)
 if 'app_initialized' not in st.session_state:
     st.session_state.app_initialized = True
     st.session_state.boot_count = 1
+    st.session_state._last_boot_time = time.time()
 else:
-    st.session_state.boot_count += 1
-    if st.session_state.boot_count > 10:
-        st.error("Rerun loop detected! App has rerun more than 10 times.")
+    _now = time.time()
+    _elapsed = _now - st.session_state.get('_last_boot_time', 0)
+    if _elapsed < 2.0:
+        # Rapid rerun - likely a loop
+        st.session_state.boot_count += 1
+    else:
+        # Normal user interaction - reset counter
+        st.session_state.boot_count = 1
+    st.session_state._last_boot_time = _now
+    if st.session_state.boot_count > 15:
+        st.error("Rerun loop detected! App has rerun more than 15 times in rapid succession.")
         st.stop()
 
 # ============================================================================
@@ -1764,14 +1773,15 @@ def main():
     # ============================================================================
     # CAPITAL SETTINGS - Auto-populated from session state (UI removed for cleaner homepage)
     # ============================================================================
-    # Capital settings now auto-populated from performance history
-    metrics = get_current_portfolio_metrics()
-    if metrics and metrics.get('equity', 0) > 0:
-        st.session_state['equity_capital'] = metrics['equity']
-        st.session_state['target_leverage'] = metrics.get('leverage', 1.0)
-    elif 'equity_capital' not in st.session_state:
-        st.session_state['equity_capital'] = 100000.0
-        st.session_state['target_leverage'] = 1.0
+    # Capital settings now auto-populated from performance history (guarded to prevent rerun loop)
+    if 'equity_capital' not in st.session_state:
+        metrics = get_current_portfolio_metrics()
+        if metrics and metrics.get('equity', 0) > 0:
+            st.session_state['equity_capital'] = metrics['equity']
+            st.session_state['target_leverage'] = metrics.get('leverage', 1.0)
+        else:
+            st.session_state['equity_capital'] = 100000.0
+            st.session_state['target_leverage'] = 1.0
 
     # ============================================================================
     # PHASE 1B: VERTICAL SIDEBAR NAVIGATION
@@ -1920,7 +1930,8 @@ def main():
     USE_NAVIGATION_V2 = st.sidebar.checkbox(
         "🧪 Use Navigation v2.0 (Experimental)",
         value=False,
-        help="Enable new modular navigation system (Phase 2A)"
+        help="Enable new modular navigation system (Phase 2A)",
+        key="nav_v2_toggle"
     )
 
     if USE_NAVIGATION_V2:

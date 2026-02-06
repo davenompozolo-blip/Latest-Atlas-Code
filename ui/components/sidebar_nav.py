@@ -105,7 +105,8 @@ def render_sidebar_navigation(default_page: str = "Portfolio Home") -> str:
                 "menu-title": {
                     "display": "none"  # Hide menu title
                 }
-            }
+            },
+            key="atlas_main_nav"
         )
 
     return selected
