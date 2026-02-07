@@ -503,23 +503,40 @@ def render_performance_suite(start_date, end_date, selected_benchmark):
                     # Single security analysis with technical indicators
                     st.subheader("📊 Price Chart & Technical Analysis")
 
-                    # TradingView candlestick (when indicators are off for clean professional chart)
+                    # TradingView as default chart renderer with indicator support
                     try:
-                        from core.tradingview_charts import render_candlestick_chart as tv_candlestick, TRADINGVIEW_AVAILABLE as TV_OK
+                        from core.tradingview_charts import render_candlestick_with_indicators as tv_candle_ind, render_line_chart as tv_line, TRADINGVIEW_AVAILABLE as TV_OK
                     except ImportError:
                         TV_OK = False
 
-                    if TV_OK and chart_type == "Candlestick" and not show_indicators:
-                        tv_candlestick(
+                    if TV_OK and chart_type == "Candlestick":
+                        # TradingView candlestick with full indicator overlays
+                        tv_candle_ind(
                             ticker_hist,
                             key=f"tv_perf_{selected_ticker}_{time_range}",
                             height=600,
                             show_volume=show_volume,
-                            watermark=selected_ticker
+                            show_ma_50=show_indicators,
+                            show_ma_200=show_indicators,
+                            show_bollinger=show_indicators,
+                            watermark=selected_ticker,
+                            dark_mode=True
+                        )
+                        st.caption("Charts powered by [TradingView Lightweight Charts](https://www.tradingview.com/lightweight-charts/)")
+                    elif TV_OK and chart_type == "Line":
+                        # TradingView line/area chart
+                        tv_line(
+                            ticker_hist,
+                            key=f"tv_perf_line_{selected_ticker}_{time_range}",
+                            height=500,
+                            color='#00D4FF',
+                            area_fill=True,
+                            watermark=selected_ticker,
+                            dark_mode=True
                         )
                         st.caption("Charts powered by [TradingView Lightweight Charts](https://www.tradingview.com/lightweight-charts/)")
                     else:
-                        # Plotly path (with indicator overlays)
+                        # Plotly fallback (only when TradingView package unavailable)
 
                         # Calculate technical indicators
                         ticker_hist['MA_50'] = ticker_hist['Close'].rolling(50).mean()

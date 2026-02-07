@@ -539,6 +539,195 @@ def create_tradingview_chart(
         raise ValueError(f"Unknown chart type: {chart_type}. Use 'candlestick', 'line', or 'area'.")
 
 
+def render_candlestick_with_indicators(
+    df: pd.DataFrame,
+    key: str,
+    height: int = 500,
+    show_volume: bool = True,
+    show_ma_50: bool = False,
+    show_ma_200: bool = False,
+    show_bollinger: bool = False,
+    watermark: str = '',
+    dark_mode: bool = True
+) -> None:
+    """
+    Render candlestick chart with optional technical indicators.
+
+    Args:
+        df: DataFrame with OHLCV data
+        key: Unique Streamlit component key
+        height: Total chart height
+        show_volume: Show volume histogram
+        show_ma_50: Show 50-day moving average
+        show_ma_200: Show 200-day moving average
+        show_bollinger: Show Bollinger Bands (20-day, 2 std)
+        watermark: Ticker symbol for watermark
+        dark_mode: Use dark theme
+    """
+    if not TRADINGVIEW_AVAILABLE:
+        return
+
+    # Prepare base data
+    data = prepare_ohlcv_data(df)
+    charts = []
+
+    # Calculate heights
+    main_height = height if not show_volume else int(height * 0.75)
+    volume_height = int(height * 0.22) if show_volume else 0
+
+    # Main chart options
+    main_options = get_chart_options(
+        height=main_height,
+        dark_mode=dark_mode,
+        show_volume=show_volume,
+        watermark=watermark
+    )
+
+    # Build series list - candlesticks first
+    series_list = [{
+        "type": "Candlestick",
+        "data": data['candles'],
+        "options": {
+            "upColor": ATLAS_COLORS['bull'],
+            "downColor": ATLAS_COLORS['bear'],
+            "borderVisible": False,
+            "wickUpColor": ATLAS_COLORS['bull'],
+            "wickDownColor": ATLAS_COLORS['bear'],
+        }
+    }]
+
+    # Standardize DataFrame for indicator calculations
+    df_calc = df.copy()
+    df_calc.columns = df_calc.columns.str.lower()
+    if 'time' not in df_calc.columns:
+        if isinstance(df_calc.index, pd.DatetimeIndex):
+            df_calc = df_calc.reset_index()
+            df_calc = df_calc.rename(columns={df_calc.columns[0]: 'time'})
+
+    # Convert time to string format
+    if 'time' in df_calc.columns and pd.api.types.is_datetime64_any_dtype(df_calc['time']):
+        df_calc['time'] = df_calc['time'].dt.strftime('%Y-%m-%d')
+
+    # Add MA 50
+    if show_ma_50 and 'close' in df_calc.columns and len(df_calc) >= 50:
+        df_calc['ma50'] = df_calc['close'].rolling(window=50).mean()
+        ma50_data = df_calc[['time', 'ma50']].dropna()
+        ma50_data = ma50_data.rename(columns={'ma50': 'value'})
+
+        series_list.append({
+            "type": "Line",
+            "data": json.loads(ma50_data.to_json(orient='records')),
+            "options": {
+                "color": "#f7b924",
+                "lineWidth": 2,
+                "title": "MA 50",
+            }
+        })
+
+    # Add MA 200
+    if show_ma_200 and 'close' in df_calc.columns and len(df_calc) >= 200:
+        df_calc['ma200'] = df_calc['close'].rolling(window=200).mean()
+        ma200_data = df_calc[['time', 'ma200']].dropna()
+        ma200_data = ma200_data.rename(columns={'ma200': 'value'})
+
+        series_list.append({
+            "type": "Line",
+            "data": json.loads(ma200_data.to_json(orient='records')),
+            "options": {
+                "color": "#ff6b6b",
+                "lineWidth": 2,
+                "title": "MA 200",
+            }
+        })
+
+    # Add Bollinger Bands
+    if show_bollinger and 'close' in df_calc.columns and len(df_calc) >= 20:
+        df_calc['bb_mid'] = df_calc['close'].rolling(window=20).mean()
+        df_calc['bb_std'] = df_calc['close'].rolling(window=20).std()
+        df_calc['bb_upper'] = df_calc['bb_mid'] + (df_calc['bb_std'] * 2)
+        df_calc['bb_lower'] = df_calc['bb_mid'] - (df_calc['bb_std'] * 2)
+
+        # Upper band
+        bb_upper_data = df_calc[['time', 'bb_upper']].dropna()
+        bb_upper_data = bb_upper_data.rename(columns={'bb_upper': 'value'})
+        series_list.append({
+            "type": "Line",
+            "data": json.loads(bb_upper_data.to_json(orient='records')),
+            "options": {
+                "color": "rgba(136, 132, 216, 0.7)",
+                "lineWidth": 1,
+                "lineStyle": 2,
+                "title": "BB Upper",
+            }
+        })
+
+        # Lower band
+        bb_lower_data = df_calc[['time', 'bb_lower']].dropna()
+        bb_lower_data = bb_lower_data.rename(columns={'bb_lower': 'value'})
+        series_list.append({
+            "type": "Line",
+            "data": json.loads(bb_lower_data.to_json(orient='records')),
+            "options": {
+                "color": "rgba(136, 132, 216, 0.7)",
+                "lineWidth": 1,
+                "lineStyle": 2,
+                "title": "BB Lower",
+            }
+        })
+
+    # Main chart with all series
+    charts.append({
+        "chart": main_options,
+        "series": series_list
+    })
+
+    # Volume chart
+    if show_volume and data['volume']:
+        bg = ATLAS_COLORS['background_dark'] if dark_mode else ATLAS_COLORS['background_light']
+        text = ATLAS_COLORS['text_dark'] if dark_mode else ATLAS_COLORS['text_light']
+
+        volume_options = {
+            "height": volume_height,
+            "layout": {
+                "background": {"type": "solid", "color": bg},
+                "textColor": text,
+            },
+            "grid": {
+                "vertLines": {"color": "rgba(42, 46, 57, 0)"},
+                "horzLines": {"color": ATLAS_COLORS['grid_dark']},
+            },
+            "timeScale": {"visible": False},
+            "watermark": {
+                "visible": True,
+                "fontSize": 14,
+                "horzAlign": "left",
+                "vertAlign": "top",
+                "color": "rgba(171, 71, 188, 0.5)",
+                "text": "Volume",
+            },
+        }
+
+        volume_series = {
+            "type": "Histogram",
+            "data": data['volume'],
+            "options": {
+                "priceFormat": {"type": "volume"},
+                "priceScaleId": "",
+            },
+            "priceScale": {
+                "scaleMargins": {"top": 0, "bottom": 0},
+                "alignLabels": False,
+            }
+        }
+
+        charts.append({
+            "chart": volume_options,
+            "series": [volume_series]
+        })
+
+    renderLightweightCharts(charts, key)
+
+
 def is_tradingview_available() -> bool:
     """Check if TradingView charts are available."""
     return TRADINGVIEW_AVAILABLE
