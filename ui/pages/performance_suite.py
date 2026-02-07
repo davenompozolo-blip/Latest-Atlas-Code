@@ -537,6 +537,8 @@ def render_performance_suite(start_date, end_date, selected_benchmark):
                         st.caption("Charts powered by [TradingView Lightweight Charts](https://www.tradingview.com/lightweight-charts/)")
                     else:
                         # Plotly fallback (only when TradingView package unavailable)
+                        if not TV_OK:
+                            st.info("💡 TradingView charts not loaded — install `streamlit-lightweight-charts` for professional charts. Using Plotly fallback.")
 
                         # Calculate technical indicators
                         ticker_hist['MA_50'] = ticker_hist['Close'].rolling(50).mean()
@@ -647,6 +649,7 @@ def render_performance_suite(start_date, end_date, selected_benchmark):
                         # Update layout
                         if show_volume:
                             fig_price.update_layout(
+                                title_text='',
                                 height=700,
                                 hovermode='x unified',
                                 xaxis_rangeslider_visible=False,
