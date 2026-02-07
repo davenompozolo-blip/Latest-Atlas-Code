@@ -18,6 +18,8 @@ def render_valuation_house(start_date, end_date):
         fetch_company_financials,
         fetch_peer_companies,
         fetch_analyst_data,
+        make_scrollable_table,
+        show_toast,
         # Calculation Functions
         calculate_dcf_value,
         calculate_wacc,
@@ -30,6 +32,7 @@ def render_valuation_house(start_date, end_date):
         calculate_sotp_valuation,
         calculate_smart_assumptions,
         calculate_consensus_valuation,
+        apply_relative_valuation,
     )
     from ui.components import ATLAS_TEMPLATE
 
@@ -68,6 +71,17 @@ def render_valuation_house(start_date, end_date):
     except ImportError:
         MODEL_INPUTS_DASHBOARD_AVAILABLE = False
         display_model_inputs_dashboard = None
+
+    # SBC Integration (optional analytics module)
+    try:
+        from analytics.sbc_forecaster import (
+            SBCForecaster, SBCForecastConfig, SBCForecastMethod,
+            integrate_sbc_with_fcff, create_sbc_comparison_analysis
+        )
+        from analytics.sbc_ui import display_sbc_valuation_impact
+        SBC_AVAILABLE = True
+    except ImportError:
+        SBC_AVAILABLE = False
 
     # Optional DCF Regime Overlay
     try:

@@ -87,6 +87,7 @@ from .calculations import (
     calculate_portfolio_from_trades,
     project_fcff_enhanced,
     project_fcfe_enhanced,
+    apply_relative_valuation,
 )
 
 # Chart Functions
@@ -132,6 +133,7 @@ from .charts import (
     create_factor_exposure_radar,
     # Additional functions for page modules
     make_scrollable_table,
+    show_toast,
     style_holdings_dataframe,
     style_holdings_dataframe_with_optimization,
     should_display_monthly_heatmap,
