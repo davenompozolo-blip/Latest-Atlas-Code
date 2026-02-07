@@ -647,6 +647,7 @@ def render_performance_suite(start_date, end_date, selected_benchmark):
                         # Update layout
                         if show_volume:
                             fig_price.update_layout(
+                                title_text='',
                                 height=700,
                                 hovermode='x unified',
                                 xaxis_rangeslider_visible=False,
