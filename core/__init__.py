@@ -146,7 +146,7 @@ from .fetchers import *
 # Optimizer Functions
 from .optimizers import *
 
-# TradingView Charts (optional — graceful if not installed)
+# TradingView Charts - REQUIRED (no silent fallback)
 try:
     from .tradingview_charts import (
         render_candlestick_chart,
@@ -154,9 +154,22 @@ try:
         render_line_chart,
         render_multi_series_chart,
         create_tradingview_chart,
+        prepare_ohlcv_data,
+        prepare_line_data,
+        get_chart_options,
+        ATLAS_COLORS,
+        INDEX_COLORS,
         is_tradingview_available,
         TRADINGVIEW_AVAILABLE,
     )
-except ImportError:
+except ImportError as e:
     TRADINGVIEW_AVAILABLE = False
-    def render_candlestick_with_indicators(*args, **kwargs): pass
+    def _tv_not_available(*args, **kwargs):
+        raise ImportError(f"TradingView charts require streamlit-lightweight-charts package: {e}")
+    render_candlestick_chart = _tv_not_available
+    render_candlestick_with_indicators = _tv_not_available
+    render_line_chart = _tv_not_available
+    render_multi_series_chart = _tv_not_available
+    create_tradingview_chart = _tv_not_available
+    def is_tradingview_available():
+        return False
