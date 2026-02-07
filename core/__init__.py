@@ -150,6 +150,7 @@ from .optimizers import *
 try:
     from .tradingview_charts import (
         render_candlestick_chart,
+        render_candlestick_with_indicators,
         render_line_chart,
         render_multi_series_chart,
         create_tradingview_chart,
@@ -158,3 +159,4 @@ try:
     )
 except ImportError:
     TRADINGVIEW_AVAILABLE = False
+    def render_candlestick_with_indicators(*args, **kwargs): pass
