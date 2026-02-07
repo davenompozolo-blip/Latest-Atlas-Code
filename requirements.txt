@@ -27,3 +27,6 @@ alpaca-py>=0.43.0
 tqdm>=4.65.0
 feedparser>=6.0.0
 investpy>=1.0.8
+
+# TradingView Lightweight Charts
+streamlit-lightweight-charts>=0.7.20
