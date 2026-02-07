@@ -319,6 +319,12 @@ def render_overview_page():
     import plotly.graph_objects as go
     import yfinance as yf
 
+    # TradingView integration (optional upgrade)
+    try:
+        from core.tradingview_charts import render_line_chart as tv_render_line_chart, TRADINGVIEW_AVAILABLE
+    except ImportError:
+        TRADINGVIEW_AVAILABLE = False
+
     # ============================================================
     # CACHED DATA FETCHING - Prevents API rate limiting
     # ============================================================
@@ -340,6 +346,17 @@ def render_overview_page():
             return hist.index.tolist(), hist['Close'].tolist(), True
         except Exception as e:
             return None, None, False
+
+    @st.cache_data(ttl=300, show_spinner=False)
+    def fetch_index_df(ticker: str, period: str, interval: str):
+        """Fetch index data as DataFrame for TradingView charts."""
+        try:
+            hist = yf.Ticker(ticker).history(period=period, interval=interval)
+            if hist.empty or len(hist) < 2:
+                return None
+            return hist
+        except Exception:
+            return None
 
     # Define indices by region with more comprehensive list
     indices_by_region = {
@@ -371,105 +388,106 @@ def render_overview_page():
         for col, index_info in zip(cols, indices):
             with col:
                 try:
-                    # Fetch data using cached function to prevent API rate limiting
-                    dates, prices, success = fetch_index_data(
-                        index_info['ticker'],
-                        period_config['period'],
-                        period_config['interval']
-                    )
+                    if TRADINGVIEW_AVAILABLE:
+                        # TradingView rendering path
+                        index_df = fetch_index_df(
+                            index_info['ticker'],
+                            period_config['period'],
+                            period_config['interval']
+                        )
+                        if index_df is not None and len(index_df) > 1:
+                            display_points = min(period_config['display_points'], len(index_df))
+                            index_df = index_df.iloc[-display_points:]
 
-                    if success and prices and len(prices) > 1:
-                        # Filter to display window (most recent N trading points)
-                        display_points = min(period_config['display_points'], len(prices))
-                        dates_filtered = dates[-display_points:]
-                        prices_filtered = prices[-display_points:]
-
-                        if len(prices_filtered) > 1:
-                            # Current price and change (from filtered data)
-                            current_price = prices_filtered[-1]
-                            prev_price = prices_filtered[0]  # Start of display window
-                            change = current_price - prev_price
-                            change_pct = (change / prev_price * 100) if prev_price > 0 else 0
-
-                            # Determine colors based on performance
+                            current_price = index_df['Close'].iloc[-1]
+                            prev_price = index_df['Close'].iloc[0]
+                            change_pct = ((current_price - prev_price) / prev_price * 100) if prev_price > 0 else 0
                             trend_color = '#10b981' if change_pct >= 0 else '#ef4444'
-                            fill_color = 'rgba(16, 185, 129, 0.15)' if change_pct >= 0 else 'rgba(239, 68, 68, 0.15)'
+                            chart_color = '#26a69a' if change_pct >= 0 else '#ef5350'
 
-                            # Calculate y-axis range to show actual price movements
-                            # Add 5% padding to min/max for better visualization
-                            price_min = min(prices_filtered)
-                            price_max = max(prices_filtered)
-                            price_range = price_max - price_min
-                            y_padding = price_range * 0.1 if price_range > 0 else price_min * 0.01
-                            y_min = price_min - y_padding
-                            y_max = price_max + y_padding
-
-                            # Create sparkline chart with ACTUAL price movements visible
-                            fig = go.Figure()
-
-                            # Add area fill RELATIVE TO MIN (not zero!) so movements are visible
-                            fig.add_trace(go.Scatter(
-                                x=dates_filtered,
-                                y=prices_filtered,
-                                mode='lines',
-                                line=dict(
-                                    color=trend_color,
-                                    width=2.5
-                                ),
-                                fill='toself',
-                                fillcolor=fill_color,
-                                hovertemplate='%{y:,.2f}<br>%{x|%b %d, %H:%M}<extra></extra>'
-                            ))
-
-                            fig.update_layout(
-                                height=180,  # Increased further for better visibility
-                                margin=dict(l=0, r=0, t=5, b=25),  # Added top margin, increased bottom
-                                xaxis=dict(
-                                    showgrid=False,
-                                    showticklabels=True,
-                                    tickfont=dict(size=8, color='#64748b'),
-                                    tickformat=period_config['x_format'],
-                                    nticks=4
-                                ),
-                                yaxis=dict(
-                                    showgrid=False,
-                                    showticklabels=False,
-                                    range=[y_min, y_max],  # CRITICAL: Auto-range to show movements!
-                                    fixedrange=True
-                                ),
-                                paper_bgcolor='rgba(0,0,0,0)',
-                                plot_bgcolor='rgba(0,0,0,0)',
-                                hovermode='x unified'
-                            )
-
-                            # Display index name with icon
                             icon = "📈" if change_pct >= 0 else "📉"
                             st.markdown(f"**{icon} {index_info['name']}**")
 
-                            # Display sparkline chart
-                            st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+                            tv_render_line_chart(
+                                index_df,
+                                key=f"mw_{index_info['ticker']}_{chart_timeframe}",
+                                height=180,
+                                color=chart_color,
+                                area_fill=True,
+                                watermark=index_info['name']
+                            )
 
-                            # Display metrics below chart
                             metric_col1, metric_col2 = st.columns(2)
                             with metric_col1:
-                                st.markdown(f"""
-                                <div style="text-align: center;">
-                                    <p style="margin: 0; font-size: 0.7rem; color: #94a3b8;">Price</p>
-                                    <p style="margin: 0; font-size: 1rem; font-weight: 600; color: #f8fafc;">{current_price:,.2f}</p>
-                                </div>
-                                """, unsafe_allow_html=True)
+                                st.markdown(f'<div style="text-align: center;"><p style="margin: 0; font-size: 0.7rem; color: #94a3b8;">Price</p><p style="margin: 0; font-size: 1rem; font-weight: 600; color: #f8fafc;">{current_price:,.2f}</p></div>', unsafe_allow_html=True)
                             with metric_col2:
-                                st.markdown(f"""
-                                <div style="text-align: center;">
-                                    <p style="margin: 0; font-size: 0.7rem; color: #94a3b8;">Change</p>
-                                    <p style="margin: 0; font-size: 1rem; font-weight: 600; color: {trend_color};">{change_pct:+.2f}%</p>
-                                </div>
-                                """, unsafe_allow_html=True)
+                                st.markdown(f'<div style="text-align: center;"><p style="margin: 0; font-size: 0.7rem; color: #94a3b8;">Change</p><p style="margin: 0; font-size: 1rem; font-weight: 600; color: {trend_color};">{change_pct:+.2f}%</p></div>', unsafe_allow_html=True)
                         else:
-                            st.warning(f"Limited data: {index_info['name']}")
-
+                            st.warning(f"No data: {index_info['name']}")
                     else:
-                        st.warning(f"No data: {index_info['name']}")
+                        # Plotly fallback path
+                        dates, prices, success = fetch_index_data(
+                            index_info['ticker'],
+                            period_config['period'],
+                            period_config['interval']
+                        )
+
+                        if success and prices and len(prices) > 1:
+                            display_points = min(period_config['display_points'], len(prices))
+                            dates_filtered = dates[-display_points:]
+                            prices_filtered = prices[-display_points:]
+
+                            if len(prices_filtered) > 1:
+                                current_price = prices_filtered[-1]
+                                prev_price = prices_filtered[0]
+                                change = current_price - prev_price
+                                change_pct = (change / prev_price * 100) if prev_price > 0 else 0
+
+                                trend_color = '#10b981' if change_pct >= 0 else '#ef4444'
+                                fill_color = 'rgba(16, 185, 129, 0.15)' if change_pct >= 0 else 'rgba(239, 68, 68, 0.15)'
+
+                                price_min = min(prices_filtered)
+                                price_max = max(prices_filtered)
+                                price_range = price_max - price_min
+                                y_padding = price_range * 0.1 if price_range > 0 else price_min * 0.01
+                                y_min = price_min - y_padding
+                                y_max = price_max + y_padding
+
+                                fig = go.Figure()
+                                fig.add_trace(go.Scatter(
+                                    x=dates_filtered,
+                                    y=prices_filtered,
+                                    mode='lines',
+                                    line=dict(color=trend_color, width=2.5),
+                                    fill='toself',
+                                    fillcolor=fill_color,
+                                    hovertemplate='%{y:,.2f}<br>%{x|%b %d, %H:%M}<extra></extra>'
+                                ))
+
+                                fig.update_layout(
+                                    height=180,
+                                    margin=dict(l=0, r=0, t=5, b=25),
+                                    xaxis=dict(showgrid=False, showticklabels=True, tickfont=dict(size=8, color='#64748b'), tickformat=period_config['x_format'], nticks=4),
+                                    yaxis=dict(showgrid=False, showticklabels=False, range=[y_min, y_max], fixedrange=True),
+                                    paper_bgcolor='rgba(0,0,0,0)',
+                                    plot_bgcolor='rgba(0,0,0,0)',
+                                    hovermode='x unified'
+                                )
+
+                                icon = "📈" if change_pct >= 0 else "📉"
+                                st.markdown(f"**{icon} {index_info['name']}**")
+                                st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+
+                                metric_col1, metric_col2 = st.columns(2)
+                                with metric_col1:
+                                    st.markdown(f'<div style="text-align: center;"><p style="margin: 0; font-size: 0.7rem; color: #94a3b8;">Price</p><p style="margin: 0; font-size: 1rem; font-weight: 600; color: #f8fafc;">{current_price:,.2f}</p></div>', unsafe_allow_html=True)
+                                with metric_col2:
+                                    st.markdown(f'<div style="text-align: center;"><p style="margin: 0; font-size: 0.7rem; color: #94a3b8;">Change</p><p style="margin: 0; font-size: 1rem; font-weight: 600; color: {trend_color};">{change_pct:+.2f}%</p></div>', unsafe_allow_html=True)
+                            else:
+                                st.warning(f"Limited data: {index_info['name']}")
+
+                        else:
+                            st.warning(f"No data: {index_info['name']}")
 
                 except Exception as e:
                     st.error(f"Error: {index_info['name']}")

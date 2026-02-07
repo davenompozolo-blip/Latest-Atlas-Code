@@ -503,133 +503,151 @@ def render_performance_suite(start_date, end_date, selected_benchmark):
                     # Single security analysis with technical indicators
                     st.subheader("📊 Price Chart & Technical Analysis")
 
-                    # Calculate technical indicators
-                    ticker_hist['MA_50'] = ticker_hist['Close'].rolling(50).mean()
-                    ticker_hist['MA_200'] = ticker_hist['Close'].rolling(200).mean()
+                    # TradingView candlestick (when indicators are off for clean professional chart)
+                    try:
+                        from core.tradingview_charts import render_candlestick_chart as tv_candlestick, TRADINGVIEW_AVAILABLE as TV_OK
+                    except ImportError:
+                        TV_OK = False
 
-                    # Bollinger Bands
-                    ticker_hist['BB_middle'] = ticker_hist['Close'].rolling(20).mean()
-                    ticker_hist['BB_std'] = ticker_hist['Close'].rolling(20).std()
-                    ticker_hist['BB_upper'] = ticker_hist['BB_middle'] + (2 * ticker_hist['BB_std'])
-                    ticker_hist['BB_lower'] = ticker_hist['BB_middle'] - (2 * ticker_hist['BB_std'])
-
-                    # Create subplots if volume is enabled
-                    if show_volume:
-                        from plotly.subplots import make_subplots
-                        fig_price = make_subplots(
-                            rows=2, cols=1,
-                            shared_xaxes=True,
-                            vertical_spacing=0.03,
-                            row_heights=[0.7, 0.3],
-                            subplot_titles=(f"{selected_ticker} - {chart_type} Chart ({time_range})", "Volume")
+                    if TV_OK and chart_type == "Candlestick" and not show_indicators:
+                        tv_candlestick(
+                            ticker_hist,
+                            key=f"tv_perf_{selected_ticker}_{time_range}",
+                            height=600,
+                            show_volume=show_volume,
+                            watermark=selected_ticker
                         )
+                        st.caption("Charts powered by [TradingView Lightweight Charts](https://www.tradingview.com/lightweight-charts/)")
                     else:
-                        fig_price = go.Figure()
+                        # Plotly path (with indicator overlays)
 
-                    # Add price chart based on selected type
-                    if chart_type == "Candlestick":
-                        price_trace = go.Candlestick(
-                            x=ticker_hist.index,
-                            open=ticker_hist['Open'],
-                            high=ticker_hist['High'],
-                            low=ticker_hist['Low'],
-                            close=ticker_hist['Close'],
-                            name='Price',
-                            increasing_line_color='#00ff88',
-                            decreasing_line_color='#ff3366'
-                        )
-                    else:  # Line chart
-                        price_trace = go.Scatter(
-                            x=ticker_hist.index,
-                            y=ticker_hist['Close'],
-                            mode='lines',
-                            name='Price',
-                            line=dict(color='#00D4FF', width=2),
-                            fill='tozeroy',
-                            fillcolor='rgba(0, 212, 255, 0.1)'
-                        )
-
-                    if show_volume:
-                        fig_price.add_trace(price_trace, row=1, col=1)
-                    else:
-                        fig_price.add_trace(price_trace)
-
-                    # Add technical indicators if enabled
-                    if show_indicators:
-                        row_num = 1 if show_volume else None
-                        col_num = 1 if show_volume else None
-
-                        # Moving averages
-                        fig_price.add_trace(go.Scatter(
-                            x=ticker_hist.index,
-                            y=ticker_hist['MA_50'],
-                            mode='lines',
-                            line=dict(color='#00d4ff', width=1.5),
-                            name='MA 50'
-                        ), row=row_num, col=col_num)
-
-                        fig_price.add_trace(go.Scatter(
-                            x=ticker_hist.index,
-                            y=ticker_hist['MA_200'],
-                            mode='lines',
-                            line=dict(color='#ffaa00', width=1.5),
-                            name='MA 200'
-                        ), row=row_num, col=col_num)
+                        # Calculate technical indicators
+                        ticker_hist['MA_50'] = ticker_hist['Close'].rolling(50).mean()
+                        ticker_hist['MA_200'] = ticker_hist['Close'].rolling(200).mean()
 
                         # Bollinger Bands
-                        fig_price.add_trace(go.Scatter(
-                            x=ticker_hist.index,
-                            y=ticker_hist['BB_upper'],
-                            mode='lines',
-                            line=dict(color='#b794f6', width=1, dash='dash'),
-                            name='BB Upper',
-                            showlegend=False
-                        ), row=row_num, col=col_num)
+                        ticker_hist['BB_middle'] = ticker_hist['Close'].rolling(20).mean()
+                        ticker_hist['BB_std'] = ticker_hist['Close'].rolling(20).std()
+                        ticker_hist['BB_upper'] = ticker_hist['BB_middle'] + (2 * ticker_hist['BB_std'])
+                        ticker_hist['BB_lower'] = ticker_hist['BB_middle'] - (2 * ticker_hist['BB_std'])
 
-                        fig_price.add_trace(go.Scatter(
-                            x=ticker_hist.index,
-                            y=ticker_hist['BB_lower'],
-                            mode='lines',
-                            line=dict(color='#b794f6', width=1, dash='dash'),
-                            name='BB Lower',
-                            fill='tonexty',
-                            fillcolor='rgba(183, 148, 246, 0.1)'
-                        ), row=row_num, col=col_num)
+                        # Create subplots if volume is enabled
+                        if show_volume:
+                            from plotly.subplots import make_subplots
+                            fig_price = make_subplots(
+                                rows=2, cols=1,
+                                shared_xaxes=True,
+                                vertical_spacing=0.03,
+                                row_heights=[0.7, 0.3],
+                                subplot_titles=(f"{selected_ticker} - {chart_type} Chart ({time_range})", "Volume")
+                            )
+                        else:
+                            fig_price = go.Figure()
 
-                    # Add volume bars if enabled
-                    if show_volume:
-                        colors_vol = ['#00ff88' if ticker_hist['Close'].iloc[i] >= ticker_hist['Open'].iloc[i]
-                                     else '#ff3366' for i in range(len(ticker_hist))]
+                        # Add price chart based on selected type
+                        if chart_type == "Candlestick":
+                            price_trace = go.Candlestick(
+                                x=ticker_hist.index,
+                                open=ticker_hist['Open'],
+                                high=ticker_hist['High'],
+                                low=ticker_hist['Low'],
+                                close=ticker_hist['Close'],
+                                name='Price',
+                                increasing_line_color='#00ff88',
+                                decreasing_line_color='#ff3366'
+                            )
+                        else:  # Line chart
+                            price_trace = go.Scatter(
+                                x=ticker_hist.index,
+                                y=ticker_hist['Close'],
+                                mode='lines',
+                                name='Price',
+                                line=dict(color='#00D4FF', width=2),
+                                fill='tozeroy',
+                                fillcolor='rgba(0, 212, 255, 0.1)'
+                            )
 
-                        fig_price.add_trace(go.Bar(
-                            x=ticker_hist.index,
-                            y=ticker_hist['Volume'],
-                            name='Volume',
-                            marker=dict(color=colors_vol),
-                            showlegend=False
-                        ), row=2, col=1)
+                        if show_volume:
+                            fig_price.add_trace(price_trace, row=1, col=1)
+                        else:
+                            fig_price.add_trace(price_trace)
 
-                    # Update layout
-                    if show_volume:
-                        fig_price.update_layout(
-                            height=700,
-                            hovermode='x unified',
-                            xaxis_rangeslider_visible=False,
-                            xaxis2_title="Date",
-                            yaxis_title="Price ($)",
-                            yaxis2_title="Volume"
-                        )
-                    else:
-                        fig_price.update_layout(
-                            title=f"{selected_ticker} - {chart_type} Chart ({time_range})",
-                            xaxis_title="Date",
-                            yaxis_title="Price ($)",
-                            height=600,
-                            xaxis_rangeslider_visible=False
-                        )
+                        # Add technical indicators if enabled
+                        if show_indicators:
+                            row_num = 1 if show_volume else None
+                            col_num = 1 if show_volume else None
 
-                    apply_chart_theme(fig_price)
-                    st.plotly_chart(fig_price, use_container_width=True)
+                            # Moving averages
+                            fig_price.add_trace(go.Scatter(
+                                x=ticker_hist.index,
+                                y=ticker_hist['MA_50'],
+                                mode='lines',
+                                line=dict(color='#00d4ff', width=1.5),
+                                name='MA 50'
+                            ), row=row_num, col=col_num)
+
+                            fig_price.add_trace(go.Scatter(
+                                x=ticker_hist.index,
+                                y=ticker_hist['MA_200'],
+                                mode='lines',
+                                line=dict(color='#ffaa00', width=1.5),
+                                name='MA 200'
+                            ), row=row_num, col=col_num)
+
+                            # Bollinger Bands
+                            fig_price.add_trace(go.Scatter(
+                                x=ticker_hist.index,
+                                y=ticker_hist['BB_upper'],
+                                mode='lines',
+                                line=dict(color='#b794f6', width=1, dash='dash'),
+                                name='BB Upper',
+                                showlegend=False
+                            ), row=row_num, col=col_num)
+
+                            fig_price.add_trace(go.Scatter(
+                                x=ticker_hist.index,
+                                y=ticker_hist['BB_lower'],
+                                mode='lines',
+                                line=dict(color='#b794f6', width=1, dash='dash'),
+                                name='BB Lower',
+                                fill='tonexty',
+                                fillcolor='rgba(183, 148, 246, 0.1)'
+                            ), row=row_num, col=col_num)
+
+                        # Add volume bars if enabled
+                        if show_volume:
+                            colors_vol = ['#00ff88' if ticker_hist['Close'].iloc[i] >= ticker_hist['Open'].iloc[i]
+                                         else '#ff3366' for i in range(len(ticker_hist))]
+
+                            fig_price.add_trace(go.Bar(
+                                x=ticker_hist.index,
+                                y=ticker_hist['Volume'],
+                                name='Volume',
+                                marker=dict(color=colors_vol),
+                                showlegend=False
+                            ), row=2, col=1)
+
+                        # Update layout
+                        if show_volume:
+                            fig_price.update_layout(
+                                height=700,
+                                hovermode='x unified',
+                                xaxis_rangeslider_visible=False,
+                                xaxis2_title="Date",
+                                yaxis_title="Price ($)",
+                                yaxis2_title="Volume"
+                            )
+                        else:
+                            fig_price.update_layout(
+                                title=f"{selected_ticker} - {chart_type} Chart ({time_range})",
+                                xaxis_title="Date",
+                                yaxis_title="Price ($)",
+                                height=600,
+                                xaxis_rangeslider_visible=False
+                            )
+
+                        apply_chart_theme(fig_price)
+                        st.plotly_chart(fig_price, use_container_width=True)
 
                 st.divider()
 

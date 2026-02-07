@@ -145,3 +145,16 @@ from .fetchers import *
 
 # Optimizer Functions
 from .optimizers import *
+
+# TradingView Charts (optional — graceful if not installed)
+try:
+    from .tradingview_charts import (
+        render_candlestick_chart,
+        render_line_chart,
+        render_multi_series_chart,
+        create_tradingview_chart,
+        is_tradingview_available,
+        TRADINGVIEW_AVAILABLE,
+    )
+except ImportError:
+    TRADINGVIEW_AVAILABLE = False
