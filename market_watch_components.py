@@ -31,7 +31,7 @@ from textwrap import dedent
 from typing import Optional
 from market_data_fetcher import *
 from visualization_components import *
-from core.alpha_vantage import av_client, ALPHA_VANTAGE_AVAILABLE
+from core import av_client, ALPHA_VANTAGE_AVAILABLE
 
 
 # ============================================================
