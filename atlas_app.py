@@ -54,6 +54,22 @@ import plotly.graph_objects as go
 import streamlit as st
 print(f"[BOOT] Standard libs + streamlit OK", flush=True)
 
+# ============================================================================
+# STREAMLIT PAGE CONFIG (must be first Streamlit call)
+# ============================================================================
+st.set_page_config(
+    page_title="ATLAS Terminal v10.0 INSTITUTIONAL",
+    page_icon="🚀",
+    layout="wide",
+    initial_sidebar_state="expanded",  # Phase 1B: Show vertical sidebar
+)
+
+# ============================================================================
+# CSS/JS STYLING - Extracted to ui/atlas_css.py (Phase 1 Refactoring)
+# ============================================================================
+from ui.atlas_css import init_atlas_css
+init_atlas_css()
+
 # PHASE 1 REFACTORING: Centralized configuration
 print(f"[BOOT] Importing app.config...", flush=True)
 from app.config import (
@@ -397,16 +413,6 @@ def get_benchmark_sector_returns(benchmark_ticker='SPY', period='1y'):
 
 
 
-# ============================================================================
-# PAGE CONFIG
-# ============================================================================
-st.set_page_config(
-    page_title="ATLAS Terminal v10.0 INSTITUTIONAL",
-    page_icon="🚀",
-    layout="wide",
-    initial_sidebar_state="expanded"  # Phase 1B: Show vertical sidebar
-)
-
 # =============================================================================
 # RERUN LOOP PROTECTION - DO NOT REMOVE
 # =============================================================================
@@ -434,12 +440,6 @@ else:
     if st.session_state.boot_count > 15:
         st.error("Rerun loop detected! App has rerun more than 15 times in rapid succession.")
         st.stop()
-
-# ============================================================================
-# CSS/JS STYLING - Extracted to ui/atlas_css.py (Phase 1 Refactoring)
-# ============================================================================
-from ui.atlas_css import init_atlas_css
-init_atlas_css()
 
 # ============================================================================
 # CHART THEME FUNCTION & COLORSCALES
