@@ -12,8 +12,66 @@ def apply_premium_layout_css():
     """Premium layout: remove Streamlit chrome, zero-padding, responsive metric cards."""
     st.markdown("""
 <style>
-/* ===== REMOVE STREAMLIT CHROME ===== */
-header[data-testid="stHeader"] { display: none !important; }
+/* ===== REMOVE STREAMLIT CHROME (BUT PRESERVE SIDEBAR TOGGLE) ===== */
+header[data-testid="stHeader"] {
+    background: transparent !important;
+    backdrop-filter: none !important;
+}
+
+header[data-testid="stHeader"] > div:not(:has(button[kind="header"])) {
+    display: none !important;
+}
+
+button[kind="header"],
+button[data-testid="baseButton-header"],
+button[data-testid="collapsedControl"] {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    position: fixed !important;
+    top: 1rem !important;
+    left: 1rem !important;
+    z-index: 999999 !important;
+    background: rgba(0, 212, 255, 0.15) !important;
+    border: 2px solid rgba(0, 212, 255, 0.6) !important;
+    border-radius: 12px !important;
+    padding: 0.75rem !important;
+    width: 48px !important;
+    height: 48px !important;
+    cursor: pointer !important;
+    transition: all 0.3s ease !important;
+    box-shadow: 0 4px 16px rgba(0, 212, 255, 0.3) !important;
+}
+
+button[kind="header"]:hover,
+button[data-testid="baseButton-header"]:hover,
+button[data-testid="collapsedControl"]:hover {
+    background: rgba(0, 212, 255, 0.3) !important;
+    border-color: rgba(0, 212, 255, 1) !important;
+    box-shadow: 0 6px 24px rgba(0, 212, 255, 0.5),
+                0 0 32px rgba(0, 212, 255, 0.3) !important;
+    transform: scale(1.05) !important;
+}
+
+button[kind="header"] svg,
+button[data-testid="baseButton-header"] svg,
+button[data-testid="collapsedControl"] svg {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    color: #ffffff !important;
+    fill: #ffffff !important;
+    width: 24px !important;
+    height: 24px !important;
+}
+
+button[kind="header"]:hover svg,
+button[data-testid="baseButton-header"]:hover svg,
+button[data-testid="collapsedControl"]:hover svg {
+    color: #00d4ff !important;
+    fill: #00d4ff !important;
+    filter: drop-shadow(0 0 8px rgba(0, 212, 255, 0.8)) !important;
+}
 footer { display: none !important; visibility: hidden !important; height: 0 !important; overflow: hidden !important; }
 .stDeployButton { display: none !important; }
 .stMainBlockContainer { padding-bottom: 0 !important; }
@@ -26,21 +84,17 @@ div[data-testid="stBottom"] { display: none !important; visibility: hidden !impo
 
 /* ===== ZERO PADDING MAIN CONTAINER ===== */
 .main { padding: 0 !important; margin: 0 !important; }
-.main .block-container,
-.stApp .main .block-container,
-div[data-testid="stAppViewContainer"] .main .block-container {
+.main .block-container { max-width: 100% !important; padding: 0.25rem 0.5rem !important; margin: 0 !important; padding-top: 0 !important; }
+section.main > div { max-width: 100% !important; padding: 0 !important; margin: 0 !important; }
+
+/* ===== STREAMLIT NEW WRAPPER (WIDTH CAP) ===== */
+.stMainBlockContainer,
+div[data-testid="stMainBlockContainer"] {
     max-width: 100% !important;
     width: 100% !important;
-    padding: 0.25rem 0.5rem !important;
     margin: 0 !important;
-    padding-top: 0 !important;
-}
-section.main > div,
-div[data-testid="stAppViewContainer"] section.main > div {
-    max-width: 100% !important;
-    width: 100% !important;
-    padding: 0 !important;
-    margin: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
 }
 
 /* ===== FIRST ELEMENT TOUCHES TOP ===== */
@@ -154,11 +208,16 @@ def apply_full_width_js():
 <script>
 (function() {
     function forceFullWidth() {
+        document.querySelectorAll('[data-testid="stMainBlockContainer"], .stMainBlockContainer').forEach(function(el) {
+            el.style.setProperty('max-width', '100%', 'important');
+            el.style.setProperty('width', '100%', 'important');
+            el.style.setProperty('margin', '0', 'important');
+        });
         document.querySelectorAll('.block-container').forEach(function(el) {
             el.style.setProperty('max-width', '100%', 'important');
             el.style.setProperty('width', '100%', 'important');
         });
-        document.querySelectorAll('section.main > div, div[data-testid=\"stAppViewContainer\"] section.main > div').forEach(function(el) {
+        document.querySelectorAll('section.main > div').forEach(function(el) {
             el.style.setProperty('max-width', '100%', 'important');
             el.style.setProperty('width', '100%', 'important');
         });
