@@ -6,6 +6,7 @@ Call init_atlas_css() once at app startup to inject all styles.
 """
 
 import streamlit as st
+from streamlit import components
 
 def apply_premium_layout_css():
     """Premium layout: remove Streamlit chrome, zero-padding, responsive metric cards."""
@@ -135,7 +136,7 @@ h2[style*="font-size: 1.5rem"] {
 
 def apply_full_width_js():
     """Full-width enforcement via JavaScript MutationObserver."""
-    st.html("""
+    components.v1.html("""
 <script>
 (function() {
     function forceFullWidth() {
@@ -173,7 +174,7 @@ def apply_full_width_js():
     }
 })();
 </script>
-""", unsafe_allow_javascript=True)
+""", height=0, width=0)
 
 
 def apply_figma_borders_css():
