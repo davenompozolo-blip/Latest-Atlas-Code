@@ -478,6 +478,27 @@ from core.charts import *  # noqa: F401,F403
 from core.optimizers import *  # noqa: F401,F403
 from core import av_client, ALPHA_VANTAGE_AVAILABLE
 
+def _log_build_metadata():
+    """Log basic build metadata to help debug Streamlit deployments."""
+    try:
+        import subprocess
+        commit_hash = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            stderr=subprocess.DEVNULL,
+            text=True
+        ).strip()
+        print(f"[BOOT] Build commit: {commit_hash}", flush=True)
+    except Exception:
+        print("[BOOT] Build commit: unavailable", flush=True)
+
+    print(
+        f"[BOOT] Alpha Vantage import: {av_client.__class__.__module__}, "
+        f"available={ALPHA_VANTAGE_AVAILABLE}",
+        flush=True
+    )
+
+_log_build_metadata()
+
 
 # ============================================================================
 # HELPER FUNCTIONS - format_currency, format_percentage, format_large_number,
