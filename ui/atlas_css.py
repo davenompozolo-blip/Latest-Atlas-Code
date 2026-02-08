@@ -30,7 +30,6 @@ div[data-testid="stBottom"] { display: none !important; visibility: hidden !impo
 .stApp .main .block-container,
 div[data-testid="stAppViewContainer"] .main .block-container {
     max-width: 100% !important;
-    width: 100% !important;
     padding: 0.25rem 0.5rem !important;
     margin: 0 !important;
     padding-top: 0 !important;
@@ -38,7 +37,6 @@ div[data-testid="stAppViewContainer"] .main .block-container {
 section.main > div,
 div[data-testid="stAppViewContainer"] section.main > div {
     max-width: 100% !important;
-    width: 100% !important;
     padding: 0 !important;
     margin: 0 !important;
 }
