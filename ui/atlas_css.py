@@ -36,8 +36,7 @@ div[data-testid="stAppViewContainer"] .main .block-container {
     padding-top: 0 !important;
 }
 section.main > div,
-div[data-testid="stAppViewContainer"] section.main > div,
-div[data-testid="stAppViewContainer"] > div {
+div[data-testid="stAppViewContainer"] section.main > div {
     max-width: 100% !important;
     width: 100% !important;
     padding: 0 !important;
@@ -159,7 +158,7 @@ def apply_full_width_js():
             el.style.setProperty('max-width', '100%', 'important');
             el.style.setProperty('width', '100%', 'important');
         });
-        document.querySelectorAll('section.main > div').forEach(function(el) {
+        document.querySelectorAll('section.main > div, div[data-testid=\"stAppViewContainer\"] section.main > div').forEach(function(el) {
             el.style.setProperty('max-width', '100%', 'important');
             el.style.setProperty('width', '100%', 'important');
         });
