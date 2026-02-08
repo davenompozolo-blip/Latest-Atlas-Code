@@ -97,6 +97,8 @@ div[data-testid="stAppViewContainer"] section.main > div {
     max-width: 100% !important;
     padding: 0 !important;
     margin: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
 }
 
 /* ===== FIRST ELEMENT TOUCHES TOP ===== */
@@ -210,6 +212,11 @@ def apply_full_width_js():
 <script>
 (function() {
     function forceFullWidth() {
+        document.querySelectorAll('[data-testid="stMainBlockContainer"], .stMainBlockContainer').forEach(function(el) {
+            el.style.setProperty('max-width', '100%', 'important');
+            el.style.setProperty('width', '100%', 'important');
+            el.style.setProperty('margin', '0', 'important');
+        });
         document.querySelectorAll('.block-container').forEach(function(el) {
             el.style.setProperty('max-width', '100%', 'important');
             el.style.setProperty('width', '100%', 'important');
