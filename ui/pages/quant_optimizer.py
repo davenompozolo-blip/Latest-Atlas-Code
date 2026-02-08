@@ -154,6 +154,11 @@ def render_quant_optimizer(start_date, end_date, selected_benchmark):
                     })
                     st.dataframe(
                         missing_df.style.format({"Missing %": "{:.2f}%"}),
+                    st.dataframe(
+                        pd.DataFrame({
+                            "Ticker": missing_data.index,
+                            "Missing %": (missing_data.values * 100).round(1)
+                        }),
                         use_container_width=True,
                         hide_index=True
                     )
@@ -215,6 +220,7 @@ def render_quant_optimizer(start_date, end_date, selected_benchmark):
                         sharpe_color = '#10b981' if optimal_sharpe > 2.0 else ('#fbbf24' if optimal_sharpe > 1.0 else '#ef4444')
                         sharpe_status = 'Excellent' if optimal_sharpe > 2.0 else ('Good' if optimal_sharpe > 1.0 else 'Fair')
                         st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🎯</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">MAXIMUM SHARPE RATIO</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {sharpe_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{optimal_sharpe:.2f}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">{sharpe_status}</p></div></div>', unsafe_allow_html=True)
+                        st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🎯</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">MAXIMUM SHARPE RATIO</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {sharpe_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{optimal_sharpe:.3f}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">{sharpe_status}</p></div></div>', unsafe_allow_html=True)
 
                     # Expected Return
                     with col2:
@@ -233,6 +239,9 @@ def render_quant_optimizer(start_date, end_date, selected_benchmark):
                         convergence_val = "Success" if result.get('success') else "Warning"
                         convergence_color = '#10b981' if result.get('success') else '#fbbf24'
                         convergence_icon = '✅' if result.get('success') else '⚠️'
+                        convergence_val = "Success" if result.success else "Warning"
+                        convergence_color = '#10b981' if result.success else '#fbbf24'
+                        convergence_icon = '✅' if result.success else '⚠️'
                         st.markdown(f'<div style="background: linear-gradient(135deg, rgba(245,158,11,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(245,158,11,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #f59e0b, #d97706); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🔄</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">CONVERGENCE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {convergence_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{convergence_icon}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(245,158,11,0.12); border-radius: 10px; border: 1px solid rgba(245,158,11,0.25);"><p style="font-size: 0.7rem; color: #fbbf24; margin: 0; font-weight: 600;">{convergence_val}</p></div></div>', unsafe_allow_html=True)
 
                     # Optimal weights
