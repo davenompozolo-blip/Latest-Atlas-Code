@@ -36,8 +36,6 @@ def render_valuation_house(start_date, end_date):
         calculate_smart_assumptions,
         calculate_consensus_valuation,
         apply_relative_valuation,
-        av_client,
-        ALPHA_VANTAGE_AVAILABLE,
     )
     from ui.components import ATLAS_TEMPLATE
 
@@ -116,7 +114,7 @@ def render_valuation_house(start_date, end_date):
     st.markdown("---")
     st.markdown("#### 🔍 Company Search")
 
-    col1, col2, col3 = st.columns([3, 1, 1])
+    col1, col2 = st.columns([3, 1])
 
     with col1:
         ticker_input = st.text_input(
@@ -128,14 +126,6 @@ def render_valuation_house(start_date, end_date):
     with col2:
         search_button = st.button("🚀 Load Company", type="primary", use_container_width=True)
 
-    with col3:
-        fetch_button = st.button(
-            "📥 Fetch Financials",
-            type="secondary",
-            use_container_width=True,
-            disabled=not ALPHA_VANTAGE_AVAILABLE
-        )
-
     if search_button and ticker_input:
         with st.spinner(f"📊 Fetching data for {ticker_input}..."):
             company_data = fetch_company_financials(ticker_input)
@@ -145,71 +135,6 @@ def render_valuation_house(start_date, end_date):
                 st.success(f"✅ Loaded {company_data['company']['name']}")
             else:
                 st.error(f"❌ Could not fetch data: {company_data.get('error', 'Unknown error')}")
-
-    if fetch_button and ticker_input:
-        if not ALPHA_VANTAGE_AVAILABLE or not av_client.is_configured:
-            st.warning("Alpha Vantage not configured. Add API key to secrets.")
-        else:
-            with st.spinner(f"Fetching {ticker_input} financials..."):
-                dcf_inputs = av_client.get_dcf_inputs(ticker_input)
-
-            if dcf_inputs:
-                st.success(f"✅ Loaded {dcf_inputs['name']} financials")
-
-                # Store in session state for DCF form
-                st.session_state['av_financials'] = dcf_inputs
-
-                # Display overview
-                with st.expander("📊 Company Overview", expanded=True):
-                    col1, col2, col3, col4 = st.columns(4)
-
-                    col1.metric(
-                        "Market Cap",
-                        f"${dcf_inputs['market_cap'] / 1e9:.1f}B" if dcf_inputs['market_cap'] else "N/A"
-                    )
-                    col2.metric(
-                        "P/E Ratio",
-                        f"{dcf_inputs['pe_ratio']:.1f}" if dcf_inputs['pe_ratio'] else "N/A"
-                    )
-                    col3.metric(
-                        "Beta",
-                        f"{dcf_inputs['beta']:.2f}" if dcf_inputs['beta'] else "N/A"
-                    )
-                    col4.metric(
-                        "Analyst Target",
-                        f"${dcf_inputs['target_price']:.0f}" if dcf_inputs['target_price'] else "N/A"
-                    )
-
-                    profit_margin = dcf_inputs.get('profit_margin')
-                    operating_margin = dcf_inputs.get('operating_margin')
-                    roe = dcf_inputs.get('roe')
-
-                    def _format_pct(value):
-                        return f"{value * 100:.1f}%" if value is not None else "N/A"
-
-                    st.markdown(
-                        f"""
-                        **Sector:** {dcf_inputs['sector']} | **Industry:** {dcf_inputs['industry']}
-
-                        **Margins:** Profit {_format_pct(profit_margin)} | Operating {_format_pct(operating_margin)}
-
-                        **Returns:** ROE {_format_pct(roe)}
-                        """
-                    )
-
-                # Display historical data
-                if 'revenue_history' in dcf_inputs:
-                    with st.expander("📈 Revenue History (5yr)", expanded=False):
-                        rev_df = pd.DataFrame(dcf_inputs['revenue_history'])
-                        st.dataframe(rev_df, use_container_width=True, hide_index=True)
-
-                if 'fcf_history' in dcf_inputs:
-                    with st.expander("💰 Cash Flow History (5yr)", expanded=False):
-                        fcf_df = pd.DataFrame(dcf_inputs['fcf_history'])
-                        fcf_df['fcf'] = fcf_df['operatingCashflow'] - abs(fcf_df['capitalExpenditures'])
-                        st.dataframe(fcf_df, use_container_width=True, hide_index=True)
-            else:
-                st.error(f"Could not fetch financials for {ticker_input}")
 
     # Display valuation if company is loaded
     if 'valuation_company' in st.session_state:
@@ -862,20 +787,6 @@ def render_valuation_house(start_date, end_date):
         # DCF METHODS (FCFF / FCFE) - Existing comprehensive inputs
         # =================================================================
         elif method_key in ['FCFF', 'FCFE']:
-            av_data = st.session_state.get('av_financials', {})
-            av_revenue_cagr = None
-            if av_data and av_data.get('revenue_history'):
-                history = av_data['revenue_history']
-                if len(history) >= 2:
-                    try:
-                        latest = float(history[0]['totalRevenue'])
-                        oldest = float(history[-1]['totalRevenue'])
-                        years = len(history) - 1
-                        if oldest > 0 and years > 0:
-                            av_revenue_cagr = ((latest / oldest) ** (1 / years) - 1) * 100
-                    except (TypeError, ValueError, KeyError):
-                        av_revenue_cagr = None
-
             # Check if Model Inputs Dashboard is active
             dashboard_active = ('dashboard_inputs' in st.session_state and
                                st.session_state.get('use_model_inputs_dashboard', False))
@@ -947,18 +858,13 @@ def render_valuation_house(start_date, end_date):
                                 key=f"rev_growth_{scenario_key}"
                             ) / 100
                         else:
-                            default_value = av_revenue_cagr if av_revenue_cagr is not None else 5.0
-                            default_value = max(-10.0, min(30.0, default_value))
                             revenue_growth = st.slider(
                                 "Revenue Growth Rate (%)",
                                 min_value=-10.0,
                                 max_value=30.0,
-                                value=default_value,
+                                value=5.0,
                                 step=0.5
                             ) / 100
-
-                        if av_revenue_cagr is not None and not use_smart_assumptions:
-                            st.caption(f"💡 Historical CAGR: {av_revenue_cagr:.1f}%")
 
                         if use_smart_assumptions:
                             ebit_margin = smart_params['ebit_margin']
@@ -966,14 +872,11 @@ def render_valuation_house(start_date, end_date):
                             ebit_status = 'High Margin' if ebit_margin > 0.20 else ('Healthy' if ebit_margin > 0.10 else 'Low Margin')
                             st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💼</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">EBIT MARGIN</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {ebit_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{ebit_margin*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">{ebit_status} • AI Generated</p></div></div>', unsafe_allow_html=True)
                         else:
-                            default_margin = 20.0
-                            if av_data and av_data.get('operating_margin') is not None:
-                                default_margin = max(0.0, min(50.0, float(av_data['operating_margin']) * 100))
                             ebit_margin = st.slider(
                                 "EBIT Margin (%)",
                                 min_value=0.0,
                                 max_value=50.0,
-                                value=default_margin,
+                                value=20.0,
                                 step=1.0
                             ) / 100
 
@@ -1141,8 +1044,6 @@ def render_valuation_house(start_date, end_date):
                         ) / 100
 
                         beta_value = float(company['beta']) if company['beta'] else 1.0
-                        if av_data and av_data.get('beta') is not None:
-                            beta_value = float(av_data['beta'])
                         beta = st.number_input(
                             "Beta",
                             min_value=-1.0,
@@ -1756,8 +1657,6 @@ def render_valuation_house(start_date, end_date):
                         base_revenue = financials.get('revenue', 0)
                         base_ebit = financials.get('ebit', 0)
                         base_net_income = financials.get('net_income', 0)
-                        if av_data and av_data.get('revenue_ttm'):
-                            base_revenue = av_data['revenue_ttm']
 
                         # ENHANCED: Project cash flows with scaling D&A and CapEx
                         # Get multi-stage config if enabled
@@ -1778,8 +1677,6 @@ def render_valuation_house(start_date, end_date):
 
                         # Use shares from company data
                         shares = company['shares_outstanding']
-                        if av_data and av_data.get('shares_outstanding'):
-                            shares = av_data['shares_outstanding']
 
                     # =================================================================
                     # SBC INTEGRATION: Adjust FCFF for Share-Based Compensation
