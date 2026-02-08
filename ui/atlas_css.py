@@ -25,34 +25,9 @@ div[data-testid="stBottom"] { display: none !important; visibility: hidden !impo
 #MainMenu { display: none !important; }
 
 /* ===== ZERO PADDING MAIN CONTAINER ===== */
-.main { padding: 0 !important; margin: 0 !important; max-width: 100vw !important; width: 100vw !important; }
-.stApp,
-div[data-testid="stAppViewContainer"] {
-    max-width: 100vw !important;
-    width: 100vw !important;
-}
-.stApp > .main,
-div[data-testid="stAppViewContainer"] > .main {
-    max-width: 100vw !important;
-    width: 100vw !important;
-}
-.main .block-container,
-.stApp .main .block-container,
-div[data-testid="stAppViewContainer"] .main .block-container {
-    max-width: 100% !important;
-    width: 100% !important;
-    padding: 0.25rem 0.5rem !important;
-    margin: 0 !important;
-    padding-top: 0 !important;
-}
-section.main > div,
-div[data-testid="stAppViewContainer"] section.main > div,
-div[data-testid="stAppViewContainer"] > div {
-    max-width: 100% !important;
-    width: 100% !important;
-    padding: 0 !important;
-    margin: 0 !important;
-}
+.main { padding: 0 !important; margin: 0 !important; }
+.main .block-container { max-width: 100% !important; padding: 0.25rem 0.5rem !important; margin: 0 !important; padding-top: 0 !important; }
+section.main > div { max-width: 100% !important; padding: 0 !important; margin: 0 !important; }
 
 /* ===== FIRST ELEMENT TOUCHES TOP ===== */
 .main .block-container > div:first-child { margin-top: 0 !important; padding-top: 0 !important; }
@@ -169,13 +144,9 @@ def apply_full_width_js():
             el.style.setProperty('max-width', '100%', 'important');
             el.style.setProperty('width', '100%', 'important');
         });
-        document.querySelectorAll('section.main, section.main > div').forEach(function(el) {
+        document.querySelectorAll('section.main > div').forEach(function(el) {
             el.style.setProperty('max-width', '100%', 'important');
             el.style.setProperty('width', '100%', 'important');
-        });
-        document.querySelectorAll('[data-testid="stAppViewContainer"], .stApp').forEach(function(el) {
-            el.style.setProperty('max-width', '100vw', 'important');
-            el.style.setProperty('width', '100vw', 'important');
         });
         document.querySelectorAll('[style*="max-width"]').forEach(function(el) {
             if (!el.closest('[data-testid="stSidebar"]')) {
