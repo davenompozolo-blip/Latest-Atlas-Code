@@ -3,10 +3,13 @@ ATLAS Terminal - Valuation House Page
 Extracted from atlas_app.py for modular page-level editing.
 """
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 
 from app.config import COLORS
 from utils.formatting import format_currency, format_percentage, format_large_number, add_arrow_indicator
+
+INSTITUTIONAL_DCF_AVAILABLE = False
 
 
 def render_valuation_house(start_date, end_date):
@@ -88,6 +91,20 @@ def render_valuation_house(start_date, end_date):
         from dcf_regime_overlay import DCFRegimeOverlay
     except ImportError:
         DCFRegimeOverlay = None
+
+    # Institutional-grade DCF enhancements (optional)
+    try:
+        from atlas_dcf_institutional import (
+            DCFAssumptionManager,
+            DCFValidator,
+            RobustDCFEngine,
+            MonteCarloDCF,
+            display_validation_warnings,
+            display_monte_carlo_results
+        )
+        INSTITUTIONAL_DCF_AVAILABLE = True
+    except ImportError:
+        INSTITUTIONAL_DCF_AVAILABLE = False
 
     st.markdown("### Professional DCF Valuation Engine with Smart Assumptions")
 
@@ -2269,4 +2286,3 @@ def render_valuation_house(start_date, end_date):
 
     # ========================================================================
     # MONTE CARLO ENGINE (v11.0)
-
