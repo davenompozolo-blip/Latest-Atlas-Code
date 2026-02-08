@@ -9,6 +9,57 @@ from app.config import COLORS
 from utils.formatting import format_currency, format_percentage, add_arrow_indicator
 
 
+def render_earnings_calendar(av_client, alpha_available, portfolio_tickers):
+    """Render upcoming earnings for portfolio holdings."""
+    if not alpha_available or not av_client.is_configured:
+        return
+
+    st.markdown("### 📅 Upcoming Earnings")
+
+    if not portfolio_tickers:
+        st.info("Add holdings to see their earnings dates.")
+        return
+
+    # Fetch earnings calendar (cached 12 hours)
+    with st.spinner("Loading earnings calendar..."):
+        calendar_df = av_client.get_earnings_calendar(horizon='3month')
+
+    if calendar_df.empty:
+        st.info("Earnings calendar unavailable.")
+        return
+
+    # Filter to portfolio holdings
+    portfolio_earnings = calendar_df[
+        calendar_df['symbol'].isin(portfolio_tickers)
+    ].copy()
+
+    if portfolio_earnings.empty:
+        st.success("✅ No upcoming earnings in the next 3 months for your holdings.")
+        return
+
+    # Sort by date
+    portfolio_earnings['reportDate'] = pd.to_datetime(portfolio_earnings['reportDate'])
+    portfolio_earnings = portfolio_earnings.sort_values('reportDate')
+
+    # Display
+    for _, row in portfolio_earnings.iterrows():
+        days_until = (row['reportDate'] - pd.Timestamp.now()).days
+
+        if days_until <= 7:
+            urgency = "🔴"  # Imminent
+        elif days_until <= 14:
+            urgency = "🟡"  # Soon
+        else:
+            urgency = "🟢"  # Not urgent
+
+        st.markdown(
+            f"""
+            {urgency} **{row['symbol']}** — {row['reportDate'].strftime('%b %d, %Y')} ({days_until} days)
+            - Estimate: ${row.get('estimate', 'N/A')} EPS
+            """
+        )
+
+
 def render_portfolio_home(start_date, end_date):
     """Render the Portfolio Home page."""
     # Import from core module to avoid circular dependency with atlas_app
@@ -30,6 +81,8 @@ def render_portfolio_home(start_date, end_date):
         get_db,
         is_option_ticker,
         ATLASFormatter,
+        av_client,
+        ALPHA_VANTAGE_AVAILABLE,
     )
     from ui.components import ATLAS_TEMPLATE
 
@@ -162,6 +215,10 @@ def render_portfolio_home(start_date, end_date):
         <span style='display: inline-block; padding: 0.375rem 1rem; font-size: 0.875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; border-radius: 12px; background: {neutral_colors['bg']}; border: 1px solid {neutral_colors['border']}; color: {neutral_colors['text']}; transition: all 0.2s ease;'>{len(enhanced_df)} Positions</span>
     </div>
     """, unsafe_allow_html=True)
+
+    st.markdown("---")
+    portfolio_tickers = enhanced_df['Ticker'].dropna().unique().tolist()
+    render_earnings_calendar(av_client, ALPHA_VANTAGE_AVAILABLE, portfolio_tickers)
 
     st.markdown("---")
 

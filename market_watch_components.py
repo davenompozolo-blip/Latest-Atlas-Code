@@ -28,8 +28,168 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 from textwrap import dedent
+from typing import Optional
 from market_data_fetcher import *
 from visualization_components import *
+from core.alpha_vantage import av_client, ALPHA_VANTAGE_AVAILABLE
+
+
+# ============================================================
+# ALPHA VANTAGE MARKET MOVERS
+# ============================================================
+
+def render_market_movers():
+    """
+    Render top gainers, losers, and most active stocks.
+    Uses Alpha Vantage with 1-hour cache.
+    """
+    st.markdown("### 📊 Market Movers")
+
+    if not ALPHA_VANTAGE_AVAILABLE or not av_client.is_configured:
+        st.warning("Alpha Vantage not configured. Add API key to secrets.")
+        return
+
+    # Show API usage in expander
+    with st.expander("📈 API Usage", expanded=False):
+        stats = av_client.get_usage_stats()
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Calls Today", stats['api_calls_today'])
+        col2.metric("Remaining", stats['calls_remaining'])
+        col3.metric("Cached Items", stats['cached_items'])
+
+    # Fetch data (cached for 1 hour)
+    with st.spinner("Loading market movers..."):
+        gainers, losers, most_active = av_client.get_top_movers()
+
+    if gainers.empty and losers.empty:
+        st.info("Market data unavailable. Check API key or try again later.")
+        return
+
+    # Display in tabs
+    tab1, tab2, tab3 = st.tabs(["🚀 Top Gainers", "📉 Top Losers", "🔥 Most Active"])
+
+    with tab1:
+        if not gainers.empty:
+            _render_movers_table(gainers.head(10), is_gainer=True)
+        else:
+            st.info("No data available")
+
+    with tab2:
+        if not losers.empty:
+            _render_movers_table(losers.head(10), is_gainer=False)
+        else:
+            st.info("No data available")
+
+    with tab3:
+        if not most_active.empty:
+            _render_movers_table(most_active.head(10), is_gainer=None)
+        else:
+            st.info("No data available")
+
+
+def _render_movers_table(df: pd.DataFrame, is_gainer: Optional[bool] = None):
+    """Render a styled movers table."""
+    if df.empty:
+        st.info("No data available")
+        return
+
+    # Create display dataframe
+    display_df = df[['ticker', 'price', 'change_amount', 'change_pct', 'volume']].copy()
+    display_df.columns = ['Ticker', 'Price', 'Change ($)', 'Change (%)', 'Volume']
+
+    # Format columns
+    display_df['Price'] = display_df['Price'].apply(lambda x: f"${x:,.2f}")
+    display_df['Change ($)'] = display_df['Change ($)'].apply(
+        lambda x: f"+${x:,.2f}" if x >= 0 else f"-${abs(x):,.2f}"
+    )
+    display_df['Change (%)'] = display_df['Change (%)'].apply(
+        lambda x: f"+{x:.2f}%" if x >= 0 else f"{x:.2f}%"
+    )
+    display_df['Volume'] = display_df['Volume'].apply(lambda x: f"{x:,.0f}")
+
+    # Display
+    st.dataframe(
+        display_df,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            'Ticker': st.column_config.TextColumn(width='small'),
+            'Change (%)': st.column_config.TextColumn(width='small'),
+        }
+    )
+
+
+# ============================================================
+# ALPHA VANTAGE STOCK UNIVERSE
+# ============================================================
+
+def render_stock_universe():
+    """
+    Render searchable stock universe.
+    Uses Alpha Vantage LISTING_STATUS with 7-day cache.
+    """
+    st.markdown("### 🔍 Stock Universe")
+
+    if not ALPHA_VANTAGE_AVAILABLE or not av_client.is_configured:
+        st.warning("Alpha Vantage not configured.")
+        return
+
+    # Fetch stock list (cached 7 days - very API efficient!)
+    with st.spinner("Loading stock universe..."):
+        stocks_df = av_client.get_listing_status()
+
+    if stocks_df.empty:
+        st.info("Stock universe unavailable.")
+        return
+
+    st.caption(f"📊 {len(stocks_df):,} listed securities")
+
+    # Filters
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        search = st.text_input("🔍 Search ticker or name", "")
+
+    with col2:
+        exchanges = ['All'] + sorted(stocks_df['exchange'].dropna().unique().tolist())
+        selected_exchange = st.selectbox("Exchange", exchanges)
+
+    with col3:
+        asset_types = ['All'] + sorted(stocks_df['assetType'].dropna().unique().tolist())
+        selected_type = st.selectbox("Asset Type", asset_types)
+
+    # Apply filters
+    filtered = stocks_df.copy()
+
+    if search:
+        mask = (
+            filtered['symbol'].str.contains(search.upper(), na=False) |
+            filtered['name'].str.contains(search, case=False, na=False)
+        )
+        filtered = filtered[mask]
+
+    if selected_exchange != 'All':
+        filtered = filtered[filtered['exchange'] == selected_exchange]
+
+    if selected_type != 'All':
+        filtered = filtered[filtered['assetType'] == selected_type]
+
+    # Display
+    st.dataframe(
+        filtered[['symbol', 'name', 'exchange', 'assetType', 'ipoDate']].head(100),
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            'symbol': st.column_config.TextColumn("Ticker", width='small'),
+            'name': st.column_config.TextColumn("Name", width='large'),
+            'exchange': st.column_config.TextColumn("Exchange", width='small'),
+            'assetType': st.column_config.TextColumn("Type", width='small'),
+            'ipoDate': st.column_config.TextColumn("IPO Date", width='small'),
+        }
+    )
+
+    if len(filtered) > 100:
+        st.caption(f"Showing 100 of {len(filtered):,} results. Refine your search.")
 
 
 # ============================================================
@@ -461,9 +621,14 @@ def render_overview_page():
             st.plotly_chart(treemap, use_container_width=True)
 
 
+    st.markdown("---")
+    render_market_movers()
+
+
 # ============================================================
 # STOCKS SCREENER PAGE
 # ============================================================
+
 
 def render_stocks_page():
     """Stock screeners page - Advanced screener with 500+ stocks"""
@@ -584,6 +749,9 @@ def render_stocks_page():
         render_advanced_stock_screener()
     else:
         render_prebuilt_screeners()
+
+    st.markdown("---")
+    render_stock_universe()
 
 
 # ============================================================
