@@ -476,6 +476,7 @@ from core.fetchers import *  # noqa: F401,F403
 from core.calculations import *  # noqa: F401,F403
 from core.charts import *  # noqa: F401,F403
 from core.optimizers import *  # noqa: F401,F403
+from core import av_client, ALPHA_VANTAGE_AVAILABLE
 
 
 # ============================================================================
@@ -1385,6 +1386,23 @@ def main():
         # Fallback sidebar if render_sidebar_navigation fails
         with st.sidebar:
             page = st.radio("Navigation", ["Portfolio Home", "Phoenix Parser", "Market Watch", "Stock Screener", "Valuation House"], label_visibility="collapsed")
+
+    if ALPHA_VANTAGE_AVAILABLE and av_client.is_configured:
+        with st.sidebar.expander("📊 Alpha Vantage Status", expanded=False):
+            stats = av_client.get_usage_stats()
+
+            # Usage bar
+            usage_pct = stats['api_calls_today'] / stats['daily_limit'] if stats['daily_limit'] else 0
+            st.progress(usage_pct, text=f"{stats['api_calls_today']}/{stats['daily_limit']} calls today")
+
+            # Cache info
+            st.caption(f"💾 {stats['cached_items']} items cached ({stats['cache_size_kb']:.1f} KB)")
+
+            # Refresh cache button
+            if st.button("🔄 Clear Cache"):
+                av_client.cache.clear_all()
+                st.success("Cache cleared!")
+                st.rerun()
 
     # ========================================================================
     # PHASE 2A: NAVIGATION ROUTING (Registry-Based)
