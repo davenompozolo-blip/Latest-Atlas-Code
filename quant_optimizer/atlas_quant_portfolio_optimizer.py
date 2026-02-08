@@ -159,8 +159,10 @@ class PortfolioOptimizer:
             options={'maxiter': 1000, 'ftol': 1e-9}
         )
 
-        if not result.success:
-            raise ValueError(f"Optimization failed: {result.message}")
+        success = result.get('success') if isinstance(result, dict) else getattr(result, 'success', False)
+        if not success:
+            message = result.get('message') if isinstance(result, dict) else getattr(result, 'message', 'Unknown error')
+            raise ValueError(f"Optimization failed: {message}")
 
         weights = result.x
         port_return, port_vol, sharpe = self._portfolio_stats(weights)
@@ -171,7 +173,7 @@ class PortfolioOptimizer:
             'volatility': port_vol,
             'sharpe_ratio': sharpe,
             'leverage': np.sum(weights),
-            'success': result.success,
+            'success': success,
             'method': 'max_sharpe'
         }
 
@@ -199,8 +201,10 @@ class PortfolioOptimizer:
             options={'maxiter': 1000, 'ftol': 1e-9}
         )
 
-        if not result.success:
-            raise ValueError(f"Optimization failed: {result.message}")
+        success = result.get('success') if isinstance(result, dict) else getattr(result, 'success', False)
+        if not success:
+            message = result.get('message') if isinstance(result, dict) else getattr(result, 'message', 'Unknown error')
+            raise ValueError(f"Optimization failed: {message}")
 
         weights = result.x
         port_return, port_vol, sharpe = self._portfolio_stats(weights)
@@ -211,7 +215,7 @@ class PortfolioOptimizer:
             'volatility': port_vol,
             'sharpe_ratio': sharpe,
             'leverage': np.sum(weights),
-            'success': result.success,
+            'success': success,
             'method': 'min_volatility'
         }
 
@@ -399,7 +403,7 @@ class PortfolioOptimizer:
                     options={'maxiter': 1000}
                 )
 
-                if result.success:
+                if (result.get('success') if isinstance(result, dict) else getattr(result, 'success', False)):
                     weights = result.x
                     port_return, port_vol, sharpe = self._portfolio_stats(weights)
 
