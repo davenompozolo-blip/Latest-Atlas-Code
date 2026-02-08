@@ -476,6 +476,7 @@ from core.fetchers import *  # noqa: F401,F403
 from core.calculations import *  # noqa: F401,F403
 from core.charts import *  # noqa: F401,F403
 from core.optimizers import *  # noqa: F401,F403
+from core import av_client, ALPHA_VANTAGE_AVAILABLE
 from core.alpha_vantage import av_client, ALPHA_VANTAGE_AVAILABLE
 
 
