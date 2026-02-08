@@ -6,7 +6,6 @@ Call init_atlas_css() once at app startup to inject all styles.
 """
 
 import streamlit as st
-from streamlit import components
 
 def apply_premium_layout_css():
     """Premium layout: remove Streamlit chrome, zero-padding, responsive metric cards."""
@@ -26,22 +25,8 @@ div[data-testid="stBottom"] { display: none !important; visibility: hidden !impo
 
 /* ===== ZERO PADDING MAIN CONTAINER ===== */
 .main { padding: 0 !important; margin: 0 !important; }
-.main .block-container,
-.stApp .main .block-container,
-div[data-testid="stAppViewContainer"] .main .block-container {
-    max-width: 100% !important;
-    width: 100% !important;
-    padding: 0.25rem 0.5rem !important;
-    margin: 0 !important;
-    padding-top: 0 !important;
-}
-section.main > div,
-div[data-testid="stAppViewContainer"] section.main > div {
-    max-width: 100% !important;
-    width: 100% !important;
-    padding: 0 !important;
-    margin: 0 !important;
-}
+.main .block-container { max-width: 100% !important; padding: 0.25rem 0.5rem !important; margin: 0 !important; padding-top: 0 !important; }
+section.main > div { max-width: 100% !important; padding: 0 !important; margin: 0 !important; }
 
 /* ===== FIRST ELEMENT TOUCHES TOP ===== */
 .main .block-container > div:first-child { margin-top: 0 !important; padding-top: 0 !important; }
@@ -150,7 +135,7 @@ h2[style*="font-size: 1.5rem"] {
 
 def apply_full_width_js():
     """Full-width enforcement via JavaScript MutationObserver."""
-    components.v1.html("""
+    st.html("""
 <script>
 (function() {
     function forceFullWidth() {
@@ -158,7 +143,7 @@ def apply_full_width_js():
             el.style.setProperty('max-width', '100%', 'important');
             el.style.setProperty('width', '100%', 'important');
         });
-        document.querySelectorAll('section.main > div, div[data-testid=\"stAppViewContainer\"] section.main > div').forEach(function(el) {
+        document.querySelectorAll('section.main > div').forEach(function(el) {
             el.style.setProperty('max-width', '100%', 'important');
             el.style.setProperty('width', '100%', 'important');
         });
@@ -188,7 +173,7 @@ def apply_full_width_js():
     }
 })();
 </script>
-""", height=0, width=0)
+""", unsafe_allow_javascript=True)
 
 
 def apply_figma_borders_css():
