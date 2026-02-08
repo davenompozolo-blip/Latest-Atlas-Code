@@ -61,7 +61,7 @@ st.set_page_config(
     page_title="ATLAS Terminal v10.0 INSTITUTIONAL",
     page_icon="🚀",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="expanded",  # Phase 1B: Show vertical sidebar
 )
 
 # ============================================================================
