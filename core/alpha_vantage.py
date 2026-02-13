@@ -33,9 +33,8 @@ import sqlite3
 import requests
 import pandas as pd
 from pathlib import Path
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple, Any, Union
-from functools import wraps
+from datetime import datetime
+from typing import Dict, Optional, Tuple, Any
 
 import streamlit as st
 
@@ -48,6 +47,7 @@ import streamlit as st
 BASE_URL = "https://www.alphavantage.co/query"
 FREE_TIER_DAILY_LIMIT = 25
 FREE_TIER_MINUTE_LIMIT = 5  # 5 calls per minute on free tier
+DISABLE_ENV_VAR = "ALPHA_VANTAGE_DISABLED"
 
 # Cache durations (in seconds)
 CACHE_DURATIONS = {
@@ -217,40 +217,42 @@ class AlphaVantageClient:
     - Rate limiting (5 calls/minute on free tier)
     """
 
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = None, enabled: Optional[bool] = None):
+        """
+        Initialize client.
+
+        Args:
+            api_key: Alpha Vantage API key. If None, reads from:
+                     1. ALPHA_VANTAGE_API_KEY env var
+                     2. Streamlit secrets (st.secrets["ALPHA_VANTAGE_API_KEY"])
+        """
+        self.enabled = enabled if enabled is not None else self._is_enabled()
         self.api_key = api_key or self._get_api_key()
         self.cache = AlphaVantageCache()
         self._last_call_time = 0
         self._min_call_interval = 12  # seconds between calls (5/min = 12s interval)
 
-    def _get_api_key(self) -> Optional[str]:
-        """Get API key from Streamlit secrets (nested) or environment."""
-        # Streamlit Cloud secrets (nested format: [api_keys] alpha_vantage = "...")
-        try:
-            return st.secrets["api_keys"]["alpha_vantage"]
-        except (KeyError, AttributeError, FileNotFoundError):
-            pass
+    def _is_enabled(self) -> bool:
+        """Allow an explicit environment-based kill switch."""
+        return os.environ.get(DISABLE_ENV_VAR, "").strip().lower() not in {"1", "true", "yes", "on"}
 
-        # Local dev fallback
-        return os.getenv("ALPHA_VANTAGE_API_KEY")
+    def _get_api_key(self) -> Optional[str]:
+        """Get API key from environment or Streamlit secrets."""
+        # Try environment variable
+        key = os.environ.get('ALPHA_VANTAGE_API_KEY')
+        if key:
+            return key
+
+        # Try Streamlit secrets
+        try:
+            return st.secrets.get("ALPHA_VANTAGE_API_KEY")
+        except Exception:
+            return None
 
     @property
     def is_configured(self) -> bool:
         """Check if API key is configured."""
         return self.api_key is not None
-
-    @staticmethod
-    def _sanitise_ticker(ticker: str) -> str:
-        """Normalise ticker to plain format expected by Alpha Vantage US endpoints."""
-        if not ticker:
-            return ticker
-        ticker = ticker.strip().upper()
-        # Remove exchange suffixes (e.g., .US, .LON, .FRA)
-        if '.' in ticker:
-            base, suffix = ticker.split('.', 1)
-            if suffix.isalpha() and len(suffix) <= 3:
-                return base
-        return ticker
 
     def _rate_limit(self):
         """Enforce rate limiting (5 calls/minute on free tier)."""
@@ -262,12 +264,25 @@ class AlphaVantageClient:
     def _call_api(
         self,
         function: str,
-        params: Dict = None,
+        params: Optional[Dict] = None,
         cache_key: Optional[str] = None
     ) -> Optional[Dict]:
-        """Make API call with caching and rate limiting."""
+        """
+        Make API call with caching and rate limiting.
+
+        Args:
+            function: Alpha Vantage function name
+            params: Additional API parameters
+            cache_key: Override cache key type for TTL lookup
+
+        Returns:
+            API response data or None if error/limit reached
+        """
+        if not self.enabled:
+            return None
+
         if not self.is_configured:
-            st.warning("Alpha Vantage API key not configured")
+            st.warning("⚠️ Alpha Vantage API key not configured")
             return None
 
         params = params or {}
@@ -277,6 +292,7 @@ class AlphaVantageClient:
             **params
         }
 
+        # Determine cache key type
         cache_type = cache_key or function.lower()
 
         # Check cache first
@@ -287,26 +303,31 @@ class AlphaVantageClient:
         # Check daily limit
         usage = self.cache.get_today_usage()
         if usage >= FREE_TIER_DAILY_LIMIT:
-            st.warning(f"Daily API limit reached ({FREE_TIER_DAILY_LIMIT} calls). Using cached data.")
+            st.warning(f"⚠️ Daily API limit reached ({FREE_TIER_DAILY_LIMIT} calls). Using cached data.")
             return None
 
+        # Rate limit
         self._rate_limit()
 
+        # Make API call
         try:
             response = requests.get(BASE_URL, params=full_params, timeout=30)
             response.raise_for_status()
             data = response.json()
 
+            # Check for API error messages
             if 'Error Message' in data:
                 st.error(f"Alpha Vantage Error: {data['Error Message']}")
                 return None
 
-            if 'Note' in data:
+            if 'Note' in data:  # Rate limit warning
                 st.warning(f"Alpha Vantage: {data['Note']}")
                 return None
 
+            # Success - cache and return
             self.cache.increment_usage()
             self.cache.set(cache_type, params, data)
+
             return data
 
         except requests.exceptions.RequestException as e:
@@ -320,12 +341,22 @@ class AlphaVantageClient:
     # MARKET DATA ENDPOINTS
     # =========================================================================
 
-    def get_top_movers(self) -> Optional[Dict[str, pd.DataFrame]]:
-        """Get top gainers, losers, and most active stocks. Cache: 1 hour."""
+    def get_top_movers(self) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+        """
+        Get top gainers, losers, and most active stocks.
+
+        Returns:
+            Tuple of (gainers_df, losers_df, most_active_df)
+            Each DataFrame has columns: ticker, price, change_amount,
+                                        change_percentage, volume
+
+        Cache: 1 hour
+        API calls: 1
+        """
         data = self._call_api('TOP_GAINERS_LOSERS', cache_key='top_movers')
 
         if data is None:
-            return None
+            return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
         def parse_movers(key: str) -> pd.DataFrame:
             items = data.get(key, [])
@@ -333,52 +364,84 @@ class AlphaVantageClient:
                 return pd.DataFrame()
 
             df = pd.DataFrame(items)
+            # Standardize column names
+            df = df.rename(columns={
+                'ticker': 'ticker',
+                'price': 'price',
+                'change_amount': 'change_amount',
+                'change_percentage': 'change_pct',
+                'volume': 'volume'
+            })
 
+            # Convert types
             for col in ['price', 'change_amount', 'volume']:
                 if col in df.columns:
                     df[col] = pd.to_numeric(df[col], errors='coerce')
 
-            if 'change_percentage' in df.columns:
-                df['change_percentage'] = df['change_percentage'].astype(str).str.replace('%', '')
-                df['change_percentage'] = pd.to_numeric(df['change_percentage'], errors='coerce')
+            if 'change_pct' in df.columns:
+                df['change_pct'] = df['change_pct'].str.replace('%', '').astype(float)
 
             return df
 
-        return {
-            'top_gainers': parse_movers('top_gainers'),
-            'top_losers': parse_movers('top_losers'),
-            'most_actively_traded': parse_movers('most_actively_traded'),
-        }
+        gainers = parse_movers('top_gainers')
+        losers = parse_movers('top_losers')
+        most_active = parse_movers('most_actively_traded')
+
+        return gainers, losers, most_active
 
     def get_listing_status(self, status: str = 'active') -> pd.DataFrame:
-        """Get list of all listed stocks. Cache: 7 days."""
-        # Check cache first
-        cached = self.cache.get('listing_status', {'state': status})
-        if cached is not None:
-            return pd.DataFrame(cached)
+        """
+        Get list of all listed stocks.
 
-        if not self.is_configured:
+        Args:
+            status: 'active' or 'delisted'
+
+        Returns:
+            DataFrame with columns: symbol, name, exchange, assetType,
+                                   ipoDate, delistingDate, status
+
+        Cache: 7 days
+        API calls: 1
+        """
+        data = self._call_api(
+            'LISTING_STATUS',
+            {'state': status},
+            cache_key='listing_status'
+        )
+
+        if data is None:
             return pd.DataFrame()
 
-        if self.cache.get_today_usage() >= FREE_TIER_DAILY_LIMIT:
-            return pd.DataFrame()
-
+        # This endpoint returns CSV, not JSON
+        # Need to handle differently
         try:
-            self._rate_limit()
-
             params = {
                 'function': 'LISTING_STATUS',
                 'state': status,
                 'apikey': self.api_key
             }
+
+            # Check cache
+            cached = self.cache.get('listing_status', {'state': status})
+            if cached is not None:
+                return pd.DataFrame(cached)
+
+            # Check limit
+            if self.cache.get_today_usage() >= FREE_TIER_DAILY_LIMIT:
+                return pd.DataFrame()
+
+            self._rate_limit()
+
             response = requests.get(BASE_URL, params=params, timeout=30)
 
             if response.status_code == 200:
                 from io import StringIO
                 df = pd.read_csv(StringIO(response.text))
 
+                # Cache as list of dicts
                 self.cache.increment_usage()
                 self.cache.set('listing_status', {'state': status}, df.to_dict('records'))
+
                 return df
 
         except Exception as e:
