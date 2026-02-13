@@ -1460,9 +1460,21 @@ def main():
                     st.caption(f"Cache: {cache_entries} entries")
 
                     if st.button("🗑️ Clear Cache", key="av_clear_cache", use_container_width=True):
-                        av_client.cache.clear_all()
-                        st.success("Cache cleared!")
-                        st.rerun()
+                        st.session_state["confirm_clear_av"] = True
+
+                    if st.session_state.get("confirm_clear_av"):
+                        st.warning("This will use API calls on next load. Confirm?")
+                        conf_col1, conf_col2 = st.columns(2)
+                        with conf_col1:
+                            if st.button("Yes, clear", key="av_confirm_yes"):
+                                av_client.cache.clear_all()
+                                st.session_state["confirm_clear_av"] = False
+                                st.success("Cache cleared!")
+                                st.rerun()
+                        with conf_col2:
+                            if st.button("Cancel", key="av_confirm_no"):
+                                st.session_state["confirm_clear_av"] = False
+                                st.rerun()
         except Exception:
             pass  # Silently skip if Alpha Vantage not configured
 

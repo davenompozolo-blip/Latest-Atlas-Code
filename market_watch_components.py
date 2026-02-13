@@ -571,6 +571,11 @@ def render_stock_universe():
                 st.info("Stock universe data unavailable.")
                 return
 
+            # Pre-filter to major exchanges for performance (8,000+ rows → ~4,000-5,000)
+            MAJOR_EXCHANGES = ['NYSE', 'NASDAQ', 'NYSE ARCA', 'NYSE MKT']
+            if 'exchange' in listings_df.columns:
+                listings_df = listings_df[listings_df['exchange'].isin(MAJOR_EXCHANGES)].copy()
+
             # Search and filter
             col1, col2, col3 = st.columns([2, 1, 1])
 

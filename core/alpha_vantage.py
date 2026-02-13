@@ -224,22 +224,33 @@ class AlphaVantageClient:
         self._min_call_interval = 12  # seconds between calls (5/min = 12s interval)
 
     def _get_api_key(self) -> Optional[str]:
-        """Get API key from environment or Streamlit secrets."""
-        key = os.environ.get('ALPHA_VANTAGE_API_KEY')
-        if key:
-            return key
-
+        """Get API key from Streamlit secrets (nested) or environment."""
+        # Streamlit Cloud secrets (nested format: [api_keys] alpha_vantage = "...")
         try:
-            return st.secrets.get("ALPHA_VANTAGE_API_KEY")
-        except Exception:
+            return st.secrets["api_keys"]["alpha_vantage"]
+        except (KeyError, AttributeError, FileNotFoundError):
             pass
 
-        return None
+        # Local dev fallback
+        return os.getenv("ALPHA_VANTAGE_API_KEY")
 
     @property
     def is_configured(self) -> bool:
         """Check if API key is configured."""
         return self.api_key is not None
+
+    @staticmethod
+    def _sanitise_ticker(ticker: str) -> str:
+        """Normalise ticker to plain format expected by Alpha Vantage US endpoints."""
+        if not ticker:
+            return ticker
+        ticker = ticker.strip().upper()
+        # Remove exchange suffixes (e.g., .US, .LON, .FRA)
+        if '.' in ticker:
+            base, suffix = ticker.split('.', 1)
+            if suffix.isalpha() and len(suffix) <= 3:
+                return base
+        return ticker
 
     def _rate_limit(self):
         """Enforce rate limiting (5 calls/minute on free tier)."""
@@ -309,12 +320,12 @@ class AlphaVantageClient:
     # MARKET DATA ENDPOINTS
     # =========================================================================
 
-    def get_top_movers(self) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    def get_top_movers(self) -> Optional[Dict[str, pd.DataFrame]]:
         """Get top gainers, losers, and most active stocks. Cache: 1 hour."""
         data = self._call_api('TOP_GAINERS_LOSERS', cache_key='top_movers')
 
         if data is None:
-            return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+            return None
 
         def parse_movers(key: str) -> pd.DataFrame:
             items = data.get(key, [])
@@ -322,28 +333,22 @@ class AlphaVantageClient:
                 return pd.DataFrame()
 
             df = pd.DataFrame(items)
-            df = df.rename(columns={
-                'ticker': 'ticker',
-                'price': 'price',
-                'change_amount': 'change_amount',
-                'change_percentage': 'change_pct',
-                'volume': 'volume'
-            })
 
             for col in ['price', 'change_amount', 'volume']:
                 if col in df.columns:
                     df[col] = pd.to_numeric(df[col], errors='coerce')
 
-            if 'change_pct' in df.columns:
-                df['change_pct'] = df['change_pct'].str.replace('%', '').astype(float)
+            if 'change_percentage' in df.columns:
+                df['change_percentage'] = df['change_percentage'].astype(str).str.replace('%', '')
+                df['change_percentage'] = pd.to_numeric(df['change_percentage'], errors='coerce')
 
             return df
 
-        gainers = parse_movers('top_gainers')
-        losers = parse_movers('top_losers')
-        most_active = parse_movers('most_actively_traded')
-
-        return gainers, losers, most_active
+        return {
+            'top_gainers': parse_movers('top_gainers'),
+            'top_losers': parse_movers('top_losers'),
+            'most_actively_traded': parse_movers('most_actively_traded'),
+        }
 
     def get_listing_status(self, status: str = 'active') -> pd.DataFrame:
         """Get list of all listed stocks. Cache: 7 days."""
@@ -383,6 +388,7 @@ class AlphaVantageClient:
 
     def get_quote(self, symbol: str) -> Optional[Dict]:
         """Get real-time quote for a symbol. Cache: 5 minutes."""
+        symbol = self._sanitise_ticker(symbol)
         data = self._call_api(
             'GLOBAL_QUOTE',
             {'symbol': symbol},
@@ -408,6 +414,7 @@ class AlphaVantageClient:
 
     def get_company_overview(self, symbol: str) -> Optional[Dict]:
         """Get company fundamentals and key metrics. Cache: 24 hours."""
+        symbol = self._sanitise_ticker(symbol)
         data = self._call_api(
             'OVERVIEW',
             {'symbol': symbol},
@@ -438,6 +445,7 @@ class AlphaVantageClient:
 
     def get_income_statement(self, symbol: str, annual: bool = True) -> pd.DataFrame:
         """Get income statement data. Cache: 24 hours."""
+        symbol = self._sanitise_ticker(symbol)
         data = self._call_api(
             'INCOME_STATEMENT',
             {'symbol': symbol},
@@ -462,6 +470,7 @@ class AlphaVantageClient:
 
     def get_balance_sheet(self, symbol: str, annual: bool = True) -> pd.DataFrame:
         """Get balance sheet data. Cache: 24 hours."""
+        symbol = self._sanitise_ticker(symbol)
         data = self._call_api(
             'BALANCE_SHEET',
             {'symbol': symbol},
@@ -486,6 +495,7 @@ class AlphaVantageClient:
 
     def get_cash_flow(self, symbol: str, annual: bool = True) -> pd.DataFrame:
         """Get cash flow statement data. Cache: 24 hours."""
+        symbol = self._sanitise_ticker(symbol)
         data = self._call_api(
             'CASH_FLOW',
             {'symbol': symbol},
@@ -510,6 +520,7 @@ class AlphaVantageClient:
 
     def get_earnings(self, symbol: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """Get earnings history and estimates. Cache: 24 hours."""
+        symbol = self._sanitise_ticker(symbol)
         data = self._call_api(
             'EARNINGS',
             {'symbol': symbol},
@@ -620,6 +631,7 @@ class AlphaVantageClient:
 
     def get_full_financials(self, symbol: str) -> Dict[str, Any]:
         """Get all financial data for a company. Cache: 24 hours per endpoint. API calls: Up to 4."""
+        symbol = self._sanitise_ticker(symbol)
         return {
             'overview': self.get_company_overview(symbol),
             'income_statement': self.get_income_statement(symbol),
@@ -629,6 +641,7 @@ class AlphaVantageClient:
 
     def get_dcf_inputs(self, symbol: str) -> Optional[Dict]:
         """Get key inputs for DCF valuation. Cache: 24 hours. API calls: Up to 3."""
+        symbol = self._sanitise_ticker(symbol)
         overview = self.get_company_overview(symbol)
         income = self.get_income_statement(symbol)
         cash_flow = self.get_cash_flow(symbol)
@@ -636,33 +649,66 @@ class AlphaVantageClient:
         if overview is None:
             return None
 
+        # Convenience aliases used by UI
+        revenue = overview.get('RevenueTTM') or 0
+        ebitda = overview.get('EBITDA') or 0
+        profit_margin = overview.get('ProfitMargin') or 0
+        net_income = revenue * profit_margin if revenue and profit_margin else 0
+
+        # Compute revenue growth from income history
+        revenue_growth = 0.0
+        if not income.empty and 'totalRevenue' in income.columns and len(income) >= 2:
+            rev_curr = income['totalRevenue'].iloc[0]
+            rev_prev = income['totalRevenue'].iloc[1]
+            if rev_prev and rev_prev != 0:
+                revenue_growth = (rev_curr - rev_prev) / abs(rev_prev)
+
+        # Compute free cash flow from cash flow statement
+        free_cash_flow = 0
+        if not cash_flow.empty:
+            op_cf = cash_flow['operatingCashflow'].iloc[0] if 'operatingCashflow' in cash_flow.columns else 0
+            capex = cash_flow['capitalExpenditures'].iloc[0] if 'capitalExpenditures' in cash_flow.columns else 0
+            op_cf = op_cf if pd.notna(op_cf) else 0
+            capex = capex if pd.notna(capex) else 0
+            free_cash_flow = op_cf - abs(capex)
+
         result = {
             'symbol': symbol,
             'name': overview.get('Name'),
             'sector': overview.get('Sector'),
             'industry': overview.get('Industry'),
-            'market_cap': overview.get('MarketCapitalization'),
-            'shares_outstanding': overview.get('SharesOutstanding'),
-            'beta': overview.get('Beta'),
+            'market_cap': overview.get('MarketCapitalization') or 0,
+            'shares_outstanding': overview.get('SharesOutstanding') or 0,
+            'beta': overview.get('Beta') or 1.0,
             'pe_ratio': overview.get('PERatio'),
             'peg_ratio': overview.get('PEGRatio'),
             'dividend_yield': overview.get('DividendYield'),
-            'profit_margin': overview.get('ProfitMargin'),
-            'operating_margin': overview.get('OperatingMarginTTM'),
+            'profit_margin': profit_margin,
+            'operating_margin': overview.get('OperatingMarginTTM') or 0,
             'roe': overview.get('ReturnOnEquityTTM'),
-            'revenue_ttm': overview.get('RevenueTTM'),
-            'ebitda': overview.get('EBITDA'),
+            'revenue_ttm': revenue,
+            'revenue': revenue,
+            'ebitda': ebitda,
+            'net_income': net_income,
+            'free_cash_flow': free_cash_flow,
+            'revenue_growth': revenue_growth,
             'eps': overview.get('EPS'),
             'book_value': overview.get('BookValue'),
             'target_price': overview.get('AnalystTargetPrice'),
         }
 
         if not income.empty:
-            result['revenue_history'] = income[['fiscalDateEnding', 'totalRevenue']].head(5).to_dict('records')
-            result['operating_income_history'] = income[['fiscalDateEnding', 'operatingIncome']].head(5).to_dict('records')
+            cols = [c for c in ['fiscalDateEnding', 'totalRevenue'] if c in income.columns]
+            if cols:
+                result['revenue_history'] = income[cols].head(5).to_dict('records')
+            cols = [c for c in ['fiscalDateEnding', 'operatingIncome'] if c in income.columns]
+            if cols:
+                result['operating_income_history'] = income[cols].head(5).to_dict('records')
 
         if not cash_flow.empty:
-            result['fcf_history'] = cash_flow[['fiscalDateEnding', 'operatingCashflow', 'capitalExpenditures']].head(5).to_dict('records')
+            cols = [c for c in ['fiscalDateEnding', 'operatingCashflow', 'capitalExpenditures'] if c in cash_flow.columns]
+            if cols:
+                result['fcf_history'] = cash_flow[cols].head(5).to_dict('records')
 
         return result
 
@@ -687,6 +733,9 @@ def get_client() -> AlphaVantageClient:
 av_client = get_client()
 
 
+# Module-level availability flag — True if this module loaded successfully
+ALPHA_VANTAGE_AVAILABLE = True
+
 __all__ = [
     'AlphaVantageClient',
     'AlphaVantageCache',
@@ -694,4 +743,5 @@ __all__ = [
     'av_client',
     'FREE_TIER_DAILY_LIMIT',
     'CACHE_DURATIONS',
+    'ALPHA_VANTAGE_AVAILABLE',
 ]

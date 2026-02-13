@@ -92,11 +92,11 @@ class YieldDataFetcher:
 
         # Try to get API key from various sources
         if not self.api_key:
-            # Try Streamlit secrets
+            # Try Streamlit secrets (nested format: [api_keys] fred = "...")
             if ST_AVAILABLE:
                 try:
-                    self.api_key = st.secrets.get("FRED_API_KEY", None)
-                except Exception:
+                    self.api_key = st.secrets["api_keys"]["fred"]
+                except (KeyError, AttributeError, FileNotFoundError):
                     pass
 
             # Try environment variable

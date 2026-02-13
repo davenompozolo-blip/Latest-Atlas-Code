@@ -122,6 +122,8 @@ def render_valuation_house(start_date, end_date):
             help="Auto-fill DCF inputs from Alpha Vantage (cached 24hr)",
             disabled=not ALPHA_VANTAGE_AVAILABLE
         )
+        if ALPHA_VANTAGE_AVAILABLE:
+            st.caption("Uses up to 3 API calls for new tickers · Free: cached 24hrs")
 
     if search_button and ticker_input:
         with st.spinner(f"📊 Fetching data for {ticker_input}..."):
