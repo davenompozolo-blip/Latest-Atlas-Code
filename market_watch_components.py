@@ -460,6 +460,165 @@ def render_overview_page():
             treemap = create_sector_treemap(sector_data)
             st.plotly_chart(treemap, use_container_width=True)
 
+    st.markdown("---")
+
+    # Alpha Vantage Top Movers
+    render_market_movers()
+
+    # Alpha Vantage Stock Universe
+    render_stock_universe()
+
+
+# ============================================================
+# ALPHA VANTAGE: TOP MOVERS
+# ============================================================
+
+def render_market_movers():
+    """Display top gainers, losers, and most active from Alpha Vantage."""
+    try:
+        from core.alpha_vantage import av_client, ALPHA_VANTAGE_AVAILABLE
+    except ImportError:
+        ALPHA_VANTAGE_AVAILABLE = False
+
+    if not ALPHA_VANTAGE_AVAILABLE or av_client is None:
+        return
+
+    st.markdown("### 🔥 Market Movers")
+    st.caption("Top gainers, losers, and most actively traded — powered by Alpha Vantage (cached 1 hour)")
+
+    try:
+        movers = av_client.get_top_movers()
+
+        if movers is None:
+            st.info("Market movers data unavailable. API limit may have been reached.")
+            return
+
+        gainers = movers.get('top_gainers', pd.DataFrame())
+        losers = movers.get('top_losers', pd.DataFrame())
+        most_active = movers.get('most_actively_traded', pd.DataFrame())
+
+        tab1, tab2, tab3 = st.tabs(["📈 Top Gainers", "📉 Top Losers", "🔥 Most Active"])
+
+        def _format_movers_df(df):
+            """Format a movers DataFrame for display."""
+            display_df = df.head(10).copy()
+            for col in ['price', 'change_amount']:
+                if col in display_df.columns:
+                    display_df[col] = pd.to_numeric(display_df[col], errors='coerce')
+            if 'change_percentage' in display_df.columns:
+                display_df['change_percentage'] = display_df['change_percentage'].astype(str).str.replace('%', '')
+                display_df['change_percentage'] = pd.to_numeric(display_df['change_percentage'], errors='coerce')
+            rename_map = {}
+            if 'ticker' in display_df.columns:
+                rename_map['ticker'] = 'Ticker'
+            if 'price' in display_df.columns:
+                rename_map['price'] = 'Price'
+            if 'change_amount' in display_df.columns:
+                rename_map['change_amount'] = 'Change'
+            if 'change_percentage' in display_df.columns:
+                rename_map['change_percentage'] = 'Change %'
+            if 'volume' in display_df.columns:
+                rename_map['volume'] = 'Volume'
+            display_df = display_df.rename(columns=rename_map)
+            cols_to_show = [c for c in ['Ticker', 'Price', 'Change', 'Change %', 'Volume'] if c in display_df.columns]
+            return display_df[cols_to_show]
+
+        with tab1:
+            if not gainers.empty:
+                st.dataframe(_format_movers_df(gainers), use_container_width=True, hide_index=True)
+            else:
+                st.info("No gainers data available")
+
+        with tab2:
+            if not losers.empty:
+                st.dataframe(_format_movers_df(losers), use_container_width=True, hide_index=True)
+            else:
+                st.info("No losers data available")
+
+        with tab3:
+            if not most_active.empty:
+                st.dataframe(_format_movers_df(most_active), use_container_width=True, hide_index=True)
+            else:
+                st.info("No most active data available")
+
+    except Exception as e:
+        st.warning(f"Could not load market movers: {e}")
+
+    st.markdown("---")
+
+
+# ============================================================
+# ALPHA VANTAGE: STOCK UNIVERSE
+# ============================================================
+
+def render_stock_universe():
+    """Display searchable stock universe from Alpha Vantage (8,000+ tickers)."""
+    try:
+        from core.alpha_vantage import av_client, ALPHA_VANTAGE_AVAILABLE
+    except ImportError:
+        ALPHA_VANTAGE_AVAILABLE = False
+
+    if not ALPHA_VANTAGE_AVAILABLE or av_client is None:
+        return
+
+    with st.expander("🌐 Stock Universe (8,000+ Tickers)", expanded=False):
+        st.caption("Full US stock listing from Alpha Vantage — cached 7 days")
+
+        try:
+            listings_df = av_client.get_listing_status()
+
+            if listings_df is None or listings_df.empty:
+                st.info("Stock universe data unavailable.")
+                return
+
+            # Search and filter
+            col1, col2, col3 = st.columns([2, 1, 1])
+
+            with col1:
+                search_term = st.text_input(
+                    "🔍 Search",
+                    placeholder="Search by ticker or name...",
+                    key="av_universe_search"
+                )
+
+            with col2:
+                exchange_options = ['All']
+                if 'exchange' in listings_df.columns:
+                    exchange_options += sorted(listings_df['exchange'].dropna().unique().tolist())
+                selected_exchange = st.selectbox("Exchange", exchange_options, key="av_universe_exchange")
+
+            with col3:
+                asset_options = ['All']
+                if 'assetType' in listings_df.columns:
+                    asset_options += sorted(listings_df['assetType'].dropna().unique().tolist())
+                selected_asset = st.selectbox("Asset Type", asset_options, key="av_universe_asset")
+
+            filtered = listings_df.copy()
+
+            if search_term:
+                mask = pd.Series(False, index=filtered.index)
+                for col_name in ['symbol', 'name']:
+                    if col_name in filtered.columns:
+                        mask = mask | filtered[col_name].astype(str).str.contains(search_term, case=False, na=False)
+                filtered = filtered[mask]
+
+            if selected_exchange != 'All' and 'exchange' in filtered.columns:
+                filtered = filtered[filtered['exchange'] == selected_exchange]
+
+            if selected_asset != 'All' and 'assetType' in filtered.columns:
+                filtered = filtered[filtered['assetType'] == selected_asset]
+
+            st.markdown(f"**{len(filtered):,}** stocks found")
+
+            # Show top 100 results
+            display_cols = [c for c in ['symbol', 'name', 'exchange', 'assetType', 'ipoDate', 'status'] if c in filtered.columns]
+            rename_map = {'symbol': 'Ticker', 'name': 'Name', 'exchange': 'Exchange', 'assetType': 'Type', 'ipoDate': 'IPO Date', 'status': 'Status'}
+            display_df = filtered[display_cols].head(100).rename(columns=rename_map)
+            st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+        except Exception as e:
+            st.warning(f"Could not load stock universe: {e}")
+
 
 # ============================================================
 # STOCKS SCREENER PAGE

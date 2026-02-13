@@ -357,6 +357,9 @@ def render_portfolio_home(start_date, end_date):
     else:
         st.info("📊 Monthly performance heatmap will be available after 2+ months of portfolio history")
 
+    # ===== EARNINGS CALENDAR (Alpha Vantage) =====
+    render_earnings_calendar(enhanced_df)
+
     # ===== ADVANCED TOOLS - Collapsed by default for analyst focus =====
     st.markdown("---")
     st.markdown("### 🔧 Advanced Tools")
@@ -490,3 +493,98 @@ def render_portfolio_home(start_date, end_date):
                 st.success(f"✅ Options filtering working: {filtered}")
             else:
                 st.error(f"❌ Options filtering failed: {filtered}")
+
+
+def render_earnings_calendar(enhanced_df):
+    """Display upcoming earnings for portfolio holdings using Alpha Vantage."""
+    try:
+        from core.alpha_vantage import av_client, ALPHA_VANTAGE_AVAILABLE
+    except ImportError:
+        ALPHA_VANTAGE_AVAILABLE = False
+
+    if not ALPHA_VANTAGE_AVAILABLE or av_client is None:
+        return
+
+    st.markdown("---")
+    st.markdown("### 📅 Upcoming Earnings")
+    st.caption("Earnings calendar for your holdings — powered by Alpha Vantage (cached 12 hours)")
+
+    try:
+        # Get portfolio tickers
+        ticker_col = None
+        for col_name in ['Display Ticker', 'Ticker', 'ticker', 'Symbol', 'symbol']:
+            if col_name in enhanced_df.columns:
+                ticker_col = col_name
+                break
+
+        if ticker_col is None:
+            st.info("Could not identify ticker column in portfolio data.")
+            return
+
+        portfolio_tickers = enhanced_df[ticker_col].dropna().unique().tolist()
+        # Filter out options and clean tickers
+        from core import is_option_ticker
+        clean_tickers = [t.split('.')[0].upper() for t in portfolio_tickers if not is_option_ticker(str(t))]
+
+        if not clean_tickers:
+            st.info("No equity holdings found for earnings tracking.")
+            return
+
+        # Fetch earnings calendar
+        earnings_df = av_client.get_earnings_calendar()
+
+        if earnings_df is None or earnings_df.empty:
+            st.info("Earnings calendar data unavailable.")
+            return
+
+        # Filter for portfolio holdings
+        symbol_col = None
+        for col_name in ['symbol', 'ticker', 'Symbol', 'Ticker']:
+            if col_name in earnings_df.columns:
+                symbol_col = col_name
+                break
+
+        if symbol_col is None:
+            st.info("Earnings data format unrecognized.")
+            return
+
+        portfolio_earnings = earnings_df[earnings_df[symbol_col].isin(clean_tickers)].copy()
+
+        if portfolio_earnings.empty:
+            st.info("No upcoming earnings found for your holdings.")
+            return
+
+        # Sort by date
+        date_col = None
+        for col_name in ['reportDate', 'report_date', 'date', 'Date']:
+            if col_name in portfolio_earnings.columns:
+                date_col = col_name
+                break
+
+        if date_col:
+            portfolio_earnings = portfolio_earnings.sort_values(date_col)
+
+        # Display with color-coded urgency
+        from datetime import datetime, timedelta
+        today = datetime.now().date()
+
+        st.markdown(f"**{len(portfolio_earnings)}** of your holdings reporting soon:")
+
+        # Rename columns for display
+        display_cols = []
+        rename_map = {}
+        for orig, nice in [(symbol_col, 'Ticker'), (date_col, 'Report Date'),
+                           ('estimate', 'EPS Estimate'), ('currency', 'Currency'),
+                           ('fiscalDateEnding', 'Fiscal Date')]:
+            if orig and orig in portfolio_earnings.columns:
+                display_cols.append(orig)
+                rename_map[orig] = nice
+
+        if display_cols:
+            display_df = portfolio_earnings[display_cols].rename(columns=rename_map)
+            st.dataframe(display_df, use_container_width=True, hide_index=True)
+        else:
+            st.dataframe(portfolio_earnings.head(20), use_container_width=True, hide_index=True)
+
+    except Exception as e:
+        st.warning(f"Could not load earnings calendar: {e}")

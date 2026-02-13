@@ -173,3 +173,16 @@ except ImportError as e:
     create_tradingview_chart = _tv_not_available
     def is_tradingview_available():
         return False
+
+# Alpha Vantage API Integration
+try:
+    from .alpha_vantage import (
+        AlphaVantageClient,
+        av_client,
+        get_client,
+        FREE_TIER_DAILY_LIMIT,
+    )
+    ALPHA_VANTAGE_AVAILABLE = True
+except ImportError:
+    ALPHA_VANTAGE_AVAILABLE = False
+    av_client = None
