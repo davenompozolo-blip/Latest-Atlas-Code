@@ -237,22 +237,33 @@ class AlphaVantageClient:
         return os.environ.get(DISABLE_ENV_VAR, "").strip().lower() not in {"1", "true", "yes", "on"}
 
     def _get_api_key(self) -> Optional[str]:
-        """Get API key from environment or Streamlit secrets."""
-        # Try environment variable
-        key = os.environ.get('ALPHA_VANTAGE_API_KEY')
-        if key:
-            return key
-
-        # Try Streamlit secrets
+        """Get API key from Streamlit secrets (nested) or environment."""
+        # Streamlit Cloud secrets (nested format: [api_keys] alpha_vantage = "...")
         try:
-            return st.secrets.get("ALPHA_VANTAGE_API_KEY")
-        except Exception:
-            return None
+            return st.secrets["api_keys"]["alpha_vantage"]
+        except (KeyError, AttributeError, FileNotFoundError):
+            pass
+
+        # Local dev fallback
+        return os.getenv("ALPHA_VANTAGE_API_KEY")
 
     @property
     def is_configured(self) -> bool:
         """Check if API key is configured."""
         return self.api_key is not None
+
+    @staticmethod
+    def _sanitise_ticker(ticker: str) -> str:
+        """Normalise ticker to plain format expected by Alpha Vantage US endpoints."""
+        if not ticker:
+            return ticker
+        ticker = ticker.strip().upper()
+        # Remove exchange suffixes (e.g., .US, .LON, .FRA)
+        if '.' in ticker:
+            base, suffix = ticker.split('.', 1)
+            if suffix.isalpha() and len(suffix) <= 3:
+                return base
+        return ticker
 
     def _rate_limit(self):
         """Enforce rate limiting (5 calls/minute on free tier)."""
@@ -341,14 +352,13 @@ class AlphaVantageClient:
     # MARKET DATA ENDPOINTS
     # =========================================================================
 
-    def get_top_movers(self) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    def get_top_movers(self) -> Optional[Dict[str, pd.DataFrame]]:
         """
         Get top gainers, losers, and most active stocks.
 
         Returns:
-            Tuple of (gainers_df, losers_df, most_active_df)
-            Each DataFrame has columns: ticker, price, change_amount,
-                                        change_percentage, volume
+            Dict with keys 'top_gainers', 'top_losers', 'most_actively_traded',
+            each containing a DataFrame. Returns None if API call fails.
 
         Cache: 1 hour
         API calls: 1
@@ -356,7 +366,7 @@ class AlphaVantageClient:
         data = self._call_api('TOP_GAINERS_LOSERS', cache_key='top_movers')
 
         if data is None:
-            return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+            return None
 
         def parse_movers(key: str) -> pd.DataFrame:
             items = data.get(key, [])
@@ -364,30 +374,22 @@ class AlphaVantageClient:
                 return pd.DataFrame()
 
             df = pd.DataFrame(items)
-            # Standardize column names
-            df = df.rename(columns={
-                'ticker': 'ticker',
-                'price': 'price',
-                'change_amount': 'change_amount',
-                'change_percentage': 'change_pct',
-                'volume': 'volume'
-            })
 
-            # Convert types
             for col in ['price', 'change_amount', 'volume']:
                 if col in df.columns:
                     df[col] = pd.to_numeric(df[col], errors='coerce')
 
-            if 'change_pct' in df.columns:
-                df['change_pct'] = df['change_pct'].str.replace('%', '').astype(float)
+            if 'change_percentage' in df.columns:
+                df['change_percentage'] = df['change_percentage'].astype(str).str.replace('%', '')
+                df['change_percentage'] = pd.to_numeric(df['change_percentage'], errors='coerce')
 
             return df
 
-        gainers = parse_movers('top_gainers')
-        losers = parse_movers('top_losers')
-        most_active = parse_movers('most_actively_traded')
-
-        return gainers, losers, most_active
+        return {
+            'top_gainers': parse_movers('top_gainers'),
+            'top_losers': parse_movers('top_losers'),
+            'most_actively_traded': parse_movers('most_actively_traded'),
+        }
 
     def get_listing_status(self, status: str = 'active') -> pd.DataFrame:
         """
