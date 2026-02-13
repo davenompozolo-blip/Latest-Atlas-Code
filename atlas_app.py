@@ -1442,6 +1442,42 @@ def main():
         st.session_state['selected_range'] = selected_range
         st.session_state['selected_benchmark'] = selected_benchmark
 
+        # Alpha Vantage API Status Widget
+        try:
+            from core.alpha_vantage import av_client, ALPHA_VANTAGE_AVAILABLE, FREE_TIER_DAILY_LIMIT
+            if ALPHA_VANTAGE_AVAILABLE and av_client is not None:
+                st.markdown("---")
+                with st.expander("📡 Alpha Vantage API", expanded=False):
+                    usage_stats = av_client.get_usage_stats()
+                    calls_today = usage_stats.get('api_calls_today', 0)
+                    daily_limit = FREE_TIER_DAILY_LIMIT
+                    usage_pct = min(calls_today / daily_limit, 1.0) if daily_limit > 0 else 0
+
+                    st.progress(usage_pct)
+                    st.caption(f"API Calls: {calls_today}/{daily_limit} today")
+
+                    cache_entries = usage_stats.get('cached_items', 0)
+                    st.caption(f"Cache: {cache_entries} entries")
+
+                    if st.button("🗑️ Clear Cache", key="av_clear_cache", use_container_width=True):
+                        st.session_state["confirm_clear_av"] = True
+
+                    if st.session_state.get("confirm_clear_av"):
+                        st.warning("This will use API calls on next load. Confirm?")
+                        conf_col1, conf_col2 = st.columns(2)
+                        with conf_col1:
+                            if st.button("Yes, clear", key="av_confirm_yes"):
+                                av_client.cache.clear_all()
+                                st.session_state["confirm_clear_av"] = False
+                                st.success("Cache cleared!")
+                                st.rerun()
+                        with conf_col2:
+                            if st.button("Cancel", key="av_confirm_no"):
+                                st.session_state["confirm_clear_av"] = False
+                                st.rerun()
+        except Exception:
+            pass  # Silently skip if Alpha Vantage not configured
+
     # Calculate date range based on selection
     if selected_range == "YTD":
         start_date = datetime(datetime.now().year, 1, 1)

@@ -114,7 +114,7 @@ def render_valuation_house(start_date, end_date):
     st.markdown("---")
     st.markdown("#### 🔍 Company Search")
 
-    col1, col2 = st.columns([3, 1])
+    col1, col2, col3 = st.columns([3, 1, 1])
 
     with col1:
         ticker_input = st.text_input(
@@ -126,6 +126,22 @@ def render_valuation_house(start_date, end_date):
     with col2:
         search_button = st.button("🚀 Load Company", type="primary", use_container_width=True)
 
+    with col3:
+        # Alpha Vantage Fetch Financials button
+        try:
+            from core.alpha_vantage import av_client, ALPHA_VANTAGE_AVAILABLE
+        except ImportError:
+            ALPHA_VANTAGE_AVAILABLE = False
+            av_client = None
+        av_fetch_button = st.button(
+            "📡 Fetch Financials",
+            use_container_width=True,
+            help="Auto-fill DCF inputs from Alpha Vantage (cached 24hr)",
+            disabled=not ALPHA_VANTAGE_AVAILABLE
+        )
+        if ALPHA_VANTAGE_AVAILABLE:
+            st.caption("Uses up to 3 API calls for new tickers · Free: cached 24hrs")
+
     if search_button and ticker_input:
         with st.spinner(f"📊 Fetching data for {ticker_input}..."):
             company_data = fetch_company_financials(ticker_input)
@@ -135,6 +151,35 @@ def render_valuation_house(start_date, end_date):
                 st.success(f"✅ Loaded {company_data['company']['name']}")
             else:
                 st.error(f"❌ Could not fetch data: {company_data.get('error', 'Unknown error')}")
+
+    # Alpha Vantage: Fetch and auto-fill DCF inputs
+    if av_fetch_button and ticker_input and ALPHA_VANTAGE_AVAILABLE and av_client is not None:
+        with st.spinner(f"📡 Fetching Alpha Vantage financials for {ticker_input}..."):
+            try:
+                dcf_inputs = av_client.get_dcf_inputs(ticker_input)
+                if dcf_inputs:
+                    st.session_state['av_financials'] = dcf_inputs
+                    st.success(f"✅ Alpha Vantage data loaded for {ticker_input} — DCF inputs auto-filled below")
+
+                    # Show fetched data summary
+                    with st.expander("📊 Alpha Vantage DCF Inputs", expanded=True):
+                        av_col1, av_col2, av_col3, av_col4 = st.columns(4)
+                        with av_col1:
+                            st.metric("Revenue", f"${dcf_inputs.get('revenue', 0)/1e9:.1f}B")
+                            st.metric("EBITDA", f"${dcf_inputs.get('ebitda', 0)/1e9:.1f}B")
+                        with av_col2:
+                            st.metric("Net Income", f"${dcf_inputs.get('net_income', 0)/1e9:.1f}B")
+                            st.metric("Free Cash Flow", f"${dcf_inputs.get('free_cash_flow', 0)/1e9:.1f}B")
+                        with av_col3:
+                            st.metric("Revenue Growth", f"{dcf_inputs.get('revenue_growth', 0)*100:.1f}%")
+                            st.metric("Profit Margin", f"{dcf_inputs.get('profit_margin', 0)*100:.1f}%")
+                        with av_col4:
+                            st.metric("Beta", f"{dcf_inputs.get('beta', 1.0):.2f}")
+                            st.metric("Shares Out", f"{dcf_inputs.get('shares_outstanding', 0)/1e9:.2f}B")
+                else:
+                    st.warning(f"No Alpha Vantage data available for {ticker_input}")
+            except Exception as e:
+                st.error(f"Alpha Vantage fetch failed: {e}")
 
     # Display valuation if company is loaded
     if 'valuation_company' in st.session_state:
