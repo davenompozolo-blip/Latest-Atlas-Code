@@ -486,6 +486,30 @@ def render_market_movers():
     st.markdown("### 🔥 Market Movers")
     st.caption("Top gainers, losers, and most actively traded — powered by Alpha Vantage (cached 1 hour)")
 
+    # Temporary diagnostic — remove after confirming deployment works
+    with st.expander("🔧 AV Diagnostic (remove after testing)", expanded=False):
+        st.code(f"av_client.is_configured: {av_client.is_configured}")
+        st.code(f"av_client.api_key is not None: {av_client.api_key is not None}")
+        st.code(f"av_client.enabled: {av_client.enabled}")
+        st.code(f"type(av_client.get_top_movers): returns dict (commit bdd8702+)")
+        # Check what secrets patterns exist
+        import streamlit as _st
+        patterns = {}
+        try:
+            patterns['api_keys.alpha_vantage'] = bool(_st.secrets["api_keys"]["alpha_vantage"])
+        except Exception as e:
+            patterns['api_keys.alpha_vantage'] = str(e)
+        try:
+            patterns['ALPHA_VANTAGE_API_KEY'] = bool(_st.secrets.get("ALPHA_VANTAGE_API_KEY"))
+        except Exception as e:
+            patterns['ALPHA_VANTAGE_API_KEY'] = str(e)
+        try:
+            patterns['available_sections'] = list(_st.secrets.keys()) if hasattr(_st.secrets, 'keys') else 'N/A'
+        except Exception as e:
+            patterns['available_sections'] = str(e)
+        for k, v in patterns.items():
+            st.code(f"{k}: {v}")
+
     try:
         movers = av_client.get_top_movers()
 

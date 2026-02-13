@@ -237,14 +237,40 @@ class AlphaVantageClient:
         return os.environ.get(DISABLE_ENV_VAR, "").strip().lower() not in {"1", "true", "yes", "on"}
 
     def _get_api_key(self) -> Optional[str]:
-        """Get API key from Streamlit secrets (nested) or environment."""
-        # Streamlit Cloud secrets (nested format: [api_keys] alpha_vantage = "...")
+        """Get API key — tries every known secrets pattern."""
+        # Pattern 1: Nested [api_keys] section (Hlobo's structure)
         try:
-            return st.secrets["api_keys"]["alpha_vantage"]
-        except (KeyError, AttributeError, FileNotFoundError):
+            key = st.secrets["api_keys"]["alpha_vantage"]
+            if key:
+                return key
+        except Exception:
             pass
 
-        # Local dev fallback
+        # Pattern 2: Flat key
+        try:
+            key = st.secrets.get("ALPHA_VANTAGE_API_KEY")
+            if key:
+                return key
+        except Exception:
+            pass
+
+        # Pattern 3: Flat lowercase
+        try:
+            key = st.secrets.get("alpha_vantage_api_key")
+            if key:
+                return key
+        except Exception:
+            pass
+
+        # Pattern 4: Nested with different key name
+        try:
+            key = st.secrets["api_keys"]["ALPHA_VANTAGE_API_KEY"]
+            if key:
+                return key
+        except Exception:
+            pass
+
+        # Pattern 5: Environment variable
         return os.getenv("ALPHA_VANTAGE_API_KEY")
 
     @property
