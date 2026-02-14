@@ -33,6 +33,100 @@ from visualization_components import *
 
 
 # ============================================================
+# TRADINGVIEW FRAME CSS
+# ============================================================
+
+TRADINGVIEW_FRAME_CSS = """
+<style>
+/* Full frame for Performance Suite charts */
+.tv-frame-full {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 16px;
+    background: linear-gradient(135deg, rgba(30, 33, 48, 0.8) 0%, rgba(20, 22, 32, 0.9) 100%);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    margin: 8px 0;
+}
+/* Minimal frame for Market Watch index charts (preserves sizing) */
+.tv-frame-minimal {
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 6px;
+    padding: 4px;
+    background: rgba(20, 22, 32, 0.3);
+    margin-bottom: 4px;
+}
+/* Accent frame for featured charts */
+.tv-frame-accent {
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    border-radius: 12px;
+    padding: 16px;
+    background: linear-gradient(135deg, rgba(30, 33, 48, 0.9) 0%, rgba(20, 22, 32, 0.95) 100%);
+    box-shadow: 0 4px 24px rgba(59, 130, 246, 0.15);
+}
+</style>
+"""
+
+
+def render_index_price_change(price: float, change_pct: float, currency: str = ""):
+    """
+    Render styled price and change display below Market Watch charts.
+
+    Args:
+        price: Current price
+        change_pct: Percentage change
+        currency: Optional currency symbol prefix
+    """
+    is_up = change_pct >= 0
+    change_color = "#00d26a" if is_up else "#ff4757"
+    arrow = "&#9650;" if is_up else "&#9660;"
+    sign = "+" if is_up else ""
+
+    # Add subtle glow for significant moves (>2%)
+    glow = f"0 0 8px {change_color}50" if abs(change_pct) > 2 else "none"
+
+    st.markdown(f"""
+    <div style="
+        display: flex;
+        justify-content: space-between;
+        padding: 8px 4px;
+        font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+    ">
+        <div>
+            <span style="
+                font-size: 10px;
+                color: rgba(255,255,255,0.5);
+                text-transform: uppercase;
+                letter-spacing: 0.8px;
+                font-weight: 500;
+            ">Price</span>
+            <br/>
+            <span style="
+                font-size: 16px;
+                font-weight: 600;
+                color: #ffffff;
+            ">{currency}{price:,.2f}</span>
+        </div>
+        <div style="text-align: right;">
+            <span style="
+                font-size: 10px;
+                color: rgba(255,255,255,0.5);
+                text-transform: uppercase;
+                letter-spacing: 0.8px;
+                font-weight: 500;
+            ">Change</span>
+            <br/>
+            <span style="
+                font-size: 16px;
+                font-weight: 600;
+                color: {change_color};
+                text-shadow: {glow};
+            ">{arrow} {sign}{change_pct:.2f}%</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+# ============================================================
 # REGIME INDICATOR BANNER
 # ============================================================
 
@@ -166,6 +260,9 @@ def render_overview_page():
     """Main overview page with all key market data"""
 
     st.title("📊 Market Overview")
+
+    # Inject TradingView frame CSS
+    st.markdown(TRADINGVIEW_FRAME_CSS, unsafe_allow_html=True)
 
     # Regime banner
     display_regime_banner()
@@ -410,6 +507,7 @@ def render_overview_page():
                             icon = "📈" if change_pct >= 0 else "📉"
                             st.markdown(f"**{icon} {index_info['name']}**")
 
+                            st.markdown('<div class="tv-frame-minimal">', unsafe_allow_html=True)
                             tv_render_line_chart(
                                 index_df,
                                 key=f"mw_{index_info['ticker']}_{chart_timeframe}",
@@ -418,12 +516,9 @@ def render_overview_page():
                                 area_fill=True,
                                 watermark=index_info['name']
                             )
+                            st.markdown('</div>', unsafe_allow_html=True)
 
-                            metric_col1, metric_col2 = st.columns(2)
-                            with metric_col1:
-                                st.markdown(f'<div style="text-align: center;"><p style="margin: 0; font-size: 0.7rem; color: #94a3b8;">Price</p><p style="margin: 0; font-size: 1rem; font-weight: 600; color: #f8fafc;">{current_price:,.2f}</p></div>', unsafe_allow_html=True)
-                            with metric_col2:
-                                st.markdown(f'<div style="text-align: center;"><p style="margin: 0; font-size: 0.7rem; color: #94a3b8;">Change</p><p style="margin: 0; font-size: 1rem; font-weight: 600; color: {trend_color};">{change_pct:+.2f}%</p></div>', unsafe_allow_html=True)
+                            render_index_price_change(current_price, change_pct)
                         else:
                             st.warning(f"No data: {index_info['name']}")
 
@@ -470,11 +565,94 @@ def render_overview_page():
 
 
 # ============================================================
-# ALPHA VANTAGE: TOP MOVERS
+# ALPHA VANTAGE: TOP MOVERS (Styled)
 # ============================================================
 
+def _format_volume(vol) -> str:
+    """Format volume with K/M/B suffix."""
+    try:
+        vol = float(vol)
+    except (ValueError, TypeError):
+        return "N/A"
+    if vol >= 1e9:
+        return f"{vol/1e9:.1f}B"
+    elif vol >= 1e6:
+        return f"{vol/1e6:.1f}M"
+    elif vol >= 1e3:
+        return f"{vol/1e3:.1f}K"
+    return f"{vol:,.0f}"
+
+
+def _render_movers_card(title: str, df: pd.DataFrame, color_class: str):
+    """Render a single movers card with ATLAS styling."""
+    if df.empty:
+        st.markdown(f"**{title}**")
+        st.info("No data")
+        return
+
+    colors = {
+        "success": "#00d26a",
+        "danger": "#ff4757",
+        "info": "#3498db",
+    }
+    accent = colors.get(color_class, "#3498db")
+
+    st.markdown(f"""
+    <div style="
+        border-left: 4px solid {accent};
+        padding-left: 12px;
+        margin-bottom: 16px;
+    ">
+        <h4 style="margin: 0; color: {accent};">{title}</h4>
+    </div>
+    """, unsafe_allow_html=True)
+
+    for _, row in df.iterrows():
+        ticker = row.get('ticker', 'N/A')
+        price = pd.to_numeric(row.get('price', 0), errors='coerce') or 0
+        change = pd.to_numeric(row.get('change_amount', 0), errors='coerce') or 0
+        change_pct = row.get('change_percentage', 0)
+        if isinstance(change_pct, str):
+            change_pct = pd.to_numeric(change_pct.replace('%', ''), errors='coerce') or 0
+        else:
+            change_pct = pd.to_numeric(change_pct, errors='coerce') or 0
+        volume = row.get('volume', 0)
+
+        is_up = change >= 0
+        arrow = "&#9650;" if is_up else "&#9660;"
+        change_color = "#00d26a" if is_up else "#ff4757"
+        sign = "+" if is_up else ""
+        price_fmt = f"${price:,.2f}"
+        pct_fmt = f"{sign}{change_pct:.2f}%"
+        vol_fmt = _format_volume(volume)
+
+        st.markdown(f"""
+        <div style="
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        ">
+            <div>
+                <span style="font-weight: 600; font-size: 14px;">{ticker}</span>
+                <span style="font-size: 11px; color: rgba(255,255,255,0.4); margin-left: 6px;">{vol_fmt}</span>
+            </div>
+            <div style="text-align: right;">
+                <span style="font-size: 14px; font-weight: 500;">{price_fmt}</span>
+                <span style="
+                    color: {change_color};
+                    font-size: 12px;
+                    margin-left: 8px;
+                    font-weight: 600;
+                ">{arrow} {pct_fmt}</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+
 def render_market_movers():
-    """Display top gainers, losers, and most active from Alpha Vantage."""
+    """Display styled top gainers, losers, and most active from Alpha Vantage."""
     try:
         from core.alpha_vantage import av_client, ALPHA_VANTAGE_AVAILABLE
     except ImportError:
@@ -483,32 +661,11 @@ def render_market_movers():
     if not ALPHA_VANTAGE_AVAILABLE or av_client is None:
         return
 
+    if not av_client.is_configured:
+        return
+
     st.markdown("### 🔥 Market Movers")
     st.caption("Top gainers, losers, and most actively traded — powered by Alpha Vantage (cached 1 hour)")
-
-    # Temporary diagnostic — remove after confirming deployment works
-    with st.expander("🔧 AV Diagnostic (remove after testing)", expanded=False):
-        st.code(f"av_client.is_configured: {av_client.is_configured}")
-        st.code(f"av_client.api_key is not None: {av_client.api_key is not None}")
-        st.code(f"av_client.enabled: {av_client.enabled}")
-        st.code(f"type(av_client.get_top_movers): returns dict (commit bdd8702+)")
-        # Check what secrets patterns exist
-        import streamlit as _st
-        patterns = {}
-        try:
-            patterns['api_keys.alpha_vantage'] = bool(_st.secrets["api_keys"]["alpha_vantage"])
-        except Exception as e:
-            patterns['api_keys.alpha_vantage'] = str(e)
-        try:
-            patterns['ALPHA_VANTAGE_API_KEY'] = bool(_st.secrets.get("ALPHA_VANTAGE_API_KEY"))
-        except Exception as e:
-            patterns['ALPHA_VANTAGE_API_KEY'] = str(e)
-        try:
-            patterns['available_sections'] = list(_st.secrets.keys()) if hasattr(_st.secrets, 'keys') else 'N/A'
-        except Exception as e:
-            patterns['available_sections'] = str(e)
-        for k, v in patterns.items():
-            st.code(f"{k}: {v}")
 
     try:
         movers = av_client.get_top_movers()
@@ -521,49 +678,18 @@ def render_market_movers():
         losers = movers.get('top_losers', pd.DataFrame())
         most_active = movers.get('most_actively_traded', pd.DataFrame())
 
-        tab1, tab2, tab3 = st.tabs(["📈 Top Gainers", "📉 Top Losers", "🔥 Most Active"])
+        if gainers.empty and losers.empty:
+            st.info("Market data unavailable. Try again later.")
+            return
 
-        def _format_movers_df(df):
-            """Format a movers DataFrame for display."""
-            display_df = df.head(10).copy()
-            for col in ['price', 'change_amount']:
-                if col in display_df.columns:
-                    display_df[col] = pd.to_numeric(display_df[col], errors='coerce')
-            if 'change_percentage' in display_df.columns:
-                display_df['change_percentage'] = display_df['change_percentage'].astype(str).str.replace('%', '')
-                display_df['change_percentage'] = pd.to_numeric(display_df['change_percentage'], errors='coerce')
-            rename_map = {}
-            if 'ticker' in display_df.columns:
-                rename_map['ticker'] = 'Ticker'
-            if 'price' in display_df.columns:
-                rename_map['price'] = 'Price'
-            if 'change_amount' in display_df.columns:
-                rename_map['change_amount'] = 'Change'
-            if 'change_percentage' in display_df.columns:
-                rename_map['change_percentage'] = 'Change %'
-            if 'volume' in display_df.columns:
-                rename_map['volume'] = 'Volume'
-            display_df = display_df.rename(columns=rename_map)
-            cols_to_show = [c for c in ['Ticker', 'Price', 'Change', 'Change %', 'Volume'] if c in display_df.columns]
-            return display_df[cols_to_show]
+        col1, col2, col3 = st.columns(3)
 
-        with tab1:
-            if not gainers.empty:
-                st.dataframe(_format_movers_df(gainers), use_container_width=True, hide_index=True)
-            else:
-                st.info("No gainers data available")
-
-        with tab2:
-            if not losers.empty:
-                st.dataframe(_format_movers_df(losers), use_container_width=True, hide_index=True)
-            else:
-                st.info("No losers data available")
-
-        with tab3:
-            if not most_active.empty:
-                st.dataframe(_format_movers_df(most_active), use_container_width=True, hide_index=True)
-            else:
-                st.info("No most active data available")
+        with col1:
+            _render_movers_card("🚀 Top Gainers", gainers.head(5), "success")
+        with col2:
+            _render_movers_card("📉 Top Losers", losers.head(5), "danger")
+        with col3:
+            _render_movers_card("🔥 Most Active", most_active.head(5), "info")
 
     except Exception as e:
         st.warning(f"Could not load market movers: {e}")

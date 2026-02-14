@@ -420,6 +420,7 @@ class AlphaVantageClient:
     def get_listing_status(self, status: str = 'active') -> pd.DataFrame:
         """
         Get list of all listed stocks.
+        NOTE: This endpoint returns CSV, not JSON!
 
         Args:
             status: 'active' or 'delisted'
@@ -431,51 +432,61 @@ class AlphaVantageClient:
         Cache: 7 days
         API calls: 1
         """
-        data = self._call_api(
-            'LISTING_STATUS',
-            {'state': status},
-            cache_key='listing_status'
-        )
+        cache_params = {'state': status}
 
-        if data is None:
+        # Check cache first
+        cached = self.cache.get('listing_status', cache_params)
+        if cached is not None:
+            return pd.DataFrame(cached)
+
+        # Check daily limit
+        if self.cache.get_today_usage() >= FREE_TIER_DAILY_LIMIT:
+            st.warning("Daily API limit reached. Using cached data.")
             return pd.DataFrame()
 
-        # This endpoint returns CSV, not JSON
-        # Need to handle differently
+        if not self.is_configured:
+            return pd.DataFrame()
+
         try:
-            params = {
-                'function': 'LISTING_STATUS',
-                'state': status,
-                'apikey': self.api_key
-            }
-
-            # Check cache
-            cached = self.cache.get('listing_status', {'state': status})
-            if cached is not None:
-                return pd.DataFrame(cached)
-
-            # Check limit
-            if self.cache.get_today_usage() >= FREE_TIER_DAILY_LIMIT:
-                return pd.DataFrame()
-
             self._rate_limit()
 
-            response = requests.get(BASE_URL, params=params, timeout=30)
+            # Build URL for CSV endpoint
+            url = f"{BASE_URL}?function=LISTING_STATUS&state={status}&apikey={self.api_key}"
+            response = requests.get(url, timeout=30)
+            response.raise_for_status()
 
-            if response.status_code == 200:
-                from io import StringIO
-                df = pd.read_csv(StringIO(response.text))
+            # Check for rate limit message (returns JSON with Note)
+            if response.text.startswith('{'):
+                data = response.json()
+                if 'Note' in data:
+                    st.warning(f"Alpha Vantage: {data['Note']}")
+                    return pd.DataFrame()
+                if 'Error Message' in data:
+                    st.error(f"Alpha Vantage: {data['Error Message']}")
+                    return pd.DataFrame()
 
-                # Cache as list of dicts
-                self.cache.increment_usage()
-                self.cache.set('listing_status', {'state': status}, df.to_dict('records'))
+            # Parse CSV response
+            from io import StringIO
+            df = pd.read_csv(StringIO(response.text))
 
-                return df
+            if df.empty:
+                return pd.DataFrame()
 
+            # Cache as list of dicts
+            self.cache.increment_usage()
+            self.cache.set('listing_status', cache_params, df.to_dict('records'),
+                          ttl=CACHE_DURATIONS['listing_status'])
+            return df
+
+        except requests.exceptions.RequestException as e:
+            st.error(f"API request failed: {e}")
+            return pd.DataFrame()
+        except pd.errors.EmptyDataError:
+            st.error("Empty response from API")
+            return pd.DataFrame()
         except Exception as e:
-            st.error(f"Failed to fetch listing status: {e}")
-
-        return pd.DataFrame()
+            st.error(f"API request failed: {e}")
+            return pd.DataFrame()
 
     def get_quote(self, symbol: str) -> Optional[Dict]:
         """Get real-time quote for a symbol. Cache: 5 minutes."""
