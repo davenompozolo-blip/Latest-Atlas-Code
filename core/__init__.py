@@ -186,3 +186,26 @@ try:
 except ImportError:
     ALPHA_VANTAGE_AVAILABLE = False
     av_client = None
+
+# Stock Universe (Smart Hybrid Architecture)
+try:
+    from .stock_universe import (
+        SP500_TICKERS,
+        NASDAQ100_ADDITIONS,
+        POPULAR_ADDITIONS,
+        SECTOR_MAP,
+        COMPANY_NAMES,
+        get_local_universe,
+        get_local_universe_count,
+        get_local_universe_df,
+        get_screener_universe,
+        validate_ticker_yfinance,
+        get_ticker_info_fast,
+        search_any_ticker,
+        get_all_sectors,
+        get_tickers_by_sector,
+        get_sector_for_ticker,
+        get_company_name,
+    )
+except ImportError:
+    pass
