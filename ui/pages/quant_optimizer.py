@@ -273,7 +273,11 @@ def render_quant_optimizer(start_date, end_date, selected_benchmark):
                     st.plotly_chart(fig, use_container_width=True)
 
                     # Table
-                    make_scrollable_table(weights_df, height=400, hide_index=True, use_container_width=True)
+                    from core.atlas_table_formatting import render_generic_table
+                    st.markdown(render_generic_table(weights_df, columns=[
+                        {'key': 'Symbol', 'label': 'Symbol', 'type': 'ticker'},
+                        {'key': 'Weight %', 'label': 'Weight', 'type': 'text'},
+                    ]), unsafe_allow_html=True)
 
                     # ===================================================================
                     # REBALANCING PLAN
@@ -342,7 +346,20 @@ def render_quant_optimizer(start_date, end_date, selected_benchmark):
                             'Trade Value': f'{currency_symbol}{{:,.0f}}'
                         })
 
-                        make_scrollable_table(styled_rebalance_df, height=400, hide_index=True, use_container_width=True)
+                        from core.atlas_table_formatting import render_generic_table
+                        st.markdown(render_generic_table(
+                            rebalancing_df[['Ticker', 'Current Weight (%)', 'Optimal Weight (%)',
+                                          'Weight Diff (%)', 'Shares to Trade', 'Trade Value', 'Action']],
+                            columns=[
+                                {'key': 'Ticker', 'label': 'Ticker', 'type': 'ticker'},
+                                {'key': 'Current Weight (%)', 'label': 'Current %', 'type': 'percent'},
+                                {'key': 'Optimal Weight (%)', 'label': 'Optimal %', 'type': 'percent'},
+                                {'key': 'Weight Diff (%)', 'label': 'Diff %', 'type': 'change'},
+                                {'key': 'Shares to Trade', 'label': 'Shares', 'type': 'text'},
+                                {'key': 'Trade Value', 'label': 'Trade Value', 'type': 'price'},
+                                {'key': 'Action', 'label': 'Action', 'type': 'text'},
+                            ]
+                        ), unsafe_allow_html=True)
 
                         st.success("✅ Portfolio optimization completed successfully!")
                         st.info("💡 Results include constraints, sector caps, and an exportable rebalancing plan.")
@@ -378,16 +395,18 @@ def render_quant_optimizer(start_date, end_date, selected_benchmark):
                         comparison_df['Current Weight'] = comparison_df['Current Weight'].fillna(0)
                         comparison_df['Change'] = comparison_df['Optimal Weight'] - comparison_df['Current Weight']
 
-                        make_scrollable_table(
-                            comparison_df.style.format({
-                                'Current Weight': '{:.2%}',
-                                'Optimal Weight': '{:.2%}',
-                                'Change': '{:+.2%}'
-                            }),
-                            height=400,
-                            hide_index=True,
-                            use_container_width=True
-                        )
+                        # Format weights as percentages for display
+                        comp_display = comparison_df.copy()
+                        comp_display['Current Weight'] = comp_display['Current Weight'].apply(lambda x: f"{x:.2%}")
+                        comp_display['Optimal Weight'] = comp_display['Optimal Weight'].apply(lambda x: f"{x:.2%}")
+                        comp_display['Change'] = comp_display['Change'].apply(lambda x: f"{x:+.2%}")
+                        from core.atlas_table_formatting import render_generic_table
+                        st.markdown(render_generic_table(comp_display, columns=[
+                            {'key': 'Symbol', 'label': 'Symbol', 'type': 'ticker'},
+                            {'key': 'Current Weight', 'label': 'Current', 'type': 'text'},
+                            {'key': 'Optimal Weight', 'label': 'Optimal', 'type': 'text'},
+                            {'key': 'Change', 'label': 'Change', 'type': 'change'},
+                        ]), unsafe_allow_html=True)
 
                         st.success("✅ Portfolio optimization completed successfully!")
                         st.info("💡 Results include constraints and sector caps; enable pricing columns for full rebalancing output.")

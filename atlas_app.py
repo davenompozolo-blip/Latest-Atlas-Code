@@ -70,6 +70,10 @@ st.set_page_config(
 from ui.atlas_css import init_atlas_css
 init_atlas_css()
 
+# ATLAS Table Formatting - Global typography for tables (Inter font, Bloomberg style)
+from core.atlas_table_formatting import inject_table_css
+inject_table_css()
+
 # PHASE 1 REFACTORING: Centralized configuration
 print(f"[BOOT] Importing app.config...", flush=True)
 from app.config import (

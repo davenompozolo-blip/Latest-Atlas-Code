@@ -130,7 +130,16 @@ def render_leverage_tracker(start_date, end_date):
         for col in ['Equity Return (%)', 'Gross Return (%)', 'Leverage Impact (%)']:
             display_df[col] = display_df[col].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "")
 
-        make_scrollable_table(display_df, height=400, hide_index=True, use_container_width=True)
+        from core.atlas_table_formatting import render_generic_table
+        st.markdown(render_generic_table(display_df, columns=[
+            {'key': 'Date', 'label': 'Date', 'type': 'text'},
+            {'key': 'Net Equity', 'label': 'Net Equity', 'type': 'text'},
+            {'key': 'Gross Exposure', 'label': 'Gross Exp.', 'type': 'text'},
+            {'key': 'Leverage Ratio', 'label': 'Leverage', 'type': 'text'},
+            {'key': 'Equity Return (%)', 'label': 'Equity Ret.', 'type': 'change'},
+            {'key': 'Gross Return (%)', 'label': 'Gross Ret.', 'type': 'change'},
+            {'key': 'Leverage Impact (%)', 'label': 'Lev. Impact', 'type': 'change'},
+        ]), unsafe_allow_html=True)
 
         # Export options
         st.markdown("---")
