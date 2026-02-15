@@ -23,7 +23,6 @@ def render_portfolio_deep_dive(start_date, end_date):
         calculate_portfolio_correlations,
         # Chart Functions
         create_enhanced_holdings_table,
-        make_scrollable_table,
         create_portfolio_heatmap,
         create_holdings_attribution_waterfall,
         create_sector_rotation_heatmap,
@@ -37,6 +36,7 @@ def render_portfolio_deep_dive(start_date, end_date):
         RiskProfile,
         OptimizationExplainer,
     )
+    from core.atlas_table_formatting import render_generic_table
     from ui.components import ATLAS_TEMPLATE
     import numpy as np
     import plotly.graph_objects as go
@@ -255,19 +255,17 @@ def render_portfolio_deep_dive(start_date, end_date):
                 display_cols = ['Ticker', 'GICS_Sector', 'Weight %', 'Index Weight %', 'Over/Under %',
                                'Return %', 'Return vs Sector', 'Active Contribution %']
 
-                st.dataframe(
-                    full_df[display_cols].style.format({
-                        'Weight %': '{:.1f}%',
-                        'Index Weight %': '{:.1f}%',
-                        'Over/Under %': '{:+.1f}%',
-                        'Return %': '{:+.1f}%',
-                        'Return vs Sector': '{:+.1f}%',
-                        'Active Contribution %': '{:+.2f}%'
-                    }).background_gradient(subset=['Active Contribution %'], cmap='RdYlGn'),
-                    use_container_width=True,
-                    height=500,
-                    hide_index=True
-                )
+                attr_display = full_df[display_cols].copy()
+                st.markdown(render_generic_table(attr_display, columns=[
+                    {'key': 'Ticker', 'label': 'Ticker', 'type': 'ticker'},
+                    {'key': 'GICS_Sector', 'label': 'Sector', 'type': 'text'},
+                    {'key': 'Weight %', 'label': 'Weight %', 'type': 'percent'},
+                    {'key': 'Index Weight %', 'label': 'Index Wt %', 'type': 'percent'},
+                    {'key': 'Over/Under %', 'label': 'Over/Under', 'type': 'change'},
+                    {'key': 'Return %', 'label': 'Return %', 'type': 'change'},
+                    {'key': 'Return vs Sector', 'label': 'vs Sector', 'type': 'change'},
+                    {'key': 'Active Contribution %', 'label': 'Active α %', 'type': 'change'},
+                ]), unsafe_allow_html=True)
 
                 # Summary statistics
                 st.markdown('<h3 style="font-size: 1.25rem; font-weight: 700; color: #f8fafc; margin-top: 1.5rem; margin-bottom: 1rem;"><span style="background: linear-gradient(135deg, #10b981, #059669); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">📊 Attribution Summary</span></h3>', unsafe_allow_html=True)

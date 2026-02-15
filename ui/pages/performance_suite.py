@@ -17,7 +17,7 @@ def render_performance_suite(start_date, end_date, selected_benchmark):
         calculate_portfolio_returns, calculate_sharpe_ratio, calculate_max_drawdown,
         calculate_sortino_ratio, calculate_calmar_ratio, calculate_var, calculate_cvar,
         calculate_information_ratio,
-        apply_chart_theme, make_scrollable_table, fetch_historical_data,
+        apply_chart_theme, fetch_historical_data,
         create_professional_sector_allocation_pie,
         PROFESSIONAL_THEME_AVAILABLE,
     )

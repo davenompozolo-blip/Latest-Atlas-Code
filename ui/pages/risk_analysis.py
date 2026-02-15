@@ -17,7 +17,7 @@ def render_risk_analysis(start_date, end_date, selected_benchmark):
         calculate_portfolio_returns, calculate_benchmark_returns, is_valid_series,
         calculate_sharpe_ratio, calculate_sortino_ratio, calculate_calmar_ratio,
         calculate_var, calculate_max_drawdown, calculate_cvar, apply_chart_theme,
-        make_scrollable_table, calculate_var_cvar_portfolio_optimization,
+        calculate_var_cvar_portfolio_optimization,
         fetch_historical_data, OptimizationExplainer, RobustPortfolioOptimizer,
         check_expert_wisdom, validate_portfolio_realism, get_current_portfolio_metrics,
         calculate_historical_stress_test,
@@ -552,7 +552,9 @@ def render_risk_analysis(start_date, end_date, selected_benchmark):
                 ]
             }
             comparison_df = pd.DataFrame(comparison_data)
-            st.dataframe(comparison_df, hide_index=True, use_container_width=True)
+            from core.atlas_table_formatting import render_generic_table
+            comp_cols = [{'key': c, 'label': c, 'type': 'ticker' if c == 'Parameter' else 'text'} for c in comparison_df.columns]
+            st.markdown(render_generic_table(comparison_df, columns=comp_cols), unsafe_allow_html=True)
 
             # Highlight the selected profile
             selected_name = {'conservative': 'Conservative', 'moderate': 'Moderate', 'aggressive': 'Aggressive'}[risk_profile_var]

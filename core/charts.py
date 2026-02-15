@@ -3335,66 +3335,27 @@ def display_stock_attribution_table(stock_df):
     top_contributors = stock_df.head(10)
     bottom_contributors = stock_df.tail(10).iloc[::-1]  # Reverse to show worst first
 
-    top_html = """
-<div style="background: rgba(26, 35, 50, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(0, 212, 255, 0.2); border-radius: 12px; padding: 20px; margin: 10px 0;">
-<h4 style="color: #00d4ff; margin: 0 0 15px 0; font-family: 'Inter', sans-serif; text-transform: uppercase; letter-spacing: 0.1em;">🏆 Top Alpha Contributors</h4>
-<table style="width: 100%; border-collapse: collapse; font-family: 'Inter', sans-serif;">
-<tr style="border-bottom: 1px solid rgba(0, 212, 255, 0.2);">
-<th style="text-align: left; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Ticker</th>
-<th style="text-align: left; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Sector</th>
-<th style="text-align: right; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Weight</th>
-<th style="text-align: right; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Index Wt</th>
-<th style="text-align: right; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Return</th>
-<th style="text-align: right; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">vs Sector</th>
-<th style="text-align: right; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Alpha Contrib</th>
-</tr>
-"""
-    for _, row in top_contributors.iterrows():
-        color = '#00ff9d' if row['Active Contribution %'] > 0 else '#ff006b'
-        index_wt = row.get('Index Weight %', 0)
-        top_html += f"""
-<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
-<td style="padding: 10px; color: #00d4ff; font-weight: 600;">{row['Ticker']}</td>
-<td style="padding: 10px; color: #c0c8d0; font-size: 0.85rem;">{row['GICS_Sector']}</td>
-<td style="padding: 10px; color: #c0c8d0; text-align: right;">{row['Weight %']:.1f}%</td>
-<td style="padding: 10px; color: #8890a0; text-align: right;">{index_wt:.1f}%</td>
-<td style="padding: 10px; color: {'#00ff9d' if row['Return %'] > 0 else '#ff006b'}; text-align: right; font-family: 'JetBrains Mono', monospace;">{row['Return %']:+.1f}%</td>
-<td style="padding: 10px; color: {'#00ff9d' if row['Return vs Sector'] > 0 else '#ff006b'}; text-align: right; font-family: 'JetBrains Mono', monospace;">{row['Return vs Sector']:+.1f}%</td>
-<td style="padding: 10px; color: {color}; text-align: right; font-weight: 700; font-family: 'JetBrains Mono', monospace;">{row['Active Contribution %']:+.2f}%</td>
-</tr>
-"""
-    top_html += "</table></div>"
+    from core.atlas_table_formatting import render_generic_table
 
-    # Bottom Contributors
-    bottom_html = """
-<div style="background: rgba(26, 35, 50, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255, 0, 107, 0.2); border-radius: 12px; padding: 20px; margin: 10px 0;">
-<h4 style="color: #ff006b; margin: 0 0 15px 0; font-family: 'Inter', sans-serif; text-transform: uppercase; letter-spacing: 0.1em;">📉 Top Alpha Detractors</h4>
-<table style="width: 100%; border-collapse: collapse; font-family: 'Inter', sans-serif;">
-<tr style="border-bottom: 1px solid rgba(255, 0, 107, 0.2);">
-<th style="text-align: left; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Ticker</th>
-<th style="text-align: left; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Sector</th>
-<th style="text-align: right; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Weight</th>
-<th style="text-align: right; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Index Wt</th>
-<th style="text-align: right; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Return</th>
-<th style="text-align: right; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">vs Sector</th>
-<th style="text-align: right; padding: 8px; color: #8890a0; font-size: 0.75rem; text-transform: uppercase;">Alpha Contrib</th>
-</tr>
-"""
-    for _, row in bottom_contributors.iterrows():
-        color = '#00ff9d' if row['Active Contribution %'] > 0 else '#ff006b'
-        index_wt = row.get('Index Weight %', 0)
-        bottom_html += f"""
-<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
-<td style="padding: 10px; color: #ff006b; font-weight: 600;">{row['Ticker']}</td>
-<td style="padding: 10px; color: #c0c8d0; font-size: 0.85rem;">{row['GICS_Sector']}</td>
-<td style="padding: 10px; color: #c0c8d0; text-align: right;">{row['Weight %']:.1f}%</td>
-<td style="padding: 10px; color: #8890a0; text-align: right;">{index_wt:.1f}%</td>
-<td style="padding: 10px; color: {'#00ff9d' if row['Return %'] > 0 else '#ff006b'}; text-align: right; font-family: 'JetBrains Mono', monospace;">{row['Return %']:+.1f}%</td>
-<td style="padding: 10px; color: {'#00ff9d' if row['Return vs Sector'] > 0 else '#ff006b'}; text-align: right; font-family: 'JetBrains Mono', monospace;">{row['Return vs Sector']:+.1f}%</td>
-<td style="padding: 10px; color: {color}; text-align: right; font-weight: 700; font-family: 'JetBrains Mono', monospace;">{row['Active Contribution %']:+.2f}%</td>
-</tr>
-"""
-    bottom_html += "</table></div>"
+    col_defs = [
+        {'key': 'Ticker', 'label': 'Ticker', 'type': 'ticker'},
+        {'key': 'GICS_Sector', 'label': 'Sector', 'type': 'text'},
+        {'key': 'Weight %', 'label': 'Weight', 'type': 'percent'},
+        {'key': 'Index Weight %', 'label': 'Index Wt', 'type': 'percent'},
+        {'key': 'Return %', 'label': 'Return', 'type': 'change'},
+        {'key': 'Return vs Sector', 'label': 'vs Sector', 'type': 'change'},
+        {'key': 'Active Contribution %', 'label': 'Alpha Contrib', 'type': 'change'},
+    ]
+
+    top_html = '<div style="background: rgba(26, 35, 50, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(0, 212, 255, 0.2); border-radius: 12px; padding: 20px; margin: 10px 0;">'
+    top_html += '<h4 style="color: #00d4ff; margin: 0 0 15px 0; font-family: \'Inter\', sans-serif; text-transform: uppercase; letter-spacing: 0.1em;">Top Alpha Contributors</h4>'
+    top_html += render_generic_table(top_contributors, columns=col_defs)
+    top_html += '</div>'
+
+    bottom_html = '<div style="background: rgba(26, 35, 50, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255, 0, 107, 0.2); border-radius: 12px; padding: 20px; margin: 10px 0;">'
+    bottom_html += '<h4 style="color: #ff006b; margin: 0 0 15px 0; font-family: \'Inter\', sans-serif; text-transform: uppercase; letter-spacing: 0.1em;">Top Alpha Detractors</h4>'
+    bottom_html += render_generic_table(bottom_contributors, columns=col_defs)
+    bottom_html += '</div>'
 
     return top_html, bottom_html
 

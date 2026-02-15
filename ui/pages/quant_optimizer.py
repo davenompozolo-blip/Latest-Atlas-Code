@@ -12,7 +12,7 @@ from utils.formatting import format_currency, format_percentage, format_large_nu
 def render_quant_optimizer(start_date, end_date, selected_benchmark):
     """Render the Quant Optimizer page."""
     # Lazy imports to avoid circular dependency with atlas_app
-    from core import ATLASFormatter, load_portfolio_data, apply_chart_theme, make_scrollable_table
+    from core import ATLASFormatter, load_portfolio_data, apply_chart_theme
     from ui.components import ATLAS_TEMPLATE
     from quant_optimizer.atlas_quant_portfolio_optimizer import PortfolioOptimizer
     import plotly.graph_objects as go
@@ -150,25 +150,21 @@ def render_quant_optimizer(start_date, end_date, selected_benchmark):
                     st.markdown("##### 📊 Data Quality Snapshot")
                     missing_df = pd.DataFrame({
                         "Ticker": missing_data.index,
-                        "Missing %": missing_data.values * 100
+                        "Missing %": (missing_data.values * 100).round(1)
                     })
-                    st.dataframe(
-                        missing_df.style.format({"Missing %": "{:.2f}%"}),
-                    st.dataframe(
-                        pd.DataFrame({
-                            "Ticker": missing_data.index,
-                            "Missing %": (missing_data.values * 100).round(1)
-                        }),
-                        use_container_width=True,
-                        hide_index=True
-                    )
+                    from core.atlas_table_formatting import render_generic_table
+                    st.markdown(render_generic_table(missing_df, columns=[
+                        {'key': 'Ticker', 'label': 'Ticker', 'type': 'ticker'},
+                        {'key': 'Missing %', 'label': 'Missing %', 'type': 'change'},
+                    ]), unsafe_allow_html=True)
 
                     st.markdown("##### 🧭 Sector Exposure")
-                    st.dataframe(
-                        sector_counts.reset_index().rename(columns={'index': 'Sector', 0: 'Holdings'}),
-                        use_container_width=True,
-                        hide_index=True
-                    )
+                    sector_df = sector_counts.reset_index()
+                    sector_df.columns = ['Sector', 'Holdings']
+                    st.markdown(render_generic_table(sector_df, columns=[
+                        {'key': 'Sector', 'label': 'Sector', 'type': 'ticker'},
+                        {'key': 'Holdings', 'label': 'Holdings', 'type': 'text'},
+                    ]), unsafe_allow_html=True)
 
                     sector_constraints_df = pd.DataFrame({
                         "Sector": sector_counts.index,

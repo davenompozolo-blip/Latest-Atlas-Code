@@ -21,7 +21,6 @@ def render_valuation_house(start_date, end_date):
         fetch_company_financials,
         fetch_peer_companies,
         fetch_analyst_data,
-        make_scrollable_table,
         show_toast,
         # Calculation Functions
         calculate_dcf_value,

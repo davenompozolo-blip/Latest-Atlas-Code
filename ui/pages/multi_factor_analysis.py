@@ -20,7 +20,6 @@ def render_multi_factor_analysis(start_date, end_date):
         calculate_factor_exposures,
         # Chart Functions
         create_enhanced_holdings_table,
-        make_scrollable_table,
         create_factor_momentum_chart,
         create_factor_exposure_radar,
     )
