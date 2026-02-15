@@ -15,7 +15,7 @@ def render_phoenix_parser():
     from datetime import datetime
     from core import (
         ATLASFormatter, parse_trade_history_file, save_trade_history,
-        get_db, make_scrollable_table, is_option_ticker,
+        get_db, is_option_ticker,
         calculate_portfolio_from_trades, save_portfolio_data,
         parse_account_history_file, save_account_history,
         load_portfolio_data, get_leverage_info,
@@ -95,12 +95,16 @@ def render_phoenix_parser():
                                 last_trades = db.read("SELECT * FROM trades ORDER BY date DESC LIMIT 5")
                                 if len(last_trades) > 0:
                                     with st.expander("🔍 Last 5 Trades in Database", expanded=False):
-                                        st.dataframe(last_trades, use_container_width=True)
+                                        from core.atlas_table_formatting import render_generic_table
+                                        lt_cols = [{'key': c, 'label': c, 'type': 'ticker' if c in ('symbol', 'Symbol', 'Ticker') else ('price' if any(k in c.lower() for k in ('price', 'value', 'cost', 'amount')) else 'text')} for c in last_trades.columns]
+                                        st.markdown(render_generic_table(last_trades, columns=lt_cols), unsafe_allow_html=True)
                             except Exception as e:
                                 st.warning(f"⚠️ Could not verify database: {e}")
 
                         show_toast(f"Trade history imported: {len(trade_df)} trades parsed successfully", toast_type="success", duration=3000)
-                        make_scrollable_table(trade_df.head(10), height=400, hide_index=True, use_container_width=True, column_config=None)
+                        from core.atlas_table_formatting import render_generic_table
+                        td_cols = [{'key': c, 'label': c, 'type': 'ticker' if c in ('Symbol', 'Ticker') else ('price' if any(k in c.lower() for k in ('price', 'value', 'cost', 'amount')) else ('change' if '%' in c else 'text'))} for c in trade_df.columns]
+                        st.markdown(render_generic_table(trade_df.head(10), columns=td_cols), unsafe_allow_html=True)
 
                         # Check for options that will be filtered
                         option_tickers = []
@@ -125,7 +129,8 @@ def render_phoenix_parser():
                                     for opt in option_tickers:
                                         st.write(f"- {opt}")
 
-                            make_scrollable_table(portfolio_df, height=400, hide_index=True, use_container_width=True, column_config=None)
+                            pf_cols = [{'key': c, 'label': c, 'type': 'ticker' if c in ('Symbol', 'Ticker') else ('price' if any(k in c.lower() for k in ('price', 'value', 'cost', 'amount')) else ('change' if '%' in c else 'text'))} for c in portfolio_df.columns]
+                            st.markdown(render_generic_table(portfolio_df, columns=pf_cols), unsafe_allow_html=True)
 
         with col2:
             st.markdown("### 💰 Account History")
@@ -139,7 +144,8 @@ def render_phoenix_parser():
                         save_account_history(account_df)
                         st.success(f"✅ Parsed {len(account_df)} records!")
                         show_toast(f"Account history imported: {len(account_df)} records processed", toast_type="success", duration=3000)
-                        make_scrollable_table(account_df.head(10), height=400, hide_index=True, use_container_width=True, column_config=None)
+                        ac_cols = [{'key': c, 'label': c, 'type': 'ticker' if c in ('Symbol', 'Ticker') else ('price' if any(k in c.lower() for k in ('price', 'value', 'cost', 'amount')) else ('change' if '%' in c else 'text'))} for c in account_df.columns]
+                        st.markdown(render_generic_table(account_df.head(10), columns=ac_cols), unsafe_allow_html=True)
 
                         leverage_info_parsed = get_leverage_info()
                         if leverage_info_parsed:

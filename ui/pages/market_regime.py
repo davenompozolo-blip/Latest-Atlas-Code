@@ -373,7 +373,13 @@ def render_market_regime():
 
                 tilt_df = pd.DataFrame(tilt_data)
 
-                st.dataframe(tilt_df, use_container_width=True, hide_index=True)
+                from core.atlas_table_formatting import render_generic_table
+                st.markdown(render_generic_table(tilt_df, columns=[
+                    {'key': 'Sector', 'label': 'Sector', 'type': 'ticker'},
+                    {'key': 'Current Tilt', 'label': 'Tilt', 'type': 'text'},
+                    {'key': 'Action', 'label': 'Action', 'type': 'text'},
+                    {'key': 'Weight Change', 'label': 'Weight Change', 'type': 'change'},
+                ]), unsafe_allow_html=True)
 
                 st.caption("""
                 **How to use:** Multiply your target sector weights by the tilt.

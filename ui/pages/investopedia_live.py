@@ -16,8 +16,6 @@ def render_investopedia_live():
         # Data Functions
         load_portfolio_data,
         save_portfolio_data,
-        # Chart Functions
-        make_scrollable_table,
     )
     from ui.components import ATLAS_TEMPLATE
 
@@ -237,7 +235,9 @@ def render_investopedia_live():
 
                     if portfolio_df is not None and not portfolio_df.empty:
                         st.success(f"✅ Portfolio synced successfully! Found {len(portfolio_df)} positions")
-                        make_scrollable_table(portfolio_df, height=600, hide_index=True, use_container_width=True)
+                        from core.atlas_table_formatting import render_generic_table
+                        col_defs = [{'key': c, 'label': c, 'type': 'ticker' if c in ('Ticker', 'Symbol') else ('price' if any(k in c for k in ('Price', 'Value', 'Cost', 'P&L')) else ('change' if '%' in c else 'text'))} for c in portfolio_df.columns]
+                        st.markdown(render_generic_table(portfolio_df, columns=col_defs), unsafe_allow_html=True)
 
                         # Save to session state for use in other ATLAS modules
                         st.session_state['portfolio_data'] = portfolio_df

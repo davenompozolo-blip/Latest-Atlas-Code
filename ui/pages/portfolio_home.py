@@ -26,7 +26,6 @@ def render_portfolio_home(start_date, end_date):
         create_performance_heatmap,
         calculate_var_cvar_portfolio_optimization,
         style_holdings_dataframe_with_optimization,
-        make_scrollable_table,
         get_db,
         is_option_ticker,
         ATLASFormatter,
@@ -298,13 +297,10 @@ def render_portfolio_home(start_date, end_date):
         <div class="holdings-table-container">
         """, unsafe_allow_html=True)
 
-        # Use Streamlit's native dataframe with custom styling
-        st.dataframe(
-            display_df,
-            use_container_width=True,
-            height=500,
-            hide_index=True
-        )
+        # Render with ATLAS table formatting
+        from core.atlas_table_formatting import render_generic_table
+        col_defs = [{'key': c, 'label': c, 'type': 'ticker' if c == 'Display Ticker' else ('price' if any(k in c for k in ('Price', 'Value', 'Cost', 'P&L $', 'Target')) else ('change' if '%' in c or 'Change' in c or 'Return' in c or 'Gain/Loss' in c else ('volume' if c == 'Volume' else ('ratio' if c in ('Beta', 'Quality Score') else 'text'))))} for c in display_df.columns]
+        st.markdown(render_generic_table(display_df, columns=col_defs), unsafe_allow_html=True)
 
         # Close the neon border container
         st.markdown("</div>", unsafe_allow_html=True)
@@ -410,7 +406,9 @@ def render_portfolio_home(start_date, end_date):
                     # Display enhanced table with optimization columns
                     st.markdown("#### 📋 Rebalancing Targets")
                     display_df_opt = style_holdings_dataframe_with_optimization(enhanced_df_with_opt)
-                    make_scrollable_table(display_df_opt, height=500, hide_index=True, use_container_width=True)
+                    from core.atlas_table_formatting import render_generic_table
+                    col_defs_opt = [{'key': c, 'label': c, 'type': 'ticker' if c in ('Ticker', 'Display Ticker') else ('price' if any(k in c for k in ('Price', 'Value', 'Cost')) else ('change' if '%' in c or 'Diff' in c else ('text')))} for c in display_df_opt.columns]
+                    st.markdown(render_generic_table(display_df_opt, columns=col_defs_opt), unsafe_allow_html=True)
                 else:
                     st.error("⚠️ Unable to calculate optimization. Ensure sufficient position data exists.")
 
@@ -582,9 +580,13 @@ def render_earnings_calendar(enhanced_df):
 
         if display_cols:
             display_df = portfolio_earnings[display_cols].rename(columns=rename_map)
-            st.dataframe(display_df, use_container_width=True, hide_index=True)
+            from core.atlas_table_formatting import render_generic_table
+            earn_cols = [{'key': c, 'label': c, 'type': 'ticker' if c == 'Ticker' else ('price' if 'EPS' in c else 'text')} for c in display_df.columns]
+            st.markdown(render_generic_table(display_df, columns=earn_cols), unsafe_allow_html=True)
         else:
-            st.dataframe(portfolio_earnings.head(20), use_container_width=True, hide_index=True)
+            from core.atlas_table_formatting import render_generic_table
+            earn_cols = [{'key': c, 'label': c, 'type': 'text'} for c in portfolio_earnings.columns]
+            st.markdown(render_generic_table(portfolio_earnings.head(20), columns=earn_cols), unsafe_allow_html=True)
 
     except Exception as e:
         st.warning(f"Could not load earnings calendar: {e}")

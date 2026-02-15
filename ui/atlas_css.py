@@ -685,101 +685,11 @@ def apply_glassmorphism_css():
     }
 
     /* ============================================
-       TABLES - Sleek Data Display
+       TABLES - Now handled by ATLAS Table Formatting
+       (core/atlas_table_formatting.py)
+       Old st.dataframe CSS removed - all tables use
+       .atlas-html-table classes from inject_table_css()
        ============================================ */
-
-    div[data-testid="stDataFrame"] {
-        background: rgba(10, 25, 41, 0.3) !important;
-        border: 1px solid rgba(0, 212, 255, 0.15) !important;
-        border-radius: 12px !important;
-        overflow: visible !important;
-        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3) !important;
-    }
-
-    /* Fix for column header popovers - prevent text overlap */
-    div[data-testid="stDataFrame"] div[data-baseweb="popover"] {
-        z-index: 9999 !important;
-        display: block !important;
-        position: fixed !important;
-    }
-
-    /* Ensure popover content doesn't overflow */
-    div[data-testid="stDataFrame"] div[role="tooltip"],
-    div[data-testid="stDataFrame"] div[data-baseweb="popover"] > div {
-        max-width: 300px !important;
-        word-wrap: break-word !important;
-        white-space: normal !important;
-        overflow: visible !important;
-        background: rgba(10, 25, 41, 0.95) !important;
-        border: 1px solid rgba(0, 212, 255, 0.3) !important;
-        border-radius: 8px !important;
-        padding: 12px !important;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
-        backdrop-filter: blur(20px) !important;
-    }
-
-    /* Table Headers - Gradient Effect */
-    div[data-testid="stDataFrame"] thead th {
-        background: linear-gradient(135deg, #00d4ff 0%, #0080ff 100%) !important;
-        color: #000000 !important;
-        font-weight: 700 !important;
-        font-size: 13px !important;
-        text-transform: uppercase !important;
-        letter-spacing: 0.05em !important;
-        padding: 16px 12px !important;
-        border: none !important;
-        position: sticky !important;
-        top: 0 !important;
-        z-index: 10 !important;
-        overflow: visible !important;
-    }
-
-    /* Table Rows - Smooth Hover */
-    div[data-testid="stDataFrame"] tbody tr {
-        transition: all 0.2s ease !important;
-        border-bottom: 1px solid rgba(26, 58, 82, 0.5) !important;
-    }
-
-    div[data-testid="stDataFrame"] tbody tr:hover {
-        background: linear-gradient(90deg,
-            rgba(0, 212, 255, 0.08) 0%,
-            rgba(0, 212, 255, 0.15) 50%,
-            rgba(0, 212, 255, 0.08) 100%) !important;
-        transform: translateX(4px) scale(1.002) !important;
-        border-left: 3px solid #00d4ff !important;
-        box-shadow: 0 2px 12px rgba(0, 212, 255, 0.2) !important;
-    }
-
-    div[data-testid="stDataFrame"] tbody td {
-        padding: 14px 12px !important;
-        font-size: 14px !important;
-        color: #e0e7ee !important;
-        font-weight: 500 !important;
-    }
-
-    /* ============================================
-       NUCLEAR OPTION - COMPLETELY REMOVE TABLE DROPDOWNS
-       ============================================ */
-
-    /* Hide ALL table controls that cause issues */
-    div[data-testid="stDataFrame"] button,
-    div[data-testid="stDataFrame"] [role="button"],
-    div[data-testid="stDataFrame"] [data-baseweb="popover"],
-    div[data-testid="stDataFrame"] [data-baseweb="menu"],
-    div[data-testid="stDataFrame"] [role="menu"],
-    div[data-testid="stDataFrame"] [role="listbox"] {
-        display: none !important;
-        visibility: hidden !important;
-        opacity: 0 !important;
-        pointer-events: none !important;
-        position: absolute !important;
-        left: -9999px !important;
-    }
-
-    /* Remove column resize handles */
-    div[data-testid="stDataFrameResizeHandle"] {
-        display: none !important;
-    }
 
     /* ============================================
        BUTTONS - Modern Interactive Elements

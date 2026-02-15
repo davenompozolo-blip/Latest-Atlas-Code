@@ -13,7 +13,8 @@ def render_database():
     """Render the Database page."""
     from datetime import datetime
     # Import database functions from core
-    from core import get_db, make_scrollable_table
+    from core import get_db
+    from core.atlas_table_formatting import render_generic_table
     from ui.components import ATLAS_TEMPLATE
 
     # Check SQL availability
@@ -250,7 +251,8 @@ def render_database():
 
                     # Display results
                     st.markdown("#### Results:")
-                    make_scrollable_table(result_df, height=600, hide_index=True, use_container_width=True)
+                    col_defs = [{'key': c, 'label': c, 'type': 'ticker' if c in ('Ticker', 'Symbol', 'ticker', 'symbol') else ('price' if any(k in c.lower() for k in ('price', 'value', 'cost', 'amount')) else ('change' if '%' in c else 'text'))} for c in result_df.columns]
+                    st.markdown(render_generic_table(result_df, columns=col_defs), unsafe_allow_html=True)
 
                     # Export option
                     csv = result_df.to_csv(index=False).encode('utf-8')
@@ -343,7 +345,8 @@ def render_database():
                         try:
                             result = db.read(query_sql)
                             st.success(f"✅ {len(result)} rows")
-                            make_scrollable_table(result, height=400, hide_index=True, use_container_width=True)
+                            col_defs = [{'key': c, 'label': c, 'type': 'ticker' if c in ('Ticker', 'Symbol', 'ticker', 'symbol') else ('price' if any(k in c.lower() for k in ('price', 'value', 'cost', 'amount')) else ('change' if '%' in c else 'text'))} for c in result.columns]
+                            st.markdown(render_generic_table(result, columns=col_defs), unsafe_allow_html=True)
                         except Exception as e:
                             st.error(f"Error: {e}")
 
@@ -433,7 +436,11 @@ def render_database():
             with st.expander(f"📋 {table['name']} - {table['description']}"):
                 # Create DataFrame for columns
                 schema_df = pd.DataFrame(table['columns'], columns=['Column', 'Type', 'Description'])
-                make_scrollable_table(schema_df, height=400, hide_index=True, use_container_width=True)
+                st.markdown(render_generic_table(schema_df, columns=[
+                    {'key': 'Column', 'label': 'Column', 'type': 'ticker'},
+                    {'key': 'Type', 'label': 'Type', 'type': 'text'},
+                    {'key': 'Description', 'label': 'Description', 'type': 'text'},
+                ]), unsafe_allow_html=True)
 
                 # Show row count
                 try:

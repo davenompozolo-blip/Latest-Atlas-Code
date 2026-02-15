@@ -17,8 +17,6 @@ def render_leverage_tracker(start_date, end_date):
         load_portfolio_data,
         get_leverage_info,
         ATLASFormatter,
-        # Chart Functions
-        make_scrollable_table,
     )
     from ui.components import ATLAS_TEMPLATE
 

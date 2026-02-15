@@ -17,9 +17,8 @@ def render_v10_analytics():
         load_portfolio_data,
         get_current_portfolio_metrics,
         ATLASFormatter,
-        # Chart Functions
-        make_scrollable_table,
     )
+    from core.atlas_table_formatting import render_generic_table
     from ui.components import ATLAS_TEMPLATE
     import numpy as np
     import plotly.graph_objects as go
@@ -276,7 +275,8 @@ def render_v10_analytics():
                     trades = phoenix.load_trade_history(uploaded_file)
 
                     st.success(f"✅ Loaded {len(trades)} trades")
-                    make_scrollable_table(trades, height=400, hide_index=True, use_container_width=True)
+                    t_cols = [{'key': c, 'label': c, 'type': 'ticker' if c in ('Ticker', 'Symbol') else ('price' if any(k in c.lower() for k in ('price', 'value', 'cost')) else ('change' if '%' in c else 'text'))} for c in trades.columns]
+                    st.markdown(render_generic_table(trades, columns=t_cols), unsafe_allow_html=True)
 
                     # Get current prices (you'd fetch these from API)
                     tickers = trades['Ticker'].unique()
@@ -297,7 +297,8 @@ def render_v10_analytics():
                     col4.metric("Total P&L", f"${portfolio['total_pnl']:,.2f}", f"{portfolio['total_return_pct']:.2f}%")
 
                     summary = phoenix.get_portfolio_summary(current_prices)
-                    make_scrollable_table(summary, height=400, hide_index=True, use_container_width=True)
+                    s_cols = [{'key': c, 'label': c, 'type': 'ticker' if c in ('Ticker', 'Symbol') else ('price' if any(k in c.lower() for k in ('price', 'value', 'cost', 'pnl')) else ('change' if '%' in c else 'text'))} for c in summary.columns]
+                    st.markdown(render_generic_table(summary, columns=s_cols), unsafe_allow_html=True)
 
                 except Exception as e:
                     st.error(f"Error: {str(e)}")
@@ -348,11 +349,13 @@ def render_v10_analytics():
 
                             st.markdown("#### Stock-Level Contribution")
                             stock_contrib = attribution.stock_contribution()
-                            make_scrollable_table(stock_contrib, height=400, hide_index=True, use_container_width=True)
+                            sc_cols = [{'key': c, 'label': c, 'type': 'ticker' if c in ('ticker', 'Ticker', 'Symbol') else ('change' if any(k in c.lower() for k in ('return', 'contribution', 'effect', 'alpha')) else ('percent' if 'weight' in c.lower() else 'text'))} for c in stock_contrib.columns]
+                            st.markdown(render_generic_table(stock_contrib, columns=sc_cols), unsafe_allow_html=True)
 
                             st.markdown("#### Sector-Level Attribution (Brinson-Fachler Model)")
                             sector_contrib = attribution.sector_attribution()
-                            make_scrollable_table(sector_contrib, height=400, hide_index=True, use_container_width=True)
+                            sa_cols = [{'key': c, 'label': c, 'type': 'ticker' if c in ('Sector', 'sector') else ('change' if any(k in c.lower() for k in ('return', 'contribution', 'effect', 'alpha', 'allocation', 'selection', 'interaction')) else ('percent' if 'weight' in c.lower() else 'text'))} for c in sector_contrib.columns]
+                            st.markdown(render_generic_table(sector_contrib, columns=sa_cols), unsafe_allow_html=True)
 
                             # ===== FIX #5: Calculate and Display Skill Scores =====
                             if 'Allocation Effect' in sector_contrib.columns and 'Selection Effect' in sector_contrib.columns:
