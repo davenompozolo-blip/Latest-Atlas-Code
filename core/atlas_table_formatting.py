@@ -7,6 +7,9 @@ Bold white tickers, muted volume, colored change arrows with glow.
 
 Scope: TABLES ONLY - does NOT affect metric cards, sidebar, headers, or other UI.
 
+Uses INLINE STYLES on every element (Streamlit strips CSS class attributes from
+st.markdown HTML, so class-based CSS does not work reliably).
+
 Usage:
     from core.atlas_table_formatting import (
         inject_table_css,
@@ -22,168 +25,133 @@ from typing import Optional, List, Dict
 
 
 # =============================================================================
-# TABLE CSS (Inject once at app startup)
+# INLINE STYLE CONSTANTS (Bloomberg Terminal / Inter font)
+# =============================================================================
+
+# Font stack
+FONT = "'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif"
+FONT_MONO = "'JetBrains Mono', 'SF Mono', 'Fira Code', Consolas, monospace"
+
+# Colors
+COLOR_WHITE = "#ffffff"
+COLOR_DIM = "rgba(255, 255, 255, 0.35)"
+COLOR_TEXT = "rgba(255, 255, 255, 0.85)"
+COLOR_MUTED = "rgba(255, 255, 255, 0.5)"
+COLOR_GREEN = "#00d26a"
+COLOR_RED = "#ff4757"
+COLOR_BORDER = "rgba(255, 255, 255, 0.06)"
+COLOR_HEADER_BORDER = "rgba(255, 255, 255, 0.1)"
+COLOR_HOVER = "rgba(255, 255, 255, 0.03)"
+
+# Glows
+GLOW_GREEN = "0 0 8px rgba(0, 210, 106, 0.4)"
+GLOW_RED = "0 0 8px rgba(255, 71, 87, 0.4)"
+
+# Cell styles as inline CSS strings
+STYLE_TABLE = (
+    f"width: 100%; border-collapse: collapse; font-family: {FONT}; "
+    f"border-spacing: 0;"
+)
+
+STYLE_TH = (
+    f"font-family: {FONT}; font-weight: 500; font-size: 11px; "
+    f"color: {COLOR_DIM}; text-transform: uppercase; letter-spacing: 0.06em; "
+    f"padding: 12px 8px; text-align: left; border-bottom: 1px solid {COLOR_HEADER_BORDER}; "
+    f"background: transparent;"
+)
+
+STYLE_TH_RIGHT = (
+    f"font-family: {FONT}; font-weight: 500; font-size: 11px; "
+    f"color: {COLOR_DIM}; text-transform: uppercase; letter-spacing: 0.06em; "
+    f"padding: 12px 8px; text-align: right; border-bottom: 1px solid {COLOR_HEADER_BORDER}; "
+    f"background: transparent;"
+)
+
+STYLE_TD = (
+    f"font-family: {FONT}; font-size: 14px; padding: 12px 8px; "
+    f"border-bottom: 1px solid {COLOR_BORDER}; color: {COLOR_TEXT};"
+)
+
+STYLE_TICKER = (
+    f"font-family: {FONT}; font-weight: 700; font-size: 14px; "
+    f"color: {COLOR_WHITE}; letter-spacing: 0.02em; padding: 12px 8px; "
+    f"border-bottom: 1px solid {COLOR_BORDER};"
+)
+
+STYLE_META = (
+    f"font-family: {FONT}; font-weight: 400; font-size: 11px; "
+    f"color: {COLOR_DIM}; letter-spacing: 0.01em; padding: 12px 8px; "
+    f"border-bottom: 1px solid {COLOR_BORDER};"
+)
+
+STYLE_PRICE = (
+    f"font-family: {FONT}; font-weight: 500; font-size: 14px; "
+    f"color: {COLOR_WHITE}; letter-spacing: -0.01em; text-align: right; "
+    f"padding: 12px 8px; border-bottom: 1px solid {COLOR_BORDER};"
+)
+
+STYLE_CHANGE_UP = (
+    f"font-family: {FONT_MONO}; font-weight: 600; font-size: 13px; "
+    f"color: {COLOR_GREEN}; text-shadow: {GLOW_GREEN}; text-align: right; "
+    f"padding: 12px 8px; border-bottom: 1px solid {COLOR_BORDER};"
+)
+
+STYLE_CHANGE_DOWN = (
+    f"font-family: {FONT_MONO}; font-weight: 600; font-size: 13px; "
+    f"color: {COLOR_RED}; text-shadow: {GLOW_RED}; text-align: right; "
+    f"padding: 12px 8px; border-bottom: 1px solid {COLOR_BORDER};"
+)
+
+STYLE_CHANGE_NEUTRAL = (
+    f"font-family: {FONT}; font-weight: 600; font-size: 13px; "
+    f"color: {COLOR_MUTED}; text-align: right; "
+    f"padding: 12px 8px; border-bottom: 1px solid {COLOR_BORDER};"
+)
+
+STYLE_PERCENT = (
+    f"font-family: {FONT}; font-weight: 500; font-size: 13px; "
+    f"color: rgba(255, 255, 255, 0.7); text-align: right; "
+    f"padding: 12px 8px; border-bottom: 1px solid {COLOR_BORDER};"
+)
+
+STYLE_TEXT = (
+    f"font-family: {FONT}; font-weight: 400; font-size: 13px; "
+    f"color: {COLOR_TEXT}; "
+    f"padding: 12px 8px; border-bottom: 1px solid {COLOR_BORDER};"
+)
+
+# Row styles (flex layout for Movers)
+STYLE_ROW = (
+    f"display: flex; justify-content: space-between; align-items: center; "
+    f"padding: 10px 0; border-bottom: 1px solid {COLOR_BORDER};"
+)
+
+STYLE_ROW_LEFT = "display: flex; align-items: baseline; gap: 8px;"
+STYLE_ROW_RIGHT = "display: flex; align-items: center; gap: 16px; text-align: right;"
+
+STYLE_SECTION_HEADER = (
+    f"font-family: {FONT}; font-weight: 600; font-size: 13px; "
+    f"color: {COLOR_MUTED}; letter-spacing: 0.02em; "
+    f"margin-bottom: 12px; padding-bottom: 8px; "
+    f"border-bottom: 1px solid {COLOR_HEADER_BORDER}; "
+    f"display: flex; align-items: center; gap: 8px;"
+)
+
+
+# =============================================================================
+# GOOGLE FONTS INJECTION (call once at app startup)
 # =============================================================================
 
 ATLAS_TABLE_CSS = """
 <style>
-/* =============================================================================
-   ATLAS TABLE FORMATTING - Inter font + Bloomberg styling
-   Scope: Tables only. Does NOT touch metric cards or other UI.
-   ============================================================================= */
-
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-
-/* --- Table wrapper --- */
-.atlas-html-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
-}
-
-.atlas-html-table th {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    font-weight: 500;
-    font-size: 11px;
-    color: rgba(255, 255, 255, 0.35);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    padding: 12px 8px;
-    text-align: left;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.atlas-html-table th.text-right {
-    text-align: right;
-}
-
-.atlas-html-table td {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    font-size: 14px;
-    padding: 12px 8px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-    color: rgba(255, 255, 255, 0.85);
-}
-
-.atlas-html-table tr:hover {
-    background-color: rgba(255, 255, 255, 0.02);
-}
-
-.atlas-html-table tr:last-child td {
-    border-bottom: none;
-}
-
-/* --- Cell types --- */
-.ticker-cell {
-    font-weight: 700;
-    font-size: 14px;
-    color: #ffffff;
-    letter-spacing: 0.02em;
-}
-
-.meta-cell {
-    font-weight: 400;
-    font-size: 11px;
-    color: rgba(255, 255, 255, 0.35);
-    letter-spacing: 0.01em;
-}
-
-.price-cell {
-    font-weight: 500;
-    font-size: 14px;
-    color: #ffffff;
-    letter-spacing: -0.01em;
-    text-align: right;
-}
-
-.change-up {
-    font-weight: 600;
-    font-size: 13px;
-    color: #00d26a;
-    text-shadow: 0 0 8px rgba(0, 210, 106, 0.4);
-    text-align: right;
-}
-
-.change-down {
-    font-weight: 600;
-    font-size: 13px;
-    color: #ff4757;
-    text-shadow: 0 0 8px rgba(255, 71, 87, 0.4);
-    text-align: right;
-}
-
-.change-neutral {
-    font-weight: 600;
-    font-size: 13px;
-    color: rgba(255, 255, 255, 0.5);
-    text-align: right;
-}
-
-.percent-cell {
-    font-weight: 500;
-    font-size: 13px;
-    color: rgba(255, 255, 255, 0.7);
-    text-align: right;
-}
-
-.text-cell {
-    font-weight: 400;
-    font-size: 13px;
-    color: rgba(255, 255, 255, 0.85);
-}
-
-/* --- Data row (flex layout, same as Market Movers) --- */
-.atlas-table-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 10px 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-    transition: background-color 0.15s ease;
-}
-
-.atlas-table-row:hover {
-    background-color: rgba(255, 255, 255, 0.02);
-}
-
-.atlas-table-row:last-child {
-    border-bottom: none;
-}
-
-.atlas-table-row-left {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-}
-
-.atlas-table-row-right {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    text-align: right;
-}
-
-/* --- Section header for table groups --- */
-.atlas-table-header {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    font-weight: 600;
-    font-size: 13px;
-    color: rgba(255, 255, 255, 0.5);
-    letter-spacing: 0.02em;
-    margin-bottom: 12px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 </style>
 """
 
 
 def inject_table_css():
-    """Inject ATLAS table CSS. Call once at app startup."""
+    """Inject Inter + JetBrains Mono font imports. Call once at app startup."""
     st.markdown(ATLAS_TABLE_CSS, unsafe_allow_html=True)
 
 
@@ -192,25 +160,14 @@ def inject_table_css():
 # =============================================================================
 
 def format_price(value, currency: str = "$", decimals: int = 2) -> str:
-    """
-    Format price with currency symbol.
-
-    format_price(182.78)    -> "$182.78"
-    format_price(0.02)      -> "$0.02"
-    format_price(1234.56)   -> "$1,234.56"
-    """
+    """Format price with currency symbol."""
     if value is None or pd.isna(value):
         return "\u2014"
     return f"{currency}{float(value):,.{decimals}f}"
 
 
 def format_percent(value, decimals: int = 2, include_sign: bool = True) -> str:
-    """
-    Format percentage with sign.
-
-    format_percent(232.87)  -> "+232.87%"
-    format_percent(-82.87)  -> "-82.87%"
-    """
+    """Format percentage with sign."""
     if value is None or pd.isna(value):
         return "\u2014"
     val = float(value)
@@ -219,13 +176,7 @@ def format_percent(value, decimals: int = 2, include_sign: bool = True) -> str:
 
 
 def format_volume(value) -> str:
-    """
-    Format volume with K/M/B suffix.
-
-    format_volume(129800000) -> "129.8M"
-    format_volume(52140764)  -> "52.1M"
-    format_volume(24073)     -> "24.1K"
-    """
+    """Format volume with K/M/B suffix."""
     if value is None or pd.isna(value):
         return "\u2014"
     val = float(value)
@@ -239,12 +190,7 @@ def format_volume(value) -> str:
 
 
 def format_market_cap(value) -> str:
-    """
-    Format market cap with T/B/M suffix.
-
-    format_market_cap(2.5e12)  -> "$2.50T"
-    format_market_cap(158.6e9) -> "$158.6B"
-    """
+    """Format market cap with T/B/M suffix."""
     if value is None or pd.isna(value):
         return "\u2014"
     val = float(value)
@@ -258,12 +204,7 @@ def format_market_cap(value) -> str:
 
 
 def format_change(value, decimals: int = 2, include_sign: bool = True) -> str:
-    """
-    Format change value with sign (no % suffix).
-
-    format_change(2.45)  -> "+2.45"
-    format_change(-1.23) -> "-1.23"
-    """
+    """Format change value with sign (no % suffix)."""
     if value is None or pd.isna(value):
         return "\u2014"
     val = float(value)
@@ -272,11 +213,7 @@ def format_change(value, decimals: int = 2, include_sign: bool = True) -> str:
 
 
 def format_ratio(value, decimals: int = 2) -> str:
-    """
-    Format a ratio (Sharpe, Beta, P/E).
-
-    format_ratio(1.78) -> "1.78"
-    """
+    """Format a ratio (Sharpe, Beta, P/E)."""
     if value is None or pd.isna(value):
         return "\u2014"
     return f"{float(value):.{decimals}f}"
@@ -287,17 +224,11 @@ def format_ratio(value, decimals: int = 2) -> str:
 # =============================================================================
 
 def table_row(left_html: str, right_html: str) -> str:
-    """
-    Render a single flex-layout table row with left and right sections.
-
-    Args:
-        left_html: HTML for left side (ticker + meta)
-        right_html: HTML for right side (price + change)
-    """
+    """Render a single flex-layout table row with left and right sections."""
     return (
-        f'<div class="atlas-table-row">'
-        f'<div class="atlas-table-row-left">{left_html}</div>'
-        f'<div class="atlas-table-row-right">{right_html}</div>'
+        f'<div style="{STYLE_ROW}">'
+        f'<div style="{STYLE_ROW_LEFT}">{left_html}</div>'
+        f'<div style="{STYLE_ROW_RIGHT}">{right_html}</div>'
         f'</div>'
     )
 
@@ -314,29 +245,27 @@ def table_row_from_data(
     Render a single Market Movers-style table row from data.
 
     Output: RIME 129.8M            $3.60  arrow +232.87%
-
-    Args:
-        ticker: Stock ticker symbol
-        volume: Trading volume (optional, formats with K/M/B)
-        price: Current price
-        change_pct: Percentage change
-        currency: Currency symbol
-        meta: Override volume with custom meta text
     """
     # Left side
     meta_text = meta if meta is not None else (format_volume(volume) if volume else "")
-    meta_html = f'<span class="meta-cell">{meta_text}</span>' if meta_text else ""
-    left = f'<span class="ticker-cell">{ticker}</span>{meta_html}'
+    ticker_style = f"font-family: {FONT}; font-weight: 700; font-size: 14px; color: {COLOR_WHITE}; letter-spacing: 0.02em;"
+    meta_style = f"font-family: {FONT}; font-weight: 400; font-size: 11px; color: {COLOR_DIM}; letter-spacing: 0.01em;"
+    meta_html = f'<span style="{meta_style}">{meta_text}</span>' if meta_text else ""
+    left = f'<span style="{ticker_style}">{ticker}</span>{meta_html}'
 
     # Right side
     is_up = change_pct >= 0
     arrow = "\u25b2" if is_up else "\u25bc"
-    change_class = "change-up" if is_up else "change-down"
     sign = "+" if is_up else ""
+    price_style = f"font-family: {FONT}; font-weight: 500; font-size: 14px; color: {COLOR_WHITE}; letter-spacing: -0.01em;"
+    if is_up:
+        change_style = f"font-family: {FONT_MONO}; font-weight: 600; font-size: 13px; color: {COLOR_GREEN}; text-shadow: {GLOW_GREEN};"
+    else:
+        change_style = f"font-family: {FONT_MONO}; font-weight: 600; font-size: 13px; color: {COLOR_RED}; text-shadow: {GLOW_RED};"
 
     right = (
-        f'<span class="price-cell">{currency}{price:,.2f}</span>'
-        f'<span class="{change_class}">{arrow} {sign}{change_pct:.2f}%</span>'
+        f'<span style="{price_style}">{currency}{price:,.2f}</span>'
+        f'<span style="{change_style}">{arrow} {sign}{change_pct:.2f}%</span>'
     )
 
     return table_row(left, right)
@@ -349,7 +278,7 @@ def table_row_from_data(
 def table_section_header(title: str, icon: str = "") -> str:
     """Render a table section header (e.g. 'Top Gainers')."""
     icon_html = f'{icon} ' if icon else ""
-    return f'<div class="atlas-table-header">{icon_html}{title}</div>'
+    return f'<div style="{STYLE_SECTION_HEADER}">{icon_html}{title}</div>'
 
 
 # =============================================================================
@@ -367,25 +296,12 @@ def render_movers_table(
     max_rows: int = 5,
     currency: str = "$",
 ):
-    """
-    Render a complete movers section in Market Movers style.
-
-    Args:
-        title: Section title (e.g. "Top Gainers")
-        icon: Emoji icon
-        df: DataFrame with stock data
-        ticker_col: Column name for ticker symbol
-        volume_col: Column name for volume
-        price_col: Column name for price
-        change_col: Column name for change percentage
-        max_rows: Maximum rows to show
-        currency: Currency symbol
-    """
+    """Render a complete movers section in Market Movers style."""
     st.markdown(table_section_header(title, icon), unsafe_allow_html=True)
 
     if df is None or df.empty:
         st.markdown(
-            '<span class="meta-cell">No data available</span>',
+            f'<span style="font-family: {FONT}; font-size: 11px; color: {COLOR_DIM};">No data available</span>',
             unsafe_allow_html=True
         )
         return
@@ -430,11 +346,10 @@ def render_holdings_table(
 ) -> str:
     """
     Render a portfolio holdings table in ATLAS style.
-
-    Returns HTML string. Use with st.markdown(..., unsafe_allow_html=True).
+    Returns HTML string.
     """
     if df is None or df.empty:
-        return '<span class="meta-cell">No holdings data</span>'
+        return f'<span style="font-family: {FONT}; font-size: 11px; color: {COLOR_DIM};">No holdings data</span>'
 
     rows_html = []
     for _, row in df.iterrows():
@@ -448,27 +363,27 @@ def render_holdings_table(
 
         is_up = change >= 0
         arrow = "\u25b2" if is_up else "\u25bc"
-        change_class = "change-up" if is_up else "change-down"
         sign = "+" if is_up else ""
+        chg_style = STYLE_CHANGE_UP if is_up else STYLE_CHANGE_DOWN
 
         rows_html.append(
             f'<tr>'
-            f'<td class="ticker-cell">{ticker}</td>'
-            f'<td>{shares:,.0f}</td>'
-            f'<td class="price-cell">{currency}{price:,.2f}</td>'
-            f'<td class="price-cell">{currency}{value:,.2f}</td>'
-            f'<td class="{change_class}">{arrow} {sign}{change:.2f}%</td>'
+            f'<td style="{STYLE_TICKER}">{ticker}</td>'
+            f'<td style="{STYLE_TD}">{shares:,.0f}</td>'
+            f'<td style="{STYLE_PRICE}">{currency}{price:,.2f}</td>'
+            f'<td style="{STYLE_PRICE}">{currency}{value:,.2f}</td>'
+            f'<td style="{chg_style}">{arrow} {sign}{change:.2f}%</td>'
             f'</tr>'
         )
 
     return (
-        f'<table class="atlas-html-table">'
+        f'<table style="{STYLE_TABLE}">'
         f'<thead><tr>'
-        f'<th>Symbol</th>'
-        f'<th>Shares</th>'
-        f'<th class="text-right">Price</th>'
-        f'<th class="text-right">Value</th>'
-        f'<th class="text-right">Change</th>'
+        f'<th style="{STYLE_TH}">Symbol</th>'
+        f'<th style="{STYLE_TH}">Shares</th>'
+        f'<th style="{STYLE_TH_RIGHT}">Price</th>'
+        f'<th style="{STYLE_TH_RIGHT}">Value</th>'
+        f'<th style="{STYLE_TH_RIGHT}">Change</th>'
         f'</tr></thead>'
         f'<tbody>{"".join(rows_html)}</tbody>'
         f'</table>'
@@ -476,61 +391,71 @@ def render_holdings_table(
 
 
 # =============================================================================
-# GENERIC TABLE (Column-type driven rendering)
+# GENERIC TABLE (Column-type driven rendering with inline styles)
 # =============================================================================
 
-# Column type renderers
 def _render_cell(value, col_type: str, currency: str = "$") -> str:
-    """Render a single cell based on column type."""
+    """Render a single cell based on column type, using inline styles."""
     if value is None or (isinstance(value, float) and pd.isna(value)):
-        return '<td class="text-cell">\u2014</td>'
+        return f'<td style="{STYLE_TEXT}">\u2014</td>'
 
     if col_type == 'ticker':
-        return f'<td class="ticker-cell">{value}</td>'
+        return f'<td style="{STYLE_TICKER}">{value}</td>'
 
     elif col_type == 'price':
         val = pd.to_numeric(value, errors='coerce')
         if pd.isna(val):
-            return f'<td class="price-cell">{value}</td>'
-        return f'<td class="price-cell">{currency}{val:,.2f}</td>'
+            return f'<td style="{STYLE_PRICE}">{value}</td>'
+        return f'<td style="{STYLE_PRICE}">{currency}{val:,.2f}</td>'
 
     elif col_type == 'change':
-        val = pd.to_numeric(str(value).replace('%', ''), errors='coerce')
+        # Try to parse numeric value from string
+        raw = str(value).replace('%', '').replace(',', '').strip()
+        # Handle arrow characters
+        raw = raw.replace('\u25b2', '').replace('\u25bc', '').replace('▲', '').replace('▼', '').strip()
+        val = pd.to_numeric(raw, errors='coerce')
         if pd.isna(val):
-            return f'<td class="text-cell">{value}</td>'
+            # Not numeric - render as-is but check for up/down indicators
+            text = str(value)
+            if any(up in text for up in ['+', '\u25b2', '▲']):
+                return f'<td style="{STYLE_CHANGE_UP}">{text}</td>'
+            elif any(dn in text for dn in ['-', '\u25bc', '▼']):
+                return f'<td style="{STYLE_CHANGE_DOWN}">{text}</td>'
+            return f'<td style="{STYLE_CHANGE_NEUTRAL}">{text}</td>'
         is_up = val >= 0
         arrow = "\u25b2" if is_up else "\u25bc"
-        cls = "change-up" if is_up else "change-down"
+        style = STYLE_CHANGE_UP if is_up else STYLE_CHANGE_DOWN
         sign = "+" if is_up else ""
-        return f'<td class="{cls}">{arrow} {sign}{val:.2f}%</td>'
+        return f'<td style="{style}">{arrow} {sign}{val:.2f}%</td>'
 
     elif col_type == 'percent':
-        val = pd.to_numeric(str(value).replace('%', ''), errors='coerce')
+        raw = str(value).replace('%', '').replace(',', '').strip()
+        val = pd.to_numeric(raw, errors='coerce')
         if pd.isna(val):
-            return f'<td class="percent-cell">{value}</td>'
+            return f'<td style="{STYLE_PERCENT}">{value}</td>'
         sign = "+" if val >= 0 else ""
-        return f'<td class="percent-cell">{sign}{val:.2f}%</td>'
+        return f'<td style="{STYLE_PERCENT}">{sign}{val:.2f}%</td>'
 
     elif col_type == 'volume':
         val = pd.to_numeric(value, errors='coerce')
         if pd.isna(val):
-            return f'<td class="meta-cell">{value}</td>'
-        return f'<td class="meta-cell">{format_volume(val)}</td>'
+            return f'<td style="{STYLE_META}">{value}</td>'
+        return f'<td style="{STYLE_META}">{format_volume(val)}</td>'
 
     elif col_type == 'market_cap':
         val = pd.to_numeric(value, errors='coerce')
         if pd.isna(val):
-            return f'<td class="meta-cell">{value}</td>'
-        return f'<td class="meta-cell">{format_market_cap(val)}</td>'
+            return f'<td style="{STYLE_META}">{value}</td>'
+        return f'<td style="{STYLE_META}">{format_market_cap(val)}</td>'
 
     elif col_type == 'ratio':
         val = pd.to_numeric(value, errors='coerce')
         if pd.isna(val):
-            return f'<td class="text-cell">{value}</td>'
-        return f'<td class="text-cell">{val:.2f}</td>'
+            return f'<td style="{STYLE_TEXT}">{value}</td>'
+        return f'<td style="{STYLE_TEXT}">{val:.2f}</td>'
 
     else:  # 'text' or unknown
-        return f'<td class="text-cell">{value}</td>'
+        return f'<td style="{STYLE_TEXT}">{value}</td>'
 
 
 def render_generic_table(
@@ -540,7 +465,7 @@ def render_generic_table(
     currency: str = "$",
 ) -> str:
     """
-    Render a table with column-type-driven formatting.
+    Render a table with column-type-driven formatting using inline styles.
 
     Args:
         df: DataFrame with data
@@ -556,17 +481,9 @@ def render_generic_table(
 
     Returns:
         HTML string. Use with st.markdown(..., unsafe_allow_html=True).
-
-    Example:
-        render_generic_table(df, columns=[
-            {'key': 'symbol', 'label': 'Symbol', 'type': 'ticker'},
-            {'key': 'volume', 'label': 'Volume', 'type': 'volume'},
-            {'key': 'price', 'label': 'Price', 'type': 'price'},
-            {'key': 'change_pct', 'label': 'Change', 'type': 'change'},
-        ])
     """
     if df is None or df.empty:
-        return '<span class="meta-cell">No data available</span>'
+        return f'<span style="font-family: {FONT}; font-size: 11px; color: {COLOR_DIM};">No data available</span>'
 
     # Determine alignment for headers
     right_types = {'price', 'change', 'percent', 'ratio'}
@@ -574,8 +491,8 @@ def render_generic_table(
     # Build header
     headers = []
     for col in columns:
-        align_cls = ' class="text-right"' if col.get('type') in right_types else ''
-        headers.append(f'<th{align_cls}>{col["label"]}</th>')
+        style = STYLE_TH_RIGHT if col.get('type') in right_types else STYLE_TH
+        headers.append(f'<th style="{style}">{col["label"]}</th>')
 
     # Build rows
     rows_html = []
@@ -588,7 +505,7 @@ def render_generic_table(
         rows_html.append(f'<tr>{"".join(cells)}</tr>')
 
     return (
-        f'<table class="atlas-html-table">'
+        f'<table style="{STYLE_TABLE}">'
         f'<thead><tr>{"".join(headers)}</tr></thead>'
         f'<tbody>{"".join(rows_html)}</tbody>'
         f'</table>'
