@@ -659,7 +659,9 @@ def render_valuation_house(start_date, end_date):
                                 # Export projections to DataFrame
                                 if projections and isinstance(projections, (list, dict)):
                                     proj_df = pd.DataFrame(projections).T
-                                    make_scrollable_table(proj_df, height=600, hide_index=True, use_container_width=True)
+                                    from core.atlas_table_formatting import render_generic_table
+                                    col_defs_proj = [{'key': c, 'label': c, 'type': 'price' if any(kw in c.lower() for kw in ('revenue', 'ebitda', 'fcf', 'value', 'capex', 'income', 'cash')) else 'text'} for c in proj_df.columns]
+                                    st.markdown(render_generic_table(proj_df, columns=col_defs_proj), unsafe_allow_html=True)
 
                                     # Offer download
                                     csv = proj_df.to_csv()
@@ -762,7 +764,14 @@ def render_valuation_house(start_date, end_date):
                     })
 
                 breakdown_df = pd.DataFrame(breakdown_data)
-                make_scrollable_table(breakdown_df, height=400, hide_index=True, use_container_width=True)
+                from core.atlas_table_formatting import render_generic_table
+                st.markdown(render_generic_table(breakdown_df, columns=[
+                    {'key': 'Method', 'label': 'Method', 'type': 'text'},
+                    {'key': 'Fair Value', 'label': 'Fair Value', 'type': 'text'},
+                    {'key': 'Weight', 'label': 'Weight', 'type': 'text'},
+                    {'key': 'vs Current', 'label': 'vs Current', 'type': 'change'},
+                    {'key': 'Status', 'label': 'Status', 'type': 'text'},
+                ]), unsafe_allow_html=True)
 
                 # Show excluded methods
                 if consensus_result['excluded_methods']:
@@ -2277,7 +2286,9 @@ def render_valuation_house(start_date, end_date):
                 if col != 'Year':
                     proj_display[col] = proj_display[col].apply(format_large_number)
 
-            make_scrollable_table(proj_display, height=600, hide_index=True, use_container_width=True, column_config=None)
+            from core.atlas_table_formatting import render_generic_table
+            col_defs_tv = [{'key': c, 'label': c, 'type': 'text'} for c in proj_display.columns]
+            st.markdown(render_generic_table(proj_display, columns=col_defs_tv), unsafe_allow_html=True)
 
             st.info("💡 **Technical Note:** D&A and CapEx scale with revenue growth (as they should!)")
 

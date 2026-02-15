@@ -432,7 +432,15 @@ def render_risk_analysis(start_date, end_date, selected_benchmark):
                     })
 
                 summary_df = pd.DataFrame(summary_data)
-                make_scrollable_table(summary_df, height=400, hide_index=True, use_container_width=True, column_config=None)
+                from core.atlas_table_formatting import render_generic_table
+                st.markdown(render_generic_table(summary_df, columns=[
+                    {'key': 'Period', 'label': 'Period', 'type': 'text'},
+                    {'key': 'Portfolio Return', 'label': 'Portfolio', 'type': 'change'},
+                    {'key': 'S&P 500 Return', 'label': 'S&P 500', 'type': 'change'},
+                    {'key': 'Outperformance', 'label': 'Alpha', 'type': 'change'},
+                    {'key': 'Portfolio Max DD', 'label': 'Max DD', 'type': 'percent'},
+                    {'key': 'Portfolio Vol', 'label': 'Volatility', 'type': 'percent'},
+                ]), unsafe_allow_html=True)
 
                 # Methodology notes
                 st.markdown("---")
@@ -923,14 +931,22 @@ def render_risk_analysis(start_date, end_date, selected_benchmark):
                     lambda x: f"{x:+.1f}%"
                 )
 
-                make_scrollable_table(
+                from core.atlas_table_formatting import render_generic_table
+                st.markdown(render_generic_table(
                     trades_only[['Ticker', 'Asset Name', 'Action', 'Shares to Trade',
                                'Trade Value', 'Current Weight %', 'Optimal Weight %',
                                'Weight Diff %']],
-                    height=600,
-                    hide_index=True,
-                    use_container_width=True
-                )
+                    columns=[
+                        {'key': 'Ticker', 'label': 'Ticker', 'type': 'ticker'},
+                        {'key': 'Asset Name', 'label': 'Name', 'type': 'text'},
+                        {'key': 'Action', 'label': 'Action', 'type': 'text'},
+                        {'key': 'Shares to Trade', 'label': 'Shares', 'type': 'text'},
+                        {'key': 'Trade Value', 'label': 'Trade Value', 'type': 'text'},
+                        {'key': 'Current Weight %', 'label': 'Current %', 'type': 'percent'},
+                        {'key': 'Optimal Weight %', 'label': 'Optimal %', 'type': 'percent'},
+                        {'key': 'Weight Diff %', 'label': 'Diff %', 'type': 'change'},
+                    ]
+                ), unsafe_allow_html=True)
 
                 # Download button
                 csv = rebalancing_df.to_csv(index=False)

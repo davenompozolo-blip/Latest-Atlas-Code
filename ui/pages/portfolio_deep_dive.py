@@ -222,13 +222,9 @@ def render_portfolio_deep_dive(start_date, end_date):
             # Display detailed sector table
             st.markdown("#### 📋 Sector-by-Sector Attribution (GICS)")
             sector_table = create_sector_attribution_table(attribution_results['attribution_df'])
-            make_scrollable_table(
-                sector_table,
-                height=600,
-                hide_index=True,
-                use_container_width=True,
-                column_config=None
-            )
+            from core.atlas_table_formatting import render_generic_table
+            col_defs = [{'key': c, 'label': c, 'type': 'change' if '%' in c or 'Contribution' in c else ('ticker' if c in ('Sector', 'GICS_Sector') else 'text')} for c in sector_table.columns]
+            st.markdown(render_generic_table(sector_table, columns=col_defs), unsafe_allow_html=True)
 
             # Display stock-level attribution (new!)
             st.markdown("#### 🎯 Stock-Level Attribution")
@@ -418,13 +414,9 @@ def render_portfolio_deep_dive(start_date, end_date):
         quality_df = quality_df.sort_values('Quality Score', ascending=False)
 
         # Display quality scorecard table
-        make_scrollable_table(
-            quality_df,
-            height=600,
-            hide_index=True,
-            use_container_width=True,
-            column_config=None
-        )
+        from core.atlas_table_formatting import render_generic_table
+        col_defs_q = [{'key': c, 'label': c, 'type': 'ticker' if c == 'Ticker' else ('price' if 'Price' in c else ('change' if 'Upside' in c else ('ratio' if 'Score' in c or 'ROE' in c or 'P/E' in c or 'Margin' in c else 'text')))} for c in quality_df.columns]
+        st.markdown(render_generic_table(quality_df, columns=col_defs_q), unsafe_allow_html=True)
 
         # Quality distribution chart
         fig_quality = go.Figure()
@@ -683,7 +675,13 @@ def render_portfolio_deep_dive(start_date, end_date):
                     display_comparison['Optimal Weight'] = display_comparison['Optimal Weight'].apply(lambda x: f"{x:.2f}%")
                     display_comparison['Difference'] = display_comparison['Difference'].apply(lambda x: f"{x:+.2f}%")
 
-                    make_scrollable_table(display_comparison, height=600, hide_index=True, use_container_width=True)
+                    from core.atlas_table_formatting import render_generic_table
+                    st.markdown(render_generic_table(display_comparison, columns=[
+                        {'key': 'Ticker', 'label': 'Ticker', 'type': 'ticker'},
+                        {'key': 'Current Weight', 'label': 'Current', 'type': 'text'},
+                        {'key': 'Optimal Weight', 'label': 'Optimal', 'type': 'text'},
+                        {'key': 'Difference', 'label': 'Diff', 'type': 'change'},
+                    ]), unsafe_allow_html=True)
 
                     # Calculate portfolio metrics
                     st.markdown("### 📈 Expected Performance")

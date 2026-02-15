@@ -497,7 +497,14 @@ def render_performance_suite(start_date, end_date, selected_benchmark):
 
                     if comparison_metrics:
                         comp_df = pd.DataFrame(comparison_metrics)
-                        make_scrollable_table(comp_df, height=400, hide_index=True, use_container_width=True, column_config=None)
+                        from core.atlas_table_formatting import render_generic_table
+                        st.markdown(render_generic_table(comp_df, columns=[
+                            {'key': 'Ticker', 'label': 'Ticker', 'type': 'ticker'},
+                            {'key': 'Total Return', 'label': 'Total Return', 'type': 'change'},
+                            {'key': 'Volatility', 'label': 'Volatility', 'type': 'percent'},
+                            {'key': 'Sharpe Ratio', 'label': 'Sharpe', 'type': 'ratio'},
+                            {'key': 'Current Price', 'label': 'Price', 'type': 'text'},
+                        ]), unsafe_allow_html=True)
 
                 else:
                     # Single security analysis with technical indicators
@@ -689,7 +696,14 @@ def render_performance_suite(start_date, end_date, selected_benchmark):
                 risk_df['% of Portfolio Risk'] = (risk_df['Risk Contribution %'] / total_risk * 100).round(1)
 
                 # Display table
-                make_scrollable_table(risk_df, height=600, hide_index=True, use_container_width=True)
+                from core.atlas_table_formatting import render_generic_table
+                st.markdown(render_generic_table(risk_df, columns=[
+                    {'key': 'Ticker', 'label': 'Ticker', 'type': 'ticker'},
+                    {'key': 'Weight %', 'label': 'Weight %', 'type': 'percent'},
+                    {'key': 'Volatility %', 'label': 'Volatility %', 'type': 'percent'},
+                    {'key': 'Risk Contribution %', 'label': 'Risk Contrib %', 'type': 'percent'},
+                    {'key': '% of Portfolio Risk', 'label': '% of Total Risk', 'type': 'change'},
+                ]), unsafe_allow_html=True)
 
                 # Visualization
                 fig_risk_contrib = go.Figure(go.Bar(

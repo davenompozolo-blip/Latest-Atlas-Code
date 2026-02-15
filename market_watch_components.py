@@ -542,13 +542,13 @@ def render_overview_page():
         with col1:
             st.markdown("#### Performance Table")
 
+            from core.atlas_table_formatting import render_generic_table
             sector_df = pd.DataFrame(sector_data)
-            display_df = sector_df[['name', 'weight', 'ytd_return']].copy()
-            display_df.columns = ['Sector', 'Weight (%)', 'YTD Return (%)']
-            display_df['YTD Return (%)'] = display_df['YTD Return (%)'].apply(lambda x: f"{x:+.2f}%")
-            display_df['Weight (%)'] = display_df['Weight (%)'].apply(lambda x: f"{x:.2f}%")
-
-            st.dataframe(display_df, use_container_width=True, hide_index=True)
+            st.markdown(render_generic_table(sector_df, columns=[
+                {'key': 'name', 'label': 'Sector', 'type': 'text'},
+                {'key': 'weight', 'label': 'Weight (%)', 'type': 'percent'},
+                {'key': 'ytd_return', 'label': 'YTD Return', 'type': 'change'},
+            ]), unsafe_allow_html=True)
 
         with col2:
             st.markdown("#### Sector Heatmap")
@@ -568,87 +568,29 @@ def render_overview_page():
 # ALPHA VANTAGE: TOP MOVERS (Styled)
 # ============================================================
 
-def _format_volume(vol) -> str:
-    """Format volume with K/M/B suffix."""
-    try:
-        vol = float(vol)
-    except (ValueError, TypeError):
-        return "N/A"
-    if vol >= 1e9:
-        return f"{vol/1e9:.1f}B"
-    elif vol >= 1e6:
-        return f"{vol/1e6:.1f}M"
-    elif vol >= 1e3:
-        return f"{vol/1e3:.1f}K"
-    return f"{vol:,.0f}"
-
-
 def _render_movers_card(title: str, df: pd.DataFrame, color_class: str):
-    """Render a single movers card with ATLAS styling."""
+    """Render a single movers card with ATLAS table styling."""
+    from core.atlas_table_formatting import render_movers_table
+
     if df.empty:
         st.markdown(f"**{title}**")
         st.info("No data")
         return
 
-    colors = {
-        "success": "#00d26a",
-        "danger": "#ff4757",
-        "info": "#3498db",
-    }
-    accent = colors.get(color_class, "#3498db")
+    # Map color_class to icon for section header
+    icons = {"success": "\U0001f680", "danger": "\U0001f4c9", "info": "\U0001f525"}
+    icon = icons.get(color_class, "")
 
-    st.markdown(f"""
-    <div style="
-        border-left: 4px solid {accent};
-        padding-left: 12px;
-        margin-bottom: 16px;
-    ">
-        <h4 style="margin: 0; color: {accent};">{title}</h4>
-    </div>
-    """, unsafe_allow_html=True)
-
-    for _, row in df.iterrows():
-        ticker = row.get('ticker', 'N/A')
-        price = pd.to_numeric(row.get('price', 0), errors='coerce') or 0
-        change = pd.to_numeric(row.get('change_amount', 0), errors='coerce') or 0
-        change_pct = row.get('change_percentage', 0)
-        if isinstance(change_pct, str):
-            change_pct = pd.to_numeric(change_pct.replace('%', ''), errors='coerce') or 0
-        else:
-            change_pct = pd.to_numeric(change_pct, errors='coerce') or 0
-        volume = row.get('volume', 0)
-
-        is_up = change >= 0
-        arrow = "&#9650;" if is_up else "&#9660;"
-        change_color = "#00d26a" if is_up else "#ff4757"
-        sign = "+" if is_up else ""
-        price_fmt = f"${price:,.2f}"
-        pct_fmt = f"{sign}{change_pct:.2f}%"
-        vol_fmt = _format_volume(volume)
-
-        st.markdown(f"""
-        <div style="
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 8px 0;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-        ">
-            <div>
-                <span style="font-weight: 600; font-size: 14px;">{ticker}</span>
-                <span style="font-size: 11px; color: rgba(255,255,255,0.4); margin-left: 6px;">{vol_fmt}</span>
-            </div>
-            <div style="text-align: right;">
-                <span style="font-size: 14px; font-weight: 500;">{price_fmt}</span>
-                <span style="
-                    color: {change_color};
-                    font-size: 12px;
-                    margin-left: 8px;
-                    font-weight: 600;
-                ">{arrow} {pct_fmt}</span>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+    render_movers_table(
+        title=title,
+        icon=icon,
+        df=df,
+        ticker_col='ticker',
+        volume_col='volume',
+        price_col='price',
+        change_col='change_percentage',
+        max_rows=5,
+    )
 
 
 def render_market_movers():
@@ -765,11 +707,25 @@ def render_stock_universe():
 
             st.markdown(f"**{len(filtered):,}** stocks found")
 
-            # Show top 100 results
-            display_cols = [c for c in ['symbol', 'name', 'exchange', 'assetType', 'ipoDate', 'status'] if c in filtered.columns]
-            rename_map = {'symbol': 'Ticker', 'name': 'Name', 'exchange': 'Exchange', 'assetType': 'Type', 'ipoDate': 'IPO Date', 'status': 'Status'}
-            display_df = filtered[display_cols].head(100).rename(columns=rename_map)
-            st.dataframe(display_df, use_container_width=True, hide_index=True)
+            # Show top 100 results with ATLAS table formatting
+            from core.atlas_table_formatting import render_generic_table
+            col_defs = []
+            col_map = {
+                'symbol': ('Ticker', 'ticker'),
+                'name': ('Name', 'text'),
+                'exchange': ('Exchange', 'text'),
+                'assetType': ('Type', 'text'),
+                'ipoDate': ('IPO Date', 'text'),
+                'status': ('Status', 'text'),
+            }
+            for c in ['symbol', 'name', 'exchange', 'assetType', 'ipoDate', 'status']:
+                if c in filtered.columns:
+                    label, ctype = col_map[c]
+                    col_defs.append({'key': c, 'label': label, 'type': ctype})
+            st.markdown(
+                render_generic_table(filtered, columns=col_defs, max_rows=100),
+                unsafe_allow_html=True
+            )
 
         except Exception as e:
             st.warning(f"Could not load stock universe: {e}")

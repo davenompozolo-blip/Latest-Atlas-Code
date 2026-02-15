@@ -104,12 +104,19 @@ def render_database():
         with col1:
             st.markdown("##### Current Portfolio Holdings")
             try:
+                from core.atlas_table_formatting import render_generic_table
                 portfolio = db.get_portfolio()
                 if len(portfolio) > 0:
                     display_df = portfolio[['ticker', 'quantity', 'avg_cost', 'current_price']].copy()
                     display_df['value'] = display_df['quantity'] * display_df['current_price'].fillna(display_df['avg_cost'])
                     display_df = display_df.sort_values('value', ascending=False)
-                    make_scrollable_table(display_df, height=400, hide_index=True, use_container_width=True)
+                    st.markdown(render_generic_table(display_df, columns=[
+                        {'key': 'ticker', 'label': 'Ticker', 'type': 'ticker'},
+                        {'key': 'quantity', 'label': 'Qty', 'type': 'text'},
+                        {'key': 'avg_cost', 'label': 'Avg Cost', 'type': 'price'},
+                        {'key': 'current_price', 'label': 'Price', 'type': 'price'},
+                        {'key': 'value', 'label': 'Value', 'type': 'price'},
+                    ]), unsafe_allow_html=True)
                 else:
                     st.info("No positions in database")
             except Exception as e:
@@ -118,11 +125,18 @@ def render_database():
         with col2:
             st.markdown("##### Recent Trades")
             try:
+                from core.atlas_table_formatting import render_generic_table
                 # CRITICAL FIX: Query database directly, not pickle
                 trades = db.read("SELECT * FROM trades ORDER BY date DESC LIMIT 10")
                 if len(trades) > 0:
                     display_trades = trades[['date', 'ticker', 'action', 'quantity', 'price']]
-                    make_scrollable_table(display_trades, height=400, hide_index=True, use_container_width=True)
+                    st.markdown(render_generic_table(display_trades, columns=[
+                        {'key': 'date', 'label': 'Date', 'type': 'text'},
+                        {'key': 'ticker', 'label': 'Ticker', 'type': 'ticker'},
+                        {'key': 'action', 'label': 'Action', 'type': 'text'},
+                        {'key': 'quantity', 'label': 'Qty', 'type': 'text'},
+                        {'key': 'price', 'label': 'Price', 'type': 'price'},
+                    ]), unsafe_allow_html=True)
                     st.caption(f"💾 Showing {len(trades)} most recent trades from database")
                 else:
                     st.info("No trades in database yet. Upload trade history in Phoenix Parser.")

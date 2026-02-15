@@ -360,13 +360,17 @@ def render_phoenix_parser():
                             preview_df['Unrealized_PnL'] = preview_df['Unrealized_PnL'].apply(lambda x: f"R{x:,.2f}")
                             preview_df['Unrealized_PnL_Pct'] = preview_df['Unrealized_PnL_Pct'].apply(lambda x: f"{x:+.2f}%")
 
-                            make_scrollable_table(
-                                preview_df,
-                                height=400,
-                                hide_index=True,
-                                use_container_width=True,
-                                column_config=None
-                            )
+                            from core.atlas_table_formatting import render_generic_table
+                            st.markdown(render_generic_table(preview_df, columns=[
+                                {'key': 'Ticker', 'label': 'Ticker', 'type': 'ticker'},
+                                {'key': 'Name', 'label': 'Name', 'type': 'text'},
+                                {'key': 'Shares', 'label': 'Shares', 'type': 'text'},
+                                {'key': 'Cost_Basis', 'label': 'Cost', 'type': 'text'},
+                                {'key': 'Current_Price', 'label': 'Price', 'type': 'text'},
+                                {'key': 'Market_Value', 'label': 'Value', 'type': 'text'},
+                                {'key': 'Unrealized_PnL', 'label': 'P&L', 'type': 'text'},
+                                {'key': 'Unrealized_PnL_Pct', 'label': 'P&L %', 'type': 'change'},
+                            ]), unsafe_allow_html=True)
 
                             # Sync timestamp
                             sync_time = df.attrs.get('sync_timestamp', pd.Timestamp.now())
@@ -569,13 +573,16 @@ def render_phoenix_parser():
                                         preview_df['Unrealized_PnL'] = preview_df['Unrealized_PnL'].apply(lambda x: f"${x:,.2f}")
                                         preview_df['Unrealized_PnL_Pct'] = preview_df['Unrealized_PnL_Pct'].apply(lambda x: f"{x:+.2f}%")
 
-                                        make_scrollable_table(
-                                            preview_df,
-                                            height=400,
-                                            hide_index=True,
-                                            use_container_width=True,
-                                            column_config=None
-                                        )
+                                        from core.atlas_table_formatting import render_generic_table
+                                        st.markdown(render_generic_table(preview_df, columns=[
+                                            {'key': 'Ticker', 'label': 'Ticker', 'type': 'ticker'},
+                                            {'key': 'Shares', 'label': 'Shares', 'type': 'text'},
+                                            {'key': 'Avg_Cost', 'label': 'Avg Cost', 'type': 'text'},
+                                            {'key': 'Current_Price', 'label': 'Price', 'type': 'text'},
+                                            {'key': 'Market_Value', 'label': 'Value', 'type': 'text'},
+                                            {'key': 'Unrealized_PnL', 'label': 'P&L', 'type': 'text'},
+                                            {'key': 'Unrealized_PnL_Pct', 'label': 'P&L %', 'type': 'change'},
+                                        ]), unsafe_allow_html=True)
 
                                         # Sync timestamp
                                         st.caption(f"📅 Last synced: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')} | Source: Alpaca Markets API")
@@ -741,7 +748,9 @@ def render_phoenix_parser():
                 result = pd.read_sql("SELECT * FROM portfolio_positions", conn)
                 st.write(f"**Database has {len(result)} positions**")
                 if len(result) > 0:
-                    make_scrollable_table(result, height=400, hide_index=True, use_container_width=True)
+                    from core.atlas_table_formatting import render_generic_table
+                    col_defs_db = [{'key': c, 'label': c.replace('_', ' ').title(), 'type': 'ticker' if c == 'ticker' else ('price' if c in ('avg_cost', 'current_price', 'total_value') else 'text')} for c in result.columns]
+                    st.markdown(render_generic_table(result, columns=col_defs_db), unsafe_allow_html=True)
                 else:
                     st.info("No positions found in database")
                 conn.close()

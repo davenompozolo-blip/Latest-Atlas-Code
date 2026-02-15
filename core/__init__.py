@@ -209,3 +209,20 @@ try:
     )
 except ImportError:
     pass
+
+# Table Formatting (ATLAS typography system for tables)
+from .atlas_table_formatting import (
+    inject_table_css,
+    table_row,
+    table_row_from_data,
+    table_section_header,
+    render_movers_table,
+    render_holdings_table,
+    render_generic_table,
+    format_volume,
+    format_price,
+    format_percent,
+    format_market_cap,
+    format_change,
+    format_ratio,
+)

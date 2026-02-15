@@ -74,7 +74,9 @@ def render_multi_factor_analysis(start_date, end_date):
                     factor_display = factor_summary.copy()
                     factor_display['Total Contribution'] = factor_display['Total Contribution'].apply(
                         lambda x: f"{x:.4f}")
-                    make_scrollable_table(factor_display, height=400, hide_index=True, use_container_width=True, column_config=None)
+                    from core.atlas_table_formatting import render_generic_table
+                    col_defs_f = [{'key': c, 'label': c, 'type': 'ticker' if c == 'Factor' else ('ratio' if 'Contribution' in c else 'text')} for c in factor_display.columns]
+                    st.markdown(render_generic_table(factor_display, columns=col_defs_f), unsafe_allow_html=True)
 
                 if attr_df is not None:
                     st.markdown("### Holdings Attribution")
@@ -85,7 +87,11 @@ def render_multi_factor_analysis(start_date, end_date):
                         aggfunc='sum'
                     ).round(4)
 
-                    make_scrollable_table(holdings_attr, height=600, hide_index=True, use_container_width=True, column_config=None)
+                    # Reset index for table rendering
+                    holdings_attr_display = holdings_attr.reset_index()
+                    from core.atlas_table_formatting import render_generic_table
+                    col_defs_h = [{'key': c, 'label': c, 'type': 'ticker' if c == 'Ticker' else 'ratio'} for c in holdings_attr_display.columns]
+                    st.markdown(render_generic_table(holdings_attr_display, columns=col_defs_h), unsafe_allow_html=True)
 
                     st.info("""
                     **Positive values**: Holding increases exposure
