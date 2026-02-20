@@ -793,8 +793,35 @@ def create_enhanced_holdings_table(df):
 
     # Enrich with Yahoo Finance data for ALL portfolios (both manual and EE)
     # We need Beta, Daily Change, Sector, etc. even for EE portfolios
+    # CRITICAL FIX: Add total time budget to prevent app hang on Streamlit Cloud
+    import time as _enrich_time
+    _enrich_start = _enrich_time.time()
+    _ENRICH_BUDGET_SECONDS = 120  # Max 2 minutes for all enrichment
+    _enriched_count = 0
+    _skipped_count = 0
+    _total_tickers = len(enhanced_df)
+    print(f"[HOLDINGS] Starting enrichment for {_total_tickers} positions (budget: {_ENRICH_BUDGET_SECONDS}s)", flush=True)
+
     for idx, row in enhanced_df.iterrows():
         ticker = row['Ticker']
+
+        # Check time budget - skip remaining tickers if over budget
+        _elapsed = _enrich_time.time() - _enrich_start
+        if _elapsed > _ENRICH_BUDGET_SECONDS:
+            _skipped_count = _total_tickers - _enriched_count
+            print(f"[HOLDINGS] TIME BUDGET EXCEEDED ({_elapsed:.1f}s) - skipping remaining {_skipped_count} tickers", flush=True)
+            # Set defaults for remaining tickers
+            enhanced_df.at[idx, 'Asset Name'] = enhanced_df.at[idx, 'Asset Name'] if 'Asset Name' in enhanced_df.columns and pd.notna(enhanced_df.at[idx, 'Asset Name']) else ticker
+            enhanced_df.at[idx, 'Sector'] = enhanced_df.at[idx, 'Sector'] if 'Sector' in enhanced_df.columns and pd.notna(enhanced_df.at[idx, 'Sector']) else 'Other'
+            enhanced_df.at[idx, 'Beta'] = 1.0
+            enhanced_df.at[idx, 'Daily Change'] = 0.0
+            enhanced_df.at[idx, 'Daily Change %'] = 0.0
+            enhanced_df.at[idx, '5D Return %'] = 0.0
+            enhanced_df.at[idx, 'Volume'] = 0
+            enhanced_df.at[idx, 'Analyst Rating'] = 'No Coverage'
+            enhanced_df.at[idx, 'Price Target'] = None
+            enhanced_df.at[idx, 'Quality Score'] = 5.0
+            continue
 
         # Convert EE ticker format to Yahoo Finance format for API calls
         # EQU.ZA.BTI → BTI.JO (for JSE stocks)
@@ -808,29 +835,34 @@ def create_enhanced_holdings_table(df):
             yahoo_ticker = None
 
         if yahoo_ticker:
-            market_data = fetch_market_data(yahoo_ticker)
+            _ticker_start = _enrich_time.time()
+            market_data_result = fetch_market_data(yahoo_ticker)
+            _ticker_elapsed = _enrich_time.time() - _ticker_start
 
-            if market_data:
+            if _ticker_elapsed > 5:
+                print(f"[HOLDINGS] SLOW: {yahoo_ticker} took {_ticker_elapsed:.1f}s for market data", flush=True)
+
+            if market_data_result:
                 # Only set Asset Name if not already set (EE provides 'Name')
                 if 'Asset Name' not in enhanced_df.columns or pd.isna(enhanced_df.at[idx, 'Asset Name']):
-                    enhanced_df.at[idx, 'Asset Name'] = market_data['company_name']
+                    enhanced_df.at[idx, 'Asset Name'] = market_data_result['company_name']
 
                 # Set market data (Beta, Daily Change, etc.)
-                enhanced_df.at[idx, 'Daily Change'] = market_data['daily_change']
-                enhanced_df.at[idx, 'Daily Change %'] = market_data['daily_change_pct']
-                enhanced_df.at[idx, '5D Return %'] = market_data['five_day_return']
-                enhanced_df.at[idx, 'Beta'] = market_data.get('beta', 1.0)
-                enhanced_df.at[idx, 'Volume'] = market_data.get('volume', 0)
-                base_sector = market_data.get('sector', 'Unknown')
+                enhanced_df.at[idx, 'Daily Change'] = market_data_result['daily_change']
+                enhanced_df.at[idx, 'Daily Change %'] = market_data_result['daily_change_pct']
+                enhanced_df.at[idx, '5D Return %'] = market_data_result['five_day_return']
+                enhanced_df.at[idx, 'Beta'] = market_data_result.get('beta', 1.0)
+                enhanced_df.at[idx, 'Volume'] = market_data_result.get('volume', 0)
+                base_sector = market_data_result.get('sector', 'Unknown')
                 enhanced_df.at[idx, 'Sector'] = classify_ticker_sector(yahoo_ticker, base_sector)
 
                 # For EE portfolios, DON'T overwrite Current Price
                 # EE's price is accurate for their platform, Yahoo might differ
                 if not is_ee_portfolio:
-                    enhanced_df.at[idx, 'Current Price'] = market_data['price']
+                    enhanced_df.at[idx, 'Current Price'] = market_data_result['price']
             else:
                 # Yahoo Finance fetch failed - set defaults
-                enhanced_df.at[idx, 'Asset Name'] = enhanced_df.at[idx, 'Asset Name'] if 'Asset Name' in enhanced_df.columns else ticker
+                enhanced_df.at[idx, 'Asset Name'] = enhanced_df.at[idx, 'Asset Name'] if 'Asset Name' in enhanced_df.columns and pd.notna(enhanced_df.at[idx, 'Asset Name']) else ticker
                 enhanced_df.at[idx, 'Sector'] = 'Other'
                 enhanced_df.at[idx, 'Beta'] = 1.0
                 enhanced_df.at[idx, 'Daily Change'] = 0.0
@@ -853,6 +885,11 @@ def create_enhanced_holdings_table(df):
             enhanced_df.at[idx, 'Quality Score'] = calculate_quality_score(ticker, info)
         else:
             enhanced_df.at[idx, 'Quality Score'] = 5.0
+
+        _enriched_count += 1
+
+    _total_elapsed = _enrich_time.time() - _enrich_start
+    print(f"[HOLDINGS] Enrichment complete: {_enriched_count}/{_total_tickers} enriched, {_skipped_count} skipped ({_total_elapsed:.1f}s)", flush=True)
 
     enhanced_df['Sector'] = enhanced_df['Sector'].fillna('Other')
 

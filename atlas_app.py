@@ -37,11 +37,22 @@ VERSION: 10.0
 """
 
 # ============================================================================
+# CRITICAL: Set network timeout FIRST, before ANY imports that use network
+# This prevents any socket operation from hanging indefinitely
+# ============================================================================
+import socket
+socket.setdefaulttimeout(15)  # 15 second timeout for ALL network operations
+
+import os
+os.environ['YFINANCE_TIMEOUT'] = '10'
+
+# ============================================================================
 # EARLY BOOT DIAGNOSTICS - TRACE IMPORT FAILURES
 # ============================================================================
 import sys
 print(f"[BOOT] Python {sys.version}", flush=True)
 print(f"[BOOT] Starting imports...", flush=True)
+print(f"[BOOT] Global socket timeout set to 15s", flush=True)
 
 import warnings
 import time
@@ -1311,13 +1322,31 @@ class MultiSourceDataBroker:
 # ============================================================================
 
 def main():
-    # ============================================================================
-    # SIDEBAR - RENDER IMMEDIATELY TO FORCE VISIBILITY
-    # ============================================================================
+    print("[MAIN] ====== ENTERED main() ======", flush=True)
+    import time as _t
+    _main_start = _t.time()
+
+    # ========================================================================
+    # HEALTH CHECK ENDPOINT - Proves app can render without loading data
+    # Test with: https://your-app.streamlit.app/?health=check
+    # ========================================================================
+    try:
+        if st.query_params.get('health') == 'check':
+            st.set_page_config  # already called at module level
+            st.success("ATLAS is healthy!")
+            st.write(f"Time: {datetime.now()}")
+            st.write(f"Python: {sys.version}")
+            st.write(f"Socket timeout: {socket.getdefaulttimeout()}s")
+            print(f"[MAIN] Health check served ({_t.time() - _main_start:.2f}s)", flush=True)
+            return  # Exit early, don't load anything else
+    except Exception:
+        pass  # query_params may not be available in all Streamlit versions
+
     # ============================================================================
     # EQUITY TRACKING INITIALIZATION - CRITICAL FIX FOR LEVERAGE CALCULATIONS
     # ============================================================================
     # Initialize equity tracking from performance history if available
+    print(f"[MAIN] Initializing session state... ({_t.time() - _main_start:.2f}s)", flush=True)
     if 'equity_capital' not in st.session_state:
         # Try to get equity from performance history first
         metrics = get_current_portfolio_metrics()
@@ -1328,6 +1357,7 @@ def main():
 
     if 'target_leverage' not in st.session_state:
         st.session_state['target_leverage'] = 1.0  # Default no leverage
+    print(f"[MAIN] Session state done ({_t.time() - _main_start:.2f}s)", flush=True)
 
     # ============================================================================
     # ATLAS TERMINAL HEADER - FIGMA REDESIGN (JetBrains Mono)
@@ -1365,7 +1395,9 @@ def main():
         return st.session_state['portfolio_data_source_mode']
 
     # Call the header function
+    print(f"[MAIN] Rendering header... ({_t.time() - _main_start:.2f}s)", flush=True)
     render_atlas_header()
+    print(f"[MAIN] Header done ({_t.time() - _main_start:.2f}s)", flush=True)
 
     # ============================================================================
     # CAPITAL SETTINGS - Auto-populated from session state (UI removed for cleaner homepage)
@@ -1383,12 +1415,15 @@ def main():
     # ============================================================================
     # PHASE 1B: VERTICAL SIDEBAR NAVIGATION
     # ============================================================================
+    print(f"[MAIN] Building sidebar navigation... ({_t.time() - _main_start:.2f}s)", flush=True)
     try:
         page = render_sidebar_navigation(default_page="Portfolio Home")
     except Exception as e:
+        print(f"[MAIN] ERROR in sidebar navigation: {e}", flush=True)
         # Fallback sidebar if render_sidebar_navigation fails
         with st.sidebar:
             page = st.radio("Navigation", ["Portfolio Home", "Phoenix Parser", "Market Watch", "Stock Screener", "Valuation House"], label_visibility="collapsed")
+    print(f"[MAIN] Sidebar done, selected page: {page} ({_t.time() - _main_start:.2f}s)", flush=True)
 
     # ========================================================================
     # PHASE 2A: NAVIGATION ROUTING (Registry-Based)
@@ -1506,6 +1541,8 @@ def main():
         key="nav_v2_toggle"
     )
 
+    print(f"[MAIN] About to render page: {page} (v2={USE_NAVIGATION_V2}) ({_t.time() - _main_start:.2f}s)", flush=True)
+
     if USE_NAVIGATION_V2:
         # NEW: Registry-based routing
         st.info(f"📍 **Navigation v2.0 Active** - Routing to: `{selected_page_key}`")
@@ -1552,8 +1589,10 @@ def main():
         # PORTFOLIO HOME - ENHANCED WITH CONTRIBUTORS/DETRACTORS
         # ========================================================================
         elif page == "🏠 Portfolio Home":
+            print(f"[MAIN] Rendering Portfolio Home... ({_t.time() - _main_start:.2f}s)", flush=True)
             from ui.pages.portfolio_home import render_portfolio_home
             render_portfolio_home(start_date, end_date)
+            print(f"[MAIN] Portfolio Home complete ({_t.time() - _main_start:.2f}s)", flush=True)
 
         # ========================================================================
         # RISK ANALYSIS - WORLD CLASS
@@ -1626,10 +1665,10 @@ def main():
         # MARKET WATCH (ATLAS Market Watch Integration)
         # ========================================================================
         elif page == "🌍 Market Watch":
-
+            print(f"[MAIN] Rendering Market Watch... ({_t.time() - _main_start:.2f}s)", flush=True)
             from ui.pages.market_watch import render_market_watch
-
             render_market_watch()
+            print(f"[MAIN] Market Watch complete ({_t.time() - _main_start:.2f}s)", flush=True)
 
 
 
@@ -1679,9 +1718,12 @@ def main():
 
       except Exception as _page_error:
         import traceback
+        print(f"[MAIN] PAGE ERROR: {type(_page_error).__name__}: {_page_error}", flush=True)
         st.error(f"**Page Error:** {type(_page_error).__name__}: {_page_error}")
         with st.expander("Full Traceback", expanded=False):
             st.code(traceback.format_exc())
+
+    print(f"[MAIN] ====== main() COMPLETE ({_t.time() - _main_start:.2f}s) ======", flush=True)
 
 
 # ============================================================================

@@ -820,19 +820,40 @@ class AlphaVantageClient:
 
 
 # =============================================================================
-# SINGLETON CLIENT INSTANCE
+# SINGLETON CLIENT INSTANCE (LAZY - don't create at import time to avoid hangs)
 # =============================================================================
 
 _client_instance = None
 
 def get_client() -> AlphaVantageClient:
-    """Get or create the Alpha Vantage client singleton."""
+    """Get or create the Alpha Vantage client singleton (lazy initialization)."""
     global _client_instance
     if _client_instance is None:
         _client_instance = AlphaVantageClient()
     return _client_instance
 
-av_client = get_client()
+
+class _LazyClient:
+    """
+    Lazy proxy for AlphaVantageClient.
+    The actual client is only created when first accessed, preventing
+    SQLite DB creation and API key lookup during module import.
+    """
+    def __getattr__(self, name):
+        client = get_client()
+        return getattr(client, name)
+
+    def __bool__(self):
+        return True
+
+    def __repr__(self):
+        return "<LazyAlphaVantageClient>"
+
+
+# CRITICAL FIX: Use lazy proxy instead of eagerly creating client at import time.
+# The old code `av_client = get_client()` would create the SQLite database and
+# do API key lookup during import, which could contribute to startup delays.
+av_client = _LazyClient()
 
 
 # Module-level availability flag — True if this module loaded successfully

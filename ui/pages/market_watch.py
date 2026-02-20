@@ -16,20 +16,16 @@ def render_market_watch():
     from ui.components import ATLAS_TEMPLATE
 
 
-    # Auto-install missing dependencies for Market Watch
+    # Check for optional dependencies (don't auto-install at runtime - causes delays)
     try:
         import investpy
     except ImportError:
-        import subprocess
-        subprocess.run(["pip", "install", "investpy", "--break-system-packages"],
-                       capture_output=True, check=False)
+        pass  # investpy not available - pages using it will handle gracefully
 
     try:
         import feedparser
     except ImportError:
-        import subprocess
-        subprocess.run(["pip", "install", "feedparser", "--break-system-packages"],
-                       capture_output=True, check=False)
+        pass  # feedparser not available - pages using it will handle gracefully
 
     st.markdown('<h1 style="font-size: 2.5rem; font-weight: 800; color: #f8fafc; margin-bottom: 0.5rem;"><span style="font-size: 2rem;">🌍</span> <span style="background: linear-gradient(135deg, #00d4ff, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">MARKET WATCH</span></h1>', unsafe_allow_html=True)
     # Build version indicator (helps verify latest code is loaded)
