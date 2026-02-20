@@ -259,8 +259,8 @@ def render_portfolio_deep_dive(start_date, end_date):
                 st.markdown(render_generic_table(attr_display, columns=[
                     {'key': 'Ticker', 'label': 'Ticker', 'type': 'ticker'},
                     {'key': 'GICS_Sector', 'label': 'Sector', 'type': 'text'},
-                    {'key': 'Weight %', 'label': 'Weight %', 'type': 'percent'},
-                    {'key': 'Index Weight %', 'label': 'Index Wt %', 'type': 'percent'},
+                    {'key': 'Weight %', 'label': 'Weight %', 'type': 'weight'},
+                    {'key': 'Index Weight %', 'label': 'Index Wt %', 'type': 'weight'},
                     {'key': 'Over/Under %', 'label': 'Over/Under', 'type': 'change'},
                     {'key': 'Return %', 'label': 'Return %', 'type': 'change'},
                     {'key': 'Return vs Sector', 'label': 'vs Sector', 'type': 'change'},

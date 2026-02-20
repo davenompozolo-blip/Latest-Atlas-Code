@@ -944,8 +944,8 @@ def render_risk_analysis(start_date, end_date, selected_benchmark):
                         {'key': 'Action', 'label': 'Action', 'type': 'text'},
                         {'key': 'Shares to Trade', 'label': 'Shares', 'type': 'shares'},
                         {'key': 'Trade Value', 'label': 'Trade Value', 'type': 'price'},
-                        {'key': 'Current Weight %', 'label': 'Current %', 'type': 'percent'},
-                        {'key': 'Optimal Weight %', 'label': 'Optimal %', 'type': 'percent'},
+                        {'key': 'Current Weight %', 'label': 'Current %', 'type': 'weight'},
+                        {'key': 'Optimal Weight %', 'label': 'Optimal %', 'type': 'weight'},
                         {'key': 'Weight Diff %', 'label': 'Diff %', 'type': 'change'},
                     ]
                 ), unsafe_allow_html=True)

@@ -469,6 +469,14 @@ def _render_cell(value, col_type: str, currency: str = "$") -> str:
             return f'<td style="{style}">{val:.2f}%</td>'
         return f'<td style="{STYLE_PERCENT}">0.00%</td>'
 
+    elif col_type == 'weight':
+        # Plain percentage - no green/red glow, just normal text
+        raw = str(value).replace('%', '').replace(',', '').strip()
+        val = pd.to_numeric(raw, errors='coerce')
+        if pd.isna(val):
+            return f'<td style="{STYLE_PERCENT}">{value}</td>'
+        return f'<td style="{STYLE_PERCENT}">{val:.2f}%</td>'
+
     elif col_type == 'shares':
         val = pd.to_numeric(value, errors='coerce')
         if pd.isna(val):
@@ -521,8 +529,9 @@ def render_generic_table(
             {
                 'key': 'column_name_in_df',
                 'label': 'Display Header',
-                'type': 'ticker' | 'price' | 'change' | 'percent' | 'volume' |
-                        'market_cap' | 'ratio' | 'shares' | 'quality_score' | 'text',
+                'type': 'ticker' | 'price' | 'change' | 'percent' | 'weight' |
+                        'volume' | 'market_cap' | 'ratio' | 'shares' |
+                        'quality_score' | 'text',
             }
         max_rows: Limit number of rows (None = all)
         currency: Currency symbol for price columns
@@ -534,7 +543,7 @@ def render_generic_table(
         return f'<span style="font-family: {FONT}; font-size: 11px; color: {COLOR_DIM};">No data available</span>'
 
     # Determine alignment for headers
-    right_types = {'price', 'change', 'percent', 'ratio', 'quality_score'}
+    right_types = {'price', 'change', 'percent', 'weight', 'ratio', 'quality_score'}
 
     # Build header
     headers = []

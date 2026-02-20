@@ -349,12 +349,12 @@ def render_v10_analytics():
 
                             st.markdown("#### Stock-Level Contribution")
                             stock_contrib = attribution.stock_contribution()
-                            sc_cols = [{'key': c, 'label': c, 'type': 'ticker' if c in ('ticker', 'Ticker', 'Symbol') else ('change' if any(k in c.lower() for k in ('return', 'contribution', 'effect', 'alpha')) else ('percent' if 'weight' in c.lower() else 'text'))} for c in stock_contrib.columns]
+                            sc_cols = [{'key': c, 'label': c, 'type': 'ticker' if c in ('ticker', 'Ticker', 'Symbol') else ('change' if any(k in c.lower() for k in ('return', 'contribution', 'effect', 'alpha')) else ('weight' if 'weight' in c.lower() else 'text'))} for c in stock_contrib.columns]
                             st.markdown(render_generic_table(stock_contrib, columns=sc_cols), unsafe_allow_html=True)
 
                             st.markdown("#### Sector-Level Attribution (Brinson-Fachler Model)")
                             sector_contrib = attribution.sector_attribution()
-                            sa_cols = [{'key': c, 'label': c, 'type': 'ticker' if c in ('Sector', 'sector') else ('change' if any(k in c.lower() for k in ('return', 'contribution', 'effect', 'alpha', 'allocation', 'selection', 'interaction')) else ('percent' if 'weight' in c.lower() else 'text'))} for c in sector_contrib.columns]
+                            sa_cols = [{'key': c, 'label': c, 'type': 'ticker' if c in ('Sector', 'sector') else ('change' if any(k in c.lower() for k in ('return', 'contribution', 'effect', 'alpha', 'allocation', 'selection', 'interaction')) else ('weight' if 'weight' in c.lower() else 'text'))} for c in sector_contrib.columns]
                             st.markdown(render_generic_table(sector_contrib, columns=sa_cols), unsafe_allow_html=True)
 
                             # ===== FIX #5: Calculate and Display Skill Scores =====
