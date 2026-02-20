@@ -11,6 +11,10 @@ from utils.formatting import format_currency, format_percentage, add_arrow_indic
 
 def render_portfolio_home(start_date, end_date):
     """Render the Portfolio Home page."""
+    import time as _t
+    _ph_start = _t.time()
+    print("[PORTFOLIO_HOME] Start render", flush=True)
+
     # Import from core module to avoid circular dependency with atlas_app
     from core import (
         load_portfolio_data,
@@ -31,6 +35,7 @@ def render_portfolio_home(start_date, end_date):
         ATLASFormatter,
     )
     from ui.components import ATLAS_TEMPLATE
+    print(f"[PORTFOLIO_HOME] Imports done ({_t.time() - _ph_start:.2f}s)", flush=True)
 
     st.markdown("## 🏠 PORTFOLIO HOME")
 
@@ -39,11 +44,15 @@ def render_portfolio_home(start_date, end_date):
     # session_state has the complete data with attrs intact from the latest sync
     if 'portfolio_df' in st.session_state and st.session_state['portfolio_df'] is not None and len(st.session_state['portfolio_df']) > 0:
         portfolio_data = st.session_state['portfolio_df']
+        print(f"[PORTFOLIO_HOME] Using session_state portfolio ({len(portfolio_data)} rows)", flush=True)
     else:
+        print("[PORTFOLIO_HOME] Loading portfolio from storage...", flush=True)
         portfolio_data = load_portfolio_data()
+        print(f"[PORTFOLIO_HOME] Portfolio loaded ({_t.time() - _ph_start:.2f}s)", flush=True)
 
     if portfolio_data is None or (isinstance(portfolio_data, pd.DataFrame) and portfolio_data.empty):
         st.warning("⚠️ No portfolio data. Please upload via Phoenix Parser.")
+        print("[PORTFOLIO_HOME] No portfolio data - stopping", flush=True)
         st.stop()
 
     # CRITICAL FIX: Don't wrap in pd.DataFrame() - it destroys attrs!
@@ -55,9 +64,11 @@ def render_portfolio_home(start_date, end_date):
     currency_symbol = df.attrs.get('currency_symbol') or st.session_state.get('currency_symbol', '$')
     currency = df.attrs.get('currency') or st.session_state.get('currency', 'USD')
 
-    # Process holdings data (removed diagnostic display for cleaner UI)
+    # Process holdings data with timeout protection
+    print(f"[PORTFOLIO_HOME] Building enhanced holdings table ({len(df)} positions)...", flush=True)
     with st.spinner("Loading..."):
         enhanced_df = create_enhanced_holdings_table(df)
+    print(f"[PORTFOLIO_HOME] Enhanced table complete ({_t.time() - _ph_start:.2f}s)", flush=True)
 
     # FIX 3: Use Easy Equities' P&L directly - don't recalculate!
     # EE already provides correct values, just sum them up
@@ -200,7 +211,9 @@ def render_portfolio_home(start_date, end_date):
     st.markdown("---")
 
     # Risk Snapshot & Signal Health (collapsed by default for cleaner UI)
+    print(f"[PORTFOLIO_HOME] Calculating portfolio returns... ({_t.time() - _ph_start:.2f}s)", flush=True)
     portfolio_returns = calculate_portfolio_returns(df, start_date, end_date)
+    print(f"[PORTFOLIO_HOME] Portfolio returns done ({_t.time() - _ph_start:.2f}s)", flush=True)
 
     with st.expander("🎯 Portfolio Health & Risk Snapshot", expanded=False):
         col_health, col_snapshot = st.columns([1, 3])
@@ -338,7 +351,9 @@ def render_portfolio_home(start_date, end_date):
         st.info("📊 Monthly performance heatmap will be available after 2+ months of portfolio history")
 
     # ===== EARNINGS CALENDAR (Alpha Vantage) =====
+    print(f"[PORTFOLIO_HOME] Rendering earnings calendar... ({_t.time() - _ph_start:.2f}s)", flush=True)
     render_earnings_calendar(enhanced_df)
+    print(f"[PORTFOLIO_HOME] Earnings calendar done ({_t.time() - _ph_start:.2f}s)", flush=True)
 
     # ===== ADVANCED TOOLS - Collapsed by default for analyst focus =====
     st.markdown("---")

@@ -8,6 +8,7 @@ import pickle
 import warnings
 from datetime import datetime, timedelta
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 
 import numpy as np
 import pandas as pd
@@ -23,6 +24,45 @@ try:
     import yfinance as yf
 except ImportError:
     pass
+
+
+# =============================================================================
+# TIMEOUT PROTECTION FOR NETWORK CALLS
+# =============================================================================
+
+def _run_with_timeout(func, timeout_seconds=10, default=None, *args, **kwargs):
+    """
+    Run a function with a timeout. Returns default if timeout or error.
+    Prevents any single API call from hanging the entire app.
+    """
+    try:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(func, *args, **kwargs)
+            return future.result(timeout=timeout_seconds)
+    except FuturesTimeout:
+        print(f"[TIMEOUT] {func.__name__} timed out after {timeout_seconds}s", flush=True)
+        return default
+    except Exception as e:
+        print(f"[API ERROR] {func.__name__}: {e}", flush=True)
+        return default
+
+
+def _fetch_yf_info_safe(ticker, timeout=10):
+    """Safely fetch yfinance info with timeout protection."""
+    def _do_fetch():
+        stock = yf.Ticker(ticker)
+        return stock.info
+    return _run_with_timeout(_do_fetch, timeout_seconds=timeout, default={})
+
+
+def _fetch_yf_history_safe(ticker, period="5d", start=None, end=None, timeout=10):
+    """Safely fetch yfinance history with timeout protection."""
+    def _do_fetch():
+        stock = yf.Ticker(ticker)
+        if start and end:
+            return stock.history(start=start, end=end)
+        return stock.history(period=period)
+    return _run_with_timeout(_do_fetch, timeout_seconds=timeout, default=pd.DataFrame())
 
 try:
     from scipy import stats
@@ -348,7 +388,7 @@ def fetch_sa_government_bond_yields():
 
 @st.cache_data(ttl=300)
 def fetch_market_data(ticker):
-    # ATLAS Refactoring - Use cached market data fetcher
+    # ATLAS Refactoring - Use cached market data fetcher with TIMEOUT PROTECTION
     try:
         # Import ticker conversion utility
         from modules import convert_ee_ticker_to_yahoo
@@ -360,12 +400,11 @@ def fetch_market_data(ticker):
             info = market_data.get_company_info(yahoo_ticker)
             hist = market_data.get_stock_history(yahoo_ticker, period="5d", interval="1d")
         else:
-            # Fallback to old method
-            stock = yf.Ticker(yahoo_ticker)
-            info = stock.info
-            hist = stock.history(period="5d")
+            # Use timeout-protected fetchers to prevent hangs
+            info = _fetch_yf_info_safe(yahoo_ticker, timeout=10)
+            hist = _fetch_yf_history_safe(yahoo_ticker, period="5d", timeout=10)
 
-        if hist.empty:
+        if hist is None or (isinstance(hist, pd.DataFrame) and hist.empty):
             return None
 
         # Convert timezone-aware index to timezone-naive
@@ -416,21 +455,21 @@ def fetch_historical_data(ticker, start_date, end_date):
         # Convert Easy Equities ticker to Yahoo Finance format
         yahoo_ticker = convert_ee_ticker_to_yahoo(ticker)
 
-        stock = yf.Ticker(yahoo_ticker)
-        hist = stock.history(start=start_date, end=end_date)
-        if not hist.empty:
+        # Use timeout-protected fetch to prevent hangs
+        hist = _fetch_yf_history_safe(yahoo_ticker, start=start_date, end=end_date, timeout=10)
+        if hist is not None and not hist.empty:
             # Convert timezone-aware index to timezone-naive to prevent comparison errors
             if hist.index.tz is not None:
                 hist.index = hist.index.tz_localize(None)
             return hist
-    except:
+    except Exception:
         pass
     return None
 
 
 @st.cache_data(ttl=3600)
 def fetch_stock_info(ticker):
-    """Fetch stock information from yfinance"""
+    """Fetch stock information from yfinance with timeout protection."""
     # ATLAS Refactoring - Use cached market data fetcher
     try:
         # Import ticker conversion utility
@@ -442,10 +481,8 @@ def fetch_stock_info(ticker):
         if REFACTORED_MODULES_AVAILABLE:
             return market_data.get_company_info(yahoo_ticker)
         else:
-            # Fallback to old method
-            stock = yf.Ticker(yahoo_ticker)
-            info = stock.info
-            return info
+            # Use timeout-protected fetch to prevent hangs
+            return _fetch_yf_info_safe(yahoo_ticker, timeout=10)
     except Exception as e:
         # ATLAS Refactoring: User-friendly error handling
         if REFACTORED_MODULES_AVAILABLE:
@@ -460,14 +497,16 @@ def fetch_stock_info(ticker):
 
 @st.cache_data(ttl=3600)
 def fetch_analyst_data(ticker):
-    # ATLAS Refactoring - Use cached market data fetcher
+    # ATLAS Refactoring - Use cached market data fetcher with TIMEOUT PROTECTION
     try:
         if REFACTORED_MODULES_AVAILABLE:
             info = market_data.get_company_info(ticker)
         else:
-            # Fallback to old method
-            stock = yf.Ticker(ticker)
-            info = stock.info
+            # Use timeout-protected fetch to prevent hangs
+            info = _fetch_yf_info_safe(ticker, timeout=10)
+
+        if not info:
+            return {'success': False, 'rating': 'No Coverage', 'target_price': None}
 
         rating = info.get('recommendationKey', 'none')
         if rating == 'none' or rating is None:
@@ -512,16 +551,33 @@ def fetch_company_financials(ticker):
             cash_flow = market_data.get_financials(ticker, statement_type="cashflow")
 
         # Direct yfinance fallback if refactored module returned empty data
+        # Use timeout protection to prevent hangs
         if not info or income_stmt.empty:
-            stock = yf.Ticker(ticker)
-            if not info:
-                info = stock.info or {}
-            if income_stmt.empty:
-                income_stmt = stock.income_stmt if hasattr(stock, 'income_stmt') and stock.income_stmt is not None else stock.financials
-            if balance_sheet.empty:
-                balance_sheet = stock.balance_sheet
-            if cash_flow.empty:
-                cash_flow = stock.cashflow if hasattr(stock, 'cashflow') else stock.cash_flow
+            def _fetch_financials():
+                stock = yf.Ticker(ticker)
+                return stock
+            stock = _run_with_timeout(_fetch_financials, timeout_seconds=15)
+            if stock is not None:
+                if not info:
+                    try:
+                        info = stock.info or {}
+                    except Exception:
+                        info = {}
+                if income_stmt.empty:
+                    try:
+                        income_stmt = stock.income_stmt if hasattr(stock, 'income_stmt') and stock.income_stmt is not None else stock.financials
+                    except Exception:
+                        pass
+                if balance_sheet.empty:
+                    try:
+                        balance_sheet = stock.balance_sheet
+                    except Exception:
+                        pass
+                if cash_flow.empty:
+                    try:
+                        cash_flow = stock.cashflow if hasattr(stock, 'cashflow') else stock.cash_flow
+                    except Exception:
+                        pass
 
         # Ensure DataFrames are valid
         if income_stmt is None:
