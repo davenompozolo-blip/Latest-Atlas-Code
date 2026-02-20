@@ -348,8 +348,8 @@ def render_quant_optimizer(start_date, end_date, selected_benchmark):
                                           'Weight Diff (%)', 'Shares to Trade', 'Trade Value', 'Action']],
                             columns=[
                                 {'key': 'Ticker', 'label': 'Ticker', 'type': 'ticker'},
-                                {'key': 'Current Weight (%)', 'label': 'Current %', 'type': 'percent'},
-                                {'key': 'Optimal Weight (%)', 'label': 'Optimal %', 'type': 'percent'},
+                                {'key': 'Current Weight (%)', 'label': 'Current %', 'type': 'weight'},
+                                {'key': 'Optimal Weight (%)', 'label': 'Optimal %', 'type': 'weight'},
                                 {'key': 'Weight Diff (%)', 'label': 'Diff %', 'type': 'change'},
                                 {'key': 'Shares to Trade', 'label': 'Shares', 'type': 'shares'},
                                 {'key': 'Trade Value', 'label': 'Trade Value', 'type': 'price'},

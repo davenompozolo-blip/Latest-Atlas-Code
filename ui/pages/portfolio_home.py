@@ -226,6 +226,7 @@ def render_portfolio_home(start_date, end_date):
     # Define all available columns
     ALL_COLUMNS = [
         'Display Ticker', 'Asset Name', 'Shares', 'Avg Cost', 'Current Price',
+        'Total Value',
         'Daily Change %', '5D Return %', 'YTD Return %',
         'Weight % of Equity', 'Weight % of Gross', 'Weight %',
         'Daily P&L $', 'Total Gain/Loss $', 'Total Gain/Loss %',
@@ -235,6 +236,7 @@ def render_portfolio_home(start_date, end_date):
 
     DEFAULT_COLUMNS = [
         'Display Ticker', 'Asset Name', 'Shares', 'Current Price',
+        'Total Value',
         'Daily Change %', '5D Return %',
         'Weight % of Equity', 'Weight % of Gross',
         'Total Gain/Loss $', 'Total Gain/Loss %', 'Quality Score'
@@ -268,8 +270,12 @@ def render_portfolio_home(start_date, end_date):
                 return 'volume'
             if c == 'Beta':
                 return 'ratio'
+            # Weight columns render as plain percentages (no green/red glow)
+            if 'Weight %' in c or 'Weight' == c:
+                return 'weight'
             if any(k in c for k in ('Price', 'Value', 'Cost', 'P&L $', 'Target')):
                 return 'price'
+            # Change/return columns get green/red glow
             if '%' in c or 'Change' in c or 'Return' in c or 'Gain/Loss' in c:
                 return 'change'
             return 'text'

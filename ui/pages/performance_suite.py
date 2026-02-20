@@ -699,7 +699,7 @@ def render_performance_suite(start_date, end_date, selected_benchmark):
                 from core.atlas_table_formatting import render_generic_table
                 st.markdown(render_generic_table(risk_df, columns=[
                     {'key': 'Ticker', 'label': 'Ticker', 'type': 'ticker'},
-                    {'key': 'Weight %', 'label': 'Weight %', 'type': 'percent'},
+                    {'key': 'Weight %', 'label': 'Weight %', 'type': 'weight'},
                     {'key': 'Volatility %', 'label': 'Volatility %', 'type': 'percent'},
                     {'key': 'Risk Contribution %', 'label': 'Risk Contrib %', 'type': 'percent'},
                     {'key': '% of Portfolio Risk', 'label': '% of Total Risk', 'type': 'change'},
