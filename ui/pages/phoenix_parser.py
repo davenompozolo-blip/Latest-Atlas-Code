@@ -370,7 +370,7 @@ def render_phoenix_parser():
                             st.markdown(render_generic_table(preview_df, columns=[
                                 {'key': 'Ticker', 'label': 'Ticker', 'type': 'ticker'},
                                 {'key': 'Name', 'label': 'Name', 'type': 'text'},
-                                {'key': 'Shares', 'label': 'Shares', 'type': 'text'},
+                                {'key': 'Shares', 'label': 'Shares', 'type': 'shares'},
                                 {'key': 'Cost_Basis', 'label': 'Cost', 'type': 'text'},
                                 {'key': 'Current_Price', 'label': 'Price', 'type': 'text'},
                                 {'key': 'Market_Value', 'label': 'Value', 'type': 'text'},
@@ -582,7 +582,7 @@ def render_phoenix_parser():
                                         from core.atlas_table_formatting import render_generic_table
                                         st.markdown(render_generic_table(preview_df, columns=[
                                             {'key': 'Ticker', 'label': 'Ticker', 'type': 'ticker'},
-                                            {'key': 'Shares', 'label': 'Shares', 'type': 'text'},
+                                            {'key': 'Shares', 'label': 'Shares', 'type': 'shares'},
                                             {'key': 'Avg_Cost', 'label': 'Avg Cost', 'type': 'text'},
                                             {'key': 'Current_Price', 'label': 'Price', 'type': 'text'},
                                             {'key': 'Market_Value', 'label': 'Value', 'type': 'text'},

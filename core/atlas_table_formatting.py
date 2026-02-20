@@ -34,13 +34,15 @@ FONT_MONO = "'JetBrains Mono', 'SF Mono', 'Fira Code', Consolas, monospace"
 
 # Colors
 COLOR_WHITE = "#ffffff"
+COLOR_HEADER = "rgba(255, 255, 255, 0.92)"  # Slightly different shade for headers vs content
 COLOR_DIM = "rgba(255, 255, 255, 0.35)"
 COLOR_TEXT = "rgba(255, 255, 255, 0.85)"
 COLOR_MUTED = "rgba(255, 255, 255, 0.5)"
 COLOR_GREEN = "#00d26a"
 COLOR_RED = "#ff4757"
 COLOR_BORDER = "rgba(255, 255, 255, 0.06)"
-COLOR_HEADER_BORDER = "rgba(255, 255, 255, 0.1)"
+COLOR_HEADER_BORDER = "rgba(255, 255, 255, 0.15)"
+COLOR_HEADER_BG = "rgba(255, 255, 255, 0.04)"
 COLOR_HOVER = "rgba(255, 255, 255, 0.03)"
 
 # Glows
@@ -54,17 +56,17 @@ STYLE_TABLE = (
 )
 
 STYLE_TH = (
-    f"font-family: {FONT}; font-weight: 500; font-size: 11px; "
-    f"color: {COLOR_DIM}; text-transform: uppercase; letter-spacing: 0.06em; "
-    f"padding: 12px 8px; text-align: left; border-bottom: 1px solid {COLOR_HEADER_BORDER}; "
-    f"background: transparent;"
+    f"font-family: {FONT}; font-weight: 700; font-size: 11px; "
+    f"color: {COLOR_HEADER}; text-transform: uppercase; letter-spacing: 0.06em; "
+    f"padding: 12px 8px; text-align: left; border-bottom: 2px solid {COLOR_HEADER_BORDER}; "
+    f"background: {COLOR_HEADER_BG};"
 )
 
 STYLE_TH_RIGHT = (
-    f"font-family: {FONT}; font-weight: 500; font-size: 11px; "
-    f"color: {COLOR_DIM}; text-transform: uppercase; letter-spacing: 0.06em; "
-    f"padding: 12px 8px; text-align: right; border-bottom: 1px solid {COLOR_HEADER_BORDER}; "
-    f"background: transparent;"
+    f"font-family: {FONT}; font-weight: 700; font-size: 11px; "
+    f"color: {COLOR_HEADER}; text-transform: uppercase; letter-spacing: 0.06em; "
+    f"padding: 12px 8px; text-align: right; border-bottom: 2px solid {COLOR_HEADER_BORDER}; "
+    f"background: {COLOR_HEADER_BG};"
 )
 
 STYLE_TD = (
@@ -366,10 +368,13 @@ def render_holdings_table(
         sign = "+" if is_up else ""
         chg_style = STYLE_CHANGE_UP if is_up else STYLE_CHANGE_DOWN
 
+        # Format shares: whole if integer, 2 decimal if fractional
+        shares_str = f"{int(shares):,}" if shares == int(shares) else f"{shares:,.2f}"
+
         rows_html.append(
             f'<tr>'
             f'<td style="{STYLE_TICKER}">{ticker}</td>'
-            f'<td style="{STYLE_TD}">{shares:,.0f}</td>'
+            f'<td style="{STYLE_TD}">{shares_str}</td>'
             f'<td style="{STYLE_PRICE}">{currency}{price:,.2f}</td>'
             f'<td style="{STYLE_PRICE}">{currency}{value:,.2f}</td>'
             f'<td style="{chg_style}">{arrow} {sign}{change:.2f}%</td>'
@@ -393,6 +398,13 @@ def render_holdings_table(
 # =============================================================================
 # GENERIC TABLE (Column-type driven rendering with inline styles)
 # =============================================================================
+
+def _format_quality_score(val: float) -> str:
+    """Format Quality Score: 1 decimal if fractional, whole number if whole."""
+    if val == int(val):
+        return f"{int(val)}"
+    return f"{val:.1f}"
+
 
 def _render_cell(value, col_type: str, currency: str = "$") -> str:
     """Render a single cell based on column type, using inline styles."""
@@ -424,8 +436,15 @@ def _render_cell(value, col_type: str, currency: str = "$") -> str:
             return f'<td style="{STYLE_CHANGE_NEUTRAL}">{text}</td>'
         is_up = val >= 0
         arrow = "\u25b2" if is_up else "\u25bc"
-        style = STYLE_CHANGE_UP if is_up else STYLE_CHANGE_DOWN
+        color = COLOR_GREEN if is_up else COLOR_RED
+        glow = GLOW_GREEN if is_up else GLOW_RED
         sign = "+" if is_up else ""
+        # Enhanced green/red with stronger glow animation effect
+        style = (
+            f"font-family: {FONT_MONO}; font-weight: 600; font-size: 13px; "
+            f"color: {color}; text-shadow: {glow}, 0 0 16px {color}60; text-align: right; "
+            f"padding: 12px 8px; border-bottom: 1px solid {COLOR_BORDER};"
+        )
         return f'<td style="{style}">{arrow} {sign}{val:.2f}%</td>'
 
     elif col_type == 'percent':
@@ -433,8 +452,37 @@ def _render_cell(value, col_type: str, currency: str = "$") -> str:
         val = pd.to_numeric(raw, errors='coerce')
         if pd.isna(val):
             return f'<td style="{STYLE_PERCENT}">{value}</td>'
-        sign = "+" if val >= 0 else ""
-        return f'<td style="{STYLE_PERCENT}">{sign}{val:.2f}%</td>'
+        # Color-code percentages with green/red glow like changes
+        if val > 0:
+            style = (
+                f"font-family: {FONT_MONO}; font-weight: 500; font-size: 13px; "
+                f"color: {COLOR_GREEN}; text-shadow: {GLOW_GREEN}; text-align: right; "
+                f"padding: 12px 8px; border-bottom: 1px solid {COLOR_BORDER};"
+            )
+            return f'<td style="{style}">+{val:.2f}%</td>'
+        elif val < 0:
+            style = (
+                f"font-family: {FONT_MONO}; font-weight: 500; font-size: 13px; "
+                f"color: {COLOR_RED}; text-shadow: {GLOW_RED}; text-align: right; "
+                f"padding: 12px 8px; border-bottom: 1px solid {COLOR_BORDER};"
+            )
+            return f'<td style="{style}">{val:.2f}%</td>'
+        return f'<td style="{STYLE_PERCENT}">0.00%</td>'
+
+    elif col_type == 'shares':
+        val = pd.to_numeric(value, errors='coerce')
+        if pd.isna(val):
+            return f'<td style="{STYLE_TD}">{value}</td>'
+        # Round fractional shares to 2 decimal places
+        if val == int(val):
+            return f'<td style="{STYLE_TD}">{int(val):,}</td>'
+        return f'<td style="{STYLE_TD}">{val:,.2f}</td>'
+
+    elif col_type == 'quality_score':
+        val = pd.to_numeric(value, errors='coerce')
+        if pd.isna(val):
+            return f'<td style="{STYLE_TEXT}">{value}</td>'
+        return f'<td style="{STYLE_TEXT}">{_format_quality_score(val)}</td>'
 
     elif col_type == 'volume':
         val = pd.to_numeric(value, errors='coerce')
@@ -474,7 +522,7 @@ def render_generic_table(
                 'key': 'column_name_in_df',
                 'label': 'Display Header',
                 'type': 'ticker' | 'price' | 'change' | 'percent' | 'volume' |
-                        'market_cap' | 'ratio' | 'text',
+                        'market_cap' | 'ratio' | 'shares' | 'quality_score' | 'text',
             }
         max_rows: Limit number of rows (None = all)
         currency: Currency symbol for price columns
@@ -486,7 +534,7 @@ def render_generic_table(
         return f'<span style="font-family: {FONT}; font-size: 11px; color: {COLOR_DIM};">No data available</span>'
 
     # Determine alignment for headers
-    right_types = {'price', 'change', 'percent', 'ratio'}
+    right_types = {'price', 'change', 'percent', 'ratio', 'quality_score'}
 
     # Build header
     headers = []
@@ -509,6 +557,163 @@ def render_generic_table(
         f'<thead><tr>{"".join(headers)}</tr></thead>'
         f'<tbody>{"".join(rows_html)}</tbody>'
         f'</table>'
+    )
+
+
+# =============================================================================
+# INTERACTIVE COLUMN MANAGEMENT
+# =============================================================================
+
+def render_column_manager(
+    available_columns: List[str],
+    default_columns: List[str],
+    session_key: str = "atlas_table_columns",
+) -> List[str]:
+    """
+    Render an interactive column manager with draggable pills and X-to-remove.
+
+    Uses Streamlit session_state for persistence. Each column appears as a pill
+    that can be removed (X button) or reordered (move left/right arrows).
+
+    Args:
+        available_columns: All possible column names
+        default_columns: Default selected columns (in order)
+        session_key: Unique session_state key for this table's column config
+
+    Returns:
+        List of selected column names in current order.
+    """
+    # Initialize session state
+    order_key = f"{session_key}_order"
+    if order_key not in st.session_state:
+        st.session_state[order_key] = [c for c in default_columns if c in available_columns]
+
+    current_cols = st.session_state[order_key]
+
+    # Handle remove actions
+    for col_name in available_columns:
+        remove_key = f"{session_key}_remove_{col_name}"
+        if remove_key in st.session_state and st.session_state[remove_key]:
+            if col_name in current_cols:
+                current_cols.remove(col_name)
+                st.session_state[order_key] = current_cols
+            st.session_state[remove_key] = False
+
+    # Handle move actions
+    for col_name in available_columns:
+        left_key = f"{session_key}_left_{col_name}"
+        right_key = f"{session_key}_right_{col_name}"
+        if left_key in st.session_state and st.session_state[left_key]:
+            idx = current_cols.index(col_name) if col_name in current_cols else -1
+            if idx > 0:
+                current_cols[idx], current_cols[idx - 1] = current_cols[idx - 1], current_cols[idx]
+                st.session_state[order_key] = current_cols
+            st.session_state[left_key] = False
+        if right_key in st.session_state and st.session_state[right_key]:
+            idx = current_cols.index(col_name) if col_name in current_cols else -1
+            if 0 <= idx < len(current_cols) - 1:
+                current_cols[idx], current_cols[idx + 1] = current_cols[idx + 1], current_cols[idx]
+                st.session_state[order_key] = current_cols
+            st.session_state[right_key] = False
+
+    # Render the column pills
+    pill_style = (
+        f"display: inline-flex; align-items: center; gap: 4px; "
+        f"background: rgba(99, 102, 241, 0.12); border: 1px solid rgba(99, 102, 241, 0.3); "
+        f"border-radius: 8px; padding: 6px 10px; margin: 3px; "
+        f"font-family: {FONT}; font-size: 11px; font-weight: 600; "
+        f"color: rgba(255, 255, 255, 0.85); text-transform: uppercase; letter-spacing: 0.04em;"
+    )
+
+    st.markdown(
+        f'<div style="font-family: {FONT}; font-size: 10px; color: {COLOR_DIM}; '
+        f'text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; font-weight: 600;">'
+        f'Active Columns (use arrows to reorder, X to remove)</div>',
+        unsafe_allow_html=True
+    )
+
+    # Render active columns as a row of pills with buttons
+    if current_cols:
+        cols_per_row = min(len(current_cols), 6)
+        for row_start in range(0, len(current_cols), cols_per_row):
+            row_slice = current_cols[row_start:row_start + cols_per_row]
+            btn_cols = st.columns(len(row_slice))
+            for i, col_name in enumerate(row_slice):
+                with btn_cols[i]:
+                    abs_idx = row_start + i
+                    c1, c2, c3 = st.columns([1, 3, 1])
+                    with c1:
+                        st.button(
+                            "\u25c0", key=f"{session_key}_left_{col_name}",
+                            disabled=(abs_idx == 0),
+                            help=f"Move {col_name} left"
+                        )
+                    with c2:
+                        # Truncate long names
+                        display_name = col_name if len(col_name) <= 14 else col_name[:12] + ".."
+                        st.markdown(
+                            f'<div style="{pill_style}">{display_name}</div>',
+                            unsafe_allow_html=True
+                        )
+                    with c3:
+                        st.button(
+                            "\u2715", key=f"{session_key}_remove_{col_name}",
+                            help=f"Remove {col_name}"
+                        )
+
+    # Add column back selector
+    removed_cols = [c for c in available_columns if c not in current_cols]
+    if removed_cols:
+        add_col = st.selectbox(
+            "Add column back",
+            options=[""] + removed_cols,
+            key=f"{session_key}_add_back",
+            label_visibility="collapsed",
+        )
+        if add_col and add_col not in current_cols:
+            current_cols.append(add_col)
+            st.session_state[order_key] = current_cols
+            st.rerun()
+
+    return current_cols
+
+
+# =============================================================================
+# TABLE CARD WRAPPER
+# =============================================================================
+
+def render_table_card(title: str, table_html: str, icon: str = "") -> str:
+    """
+    Wrap a table in a glassmorphism card with a heading.
+
+    Args:
+        title: Card heading text
+        table_html: The rendered table HTML
+        icon: Optional emoji icon for the heading
+
+    Returns:
+        Full HTML string with card + heading + table.
+    """
+    icon_html = f'<span style="font-size: 1.25rem; margin-right: 8px;">{icon}</span>' if icon else ""
+    heading_style = (
+        f"font-family: {FONT}; font-size: 1.25rem; font-weight: 700; "
+        f"color: #f8fafc; margin-bottom: 1rem; "
+        f"background: linear-gradient(135deg, #00d4ff 0%, #6366f1 50%, #8b5cf6 100%); "
+        f"-webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;"
+    )
+    card_style = (
+        f"background: linear-gradient(135deg, rgba(26, 29, 41, 0.95), rgba(20, 23, 35, 0.9)); "
+        f"backdrop-filter: blur(24px); border-radius: 16px; "
+        f"border: 1px solid rgba(99, 102, 241, 0.2); "
+        f"padding: 1.5rem; margin: 1rem 0; "
+        f"box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3), "
+        f"0 0 15px rgba(99, 102, 241, 0.1);"
+    )
+    return (
+        f'<div style="{card_style}">'
+        f'<h3 style="{heading_style}">{icon_html}{title}</h3>'
+        f'{table_html}'
+        f'</div>'
     )
 
 
@@ -538,4 +743,10 @@ __all__ = [
     'render_movers_table',
     'render_holdings_table',
     'render_generic_table',
+
+    # Interactive column management
+    'render_column_manager',
+
+    # Card wrapper
+    'render_table_card',
 ]
