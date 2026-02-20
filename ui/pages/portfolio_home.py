@@ -219,91 +219,69 @@ def render_portfolio_home(start_date, end_date):
             st.markdown(risk_snapshot_html, unsafe_allow_html=True)
 
     st.markdown("---")
-    st.markdown("### 📋 Holdings")
 
-    # Column selector for interactive table customization
-    with st.expander("⚙️ Customize Columns", expanded=False):
-        # Define all available columns (Phase 1 Fix: Use Display Ticker)
-        ALL_COLUMNS = [
-            'Display Ticker', 'Asset Name', 'Shares', 'Avg Cost', 'Current Price',
-            'Daily Change %', '5D Return %', 'YTD Return %',
-            'Weight % of Equity', 'Weight % of Gross', 'Weight %',
-            'Daily P&L $', 'Total Gain/Loss $', 'Total Gain/Loss %',
-            'Beta', 'Analyst Rating', 'Quality Score', 'Sector',
-            'Price Target', 'Volume'
-        ]
+    # ==================== CURRENT HOLDINGS TABLE ====================
+    from core.atlas_table_formatting import render_generic_table, render_column_manager, render_table_card
 
-        # Default columns to show (include both new weight columns)
-        DEFAULT_COLUMNS = [
-            'Display Ticker', 'Asset Name', 'Shares', 'Current Price',
-            'Daily Change %', '5D Return %',
-            'Weight % of Equity', 'Weight % of Gross',
-            'Total Gain/Loss $', 'Total Gain/Loss %', 'Quality Score'
-        ]
+    # Define all available columns
+    ALL_COLUMNS = [
+        'Display Ticker', 'Asset Name', 'Shares', 'Avg Cost', 'Current Price',
+        'Daily Change %', '5D Return %', 'YTD Return %',
+        'Weight % of Equity', 'Weight % of Gross', 'Weight %',
+        'Daily P&L $', 'Total Gain/Loss $', 'Total Gain/Loss %',
+        'Beta', 'Analyst Rating', 'Quality Score', 'Sector',
+        'Price Target', 'Volume'
+    ]
 
-        # Filter only columns that exist in enhanced_df
-        available_columns = [col for col in ALL_COLUMNS if col in enhanced_df.columns]
-        default_selected = [col for col in DEFAULT_COLUMNS if col in enhanced_df.columns]
+    DEFAULT_COLUMNS = [
+        'Display Ticker', 'Asset Name', 'Shares', 'Current Price',
+        'Daily Change %', '5D Return %',
+        'Weight % of Equity', 'Weight % of Gross',
+        'Total Gain/Loss $', 'Total Gain/Loss %', 'Quality Score'
+    ]
 
-        selected_columns = st.multiselect(
-            "Select Columns to Display",
-            options=available_columns,
-            default=default_selected,
-            help="Choose which columns to show in the holdings table"
+    # Filter only columns that exist in enhanced_df
+    available_columns = [col for col in ALL_COLUMNS if col in enhanced_df.columns]
+    default_selected = [col for col in DEFAULT_COLUMNS if col in enhanced_df.columns]
+
+    # Interactive column management widget
+    with st.expander("⚙️ Manage Columns — Reorder & Remove", expanded=False):
+        selected_columns = render_column_manager(
+            available_columns=available_columns,
+            default_columns=default_selected,
+            session_key="holdings_table_columns",
         )
 
-    # Display holdings table (PHASE 2A: Enhanced with atlas_table)
+    # Display holdings table
     if selected_columns:
-        # Create display dataframe with selected columns
         display_df = enhanced_df[selected_columns].copy()
 
-        # Format columns appropriately
-        pct_cols = [col for col in selected_columns if '%' in col]
-        for col in pct_cols:
-            if col in display_df.columns:
-                display_df[col] = display_df[col].apply(lambda x: format_percentage(x) if pd.notna(x) else 'N/A')
+        # Column type mapping for ATLAS table formatting
+        def _get_col_type(c):
+            if c == 'Display Ticker':
+                return 'ticker'
+            if c == 'Shares':
+                return 'shares'
+            if c == 'Quality Score':
+                return 'quality_score'
+            if c == 'Volume':
+                return 'volume'
+            if c == 'Beta':
+                return 'ratio'
+            if any(k in c for k in ('Price', 'Value', 'Cost', 'P&L $', 'Target')):
+                return 'price'
+            if '%' in c or 'Change' in c or 'Return' in c or 'Gain/Loss' in c:
+                return 'change'
+            return 'text'
 
-        currency_cols = ['Avg Cost', 'Current Price', 'Daily P&L $', 'Total Gain/Loss $', 'Price Target']
-        for col in currency_cols:
-            if col in display_df.columns:
-                display_df[col] = display_df[col].apply(lambda x: format_currency(x, currency_symbol=currency_symbol) if pd.notna(x) else 'N/A')
+        col_defs = [{'key': c, 'label': c, 'type': _get_col_type(c)} for c in display_df.columns]
+        table_html = render_generic_table(display_df, columns=col_defs)
 
-        # Add arrow indicators for change columns
-        if 'Daily Change %' in display_df.columns:
-            display_df['Daily Change %'] = display_df['Daily Change %'].apply(add_arrow_indicator)
-        if 'Total Gain/Loss %' in display_df.columns:
-            display_df['Total Gain/Loss %'] = display_df['Total Gain/Loss %'].apply(add_arrow_indicator)
-
-        # PHASE 2A: Enhanced table with inline HTML (bypassing atlas_table function)
-        st.markdown(f"""
-        <h3 style='font-size: 1.25rem; font-weight: 700; color: #f8fafc; margin-bottom: 1rem; background: linear-gradient(135deg, #00d4ff 0%, #6366f1 50%, #8b5cf6 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;'>Current Holdings</h3>
-        """, unsafe_allow_html=True)
-
-        # Add neon border styling to holdings table container
-        st.markdown("""
-        <style>
-        .holdings-table-container {
-            border: 2px solid rgba(0, 188, 212, 0.5);
-            border-radius: 12px;
-            padding: 8px;
-            margin: 12px 0;
-            box-shadow:
-                0 0 15px rgba(0, 188, 212, 0.3),
-                0 0 30px rgba(0, 188, 212, 0.15),
-                inset 0 0 20px rgba(0, 188, 212, 0.05);
-            background: linear-gradient(135deg, rgba(26, 29, 41, 0.95), rgba(20, 23, 35, 0.9));
-        }
-        </style>
-        <div class="holdings-table-container">
-        """, unsafe_allow_html=True)
-
-        # Render with ATLAS table formatting
-        from core.atlas_table_formatting import render_generic_table
-        col_defs = [{'key': c, 'label': c, 'type': 'ticker' if c == 'Display Ticker' else ('price' if any(k in c for k in ('Price', 'Value', 'Cost', 'P&L $', 'Target')) else ('change' if '%' in c or 'Change' in c or 'Return' in c or 'Gain/Loss' in c else ('volume' if c == 'Volume' else ('ratio' if c in ('Beta', 'Quality Score') else 'text'))))} for c in display_df.columns]
-        st.markdown(render_generic_table(display_df, columns=col_defs), unsafe_allow_html=True)
-
-        # Close the neon border container
-        st.markdown("</div>", unsafe_allow_html=True)
+        # Render inside a glassmorphism card with heading
+        st.markdown(
+            render_table_card("Current Holdings", table_html, icon="📋"),
+            unsafe_allow_html=True
+        )
 
         # Add explanation for dual weight columns
         if 'Weight % of Equity' in selected_columns or 'Weight % of Gross' in selected_columns:

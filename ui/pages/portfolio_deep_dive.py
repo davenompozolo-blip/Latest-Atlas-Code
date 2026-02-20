@@ -413,7 +413,7 @@ def render_portfolio_deep_dive(start_date, end_date):
 
         # Display quality scorecard table
         from core.atlas_table_formatting import render_generic_table
-        col_defs_q = [{'key': c, 'label': c, 'type': 'ticker' if c == 'Ticker' else ('price' if 'Price' in c else ('change' if 'Upside' in c else ('ratio' if 'Score' in c or 'ROE' in c or 'P/E' in c or 'Margin' in c else 'text')))} for c in quality_df.columns]
+        col_defs_q = [{'key': c, 'label': c, 'type': 'ticker' if c == 'Ticker' else ('price' if 'Price' in c else ('change' if 'Upside' in c else ('quality_score' if c == 'Quality Score' else ('ratio' if 'ROE' in c or 'P/E' in c or 'Margin' in c else 'text'))))} for c in quality_df.columns]
         st.markdown(render_generic_table(quality_df, columns=col_defs_q), unsafe_allow_html=True)
 
         # Quality distribution chart

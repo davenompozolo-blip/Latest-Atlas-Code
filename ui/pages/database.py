@@ -113,7 +113,7 @@ def render_database():
                     display_df = display_df.sort_values('value', ascending=False)
                     st.markdown(render_generic_table(display_df, columns=[
                         {'key': 'ticker', 'label': 'Ticker', 'type': 'ticker'},
-                        {'key': 'quantity', 'label': 'Qty', 'type': 'text'},
+                        {'key': 'quantity', 'label': 'Qty', 'type': 'shares'},
                         {'key': 'avg_cost', 'label': 'Avg Cost', 'type': 'price'},
                         {'key': 'current_price', 'label': 'Price', 'type': 'price'},
                         {'key': 'value', 'label': 'Value', 'type': 'price'},
@@ -135,7 +135,7 @@ def render_database():
                         {'key': 'date', 'label': 'Date', 'type': 'text'},
                         {'key': 'ticker', 'label': 'Ticker', 'type': 'ticker'},
                         {'key': 'action', 'label': 'Action', 'type': 'text'},
-                        {'key': 'quantity', 'label': 'Qty', 'type': 'text'},
+                        {'key': 'quantity', 'label': 'Qty', 'type': 'shares'},
                         {'key': 'price', 'label': 'Price', 'type': 'price'},
                     ]), unsafe_allow_html=True)
                     st.caption(f"💾 Showing {len(trades)} most recent trades from database")

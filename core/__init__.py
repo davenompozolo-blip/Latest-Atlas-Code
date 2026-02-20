@@ -219,6 +219,8 @@ from .atlas_table_formatting import (
     render_movers_table,
     render_holdings_table,
     render_generic_table,
+    render_column_manager,
+    render_table_card,
     format_volume,
     format_price,
     format_percent,
