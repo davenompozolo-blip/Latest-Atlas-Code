@@ -173,8 +173,8 @@ def create_sector_treemap(sector_data: List[Dict], metric: str = 'ytd_return') -
     fig.update_layout(
         height=700,
         margin=dict(l=10, r=10, t=60, b=10),
-        paper_bgcolor='rgba(15, 23, 42, 0.95)',
-        plot_bgcolor='rgba(15, 23, 42, 0.95)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
         font=dict(color='#e2e8f0', family='Inter, sans-serif'),
         title=dict(
             text='<b>S&P 500 Sector Performance Heatmap</b>',
@@ -289,7 +289,7 @@ def create_mini_index_chart(ticker: str, period: str = '1d', show_dates: bool = 
                 tickfont=dict(size=9, color='#94a3b8')
             ),
             paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(15, 23, 42, 0.5)' if show_dates else 'rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)' if show_dates else 'rgba(0,0,0,0)',
             hovermode='x unified'
         )
 
@@ -508,8 +508,8 @@ def apply_chart_theme(fig: go.Figure, theme: str = 'dark') -> go.Figure:
     if theme == 'dark':
         fig.update_layout(
             template='plotly_dark',
-            paper_bgcolor='#0f172a',
-            plot_bgcolor='#1e293b',
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
             font=dict(color='#e2e8f0', family='Inter, sans-serif')
         )
     else:

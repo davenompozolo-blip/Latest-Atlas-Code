@@ -20,7 +20,7 @@ def render_leverage_tracker(start_date, end_date):
     )
     from ui.components import ATLAS_TEMPLATE
 
-    st.markdown('<h1 style="font-size: 2.5rem; font-weight: 800; color: #f8fafc; margin-bottom: 0.5rem;"><span style="font-size: 2rem;">📊</span> <span style="background: linear-gradient(135deg, #00d4ff, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">LEVERAGE TRACKING & ANALYSIS</span></h1>', unsafe_allow_html=True)
+    st.markdown('<h1 style="font-size: 2.5rem; font-weight: 800; color: #f8fafc; margin-bottom: 0.5rem;"><span style="font-size: 2rem;">📊</span> <span style="background: linear-gradient(135deg, #818cf8, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">LEVERAGE TRACKING & ANALYSIS</span></h1>', unsafe_allow_html=True)
     st.markdown("**Track how leverage has affected your returns over time**")
 
     # FIX #6: Removed duplicate upload - keep uploads centralized in Phoenix Parser
@@ -49,7 +49,7 @@ def render_leverage_tracker(start_date, end_date):
         stats = tracker.get_current_stats()
 
         # Header metrics
-        st.markdown('<h2 style="font-size: 1.5rem; font-weight: 700; color: #f8fafc; margin-bottom: 1.5rem;"><span style="font-size: 1.25rem;">📊</span> <span style="background: linear-gradient(135deg, #00d4ff, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Current Statistics</span></h2>', unsafe_allow_html=True)
+        st.markdown('<h2 style="font-size: 1.5rem; font-weight: 700; color: #f8fafc; margin-bottom: 1.5rem;"><span style="font-size: 1.25rem;">📊</span> <span style="background: linear-gradient(135deg, #818cf8, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Current Statistics</span></h2>', unsafe_allow_html=True)
 
         col1, col2, col3, col4, col5 = st.columns(5)
 
@@ -97,14 +97,14 @@ def render_leverage_tracker(start_date, end_date):
 
         # Dashboard
         st.markdown("---")
-        st.markdown('<h2 style="font-size: 1.5rem; font-weight: 700; color: #f8fafc; margin-bottom: 1.5rem;"><span style="font-size: 1.25rem;">📊</span> <span style="background: linear-gradient(135deg, #00d4ff, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">6-Chart Leverage Dashboard</span></h2>', unsafe_allow_html=True)
+        st.markdown('<h2 style="font-size: 1.5rem; font-weight: 700; color: #f8fafc; margin-bottom: 1.5rem;"><span style="font-size: 1.25rem;">📊</span> <span style="background: linear-gradient(135deg, #818cf8, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">6-Chart Leverage Dashboard</span></h2>', unsafe_allow_html=True)
 
         fig = tracker.create_leverage_dashboard()
         st.plotly_chart(fig, use_container_width=True)
 
         # Workings
         st.markdown("---")
-        st.markdown('<h2 style="font-size: 1.5rem; font-weight: 700; color: #f8fafc; margin-bottom: 1.5rem;"><span style="font-size: 1.25rem;">🧮</span> <span style="background: linear-gradient(135deg, #00d4ff, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Calculation Workings</span></h2>', unsafe_allow_html=True)
+        st.markdown('<h2 style="font-size: 1.5rem; font-weight: 700; color: #f8fafc; margin-bottom: 1.5rem;"><span style="font-size: 1.25rem;">🧮</span> <span style="background: linear-gradient(135deg, #818cf8, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Calculation Workings</span></h2>', unsafe_allow_html=True)
         st.markdown("**See exactly how leverage is calculated**")
 
         workings = tracker.create_workings_display()
@@ -112,7 +112,7 @@ def render_leverage_tracker(start_date, end_date):
 
         # Historical data table
         st.markdown("---")
-        st.markdown('<h2 style="font-size: 1.5rem; font-weight: 700; color: #f8fafc; margin-bottom: 1.5rem;"><span style="font-size: 1.25rem;">📋</span> <span style="background: linear-gradient(135deg, #00d4ff, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Historical Data Table</span></h2>', unsafe_allow_html=True)
+        st.markdown('<h2 style="font-size: 1.5rem; font-weight: 700; color: #f8fafc; margin-bottom: 1.5rem;"><span style="font-size: 1.25rem;">📋</span> <span style="background: linear-gradient(135deg, #818cf8, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Historical Data Table</span></h2>', unsafe_allow_html=True)
 
         display_df = tracker.leverage_history[[
             'Date', 'Net Equity', 'Gross Exposure', 'Leverage Ratio',
@@ -141,7 +141,7 @@ def render_leverage_tracker(start_date, end_date):
 
         # Export options
         st.markdown("---")
-        st.markdown('<h2 style="font-size: 1.5rem; font-weight: 700; color: #f8fafc; margin-bottom: 1.5rem;"><span style="font-size: 1.25rem;">💾</span> <span style="background: linear-gradient(135deg, #00d4ff, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Export Options</span></h2>', unsafe_allow_html=True)
+        st.markdown('<h2 style="font-size: 1.5rem; font-weight: 700; color: #f8fafc; margin-bottom: 1.5rem;"><span style="font-size: 1.25rem;">💾</span> <span style="background: linear-gradient(135deg, #818cf8, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Export Options</span></h2>', unsafe_allow_html=True)
 
         col1, col2 = st.columns(2)
 

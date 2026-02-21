@@ -208,7 +208,7 @@ def render_r_analytics():
                             y=result['volatility'] * 100,
                             mode='lines',
                             name=f'{model_type} Volatility',
-                            line=dict(color='#00d4ff', width=2)
+                            line=dict(color='#818cf8', width=2)
                         ))
                         fig.update_layout(
                             title=f"{ticker} - Conditional Volatility ({model_type})",
@@ -217,7 +217,7 @@ def render_r_analytics():
                             height=400,
                             template='plotly_dark',
                             paper_bgcolor='rgba(0,0,0,0)',
-                            plot_bgcolor='rgba(10,25,41,0.3)'
+                            plot_bgcolor='rgba(0,0,0,0)'
                         )
                         st.plotly_chart(fig, use_container_width=True)
 
@@ -283,7 +283,7 @@ def render_r_analytics():
                                 height=500,
                                 template='plotly_dark',
                                 paper_bgcolor='rgba(0,0,0,0)',
-                                plot_bgcolor='rgba(10,25,41,0.3)'
+                                plot_bgcolor='rgba(0,0,0,0)'
                             )
                             st.plotly_chart(fig, use_container_width=True)
 

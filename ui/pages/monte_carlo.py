@@ -194,7 +194,7 @@ def render_monte_carlo():
                         fig.add_trace(go.Scatter(
                             y=portfolio_paths[i, :],
                             mode='lines',
-                            line=dict(width=0.5, color='rgba(0, 212, 255, 0.1)'),
+                            line=dict(width=0.5, color='rgba(99, 102, 241, 0.1)'),
                             showlegend=False,
                             hoverinfo='skip'
                         ))
@@ -225,7 +225,7 @@ def render_monte_carlo():
                         x=final_returns,
                         nbinsx=50,
                         name='Returns Distribution',
-                        marker_color='#00d4ff'
+                        marker_color='#818cf8'
                     ))
 
                     # Add VaR line

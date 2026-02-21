@@ -1,11 +1,19 @@
 """
 ATLAS Terminal - CSS Injection Module
-All inline CSS/JS styles extracted from atlas_app.py.
+Glassmorphism Design System v2.0
+
+Ambient dark UI with frosted-glass panels, indigo/cyan accents,
+and seamless transparent chart integration.
 
 Call init_atlas_css() once at app startup to inject all styles.
 """
 
 import streamlit as st
+
+
+# ============================================================
+# SECTION 1 — PREMIUM LAYOUT (chrome removal, zero-padding)
+# ============================================================
 
 def apply_premium_layout_css():
     """Premium layout: remove Streamlit chrome, zero-padding, responsive metric cards."""
@@ -31,24 +39,25 @@ button[data-testid="collapsedControl"] {
     top: 1rem !important;
     left: 1rem !important;
     z-index: 999999 !important;
-    background: rgba(0, 212, 255, 0.15) !important;
-    border: 2px solid rgba(0, 212, 255, 0.6) !important;
+    background: rgba(99, 102, 241, 0.12) !important;
+    border: 1px solid rgba(99, 102, 241, 0.3) !important;
     border-radius: 12px !important;
     padding: 0.75rem !important;
-    width: 48px !important;
-    height: 48px !important;
+    width: 44px !important;
+    height: 44px !important;
     cursor: pointer !important;
-    transition: all 0.3s ease !important;
-    box-shadow: 0 4px 16px rgba(0, 212, 255, 0.3) !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    backdrop-filter: blur(16px) !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25) !important;
 }
 
 button[kind="header"]:hover,
 button[data-testid="baseButton-header"]:hover,
 button[data-testid="collapsedControl"]:hover {
-    background: rgba(0, 212, 255, 0.3) !important;
-    border-color: rgba(0, 212, 255, 1) !important;
-    box-shadow: 0 6px 24px rgba(0, 212, 255, 0.5),
-                0 0 32px rgba(0, 212, 255, 0.3) !important;
+    background: rgba(99, 102, 241, 0.22) !important;
+    border-color: rgba(99, 102, 241, 0.5) !important;
+    box-shadow: 0 6px 24px rgba(99, 102, 241, 0.3),
+                0 0 32px rgba(99, 102, 241, 0.15) !important;
     transform: scale(1.05) !important;
 }
 
@@ -58,19 +67,20 @@ button[data-testid="collapsedControl"] svg {
     display: block !important;
     visibility: visible !important;
     opacity: 1 !important;
-    color: #ffffff !important;
-    fill: #ffffff !important;
-    width: 24px !important;
-    height: 24px !important;
+    color: #e2e8f0 !important;
+    fill: #e2e8f0 !important;
+    width: 22px !important;
+    height: 22px !important;
 }
 
 button[kind="header"]:hover svg,
 button[data-testid="baseButton-header"]:hover svg,
 button[data-testid="collapsedControl"]:hover svg {
-    color: #00d4ff !important;
-    fill: #00d4ff !important;
-    filter: drop-shadow(0 0 8px rgba(0, 212, 255, 0.8)) !important;
+    color: #818cf8 !important;
+    fill: #818cf8 !important;
+    filter: drop-shadow(0 0 6px rgba(129, 140, 248, 0.6)) !important;
 }
+
 footer { display: none !important; visibility: hidden !important; height: 0 !important; overflow: hidden !important; }
 .stDeployButton { display: none !important; }
 .stMainBlockContainer { padding-bottom: 0 !important; }
@@ -133,7 +143,6 @@ div[data-testid="stMetricLabel"] { font-size: 0.8rem !important; }
 hr { margin: 0.25rem 0 !important; }
 
 /* ===== RESPONSIVE METRIC CARDS ===== */
-/* Card labels - prevent text wrapping, responsive sizing */
 div[data-testid="column"] p[style*="text-transform: uppercase"] {
     white-space: nowrap !important;
     overflow: hidden !important;
@@ -141,7 +150,6 @@ div[data-testid="column"] p[style*="text-transform: uppercase"] {
     font-size: clamp(0.5rem, 0.9vw, 0.65rem) !important;
 }
 
-/* Card values - responsive sizing */
 div[data-testid="column"] h3[style*="font-weight: 800"] {
     font-size: clamp(1.4rem, 2.2vw, 2.5rem) !important;
     white-space: nowrap !important;
@@ -149,21 +157,18 @@ div[data-testid="column"] h3[style*="font-weight: 800"] {
     text-overflow: ellipsis !important;
 }
 
-/* Card containers - reduce padding and min-height for density */
 div[data-testid="column"] > div > div > div[style*="backdrop-filter"] {
     padding: clamp(1rem, 1.5vw, 1.75rem) clamp(0.75rem, 1.2vw, 1.5rem) !important;
     min-height: clamp(140px, 15vw, 200px) !important;
     border-radius: 16px !important;
 }
 
-/* Card status badges - tighter */
 div[data-testid="column"] div[style*="border-radius: 10px"] p,
 div[data-testid="column"] div[style*="border-radius: 12px"] p {
     font-size: clamp(0.55rem, 0.8vw, 0.7rem) !important;
     white-space: nowrap !important;
 }
 
-/* Capital structure cards - also scale values */
 div[data-testid="column"] h3[style*="font-size: 2.75rem"] {
     font-size: clamp(1.6rem, 2.5vw, 2.75rem) !important;
     white-space: nowrap !important;
@@ -204,6 +209,10 @@ h2[style*="font-size: 1.5rem"] {
 </style>
 """, unsafe_allow_html=True)
 
+
+# ============================================================
+# SECTION 2 — FULL-WIDTH JS ENFORCEMENT
+# ============================================================
 
 def apply_full_width_js():
     """Full-width enforcement via JavaScript MutationObserver."""
@@ -250,180 +259,172 @@ def apply_full_width_js():
     }
 })();
 </script>
-""", unsafe_allow_javascript=True)
+""", unsafe_allow_html=True)
 
+
+# ============================================================
+# SECTION 3 — FIGMA CHART BORDERS & DROPDOWNS
+# ============================================================
 
 def apply_figma_borders_css():
-    """Figma redesign: subtle chart borders, selectbox/dropdown styling."""
+    """Figma redesign: glassmorphic chart containers, selectbox/dropdown styling."""
     st.markdown("""
 <style>
-/* FIGMA REDESIGN: Subtle gray borders for all charts */
+/* ===== GLASSMORPHIC CHART CONTAINERS ===== */
 .stPlotlyChart {
-    border: 1px solid rgb(31, 41, 55) !important;
-    border-radius: 12px !important;
+    border: 1px solid rgba(99, 102, 241, 0.15) !important;
+    border-radius: 16px !important;
     padding: 4px !important;
     margin: 8px 0 !important;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3) !important;
-    background: rgba(15, 21, 32, 0.6) !important;
-    transition: all 0.3s ease !important;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3),
+                inset 0 1px 0 rgba(255, 255, 255, 0.03) !important;
+    background: rgba(15, 18, 35, 0.45) !important;
+    backdrop-filter: blur(12px) saturate(140%) !important;
+    -webkit-backdrop-filter: blur(12px) saturate(140%) !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
     overflow: visible !important;
 }
 
-/* Ensure chart canvas doesn't overflow */
 .stPlotlyChart > div {
     height: 100% !important;
     overflow: visible !important;
 }
 
-/* Fix chart inner container */
 .stPlotlyChart iframe,
 .stPlotlyChart .js-plotly-plot {
     overflow: visible !important;
 }
 
 .stPlotlyChart:hover {
-    border-color: rgb(55, 65, 81) !important;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4) !important;
+    border-color: rgba(99, 102, 241, 0.3) !important;
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4),
+                0 0 20px rgba(99, 102, 241, 0.08),
+                inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
 }
 
-/* Ensure dark backgrounds on Plotly modebar */
+/* Plotly modebar */
 .modebar-container {
     background: transparent !important;
 }
 
 .modebar-group .modebar-btn path {
-    fill: rgba(255, 255, 255, 0.6) !important;
+    fill: rgba(255, 255, 255, 0.5) !important;
 }
 
 .modebar-group .modebar-btn:hover path {
-    fill: #22d3ee !important;
+    fill: #818cf8 !important;
 }
 
-/* Major Indices - same subtle style */
+/* Major Indices chart containers */
 .major-indices-container .stPlotlyChart {
-    border: 1px solid rgb(31, 41, 55) !important;
+    border: 1px solid rgba(99, 102, 241, 0.15) !important;
     box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3) !important;
-    background: rgba(15, 21, 32, 0.6) !important;
+    background: rgba(15, 18, 35, 0.45) !important;
 }
 
-/* Override hover state for Major Indices too */
 .major-indices-container .stPlotlyChart:hover {
-    border: 1px solid rgb(55, 65, 81) !important;
+    border: 1px solid rgba(99, 102, 241, 0.3) !important;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4) !important;
 }
 
-/* ============================================
-   DROPDOWN / SELECTBOX TEXT VISIBILITY FIX
-   COMPREHENSIVE - Targets ALL selectbox elements
-   ============================================ */
+/* ===== DROPDOWN / SELECTBOX TEXT VISIBILITY ===== */
 
-/* Main selectbox wrapper */
 .stSelectbox {
     color: #FFFFFF !important;
 }
 
-/* Fix the select control and its children */
 .stSelectbox [data-baseweb="select"] {
-    background-color: #1a1d29 !important;
-    border-color: rgba(99, 102, 241, 0.3) !important;
+    background-color: rgba(15, 18, 35, 0.7) !important;
+    border-color: rgba(99, 102, 241, 0.2) !important;
+    backdrop-filter: blur(12px) !important;
 }
 
-/* The actual selected value text - CRITICAL */
 .stSelectbox [data-baseweb="select"] span {
     color: #FFFFFF !important;
 }
 
-/* Input element inside select */
 .stSelectbox [data-baseweb="select"] input {
     color: #FFFFFF !important;
     -webkit-text-fill-color: #FFFFFF !important;
 }
 
-/* The value container */
 .stSelectbox [data-baseweb="select"] > div {
     color: #FFFFFF !important;
-    background-color: #1a1d29 !important;
+    background-color: rgba(15, 18, 35, 0.7) !important;
 }
 
-/* Single value display */
 .stSelectbox [data-baseweb="select"] [data-testid="stSelectbox"] {
     color: #FFFFFF !important;
 }
 
-/* Fix placeholder and selected text */
 .stSelectbox div[data-baseweb="select"] div[aria-selected="true"],
 .stSelectbox div[data-baseweb="select"] div[class*="singleValue"],
 .stSelectbox div[data-baseweb="select"] div[class*="placeholder"] {
     color: #FFFFFF !important;
 }
 
-/* Dropdown arrow icon */
 .stSelectbox svg {
     fill: #FFFFFF !important;
 }
 
-/* Selectbox label */
 .stSelectbox label {
     color: #FFFFFF !important;
     font-weight: 500 !important;
 }
 
-/* Dropdown popover/menu background */
+/* Dropdown popover/menu */
 [data-baseweb="popover"],
 [data-baseweb="menu"],
 [data-baseweb="select"] [data-baseweb="popover"] {
-    background-color: #1a1d29 !important;
-    border: 1px solid rgba(99, 102, 241, 0.3) !important;
+    background-color: rgba(15, 18, 35, 0.92) !important;
+    border: 1px solid rgba(99, 102, 241, 0.2) !important;
+    backdrop-filter: blur(20px) !important;
 }
 
-/* Dropdown menu list */
 [data-baseweb="menu"] ul,
 [data-baseweb="popover"] ul {
-    background-color: #1a1d29 !important;
+    background-color: rgba(15, 18, 35, 0.92) !important;
 }
 
-/* All dropdown options */
 [data-baseweb="menu"] li,
 [data-baseweb="popover"] li,
 [role="option"] {
-    background-color: #1a1d29 !important;
+    background-color: transparent !important;
     color: #FFFFFF !important;
 }
 
-/* Dropdown option hover */
 [data-baseweb="menu"] li:hover,
 [data-baseweb="popover"] li:hover,
 [role="option"]:hover {
-    background-color: rgba(99, 102, 241, 0.2) !important;
-    color: #00BCD4 !important;
+    background-color: rgba(99, 102, 241, 0.15) !important;
+    color: #818cf8 !important;
 }
 
-/* Selected dropdown option */
 [role="option"][aria-selected="true"] {
-    background-color: rgba(99, 102, 241, 0.3) !important;
-    color: #00BCD4 !important;
+    background-color: rgba(99, 102, 241, 0.2) !important;
+    color: #a5b4fc !important;
 }
 
-/* Multiselect styling */
+/* Multiselect */
 .stMultiSelect [data-baseweb="select"] {
-    background-color: #1a1d29 !important;
+    background-color: rgba(15, 18, 35, 0.7) !important;
 }
 
 .stMultiSelect [data-baseweb="select"] > div {
-    background-color: #1a1d29 !important;
+    background-color: rgba(15, 18, 35, 0.7) !important;
     color: #FFFFFF !important;
 }
 
 .stMultiSelect [data-baseweb="tag"] {
-    background-color: rgba(99, 102, 241, 0.3) !important;
+    background-color: rgba(99, 102, 241, 0.2) !important;
     color: #FFFFFF !important;
+    border: 1px solid rgba(99, 102, 241, 0.3) !important;
 }
 
 .stMultiSelect [data-baseweb="tag"] span {
     color: #FFFFFF !important;
 }
 
-/* Multiselect X button (remove tag) - VISIBLE and STYLED */
 .stMultiSelect [data-baseweb="tag"] svg,
 .stMultiSelect [data-baseweb="tag"] [role="button"] {
     color: #FFFFFF !important;
@@ -440,20 +441,18 @@ def apply_figma_borders_css():
     fill: #ef4444 !important;
 }
 
-/* Better padding for dropdown text */
+/* Better padding */
 .stSelectbox [data-baseweb="select"] > div {
     padding: 8px 12px !important;
     min-height: 42px !important;
 }
 
-/* Dropdown menu option padding */
 [data-baseweb="menu"] li,
 [role="option"] {
     padding: 10px 16px !important;
     line-height: 1.4 !important;
 }
 
-/* Better multiselect tag spacing */
 .stMultiSelect [data-baseweb="tag"] {
     padding: 4px 8px !important;
     margin: 2px 4px 2px 0 !important;
@@ -461,7 +460,6 @@ def apply_figma_borders_css():
     border-radius: 6px !important;
 }
 
-/* Ensure nothing clips text */
 .stSelectbox *,
 .stMultiSelect * {
     overflow: visible !important;
@@ -470,14 +468,20 @@ def apply_figma_borders_css():
 """, unsafe_allow_html=True)
 
 
+# ============================================================
+# SECTION 4 — GLASSMORPHISM CORE (fonts, background, cards,
+#              typography, metrics, buttons, inputs, tabs,
+#              expanders, scrollbar, effects, responsive)
+# ============================================================
+
 def apply_glassmorphism_css():
-    """Modern UI/UX: glassmorphism, fonts, cards, tables, buttons, inputs."""
+    """Modern glassmorphism design system: frosted-glass panels, indigo/cyan palette."""
     st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@300;400;500;600;700&display=swap');
 
     /* ============================================
-       CORE FOUNDATIONS - Figma Redesign
+       CORE FOUNDATIONS — Glassmorphism v2
        ============================================ */
 
     * {
@@ -486,7 +490,6 @@ def apply_glassmorphism_css():
         -moz-osx-font-smoothing: grayscale;
     }
 
-    /* FIGMA REDESIGN: All headings use JetBrains Mono */
     h1, h2, h3, h4, h5, h6 {
         font-family: 'JetBrains Mono', monospace !important;
     }
@@ -495,13 +498,18 @@ def apply_glassmorphism_css():
         font-family: 'JetBrains Mono', monospace !important;
     }
 
-    /* Dark Background with Subtle Gradient */
+    /* ===== AMBIENT DARK BACKGROUND ===== */
+    .stApp {
+        background: radial-gradient(ellipse 120% 80% at 50% 0%, #0f1225 0%, #080a14 50%, #060810 100%) !important;
+        background-attachment: fixed !important;
+    }
+
     .main {
-        background: linear-gradient(135deg, #000000 0%, #0a0e1a 50%, #000000 100%);
+        background: transparent !important;
         background-attachment: fixed;
     }
 
-    /* Add subtle noise texture for depth */
+    /* Subtle noise texture for depth */
     .main::before {
         content: '';
         position: fixed;
@@ -509,7 +517,7 @@ def apply_glassmorphism_css():
         left: 0;
         width: 100%;
         height: 100%;
-        opacity: 0.03;
+        opacity: 0.025;
         background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
         pointer-events: none;
         z-index: 1;
@@ -523,14 +531,12 @@ def apply_glassmorphism_css():
         max-width: 1400px !important;
     }
 
-    /* Prevent text overflow and wrapping issues */
     .block-container * {
         max-width: 100%;
         overflow-wrap: break-word;
         word-wrap: break-word;
     }
 
-    /* Fix for inline-flex containers that could overflow */
     div[style*="display: inline-flex"],
     div[style*="display:inline-flex"] {
         flex-wrap: wrap !important;
@@ -538,31 +544,33 @@ def apply_glassmorphism_css():
     }
 
     /* ============================================
-       FIGMA REDESIGN: Cards with subtle borders
+       GLASSMORPHIC CARDS — Frosted panels
        ============================================ */
 
-    /* Streamlit metric cards - subtle gray borders */
     div[data-testid="stMetric"],
     .stExpander {
-        background: rgba(15, 21, 32, 0.6) !important;
-        backdrop-filter: blur(20px) saturate(180%) !important;
-        -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
-        border: 1px solid rgb(31, 41, 55) !important;
-        border-radius: 12px !important;
+        background: rgba(15, 18, 35, 0.45) !important;
+        backdrop-filter: blur(20px) saturate(160%) !important;
+        -webkit-backdrop-filter: blur(20px) saturate(160%) !important;
+        border: 1px solid rgba(99, 102, 241, 0.12) !important;
+        border-radius: 16px !important;
         padding: 24px !important;
-        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3) !important;
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
     }
 
     div[data-testid="stMetric"]:hover,
     .stExpander:hover {
         transform: translateY(-2px) !important;
-        border-color: rgb(55, 65, 81) !important;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4) !important;
+        border-color: rgba(99, 102, 241, 0.25) !important;
+        box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4),
+                    0 0 20px rgba(99, 102, 241, 0.06),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
     }
 
     /* ============================================
-       FIGMA REDESIGN: Typography with JetBrains Mono
+       TYPOGRAPHY — JetBrains Mono headings
        ============================================ */
 
     h1 {
@@ -572,11 +580,10 @@ def apply_glassmorphism_css():
         letter-spacing: 0.05em !important;
         line-height: 1.2 !important;
         margin-bottom: 0.5em !important;
-        color: #22d3ee !important;
-        /* Remove shimmer animation for cleaner look */
+        color: #a5b4fc !important;
         background: none !important;
-        -webkit-text-fill-color: #22d3ee !important;
-        text-shadow: 0 0 30px rgba(34, 211, 238, 0.3) !important;
+        -webkit-text-fill-color: #a5b4fc !important;
+        text-shadow: 0 0 30px rgba(99, 102, 241, 0.25) !important;
     }
 
     h2 {
@@ -591,14 +598,11 @@ def apply_glassmorphism_css():
         padding-left: 0 !important;
     }
 
-    /* FIGMA: Remove the left bar pseudo-element from h2 */
     h2::before {
         display: none !important;
         content: none !important;
     }
 
-    /* EXCEPTION: Remove left border pseudo-element from h2 inside custom HTML cards */
-    /* This prevents the global h2::before from appearing on regime cards, metric cards, etc. */
     div[style*="backdrop-filter"] h2::before,
     div[style*="border-radius: 24px"] h2::before,
     div[style*="border-radius: 20px"] h2::before,
@@ -628,21 +632,20 @@ def apply_glassmorphism_css():
     p {
         font-size: 1.05em !important;
         line-height: 1.7 !important;
-        color: #b0c4de !important;
+        color: #94a3b8 !important;
         font-weight: 400 !important;
     }
 
     /* ============================================
-       METRICS - Beautiful Number Display
+       METRICS — Glassmorphic number display
        ============================================ */
 
     div[data-testid="stMetric"] {
-        background: linear-gradient(135deg, rgba(10, 25, 41, 0.6) 0%, rgba(5, 15, 23, 0.8) 100%) !important;
+        background: rgba(15, 18, 35, 0.5) !important;
         position: relative;
         overflow: hidden;
     }
 
-    /* Animated gradient background on hover */
     div[data-testid="stMetric"]::before {
         content: '';
         position: absolute;
@@ -650,7 +653,7 @@ def apply_glassmorphism_css():
         left: -50%;
         width: 200%;
         height: 200%;
-        background: radial-gradient(circle, rgba(0, 212, 255, 0.1) 0%, transparent 70%);
+        background: radial-gradient(circle, rgba(99, 102, 241, 0.08) 0%, transparent 70%);
         opacity: 0;
         transition: opacity 0.4s ease;
     }
@@ -664,14 +667,14 @@ def apply_glassmorphism_css():
         font-weight: 600 !important;
         text-transform: uppercase !important;
         letter-spacing: 0.1em !important;
-        color: #6c8ca8 !important;
+        color: #64748b !important;
         margin-bottom: 8px !important;
     }
 
     div[data-testid="stMetric"] [data-testid="stMetricValue"] {
         font-size: 1.8em !important;
         font-weight: 800 !important;
-        background: linear-gradient(135deg, #ffffff 0%, #00d4ff 100%);
+        background: linear-gradient(135deg, #f8fafc 0%, #a5b4fc 100%);
         background-clip: text;
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
@@ -685,19 +688,12 @@ def apply_glassmorphism_css():
     }
 
     /* ============================================
-       TABLES - Now handled by ATLAS Table Formatting
-       (core/atlas_table_formatting.py)
-       Old st.dataframe CSS removed - all tables use
-       .atlas-html-table classes from inject_table_css()
-       ============================================ */
-
-    /* ============================================
-       BUTTONS - Modern Interactive Elements
+       BUTTONS — Indigo gradient interactive
        ============================================ */
 
     .stButton > button {
-        background: linear-gradient(135deg, #00d4ff 0%, #0080ff 100%) !important;
-        color: #000000 !important;
+        background: linear-gradient(135deg, #6366f1 0%, #818cf8 100%) !important;
+        color: #ffffff !important;
         border: none !important;
         border-radius: 12px !important;
         padding: 14px 32px !important;
@@ -705,7 +701,7 @@ def apply_glassmorphism_css():
         font-size: 15px !important;
         letter-spacing: 0.05em !important;
         text-transform: uppercase !important;
-        box-shadow: 0 4px 16px rgba(0, 212, 255, 0.3) !important;
+        box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3) !important;
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
         position: relative !important;
         overflow: hidden !important;
@@ -719,7 +715,7 @@ def apply_glassmorphism_css():
         width: 0;
         height: 0;
         border-radius: 50%;
-        background: rgba(255, 255, 255, 0.3);
+        background: rgba(255, 255, 255, 0.2);
         transform: translate(-50%, -50%);
         transition: width 0.6s, height 0.6s;
     }
@@ -731,7 +727,7 @@ def apply_glassmorphism_css():
 
     .stButton > button:hover {
         transform: translateY(-2px) !important;
-        box-shadow: 0 8px 24px rgba(0, 212, 255, 0.5) !important;
+        box-shadow: 0 8px 24px rgba(99, 102, 241, 0.4) !important;
     }
 
     .stButton > button:active {
@@ -739,7 +735,7 @@ def apply_glassmorphism_css():
     }
 
     /* ============================================
-       INPUTS - Clean Form Elements
+       INPUTS — Glassmorphic form elements
        ============================================ */
 
     input[type="text"],
@@ -747,34 +743,36 @@ def apply_glassmorphism_css():
     textarea,
     .stTextInput > div > div > input,
     .stNumberInput > div > div > input {
-        background: rgba(10, 25, 41, 0.5) !important;
-        border: 2px solid rgba(0, 212, 255, 0.2) !important;
+        background: rgba(15, 18, 35, 0.5) !important;
+        border: 1px solid rgba(99, 102, 241, 0.15) !important;
         border-radius: 10px !important;
         color: #ffffff !important;
         padding: 12px 16px !important;
         font-size: 15px !important;
         font-weight: 500 !important;
         transition: all 0.3s ease !important;
+        backdrop-filter: blur(8px) !important;
     }
 
     input:focus,
     textarea:focus {
-        border-color: #00d4ff !important;
-        box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.1) !important;
+        border-color: #6366f1 !important;
+        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12) !important;
         outline: none !important;
-        background: rgba(10, 25, 41, 0.7) !important;
+        background: rgba(15, 18, 35, 0.7) !important;
     }
 
     /* ============================================
-       TABS - Sleek Navigation
+       TABS — Frosted-glass navigation
        ============================================ */
 
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px !important;
-        background: rgba(10, 25, 41, 0.3) !important;
+        background: rgba(15, 18, 35, 0.3) !important;
         padding: 8px !important;
         border-radius: 12px !important;
-        border: 1px solid rgba(0, 212, 255, 0.1) !important;
+        border: 1px solid rgba(99, 102, 241, 0.08) !important;
+        backdrop-filter: blur(12px) !important;
     }
 
     .stTabs [data-baseweb="tab"] {
@@ -784,47 +782,45 @@ def apply_glassmorphism_css():
         padding: 12px 24px !important;
         font-weight: 600 !important;
         font-size: 14px !important;
-        color: #6c8ca8 !important;
+        color: #64748b !important;
         transition: all 0.3s ease !important;
     }
 
     .stTabs [data-baseweb="tab"]:hover {
-        background: rgba(0, 212, 255, 0.1) !important;
-        color: #00d4ff !important;
+        background: rgba(99, 102, 241, 0.08) !important;
+        color: #a5b4fc !important;
     }
 
     .stTabs [aria-selected="true"] {
-        background: linear-gradient(135deg, rgba(0, 212, 255, 0.2) 0%, rgba(0, 128, 255, 0.2) 100%) !important;
-        color: #00d4ff !important;
-        border: 1px solid rgba(0, 212, 255, 0.3) !important;
-        box-shadow: 0 4px 12px rgba(0, 212, 255, 0.15) !important;
+        background: rgba(99, 102, 241, 0.15) !important;
+        color: #a5b4fc !important;
+        border: 1px solid rgba(99, 102, 241, 0.25) !important;
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.12) !important;
     }
 
     /* ============================================
-       LAYOUT OPTIMIZATION - FIT LIKE A GLOVE
+       LAYOUT — Sidebar & stretch
        ============================================ */
 
-    /* Wider sidebar - 280px for breathing room */
     section[data-testid="stSidebar"] {
         display: block !important;
         width: 280px !important;
         min-width: 280px !important;
+        background: rgba(10, 12, 24, 0.85) !important;
+        backdrop-filter: blur(24px) saturate(150%) !important;
+        -webkit-backdrop-filter: blur(24px) saturate(150%) !important;
+        border-right: 1px solid rgba(99, 102, 241, 0.08) !important;
     }
 
     [data-testid="stSidebar"] > div:first-child {
         width: 280px !important;
+        background: transparent !important;
     }
 
-    /* Show sidebar collapse button */
     [data-testid="collapsedControl"] {
         display: block !important;
     }
 
-    /* ============================================
-       STRETCH CONTENT TO FILL SCREEN
-       ============================================ */
-
-    /* Full-width content area */
     .main .block-container {
         max-width: 100% !important;
         padding: 1rem 2rem !important;
@@ -835,7 +831,6 @@ def apply_glassmorphism_css():
         min-height: 100vh;
     }
 
-    /* Remove extra spacing */
     .element-container {
         margin-bottom: 0.5rem !important;
     }
@@ -848,90 +843,79 @@ def apply_glassmorphism_css():
         padding: 0 0.5rem !important;
     }
 
-    /* Optimize columns */
     .stColumn {
         padding: 0 0.5rem !important;
     }
 
-    /* Hide Streamlit header for more space */
     header[data-testid="stHeader"] {
         display: none;
     }
 
-    /* Compact sidebar content spacing */
     [data-testid="stSidebar"] .element-container {
         margin-bottom: 0.25rem !important;
     }
 
     /* ============================================
-       HORIZONTAL NAVIGATION - RESPONSIVE DESIGN
+       NAVIGATION — Responsive horizontal
        ============================================ */
 
-    /* Professional header styling */
     h1 {
         font-weight: 600;
         margin-top: 0.5rem !important;
         margin-bottom: 1rem !important;
-        background: linear-gradient(135deg, #00d4ff 0%, #0080ff 100%);
+        background: linear-gradient(135deg, #818cf8 0%, #a5b4fc 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         background-clip: text;
     }
 
-    /* Make horizontal menu scrollable on smaller screens */
     nav[role="navigation"] {
         overflow-x: auto;
         white-space: nowrap;
     }
 
-    /* Smooth scrolling for menu */
     nav[role="navigation"]::-webkit-scrollbar {
         height: 6px;
     }
 
     nav[role="navigation"]::-webkit-scrollbar-thumb {
-        background-color: rgba(0, 212, 255, 0.3);
+        background-color: rgba(99, 102, 241, 0.3);
         border-radius: 3px;
     }
 
     nav[role="navigation"]::-webkit-scrollbar-track {
-        background-color: rgba(10, 25, 41, 0.2);
+        background-color: rgba(15, 18, 35, 0.2);
     }
 
-    /* Professional card styling for metrics */
     [data-testid="metric-container"] {
-        background-color: rgba(10, 25, 41, 0.3);
-        border: 1px solid rgba(0, 212, 255, 0.2);
+        background-color: rgba(15, 18, 35, 0.4);
+        border: 1px solid rgba(99, 102, 241, 0.12);
         padding: 15px;
-        border-radius: 10px;
+        border-radius: 12px;
     }
 
     /* ============================================
-       EXPANDERS - Collapsible Sections
+       EXPANDERS — Collapsible glassmorphic sections
        ============================================ */
 
     .streamlit-expanderHeader {
-        background: rgba(10, 25, 41, 0.5) !important;
-        border: 1px solid rgba(0, 212, 255, 0.2) !important;
+        background: rgba(15, 18, 35, 0.4) !important;
+        border: 1px solid rgba(99, 102, 241, 0.12) !important;
         border-radius: 10px !important;
         padding: 16px !important;
         font-weight: 600 !important;
         font-size: 15px !important;
-        color: #00d4ff !important;
+        color: #a5b4fc !important;
         transition: all 0.3s ease !important;
     }
 
     .streamlit-expanderHeader:hover {
-        background: rgba(0, 212, 255, 0.1) !important;
-        border-color: rgba(0, 212, 255, 0.4) !important;
+        background: rgba(99, 102, 241, 0.08) !important;
+        border-color: rgba(99, 102, 241, 0.25) !important;
     }
 
-    /* ============================================
-       FIX: EXPANDER ICON/TEXT OVERLAP (PR #7596)
-       Prevent icon shrinking with long labels
-       ============================================ */
+    /* ===== Expander icon/text overlap fix ===== */
 
-    /* Target expander summary (header) */
     [data-testid="stExpander"] details summary {
         display: flex !important;
         align-items: center !important;
@@ -939,7 +923,6 @@ def apply_glassmorphism_css():
         min-height: 48px !important;
     }
 
-    /* CRITICAL FIX: Prevent icon from shrinking */
     [data-testid="stExpander"] details summary svg,
     [data-testid="stExpander"] details summary .streamlit-expanderHeader svg,
     .streamlit-expanderHeader svg {
@@ -949,7 +932,6 @@ def apply_glassmorphism_css():
         margin-right: 8px !important;
     }
 
-    /* Handle long text in expander labels */
     [data-testid="stExpander"] details summary > div,
     [data-testid="stExpander"] details summary .streamlit-expanderHeader {
         flex: 1 !important;
@@ -958,7 +940,6 @@ def apply_glassmorphism_css():
         white-space: nowrap !important;
     }
 
-    /* On hover, show full text */
     [data-testid="stExpander"] details summary:hover > div {
         overflow: visible !important;
         white-space: normal !important;
@@ -966,21 +947,25 @@ def apply_glassmorphism_css():
         z-index: 1000 !important;
     }
 
-    /* Ensure adequate container width */
     [data-testid="stExpander"] {
         width: 100% !important;
     }
 
     /* ============================================
-       PROGRESS BARS - Animated Loading
+       PROGRESS BARS — Indigo animated
        ============================================ */
 
     .stProgress > div > div > div {
-        background: linear-gradient(90deg, #00d4ff, #00ff88, #00d4ff) !important;
+        background: linear-gradient(90deg, #6366f1, #818cf8, #6366f1) !important;
         background-size: 200% auto !important;
         animation: shimmer 2s linear infinite !important;
         border-radius: 10px !important;
         height: 8px !important;
+    }
+
+    @keyframes shimmer {
+        0% { background-position: -200% center; }
+        100% { background-position: 200% center; }
     }
 
     /* ============================================
@@ -988,48 +973,43 @@ def apply_glassmorphism_css():
        ============================================ */
 
     .stAlert {
-        background: rgba(10, 25, 41, 0.6) !important;
-        border-left: 4px solid #00d4ff !important;
+        background: rgba(15, 18, 35, 0.5) !important;
+        border-left: 4px solid #6366f1 !important;
         border-radius: 10px !important;
         padding: 16px 20px !important;
         backdrop-filter: blur(10px) !important;
     }
 
     .stSuccess {
-        border-left-color: #00ff88 !important;
+        border-left-color: #10b981 !important;
     }
 
     .stError {
-        border-left-color: #ff0044 !important;
+        border-left-color: #ef4444 !important;
     }
 
     .stWarning {
-        border-left-color: #ffaa00 !important;
+        border-left-color: #f59e0b !important;
     }
 
     /* ============================================
-       SELECTBOX & MULTISELECT - Working Dropdowns
+       SELECTBOX — Glassmorphic dropdowns
        ============================================ */
 
     div[data-baseweb="select"] > div {
-        background: rgba(10, 25, 41, 0.5) !important;
-        border: 2px solid rgba(0, 212, 255, 0.2) !important;
+        background: rgba(15, 18, 35, 0.5) !important;
+        border: 1px solid rgba(99, 102, 241, 0.15) !important;
         border-radius: 10px !important;
         min-height: 48px !important;
+        backdrop-filter: blur(8px) !important;
     }
 
     div[data-baseweb="select"]:hover > div {
-        border-color: rgba(0, 212, 255, 0.4) !important;
+        border-color: rgba(99, 102, 241, 0.3) !important;
     }
 
     /* ============================================
-       SURGICAL FIX: OVERLAPPING TEXT - v10.0.6
-       Completely removes Material Icons ligature text
-       ============================================ */
-
-    /* ============================================
-       NUCLEAR OPTION: Hide ALL expander icons and use custom arrows
-       Fixes "keyboard_arrow_right" text showing instead of icon
+       ICON TEXT OVERLAP FIX
        ============================================ */
 
     /* Hide the entire icon container in expanders */
@@ -1043,7 +1023,6 @@ def apply_glassmorphism_css():
         visibility: hidden !important;
     }
 
-    /* Add custom arrow using CSS */
     [data-testid="stExpander"] summary {
         position: relative !important;
         padding-left: 30px !important;
@@ -1056,7 +1035,7 @@ def apply_glassmorphism_css():
         top: 50% !important;
         transform: translateY(-50%) !important;
         font-size: 14px !important;
-        color: rgba(0, 212, 255, 0.8) !important;
+        color: rgba(99, 102, 241, 0.6) !important;
         transition: transform 0.2s ease !important;
         font-family: Arial, sans-serif !important;
     }
@@ -1065,17 +1044,15 @@ def apply_glassmorphism_css():
         transform: translateY(-50%) rotate(90deg) !important;
     }
 
-    /* Also hide any stray Material Icons text nodes */
     [data-testid="stExpander"] summary *:not(div):not(p) {
         font-size: 0 !important;
     }
 
-    /* Make sure the label text is still visible */
     [data-testid="stExpander"] summary > div {
         font-size: 15px !important;
     }
 
-    /* Select/Dropdown icons - hide keyboard_arrow_down text */
+    /* Select/Dropdown icons */
     div[data-baseweb="select"] svg,
     div[data-baseweb="select"] [data-baseweb="icon"],
     div[data-baseweb="select"] [role="presentation"] {
@@ -1083,7 +1060,6 @@ def apply_glassmorphism_css():
         visibility: hidden !important;
     }
 
-    /* DataFrame menu icons - hide arrow_upward/downward text */
     div[data-testid="stDataFrame"] [role="menuitem"] span[aria-hidden="true"],
     div[data-testid="stDataFrame"] [role="menuitem"] [data-baseweb="icon"],
     div[data-testid="stDataFrame"] [role="menuitem"] svg {
@@ -1096,7 +1072,6 @@ def apply_glassmorphism_css():
         visibility: hidden !important;
     }
 
-    /* Dropdown label text - ensure visible */
     div[data-baseweb="select"] [role="option"],
     div[data-baseweb="select"] > div > div:first-child > div {
         font-size: 14px !important;
@@ -1107,7 +1082,6 @@ def apply_glassmorphism_css():
         visibility: visible !important;
     }
 
-    /* Add custom dropdown arrow */
     div[data-baseweb="select"] > div {
         padding-right: 40px !important;
         position: relative !important;
@@ -1117,8 +1091,8 @@ def apply_glassmorphism_css():
         content: '▾' !important;
         font-family: system-ui, sans-serif !important;
         font-size: 16px !important;
-        color: #00d4ff !important;
-        -webkit-text-fill-color: #00d4ff !important;
+        color: #818cf8 !important;
+        -webkit-text-fill-color: #818cf8 !important;
         position: absolute !important;
         right: 14px !important;
         top: 50% !important;
@@ -1130,14 +1104,12 @@ def apply_glassmorphism_css():
     }
 
     /* ============================================
-       SURGICAL FIX: MULTISELECT RED SQUARES - v10.0.5
-       Restore text visibility to tag labels
+       MULTISELECT TAG FIX
        ============================================ */
 
-    /* Tag container styling */
     div[data-baseweb="tag"] {
-        background: rgba(0, 212, 255, 0.25) !important;
-        border: 1px solid rgba(0, 212, 255, 0.5) !important;
+        background: rgba(99, 102, 241, 0.2) !important;
+        border: 1px solid rgba(99, 102, 241, 0.35) !important;
         border-radius: 6px !important;
         padding: 4px 10px !important;
         margin: 2px !important;
@@ -1145,7 +1117,6 @@ def apply_glassmorphism_css():
         align-items: center !important;
     }
 
-    /* Tag text - MUST be visible (fixes red squares) */
     div[data-baseweb="tag"] span,
     div[data-baseweb="tag"] > span:first-child {
         font-size: 13px !important;
@@ -1157,7 +1128,6 @@ def apply_glassmorphism_css():
         opacity: 1 !important;
     }
 
-    /* Tag close/remove button */
     div[data-baseweb="tag"] svg,
     div[data-baseweb="tag"] [role="button"] {
         display: inline-flex !important;
@@ -1174,7 +1144,6 @@ def apply_glassmorphism_css():
         opacity: 1 !important;
     }
 
-    /* Multiselect dropdown options */
     div[data-baseweb="select"] div[role="option"] {
         font-size: 14px !important;
         color: #ffffff !important;
@@ -1184,31 +1153,31 @@ def apply_glassmorphism_css():
     }
 
     /* ============================================
-       SCROLLBAR - Custom Styling
+       SCROLLBAR — Indigo-themed
        ============================================ */
 
     ::-webkit-scrollbar {
-        width: 10px !important;
-        height: 10px !important;
+        width: 8px !important;
+        height: 8px !important;
     }
 
     ::-webkit-scrollbar-track {
-        background: rgba(10, 25, 41, 0.3) !important;
-        border-radius: 10px !important;
+        background: rgba(15, 18, 35, 0.3) !important;
+        border-radius: 8px !important;
     }
 
     ::-webkit-scrollbar-thumb {
-        background: linear-gradient(180deg, #00d4ff, #0080ff) !important;
-        border-radius: 10px !important;
-        border: 2px solid rgba(10, 25, 41, 0.3) !important;
+        background: linear-gradient(180deg, rgba(99, 102, 241, 0.4), rgba(129, 140, 248, 0.4)) !important;
+        border-radius: 8px !important;
+        border: 2px solid rgba(15, 18, 35, 0.3) !important;
     }
 
     ::-webkit-scrollbar-thumb:hover {
-        background: linear-gradient(180deg, #00ff88, #00d4ff) !important;
+        background: linear-gradient(180deg, rgba(99, 102, 241, 0.6), rgba(129, 140, 248, 0.6)) !important;
     }
 
     /* ============================================
-       PLOTLY CHARTS - Seamless Integration
+       PLOTLY CHARTS — Seamless integration
        ============================================ */
 
     .js-plotly-plot {
@@ -1217,23 +1186,23 @@ def apply_glassmorphism_css():
     }
 
     /* ============================================
-       SPECIAL EFFECTS - Glows & Shadows
+       GLOW & SHADOW EFFECTS
        ============================================ */
 
     .glow-text {
-        text-shadow: 0 0 20px rgba(0, 212, 255, 0.5),
-                     0 0 40px rgba(0, 212, 255, 0.3),
-                     0 0 60px rgba(0, 212, 255, 0.2);
+        text-shadow: 0 0 20px rgba(99, 102, 241, 0.4),
+                     0 0 40px rgba(99, 102, 241, 0.2),
+                     0 0 60px rgba(99, 102, 241, 0.1);
     }
 
     .glow-box {
-        box-shadow: 0 0 20px rgba(0, 212, 255, 0.3),
-                    0 0 40px rgba(0, 212, 255, 0.2),
-                    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        box-shadow: 0 0 20px rgba(99, 102, 241, 0.2),
+                    0 0 40px rgba(99, 102, 241, 0.1),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.06);
     }
 
     /* ============================================
-       RESPONSIVE DESIGN
+       RESPONSIVE
        ============================================ */
 
     @media (max-width: 768px) {
@@ -1256,14 +1225,51 @@ def apply_glassmorphism_css():
     div[data-testid="stBottom"] {display: none !important; visibility: hidden !important;}
 
 </style>
-
-<!-- Note: Sidebar toggle removed - Using horizontal navigation bar for maximum screen space -->
 """, unsafe_allow_html=True)
 
 
+# ============================================================
+# SECTION 5 — SIDEBAR GLASSMORPHISM
+# ============================================================
+
+def apply_sidebar_glassmorphism():
+    """Frosted-glass sidebar with indigo accent border."""
+    st.markdown("""
+<style>
+/* ===== SIDEBAR GLASSMORPHISM ===== */
+section[data-testid="stSidebar"] {
+    background: rgba(10, 12, 24, 0.82) !important;
+    backdrop-filter: blur(24px) saturate(150%) !important;
+    -webkit-backdrop-filter: blur(24px) saturate(150%) !important;
+    border-right: 1px solid rgba(99, 102, 241, 0.08) !important;
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.3) !important;
+}
+
+section[data-testid="stSidebar"] > div:first-child {
+    background: transparent !important;
+}
+
+/* Sidebar links and text */
+section[data-testid="stSidebar"] a {
+    color: #a5b4fc !important;
+    transition: color 0.2s ease !important;
+}
+
+section[data-testid="stSidebar"] a:hover {
+    color: #c7d2fe !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+
+# ============================================================
+# ENTRY POINT
+# ============================================================
+
 def init_atlas_css():
-    """Initialize all ATLAS CSS - call once at app startup."""
+    """Initialize all ATLAS CSS — call once at app startup."""
     apply_premium_layout_css()
     apply_full_width_js()
     apply_figma_borders_css()
     apply_glassmorphism_css()
+    apply_sidebar_glassmorphism()

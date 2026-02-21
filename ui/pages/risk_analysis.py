@@ -185,7 +185,7 @@ def render_risk_analysis(start_date, end_date, selected_benchmark):
     st.markdown("---")
 
     # ===== RISK-REWARD POSITIONING =====
-    st.markdown('<h2 style="font-size: 1.5rem; font-weight: 700; color: #f8fafc; margin-bottom: 1.5rem;"><span style="font-size: 1.25rem;">🎯</span> <span style="background: linear-gradient(135deg, #00d4ff, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Risk-Reward Analysis</span></h2>', unsafe_allow_html=True)
+    st.markdown('<h2 style="font-size: 1.5rem; font-weight: 700; color: #f8fafc; margin-bottom: 1.5rem;"><span style="font-size: 1.25rem;">🎯</span> <span style="background: linear-gradient(135deg, #818cf8, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Risk-Reward Analysis</span></h2>', unsafe_allow_html=True)
     st.markdown("**Understand where each position sits on the risk-return spectrum**")
 
     col_chart, col_guide = st.columns([3, 1])

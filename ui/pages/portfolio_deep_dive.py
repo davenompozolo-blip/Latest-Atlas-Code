@@ -966,7 +966,7 @@ def render_portfolio_deep_dive(start_date, end_date):
                 tickfont=dict(size=11, color='#ffffff')
             ),
             paper_bgcolor='rgba(0, 0, 0, 0)',
-            plot_bgcolor='rgba(10, 25, 41, 0.3)'
+            plot_bgcolor='rgba(0,0,0,0)'
         )
 
         st.plotly_chart(fig_heatmap, use_container_width=True)

@@ -635,8 +635,8 @@ def visualize_stage_transitions(config: MultiStageDCFConfig, projections: Dict[i
     fig.update_layout(
         height=600,
         showlegend=False,
-        plot_bgcolor='#0E1117',
-        paper_bgcolor='#0E1117',
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
         font=dict(color='white')
     )
 
@@ -712,8 +712,8 @@ def display_multistage_results(dcf_result: dict, config: MultiStageDCFConfig):
         fig.update_layout(
             title="Value Components",
             height=300,
-            plot_bgcolor='#0E1117',
-            paper_bgcolor='#0E1117',
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
             font=dict(color='white')
         )
 

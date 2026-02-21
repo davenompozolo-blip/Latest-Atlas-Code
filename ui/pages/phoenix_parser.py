@@ -787,7 +787,7 @@ def render_phoenix_parser():
 
     # ===== FIX #8: LEVERAGE TRACKING FEATURE =====
     st.markdown("---")
-    st.markdown('<h2 style="font-size: 1.5rem; font-weight: 700; color: #f8fafc; margin-bottom: 1.5rem;"><span style="font-size: 1.25rem;">📊</span> <span style="background: linear-gradient(135deg, #00d4ff, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Leverage Tracking (Optional)</span></h2>', unsafe_allow_html=True)
+    st.markdown('<h2 style="font-size: 1.5rem; font-weight: 700; color: #f8fafc; margin-bottom: 1.5rem;"><span style="font-size: 1.25rem;">📊</span> <span style="background: linear-gradient(135deg, #818cf8, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Leverage Tracking (Optional)</span></h2>', unsafe_allow_html=True)
     st.info("📈 Upload your Investopedia performance-history.xls file to enable leverage analysis")
 
     perf_history_file = st.file_uploader(

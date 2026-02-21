@@ -1,9 +1,9 @@
 """
 ATLAS Terminal - Enhanced Plotly Chart Theme
-Phase 2A - Fomo-Inspired Chart Styling
+Phase 2A - Glassmorphism Chart Styling
 
-Custom Plotly templates and chart builders with neon glow effects,
-glassmorphic backgrounds, and gradient color schemes.
+Custom Plotly templates and chart builders with subtle glow effects,
+transparent backgrounds, and indigo/cyan color schemes.
 
 Created: December 2024
 Phase: 2A - Component Transformation
@@ -17,35 +17,35 @@ import pandas as pd
 from typing import Optional, List, Dict, Any
 
 
-# ==================== FOMO COLOR PALETTE ====================
+# ==================== GLASSMORPHISM COLOR PALETTE ====================
 
 ATLAS_COLORS = {
-    # Backgrounds
-    'bg_dark': 'rgba(10, 14, 39, 0.6)',
-    'bg_plot': 'rgba(21, 25, 50, 0.4)',
-    'bg_card': 'rgba(21, 25, 50, 0.8)',
+    # Backgrounds — transparent for glassmorphism
+    'bg_dark': 'rgba(0,0,0,0)',
+    'bg_plot': 'rgba(0,0,0,0)',
+    'bg_card': 'rgba(15, 18, 35, 0.6)',
 
-    # Primary Palette (Vibranium → Indigo → Purple)
-    'vibranium': '#00d4ff',
+    # Primary Palette (Indigo family)
+    'vibranium': '#818cf8',
     'indigo': '#6366f1',
     'purple': '#8b5cf6',
-    'cyan': '#06b6d4',
+    'cyan': '#22d3ee',
     'pink': '#ec4899',
 
     # Semantic Colors
     'success': '#10b981',
     'warning': '#f59e0b',
     'danger': '#ef4444',
-    'info': '#3b82f6',
+    'info': '#6366f1',
 
     # Text
-    'text_primary': '#f8fafc',
+    'text_primary': '#e2e8f0',
     'text_secondary': '#94a3b8',
     'text_muted': '#64748b',
 
     # Grid & Borders
-    'grid': 'rgba(99, 102, 241, 0.1)',
-    'border': 'rgba(99, 102, 241, 0.2)',
+    'grid': 'rgba(99, 102, 241, 0.07)',
+    'border': 'rgba(99, 102, 241, 0.12)',
 }
 
 # Color sequence for multi-series charts
@@ -108,9 +108,9 @@ ATLAS_TEMPLATE = go.layout.Template(
             zeroline=True
         ),
 
-        # Hover styling
+        # Hover styling — frosted tooltip
         hoverlabel=dict(
-            bgcolor=ATLAS_COLORS['bg_card'],
+            bgcolor='rgba(15, 18, 35, 0.9)',
             font=dict(
                 family='JetBrains Mono, Consolas, monospace',
                 color=ATLAS_COLORS['text_primary']
@@ -118,9 +118,9 @@ ATLAS_TEMPLATE = go.layout.Template(
             bordercolor=ATLAS_COLORS['indigo']
         ),
 
-        # Legend styling
+        # Legend styling — semi-transparent
         legend=dict(
-            bgcolor=ATLAS_COLORS['bg_card'],
+            bgcolor='rgba(15, 18, 35, 0.6)',
             bordercolor=ATLAS_COLORS['border'],
             borderwidth=1,
             font=dict(color=ATLAS_COLORS['text_primary'])
@@ -291,7 +291,7 @@ def create_performance_chart(
         mode='lines',
         line=dict(color=ATLAS_COLORS['vibranium'], width=3),
         fill='tonexty',
-        fillcolor='rgba(0, 212, 255, 0.1)',
+        fillcolor='rgba(129, 140, 248, 0.1)',
         name='Portfolio'
     ))
 

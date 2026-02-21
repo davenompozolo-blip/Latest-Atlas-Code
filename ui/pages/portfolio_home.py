@@ -88,7 +88,7 @@ def render_portfolio_home(start_date, end_date):
 
     # ==================== CAPITAL STRUCTURE ====================
     st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown('<h2 style="font-size: 1.5rem; font-weight: 700; color: #f8fafc; margin-bottom: 1.5rem;"><span style="font-size: 1.25rem;">💰</span> <span style="background: linear-gradient(135deg, #00d4ff, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Capital Structure</span></h2>', unsafe_allow_html=True)
+    st.markdown('<h2 style="font-size: 1.5rem; font-weight: 700; color: #f8fafc; margin-bottom: 1.5rem;"><span style="font-size: 1.25rem;">💰</span> <span style="background: linear-gradient(135deg, #818cf8, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Capital Structure</span></h2>', unsafe_allow_html=True)
 
     col1, col2, col3 = st.columns(3)
 
@@ -176,7 +176,7 @@ def render_portfolio_home(start_date, end_date):
     st.markdown("---")
 
     # ==================== PERFORMANCE (ON EQUITY BASIS) ====================
-    st.markdown('<h2 style="font-size: 1.5rem; font-weight: 700; color: #f8fafc; margin-bottom: 1.5rem;"><span style="font-size: 1.25rem;">📊</span> <span style="background: linear-gradient(135deg, #00d4ff, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Performance (on Equity Basis)</span></h2>', unsafe_allow_html=True)
+    st.markdown('<h2 style="font-size: 1.5rem; font-weight: 700; color: #f8fafc; margin-bottom: 1.5rem;"><span style="font-size: 1.25rem;">📊</span> <span style="background: linear-gradient(135deg, #818cf8, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Performance (on Equity Basis)</span></h2>', unsafe_allow_html=True)
 
     col1, col2, col3, col4, col5, col6 = st.columns(6)
 
@@ -189,7 +189,7 @@ def render_portfolio_home(start_date, end_date):
     # Card 2: Daily P&L
     with col2:
         daily_color = '#10b981' if daily_pl >= 0 else '#ef4444'
-        st.markdown(f'<div style="background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(99,102,241,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #6366f1, #8b5cf6); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💰</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">DAILY P&L</p></div><h3 style="font-size: 2.5rem; font-weight: 800; background: linear-gradient(135deg, #00d4ff, #6366f1); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{format_currency(daily_pl, currency_symbol=currency_symbol)}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(99,102,241,0.12); border-radius: 10px; border: 1px solid rgba(99,102,241,0.25);"><p style="font-size: 0.7rem; color: #a5b4fc; margin: 0; font-weight: 500;">▲ Today</p></div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(99,102,241,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #6366f1, #8b5cf6); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💰</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">DAILY P&L</p></div><h3 style="font-size: 2.5rem; font-weight: 800; background: linear-gradient(135deg, #818cf8, #6366f1); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{format_currency(daily_pl, currency_symbol=currency_symbol)}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(99,102,241,0.12); border-radius: 10px; border: 1px solid rgba(99,102,241,0.25);"><p style="font-size: 0.7rem; color: #a5b4fc; margin: 0; font-weight: 500;">▲ Today</p></div></div>', unsafe_allow_html=True)
 
     # Card 3: Total P&L (using EE's already-calculated values)
     with col3:
