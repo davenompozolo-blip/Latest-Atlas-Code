@@ -1383,8 +1383,8 @@ def main():
         for i, source in enumerate(sources):
             with cols[i]:
                 is_selected = st.session_state['portfolio_data_source_mode'] == source['key']
-                border_color = "rgba(34, 211, 238, 0.5)" if is_selected else "rgb(31, 41, 55)"
-                bg_color = "rgba(34, 211, 238, 0.1)" if is_selected else "transparent"
+                border_color = "rgba(99, 102, 241, 0.5)" if is_selected else "rgb(31, 41, 55)"
+                bg_color = "rgba(99, 102, 241, 0.1)" if is_selected else "transparent"
 
                 if st.button(f"{source['icon']} {source['title']}", key=f"src_{i}", use_container_width=True):
                     st.session_state['portfolio_data_source_mode'] = source['key']

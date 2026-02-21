@@ -797,12 +797,12 @@ def render_performance_suite(start_date, end_date, selected_benchmark):
 
             # Use dark theme if available
             if PROFESSIONAL_THEME_AVAILABLE:
-                portfolio_color = '#00BCD4'
+                portfolio_color = '#818cf8'
                 benchmark_color = 'rgba(255, 255, 255, 0.5)'
                 fill_color = get_color('primary', 0.15)
                 title_color = '#FFFFFF'
                 text_color = '#FFFFFF'
-                grid_color = 'rgba(255, 255, 255, 0.1)'
+                grid_color = 'rgba(99, 102, 241, 0.07)'
                 paper_bg = 'rgba(0,0,0,0)'
                 plot_bg = 'rgba(0,0,0,0)'
             else:

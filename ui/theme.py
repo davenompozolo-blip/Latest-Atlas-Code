@@ -170,7 +170,7 @@ CARD_HOVER = {
 
 # Border color variants
 CARD_BORDER_COLORS = {
-    'cyan': 'rgba(34, 211, 238, 0.25)',
+    'cyan': 'rgba(99, 102, 241, 0.25)',
     'purple': 'rgba(139, 92, 246, 0.25)',
     'green': 'rgba(16, 185, 129, 0.25)',
     'red': 'rgba(239, 68, 68, 0.25)',
