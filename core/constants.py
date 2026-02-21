@@ -70,7 +70,7 @@ try:
 except ImportError:
     PROFESSIONAL_THEME_AVAILABLE = False
     PROFESSIONAL_CHART_COLORS = [
-        '#00BCD4', '#00E676', '#7C4DFF', '#FF9100',
+        '#818cf8', '#00E676', '#7C4DFF', '#FF9100',
         '#FF1744', '#1DE9B6', '#FF4081', '#FFC400',
     ]
 

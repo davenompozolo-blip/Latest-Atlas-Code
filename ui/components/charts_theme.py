@@ -29,7 +29,7 @@ ATLAS_COLORS = {
     'vibranium': '#818cf8',
     'indigo': '#6366f1',
     'purple': '#8b5cf6',
-    'cyan': '#22d3ee',
+    'cyan': '#818cf8',
     'pink': '#ec4899',
 
     # Semantic Colors

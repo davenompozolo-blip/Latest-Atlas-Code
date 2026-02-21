@@ -34,7 +34,7 @@ class NewsAggregator:
         self.sources = {
             'Investing.com': {
                 'rss': 'https://www.investing.com/rss/news.rss',
-                'color': '#00d4ff'
+                'color': '#818cf8'
             },
             'MarketWatch': {
                 'rss': 'https://www.marketwatch.com/rss/topstories',

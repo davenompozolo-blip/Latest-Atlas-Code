@@ -17,7 +17,7 @@ COLORS = {
     "neon_blue": "#818cf8",
     "electric_blue": "#6366f1",
     "teal": "#14b8a6",
-    "cyan": "#22d3ee",
+    "cyan": "#818cf8",
     "success": "#10b981",
     "warning": "#f59e0b",
     "danger": "#ef4444",

@@ -18,9 +18,9 @@ serverPort = 8501
 
 [theme]
 # ATLAS Terminal Dark Theme
-primaryColor = "#00d4ff"
-backgroundColor = "#0a0e27"
-secondaryBackgroundColor = "#151932"
+primaryColor = "#6366f1"
+backgroundColor = "#080a14"
+secondaryBackgroundColor = "#0f1225"
 textColor = "#f8fafc"
 font = "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
 base = "dark"

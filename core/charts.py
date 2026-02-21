@@ -520,11 +520,11 @@ def create_brinson_attribution_chart(attribution_results, use_professional_theme
         connector_color = 'rgba(255, 255, 255, 0.5)'
         success_color = '#00E676'
         danger_color = '#FF1744'
-        total_color = '#00BCD4'
+        total_color = '#818cf8'
         title_color = '#FFFFFF'
         text_color = '#FFFFFF'
-        paper_bg = '#1a1d29'
-        grid_color = 'rgba(255, 255, 255, 0.1)'
+        paper_bg = 'rgba(0,0,0,0)'
+        grid_color = 'rgba(99, 102, 241, 0.07)'
     else:
         connector_color = COLORS['neon_blue']
         success_color = COLORS['success']
@@ -955,8 +955,8 @@ def create_top_contributors_chart(df, top_n=5, use_professional_theme=True):
         border_color = 'rgba(67, 160, 71, 0.3)'
         title_color = '#FFFFFF'
         text_color = '#FFFFFF'
-        paper_bg = '#1a1d29'
-        grid_color = 'rgba(255, 255, 255, 0.1)'
+        paper_bg = 'rgba(0,0,0,0)'
+        grid_color = 'rgba(99, 102, 241, 0.07)'
     else:
         bar_color = COLORS['success']
         border_color = COLORS['border']
@@ -1010,8 +1010,8 @@ def create_top_detractors_chart(df, top_n=5, use_professional_theme=True):
         border_color = 'rgba(229, 57, 53, 0.3)'
         title_color = '#FFFFFF'
         text_color = '#FFFFFF'
-        paper_bg = '#1a1d29'
-        grid_color = 'rgba(255, 255, 255, 0.1)'
+        paper_bg = 'rgba(0,0,0,0)'
+        grid_color = 'rgba(99, 102, 241, 0.07)'
     else:
         bar_color = COLORS['danger']
         border_color = COLORS['border']
@@ -1138,9 +1138,9 @@ def create_professional_sector_allocation_pie(df, use_professional_theme=True):
         # Dark theme with neon colors
         colors = PROFESSIONAL_CHART_COLORS[:len(sector_pct)]
         text_color = '#FFFFFF'
-        border_color = '#1a1d29'
-        paper_bg = '#1a1d29'
-        plot_bg = '#1a1d29'
+        border_color = 'rgba(99, 102, 241, 0.15)'
+        paper_bg = 'rgba(0,0,0,0)'
+        plot_bg = 'rgba(0,0,0,0)'
         legend_font_color = '#FFFFFF'
         title_color = '#FFFFFF'
     else:
@@ -1289,13 +1289,13 @@ def create_rolling_metrics_chart(returns, window=60, use_professional_theme=True
     if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
         vol_color = '#FF1744'
         vol_fill = 'rgba(229, 57, 53, 0.15)'
-        sharpe_color = '#00BCD4'
+        sharpe_color = '#818cf8'
         sharpe_fill = 'rgba(30, 136, 229, 0.15)'
         line_color = 'rgba(255, 255, 255, 0.5)'
         title_color = '#FFFFFF'
         text_color = '#FFFFFF'
-        paper_bg = '#1a1d29'
-        grid_color = 'rgba(255, 255, 255, 0.1)'
+        paper_bg = 'rgba(0,0,0,0)'
+        grid_color = 'rgba(99, 102, 241, 0.07)'
     else:
         vol_color = COLORS['danger']
         vol_fill = 'rgba(255, 0, 68, 0.2)'
@@ -1431,8 +1431,8 @@ def create_var_waterfall(returns, use_professional_theme=True):
         border_color = 'rgba(255, 255, 255, 0.5)'
         title_color = '#FFFFFF'
         text_color = '#FFFFFF'
-        paper_bg = '#1a1d29'
-        grid_color = 'rgba(255, 255, 255, 0.1)'
+        paper_bg = 'rgba(0,0,0,0)'
+        grid_color = 'rgba(99, 102, 241, 0.07)'
     else:
         colors_list = [COLORS['warning'], COLORS['orange'], COLORS['danger'], COLORS['danger']]
         border_color = COLORS['border']
@@ -1607,8 +1607,8 @@ def create_rolling_var_cvar_chart(returns, window=60, use_professional_theme=Tru
         line_color = 'rgba(255, 255, 255, 0.5)'
         title_color = '#FFFFFF'
         text_color = '#FFFFFF'
-        paper_bg = '#1a1d29'
-        grid_color = 'rgba(255, 255, 255, 0.1)'
+        paper_bg = 'rgba(0,0,0,0)'
+        grid_color = 'rgba(99, 102, 241, 0.07)'
         legend_bg = 'rgba(26, 29, 41, 0.9)'
     else:
         var_color = COLORS['orange']
@@ -1870,7 +1870,7 @@ def create_performance_heatmap(df, period='monthly', use_professional_theme=True
         if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
             title_color = '#FFFFFF'
             text_color = '#FFFFFF'
-            paper_bg = '#1a1d29'
+            paper_bg = 'rgba(0,0,0,0)'
             colorscale = 'Spectral_r'
         else:
             title_color = '#ffffff'
@@ -1924,7 +1924,7 @@ def create_portfolio_heatmap(df, use_professional_theme=True):
     if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
         title_color = '#FFFFFF'
         text_color = '#FFFFFF'
-        paper_bg = '#1a1d29'
+        paper_bg = 'rgba(0,0,0,0)'
         colorscale = [[0, '#ec4899'], [0.25, '#a855f7'], [0.5, '#1e293b'], [0.75, '#06b6d4'], [1, '#10b981']]
     else:
         title_color = '#ffffff'
@@ -1967,8 +1967,8 @@ def create_interactive_performance_chart(tickers, start_date, end_date, use_prof
         line_color = 'rgba(255, 255, 255, 0.5)'
         title_color = '#FFFFFF'
         text_color = '#FFFFFF'
-        paper_bg = '#1a1d29'
-        grid_color = 'rgba(255, 255, 255, 0.1)'
+        paper_bg = 'rgba(0,0,0,0)'
+        grid_color = 'rgba(99, 102, 241, 0.07)'
         legend_bg = 'rgba(26, 29, 41, 0.9)'
     else:
         colors = [COLORS['neon_blue'], COLORS['electric_blue'], COLORS['teal'],
@@ -2032,11 +2032,11 @@ def create_monte_carlo_chart(simulation_results, initial_value=100000, use_profe
     if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
         sim_color = 'rgba(30, 136, 229, 0.1)'
         colors_pct = ['#FF1744', '#FFC400',
-                      '#00BCD4', '#00ACC1', '#00E676']
+                      '#818cf8', '#a5b4fc', '#00E676']
         title_color = '#FFFFFF'
         text_color = '#FFFFFF'
-        paper_bg = '#1a1d29'
-        grid_color = 'rgba(255, 255, 255, 0.1)'
+        paper_bg = 'rgba(0,0,0,0)'
+        grid_color = 'rgba(99, 102, 241, 0.07)'
         legend_bg = 'rgba(26, 29, 41, 0.9)'
     else:
         sim_color = COLORS['electric_blue']
@@ -2477,7 +2477,7 @@ def create_sector_rotation_heatmap(df, start_date, end_date, use_professional_th
     if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
         title_color = '#FFFFFF'
         text_color = '#FFFFFF'
-        paper_bg = '#1a1d29'
+        paper_bg = 'rgba(0,0,0,0)'
         colorscale = 'Spectral_r'
     else:
         title_color = '#ffffff'
@@ -2525,11 +2525,11 @@ def create_holdings_attribution_waterfall(df, use_professional_theme=True):
         connector_color = 'rgba(255, 255, 255, 0.5)'
         success_color = '#00E676'
         danger_color = '#FF1744'
-        total_color = '#00BCD4'
+        total_color = '#818cf8'
         title_color = '#FFFFFF'
         text_color = '#FFFFFF'
-        paper_bg = '#1a1d29'
-        grid_color = 'rgba(255, 255, 255, 0.1)'
+        paper_bg = 'rgba(0,0,0,0)'
+        grid_color = 'rgba(99, 102, 241, 0.07)'
     else:
         connector_color = COLORS['neon_blue']
         success_color = COLORS['success']
@@ -2577,13 +2577,13 @@ def create_concentration_gauge(df, use_professional_theme=True):
 
     # Use dark theme if available
     if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
-        bar_color = '#00BCD4'
+        bar_color = '#818cf8'
         success_color = '#69F0AE'  # Light green
         warning_color = '#FFD740'  # Light amber
         danger_color = '#FF5252'   # Light red
         title_color = '#FFFFFF'
         number_color = '#FFFFFF'
-        paper_bg = '#1a1d29'
+        paper_bg = 'rgba(0,0,0,0)'
         delta_color = '#FFC400'
         threshold_color = '#FF1744'
         tick_color = 'rgba(255, 255, 255, 0.5)'
@@ -2681,8 +2681,8 @@ def create_factor_momentum_chart(factor_data, use_professional_theme=True):
         colors = PROFESSIONAL_CHART_COLORS
         title_color = '#FFFFFF'
         text_color = '#FFFFFF'
-        paper_bg = '#1a1d29'
-        grid_color = 'rgba(255, 255, 255, 0.1)'
+        paper_bg = 'rgba(0,0,0,0)'
+        grid_color = 'rgba(99, 102, 241, 0.07)'
         legend_bg = 'rgba(26, 29, 41, 0.9)'
     else:
         colors = [COLORS['neon_blue'], COLORS['electric_blue'], COLORS['teal'],
@@ -2887,8 +2887,8 @@ def create_dcf_waterfall(dcf_results, method='FCFF', use_professional_theme=True
         danger_color = '#FF1744'
         title_color = '#FFFFFF'
         text_color = '#FFFFFF'
-        paper_bg = '#1a1d29'
-        grid_color = 'rgba(255, 255, 255, 0.1)'
+        paper_bg = 'rgba(0,0,0,0)'
+        grid_color = 'rgba(99, 102, 241, 0.07)'
     else:
         connector_color = COLORS['neon_blue']
         success_color = COLORS['success']
@@ -2954,12 +2954,12 @@ def create_cash_flow_chart(projections, method='FCFF', use_professional_theme=Tr
 
     # Theme colors
     if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
-        bar_color = '#00BCD4'
+        bar_color = '#818cf8'
         border_color = 'rgba(30, 136, 229, 0.3)'
         title_color = '#FFFFFF'
         text_color = '#FFFFFF'
-        paper_bg = '#1a1d29'
-        grid_color = 'rgba(255, 255, 255, 0.1)'
+        paper_bg = 'rgba(0,0,0,0)'
+        grid_color = 'rgba(99, 102, 241, 0.07)'
     else:
         bar_color = COLORS['electric_blue']
         border_color = COLORS['border']
@@ -3052,19 +3052,19 @@ def apply_chart_theme(fig):
         xaxis=dict(
             gridcolor='rgba(99, 102, 241, 0.07)',
             linecolor='rgba(99, 102, 241, 0.12)',
-            zerolinecolor='rgba(255, 255, 255, 0.1)',
+            zerolinecolor='rgba(99, 102, 241, 0.07)',
             tickfont=dict(color='#FFFFFF'),
             title=dict(font=dict(color='#FFFFFF')),
         ),
         yaxis=dict(
             gridcolor='rgba(99, 102, 241, 0.07)',
             linecolor='rgba(99, 102, 241, 0.12)',
-            zerolinecolor='rgba(255, 255, 255, 0.1)',
+            zerolinecolor='rgba(99, 102, 241, 0.07)',
             tickfont=dict(color='#FFFFFF'),
             title=dict(font=dict(color='#FFFFFF')),
         ),
         hoverlabel=dict(
-            bgcolor='#1a1d29',
+            bgcolor='rgba(0,0,0,0)',
             font=dict(color='#FFFFFF'),
             bordercolor='#6366f1',
         ),

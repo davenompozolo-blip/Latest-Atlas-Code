@@ -707,7 +707,7 @@ def render_table_card(title: str, table_html: str, icon: str = "") -> str:
     heading_style = (
         f"font-family: {FONT}; font-size: 1.25rem; font-weight: 700; "
         f"color: #f8fafc; margin-bottom: 1rem; "
-        f"background: linear-gradient(135deg, #00d4ff 0%, #6366f1 50%, #8b5cf6 100%); "
+        f"background: linear-gradient(135deg, #818cf8 0%, #6366f1 50%, #8b5cf6 100%); "
         f"-webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;"
     )
     card_style = (
