@@ -43,8 +43,8 @@ def apply_atlas_theme(fig: go.Figure):
         fig: Plotly figure object
     """
     fig.update_layout(
-        plot_bgcolor='rgba(10, 14, 39, 0.95)',
-        paper_bgcolor='rgba(10, 14, 39, 0.95)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
         font=dict(color=ATLAS_COLORS['text'], family='Inter, sans-serif'),
         title_font=dict(size=20, color=ATLAS_COLORS['text']),
         hovermode='x unified',
@@ -57,15 +57,15 @@ def apply_atlas_theme(fig: go.Figure):
     )
 
     fig.update_xaxes(
-        gridcolor='rgba(255, 255, 255, 0.1)',
+        gridcolor='rgba(99, 102, 241, 0.07)',
         showline=True,
-        linecolor='rgba(255, 255, 255, 0.2)'
+        linecolor='rgba(99, 102, 241, 0.12)'
     )
 
     fig.update_yaxes(
-        gridcolor='rgba(255, 255, 255, 0.1)',
+        gridcolor='rgba(99, 102, 241, 0.07)',
         showline=True,
-        linecolor='rgba(255, 255, 255, 0.2)'
+        linecolor='rgba(99, 102, 241, 0.12)'
     )
 
 

@@ -607,7 +607,7 @@ def create_skill_assessment_card(attribution_results):
         background: rgba(26, 35, 50, 0.7);
         backdrop-filter: blur(10px);
         -webkit-backdrop-filter: blur(10px);
-        border: 1px solid rgba(0, 212, 255, 0.2);
+        border: 1px solid rgba(99, 102, 241, 0.2);
         border-radius: 12px;
         padding: 24px;
         margin: 20px 0;
@@ -617,11 +617,11 @@ def create_skill_assessment_card(attribution_results):
             font-family: 'Inter', sans-serif;
             font-size: 1.2rem;
             font-weight: 700;
-            color: #00d4ff;
+            color: #818cf8;
             text-transform: uppercase;
             letter-spacing: 0.1em;
             margin: 0 0 20px 0;
-            text-shadow: 0 0 10px rgba(0, 212, 255, 0.3);
+            text-shadow: 0 0 10px rgba(99, 102, 241, 0.3);
         ">
             🎯 Portfolio Management Skill Assessment
         </h3>
@@ -631,7 +631,7 @@ def create_skill_assessment_card(attribution_results):
             <!-- Allocation Skill -->
             <div style="
                 background: rgba(10, 15, 26, 0.6);
-                border: 1px solid rgba(0, 212, 255, 0.15);
+                border: 1px solid rgba(99, 102, 241, 0.15);
                 border-radius: 8px;
                 padding: 16px;
             ">
@@ -672,7 +672,7 @@ def create_skill_assessment_card(attribution_results):
             <!-- Selection Skill -->
             <div style="
                 background: rgba(10, 15, 26, 0.6);
-                border: 1px solid rgba(0, 212, 255, 0.15);
+                border: 1px solid rgba(99, 102, 241, 0.15);
                 border-radius: 8px;
                 padding: 16px;
             ">
@@ -713,8 +713,8 @@ def create_skill_assessment_card(attribution_results):
 
         <!-- Recommendation -->
         <div style="
-            background: linear-gradient(90deg, rgba(0, 212, 255, 0.1) 0%, transparent 100%);
-            border-left: 3px solid #00d4ff;
+            background: linear-gradient(90deg, rgba(99, 102, 241, 0.1) 0%, transparent 100%);
+            border-left: 3px solid #818cf8;
             padding: 12px 16px;
             margin-top: 20px;
             border-radius: 4px;
@@ -723,7 +723,7 @@ def create_skill_assessment_card(attribution_results):
                 font-family: 'Inter', sans-serif;
                 font-size: 0.75rem;
                 font-weight: 700;
-                color: #00d4ff;
+                color: #818cf8;
                 text-transform: uppercase;
                 letter-spacing: 0.1em;
                 margin-bottom: 4px;
@@ -1065,7 +1065,7 @@ def create_sector_allocation_donut(df):
     sector_allocation = sector_allocation.sort_values('Total Value', ascending=False)
 
     # Enhanced color palette for better distinction
-    colors = ['#00d4ff', '#00ff88', '#ff6b00', '#b794f6', '#ff00ff',
+    colors = ['#818cf8', '#00ff88', '#ff6b00', '#b794f6', '#ff00ff',
               '#00ffcc', '#ffaa00', '#0080ff', '#ff0044', '#cyan']
 
     fig = go.Figure(data=[go.Pie(
@@ -1146,8 +1146,8 @@ def create_professional_sector_allocation_pie(df, use_professional_theme=True):
     else:
         # Fallback to dark neon theme
         colors = [
-            '#00d4ff', '#0080ff', '#00ffcc', '#00ff88', '#ffaa00',
-            '#ff6b00', '#b794f6', '#ff00ff', '#00d4ff', '#0080ff', '#00ffcc'
+            '#818cf8', '#0080ff', '#00ffcc', '#00ff88', '#ffaa00',
+            '#ff6b00', '#b794f6', '#ff00ff', '#818cf8', '#0080ff', '#00ffcc'
         ][:len(sector_pct)]
         text_color = '#ffffff'
         border_color = '#000000'
@@ -1268,7 +1268,7 @@ def create_professional_sector_allocation_bar(df):
             tickfont=dict(size=12, color='#ffffff')
         ),
         paper_bgcolor='rgba(0, 0, 0, 0)',
-        plot_bgcolor='rgba(10, 25, 41, 0.3)',
+        plot_bgcolor='rgba(0,0,0,0)',
         height=500,
         margin=dict(l=150, r=100, t=80, b=60),
         showlegend=False
@@ -1300,7 +1300,7 @@ def create_rolling_metrics_chart(returns, window=60, use_professional_theme=True
         vol_color = COLORS['danger']
         vol_fill = 'rgba(255, 0, 68, 0.2)'
         sharpe_color = COLORS['neon_blue']
-        sharpe_fill = 'rgba(0, 212, 255, 0.2)'
+        sharpe_fill = 'rgba(99, 102, 241, 0.2)'
         line_color = COLORS['text_muted']
         title_color = '#ffffff'
         text_color = '#ffffff'
@@ -2751,7 +2751,7 @@ def create_factor_exposure_radar(exposures):
         r=normalized,
         theta=factors,
         fill='toself',
-        fillcolor='rgba(0, 212, 255, 0.2)',
+        fillcolor='rgba(99, 102, 241, 0.2)',
         line=dict(color=COLORS['neon_blue'], width=2),
         name='Factor Exposure'
     ))
@@ -3045,20 +3045,20 @@ def apply_chart_theme(fig):
     - Proper contrast on dark pages
     """
     fig.update_layout(
-        paper_bgcolor='#1a1d29',
-        plot_bgcolor='#1a1d29',
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
         font=dict(color='#FFFFFF', family='Inter, sans-serif'),
         title=dict(font=dict(color='#FFFFFF')),
         xaxis=dict(
-            gridcolor='rgba(255, 255, 255, 0.1)',
-            linecolor='rgba(255, 255, 255, 0.2)',
+            gridcolor='rgba(99, 102, 241, 0.07)',
+            linecolor='rgba(99, 102, 241, 0.12)',
             zerolinecolor='rgba(255, 255, 255, 0.1)',
             tickfont=dict(color='#FFFFFF'),
             title=dict(font=dict(color='#FFFFFF')),
         ),
         yaxis=dict(
-            gridcolor='rgba(255, 255, 255, 0.1)',
-            linecolor='rgba(255, 255, 255, 0.2)',
+            gridcolor='rgba(99, 102, 241, 0.07)',
+            linecolor='rgba(99, 102, 241, 0.12)',
             zerolinecolor='rgba(255, 255, 255, 0.1)',
             tickfont=dict(color='#FFFFFF'),
             title=dict(font=dict(color='#FFFFFF')),
@@ -3066,7 +3066,7 @@ def apply_chart_theme(fig):
         hoverlabel=dict(
             bgcolor='#1a1d29',
             font=dict(color='#FFFFFF'),
-            bordercolor='#00BCD4',
+            bordercolor='#6366f1',
         ),
         legend=dict(
             font=dict(color='#FFFFFF'),
@@ -3116,7 +3116,7 @@ def make_scrollable_table(df, height=600, hide_index=True, use_container_width=T
         }
 
         div[data-testid="stDataFrame"] > div::-webkit-scrollbar-thumb {
-            background: #00d4ff;
+            background: #818cf8;
             border-radius: 4px;
         }
 
@@ -3144,7 +3144,7 @@ def show_toast(message, toast_type="info", duration=3000):
         "success": {"bg": "rgba(0, 255, 136, 0.95)", "border": "#00ff88", "icon": "✓"},
         "error": {"bg": "rgba(255, 0, 68, 0.95)", "border": "#ff0044", "icon": "✕"},
         "warning": {"bg": "rgba(255, 170, 0, 0.95)", "border": "#ffaa00", "icon": "⚠"},
-        "info": {"bg": "rgba(0, 212, 255, 0.95)", "border": "#00d4ff", "icon": "ℹ"}
+        "info": {"bg": "rgba(99, 102, 241, 0.95)", "border": "#818cf8", "icon": "ℹ"}
     }
     style = toast_styles.get(toast_type, toast_styles["info"])
     toast_id = f"toast_{int(time.time() * 1000)}_{random.randint(1000, 9999)}"
@@ -3384,8 +3384,8 @@ def display_stock_attribution_table(stock_df):
         {'key': 'Active Contribution %', 'label': 'Alpha Contrib', 'type': 'change'},
     ]
 
-    top_html = '<div style="background: rgba(26, 35, 50, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(0, 212, 255, 0.2); border-radius: 12px; padding: 20px; margin: 10px 0;">'
-    top_html += '<h4 style="color: #00d4ff; margin: 0 0 15px 0; font-family: \'Inter\', sans-serif; text-transform: uppercase; letter-spacing: 0.1em;">Top Alpha Contributors</h4>'
+    top_html = '<div style="background: rgba(26, 35, 50, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 20px; margin: 10px 0;">'
+    top_html += '<h4 style="color: #818cf8; margin: 0 0 15px 0; font-family: \'Inter\', sans-serif; text-transform: uppercase; letter-spacing: 0.1em;">Top Alpha Contributors</h4>'
     top_html += render_generic_table(top_contributors, columns=col_defs)
     top_html += '</div>'
 
@@ -3414,7 +3414,7 @@ def display_attribution_validation(validation):
     elif source == 'performance_history':
         status_color = '#00ff9d' if is_valid else '#ffd93d'
         status_icon = '✓' if is_valid else '⚠'
-        source_badge = '<span style="background: #00d4ff; color: #0a0f1a; padding: 2px 8px; border-radius: 4px; font-size: 0.65rem; margin-left: 10px;">FROM PERFORMANCE HISTORY</span>'
+        source_badge = '<span style="background: #818cf8; color: #0a0f1a; padding: 2px 8px; border-radius: 4px; font-size: 0.65rem; margin-left: 10px;">FROM PERFORMANCE HISTORY</span>'
     else:
         status_color = '#ffd93d'
         status_icon = '⚠'
@@ -3427,9 +3427,9 @@ def display_attribution_validation(validation):
         portfolio_start = validation.get('portfolio_start', 0)
         portfolio_end = validation.get('portfolio_end', 0)
         additional_info = f"""
-<div style="margin-top: 10px; padding: 8px; background: rgba(0, 212, 255, 0.05); border-radius: 4px; font-size: 0.75rem; color: #8890a0;">
-<strong style="color: #00d4ff;">Period:</strong> {days} days |
-<strong style="color: #00d4ff;">Portfolio:</strong> ${portfolio_start:,.0f} → ${portfolio_end:,.0f}
+<div style="margin-top: 10px; padding: 8px; background: rgba(99, 102, 241, 0.05); border-radius: 4px; font-size: 0.75rem; color: #8890a0;">
+<strong style="color: #818cf8;">Period:</strong> {days} days |
+<strong style="color: #818cf8;">Portfolio:</strong> ${portfolio_start:,.0f} → ${portfolio_end:,.0f}
 </div>
 """
 
@@ -3442,8 +3442,8 @@ def display_attribution_validation(validation):
 """
 
     html = f"""
-<div style="background: rgba(26, 35, 50, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(0, 212, 255, 0.2); border-radius: 12px; padding: 20px; margin: 20px 0;">
-<h4 style="color: #00d4ff; margin: 0 0 15px 0; font-family: 'Inter', sans-serif; text-transform: uppercase; letter-spacing: 0.1em;">📊 Attribution Reconciliation{source_badge}</h4>
+<div style="background: rgba(26, 35, 50, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 20px; margin: 20px 0;">
+<h4 style="color: #818cf8; margin: 0 0 15px 0; font-family: 'Inter', sans-serif; text-transform: uppercase; letter-spacing: 0.1em;">📊 Attribution Reconciliation{source_badge}</h4>
 <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px;">
 <div style="background: rgba(10, 15, 26, 0.6); border-radius: 8px; padding: 12px; text-align: center;">
 <div style="color: #8890a0; font-size: 0.7rem; text-transform: uppercase; margin-bottom: 5px;">Portfolio Return (Ann.)</div>

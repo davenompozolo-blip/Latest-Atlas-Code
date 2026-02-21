@@ -144,7 +144,7 @@ def _style_pie_chart(fig: go.Figure) -> None:
             trace.update(
                 marker={
                     'colors': CHART_COLORS,
-                    'line': {'color': 'white', 'width': 2},
+                    'line': {'color': 'rgba(15, 18, 35, 0.8)', 'width': 2},
                 },
                 hole=0.4,  # Donut style (modern look)
                 textposition='outside',
@@ -215,7 +215,7 @@ def _style_scatter_chart(fig: go.Figure) -> None:
             trace.update(
                 marker={
                     'color': CHART_COLORS[i % len(CHART_COLORS)],
-                    'line': {'width': 1, 'color': 'white'},
+                    'line': {'width': 1, 'color': 'rgba(15, 18, 35, 0.6)'},
                 },
             )
 
@@ -403,7 +403,7 @@ def create_donut_chart(
         labels=labels,
         values=values,
         hole=0.4,
-        marker={'colors': CHART_COLORS, 'line': {'color': 'white', 'width': 2}},
+        marker={'colors': CHART_COLORS, 'line': {'color': 'rgba(15, 18, 35, 0.8)', 'width': 2}},
         textposition='outside',
         textinfo='label+percent',
         textfont={'size': FONT_SIZES['sm'], 'family': FONTS['family']},

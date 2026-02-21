@@ -138,9 +138,9 @@ class LeverageTracker:
                 y=df['Leverage Ratio'],
                 mode='lines',
                 name='Leverage Ratio',
-                line=dict(color='#00d4ff', width=2),
+                line=dict(color='#818cf8', width=2),
                 fill='tozeroy',
-                fillcolor='rgba(0, 212, 255, 0.1)'
+                fillcolor='rgba(99, 102, 241, 0.1)'
             ),
             row=1, col=1
         )
@@ -237,7 +237,7 @@ class LeverageTracker:
                 x=df['Leverage Ratio'],
                 nbinsx=30,
                 name='Leverage Distribution',
-                marker=dict(color='#00d4ff'),
+                marker=dict(color='#818cf8'),
                 showlegend=False
             ),
             row=3, col=2
@@ -249,14 +249,14 @@ class LeverageTracker:
             height=1200,
             showlegend=True,
             paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(10,25,41,0.3)',
+            plot_bgcolor='rgba(0,0,0,0)',
             font=dict(color='white', size=10),
             hovermode='x unified'
         )
 
         # Update axes
-        fig.update_xaxes(showgrid=True, gridcolor='rgba(255,255,255,0.1)')
-        fig.update_yaxes(showgrid=True, gridcolor='rgba(255,255,255,0.1)')
+        fig.update_xaxes(showgrid=True, gridcolor='rgba(99, 102, 241, 0.07)')
+        fig.update_yaxes(showgrid=True, gridcolor='rgba(99, 102, 241, 0.07)')
 
         return fig
 

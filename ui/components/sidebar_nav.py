@@ -37,7 +37,7 @@ def render_sidebar_navigation(default_page: str = "Portfolio Home") -> str:
 
     with st.sidebar:
         # ==================== ATLAS BRANDING HEADER ====================
-        st.markdown("""<div style="text-align: center; padding: 1.5rem 0 1.25rem 0; border-bottom: 1px solid rgba(99, 102, 241, 0.2); margin-bottom: 0.75rem;"><div style="font-family: 'JetBrains Mono', monospace; font-size: 2rem; font-weight: 700; letter-spacing: 0.12em; margin: 0; color: #22d3ee; line-height: 1.2;">ATLAS</div><div style="font-family: 'JetBrains Mono', monospace; color: rgb(148, 163, 184); font-size: 0.9rem; margin: 0.35rem 0 0 0; font-weight: 400; letter-spacing: 0.08em;">Analytics Terminal</div></div>""", unsafe_allow_html=True)
+        st.markdown("""<div style="text-align: center; padding: 1.5rem 0 1.25rem 0; border-bottom: 1px solid rgba(99, 102, 241, 0.1); margin-bottom: 0.75rem;"><div style="font-family: 'JetBrains Mono', monospace; font-size: 2rem; font-weight: 700; letter-spacing: 0.12em; margin: 0; color: #a5b4fc; line-height: 1.2; text-shadow: 0 0 20px rgba(99, 102, 241, 0.3);">ATLAS</div><div style="font-family: 'JetBrains Mono', monospace; color: #64748b; font-size: 0.9rem; margin: 0.35rem 0 0 0; font-weight: 400; letter-spacing: 0.08em;">Analytics Terminal</div></div>""", unsafe_allow_html=True)
 
         # ==================== MAIN NAVIGATION MENU ====================
         selected = option_menu(
@@ -80,22 +80,22 @@ def render_sidebar_navigation(default_page: str = "Portfolio Home") -> str:
                     "margin": "0.15rem 0",
                     "padding": "0.55rem 0.75rem",
                     "border-radius": "0.5rem",
-                    "background": "rgba(21, 25, 50, 0.6)",
-                    "backdrop-filter": "blur(10px)",
-                    "border": "1px solid rgba(99, 102, 241, 0.1)",
-                    "color": "#94a3b8",
+                    "background": "rgba(15, 18, 35, 0.4)",
+                    "backdrop-filter": "blur(12px)",
+                    "border": "1px solid rgba(99, 102, 241, 0.06)",
+                    "color": "#64748b",
                     "transition": "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
                 },
                 "nav-link-selected": {
-                    "background": "linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(139, 92, 246, 0.25))",
-                    "border": "1px solid rgba(99, 102, 241, 0.4)",
-                    "color": "#f8fafc",
+                    "background": "rgba(99, 102, 241, 0.12)",
+                    "border": "1px solid rgba(99, 102, 241, 0.25)",
+                    "color": "#e2e8f0",
                     "font-weight": "600",
-                    "box-shadow": "0 4px 16px rgba(99, 102, 241, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.1)",
+                    "box-shadow": "0 4px 16px rgba(99, 102, 241, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.04)",
                 },
                 "nav-link:hover": {
-                    "background": "rgba(99, 102, 241, 0.1)",
-                    "border-color": "rgba(99, 102, 241, 0.2)",
+                    "background": "rgba(99, 102, 241, 0.08)",
+                    "border-color": "rgba(99, 102, 241, 0.15)",
                     "transform": "translateX(2px)",
                 },
                 "icon": {

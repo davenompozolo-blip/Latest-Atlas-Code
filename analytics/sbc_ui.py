@@ -218,8 +218,8 @@ def visualize_sbc_historical_trend(sbc_data: Dict, ticker: str):
     # Apply ATLAS dark theme
     fig.update_layout(
         height=400,
-        plot_bgcolor='#0E1117',
-        paper_bgcolor='#0E1117',
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
         font=dict(color='white', size=12),
         hovermode='x unified',
         showlegend=True,
@@ -465,8 +465,8 @@ def visualize_sbc_forecast(
     # Apply ATLAS theme
     fig.update_layout(
         height=700,
-        plot_bgcolor='#0E1117',
-        paper_bgcolor='#0E1117',
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
         font=dict(color='white', size=12),
         showlegend=False
     )

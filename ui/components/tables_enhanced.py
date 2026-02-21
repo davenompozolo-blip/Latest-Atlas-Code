@@ -70,7 +70,7 @@ def atlas_table(
             font-weight: 700;
             color: #f8fafc;
             margin-bottom: 1rem;
-            background: linear-gradient(135deg, #00d4ff 0%, #6366f1 50%, #8b5cf6 100%);
+            background: linear-gradient(135deg, #818cf8 0%, #6366f1 50%, #8b5cf6 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
@@ -108,7 +108,7 @@ def atlas_table(
             left: 0;
             right: 0;
             height: 2px;
-            background: linear-gradient(90deg, #00d4ff 0%, #6366f1 50%, #8b5cf6 100%);
+            background: linear-gradient(90deg, #818cf8 0%, #6366f1 50%, #8b5cf6 100%);
             opacity: 0.5;
         }}
 

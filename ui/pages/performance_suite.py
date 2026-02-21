@@ -37,7 +37,7 @@ def render_performance_suite(start_date, end_date, selected_benchmark):
             """Fallback benchmark returns"""
             return None
 
-    st.markdown('<h1 style="font-size: 2.5rem; font-weight: 800; color: #f8fafc; margin-bottom: 0.5rem;"><span style="font-size: 2rem;">💎</span> <span style="background: linear-gradient(135deg, #00d4ff, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">PERFORMANCE SUITE</span></h1>', unsafe_allow_html=True)
+    st.markdown('<h1 style="font-size: 2.5rem; font-weight: 800; color: #f8fafc; margin-bottom: 0.5rem;"><span style="font-size: 2rem;">💎</span> <span style="background: linear-gradient(135deg, #818cf8, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">PERFORMANCE SUITE</span></h1>', unsafe_allow_html=True)
 
     # CRITICAL FIX: Check session_state FIRST for fresh EE data
     if 'portfolio_df' in st.session_state and st.session_state['portfolio_df'] is not None and len(st.session_state['portfolio_df']) > 0:
@@ -72,7 +72,7 @@ def render_performance_suite(start_date, end_date, selected_benchmark):
     # TAB 1: PORTFOLIO PERFORMANCE (Enhanced)
     # ============================================================
     with tab1:
-        st.markdown('<h2 style="font-size: 1.5rem; font-weight: 700; color: #f8fafc; margin-bottom: 1.5rem;"><span style="font-size: 1.25rem;">📈</span> <span style="background: linear-gradient(135deg, #00d4ff, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Portfolio Performance Metrics</span></h2>', unsafe_allow_html=True)
+        st.markdown('<h2 style="font-size: 1.5rem; font-weight: 700; color: #f8fafc; margin-bottom: 1.5rem;"><span style="font-size: 1.25rem;">📈</span> <span style="background: linear-gradient(135deg, #818cf8, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Portfolio Performance Metrics</span></h2>', unsafe_allow_html=True)
 
         if portfolio_returns is not None and len(portfolio_returns) > 0:
 
@@ -136,7 +136,7 @@ def render_performance_suite(start_date, end_date, selected_benchmark):
                 fig_hist.add_trace(go.Histogram(
                     x=portfolio_returns * 100,
                     nbinsx=50,
-                    marker_color='#00d4ff',
+                    marker_color='#818cf8',
                     opacity=0.7,
                     name='Daily Returns'
                 ))
@@ -170,7 +170,7 @@ def render_performance_suite(start_date, end_date, selected_benchmark):
                     height=400,
                     showlegend=True,
                     paper_bgcolor='rgba(0, 0, 0, 0)',
-                    plot_bgcolor='rgba(10, 25, 41, 0.3)',
+                    plot_bgcolor='rgba(0,0,0,0)',
                     font=dict(color='#ffffff')
                 )
 
@@ -214,7 +214,7 @@ def render_performance_suite(start_date, end_date, selected_benchmark):
                         yaxis_title="Sharpe Ratio",
                         height=400,
                         paper_bgcolor='rgba(0, 0, 0, 0)',
-                        plot_bgcolor='rgba(10, 25, 41, 0.3)',
+                        plot_bgcolor='rgba(0,0,0,0)',
                         font=dict(color='#ffffff')
                     )
 
@@ -223,7 +223,7 @@ def render_performance_suite(start_date, end_date, selected_benchmark):
             st.divider()
 
             # === ADVANCED METRICS ===
-            st.markdown('<h3 style="font-size: 1.25rem; font-weight: 700; color: #f8fafc; margin-top: 1.5rem; margin-bottom: 1rem;"><span style="background: linear-gradient(135deg, #00d4ff, #6366f1); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Advanced Performance Metrics</span></h3>', unsafe_allow_html=True)
+            st.markdown('<h3 style="font-size: 1.25rem; font-weight: 700; color: #f8fafc; margin-top: 1.5rem; margin-bottom: 1rem;"><span style="background: linear-gradient(135deg, #818cf8, #6366f1); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Advanced Performance Metrics</span></h3>', unsafe_allow_html=True)
 
             metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
 
@@ -721,7 +721,7 @@ def render_performance_suite(start_date, end_date, selected_benchmark):
                     yaxis_title="",
                     height=500,
                     paper_bgcolor='rgba(0, 0, 0, 0)',
-                    plot_bgcolor='rgba(10, 25, 41, 0.3)',
+                    plot_bgcolor='rgba(0,0,0,0)',
                     font=dict(color='#ffffff')
                 )
 
@@ -753,7 +753,7 @@ def render_performance_suite(start_date, end_date, selected_benchmark):
     # TAB 4: ATTRIBUTION & BENCHMARKING (Enhanced)
     # ============================================================
     with tab4:
-        st.markdown('<h2 style="font-size: 1.5rem; font-weight: 700; color: #f8fafc; margin-bottom: 1.5rem;"><span style="background: linear-gradient(135deg, #00d4ff, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Performance Attribution & Benchmark Comparison</span></h2>', unsafe_allow_html=True)
+        st.markdown('<h2 style="font-size: 1.5rem; font-weight: 700; color: #f8fafc; margin-bottom: 1.5rem;"><span style="background: linear-gradient(135deg, #818cf8, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Performance Attribution & Benchmark Comparison</span></h2>', unsafe_allow_html=True)
 
         if benchmark_returns is not None and portfolio_returns is not None and len(portfolio_returns) > 0:
 
@@ -803,17 +803,17 @@ def render_performance_suite(start_date, end_date, selected_benchmark):
                 title_color = '#FFFFFF'
                 text_color = '#FFFFFF'
                 grid_color = 'rgba(255, 255, 255, 0.1)'
-                paper_bg = '#1a1d29'
-                plot_bg = '#1a1d29'
+                paper_bg = 'rgba(0,0,0,0)'
+                plot_bg = 'rgba(0,0,0,0)'
             else:
-                portfolio_color = '#00d4ff'
+                portfolio_color = '#818cf8'
                 benchmark_color = '#ffaa00'
-                fill_color = 'rgba(0, 212, 255, 0.1)'
+                fill_color = 'rgba(99, 102, 241, 0.1)'
                 title_color = '#ffffff'
                 text_color = '#ffffff'
                 grid_color = 'rgba(99, 102, 241, 0.1)'
                 paper_bg = 'rgba(0, 0, 0, 0)'
-                plot_bg = 'rgba(10, 25, 41, 0.3)'
+                plot_bg = 'rgba(0,0,0,0)'
 
             # Portfolio line with area fill
             fig_cumulative.add_trace(go.Scatter(

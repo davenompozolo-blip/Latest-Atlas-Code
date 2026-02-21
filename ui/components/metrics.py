@@ -18,22 +18,22 @@ COLORS = {
     "background": "#000000",
     "card_background": "#0a1929",
     "card_background_alt": "#050f17",
-    "neon_blue": "#00d4ff",
+    "neon_blue": "#818cf8",
     "electric_blue": "#0080ff",
     "teal": "#00ffcc",
     "cyan": "#00ffff",
     "success": "#00ff88",
     "warning": "#ffaa00",
     "danger": "#ff0044",
-    "info": "#00d4ff",
+    "info": "#818cf8",
     "purple": "#b794f6",
     "pink": "#ff00ff",
     "orange": "#ff6b00",
     "text_primary": "#ffffff",
     "text_secondary": "#b0c4de",
     "text_muted": "#6c8ca8",
-    "border": "#00d4ff",
-    "shadow": "rgba(0, 212, 255, 0.3)",
+    "border": "#818cf8",
+    "shadow": "rgba(99, 102, 241, 0.3)",
 }
 
 
@@ -243,7 +243,7 @@ def create_skill_assessment_card(attribution_results):
         background: rgba(26, 35, 50, 0.7);
         backdrop-filter: blur(10px);
         -webkit-backdrop-filter: blur(10px);
-        border: 1px solid rgba(0, 212, 255, 0.2);
+        border: 1px solid rgba(99, 102, 241, 0.2);
         border-radius: 12px;
         padding: 24px;
         margin: 20px 0;
@@ -253,11 +253,11 @@ def create_skill_assessment_card(attribution_results):
             font-family: 'Inter', sans-serif;
             font-size: 1.2rem;
             font-weight: 700;
-            color: #00d4ff;
+            color: #818cf8;
             text-transform: uppercase;
             letter-spacing: 0.1em;
             margin: 0 0 20px 0;
-            text-shadow: 0 0 10px rgba(0, 212, 255, 0.3);
+            text-shadow: 0 0 10px rgba(99, 102, 241, 0.3);
         ">
             <� Portfolio Management Skill Assessment
         </h3>
@@ -267,7 +267,7 @@ def create_skill_assessment_card(attribution_results):
             <!-- Allocation Skill -->
             <div style="
                 background: rgba(10, 15, 26, 0.6);
-                border: 1px solid rgba(0, 212, 255, 0.15);
+                border: 1px solid rgba(99, 102, 241, 0.15);
                 border-radius: 8px;
                 padding: 16px;
             ">
@@ -308,7 +308,7 @@ def create_skill_assessment_card(attribution_results):
             <!-- Selection Skill -->
             <div style="
                 background: rgba(10, 15, 26, 0.6);
-                border: 1px solid rgba(0, 212, 255, 0.15);
+                border: 1px solid rgba(99, 102, 241, 0.15);
                 border-radius: 8px;
                 padding: 16px;
             ">
@@ -349,8 +349,8 @@ def create_skill_assessment_card(attribution_results):
 
         <!-- Recommendation -->
         <div style="
-            background: linear-gradient(90deg, rgba(0, 212, 255, 0.1) 0%, transparent 100%);
-            border-left: 3px solid #00d4ff;
+            background: linear-gradient(90deg, rgba(99, 102, 241, 0.1) 0%, transparent 100%);
+            border-left: 3px solid #818cf8;
             padding: 12px 16px;
             margin-top: 20px;
             border-radius: 4px;
@@ -359,7 +359,7 @@ def create_skill_assessment_card(attribution_results):
                 font-family: 'Inter', sans-serif;
                 font-size: 0.75rem;
                 font-weight: 700;
-                color: #00d4ff;
+                color: #818cf8;
                 text-transform: uppercase;
                 letter-spacing: 0.1em;
                 margin-bottom: 4px;

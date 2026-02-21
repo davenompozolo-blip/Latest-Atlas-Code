@@ -392,30 +392,30 @@ def render_v10_analytics():
 
                                 # Glassmorphism styled skill assessment card
                                 skill_html = f"""
-    <div style="background: rgba(26, 35, 50, 0.7); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid rgba(0, 212, 255, 0.2); border-radius: 12px; padding: 24px; margin: 20px 0; font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;">
-    <h3 style="font-family: 'Inter', sans-serif; font-size: 1.2rem; font-weight: 700; color: #00d4ff; text-transform: uppercase; letter-spacing: 0.1em; margin: 0 0 20px 0; text-shadow: 0 0 10px rgba(0, 212, 255, 0.3);">🎯 Portfolio Management Skill Assessment</h3>
+    <div style="background: rgba(26, 35, 50, 0.7); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 24px; margin: 20px 0; font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;">
+    <h3 style="font-family: 'Inter', sans-serif; font-size: 1.2rem; font-weight: 700; color: #818cf8; text-transform: uppercase; letter-spacing: 0.1em; margin: 0 0 20px 0; text-shadow: 0 0 10px rgba(99, 102, 241, 0.3);">🎯 Portfolio Management Skill Assessment</h3>
     <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
-    <div style="background: rgba(10, 15, 26, 0.6); border: 1px solid rgba(0, 212, 255, 0.15); border-radius: 8px; padding: 16px;">
+    <div style="background: rgba(10, 15, 26, 0.6); border: 1px solid rgba(99, 102, 241, 0.15); border-radius: 8px; padding: 16px;">
     <div style="font-family: 'Inter', sans-serif; font-size: 0.7rem; font-weight: 600; color: #8890a0; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px;">ALLOCATION SKILL</div>
     <div style="font-family: 'JetBrains Mono', monospace; font-size: 2rem; font-weight: 700; color: {alloc_color}; text-shadow: 0 0 15px {alloc_color}40;">{allocation_score:.1f}/10</div>
     <div style="font-family: 'Inter', sans-serif; font-size: 0.85rem; color: #c0c8d0; margin-top: 6px;">Effect: {total_allocation:+.2f}%</div>
     <div style="font-family: 'Inter', sans-serif; font-size: 0.7rem; color: {alloc_color}; margin-top: 6px;">{alloc_status}</div>
     </div>
-    <div style="background: rgba(10, 15, 26, 0.6); border: 1px solid rgba(0, 212, 255, 0.15); border-radius: 8px; padding: 16px;">
+    <div style="background: rgba(10, 15, 26, 0.6); border: 1px solid rgba(99, 102, 241, 0.15); border-radius: 8px; padding: 16px;">
     <div style="font-family: 'Inter', sans-serif; font-size: 0.7rem; font-weight: 600; color: #8890a0; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px;">SELECTION SKILL</div>
     <div style="font-family: 'JetBrains Mono', monospace; font-size: 2rem; font-weight: 700; color: {select_color}; text-shadow: 0 0 15px {select_color}40;">{selection_score:.1f}/10</div>
     <div style="font-family: 'Inter', sans-serif; font-size: 0.85rem; color: #c0c8d0; margin-top: 6px;">Effect: {total_selection:+.2f}%</div>
     <div style="font-family: 'Inter', sans-serif; font-size: 0.7rem; color: {select_color}; margin-top: 6px;">{select_status}</div>
     </div>
-    <div style="background: rgba(10, 15, 26, 0.6); border: 1px solid rgba(0, 212, 255, 0.15); border-radius: 8px; padding: 16px;">
+    <div style="background: rgba(10, 15, 26, 0.6); border: 1px solid rgba(99, 102, 241, 0.15); border-radius: 8px; padding: 16px;">
     <div style="font-family: 'Inter', sans-serif; font-size: 0.7rem; font-weight: 600; color: #8890a0; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px;">TOTAL ACTIVE RETURN</div>
     <div style="font-family: 'JetBrains Mono', monospace; font-size: 2rem; font-weight: 700; color: {active_color}; text-shadow: 0 0 15px {active_color}40;">{total_active_return:+.2f}%</div>
     <div style="font-family: 'Inter', sans-serif; font-size: 0.85rem; color: #c0c8d0; margin-top: 6px;">Interaction: {total_interaction:+.2f}%</div>
     <div style="font-family: 'Inter', sans-serif; font-size: 0.7rem; color: {active_color}; margin-top: 6px;">{'✓ Outperforming' if total_active_return > 0 else '✗ Underperforming'}</div>
     </div>
     </div>
-    <div style="background: linear-gradient(90deg, rgba(0, 212, 255, 0.1) 0%, transparent 100%); border-left: 3px solid #00d4ff; padding: 12px 16px; margin-top: 20px; border-radius: 4px;">
-    <div style="font-family: 'Inter', sans-serif; font-size: 0.75rem; font-weight: 700; color: #00d4ff; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px;">💡 Primary Strength: {primary_skill}</div>
+    <div style="background: linear-gradient(90deg, rgba(99, 102, 241, 0.1) 0%, transparent 100%); border-left: 3px solid #818cf8; padding: 12px 16px; margin-top: 20px; border-radius: 4px;">
+    <div style="font-family: 'Inter', sans-serif; font-size: 0.75rem; font-weight: 700; color: #818cf8; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px;">💡 Primary Strength: {primary_skill}</div>
     <div style="font-family: 'Inter', sans-serif; font-size: 0.85rem; color: #c0c8d0;">{recommendation}</div>
     </div>
     </div>
@@ -489,7 +489,7 @@ def render_v10_analytics():
 
             fig_allocation.update_layout(
                 paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(10,25,41,0.3)',
+                plot_bgcolor='rgba(0,0,0,0)',
                 font=dict(color='white', size=12),
                 height=600
             )
@@ -528,7 +528,7 @@ def render_v10_analytics():
                         x=portfolio_returns * 100,
                         name='Daily Returns',
                         nbinsx=50,
-                        marker_color='rgba(0, 212, 255, 0.6)',
+                        marker_color='rgba(99, 102, 241, 0.6)',
                         showlegend=False
                     ))
 
@@ -557,7 +557,7 @@ def render_v10_analytics():
                         showarrow=False,
                         align='left',
                         bgcolor='rgba(10,25,41,0.8)',
-                        bordercolor='#00d4ff',
+                        bordercolor='#818cf8',
                         borderwidth=1,
                         font=dict(color='white', size=11)
                     )
@@ -567,7 +567,7 @@ def render_v10_analytics():
                         xaxis_title='Daily Return (%)',
                         yaxis_title='Frequency',
                         paper_bgcolor='rgba(0,0,0,0)',
-                        plot_bgcolor='rgba(10,25,41,0.3)',
+                        plot_bgcolor='rgba(0,0,0,0)',
                         font=dict(color='white'),
                         height=500
                     )
@@ -589,7 +589,7 @@ def render_v10_analytics():
                                 x=[i],
                                 y=[0],
                                 mode='markers+text',
-                                marker=dict(size=30, color='#00d4ff'),
+                                marker=dict(size=30, color='#818cf8'),
                                 text=[ticker],
                                 textposition='top center',
                                 name=ticker,
@@ -621,7 +621,7 @@ def render_v10_analytics():
                             xaxis=dict(visible=False),
                             yaxis=dict(visible=False),
                             paper_bgcolor='rgba(0,0,0,0)',
-                            plot_bgcolor='rgba(10,25,41,0.3)',
+                            plot_bgcolor='rgba(0,0,0,0)',
                             height=400
                         )
 
@@ -640,8 +640,8 @@ def render_v10_analytics():
                         y=rolling_sharpe,
                         mode='lines',
                         fill='tozeroy',
-                        line=dict(color='#00d4ff', width=2),
-                        fillcolor='rgba(0, 212, 255, 0.2)',
+                        line=dict(color='#818cf8', width=2),
+                        fillcolor='rgba(99, 102, 241, 0.2)',
                         name='Rolling Sharpe'
                     ))
 
@@ -658,7 +658,7 @@ def render_v10_analytics():
                         xaxis_title='Date',
                         yaxis_title='Sharpe Ratio',
                         paper_bgcolor='rgba(0,0,0,0)',
-                        plot_bgcolor='rgba(10,25,41,0.3)',
+                        plot_bgcolor='rgba(0,0,0,0)',
                         font=dict(color='white'),
                         height=400
                     )

@@ -33,7 +33,7 @@ def create_allocation_chart(weights: Dict[str, float]) -> go.Figure:
         textinfo='label+percent',
         marker=dict(
             colors=px.colors.qualitative.Set3,
-            line=dict(color='white', width=2)
+            line=dict(color='rgba(15, 18, 35, 0.8)', width=2)
         )
     )])
 
@@ -180,7 +180,7 @@ def create_risk_return_scatter(
                 size=15,
                 color='red',
                 symbol='star',
-                line=dict(color='white', width=2)
+                line=dict(color='rgba(15, 18, 35, 0.8)', width=2)
             ),
             name='Optimal Portfolio',
             hovertemplate='<b>Optimal Portfolio</b><br>' +

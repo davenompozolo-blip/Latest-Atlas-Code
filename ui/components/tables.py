@@ -93,7 +93,7 @@ def make_scrollable_table(df, height=600, hide_index=True, use_container_width=T
         }
 
         div[data-testid="stDataFrame"] > div::-webkit-scrollbar-thumb {
-            background: #00d4ff;
+            background: #818cf8;
             border-radius: 4px;
         }
 

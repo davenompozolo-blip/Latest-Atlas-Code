@@ -254,7 +254,7 @@ def render_quant_optimizer(start_date, end_date, selected_benchmark):
                     fig.add_trace(go.Bar(
                         x=weights_df['Symbol'],
                         y=weights_df['Optimal Weight'],
-                        marker_color='#00d4ff',
+                        marker_color='#818cf8',
                         text=weights_df['Weight %'],
                         textposition='outside'
                     ))
