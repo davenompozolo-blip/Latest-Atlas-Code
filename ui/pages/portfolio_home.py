@@ -375,9 +375,12 @@ def render_portfolio_home(start_date, end_date):
                 return 'ratio'
             if 'Weight %' in c or 'Weight' == c:
                 return 'weight'
-            if any(k in c for k in ('Price', 'Value', 'Cost', 'P&L $', 'Target')):
+            # Dollar gain/loss columns: green/red with $ formatting
+            if c in ('Total Gain/Loss $', 'Daily P&L $'):
+                return 'dollar_change'
+            if any(k in c for k in ('Price', 'Value', 'Cost', 'Target')):
                 return 'price'
-            if '%' in c or 'Change' in c or 'Return' in c or 'Gain/Loss' in c:
+            if '%' in c or 'Change' in c or 'Return' in c:
                 return 'change'
             return 'text'
 

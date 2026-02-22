@@ -419,6 +419,23 @@ def _render_cell(value, col_type: str, currency: str = "$") -> str:
             return f'<td style="{STYLE_PRICE}">{value}</td>'
         return f'<td style="{STYLE_PRICE}">{currency}{val:,.2f}</td>'
 
+    elif col_type == 'dollar_change':
+        # Dollar gain/loss: ▲ +$749.30 in green / ▼ -$234.27 in red
+        val = pd.to_numeric(value, errors='coerce')
+        if pd.isna(val):
+            return f'<td style="{STYLE_PRICE}">{value}</td>'
+        is_up = val >= 0
+        arrow = "\u25b2" if is_up else "\u25bc"
+        color = COLOR_GREEN if is_up else COLOR_RED
+        glow = GLOW_GREEN if is_up else GLOW_RED
+        sign = "+" if is_up else ""
+        style = (
+            f"font-family: {FONT_MONO}; font-weight: 600; font-size: 13px; "
+            f"color: {color}; text-shadow: {glow}, 0 0 16px {color}60; text-align: right; "
+            f"padding: 12px 8px; border-bottom: 1px solid {COLOR_BORDER};"
+        )
+        return f'<td style="{style}">{arrow} {sign}{currency}{abs(val):,.2f}</td>'
+
     elif col_type == 'change':
         # Try to parse numeric value from string
         raw = str(value).replace('%', '').replace(',', '').strip()
@@ -542,7 +559,7 @@ def render_generic_table(
         return f'<span style="font-family: {FONT}; font-size: 11px; color: {COLOR_DIM};">No data available</span>'
 
     # Determine alignment for headers
-    right_types = {'price', 'change', 'percent', 'weight', 'ratio', 'quality_score'}
+    right_types = {'price', 'change', 'dollar_change', 'percent', 'weight', 'ratio', 'quality_score'}
 
     # Build header
     headers = []

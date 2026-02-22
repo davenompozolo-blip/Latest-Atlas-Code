@@ -83,13 +83,20 @@ body, .stApp {
 }
 
 /* ── Ensure all Streamlit content renders above background ── */
-section[data-testid="stSidebar"],
 section[data-testid="stSidebarContent"],
 .stApp > div,
 .block-container,
 div[data-testid="stAppViewContainer"] {
     position: relative !important;
     z-index: 1 !important;
+}
+
+/* Offset content below the fixed 90px top bar */
+.stApp > div:first-child {
+    padding-top: 90px !important;
+}
+section[data-testid="stSidebar"] > div {
+    padding-top: 90px !important;
 }
 
 /* ── Streamlit Chrome Removal ───────────────────────── */
@@ -107,6 +114,8 @@ section[data-testid="stSidebar"] {
     border-right: 1px solid var(--border) !important;
     width: 200px !important;
     min-width: 200px !important;
+    position: relative !important;
+    z-index: 1 !important;
 }
 
 section[data-testid="stSidebar"] > div:first-child {
