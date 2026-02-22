@@ -81,6 +81,13 @@ st.set_page_config(
 from ui.atlas_css import init_atlas_css
 init_atlas_css()
 
+# Background layers — real divs instead of ::before/::after pseudo-elements
+# (pseudo-elements on .stApp sit on top of Streamlit content and obscure it)
+st.markdown("""
+<div class="atlas-bg-mesh"></div>
+<div class="atlas-bg-grain"></div>
+""", unsafe_allow_html=True)
+
 # ATLAS Table Formatting - Global typography for tables (Inter font, Bloomberg style)
 from core.atlas_table_formatting import inject_table_css
 inject_table_css()
