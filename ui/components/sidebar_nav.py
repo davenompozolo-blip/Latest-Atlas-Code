@@ -57,9 +57,9 @@ def render_sidebar_navigation(default_page: str = "Portfolio Home") -> str:
             border: none !important;
             border-left: 2px solid transparent !important;
             color: rgba(255,255,255,0.52) !important;
-            font-size: 12.5px !important;
+            font-size: 11.5px !important;
             font-family: 'DM Sans', sans-serif !important;
-            padding: 9px 20px !important;
+            padding: 7px 16px !important;
             text-align: left !important;
             width: 100% !important;
             justify-content: flex-start !important;
@@ -68,7 +68,8 @@ def render_sidebar_navigation(default_page: str = "Portfolio Home") -> str:
             font-weight: 400 !important;
             min-height: 0 !important;
             height: auto !important;
-            line-height: 1.5 !important;
+            line-height: 1.3 !important;
+            letter-spacing: 0.1px !important;
             transition: all 0.2s ease !important;
         }
         div[data-testid="stSidebar"] .stButton > button:hover {
@@ -84,11 +85,11 @@ def render_sidebar_navigation(default_page: str = "Portfolio Home") -> str:
 
         # ── ATLAS Logo ──
         st.markdown("""
-        <div style="padding: 0 20px 24px; border-bottom: 1px solid rgba(255,255,255,0.07); margin-bottom: 8px;">
-            <div style="font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 700;
+        <div style="padding: 0 16px 20px; border-bottom: 1px solid rgba(255,255,255,0.07); margin-bottom: 8px;">
+            <div style="font-family: 'Syne', sans-serif; font-size: 17px; font-weight: 700;
                         letter-spacing: 3px; color: #00d4ff;
                         text-shadow: 0 0 20px rgba(0, 212, 255, 0.4);">ATLAS</div>
-            <div style="font-size: 10px; color: rgba(255,255,255,0.28);
+            <div style="font-size: 9px; color: rgba(255,255,255,0.28);
                         letter-spacing: 1.5px; text-transform: uppercase; margin-top: 2px;">Analytics Terminal</div>
         </div>
         """, unsafe_allow_html=True)
@@ -97,7 +98,7 @@ def render_sidebar_navigation(default_page: str = "Portfolio Home") -> str:
         for section_name, items in NAV_SECTIONS.items():
             # Section header
             st.markdown(f'''
-            <div style="padding: 8px 12px 4px; font-size: 9px; letter-spacing: 1.5px;
+            <div style="padding: 10px 16px 3px; font-size: 8.5px; letter-spacing: 2px;
                         text-transform: uppercase; color: rgba(255,255,255,0.28);">
                 {section_name}
             </div>''', unsafe_allow_html=True)
@@ -108,13 +109,14 @@ def render_sidebar_navigation(default_page: str = "Portfolio Home") -> str:
                     # Active state — indigo left border + indigo dot + bright text
                     # Also render right-side glow marker
                     st.markdown(f'''
-                    <div style="display: flex; align-items: center; gap: 10px;
-                                padding: 9px 20px; font-size: 12.5px;
+                    <div style="display: flex; align-items: center; gap: 8px;
+                                padding: 7px 16px; font-size: 11.5px;
+                                line-height: 1.3; letter-spacing: 0.1px;
                                 color: rgba(255,255,255,0.92); cursor: default;
                                 background: rgba(99,102,241,0.1);
                                 border-left: 2px solid #6366f1;
                                 position: relative;">
-                        <div style="width: 6px; height: 6px; border-radius: 50%;
+                        <div style="width: 5px; height: 5px; border-radius: 50%;
                                     background: #6366f1; flex-shrink: 0;"></div>
                         <span style="font-family: 'DM Sans', sans-serif;">{item['label']}</span>
                         <div style="position: absolute; right: 0; top: 20%; width: 3px; height: 60%;
