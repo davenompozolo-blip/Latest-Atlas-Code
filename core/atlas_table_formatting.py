@@ -28,26 +28,26 @@ from typing import Optional, List, Dict
 # INLINE STYLE CONSTANTS (Bloomberg Terminal / Inter font)
 # =============================================================================
 
-# Font stack
-FONT = "'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif"
-FONT_MONO = "'JetBrains Mono', 'SF Mono', 'Fira Code', Consolas, monospace"
+# Font stack — matches design spec (DM Sans body, Space Mono for numbers)
+FONT = "'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+FONT_MONO = "'Space Mono', 'SF Mono', 'Fira Code', Consolas, monospace"
 
-# Colors
-COLOR_WHITE = "#ffffff"
-COLOR_HEADER = "rgba(255, 255, 255, 0.92)"  # Slightly different shade for headers vs content
-COLOR_DIM = "rgba(255, 255, 255, 0.35)"
+# Colors — matches design spec tokens exactly
+COLOR_WHITE = "rgba(255, 255, 255, 0.92)"
+COLOR_HEADER = "rgba(255, 255, 255, 0.92)"
+COLOR_DIM = "rgba(255, 255, 255, 0.28)"
 COLOR_TEXT = "rgba(255, 255, 255, 0.85)"
-COLOR_MUTED = "rgba(255, 255, 255, 0.5)"
-COLOR_GREEN = "#00d26a"
-COLOR_RED = "#ff4757"
-COLOR_BORDER = "rgba(255, 255, 255, 0.06)"
-COLOR_HEADER_BORDER = "rgba(255, 255, 255, 0.15)"
+COLOR_MUTED = "rgba(255, 255, 255, 0.52)"
+COLOR_GREEN = "#10b981"
+COLOR_RED = "#f43f5e"
+COLOR_BORDER = "rgba(255, 255, 255, 0.07)"
+COLOR_HEADER_BORDER = "rgba(255, 255, 255, 0.12)"
 COLOR_HEADER_BG = "rgba(255, 255, 255, 0.04)"
-COLOR_HOVER = "rgba(255, 255, 255, 0.03)"
+COLOR_HOVER = "rgba(255, 255, 255, 0.025)"
 
-# Glows
-GLOW_GREEN = "0 0 8px rgba(0, 210, 106, 0.4)"
-GLOW_RED = "0 0 8px rgba(255, 71, 87, 0.4)"
+# Glows — matches design spec accent colors
+GLOW_GREEN = "0 0 8px rgba(16, 185, 129, 0.4)"
+GLOW_RED = "0 0 8px rgba(244, 63, 94, 0.4)"
 
 # Cell styles as inline CSS strings
 STYLE_TABLE = (
@@ -146,8 +146,7 @@ STYLE_SECTION_HEADER = (
 
 ATLAS_TABLE_CSS = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&family=Syne:wght@400;600;700&display=swap');
 </style>
 """
 
@@ -703,24 +702,31 @@ def render_table_card(title: str, table_html: str, icon: str = "") -> str:
     Returns:
         Full HTML string with card + heading + table.
     """
-    icon_html = f'<span style="font-size: 1.25rem; margin-right: 8px;">{icon}</span>' if icon else ""
+    icon_html = f'<span style="font-size: 1rem; margin-right: 8px;">{icon}</span>' if icon else ""
+    # Design spec: glass surface with backdrop-filter, subtle border, no opaque gradient
     heading_style = (
-        f"font-family: {FONT}; font-size: 1.25rem; font-weight: 700; "
-        f"color: #f8fafc; margin-bottom: 1rem; "
-        f"background: linear-gradient(135deg, #818cf8 0%, #6366f1 50%, #8b5cf6 100%); "
-        f"-webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;"
+        f"font-family: 'Syne', {FONT}; font-size: 12px; font-weight: 600; "
+        f"letter-spacing: 2px; text-transform: uppercase; "
+        f"color: rgba(255,255,255,0.52); margin: 0 0 0 0; "
     )
+    # Matches design spec .table-container: bg-surface + blur + thin border
     card_style = (
-        f"background: linear-gradient(135deg, rgba(26, 29, 41, 0.95), rgba(20, 23, 35, 0.9)); "
-        f"backdrop-filter: blur(24px); border-radius: 16px; "
-        f"border: 1px solid rgba(99, 102, 241, 0.2); "
-        f"padding: 1.5rem; margin: 1rem 0; "
-        f"box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3), "
-        f"0 0 15px rgba(99, 102, 241, 0.1);"
+        f"background: rgba(255,255,255,0.035); "
+        f"backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); "
+        f"border-radius: 16px; "
+        f"border: 1px solid rgba(255,255,255,0.07); "
+        f"overflow: hidden; margin: 0.5rem 0; "
+    )
+    header_style = (
+        f"padding: 16px 24px; border-bottom: 1px solid rgba(255,255,255,0.07); "
+        f"display: flex; align-items: center; justify-content: space-between; "
+        f"background: rgba(255,255,255,0.02);"
     )
     return (
         f'<div style="{card_style}">'
+        f'<div style="{header_style}">'
         f'<h3 style="{heading_style}">{icon_html}{title}</h3>'
+        f'</div>'
         f'{table_html}'
         f'</div>'
     )

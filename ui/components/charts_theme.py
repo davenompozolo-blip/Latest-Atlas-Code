@@ -20,32 +20,33 @@ from typing import Optional, List, Dict, Any
 # ==================== GLASSMORPHISM COLOR PALETTE ====================
 
 ATLAS_COLORS = {
-    # Backgrounds — transparent for glassmorphism
+    # Backgrounds — transparent for glassmorphism (non-negotiable)
     'bg_dark': 'rgba(0,0,0,0)',
     'bg_plot': 'rgba(0,0,0,0)',
-    'bg_card': 'rgba(15, 18, 35, 0.6)',
+    'bg_card': 'rgba(255,255,255,0.05)',
 
-    # Primary Palette (Indigo family)
-    'vibranium': '#818cf8',
+    # Primary Palette — design spec
+    'vibranium': '#6366f1',
     'indigo': '#6366f1',
     'purple': '#8b5cf6',
-    'cyan': '#818cf8',
+    'cyan': '#00d4ff',
     'pink': '#ec4899',
 
-    # Semantic Colors
+    # Semantic Colors — design spec
     'success': '#10b981',
     'warning': '#f59e0b',
-    'danger': '#ef4444',
+    'danger': '#f43f5e',
     'info': '#6366f1',
 
-    # Text
-    'text_primary': '#e2e8f0',
-    'text_secondary': '#94a3b8',
-    'text_muted': '#64748b',
+    # Text — design spec hierarchy
+    'text_primary': 'rgba(255,255,255,0.92)',
+    'text_secondary': 'rgba(255,255,255,0.52)',
+    'text_muted': 'rgba(255,255,255,0.28)',
 
-    # Grid & Borders
-    'grid': 'rgba(99, 102, 241, 0.07)',
-    'border': 'rgba(99, 102, 241, 0.12)',
+    # Grid & Borders — design spec
+    'grid': 'rgba(255,255,255,0.05)',
+    'border': 'rgba(255,255,255,0.07)',
+    'border_bright': 'rgba(255,255,255,0.12)',
 }
 
 # Color sequence for multi-series charts
@@ -65,69 +66,73 @@ COLOR_SEQUENCE = [
 
 ATLAS_TEMPLATE = go.layout.Template(
     layout=go.Layout(
-        # Background colors
-        paper_bgcolor=ATLAS_COLORS['bg_dark'],
-        plot_bgcolor=ATLAS_COLORS['bg_plot'],
+        # Transparent backgrounds — gradient mesh bleeds through
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
 
-        # Fonts
+        # Fonts — design spec: DM Sans body
         font=dict(
-            family='Inter, -apple-system, BlinkMacSystemFont, sans-serif',
-            size=12,
-            color=ATLAS_COLORS['text_primary']
+            family='DM Sans, sans-serif',
+            size=11,
+            color=ATLAS_COLORS['text_secondary'],
         ),
 
         # Title styling
         title=dict(
             font=dict(
-                size=18,
-                color=ATLAS_COLORS['text_primary'],
-                family='Inter, sans-serif'
+                size=14,
+                color=ATLAS_COLORS['text_secondary'],
+                family='Syne, DM Sans, sans-serif',
             ),
             x=0.5,
-            xanchor='center'
+            xanchor='center',
         ),
 
         # Color sequence
         colorway=COLOR_SEQUENCE,
 
-        # Axes styling
+        # Axes — design spec grid/line colors
         xaxis=dict(
-            gridcolor=ATLAS_COLORS['grid'],
-            linecolor=ATLAS_COLORS['border'],
-            color=ATLAS_COLORS['text_secondary'],
-            zerolinecolor=ATLAS_COLORS['border'],
+            gridcolor='rgba(255,255,255,0.05)',
+            linecolor='rgba(255,255,255,0.07)',
+            color=ATLAS_COLORS['text_muted'],
+            zerolinecolor='rgba(255,255,255,0.07)',
+            tickcolor='rgba(255,255,255,0.28)',
+            tickfont=dict(size=10),
             showgrid=True,
-            zeroline=True
+            zeroline=True,
         ),
         yaxis=dict(
-            gridcolor=ATLAS_COLORS['grid'],
-            linecolor=ATLAS_COLORS['border'],
-            color=ATLAS_COLORS['text_secondary'],
-            zerolinecolor=ATLAS_COLORS['border'],
+            gridcolor='rgba(255,255,255,0.05)',
+            linecolor='rgba(255,255,255,0.07)',
+            color=ATLAS_COLORS['text_muted'],
+            zerolinecolor='rgba(255,255,255,0.07)',
+            tickcolor='rgba(255,255,255,0.28)',
+            tickfont=dict(size=10),
             showgrid=True,
-            zeroline=True
+            zeroline=True,
         ),
 
-        # Hover styling — frosted tooltip
+        # Hover styling — glass tooltip
         hoverlabel=dict(
-            bgcolor='rgba(15, 18, 35, 0.9)',
+            bgcolor='rgba(7, 8, 15, 0.9)',
             font=dict(
-                family='JetBrains Mono, Consolas, monospace',
-                color=ATLAS_COLORS['text_primary']
+                family='Space Mono, Consolas, monospace',
+                color=ATLAS_COLORS['text_primary'],
             ),
-            bordercolor=ATLAS_COLORS['indigo']
+            bordercolor=ATLAS_COLORS['indigo'],
         ),
 
-        # Legend styling — semi-transparent
+        # Legend — glass panel
         legend=dict(
-            bgcolor='rgba(15, 18, 35, 0.6)',
-            bordercolor=ATLAS_COLORS['border'],
+            bgcolor='rgba(255,255,255,0.04)',
+            bordercolor='rgba(255,255,255,0.07)',
             borderwidth=1,
-            font=dict(color=ATLAS_COLORS['text_primary'])
+            font=dict(color=ATLAS_COLORS['text_secondary']),
         ),
 
         # Margins
-        margin=dict(l=60, r=40, t=80, b=60)
+        margin=dict(l=40, r=20, t=40, b=40),
     )
 )
 

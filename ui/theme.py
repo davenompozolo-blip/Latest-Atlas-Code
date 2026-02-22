@@ -37,16 +37,16 @@ ATLAS_COLORS = {
     'danger': '#ef4444',             # Red - losses, alerts
     'danger_light': '#f87171',       # Light red - mild negative
 
-    # Dark Theme Colors
-    'dark': '#0f1223',               # Primary dark background
-    'dark_medium': '#161a2e',        # Slightly lighter dark
-    'dark_light': '#1e2240',         # Card backgrounds
+    # Dark Theme Colors — design spec
+    'dark': '#07080f',               # bg-void
+    'dark_medium': '#0b0d1a',        # bg-deep
+    'dark_light': 'rgba(255,255,255,0.05)',  # bg-glass
 
-    # Text Colors (on dark backgrounds)
-    'text_primary': '#f8fafc',       # Primary text - near-white
-    'text_secondary': '#94a3b8',     # Secondary text - slate
-    'text_muted': '#64748b',         # Muted text
-    'text_disabled': '#475569',      # Disabled text
+    # Text Colors — design spec hierarchy
+    'text_primary': 'rgba(255,255,255,0.92)',
+    'text_secondary': 'rgba(255,255,255,0.52)',
+    'text_muted': 'rgba(255,255,255,0.28)',
+    'text_disabled': 'rgba(255,255,255,0.15)',
 
     # Borders (Indigo-tinted)
     'border': 'rgba(99, 102, 241, 0.15)',          # Subtle indigo border
@@ -103,8 +103,9 @@ CHART_GRADIENTS = {
 # =============================================================================
 
 FONTS = {
-    'family': 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    'mono': 'JetBrains Mono, "SF Mono", Monaco, Consolas, monospace',
+    'family': 'DM Sans, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    'mono': 'Space Mono, "SF Mono", Monaco, Consolas, monospace',
+    'display': 'Syne, sans-serif',
 }
 
 FONT_SIZES = {
@@ -147,25 +148,18 @@ SPACING = {
 # =============================================================================
 
 CARD_STYLE = {
-    'background': 'rgba(15, 18, 35, 0.45)',
-    'backdrop_filter': 'blur(20px) saturate(160%)',
-    'border': '1px solid rgba(99, 102, 241, 0.12)',
+    'background': 'rgba(255,255,255,0.05)',
+    'backdrop_filter': 'blur(16px)',
+    'border': '1px solid rgba(255,255,255,0.07)',
     'border_radius': 16,
     'padding': SPACING['lg'],
-    'box_shadow': '''
-        0 4px 24px rgba(0, 0, 0, 0.3),
-        inset 0 1px 0 rgba(255, 255, 255, 0.04)
-    ''',
+    'box_shadow': 'none',
 }
 
 CARD_HOVER = {
-    'border': '1px solid rgba(99, 102, 241, 0.25)',
-    'box_shadow': '''
-        0 8px 40px rgba(0, 0, 0, 0.4),
-        0 0 20px rgba(99, 102, 241, 0.06),
-        inset 0 1px 0 rgba(255, 255, 255, 0.06)
-    ''',
-    'transform': 'translateY(-2px)',
+    'border': '1px solid rgba(255,255,255,0.12)',
+    'box_shadow': 'none',
+    'transform': 'translateY(-1px)',
 }
 
 # Border color variants
@@ -183,68 +177,68 @@ CARD_BORDER_COLORS = {
 # =============================================================================
 
 CHART_LAYOUT = {
-    # Font
+    # Font — design spec: DM Sans
     'font': {
         'family': FONTS['family'],
         'size': FONT_SIZES['sm'],
-        'color': '#e2e8f0',
+        'color': 'rgba(255,255,255,0.52)',
     },
 
-    # Backgrounds — TRANSPARENT for glassmorphism
+    # Backgrounds — TRANSPARENT for glassmorphism (non-negotiable)
     'plot_bgcolor': 'rgba(0,0,0,0)',
     'paper_bgcolor': 'rgba(0,0,0,0)',
 
     # Margins
-    'margin': {'l': 60, 't': 50, 'r': 30, 'b': 50},
+    'margin': {'l': 40, 't': 40, 'r': 20, 'b': 40},
 
     # Title
     'title': {
         'font': {
-            'family': FONTS['family'],
-            'size': FONT_SIZES['md'],
-            'color': '#e2e8f0',
+            'family': FONTS.get('display', FONTS['family']),
+            'size': 14,
+            'color': 'rgba(255,255,255,0.52)',
         },
         'x': 0.02,
         'xanchor': 'left',
     },
 
-    # Hover labels — frosted tooltip
+    # Hover labels — glass tooltip
     'hoverlabel': {
-        'bgcolor': 'rgba(15, 18, 35, 0.9)',
+        'bgcolor': 'rgba(7, 8, 15, 0.9)',
         'font': {
-            'family': FONTS['family'],
+            'family': FONTS['mono'],
             'size': FONT_SIZES['sm'],
-            'color': '#f8fafc',
+            'color': 'rgba(255,255,255,0.92)',
         },
         'bordercolor': '#6366f1',
     },
 
-    # X Axis — subtle indigo grid
+    # X Axis — design spec grid colors
     'xaxis': {
         'showgrid': True,
-        'gridcolor': 'rgba(99, 102, 241, 0.07)',
+        'gridcolor': 'rgba(255,255,255,0.05)',
         'zeroline': False,
-        'tickfont': {'size': FONT_SIZES['xs'], 'color': '#94a3b8'},
-        'linecolor': 'rgba(99, 102, 241, 0.12)',
-        'title': {'font': {'color': '#94a3b8'}},
+        'tickfont': {'size': FONT_SIZES['xs'], 'color': 'rgba(255,255,255,0.28)'},
+        'linecolor': 'rgba(255,255,255,0.07)',
+        'title': {'font': {'color': 'rgba(255,255,255,0.52)'}},
     },
 
-    # Y Axis — subtle indigo grid
+    # Y Axis — design spec grid colors
     'yaxis': {
         'showgrid': True,
-        'gridcolor': 'rgba(99, 102, 241, 0.07)',
+        'gridcolor': 'rgba(255,255,255,0.05)',
         'gridwidth': 1,
         'zeroline': False,
-        'tickfont': {'size': FONT_SIZES['xs'], 'color': '#94a3b8'},
-        'linecolor': 'rgba(99, 102, 241, 0.12)',
-        'title': {'font': {'color': '#94a3b8'}},
+        'tickfont': {'size': FONT_SIZES['xs'], 'color': 'rgba(255,255,255,0.28)'},
+        'linecolor': 'rgba(255,255,255,0.07)',
+        'title': {'font': {'color': 'rgba(255,255,255,0.52)'}},
     },
 
-    # Legend — semi-transparent
+    # Legend — glass panel
     'legend': {
-        'font': {'color': '#e2e8f0'},
-        'bgcolor': 'rgba(15, 18, 35, 0.6)',
-        'bordercolor': 'rgba(99, 102, 241, 0.15)',
+        'font': {'color': 'rgba(255,255,255,0.52)'},
+        'bgcolor': 'rgba(255,255,255,0.04)',
+        'bordercolor': 'rgba(255,255,255,0.07)',
         'borderwidth': 1,
     },
 }
@@ -388,30 +382,40 @@ def apply_dark_theme_to_chart(fig):
     fig.update_layout(
         plot_bgcolor='rgba(0,0,0,0)',
         paper_bgcolor='rgba(0,0,0,0)',
-        font=dict(color='#e2e8f0', family=FONTS['family']),
-        title=dict(font=dict(color='#e2e8f0')),
+        font=dict(
+            color='rgba(255,255,255,0.52)',
+            family=FONTS['family'],
+            size=11,
+        ),
+        title=dict(font=dict(color='rgba(255,255,255,0.52)')),
         hoverlabel=dict(
-            bgcolor='rgba(15, 18, 35, 0.9)',
-            font=dict(color='#f8fafc'),
+            bgcolor='rgba(7, 8, 15, 0.9)',
+            font=dict(color='rgba(255,255,255,0.92)'),
             bordercolor='#6366f1',
         ),
+        legend=dict(
+            bgcolor='rgba(255,255,255,0.04)',
+            bordercolor='rgba(255,255,255,0.07)',
+            borderwidth=1,
+        ),
+        margin=dict(l=40, r=20, t=40, b=40),
     )
 
-    # Update axes
+    # Update axes — design spec grid/line colors
     fig.update_xaxes(
         showgrid=True,
-        gridcolor='rgba(99, 102, 241, 0.07)',
-        tickfont=dict(color='#94a3b8'),
-        linecolor='rgba(99, 102, 241, 0.12)',
-        title=dict(font=dict(color='#94a3b8')),
+        gridcolor='rgba(255,255,255,0.05)',
+        tickfont=dict(color='rgba(255,255,255,0.28)', size=10),
+        linecolor='rgba(255,255,255,0.07)',
+        title=dict(font=dict(color='rgba(255,255,255,0.52)')),
     )
 
     fig.update_yaxes(
         showgrid=True,
-        gridcolor='rgba(99, 102, 241, 0.07)',
-        tickfont=dict(color='#94a3b8'),
-        linecolor='rgba(99, 102, 241, 0.12)',
-        title=dict(font=dict(color='#94a3b8')),
+        gridcolor='rgba(255,255,255,0.05)',
+        tickfont=dict(color='rgba(255,255,255,0.28)', size=10),
+        linecolor='rgba(255,255,255,0.07)',
+        title=dict(font=dict(color='rgba(255,255,255,0.52)')),
     )
 
     return fig
@@ -426,74 +430,68 @@ def get_atlas_css() -> str:
     Get CSS string for ATLAS glassmorphism styling in Streamlit.
     """
     return f"""
-    /* ATLAS Glassmorphism CSS */
+    /* ATLAS Glassmorphism CSS — Design Spec */
 
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&family=Syne:wght@400;600;700&display=swap');
 
     body, .stApp {{
         font-family: {FONTS['family']};
-        background: radial-gradient(ellipse 120% 80% at 50% 0%, #0f1225 0%, #080a14 50%, #060810 100%);
+        background-color: #07080f;
     }}
 
-    /* Glassmorphic Card */
-    .atlas-card {{
-        background: rgba(15, 18, 35, 0.45);
-        backdrop-filter: blur(20px) saturate(160%);
-        -webkit-backdrop-filter: blur(20px) saturate(160%);
-        border: 1px solid rgba(99, 102, 241, 0.12);
+    /* Glass Card — design spec */
+    .atlas-card, .glass-card {{
+        background: rgba(255,255,255,0.05);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(255,255,255,0.07);
         border-radius: 16px;
         padding: 24px;
-        box-shadow:
-            0 4px 24px rgba(0, 0, 0, 0.3),
-            inset 0 1px 0 rgba(255, 255, 255, 0.04);
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        transition: all 0.25s ease;
+        position: relative;
+        overflow: hidden;
     }}
 
-    .atlas-card:hover {{
-        border-color: rgba(99, 102, 241, 0.25);
-        box-shadow:
-            0 8px 40px rgba(0, 0, 0, 0.4),
-            0 0 20px rgba(99, 102, 241, 0.06);
-        transform: translateY(-2px);
+    .atlas-card:hover, .glass-card:hover {{
+        background: rgba(255,255,255,0.08);
+        border-color: rgba(255,255,255,0.12);
+        transform: translateY(-1px);
     }}
 
-    /* Glassmorphic Chart Container */
+    /* Glass Chart Container */
     .neon-chart-container {{
-        border: 1px solid rgba(99, 102, 241, 0.15);
+        border: 1px solid rgba(255,255,255,0.07);
         border-radius: 16px;
         padding: 16px;
-        box-shadow:
-            0 4px 24px rgba(0, 0, 0, 0.3),
-            inset 0 1px 0 rgba(255, 255, 255, 0.04);
-        background: rgba(15, 18, 35, 0.45);
-        backdrop-filter: blur(12px) saturate(140%);
+        background: rgba(255,255,255,0.035);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
         margin: 16px 0;
     }}
 
-    /* Text colors */
+    /* Text colors — design spec */
     .atlas-text-primary {{
-        color: #f8fafc;
+        color: rgba(255,255,255,0.92);
     }}
 
     .atlas-text-muted {{
-        color: #64748b;
+        color: rgba(255,255,255,0.28);
     }}
 
     /* Metric styling */
     .atlas-metric {{
         font-family: {FONTS['mono']};
-        font-weight: 600;
-        color: #818cf8;
+        font-weight: 700;
+        color: #6366f1;
     }}
 
-    /* Semantic colors */
+    /* Semantic colors — design spec */
     .atlas-success {{
         color: #10b981;
     }}
 
     .atlas-danger {{
-        color: #ef4444;
+        color: #f43f5e;
     }}
 
     .atlas-warning {{
@@ -502,7 +500,7 @@ def get_atlas_css() -> str:
 
     /* Gradient text */
     .atlas-gradient-text {{
-        background: linear-gradient(135deg, #818cf8 0%, #a5b4fc 100%);
+        background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         background-clip: text;
