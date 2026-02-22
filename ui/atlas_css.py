@@ -60,27 +60,36 @@ body, .stApp {
     position: relative;
 }
 
-.stApp::before {
-    content: '';
+/* Background layers — injected as real <div>s, NOT pseudo-elements */
+.atlas-bg-mesh {
     position: fixed;
     inset: 0;
+    z-index: 0;
+    pointer-events: none;
     background:
         radial-gradient(ellipse 80% 60% at 20% 10%, var(--glow-primary), transparent 60%),
         radial-gradient(ellipse 60% 50% at 80% 80%, var(--glow-secondary), transparent 55%),
         radial-gradient(ellipse 50% 40% at 60% 20%, var(--glow-accent), transparent 50%),
         radial-gradient(ellipse 40% 30% at 10% 80%, var(--glow-warm), transparent 45%);
-    pointer-events: none;
-    z-index: 0;
 }
 
-.stApp::after {
-    content: '';
+.atlas-bg-grain {
     position: fixed;
     inset: 0;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
-    pointer-events: none;
     z-index: 0;
-    opacity: 0.6;
+    pointer-events: none;
+    opacity: 0.5;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+}
+
+/* ── Ensure all Streamlit content renders above background ── */
+section[data-testid="stSidebar"],
+section[data-testid="stSidebarContent"],
+.stApp > div,
+.block-container,
+div[data-testid="stAppViewContainer"] {
+    position: relative !important;
+    z-index: 1 !important;
 }
 
 /* ── Streamlit Chrome Removal ───────────────────────── */
