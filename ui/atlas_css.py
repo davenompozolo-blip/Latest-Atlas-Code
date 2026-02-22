@@ -120,21 +120,52 @@ section[data-testid="stSidebar"]:hover::-webkit-scrollbar-thumb { background: rg
 /* Sidebar element spacing */
 [data-testid="stSidebar"] .element-container { margin-bottom: 0.15rem !important; }
 
-/* ── Main Content Layout ────────────────────────────── */
-.main .block-container {
+/* ── Main Content Layout — FULL WIDTH ───────────────── */
+/* The main content must use the full available width */
+.main .block-container,
+div[data-testid="stMainBlockContainer"],
+.stMainBlockContainer {
     max-width: 100% !important;
-    padding: 1.5rem 2.25rem !important;
+    width: 100% !important;
+    padding: 32px 36px !important;
     background: transparent !important;
+    margin: 0 !important;
 }
 
-.main { padding: 0 !important; min-height: 100vh; }
+.main {
+    padding: 0 !important;
+    min-height: 100vh;
+    flex: 1 !important;
+    width: 100% !important;
+}
+
+section.main > div {
+    max-width: 100% !important;
+    width: 100% !important;
+}
 
 div[data-testid="column"] { background: transparent !important; }
 
-.element-container { margin-bottom: 0.5rem !important; }
+/* Ensure inner content spans full width */
+.element-container {
+    margin-bottom: 0.5rem !important;
+    max-width: 100% !important;
+}
 .row-widget { margin: 0 !important; }
 .row-widget > div { padding: 0 0.5rem !important; }
 .stColumn { padding: 0 0.5rem !important; }
+
+/* Override Streamlit's default max-width on main content */
+div[data-testid="stAppViewContainer"] > section > div {
+    max-width: 100% !important;
+    width: 100% !important;
+}
+
+/* Horizontal blocks (columns) should fill available space */
+div[data-testid="stHorizontalBlock"] {
+    width: 100% !important;
+    gap: 14px !important;
+}
 
 /* ── Glass Card Base ────────────────────────────────── */
 .glass-card {
@@ -457,42 +488,55 @@ html { scrollbar-width: none; }
 
 
 def apply_full_width_js():
-    """Full-width enforcement via JavaScript MutationObserver."""
+    """Full-width enforcement via JavaScript MutationObserver.
+    Targets every known Streamlit container that constrains width."""
     st.html("""
 <script>
 (function() {
+    var selectors = [
+        '[data-testid="stMainBlockContainer"]',
+        '.stMainBlockContainer',
+        '.block-container',
+        'section.main > div',
+        'section.main > div > div',
+        '[data-testid="stAppViewContainer"] > section > div',
+        '[data-testid="stAppViewContainer"] > section > div > div',
+        'div.appview-container section.main div.block-container',
+    ];
     function forceFullWidth() {
-        document.querySelectorAll('[data-testid="stMainBlockContainer"], .stMainBlockContainer').forEach(function(el) {
-            el.style.setProperty('max-width', '100%', 'important');
-            el.style.setProperty('width', '100%', 'important');
-            el.style.setProperty('margin', '0', 'important');
+        selectors.forEach(function(sel) {
+            document.querySelectorAll(sel).forEach(function(el) {
+                el.style.setProperty('max-width', '100%', 'important');
+                el.style.setProperty('width', '100%', 'important');
+            });
         });
-        document.querySelectorAll('.block-container').forEach(function(el) {
-            el.style.setProperty('max-width', '100%', 'important');
-            el.style.setProperty('width', '100%', 'important');
-        });
-        document.querySelectorAll('section.main > div').forEach(function(el) {
-            el.style.setProperty('max-width', '100%', 'important');
-            el.style.setProperty('width', '100%', 'important');
-        });
+        /* Also clear any inline max-width on the first child of main */
+        var main = document.querySelector('section.main');
+        if (main) {
+            var kids = main.children;
+            for (var i = 0; i < kids.length; i++) {
+                kids[i].style.setProperty('max-width', '100%', 'important');
+                kids[i].style.setProperty('width', '100%', 'important');
+                kids[i].style.setProperty('margin', '0', 'important');
+                kids[i].style.setProperty('padding-left', '36px', 'important');
+                kids[i].style.setProperty('padding-right', '36px', 'important');
+            }
+        }
     }
     forceFullWidth();
     window.addEventListener('load', function() {
         forceFullWidth();
-        setTimeout(forceFullWidth, 100);
+        setTimeout(forceFullWidth, 50);
+        setTimeout(forceFullWidth, 200);
         setTimeout(forceFullWidth, 500);
         setTimeout(forceFullWidth, 1000);
+        setTimeout(forceFullWidth, 2000);
     });
     var observer = new MutationObserver(function(mutations) {
-        for (var i = 0; i < mutations.length; i++) {
-            if (mutations[i].attributeName === 'style' || mutations[i].addedNodes.length > 0) {
-                forceFullWidth();
-                return;
-            }
-        }
+        forceFullWidth();
     });
     if (document.body) {
-        observer.observe(document.body, { attributes: true, attributeFilter: ['style'], childList: true, subtree: true });
+        observer.observe(document.body, { attributes: true, childList: true, subtree: true });
     }
 })();
 </script>

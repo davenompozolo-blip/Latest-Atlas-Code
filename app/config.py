@@ -11,34 +11,44 @@ from pathlib import Path
 # ============================================================================
 
 COLORS = {
-    "background": "#080a14",
-    "card_background": "rgba(15, 18, 35, 0.45)",
-    "card_background_alt": "rgba(15, 18, 35, 0.6)",
-    "neon_blue": "#818cf8",
+    # Backgrounds — design spec tokens
+    "background": "#07080f",
+    "bg_void": "#07080f",
+    "bg_deep": "#0b0d1a",
+    "bg_surface": "rgba(255,255,255,0.035)",
+    "bg_glass": "rgba(255,255,255,0.05)",
+    "card_background": "rgba(255,255,255,0.05)",
+    "card_background_alt": "rgba(255,255,255,0.035)",
+    # Accent colors — design spec
+    "neon_blue": "#6366f1",
     "electric_blue": "#6366f1",
     "teal": "#14b8a6",
-    "cyan": "#818cf8",
+    "cyan": "#00d4ff",
     "success": "#10b981",
     "warning": "#f59e0b",
-    "danger": "#ef4444",
+    "danger": "#f43f5e",
     "info": "#6366f1",
     "purple": "#8b5cf6",
     "pink": "#ec4899",
     "orange": "#f97316",
-    "chart_primary": "#818cf8",
-    "chart_secondary": "#6366f1",
-    "chart_accent": "#a5b4fc",
-    "chart_grid": "rgba(99, 102, 241, 0.07)",
-    "text_primary": "#f8fafc",
-    "text_secondary": "#94a3b8",
-    "text_muted": "#64748b",
-    "border": "rgba(99, 102, 241, 0.15)",
-    "shadow": "rgba(99, 102, 241, 0.2)",
-    "shadow_strong": "rgba(99, 102, 241, 0.4)",
+    "chart_primary": "#6366f1",
+    "chart_secondary": "#8b5cf6",
+    "chart_accent": "#10b981",
+    "chart_grid": "rgba(255,255,255,0.05)",
+    # Text — design spec hierarchy
+    "text_primary": "rgba(255,255,255,0.92)",
+    "text_secondary": "rgba(255,255,255,0.52)",
+    "text_muted": "rgba(255,255,255,0.28)",
+    # Borders — design spec
+    "border": "rgba(255,255,255,0.07)",
+    "border_bright": "rgba(255,255,255,0.12)",
+    "shadow": "rgba(0,0,0,0.3)",
+    "shadow_strong": "rgba(0,0,0,0.5)",
+    # Gain/loss — design spec green/red
     "gain_bg": "rgba(16, 185, 129, 0.12)",
     "gain_text": "#10b981",
-    "loss_bg": "rgba(239, 68, 68, 0.12)",
-    "loss_text": "#ef4444",
+    "loss_bg": "rgba(244, 63, 94, 0.12)",
+    "loss_text": "#f43f5e",
 }
 
 
@@ -59,17 +69,29 @@ CHART_HEIGHT_DEEP_DIVE = 700      # Detailed analysis pages, Monte Carlo simulat
 CHART_THEME = {
     'paper_bgcolor': 'rgba(0,0,0,0)',
     'plot_bgcolor': 'rgba(0,0,0,0)',
-    'font': {'color': COLORS['text_primary'], 'family': 'Inter, sans-serif'},
+    'font': {
+        'color': 'rgba(255,255,255,0.52)',
+        'family': 'DM Sans, sans-serif',
+        'size': 11,
+    },
     'xaxis': {
-        'gridcolor': COLORS['chart_grid'],
-        'linecolor': COLORS['chart_grid'],
-        'zerolinecolor': COLORS['chart_grid']
+        'gridcolor': 'rgba(255,255,255,0.05)',
+        'linecolor': 'rgba(255,255,255,0.07)',
+        'zerolinecolor': 'rgba(255,255,255,0.07)',
+        'tickfont': {'size': 10},
     },
     'yaxis': {
-        'gridcolor': COLORS['chart_grid'],
-        'linecolor': COLORS['chart_grid'],
-        'zerolinecolor': COLORS['chart_grid']
-    }
+        'gridcolor': 'rgba(255,255,255,0.05)',
+        'linecolor': 'rgba(255,255,255,0.07)',
+        'zerolinecolor': 'rgba(255,255,255,0.07)',
+        'tickfont': {'size': 10},
+    },
+    'legend': {
+        'bgcolor': 'rgba(255,255,255,0.04)',
+        'bordercolor': 'rgba(255,255,255,0.07)',
+        'borderwidth': 1,
+    },
+    'margin': {'l': 40, 'r': 20, 't': 40, 'b': 40},
 }
 
 

@@ -68,27 +68,41 @@ def is_valid_series(series):
 
 
 def apply_chart_theme(fig):
-    """Apply ATLAS dark theme to plotly charts"""
+    """Apply ATLAS chart theme — transparent backgrounds so gradient mesh bleeds through."""
     fig.update_layout(
-        plot_bgcolor=COLORS['background'],
-        paper_bgcolor=COLORS['background'],
-        font=dict(color=COLORS['text_primary']),
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        font=dict(
+            family='DM Sans, sans-serif',
+            color='rgba(255,255,255,0.52)',
+            size=11,
+        ),
         xaxis=dict(
-            gridcolor=COLORS['card_background'],
-            zerolinecolor=COLORS['text_muted']
+            gridcolor='rgba(255,255,255,0.05)',
+            linecolor='rgba(255,255,255,0.07)',
+            tickcolor='rgba(255,255,255,0.28)',
+            tickfont=dict(size=10),
         ),
         yaxis=dict(
-            gridcolor=COLORS['card_background'],
-            zerolinecolor=COLORS['text_muted']
-        )
+            gridcolor='rgba(255,255,255,0.05)',
+            linecolor='rgba(255,255,255,0.07)',
+            tickcolor='rgba(255,255,255,0.28)',
+            tickfont=dict(size=10),
+        ),
+        legend=dict(
+            bgcolor='rgba(255,255,255,0.04)',
+            bordercolor='rgba(255,255,255,0.07)',
+            borderwidth=1,
+        ),
+        margin=dict(l=40, r=20, t=40, b=40),
     )
     return fig
 
 
 def create_risk_snapshot(df, portfolio_returns):
     """
-    Professional Risk Snapshot Dashboard Widget
-    Displays: Portfolio Beta, Volatility, Max Drawdown, Top 3 Exposures
+    Risk Snapshot — design spec stat-card layout with inner-glow orbs.
+    4 cards: Portfolio Beta, Volatility (Ann.), Max Drawdown, Top Exposures
     """
     # Calculate aggregate portfolio beta
     weighted_beta = (df['Beta'].fillna(1.0) * df['Weight %'] / 100).sum()
@@ -107,31 +121,47 @@ def create_risk_snapshot(df, portfolio_returns):
     # Top 3 exposures by weight
     top_3 = df.nlargest(3, 'Weight %')[['Ticker', 'Weight %']]
 
-    # Create compact, professional HTML widget
+    # Determine sub-badges
+    beta_sub_cls = "green" if 0.8 <= weighted_beta <= 1.2 else "blue"
+    beta_sub_text = "Neutral" if 0.8 <= weighted_beta <= 1.2 else ("Aggressive" if weighted_beta > 1.2 else "Defensive")
+    vol_sub_cls = "blue" if vol < 20 else "green" if vol < 30 else "red"
+    vol_sub_text = "Low Vol" if vol < 20 else "Moderate" if vol < 30 else "High Vol"
+    dd_sub_cls = "green" if drawdown > -15 else "blue" if drawdown > -25 else "red"
+    dd_sub_text = "&#10003; Low" if drawdown > -15 else "Moderate" if drawdown > -25 else "Elevated"
+
+    top_exposure_lines = ''.join([
+        f'<div style="font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); line-height: 1.8;">&#9642; {row["Ticker"]} ({row["Weight %"]:.1f}%)</div>'
+        for _, row in top_3.iterrows()
+    ])
+
     snapshot_html = f"""
-    <div style='background: linear-gradient(135deg, {COLORS['card_background']} 0%, {COLORS['card_background_alt']} 100%);
-                border: 2px solid {COLORS['neon_blue']}; border-radius: 12px; padding: 20px; margin: 10px 0;
-                box-shadow: 0 0 30px {COLORS['shadow']};'>
-        <h3 style='color: {COLORS['neon_blue']}; margin: 0 0 15px 0; font-size: 18px;'>📊 Risk Snapshot</h3>
-        <div style='display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px;'>
-            <div>
-                <div style='color: {COLORS['text_muted']}; font-size: 11px; text-transform: uppercase;'>Portfolio Beta</div>
-                <div style='color: {COLORS['text_primary']}; font-size: 24px; font-weight: 600;'>{ATLASFormatter.format_ratio(weighted_beta)}</div>
-            </div>
-            <div>
-                <div style='color: {COLORS['text_muted']}; font-size: 11px; text-transform: uppercase;'>Volatility (Ann.)</div>
-                <div style='color: {COLORS['warning']}; font-size: 24px; font-weight: 600;'>{ATLASFormatter.format_yield(vol)}</div>
-            </div>
-            <div>
-                <div style='color: {COLORS['text_muted']}; font-size: 11px; text-transform: uppercase;'>Max Drawdown</div>
-                <div style='color: {COLORS['danger']}; font-size: 24px; font-weight: 600;'>{ATLASFormatter.format_yield(drawdown)}</div>
-            </div>
-            <div>
-                <div style='color: {COLORS['text_muted']}; font-size: 11px; text-transform: uppercase;'>Top Exposures</div>
-                <div style='color: {COLORS['text_primary']}; font-size: 13px; line-height: 1.6; margin-top: 5px;'>
-                    {'<br>'.join([f"▪ {row['Ticker']} ({row['Weight %']:.1f}%)" for _, row in top_3.iterrows()])}
-                </div>
-            </div>
+    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;">
+        <div class="stat-card">
+            <div class="inner-glow" style="background: var(--blue);"></div>
+            <span style="font-size: 16px; display: block; margin-bottom: 12px;">&#128200;</span>
+            <div class="metric-label" style="font-size: 9.5px; letter-spacing: 1.5px;">Portfolio Beta</div>
+            <div class="metric-value" style="font-size: 22px; color: var(--text-primary);">{ATLASFormatter.format_ratio(weighted_beta)}</div>
+            <span class="metric-pill pill-{beta_sub_cls}" style="font-size: 11px; padding: 3px 10px;">{beta_sub_text}</span>
+        </div>
+        <div class="stat-card">
+            <div class="inner-glow" style="background: var(--blue);"></div>
+            <span style="font-size: 16px; display: block; margin-bottom: 12px;">&#128201;</span>
+            <div class="metric-label" style="font-size: 9.5px; letter-spacing: 1.5px;">Annualized Volatility</div>
+            <div class="metric-value" style="font-size: 22px;">{ATLASFormatter.format_yield(vol)}</div>
+            <span class="metric-pill pill-{vol_sub_cls}" style="font-size: 11px; padding: 3px 10px;">{vol_sub_text}</span>
+        </div>
+        <div class="stat-card">
+            <div class="inner-glow" style="background: var(--amber);"></div>
+            <span style="font-size: 16px; display: block; margin-bottom: 12px;">&#9888;&#65039;</span>
+            <div class="metric-label" style="font-size: 9.5px; letter-spacing: 1.5px;">Max Drawdown</div>
+            <div class="metric-value" style="font-size: 22px; color: var(--red);">{ATLASFormatter.format_yield(drawdown)}</div>
+            <span class="metric-pill pill-{dd_sub_cls}" style="font-size: 11px; padding: 3px 10px;">{dd_sub_text}</span>
+        </div>
+        <div class="stat-card">
+            <div class="inner-glow" style="background: var(--violet);"></div>
+            <span style="font-size: 16px; display: block; margin-bottom: 12px;">&#128142;</span>
+            <div class="metric-label" style="font-size: 9.5px; letter-spacing: 1.5px;">Top Exposures</div>
+            <div style="margin-top: 4px;">{top_exposure_lines}</div>
         </div>
     </div>
     """
@@ -186,22 +216,20 @@ def calculate_signal_health(metrics):
 
 
 def create_signal_health_badge(metrics):
-    """Create visual health indicator badge for portfolio"""
+    """Create visual health indicator badge — design spec .badge classes."""
     status, percentage, label = calculate_signal_health(metrics)
 
-    color_map = {
-        'GREEN': COLORS['success'],
-        'YELLOW': COLORS['warning'],
-        'RED': COLORS['danger']
+    badge_cls_map = {
+        'GREEN': 'badge-green',
+        'YELLOW': 'badge-warning',
+        'RED': 'badge-red',
     }
+    badge_cls = badge_cls_map.get(status, 'badge-neutral')
 
     badge_html = f"""
-    <div style='display: inline-block; background: {color_map[status]};
-                color: #ffffff; padding: 10px 20px; border-radius: 20px;
-                font-weight: 700; font-size: 15px; margin: 10px 0;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.3);'>
+    <span class="badge {badge_cls}" style="font-size: 13px; padding: 8px 16px; font-weight: 600;">
         {label} ({percentage:.0f}%)
-    </div>
+    </span>
     """
     return badge_html
 
