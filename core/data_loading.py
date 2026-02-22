@@ -553,14 +553,29 @@ def get_data_freshness(cache_time=None):
     return timestamp, age_minutes, badge
 
 
+def _csv_backup_path():
+    """Path to the in-repo CSV backup that survives Streamlit Cloud redeploys."""
+    return Path(__file__).resolve().parent.parent / "data" / "portfolio_backup.csv"
+
+
 def save_portfolio_data(data):
     """
-    Save portfolio data to BOTH database and pickle cache
-    Database is primary storage, pickle is backup
+    Save portfolio data to database, pickle cache, AND an in-repo CSV backup.
+    The CSV backup survives Streamlit Cloud filesystem wipes.
     """
     # Save to pickle (backwards compatibility)
     with open(PORTFOLIO_CACHE, "wb") as f:
         pickle.dump(data, f)
+
+    # Save CSV backup into repo (survives redeploy)
+    try:
+        backup_path = _csv_backup_path()
+        backup_path.parent.mkdir(parents=True, exist_ok=True)
+        df_backup = pd.DataFrame(data) if not isinstance(data, pd.DataFrame) else data
+        df_backup.to_csv(backup_path, index=False)
+        print(f"[PERSIST] CSV backup saved ({len(df_backup)} rows) -> {backup_path}")
+    except Exception as e:
+        print(f"[PERSIST] CSV backup failed (non-fatal): {e}")
 
     # PHASE 4: Auto-save to database
     if SQL_AVAILABLE:
@@ -611,7 +626,7 @@ def save_portfolio_data(data):
 
 def load_portfolio_data():
     """
-    Load portfolio data from session state or pickle cache.
+    Load portfolio data from session state, pickle cache, or CSV backup.
 
     Returns:
         pd.DataFrame or None: Portfolio data if available, None otherwise.
@@ -619,7 +634,8 @@ def load_portfolio_data():
     Load Order:
         1. Session state (user's current session data)
         2. Pickle cache (persisted from previous sessions)
-        3. None (no data available - user needs to upload via Phoenix Parser)
+        3. In-repo CSV backup (survives Streamlit Cloud redeploys)
+        4. None (no data available - user needs to upload via Phoenix Parser)
     """
     # 1. Check session state first (current session data)
     if 'portfolio_df' in st.session_state:
@@ -639,10 +655,21 @@ def load_portfolio_data():
                 st.session_state['portfolio_df'] = df
                 return df
         except Exception as e:
-            # Log but don't crash - just continue to return None
             print(f"⚠️ Could not load cached portfolio: {e}")
 
-    # 3. No data available
+    # 3. Check in-repo CSV backup (survives Streamlit Cloud redeploys)
+    backup_path = _csv_backup_path()
+    if backup_path.exists():
+        try:
+            df = pd.read_csv(backup_path)
+            if df is not None and not df.empty and 'Ticker' in df.columns:
+                st.session_state['portfolio_df'] = df
+                print(f"[PERSIST] Restored {len(df)} positions from CSV backup")
+                return df
+        except Exception as e:
+            print(f"⚠️ Could not load CSV backup: {e}")
+
+    # 4. No data available
     return None
 
 

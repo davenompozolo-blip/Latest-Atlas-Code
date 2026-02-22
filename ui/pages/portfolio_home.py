@@ -39,6 +39,58 @@ def _perf_card(label, value, pill_text=None, pill_class="pill-neutral", value_cl
     </div>'''
 
 
+def _render_empty_state():
+    """Render a graceful empty state when no portfolio data is loaded."""
+    st.markdown('''
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 32px;">
+        <div class="page-title">Portfolio Home</div>
+        <span class="badge badge-neutral">No Data</span>
+    </div>
+    ''', unsafe_allow_html=True)
+
+    st.markdown('<div class="section-label">Getting Started</div>', unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.markdown('''<div class="glass-card glow-blue">
+            <span style="font-size: 24px; display: block; margin-bottom: 12px;">&#128293;</span>
+            <div class="metric-label">Step 1</div>
+            <div style="font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">Phoenix Parser</div>
+            <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.6;">
+                Navigate to <strong>Phoenix Parser</strong> in the sidebar and upload your portfolio spreadsheet (Excel or CSV).
+            </div>
+        </div>''', unsafe_allow_html=True)
+
+    with col2:
+        st.markdown('''<div class="glass-card glow-green">
+            <span style="font-size: 24px; display: block; margin-bottom: 12px;">&#128279;</span>
+            <div class="metric-label">Step 2</div>
+            <div style="font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">Connect a Broker</div>
+            <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.6;">
+                Or connect <strong>Alpaca Markets</strong> or <strong>Easy Equities</strong> for live portfolio sync.
+            </div>
+        </div>''', unsafe_allow_html=True)
+
+    with col3:
+        st.markdown('''<div class="glass-card glow-violet">
+            <span style="font-size: 24px; display: block; margin-bottom: 12px;">&#128202;</span>
+            <div class="metric-label">Step 3</div>
+            <div style="font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">Full Analytics</div>
+            <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.6;">
+                Once loaded, this page shows risk snapshots, performance charts, sector allocation, and more.
+            </div>
+        </div>''', unsafe_allow_html=True)
+
+    st.markdown('''
+    <div class="tip-bar" style="margin-top: 24px;">
+        <span style="font-size: 14px;">&#128161;</span>
+        Your portfolio file needs at minimum a <strong>Ticker</strong> column and a <strong>Shares</strong> column.
+        Optional: <em>Avg Cost</em>, <em>Current Price</em>, <em>Sector</em>.
+    </div>
+    ''', unsafe_allow_html=True)
+
+
 def render_portfolio_home(start_date, end_date):
     """Render the Portfolio Home page."""
     import time as _t
@@ -76,9 +128,9 @@ def render_portfolio_home(start_date, end_date):
         print(f"[PORTFOLIO_HOME] Portfolio loaded ({_t.time() - _ph_start:.2f}s)", flush=True)
 
     if portfolio_data is None or (isinstance(portfolio_data, pd.DataFrame) and portfolio_data.empty):
-        st.warning("No portfolio data. Please upload via Phoenix Parser.")
-        print("[PORTFOLIO_HOME] No portfolio data - stopping", flush=True)
-        st.stop()
+        print("[PORTFOLIO_HOME] No portfolio data - showing empty state", flush=True)
+        _render_empty_state()
+        return
 
     df = portfolio_data
     currency_symbol = df.attrs.get('currency_symbol') or st.session_state.get('currency_symbol', '$')
