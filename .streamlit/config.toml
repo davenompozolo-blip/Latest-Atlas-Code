@@ -17,12 +17,12 @@ serverAddress = "localhost"
 serverPort = 8501
 
 [theme]
-# ATLAS Terminal Dark Theme
+# ATLAS Terminal — Glassmorphism Design System
 primaryColor = "#6366f1"
-backgroundColor = "#080a14"
-secondaryBackgroundColor = "#0f1225"
-textColor = "#f8fafc"
-font = "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+backgroundColor = "#07080f"
+secondaryBackgroundColor = "#0b0d1a"
+textColor = "#ffffffeb"
+font = "sans-serif"
 base = "dark"
 
 [client]
