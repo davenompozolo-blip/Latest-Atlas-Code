@@ -237,7 +237,105 @@ def _render_company_intelligence(data: dict, ticker: str):
     with vc2:
         v90 = f"{data['vol_90d']:.1f}%" if data['vol_90d'] is not None else 'N/A'
         st.markdown(_mini_card('90-Day Realised Vol', v90), unsafe_allow_html=True)
+    # ------------------------------------------------------------------
+    # ANALYST CONSENSUS — fills left panel dead space meaningfully
+    # ------------------------------------------------------------------
+    info = data.get('info', {})
+    rec_key = info.get('recommendationKey', '')
+    target_price = info.get('targetMeanPrice')
+    n_analysts = info.get('numberOfAnalystOpinions')
+    rec_mean = info.get('recommendationMean')
 
+    _rec_map = {
+        'strongBuy': ('STRONG BUY', '#10b981'),
+        'buy': ('BUY', '#10b981'),
+        'hold': ('HOLD', '#f59e0b'),
+        'underperform': ('UNDERPERFORM', '#ef4444'),
+        'sell': ('SELL', '#ef4444'),
+    }
+
+    if rec_key or target_price:
+        label_txt, label_color = _rec_map.get(rec_key, ('N/A', 'rgba(255,255,255,0.52)'))
+        upside = None
+        if target_price and data['current_price'] and data['current_price'] > 0:
+            upside = (target_price / data['current_price'] - 1) * 100
+
+        st.markdown(
+            '<div style="font-size:11px;color:rgba(255,255,255,0.42);text-transform:uppercase;'
+            'letter-spacing:1px;margin:10px 0 6px 0;">ANALYST CONSENSUS</div>',
+            unsafe_allow_html=True,
+        )
+        ac1, ac2 = st.columns(2)
+        with ac1:
+            n_str = f'<div style="font-size:9.5px;color:rgba(255,255,255,0.35);margin-top:2px;">{n_analysts} analysts</div>' if n_analysts else ''
+            st.markdown(
+                f'<div style="background:rgba(255,255,255,0.035);border:1px solid rgba(255,255,255,0.07);'
+                f'border-radius:10px;padding:10px 12px;margin-bottom:6px;">'
+                f'<div style="font-size:9.5px;color:rgba(255,255,255,0.38);text-transform:uppercase;'
+                f'letter-spacing:0.8px;margin-bottom:4px;">Consensus</div>'
+                f'<div style="font-size:15px;font-weight:700;color:{label_color};">{label_txt}</div>'
+                f'{n_str}</div>',
+                unsafe_allow_html=True,
+            )
+        with ac2:
+            if target_price:
+                up_color = '#10b981' if (upside or 0) >= 0 else '#ef4444'
+                up_str = f'<div style="font-size:9.5px;color:{up_color};margin-top:2px;">{upside:+.1f}% vs current</div>' if upside is not None else ''
+                st.markdown(
+                    f'<div style="background:rgba(255,255,255,0.035);border:1px solid rgba(255,255,255,0.07);'
+                    f'border-radius:10px;padding:10px 12px;margin-bottom:6px;">'
+                    f'<div style="font-size:9.5px;color:rgba(255,255,255,0.38);text-transform:uppercase;'
+                    f'letter-spacing:0.8px;margin-bottom:4px;">Price Target</div>'
+                    f'<div style="font-size:15px;font-weight:700;color:rgba(255,255,255,0.88);">{format_currency(target_price)}</div>'
+                    f'{up_str}</div>',
+                    unsafe_allow_html=True,
+                )
+
+    # ------------------------------------------------------------------
+    # 1Y PRICE SPARKLINE
+    # ------------------------------------------------------------------
+    hist = data.get('hist')
+    if hist is not None and not hist.empty and len(hist) > 10:
+        st.markdown(
+            '<div style="font-size:11px;color:rgba(255,255,255,0.42);text-transform:uppercase;'
+            'letter-spacing:1px;margin:10px 0 4px 0;">PRICE HISTORY (1Y)</div>',
+            unsafe_allow_html=True,
+        )
+        close = hist['Close']
+        line_color = '#10b981' if close.iloc[-1] >= close.iloc[0] else '#ef4444'
+        fill_color = 'rgba(16,185,129,0.07)' if close.iloc[-1] >= close.iloc[0] else 'rgba(239,68,68,0.07)'
+
+        fig_spark = go.Figure()
+        fig_spark.add_trace(go.Scatter(
+            x=close.index, y=close.values,
+            mode='lines',
+            line=dict(color=line_color, width=1.5),
+            fill='tozeroy', fillcolor=fill_color,
+            hovertemplate='%{x|%b %d}<br>$%{y:,.2f}<extra></extra>',
+        ))
+        fig_spark.add_trace(go.Scatter(
+            x=[close.index[-1]], y=[close.iloc[-1]],
+            mode='markers',
+            marker=dict(color=line_color, size=6),
+            showlegend=False, hoverinfo='skip',
+        ))
+        fig_spark.update_layout(
+            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+            margin=dict(l=0, r=2, t=4, b=0),
+            height=110,
+            xaxis=dict(visible=False),
+            yaxis=dict(
+                visible=True,
+                tickfont=dict(size=8, color='rgba(255,255,255,0.22)'),
+                gridcolor='rgba(255,255,255,0.04)',
+                showgrid=True,
+                tickformat='$,.0f',
+                side='right',
+            ),
+            showlegend=False,
+            hovermode='x unified',
+        )
+        st.plotly_chart(fig_spark, use_container_width=True, config={'displayModeBar': False})
 
 
 # ---------------------------------------------------------------------------
@@ -742,6 +840,34 @@ def _render_thesis_engine(ticker: str):
             new_thesis = create_default_thesis(ticker)
             thesis_store.save_thesis(new_thesis)
             st.rerun()
+        # ── Thesis Scaffolding: suggested KPIs so the panel is not dead space ──
+        _generic_suggestions = [
+            ('Revenue CAGR of 10%+ through FY+3', 'revenue_yoy_growth_pct', '10.0'),
+            ('Operating margin expands to 18%+ by FY+2', 'operating_margin_pct', '18.0'),
+            ('Net Debt / EBITDA declines below 1.5x', 'net_debt_ebitda_ratio', '1.5'),
+            ('FCF conversion exceeds 80% of net income', 'fcf_conversion_pct', '80.0'),
+        ]
+        st.markdown(
+            '<div style="background:rgba(255,255,255,0.025);border:1px solid rgba(255,255,255,0.06);'
+            'border-radius:12px;padding:14px 16px;margin-top:14px;">'
+            '<div style="font-size:10.5px;font-weight:700;color:rgba(255,255,255,0.52);'
+            'text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">'
+            '&#128161; Suggested Thesis KPIs</div>'
+            '<div style="font-size:10px;color:rgba(255,255,255,0.32);line-height:1.6;margin-bottom:10px;">'
+            'Create a thesis to start tracking these assumptions against actuals:</div>',
+            unsafe_allow_html=True,
+        )
+        for desc, kpi, target in _generic_suggestions:
+            st.markdown(
+                f'<div style="border-left:2px solid rgba(99,102,241,0.35);padding:6px 10px;margin-bottom:6px;'
+                f'background:rgba(99,102,241,0.04);border-radius:0 6px 6px 0;">'
+                f'<div style="font-size:11px;color:rgba(255,255,255,0.65);">{desc}</div>'
+                f'<div style="font-size:9.5px;color:rgba(255,255,255,0.28);margin-top:2px;">'
+                f'KPI: <span style="color:rgba(99,102,241,0.75);">{kpi}</span> &middot; Target: {target}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+        st.markdown('</div>', unsafe_allow_html=True)
         return
 
     # ---- Overall Status Banner ----
@@ -907,6 +1033,74 @@ def _render_thesis_engine(ticker: str):
             border-radius: 8px; padding: 10px; font-size: 12px; color: rgba(255,255,255,0.62);">
     {' &nbsp;&middot;&nbsp; '.join(summary_parts)}
 </div>''', unsafe_allow_html=True)
+
+    # ── Price Target Gauge — shows current price vs entry/target/stop ──
+    try:
+        entry = thesis.entry_price
+        target_p = thesis.target_price
+        stop = thesis.stop_loss
+        try:
+            from services.yf_session import get_info as _gi
+            _inf = _gi(ticker) or {}
+            current_p = _inf.get('regularMarketPrice') or _inf.get('currentPrice')
+        except Exception:
+            current_p = None
+
+        if current_p and any([entry, target_p, stop]):
+            st.markdown(
+                '<div style="font-size:11px;color:rgba(255,255,255,0.42);text-transform:uppercase;'
+                'letter-spacing:1px;margin:16px 0 8px 0;">PRICE TARGET MAP</div>',
+                unsafe_allow_html=True,
+            )
+            all_pts = [p for p in [stop, entry, current_p, target_p] if p]
+            lo = min(all_pts) * 0.97
+            hi = max(all_pts) * 1.03
+            rng = hi - lo if hi != lo else 1
+
+            def _pct(p):
+                return round((p - lo) / rng * 100, 1)
+
+            parts = ['<div style="background:rgba(255,255,255,0.025);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:12px 14px;">']
+            parts.append('<div style="position:relative;height:8px;background:rgba(255,255,255,0.07);border-radius:4px;margin:18px 0 24px;">')
+
+            if stop:
+                p = _pct(stop)
+                parts.append(f'<div style="position:absolute;left:0;width:{min(p,100)}%;height:100%;background:rgba(239,68,68,0.22);border-radius:4px 0 0 4px;"></div>')
+
+            if target_p:
+                p = _pct(target_p)
+                parts.append(f'<div style="position:absolute;right:0;width:{max(0,100-p)}%;height:100%;background:rgba(16,185,129,0.18);border-radius:0 4px 4px 0;"></div>')
+
+            if entry:
+                p = _pct(entry)
+                parts.append(f'<div style="position:absolute;left:{p}%;top:-4px;width:2px;height:16px;background:#6366f1;border-radius:1px;"></div>')
+                parts.append(f'<div style="position:absolute;left:{p}%;top:12px;font-size:8px;color:rgba(99,102,241,0.75);transform:translateX(-50%);white-space:nowrap;">Entry</div>')
+
+            cp = _pct(current_p)
+            c_col = '#10b981' if (not entry or current_p >= entry) else '#ef4444'
+            parts.append(f'<div style="position:absolute;left:{cp}%;top:-8px;width:4px;height:24px;background:{c_col};border-radius:2px;"></div>')
+            parts.append(f'<div style="position:absolute;left:{cp}%;top:-22px;font-size:8.5px;color:{c_col};transform:translateX(-50%);font-weight:700;white-space:nowrap;">{format_currency(current_p)}</div>')
+
+            if target_p:
+                p = _pct(target_p)
+                parts.append(f'<div style="position:absolute;left:{p}%;top:-4px;width:2px;height:16px;background:#10b981;border-radius:1px;"></div>')
+                parts.append(f'<div style="position:absolute;left:{p}%;top:12px;font-size:8px;color:#10b981;transform:translateX(-50%);white-space:nowrap;">Target</div>')
+
+            parts.append('</div>')
+
+            if entry and target_p and stop and (entry - stop) > 0:
+                rr = (target_p - entry) / (entry - stop)
+                rr_col = '#10b981' if rr >= 2 else ('#f59e0b' if rr >= 1 else '#ef4444')
+                parts.append(
+                    f'<div style="font-size:10.5px;color:rgba(255,255,255,0.42);margin-top:4px;">'
+                    f'R/R: <span style="color:{rr_col};font-weight:700;">{rr:.1f}x</span>'
+                    f' &nbsp; Reward: <span style="color:#10b981;">+{format_currency(target_p-entry)}</span>'
+                    f' &nbsp; Risk: <span style="color:#ef4444;">{format_currency(entry-stop)}</span></div>'
+                )
+            parts.append('</div>')
+            st.markdown(''.join(parts), unsafe_allow_html=True)
+    except Exception:
+        pass
 
     # Delete thesis option
     st.markdown('<div style="margin-top: 12px;"></div>', unsafe_allow_html=True)
