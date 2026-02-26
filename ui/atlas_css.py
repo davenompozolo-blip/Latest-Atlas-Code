@@ -91,12 +91,12 @@ div[data-testid="stAppViewContainer"] {
     z-index: 1 !important;
 }
 
-/* Offset content below the fixed 90px top bar */
+/* Offset content below top edge — tight layout, no dead space */
 .stApp > div:first-child {
-    padding-top: 90px !important;
+    padding-top: 12px !important;
 }
 section[data-testid="stSidebar"] > div {
-    padding-top: 90px !important;
+    padding-top: 12px !important;
 }
 
 /* ── Streamlit Chrome Removal ───────────────────────── */
@@ -111,7 +111,8 @@ section[data-testid="stSidebar"] {
     background: rgba(7,8,15,0.6) !important;
     backdrop-filter: blur(20px) !important;
     -webkit-backdrop-filter: blur(20px) !important;
-    border-right: 1px solid var(--border) !important;
+    border-right: 1px solid rgba(0, 212, 255, 0.12) !important;
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.45) !important;
     width: 200px !important;
     min-width: 200px !important;
     position: relative !important;
