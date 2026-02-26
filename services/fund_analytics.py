@@ -46,22 +46,38 @@ class FundAnalyticsService:
     def get_fund_returns(
         self, ticker: str, period: str = '5y'
     ) -> Optional[pd.Series]:
-        """Fetch daily returns for a fund/ETF."""
+        """Fetch daily returns for a fund/ETF (plain first, yf.download fallback)."""
         cache_key = f"{ticker}_{period}"
         if cache_key in self._returns_cache:
             return self._returns_cache[cache_key]
 
+        data = pd.DataFrame()
+
+        # Attempt 1: yf_session.get_history (plain yfinance first, hardened fallback)
         try:
             from services.yf_session import get_history
             data = get_history(ticker, period=period)
-            if data.empty:
-                return None
-            returns = data['Close'].pct_change().dropna()
-            returns.name = ticker
-            self._returns_cache[cache_key] = returns
-            return returns
         except Exception:
+            pass
+
+        # Attempt 2: yf.download (different yfinance code path)
+        if data is None or data.empty:
+            try:
+                import yfinance as yf
+                data = yf.download(ticker, period=period, progress=False)
+                # yf.download can return multi-level columns — flatten
+                if data is not None and not data.empty and isinstance(data.columns, pd.MultiIndex):
+                    data.columns = data.columns.get_level_values(0)
+            except Exception:
+                pass
+
+        if data is None or data.empty or 'Close' not in data.columns:
             return None
+
+        returns = data['Close'].pct_change().dropna()
+        returns.name = ticker
+        self._returns_cache[cache_key] = returns
+        return returns
 
     def calculate_performance_metrics(
         self,
