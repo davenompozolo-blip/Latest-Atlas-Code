@@ -2,21 +2,20 @@
 ATLAS Terminal - Hardened yfinance Session
 ==========================================
 Provides a shared yfinance Ticker factory that:
-  1. Spoofs a real browser User-Agent (avoids Yahoo 429 rate-limits on Streamlit Cloud IPs)
-  2. Retries with exponential backoff on 429 / 5xx
-  3. Adds a randomised polite delay between requests
-  4. Returns None gracefully instead of crashing on failure
+  1. Tries plain yfinance first (most reliable — uses yfinance's own cookie/crumb auth)
+  2. Falls back to a browser-spoofed session on 429s or failures
+  3. Retries with backoff before giving up
+  4. Returns empty/graceful defaults instead of crashing
 
 Usage:
     from services.yf_session import get_ticker, get_history, get_info
 
     info   = get_info("NVDA")
     hist   = get_history("NVDA", period="1y")
-    ticker = get_ticker("AAPL")   # yf.Ticker with patched session
+    ticker = get_ticker("AAPL")   # yf.Ticker (plain first, hardened fallback)
 """
 
 import time
-import random
 import logging
 from typing import Optional
 
@@ -29,7 +28,7 @@ import yfinance as yf
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Browser-like headers — these are the key to avoiding 429s on shared IPs
+# Hardened session (fallback) — browser-like headers + retry on 429/5xx
 # ---------------------------------------------------------------------------
 _HEADERS = {
     "User-Agent": (
@@ -48,12 +47,9 @@ _HEADERS = {
     "Upgrade-Insecure-Requests": "1",
 }
 
-# ---------------------------------------------------------------------------
-# Retry strategy: back off on 429 / 500 / 502 / 503 / 504
-# ---------------------------------------------------------------------------
 _RETRY_STRATEGY = Retry(
-    total=4,
-    backoff_factor=1.5,          # waits: 0s, 1.5s, 3s, 6s
+    total=3,
+    backoff_factor=1.0,
     status_forcelist=[429, 500, 502, 503, 504],
     allowed_methods=["GET", "HEAD", "OPTIONS"],
     raise_on_status=False,
@@ -70,69 +66,96 @@ def _make_session() -> requests.Session:
     return session
 
 
-# Module-level shared session (one per process/worker)
-_SESSION = _make_session()
+# Lazy-initialised — only built if plain yfinance fails
+_SESSION: Optional[requests.Session] = None
 
 
-def _polite_delay(min_s: float = 0.3, max_s: float = 0.9) -> None:
-    """Small randomised delay to avoid hammering Yahoo's servers."""
-    time.sleep(random.uniform(min_s, max_s))
+def _get_hardened_session() -> requests.Session:
+    global _SESSION
+    if _SESSION is None:
+        _SESSION = _make_session()
+    return _SESSION
 
 
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
-def get_ticker(symbol: str) -> yf.Ticker:
-    """Return a yf.Ticker with the hardened session injected."""
-    tk = yf.Ticker(symbol, session=_SESSION)
-    return tk
+def get_ticker(symbol: str, use_session: bool = False) -> yf.Ticker:
+    """Return a yf.Ticker, optionally with the hardened session."""
+    if use_session:
+        return yf.Ticker(symbol, session=_get_hardened_session())
+    return yf.Ticker(symbol)
 
 
 def get_history(
     symbol: str,
     period: str = "1y",
     interval: str = "1d",
-    retries: int = 3,
 ) -> pd.DataFrame:
     """
     Fetch OHLCV history for *symbol*.  Returns empty DataFrame on failure.
-    Retries up to *retries* times with backoff before giving up.
+
+    Strategy: try plain yfinance first (most compatible), then retry once
+    with the hardened browser-spoofed session as fallback.
     """
-    for attempt in range(retries):
-        try:
-            _polite_delay()
-            tk = get_ticker(symbol)
-            df = tk.history(period=period, interval=interval)
-            if not df.empty:
-                return df
-            logger.warning("Empty history for %s (attempt %d)", symbol, attempt + 1)
-        except Exception as exc:
-            wait = (attempt + 1) * 2.0
-            logger.warning(
-                "get_history(%s) attempt %d failed: %s — retrying in %.1fs",
-                symbol, attempt + 1, exc, wait,
-            )
-            time.sleep(wait)
+    # Attempt 1: plain yfinance (no custom session)
+    try:
+        tk = yf.Ticker(symbol)
+        df = tk.history(period=period, interval=interval)
+        if df is not None and not df.empty:
+            return df
+    except Exception as exc:
+        logger.warning("get_history(%s) plain attempt failed: %s", symbol, exc)
+
+    # Attempt 2: hardened session (browser headers + retry adapter)
+    try:
+        tk = yf.Ticker(symbol, session=_get_hardened_session())
+        df = tk.history(period=period, interval=interval)
+        if df is not None and not df.empty:
+            return df
+    except Exception as exc:
+        logger.warning("get_history(%s) hardened attempt failed: %s", symbol, exc)
+
+    # Attempt 3: plain yfinance after a brief pause (transient issue)
+    time.sleep(1.0)
+    try:
+        tk = yf.Ticker(symbol)
+        df = tk.history(period=period, interval=interval)
+        if df is not None and not df.empty:
+            return df
+    except Exception as exc:
+        logger.warning("get_history(%s) final attempt failed: %s", symbol, exc)
+
     return pd.DataFrame()
 
 
-def get_info(symbol: str, retries: int = 3) -> dict:
+def get_info(symbol: str) -> dict:
     """
     Fetch .info dict for *symbol*.  Returns {} on failure.
+
+    Strategy: try plain yfinance first, then hardened session fallback.
     """
-    for attempt in range(retries):
-        try:
-            _polite_delay()
-            tk = get_ticker(symbol)
-            info = tk.info or {}
-            if info:
-                return info
-        except Exception as exc:
-            wait = (attempt + 1) * 2.0
-            logger.warning(
-                "get_info(%s) attempt %d failed: %s — retrying in %.1fs",
-                symbol, attempt + 1, exc, wait,
-            )
-            time.sleep(wait)
-    return {}
+    # Attempt 1: plain yfinance
+    try:
+        tk = yf.Ticker(symbol)
+        info = tk.info
+        if info and isinstance(info, dict) and len(info) > 5:
+            return info
+    except Exception as exc:
+        logger.warning("get_info(%s) plain attempt failed: %s", symbol, exc)
+
+    # Attempt 2: hardened session
+    try:
+        tk = yf.Ticker(symbol, session=_get_hardened_session())
+        info = tk.info
+        if info and isinstance(info, dict) and len(info) > 5:
+            return info
+    except Exception as exc:
+        logger.warning("get_info(%s) hardened attempt failed: %s", symbol, exc)
+
+    # Return whatever we got (may be partial)
+    try:
+        return yf.Ticker(symbol).info or {}
+    except Exception:
+        return {}
