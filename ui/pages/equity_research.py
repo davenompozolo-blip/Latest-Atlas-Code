@@ -101,10 +101,19 @@ def _fetch_company_data(ticker: str) -> dict:
     """Fetch comprehensive company data from yfinance."""
     info = get_info(ticker)
 
-    # Price history for return calculations
+    # Price history for return calculations — try get_history, then yf.download fallback
     hist = get_history(ticker, period='1y')
     if hist.empty:
-        raise ValueError(f"No price data found for {ticker}")
+        # Fallback: yf.download (different code path in yfinance)
+        try:
+            hist = yf.download(ticker, period='1y', progress=False)
+        except Exception:
+            pass
+    if hist is None or hist.empty:
+        raise ValueError(
+            f"No price data found for {ticker}. "
+            f"This may be a temporary Yahoo Finance issue — try again in a moment."
+        )
 
     current_price = hist['Close'].iloc[-1]
 
@@ -154,8 +163,7 @@ def _fetch_company_data(ticker: str) -> dict:
 @st.cache_data(ttl=7200, show_spinner=False)
 def _fetch_financials(ticker: str) -> dict:
     """Fetch financial statements from yfinance."""
-    from services.yf_session import get_ticker
-    tk = get_ticker(ticker)
+    tk = yf.Ticker(ticker)
     return {
         'income': tk.financials,
         'balance': tk.balance_sheet,
@@ -1351,6 +1359,9 @@ def _render_equity_research_inner():
             data = _fetch_company_data(ticker)
         except Exception as e:
             st.error(f"Failed to fetch company data for {ticker}: {e}")
+            if st.button("Clear cache & retry", key="eq_retry"):
+                _fetch_company_data.clear()
+                st.rerun()
             return
 
         try:

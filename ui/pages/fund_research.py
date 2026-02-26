@@ -136,31 +136,52 @@ def _gauge_bar(score: float, label: str, max_val: float = 100.0,
 
 @st.cache_data(ttl=7200, show_spinner=False)
 def _fetch_fund_info(ticker: str) -> dict:
-    """Fetch fund/ETF info via yfinance (hardened session)."""
+    """Fetch fund/ETF info via yfinance (plain first, hardened fallback)."""
     try:
         from services.yf_session import get_info
-        return get_info(ticker) or {}
+        info = get_info(ticker)
+        if info and len(info) > 5:
+            return info
+    except Exception:
+        pass
+    # Direct fallback
+    try:
+        import yfinance as yf
+        return yf.Ticker(ticker).info or {}
     except Exception:
         return {}
 
 
 @st.cache_data(ttl=7200, show_spinner=False)
 def _fetch_fund_history(ticker: str, period: str = "5y") -> pd.DataFrame:
-    """Fetch price history for a fund/ETF (hardened session)."""
+    """Fetch price history for a fund/ETF (plain first, hardened fallback)."""
     try:
         from services.yf_session import get_history
         data = get_history(ticker, period=period)
-        return data
+        if data is not None and not data.empty:
+            return data
     except Exception:
-        return pd.DataFrame()
+        pass
+    # yf.download fallback (different yfinance code path)
+    try:
+        import yfinance as yf
+        data = yf.download(ticker, period=period, progress=False)
+        if data is not None and not data.empty:
+            # yf.download can return multi-level columns — flatten
+            if isinstance(data.columns, pd.MultiIndex):
+                data.columns = data.columns.get_level_values(0)
+            return data
+    except Exception:
+        pass
+    return pd.DataFrame()
 
 
 @st.cache_data(ttl=7200, show_spinner=False)
 def _fetch_fund_holdings(ticker: str) -> pd.DataFrame:
-    """Try to fetch fund holdings via yfinance (hardened session)."""
+    """Try to fetch fund holdings via yfinance."""
     try:
-        from services.yf_session import get_ticker
-        t = get_ticker(ticker)
+        import yfinance as yf
+        t = yf.Ticker(ticker)
         try:
             holdings = t.get_holdings()
             if holdings is not None and not holdings.empty:
@@ -173,9 +194,9 @@ def _fetch_fund_holdings(ticker: str) -> pd.DataFrame:
                 return top
         except Exception:
             pass
-        return pd.DataFrame()
     except Exception:
-        return pd.DataFrame()
+        pass
+    return pd.DataFrame()
 
 
 # =============================================================================
@@ -280,7 +301,13 @@ def _render_fund_research_inner():
         dd_analysis = fund_analytics.calculate_drawdown_analysis(ticker_input)
 
     if fund_history.empty:
-        st.error(f"Could not retrieve data for **{ticker_input}**. Please verify the ticker.")
+        st.error(
+            f"Could not retrieve data for **{ticker_input}**. "
+            "This may be a temporary Yahoo Finance issue — try again in a moment."
+        )
+        if st.button("Clear cache & retry", key="fund_research_retry"):
+            st.cache_data.clear()
+            st.rerun()
         return
 
     # Fund name
