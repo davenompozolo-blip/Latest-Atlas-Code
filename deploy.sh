@@ -99,9 +99,8 @@ case $choice in
             echo -e "${YELLOW}⚠️  NGROK_AUTH_TOKEN not set in environment${NC}"
             read -p "Enter your ngrok auth token (or press Enter to use default): " ngrok_token
             if [ -z "$ngrok_token" ]; then
-                # Use the token from setup_ngrok.py as default
-                export NGROK_AUTH_TOKEN="3560NW1Q6pfr5LKXYCFxvt6JnAI_39PX8PaW3aGqhTTr2yo2M"
-                echo -e "${BLUE}Using default ngrok token${NC}"
+                echo -e "${RED}❌ No ngrok token provided. Set NGROK_AUTH_TOKEN environment variable.${NC}"
+                exit 1
             else
                 export NGROK_AUTH_TOKEN="$ngrok_token"
             fi

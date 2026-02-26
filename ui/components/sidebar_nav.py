@@ -39,6 +39,9 @@ def render_sidebar_navigation(default_page: str = "Portfolio Home") -> str:
             {"key": "📊 Leverage Tracker", "label": "Leverage Tracker"},
             {"key": "📡 Investopedia Live", "label": "Investopedia Live"},
         ],
+        "System": [
+            {"key": "ℹ️ About", "label": "About"},
+        ],
     }
 
     if "atlas_selected_page" not in st.session_state:
