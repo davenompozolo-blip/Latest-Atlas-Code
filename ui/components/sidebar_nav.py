@@ -16,7 +16,6 @@ def render_sidebar_navigation(default_page: str = "Portfolio Home") -> str:
         "Core": [
             {"key": "🔥 Phoenix Parser", "label": "Phoenix Parser"},
             {"key": "🏠 Portfolio Home", "label": "Portfolio Home"},
-            {"key": "🚀 v10.0 Analytics", "label": "v10.0 Analytics"},
             {"key": "📊 R Analytics", "label": "R Analytics"},
             {"key": "💾 Database", "label": "Database"},
         ],

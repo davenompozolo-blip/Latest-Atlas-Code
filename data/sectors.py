@@ -1,7 +1,10 @@
 """
 ATLAS Terminal - GICS Sector Classification Data
 S&P 500 / SPY benchmark sector mapping for portfolio attribution.
+Includes get_benchmark_sector_returns() — the single canonical copy.
 """
+
+import yfinance as yf
 
 # ============================================================================
 # PHASE 2: GICS SECTOR CLASSIFICATION SYSTEM
@@ -330,3 +333,63 @@ SPY_SECTOR_WEIGHTS = {
     'Real Estate': 2.3,
     'Materials': 2.3
 }
+
+# Sector ETF proxies for benchmark performance
+SECTOR_ETFS = {
+    'Information Technology': 'XLK',
+    'Financials': 'XLF',
+    'Health Care': 'XLV',
+    'Consumer Discretionary': 'XLY',
+    'Communication Services': 'XLC',
+    'Industrials': 'XLI',
+    'Consumer Staples': 'XLP',
+    'Energy': 'XLE',
+    'Materials': 'XLB',
+    'Real Estate': 'XLRE',
+    'Utilities': 'XLU'
+}
+
+
+def get_benchmark_sector_returns(benchmark_ticker='SPY', period='1y'):
+    """
+    Get sector returns from benchmark ETF using sector ETF proxies.
+
+    Parameters:
+        benchmark_ticker: Main benchmark (SPY) — reserved for future use
+        period: Time period for returns (yfinance format: '1y', '3m', etc.)
+
+    Returns:
+        dict: {sector_name: return_percentage}
+    """
+    # Optional cache integration (non-blocking)
+    try:
+        from atlas_terminal.core.cache_manager import cache_manager
+        cache_key = cache_manager.get_cache_key('benchmark_sector_returns', benchmark_ticker, period)
+        cached_result = cache_manager.get(cache_key, ttl=21600)  # 6 hours
+        if cached_result is not None:
+            return cached_result
+        _cache_available = True
+    except (ImportError, Exception):
+        _cache_available = False
+
+    sector_returns = {}
+
+    for sector, etf in SECTOR_ETFS.items():
+        try:
+            data = yf.Ticker(etf).history(period=period)
+            if len(data) > 0:
+                ret = (data['Close'].iloc[-1] / data['Close'].iloc[0] - 1) * 100
+                sector_returns[sector] = ret
+            else:
+                sector_returns[sector] = 0
+        except Exception:
+            sector_returns[sector] = 0
+
+    # Cache the complete result if available
+    if _cache_available:
+        try:
+            cache_manager.set(cache_key, sector_returns, persist=True)
+        except Exception:
+            pass
+
+    return sector_returns

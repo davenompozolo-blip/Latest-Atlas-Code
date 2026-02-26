@@ -19,23 +19,7 @@ def render_investopedia_live():
     )
     from ui.components import ATLAS_TEMPLATE
 
-    # Stub for InvestopediaIntegration class (needs Selenium)
-    class InvestopediaIntegration:
-        """Stub for Investopedia integration."""
-        def __init__(self, email=None):
-            self.email = email
-
-        def attempt_login(self, password):
-            return {'status': 'error', 'message': 'Selenium integration not available'}
-
-        def submit_2fa_code(self, code):
-            return {'status': 'error', 'message': 'Selenium integration not available'}
-
-        def scrape_portfolio(self):
-            return None
-
-        def cleanup(self):
-            pass
+    from integrations.investopedia import InvestopediaIntegration
 
     st.markdown("### 📡 Investopedia Paper Trading Integration")
     st.markdown("**Live Portfolio Sync with Investopedia Simulator**")
