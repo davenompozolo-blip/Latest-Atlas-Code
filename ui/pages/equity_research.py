@@ -10,6 +10,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 import yfinance as yf
+from services.yf_session import get_history, get_info
 from datetime import datetime, timedelta
 
 from app.config import COLORS, CHART_THEME
@@ -98,11 +99,10 @@ def _color_for_value(val: float) -> str:
 @st.cache_data(ttl=3600, show_spinner=False)
 def _fetch_company_data(ticker: str) -> dict:
     """Fetch comprehensive company data from yfinance."""
-    tk = yf.Ticker(ticker)
-    info = tk.info or {}
+    info = get_info(ticker)
 
     # Price history for return calculations
-    hist = tk.history(period='1y')
+    hist = get_history(ticker, period='1y')
     if hist.empty:
         raise ValueError(f"No price data found for {ticker}")
 
@@ -154,7 +154,8 @@ def _fetch_company_data(ticker: str) -> dict:
 @st.cache_data(ttl=3600, show_spinner=False)
 def _fetch_financials(ticker: str) -> dict:
     """Fetch financial statements from yfinance."""
-    tk = yf.Ticker(ticker)
+    from services.yf_session import get_ticker
+    tk = get_ticker(ticker)
     return {
         'income': tk.financials,
         'balance': tk.balance_sheet,
@@ -168,8 +169,7 @@ def _fetch_financials(ticker: str) -> dict:
 @st.cache_data(ttl=3600, show_spinner=False)
 def _fetch_spy_returns(period: str = '1y') -> pd.Series:
     """Fetch SPY returns for beta calculation."""
-    spy = yf.Ticker('SPY')
-    hist = spy.history(period=period)
+    hist = get_history('SPY', period=period)
     return hist['Close'].pct_change().dropna()
 
 
