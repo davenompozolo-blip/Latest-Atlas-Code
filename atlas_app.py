@@ -1452,7 +1452,10 @@ def main():
         "🧮 Quant Optimizer": "quant_optimizer",
         "📊 Leverage Tracker": "leverage_tracker",
         "📡 Investopedia Live": "investopedia_live",
-        "ℹ️ About": "about"
+        "ℹ️ About": "about",
+        "💎 Equity Research": "equity_research",
+        "🌐 Macro Intelligence": "macro_intelligence",
+        "📚 Fund Research": "fund_research",
     }
 
     # Get page key from selected title
@@ -1714,6 +1717,27 @@ def main():
         elif page == "📡 Investopedia Live":
             from ui.pages.investopedia_live import render_investopedia_live
             render_investopedia_live()
+
+        # ========================================================================
+        # EQUITY RESEARCH (v11.0 Module 1)
+        # ========================================================================
+        elif page == "💎 Equity Research":
+            from ui.pages.equity_research import render_equity_research
+            render_equity_research()
+
+        # ========================================================================
+        # MACRO INTELLIGENCE (v11.0 Module 2)
+        # ========================================================================
+        elif page == "🌐 Macro Intelligence":
+            from ui.pages.macro_intelligence import render_macro_intelligence
+            render_macro_intelligence()
+
+        # ========================================================================
+        # FUND & MANAGER RESEARCH (v11.0 Module 3)
+        # ========================================================================
+        elif page == "📚 Fund Research":
+            from ui.pages.fund_research import render_fund_research
+            render_fund_research()
 
         # ========================================================================
         # ABOUT

@@ -245,6 +245,34 @@ PAGE_REGISTRY = [
         requires_data=[]
     ),
 
+    # Research Pages (v11.0)
+    PageDefinition(
+        key="equity_research",
+        title="Equity Research",
+        icon="💎",
+        handler=_make_placeholder("Equity Research", "💎"),
+        category="research",
+        requires_data=[]
+    ),
+
+    PageDefinition(
+        key="macro_intelligence",
+        title="Macro Intelligence",
+        icon="🌐",
+        handler=_make_placeholder("Macro Intelligence", "🌐"),
+        category="research",
+        requires_data=[]
+    ),
+
+    PageDefinition(
+        key="fund_research",
+        title="Fund Research",
+        icon="📚",
+        handler=_make_placeholder("Fund Research", "📚"),
+        category="research",
+        requires_data=[]
+    ),
+
     # System Pages
     PageDefinition(
         key="about",
