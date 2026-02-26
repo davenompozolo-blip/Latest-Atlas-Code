@@ -1341,6 +1341,31 @@ def _render_dcf_engine(ticker: str):
             'Configure assumptions above and click **Run DCF Valuation** to calculate intrinsic value.'
         )
 
+    # ── Valuation House bridge ─────────────────────────────────────────
+    st.markdown('---')
+    st.markdown(
+        '<div style="background:linear-gradient(135deg,rgba(99,102,241,0.08),rgba(20,184,166,0.05));'
+        'border:1px solid rgba(99,102,241,0.2);border-radius:12px;padding:16px 18px;margin-top:4px;">'
+        '<div style="font-size:12px;font-weight:700;color:rgba(255,255,255,0.72);'
+        'text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Need more depth?</div>'
+        '<div style="font-size:12px;color:rgba(255,255,255,0.48);line-height:1.6;margin-bottom:4px;">'
+        'The <strong style="color:rgba(255,255,255,0.72);">Valuation House</strong> runs '
+        'multi-scenario DCF (Bear / Base / Bull), multi-stage DDM, residual income, '
+        'SOTP, and Monte Carlo — with full WACC decomposition and Smart Assumptions.'
+        '</div></div>',
+        unsafe_allow_html=True,
+    )
+    if st.button(
+        f'→  Open {ticker} in Valuation House',
+        key='eq_open_val_house',
+        type='primary',
+        use_container_width=True,
+    ):
+        st.session_state['valuation_prefill_ticker'] = ticker
+        st.session_state['atlas_selected_page'] = '💰 Valuation House'
+        st.rerun()
+
+
 
 # =============================================================================
 # MAIN PAGE RENDERER
