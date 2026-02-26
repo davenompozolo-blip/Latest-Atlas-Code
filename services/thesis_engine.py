@@ -329,34 +329,92 @@ class ThesisEvaluator:
 # =============================================================================
 
 def create_default_thesis(ticker: str) -> InvestmentThesis:
-    """Create a blank thesis template for a ticker."""
+    """
+    Create an illustrative thesis template for a ticker.
+
+    The default assumptions are deliberately concrete and specific — matching
+    the spec's design philosophy that the Thesis Engine should track whether
+    the analyst's reasoning still holds, not just whether the price moved.
+
+    Analysts should edit these to reflect their actual thesis. The examples
+    are calibrated to be realistic starting points for a typical long thesis.
+    """
+    fy2 = (datetime.now().replace(year=datetime.now().year + 2)).strftime('%Y-%m-%d')
+    fy3 = (datetime.now().replace(year=datetime.now().year + 3)).strftime('%Y-%m-%d')
+
     return InvestmentThesis(
         ticker=ticker,
-        title=f"Investment Thesis: {ticker}",
+        title=f"{ticker} — Long Thesis",
+        conviction="medium",
+        direction="long",
+        narrative=(
+            f"We believe {ticker} is materially undervalued relative to its earnings power. "
+            f"The core thesis rests on three pillars: (1) operating margin expansion as "
+            f"fixed-cost leverage emerges at scale, (2) sustained double-digit revenue growth "
+            f"driven by market share gains, and (3) balance sheet deleveraging that reduces "
+            f"financial risk and releases capital for buybacks or reinvestment. "
+            f"Edit this narrative to reflect your actual reasoning."
+        ),
         assumptions=[
             {
                 'id': 'a1',
-                'description': 'Revenue growth target',
-                'kpi_name': 'revenue_growth',
+                'description': 'Operating margin expands from current level to 18% by FY+2',
+                'kpi_name': 'operating_margin_pct',
+                'target_value': 18.0,
+                'target_date': fy2,
+                'tolerance_pct': 12.0,
+                'current_value': None,
+                'status': ThesisStatus.ON_TRACK.value,
+                'last_updated': None,
+                'notes': (
+                    'Track quarterly operating income / revenue. '
+                    'Alert if trajectory implies <15% by FY+2.'
+                ),
+            },
+            {
+                'id': 'a2',
+                'description': 'Revenue CAGR of 10%+ through FY+3 driven by core market expansion',
+                'kpi_name': 'revenue_yoy_growth_pct',
                 'target_value': 10.0,
-                'target_date': (datetime.now().replace(year=datetime.now().year + 2)).strftime('%Y-%m-%d'),
+                'target_date': fy3,
                 'tolerance_pct': 15.0,
                 'current_value': None,
                 'status': ThesisStatus.ON_TRACK.value,
                 'last_updated': None,
-                'notes': '',
+                'notes': (
+                    'Watch quarterly revenue growth trends. '
+                    'Management guidance revisions are leading indicator.'
+                ),
             },
             {
-                'id': 'a2',
-                'description': 'Operating margin expansion',
-                'kpi_name': 'operating_margin',
-                'target_value': 18.0,
-                'target_date': (datetime.now().replace(year=datetime.now().year + 2)).strftime('%Y-%m-%d'),
+                'id': 'a3',
+                'description': 'Net Debt / EBITDA declines below 1.5x by FY+2',
+                'kpi_name': 'net_debt_ebitda_ratio',
+                'target_value': 1.5,
+                'target_date': fy2,
+                'tolerance_pct': 20.0,
+                'current_value': None,
+                'status': ThesisStatus.ON_TRACK.value,
+                'last_updated': None,
+                'notes': (
+                    'Calculated from balance sheet: (Total Debt - Cash) / EBITDA. '
+                    'Monitor for unexpected debt issuance or EBITDA miss.'
+                ),
+            },
+            {
+                'id': 'a4',
+                'description': 'Free cash flow conversion exceeds 80% of net income',
+                'kpi_name': 'fcf_conversion_pct',
+                'target_value': 80.0,
+                'target_date': fy2,
                 'tolerance_pct': 10.0,
                 'current_value': None,
                 'status': ThesisStatus.ON_TRACK.value,
                 'last_updated': None,
-                'notes': '',
+                'notes': (
+                    'FCF = Operating Cash Flow - Capex. '
+                    'Working capital deterioration or capex ramp are key risks.'
+                ),
             },
         ]
     )
