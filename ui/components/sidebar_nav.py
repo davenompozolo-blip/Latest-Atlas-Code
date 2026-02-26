@@ -91,11 +91,11 @@ def render_sidebar_navigation(default_page: str = "Portfolio Home") -> str:
         # ── ATLAS Logo ──
         st.markdown("""
         <div style="padding: 0 16px 20px; border-bottom: 1px solid rgba(255,255,255,0.07); margin-bottom: 8px;">
-            <div style="font-family: 'Syne', sans-serif; font-size: 17px; font-weight: 700;
+            <div style="font-family: 'Syne', sans-serif; font-size: 19px; font-weight: 700;
                         letter-spacing: 3px; color: #00d4ff;
                         text-shadow: 0 0 20px rgba(0, 212, 255, 0.4);">ATLAS</div>
-            <div style="font-size: 9px; color: rgba(255,255,255,0.28);
-                        letter-spacing: 1.5px; text-transform: uppercase; margin-top: 2px;">Analytics Terminal</div>
+            <div style="font-size: 11px; color: rgba(255,255,255,0.35);
+                        letter-spacing: 1.8px; text-transform: uppercase; margin-top: 3px;">Analytics Terminal</div>
         </div>
         """, unsafe_allow_html=True)
 
