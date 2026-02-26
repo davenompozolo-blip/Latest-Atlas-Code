@@ -20,6 +20,11 @@ def render_sidebar_navigation(default_page: str = "Portfolio Home") -> str:
             {"key": "📊 R Analytics", "label": "R Analytics"},
             {"key": "💾 Database", "label": "Database"},
         ],
+        "Research": [
+            {"key": "💎 Equity Research", "label": "Equity Research"},
+            {"key": "🌐 Macro Intelligence", "label": "Macro Intelligence"},
+            {"key": "📚 Fund Research", "label": "Fund Research"},
+        ],
         "Markets": [
             {"key": "🌍 Market Watch", "label": "Market Watch"},
             {"key": "🌐 Market Regime", "label": "Market Regime"},
