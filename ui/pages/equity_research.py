@@ -177,58 +177,160 @@ def _fetch_spy_returns(period: str = '1y') -> pd.Series:
 # SECTION RENDERERS
 # =============================================================================
 
-def _render_company_intelligence(data: dict, ticker: str):
-    """Render the Company Intelligence Panel."""
-    st.markdown(f'''
-<div style="background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(21,25,50,0.95));
-            backdrop-filter: blur(24px); padding: 1.5rem; border-radius: 20px; margin-bottom: 1rem;
-            border: 1px solid rgba(99,102,241,0.2); box-shadow: 0 4px 24px rgba(0,0,0,0.2);
-            position: relative; overflow: hidden;">
-    <div style="position: absolute; top: 0; left: 0; right: 0; height: 3px;
-                background: linear-gradient(90deg, {COLOR_ACCENT}, {COLOR_TEAL}); opacity: 0.8;"></div>
-    <div style="font-size: 22px; font-weight: 700; color: rgba(255,255,255,0.92);">
-        {data['company_name']} <span style="color: {COLOR_ACCENT};">({ticker})</span>
-    </div>
-    <div style="font-size: 13px; color: rgba(255,255,255,0.52); margin-top: 4px;">
-        {data['sector']} &middot; {data['industry']}
-    </div>
-</div>''', unsafe_allow_html=True)
+def _render_header_strip(data: dict, ticker: str) -> None:
+    """Full-width company header with all key stats in one horizontal band."""
 
-    # Price + metrics row
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        st.markdown(_glass_card('Current Price', format_currency(data['current_price'])), unsafe_allow_html=True)
-    with c2:
-        mc = data['market_cap']
-        st.markdown(_glass_card('Market Cap', format_large_number(mc) if mc else 'N/A'), unsafe_allow_html=True)
-    with c3:
-        range_str = f"{format_currency(data['low_52'])} — {format_currency(data['high_52'])}"
-        pct_of_range = (data['current_price'] - data['low_52']) / (data['high_52'] - data['low_52']) * 100 if data['high_52'] != data['low_52'] else 50
-        st.markdown(_glass_card('52-Week Range', range_str, sub=f"{pct_of_range:.0f}% of range"), unsafe_allow_html=True)
-    with c4:
-        dd_color = COLOR_NEG if data['drawdown'] < -5 else (COLOR_NEUTRAL if data['drawdown'] < 0 else COLOR_POS)
-        st.markdown(_glass_card('Drawdown from Peak', f"{data['drawdown']:.1f}%", color=dd_color), unsafe_allow_html=True)
+    info = data['info']
+    price = data['current_price']
+    mc = data.get('market_cap')
+    low52 = data.get('low_52', 0)
+    high52 = data.get('high_52', 0)
+    dd = data.get('drawdown', 0)
+    v30 = data.get('vol_30d')
+    v90 = data.get('vol_90d')
+    returns = data.get('returns', {})
 
-    # Returns row
-    st.markdown('<div style="font-size: 11px; color: rgba(255,255,255,0.42); text-transform: uppercase; letter-spacing: 1px; margin: 12px 0 8px 0;">PERFORMANCE</div>', unsafe_allow_html=True)
-    ret_cols = st.columns(5)
-    for col, (period_label, ret_val) in zip(ret_cols, data['returns'].items()):
-        with col:
-            if ret_val is not None:
-                c = _color_for_value(ret_val)
-                st.markdown(_mini_card(period_label, f"{ret_val:+.2f}%", color=c), unsafe_allow_html=True)
-            else:
-                st.markdown(_mini_card(period_label, 'N/A'), unsafe_allow_html=True)
+    # ── helpers ──────────────────────────────────────────────
+    def _stat_chip(label: str, value: str, color: str = "rgba(255,255,255,0.88)") -> str:
+        return (
+            f'<div style="display:flex;flex-direction:column;align-items:center;'
+            f'background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);'
+            f'border-radius:10px;padding:10px 14px;min-width:72px;">'
+            f'<span style="font-size:9.5px;color:rgba(255,255,255,0.38);text-transform:uppercase;'
+            f'letter-spacing:0.8px;margin-bottom:5px;">{label}</span>'
+            f'<span style="font-size:15px;font-weight:600;color:{color};">{value}</span>'
+            f'</div>'
+        )
 
-    # Volatility row
-    st.markdown('<div style="font-size: 11px; color: rgba(255,255,255,0.42); text-transform: uppercase; letter-spacing: 1px; margin: 12px 0 8px 0;">VOLATILITY PROFILE</div>', unsafe_allow_html=True)
-    vc1, vc2 = st.columns(2)
-    with vc1:
-        v30 = f"{data['vol_30d']:.1f}%" if data['vol_30d'] is not None else 'N/A'
-        st.markdown(_mini_card('30-Day Realised Vol', v30), unsafe_allow_html=True)
-    with vc2:
-        v90 = f"{data['vol_90d']:.1f}%" if data['vol_90d'] is not None else 'N/A'
-        st.markdown(_mini_card('90-Day Realised Vol', v90), unsafe_allow_html=True)
+    def _ret_chip(label: str, val) -> str:
+        if val is None:
+            return _stat_chip(label, "N/A")
+        c = COLOR_POS if val > 0 else (COLOR_NEG if val < 0 else COLOR_NEUTRAL)
+        return _stat_chip(label, f"{val:+.2f}%", c)
+
+    def _fmt_price(v):
+        if v is None: return "N/A"
+        return f"${v:,.2f}" if v < 1000 else f"${v:,.0f}"
+
+    def _fmt_large(v):
+        if not v: return "N/A"
+        if v >= 1e12: return f"${v/1e12:.2f}T"
+        if v >= 1e9:  return f"${v/1e9:.1f}B"
+        if v >= 1e6:  return f"${v/1e6:.1f}M"
+        return f"${v:,.0f}"
+
+    pct_of_range = ((price - low52) / (high52 - low52) * 100) if high52 != low52 else 50
+    range_str = f"{_fmt_price(low52)} – {_fmt_price(high52)}"
+    dd_color = COLOR_NEG if dd < -10 else ("#f59e0b" if dd < -3 else COLOR_POS)
+    mc_str = _fmt_large(mc)
+
+    # ── thesis toggle button state ────────────────────────────
+    thesis_open = st.session_state.get('eq_thesis_open', False)
+    btn_label = "📋 Thesis ✕" if thesis_open else "📋 Thesis ▶"
+    btn_bg = "rgba(99,102,241,0.20)" if thesis_open else "rgba(255,255,255,0.06)"
+
+    # ── company nameplate ─────────────────────────────────────
+    sector = data.get('sector', '')
+    industry = data.get('industry', '')
+    company_name = data.get('company_name', ticker)
+    exchange = info.get('exchange', '')
+    currency = info.get('currency', 'USD')
+
+    st.markdown(f"""
+<style>
+.atlas-header-strip {{
+  background: linear-gradient(135deg, rgba(10,12,30,0.95) 0%, rgba(15,18,40,0.92) 100%);
+  border: 1px solid rgba(99,102,241,0.18);
+  border-radius: 16px;
+  padding: 18px 20px 14px;
+  margin-bottom: 18px;
+  position: relative;
+  overflow: hidden;
+}}
+.atlas-header-strip::before {{
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, {COLOR_ACCENT} 0%, {COLOR_TEAL} 60%, transparent 100%);
+}}
+.atlas-thesis-btn {{
+  position: absolute;
+  top: 16px; right: 16px;
+  background: {btn_bg};
+  border: 1px solid rgba(99,102,241,0.3);
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 12px;
+  color: rgba(255,255,255,0.78);
+  font-family: 'DM Sans', sans-serif;
+  cursor: pointer;
+  letter-spacing: 0.3px;
+  transition: background 0.2s;
+}}
+.atlas-stats-row {{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}}
+.atlas-divider {{
+  width: 1px;
+  background: rgba(255,255,255,0.08);
+  align-self: stretch;
+  margin: 0 4px;
+}}
+</style>
+<div class="atlas-header-strip">
+  <!-- Company identity -->
+  <div style="display:flex;align-items:baseline;gap:10px;padding-right:120px;">
+    <span style="font-size:22px;font-weight:700;color:rgba(255,255,255,0.92);">{company_name}</span>
+    <span style="font-size:17px;font-weight:600;color:{COLOR_ACCENT};">({ticker})</span>
+    <span style="font-size:12px;color:rgba(255,255,255,0.38);">{exchange} &middot; {currency}</span>
+  </div>
+  <div style="font-size:12px;color:rgba(255,255,255,0.42);margin-top:3px;">
+    {sector}{' &middot; ' + industry if industry else ''}
+  </div>
+
+  <!-- Stats row -->
+  <div class="atlas-stats-row">
+    {_stat_chip("Price", _fmt_price(price))}
+    {_stat_chip("Mkt Cap", mc_str)}
+    {_stat_chip("52W Range", range_str, "rgba(255,255,255,0.72)")}
+    {_stat_chip("Range %", f"{pct_of_range:.0f}%", "rgba(255,255,255,0.62)")}
+    {_stat_chip("Drawdown", f"{dd:.1f}%", dd_color)}
+    <div class="atlas-divider"></div>
+    {_ret_chip("1D", returns.get("1D"))}
+    {_ret_chip("1W", returns.get("1W"))}
+    {_ret_chip("1M", returns.get("1M"))}
+    {_ret_chip("3M", returns.get("3M"))}
+    {_ret_chip("1Y", returns.get("1Y"))}
+    <div class="atlas-divider"></div>
+    {_stat_chip("Vol 30D", f"{v30:.1f}%" if v30 else "N/A", "rgba(255,255,255,0.6)")}
+    {_stat_chip("Vol 90D", f"{v90:.1f}%" if v90 else "N/A", "rgba(255,255,255,0.6)")}
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+    # Thesis toggle button — outside the html block so Streamlit handles the click
+    _, btn_col = st.columns([10, 1.5])
+    with btn_col:
+        if st.button(btn_label, key='eq_thesis_toggle', use_container_width=True):
+            st.session_state['eq_thesis_open'] = not thesis_open
+            st.rerun()
+
+
+def _render_thesis_drawer(ticker: str) -> None:
+    """Renders the thesis engine inside the collapsible right drawer panel."""
+    st.markdown("""
+<div style="background:rgba(99,102,241,0.06);border-left:2px solid rgba(99,102,241,0.35);
+            border-radius:0 12px 12px 0;padding:12px 14px 6px;margin-bottom:12px;">
+  <span style="font-size:13px;font-weight:700;color:rgba(255,255,255,0.82);
+               letter-spacing:0.5px;text-transform:uppercase;">Investment Thesis</span>
+</div>
+""", unsafe_allow_html=True)
+    _render_thesis_engine(ticker)
+
 
 
 # ---------------------------------------------------------------------------
@@ -1258,15 +1360,28 @@ def render_equity_research():
 def _render_equity_research_inner():
     """Inner implementation — wrapped by render_equity_research for error surfacing."""
 
-    st.markdown("**Deep fundamental analysis, valuation, and thesis tracking for individual equities**")
+    # ── Inject slide-in animation CSS ──────────────────────────────────────
+    st.markdown("""
+<style>
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(40px); }
+  to   { opacity: 1; transform: translateX(0);    }
+}
+.thesis-drawer-panel {
+  animation: slideInRight 0.25s ease-out;
+  border-left: 1px solid rgba(99,102,241,0.15);
+  padding-left: 16px;
+}
+</style>
+""", unsafe_allow_html=True)
 
-    # ---- Ticker Search ----
-    search_col1, search_col2 = st.columns([3, 1])
+    # ── Ticker search bar ──────────────────────────────────────────────────
+    search_col1, search_col2 = st.columns([5, 1])
     with search_col1:
         ticker_input = st.text_input(
             "Ticker",
             value=st.session_state.get('eq_research_ticker', ''),
-            placeholder="Enter ticker symbol (e.g. AAPL, MSFT, NVDA)",
+            placeholder="Enter ticker symbol (e.g. AAPL, MSFT, NVDA, BATS:VOD)",
             label_visibility='collapsed',
         )
     with search_col2:
@@ -1278,9 +1393,18 @@ def _render_equity_research_inner():
     ticker = st.session_state.get('eq_research_ticker', '').upper().strip()
 
     if not ticker:
-        st.info("Enter a ticker symbol above and click **Analyse** to begin.")
+        st.markdown("""
+<div style="text-align:center;padding:40px 0;color:rgba(255,255,255,0.38);">
+  <div style="font-size:40px;margin-bottom:12px;">🔬</div>
+  <div style="font-size:16px;font-weight:600;color:rgba(255,255,255,0.55);margin-bottom:6px;">
+    Equity Research Workstation
+  </div>
+  <div style="font-size:13px;">
+    Enter a ticker symbol above and click <strong>Analyse</strong> to begin deep fundamental research.
+  </div>
+</div>""", unsafe_allow_html=True)
 
-        # Show existing theses
+        # Show saved theses as quick-access cards
         try:
             from services.thesis_engine import thesis_store as ts
             existing = ts.list_theses()
@@ -1289,53 +1413,50 @@ def _render_equity_research_inner():
                 st.markdown("##### Saved Theses")
                 for t in existing[:10]:
                     status_color = THESIS_COLORS.get(t.get('overall_status', 'on_track'), COLOR_NEUTRAL)
-                    st.markdown(f'''
-<div style="background: rgba(255,255,255,0.025); border: 1px solid rgba(255,255,255,0.07);
-            border-radius: 8px; padding: 10px; margin-bottom: 6px; cursor: pointer;
-            border-left: 3px solid {status_color};">
-    <span style="font-weight: 600; color: rgba(255,255,255,0.82);">{t['ticker']}</span>
-    <span style="color: rgba(255,255,255,0.52); margin-left: 8px;">{t.get('title', '')}</span>
-    <span style="float: right; font-size: 11px; color: rgba(255,255,255,0.42);">
-        {t.get('conviction', '').upper()} {t.get('direction', '').upper()} &middot;
-        {t.get('num_assumptions', 0)} assumptions
-    </span>
-</div>''', unsafe_allow_html=True)
+                    if st.button(
+                        f"  {t['ticker']}  ·  {t.get('title', '')}",
+                        key=f"quick_{t['ticker']}",
+                        use_container_width=False,
+                    ):
+                        st.session_state['eq_research_ticker'] = t['ticker']
+                        st.rerun()
         except Exception:
             pass
         return
 
-    # ---- Fetch data ----
+    # ── Fetch data ─────────────────────────────────────────────────────────
     with st.spinner(f"Fetching data for {ticker}..."):
         try:
             data = _fetch_company_data(ticker)
         except Exception as e:
-            st.error(f"Failed to fetch company data for {ticker}: {e}")
+            st.error(f"Failed to fetch company data for **{ticker}**: {e}")
             return
-
         try:
             fin = _fetch_financials(ticker)
         except Exception as e:
             st.warning(f"Financial statement data unavailable: {e}")
             fin = {}
 
-    # ====================================================================
-    # 3-COLUMN LAYOUT: Left (Intelligence) | Centre (Analysis) | Right (Thesis)
-    # ====================================================================
+    # ── Full-width header strip ─────────────────────────────────────────────
+    _render_header_strip(data, ticker)
 
-    left_col, centre_col, right_col = st.columns([2, 3, 2])
+    # ── Layout: full-width or [analysis | thesis drawer] ───────────────────
+    thesis_open = st.session_state.get('eq_thesis_open', False)
 
-    # ---- LEFT COLUMN: Company Intelligence ----
-    with left_col:
-        _render_company_intelligence(data, ticker)
+    if thesis_open:
+        analysis_col, drawer_col = st.columns([5, 2.2], gap="medium")
+    else:
+        analysis_col = st.container()
+        drawer_col = None
 
-    # ---- RIGHT COLUMN: Investment Thesis Engine (always visible) ----
-    with right_col:
-        _render_thesis_engine(ticker)
-
-    # ---- CENTRE COLUMN: Financial Analysis, Valuation, Risk, Peers, DCF ----
-    with centre_col:
+    # ── Main analysis workspace ─────────────────────────────────────────────
+    with analysis_col:
         main_tab1, main_tab2, main_tab3, main_tab4, main_tab5 = st.tabs([
-            'Financial Analysis', 'Valuation Engine', 'Risk View', 'Peer Comparison', 'DCF Engine'
+            '📊 Financial Analysis',
+            '💰 Valuation Engine',
+            '⚠️ Risk View',
+            '🏢 Peer Comparison',
+            '🧮 DCF Engine',
         ])
 
         with main_tab1:
@@ -1352,3 +1473,10 @@ def _render_equity_research_inner():
 
         with main_tab5:
             _render_dcf_engine(ticker)
+
+    # ── Thesis drawer ────────────────────────────────────────────────────────
+    if thesis_open and drawer_col is not None:
+        with drawer_col:
+            st.markdown('<div class="thesis-drawer-panel">', unsafe_allow_html=True)
+            _render_thesis_drawer(ticker)
+            st.markdown('</div>', unsafe_allow_html=True)
