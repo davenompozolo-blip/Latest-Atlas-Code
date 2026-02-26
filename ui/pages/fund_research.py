@@ -187,6 +187,17 @@ def _fetch_fund_holdings(ticker: str) -> pd.DataFrame:
 # =============================================================================
 
 def render_fund_research():
+    """Render the Fund & Manager Research page."""
+    try:
+        _render_fund_research_inner()
+    except Exception as _err:
+        import traceback as _tb
+        st.error(f"**Fund Research — Unexpected Error:** `{type(_err).__name__}: {_err}`")
+        with st.expander("Full traceback (share with developer)", expanded=True):
+            st.code(_tb.format_exc())
+
+
+def _render_fund_research_inner():
     """Render the Fund & Manager Research Dashboard (Module 3)."""
 
     # Lazy imports for services

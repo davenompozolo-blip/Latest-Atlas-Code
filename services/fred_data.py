@@ -21,8 +21,17 @@ import streamlit as st
 # =============================================================================
 
 FRED_BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
-FRED_CACHE_DIR = Path("data/fred_cache")
-FRED_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+# Use /tmp for cache — always writable on Streamlit Cloud and any Linux host.
+def _resolve_fred_cache_dir() -> "Path":
+    for candidate in [Path("/tmp/atlas_fred_cache"), Path("data/fred_cache")]:
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+            return candidate
+        except Exception:
+            continue
+    return Path("/tmp")
+
+FRED_CACHE_DIR = _resolve_fred_cache_dir()
 
 # Default cache TTL: 6 hours for economic data
 DEFAULT_CACHE_TTL = 6 * 60 * 60

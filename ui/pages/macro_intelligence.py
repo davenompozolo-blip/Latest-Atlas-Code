@@ -1614,6 +1614,17 @@ def _render_scenario_builder(regime_data: dict):
 
 
 def render_macro_intelligence():
+    """Render the Macro Intelligence page."""
+    try:
+        _render_macro_intelligence_inner()
+    except Exception as _err:
+        import traceback as _tb
+        st.error(f"**Macro Intelligence — Unexpected Error:** `{type(_err).__name__}: {_err}`")
+        with st.expander("Full traceback (share with developer)", expanded=True):
+            st.code(_tb.format_exc())
+
+
+def _render_macro_intelligence_inner():
     """
     ATLAS Terminal v11.0 - Macro Intelligence Dashboard (Module 2).
     Newspaper front-page layout: regime classification -> inflation/growth/liquidity ->
