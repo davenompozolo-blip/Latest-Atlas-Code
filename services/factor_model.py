@@ -101,23 +101,46 @@ class FactorModelService:
         except Exception:
             return None
 
+    @staticmethod
+    def _ols(X: np.ndarray, y: np.ndarray):
+        """
+        Pure-numpy OLS regression. Returns (coefficients, intercept, r_squared).
+        Avoids sklearn dependency entirely.
+        """
+        # Add intercept column
+        X_b = np.column_stack([np.ones(len(X)), X])
+        try:
+            # Use least-squares solver (numpy built-in)
+            result = np.linalg.lstsq(X_b, y, rcond=None)
+            coeffs = result[0]
+            intercept = float(coeffs[0])
+            coef = coeffs[1:]
+            # R-squared
+            y_pred = X_b @ coeffs
+            ss_res = np.sum((y - y_pred) ** 2)
+            ss_tot = np.sum((y - np.mean(y)) ** 2)
+            r2 = float(1 - ss_res / ss_tot) if ss_tot > 0 else 0.0
+            return coef, intercept, r2
+        except Exception:
+            return np.zeros(X.shape[1]), 0.0, 0.0
+
     def calculate_factor_exposures(
         self,
         ticker: str,
         period: str = '1y'
     ) -> Optional[Dict]:
         """
-        Calculate a stock's factor exposures using regression.
+        Calculate a stock's factor exposures using OLS regression against
+        factor ETF proxies. Uses pure numpy — no sklearn required.
 
-        Returns dict with factor betas, R-squared, and residual vol.
+        Falls back gracefully if some factor ETFs are unavailable, using
+        whichever factors could be fetched. Minimum requirement: market (SPY)
+        plus at least one factor ETF, or market-only beta.
         """
         try:
             import yfinance as yf
-            from sklearn.linear_model import LinearRegression
 
             factor_returns = self.get_factor_returns(period)
-            if factor_returns is None:
-                return None
 
             # Get stock returns
             stock_data = yf.download(ticker, period=period, progress=False)
@@ -131,40 +154,76 @@ class FactorModelService:
 
             stock_returns = stock_close.pct_change().dropna()
 
-            # Align dates
-            common_idx = factor_returns.index.intersection(stock_returns.index)
-            if len(common_idx) < 60:
-                return None
+            # ----------------------------------------------------------------
+            # Case A: Full multi-factor regression (all factor ETFs available)
+            # ----------------------------------------------------------------
+            if factor_returns is not None and not factor_returns.empty:
+                common_idx = factor_returns.index.intersection(stock_returns.index)
+                if len(common_idx) >= 60:
+                    y = stock_returns.loc[common_idx].values
+                    factor_cols = [c for c in factor_returns.columns if c != 'market']
+                    # Only use columns that actually have data (some ETFs may have failed)
+                    valid_cols = [c for c in factor_cols if c in factor_returns.columns
+                                  and factor_returns[c].loc[common_idx].notna().sum() >= 60]
 
-            y = stock_returns.loc[common_idx].values
-            factor_cols = [c for c in factor_returns.columns if c != 'market']
-            X = factor_returns.loc[common_idx, factor_cols].values
-            market_ret = factor_returns.loc[common_idx, 'market'].values if 'market' in factor_returns.columns else None
+                    if valid_cols:
+                        X = factor_returns.loc[common_idx, valid_cols].fillna(0).values
+                        coef, intercept, r2 = self._ols(X, y)
+                        betas = dict(zip(valid_cols, [float(c) for c in coef]))
+                        residuals = y - (X @ coef + intercept)
+                        residual_vol = float(np.std(residuals) * np.sqrt(252))
 
-            # Run regression
-            model = LinearRegression()
-            model.fit(X, y)
+                        # Market beta (single-factor)
+                        market_beta = None
+                        if 'market' in factor_returns.columns:
+                            mkt = factor_returns.loc[common_idx, 'market'].fillna(0).values
+                            mb_coef, _, _ = self._ols(mkt.reshape(-1, 1), y)
+                            market_beta = float(mb_coef[0])
 
-            betas = dict(zip(factor_cols, model.coef_))
-            r_squared = model.score(X, y)
-            residuals = y - model.predict(X)
-            residual_vol = np.std(residuals) * np.sqrt(252)
+                        return {
+                            'ticker': ticker,
+                            'betas': betas,
+                            'market_beta': market_beta,
+                            'r_squared': r2,
+                            'residual_vol': residual_vol,
+                            'alpha': float(intercept) * 252,
+                            'method': 'multi_factor',
+                        }
 
-            # Market beta (separate regression)
-            market_beta = None
-            if market_ret is not None:
-                market_model = LinearRegression()
-                market_model.fit(market_ret.reshape(-1, 1), y)
-                market_beta = float(market_model.coef_[0])
+            # ----------------------------------------------------------------
+            # Case B: Market-only fallback (SPY beta only)
+            # ----------------------------------------------------------------
+            try:
+                spy_data = yf.download('SPY', period=period, progress=False)
+                if not spy_data.empty:
+                    if isinstance(spy_data.columns, pd.MultiIndex):
+                        spy_close = spy_data['Close'].iloc[:, 0]
+                    else:
+                        spy_close = spy_data['Close']
+                    spy_returns = spy_close.pct_change().dropna()
+                    common = stock_returns.index.intersection(spy_returns.index)
+                    if len(common) >= 60:
+                        y = stock_returns.loc[common].values
+                        mkt = spy_returns.loc[common].values
+                        mb_coef, intercept, r2 = self._ols(mkt.reshape(-1, 1), y)
+                        market_beta = float(mb_coef[0])
+                        # Approximate factor betas from market beta only
+                        betas = {
+                            'market_proxy': market_beta,
+                        }
+                        return {
+                            'ticker': ticker,
+                            'betas': betas,
+                            'market_beta': market_beta,
+                            'r_squared': r2,
+                            'residual_vol': float(np.std(y - mkt * market_beta) * np.sqrt(252)),
+                            'alpha': float(intercept) * 252,
+                            'method': 'market_only',
+                        }
+            except Exception:
+                pass
 
-            return {
-                'ticker': ticker,
-                'betas': betas,
-                'market_beta': market_beta,
-                'r_squared': r_squared,
-                'residual_vol': residual_vol,
-                'alpha': float(model.intercept_) * 252,  # Annualized
-            }
+            return None
 
         except Exception:
             return None

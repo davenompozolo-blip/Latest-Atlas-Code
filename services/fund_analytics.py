@@ -456,5 +456,166 @@ class FundAnalyticsService:
         }
 
 
+    def calculate_allocator_scores(
+        self,
+        fund_ticker: str,
+        portfolio_tickers: List[str],
+        portfolio_weights: Optional[Dict[str, float]] = None,
+    ) -> Optional[Dict]:
+        """
+        Flagship Allocator Decision Engine: unified entry point that runs all
+        three ADE scores and returns a composite recommendation.
+
+        Returns:
+            Dict with diversification_score, redundancy_score, marginal_improvement_score,
+            composite_score, verdict, and recommendation text.
+        """
+        if not portfolio_tickers:
+            return None
+
+        # Default equal weights if not provided
+        if portfolio_weights is None:
+            w = 1.0 / len(portfolio_tickers)
+            portfolio_weights = {t: w for t in portfolio_tickers}
+
+        # Score 1: Diversification Benefit
+        div_result = self.diversification_benefit_score(
+            fund_ticker, portfolio_tickers, portfolio_weights
+        )
+        div_score = div_result.get('score', 50)
+
+        # Score 2: Marginal Portfolio Improvement
+        mi_result = self.marginal_portfolio_improvement(
+            fund_ticker, portfolio_tickers, portfolio_weights
+        )
+        scenarios = mi_result.get('scenarios', [])
+        best_sharpe_change = max((s.get('sharpe_change', 0) for s in scenarios), default=0)
+        mi_score = float(min(100, max(0, 50 + best_sharpe_change * 200)))
+
+        # Score 3: Redundancy
+        red_result = self.redundancy_score(fund_ticker, portfolio_tickers)
+        red_score = red_result.get('score', 50)
+
+        # Composite: diversification (40%) + marginal improvement (30%) + inverse redundancy (30%)
+        composite = (
+            div_score * 0.40
+            + mi_score * 0.30
+            + (100 - red_score) * 0.30
+        )
+
+        # Verdict
+        if composite >= 65:
+            verdict = 'STRONG ADD'
+            verdict_color = '#10b981'
+            recommendation = (
+                f"High diversification benefit (score {div_score:.0f}/100), "
+                f"low redundancy ({red_score:.0f}%), and positive marginal improvement. "
+                f"Recommended at 5-10% allocation."
+            )
+        elif composite >= 45:
+            verdict = 'CONSIDER'
+            verdict_color = '#f59e0b'
+            recommendation = (
+                f"Moderate fit. Review sizing carefully — "
+                f"diversification score {div_score:.0f}/100, redundancy {red_score:.0f}%. "
+                f"Consider a 2.5-5% initial allocation."
+            )
+        else:
+            verdict = 'PASS'
+            verdict_color = '#ef4444'
+            recommendation = (
+                f"Limited incremental value. High redundancy ({red_score:.0f}%) "
+                f"with existing holdings and weak diversification benefit ({div_score:.0f}/100). "
+                f"Adding this manager provides minimal portfolio improvement."
+            )
+
+        return {
+            'diversification_score': float(div_score),
+            'redundancy_score': float(red_score),
+            'marginal_improvement_score': float(mi_score),
+            'composite_score': float(composite),
+            'verdict': verdict,
+            'verdict_color': verdict_color,
+            'recommendation': recommendation,
+            'diversification_detail': div_result,
+            'marginal_improvement_detail': mi_result,
+            'redundancy_detail': red_result,
+        }
+
+    def calculate_manager_skill_metrics(
+        self,
+        ticker: str,
+        benchmark: str = 'SPY',
+    ) -> Optional[Dict]:
+        """
+        Manager skill: alpha/beta decomposition, information ratio,
+        tracking error, and consistency (% of rolling 12M periods outperforming).
+        """
+        fund_returns = self.get_fund_returns(ticker, '5y')
+        bench_returns = self.get_fund_returns(benchmark, '5y')
+
+        if fund_returns is None or bench_returns is None:
+            fund_returns = self.get_fund_returns(ticker, '3y')
+            bench_returns = self.get_fund_returns(benchmark, '3y')
+
+        if fund_returns is None or bench_returns is None:
+            return None
+
+        common = fund_returns.index.intersection(bench_returns.index)
+        if len(common) < 126:
+            return None
+
+        fr = fund_returns.loc[common].values
+        br = bench_returns.loc[common].values
+
+        # Alpha / Beta via OLS
+        X_b = np.column_stack([np.ones(len(br)), br])
+        try:
+            coeffs = np.linalg.lstsq(X_b, fr, rcond=None)[0]
+        except Exception:
+            return None
+
+        alpha_daily = float(coeffs[0])
+        beta = float(coeffs[1])
+        alpha_annualised = alpha_daily * 252
+
+        # Tracking error
+        excess = fr - br
+        tracking_error = float(np.std(excess) * np.sqrt(252))
+
+        # Information ratio
+        ann_excess = float(np.mean(excess) * 252)
+        information_ratio = ann_excess / tracking_error if tracking_error > 0 else 0.0
+
+        # Consistency: % of rolling 252-day windows that outperformed
+        outperform_count = 0
+        total_windows = 0
+        window = min(252, len(common) // 2)
+        for i in range(len(common) - window):
+            f_ret = float(np.prod(1 + fr[i:i + window]) - 1)
+            b_ret = float(np.prod(1 + br[i:i + window]) - 1)
+            if f_ret > b_ret:
+                outperform_count += 1
+            total_windows += 1
+        consistency = (outperform_count / total_windows * 100) if total_windows > 0 else None
+
+        # Active share proxy (1 - R^2)
+        y_pred = coeffs[0] + coeffs[1] * br
+        ss_res = float(np.sum((fr - y_pred) ** 2))
+        ss_tot = float(np.sum((fr - np.mean(fr)) ** 2))
+        r_squared = float(1 - ss_res / ss_tot) if ss_tot > 0 else 0.0
+        active_share_proxy = float((1 - r_squared) * 100)
+
+        return {
+            'alpha_annualised': alpha_annualised,
+            'beta': beta,
+            'tracking_error': tracking_error,
+            'information_ratio': information_ratio,
+            'consistency_pct': consistency,
+            'active_share_proxy': active_share_proxy,
+            'r_squared': r_squared,
+        }
+
+
 # Singleton
 fund_analytics = FundAnalyticsService()

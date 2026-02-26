@@ -1115,6 +1115,122 @@ def _render_factor_returns(regime_data: dict):
         st.caption(f"Factor data error: {e}")
 
 
+def _render_liquidity_panel():
+    """
+    Liquidity Conditions Panel: M2 growth trend, central bank balance sheet direction,
+    credit impulse, and an overall liquidity regime classification.
+
+    The liquidity cycle typically leads risk asset returns by 6-12 months,
+    making this a critical forward-looking indicator for portfolio positioning.
+    """
+    st.markdown(
+        f'<div style="{LABEL_STYLE} font-size:13px; margin-bottom:12px;">Liquidity Conditions</div>',
+        unsafe_allow_html=True,
+    )
+
+    # Try FRED for M2 and monetary data
+    fred_liquidity = None
+    try:
+        from services.fred_data import fred_service
+        if fred_service.available:
+            fred_liquidity = fred_service.get_liquidity_dashboard()
+    except Exception:
+        pass
+
+    if fred_liquidity:
+        cols = st.columns(len(fred_liquidity))
+        for idx, (key, info) in enumerate(fred_liquidity.items()):
+            with cols[idx]:
+                change = info.get("yoy", info.get("change", 0)) or 0
+                change_color = _direction_color(change)
+                st.markdown(
+                    f'<div style="{CARD_STYLE}">'
+                    f'<div style="{LABEL_STYLE}">{info.get("label", key)}</div>'
+                    f'<div style="font-size:22px; font-weight:600; color:rgba(255,255,255,0.92);">'
+                    f'{info.get("latest", "N/A")}</div>'
+                    f'<div style="font-size:12px; margin-top:6px; color:{change_color};">'
+                    f'{_arrow(change)} {change:+.2f}% YoY</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+    else:
+        # Market-based liquidity proxies when FRED unavailable
+        st.caption("FRED unavailable — showing market-based liquidity proxies")
+        try:
+            import yfinance as yf
+            import pandas as pd
+
+            # Liquidity proxies:
+            # BIL  = 1-3 Month T-Bill (risk-free rate — tight = expensive)
+            # LQD  = IG Credit (spread as proxy for credit availability)
+            # TLT  = Long duration (loose financial conditions = TLT stable or rising)
+            # HYG  = High Yield (loose conditions = HYG performing well)
+            proxies = {
+                "TLT": ("Long Duration (TLT)", "Duration proxy — rising = easing"),
+                "HYG": ("High Yield (HYG)", "Credit availability proxy"),
+                "LQD": ("IG Credit (LQD)", "Investment-grade credit proxy"),
+                "BIL": ("T-Bills (BIL)", "Short-end risk-free rate"),
+            }
+
+            liq_cols = st.columns(len(proxies))
+            liq_scores = []
+
+            for idx, (ticker, (label, tooltip)) in enumerate(proxies.items()):
+                with liq_cols[idx]:
+                    try:
+                        hist = yf.Ticker(ticker).history(period="3mo")
+                        if len(hist) > 10:
+                            current = float(hist["Close"].iloc[-1])
+                            start = float(hist["Close"].iloc[0])
+                            ret_3m = (current / start - 1) * 100
+                            liq_scores.append(ret_3m)
+                            ret_color = _direction_color(ret_3m)
+                            st.markdown(
+                                f'<div style="{CARD_STYLE} padding:14px;">'
+                                f'<div style="{LABEL_STYLE}">{label}</div>'
+                                f'<div style="font-size:18px; font-weight:600; color:rgba(255,255,255,0.9);">'
+                                f'${current:,.2f}</div>'
+                                f'<div style="font-size:11px; margin-top:4px; color:{ret_color};">'
+                                f'{_arrow(ret_3m)} {ret_3m:+.1f}% (3M)</div>'
+                                f'<div style="font-size:10px; color:rgba(255,255,255,0.3); margin-top:2px;">'
+                                f'{tooltip}</div>'
+                                f'</div>',
+                                unsafe_allow_html=True,
+                            )
+                        else:
+                            st.markdown(_glass_card(label, "N/A"), unsafe_allow_html=True)
+                    except Exception:
+                        st.markdown(_glass_card(label, "N/A"), unsafe_allow_html=True)
+
+            # Liquidity impulse summary
+            if liq_scores:
+                avg_liq = sum(liq_scores) / len(liq_scores)
+                liq_regime = (
+                    "Loosening" if avg_liq > 1 else
+                    "Tightening" if avg_liq < -1 else
+                    "Neutral"
+                )
+                liq_color = (
+                    COLOR_POSITIVE if liq_regime == "Loosening" else
+                    COLOR_NEGATIVE if liq_regime == "Tightening" else
+                    COLOR_NEUTRAL
+                )
+                st.markdown(
+                    f'<div style="{CARD_STYLE} padding:16px; margin-top:8px;">'
+                    f'<div style="{LABEL_STYLE}">Liquidity Impulse (Market-Based)</div>'
+                    f'<div style="font-size:20px; font-weight:700; color:{liq_color};">'
+                    f'{liq_regime}</div>'
+                    f'<div style="font-size:11px; color:rgba(255,255,255,0.45); margin-top:4px;">'
+                    f'Average 3M return across liquidity proxies: {avg_liq:+.1f}%. '
+                    f'Loosening conditions typically lead risk assets by 2-4 quarters.</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+        except Exception as e:
+            st.warning(f"Liquidity proxy data unavailable: {e}")
+
+
 def _render_financial_conditions():
     """Financial Conditions: VIX level, term structure, dollar, overall assessment."""
     st.markdown(
@@ -1554,8 +1670,8 @@ def render_macro_intelligence():
     # =========================================================================
     st.markdown("---")
 
-    tab_inf, tab_growth, tab_liq = st.tabs(
-        ["Inflation Trend", "Growth Momentum", "Financial Conditions"]
+    tab_inf, tab_growth, tab_liq, tab_fci = st.tabs(
+        ["Inflation Trend", "Growth Momentum", "Liquidity Conditions", "Financial Conditions"]
     )
 
     with tab_inf:
@@ -1565,6 +1681,9 @@ def render_macro_intelligence():
         _render_growth_panel()
 
     with tab_liq:
+        _render_liquidity_panel()
+
+    with tab_fci:
         _render_financial_conditions()
 
     # =========================================================================

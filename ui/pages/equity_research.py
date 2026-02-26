@@ -907,6 +907,339 @@ def _render_thesis_engine(ticker: str):
         st.rerun()
 
 
+# ---------------------------------------------------------------------------
+# Peer Comparison Panel
+# ---------------------------------------------------------------------------
+
+# Default peer groups by sector — expandable by user
+_PEER_GROUPS = {
+    'Technology': ['AAPL', 'MSFT', 'GOOGL', 'META', 'NVDA', 'AMZN'],
+    'Financials': ['JPM', 'BAC', 'GS', 'MS', 'C', 'WFC'],
+    'Healthcare': ['JNJ', 'LLY', 'ABBV', 'MRK', 'PFE', 'UNH'],
+    'Consumer Discretionary': ['AMZN', 'TSLA', 'HD', 'MCD', 'NKE', 'SBUX'],
+    'Energy': ['XOM', 'CVX', 'COP', 'EOG', 'SLB', 'OXY'],
+    'Industrials': ['CAT', 'DE', 'HON', 'GE', 'MMM', 'UPS'],
+    'Communication Services': ['GOOGL', 'META', 'NFLX', 'DIS', 'T', 'VZ'],
+    'Materials': ['LIN', 'APD', 'FCX', 'NEM', 'NUE', 'ALB'],
+    'Utilities': ['NEE', 'DUK', 'SO', 'D', 'AEP', 'EXC'],
+    'Real Estate': ['AMT', 'PLD', 'CCI', 'EQIX', 'SPG', 'PSA'],
+    'Consumer Staples': ['WMT', 'PG', 'KO', 'PEP', 'COST', 'MDLZ'],
+}
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _fetch_peer_metrics(tickers: list) -> pd.DataFrame:
+    """Fetch key valuation and fundamental metrics for a list of tickers."""
+    import yfinance as yf
+
+    rows = []
+    for t in tickers:
+        try:
+            info = yf.Ticker(t).info or {}
+            fcf = info.get('freeCashflow')
+            mcap = info.get('marketCap')
+            p_fcf = (mcap / fcf) if (fcf and mcap and fcf > 0) else None
+
+            rows.append({
+                'Ticker': t,
+                'Name': (info.get('shortName') or t)[:20],
+                'Market Cap': info.get('marketCap'),
+                'P/E (Trailing)': info.get('trailingPE'),
+                'P/E (Forward)': info.get('forwardPE'),
+                'EV/EBITDA': info.get('enterpriseToEbitda'),
+                'P/FCF': p_fcf,
+                'P/S': info.get('priceToSalesTrailing12Months'),
+                'Gross Margin %': (info.get('grossMargins', 0) or 0) * 100,
+                'EBIT Margin %': (info.get('ebitdaMargins', 0) or 0) * 100,
+                'ROE %': (info.get('returnOnEquity', 0) or 0) * 100,
+                '1Y Return %': None,  # filled below
+            })
+        except Exception:
+            rows.append({'Ticker': t, 'Name': t})
+
+    if not rows:
+        return pd.DataFrame()
+
+    # Add 1Y returns
+    try:
+        import yfinance as yf
+        hist_data = yf.download(tickers, period='1y', progress=False)
+        if not hist_data.empty:
+            close = hist_data['Close'] if isinstance(hist_data.columns, pd.MultiIndex) else hist_data
+            for row in rows:
+                t = row['Ticker']
+                if t in close.columns and len(close[t].dropna()) > 0:
+                    series = close[t].dropna()
+                    row['1Y Return %'] = (series.iloc[-1] / series.iloc[0] - 1) * 100
+    except Exception:
+        pass
+
+    return pd.DataFrame(rows)
+
+
+def _render_peer_comparison(data: dict, ticker: str):
+    """Render the Peer Comparison Panel."""
+    st.markdown('##### Peer Comparison')
+
+    sector = data.get('sector', 'Technology')
+
+    # Peer selection
+    default_peers = [t for t in _PEER_GROUPS.get(sector, ['SPY', 'QQQ']) if t != ticker][:5]
+
+    peer_input = st.text_input(
+        'Peer Tickers (comma-separated)',
+        value=', '.join(default_peers),
+        help=f'Auto-filled with {sector} peers. Edit to customise.',
+        key='peer_input',
+    )
+
+    peers_raw = [p.strip().upper() for p in peer_input.split(',') if p.strip()]
+    all_tickers = [ticker] + [p for p in peers_raw if p != ticker]
+
+    if len(all_tickers) < 2:
+        st.info('Add at least one peer ticker to compare.')
+        return
+
+    with st.spinner('Fetching peer data...'):
+        try:
+            peer_df = _fetch_peer_metrics(all_tickers)
+        except Exception as e:
+            st.warning(f'Peer data fetch error: {e}')
+            return
+
+    if peer_df.empty:
+        st.warning('Could not retrieve peer data.')
+        return
+
+    # Highlight the subject company
+    metric_cols = ['P/E (Trailing)', 'P/E (Forward)', 'EV/EBITDA', 'P/FCF',
+                   'Gross Margin %', 'EBIT Margin %', 'ROE %', '1Y Return %']
+
+    display_df = peer_df[['Ticker', 'Name', 'Market Cap'] + [c for c in metric_cols if c in peer_df.columns]].copy()
+
+    # Format Market Cap
+    if 'Market Cap' in display_df.columns:
+        display_df['Market Cap'] = display_df['Market Cap'].apply(
+            lambda v: format_large_number(v, '$') if pd.notna(v) and v else 'N/A'
+        )
+
+    # Format numeric columns
+    for col in metric_cols:
+        if col not in display_df.columns:
+            continue
+        if col in ['Gross Margin %', 'EBIT Margin %', 'ROE %', '1Y Return %']:
+            display_df[col] = display_df[col].apply(
+                lambda v: f'{v:.1f}%' if pd.notna(v) and v else 'N/A'
+            )
+        else:
+            display_df[col] = display_df[col].apply(
+                lambda v: f'{v:.1f}x' if pd.notna(v) and v else 'N/A'
+            )
+
+    st.dataframe(
+        display_df.set_index('Ticker'),
+        use_container_width=True,
+        height=min(400, (len(display_df) + 1) * 40),
+    )
+
+    # Relative valuation bar chart: EV/EBITDA
+    try:
+        ev_data = peer_df[peer_df['EV/EBITDA'].notna()][['Ticker', 'EV/EBITDA']].copy()
+        if len(ev_data) >= 2:
+            ev_data = ev_data.sort_values('EV/EBITDA')
+            colors = [COLOR_ACCENT if t == ticker else 'rgba(255,255,255,0.25)' for t in ev_data['Ticker']]
+            fig = go.Figure(go.Bar(
+                x=ev_data['Ticker'], y=ev_data['EV/EBITDA'],
+                marker_color=colors,
+                text=[f'{v:.1f}x' for v in ev_data['EV/EBITDA']],
+                textposition='outside',
+                textfont=dict(size=10, color='rgba(255,255,255,0.7)'),
+            ))
+            peer_median = float(ev_data['EV/EBITDA'].median())
+            fig.add_hline(
+                y=peer_median, line_dash='dash', line_color=COLOR_NEUTRAL,
+                annotation_text=f'Peer Median: {peer_median:.1f}x',
+                annotation_font_color=COLOR_NEUTRAL, annotation_font_size=10,
+            )
+            fig.update_layout(title='EV/EBITDA vs Peers', yaxis_title='EV/EBITDA', showlegend=False)
+            _apply_atlas_theme(fig)
+            st.plotly_chart(fig, use_container_width=True)
+    except Exception:
+        pass
+
+    # Scatter: P/E vs Gross Margin (growth vs value quadrant)
+    try:
+        scatter_df = peer_df[peer_df['P/E (Trailing)'].notna() & peer_df['Gross Margin %'].notna()].copy()
+        if len(scatter_df) >= 2:
+            colors_scatter = [COLOR_ACCENT if t == ticker else 'rgba(99,102,241,0.45)' for t in scatter_df['Ticker']]
+            sizes = [14 if t == ticker else 9 for t in scatter_df['Ticker']]
+            fig2 = go.Figure()
+            fig2.add_trace(go.Scatter(
+                x=scatter_df['Gross Margin %'],
+                y=scatter_df['P/E (Trailing)'],
+                mode='markers+text',
+                text=scatter_df['Ticker'],
+                textposition='top center',
+                textfont=dict(size=9, color='rgba(255,255,255,0.7)'),
+                marker=dict(color=colors_scatter, size=sizes),
+                name='Peers',
+            ))
+            fig2.update_layout(
+                title='P/E vs Gross Margin — Valuation Quadrant',
+                xaxis_title='Gross Margin %',
+                yaxis_title='Trailing P/E',
+                showlegend=False,
+            )
+            _apply_atlas_theme(fig2)
+            st.plotly_chart(fig2, use_container_width=True)
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# DCF Engine Integration (leverages ATLAS's existing atlas_dcf_engine.py)
+# ---------------------------------------------------------------------------
+
+def _render_dcf_engine(ticker: str):
+    """
+    Render the ATLAS native DCF engine inside the Equity Research module.
+    Wraps valuation/atlas_dcf_engine.py with a full interactive UI.
+    """
+    st.markdown('##### ATLAS DCF Valuation Engine')
+    st.markdown(
+        '<div style="font-size:12px; color:rgba(255,255,255,0.52); margin-bottom:16px;">'
+        'Discounted Cash Flow intrinsic value with WACC sensitivity analysis and scenario modelling.'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    # User inputs
+    ui_col1, ui_col2, ui_col3 = st.columns(3)
+    with ui_col1:
+        risk_free = st.slider('Risk-Free Rate (%)', 2.0, 7.0, 4.0, 0.25, key='dcf_rf')
+        market_return = st.slider('Market Return (%)', 6.0, 14.0, 10.0, 0.5, key='dcf_mkt')
+    with ui_col2:
+        tax_rate = st.slider('Tax Rate (%)', 10.0, 35.0, 21.0, 1.0, key='dcf_tax')
+        terminal_growth = st.slider('Terminal Growth (%)', 1.0, 4.0, 2.5, 0.25, key='dcf_tg')
+    with ui_col3:
+        growth_years = st.slider('Explicit Forecast Period (yrs)', 5, 15, 10, 1, key='dcf_yrs')
+
+    if st.button('Run DCF Valuation', type='primary', key='run_dcf_btn'):
+        with st.spinner('Running DCF valuation...'):
+            try:
+                from valuation.atlas_dcf_engine import DCFValuation
+
+                dcf = DCFValuation(ticker)
+                wacc = dcf.calculate_wacc(
+                    risk_free_rate=risk_free / 100,
+                    market_return=market_return / 100,
+                    tax_rate=tax_rate / 100,
+                )
+                projected_fcf = dcf.project_cash_flows(
+                    years=growth_years,
+                    wacc=wacc,
+                )
+                terminal_value = dcf.calculate_terminal_value(
+                    terminal_growth_rate=terminal_growth / 100,
+                    wacc=wacc,
+                )
+                result = dcf.calculate_intrinsic_value(
+                    projected_fcf=projected_fcf,
+                    terminal_value=terminal_value,
+                    wacc=wacc,
+                )
+
+                intrinsic = result.get('intrinsic_value_per_share')
+                current_price = result.get('current_price')
+
+                if intrinsic and current_price:
+                    upside = (intrinsic / current_price - 1) * 100
+                    upside_color = COLOR_POS if upside > 0 else COLOR_NEG
+
+                    d1, d2, d3, d4 = st.columns(4)
+                    with d1:
+                        st.markdown(
+                            _glass_card('Intrinsic Value', format_currency(intrinsic)),
+                            unsafe_allow_html=True,
+                        )
+                    with d2:
+                        st.markdown(
+                            _glass_card('Current Price', format_currency(current_price)),
+                            unsafe_allow_html=True,
+                        )
+                    with d3:
+                        st.markdown(
+                            _glass_card('Upside / Downside', f'{upside:+.1f}%', color=upside_color),
+                            unsafe_allow_html=True,
+                        )
+                    with d4:
+                        st.markdown(
+                            _glass_card('WACC', f'{wacc * 100:.2f}%'),
+                            unsafe_allow_html=True,
+                        )
+
+                    # WACC sensitivity table
+                    st.markdown('##### WACC × Terminal Growth Sensitivity')
+                    wacc_range = [wacc - 0.015, wacc - 0.005, wacc, wacc + 0.005, wacc + 0.015]
+                    tg_range = [terminal_growth / 100 - 0.005,
+                                terminal_growth / 100,
+                                terminal_growth / 100 + 0.005]
+
+                    sense_rows = {}
+                    for w in wacc_range:
+                        row = {}
+                        for tg in tg_range:
+                            if w <= tg:
+                                row[f'{tg*100:.2f}%'] = 'N/A'
+                                continue
+                            try:
+                                tv_s = dcf.calculate_terminal_value(tg, w)
+                                res_s = dcf.calculate_intrinsic_value(projected_fcf, tv_s, w)
+                                iv = res_s.get('intrinsic_value_per_share')
+                                row[f'{tg*100:.2f}%'] = format_currency(iv) if iv else 'N/A'
+                            except Exception:
+                                row[f'{tg*100:.2f}%'] = 'N/A'
+                        sense_rows[f'{w*100:.2f}%'] = row
+
+                    sense_df = pd.DataFrame(sense_rows).T
+                    sense_df.index.name = 'WACC \\ TG'
+                    st.dataframe(sense_df, use_container_width=True)
+
+                    # Projected FCF bar chart
+                    if isinstance(projected_fcf, (list, np.ndarray)):
+                        fig = go.Figure(go.Bar(
+                            x=[f'FY+{i+1}' for i in range(len(projected_fcf))],
+                            y=[float(v) / 1e9 for v in projected_fcf],
+                            marker_color=COLOR_ACCENT,
+                            text=[f'${float(v)/1e9:.1f}B' for v in projected_fcf],
+                            textposition='outside',
+                            textfont=dict(size=10, color='rgba(255,255,255,0.7)'),
+                        ))
+                        fig.update_layout(
+                            title='Projected Free Cash Flow',
+                            yaxis_title='FCF (USD Billions)',
+                            showlegend=False,
+                        )
+                        _apply_atlas_theme(fig)
+                        st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.warning('DCF returned no intrinsic value. Verify the company has available FCF data.')
+                    if result:
+                        st.json(result)
+
+            except ImportError:
+                st.error('DCF engine module (valuation/atlas_dcf_engine.py) not found.')
+            except Exception as e:
+                # Surface the actual error — don't swallow it
+                st.error(f'DCF calculation failed: {e}')
+                st.caption('Common causes: no FCF data available, or insufficient financial history. '
+                           'Try a ticker with at least 3 years of reported cash flows.')
+    else:
+        st.info(
+            'Configure assumptions above and click **Run DCF Valuation** to calculate intrinsic value.'
+        )
+
+
 # =============================================================================
 # MAIN PAGE RENDERER
 # =============================================================================
@@ -988,10 +1321,10 @@ def render_equity_research():
     with right_col:
         _render_thesis_engine(ticker)
 
-    # ---- CENTRE COLUMN: Financial Analysis, Valuation, Risk ----
+    # ---- CENTRE COLUMN: Financial Analysis, Valuation, Risk, Peers, DCF ----
     with centre_col:
-        main_tab1, main_tab2, main_tab3 = st.tabs([
-            'Financial Analysis', 'Valuation Engine', 'Risk View'
+        main_tab1, main_tab2, main_tab3, main_tab4, main_tab5 = st.tabs([
+            'Financial Analysis', 'Valuation Engine', 'Risk View', 'Peer Comparison', 'DCF Engine'
         ])
 
         with main_tab1:
@@ -1002,3 +1335,9 @@ def render_equity_research():
 
         with main_tab3:
             _render_risk_view(data, ticker)
+
+        with main_tab4:
+            _render_peer_comparison(data, ticker)
+
+        with main_tab5:
+            _render_dcf_engine(ticker)

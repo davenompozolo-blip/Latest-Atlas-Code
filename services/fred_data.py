@@ -396,6 +396,29 @@ class FREDDataService:
 
         return result
 
+    def get_liquidity_dashboard(self) -> Dict[str, Any]:
+        """Get liquidity data package (M2, monetary base) for macro dashboard."""
+        result = {}
+        for key in ['m2', 'monetary_base']:
+            df = self.fetch_series(key)
+            if df is not None and len(df) > 0:
+                latest = df['value'].iloc[-1]
+                prev_month = df['value'].iloc[-2] if len(df) > 1 else latest
+                prev_year = df['value'].iloc[-13] if len(df) > 13 else latest
+
+                mom_change = ((latest / prev_month) - 1) * 100 if prev_month != 0 else 0
+                yoy_change = ((latest / prev_year) - 1) * 100 if prev_year != 0 else 0
+
+                result[key] = {
+                    'latest': latest,
+                    'mom': mom_change,
+                    'yoy': yoy_change,
+                    'label': SERIES_LABELS.get(key, key),
+                    'series': df,
+                }
+
+        return result
+
 
 # Singleton instance
 fred_service = FREDDataService()
