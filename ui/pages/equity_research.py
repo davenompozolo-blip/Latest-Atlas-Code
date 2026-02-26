@@ -202,41 +202,69 @@ def _render_company_intelligence(data: dict, ticker: str):
     </div>
 </div>''', unsafe_allow_html=True)
 
-    # Price + metrics row
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        st.markdown(_glass_card('Current Price', format_currency(data['current_price'])), unsafe_allow_html=True)
-    with c2:
+    # Price + Market Cap row (2 cols — readable in narrow panel)
+    m1, m2 = st.columns(2)
+    with m1:
+        st.markdown(_glass_card('Price', format_currency(data['current_price'])), unsafe_allow_html=True)
+    with m2:
         mc = data['market_cap']
-        st.markdown(_glass_card('Market Cap', format_large_number(mc) if mc else 'N/A'), unsafe_allow_html=True)
-    with c3:
-        range_str = f"{format_currency(data['low_52'])} — {format_currency(data['high_52'])}"
+        st.markdown(_glass_card('Mkt Cap', format_large_number(mc) if mc else 'N/A'), unsafe_allow_html=True)
+
+    # 52-Week Range + Drawdown row
+    m3, m4 = st.columns(2)
+    with m3:
         pct_of_range = (data['current_price'] - data['low_52']) / (data['high_52'] - data['low_52']) * 100 if data['high_52'] != data['low_52'] else 50
-        st.markdown(_glass_card('52-Week Range', range_str, sub=f"{pct_of_range:.0f}% of range"), unsafe_allow_html=True)
-    with c4:
+        range_str = f"{format_currency(data['low_52'])}–{format_currency(data['high_52'])}"
+        st.markdown(_mini_card('52W Range', range_str, color=COLOR_NEUTRAL), unsafe_allow_html=True)
+    with m4:
         dd_color = COLOR_NEG if data['drawdown'] < -5 else (COLOR_NEUTRAL if data['drawdown'] < 0 else COLOR_POS)
-        st.markdown(_glass_card('Drawdown from Peak', f"{data['drawdown']:.1f}%", color=dd_color), unsafe_allow_html=True)
+        st.markdown(_mini_card('Drawdown', f"{data['drawdown']:.1f}%", color=dd_color), unsafe_allow_html=True)
 
-    # Returns row
-    st.markdown('<div style="font-size: 11px; color: rgba(255,255,255,0.42); text-transform: uppercase; letter-spacing: 1px; margin: 8px 0 6px 0;">PERFORMANCE</div>', unsafe_allow_html=True)
-    ret_cols = st.columns(5)
-    for col, (period_label, ret_val) in zip(ret_cols, data['returns'].items()):
-        with col:
-            if ret_val is not None:
-                c = _color_for_value(ret_val)
-                st.markdown(_mini_card(period_label, f"{ret_val:+.2f}%", color=c), unsafe_allow_html=True)
-            else:
-                st.markdown(_mini_card(period_label, 'N/A'), unsafe_allow_html=True)
+    # Performance — compact inline pills (not 5 separate columns)
+    st.markdown(
+        '<div style="font-size:11px;color:rgba(255,255,255,0.42);text-transform:uppercase;'
+        'letter-spacing:1px;margin:10px 0 6px 0;">PERFORMANCE</div>',
+        unsafe_allow_html=True,
+    )
+    ret_pills = []
+    for period_label, ret_val in data['returns'].items():
+        if ret_val is not None:
+            c = _color_for_value(ret_val)
+            ret_pills.append(
+                f'<span style="display:inline-block;background:rgba(255,255,255,0.035);'
+                f'border:1px solid rgba(255,255,255,0.07);border-radius:8px;'
+                f'padding:6px 10px;margin:0 4px 6px 0;text-align:center;min-width:52px;">'
+                f'<span style="font-size:9px;color:rgba(255,255,255,0.38);display:block;">{period_label}</span>'
+                f'<span style="font-size:13px;font-weight:600;color:{c};">{ret_val:+.1f}%</span>'
+                f'</span>'
+            )
+        else:
+            ret_pills.append(
+                f'<span style="display:inline-block;background:rgba(255,255,255,0.035);'
+                f'border:1px solid rgba(255,255,255,0.07);border-radius:8px;'
+                f'padding:6px 10px;margin:0 4px 6px 0;text-align:center;min-width:52px;">'
+                f'<span style="font-size:9px;color:rgba(255,255,255,0.38);display:block;">{period_label}</span>'
+                f'<span style="font-size:13px;font-weight:600;color:rgba(255,255,255,0.52);">N/A</span>'
+                f'</span>'
+            )
+    st.markdown(
+        f'<div style="display:flex;flex-wrap:wrap;">{"".join(ret_pills)}</div>',
+        unsafe_allow_html=True,
+    )
 
-    # Volatility row
-    st.markdown('<div style="font-size: 11px; color: rgba(255,255,255,0.42); text-transform: uppercase; letter-spacing: 1px; margin: 8px 0 6px 0;">VOLATILITY PROFILE</div>', unsafe_allow_html=True)
+    # Volatility — compact inline
+    st.markdown(
+        '<div style="font-size:11px;color:rgba(255,255,255,0.42);text-transform:uppercase;'
+        'letter-spacing:1px;margin:10px 0 6px 0;">VOLATILITY</div>',
+        unsafe_allow_html=True,
+    )
+    v30 = f"{data['vol_30d']:.1f}%" if data['vol_30d'] is not None else 'N/A'
+    v90 = f"{data['vol_90d']:.1f}%" if data['vol_90d'] is not None else 'N/A'
     vc1, vc2 = st.columns(2)
     with vc1:
-        v30 = f"{data['vol_30d']:.1f}%" if data['vol_30d'] is not None else 'N/A'
-        st.markdown(_mini_card('30-Day Realised Vol', v30), unsafe_allow_html=True)
+        st.markdown(_mini_card('30D Vol', v30), unsafe_allow_html=True)
     with vc2:
-        v90 = f"{data['vol_90d']:.1f}%" if data['vol_90d'] is not None else 'N/A'
-        st.markdown(_mini_card('90-Day Realised Vol', v90), unsafe_allow_html=True)
+        st.markdown(_mini_card('90D Vol', v90), unsafe_allow_html=True)
     # ------------------------------------------------------------------
     # ANALYST CONSENSUS — fills left panel dead space meaningfully
     # ------------------------------------------------------------------
@@ -254,8 +282,21 @@ def _render_company_intelligence(data: dict, ticker: str):
         'sell': ('SELL', '#ef4444'),
     }
 
-    if rec_key or target_price:
+    # Show section if we have any consensus data (recommendation OR target OR mean score)
+    if rec_key or target_price or rec_mean:
         label_txt, label_color = _rec_map.get(rec_key, ('N/A', 'rgba(255,255,255,0.52)'))
+        # Fallback: derive label from numeric recommendation mean (1=Strong Buy .. 5=Sell)
+        if label_txt == 'N/A' and rec_mean:
+            if rec_mean <= 1.5:
+                label_txt, label_color = 'STRONG BUY', '#10b981'
+            elif rec_mean <= 2.5:
+                label_txt, label_color = 'BUY', '#10b981'
+            elif rec_mean <= 3.5:
+                label_txt, label_color = 'HOLD', '#f59e0b'
+            elif rec_mean <= 4.5:
+                label_txt, label_color = 'UNDERPERFORM', '#ef4444'
+            else:
+                label_txt, label_color = 'SELL', '#ef4444'
         upside = None
         if target_price and data['current_price'] and data['current_price'] > 0:
             upside = (target_price / data['current_price'] - 1) * 100
@@ -322,7 +363,7 @@ def _render_company_intelligence(data: dict, ticker: str):
         fig_spark.update_layout(
             paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
             margin=dict(l=0, r=2, t=4, b=0),
-            height=110,
+            height=140,
             xaxis=dict(visible=False),
             yaxis=dict(
                 visible=True,
@@ -1568,7 +1609,7 @@ def _render_equity_research_inner():
     # 3-COLUMN LAYOUT: Left (Intelligence) | Centre (Analysis) | Right (Thesis)
     # ====================================================================
 
-    left_col, centre_col, right_col = st.columns([1.6, 4, 1.8])
+    left_col, centre_col, right_col = st.columns([2.2, 3.4, 1.8])
 
     # ---- LEFT COLUMN: Company Intelligence ----
     with left_col:
