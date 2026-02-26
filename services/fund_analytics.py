@@ -52,8 +52,8 @@ class FundAnalyticsService:
             return self._returns_cache[cache_key]
 
         try:
-            import yfinance as yf
-            data = yf.Ticker(ticker).history(period=period)
+            from services.yf_session import get_history
+            data = get_history(ticker, period=period)
             if data.empty:
                 return None
             returns = data['Close'].pct_change().dropna()
@@ -688,8 +688,8 @@ class FundAnalyticsService:
     def infer_style_box(self, ticker: str, benchmark: str = 'SPY') -> Dict:
         """Infer Morningstar-style 3x3 style box (Value/Blend/Growth x Small/Mid/Large)."""
         try:
-            import yfinance as yf
-            info = yf.Ticker(ticker).info or {}
+            from services.yf_session import get_info
+            info = get_info(ticker) or {}
         except Exception:
             info = {}
 

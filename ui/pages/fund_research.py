@@ -134,43 +134,39 @@ def _gauge_bar(score: float, label: str, max_val: float = 100.0,
 # DATA FETCHING (cached)
 # =============================================================================
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=7200, show_spinner=False)
 def _fetch_fund_info(ticker: str) -> dict:
-    """Fetch fund/ETF info via yfinance."""
+    """Fetch fund/ETF info via yfinance (hardened session)."""
     try:
-        import yfinance as yf
-        t = yf.Ticker(ticker)
-        info = t.info or {}
-        return info
+        from services.yf_session import get_info
+        return get_info(ticker) or {}
     except Exception:
         return {}
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=7200, show_spinner=False)
 def _fetch_fund_history(ticker: str, period: str = "5y") -> pd.DataFrame:
-    """Fetch price history for a fund/ETF."""
+    """Fetch price history for a fund/ETF (hardened session)."""
     try:
-        import yfinance as yf
-        data = yf.Ticker(ticker).history(period=period)
+        from services.yf_session import get_history
+        data = get_history(ticker, period=period)
         return data
     except Exception:
         return pd.DataFrame()
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=7200, show_spinner=False)
 def _fetch_fund_holdings(ticker: str) -> pd.DataFrame:
-    """Try to fetch fund holdings via yfinance (available for some ETFs)."""
+    """Try to fetch fund holdings via yfinance (hardened session)."""
     try:
-        import yfinance as yf
-        t = yf.Ticker(ticker)
-        # Try multiple approaches
+        from services.yf_session import get_ticker
+        t = get_ticker(ticker)
         try:
             holdings = t.get_holdings()
             if holdings is not None and not holdings.empty:
                 return holdings
         except Exception:
             pass
-        # Fallback: some ETFs have .major_holders or .institutional_holders
         try:
             top = t.institutional_holders
             if top is not None and not top.empty:
