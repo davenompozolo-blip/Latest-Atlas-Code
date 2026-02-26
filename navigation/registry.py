@@ -15,55 +15,17 @@ Design: Declarative data > Imperative code
 from dataclasses import dataclass
 from typing import Optional, List, Callable
 
-# Import real page handlers (gradual migration from placeholders)
-try:
-    from .handlers import (
-        render_about_page,
-        render_market_watch_page,
-        render_database_page,
-        render_investopedia_live_page,
-        render_multi_factor_analysis_page,
-        render_monte_carlo_engine_page,
-        render_quant_optimizer_page,
-        render_leverage_tracker_page,
-        render_phoenix_parser_page,
-        render_portfolio_home_page,
-        render_risk_analysis_page,
-        render_performance_suite_page,
-        render_portfolio_deep_dive_page,
-        render_valuation_house_page
-    )
-    HANDLERS_AVAILABLE = True
-except ImportError:
-    HANDLERS_AVAILABLE = False
-    render_about_page = None
-    render_market_watch_page = None
-    render_database_page = None
-    render_investopedia_live_page = None
-    render_multi_factor_analysis_page = None
-    render_monte_carlo_engine_page = None
-    render_quant_optimizer_page = None
-    render_leverage_tracker_page = None
-    render_phoenix_parser_page = None
-    render_portfolio_home_page = None
-    render_risk_analysis_page = None
-    render_performance_suite_page = None
-    render_portfolio_deep_dive_page = None
-    render_valuation_house_page = None
 
 @dataclass
 class PageDefinition:
     """
     Everything you need to know about a page.
 
-    This is a data class, not a framework.
-    It's just a structured way to describe a page.
-
     Fields:
-        key: Unique identifier (internal, e.g., "home")
+        key: Unique identifier (internal, e.g., "portfolio_home")
         title: Display name (shown in UI, e.g., "Portfolio Home")
         icon: Emoji for navigation (e.g., "🏠")
-        handler: Function that renders the page
+        handler: Function that renders the page (called with no args by router)
         category: Grouping for organization (e.g., "core", "analysis")
         feature_flag: If set, page only shows when feature enabled
         requires_data: Prerequisites (e.g., ["portfolio", "trades"])
@@ -77,40 +39,48 @@ class PageDefinition:
     requires_data: Optional[List[str]] = None
 
     def __post_init__(self):
-        """Ensure requires_data is always a list, never None."""
         if self.requires_data is None:
             self.requires_data = []
 
 
 # ============================================================================
-# THE REGISTRY - All pages in one place
+# Handler factories
 # ============================================================================
 
-# Placeholder handlers - will be wired to actual implementations in Day 5
-# These are minimal stubs that render a placeholder message
+def _get_date_range():
+    """Read current date range from session state (set by sidebar controls)."""
+    import streamlit as st
+    from datetime import datetime, timedelta
 
-def _make_placeholder(page_name: str, icon: str):
-    """Factory function to create placeholder handlers"""
-    def handler():
-        import streamlit as st
-        st.markdown(f"## {icon} {page_name}")
-        st.info(f"📍 **Navigation v2.0 Active**\n\nThis page ({page_name}) will be fully wired in Day 5 integration phase.")
-        st.markdown("""
-        **Current Status:**
-        - ✅ Page registered in navigation
-        - ✅ Routing working
-        - ⏳ Actual implementation pending
+    selected_range = st.session_state.get('selected_range', '1Y')
 
-        **What's Working:**
-        - Navigation structure
-        - Page selection
-        - Routing system
-        """)
-    return handler
+    if selected_range == "YTD":
+        start_date = datetime(datetime.now().year, 1, 1)
+        end_date = datetime.now()
+    elif selected_range == "MAX":
+        start_date = datetime(2000, 1, 1)
+        end_date = datetime.now()
+    else:
+        days_map = {"1D": 1, "1W": 7, "1M": 30, "3M": 90, "6M": 180,
+                    "1Y": 365, "3Y": 1095, "5Y": 1825}
+        days = days_map.get(selected_range, 365)
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=days)
+
+    return start_date, end_date
+
+
+def _error_ui(page_name, icon, e):
+    """Render a consistent error UI when a handler fails."""
+    import streamlit as st
+    import traceback
+    st.error(f"**{icon} {page_name}** failed to load: `{type(e).__name__}: {e}`")
+    with st.expander("Traceback"):
+        st.code(traceback.format_exc())
 
 
 def _load_handler(module_path: str, func_name: str, page_name: str, icon: str):
-    """Lazy-import handler factory — loads real page module on first call."""
+    """Lazy-import handler — no arguments passed to render function."""
     def handler():
         try:
             import importlib
@@ -118,158 +88,197 @@ def _load_handler(module_path: str, func_name: str, page_name: str, icon: str):
             fn = getattr(mod, func_name)
             fn()
         except Exception as e:
-            import streamlit as st
-            import traceback
-            st.error(f"**{icon} {page_name}** failed to load: `{type(e).__name__}: {e}`")
-            with st.expander("Traceback"):
-                st.code(traceback.format_exc())
+            _error_ui(page_name, icon, e)
     return handler
 
 
-# THE REGISTRY - COMPLETE LIST OF ALL ATLAS PAGES
+def _load_handler_dates(module_path: str, func_name: str, page_name: str, icon: str):
+    """Lazy-import handler — injects (start_date, end_date)."""
+    def handler():
+        try:
+            import importlib
+            mod = importlib.import_module(module_path)
+            fn = getattr(mod, func_name)
+            start_date, end_date = _get_date_range()
+            fn(start_date, end_date)
+        except Exception as e:
+            _error_ui(page_name, icon, e)
+    return handler
+
+
+def _load_handler_dates_benchmark(module_path: str, func_name: str, page_name: str, icon: str):
+    """Lazy-import handler — injects (start_date, end_date, benchmark)."""
+    def handler():
+        try:
+            import streamlit as st
+            import importlib
+            mod = importlib.import_module(module_path)
+            fn = getattr(mod, func_name)
+            start_date, end_date = _get_date_range()
+            benchmark = st.session_state.get('selected_benchmark', 'SPY')
+            fn(start_date, end_date, benchmark)
+        except Exception as e:
+            _error_ui(page_name, icon, e)
+    return handler
+
+
+# ============================================================================
+# THE REGISTRY - All 19 active pages
+# ============================================================================
 #
-# This is the single source of truth for navigation.
-# Order matches current atlas_app.py horizontal nav bar.
-#
-# To add a new page:
-# 1. Add a PageDefinition here
-# 2. That's it! (handler will be wired in Day 5)
+# Handler signatures (from the old if/elif chain in atlas_app.py):
+#   No args:             phoenix_parser, database, market_watch, monte_carlo,
+#                        market_regime, investopedia_live, equity_research,
+#                        macro_intelligence, fund_research, about, r_analytics
+#   (start, end):        portfolio_home, portfolio_deep_dive,
+#                        multi_factor_analysis, valuation_house, leverage_tracker
+#   (start, end, bench): risk_analysis, performance_suite, quant_optimizer
 
 PAGE_REGISTRY = [
-    # Data Input Pages
+    # --- Data Input ---
     PageDefinition(
         key="phoenix_parser",
         title="Phoenix Parser",
         icon="🔥",
-        handler=render_phoenix_parser_page,
+        handler=_load_handler("ui.pages.phoenix_parser", "render_phoenix_parser", "Phoenix Parser", "🔥"),
         category="input",
-        requires_data=[]  # No prerequisites
     ),
 
-    # Core Portfolio Pages
+    # --- Core Portfolio ---
     PageDefinition(
         key="portfolio_home",
         title="Portfolio Home",
         icon="🏠",
-        handler=render_portfolio_home_page,
+        handler=_load_handler_dates("ui.pages.portfolio_home", "render_portfolio_home", "Portfolio Home", "🏠"),
         category="core",
-        requires_data=["portfolio"]
+        requires_data=["portfolio"],
     ),
 
-    # Database Page
+    # --- System ---
     PageDefinition(
         key="database",
         title="Database",
         icon="💾",
-        handler=render_database_page,
+        handler=_load_handler("ui.pages.database", "render_database", "Database", "💾"),
         category="system",
-        requires_data=[]  # Shows database contents
     ),
 
-    # Market Pages
+    PageDefinition(
+        key="r_analytics",
+        title="R Analytics",
+        icon="📊",
+        handler=_load_handler("ui.pages.r_analytics", "render_r_analytics", "R Analytics", "📊"),
+        category="system",
+        feature_flag="r_available",
+    ),
+
+    # --- Markets ---
     PageDefinition(
         key="market_watch",
         title="Market Watch",
         icon="🌍",
-        handler=render_market_watch_page,
+        handler=_load_handler("ui.pages.market_watch", "render_market_watch", "Market Watch", "🌍"),
         category="markets",
-        requires_data=[]  # Market data only
     ),
 
-    # Analysis Pages
+    PageDefinition(
+        key="market_regime",
+        title="Market Regime",
+        icon="🌐",
+        handler=_load_handler("ui.pages.market_regime", "render_market_regime", "Market Regime", "🌐"),
+        category="markets",
+    ),
+
+    # --- Analysis ---
     PageDefinition(
         key="risk_analysis",
         title="Risk Analysis",
         icon="📈",
-        handler=render_risk_analysis_page,
+        handler=_load_handler_dates_benchmark("ui.pages.risk_analysis", "render_risk_analysis", "Risk Analysis", "📈"),
         category="analysis",
-        requires_data=["portfolio"]
+        requires_data=["portfolio"],
     ),
 
     PageDefinition(
         key="performance_suite",
         title="Performance Suite",
         icon="💎",
-        handler=render_performance_suite_page,
+        handler=_load_handler_dates_benchmark("ui.pages.performance_suite", "render_performance_suite", "Performance Suite", "💎"),
         category="analysis",
-        requires_data=["portfolio", "performance_history"]
+        requires_data=["portfolio", "performance_history"],
     ),
 
     PageDefinition(
         key="portfolio_deep_dive",
         title="Portfolio Deep Dive",
         icon="🔬",
-        handler=render_portfolio_deep_dive_page,
+        handler=_load_handler_dates("ui.pages.portfolio_deep_dive", "render_portfolio_deep_dive", "Portfolio Deep Dive", "🔬"),
         category="analysis",
-        requires_data=["portfolio"]
+        requires_data=["portfolio"],
     ),
 
     PageDefinition(
         key="multi_factor_analysis",
         title="Multi-Factor Analysis",
         icon="📊",
-        handler=render_multi_factor_analysis_page,
+        handler=_load_handler_dates("ui.pages.multi_factor_analysis", "render_multi_factor_analysis", "Multi-Factor Analysis", "📊"),
         category="analysis",
-        requires_data=["portfolio"]
+        requires_data=["portfolio"],
     ),
 
-    # Valuation Pages
+    # --- Valuation ---
     PageDefinition(
         key="valuation_house",
         title="Valuation House",
         icon="💰",
-        handler=render_valuation_house_page,
+        handler=_load_handler_dates("ui.pages.valuation_house", "render_valuation_house", "Valuation House", "💰"),
         category="valuation",
-        requires_data=[]  # Self-contained
     ),
 
-    # Optimization & Simulation Pages
+    # --- Optimization & Simulation ---
     PageDefinition(
         key="monte_carlo_engine",
         title="Monte Carlo Engine",
         icon="🎲",
-        handler=render_monte_carlo_engine_page,
+        handler=_load_handler("ui.pages.monte_carlo", "render_monte_carlo", "Monte Carlo Engine", "🎲"),
         category="optimization",
-        requires_data=["portfolio"]
+        requires_data=["portfolio"],
     ),
 
     PageDefinition(
         key="quant_optimizer",
         title="Quant Optimizer",
         icon="🧮",
-        handler=render_quant_optimizer_page,
+        handler=_load_handler_dates_benchmark("ui.pages.quant_optimizer", "render_quant_optimizer", "Quant Optimizer", "🧮"),
         category="optimization",
-        requires_data=["portfolio"]
+        requires_data=["portfolio"],
     ),
 
-    # Tracking Pages
+    # --- Tracking ---
     PageDefinition(
         key="leverage_tracker",
         title="Leverage Tracker",
         icon="📊",
-        handler=render_leverage_tracker_page,
+        handler=_load_handler_dates("ui.pages.leverage_tracker", "render_leverage_tracker", "Leverage Tracker", "📊"),
         category="tracking",
-        requires_data=["portfolio", "performance_history"]
+        requires_data=["portfolio", "performance_history"],
     ),
 
     PageDefinition(
         key="investopedia_live",
         title="Investopedia Live",
         icon="📡",
-        handler=render_investopedia_live_page,
+        handler=_load_handler("ui.pages.investopedia_live", "render_investopedia_live", "Investopedia Live", "📡"),
         category="tracking",
-        feature_flag="investopedia_api",  # May require API
-        requires_data=[]
     ),
 
-    # Research Pages (v11.0)
+    # --- Research (v11.0 benchmark modules — DO NOT MODIFY) ---
     PageDefinition(
         key="equity_research",
         title="Equity Research",
         icon="💎",
         handler=_load_handler("ui.pages.equity_research", "render_equity_research", "Equity Research", "💎"),
         category="research",
-        requires_data=[]
     ),
 
     PageDefinition(
@@ -278,7 +287,6 @@ PAGE_REGISTRY = [
         icon="🌐",
         handler=_load_handler("ui.pages.macro_intelligence", "render_macro_intelligence", "Macro Intelligence", "🌐"),
         category="research",
-        requires_data=[]
     ),
 
     PageDefinition(
@@ -287,17 +295,15 @@ PAGE_REGISTRY = [
         icon="📚",
         handler=_load_handler("ui.pages.fund_research", "render_fund_research", "Fund Research", "📚"),
         category="research",
-        requires_data=[]
     ),
 
-    # System Pages
+    # --- System ---
     PageDefinition(
         key="about",
         title="About",
         icon="ℹ️",
-        handler=render_about_page if HANDLERS_AVAILABLE and render_about_page else _make_placeholder("About", "ℹ️"),
+        handler=_load_handler("ui.pages.about", "render_about", "About", "ℹ️"),
         category="system",
-        requires_data=[]  # Static content
     ),
 ]
 
@@ -307,57 +313,20 @@ PAGE_REGISTRY = [
 # ============================================================================
 
 def get_available_pages() -> List[PageDefinition]:
-    """
-    Get list of pages available to user.
-
-    Filters by:
-    - Feature flags (future)
-    - Data requirements (future)
-    - User permissions (future)
-
-    Returns:
-        List of PageDefinition objects that should be shown
-    """
-    # For now, return all pages
-    # Filtering logic will be added in Day 2
+    """Get list of pages available to user."""
     return PAGE_REGISTRY
 
 
 def get_page_by_key(key: str) -> Optional[PageDefinition]:
-    """
-    Look up page by key.
-
-    Args:
-        key: Page key (e.g., "home", "market_watch")
-
-    Returns:
-        PageDefinition if found, None otherwise
-    """
+    """Look up page by key."""
     return next((p for p in PAGE_REGISTRY if p.key == key), None)
 
 
 def get_pages_by_category(category: str) -> List[PageDefinition]:
-    """
-    Get all pages in a category.
-
-    Useful for grouped navigation.
-
-    Args:
-        category: Category name (e.g., "core", "analysis")
-
-    Returns:
-        List of pages in that category
-    """
+    """Get all pages in a category."""
     return [p for p in PAGE_REGISTRY if p.category == category]
 
 
 def get_all_categories() -> List[str]:
-    """
-    Get list of all categories.
-
-    Useful for building navigation UI.
-
-    Returns:
-        Sorted list of unique category names
-    """
+    """Get list of all categories."""
     return sorted(list(set(p.category for p in PAGE_REGISTRY)))

@@ -2099,22 +2099,9 @@ def render_valuation_house(start_date, end_date):
                 if st.button("🎲 Run Monte Carlo Simulation (1000 scenarios)", type="secondary", use_container_width=True):
                     with st.spinner("Running 1000 Monte Carlo simulations..."):
                         try:
-                            # Create RobustDCFEngine
-                            assumption_manager = DCFAssumptionManager(company_data=company, financials=financials)
-
-                            # Set base assumptions from current DCF
-                            assumption_manager.set('revenue_growth', revenue_growth if not dashboard_active else (projections[-1]['revenue'] / projections[0]['revenue']) ** (1/len(projections)) - 1)
-                            assumption_manager.set('ebitda_margin', ebit_margin if not dashboard_active else 0.25)
-                            assumption_manager.set('terminal_growth', terminal_growth)
-                            assumption_manager.set('wacc', discount_rate)
-                            assumption_manager.set('tax_rate', tax_rate if not dashboard_active else financials.get('tax_rate', 0.21))
-                            assumption_manager.set('capex_pct', capex_pct if not dashboard_active else 0.05)
-                            assumption_manager.set('nwc_change', wc_change if not dashboard_active else 0)
-
-                            # Create engine
+                            # Create RobustDCFEngine with correct signature: (company_data, financials)
+                            # The engine creates its own DCFAssumptionManager and DCFValidator internally
                             robust_engine = RobustDCFEngine(
-                                assumptions=assumption_manager,
-                                validator=DCFValidator(),
                                 company_data={
                                     'ticker': company['ticker'],
                                     'sector': company['sector'],
@@ -2125,8 +2112,18 @@ def render_valuation_house(start_date, end_date):
                                     'net_income': financials.get('net_income', 0),
                                     'total_debt': financials.get('total_debt', 0),
                                     'cash': financials.get('cash', 0),
-                                }
+                                },
+                                financials=financials
                             )
+
+                            # Set base assumptions on the engine's internal assumption manager
+                            robust_engine.assumptions.set('revenue_growth', revenue_growth if not dashboard_active else (projections[-1]['revenue'] / projections[0]['revenue']) ** (1/len(projections)) - 1)
+                            robust_engine.assumptions.set('ebitda_margin', ebit_margin if not dashboard_active else 0.25)
+                            robust_engine.assumptions.set('terminal_growth', terminal_growth)
+                            robust_engine.assumptions.set('wacc', discount_rate)
+                            robust_engine.assumptions.set('tax_rate', tax_rate if not dashboard_active else financials.get('tax_rate', 0.21))
+                            robust_engine.assumptions.set('capex_pct', capex_pct if not dashboard_active else 0.05)
+                            robust_engine.assumptions.set('nwc_change', wc_change if not dashboard_active else 0)
 
                             # Run Monte Carlo
                             mc = MonteCarloDCF()

@@ -703,7 +703,8 @@ import subprocess
 import threading
 import time
 
-ngrok.set_auth_token("2bwVkMuuwcPmSWOv6YE89fAXHJz_4oKiQ89Sm7RmLkMTZoJzE")
+# Set NGROK_TOKEN in Colab secrets (Colab -> Secrets panel) before running
+ngrok.set_auth_token(os.environ.get("NGROK_TOKEN", ""))
 print("✅ Ngrok authenticated", flush=True)
 
 ngrok.kill()

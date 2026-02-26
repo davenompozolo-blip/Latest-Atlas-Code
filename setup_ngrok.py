@@ -3,8 +3,9 @@
 import time
 from pyngrok import ngrok
 
-# Set auth token
-ngrok.set_auth_token("3560NW1Q6pfr5LKXYCFxvt6JnAI_39PX8PaW3aGqhTTr2yo2M")
+# Set NGROK_TOKEN in environment before running
+import os
+ngrok.set_auth_token(os.environ.get("NGROK_TOKEN", ""))
 
 # Kill any existing tunnels
 ngrok.kill()

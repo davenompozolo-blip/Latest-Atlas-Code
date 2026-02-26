@@ -492,52 +492,6 @@ def get_spy_sector_weights():
     return SPY_SECTOR_WEIGHTS.copy()
 
 
-@st.cache_data(ttl=3600)
-def get_benchmark_sector_returns(period='1Y'):
-    """
-    Fetch sector ETF returns as proxy for benchmark sector performance
-    """
-    sector_etfs = {
-        'Technology': 'XLK',
-        'Healthcare': 'XLV',
-        'Financial Services': 'XLF',
-        'Consumer Cyclical': 'XLY',
-        'Communication Services': 'XLC',
-        'Industrials': 'XLI',
-        'Consumer Defensive': 'XLP',
-        'Energy': 'XLE',
-        'Real Estate': 'XLRE',
-        'Basic Materials': 'XLB',
-        'Utilities': 'XLU'
-    }
-
-    benchmark_returns = {}
-
-    # Calculate date range based on period
-    end_date = datetime.now()
-    if period == '1Y':
-        start_date = end_date - timedelta(days=365)
-    elif period == 'YTD':
-        start_date = datetime(end_date.year, 1, 1)
-    elif period == '3M':
-        start_date = end_date - timedelta(days=90)
-    else:
-        start_date = end_date - timedelta(days=365)
-
-    for sector, etf in sector_etfs.items():
-        try:
-            data = fetch_historical_data(etf, start_date=start_date, end_date=end_date)
-            if data is not None and len(data) > 0:
-                total_return = ((data['Close'].iloc[-1] / data['Close'].iloc[0]) - 1) * 100
-                benchmark_returns[sector] = total_return
-            else:
-                benchmark_returns[sector] = 0.0
-        except:
-            benchmark_returns[sector] = 0.0
-
-    return benchmark_returns
-
-
 def get_data_freshness(cache_time=None):
     """Calculate and format data age for freshness indicators"""
     if cache_time is None:

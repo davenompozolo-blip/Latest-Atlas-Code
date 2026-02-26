@@ -70,8 +70,8 @@ from .fetchers import fetch_historical_data
 from .data_loading import (
     is_valid_series, is_option_ticker, get_gics_sector,
     get_current_portfolio_metrics, get_spy_sector_weights,
-    get_benchmark_sector_returns,
 )
+from data.sectors import get_benchmark_sector_returns
 
 
 def _lazy_atlas():
