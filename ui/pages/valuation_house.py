@@ -115,11 +115,18 @@ def render_valuation_house(start_date, end_date):
 
     col1, col2, col3 = st.columns([3, 1, 1])
 
+    # Auto-prefill if arriving from Equity Research bridge
+    _prefill = st.session_state.pop("valuation_prefill_ticker", None)
+    if _prefill:
+        st.session_state["_vh_ticker_default"] = _prefill
+
     with col1:
         ticker_input = st.text_input(
             "Enter Ticker Symbol",
+            value=st.session_state.get("_vh_ticker_default", ""),
             placeholder="e.g., AAPL, MSFT, GOOGL",
-            help="Enter any publicly traded company ticker"
+            help="Enter any publicly traded company ticker",
+            key="vh_ticker_input",
         ).upper()
 
     with col2:
@@ -141,7 +148,16 @@ def render_valuation_house(start_date, end_date):
         if ALPHA_VANTAGE_AVAILABLE:
             st.caption("Uses up to 3 API calls for new tickers · Free: cached 24hrs")
 
-    if search_button and ticker_input:
+    # Auto-load when arriving from Equity Research (prefill present and company not yet loaded)
+    _auto_load = (
+        ticker_input
+        and st.session_state.get("_vh_ticker_default") == ticker_input
+        and "valuation_company" not in st.session_state
+    )
+    if _auto_load:
+        st.session_state.pop("_vh_ticker_default", None)
+
+    if (search_button and ticker_input) or _auto_load:
         with st.spinner(f"📊 Fetching data for {ticker_input}..."):
             company_data = fetch_company_financials(ticker_input)
 

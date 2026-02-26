@@ -617,5 +617,135 @@ class FundAnalyticsService:
         }
 
 
+    def calculate_capture_ratios(self, ticker: str, benchmark: str = 'SPY') -> Optional[Dict]:
+        """Upside / downside capture ratios vs benchmark (monthly resampled)."""
+        fund_ret = self.get_fund_returns(ticker)
+        bench_ret = self.get_fund_returns(benchmark)
+        if fund_ret is None or bench_ret is None:
+            return None
+
+        common = fund_ret.index.intersection(bench_ret.index)
+        fund_ret = fund_ret.loc[common]
+        bench_ret = bench_ret.loc[common]
+
+        fund_m = (1 + fund_ret).resample('ME').prod() - 1
+        bench_m = (1 + bench_ret).resample('ME').prod() - 1
+        common_m = fund_m.index.intersection(bench_m.index)
+        fund_m = fund_m.loc[common_m]
+        bench_m = bench_m.loc[common_m]
+
+        up, down = bench_m > 0, bench_m < 0
+        upside = downside = capture_ratio = None
+
+        if up.sum() > 5 and bench_m[up].mean() != 0:
+            upside = float(fund_m[up].mean() / bench_m[up].mean() * 100)
+        if down.sum() > 5 and bench_m[down].mean() != 0:
+            downside = float(fund_m[down].mean() / bench_m[down].mean() * 100)
+        if upside is not None and downside and downside != 0:
+            capture_ratio = upside / downside
+
+        yearly = {}
+        for year in sorted(set(fund_m.index.year)):
+            yf_ = fund_m[fund_m.index.year == year]
+            yb = bench_m[bench_m.index.year == year]
+            y_up, y_dn = yb > 0, yb < 0
+            y_uc = float(yf_[y_up].mean() / yb[y_up].mean() * 100) if y_up.sum() >= 2 and yb[y_up].mean() != 0 else None
+            y_dc = float(yf_[y_dn].mean() / yb[y_dn].mean() * 100) if y_dn.sum() >= 2 and yb[y_dn].mean() != 0 else None
+            yearly[year] = {'upside': y_uc, 'downside': y_dc}
+
+        return {
+            'upside_capture': upside,
+            'downside_capture': downside,
+            'capture_ratio': capture_ratio,
+            'yearly_capture': yearly,
+            'n_up_months': int(up.sum()),
+            'n_down_months': int(down.sum()),
+        }
+
+    def calculate_calendar_year_returns(self, ticker: str, benchmark: str = 'SPY') -> Optional[pd.DataFrame]:
+        """Annual return comparison: fund vs benchmark, last 10 years."""
+        fund_ret = self.get_fund_returns(ticker, period='10y')
+        bench_ret = self.get_fund_returns(benchmark, period='10y')
+        if fund_ret is None:
+            return None
+
+        fund_annual = (1 + fund_ret).resample('YE').prod() - 1
+        bench_annual = (1 + bench_ret).resample('YE').prod() - 1 if bench_ret is not None else pd.Series(dtype=float)
+
+        rows = []
+        for dt, fr in fund_annual.items():
+            year = dt.year
+            br = float(bench_annual[dt] * 100) if dt in bench_annual.index else None
+            rows.append({
+                'Year': year,
+                'Fund (%)': round(float(fr * 100), 2),
+                'Benchmark (%)': round(br, 2) if br is not None else None,
+                'Excess (%)': round(float(fr * 100) - br, 2) if br is not None else None,
+            })
+
+        return pd.DataFrame(rows).sort_values('Year', ascending=False) if rows else None
+
+    def infer_style_box(self, ticker: str, benchmark: str = 'SPY') -> Dict:
+        """Infer Morningstar-style 3x3 style box (Value/Blend/Growth x Small/Mid/Large)."""
+        try:
+            import yfinance as yf
+            info = yf.Ticker(ticker).info or {}
+        except Exception:
+            info = {}
+
+        # Cap size from totalAssets (for funds/ETFs) or marketCap
+        aum = info.get('totalAssets') or info.get('marketCap') or 0
+        if aum >= 50e9:
+            cap, cap_score = 'Large', 2
+        elif aum >= 10e9:
+            cap, cap_score = 'Mid', 1
+        else:
+            cap, cap_score = 'Small', 0
+
+        # Style from PE, PB signals
+        pe = info.get('trailingPE') or info.get('forwardPE')
+        pb = info.get('priceToBook')
+        g, v = 0, 0
+
+        if pe:
+            if pe > 30: g += 2
+            elif pe > 22: g += 1
+            elif pe < 15: v += 2
+            elif pe < 20: v += 1
+        if pb:
+            if pb > 5: g += 2
+            elif pb > 3: g += 1
+            elif pb < 1.5: v += 2
+            elif pb < 2.5: v += 1
+
+        # Momentum vs benchmark
+        returns = self.get_fund_returns(ticker)
+        bench_ret_s = self.get_fund_returns(benchmark)
+        if returns is not None and bench_ret_s is not None and len(returns) >= 252:
+            common = returns.index.intersection(bench_ret_s.index)
+            r_1y = (1 + returns.loc[common].tail(252)).prod() - 1
+            b_1y = (1 + bench_ret_s.loc[common].tail(252)).prod() - 1
+            if r_1y > b_1y * 1.10: g += 1
+            elif r_1y < b_1y * 0.90: v += 1
+
+        style, style_score = ('Growth', 2) if g > v + 1 else ('Value', 0) if v > g + 1 else ('Blend', 1)
+
+        # Override with yfinance category if available
+        cat = info.get('category', '').lower()
+        if 'growth' in cat: style, style_score = 'Growth', 2
+        elif 'value' in cat: style, style_score = 'Value', 0
+        elif 'blend' in cat or 'core' in cat: style, style_score = 'Blend', 1
+        if 'large' in cat: cap, cap_score = 'Large', 2
+        elif 'mid' in cat: cap, cap_score = 'Mid', 1
+        elif 'small' in cat: cap, cap_score = 'Small', 0
+
+        return {
+            'style': style, 'cap': cap,
+            'style_score': style_score, 'cap_score': cap_score,
+            'category': info.get('category', ''),
+            'pe': pe, 'pb': pb,
+        }
+
+
 # Singleton
 fund_analytics = FundAnalyticsService()

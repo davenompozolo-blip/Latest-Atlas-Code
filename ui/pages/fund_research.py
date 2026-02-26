@@ -403,12 +403,15 @@ def _render_fund_research_inner():
     # CENTER PANEL: ANALYTICAL WORKSPACE (TABS)
     # -----------------------------------------------------------------
     with center_col:
-        tab_dd, tab_risk, tab_holdings, tab_skill, tab_compare = st.tabs([
-            "Drawdown Analysis",
-            "Risk Metrics",
-            "Holdings",
-            "Manager Skill",
-            "Comparison",
+        tab_dd, tab_risk, tab_holdings, tab_skill, tab_capture, tab_calendar, tab_style, tab_compare = st.tabs([
+            "📉 Drawdown",
+            "📐 Risk Metrics",
+            "📦 Holdings",
+            "🧠 Manager Skill",
+            "🎯 Up/Down Capture",
+            "📅 Calendar Returns",
+            "🗺️ Style Box",
+            "⚖️ Comparison",
         ])
 
         # =============================================================
@@ -939,7 +942,385 @@ def _render_fund_research_inner():
             else:
                 st.info("Select 2-4 fund tickers above for side-by-side comparison.")
 
-    # -----------------------------------------------------------------
+
+        # =============================================================
+        # TAB 5: UPSIDE / DOWNSIDE CAPTURE
+        # =============================================================
+        with tab_capture:
+            st.markdown(
+                '<div style="font-size: 13px; font-weight: 700; color: rgba(255,255,255,0.72); '
+                'text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 14px;">'
+                'Upside / Downside Capture Ratios</div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                f'<div style="font-size: 11px; color: rgba(255,255,255,0.42); margin-bottom: 16px;">'
+                f'How much of the benchmark\u2019s up and down months does <strong>{ticker_input}</strong> '
+                f'capture? &nbsp;Ideal manager: high upside capture, low downside capture.</div>',
+                unsafe_allow_html=True,
+            )
+
+            with st.spinner("Calculating capture ratios..."):
+                capture = fund_analytics.calculate_capture_ratios(ticker_input, benchmark)
+
+            if capture:
+                uc = capture.get("upside_capture")
+                dc = capture.get("downside_capture")
+                cr = capture.get("capture_ratio")
+
+                # ── Headline metrics ──────────────────────────────────
+                hc1, hc2, hc3 = st.columns(3)
+
+                def _capture_card(label, val, is_downside=False):
+                    if val is None:
+                        return _glass_card(label, "N/A")
+                    if is_downside:
+                        color = _GREEN if val < 90 else (_AMBER if val < 105 else _RED)
+                    else:
+                        color = _GREEN if val > 100 else (_AMBER if val > 85 else _RED)
+                    return _glass_card(label, f"{val:.1f}%", color=color)
+
+                with hc1:
+                    st.markdown(_capture_card("Upside Capture", uc), unsafe_allow_html=True)
+                with hc2:
+                    st.markdown(_capture_card("Downside Capture", dc, is_downside=True), unsafe_allow_html=True)
+                with hc3:
+                    if cr is not None:
+                        cr_color = _GREEN if cr > 1.1 else (_AMBER if cr > 0.9 else _RED)
+                        sub = "Higher is better · >1.0 means asymmetric upside"
+                        st.markdown(
+                            _glass_card("Capture Ratio (U/D)", f"{cr:.2f}x", sublabel=sub, color=cr_color),
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        st.markdown(_glass_card("Capture Ratio", "N/A"), unsafe_allow_html=True)
+
+                # ── Interpretation ────────────────────────────────────
+                if uc is not None and dc is not None:
+                    if cr and cr > 1.15:
+                        interp = f"✅ Strong asymmetric profile — {ticker_input} captures significantly more upside than downside."
+                        interp_color = _GREEN
+                    elif cr and cr > 0.95:
+                        interp = f"⚠️ Roughly symmetric — {ticker_input} participates similarly in up and down markets."
+                        interp_color = _AMBER
+                    else:
+                        interp = f"❌ Unfavourable ratio — {ticker_input} loses more in down markets than it gains in up markets."
+                        interp_color = _RED
+                    st.markdown(
+                        f'<div style="background: rgba(255,255,255,0.03); border-left: 3px solid {interp_color}; '
+                        f'border-radius: 0 8px 8px 0; padding: 12px; margin-bottom: 18px; '
+                        f'font-size: 12px; color: rgba(255,255,255,0.72);">{interp}</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                # ── Year-by-year capture chart ────────────────────────
+                yearly = capture.get("yearly_capture", {})
+                if yearly:
+                    years_list = sorted(yearly.keys())
+                    uc_vals = [yearly[y].get("upside") for y in years_list]
+                    dc_vals = [yearly[y].get("downside") for y in years_list]
+
+                    fig_cap = go.Figure()
+                    fig_cap.add_trace(go.Bar(
+                        x=years_list, y=uc_vals, name="Upside Capture",
+                        marker_color=_GREEN,
+                        text=[f"{v:.0f}%" if v is not None else "" for v in uc_vals],
+                        textposition="outside",
+                        textfont=dict(size=9, color="rgba(255,255,255,0.55)"),
+                    ))
+                    fig_cap.add_trace(go.Bar(
+                        x=years_list, y=dc_vals, name="Downside Capture",
+                        marker_color=_RED,
+                        text=[f"{v:.0f}%" if v is not None else "" for v in dc_vals],
+                        textposition="outside",
+                        textfont=dict(size=9, color="rgba(255,255,255,0.55)"),
+                    ))
+                    fig_cap.add_hline(
+                        y=100, line_dash="dash",
+                        line_color="rgba(255,255,255,0.2)", line_width=1,
+                        annotation_text="100% (benchmark)",
+                        annotation_font=dict(size=9, color="rgba(255,255,255,0.35)"),
+                    )
+                    fig_cap.update_layout(
+                        barmode="group",
+                        title=dict(text="Annual Capture Ratios", font=dict(size=13, color="rgba(255,255,255,0.72)")),
+                        yaxis_title="Capture (%)",
+                        yaxis=dict(ticksuffix="%"),
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
+                    )
+                    _apply_chart_theme(fig_cap, height=340)
+                    st.plotly_chart(fig_cap, use_container_width=True)
+
+                    # ── Up/Down months table ──────────────────────────
+                    n_up = capture.get("n_up_months", 0)
+                    n_dn = capture.get("n_down_months", 0)
+                    st.markdown(
+                        f'<div style="font-size: 11px; color: rgba(255,255,255,0.38); margin-top: 8px;">'
+                        f'Based on <strong>{n_up}</strong> up months and <strong>{n_dn}</strong> down months '
+                        f'vs <strong>{benchmark}</strong></div>',
+                        unsafe_allow_html=True,
+                    )
+            else:
+                st.warning("Capture ratio data unavailable — insufficient history or data fetch failed.")
+
+        # =============================================================
+        # TAB 6: CALENDAR YEAR RETURNS
+        # =============================================================
+        with tab_calendar:
+            st.markdown(
+                '<div style="font-size: 13px; font-weight: 700; color: rgba(255,255,255,0.72); '
+                'text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 14px;">'
+                'Calendar Year Returns</div>',
+                unsafe_allow_html=True,
+            )
+
+            with st.spinner("Loading calendar year returns..."):
+                cal_df = fund_analytics.calculate_calendar_year_returns(ticker_input, benchmark)
+
+            if cal_df is not None and not cal_df.empty:
+                # ── Side-by-side annual bar chart (Morningstar style) ─
+                years_cal = cal_df["Year"].tolist()
+                fund_cal = cal_df["Fund (%)"].tolist()
+                bench_cal = cal_df["Benchmark (%)"].tolist()
+
+                fig_cal = go.Figure()
+                fig_cal.add_trace(go.Bar(
+                    x=years_cal, y=fund_cal,
+                    name=ticker_input,
+                    marker_color=[_GREEN if v >= 0 else _RED for v in fund_cal],
+                    text=[f"{v:+.1f}%" for v in fund_cal],
+                    textposition="outside",
+                    textfont=dict(size=9, color="rgba(255,255,255,0.6)"),
+                ))
+                if any(v is not None for v in bench_cal):
+                    clean_bench = [v for v in bench_cal if v is not None]
+                    fig_cal.add_trace(go.Bar(
+                        x=years_cal, y=bench_cal,
+                        name=benchmark,
+                        marker_color="rgba(99,102,241,0.55)",
+                        text=[f"{v:+.1f}%" if v is not None else "" for v in bench_cal],
+                        textposition="outside",
+                        textfont=dict(size=9, color="rgba(255,255,255,0.45)"),
+                    ))
+                fig_cal.add_hline(
+                    y=0, line_color="rgba(255,255,255,0.15)", line_width=1,
+                )
+                fig_cal.update_layout(
+                    barmode="group",
+                    title=dict(text=f"{ticker_input} vs {benchmark} — Annual Returns", font=dict(size=13, color="rgba(255,255,255,0.72)")),
+                    yaxis_title="Annual Return (%)",
+                    yaxis=dict(ticksuffix="%"),
+                    xaxis=dict(type="category"),
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
+                )
+                _apply_chart_theme(fig_cal, height=380)
+                st.plotly_chart(fig_cal, use_container_width=True)
+
+                # ── Excess return bar (fund minus benchmark) ──────────
+                excess_cal = cal_df["Excess (%)"].tolist()
+                if any(v is not None for v in excess_cal):
+                    fig_exc = go.Figure()
+                    exc_colors = [_GREEN if (v or 0) >= 0 else _RED for v in excess_cal]
+                    fig_exc.add_trace(go.Bar(
+                        x=years_cal, y=excess_cal,
+                        marker_color=exc_colors,
+                        name="Excess Return",
+                        text=[f"{v:+.1f}%" if v is not None else "" for v in excess_cal],
+                        textposition="outside",
+                        textfont=dict(size=9, color="rgba(255,255,255,0.55)"),
+                    ))
+                    fig_exc.add_hline(y=0, line_color="rgba(255,255,255,0.15)", line_width=1)
+                    fig_exc.update_layout(
+                        title=dict(text=f"Annual Excess Return vs {benchmark}", font=dict(size=13, color="rgba(255,255,255,0.72)")),
+                        yaxis_title="Excess Return (%)",
+                        yaxis=dict(ticksuffix="%"),
+                        xaxis=dict(type="category"),
+                        showlegend=False,
+                        bargap=0.3,
+                    )
+                    _apply_chart_theme(fig_exc, height=240)
+                    st.plotly_chart(fig_exc, use_container_width=True)
+
+                # ── Summary table ──────────────────────────────────────
+                st.markdown(
+                    '<div style="font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.52); '
+                    'text-transform: uppercase; letter-spacing: 0.8px; margin: 14px 0 8px 0;">'
+                    'Annual Returns Table</div>',
+                    unsafe_allow_html=True,
+                )
+                display_df = cal_df.copy()
+                # Colour-code the table
+                st.dataframe(
+                    display_df,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+                # Hit rate
+                outperform_years = sum(1 for e in excess_cal if e is not None and e > 0)
+                total_years = sum(1 for e in excess_cal if e is not None)
+                if total_years > 0:
+                    hit_rate = outperform_years / total_years * 100
+                    hr_color = _GREEN if hit_rate >= 60 else (_AMBER if hit_rate >= 40 else _RED)
+                    st.markdown(
+                        f'<div style="background: rgba(255,255,255,0.03); border-left: 3px solid {hr_color}; '
+                        f'border-radius: 0 8px 8px 0; padding: 10px; margin-top: 8px; font-size: 12px; '
+                        f'color: rgba(255,255,255,0.72);">'
+                        f'<strong>Outperformance Rate:</strong> {ticker_input} beat {benchmark} in '
+                        f'<span style="color: {hr_color}; font-weight: 700;">{outperform_years} of {total_years} calendar years</span>'
+                        f' ({hit_rate:.0f}%)</div>',
+                        unsafe_allow_html=True,
+                    )
+            else:
+                st.warning("Calendar year return data unavailable — insufficient history.")
+
+        # =============================================================
+        # TAB 7: STYLE BOX
+        # =============================================================
+        with tab_style:
+            st.markdown(
+                '<div style="font-size: 13px; font-weight: 700; color: rgba(255,255,255,0.72); '
+                'text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 14px;">'
+                'Style Box</div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                f'<div style="font-size: 11px; color: rgba(255,255,255,0.42); margin-bottom: 20px;">'
+                f'Morningstar-style classification for {ticker_input}. Inferred from valuation multiples, '
+                f'momentum, and AUM. Category override applied when available from data provider.</div>',
+                unsafe_allow_html=True,
+            )
+
+            with st.spinner("Inferring style box..."):
+                style_data = fund_analytics.infer_style_box(ticker_input, benchmark)
+
+            style_score = style_data.get("style_score", 1)   # 0=Value 1=Blend 2=Growth
+            cap_score = style_data.get("cap_score", 2)         # 0=Small 1=Mid 2=Large
+            style_label = style_data.get("style", "Blend")
+            cap_label = style_data.get("cap", "Large")
+
+            # ── 3×3 Style Box grid ────────────────────────────────────
+            STYLE_LABELS = ["Value", "Blend", "Growth"]
+            CAP_LABELS   = ["Large", "Mid", "Small"]
+
+            rows_html = ""
+            for r, cap_name in enumerate(CAP_LABELS):
+                cap_r = 2 - r   # Large=2, Mid=1, Small=0
+                cells = ""
+                for c, style_name in enumerate(STYLE_LABELS):
+                    is_active = (c == style_score and cap_r == cap_score)
+                    if is_active:
+                        cell_bg  = "rgba(99,102,241,0.6)"
+                        cell_border = "2px solid #818cf8"
+                        dot_html = (
+                            f'<div style="width:18px;height:18px;border-radius:50%;'
+                            f'background:#fff;opacity:0.95;"></div>'
+                        )
+                    else:
+                        cell_bg = "rgba(255,255,255,0.04)"
+                        cell_border = "1px solid rgba(255,255,255,0.07)"
+                        dot_html = ""
+                    cells += (
+                        f'<td style="width:80px;height:80px;border:{cell_border};'
+                        f'background:{cell_bg};text-align:center;vertical-align:middle;">'
+                        f'{dot_html}</td>'
+                    )
+                rows_html += f"<tr>{cells}</tr>"
+
+            # Column headers (style axis)
+            header_cells = "".join(
+                f'<th style="width:80px;text-align:center;font-size:10px;color:rgba(255,255,255,0.52);'
+                f'font-weight:600;letter-spacing:0.5px;padding-bottom:6px;">{s}</th>'
+                for s in STYLE_LABELS
+            )
+
+            # Row labels (cap axis)
+            row_labels_html = ""
+            for cap_name in CAP_LABELS:
+                row_labels_html += (
+                    f'<div style="height:80px;display:flex;align-items:center;justify-content:flex-end;'
+                    f'font-size:10px;color:rgba(255,255,255,0.52);font-weight:600;'
+                    f'letter-spacing:0.5px;padding-right:8px;">{cap_name}</div>'
+                )
+
+            # Render side-by-side: label column + grid
+            _, sb_col, info_col = st.columns([1, 3, 3])
+
+            with sb_col:
+                st.markdown(f"""
+<div style="display:flex;gap:0;">
+  <!-- Cap labels -->
+  <div style="display:flex;flex-direction:column;justify-content:space-around;
+              margin-right:6px;margin-top:22px;">
+    {row_labels_html}
+  </div>
+  <!-- Grid -->
+  <div>
+    <table style="border-collapse:collapse;">
+      <thead><tr><th></th>{header_cells}</tr></thead>
+      <tbody>{rows_html}</tbody>
+    </table>
+    <div style="font-size:9px;color:rgba(255,255,255,0.28);text-align:center;
+                margin-top:6px;letter-spacing:0.8px;">STYLE →</div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+            with info_col:
+                # Active cell label
+                st.markdown(
+                    f'<div style="margin-bottom:14px;">'
+                    f'<div style="font-size:10px;color:rgba(255,255,255,0.38);text-transform:uppercase;'
+                    f'letter-spacing:1px;margin-bottom:4px;">Classification</div>'
+                    f'<div style="font-size:26px;font-weight:700;color:rgba(255,255,255,0.92);">'
+                    f'{cap_label} {style_label}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+                # Category from provider
+                cat = style_data.get("category")
+                if cat:
+                    st.markdown(
+                        f'<div style="background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.25);'
+                        f'border-radius:8px;padding:8px 12px;margin-bottom:12px;">'
+                        f'<div style="font-size:9px;color:rgba(255,255,255,0.38);text-transform:uppercase;'
+                        f'letter-spacing:0.8px;margin-bottom:2px;">Provider Category</div>'
+                        f'<div style="font-size:13px;color:rgba(255,255,255,0.82);">{cat}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                # Supporting data chips
+                pe = style_data.get("pe")
+                pb = style_data.get("pb")
+                chips = []
+                if pe:
+                    chips.append(("P/E", f"{pe:.1f}x"))
+                if pb:
+                    chips.append(("P/B", f"{pb:.2f}x"))
+
+                if chips:
+                    chip_html = "".join(
+                        f'<div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);'
+                        f'border-radius:8px;padding:8px 12px;margin-bottom:8px;">'
+                        f'<div style="font-size:9px;color:rgba(255,255,255,0.35);text-transform:uppercase;'
+                        f'letter-spacing:0.8px;">{lbl}</div>'
+                        f'<div style="font-size:16px;font-weight:600;color:rgba(255,255,255,0.82);">{val}</div>'
+                        f'</div>'
+                        for lbl, val in chips
+                    )
+                    st.markdown(chip_html, unsafe_allow_html=True)
+
+                # Style disclaimer
+                st.markdown(
+                    '<div style="font-size:9px;color:rgba(255,255,255,0.25);margin-top:12px;line-height:1.5;">'
+                    'Classification inferred from valuation multiples and momentum signals. '
+                    'For definitive style analysis, cross-reference with full holdings data.</div>',
+                    unsafe_allow_html=True,
+                )
+
+        # -----------------------------------------------------------------
     # RIGHT PANEL: ALLOCATOR DECISION ENGINE
     # -----------------------------------------------------------------
     with right_col:
