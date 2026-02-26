@@ -98,7 +98,17 @@ class InvestmentThesis:
 # THESIS STORAGE (SQLite)
 # =============================================================================
 
-THESIS_DB_PATH = Path("data") / "thesis_engine.db"
+# Use /tmp for SQLite on Streamlit Cloud — always writable.
+def _resolve_thesis_db_path() -> "Path":
+    for candidate_dir in [Path("/tmp/atlas_data"), Path("data")]:
+        try:
+            candidate_dir.mkdir(parents=True, exist_ok=True)
+            return candidate_dir / "thesis_engine.db"
+        except Exception:
+            continue
+    return Path("/tmp/thesis_engine.db")
+
+THESIS_DB_PATH = _resolve_thesis_db_path()
 
 
 class ThesisStore:

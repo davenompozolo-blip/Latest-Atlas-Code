@@ -1246,6 +1246,17 @@ def _render_dcf_engine(ticker: str):
 
 def render_equity_research():
     """Render the Equity Research page."""
+    try:
+        _render_equity_research_inner()
+    except Exception as _err:
+        import traceback as _tb
+        st.error(f"**Equity Research — Unexpected Error:** `{type(_err).__name__}: {_err}`")
+        with st.expander("Full traceback (share with developer)", expanded=True):
+            st.code(_tb.format_exc())
+
+
+def _render_equity_research_inner():
+    """Inner implementation — wrapped by render_equity_research for error surfacing."""
 
     st.markdown("**Deep fundamental analysis, valuation, and thesis tracking for individual equities**")
 
