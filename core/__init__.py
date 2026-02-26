@@ -29,7 +29,6 @@ from .data_loading import (
     get_gics_sector,
     get_portfolio_gics_sectors,
     get_spy_sector_weights,
-    get_benchmark_sector_returns,
     get_data_freshness,
     get_portfolio_from_broker_or_legacy,
     validate_portfolio_data,
