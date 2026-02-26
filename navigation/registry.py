@@ -109,6 +109,23 @@ def _make_placeholder(page_name: str, icon: str):
     return handler
 
 
+def _load_handler(module_path: str, func_name: str, page_name: str, icon: str):
+    """Lazy-import handler factory — loads real page module on first call."""
+    def handler():
+        try:
+            import importlib
+            mod = importlib.import_module(module_path)
+            fn = getattr(mod, func_name)
+            fn()
+        except Exception as e:
+            import streamlit as st
+            import traceback
+            st.error(f"**{icon} {page_name}** failed to load: `{type(e).__name__}: {e}`")
+            with st.expander("Traceback"):
+                st.code(traceback.format_exc())
+    return handler
+
+
 # THE REGISTRY - COMPLETE LIST OF ALL ATLAS PAGES
 #
 # This is the single source of truth for navigation.
@@ -250,7 +267,7 @@ PAGE_REGISTRY = [
         key="equity_research",
         title="Equity Research",
         icon="💎",
-        handler=_make_placeholder("Equity Research", "💎"),
+        handler=_load_handler("ui.pages.equity_research", "render_equity_research", "Equity Research", "💎"),
         category="research",
         requires_data=[]
     ),
@@ -259,7 +276,7 @@ PAGE_REGISTRY = [
         key="macro_intelligence",
         title="Macro Intelligence",
         icon="🌐",
-        handler=_make_placeholder("Macro Intelligence", "🌐"),
+        handler=_load_handler("ui.pages.macro_intelligence", "render_macro_intelligence", "Macro Intelligence", "🌐"),
         category="research",
         requires_data=[]
     ),
@@ -268,7 +285,7 @@ PAGE_REGISTRY = [
         key="fund_research",
         title="Fund Research",
         icon="📚",
-        handler=_make_placeholder("Fund Research", "📚"),
+        handler=_load_handler("ui.pages.fund_research", "render_fund_research", "Fund Research", "📚"),
         category="research",
         requires_data=[]
     ),
