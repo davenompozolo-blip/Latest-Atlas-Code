@@ -570,3 +570,95 @@ def init_atlas_css():
     """Initialize all ATLAS CSS — call once at app startup."""
     apply_design_system_css()
     apply_full_width_js()
+
+
+# ── Metric Card HTML Generator ──────────────────────────────────────
+
+# Colour palettes keyed by accent name.
+# Each palette stores the CSS-friendly values used by the metric card template.
+_CARD_PALETTES = {
+    'green': {
+        'rgb': '16,185,129',
+        'primary': 'var(--green, #10b981)',
+        'dark': '#059669',
+        'light': '#6ee7b7',
+    },
+    'purple': {
+        'rgb': '139,92,246',
+        'primary': 'var(--violet, #8b5cf6)',
+        'dark': '#a855f7',
+        'light': '#d8b4fe',
+    },
+    'cyan': {
+        'rgb': '6,182,212',
+        'primary': '#06b6d4',
+        'dark': '#0891b2',
+        'light': '#67e8f9',
+    },
+    'amber': {
+        'rgb': '245,158,11',
+        'primary': 'var(--amber, #f59e0b)',
+        'dark': '#d97706',
+        'light': '#fbbf24',
+    },
+    'red': {
+        'rgb': '239,68,68',
+        'primary': '#ef4444',
+        'dark': '#dc2626',
+        'light': '#fca5a5',
+    },
+}
+
+
+def metric_card(
+    icon: str,
+    label: str,
+    value: str,
+    value_color: str,
+    status: str,
+    accent: str = 'green',
+) -> str:
+    """Generate themed metric-card HTML for ``st.markdown(…, unsafe_allow_html=True)``.
+
+    Parameters
+    ----------
+    icon : str
+        Emoji displayed beside the label (e.g. "💎").
+    label : str
+        ALL-CAPS metric label (e.g. "INTRINSIC VALUE").
+    value : str
+        Pre-formatted value string (e.g. "$184.32").
+    value_color : str
+        CSS colour for the value (usually from ``_metric_color``).
+    status : str
+        Status pill text (e.g. "Undervalued").
+    accent : str
+        One of ``green``, ``purple``, ``cyan``, ``amber``, ``red``.
+    """
+    p = _CARD_PALETTES.get(accent, _CARD_PALETTES['green'])
+    rgb = p['rgb']
+    primary = p['primary']
+    dark = p['dark']
+    light = p['light']
+
+    return (
+        f'<div style="background: linear-gradient(135deg, rgba({rgb},0.08), rgba(21,25,50,0.95));'
+        f' backdrop-filter: blur(24px); border-radius: 24px;'
+        f' border: 1px solid rgba({rgb},0.2); padding: 1.75rem 1.5rem;'
+        f' box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px;'
+        f' position: relative; overflow: hidden;">'
+        f'<div style="position: absolute; top: 0; left: 0; right: 0; height: 3px;'
+        f' background: linear-gradient(90deg, {primary}, {dark}); opacity: 0.8;"></div>'
+        f'<div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;">'
+        f'<span style="font-size: 1rem;">{icon}</span>'
+        f'<p style="font-size: 0.6rem; color: var(--text-muted, #94a3b8);'
+        f' text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">{label}</p>'
+        f'</div>'
+        f'<h3 style="font-size: 2.5rem; font-weight: 800; color: {value_color};'
+        f' margin: 0.5rem 0 0.75rem 0; line-height: 1;">{value}</h3>'
+        f'<div style="display: inline-block; padding: 0.4rem 0.75rem;'
+        f' background: rgba({rgb},0.12); border-radius: 10px;'
+        f' border: 1px solid rgba({rgb},0.25);">'
+        f'<p style="font-size: 0.7rem; color: {light}; margin: 0; font-weight: 600;">{status}</p>'
+        f'</div></div>'
+    )
