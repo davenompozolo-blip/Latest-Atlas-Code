@@ -1,34 +1,32 @@
-# ATLAS Terminal v10.0 - Production Docker Image
+# ATLAS Terminal — Production Docker Image (Phase 7)
 FROM python:3.11-slim
 
-# Set working directory
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
+# System dependencies (bcrypt, scientific packages)
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     curl \
+    libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements
+# Install Python dependencies (cached layer)
 COPY requirements.txt .
-
-# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application
-COPY atlas_app.py .
+# Copy full application
+COPY . .
 
-# Expose Streamlit port
+# Ensure .streamlit config exists (headless mode)
+RUN mkdir -p .streamlit && \
+    printf '[server]\nheadless = true\nport = 8501\n\n[browser]\ngatherUsageStats = false\n' > .streamlit/config.toml
+
 EXPOSE 8501
 
-# Health check
-HEALTHCHECK CMD curl --fail http://localhost:8501/_stcore/health || exit 1
+# Health check using ATLAS built-in endpoint
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD curl -f http://localhost:8501/?health=check || exit 1
 
-# Run Streamlit
 CMD ["streamlit", "run", "atlas_app.py", \
      "--server.port=8501", \
-     "--server.address=0.0.0.0", \
-     "--server.headless=true", \
-     "--server.enableCORS=false", \
-     "--server.enableXsrfProtection=false"]
+     "--server.address=0.0.0.0"]

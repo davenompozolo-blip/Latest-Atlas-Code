@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ATLAS Terminal — Institutional Investment Analytics</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #070814;
+    --cyan: #00d4ff;
+    --indigo: #6366f1;
+    --violet: #8b5cf6;
+    --text-primary: rgba(255,255,255,0.92);
+    --text-secondary: rgba(255,255,255,0.52);
+    --text-muted: rgba(255,255,255,0.28);
+    --card-bg: rgba(255,255,255,0.03);
+    --card-border: rgba(255,255,255,0.07);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text-primary);
+    font-family: 'DM Sans', -apple-system, sans-serif;
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+  .container { max-width: 960px; margin: 0 auto; padding: 0 24px; }
+
+  /* ── Hero ── */
+  .hero {
+    text-align: center;
+    padding: 120px 24px 80px;
+    position: relative;
+  }
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--cyan), var(--violet), transparent);
+  }
+  .hero-logo {
+    font-family: 'Syne', sans-serif;
+    font-size: 56px;
+    font-weight: 800;
+    letter-spacing: 8px;
+    color: var(--cyan);
+    text-shadow: 0 0 40px rgba(0,212,255,0.35);
+    margin-bottom: 8px;
+  }
+  .hero-tagline {
+    font-size: 20px;
+    color: var(--text-secondary);
+    font-weight: 400;
+    letter-spacing: 0.5px;
+    margin-bottom: 40px;
+  }
+  .hero-desc {
+    font-size: 16px;
+    color: var(--text-muted);
+    max-width: 520px;
+    margin: 0 auto 48px;
+    line-height: 1.7;
+  }
+  .cta-btn {
+    display: inline-block;
+    padding: 14px 48px;
+    background: linear-gradient(135deg, var(--cyan), var(--indigo));
+    color: #fff;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-decoration: none;
+    border-radius: 8px;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .cta-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 32px rgba(0,212,255,0.25);
+  }
+
+  /* ── Section ── */
+  .section { padding: 80px 0; }
+  .section-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+  }
+  .section-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 28px;
+    font-weight: 700;
+    margin-bottom: 48px;
+    color: var(--text-primary);
+  }
+
+  /* ── Feature cards ── */
+  .features { display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; }
+  @media (max-width: 640px) { .features { grid-template-columns: 1fr; } }
+  .feature-card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 16px;
+    padding: 32px;
+    transition: border-color 0.3s;
+  }
+  .feature-card:hover { border-color: rgba(99,102,241,0.3); }
+  .feature-icon { font-size: 28px; margin-bottom: 16px; }
+  .feature-title {
+    font-size: 17px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    color: var(--text-primary);
+  }
+  .feature-desc {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+  }
+
+  /* ── Pricing ── */
+  .pricing { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+  @media (max-width: 640px) { .pricing { grid-template-columns: 1fr; } }
+  .price-card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 16px;
+    padding: 36px 28px;
+    text-align: center;
+  }
+  .price-card.featured {
+    border-color: var(--indigo);
+    position: relative;
+  }
+  .price-card.featured::before {
+    content: 'MOST POPULAR';
+    position: absolute;
+    top: -11px; left: 50%;
+    transform: translateX(-50%);
+    background: var(--indigo);
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    padding: 4px 14px;
+    border-radius: 20px;
+  }
+  .price-tier {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+  }
+  .price-amount {
+    font-family: 'Syne', sans-serif;
+    font-size: 36px;
+    font-weight: 800;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+  }
+  .price-period {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 20px;
+  }
+  .price-features {
+    list-style: none;
+    text-align: left;
+    margin-bottom: 28px;
+  }
+  .price-features li {
+    font-size: 13px;
+    color: var(--text-secondary);
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  .price-features li::before {
+    content: '\2713';
+    color: var(--cyan);
+    margin-right: 10px;
+    font-weight: 700;
+  }
+  .price-btn {
+    display: inline-block;
+    padding: 10px 32px;
+    border: 1px solid var(--card-border);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.2s;
+  }
+  .price-btn:hover {
+    border-color: var(--cyan);
+    color: var(--cyan);
+  }
+  .price-card.featured .price-btn {
+    background: linear-gradient(135deg, var(--cyan), var(--indigo));
+    border: none;
+    color: #fff;
+  }
+
+  /* ── Footer ── */
+  .footer {
+    text-align: center;
+    padding: 60px 24px 40px;
+    border-top: 1px solid var(--card-border);
+  }
+  .footer-brand {
+    font-family: 'Syne', sans-serif;
+    font-size: 16px;
+    color: var(--cyan);
+    letter-spacing: 3px;
+    margin-bottom: 8px;
+  }
+  .footer-text {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== HERO ===== -->
+<section class="hero">
+  <div class="hero-logo">ATLAS TERMINAL</div>
+  <div class="hero-tagline">Institutional Investment Analytics. Personal Scale.</div>
+  <p class="hero-desc">
+    ATLAS is a Bloomberg-grade portfolio analytics platform built for
+    South African institutional investors. Regime detection, AI-powered
+    strategy, and real-time market intelligence &mdash; all in one terminal.
+  </p>
+  <a href="#pricing" class="cta-btn">GET STARTED</a>
+</section>
+
+<!-- ===== FEATURES ===== -->
+<section class="section">
+  <div class="container">
+    <div class="section-label">Capabilities</div>
+    <div class="section-title">Everything an institutional investor needs</div>
+    <div class="features">
+      <div class="feature-card">
+        <div class="feature-icon">&#128200;</div>
+        <div class="feature-title">Portfolio Analytics</div>
+        <div class="feature-desc">Performance attribution, risk decomposition, multi-factor analysis, and Monte Carlo simulation. Institutional-grade metrics on every holding.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">&#129302;</div>
+        <div class="feature-title">AI-Powered Strategy</div>
+        <div class="feature-desc">Strategic Asset Allocation driven by Claude, investment commentary generation, and market regime detection with dual-model consensus.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">&#128218;</div>
+        <div class="feature-title">Fund &amp; Equity Research</div>
+        <div class="feature-desc">Manager due diligence using the 5Ps framework, DCF valuation with sensitivity analysis, and comprehensive equity screening.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">&#127758;</div>
+        <div class="feature-title">Real-Time Market Intelligence</div>
+        <div class="feature-desc">JSE, global indices, crypto, bonds, FX, and commodities. Yield curves, credit spreads, and macro indicators &mdash; all in one terminal.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== PRICING ===== -->
+<section class="section" id="pricing">
+  <div class="container">
+    <div class="section-label">Pricing</div>
+    <div class="section-title">Simple, transparent pricing</div>
+    <div class="pricing">
+      <div class="price-card">
+        <div class="price-tier">Free</div>
+        <div class="price-amount">R0</div>
+        <div class="price-period">per month</div>
+        <ul class="price-features">
+          <li>Phoenix Parser (portfolio upload)</li>
+          <li>Portfolio Home dashboard</li>
+          <li>Market Watch (live data)</li>
+          <li>Community support</li>
+        </ul>
+        <a href="#" class="price-btn">Start Free</a>
+      </div>
+      <div class="price-card featured">
+        <div class="price-tier">Professional</div>
+        <div class="price-amount">R499</div>
+        <div class="price-period">per month</div>
+        <ul class="price-features">
+          <li>All 20+ analytics modules</li>
+          <li>AI Strategic Asset Allocation</li>
+          <li>Commentary Generator + DOCX export</li>
+          <li>Full research suite (equity, fund, macro)</li>
+          <li>Priority support</li>
+        </ul>
+        <a href="#" class="price-btn">Get Professional</a>
+      </div>
+      <div class="price-card">
+        <div class="price-tier">Enterprise</div>
+        <div class="price-amount">Custom</div>
+        <div class="price-period">contact us</div>
+        <ul class="price-features">
+          <li>White-label deployment</li>
+          <li>API access</li>
+          <li>Dedicated support</li>
+          <li>Custom integrations</li>
+        </ul>
+        <a href="#" class="price-btn">Contact Sales</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== FOOTER ===== -->
+<footer class="footer">
+  <div class="footer-brand">ATLAS TERMINAL</div>
+  <div class="footer-text">Built by Hlobo Nompozolo &middot; RisCura Investment Analytics &middot; 2026</div>
+</footer>
+
+</body>
+</html>

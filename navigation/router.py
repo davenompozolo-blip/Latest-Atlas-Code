@@ -9,7 +9,29 @@ No magic. No framework. Just a function that routes.
 Design: Simplicity > Cleverness
 """
 
-from .registry import get_page_by_key, PAGE_REGISTRY
+from .registry import get_page_by_key, PAGE_REGISTRY, TIER_REQUIREMENTS
+
+
+def _render_upgrade_prompt(page_title: str, required_tier: str):
+    """Render upgrade prompt for gated pages."""
+    import streamlit as st
+
+    st.markdown(
+        '<div style="text-align:center; margin-top:6rem;">'
+        '<div style="font-size:48px; margin-bottom:1rem;">&#128274;</div>'
+        f'<h2 style="color:rgba(255,255,255,0.85); margin-bottom:0.5rem;">'
+        f'{page_title}</h2>'
+        f'<p style="color:rgba(255,255,255,0.45); font-size:14px;">'
+        f'This page requires the <span style="color:#00d4ff; font-weight:700;">'
+        f'{required_tier.title()}</span> tier.</p>'
+        '<div style="margin-top:2rem; padding:1.5rem; background:rgba(99,102,241,0.06);'
+        ' border:1px solid rgba(99,102,241,0.18); border-radius:12px;'
+        ' display:inline-block; max-width:400px;">'
+        '<p style="font-size:13px; color:rgba(255,255,255,0.6); margin:0;">'
+        'Contact your administrator to upgrade your access tier.</p>'
+        '</div></div>',
+        unsafe_allow_html=True,
+    )
 
 
 def route_to_page(page_key: str):
@@ -18,8 +40,9 @@ def route_to_page(page_key: str):
 
     This is the core routing logic:
     1. Look up the page in registry
-    2. Call its handler
-    3. Handle errors gracefully
+    2. Check tier requirements
+    3. Call its handler
+    4. Handle errors gracefully
 
     Args:
         page_key: Key of page to render (e.g., "home", "market_watch")
@@ -35,7 +58,7 @@ def route_to_page(page_key: str):
 
     # Handle unknown page
     if page is None:
-        st.error(f"❌ Unknown page: `{page_key}`")
+        st.error(f"Unknown page: `{page_key}`")
         st.info("**Available pages:**")
 
         # Show all available pages for debugging
@@ -44,17 +67,28 @@ def route_to_page(page_key: str):
 
         return
 
+    # Tier enforcement (Phase 7 B2)
+    required_tier = TIER_REQUIREMENTS.get(page_key)
+    if required_tier:
+        try:
+            from auth.auth_manager import user_has_tier, auth_configured
+            if auth_configured() and not user_has_tier(required_tier):
+                _render_upgrade_prompt(page.title, required_tier)
+                return
+        except ImportError:
+            pass  # Auth not available — allow access
+
     # Call the page handler
     try:
         page.handler()
 
     except Exception as e:
         # Graceful error handling
-        st.error(f"❌ Error rendering page '{page.title}': {e}")
+        st.error(f"Error rendering page '{page.title}': {e}")
 
         # Show error details in expander
         import traceback
-        with st.expander("🐛 Error Details (for debugging)"):
+        with st.expander("Error Details (for debugging)"):
             st.code(traceback.format_exc())
 
         # Helpful recovery message

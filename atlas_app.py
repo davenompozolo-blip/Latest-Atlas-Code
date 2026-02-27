@@ -604,6 +604,7 @@ def main():
         "🌐 Macro Intelligence": "macro_intelligence",
         "📚 Fund Research": "fund_research",
         "📝 Commentary Generator": "commentary_generator",
+        "⚙️ Admin Panel": "admin_panel",
     }
 
     # Get page key from selected title

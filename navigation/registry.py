@@ -264,12 +264,53 @@ PAGE_REGISTRY = [
         handler=_load_handler("ui.pages.about", "render_about", "About", "ℹ️"),
         category="system",
     ),
+
+    # --- Admin (Phase 7 B3) ---
+    PageDefinition(
+        key="admin_panel",
+        title="Admin Panel",
+        icon="⚙️",
+        handler=_load_handler("ui.pages.admin_panel", "render_admin_panel", "Admin Panel", "⚙️"),
+        category="admin",
+    ),
 ]
 
 
 # ============================================================================
 # Registry Query Functions
 # ============================================================================
+
+# ============================================================================
+# TIER REQUIREMENTS — Two-tier model (Free + Professional)
+# Pages NOT listed here are available to all tiers (including free).
+# ============================================================================
+TIER_REQUIREMENTS = {
+    # Analysis pages — Professional
+    "risk_analysis": "professional",
+    "performance_suite": "professional",
+    "portfolio_deep_dive": "professional",
+    "multi_factor_analysis": "professional",
+    "monte_carlo_engine": "professional",
+    "quant_optimizer": "professional",
+    "leverage_tracker": "professional",
+    # Research pages — Professional
+    "equity_research": "professional",
+    "macro_intelligence": "professional",
+    "fund_research": "professional",
+    # Markets — Professional (Market Watch is free)
+    "market_regime": "professional",
+    # Valuation — Professional
+    "valuation_house": "professional",
+    # Strategy — Professional
+    "saa_tool": "professional",
+    "commentary_generator": "professional",
+    # Tracking — Professional
+    "investopedia_live": "professional",
+    # Admin — admin only
+    "admin_panel": "admin",
+    # Free tier pages: phoenix_parser, portfolio_home, market_watch, about
+}
+
 
 def get_available_pages() -> List[PageDefinition]:
     """Get list of pages available to user, filtered by feature flags."""

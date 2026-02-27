@@ -10,15 +10,43 @@ from auth.auth_manager import (
     auth_configured,
     get_current_user,
     get_current_tier,
+    user_has_tier,
     logout,
     render_login_form,
 )
+from navigation.registry import TIER_REQUIREMENTS
 
 # Feature flags: sidebar label → session_state key
 # Pages with a feature flag are hidden when the flag is False
 _FEATURE_FLAGS = {
     "📊 R Analytics": "r_available",
     "💾 Database": "sql_available",
+}
+
+# Sidebar key → registry key (for tier lookups)
+_NAV_TO_REGISTRY = {
+    "🔥 Phoenix Parser": "phoenix_parser",
+    "🏠 Portfolio Home": "portfolio_home",
+    "📊 R Analytics": "r_analytics",
+    "💾 Database": "database",
+    "💎 Equity Research": "equity_research",
+    "🌐 Macro Intelligence": "macro_intelligence",
+    "📚 Fund Research": "fund_research",
+    "🌍 Market Watch": "market_watch",
+    "🌐 Market Regime": "market_regime",
+    "📈 Risk Analysis": "risk_analysis",
+    "💎 Performance Suite": "performance_suite",
+    "🔬 Portfolio Deep Dive": "portfolio_deep_dive",
+    "📊 Multi-Factor Analysis": "multi_factor_analysis",
+    "💰 Valuation House": "valuation_house",
+    "🎲 Monte Carlo Engine": "monte_carlo_engine",
+    "🧮 Quant Optimizer": "quant_optimizer",
+    "📊 Leverage Tracker": "leverage_tracker",
+    "📡 Investopedia Live": "investopedia_live",
+    "🎯 Strategic Asset Allocation": "saa_tool",
+    "📝 Commentary Generator": "commentary_generator",
+    "ℹ️ About": "about",
+    "⚙️ Admin Panel": "admin_panel",
 }
 
 
@@ -64,6 +92,7 @@ def render_sidebar_navigation(default_page: str = "Portfolio Home") -> str:
         ],
         "System": [
             {"key": "ℹ️ About", "label": "About"},
+            {"key": "⚙️ Admin Panel", "label": "Admin Panel"},
         ],
     }
 
@@ -162,10 +191,24 @@ def render_sidebar_navigation(default_page: str = "Portfolio Home") -> str:
                 flag_key = _FEATURE_FLAGS.get(item["key"])
                 if flag_key and not st.session_state.get(flag_key, False):
                     continue
+
+                # Tier gating — show lock icon for pages the user can't access
+                registry_key = _NAV_TO_REGISTRY.get(item["key"], "")
+                required_tier = TIER_REQUIREMENTS.get(registry_key)
+                is_locked = (
+                    auth_configured()
+                    and required_tier
+                    and not user_has_tier(required_tier)
+                )
+
                 is_active = item["key"] == selected
-                if is_active:
+                if is_locked:
+                    # Locked — show dimmed label with lock icon (still clickable for upgrade prompt)
+                    if st.button(f"🔒  {item['label']}", key=f"nav_{item['key']}", use_container_width=True):
+                        st.session_state["atlas_selected_page"] = item["key"]
+                        st.rerun()
+                elif is_active:
                     # Active state — indigo left border + indigo dot + bright text
-                    # Also render right-side glow marker
                     st.markdown(f'''
                     <div style="display: flex; align-items: center; gap: 8px;
                                 padding: 7px 16px; font-size: 11.5px;
