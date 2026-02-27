@@ -148,7 +148,7 @@ def render_r_analytics():
                 from rpy2.robjects.packages import importr
                 importr('copula')
                 st.success("✅ copula available")
-            except:
+            except (ImportError, OSError):
                 st.error("❌ copula missing")
                 st.caption("Install in R")
 
@@ -158,7 +158,7 @@ def render_r_analytics():
     try:
         r = get_r()
         st.success("✅ R Analytics Engine Ready")
-    except Exception as e:
+    except (ImportError, OSError, RuntimeError) as e:
         st.error(f"Error initializing R: {str(e)}")
         return
 
@@ -331,7 +331,7 @@ def render_r_analytics():
                         else:
                             st.warning("No tickers found in portfolio")
 
-                    except Exception as e:
+                    except (ValueError, KeyError, TypeError, AttributeError, RuntimeError) as e:
                         st.error(f"Error executing R code: {str(e)}")
                         st.code(str(e))
 
