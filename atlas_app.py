@@ -68,8 +68,15 @@ print(f"[BOOT] Standard libs + streamlit OK", flush=True)
 # ============================================================================
 # STREAMLIT PAGE CONFIG (must be first Streamlit call)
 # ============================================================================
+# Read firm name from branding config (before Streamlit calls)
+try:
+    from config.branding import get_branding as _get_brand
+    _page_title = _get_brand()["firm_name"]
+except Exception:
+    _page_title = "ATLAS Terminal"
+
 st.set_page_config(
-    page_title="ATLAS Terminal v10.0 INSTITUTIONAL",
+    page_title=_page_title,
     page_icon="🚀",
     layout="wide",
     initial_sidebar_state="expanded",  # Phase 1B: Show vertical sidebar

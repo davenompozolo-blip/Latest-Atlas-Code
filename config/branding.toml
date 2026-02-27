@@ -1,0 +1,28 @@
+# ATLAS Terminal — White-Label Branding Configuration
+# =====================================================
+# Change these values and reboot to fully re-brand the application.
+# A white-label deployment changes ONLY this file — nothing else.
+
+[branding]
+firm_name       = "ATLAS Terminal"
+tagline         = "Institutional Analytics for the Buy-Side"
+primary_colour  = "#6366f1"         # indigo — sidebar accents, active states
+accent_colour   = "#00d4ff"         # cyan — logo glow, highlights
+logo_text       = "ATLAS"           # Text shown in sidebar header (if no logo image)
+logo_path       = ""                # Path to logo image (relative to project root); empty = text logo
+contact_email   = "support@atlasterminal.io"
+website         = "https://atlasterminal.io"
+report_footer   = "ATLAS Terminal | Powered by RisCura Analytics"
+copyright_holder = "Hlobo Nompozolo"
+
+[theme]
+sidebar_bg      = "#0f172a"
+card_bg         = "rgba(255,255,255,0.03)"
+card_border     = "rgba(255,255,255,0.07)"
+text_primary    = "rgba(255,255,255,0.92)"
+text_secondary  = "rgba(255,255,255,0.52)"
+text_muted      = "rgba(255,255,255,0.28)"
+
+[docx]
+header_rgb      = [31, 41, 63]      # RGB for DOCX report headers
+font_family     = "Calibri"
