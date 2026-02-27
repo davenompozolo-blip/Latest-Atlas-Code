@@ -7,9 +7,49 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from app.config import COLORS
+from ui.theme import ATLAS_COLORS as THEME
 from utils.formatting import format_currency, format_percentage, format_large_number, add_arrow_indicator
 
 INSTITUTIONAL_DCF_AVAILABLE = False
+
+# Semantic colors from theme (used throughout for metric thresholds)
+_GREEN = THEME['success']       # #10b981
+_AMBER = THEME['warning_light'] # #fbbf24
+_ORANGE = THEME['warning']      # #f59e0b  (regime / impact warnings)
+_RED = THEME['danger']          # #ef4444
+_MUTED = THEME['text_muted']    # rgba(255,255,255,0.28)
+_SLATE = '#94a3b8'              # Neutral slate (for N/A states)
+
+
+def _delta_color(delta, positive_is_good=True):
+    """Return color based on the sign of a delta value."""
+    if delta > 0:
+        return _GREEN if positive_is_good else _RED
+    if delta < 0:
+        return _RED if positive_is_good else _GREEN
+    return _SLATE
+
+
+def _metric_color(value, green_below=None, green_above=None, amber_below=None, amber_above=None):
+    """Return green/amber/red color based on threshold direction.
+
+    Usage patterns:
+        _metric_color(wacc, green_below=0.08, amber_below=0.12)  → green if <8%, amber if <12%, else red
+        _metric_color(roe, green_above=0.15, amber_above=0.10)   → green if >15%, amber if >10%, else red
+    """
+    if green_below is not None:
+        if value < green_below:
+            return _GREEN
+        if amber_below is not None and value < amber_below:
+            return _AMBER
+        return _RED
+    if green_above is not None:
+        if value > green_above:
+            return _GREEN
+        if amber_above is not None and value > amber_above:
+            return _AMBER
+        return _RED
+    return _MUTED
 
 
 def render_valuation_house():
@@ -193,7 +233,7 @@ def render_valuation_house():
                             st.metric("Shares Out", f"{dcf_inputs.get('shares_outstanding', 0)/1e9:.2f}B")
                 else:
                     st.warning(f"No Alpha Vantage data available for {ticker_input}")
-            except Exception as e:
+            except (ConnectionError, TimeoutError, ValueError, KeyError, TypeError) as e:
                 st.error(f"Alpha Vantage fetch failed: {e}")
 
     # Display valuation if company is loaded
@@ -225,7 +265,7 @@ def render_valuation_house():
         # Beta
         with col4:
             beta_val = company['beta']
-            beta_color = '#10b981' if beta_val < 1.0 else ('#fbbf24' if beta_val < 1.5 else '#ef4444')
+            beta_color = _metric_color(beta_val, green_below=1.0, amber_below=1.5)
             beta_status = 'Low Volatility' if beta_val < 1.0 else ('Market Average' if beta_val < 1.5 else 'High Volatility')
             st.markdown(f'<div style="background: linear-gradient(135deg, rgba(245,158,11,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(245,158,11,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #f59e0b, #d97706); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📈</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">BETA</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {beta_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{beta_val:.2f}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(245,158,11,0.12); border-radius: 10px; border: 1px solid rgba(245,158,11,0.25);"><p style="font-size: 0.7rem; color: #fbbf24; margin: 0; font-weight: 600;">{beta_status}</p></div></div>', unsafe_allow_html=True)
 
@@ -233,11 +273,11 @@ def render_valuation_house():
         with col5:
             fwd_pe = company.get('forward_pe', None)
             if fwd_pe and fwd_pe != 'N/A':
-                fwd_pe_color = '#10b981' if fwd_pe < 15 else ('#fbbf24' if fwd_pe < 25 else '#ef4444')
+                fwd_pe_color = _metric_color(fwd_pe, green_below=15, amber_below=25)
                 fwd_pe_status = 'Undervalued' if fwd_pe < 15 else ('Fair Value' if fwd_pe < 25 else 'Expensive')
                 fwd_pe_display = f"{fwd_pe:.1f}"
             else:
-                fwd_pe_color = '#94a3b8'
+                fwd_pe_color = _SLATE
                 fwd_pe_status = 'No Data'
                 fwd_pe_display = 'N/A'
             st.markdown(f'<div style="background: linear-gradient(135deg, rgba(239,68,68,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(239,68,68,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #ef4444, #dc2626); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💹</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">FORWARD P/E</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {fwd_pe_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{fwd_pe_display}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(239,68,68,0.12); border-radius: 10px; border: 1px solid rgba(239,68,68,0.25);"><p style="font-size: 0.7rem; color: #fca5a5; margin: 0; font-weight: 600;">{fwd_pe_status}</p></div></div>', unsafe_allow_html=True)
@@ -446,12 +486,12 @@ def render_valuation_house():
 
                         # Regime banner colors
                         regime_colors = {
-                            'risk_on': ('#10b981', '🟢'),
-                            'risk_off': ('#ef4444', '🔴'),
-                            'transitional': ('#f59e0b', '🟡'),
-                            'neutral': ('#94a3b8', '⚪')
+                            'risk_on': (_GREEN, '🟢'),
+                            'risk_off': (_RED, '🔴'),
+                            'transitional': (_ORANGE, '🟡'),
+                            'neutral': (_SLATE, '⚪')
                         }
-                        banner_color, regime_emoji = regime_colors.get(regime, ('#94a3b8', '⚪'))
+                        banner_color, regime_emoji = regime_colors.get(regime, (_SLATE, '⚪'))
 
                         st.markdown(f"""
                         <div style="background: linear-gradient(135deg, rgba(139,92,246,0.12), rgba(21,25,50,0.95));
@@ -480,7 +520,7 @@ def render_valuation_house():
                         with col1:
                             st.markdown("**WACC Adjustment**")
                             wacc_delta = regime_result['wacc_adjustment_bps']
-                            wacc_color = '#ef4444' if wacc_delta > 0 else ('#10b981' if wacc_delta < 0 else '#94a3b8')
+                            wacc_color = _delta_color(wacc_delta, positive_is_good=False)
                             st.metric(
                                 "Baseline WACC",
                                 f"{regime_result['baseline_wacc']:.2%}",
@@ -497,7 +537,7 @@ def render_valuation_house():
                         with col2:
                             st.markdown("**Terminal Growth Adjustment**")
                             tg_delta = regime_result['terminal_growth_adjustment_bps']
-                            tg_color = '#10b981' if tg_delta > 0 else ('#ef4444' if tg_delta < 0 else '#94a3b8')
+                            tg_color = _delta_color(tg_delta, positive_is_good=True)
                             st.metric(
                                 "Baseline Terminal Growth",
                                 f"{regime_result['baseline_terminal_growth']:.2%}",
@@ -514,19 +554,19 @@ def render_valuation_house():
                         # Valuation Impact Summary
                         impact = regime_result['valuation_impact']
                         if impact == 'AGGRESSIVE':
-                            impact_color = '#10b981'
+                            impact_color = _GREEN
                             impact_icon = '📈'
                             impact_msg = "Regime-adjusted inputs will produce HIGHER valuation (lower discount rate + higher growth)"
                         elif impact == 'CONSERVATIVE':
-                            impact_color = '#ef4444'
+                            impact_color = _RED
                             impact_icon = '📉'
                             impact_msg = "Regime-adjusted inputs will produce LOWER valuation (higher discount rate + lower growth)"
                         elif impact == 'MODERATELY CONSERVATIVE':
-                            impact_color = '#f59e0b'
+                            impact_color = _ORANGE
                             impact_icon = '⚠️'
                             impact_msg = "Regime-adjusted inputs will produce MODERATELY LOWER valuation"
                         else:
-                            impact_color = '#94a3b8'
+                            impact_color = _SLATE
                             impact_icon = '➖'
                             impact_msg = "Regime-adjusted inputs will produce SIMILAR valuation (minimal adjustments)"
 
@@ -550,7 +590,7 @@ def render_valuation_house():
                         </div>
                         """, unsafe_allow_html=True)
 
-                    except Exception as e:
+                    except (ValueError, KeyError, TypeError, AttributeError, ZeroDivisionError) as e:
                         st.error(f"❌ Error detecting market regime: {str(e)}")
                         import traceback
                         with st.expander("Error Details"):
@@ -612,7 +652,7 @@ def render_valuation_house():
 
                                 st.success(f"✅ Generated {len(projections)} years of projections across {len(multistage_config.stages)} stages")
 
-                            except Exception as e:
+                            except (ValueError, KeyError, TypeError, ZeroDivisionError, AttributeError) as e:
                                 st.error(f"❌ Error generating projections: {str(e)}")
 
                     # Display projections and visualizations if available
@@ -664,7 +704,7 @@ def render_valuation_house():
                                         # Display results
                                         display_multistage_results(dcf_result, multistage_config)
 
-                                    except Exception as e:
+                                    except (ValueError, KeyError, TypeError, ZeroDivisionError, AttributeError) as e:
                                         st.error(f"❌ Error calculating DCF: {str(e)}")
                                         import traceback
                                         st.code(traceback.format_exc())
@@ -728,14 +768,14 @@ def render_valuation_house():
                 # Consensus Fair Value
                 with col1:
                     upside_pct = ((consensus_result['consensus_value'] / company['current_price'] - 1) * 100) if company['current_price'] > 0 else 0
-                    consensus_color = '#10b981' if upside_pct > 20 else ('#fbbf24' if upside_pct > -20 else '#ef4444')
+                    consensus_color = _metric_color(upside_pct, green_above=20, amber_above=-20)
                     consensus_status = 'Undervalued' if upside_pct > 20 else ('Fair Value' if upside_pct > -20 else 'Overvalued')
                     st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🎯</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">CONSENSUS FAIR VALUE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {consensus_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">${consensus_result["consensus_value"]:.2f}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{consensus_status} ({upside_pct:+.1f}%)</p></div></div>', unsafe_allow_html=True)
 
                 # Confidence Score
                 with col2:
                     confidence_score = consensus_result['confidence_score']
-                    confidence_color_hex = '#10b981' if confidence_score >= 70 else ('#fbbf24' if confidence_score >= 50 else '#ef4444')
+                    confidence_color_hex = _metric_color(confidence_score, green_above=70, amber_above=50)
                     confidence_emoji = "🟢" if confidence_score >= 70 else ("🟡" if confidence_score >= 50 else "🔴")
                     confidence_label = 'High Confidence' if confidence_score >= 70 else ('Moderate' if confidence_score >= 50 else 'Low Confidence')
                     st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📊</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">CONFIDENCE SCORE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {confidence_color_hex}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{confidence_emoji} {confidence_score:.0f}/100</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">{confidence_label} ({consensus_result["method_count"]} methods)</p></div></div>', unsafe_allow_html=True)
@@ -879,13 +919,13 @@ def render_valuation_house():
 
                 # WACC (Discount Rate)
                 with col1:
-                    wacc_color = '#10b981' if discount_rate < 0.08 else ('#fbbf24' if discount_rate < 0.12 else '#ef4444')
+                    wacc_color = _metric_color(discount_rate, green_below=0.08, amber_below=0.12)
                     wacc_status = 'Low Cost' if discount_rate < 0.08 else ('Average Cost' if discount_rate < 0.12 else 'High Cost')
                     st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💹</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">WACC (DISCOUNT RATE)</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {wacc_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{discount_rate*100:.2f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">{wacc_status}</p></div></div>', unsafe_allow_html=True)
 
                 # Terminal Growth Rate
                 with col2:
-                    tgr_color = '#10b981' if terminal_growth < 0.03 else ('#fbbf24' if terminal_growth < 0.05 else '#ef4444')
+                    tgr_color = _metric_color(terminal_growth, green_below=0.03, amber_below=0.05)
                     tgr_status = 'Conservative' if terminal_growth < 0.03 else ('Moderate' if terminal_growth < 0.05 else 'Aggressive')
                     st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📈</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">TERMINAL GROWTH RATE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {tgr_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{terminal_growth*100:.2f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{tgr_status}</p></div></div>', unsafe_allow_html=True)
 
@@ -911,7 +951,7 @@ def render_valuation_house():
                         # Determine revenue growth value
                         if use_smart_assumptions:
                             revenue_growth = smart_params['revenue_growth']
-                            rev_gr_color = '#10b981' if revenue_growth > 0.10 else ('#fbbf24' if revenue_growth > 0.03 else '#ef4444')
+                            rev_gr_color = _metric_color(revenue_growth, green_above=0.10, amber_above=0.03)
                             rev_gr_status = 'Strong Growth' if revenue_growth > 0.10 else ('Moderate Growth' if revenue_growth > 0.03 else 'Slow Growth')
                             st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📈</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">REVENUE GROWTH RATE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {rev_gr_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{revenue_growth*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{rev_gr_status} • AI Generated</p></div></div>', unsafe_allow_html=True)
                         elif 'selected_scenario' in st.session_state:
@@ -937,7 +977,7 @@ def render_valuation_house():
 
                         if use_smart_assumptions:
                             ebit_margin = smart_params['ebit_margin']
-                            ebit_color = '#10b981' if ebit_margin > 0.20 else ('#fbbf24' if ebit_margin > 0.10 else '#ef4444')
+                            ebit_color = _metric_color(ebit_margin, green_above=0.20, amber_above=0.10)
                             ebit_status = 'High Margin' if ebit_margin > 0.20 else ('Healthy' if ebit_margin > 0.10 else 'Low Margin')
                             st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💼</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">EBIT MARGIN</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {ebit_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{ebit_margin*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">{ebit_status} • AI Generated</p></div></div>', unsafe_allow_html=True)
                         else:
@@ -1056,7 +1096,7 @@ def render_valuation_house():
                     with col2:
                         if use_smart_assumptions:
                             capex_pct = smart_params['capex_pct']
-                            capex_color = '#10b981' if capex_pct < 0.05 else ('#fbbf24' if capex_pct < 0.10 else '#ef4444')
+                            capex_color = _metric_color(capex_pct, green_below=0.05, amber_below=0.10)
                             capex_status = 'Low CapEx' if capex_pct < 0.05 else ('Moderate' if capex_pct < 0.10 else 'High CapEx')
                             st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #0891b2); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🏗️</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">CAPEX (% OF REVENUE)</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {capex_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{capex_pct*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #67e8f9; margin: 0; font-weight: 600;">{capex_status} • AI Generated</p></div></div>', unsafe_allow_html=True)
                         else:
@@ -1070,7 +1110,7 @@ def render_valuation_house():
 
                         if use_smart_assumptions:
                             depreciation_pct = smart_params['depreciation_pct']
-                            depr_color = '#10b981' if depreciation_pct < 0.03 else ('#fbbf24' if depreciation_pct < 0.06 else '#ef4444')
+                            depr_color = _metric_color(depreciation_pct, green_below=0.03, amber_below=0.06)
                             depr_status = 'Low D&A' if depreciation_pct < 0.03 else ('Moderate' if depreciation_pct < 0.06 else 'High D&A')
                             st.markdown(f'<div style="background: linear-gradient(135deg, rgba(245,158,11,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(245,158,11,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #f59e0b, #d97706); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📉</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">DEPRECIATION (% OF REVENUE)</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {depr_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{depreciation_pct*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(245,158,11,0.12); border-radius: 10px; border: 1px solid rgba(245,158,11,0.25);"><p style="font-size: 0.7rem; color: #fbbf24; margin: 0; font-weight: 600;">{depr_status} • AI Generated</p></div></div>', unsafe_allow_html=True)
                         else:
@@ -1133,7 +1173,7 @@ def render_valuation_house():
 
                         if use_smart_assumptions:
                             tax_rate = smart_params['tax_rate']
-                            tax_color = '#10b981' if tax_rate < 0.21 else ('#fbbf24' if tax_rate < 0.28 else '#ef4444')
+                            tax_color = _metric_color(tax_rate, green_below=0.21, amber_below=0.28)
                             tax_status = 'Low Tax' if tax_rate < 0.21 else ('Average Tax' if tax_rate < 0.28 else 'High Tax')
                             st.markdown(f'<div style="background: linear-gradient(135deg, rgba(239,68,68,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(239,68,68,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #ef4444, #dc2626); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📋</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">TAX RATE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {tax_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{tax_rate*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(239,68,68,0.12); border-radius: 10px; border: 1px solid rgba(239,68,68,0.25);"><p style="font-size: 0.7rem; color: #fca5a5; margin: 0; font-weight: 600;">{tax_status} • AI Generated</p></div></div>', unsafe_allow_html=True)
                         else:
@@ -1162,7 +1202,7 @@ def render_valuation_house():
                     with col1:
                         if use_smart_assumptions:
                             terminal_growth = smart_params['terminal_growth']
-                            term_gr_color = '#10b981' if terminal_growth <= 0.03 else ('#fbbf24' if terminal_growth <= 0.05 else '#ef4444')
+                            term_gr_color = _metric_color(terminal_growth, green_below=0.03, amber_below=0.05)
                             term_gr_status = 'Conservative' if terminal_growth <= 0.03 else ('Moderate' if terminal_growth <= 0.05 else 'Aggressive')
                             st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🎯</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">PERPETUAL GROWTH RATE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {term_gr_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{terminal_growth*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{term_gr_status} • AI Generated</p></div></div>', unsafe_allow_html=True)
                         else:
@@ -1208,7 +1248,7 @@ def render_valuation_house():
 
                 if use_smart_assumptions:
                     cost_of_equity_ddm = smart_params.get('cost_of_equity', 0.10)
-                    coe_ddm_color = '#10b981' if cost_of_equity_ddm < 0.08 else ('#fbbf24' if cost_of_equity_ddm < 0.12 else '#ef4444')
+                    coe_ddm_color = _metric_color(cost_of_equity_ddm, green_below=0.08, amber_below=0.12)
                     coe_ddm_status = 'Low Cost' if cost_of_equity_ddm < 0.08 else ('Average Cost' if cost_of_equity_ddm < 0.12 else 'High Cost')
                     st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💹</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">COST OF EQUITY</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {coe_ddm_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{cost_of_equity_ddm*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">{coe_ddm_status} • AI Generated</p></div></div>', unsafe_allow_html=True)
                 else:
@@ -1245,7 +1285,7 @@ def render_valuation_house():
             with col2:
                 if use_smart_assumptions:
                     growth_rate_ddm = smart_params.get('dividend_growth', 0.03)
-                    div_gr_color = '#10b981' if growth_rate_ddm <= 0.03 else ('#fbbf24' if growth_rate_ddm <= 0.05 else '#ef4444')
+                    div_gr_color = _metric_color(growth_rate_ddm, green_below=0.03, amber_below=0.05)
                     div_gr_status = 'Conservative' if growth_rate_ddm <= 0.03 else ('Moderate' if growth_rate_ddm <= 0.05 else 'Aggressive')
                     st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📊</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">DIVIDEND GROWTH RATE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {div_gr_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{growth_rate_ddm*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{div_gr_status} • AI Generated</p></div></div>', unsafe_allow_html=True)
                 else:
@@ -1292,7 +1332,7 @@ def render_valuation_house():
 
                 if use_smart_assumptions:
                     cost_of_equity_ms = smart_params.get('cost_of_equity', 0.10)
-                    coe_ms_color = '#10b981' if cost_of_equity_ms < 0.08 else ('#fbbf24' if cost_of_equity_ms < 0.12 else '#ef4444')
+                    coe_ms_color = _metric_color(cost_of_equity_ms, green_below=0.08, amber_below=0.12)
                     coe_ms_status = 'Low Cost' if cost_of_equity_ms < 0.08 else ('Average Cost' if cost_of_equity_ms < 0.12 else 'High Cost')
                     st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💹</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">COST OF EQUITY</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {coe_ms_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{cost_of_equity_ms*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">{coe_ms_status} • AI Generated</p></div></div>', unsafe_allow_html=True)
                 else:
@@ -1333,13 +1373,13 @@ def render_valuation_house():
                     stable_growth_rate = smart_params.get('stable_growth_rate', 0.03)
 
                     # High Growth Rate
-                    hgr_color = '#fbbf24' if high_growth_rate > 0.10 else ('#10b981' if high_growth_rate > 0.05 else '#ef4444')
+                    hgr_color = _AMBER if high_growth_rate > 0.10 else (_GREEN if high_growth_rate > 0.05 else _RED)
                     hgr_status = 'Aggressive' if high_growth_rate > 0.10 else ('Moderate' if high_growth_rate > 0.05 else 'Conservative')
                     st.markdown(f'<div style="background: linear-gradient(135deg, rgba(245,158,11,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(245,158,11,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #f59e0b, #d97706); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🚀</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">HIGH GROWTH RATE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {hgr_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{high_growth_rate*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(245,158,11,0.12); border-radius: 10px; border: 1px solid rgba(245,158,11,0.25);"><p style="font-size: 0.7rem; color: #fbbf24; margin: 0; font-weight: 600;">{hgr_status} • AI Generated</p></div></div>', unsafe_allow_html=True)
                     # High Growth Years
                     st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #0891b2); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">⏱️</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">HIGH GROWTH YEARS</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #06b6d4; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{high_growth_years} years</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #67e8f9; margin: 0; font-weight: 600;">Growth Period • AI Generated</p></div></div>', unsafe_allow_html=True)
                     # Stable Growth Rate
-                    sgr_color = '#10b981' if stable_growth_rate <= 0.03 else ('#fbbf24' if stable_growth_rate <= 0.05 else '#ef4444')
+                    sgr_color = _metric_color(stable_growth_rate, green_below=0.03, amber_below=0.05)
                     sgr_status = 'Conservative' if stable_growth_rate <= 0.03 else ('Moderate' if stable_growth_rate <= 0.05 else 'Aggressive')
                     st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📉</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">STABLE GROWTH RATE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {sgr_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{stable_growth_rate*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{sgr_status} • AI Generated</p></div></div>', unsafe_allow_html=True)
                 else:
@@ -1392,7 +1432,7 @@ def render_valuation_house():
 
                 if use_smart_assumptions:
                     roe = smart_params.get('roe', 0.15)
-                    roe_color = '#10b981' if roe > 0.15 else ('#fbbf24' if roe > 0.10 else '#ef4444')
+                    roe_color = _metric_color(roe, green_above=0.15, amber_above=0.10)
                     roe_status = 'Excellent' if roe > 0.15 else ('Good' if roe > 0.10 else 'Fair')
                     st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💎</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">RETURN ON EQUITY (ROE)</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {roe_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{roe*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{roe_status} • AI Generated</p></div></div>', unsafe_allow_html=True)
                 else:
@@ -1417,7 +1457,7 @@ def render_valuation_house():
             with col2:
                 if use_smart_assumptions:
                     cost_of_equity_ri = smart_params.get('cost_of_equity', 0.10)
-                    coe_ri_color = '#10b981' if cost_of_equity_ri < 0.08 else ('#fbbf24' if cost_of_equity_ri < 0.12 else '#ef4444')
+                    coe_ri_color = _metric_color(cost_of_equity_ri, green_below=0.08, amber_below=0.12)
                     coe_ri_status = 'Low Cost' if cost_of_equity_ri < 0.08 else ('Average Cost' if cost_of_equity_ri < 0.12 else 'High Cost')
                     st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💹</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">COST OF EQUITY</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {coe_ri_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{cost_of_equity_ri*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">{coe_ri_status} • AI Generated</p></div></div>', unsafe_allow_html=True)
                 else:
@@ -1453,7 +1493,7 @@ def render_valuation_house():
 
                 if use_smart_assumptions:
                     growth_rate_ri = smart_params.get('terminal_growth', 0.025)
-                    tgr_ri_color = '#10b981' if growth_rate_ri <= 0.03 else ('#fbbf24' if growth_rate_ri <= 0.05 else '#ef4444')
+                    tgr_ri_color = _metric_color(growth_rate_ri, green_below=0.03, amber_below=0.05)
                     tgr_ri_status = 'Conservative' if growth_rate_ri <= 0.03 else ('Moderate' if growth_rate_ri <= 0.05 else 'Aggressive')
                     st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #0891b2); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🎯</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">TERMINAL GROWTH RATE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {tgr_ri_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{growth_rate_ri*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #67e8f9; margin: 0; font-weight: 600;">{tgr_ri_status} • AI Generated</p></div></div>', unsafe_allow_html=True)
                 else:
@@ -1997,7 +2037,7 @@ def render_valuation_house():
 
             # Intrinsic Value
             with col1:
-                intrinsic_color = '#10b981' if upside_downside > 20 else ('#fbbf24' if upside_downside > -20 else '#ef4444')
+                intrinsic_color = _metric_color(upside_downside, green_above=20, amber_above=-20)
                 intrinsic_status = 'Undervalued' if upside_downside > 20 else ('Fair Value' if upside_downside > -20 else 'Overvalued')
                 st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💎</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">INTRINSIC VALUE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {intrinsic_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{format_currency(intrinsic_value)}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{intrinsic_status}</p></div></div>', unsafe_allow_html=True)
 
@@ -2008,7 +2048,7 @@ def render_valuation_house():
             # Upside/Downside
             with col3:
                 upside_display = format_percentage(upside_downside) if abs(upside_downside) < 1000 else "±∞"
-                upside_color = '#10b981' if upside_downside > 20 else ('#fbbf24' if upside_downside > -20 else '#ef4444')
+                upside_color = _metric_color(upside_downside, green_above=20, amber_above=-20)
                 upside_label = 'Strong Upside' if upside_downside > 20 else ('Fair Value' if upside_downside > -20 else 'Downside Risk')
                 st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #0891b2); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📊</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">UPSIDE/DOWNSIDE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {upside_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{upside_display}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #67e8f9; margin: 0; font-weight: 600;">{upside_label}</p></div></div>', unsafe_allow_html=True)
 
@@ -2016,7 +2056,7 @@ def render_valuation_house():
             # v9.7 FIX: Safe access to session_state with defaults
             discount_rate = st.session_state.get('discount_rate', results.get('discount_rate', 0.10))
             with col4:
-                disc_color = '#10b981' if discount_rate < 0.08 else ('#fbbf24' if discount_rate < 0.12 else '#ef4444')
+                disc_color = _metric_color(discount_rate, green_below=0.08, amber_below=0.12)
                 disc_status = 'Low Risk' if discount_rate < 0.08 else ('Moderate Risk' if discount_rate < 0.12 else 'High Risk')
                 st.markdown(f'<div style="background: linear-gradient(135deg, rgba(245,158,11,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(245,158,11,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #f59e0b, #d97706); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💹</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">DISCOUNT RATE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {disc_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{ATLASFormatter.format_yield(discount_rate * 100, decimals=1)}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(245,158,11,0.12); border-radius: 10px; border: 1px solid rgba(245,158,11,0.25);"><p style="font-size: 0.7rem; color: #fbbf24; margin: 0; font-weight: 600;">{disc_status}</p></div></div>', unsafe_allow_html=True)
 
@@ -2140,7 +2180,7 @@ def render_valuation_house():
                             else:
                                 st.error(f"❌ Monte Carlo simulation failed: {mc_results.get('error', 'Unknown error')}")
 
-                        except Exception as e:
+                        except (ValueError, KeyError, TypeError, ZeroDivisionError, OverflowError, AttributeError) as e:
                             st.error(f"❌ Monte Carlo simulation error: {str(e)}")
                             import traceback
                             with st.expander("Error Details"):
@@ -2192,7 +2232,7 @@ def render_valuation_house():
                         # Display warnings
                         display_trap_warnings(trap_summary, company['ticker'])
 
-                    except Exception as e:
+                    except (ValueError, KeyError, TypeError, AttributeError) as e:
                         st.error(f"⚠️ Trap detection error: {str(e)}")
                         st.info("Trap detection requires valid DCF inputs. Please ensure all assumptions are properly configured.")
 
@@ -2262,7 +2302,7 @@ def render_valuation_house():
                             - SBC > 7%: Highly material, ignoring it causes major overvaluation
                             """)
 
-                except Exception as e:
+                except (ValueError, KeyError, TypeError, AttributeError) as e:
                     st.warning(f"⚠️ Could not display SBC comparison: {str(e)}")
 
             # Detailed Projections Table
