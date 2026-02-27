@@ -64,12 +64,6 @@ from .calculations import (
 )
 
 
-def _lazy_atlas():
-    """Lazy import of atlas_app to avoid circular imports."""
-    import atlas_app
-    return atlas_app
-
-
 class RiskProfile:
     """
     Translate user risk tolerance into optimization parameters

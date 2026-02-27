@@ -65,12 +65,6 @@ from .constants import (
 from .fetchers import fetch_historical_data
 
 
-def _lazy_atlas():
-    """Lazy import of atlas_app to avoid circular imports."""
-    import atlas_app
-    return atlas_app
-
-
 class ATLASFormatter:
     """
     Centralized professional formatting with strict standards:

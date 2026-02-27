@@ -74,10 +74,6 @@ from .data_loading import (
 from data.sectors import get_benchmark_sector_returns
 
 
-def _lazy_atlas():
-    """Lazy import of atlas_app to avoid circular imports."""
-    import atlas_app
-    return atlas_app
 
 
 def calculate_signal_health(metrics):

@@ -676,22 +676,8 @@ def main():
 
 
 # ============================================================================
-# RUN THE APP - Guard against circular imports
+# RUN THE APP
 # ============================================================================
-# When page modules import from atlas_app, we don't want to re-run main()
-# Use environment variable to track if main() is already running
-# (env vars persist across module imports within same process)
-import os as _os_guard
-_ATLAS_MAIN_GUARD = '_ATLAS_MAIN_RUNNING'
-
-if _os_guard.environ.get(_ATLAS_MAIN_GUARD) != '1':
-    _os_guard.environ[_ATLAS_MAIN_GUARD] = '1'
-    try:
-        print("[BOOT] Calling main()...", flush=True)
-        main()
-        print("[BOOT] main() completed", flush=True)
-    finally:
-        # Clear the guard after main() completes (allows Streamlit reruns)
-        _os_guard.environ.pop(_ATLAS_MAIN_GUARD, None)
-else:
-    print("[BOOT] Skipping main() - circular import detected", flush=True)
+print("[BOOT] Calling main()...", flush=True)
+main()
+print("[BOOT] main() completed", flush=True)
