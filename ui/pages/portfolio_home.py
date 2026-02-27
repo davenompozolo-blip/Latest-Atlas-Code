@@ -91,9 +91,56 @@ def _render_empty_state():
     ''', unsafe_allow_html=True)
 
 
+def _compute_portfolio_summary(enhanced_df):
+    """Aggregate portfolio-level metrics from enhanced holdings DataFrame."""
+    total_invested = enhanced_df['Total Cost'].sum()
+    current_value = enhanced_df['Total Value'].sum()
+    total_pnl = enhanced_df['Total Gain/Loss $'].sum()
+    total_pnl_pct = (total_pnl / total_invested * 100) if total_invested > 0 else 0
+    daily_pl = enhanced_df['Daily P&L $'].sum()
+    return {
+        'total_invested': total_invested,
+        'current_value': current_value,
+        'total_pnl': total_pnl,
+        'total_pnl_pct': total_pnl_pct,
+        'daily_pl': daily_pl,
+        'equity': current_value,
+        'gross_exposure': current_value,
+        'actual_leverage': 1.0,
+    }
+
+
+def _classify_badges(total_gl_pct, actual_leverage, target_leverage=1.7):
+    """Classify leverage and performance status for header badges."""
+    lev_diff = abs(actual_leverage - target_leverage)
+    if lev_diff < 0.1:
+        lev_text, lev_badge, lev_icon = 'On Target', 'badge-green', '&#10003;'
+    elif lev_diff < 0.3:
+        lev_text, lev_badge, lev_icon = 'Near Target', 'badge-warning', '!'
+    else:
+        lev_text, lev_badge, lev_icon = 'Off Target', 'badge-warning', '!'
+
+    if total_gl_pct > 5:
+        perf_text, perf_badge = f'Strong (+{total_gl_pct:.1f}%)', 'badge-green'
+        perf_icon = '&#8593;'
+    elif total_gl_pct > 0:
+        perf_text, perf_badge = f'Positive (+{total_gl_pct:.1f}%)', 'badge-green'
+        perf_icon = '&#8599;'
+    elif total_gl_pct > -5:
+        perf_text, perf_badge = f'Slight Loss ({total_gl_pct:.1f}%)', 'badge-warning'
+        perf_icon = '&#8600;'
+    else:
+        perf_text, perf_badge = f'Underperforming ({total_gl_pct:.1f}%)', 'badge-red'
+        perf_icon = '&#8595;'
+
+    return {
+        'lev_text': lev_text, 'lev_badge': lev_badge, 'lev_icon': lev_icon,
+        'perf_text': perf_text, 'perf_badge': perf_badge, 'perf_icon': perf_icon,
+    }
+
+
 def render_portfolio_home():
     """Render the Portfolio Home page."""
-    import streamlit as st
     start_date = st.session_state.get('start_date')
     end_date = st.session_state.get('end_date')
     import time as _t
@@ -118,7 +165,6 @@ def render_portfolio_home():
         is_option_ticker,
         ATLASFormatter,
     )
-    from ui.components import ATLAS_TEMPLATE
     print(f"[PORTFOLIO_HOME] Imports done ({_t.time() - _ph_start:.2f}s)", flush=True)
 
     # ── Load Data ──
@@ -144,45 +190,23 @@ def render_portfolio_home():
         enhanced_df = create_enhanced_holdings_table(df)
     print(f"[PORTFOLIO_HOME] Enhanced table complete ({_t.time() - _ph_start:.2f}s)", flush=True)
 
-    total_invested = enhanced_df['Total Cost'].sum()
-    current_value = enhanced_df['Total Value'].sum()
-    total_pnl = enhanced_df['Total Gain/Loss $'].sum()
-    total_pnl_pct = (total_pnl / total_invested * 100) if total_invested > 0 else 0
-    daily_pl = enhanced_df['Daily P&L $'].sum()
-
-    equity = current_value
-    gross_exposure = current_value
-    actual_leverage = 1.0
+    summary = _compute_portfolio_summary(enhanced_df)
+    total_invested = summary['total_invested']
+    current_value = summary['current_value']
+    total_pnl = summary['total_pnl']
+    total_pnl_pct = summary['total_pnl_pct']
+    daily_pl = summary['daily_pl']
+    equity = summary['equity']
+    gross_exposure = summary['gross_exposure']
+    actual_leverage = summary['actual_leverage']
     total_cost = total_invested
     total_gl = total_pnl
     total_gl_pct = total_pnl_pct
 
     # ── Page Header + Badges ──
-    # Status logic
-    target_lev = 1.7
-    lev_diff = abs(actual_leverage - target_lev)
-    if lev_diff < 0.1:
-        lev_text, lev_badge = 'On Target', 'badge-green'
-        lev_icon = '&#10003;'
-    elif lev_diff < 0.3:
-        lev_text, lev_badge = 'Near Target', 'badge-warning'
-        lev_icon = '!'
-    else:
-        lev_text, lev_badge = 'Off Target', 'badge-warning'
-        lev_icon = '!'
-
-    if total_gl_pct > 5:
-        perf_text, perf_badge = f'Strong (+{total_gl_pct:.1f}%)', 'badge-green'
-        perf_icon = '&#8593;'
-    elif total_gl_pct > 0:
-        perf_text, perf_badge = f'Positive (+{total_gl_pct:.1f}%)', 'badge-green'
-        perf_icon = '&#8599;'
-    elif total_gl_pct > -5:
-        perf_text, perf_badge = f'Slight Loss ({total_gl_pct:.1f}%)', 'badge-warning'
-        perf_icon = '&#8600;'
-    else:
-        perf_text, perf_badge = f'Underperforming ({total_gl_pct:.1f}%)', 'badge-red'
-        perf_icon = '&#8595;'
+    badges = _classify_badges(total_gl_pct, actual_leverage)
+    lev_text, lev_badge, lev_icon = badges['lev_text'], badges['lev_badge'], badges['lev_icon']
+    perf_text, perf_badge, perf_icon = badges['perf_text'], badges['perf_badge'], badges['perf_icon']
 
     st.markdown(f'''
     <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 32px;">
@@ -412,7 +436,7 @@ def render_portfolio_home():
     st.markdown(_section_label("Sector Attribution"), unsafe_allow_html=True)
     pnl_sector = create_pnl_attribution_sector(enhanced_df)
     if pnl_sector:
-        pnl_sector.update_layout(template=ATLAS_TEMPLATE)
+        apply_chart_theme(pnl_sector)
         st.plotly_chart(pnl_sector, use_container_width=True, key="sector_pnl")
     else:
         st.info("Sector P&L will display when holdings have sector data")
@@ -423,7 +447,7 @@ def render_portfolio_home():
     st.markdown(_section_label("Top Contributors"), unsafe_allow_html=True)
     pnl_position = create_pnl_attribution_position(enhanced_df, top_n=10)
     if pnl_position:
-        pnl_position.update_layout(template=ATLAS_TEMPLATE)
+        apply_chart_theme(pnl_position)
         st.plotly_chart(pnl_position, use_container_width=True)
 
     # ── Monthly Performance Heatmap ──
@@ -432,7 +456,7 @@ def render_portfolio_home():
         st.markdown(_section_label("Monthly Performance"), unsafe_allow_html=True)
         perf_heatmap = create_performance_heatmap(enhanced_df)
         if perf_heatmap:
-            perf_heatmap.update_layout(template=ATLAS_TEMPLATE)
+            apply_chart_theme(perf_heatmap)
             st.plotly_chart(perf_heatmap, use_container_width=True)
     else:
         st.info("Monthly performance heatmap will be available after 2+ months of portfolio history")
@@ -520,17 +544,17 @@ def render_portfolio_home():
                 try:
                     import plotly.express as px
                     st.success("plotly.express")
-                except Exception:
+                except ImportError:
                     st.error("plotly.express")
                 try:
                     import plotly.graph_objects as go
                     st.success("plotly.graph_objects")
-                except Exception:
+                except ImportError:
                     st.error("plotly.graph_objects")
                 try:
                     from scipy import stats
                     st.success("scipy.stats")
-                except Exception:
+                except ImportError:
                     st.error("scipy.stats")
 
             with col3:
@@ -644,5 +668,5 @@ def render_earnings_calendar(enhanced_df):
             earn_cols = [{'key': c, 'label': c, 'type': 'text'} for c in portfolio_earnings.columns]
             st.markdown(render_generic_table(portfolio_earnings.head(20), columns=earn_cols), unsafe_allow_html=True)
 
-    except Exception as e:
+    except (KeyError, ValueError, TypeError, AttributeError, ConnectionError) as e:
         st.warning(f"Could not load earnings calendar: {e}")
