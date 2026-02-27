@@ -16,8 +16,8 @@ def render_r_analytics():
         # Data Functions
         load_portfolio_data,
         ATLASFormatter,
+        apply_chart_theme,
     )
-    from ui.components import ATLAS_TEMPLATE
 
     # Check for R availability
     try:
@@ -25,7 +25,7 @@ def render_r_analytics():
         from rpy2.robjects.packages import importr
         importr('rugarch')
         R_AVAILABLE = True
-    except:
+    except (ImportError, OSError):
         R_AVAILABLE = False
 
     # Stub for R interface
@@ -52,11 +52,8 @@ def render_r_analytics():
 
         return RInterface()
 
-    # Import yfinance for data fetching
-    try:
-        import yfinance as yf
-    except ImportError:
-        yf = None
+    # Data layer for market data fetching
+    from atlas_terminal.data.fetchers.market_data import MarketDataFetcher
 
     st.markdown("## 📊 R ANALYTICS - ADVANCED QUANTITATIVE MODELS")
 
@@ -139,7 +136,7 @@ def render_r_analytics():
                 from rpy2.robjects.packages import importr
                 importr('rugarch')
                 st.success("✅ rugarch available")
-            except:
+            except (ImportError, OSError):
                 st.error("❌ rugarch missing")
                 st.caption("Install in R")
 
@@ -148,7 +145,7 @@ def render_r_analytics():
                 from rpy2.robjects.packages import importr
                 importr('copula')
                 st.success("✅ copula available")
-            except:
+            except (ImportError, OSError):
                 st.error("❌ copula missing")
                 st.caption("Install in R")
 
@@ -158,7 +155,7 @@ def render_r_analytics():
     try:
         r = get_r()
         st.success("✅ R Analytics Engine Ready")
-    except Exception as e:
+    except (ImportError, OSError, RuntimeError) as e:
         st.error(f"Error initializing R: {str(e)}")
         return
 
@@ -189,8 +186,8 @@ def render_r_analytics():
                 with st.spinner(f"Fitting {model_type} model to {ticker}..."):
                     try:
                         # Get historical data
-                        stock_data = yf.download(ticker, period="1y", progress=False)
-                        returns = stock_data['Close'].pct_change().dropna()
+                        stock_data = MarketDataFetcher.get_prices([ticker], period="1y")
+                        returns = stock_data.iloc[:, 0].pct_change().dropna()
 
                         # Fit GARCH model using R
                         result = r.garch_volatility(returns, model=model_type)
@@ -215,15 +212,13 @@ def render_r_analytics():
                             xaxis_title="Time",
                             yaxis_title="Volatility (%)",
                             height=400,
-                            template='plotly_dark',
-                            paper_bgcolor='rgba(0,0,0,0)',
-                            plot_bgcolor='rgba(0,0,0,0)'
                         )
+                        apply_chart_theme(fig)
                         st.plotly_chart(fig, use_container_width=True)
 
                         st.success(f"✅ {model_type} model fitted successfully to {ticker}")
 
-                    except Exception as e:
+                    except (ValueError, KeyError, TypeError, AttributeError, RuntimeError) as e:
                         st.error(f"Error: {str(e)}")
                         st.info("Make sure rugarch package is installed in R: install.packages('rugarch')")
 
@@ -253,7 +248,7 @@ def render_r_analytics():
                     with st.spinner(f"Fitting {copula_type} copula..."):
                         try:
                             # Get returns data
-                            returns_data = yf.download(selected_tickers, period="1y", progress=False)['Close'].pct_change().dropna()
+                            returns_data = MarketDataFetcher.get_prices(selected_tickers, period="1y").pct_change().dropna()
 
                             # Fit copula
                             result = r.copula_dependency(returns_data, copula_type=copula_type)
@@ -281,13 +276,11 @@ def render_r_analytics():
                             fig.update_layout(
                                 title="Asset Correlation Matrix",
                                 height=500,
-                                template='plotly_dark',
-                                paper_bgcolor='rgba(0,0,0,0)',
-                                plot_bgcolor='rgba(0,0,0,0)'
                             )
+                            apply_chart_theme(fig)
                             st.plotly_chart(fig, use_container_width=True)
 
-                        except Exception as e:
+                        except (ValueError, KeyError, TypeError, AttributeError, RuntimeError) as e:
                             st.error(f"Error: {str(e)}")
                             st.info("Make sure copula package is installed in R: install.packages('copula')")
             else:
@@ -323,7 +316,7 @@ def render_r_analytics():
                         # Get returns for analysis
                         tickers = df['Ticker'].tolist() if 'Ticker' in df.columns else []
                         if len(tickers) > 0:
-                            returns_data = yf.download(tickers, period="1y", progress=False)['Close'].pct_change().dropna()
+                            returns_data = MarketDataFetcher.get_prices(tickers, period="1y").pct_change().dropna()
 
                             # Execute custom R code
                             result = r.run_custom_analysis(r_code, data=returns_data)
@@ -335,7 +328,7 @@ def render_r_analytics():
                         else:
                             st.warning("No tickers found in portfolio")
 
-                    except Exception as e:
+                    except (ValueError, KeyError, TypeError, AttributeError, RuntimeError) as e:
                         st.error(f"Error executing R code: {str(e)}")
                         st.code(str(e))
 

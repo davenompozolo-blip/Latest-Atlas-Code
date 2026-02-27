@@ -63,7 +63,7 @@ def render_database():
             try:
                 trades_result = db.read("SELECT COUNT(*) as count FROM trades")
                 trades_count = trades_result.iloc[0]['count'] if len(trades_result) > 0 else 0
-            except:
+            except (ValueError, KeyError, AttributeError, RuntimeError):
                 trades_count = 0
 
             # Calculate additional metrics
@@ -447,7 +447,7 @@ def render_database():
                     count_result = db.read(f"SELECT COUNT(*) as count FROM {table['name']}")
                     row_count = count_result.iloc[0]['count']
                     st.info(f"📊 Current rows: {row_count}")
-                except:
+                except (ValueError, KeyError, AttributeError, RuntimeError):
                     st.info("📊 Table not yet created")
 
         st.markdown("---")

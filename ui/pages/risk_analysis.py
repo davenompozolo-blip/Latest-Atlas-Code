@@ -6,12 +6,18 @@ import pandas as pd
 import streamlit as st
 
 from app.config import COLORS
-from utils.formatting import format_currency, format_percentage, format_large_number, add_arrow_indicator
+from ui.theme import ATLAS_COLORS as THEME
+from utils.formatting import format_percentage
+
+# Semantic colors from theme (metric thresholds)
+_GREEN = THEME['success']       # #10b981
+_AMBER = THEME['warning_light'] # #fbbf24
+_RED = THEME['danger']          # #ef4444
+_NEUTRAL = THEME['primary_light']  # #818cf8 — neutral/intermediate tier
 
 
 def render_risk_analysis():
     """Render the Risk Analysis page."""
-    import streamlit as st
     start_date = st.session_state.get('start_date')
     end_date = st.session_state.get('end_date')
     selected_benchmark = st.session_state.get('selected_benchmark', 'SPY')
@@ -31,7 +37,6 @@ def render_risk_analysis():
         create_rolling_var_cvar_chart, create_monte_carlo_chart, create_rolling_metrics_chart,
         create_underwater_plot, create_risk_contribution_sunburst, create_correlation_network
     )
-    from ui.components import ATLAS_TEMPLATE
     from datetime import datetime, timedelta
     import plotly.graph_objects as go
     import numpy as np
@@ -146,42 +151,42 @@ def render_risk_analysis():
 
     # Card 1: Sharpe Ratio
     with col1:
-        sharpe_color = '#10b981' if sharpe and sharpe > 1.0 else ('#a5b4fc' if sharpe and sharpe > 0 else '#ef4444')
+        sharpe_color = _GREEN if sharpe and sharpe > 1.0 else (_NEUTRAL if sharpe and sharpe > 0 else _RED)
         sharpe_val = ATLASFormatter.format_ratio(sharpe) if sharpe else "N/A"
         sharpe_status = 'Excellent' if sharpe and sharpe > 1.5 else ('Good' if sharpe and sharpe > 1.0 else 'Fair')
         st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🔥</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">SHARPE RATIO</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {sharpe_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{sharpe_val}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">{sharpe_status}</p></div></div>', unsafe_allow_html=True)
 
     # Card 2: Sortino Ratio
     with col2:
-        sortino_color = '#10b981' if sortino and sortino > 1.0 else ('#a5b4fc' if sortino and sortino > 0 else '#ef4444')
+        sortino_color = _GREEN if sortino and sortino > 1.0 else (_NEUTRAL if sortino and sortino > 0 else _RED)
         sortino_val = ATLASFormatter.format_ratio(sortino) if sortino else "N/A"
         sortino_status = 'Strong' if sortino and sortino > 1.5 else ('Good' if sortino and sortino > 1.0 else 'Fair')
         st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💎</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">SORTINO RATIO</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {sortino_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{sortino_val}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{sortino_status}</p></div></div>', unsafe_allow_html=True)
 
     # Card 3: Calmar Ratio
     with col3:
-        calmar_color = '#10b981' if calmar and calmar > 1.0 else ('#a5b4fc' if calmar and calmar > 0 else '#ef4444')
+        calmar_color = _GREEN if calmar and calmar > 1.0 else (_NEUTRAL if calmar and calmar > 0 else _RED)
         calmar_val = ATLASFormatter.format_ratio(calmar) if calmar else "N/A"
         calmar_status = 'Superior' if calmar and calmar > 2.0 else ('Good' if calmar and calmar > 1.0 else 'Fair')
         st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #3b82f6); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">⚖️</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">CALMAR RATIO</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {calmar_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{calmar_val}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #a5f3fc; margin: 0; font-weight: 600;">{calmar_status}</p></div></div>', unsafe_allow_html=True)
 
     # Card 4: VaR 95%
     with col4:
-        var_color = '#ef4444' if var_95 and abs(var_95) > 15 else ('#fbbf24' if var_95 and abs(var_95) > 10 else '#10b981')
+        var_color = _RED if var_95 and abs(var_95) > 15 else (_AMBER if var_95 and abs(var_95) > 10 else _GREEN)
         var_val = format_percentage(var_95) if var_95 else "N/A"
         var_status = '⚠️ High Risk' if var_95 and abs(var_95) > 15 else ('⚡ Moderate' if var_95 and abs(var_95) > 10 else '✓ Low')
         st.markdown(f'<div style="background: linear-gradient(135deg, rgba(239,68,68,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(239,68,68,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #ef4444, #dc2626); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📉</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">VaR 95%</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {var_color}; margin: 0.5rem 0 0.75rem 0; text-shadow: 0 0 24px rgba(239,68,68,0.5); line-height: 1;">{var_val}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(239,68,68,0.12); border-radius: 10px; border: 1px solid rgba(239,68,68,0.25);"><p style="font-size: 0.7rem; color: #fca5a5; margin: 0; font-weight: 600;">{var_status}</p></div></div>', unsafe_allow_html=True)
 
     # Card 5: CVaR 95%
     with col5:
-        cvar_color = '#ef4444' if cvar_95 and abs(cvar_95) > 20 else ('#fbbf24' if cvar_95 and abs(cvar_95) > 15 else '#10b981')
+        cvar_color = _RED if cvar_95 and abs(cvar_95) > 20 else (_AMBER if cvar_95 and abs(cvar_95) > 15 else _GREEN)
         cvar_val = format_percentage(cvar_95) if cvar_95 else "N/A"
         cvar_status = '🔴 Critical' if cvar_95 and abs(cvar_95) > 20 else ('⚠️ Elevated' if cvar_95 and abs(cvar_95) > 15 else '✓ Safe')
         st.markdown(f'<div style="background: linear-gradient(135deg, rgba(239,68,68,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(239,68,68,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #ef4444, #dc2626); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🔴</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">CVaR 95%</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {cvar_color}; margin: 0.5rem 0 0.75rem 0; text-shadow: 0 0 24px rgba(239,68,68,0.5); line-height: 1;">{cvar_val}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(239,68,68,0.12); border-radius: 10px; border: 1px solid rgba(239,68,68,0.25);"><p style="font-size: 0.7rem; color: #fca5a5; margin: 0; font-weight: 600;">{cvar_status}</p></div></div>', unsafe_allow_html=True)
 
     # Card 6: Max Drawdown
     with col6:
-        maxdd_color = '#ef4444' if max_dd and abs(max_dd) > 30 else ('#fbbf24' if max_dd and abs(max_dd) > 20 else '#10b981')
+        maxdd_color = _RED if max_dd and abs(max_dd) > 30 else (_AMBER if max_dd and abs(max_dd) > 20 else _GREEN)
         maxdd_val = format_percentage(max_dd) if max_dd else "N/A"
         maxdd_status = '⚠️ Severe' if max_dd and abs(max_dd) > 30 else ('⚡ Moderate' if max_dd and abs(max_dd) > 20 else '✓ Low')
         st.markdown(f'<div style="background: linear-gradient(135deg, rgba(245,158,11,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(245,158,11,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #f59e0b, #d97706); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">⚠️</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">MAX DRAWDOWN</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {maxdd_color}; margin: 0.5rem 0 0.75rem 0; text-shadow: 0 0 24px rgba(245,158,11,0.5); line-height: 1;">{maxdd_val}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(245,158,11,0.12); border-radius: 10px; border: 1px solid rgba(245,158,11,0.25);"><p style="font-size: 0.7rem; color: #fcd34d; margin: 0; font-weight: 600;">{maxdd_status}</p></div></div>', unsafe_allow_html=True)
@@ -783,7 +788,7 @@ def render_risk_analysis():
                         if hist is not None and len(hist) > 1:
                             wisdom_returns[t] = hist['Close'].pct_change().dropna()
                     wisdom_returns = wisdom_returns.dropna()
-                except:
+                except (ValueError, KeyError, TypeError, ConnectionError) as _:
                     wisdom_returns = None
 
                 wisdom_result = check_expert_wisdom(
@@ -919,7 +924,7 @@ def render_risk_analysis():
                             risk_pct = contributor['risk_contribution'] * 100 if contributor['risk_contribution'] > 0 else 0
                             st.markdown(f"  • **{contributor['ticker']}**: {risk_pct:.1f}% risk contribution (weight: {contributor['weight']*100:.1f}%)")
 
-            except Exception as e:
+            except (ValueError, KeyError, TypeError, AttributeError, NameError) as e:
                 st.info("💡 Portfolio quality metrics will be displayed after optimization completes")
 
             st.markdown("---")
@@ -998,9 +1003,6 @@ def render_risk_analysis():
                 yaxis_title="",
                 barmode='group',
                 height=max(400, len(df_sorted) * 40),
-                template="plotly_dark",
-                paper_bgcolor=COLORS['background'],
-                plot_bgcolor=COLORS['card_background'],
                 showlegend=True,
                 legend=dict(
                     orientation="h",
@@ -1010,6 +1012,7 @@ def render_risk_analysis():
                     x=1
                 )
             )
+            apply_chart_theme(fig)
 
             st.plotly_chart(fig, use_container_width=True)
 

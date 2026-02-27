@@ -6,7 +6,11 @@ import pandas as pd
 import streamlit as st
 
 from app.config import COLORS
-from utils.formatting import format_currency, format_percentage, format_large_number, add_arrow_indicator
+from ui.theme import ATLAS_COLORS as THEME
+
+_GREEN = THEME['success']
+_AMBER = THEME['warning_light']
+_RED = THEME['danger']
 
 
 def render_monte_carlo():
@@ -15,8 +19,8 @@ def render_monte_carlo():
     from core import ATLASFormatter, load_portfolio_data, apply_chart_theme
     from ui.components import ATLAS_TEMPLATE
     from analytics.stochastic import StochasticEngine
+    from atlas_terminal.data.fetchers.market_data import MarketDataFetcher
     import plotly.graph_objects as go
-    import yfinance as yf
     import numpy as np
 
     st.markdown("**Advanced Stochastic Modeling with Geometric Brownian Motion**")
@@ -70,11 +74,8 @@ def render_monte_carlo():
                     tickers = portfolio_data[ticker_column].unique().tolist()
                     print(f"🎯 Found {len(tickers)} unique tickers: {tickers[:5]}...")
 
-                    # Download historical data
-                    hist_data = yf.download(tickers, period='1y', progress=False)['Close']
-
-                    if isinstance(hist_data, pd.Series):
-                        hist_data = hist_data.to_frame()
+                    # Download historical data via data layer
+                    hist_data = MarketDataFetcher.get_prices(tickers, period='1y')
 
                     # Calculate returns
                     returns = hist_data.pct_change().dropna()
@@ -158,28 +159,28 @@ def render_monte_carlo():
                     # Expected Return
                     with col1:
                         exp_ret_val = metrics['Expected Return']
-                        exp_ret_color = '#10b981' if exp_ret_val > 0.05 else ('#fbbf24' if exp_ret_val > 0 else '#ef4444')
+                        exp_ret_color = _GREEN if exp_ret_val > 0.05 else (_AMBER if exp_ret_val > 0 else _RED)
                         exp_ret_status = 'Strong Growth' if exp_ret_val > 0.05 else ('Positive' if exp_ret_val > 0 else 'Negative')
                         st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📈</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">EXPECTED RETURN</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {exp_ret_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{exp_ret_val:+.2%}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{exp_ret_status}</p></div></div>', unsafe_allow_html=True)
 
                     # Volatility
                     with col2:
                         vol_val = metrics['Volatility']
-                        vol_color = '#10b981' if vol_val < 0.15 else ('#fbbf24' if vol_val < 0.25 else '#ef4444')
+                        vol_color = _GREEN if vol_val < 0.15 else (_AMBER if vol_val < 0.25 else _RED)
                         vol_status = 'Low Risk' if vol_val < 0.15 else ('Moderate Risk' if vol_val < 0.25 else 'High Risk')
                         st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📊</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">VOLATILITY</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {vol_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{vol_val:.2%}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">{vol_status}</p></div></div>', unsafe_allow_html=True)
 
                     # VaR 95%
                     with col3:
                         var_val = metrics['VaR 95%']
-                        var_color = '#10b981' if var_val > -0.10 else ('#fbbf24' if var_val > -0.20 else '#ef4444')
+                        var_color = _GREEN if var_val > -0.10 else (_AMBER if var_val > -0.20 else _RED)
                         var_status = 'Low Risk' if var_val > -0.10 else ('Moderate Risk' if var_val > -0.20 else 'High Risk')
                         st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #0891b2); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">⚠️</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">VaR {confidence_level}%</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {var_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{var_val:.2%}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #67e8f9; margin: 0; font-weight: 600;">{var_status}</p></div></div>', unsafe_allow_html=True)
 
                     # CVaR 95%
                     with col4:
                         cvar_val = metrics['CVaR 95%']
-                        cvar_color = '#10b981' if cvar_val > -0.15 else ('#fbbf24' if cvar_val > -0.25 else '#ef4444')
+                        cvar_color = _GREEN if cvar_val > -0.15 else (_AMBER if cvar_val > -0.25 else _RED)
                         cvar_status = 'Low Tail Risk' if cvar_val > -0.15 else ('Moderate Tail Risk' if cvar_val > -0.25 else 'High Tail Risk')
                         st.markdown(f'<div style="background: linear-gradient(135deg, rgba(239,68,68,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(239,68,68,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #ef4444, #dc2626); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🔻</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">CVaR {confidence_level}%</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {cvar_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{cvar_val:.2%}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(239,68,68,0.12); border-radius: 10px; border: 1px solid rgba(239,68,68,0.25);"><p style="font-size: 0.7rem; color: #fca5a5; margin: 0; font-weight: 600;">{cvar_status}</p></div></div>', unsafe_allow_html=True)
 
@@ -243,7 +244,7 @@ def render_monte_carlo():
 
                     st.success("✅ Monte Carlo simulation completed successfully!")
 
-                except Exception as e:
+                except (ValueError, KeyError, TypeError, ZeroDivisionError, OverflowError) as e:
                     st.error(f"❌ Simulation error: {str(e)}")
                     st.info("💡 Ensure your portfolio has valid data and multiple positions")
 

@@ -536,7 +536,7 @@ def render_portfolio_home():
                         st.success(f"Database: {pos_count} positions")
                     else:
                         st.warning("Database: No positions")
-                except Exception as e:
+                except (ValueError, KeyError, TypeError, AttributeError, ConnectionError) as e:
                     st.error(f"Database: {str(e)}")
 
             with col2:
@@ -571,7 +571,7 @@ def render_portfolio_home():
                             st.warning("Portfolio: Not a DataFrame")
                     else:
                         st.warning("Portfolio: No data")
-                except Exception as e:
+                except (ValueError, KeyError, TypeError, AttributeError) as e:
                     st.error(f"Portfolio: {str(e)}")
 
             st.markdown("---")

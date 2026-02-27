@@ -7,9 +7,51 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from app.config import COLORS
+from ui.theme import ATLAS_COLORS as THEME
 from utils.formatting import format_currency, format_percentage, format_large_number, add_arrow_indicator
 
 INSTITUTIONAL_DCF_AVAILABLE = False
+
+# Semantic colors from theme (used throughout for metric thresholds)
+_GREEN = THEME['success']       # #10b981
+_AMBER = THEME['warning_light'] # #fbbf24
+_ORANGE = THEME['warning']      # #f59e0b  (regime / impact warnings)
+_RED = THEME['danger']          # #ef4444
+_MUTED = THEME['text_muted']    # rgba(255,255,255,0.28)
+_VIOLET = THEME['secondary']    # #8b5cf6
+_CYAN = _CYAN               # Teal-cyan (info / neutral accent)
+_SLATE = '#94a3b8'              # Neutral slate (for N/A states)
+
+
+def _delta_color(delta, positive_is_good=True):
+    """Return color based on the sign of a delta value."""
+    if delta > 0:
+        return _GREEN if positive_is_good else _RED
+    if delta < 0:
+        return _RED if positive_is_good else _GREEN
+    return _SLATE
+
+
+def _metric_color(value, green_below=None, green_above=None, amber_below=None, amber_above=None):
+    """Return green/amber/red color based on threshold direction.
+
+    Usage patterns:
+        _metric_color(wacc, green_below=0.08, amber_below=0.12)  → green if <8%, amber if <12%, else red
+        _metric_color(roe, green_above=0.15, amber_above=0.10)   → green if >15%, amber if >10%, else red
+    """
+    if green_below is not None:
+        if value < green_below:
+            return _GREEN
+        if amber_below is not None and value < amber_below:
+            return _AMBER
+        return _RED
+    if green_above is not None:
+        if value > green_above:
+            return _GREEN
+        if amber_above is not None and value > amber_above:
+            return _AMBER
+        return _RED
+    return _MUTED
 
 
 def render_valuation_house():
@@ -37,6 +79,19 @@ def render_valuation_house():
         apply_relative_valuation,
     )
     from ui.components import ATLAS_TEMPLATE
+    from ui.atlas_css import metric_card
+    from analytics.valuation_helpers import (
+        convert_dashboard_projections,
+        calc_upside_downside,
+        calc_net_debt,
+        resolve_dcf_defaults,
+        assemble_trap_inputs,
+        assemble_monte_carlo_company_data,
+        assemble_validation_assumptions,
+        estimate_current_dividend,
+        assemble_company_financials_for_relative,
+        derive_wacc,
+    )
 
     # Valuation scenario presets (extracted from atlas_app.py)
     VALUATION_SCENARIOS = {
@@ -193,7 +248,7 @@ def render_valuation_house():
                             st.metric("Shares Out", f"{dcf_inputs.get('shares_outstanding', 0)/1e9:.2f}B")
                 else:
                     st.warning(f"No Alpha Vantage data available for {ticker_input}")
-            except Exception as e:
+            except (ConnectionError, TimeoutError, ValueError, KeyError, TypeError) as e:
                 st.error(f"Alpha Vantage fetch failed: {e}")
 
     # Display valuation if company is loaded
@@ -210,37 +265,37 @@ def render_valuation_house():
 
         # Current Price
         with col1:
-            st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💰</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">CURRENT PRICE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #10b981; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{format_currency(company["current_price"])}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">Market Price</p></div></div>', unsafe_allow_html=True)
+            st.markdown(metric_card('💰', 'CURRENT PRICE', f'{format_currency(company["current_price"])}', _GREEN, 'Market Price', accent='green'), unsafe_allow_html=True)
 
         # Market Cap
         with col2:
             mkt_cap_b = company['market_cap'] / 1e9 if company['market_cap'] > 0 else 0
             mkt_cap_tier = 'Large Cap' if mkt_cap_b > 10 else ('Mid Cap' if mkt_cap_b > 2 else 'Small Cap')
-            st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📊</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">MARKET CAP</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #8b5cf6; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{format_large_number(company["market_cap"])}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">{mkt_cap_tier}</p></div></div>', unsafe_allow_html=True)
+            st.markdown(metric_card('📊', 'MARKET CAP', f'{format_large_number(company["market_cap"])}', _VIOLET, f'{mkt_cap_tier}', accent='purple'), unsafe_allow_html=True)
 
         # Sector
         with col3:
-            st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #0891b2); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🏢</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">SECTOR</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #06b6d4; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{company["sector"]}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #67e8f9; margin: 0; font-weight: 600;">Industry Class</p></div></div>', unsafe_allow_html=True)
+            st.markdown(metric_card('🏢', 'SECTOR', f'{company["sector"]}', _CYAN, 'Industry Class', accent='cyan'), unsafe_allow_html=True)
 
         # Beta
         with col4:
             beta_val = company['beta']
-            beta_color = '#10b981' if beta_val < 1.0 else ('#fbbf24' if beta_val < 1.5 else '#ef4444')
+            beta_color = _metric_color(beta_val, green_below=1.0, amber_below=1.5)
             beta_status = 'Low Volatility' if beta_val < 1.0 else ('Market Average' if beta_val < 1.5 else 'High Volatility')
-            st.markdown(f'<div style="background: linear-gradient(135deg, rgba(245,158,11,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(245,158,11,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #f59e0b, #d97706); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📈</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">BETA</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {beta_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{beta_val:.2f}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(245,158,11,0.12); border-radius: 10px; border: 1px solid rgba(245,158,11,0.25);"><p style="font-size: 0.7rem; color: #fbbf24; margin: 0; font-weight: 600;">{beta_status}</p></div></div>', unsafe_allow_html=True)
+            st.markdown(metric_card('📈', 'BETA', f'{beta_val:.2f}', beta_color, f'{beta_status}', accent='amber'), unsafe_allow_html=True)
 
         # Forward P/E
         with col5:
             fwd_pe = company.get('forward_pe', None)
             if fwd_pe and fwd_pe != 'N/A':
-                fwd_pe_color = '#10b981' if fwd_pe < 15 else ('#fbbf24' if fwd_pe < 25 else '#ef4444')
+                fwd_pe_color = _metric_color(fwd_pe, green_below=15, amber_below=25)
                 fwd_pe_status = 'Undervalued' if fwd_pe < 15 else ('Fair Value' if fwd_pe < 25 else 'Expensive')
                 fwd_pe_display = f"{fwd_pe:.1f}"
             else:
-                fwd_pe_color = '#94a3b8'
+                fwd_pe_color = _SLATE
                 fwd_pe_status = 'No Data'
                 fwd_pe_display = 'N/A'
-            st.markdown(f'<div style="background: linear-gradient(135deg, rgba(239,68,68,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(239,68,68,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #ef4444, #dc2626); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💹</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">FORWARD P/E</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {fwd_pe_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{fwd_pe_display}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(239,68,68,0.12); border-radius: 10px; border: 1px solid rgba(239,68,68,0.25);"><p style="font-size: 0.7rem; color: #fca5a5; margin: 0; font-weight: 600;">{fwd_pe_status}</p></div></div>', unsafe_allow_html=True)
+            st.markdown(metric_card('💹', 'FORWARD P/E', f'{fwd_pe_display}', fwd_pe_color, f'{fwd_pe_status}', accent='red'), unsafe_allow_html=True)
 
         st.markdown("---")
 
@@ -446,12 +501,12 @@ def render_valuation_house():
 
                         # Regime banner colors
                         regime_colors = {
-                            'risk_on': ('#10b981', '🟢'),
-                            'risk_off': ('#ef4444', '🔴'),
-                            'transitional': ('#f59e0b', '🟡'),
-                            'neutral': ('#94a3b8', '⚪')
+                            'risk_on': (_GREEN, '🟢'),
+                            'risk_off': (_RED, '🔴'),
+                            'transitional': (_ORANGE, '🟡'),
+                            'neutral': (_SLATE, '⚪')
                         }
-                        banner_color, regime_emoji = regime_colors.get(regime, ('#94a3b8', '⚪'))
+                        banner_color, regime_emoji = regime_colors.get(regime, (_SLATE, '⚪'))
 
                         st.markdown(f"""
                         <div style="background: linear-gradient(135deg, rgba(139,92,246,0.12), rgba(21,25,50,0.95));
@@ -464,7 +519,7 @@ def render_valuation_house():
                                     <h3 style="margin: 0; color: {banner_color}; font-size: 1.5rem; font-weight: 800;">
                                         {regime_label} REGIME
                                     </h3>
-                                    <p style="margin: 0.25rem 0 0 0; color: #94a3b8; font-size: 0.9rem;">
+                                    <p style="margin: 0.25rem 0 0 0; color: {_SLATE}; font-size: 0.9rem;">
                                         Confidence: {confidence:.0f}% | Score: {score:+d}/{max_score}
                                     </p>
                                 </div>
@@ -480,7 +535,7 @@ def render_valuation_house():
                         with col1:
                             st.markdown("**WACC Adjustment**")
                             wacc_delta = regime_result['wacc_adjustment_bps']
-                            wacc_color = '#ef4444' if wacc_delta > 0 else ('#10b981' if wacc_delta < 0 else '#94a3b8')
+                            wacc_color = _delta_color(wacc_delta, positive_is_good=False)
                             st.metric(
                                 "Baseline WACC",
                                 f"{regime_result['baseline_wacc']:.2%}",
@@ -497,7 +552,7 @@ def render_valuation_house():
                         with col2:
                             st.markdown("**Terminal Growth Adjustment**")
                             tg_delta = regime_result['terminal_growth_adjustment_bps']
-                            tg_color = '#10b981' if tg_delta > 0 else ('#ef4444' if tg_delta < 0 else '#94a3b8')
+                            tg_color = _delta_color(tg_delta, positive_is_good=True)
                             st.metric(
                                 "Baseline Terminal Growth",
                                 f"{regime_result['baseline_terminal_growth']:.2%}",
@@ -514,35 +569,35 @@ def render_valuation_house():
                         # Valuation Impact Summary
                         impact = regime_result['valuation_impact']
                         if impact == 'AGGRESSIVE':
-                            impact_color = '#10b981'
+                            impact_color = _GREEN
                             impact_icon = '📈'
                             impact_msg = "Regime-adjusted inputs will produce HIGHER valuation (lower discount rate + higher growth)"
                         elif impact == 'CONSERVATIVE':
-                            impact_color = '#ef4444'
+                            impact_color = _RED
                             impact_icon = '📉'
                             impact_msg = "Regime-adjusted inputs will produce LOWER valuation (higher discount rate + lower growth)"
                         elif impact == 'MODERATELY CONSERVATIVE':
-                            impact_color = '#f59e0b'
+                            impact_color = _ORANGE
                             impact_icon = '⚠️'
                             impact_msg = "Regime-adjusted inputs will produce MODERATELY LOWER valuation"
                         else:
-                            impact_color = '#94a3b8'
+                            impact_color = _SLATE
                             impact_icon = '➖'
                             impact_msg = "Regime-adjusted inputs will produce SIMILAR valuation (minimal adjustments)"
 
                         st.markdown(f"""
-                        <div style="background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(21,25,50,0.95));
+                        <div style="background: linear-gradient(135deg, var(--glow-primary, rgba(99,102,241,0.08)), rgba(21,25,50,0.95));
                                     backdrop-filter: blur(24px); padding: 1.25rem; margin: 1rem 0; border-radius: 20px;
                                     border: 1px solid rgba(99,102,241,0.2); box-shadow: 0 4px 24px rgba(0,0,0,0.2);
                                     position: relative; overflow: hidden;">
-                            <div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, {impact_color}, #6366f1); opacity: 0.8;"></div>
+                            <div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, {impact_color}, var(--blue, #6366f1)); opacity: 0.8;"></div>
                             <div style="display: flex; align-items: center; gap: 0.75rem;">
                                 <span style="font-size: 1.5rem;">{impact_icon}</span>
                                 <div>
                                     <strong style="color: {impact_color}; font-size: 1.1rem;">
                                         {impact} VALUATION
                                     </strong>
-                                    <p style="margin: 0.25rem 0 0 0; color: #cbd5e1; font-size: 0.9rem;">
+                                    <p style="margin: 0.25rem 0 0 0; color: var(--text-secondary, #cbd5e1); font-size: 0.9rem;">
                                         {impact_msg}
                                     </p>
                                 </div>
@@ -550,7 +605,7 @@ def render_valuation_house():
                         </div>
                         """, unsafe_allow_html=True)
 
-                    except Exception as e:
+                    except (ValueError, KeyError, TypeError, AttributeError, ZeroDivisionError) as e:
                         st.error(f"❌ Error detecting market regime: {str(e)}")
                         import traceback
                         with st.expander("Error Details"):
@@ -612,7 +667,7 @@ def render_valuation_house():
 
                                 st.success(f"✅ Generated {len(projections)} years of projections across {len(multistage_config.stages)} stages")
 
-                            except Exception as e:
+                            except (ValueError, KeyError, TypeError, ZeroDivisionError, AttributeError) as e:
                                 st.error(f"❌ Error generating projections: {str(e)}")
 
                     # Display projections and visualizations if available
@@ -638,7 +693,7 @@ def render_valuation_house():
                                         )
 
                                         # Calculate net debt
-                                        net_debt = financials.get('total_debt', 0) - financials.get('cash', 0)
+                                        net_debt = calc_net_debt(financials.get('total_debt', 0), financials.get('cash', 0))
 
                                         # Get WACC and terminal growth (regime-adjusted if enabled)
                                         if use_regime_aware_dcf and 'regime_dcf_result' in st.session_state:
@@ -664,7 +719,7 @@ def render_valuation_house():
                                         # Display results
                                         display_multistage_results(dcf_result, multistage_config)
 
-                                    except Exception as e:
+                                    except (ValueError, KeyError, TypeError, ZeroDivisionError, AttributeError) as e:
                                         st.error(f"❌ Error calculating DCF: {str(e)}")
                                         import traceback
                                         st.code(traceback.format_exc())
@@ -727,22 +782,22 @@ def render_valuation_house():
 
                 # Consensus Fair Value
                 with col1:
-                    upside_pct = ((consensus_result['consensus_value'] / company['current_price'] - 1) * 100) if company['current_price'] > 0 else 0
-                    consensus_color = '#10b981' if upside_pct > 20 else ('#fbbf24' if upside_pct > -20 else '#ef4444')
+                    upside_pct = calc_upside_downside(consensus_result['consensus_value'], company['current_price'])
+                    consensus_color = _metric_color(upside_pct, green_above=20, amber_above=-20)
                     consensus_status = 'Undervalued' if upside_pct > 20 else ('Fair Value' if upside_pct > -20 else 'Overvalued')
-                    st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🎯</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">CONSENSUS FAIR VALUE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {consensus_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">${consensus_result["consensus_value"]:.2f}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{consensus_status} ({upside_pct:+.1f}%)</p></div></div>', unsafe_allow_html=True)
+                    st.markdown(metric_card('🎯', 'CONSENSUS FAIR VALUE', f'${consensus_result["consensus_value"]:.2f}', consensus_color, f'{consensus_status} ({upside_pct:+.1f}%)', accent='green'), unsafe_allow_html=True)
 
                 # Confidence Score
                 with col2:
                     confidence_score = consensus_result['confidence_score']
-                    confidence_color_hex = '#10b981' if confidence_score >= 70 else ('#fbbf24' if confidence_score >= 50 else '#ef4444')
+                    confidence_color_hex = _metric_color(confidence_score, green_above=70, amber_above=50)
                     confidence_emoji = "🟢" if confidence_score >= 70 else ("🟡" if confidence_score >= 50 else "🔴")
                     confidence_label = 'High Confidence' if confidence_score >= 70 else ('Moderate' if confidence_score >= 50 else 'Low Confidence')
-                    st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📊</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">CONFIDENCE SCORE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {confidence_color_hex}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{confidence_emoji} {confidence_score:.0f}/100</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">{confidence_label} ({consensus_result["method_count"]} methods)</p></div></div>', unsafe_allow_html=True)
+                    st.markdown(metric_card('📊', 'CONFIDENCE SCORE', f'{confidence_emoji} {confidence_score:.0f}/100', confidence_color_hex, f'{confidence_label} ({consensus_result["method_count"]} methods)', accent='purple'), unsafe_allow_html=True)
 
                 # Current Price
                 with col3:
-                    st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #0891b2); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💰</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">CURRENT PRICE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #06b6d4; margin: 0.5rem 0 0.75rem 0; line-height: 1;">${company["current_price"]:.2f}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #67e8f9; margin: 0; font-weight: 600;">Market Price</p></div></div>', unsafe_allow_html=True)
+                    st.markdown(metric_card('💰', 'CURRENT PRICE', f'${company["current_price"]:.2f}', _CYAN, 'Market Price', accent='cyan'), unsafe_allow_html=True)
 
                     if upside_pct > 20:
                         st.success("🚀 Potentially undervalued")
@@ -879,20 +934,20 @@ def render_valuation_house():
 
                 # WACC (Discount Rate)
                 with col1:
-                    wacc_color = '#10b981' if discount_rate < 0.08 else ('#fbbf24' if discount_rate < 0.12 else '#ef4444')
+                    wacc_color = _metric_color(discount_rate, green_below=0.08, amber_below=0.12)
                     wacc_status = 'Low Cost' if discount_rate < 0.08 else ('Average Cost' if discount_rate < 0.12 else 'High Cost')
-                    st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💹</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">WACC (DISCOUNT RATE)</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {wacc_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{discount_rate*100:.2f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">{wacc_status}</p></div></div>', unsafe_allow_html=True)
+                    st.markdown(metric_card('💹', 'WACC (DISCOUNT RATE)', f'{discount_rate*100:.2f}%', wacc_color, wacc_status, accent='purple'), unsafe_allow_html=True)
 
                 # Terminal Growth Rate
                 with col2:
-                    tgr_color = '#10b981' if terminal_growth < 0.03 else ('#fbbf24' if terminal_growth < 0.05 else '#ef4444')
+                    tgr_color = _metric_color(terminal_growth, green_below=0.03, amber_below=0.05)
                     tgr_status = 'Conservative' if terminal_growth < 0.03 else ('Moderate' if terminal_growth < 0.05 else 'Aggressive')
-                    st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📈</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">TERMINAL GROWTH RATE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {tgr_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{terminal_growth*100:.2f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{tgr_status}</p></div></div>', unsafe_allow_html=True)
+                    st.markdown(metric_card('📈', 'TERMINAL GROWTH RATE', f'{terminal_growth*100:.2f}%', tgr_color, tgr_status, accent='green'), unsafe_allow_html=True)
 
                 # Diluted Shares
                 with col3:
                     shares_m = shares / 1e6
-                    st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #0891b2); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🔢</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">DILUTED SHARES</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #06b6d4; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{shares_m:.1f}M</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #67e8f9; margin: 0; font-weight: 600;">Treasury Stock Method</p></div></div>', unsafe_allow_html=True)
+                    st.markdown(metric_card('🔢', 'DILUTED SHARES', f'{shares_m:.1f}M', _CYAN, 'Treasury Stock Method', accent='cyan'), unsafe_allow_html=True)
 
                 st.info("💡 To modify these inputs, edit them in the Model Inputs Dashboard above, then re-run valuation.")
 
@@ -911,9 +966,9 @@ def render_valuation_house():
                         # Determine revenue growth value
                         if use_smart_assumptions:
                             revenue_growth = smart_params['revenue_growth']
-                            rev_gr_color = '#10b981' if revenue_growth > 0.10 else ('#fbbf24' if revenue_growth > 0.03 else '#ef4444')
+                            rev_gr_color = _metric_color(revenue_growth, green_above=0.10, amber_above=0.03)
                             rev_gr_status = 'Strong Growth' if revenue_growth > 0.10 else ('Moderate Growth' if revenue_growth > 0.03 else 'Slow Growth')
-                            st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📈</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">REVENUE GROWTH RATE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {rev_gr_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{revenue_growth*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{rev_gr_status} • AI Generated</p></div></div>', unsafe_allow_html=True)
+                            st.markdown(metric_card('📈', 'REVENUE GROWTH RATE', f'{revenue_growth*100:.1f}%', rev_gr_color, f'{rev_gr_status} \u2022 AI Generated', accent='green'), unsafe_allow_html=True)
                         elif 'selected_scenario' in st.session_state:
                             # Use scenario value
                             scenario_key = st.session_state['selected_scenario']
@@ -937,9 +992,9 @@ def render_valuation_house():
 
                         if use_smart_assumptions:
                             ebit_margin = smart_params['ebit_margin']
-                            ebit_color = '#10b981' if ebit_margin > 0.20 else ('#fbbf24' if ebit_margin > 0.10 else '#ef4444')
+                            ebit_color = _metric_color(ebit_margin, green_above=0.20, amber_above=0.10)
                             ebit_status = 'High Margin' if ebit_margin > 0.20 else ('Healthy' if ebit_margin > 0.10 else 'Low Margin')
-                            st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💼</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">EBIT MARGIN</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {ebit_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{ebit_margin*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">{ebit_status} • AI Generated</p></div></div>', unsafe_allow_html=True)
+                            st.markdown(metric_card('💼', 'EBIT MARGIN', f'{ebit_margin*100:.1f}%', ebit_color, f'{ebit_status} \u2022 AI Generated', accent='purple'), unsafe_allow_html=True)
                         else:
                             ebit_margin = st.slider(
                                 "EBIT Margin (%)",
@@ -1056,9 +1111,9 @@ def render_valuation_house():
                     with col2:
                         if use_smart_assumptions:
                             capex_pct = smart_params['capex_pct']
-                            capex_color = '#10b981' if capex_pct < 0.05 else ('#fbbf24' if capex_pct < 0.10 else '#ef4444')
+                            capex_color = _metric_color(capex_pct, green_below=0.05, amber_below=0.10)
                             capex_status = 'Low CapEx' if capex_pct < 0.05 else ('Moderate' if capex_pct < 0.10 else 'High CapEx')
-                            st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #0891b2); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🏗️</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">CAPEX (% OF REVENUE)</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {capex_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{capex_pct*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #67e8f9; margin: 0; font-weight: 600;">{capex_status} • AI Generated</p></div></div>', unsafe_allow_html=True)
+                            st.markdown(metric_card('🏗️', 'CAPEX (% OF REVENUE)', f'{capex_pct*100:.1f}%', capex_color, f'{capex_status} \u2022 AI Generated', accent='cyan'), unsafe_allow_html=True)
                         else:
                             capex_pct = st.slider(
                                 "CapEx (% of Revenue)",
@@ -1070,9 +1125,9 @@ def render_valuation_house():
 
                         if use_smart_assumptions:
                             depreciation_pct = smart_params['depreciation_pct']
-                            depr_color = '#10b981' if depreciation_pct < 0.03 else ('#fbbf24' if depreciation_pct < 0.06 else '#ef4444')
+                            depr_color = _metric_color(depreciation_pct, green_below=0.03, amber_below=0.06)
                             depr_status = 'Low D&A' if depreciation_pct < 0.03 else ('Moderate' if depreciation_pct < 0.06 else 'High D&A')
-                            st.markdown(f'<div style="background: linear-gradient(135deg, rgba(245,158,11,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(245,158,11,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #f59e0b, #d97706); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📉</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">DEPRECIATION (% OF REVENUE)</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {depr_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{depreciation_pct*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(245,158,11,0.12); border-radius: 10px; border: 1px solid rgba(245,158,11,0.25);"><p style="font-size: 0.7rem; color: #fbbf24; margin: 0; font-weight: 600;">{depr_status} • AI Generated</p></div></div>', unsafe_allow_html=True)
+                            st.markdown(metric_card('📉', 'DEPRECIATION (% OF REVENUE)', f'{depreciation_pct*100:.1f}%', depr_color, f'{depr_status} \u2022 AI Generated', accent='amber'), unsafe_allow_html=True)
                         else:
                             depreciation_pct = st.slider(
                                 "Depreciation (% of Revenue)",
@@ -1133,9 +1188,9 @@ def render_valuation_house():
 
                         if use_smart_assumptions:
                             tax_rate = smart_params['tax_rate']
-                            tax_color = '#10b981' if tax_rate < 0.21 else ('#fbbf24' if tax_rate < 0.28 else '#ef4444')
+                            tax_color = _metric_color(tax_rate, green_below=0.21, amber_below=0.28)
                             tax_status = 'Low Tax' if tax_rate < 0.21 else ('Average Tax' if tax_rate < 0.28 else 'High Tax')
-                            st.markdown(f'<div style="background: linear-gradient(135deg, rgba(239,68,68,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(239,68,68,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #ef4444, #dc2626); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📋</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">TAX RATE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {tax_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{tax_rate*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(239,68,68,0.12); border-radius: 10px; border: 1px solid rgba(239,68,68,0.25);"><p style="font-size: 0.7rem; color: #fca5a5; margin: 0; font-weight: 600;">{tax_status} • AI Generated</p></div></div>', unsafe_allow_html=True)
+                            st.markdown(metric_card('📋', 'TAX RATE', f'{tax_rate*100:.1f}%', tax_color, f'{tax_status} \u2022 AI Generated', accent='red'), unsafe_allow_html=True)
                         else:
                             tax_rate = st.slider(
                                 "Tax Rate (%)",
@@ -1162,9 +1217,9 @@ def render_valuation_house():
                     with col1:
                         if use_smart_assumptions:
                             terminal_growth = smart_params['terminal_growth']
-                            term_gr_color = '#10b981' if terminal_growth <= 0.03 else ('#fbbf24' if terminal_growth <= 0.05 else '#ef4444')
+                            term_gr_color = _metric_color(terminal_growth, green_below=0.03, amber_below=0.05)
                             term_gr_status = 'Conservative' if terminal_growth <= 0.03 else ('Moderate' if terminal_growth <= 0.05 else 'Aggressive')
-                            st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🎯</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">PERPETUAL GROWTH RATE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {term_gr_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{terminal_growth*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{term_gr_status} • AI Generated</p></div></div>', unsafe_allow_html=True)
+                            st.markdown(metric_card('🎯', 'PERPETUAL GROWTH RATE', f'{terminal_growth*100:.1f}%', term_gr_color, f'{term_gr_status} \u2022 AI Generated', accent='green'), unsafe_allow_html=True)
                         else:
                             terminal_growth = st.slider(
                                 "Perpetual Growth Rate (%)",
@@ -1191,12 +1246,7 @@ def render_valuation_house():
 
             with col1:
                 # Get current dividend from company data
-                current_dividend_default = company.get('dividendRate', 0) * company['shares_outstanding']
-                if current_dividend_default == 0:
-                    # Try to estimate from dividend yield
-                    div_yield = company.get('dividendYield', 0)
-                    if div_yield > 0:
-                        current_dividend_default = company['market_cap'] * div_yield
+                current_dividend_default = estimate_current_dividend(company)
 
                 current_dividend = st.number_input(
                     "Current Annual Dividend ($)",
@@ -1208,9 +1258,9 @@ def render_valuation_house():
 
                 if use_smart_assumptions:
                     cost_of_equity_ddm = smart_params.get('cost_of_equity', 0.10)
-                    coe_ddm_color = '#10b981' if cost_of_equity_ddm < 0.08 else ('#fbbf24' if cost_of_equity_ddm < 0.12 else '#ef4444')
+                    coe_ddm_color = _metric_color(cost_of_equity_ddm, green_below=0.08, amber_below=0.12)
                     coe_ddm_status = 'Low Cost' if cost_of_equity_ddm < 0.08 else ('Average Cost' if cost_of_equity_ddm < 0.12 else 'High Cost')
-                    st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💹</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">COST OF EQUITY</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {coe_ddm_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{cost_of_equity_ddm*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">{coe_ddm_status} • AI Generated</p></div></div>', unsafe_allow_html=True)
+                    st.markdown(metric_card('💹', 'COST OF EQUITY', f'{cost_of_equity_ddm*100:.1f}%', coe_ddm_color, f'{coe_ddm_status} \u2022 AI Generated', accent='purple'), unsafe_allow_html=True)
                 else:
                     risk_free_ddm = st.slider(
                         "Risk-Free Rate (%)",
@@ -1245,9 +1295,9 @@ def render_valuation_house():
             with col2:
                 if use_smart_assumptions:
                     growth_rate_ddm = smart_params.get('dividend_growth', 0.03)
-                    div_gr_color = '#10b981' if growth_rate_ddm <= 0.03 else ('#fbbf24' if growth_rate_ddm <= 0.05 else '#ef4444')
+                    div_gr_color = _metric_color(growth_rate_ddm, green_below=0.03, amber_below=0.05)
                     div_gr_status = 'Conservative' if growth_rate_ddm <= 0.03 else ('Moderate' if growth_rate_ddm <= 0.05 else 'Aggressive')
-                    st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📊</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">DIVIDEND GROWTH RATE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {div_gr_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{growth_rate_ddm*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{div_gr_status} • AI Generated</p></div></div>', unsafe_allow_html=True)
+                    st.markdown(metric_card('📊', 'DIVIDEND GROWTH RATE', f'{growth_rate_ddm*100:.1f}%', div_gr_color, f'{div_gr_status} \u2022 AI Generated', accent='green'), unsafe_allow_html=True)
                 else:
                     growth_rate_ddm = st.slider(
                         "Perpetual Dividend Growth Rate (%)",
@@ -1276,11 +1326,7 @@ def render_valuation_house():
 
             with col1:
                 # Get current dividend
-                current_dividend_default = company.get('dividendRate', 0) * company['shares_outstanding']
-                if current_dividend_default == 0:
-                    div_yield = company.get('dividendYield', 0)
-                    if div_yield > 0:
-                        current_dividend_default = company['market_cap'] * div_yield
+                current_dividend_default = estimate_current_dividend(company)
 
                 current_dividend_ms = st.number_input(
                     "Current Annual Dividend ($)",
@@ -1292,9 +1338,9 @@ def render_valuation_house():
 
                 if use_smart_assumptions:
                     cost_of_equity_ms = smart_params.get('cost_of_equity', 0.10)
-                    coe_ms_color = '#10b981' if cost_of_equity_ms < 0.08 else ('#fbbf24' if cost_of_equity_ms < 0.12 else '#ef4444')
+                    coe_ms_color = _metric_color(cost_of_equity_ms, green_below=0.08, amber_below=0.12)
                     coe_ms_status = 'Low Cost' if cost_of_equity_ms < 0.08 else ('Average Cost' if cost_of_equity_ms < 0.12 else 'High Cost')
-                    st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💹</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">COST OF EQUITY</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {coe_ms_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{cost_of_equity_ms*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">{coe_ms_status} • AI Generated</p></div></div>', unsafe_allow_html=True)
+                    st.markdown(metric_card('💹', 'COST OF EQUITY', f'{cost_of_equity_ms*100:.1f}%', coe_ms_color, f'{coe_ms_status} \u2022 AI Generated', accent='purple'), unsafe_allow_html=True)
                 else:
                     risk_free_ms = st.slider(
                         "Risk-Free Rate (%)",
@@ -1333,15 +1379,15 @@ def render_valuation_house():
                     stable_growth_rate = smart_params.get('stable_growth_rate', 0.03)
 
                     # High Growth Rate
-                    hgr_color = '#fbbf24' if high_growth_rate > 0.10 else ('#10b981' if high_growth_rate > 0.05 else '#ef4444')
+                    hgr_color = _AMBER if high_growth_rate > 0.10 else (_GREEN if high_growth_rate > 0.05 else _RED)
                     hgr_status = 'Aggressive' if high_growth_rate > 0.10 else ('Moderate' if high_growth_rate > 0.05 else 'Conservative')
-                    st.markdown(f'<div style="background: linear-gradient(135deg, rgba(245,158,11,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(245,158,11,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #f59e0b, #d97706); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🚀</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">HIGH GROWTH RATE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {hgr_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{high_growth_rate*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(245,158,11,0.12); border-radius: 10px; border: 1px solid rgba(245,158,11,0.25);"><p style="font-size: 0.7rem; color: #fbbf24; margin: 0; font-weight: 600;">{hgr_status} • AI Generated</p></div></div>', unsafe_allow_html=True)
+                    st.markdown(metric_card('🚀', 'HIGH GROWTH RATE', f'{high_growth_rate*100:.1f}%', hgr_color, f'{hgr_status} \u2022 AI Generated', accent='amber'), unsafe_allow_html=True)
                     # High Growth Years
-                    st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #0891b2); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">⏱️</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">HIGH GROWTH YEARS</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #06b6d4; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{high_growth_years} years</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #67e8f9; margin: 0; font-weight: 600;">Growth Period • AI Generated</p></div></div>', unsafe_allow_html=True)
+                    st.markdown(metric_card('⏱️', 'HIGH GROWTH YEARS', f'{high_growth_years} years', _CYAN, 'Growth Period \u2022 AI Generated', accent='cyan'), unsafe_allow_html=True)
                     # Stable Growth Rate
-                    sgr_color = '#10b981' if stable_growth_rate <= 0.03 else ('#fbbf24' if stable_growth_rate <= 0.05 else '#ef4444')
+                    sgr_color = _metric_color(stable_growth_rate, green_below=0.03, amber_below=0.05)
                     sgr_status = 'Conservative' if stable_growth_rate <= 0.03 else ('Moderate' if stable_growth_rate <= 0.05 else 'Aggressive')
-                    st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📉</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">STABLE GROWTH RATE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {sgr_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{stable_growth_rate*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{sgr_status} • AI Generated</p></div></div>', unsafe_allow_html=True)
+                    st.markdown(metric_card('📉', 'STABLE GROWTH RATE', f'{stable_growth_rate*100:.1f}%', sgr_color, f'{sgr_status} \u2022 AI Generated', accent='green'), unsafe_allow_html=True)
                 else:
                     high_growth_rate = st.slider(
                         "High Growth Rate (%)",
@@ -1392,9 +1438,9 @@ def render_valuation_house():
 
                 if use_smart_assumptions:
                     roe = smart_params.get('roe', 0.15)
-                    roe_color = '#10b981' if roe > 0.15 else ('#fbbf24' if roe > 0.10 else '#ef4444')
+                    roe_color = _metric_color(roe, green_above=0.15, amber_above=0.10)
                     roe_status = 'Excellent' if roe > 0.15 else ('Good' if roe > 0.10 else 'Fair')
-                    st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💎</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">RETURN ON EQUITY (ROE)</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {roe_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{roe*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{roe_status} • AI Generated</p></div></div>', unsafe_allow_html=True)
+                    st.markdown(metric_card('💎', 'RETURN ON EQUITY (ROE)', f'{roe*100:.1f}%', roe_color, f'{roe_status} \u2022 AI Generated', accent='green'), unsafe_allow_html=True)
                 else:
                     roe = st.slider(
                         "Return on Equity - ROE (%)",
@@ -1417,9 +1463,9 @@ def render_valuation_house():
             with col2:
                 if use_smart_assumptions:
                     cost_of_equity_ri = smart_params.get('cost_of_equity', 0.10)
-                    coe_ri_color = '#10b981' if cost_of_equity_ri < 0.08 else ('#fbbf24' if cost_of_equity_ri < 0.12 else '#ef4444')
+                    coe_ri_color = _metric_color(cost_of_equity_ri, green_below=0.08, amber_below=0.12)
                     coe_ri_status = 'Low Cost' if cost_of_equity_ri < 0.08 else ('Average Cost' if cost_of_equity_ri < 0.12 else 'High Cost')
-                    st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💹</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">COST OF EQUITY</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {coe_ri_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{cost_of_equity_ri*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">{coe_ri_status} • AI Generated</p></div></div>', unsafe_allow_html=True)
+                    st.markdown(metric_card('💹', 'COST OF EQUITY', f'{cost_of_equity_ri*100:.1f}%', coe_ri_color, f'{coe_ri_status} \u2022 AI Generated', accent='purple'), unsafe_allow_html=True)
                 else:
                     risk_free_ri = st.slider(
                         "Risk-Free Rate (%)",
@@ -1453,9 +1499,9 @@ def render_valuation_house():
 
                 if use_smart_assumptions:
                     growth_rate_ri = smart_params.get('terminal_growth', 0.025)
-                    tgr_ri_color = '#10b981' if growth_rate_ri <= 0.03 else ('#fbbf24' if growth_rate_ri <= 0.05 else '#ef4444')
+                    tgr_ri_color = _metric_color(growth_rate_ri, green_below=0.03, amber_below=0.05)
                     tgr_ri_status = 'Conservative' if growth_rate_ri <= 0.03 else ('Moderate' if growth_rate_ri <= 0.05 else 'Aggressive')
-                    st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #0891b2); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🎯</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">TERMINAL GROWTH RATE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {tgr_ri_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{growth_rate_ri*100:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #67e8f9; margin: 0; font-weight: 600;">{tgr_ri_status} • AI Generated</p></div></div>', unsafe_allow_html=True)
+                    st.markdown(metric_card('🎯', 'TERMINAL GROWTH RATE', f'{growth_rate_ri*100:.1f}%', tgr_ri_color, f'{tgr_ri_status} \u2022 AI Generated', accent='cyan'), unsafe_allow_html=True)
                 else:
                     growth_rate_ri = st.slider(
                         "Terminal Growth Rate (%)",
@@ -1607,50 +1653,14 @@ def render_valuation_house():
                         dcf_proj_obj = dashboard_data.get('projections')
 
                         # Convert DCFProjections object to legacy projection format
-                        # for compatibility with calculate_dcf_value()
                         if dcf_proj_obj:
-                            projections = []
-                            # Handle both list of projections and single projection object
-                            if isinstance(dcf_proj_obj, list) and len(dcf_proj_obj) > 0:
-                                # It's a non-empty list - use first item
-                                proj_item = dcf_proj_obj[0]
-                                if proj_item and hasattr(proj_item, 'forecast_years') and hasattr(proj_item, 'final_projections'):
-                                    for year in range(1, proj_item.forecast_years + 1):
-                                        year_data = proj_item.final_projections.get(year, {}) if isinstance(proj_item.final_projections, dict) else {}
-                                        projections.append({
-                                            'year': year,
-                                            'revenue': year_data.get('revenue', 0),
-                                            'ebit': year_data.get('ebit', 0),
-                                            'nopat': year_data.get('nopat', 0),
-                                            'fcff': year_data.get('fcff', 0),
-                                            'fcfe': year_data.get('fcfe', 0)
-                                        })
-                                else:
-                                    st.warning("⚠️ List projections format not recognized. Using manual calculation.")
-                                    dashboard_active = False
-                            elif not isinstance(dcf_proj_obj, list) and hasattr(dcf_proj_obj, 'forecast_years') and hasattr(dcf_proj_obj, 'final_projections'):
-                                # It's a single projection object with required attributes
-                                for year in range(1, dcf_proj_obj.forecast_years + 1):
-                                    year_data = dcf_proj_obj.final_projections.get(year, {}) if isinstance(dcf_proj_obj.final_projections, dict) else {}
-                                    projections.append({
-                                        'year': year,
-                                        'revenue': year_data.get('revenue', 0),
-                                        'ebit': year_data.get('ebit', 0),
-                                        'nopat': year_data.get('nopat', 0),
-                                        'fcff': year_data.get('fcff', 0),
-                                        'fcfe': year_data.get('fcfe', 0)
-                                    })
-                            else:
-                                st.warning(f"⚠️ Projections format not recognized. Using manual calculation.")
-                                dashboard_active = False
-
+                            projections = convert_dashboard_projections(dcf_proj_obj)
                             if projections:
                                 final_fcf = projections[-1]['fcff'] if method_key == 'FCFF' else projections[-1]['fcfe']
-                            elif dashboard_active:  # Only show error if we haven't already warned
-                                st.error("⚠️ Could not parse projections. Using manual calculation.")
+                            else:
+                                st.warning("⚠️ Projections format not recognized. Using manual calculation.")
                                 dashboard_active = False
                         else:
-                            # Fallback if projections object not available
                             st.error("⚠️ Dashboard projections not available. Using manual calculation.")
                             dashboard_active = False
 
@@ -1659,68 +1669,44 @@ def render_valuation_house():
                         # =========================================================
                         # MANUAL MODE: Use slider inputs and traditional calculation
                         # =========================================================
-                        # Ensure default values exist if sliders weren't rendered
-                        try:
-                            _ = risk_free
-                        except (NameError, UnboundLocalError):
-                            risk_free = 0.045  # 4.5% default
-                        try:
-                            _ = beta
-                        except (NameError, UnboundLocalError):
-                            beta = 1.0  # Market beta default
-                        try:
-                            _ = market_risk_premium
-                        except (NameError, UnboundLocalError):
-                            market_risk_premium = 0.06  # 6% default
-                        try:
-                            _ = cost_debt
-                        except (NameError, UnboundLocalError):
-                            cost_debt = 0.05  # 5% default
-                        try:
-                            _ = tax_rate
-                        except (NameError, UnboundLocalError):
-                            tax_rate = financials.get('tax_rate', 0.21)  # Use financial data or 21% default
+                        # Resolve defaults for any sliders that weren't rendered
+                        _locals = {}
+                        for _name in ('risk_free', 'beta', 'market_risk_premium', 'cost_debt',
+                                      'tax_rate', 'revenue_growth', 'ebit_margin', 'forecast_years',
+                                      'depreciation_pct', 'capex_pct', 'wc_change', 'net_borrowing'):
+                            try:
+                                _locals[_name] = eval(_name)  # noqa: S307 – safe; names are string literals
+                            except (NameError, UnboundLocalError):
+                                pass
+                        _defaults = resolve_dcf_defaults(_locals)
+                        # Override tax_rate default with financial data if available
+                        if 'tax_rate' not in _locals:
+                            _defaults['tax_rate'] = financials.get('tax_rate', 0.21)
+                        risk_free = _defaults['risk_free']
+                        beta = _defaults['beta']
+                        market_risk_premium = _defaults['market_risk_premium']
+                        cost_debt = _defaults['cost_debt']
+                        tax_rate = _defaults['tax_rate']
+                        revenue_growth = _defaults['revenue_growth']
+                        ebit_margin = _defaults['ebit_margin']
+                        forecast_years = int(_defaults['forecast_years'])
+                        depreciation_pct = _defaults['depreciation_pct']
+                        capex_pct = _defaults['capex_pct']
+                        wc_change = _defaults['wc_change']
+                        net_borrowing = _defaults['net_borrowing']
 
-                        # Ensure growth and projection parameters exist
-                        try:
-                            _ = revenue_growth
-                        except (NameError, UnboundLocalError):
-                            revenue_growth = 0.05  # 5% default
-                        try:
-                            _ = ebit_margin
-                        except (NameError, UnboundLocalError):
-                            ebit_margin = 0.20  # 20% default
-                        try:
-                            _ = forecast_years
-                        except (NameError, UnboundLocalError):
-                            forecast_years = 5  # 5 years default
-                        try:
-                            _ = depreciation_pct
-                        except (NameError, UnboundLocalError):
-                            depreciation_pct = 0.03  # 3% of revenue default
-                        try:
-                            _ = capex_pct
-                        except (NameError, UnboundLocalError):
-                            capex_pct = 0.04  # 4% of revenue default
-                        try:
-                            _ = wc_change
-                        except (NameError, UnboundLocalError):
-                            wc_change = 0  # No change default
-                        try:
-                            _ = net_borrowing
-                        except (NameError, UnboundLocalError):
-                            net_borrowing = 0  # No net borrowing default
-
-                        # Calculate cost of equity
-                        cost_equity = calculate_cost_of_equity(risk_free, beta, market_risk_premium)
-
-                        # Calculate discount rate
+                        # Calculate cost of equity and discount rate
                         if method_key == 'FCFF':
                             total_debt = financials.get('total_debt', 0)
                             total_equity = company['market_cap']
-                            discount_rate = calculate_wacc(cost_equity, cost_debt, tax_rate, total_debt, total_equity)
+                            cost_equity, discount_rate = derive_wacc(
+                                risk_free, beta, market_risk_premium,
+                                cost_debt, tax_rate, total_debt, total_equity,
+                                calculate_cost_of_equity_fn=calculate_cost_of_equity,
+                                calculate_wacc_fn=calculate_wacc,
+                            )
                         else:
-                            discount_rate = cost_equity
+                            discount_rate = calculate_cost_of_equity(risk_free, beta, market_risk_premium)
 
                         # Get base financials
                         base_revenue = financials.get('revenue', 0)
@@ -1795,15 +1781,11 @@ def render_valuation_house():
                         st.markdown("#### 🎯 Assumption Validation")
 
                         # Collect assumptions for validation
-                        assumptions_for_validation = {
-                            'revenue_growth': revenue_growth if not dashboard_active else (projections[-1]['revenue'] / projections[0]['revenue']) ** (1/len(projections)) - 1,
-                            'ebitda_margin': ebit_margin if not dashboard_active else 0.25,  # Estimate from projections
-                            'terminal_growth': terminal_growth,
-                            'wacc': discount_rate,
-                            'tax_rate': tax_rate if not dashboard_active else financials.get('tax_rate', 0.21),
-                            'capex_pct': capex_pct if not dashboard_active else 0.05,
-                            'nwc_change': wc_change if not dashboard_active else 0,
-                        }
+                        assumptions_for_validation = assemble_validation_assumptions(
+                            revenue_growth, ebit_margin, terminal_growth,
+                            discount_rate, tax_rate, capex_pct, wc_change,
+                            dashboard_active, projections, financials,
+                        )
 
                         # Run validation
                         validator = DCFValidator()
@@ -1826,7 +1808,7 @@ def render_valuation_house():
                     terminal_value = calculate_terminal_value(final_fcf, discount_rate, terminal_growth)
 
                     # Calculate DCF value (both modes)
-                    net_debt = financials.get('total_debt', 0) - financials.get('cash', 0)
+                    net_debt = calc_net_debt(financials.get('total_debt', 0), financials.get('cash', 0))
 
                     dcf_results = calculate_dcf_value(
                         projections, discount_rate, terminal_value, shares,
@@ -1913,20 +1895,8 @@ def render_valuation_house():
                     median_multiples = calculate_peer_multiples(peers)
 
                     if median_multiples:
-                        # Prepare company financials for relative valuation
-                        company_financials_dict = {
-                            'eps': financials.get('eps', 0),
-                            'book_value_per_share': financials.get('book_value_per_share', 0),
-                            'sales_per_share': financials.get('revenue', 0) / shares if shares > 0 else 0,
-                            'ebitda': financials.get('ebitda', 0),
-                            'ebit': financials.get('ebit', 0),
-                            'revenue': financials.get('revenue', 0),
-                            'total_debt': financials.get('total_debt', 0),
-                            'cash': financials.get('cash', 0)
-                        }
-
                         relative_results = apply_relative_valuation(
-                            company_financials=company_financials_dict,
+                            company_financials=assemble_company_financials_for_relative(financials, shares),
                             median_multiples=median_multiples,
                             shares_outstanding=shares
                         )
@@ -1975,7 +1945,7 @@ def render_valuation_house():
             # Key metrics
             intrinsic_value = results['intrinsic_value_per_share']
             current_price = company['current_price']
-            upside_downside = ((intrinsic_value - current_price) / current_price) * 100
+            upside_downside = calc_upside_downside(intrinsic_value, current_price)
 
             # DCF Valuation toast with upside/downside
             if abs(upside_downside) < 1000:  # Valid result
@@ -1997,28 +1967,28 @@ def render_valuation_house():
 
             # Intrinsic Value
             with col1:
-                intrinsic_color = '#10b981' if upside_downside > 20 else ('#fbbf24' if upside_downside > -20 else '#ef4444')
+                intrinsic_color = _metric_color(upside_downside, green_above=20, amber_above=-20)
                 intrinsic_status = 'Undervalued' if upside_downside > 20 else ('Fair Value' if upside_downside > -20 else 'Overvalued')
-                st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💎</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">INTRINSIC VALUE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {intrinsic_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{format_currency(intrinsic_value)}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{intrinsic_status}</p></div></div>', unsafe_allow_html=True)
+                st.markdown(metric_card('💎', 'INTRINSIC VALUE', f'{format_currency(intrinsic_value)}', intrinsic_color, f'{intrinsic_status}', accent='green'), unsafe_allow_html=True)
 
             # Current Price
             with col2:
-                st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💰</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">CURRENT PRICE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: #8b5cf6; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{format_currency(current_price)}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">Market Price</p></div></div>', unsafe_allow_html=True)
+                st.markdown(metric_card('💰', 'CURRENT PRICE', f'{format_currency(current_price)}', _VIOLET, 'Market Price', accent='purple'), unsafe_allow_html=True)
 
             # Upside/Downside
             with col3:
                 upside_display = format_percentage(upside_downside) if abs(upside_downside) < 1000 else "±∞"
-                upside_color = '#10b981' if upside_downside > 20 else ('#fbbf24' if upside_downside > -20 else '#ef4444')
+                upside_color = _metric_color(upside_downside, green_above=20, amber_above=-20)
                 upside_label = 'Strong Upside' if upside_downside > 20 else ('Fair Value' if upside_downside > -20 else 'Downside Risk')
-                st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #0891b2); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📊</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">UPSIDE/DOWNSIDE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {upside_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{upside_display}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #67e8f9; margin: 0; font-weight: 600;">{upside_label}</p></div></div>', unsafe_allow_html=True)
+                st.markdown(metric_card('📊', 'UPSIDE/DOWNSIDE', f'{upside_display}', upside_color, f'{upside_label}', accent='cyan'), unsafe_allow_html=True)
 
             # Discount Rate
             # v9.7 FIX: Safe access to session_state with defaults
             discount_rate = st.session_state.get('discount_rate', results.get('discount_rate', 0.10))
             with col4:
-                disc_color = '#10b981' if discount_rate < 0.08 else ('#fbbf24' if discount_rate < 0.12 else '#ef4444')
+                disc_color = _metric_color(discount_rate, green_below=0.08, amber_below=0.12)
                 disc_status = 'Low Risk' if discount_rate < 0.08 else ('Moderate Risk' if discount_rate < 0.12 else 'High Risk')
-                st.markdown(f'<div style="background: linear-gradient(135deg, rgba(245,158,11,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(245,158,11,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #f59e0b, #d97706); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">💹</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">DISCOUNT RATE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {disc_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{ATLASFormatter.format_yield(discount_rate * 100, decimals=1)}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(245,158,11,0.12); border-radius: 10px; border: 1px solid rgba(245,158,11,0.25);"><p style="font-size: 0.7rem; color: #fbbf24; margin: 0; font-weight: 600;">{disc_status}</p></div></div>', unsafe_allow_html=True)
+                st.markdown(metric_card('💹', 'DISCOUNT RATE', f'{ATLASFormatter.format_yield(discount_rate * 100, decimals=1)}', disc_color, f'{disc_status}', accent='amber'), unsafe_allow_html=True)
 
             # Valuation interpretation
             st.markdown("---")
@@ -2100,19 +2070,8 @@ def render_valuation_house():
                     with st.spinner("Running 1000 Monte Carlo simulations..."):
                         try:
                             # Create RobustDCFEngine with correct signature: (company_data, financials)
-                            # The engine creates its own DCFAssumptionManager and DCFValidator internally
                             robust_engine = RobustDCFEngine(
-                                company_data={
-                                    'ticker': company['ticker'],
-                                    'sector': company['sector'],
-                                    'market_cap': company['market_cap'],
-                                    'shares_outstanding': shares,
-                                    'revenue': financials.get('revenue', 0),
-                                    'ebit': financials.get('ebit', 0),
-                                    'net_income': financials.get('net_income', 0),
-                                    'total_debt': financials.get('total_debt', 0),
-                                    'cash': financials.get('cash', 0),
-                                },
+                                company_data=assemble_monte_carlo_company_data(company, financials, shares),
                                 financials=financials
                             )
 
@@ -2140,7 +2099,7 @@ def render_valuation_house():
                             else:
                                 st.error(f"❌ Monte Carlo simulation failed: {mc_results.get('error', 'Unknown error')}")
 
-                        except Exception as e:
+                        except (ValueError, KeyError, TypeError, ZeroDivisionError, OverflowError, AttributeError) as e:
                             st.error(f"❌ Monte Carlo simulation error: {str(e)}")
                             import traceback
                             with st.expander("Error Details"):
@@ -2166,33 +2125,17 @@ def render_valuation_house():
                 # Run trap detection
                 with st.spinner("🔍 Running trap detection analysis..."):
                     try:
-                        # Prepare DCF inputs for trap detector
-                        revenue_projections = [p.get('revenue', 0) for p in projections] if projections else []
-
-                        if method == 'FCFF':
-                            fcf_projections = [p.get('fcff', 0) for p in projections] if projections else []
-                        else:
-                            fcf_projections = [p.get('fcfe', 0) for p in projections] if projections else []
-
-                        dcf_inputs_for_trap_detection = {
-                            'wacc': discount_rate,
-                            'terminal_growth_rate': terminal_growth,
-                            'projection_years': len(projections) if projections else 5,
-                            'revenue_projections': revenue_projections,
-                            'fcf_projections': fcf_projections,
-                            'terminal_value': results.get('pv_terminal', 0),
-                            'enterprise_value': results.get('enterprise_value', 0) if method == 'FCFF' else results.get('equity_value', 0),
-                            'current_price': current_price,
-                            'fair_value': intrinsic_value
-                        }
-
                         # Run trap detection
+                        dcf_inputs_for_trap_detection = assemble_trap_inputs(
+                            projections, method, discount_rate, terminal_growth,
+                            results, current_price, intrinsic_value,
+                        )
                         trap_summary = analyze_dcf_traps(company['ticker'], dcf_inputs_for_trap_detection)
 
                         # Display warnings
                         display_trap_warnings(trap_summary, company['ticker'])
 
-                    except Exception as e:
+                    except (ValueError, KeyError, TypeError, AttributeError) as e:
                         st.error(f"⚠️ Trap detection error: {str(e)}")
                         st.info("Trap detection requires valid DCF inputs. Please ensure all assumptions are properly configured.")
 
@@ -2262,7 +2205,7 @@ def render_valuation_house():
                             - SBC > 7%: Highly material, ignoring it causes major overvaluation
                             """)
 
-                except Exception as e:
+                except (ValueError, KeyError, TypeError, AttributeError) as e:
                     st.warning(f"⚠️ Could not display SBC comparison: {str(e)}")
 
             # Detailed Projections Table
