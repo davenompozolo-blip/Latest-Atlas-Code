@@ -1159,6 +1159,19 @@ def render_valuation_house():
                             step=0.1
                         ) / 100
 
+                        # Cross-module hint from Macro Intelligence
+                        _regime = st.session_state.get('macro_regime')
+                        if _regime:
+                            from datetime import datetime as _dt, timedelta as _td
+                            _ts = _regime.get('timestamp')
+                            _fresh = isinstance(_ts, _dt) and (_dt.now() - _ts) < _td(minutes=30)
+                            _rfr_range = _regime.get('risk_free_rate_range') if _fresh else None
+                            if _rfr_range:
+                                st.caption(
+                                    f"Macro Intelligence: current 10Y range "
+                                    f"{_rfr_range[0]:.1%}\u2013{_rfr_range[1]:.1%}"
+                                )
+
                         market_risk_premium = st.slider(
                             "Market Risk Premium (%)",
                             min_value=3.0,
@@ -1270,6 +1283,19 @@ def render_valuation_house():
                         step=0.1,
                         key="ddm_risk_free"
                     ) / 100
+
+                    # Cross-module hint from Macro Intelligence
+                    _regime_ddm = st.session_state.get('macro_regime')
+                    if _regime_ddm:
+                        from datetime import datetime as _dt, timedelta as _td
+                        _ts_ddm = _regime_ddm.get('timestamp')
+                        _fresh_ddm = isinstance(_ts_ddm, _dt) and (_dt.now() - _ts_ddm) < _td(minutes=30)
+                        _rfr_ddm = _regime_ddm.get('risk_free_rate_range') if _fresh_ddm else None
+                        if _rfr_ddm:
+                            st.caption(
+                                f"Macro Intelligence: current 10Y range "
+                                f"{_rfr_ddm[0]:.1%}\u2013{_rfr_ddm[1]:.1%}"
+                            )
 
                     market_risk_premium_ddm = st.slider(
                         "Market Risk Premium (%)",

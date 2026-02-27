@@ -4,9 +4,47 @@ Implements the design spec: glass cards, ambient atmosphere, section labels.
 """
 import pandas as pd
 import streamlit as st
+from datetime import datetime, timedelta
 
 from app.config import COLORS
 from utils.formatting import format_currency, format_percentage, add_arrow_indicator
+
+
+def _regime_is_fresh(regime: dict, max_age_minutes: int = 30) -> bool:
+    """Return True if regime context is younger than *max_age_minutes*."""
+    ts = regime.get('timestamp')
+    if ts is None:
+        return False
+    if isinstance(ts, str):
+        try:
+            ts = datetime.fromisoformat(ts)
+        except (ValueError, TypeError):
+            return False
+    return (datetime.now() - ts) < timedelta(minutes=max_age_minutes)
+
+
+def _render_regime_banner(regime: dict):
+    """Render a one-line macro regime context banner above the performance section."""
+    label = regime.get('label', 'Unknown')
+    confidence = regime.get('confidence', 0)
+    implication = regime.get('implication', '')
+    color = regime.get('color', 'var(--violet, #8b5cf6)')
+
+    st.markdown(f'''
+    <div style="background: rgba(99,102,241,0.06); border: 1px solid rgba(99,102,241,0.18);
+         border-radius: 12px; padding: 0.75rem 1.25rem; margin-bottom: 1.25rem;
+         display: flex; align-items: center; gap: 1rem;">
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <span style="font-size: 0.7rem; color: var(--text-secondary, rgba(255,255,255,0.52));
+                  text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600;">Macro Regime</span>
+            <span style="font-weight: 800; color: {color}; font-size: 0.95rem;">{label}</span>
+            <span style="font-size: 0.75rem; color: var(--text-muted, rgba(255,255,255,0.28));">
+                {confidence:.0f}% confidence</span>
+        </div>
+        <span style="font-size: 0.8rem; color: var(--text-secondary, rgba(255,255,255,0.52));
+              flex: 1;">{implication}</span>
+    </div>
+    ''', unsafe_allow_html=True)
 
 
 def _section_label(text):
@@ -218,6 +256,13 @@ def render_portfolio_home():
         </div>
     </div>
     ''', unsafe_allow_html=True)
+
+    # ══════════════════════════════════════════════════════
+    # MACRO REGIME BANNER (cross-module integration from Macro Intelligence)
+    # ══════════════════════════════════════════════════════
+    _regime = st.session_state.get('macro_regime')
+    if _regime and _regime_is_fresh(_regime):
+        _render_regime_banner(_regime)
 
     # ══════════════════════════════════════════════════════
     # CAPITAL STRUCTURE — 3 glass cards
