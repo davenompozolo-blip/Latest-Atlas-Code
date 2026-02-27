@@ -907,6 +907,22 @@ def render_performance_suite():
                 active_pos_status = 'Diversified' if active_pos >= 10 else ('Moderate' if active_pos >= 5 else 'Concentrated')
                 st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📊</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">ACTIVE POSITIONS</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {active_pos_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{active_pos}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{active_pos_status}</p></div></div>', unsafe_allow_html=True)
 
+    # Session state write for Commentary Generator
+    if 'port_total' in dir() and 'bench_total' in dir():
+        st.session_state['attribution_output'] = {
+            'period': f"{start_date} to {end_date}" if start_date and end_date else "",
+            'total_return': port_total * 100 if port_total else 0,
+            'benchmark_return': bench_total * 100 if bench_total else 0,
+            'top_contributors': [],
+            'top_detractors': [],
+            'allocation_effect': (port_total - bench_total) * 100 if port_total and bench_total else 0,
+            'selection_effect': 0,
+            'benchmark_name': selected_benchmark,
+            'tracking_error': tracking_error if 'tracking_error' in dir() else 0,
+            'information_ratio': info_ratio if 'info_ratio' in dir() else 0,
+            'timestamp': pd.Timestamp.now(),
+        }
+
     # ========================================================================
     # PORTFOLIO DEEP DIVE - ENHANCED
 

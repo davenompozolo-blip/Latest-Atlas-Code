@@ -205,6 +205,14 @@ PAGE_REGISTRY = [
         category="strategy",
     ),
 
+    PageDefinition(
+        key="commentary_generator",
+        title="Commentary Generator",
+        icon="📝",
+        handler=_load_handler("ui.pages.commentary_generator", "render_commentary_generator", "Commentary Generator", "📝"),
+        category="strategy",
+    ),
+
     # --- Tracking ---
     PageDefinition(
         key="leverage_tracker",
