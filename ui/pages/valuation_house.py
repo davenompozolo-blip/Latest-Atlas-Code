@@ -12,7 +12,7 @@ from utils.formatting import format_currency, format_percentage, format_large_nu
 INSTITUTIONAL_DCF_AVAILABLE = False
 
 
-def render_valuation_house(start_date, end_date):
+def render_valuation_house():
     """Render the Valuation House page."""
     # Lazy imports to avoid circular dependency with atlas_app
     from core import (

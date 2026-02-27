@@ -9,8 +9,12 @@ from app.config import COLORS
 from utils.formatting import format_currency, format_percentage, format_large_number, add_arrow_indicator
 
 
-def render_performance_suite(start_date, end_date, selected_benchmark):
+def render_performance_suite():
     """Render the Performance Suite page."""
+    import streamlit as st
+    start_date = st.session_state.get('start_date')
+    end_date = st.session_state.get('end_date')
+    selected_benchmark = st.session_state.get('selected_benchmark', 'SPY')
     # Lazy imports to avoid circular dependency with atlas_app
     from core import (
         ATLASFormatter, load_portfolio_data, create_enhanced_holdings_table,

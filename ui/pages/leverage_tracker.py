@@ -9,7 +9,7 @@ from app.config import COLORS
 from utils.formatting import format_currency, format_percentage, format_large_number, add_arrow_indicator
 
 
-def render_leverage_tracker(start_date, end_date):
+def render_leverage_tracker():
     """Render the Leverage Tracker page."""
     # Import only what's needed from core
     from core import (

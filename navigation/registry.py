@@ -44,31 +44,8 @@ class PageDefinition:
 
 
 # ============================================================================
-# Handler factories
+# Handler factory (single, uniform — all render functions are zero-argument)
 # ============================================================================
-
-def _get_date_range():
-    """Read current date range from session state (set by sidebar controls)."""
-    import streamlit as st
-    from datetime import datetime, timedelta
-
-    selected_range = st.session_state.get('selected_range', '1Y')
-
-    if selected_range == "YTD":
-        start_date = datetime(datetime.now().year, 1, 1)
-        end_date = datetime.now()
-    elif selected_range == "MAX":
-        start_date = datetime(2000, 1, 1)
-        end_date = datetime.now()
-    else:
-        days_map = {"1D": 1, "1W": 7, "1M": 30, "3M": 90, "6M": 180,
-                    "1Y": 365, "3Y": 1095, "5Y": 1825}
-        days = days_map.get(selected_range, 365)
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=days)
-
-    return start_date, end_date
-
 
 def _error_ui(page_name, icon, e):
     """Render a consistent error UI when a handler fails."""
@@ -80,7 +57,7 @@ def _error_ui(page_name, icon, e):
 
 
 def _load_handler(module_path: str, func_name: str, page_name: str, icon: str):
-    """Lazy-import handler — no arguments passed to render function."""
+    """Lazy-import handler — render functions read their own params from session_state."""
     def handler():
         try:
             import importlib
@@ -92,47 +69,11 @@ def _load_handler(module_path: str, func_name: str, page_name: str, icon: str):
     return handler
 
 
-def _load_handler_dates(module_path: str, func_name: str, page_name: str, icon: str):
-    """Lazy-import handler — injects (start_date, end_date)."""
-    def handler():
-        try:
-            import importlib
-            mod = importlib.import_module(module_path)
-            fn = getattr(mod, func_name)
-            start_date, end_date = _get_date_range()
-            fn(start_date, end_date)
-        except Exception as e:
-            _error_ui(page_name, icon, e)
-    return handler
-
-
-def _load_handler_dates_benchmark(module_path: str, func_name: str, page_name: str, icon: str):
-    """Lazy-import handler — injects (start_date, end_date, benchmark)."""
-    def handler():
-        try:
-            import streamlit as st
-            import importlib
-            mod = importlib.import_module(module_path)
-            fn = getattr(mod, func_name)
-            start_date, end_date = _get_date_range()
-            benchmark = st.session_state.get('selected_benchmark', 'SPY')
-            fn(start_date, end_date, benchmark)
-        except Exception as e:
-            _error_ui(page_name, icon, e)
-    return handler
-
-
 # ============================================================================
 # THE REGISTRY - All 19 active pages
 # ============================================================================
-#
-# Handler signatures (from the old if/elif chain in atlas_app.py):
-#   No args:             phoenix_parser, database, market_watch, monte_carlo,
-#                        market_regime, investopedia_live, equity_research,
-#                        macro_intelligence, fund_research, about, r_analytics
-#   (start, end):        portfolio_home, portfolio_deep_dive,
-#                        multi_factor_analysis, valuation_house, leverage_tracker
-#   (start, end, bench): risk_analysis, performance_suite, quant_optimizer
+# All render functions are zero-argument. Each reads its own parameters
+# (start_date, end_date, benchmark) from st.session_state directly.
 
 PAGE_REGISTRY = [
     # --- Data Input ---
@@ -149,7 +90,7 @@ PAGE_REGISTRY = [
         key="portfolio_home",
         title="Portfolio Home",
         icon="🏠",
-        handler=_load_handler_dates("ui.pages.portfolio_home", "render_portfolio_home", "Portfolio Home", "🏠"),
+        handler=_load_handler("ui.pages.portfolio_home", "render_portfolio_home", "Portfolio Home", "🏠"),
         category="core",
         requires_data=["portfolio"],
     ),
@@ -195,7 +136,7 @@ PAGE_REGISTRY = [
         key="risk_analysis",
         title="Risk Analysis",
         icon="📈",
-        handler=_load_handler_dates_benchmark("ui.pages.risk_analysis", "render_risk_analysis", "Risk Analysis", "📈"),
+        handler=_load_handler("ui.pages.risk_analysis", "render_risk_analysis", "Risk Analysis", "📈"),
         category="analysis",
         requires_data=["portfolio"],
     ),
@@ -204,7 +145,7 @@ PAGE_REGISTRY = [
         key="performance_suite",
         title="Performance Suite",
         icon="💎",
-        handler=_load_handler_dates_benchmark("ui.pages.performance_suite", "render_performance_suite", "Performance Suite", "💎"),
+        handler=_load_handler("ui.pages.performance_suite", "render_performance_suite", "Performance Suite", "💎"),
         category="analysis",
         requires_data=["portfolio", "performance_history"],
     ),
@@ -213,7 +154,7 @@ PAGE_REGISTRY = [
         key="portfolio_deep_dive",
         title="Portfolio Deep Dive",
         icon="🔬",
-        handler=_load_handler_dates("ui.pages.portfolio_deep_dive", "render_portfolio_deep_dive", "Portfolio Deep Dive", "🔬"),
+        handler=_load_handler("ui.pages.portfolio_deep_dive", "render_portfolio_deep_dive", "Portfolio Deep Dive", "🔬"),
         category="analysis",
         requires_data=["portfolio"],
     ),
@@ -222,7 +163,7 @@ PAGE_REGISTRY = [
         key="multi_factor_analysis",
         title="Multi-Factor Analysis",
         icon="📊",
-        handler=_load_handler_dates("ui.pages.multi_factor_analysis", "render_multi_factor_analysis", "Multi-Factor Analysis", "📊"),
+        handler=_load_handler("ui.pages.multi_factor_analysis", "render_multi_factor_analysis", "Multi-Factor Analysis", "📊"),
         category="analysis",
         requires_data=["portfolio"],
     ),
@@ -232,7 +173,7 @@ PAGE_REGISTRY = [
         key="valuation_house",
         title="Valuation House",
         icon="💰",
-        handler=_load_handler_dates("ui.pages.valuation_house", "render_valuation_house", "Valuation House", "💰"),
+        handler=_load_handler("ui.pages.valuation_house", "render_valuation_house", "Valuation House", "💰"),
         category="valuation",
     ),
 
@@ -250,7 +191,7 @@ PAGE_REGISTRY = [
         key="quant_optimizer",
         title="Quant Optimizer",
         icon="🧮",
-        handler=_load_handler_dates_benchmark("ui.pages.quant_optimizer", "render_quant_optimizer", "Quant Optimizer", "🧮"),
+        handler=_load_handler("ui.pages.quant_optimizer", "render_quant_optimizer", "Quant Optimizer", "🧮"),
         category="optimization",
         requires_data=["portfolio"],
     ),
@@ -260,7 +201,7 @@ PAGE_REGISTRY = [
         key="leverage_tracker",
         title="Leverage Tracker",
         icon="📊",
-        handler=_load_handler_dates("ui.pages.leverage_tracker", "render_leverage_tracker", "Leverage Tracker", "📊"),
+        handler=_load_handler("ui.pages.leverage_tracker", "render_leverage_tracker", "Leverage Tracker", "📊"),
         category="tracking",
         requires_data=["portfolio", "performance_history"],
     ),

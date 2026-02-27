@@ -91,8 +91,11 @@ def _render_empty_state():
     ''', unsafe_allow_html=True)
 
 
-def render_portfolio_home(start_date, end_date):
+def render_portfolio_home():
     """Render the Portfolio Home page."""
+    import streamlit as st
+    start_date = st.session_state.get('start_date')
+    end_date = st.session_state.get('end_date')
     import time as _t
     _ph_start = _t.time()
     print("[PORTFOLIO_HOME] Start render", flush=True)

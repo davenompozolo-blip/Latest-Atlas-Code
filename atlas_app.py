@@ -626,6 +626,20 @@ def main():
         st.session_state['selected_range'] = selected_range
         st.session_state['selected_benchmark'] = selected_benchmark
 
+        # Compute actual dates from selected_range and store for page modules
+        if selected_range == "YTD":
+            st.session_state['start_date'] = datetime(datetime.now().year, 1, 1)
+            st.session_state['end_date'] = datetime.now()
+        elif selected_range == "MAX":
+            st.session_state['start_date'] = datetime(2000, 1, 1)
+            st.session_state['end_date'] = datetime.now()
+        else:
+            _days_map = {"1D": 1, "1W": 7, "1M": 30, "3M": 90, "6M": 180,
+                         "1Y": 365, "3Y": 1095, "5Y": 1825}
+            _days = _days_map.get(selected_range, 365)
+            st.session_state['end_date'] = datetime.now()
+            st.session_state['start_date'] = datetime.now() - timedelta(days=_days)
+
         # SOFT dependency banner — PM-Grade Optimization
         if not PM_OPTIMIZATION_AVAILABLE:
             st.warning("PM-Grade Optimization unavailable — regime-aware features degraded.")

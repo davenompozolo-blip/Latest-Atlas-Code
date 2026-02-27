@@ -9,7 +9,7 @@ from app.config import COLORS
 from utils.formatting import format_currency, format_percentage, format_large_number, add_arrow_indicator
 
 
-def render_quant_optimizer(start_date, end_date, selected_benchmark):
+def render_quant_optimizer():
     """Render the Quant Optimizer page."""
     # Lazy imports to avoid circular dependency with atlas_app
     from core import ATLASFormatter, load_portfolio_data, apply_chart_theme
