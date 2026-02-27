@@ -1,0 +1,28 @@
+[
+  {
+    "username": "hlobo",
+    "email": "hlobo@riscura.com",
+    "portfolio_tickers": ["NPN.JO", "SHP.JO", "AGL.JO", "SOL.JO", "FSR.JO"],
+    "portfolio_weights": {
+      "NPN.JO": 0.25,
+      "SHP.JO": 0.20,
+      "AGL.JO": 0.20,
+      "SOL.JO": 0.20,
+      "FSR.JO": 0.15
+    },
+    "portfolio_value": 10000000,
+    "benchmark": "^J203.JO",
+    "key_calls": ["Overweight tech", "Underweight resources"],
+    "weekly_snapshot": {
+      "enabled": true
+    },
+    "monthly_commentary": {
+      "enabled": true,
+      "tone": "institutional"
+    },
+    "quarterly_attribution": {
+      "enabled": true,
+      "tone": "institutional"
+    }
+  }
+]
