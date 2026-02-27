@@ -118,7 +118,6 @@ def render_portfolio_home():
         is_option_ticker,
         ATLASFormatter,
     )
-    from ui.components import ATLAS_TEMPLATE
     print(f"[PORTFOLIO_HOME] Imports done ({_t.time() - _ph_start:.2f}s)", flush=True)
 
     # ── Load Data ──
@@ -412,7 +411,7 @@ def render_portfolio_home():
     st.markdown(_section_label("Sector Attribution"), unsafe_allow_html=True)
     pnl_sector = create_pnl_attribution_sector(enhanced_df)
     if pnl_sector:
-        pnl_sector.update_layout(template=ATLAS_TEMPLATE)
+        apply_chart_theme(pnl_sector)
         st.plotly_chart(pnl_sector, use_container_width=True, key="sector_pnl")
     else:
         st.info("Sector P&L will display when holdings have sector data")
@@ -423,7 +422,7 @@ def render_portfolio_home():
     st.markdown(_section_label("Top Contributors"), unsafe_allow_html=True)
     pnl_position = create_pnl_attribution_position(enhanced_df, top_n=10)
     if pnl_position:
-        pnl_position.update_layout(template=ATLAS_TEMPLATE)
+        apply_chart_theme(pnl_position)
         st.plotly_chart(pnl_position, use_container_width=True)
 
     # ── Monthly Performance Heatmap ──
@@ -432,7 +431,7 @@ def render_portfolio_home():
         st.markdown(_section_label("Monthly Performance"), unsafe_allow_html=True)
         perf_heatmap = create_performance_heatmap(enhanced_df)
         if perf_heatmap:
-            perf_heatmap.update_layout(template=ATLAS_TEMPLATE)
+            apply_chart_theme(perf_heatmap)
             st.plotly_chart(perf_heatmap, use_container_width=True)
     else:
         st.info("Monthly performance heatmap will be available after 2+ months of portfolio history")
