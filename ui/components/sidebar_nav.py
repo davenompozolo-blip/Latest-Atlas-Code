@@ -1,9 +1,18 @@
 """
 ATLAS Terminal - Sidebar Navigation Component
 Matches design spec: 200px sidebar, grouped sections, indigo active indicator.
+Includes authentication gate (Phase 7).
 """
 
 import streamlit as st
+
+from auth.auth_manager import (
+    auth_configured,
+    get_current_user,
+    get_current_tier,
+    logout,
+    render_login_form,
+)
 
 # Feature flags: sidebar label → session_state key
 # Pages with a feature flag are hidden when the flag is False
@@ -18,6 +27,8 @@ def render_sidebar_navigation(default_page: str = "Portfolio Home") -> str:
     Renders sidebar navigation matching the ATLAS design spec exactly.
     200px width, sections (CORE/MARKETS/ANALYSIS), indigo dot + left border active state.
     Pages with a feature flag are hidden when that flag is False in session_state.
+
+    Returns the selected page key, or None if auth is required but user is not logged in.
     """
 
     NAV_SECTIONS = {
@@ -49,11 +60,36 @@ def render_sidebar_navigation(default_page: str = "Portfolio Home") -> str:
         ],
         "Strategy": [
             {"key": "🎯 Strategic Asset Allocation", "label": "Strategic Asset Allocation"},
+            {"key": "📝 Commentary Generator", "label": "Commentary Generator"},
         ],
         "System": [
             {"key": "ℹ️ About", "label": "About"},
         ],
     }
+
+    # ── Auth gate — if credentials are configured, require login ──
+    with st.sidebar:
+        if auth_configured():
+            if not get_current_user():
+                render_login_form()
+                return None  # Block navigation until authenticated
+            else:
+                # Show user info + logout in sidebar header area
+                user_name = st.session_state.get("atlas_auth_name", get_current_user())
+                tier = get_current_tier()
+                st.markdown(
+                    f'<div style="padding:8px 16px 12px; font-size:11px;'
+                    f' color:rgba(255,255,255,0.45);">'
+                    f'Signed in as <span style="color:#00d4ff; font-weight:600;">'
+                    f'{user_name}</span>'
+                    f' <span style="font-size:9px; color:rgba(255,255,255,0.25);'
+                    f' text-transform:uppercase; letter-spacing:0.5px;">'
+                    f'({tier})</span></div>',
+                    unsafe_allow_html=True,
+                )
+                if st.button("Logout", key="atlas_logout_btn", use_container_width=True):
+                    logout()
+                    st.rerun()
 
     if "atlas_selected_page" not in st.session_state:
         for items in NAV_SECTIONS.values():

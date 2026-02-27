@@ -41,8 +41,8 @@ class YieldDataFetcher:
     Includes comprehensive validation to catch data integrity issues.
     """
 
-    # Hardcoded FRED API key for local testing - replace with secrets in production
-    _EMBEDDED_API_KEY = "1b56dae2052715336cd3e3d3ef8b4f81"
+    # FRED API key — load from st.secrets or FRED_API_KEY env var
+    _EMBEDDED_API_KEY = None
 
     # FRED series codes for Treasury yields
     FRED_SERIES = {

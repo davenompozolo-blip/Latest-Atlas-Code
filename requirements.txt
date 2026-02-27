@@ -36,3 +36,6 @@ anthropic>=1.0.0
 
 # Commentary Generator DOCX export
 python-docx>=0.8.11
+
+# Authentication (Phase 7)
+bcrypt>=4.0.0
