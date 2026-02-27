@@ -16,8 +16,8 @@ def render_r_analytics():
         # Data Functions
         load_portfolio_data,
         ATLASFormatter,
+        apply_chart_theme,
     )
-    from ui.components import ATLAS_TEMPLATE
 
     # Check for R availability
     try:
@@ -25,7 +25,7 @@ def render_r_analytics():
         from rpy2.robjects.packages import importr
         importr('rugarch')
         R_AVAILABLE = True
-    except:
+    except (ImportError, OSError):
         R_AVAILABLE = False
 
     # Stub for R interface
@@ -139,7 +139,7 @@ def render_r_analytics():
                 from rpy2.robjects.packages import importr
                 importr('rugarch')
                 st.success("✅ rugarch available")
-            except:
+            except (ImportError, OSError):
                 st.error("❌ rugarch missing")
                 st.caption("Install in R")
 
@@ -215,15 +215,13 @@ def render_r_analytics():
                             xaxis_title="Time",
                             yaxis_title="Volatility (%)",
                             height=400,
-                            template='plotly_dark',
-                            paper_bgcolor='rgba(0,0,0,0)',
-                            plot_bgcolor='rgba(0,0,0,0)'
                         )
+                        apply_chart_theme(fig)
                         st.plotly_chart(fig, use_container_width=True)
 
                         st.success(f"✅ {model_type} model fitted successfully to {ticker}")
 
-                    except Exception as e:
+                    except (ValueError, KeyError, TypeError, AttributeError, RuntimeError) as e:
                         st.error(f"Error: {str(e)}")
                         st.info("Make sure rugarch package is installed in R: install.packages('rugarch')")
 
@@ -281,13 +279,11 @@ def render_r_analytics():
                             fig.update_layout(
                                 title="Asset Correlation Matrix",
                                 height=500,
-                                template='plotly_dark',
-                                paper_bgcolor='rgba(0,0,0,0)',
-                                plot_bgcolor='rgba(0,0,0,0)'
                             )
+                            apply_chart_theme(fig)
                             st.plotly_chart(fig, use_container_width=True)
 
-                        except Exception as e:
+                        except (ValueError, KeyError, TypeError, AttributeError, RuntimeError) as e:
                             st.error(f"Error: {str(e)}")
                             st.info("Make sure copula package is installed in R: install.packages('copula')")
             else:

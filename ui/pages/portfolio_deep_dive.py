@@ -6,12 +6,16 @@ import pandas as pd
 import streamlit as st
 
 from app.config import COLORS
+from ui.theme import ATLAS_COLORS as THEME
 from utils.formatting import format_currency, format_percentage, format_large_number, add_arrow_indicator
+
+_GREEN = THEME['success']
+_AMBER = THEME['warning_light']
+_RED = THEME['danger']
 
 
 def render_portfolio_deep_dive():
     """Render the Portfolio Deep Dive page."""
-    import streamlit as st
     start_date = st.session_state.get('start_date')
     end_date = st.session_state.get('end_date')
     # Lazy imports to avoid circular dependency with atlas_app
@@ -923,12 +927,12 @@ def render_portfolio_deep_dive():
         col1, col2 = st.columns(2)
 
         with col1:
-            div_score_color = '#10b981' if div_score > 7 else ('#fbbf24' if div_score > 5 else '#ef4444')
+            div_score_color = _GREEN if div_score > 7 else (_AMBER if div_score > 5 else _RED)
             div_score_status = 'Well Diversified' if div_score > 7 else ('Moderate' if div_score > 5 else 'Concentrated')
             st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🎯</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">DIVERSIFICATION SCORE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {div_score_color}; margin: 0.5rem 0 0.75rem 0; text-shadow: 0 0 24px rgba(16,185,129,0.5); line-height: 1;">{div_score:.1f}/10</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{div_score_status}</p></div></div>', unsafe_allow_html=True)
 
         with col2:
-            avg_corr_color = '#10b981' if avg_corr < 0.3 else ('#fbbf24' if avg_corr < 0.6 else '#ef4444')
+            avg_corr_color = _GREEN if avg_corr < 0.3 else (_AMBER if avg_corr < 0.6 else _RED)
             avg_corr_status = 'Low Correlation' if avg_corr < 0.3 else ('Moderate' if avg_corr < 0.6 else 'High Correlation')
             st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #3b82f6); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🔗</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">AVERAGE CORRELATION</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {avg_corr_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{avg_corr:.2f}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #a5f3fc; margin: 0; font-weight: 600;">{avg_corr_status}</p></div></div>', unsafe_allow_html=True)
 
