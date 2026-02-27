@@ -9,8 +9,11 @@ from app.config import COLORS
 from utils.formatting import format_currency, format_percentage, format_large_number, add_arrow_indicator
 
 
-def render_multi_factor_analysis(start_date, end_date):
+def render_multi_factor_analysis():
     """Render the Multi-Factor Analysis page."""
+    import streamlit as st
+    start_date = st.session_state.get('start_date')
+    end_date = st.session_state.get('end_date')
     # Lazy imports to avoid circular dependency with atlas_app
     from core import (
         # Data Functions

@@ -5,11 +5,19 @@ Matches design spec: 200px sidebar, grouped sections, indigo active indicator.
 
 import streamlit as st
 
+# Feature flags: sidebar label → session_state key
+# Pages with a feature flag are hidden when the flag is False
+_FEATURE_FLAGS = {
+    "📊 R Analytics": "r_available",
+    "💾 Database": "sql_available",
+}
+
 
 def render_sidebar_navigation(default_page: str = "Portfolio Home") -> str:
     """
     Renders sidebar navigation matching the ATLAS design spec exactly.
     200px width, sections (CORE/MARKETS/ANALYSIS), indigo dot + left border active state.
+    Pages with a feature flag are hidden when that flag is False in session_state.
     """
 
     NAV_SECTIONS = {
@@ -111,6 +119,10 @@ def render_sidebar_navigation(default_page: str = "Portfolio Home") -> str:
             </div>''', unsafe_allow_html=True)
 
             for item in items:
+                # Skip pages whose feature flag is False
+                flag_key = _FEATURE_FLAGS.get(item["key"])
+                if flag_key and not st.session_state.get(flag_key, False):
+                    continue
                 is_active = item["key"] == selected
                 if is_active:
                     # Active state — indigo left border + indigo dot + bright text

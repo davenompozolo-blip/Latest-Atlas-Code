@@ -99,12 +99,6 @@ from .constants import (
 )
 
 
-def _lazy_atlas():
-    """Lazy import of atlas_app to avoid circular imports."""
-    import atlas_app
-    return atlas_app
-
-
 @st.cache_data(ttl=300)
 def search_yahoo_finance(query):
     """

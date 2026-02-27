@@ -92,12 +92,6 @@ from .calculations import (
 )
 
 
-def _lazy_atlas():
-    """Lazy import of atlas_app to avoid circular imports."""
-    import atlas_app
-    return atlas_app
-
-
 def create_risk_snapshot(df, portfolio_returns):
     """
     Risk Snapshot — design spec stat-card layout with inner-glow orbs.

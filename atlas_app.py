@@ -339,6 +339,12 @@ print(f"[BOOT] ========================================", flush=True)
 warnings.filterwarnings("ignore")
 
 # ============================================================================
+# FEATURE FLAGS → SESSION STATE (used by sidebar to hide unavailable pages)
+# ============================================================================
+st.session_state['r_available'] = R_AVAILABLE
+st.session_state['sql_available'] = SQL_AVAILABLE
+
+# ============================================================================
 # HELPER FUNCTIONS FOR VALIDATION
 # ============================================================================
 
@@ -620,6 +626,20 @@ def main():
         st.session_state['selected_range'] = selected_range
         st.session_state['selected_benchmark'] = selected_benchmark
 
+        # Compute actual dates from selected_range and store for page modules
+        if selected_range == "YTD":
+            st.session_state['start_date'] = datetime(datetime.now().year, 1, 1)
+            st.session_state['end_date'] = datetime.now()
+        elif selected_range == "MAX":
+            st.session_state['start_date'] = datetime(2000, 1, 1)
+            st.session_state['end_date'] = datetime.now()
+        else:
+            _days_map = {"1D": 1, "1W": 7, "1M": 30, "3M": 90, "6M": 180,
+                         "1Y": 365, "3Y": 1095, "5Y": 1825}
+            _days = _days_map.get(selected_range, 365)
+            st.session_state['end_date'] = datetime.now()
+            st.session_state['start_date'] = datetime.now() - timedelta(days=_days)
+
         # SOFT dependency banner — PM-Grade Optimization
         if not PM_OPTIMIZATION_AVAILABLE:
             st.warning("PM-Grade Optimization unavailable — regime-aware features degraded.")
@@ -670,22 +690,8 @@ def main():
 
 
 # ============================================================================
-# RUN THE APP - Guard against circular imports
+# RUN THE APP
 # ============================================================================
-# When page modules import from atlas_app, we don't want to re-run main()
-# Use environment variable to track if main() is already running
-# (env vars persist across module imports within same process)
-import os as _os_guard
-_ATLAS_MAIN_GUARD = '_ATLAS_MAIN_RUNNING'
-
-if _os_guard.environ.get(_ATLAS_MAIN_GUARD) != '1':
-    _os_guard.environ[_ATLAS_MAIN_GUARD] = '1'
-    try:
-        print("[BOOT] Calling main()...", flush=True)
-        main()
-        print("[BOOT] main() completed", flush=True)
-    finally:
-        # Clear the guard after main() completes (allows Streamlit reruns)
-        _os_guard.environ.pop(_ATLAS_MAIN_GUARD, None)
-else:
-    print("[BOOT] Skipping main() - circular import detected", flush=True)
+print("[BOOT] Calling main()...", flush=True)
+main()
+print("[BOOT] main() completed", flush=True)
