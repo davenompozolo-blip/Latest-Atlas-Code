@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 
 from app.config import COLORS
 from utils.formatting import format_currency, format_percentage, add_arrow_indicator
+from ui.components.charts import apply_chart_theme
 
 
 def _regime_is_fresh(regime: dict, max_age_minutes: int = 30) -> bool:
