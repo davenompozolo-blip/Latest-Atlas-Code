@@ -47,6 +47,9 @@ def render_sidebar_navigation(default_page: str = "Portfolio Home") -> str:
             {"key": "📊 Leverage Tracker", "label": "Leverage Tracker"},
             {"key": "📡 Investopedia Live", "label": "Investopedia Live"},
         ],
+        "Strategy": [
+            {"key": "🎯 Strategic Asset Allocation", "label": "Strategic Asset Allocation"},
+        ],
         "System": [
             {"key": "ℹ️ About", "label": "About"},
         ],
