@@ -77,6 +77,18 @@ def render_valuation_house():
         apply_relative_valuation,
     )
     from ui.components import ATLAS_TEMPLATE
+    from analytics.valuation_helpers import (
+        convert_dashboard_projections,
+        calc_upside_downside,
+        calc_net_debt,
+        resolve_dcf_defaults,
+        assemble_trap_inputs,
+        assemble_monte_carlo_company_data,
+        assemble_validation_assumptions,
+        estimate_current_dividend,
+        assemble_company_financials_for_relative,
+        derive_wacc,
+    )
 
     # Valuation scenario presets (extracted from atlas_app.py)
     VALUATION_SCENARIOS = {
@@ -678,7 +690,7 @@ def render_valuation_house():
                                         )
 
                                         # Calculate net debt
-                                        net_debt = financials.get('total_debt', 0) - financials.get('cash', 0)
+                                        net_debt = calc_net_debt(financials.get('total_debt', 0), financials.get('cash', 0))
 
                                         # Get WACC and terminal growth (regime-adjusted if enabled)
                                         if use_regime_aware_dcf and 'regime_dcf_result' in st.session_state:
@@ -767,7 +779,7 @@ def render_valuation_house():
 
                 # Consensus Fair Value
                 with col1:
-                    upside_pct = ((consensus_result['consensus_value'] / company['current_price'] - 1) * 100) if company['current_price'] > 0 else 0
+                    upside_pct = calc_upside_downside(consensus_result['consensus_value'], company['current_price'])
                     consensus_color = _metric_color(upside_pct, green_above=20, amber_above=-20)
                     consensus_status = 'Undervalued' if upside_pct > 20 else ('Fair Value' if upside_pct > -20 else 'Overvalued')
                     st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🎯</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">CONSENSUS FAIR VALUE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {consensus_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">${consensus_result["consensus_value"]:.2f}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{consensus_status} ({upside_pct:+.1f}%)</p></div></div>', unsafe_allow_html=True)
@@ -1231,12 +1243,7 @@ def render_valuation_house():
 
             with col1:
                 # Get current dividend from company data
-                current_dividend_default = company.get('dividendRate', 0) * company['shares_outstanding']
-                if current_dividend_default == 0:
-                    # Try to estimate from dividend yield
-                    div_yield = company.get('dividendYield', 0)
-                    if div_yield > 0:
-                        current_dividend_default = company['market_cap'] * div_yield
+                current_dividend_default = estimate_current_dividend(company)
 
                 current_dividend = st.number_input(
                     "Current Annual Dividend ($)",
@@ -1316,11 +1323,7 @@ def render_valuation_house():
 
             with col1:
                 # Get current dividend
-                current_dividend_default = company.get('dividendRate', 0) * company['shares_outstanding']
-                if current_dividend_default == 0:
-                    div_yield = company.get('dividendYield', 0)
-                    if div_yield > 0:
-                        current_dividend_default = company['market_cap'] * div_yield
+                current_dividend_default = estimate_current_dividend(company)
 
                 current_dividend_ms = st.number_input(
                     "Current Annual Dividend ($)",
@@ -1647,50 +1650,14 @@ def render_valuation_house():
                         dcf_proj_obj = dashboard_data.get('projections')
 
                         # Convert DCFProjections object to legacy projection format
-                        # for compatibility with calculate_dcf_value()
                         if dcf_proj_obj:
-                            projections = []
-                            # Handle both list of projections and single projection object
-                            if isinstance(dcf_proj_obj, list) and len(dcf_proj_obj) > 0:
-                                # It's a non-empty list - use first item
-                                proj_item = dcf_proj_obj[0]
-                                if proj_item and hasattr(proj_item, 'forecast_years') and hasattr(proj_item, 'final_projections'):
-                                    for year in range(1, proj_item.forecast_years + 1):
-                                        year_data = proj_item.final_projections.get(year, {}) if isinstance(proj_item.final_projections, dict) else {}
-                                        projections.append({
-                                            'year': year,
-                                            'revenue': year_data.get('revenue', 0),
-                                            'ebit': year_data.get('ebit', 0),
-                                            'nopat': year_data.get('nopat', 0),
-                                            'fcff': year_data.get('fcff', 0),
-                                            'fcfe': year_data.get('fcfe', 0)
-                                        })
-                                else:
-                                    st.warning("⚠️ List projections format not recognized. Using manual calculation.")
-                                    dashboard_active = False
-                            elif not isinstance(dcf_proj_obj, list) and hasattr(dcf_proj_obj, 'forecast_years') and hasattr(dcf_proj_obj, 'final_projections'):
-                                # It's a single projection object with required attributes
-                                for year in range(1, dcf_proj_obj.forecast_years + 1):
-                                    year_data = dcf_proj_obj.final_projections.get(year, {}) if isinstance(dcf_proj_obj.final_projections, dict) else {}
-                                    projections.append({
-                                        'year': year,
-                                        'revenue': year_data.get('revenue', 0),
-                                        'ebit': year_data.get('ebit', 0),
-                                        'nopat': year_data.get('nopat', 0),
-                                        'fcff': year_data.get('fcff', 0),
-                                        'fcfe': year_data.get('fcfe', 0)
-                                    })
-                            else:
-                                st.warning(f"⚠️ Projections format not recognized. Using manual calculation.")
-                                dashboard_active = False
-
+                            projections = convert_dashboard_projections(dcf_proj_obj)
                             if projections:
                                 final_fcf = projections[-1]['fcff'] if method_key == 'FCFF' else projections[-1]['fcfe']
-                            elif dashboard_active:  # Only show error if we haven't already warned
-                                st.error("⚠️ Could not parse projections. Using manual calculation.")
+                            else:
+                                st.warning("⚠️ Projections format not recognized. Using manual calculation.")
                                 dashboard_active = False
                         else:
-                            # Fallback if projections object not available
                             st.error("⚠️ Dashboard projections not available. Using manual calculation.")
                             dashboard_active = False
 
@@ -1699,68 +1666,44 @@ def render_valuation_house():
                         # =========================================================
                         # MANUAL MODE: Use slider inputs and traditional calculation
                         # =========================================================
-                        # Ensure default values exist if sliders weren't rendered
-                        try:
-                            _ = risk_free
-                        except (NameError, UnboundLocalError):
-                            risk_free = 0.045  # 4.5% default
-                        try:
-                            _ = beta
-                        except (NameError, UnboundLocalError):
-                            beta = 1.0  # Market beta default
-                        try:
-                            _ = market_risk_premium
-                        except (NameError, UnboundLocalError):
-                            market_risk_premium = 0.06  # 6% default
-                        try:
-                            _ = cost_debt
-                        except (NameError, UnboundLocalError):
-                            cost_debt = 0.05  # 5% default
-                        try:
-                            _ = tax_rate
-                        except (NameError, UnboundLocalError):
-                            tax_rate = financials.get('tax_rate', 0.21)  # Use financial data or 21% default
+                        # Resolve defaults for any sliders that weren't rendered
+                        _locals = {}
+                        for _name in ('risk_free', 'beta', 'market_risk_premium', 'cost_debt',
+                                      'tax_rate', 'revenue_growth', 'ebit_margin', 'forecast_years',
+                                      'depreciation_pct', 'capex_pct', 'wc_change', 'net_borrowing'):
+                            try:
+                                _locals[_name] = eval(_name)  # noqa: S307 – safe; names are string literals
+                            except (NameError, UnboundLocalError):
+                                pass
+                        _defaults = resolve_dcf_defaults(_locals)
+                        # Override tax_rate default with financial data if available
+                        if 'tax_rate' not in _locals:
+                            _defaults['tax_rate'] = financials.get('tax_rate', 0.21)
+                        risk_free = _defaults['risk_free']
+                        beta = _defaults['beta']
+                        market_risk_premium = _defaults['market_risk_premium']
+                        cost_debt = _defaults['cost_debt']
+                        tax_rate = _defaults['tax_rate']
+                        revenue_growth = _defaults['revenue_growth']
+                        ebit_margin = _defaults['ebit_margin']
+                        forecast_years = int(_defaults['forecast_years'])
+                        depreciation_pct = _defaults['depreciation_pct']
+                        capex_pct = _defaults['capex_pct']
+                        wc_change = _defaults['wc_change']
+                        net_borrowing = _defaults['net_borrowing']
 
-                        # Ensure growth and projection parameters exist
-                        try:
-                            _ = revenue_growth
-                        except (NameError, UnboundLocalError):
-                            revenue_growth = 0.05  # 5% default
-                        try:
-                            _ = ebit_margin
-                        except (NameError, UnboundLocalError):
-                            ebit_margin = 0.20  # 20% default
-                        try:
-                            _ = forecast_years
-                        except (NameError, UnboundLocalError):
-                            forecast_years = 5  # 5 years default
-                        try:
-                            _ = depreciation_pct
-                        except (NameError, UnboundLocalError):
-                            depreciation_pct = 0.03  # 3% of revenue default
-                        try:
-                            _ = capex_pct
-                        except (NameError, UnboundLocalError):
-                            capex_pct = 0.04  # 4% of revenue default
-                        try:
-                            _ = wc_change
-                        except (NameError, UnboundLocalError):
-                            wc_change = 0  # No change default
-                        try:
-                            _ = net_borrowing
-                        except (NameError, UnboundLocalError):
-                            net_borrowing = 0  # No net borrowing default
-
-                        # Calculate cost of equity
-                        cost_equity = calculate_cost_of_equity(risk_free, beta, market_risk_premium)
-
-                        # Calculate discount rate
+                        # Calculate cost of equity and discount rate
                         if method_key == 'FCFF':
                             total_debt = financials.get('total_debt', 0)
                             total_equity = company['market_cap']
-                            discount_rate = calculate_wacc(cost_equity, cost_debt, tax_rate, total_debt, total_equity)
+                            cost_equity, discount_rate = derive_wacc(
+                                risk_free, beta, market_risk_premium,
+                                cost_debt, tax_rate, total_debt, total_equity,
+                                calculate_cost_of_equity_fn=calculate_cost_of_equity,
+                                calculate_wacc_fn=calculate_wacc,
+                            )
                         else:
-                            discount_rate = cost_equity
+                            discount_rate = calculate_cost_of_equity(risk_free, beta, market_risk_premium)
 
                         # Get base financials
                         base_revenue = financials.get('revenue', 0)
@@ -1835,15 +1778,11 @@ def render_valuation_house():
                         st.markdown("#### 🎯 Assumption Validation")
 
                         # Collect assumptions for validation
-                        assumptions_for_validation = {
-                            'revenue_growth': revenue_growth if not dashboard_active else (projections[-1]['revenue'] / projections[0]['revenue']) ** (1/len(projections)) - 1,
-                            'ebitda_margin': ebit_margin if not dashboard_active else 0.25,  # Estimate from projections
-                            'terminal_growth': terminal_growth,
-                            'wacc': discount_rate,
-                            'tax_rate': tax_rate if not dashboard_active else financials.get('tax_rate', 0.21),
-                            'capex_pct': capex_pct if not dashboard_active else 0.05,
-                            'nwc_change': wc_change if not dashboard_active else 0,
-                        }
+                        assumptions_for_validation = assemble_validation_assumptions(
+                            revenue_growth, ebit_margin, terminal_growth,
+                            discount_rate, tax_rate, capex_pct, wc_change,
+                            dashboard_active, projections, financials,
+                        )
 
                         # Run validation
                         validator = DCFValidator()
@@ -1866,7 +1805,7 @@ def render_valuation_house():
                     terminal_value = calculate_terminal_value(final_fcf, discount_rate, terminal_growth)
 
                     # Calculate DCF value (both modes)
-                    net_debt = financials.get('total_debt', 0) - financials.get('cash', 0)
+                    net_debt = calc_net_debt(financials.get('total_debt', 0), financials.get('cash', 0))
 
                     dcf_results = calculate_dcf_value(
                         projections, discount_rate, terminal_value, shares,
@@ -1953,20 +1892,8 @@ def render_valuation_house():
                     median_multiples = calculate_peer_multiples(peers)
 
                     if median_multiples:
-                        # Prepare company financials for relative valuation
-                        company_financials_dict = {
-                            'eps': financials.get('eps', 0),
-                            'book_value_per_share': financials.get('book_value_per_share', 0),
-                            'sales_per_share': financials.get('revenue', 0) / shares if shares > 0 else 0,
-                            'ebitda': financials.get('ebitda', 0),
-                            'ebit': financials.get('ebit', 0),
-                            'revenue': financials.get('revenue', 0),
-                            'total_debt': financials.get('total_debt', 0),
-                            'cash': financials.get('cash', 0)
-                        }
-
                         relative_results = apply_relative_valuation(
-                            company_financials=company_financials_dict,
+                            company_financials=assemble_company_financials_for_relative(financials, shares),
                             median_multiples=median_multiples,
                             shares_outstanding=shares
                         )
@@ -2015,7 +1942,7 @@ def render_valuation_house():
             # Key metrics
             intrinsic_value = results['intrinsic_value_per_share']
             current_price = company['current_price']
-            upside_downside = ((intrinsic_value - current_price) / current_price) * 100
+            upside_downside = calc_upside_downside(intrinsic_value, current_price)
 
             # DCF Valuation toast with upside/downside
             if abs(upside_downside) < 1000:  # Valid result
@@ -2140,19 +2067,8 @@ def render_valuation_house():
                     with st.spinner("Running 1000 Monte Carlo simulations..."):
                         try:
                             # Create RobustDCFEngine with correct signature: (company_data, financials)
-                            # The engine creates its own DCFAssumptionManager and DCFValidator internally
                             robust_engine = RobustDCFEngine(
-                                company_data={
-                                    'ticker': company['ticker'],
-                                    'sector': company['sector'],
-                                    'market_cap': company['market_cap'],
-                                    'shares_outstanding': shares,
-                                    'revenue': financials.get('revenue', 0),
-                                    'ebit': financials.get('ebit', 0),
-                                    'net_income': financials.get('net_income', 0),
-                                    'total_debt': financials.get('total_debt', 0),
-                                    'cash': financials.get('cash', 0),
-                                },
+                                company_data=assemble_monte_carlo_company_data(company, financials, shares),
                                 financials=financials
                             )
 
@@ -2206,27 +2122,11 @@ def render_valuation_house():
                 # Run trap detection
                 with st.spinner("🔍 Running trap detection analysis..."):
                     try:
-                        # Prepare DCF inputs for trap detector
-                        revenue_projections = [p.get('revenue', 0) for p in projections] if projections else []
-
-                        if method == 'FCFF':
-                            fcf_projections = [p.get('fcff', 0) for p in projections] if projections else []
-                        else:
-                            fcf_projections = [p.get('fcfe', 0) for p in projections] if projections else []
-
-                        dcf_inputs_for_trap_detection = {
-                            'wacc': discount_rate,
-                            'terminal_growth_rate': terminal_growth,
-                            'projection_years': len(projections) if projections else 5,
-                            'revenue_projections': revenue_projections,
-                            'fcf_projections': fcf_projections,
-                            'terminal_value': results.get('pv_terminal', 0),
-                            'enterprise_value': results.get('enterprise_value', 0) if method == 'FCFF' else results.get('equity_value', 0),
-                            'current_price': current_price,
-                            'fair_value': intrinsic_value
-                        }
-
                         # Run trap detection
+                        dcf_inputs_for_trap_detection = assemble_trap_inputs(
+                            projections, method, discount_rate, terminal_growth,
+                            results, current_price, intrinsic_value,
+                        )
                         trap_summary = analyze_dcf_traps(company['ticker'], dcf_inputs_for_trap_detection)
 
                         # Display warnings
