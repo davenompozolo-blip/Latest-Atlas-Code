@@ -1,6 +1,8 @@
 """
 ATLAS Terminal - Risk Analysis Page
 Extracted from atlas_app.py for modular page-level editing.
+
+Includes Asymmetric Risk Panel (sidebar) when PMGradeOptimizer is available.
 """
 import pandas as pd
 import streamlit as st
@@ -8,6 +10,13 @@ import streamlit as st
 from app.config import COLORS
 from ui.theme import ATLAS_COLORS as THEME
 from utils.formatting import format_percentage
+
+# PM-Grade Optimization availability
+try:
+    from atlas_pm_optimization import AsymmetricRiskOptimizer as _AsymmetricRisk
+    _PM_AVAILABLE = True
+except ImportError:
+    _PM_AVAILABLE = False
 
 # Semantic colors from theme (metric thresholds)
 _GREEN = THEME['success']       # #10b981
@@ -56,6 +65,87 @@ def _render_factor_sidebar(exposures: dict):
         )
 
 
+def _render_asymmetric_sidebar():
+    """Render Sortino, Omega, and downside deviation in a sidebar expander.
+
+    Uses portfolio returns from session state (computed by performance suite)
+    via a lightweight proxy — equal-weight returns from the portfolio tickers.
+    Only displayed when PM_OPTIMIZATION_AVAILABLE is True and portfolio data
+    exists in session state.
+    """
+    import numpy as np
+
+    portfolio_df = st.session_state.get("portfolio_df")
+    if portfolio_df is None or (hasattr(portfolio_df, "empty") and portfolio_df.empty):
+        return
+
+    # Find tickers in the portfolio
+    ticker_col = None
+    for col in ("Ticker", "Symbol", "ticker", "symbol"):
+        if col in portfolio_df.columns:
+            ticker_col = col
+            break
+    if ticker_col is None:
+        return
+
+    tickers = portfolio_df[ticker_col].dropna().unique().tolist()
+    if not tickers or len(tickers) < 2:
+        return
+
+    # Attempt to build a returns DataFrame from yfinance
+    try:
+        import yfinance as yf
+
+        data = yf.download(tickers[:20], period="1y", progress=False, auto_adjust=True)
+        if data.empty:
+            return
+        close = data["Close"] if "Close" in data.columns.get_level_values(0) else data
+        returns_df = close.pct_change().dropna()
+        if returns_df.empty or len(returns_df) < 30:
+            return
+    except Exception:
+        return
+
+    # Compute asymmetric metrics using equal weights
+    try:
+        optimizer = _AsymmetricRisk(returns_df)
+        n = len(returns_df.columns)
+        equal_w = np.ones(n) / n
+
+        sortino = optimizer.calculate_sortino_ratio(equal_w)
+        downside_dev = optimizer.calculate_downside_deviation(equal_w)
+
+        # Omega ratio: sum(positive returns) / |sum(negative returns)|
+        port_rets = (returns_df.values @ equal_w)
+        pos_sum = port_rets[port_rets > 0].sum()
+        neg_sum = abs(port_rets[port_rets < 0].sum())
+        omega = (pos_sum / neg_sum) if neg_sum > 0 else 0.0
+    except Exception:
+        return
+
+    with st.sidebar.expander("Asymmetric Risk Panel", expanded=False):
+        st.sidebar.caption("PMGradeOptimizer — equal-weight portfolio")
+        _metric_row("Sortino Ratio", f"{sortino:.2f}",
+                     _GREEN if sortino > 1.0 else (_AMBER if sortino > 0.5 else _RED))
+        _metric_row("Omega Ratio", f"{omega:.2f}",
+                     _GREEN if omega > 1.2 else (_AMBER if omega > 1.0 else _RED))
+        _metric_row("Downside Dev.", f"{downside_dev:.1%}",
+                     _GREEN if downside_dev < 0.10 else (_AMBER if downside_dev < 0.20 else _RED))
+
+
+def _metric_row(label: str, value: str, color: str):
+    """Render a compact metric row in the sidebar."""
+    st.sidebar.markdown(
+        f'<div style="margin-bottom: 0.5rem;">'
+        f'<span style="font-weight: 700; font-size: 0.85rem;'
+        f' color: var(--text-primary, #fff);">{label}</span>'
+        f'<span style="font-size: 0.85rem; color: {color};'
+        f' margin-left: 0.5rem; font-weight: 600;">{value}</span>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+
 def render_risk_analysis():
     """Render the Risk Analysis page."""
     start_date = st.session_state.get('start_date')
@@ -67,6 +157,10 @@ def render_risk_analysis():
     if _factor_ctx and _context_is_fresh(_factor_ctx):
         with st.sidebar.expander("Factor Risk Decomposition", expanded=False):
             _render_factor_sidebar(_factor_ctx)
+
+    # Cross-module integration: asymmetric risk metrics from PMGradeOptimizer
+    if _PM_AVAILABLE:
+        _render_asymmetric_sidebar()
 
     # Lazy imports to avoid circular dependency with atlas_app
     from core import (

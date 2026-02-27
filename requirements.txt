@@ -30,3 +30,6 @@ investpy>=1.0.8
 
 # TradingView Lightweight Charts
 streamlit-lightweight-charts>=0.7.20
+
+# AI-Powered Strategic Asset Allocation
+anthropic>=1.0.0

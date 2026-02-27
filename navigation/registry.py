@@ -196,6 +196,15 @@ PAGE_REGISTRY = [
         requires_data=["portfolio"],
     ),
 
+    # --- Strategy ---
+    PageDefinition(
+        key="saa_tool",
+        title="Strategic Asset Allocation",
+        icon="🎯",
+        handler=_load_handler("ui.pages.saa_tool", "render_saa_tool", "Strategic Asset Allocation", "🎯"),
+        category="strategy",
+    ),
+
     # --- Tracking ---
     PageDefinition(
         key="leverage_tracker",
