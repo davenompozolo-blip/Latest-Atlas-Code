@@ -141,7 +141,6 @@ def _classify_badges(total_gl_pct, actual_leverage, target_leverage=1.7):
 
 def render_portfolio_home():
     """Render the Portfolio Home page."""
-    import streamlit as st
     start_date = st.session_state.get('start_date')
     end_date = st.session_state.get('end_date')
     import time as _t
