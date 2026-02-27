@@ -19,8 +19,8 @@ def render_monte_carlo():
     from core import ATLASFormatter, load_portfolio_data, apply_chart_theme
     from ui.components import ATLAS_TEMPLATE
     from analytics.stochastic import StochasticEngine
+    from atlas_terminal.data.fetchers.market_data import MarketDataFetcher
     import plotly.graph_objects as go
-    import yfinance as yf
     import numpy as np
 
     st.markdown("**Advanced Stochastic Modeling with Geometric Brownian Motion**")
@@ -74,11 +74,8 @@ def render_monte_carlo():
                     tickers = portfolio_data[ticker_column].unique().tolist()
                     print(f"🎯 Found {len(tickers)} unique tickers: {tickers[:5]}...")
 
-                    # Download historical data
-                    hist_data = yf.download(tickers, period='1y', progress=False)['Close']
-
-                    if isinstance(hist_data, pd.Series):
-                        hist_data = hist_data.to_frame()
+                    # Download historical data via data layer
+                    hist_data = MarketDataFetcher.get_prices(tickers, period='1y')
 
                     # Calculate returns
                     returns = hist_data.pct_change().dropna()

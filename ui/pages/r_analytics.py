@@ -52,11 +52,8 @@ def render_r_analytics():
 
         return RInterface()
 
-    # Import yfinance for data fetching
-    try:
-        import yfinance as yf
-    except ImportError:
-        yf = None
+    # Data layer for market data fetching
+    from atlas_terminal.data.fetchers.market_data import MarketDataFetcher
 
     st.markdown("## 📊 R ANALYTICS - ADVANCED QUANTITATIVE MODELS")
 
@@ -189,8 +186,8 @@ def render_r_analytics():
                 with st.spinner(f"Fitting {model_type} model to {ticker}..."):
                     try:
                         # Get historical data
-                        stock_data = yf.download(ticker, period="1y", progress=False)
-                        returns = stock_data['Close'].pct_change().dropna()
+                        stock_data = MarketDataFetcher.get_prices([ticker], period="1y")
+                        returns = stock_data.iloc[:, 0].pct_change().dropna()
 
                         # Fit GARCH model using R
                         result = r.garch_volatility(returns, model=model_type)
@@ -251,7 +248,7 @@ def render_r_analytics():
                     with st.spinner(f"Fitting {copula_type} copula..."):
                         try:
                             # Get returns data
-                            returns_data = yf.download(selected_tickers, period="1y", progress=False)['Close'].pct_change().dropna()
+                            returns_data = MarketDataFetcher.get_prices(selected_tickers, period="1y").pct_change().dropna()
 
                             # Fit copula
                             result = r.copula_dependency(returns_data, copula_type=copula_type)
@@ -319,7 +316,7 @@ def render_r_analytics():
                         # Get returns for analysis
                         tickers = df['Ticker'].tolist() if 'Ticker' in df.columns else []
                         if len(tickers) > 0:
-                            returns_data = yf.download(tickers, period="1y", progress=False)['Close'].pct_change().dropna()
+                            returns_data = MarketDataFetcher.get_prices(tickers, period="1y").pct_change().dropna()
 
                             # Execute custom R code
                             result = r.run_custom_analysis(r_code, data=returns_data)

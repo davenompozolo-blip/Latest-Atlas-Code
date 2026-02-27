@@ -21,27 +21,15 @@ def render_quant_optimizer():
     # Lazy imports to avoid circular dependency with atlas_app
     from core import ATLASFormatter, load_portfolio_data, apply_chart_theme
     from quant_optimizer.atlas_quant_portfolio_optimizer import PortfolioOptimizer
+    from atlas_terminal.data.fetchers.market_data import MarketDataFetcher
     import plotly.graph_objects as go
     import numpy as np
-    import yfinance as yf
 
-    @st.cache_data(ttl=60 * 30, show_spinner=False)
     def load_price_history(tickers, period="2y"):
-        hist_data = yf.download(tickers, period=period, progress=False)['Close']
-        if isinstance(hist_data, pd.Series):
-            hist_data = hist_data.to_frame()
-        return hist_data
+        return MarketDataFetcher.get_prices(list(tickers), period=period)
 
-    @st.cache_data(ttl=60 * 60, show_spinner=False)
     def load_sector_map(tickers):
-        sector_map = {}
-        for ticker in tickers:
-            try:
-                ticker_info = yf.Ticker(ticker)
-                sector_map[ticker] = ticker_info.info.get('sector', 'Unknown')
-            except (ValueError, KeyError, ConnectionError, AttributeError):
-                sector_map[ticker] = 'Unknown'
-        return sector_map
+        return MarketDataFetcher.get_sector_map(list(tickers))
 
     st.markdown("### 🧮 Quantitative Portfolio Optimizer")
     st.markdown("**Centralized optimizer with objectives, constraints, and actionable rebalancing output**")
