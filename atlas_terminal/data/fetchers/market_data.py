@@ -135,10 +135,55 @@ class MarketDataFetcher:
                     'sector': info.get('sector', 'Unknown'),
                     'market_cap': info.get('marketCap', 0)
                 })
-            except:
+            except (ValueError, KeyError, ConnectionError, AttributeError):
                 continue
 
         return results
+
+    @staticmethod
+    @cached(ttl=900, persist=True)  # Cache for 15 minutes
+    @safe_execute(fallback_value=pd.DataFrame(), context="fetching multi-ticker prices")
+    def get_prices(tickers: List[str], period: str = "1y") -> pd.DataFrame:
+        """
+        Fetch close prices for multiple tickers as a DataFrame.
+
+        Args:
+            tickers: List of ticker symbols
+            period: Period (1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, ytd, max)
+
+        Returns:
+            DataFrame with columns=tickers, index=dates, values=close prices.
+            Single-ticker input returns a single-column DataFrame (never a Series).
+        """
+        df = yf.download(tickers, period=period, progress=False)['Close']
+
+        if isinstance(df, pd.Series):
+            df = df.to_frame(name=tickers[0] if len(tickers) == 1 else df.name)
+
+        if df.empty:
+            raise ValueError(f"No price data found for {tickers}")
+
+        return df
+
+    @staticmethod
+    @cached(ttl=3600, persist=True)  # Cache for 1 hour
+    @safe_execute(fallback_value={}, context="fetching sector map")
+    def get_sector_map(tickers: List[str]) -> Dict[str, str]:
+        """
+        Fetch sector classification for each ticker.
+
+        Args:
+            tickers: List of ticker symbols
+
+        Returns:
+            Dict mapping ticker -> sector string. Unknown on failure.
+        """
+        sector_map: Dict[str, str] = {}
+        for ticker in tickers:
+            info = MarketDataFetcher.get_company_info(ticker)
+            sector_map[ticker] = info.get('sector', 'Unknown') if info else 'Unknown'
+        return sector_map
+
 
 # Global instance
 market_data = MarketDataFetcher()
