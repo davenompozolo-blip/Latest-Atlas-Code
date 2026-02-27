@@ -47,6 +47,24 @@ def render_multi_factor_analysis():
         factor_data = calculate_factor_exposures(enhanced_df, start_date, end_date)
 
     if factor_data:
+        # SESSION STATE: Cross-module integration context
+        # Write factor exposures so Risk Analysis can show a sidebar summary.
+        from datetime import datetime as _dt
+        _exposures = factor_data.get('exposures')
+        if _exposures is not None:
+            _sorted = _exposures.drop('Alpha', errors='ignore').abs().sort_values(ascending=False)
+            _top = []
+            for _fname in _sorted.head(3).index:
+                _exp_val = float(_exposures[_fname])
+                _risk_c = float(_sorted[_fname] / _sorted.sum()) if _sorted.sum() > 0 else 0
+                _top.append({'name': _fname, 'exposure': round(_exp_val, 3),
+                             'risk_contribution': round(_risk_c, 3)})
+            st.session_state['factor_exposures'] = {
+                'top_factors': _top,
+                'r_squared': factor_data['r_squared'],
+                'timestamp': _dt.now(),
+            }
+
         st.markdown(f"**Model R² = {factor_data['r_squared']:.3f}**")
         st.progress(factor_data['r_squared'])
 

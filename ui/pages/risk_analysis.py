@@ -16,11 +16,58 @@ _RED = THEME['danger']          # #ef4444
 _NEUTRAL = THEME['primary_light']  # #818cf8 — neutral/intermediate tier
 
 
+def _context_is_fresh(ctx: dict, max_age_minutes: int = 30) -> bool:
+    """Return True if cross-module context is younger than *max_age_minutes*."""
+    from datetime import datetime, timedelta
+    ts = ctx.get('timestamp')
+    if ts is None:
+        return False
+    if isinstance(ts, str):
+        try:
+            ts = datetime.fromisoformat(ts)
+        except (ValueError, TypeError):
+            return False
+    return (datetime.now() - ts) < timedelta(minutes=max_age_minutes)
+
+
+def _render_factor_sidebar(exposures: dict):
+    """Render compact factor exposure summary in the sidebar."""
+    top_factors = exposures.get('top_factors', [])
+    r_sq = exposures.get('r_squared')
+
+    if r_sq is not None:
+        st.sidebar.caption(f"Model R² = {r_sq:.3f}")
+
+    for f in top_factors:
+        exp_val = f.get('exposure', 0)
+        risk_c = f.get('risk_contribution', 0)
+        direction = "+" if exp_val >= 0 else ""
+        bar_color = _GREEN if exp_val >= 0 else _RED
+        st.sidebar.markdown(
+            f'<div style="margin-bottom: 0.5rem;">'
+            f'<span style="font-weight: 700; font-size: 0.85rem; color: var(--text-primary, #fff);">'
+            f'{f["name"]}</span>'
+            f'<span style="font-size: 0.75rem; color: {bar_color}; margin-left: 0.5rem;">'
+            f'{direction}{exp_val:.2f}</span>'
+            f'<span style="font-size: 0.7rem; color: var(--text-secondary, rgba(255,255,255,0.52));'
+            f' margin-left: 0.5rem;">{risk_c:.0%} risk</span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+
 def render_risk_analysis():
     """Render the Risk Analysis page."""
     start_date = st.session_state.get('start_date')
     end_date = st.session_state.get('end_date')
     selected_benchmark = st.session_state.get('selected_benchmark', 'SPY')
+
+    # Cross-module integration: factor exposures from Multi-Factor Analysis
+    _factor_ctx = st.session_state.get('factor_exposures')
+    if _factor_ctx and _context_is_fresh(_factor_ctx):
+        with st.sidebar.expander("Factor Risk Decomposition", expanded=False):
+            _render_factor_sidebar(_factor_ctx)
+
     # Lazy imports to avoid circular dependency with atlas_app
     from core import (
         ATLASFormatter, load_portfolio_data, create_enhanced_holdings_table,

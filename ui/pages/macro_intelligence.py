@@ -1735,3 +1735,30 @@ def _render_macro_intelligence_inner():
         f"Last refreshed: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | "
         f"Data cached for 1 hour | ATLAS Terminal v11.0"
     )
+
+    # =========================================================================
+    # SESSION STATE: Cross-module integration context
+    # =========================================================================
+    # Write regime context so other modules (Portfolio Home, Valuation House)
+    # can consume it when available.  This is additive — no module depends on it.
+    _yield_10y = regime_data.get('signals', {}).get('yield_10y')
+    _rfr_mid = _yield_10y / 100 if _yield_10y else None
+
+    _implication = regime_data.get('description', '')
+
+    _macro_ctx = {
+        'label': regime_data.get('label', 'Unknown'),
+        'confidence': regime_data.get('confidence', 0),
+        'implication': _implication,
+        'color': regime_data.get('color', '#6366f1'),
+        'timestamp': datetime.now(),
+    }
+
+    if _rfr_mid is not None:
+        _macro_ctx['risk_free_rate_mid'] = _rfr_mid
+        _macro_ctx['risk_free_rate_range'] = (
+            round(_rfr_mid - 0.0025, 4),
+            round(_rfr_mid + 0.0025, 4),
+        )
+
+    st.session_state['macro_regime'] = _macro_ctx
