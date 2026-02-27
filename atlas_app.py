@@ -339,6 +339,12 @@ print(f"[BOOT] ========================================", flush=True)
 warnings.filterwarnings("ignore")
 
 # ============================================================================
+# FEATURE FLAGS → SESSION STATE (used by sidebar to hide unavailable pages)
+# ============================================================================
+st.session_state['r_available'] = R_AVAILABLE
+st.session_state['sql_available'] = SQL_AVAILABLE
+
+# ============================================================================
 # HELPER FUNCTIONS FOR VALIDATION
 # ============================================================================
 

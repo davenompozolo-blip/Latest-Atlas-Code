@@ -161,6 +161,7 @@ PAGE_REGISTRY = [
         icon="💾",
         handler=_load_handler("ui.pages.database", "render_database", "Database", "💾"),
         category="system",
+        feature_flag="sql_available",
     ),
 
     PageDefinition(
@@ -313,8 +314,15 @@ PAGE_REGISTRY = [
 # ============================================================================
 
 def get_available_pages() -> List[PageDefinition]:
-    """Get list of pages available to user."""
-    return PAGE_REGISTRY
+    """Get list of pages available to user, filtered by feature flags."""
+    import streamlit as st
+    available = []
+    for page in PAGE_REGISTRY:
+        if page.feature_flag:
+            if not st.session_state.get(page.feature_flag, False):
+                continue
+        available.append(page)
+    return available
 
 
 def get_page_by_key(key: str) -> Optional[PageDefinition]:
