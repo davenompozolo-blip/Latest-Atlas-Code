@@ -438,13 +438,9 @@ from data.instruments import (
 )
 
 # ============================================================
-# Phase 4: Core module imports (re-exported for backward compat)
+# Phase 4: Core module imports (explicit — wildcard removed)
 # ============================================================
-from core.data_loading import *  # noqa: F401,F403
-from core.fetchers import *  # noqa: F401,F403
-from core.calculations import *  # noqa: F401,F403
-from core.charts import *  # noqa: F401,F403
-from core.optimizers import *  # noqa: F401,F403
+from core.data_loading import get_current_portfolio_metrics
 
 
 # ============================================================================
