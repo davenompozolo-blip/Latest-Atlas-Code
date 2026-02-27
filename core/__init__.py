@@ -140,10 +140,40 @@ from .charts import (
 )
 
 # Fetcher Functions
-from .fetchers import *
+from .fetchers import (
+    search_yahoo_finance,
+    fetch_us_treasury_yields_fred,
+    fetch_uk_gilt_yields,
+    fetch_german_bund_yields,
+    fetch_sa_government_bond_yields,
+    fetch_market_data,
+    fetch_historical_data,
+    fetch_stock_info,
+    fetch_analyst_data,
+    fetch_company_financials,
+    fetch_peer_companies,
+    fetch_ticker_performance,
+    fetch_market_watch_data,
+)
 
 # Optimizer Functions
-from .optimizers import *
+from .optimizers import (
+    RiskProfile,
+    RobustPortfolioOptimizer,
+    OptimizationExplainer,
+    optimize_two_stage_diversification_first,
+    optimize_for_peak_performance,
+    optimize_max_sharpe,
+    optimize_min_volatility,
+    optimize_max_return,
+    optimize_risk_parity,
+    check_expert_wisdom,
+    get_wisdom_grade,
+    build_realistic_constraints,
+    build_position_bounds,
+    apply_trade_threshold,
+    validate_portfolio_realism,
+)
 
 # TradingView Charts - REQUIRED (no silent fallback)
 try:
