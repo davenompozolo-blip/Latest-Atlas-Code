@@ -564,6 +564,21 @@ def main():
             page = st.radio("Navigation", ["Portfolio Home", "Phoenix Parser", "Market Watch", "Stock Screener", "Valuation House"], label_visibility="collapsed")
     print(f"[MAIN] Sidebar done, selected page: {page} ({_t.time() - _main_start:.2f}s)", flush=True)
 
+    # Auth gate — if sidebar returned None, user is not authenticated
+    if page is None:
+        st.markdown(
+            '<div style="text-align:center; margin-top:8rem;">'
+            '<div style="font-family:\'Syne\',sans-serif; font-size:42px;'
+            ' font-weight:700; letter-spacing:5px; color:#00d4ff;'
+            ' text-shadow:0 0 30px rgba(0,212,255,0.4);">ATLAS TERMINAL</div>'
+            '<div style="font-size:14px; color:rgba(255,255,255,0.4);'
+            ' margin-top:12px;">Institutional Investment Analytics</div>'
+            '<div style="font-size:12px; color:rgba(255,255,255,0.25);'
+            ' margin-top:24px;">Please log in using the sidebar.</div></div>',
+            unsafe_allow_html=True,
+        )
+        return
+
     # ========================================================================
     # PHASE 2A: NAVIGATION ROUTING (Registry-Based)
     # ========================================================================
@@ -588,6 +603,8 @@ def main():
         "💎 Equity Research": "equity_research",
         "🌐 Macro Intelligence": "macro_intelligence",
         "📚 Fund Research": "fund_research",
+        "📝 Commentary Generator": "commentary_generator",
+        "⚙️ Admin Panel": "admin_panel",
     }
 
     # Get page key from selected title
@@ -681,6 +698,15 @@ def main():
     # Date range and benchmark are read from session state by each handler.
     # ========================================================================
     print(f"[MAIN] Routing to page: {selected_page_key} ({_t.time() - _main_start:.2f}s)", flush=True)
+
+    # Usage tracking (Phase 7 A4)
+    try:
+        from core.monitoring import log_page_view
+        from auth.auth_manager import get_current_user, get_current_tier
+        log_page_view(get_current_user(), selected_page_key, get_current_tier())
+    except Exception:
+        pass
+
     route_to_page(selected_page_key)
     print(f"[MAIN] ====== main() COMPLETE ({_t.time() - _main_start:.2f}s) ======", flush=True)
 
@@ -689,5 +715,14 @@ def main():
 # RUN THE APP
 # ============================================================================
 print("[BOOT] Calling main()...", flush=True)
-main()
+try:
+    main()
+except Exception as _boot_exc:
+    try:
+        from core.monitoring import log_error
+        from auth.auth_manager import get_current_user
+        log_error(f"Unhandled exception (user={get_current_user()})", _boot_exc)
+    except Exception:
+        pass
+    raise
 print("[BOOT] main() completed", flush=True)

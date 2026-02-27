@@ -45,4 +45,12 @@ Thumbs.db
 *.csv
 *.xlsx
 *.db
+
+# Secrets — NEVER commit credentials
 .streamlit/secrets.toml
+.env
+.env.local
+.env.*.local
+auth/users.yaml
+atlas_errors.log
+atlas_usage.csv

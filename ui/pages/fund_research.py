@@ -1610,3 +1610,16 @@ def _render_fund_research_inner():
                         )
             except Exception:
                 pass
+
+    # Session state write for Commentary Generator (after primary render)
+    st.session_state['fund_research_output'] = {
+        'manager_name': ticker_input,
+        'fund_name': fund_name,
+        'philosophy': profile.investment_style or '',
+        'process': '',
+        'performance_summary': perf_metrics if perf_metrics else {},
+        'benchmark': benchmark,
+        'asset_class': asset_class,
+        'expense_ratio': profile.expense_ratio,
+        'timestamp': pd.Timestamp.now(),
+    }

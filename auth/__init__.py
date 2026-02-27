@@ -1,0 +1,1 @@
+"""ATLAS Terminal – Authentication Package."""

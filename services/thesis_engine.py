@@ -118,6 +118,15 @@ class ThesisStore:
         self.db_path = db_path or str(THESIS_DB_PATH)
         self._init_db()
 
+    @staticmethod
+    def _get_user_id() -> str:
+        """Return the authenticated username for data segregation."""
+        try:
+            import streamlit as st
+            return st.session_state.get("atlas_auth_user") or "default"
+        except Exception:
+            return "default"
+
     def _init_db(self):
         try:
             Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
@@ -143,6 +152,18 @@ class ThesisStore:
                     FOREIGN KEY (thesis_id) REFERENCES theses(id)
                 )
             """)
+            # Phase 7 A2: Add user_id column for session isolation
+            try:
+                conn.execute("ALTER TABLE theses ADD COLUMN user_id TEXT DEFAULT 'default'")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            try:
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_theses_user_ticker "
+                    "ON theses(user_id, ticker)"
+                )
+            except sqlite3.OperationalError:
+                pass
             conn.commit()
             conn.close()
         except Exception:
@@ -152,12 +173,13 @@ class ThesisStore:
         """Save or update a thesis. Returns the thesis ID."""
         thesis.updated_at = datetime.now().isoformat()
         data = json.dumps(asdict(thesis))
+        user_id = self._get_user_id()
 
         conn = sqlite3.connect(self.db_path)
-        # Check if thesis exists for this ticker
+        # Check if thesis exists for this ticker + user
         existing = conn.execute(
-            "SELECT id FROM theses WHERE ticker = ? ORDER BY updated_at DESC LIMIT 1",
-            (thesis.ticker,)
+            "SELECT id FROM theses WHERE ticker = ? AND user_id = ? ORDER BY updated_at DESC LIMIT 1",
+            (thesis.ticker, user_id)
         ).fetchone()
 
         if existing:
@@ -168,8 +190,8 @@ class ThesisStore:
             )
         else:
             cursor = conn.execute(
-                "INSERT INTO theses (ticker, data, created_at, updated_at) VALUES (?, ?, ?, ?)",
-                (thesis.ticker, data, thesis.created_at, thesis.updated_at)
+                "INSERT INTO theses (ticker, data, created_at, updated_at, user_id) VALUES (?, ?, ?, ?, ?)",
+                (thesis.ticker, data, thesis.created_at, thesis.updated_at, user_id)
             )
             thesis_id = cursor.lastrowid
 
@@ -178,12 +200,13 @@ class ThesisStore:
         return thesis_id
 
     def load_thesis(self, ticker: str) -> Optional[InvestmentThesis]:
-        """Load the most recent thesis for a ticker."""
+        """Load the most recent thesis for a ticker (scoped to current user)."""
         try:
+            user_id = self._get_user_id()
             conn = sqlite3.connect(self.db_path)
             row = conn.execute(
-                "SELECT data FROM theses WHERE ticker = ? ORDER BY updated_at DESC LIMIT 1",
-                (ticker,)
+                "SELECT data FROM theses WHERE ticker = ? AND user_id = ? ORDER BY updated_at DESC LIMIT 1",
+                (ticker, user_id)
             ).fetchone()
             conn.close()
 
@@ -196,11 +219,13 @@ class ThesisStore:
             return None
 
     def list_theses(self) -> List[Dict]:
-        """List all theses with summary info."""
+        """List all theses with summary info (scoped to current user)."""
         try:
+            user_id = self._get_user_id()
             conn = sqlite3.connect(self.db_path)
             rows = conn.execute(
-                "SELECT ticker, data, updated_at FROM theses ORDER BY updated_at DESC"
+                "SELECT ticker, data, updated_at FROM theses WHERE user_id = ? ORDER BY updated_at DESC",
+                (user_id,)
             ).fetchall()
             conn.close()
 
@@ -221,10 +246,11 @@ class ThesisStore:
             return []
 
     def delete_thesis(self, ticker: str) -> bool:
-        """Delete all theses for a ticker."""
+        """Delete all theses for a ticker (scoped to current user)."""
         try:
+            user_id = self._get_user_id()
             conn = sqlite3.connect(self.db_path)
-            conn.execute("DELETE FROM theses WHERE ticker = ?", (ticker,))
+            conn.execute("DELETE FROM theses WHERE ticker = ? AND user_id = ?", (ticker, user_id))
             conn.commit()
             conn.close()
             return True

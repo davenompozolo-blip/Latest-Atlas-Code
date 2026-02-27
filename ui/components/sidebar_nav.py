@@ -1,9 +1,20 @@
 """
 ATLAS Terminal - Sidebar Navigation Component
 Matches design spec: 200px sidebar, grouped sections, indigo active indicator.
+Includes authentication gate (Phase 7).
 """
 
 import streamlit as st
+
+from auth.auth_manager import (
+    auth_configured,
+    get_current_user,
+    get_current_tier,
+    user_has_tier,
+    logout,
+    render_login_form,
+)
+from navigation.registry import TIER_REQUIREMENTS
 
 # Feature flags: sidebar label → session_state key
 # Pages with a feature flag are hidden when the flag is False
@@ -12,12 +23,40 @@ _FEATURE_FLAGS = {
     "💾 Database": "sql_available",
 }
 
+# Sidebar key → registry key (for tier lookups)
+_NAV_TO_REGISTRY = {
+    "🔥 Phoenix Parser": "phoenix_parser",
+    "🏠 Portfolio Home": "portfolio_home",
+    "📊 R Analytics": "r_analytics",
+    "💾 Database": "database",
+    "💎 Equity Research": "equity_research",
+    "🌐 Macro Intelligence": "macro_intelligence",
+    "📚 Fund Research": "fund_research",
+    "🌍 Market Watch": "market_watch",
+    "🌐 Market Regime": "market_regime",
+    "📈 Risk Analysis": "risk_analysis",
+    "💎 Performance Suite": "performance_suite",
+    "🔬 Portfolio Deep Dive": "portfolio_deep_dive",
+    "📊 Multi-Factor Analysis": "multi_factor_analysis",
+    "💰 Valuation House": "valuation_house",
+    "🎲 Monte Carlo Engine": "monte_carlo_engine",
+    "🧮 Quant Optimizer": "quant_optimizer",
+    "📊 Leverage Tracker": "leverage_tracker",
+    "📡 Investopedia Live": "investopedia_live",
+    "🎯 Strategic Asset Allocation": "saa_tool",
+    "📝 Commentary Generator": "commentary_generator",
+    "ℹ️ About": "about",
+    "⚙️ Admin Panel": "admin_panel",
+}
+
 
 def render_sidebar_navigation(default_page: str = "Portfolio Home") -> str:
     """
     Renders sidebar navigation matching the ATLAS design spec exactly.
     200px width, sections (CORE/MARKETS/ANALYSIS), indigo dot + left border active state.
     Pages with a feature flag are hidden when that flag is False in session_state.
+
+    Returns the selected page key, or None if auth is required but user is not logged in.
     """
 
     NAV_SECTIONS = {
@@ -49,11 +88,37 @@ def render_sidebar_navigation(default_page: str = "Portfolio Home") -> str:
         ],
         "Strategy": [
             {"key": "🎯 Strategic Asset Allocation", "label": "Strategic Asset Allocation"},
+            {"key": "📝 Commentary Generator", "label": "Commentary Generator"},
         ],
         "System": [
             {"key": "ℹ️ About", "label": "About"},
+            {"key": "⚙️ Admin Panel", "label": "Admin Panel"},
         ],
     }
+
+    # ── Auth gate — if credentials are configured, require login ──
+    with st.sidebar:
+        if auth_configured():
+            if not get_current_user():
+                render_login_form()
+                return None  # Block navigation until authenticated
+            else:
+                # Show user info + logout in sidebar header area
+                user_name = st.session_state.get("atlas_auth_name", get_current_user())
+                tier = get_current_tier()
+                st.markdown(
+                    f'<div style="padding:8px 16px 12px; font-size:11px;'
+                    f' color:rgba(255,255,255,0.45);">'
+                    f'Signed in as <span style="color:#00d4ff; font-weight:600;">'
+                    f'{user_name}</span>'
+                    f' <span style="font-size:9px; color:rgba(255,255,255,0.25);'
+                    f' text-transform:uppercase; letter-spacing:0.5px;">'
+                    f'({tier})</span></div>',
+                    unsafe_allow_html=True,
+                )
+                if st.button("Logout", key="atlas_logout_btn", use_container_width=True):
+                    logout()
+                    st.rerun()
 
     if "atlas_selected_page" not in st.session_state:
         for items in NAV_SECTIONS.values():
@@ -126,10 +191,24 @@ def render_sidebar_navigation(default_page: str = "Portfolio Home") -> str:
                 flag_key = _FEATURE_FLAGS.get(item["key"])
                 if flag_key and not st.session_state.get(flag_key, False):
                     continue
+
+                # Tier gating — show lock icon for pages the user can't access
+                registry_key = _NAV_TO_REGISTRY.get(item["key"], "")
+                required_tier = TIER_REQUIREMENTS.get(registry_key)
+                is_locked = (
+                    auth_configured()
+                    and required_tier
+                    and not user_has_tier(required_tier)
+                )
+
                 is_active = item["key"] == selected
-                if is_active:
+                if is_locked:
+                    # Locked — show dimmed label with lock icon (still clickable for upgrade prompt)
+                    if st.button(f"🔒  {item['label']}", key=f"nav_{item['key']}", use_container_width=True):
+                        st.session_state["atlas_selected_page"] = item["key"]
+                        st.rerun()
+                elif is_active:
                     # Active state — indigo left border + indigo dot + bright text
-                    # Also render right-side glow marker
                     st.markdown(f'''
                     <div style="display: flex; align-items: center; gap: 8px;
                                 padding: 7px 16px; font-size: 11.5px;
