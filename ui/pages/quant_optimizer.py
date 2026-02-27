@@ -6,14 +6,20 @@ import pandas as pd
 import streamlit as st
 
 from app.config import COLORS
-from utils.formatting import format_currency, format_percentage, format_large_number, add_arrow_indicator
+from ui.theme import ATLAS_COLORS as THEME
+
+# Semantic colors from theme (metric thresholds)
+_GREEN = THEME['success']          # #10b981
+_AMBER = THEME['warning_light']    # #fbbf24
+_RED = THEME['danger']             # #ef4444
+_NEUTRAL = THEME['primary_light']  # #818cf8
+_SLATE = '#94a3b8'                 # Neutral slate
 
 
 def render_quant_optimizer():
     """Render the Quant Optimizer page."""
     # Lazy imports to avoid circular dependency with atlas_app
     from core import ATLASFormatter, load_portfolio_data, apply_chart_theme
-    from ui.components import ATLAS_TEMPLATE
     from quant_optimizer.atlas_quant_portfolio_optimizer import PortfolioOptimizer
     import plotly.graph_objects as go
     import numpy as np
@@ -33,7 +39,7 @@ def render_quant_optimizer():
             try:
                 ticker_info = yf.Ticker(ticker)
                 sector_map[ticker] = ticker_info.info.get('sector', 'Unknown')
-            except Exception:
+            except (ValueError, KeyError, ConnectionError, AttributeError):
                 sector_map[ticker] = 'Unknown'
         return sector_map
 
@@ -213,30 +219,30 @@ def render_quant_optimizer():
 
                     # Maximum Sharpe Ratio
                     with col1:
-                        sharpe_color = '#10b981' if optimal_sharpe > 2.0 else ('#fbbf24' if optimal_sharpe > 1.0 else '#ef4444')
+                        sharpe_color = _GREEN if optimal_sharpe > 2.0 else (_AMBER if optimal_sharpe > 1.0 else _RED)
                         sharpe_status = 'Excellent' if optimal_sharpe > 2.0 else ('Good' if optimal_sharpe > 1.0 else 'Fair')
                         st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🎯</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">MAXIMUM SHARPE RATIO</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {sharpe_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{optimal_sharpe:.2f}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">{sharpe_status}</p></div></div>', unsafe_allow_html=True)
                         st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🎯</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">MAXIMUM SHARPE RATIO</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {sharpe_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{optimal_sharpe:.3f}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">{sharpe_status}</p></div></div>', unsafe_allow_html=True)
 
                     # Expected Return
                     with col2:
-                        ret_color = '#10b981' if optimal_return > 0.10 else ('#fbbf24' if optimal_return > 0.05 else '#ef4444')
+                        ret_color = _GREEN if optimal_return > 0.10 else (_AMBER if optimal_return > 0.05 else _RED)
                         ret_status = 'Strong Growth' if optimal_return > 0.10 else ('Moderate Growth' if optimal_return > 0.05 else 'Low Growth')
                         st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📈</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">EXPECTED RETURN</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {ret_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{optimal_return:+.2%}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{ret_status}</p></div></div>', unsafe_allow_html=True)
 
                     # Volatility
                     with col3:
-                        vol_color = '#10b981' if optimal_vol < 0.15 else ('#fbbf24' if optimal_vol < 0.25 else '#ef4444')
+                        vol_color = _GREEN if optimal_vol < 0.15 else (_AMBER if optimal_vol < 0.25 else _RED)
                         vol_status = 'Low Risk' if optimal_vol < 0.15 else ('Moderate Risk' if optimal_vol < 0.25 else 'High Risk')
                         st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #0891b2); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📊</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">VOLATILITY</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {vol_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{optimal_vol:.2%}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #67e8f9; margin: 0; font-weight: 600;">{vol_status}</p></div></div>', unsafe_allow_html=True)
 
                     # Convergence
                     with col4:
                         convergence_val = "Success" if result.get('success') else "Warning"
-                        convergence_color = '#10b981' if result.get('success') else '#fbbf24'
+                        convergence_color = _GREEN if result.get('success') else _AMBER
                         convergence_icon = '✅' if result.get('success') else '⚠️'
                         convergence_val = "Success" if result.success else "Warning"
-                        convergence_color = '#10b981' if result.success else '#fbbf24'
+                        convergence_color = _GREEN if result.success else _AMBER
                         convergence_icon = '✅' if result.success else '⚠️'
                         st.markdown(f'<div style="background: linear-gradient(135deg, rgba(245,158,11,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(245,158,11,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #f59e0b, #d97706); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🔄</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">CONVERGENCE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {convergence_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{convergence_icon}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(245,158,11,0.12); border-radius: 10px; border: 1px solid rgba(245,158,11,0.25);"><p style="font-size: 0.7rem; color: #fbbf24; margin: 0; font-weight: 600;">{convergence_val}</p></div></div>', unsafe_allow_html=True)
 
@@ -254,7 +260,7 @@ def render_quant_optimizer():
                     fig.add_trace(go.Bar(
                         x=weights_df['Symbol'],
                         y=weights_df['Optimal Weight'],
-                        marker_color='#818cf8',
+                        marker_color=_NEUTRAL,
                         text=weights_df['Weight %'],
                         textposition='outside'
                     ))
@@ -326,11 +332,11 @@ def render_quant_optimizer():
                         # Style the dataframe
                         def color_action(val):
                             if val == 'BUY':
-                                return 'background-color: rgba(16,185,129,0.2); color: #10b981'
+                                return f'background-color: rgba(16,185,129,0.2); color: {_GREEN}'
                             elif val == 'SELL':
-                                return 'background-color: rgba(239,68,68,0.2); color: #ef4444'
+                                return f'background-color: rgba(239,68,68,0.2); color: {_RED}'
                             else:
-                                return 'background-color: rgba(148,163,184,0.1); color: #94a3b8'
+                                return f'background-color: rgba(148,163,184,0.1); color: {_SLATE}'
 
                         styled_rebalance_df = rebalancing_df[['Ticker', 'Current Weight (%)', 'Optimal Weight (%)',
                                                               'Weight Diff (%)', 'Shares to Trade', 'Trade Value', 'Action']].style.applymap(
@@ -407,7 +413,7 @@ def render_quant_optimizer():
                         st.success("✅ Portfolio optimization completed successfully!")
                         st.info("💡 Results include constraints and sector caps; enable pricing columns for full rebalancing output.")
 
-                except Exception as e:
+                except (ValueError, KeyError, TypeError, ZeroDivisionError, AttributeError, np.linalg.LinAlgError) as e:
                     st.error(f"❌ Optimization error: {str(e)}")
                     st.info("💡 Ensure your portfolio has at least 2 positions with sufficient historical data")
 
