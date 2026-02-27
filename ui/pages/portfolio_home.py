@@ -519,17 +519,17 @@ def render_portfolio_home():
                 try:
                     import plotly.express as px
                     st.success("plotly.express")
-                except Exception:
+                except ImportError:
                     st.error("plotly.express")
                 try:
                     import plotly.graph_objects as go
                     st.success("plotly.graph_objects")
-                except Exception:
+                except ImportError:
                     st.error("plotly.graph_objects")
                 try:
                     from scipy import stats
                     st.success("scipy.stats")
-                except Exception:
+                except ImportError:
                     st.error("scipy.stats")
 
             with col3:
@@ -643,5 +643,5 @@ def render_earnings_calendar(enhanced_df):
             earn_cols = [{'key': c, 'label': c, 'type': 'text'} for c in portfolio_earnings.columns]
             st.markdown(render_generic_table(portfolio_earnings.head(20), columns=earn_cols), unsafe_allow_html=True)
 
-    except Exception as e:
+    except (KeyError, ValueError, TypeError, AttributeError, ConnectionError) as e:
         st.warning(f"Could not load earnings calendar: {e}")
