@@ -30,6 +30,13 @@ from ui.theme import ATLAS_COLORS as THEME
 from ui.charts_professional import apply_atlas_theme
 from ui.components import atlas_table
 
+# PM-Grade Optimization availability
+try:
+    from atlas_pm_optimization import ForwardLookingReturns as _ForwardLookingReturns
+    _PM_AVAILABLE = True
+except ImportError:
+    _PM_AVAILABLE = False
+
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -136,6 +143,49 @@ def _build_user_message(mandate: str, views: dict, convictions: dict) -> str:
     lines.append("")
     lines.append("Please generate a strategic asset allocation based on these views.")
     return "\n".join(lines)
+
+
+def _compute_quant_signal_block() -> str | None:
+    """Compute forward-looking return estimates and format as a structured text block.
+
+    Returns None if data cannot be computed.
+    """
+    try:
+        import yfinance as yf
+
+        # Use broad market ETFs as proxies for SAA asset classes
+        proxy_map = {
+            "EZA": "SA Equity (proxy: EZA)",
+            "VT": "Global Equity (proxy: VT)",
+            "IGLB": "SA Nominal Bonds (proxy: IGLB)",
+            "TIP": "SA Inflation-Linked Bonds (proxy: TIP)",
+            "VNQ": "SA Listed Property (proxy: VNQ)",
+            "GLD": "Commodities (proxy: GLD)",
+            "SHV": "Cash / Money Market (proxy: SHV)",
+            "BNDX": "Global Bonds (proxy: BNDX)",
+        }
+        tickers = list(proxy_map.keys())
+        data = yf.download(tickers, period="1y", progress=False, auto_adjust=True)
+        if data.empty:
+            return None
+        close = data["Close"] if "Close" in data.columns.get_level_values(0) else data
+        returns_df = close.pct_change().dropna()
+        if returns_df.empty or len(returns_df) < 60:
+            return None
+
+        estimator = _ForwardLookingReturns(returns_df)
+        blended = estimator.blend_signals()
+
+        lines = ["Quantitative Forward-Looking Return Estimates (PMGradeOptimizer):"]
+        lines.append("(Blended from momentum, trend, mean-reversion, and volatility signals)")
+        for ticker, label in proxy_map.items():
+            if ticker in blended.index:
+                ret = blended[ticker]
+                lines.append(f"- {label}: {ret:+.1%} expected annual return")
+
+        return "\n".join(lines)
+    except Exception:
+        return None
 
 
 def _call_allocation_engine(user_message: str) -> dict:
@@ -545,12 +595,29 @@ def render_saa_tool():
                 key=f"saa_conv_{dim}",
             )
 
+    # ── Quantitative signals toggle (PMGradeOptimizer enhancement) ──
+    enhance_quant = False
+    if _PM_AVAILABLE:
+        enhance_quant = st.checkbox(
+            "Enhance with quantitative signals (PMGradeOptimizer)",
+            value=False,
+            key="saa_enhance_quant",
+            help="Appends forward-looking return estimates from momentum, trend, "
+                 "and mean-reversion signals to the allocation request.",
+        )
+
     # ── Generate button ──
     st.markdown("---")
     generate = st.button("Generate Allocation", type="primary", use_container_width=True)
 
     if generate:
         user_msg = _build_user_message(mandate_label, views, convictions)
+
+        # Append quantitative signals if toggled
+        if enhance_quant and _PM_AVAILABLE:
+            quant_block = _compute_quant_signal_block()
+            if quant_block:
+                user_msg += "\n\n" + quant_block
 
         with st.spinner("Generating allocation recommendation..."):
             try:

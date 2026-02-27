@@ -1,12 +1,153 @@
 """
 ATLAS Terminal - Market Regime Page
 Extracted from atlas_app.py for modular page-level editing.
+
+Includes dual-model regime consensus when PMGradeOptimizer is available.
 """
 import pandas as pd
 import streamlit as st
 
 from app.config import COLORS
 from utils.formatting import format_currency, format_percentage, format_large_number, add_arrow_indicator
+
+# PM-Grade Optimization availability
+try:
+    from atlas_pm_optimization import MarketRegimeDetector as _PMRegimeDetector
+    _PM_AVAILABLE = True
+except ImportError:
+    _PM_AVAILABLE = False
+
+
+_PROXY_ETFS = ["SPY", "QQQ", "IWM", "TLT", "GLD", "HYG", "XLF", "XLU"]
+
+
+def _fetch_proxy_returns() -> pd.DataFrame | None:
+    """Fetch daily returns for market proxy ETFs (lightweight, ~1 year).
+
+    Returns None if data cannot be fetched.
+    """
+    try:
+        import yfinance as yf
+
+        data = yf.download(_PROXY_ETFS, period="1y", progress=False, auto_adjust=True)
+        if data.empty:
+            return None
+        close = data["Close"] if "Close" in data.columns.get_level_values(0) else data
+        returns_df = close.pct_change().dropna()
+        if returns_df.empty or len(returns_df) < 30:
+            return None
+        return returns_df
+    except Exception:
+        return None
+
+
+def _map_quant_regime(regime_key: str) -> str:
+    """Map QuantitativeRegimeDetector regime to risk-on/risk-off/neutral."""
+    if regime_key in ("risk_on",):
+        return "risk-on"
+    if regime_key in ("risk_off",):
+        return "risk-off"
+    return "neutral"
+
+
+def _render_dual_model_consensus(quant_regime: str):
+    """Show dual-model regime consensus if returns data is available."""
+    returns_df = _fetch_proxy_returns()
+    if returns_df is None:
+        return  # silently degrade — no data, no consensus
+
+    try:
+        pm_detector = _PMRegimeDetector(returns_df)
+        pm_risk = pm_detector.detect_risk_regime()
+        pm_gv = pm_detector.detect_growth_vs_value_regime()
+    except Exception:
+        return  # silently degrade
+
+    quant_risk = _map_quant_regime(quant_regime)
+
+    agree = quant_risk == pm_risk
+    consensus_label = "AGREE" if agree else "DIVERGE"
+    consensus_icon = "&#10003;" if agree else "&#9888;"
+
+    if agree:
+        consensus_color = "var(--text-success, rgba(16,185,129,1))"
+        consensus_bg = "rgba(16,185,129,0.08)"
+        consensus_note = "Both models converge — higher confidence in regime call."
+    else:
+        consensus_color = "var(--text-warning, rgba(251,191,36,1))"
+        consensus_bg = "rgba(251,191,36,0.08)"
+        consensus_note = (
+            f"Quantitative model reads {quant_risk}, returns-based model reads "
+            f"{pm_risk}. Mixed signals — consider a balanced positioning."
+        )
+
+    # Risk regime labels for display
+    def _regime_display(r):
+        return {"risk-on": "RISK-ON", "risk-off": "RISK-OFF", "neutral": "NEUTRAL"}.get(r, r.upper())
+
+    def _regime_icon(r):
+        return {"risk-on": "&#x1F7E2;", "risk-off": "&#x1F534;", "neutral": "&#x26AA;"}.get(r, "")
+
+    gv_display = {"growth": "Growth", "value": "Value", "neutral": "Neutral"}.get(pm_gv, pm_gv.title())
+
+    st.markdown("---")
+    st.markdown("### Dual-Model Regime Consensus")
+
+    c1, c2, c3 = st.columns(3)
+    card_style = (
+        'background: var(--bg-glass, rgba(255,255,255,0.03));'
+        ' border: 1px solid var(--border, rgba(99,102,241,0.15));'
+        ' border-radius: 12px; padding: 1rem 1.25rem; text-align: center;'
+    )
+    label_style = (
+        'font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.08em;'
+        ' color: var(--text-muted, rgba(255,255,255,0.28)); margin-bottom: 0.25rem;'
+    )
+    value_style = (
+        'font-size: 1.15rem; font-weight: 700;'
+        ' color: var(--text-primary, rgba(255,255,255,0.92));'
+    )
+    sub_style = (
+        'font-size: 0.75rem; color: var(--text-secondary, rgba(255,255,255,0.52));'
+        ' margin-top: 0.25rem;'
+    )
+
+    with c1:
+        st.markdown(
+            f'<div style="{card_style}">'
+            f'<div style="{label_style}">Quantitative (Live Market)</div>'
+            f'<div style="{value_style}">{_regime_icon(quant_risk)} {_regime_display(quant_risk)}</div>'
+            f'<div style="{sub_style}">VIX, yields, spreads, breadth</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+    with c2:
+        st.markdown(
+            f'<div style="{card_style}">'
+            f'<div style="{label_style}">Returns-Based (PMGradeOptimizer)</div>'
+            f'<div style="{value_style}">{_regime_icon(pm_risk)} {_regime_display(pm_risk)}</div>'
+            f'<div style="{sub_style}">{gv_display} regime | Volatility analysis</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+    with c3:
+        st.markdown(
+            f'<div style="{card_style} background: {consensus_bg};">'
+            f'<div style="{label_style}">Consensus</div>'
+            f'<div style="{value_style} color: {consensus_color};">'
+            f'{consensus_icon} {consensus_label}</div>'
+            f'<div style="{sub_style}">{consensus_note}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+    # Store for potential cross-module use
+    st.session_state["macro_regime"] = {
+        "quant_regime": quant_risk,
+        "pm_regime": pm_risk,
+        "growth_value": pm_gv,
+        "consensus": consensus_label.lower(),
+    }
 
 
 def render_market_regime():
@@ -146,6 +287,13 @@ def render_market_regime():
                     </p>
                 </div>
                 """, unsafe_allow_html=True)
+
+                # ==================================================================
+                # DUAL-MODEL REGIME CONSENSUS (PMGradeOptimizer)
+                # ==================================================================
+
+                if _PM_AVAILABLE:
+                    _render_dual_model_consensus(regime)
 
                 # ==================================================================
                 # MARKET INDICATORS DASHBOARD
