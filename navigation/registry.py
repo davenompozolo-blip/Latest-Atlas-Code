@@ -213,6 +213,15 @@ PAGE_REGISTRY = [
         category="strategy",
     ),
 
+    # --- Study (Phase 9) ---
+    PageDefinition(
+        key="cfa_prep",
+        title="CFA Level II Prep",
+        icon="📚",
+        handler=_load_handler("ui.pages.cfa_prep", "render_cfa_prep", "CFA Level II Prep", "📚"),
+        category="study",
+    ),
+
     # --- Tracking ---
     PageDefinition(
         key="leverage_tracker",
@@ -317,6 +326,8 @@ TIER_REQUIREMENTS = {
     # Admin — admin only
     "admin_panel": "admin",
     "analytics_dashboard": "admin",
+    # Study — Professional
+    "cfa_prep": "professional",
     # Free tier pages: phoenix_parser, portfolio_home, market_watch, about
 }
 

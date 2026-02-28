@@ -46,6 +46,7 @@ _NAV_TO_REGISTRY = {
     "📡 Investopedia Live": "investopedia_live",
     "🎯 Strategic Asset Allocation": "saa_tool",
     "📝 Commentary Generator": "commentary_generator",
+    "📚 CFA Level II Prep": "cfa_prep",
     "ℹ️ About": "about",
     "⚙️ Admin Panel": "admin_panel",
     "📊 Analytics Dashboard": "analytics_dashboard",
@@ -91,6 +92,9 @@ def render_sidebar_navigation(default_page: str = "Portfolio Home") -> str:
         "Strategy": [
             {"key": "🎯 Strategic Asset Allocation", "label": "Strategic Asset Allocation"},
             {"key": "📝 Commentary Generator", "label": "Commentary Generator"},
+        ],
+        "Study": [
+            {"key": "📚 CFA Level II Prep", "label": "CFA Level II Prep"},
         ],
         "System": [
             {"key": "ℹ️ About", "label": "About"},
