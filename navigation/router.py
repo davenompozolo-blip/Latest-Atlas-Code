@@ -30,14 +30,64 @@ def _render_upgrade_prompt(page_title: str, required_tier: str):
         f'<p style="color:rgba(255,255,255,0.45); font-size:14px;">'
         f'This page requires the <span style="color:{_accent}; font-weight:700;">'
         f'{required_tier.title()}</span> tier.</p>'
-        f'<div style="margin-top:2rem; padding:1.5rem; background:{_primary}0f;'
-        f' border:1px solid {_primary}2e; border-radius:12px;'
-        ' display:inline-block; max-width:400px;">'
-        '<p style="font-size:13px; color:rgba(255,255,255,0.6); margin:0;">'
-        'Contact your administrator to upgrade your access tier.</p>'
-        '</div></div>',
+        '</div>',
         unsafe_allow_html=True,
     )
+
+    # Stripe upgrade button (Phase 9)
+    import os
+    _stripe_configured = bool(os.getenv("STRIPE_SECRET_KEY") or
+                              st.secrets.get("stripe", {}).get("secret_key"))
+    if _stripe_configured and required_tier == "professional":
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.markdown(
+                f'<div style="text-align:center; padding:1.5rem; background:{_primary}0f;'
+                f' border:1px solid {_primary}2e; border-radius:12px; max-width:400px;'
+                ' margin:1rem auto;">'
+                '<p style="font-size:15px; font-weight:600; color:rgba(255,255,255,0.85);'
+                ' margin:0 0 4px;">Upgrade to Professional</p>'
+                '<p style="font-size:13px; color:rgba(255,255,255,0.5); margin:0 0 12px;">'
+                'R499/month &middot; Cancel anytime</p>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+            if st.button("Upgrade Now", key="stripe_upgrade_btn", use_container_width=True):
+                try:
+                    import stripe
+                    stripe.api_key = (os.getenv("STRIPE_SECRET_KEY") or
+                                      st.secrets.get("stripe", {}).get("secret_key", ""))
+                    price_id = (os.getenv("STRIPE_PRICE_ID") or
+                                st.secrets.get("stripe", {}).get("price_id", ""))
+                    base_url = os.getenv("ATLAS_BASE_URL", "http://localhost:8501")
+                    username = st.session_state.get("atlas_auth_user", "unknown")
+                    email = st.session_state.get("atlas_auth_email", None)
+
+                    session = stripe.checkout.Session.create(
+                        payment_method_types=["card"],
+                        line_items=[{"price": price_id, "quantity": 1}],
+                        mode="subscription",
+                        success_url=f"{base_url}?upgrade=success",
+                        cancel_url=f"{base_url}?upgrade=cancelled",
+                        client_reference_id=username,
+                        customer_email=email,
+                    )
+                    st.markdown(
+                        f'<meta http-equiv="refresh" content="0;url={session.url}">',
+                        unsafe_allow_html=True,
+                    )
+                except Exception as e:
+                    st.error(f"Payment setup failed: {e}")
+    else:
+        st.markdown(
+            f'<div style="text-align:center; margin-top:1rem; padding:1.5rem;'
+            f' background:{_primary}0f; border:1px solid {_primary}2e;'
+            ' border-radius:12px; display:inline-block; max-width:400px;">'
+            '<p style="font-size:13px; color:rgba(255,255,255,0.6); margin:0;">'
+            'Contact your administrator to upgrade your access tier.</p>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
 
 
 def route_to_page(page_key: str):

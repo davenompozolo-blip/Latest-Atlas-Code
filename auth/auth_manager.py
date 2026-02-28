@@ -58,8 +58,49 @@ def get_current_user() -> Optional[str]:
 
 
 def get_current_tier() -> str:
-    """Return the authenticated user's tier, default 'free'."""
+    """Return the authenticated user's tier, default 'free'.
+
+    Checks for Stripe tier overrides first (Phase 9), then falls back
+    to the session state value set at login.
+    """
+    username = st.session_state.get("atlas_auth_user")
+    if username:
+        override = _get_tier_override(username)
+        if override:
+            return override
     return st.session_state.get("atlas_auth_tier", "free")
+
+
+def _get_tier_override(username: str) -> Optional[str]:
+    """Check for Stripe-driven tier override (Phase 9)."""
+    import json
+    from pathlib import Path
+    tier_file = Path(__file__).resolve().parent.parent / ".atlas_tier_overrides.json"
+    if not tier_file.exists():
+        return None
+    try:
+        overrides = json.loads(tier_file.read_text(encoding="utf-8"))
+        return overrides.get(username, {}).get("tier")
+    except Exception:
+        return None
+
+
+def update_user_tier(username: str, new_tier: str):
+    """Update a user's tier via the override file (used by Stripe webhook)."""
+    import json
+    from pathlib import Path
+    tier_file = Path(__file__).resolve().parent.parent / ".atlas_tier_overrides.json"
+    overrides = {}
+    if tier_file.exists():
+        try:
+            overrides = json.loads(tier_file.read_text(encoding="utf-8"))
+        except Exception:
+            overrides = {}
+    overrides[username] = {
+        "tier": new_tier,
+        "updated_at": __import__("datetime").datetime.utcnow().isoformat(),
+    }
+    tier_file.write_text(json.dumps(overrides, indent=2), encoding="utf-8")
 
 
 def user_has_tier(required_tier: str) -> bool:

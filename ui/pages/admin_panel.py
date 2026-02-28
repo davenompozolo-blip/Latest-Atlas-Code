@@ -82,14 +82,35 @@ def _render_user_management():
         )
         return
 
+    # Load subscription status (Phase 9 — Stripe)
+    import json
+    _sub_file = Path(__file__).resolve().parent.parent.parent / ".atlas_subscriptions.json"
+    _tier_file = Path(__file__).resolve().parent.parent.parent / ".atlas_tier_overrides.json"
+    _subs = {}
+    _overrides = {}
+    if _sub_file.exists():
+        try:
+            _subs = json.loads(_sub_file.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    if _tier_file.exists():
+        try:
+            _overrides = json.loads(_tier_file.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+
     # Display current users
     rows = []
     for username, cfg in credentials.items():
+        effective_tier = _overrides.get(username, {}).get("tier", cfg.get("tier", "free"))
+        sub_status = _subs.get(username, {}).get("status", "—")
         rows.append({
             "Username": username,
             "Name": cfg.get("name", ""),
             "Email": cfg.get("email", ""),
-            "Tier": cfg.get("tier", "free"),
+            "Config Tier": cfg.get("tier", "free"),
+            "Effective Tier": effective_tier,
+            "Subscription": sub_status,
         })
 
     if rows:
@@ -232,6 +253,20 @@ def _render_admin_tools():
     ]
     st.markdown(f"**Free** ({len(free_pages)} pages)")
     st.text(", ".join(free_pages))
+
+    st.markdown("---")
+    st.markdown("##### Manual Tier Override")
+    st.caption("For comp accounts, enterprise deals, or testing. Overrides Stripe-driven tier.")
+    with st.form("tier_override_form"):
+        override_user = st.text_input("Username")
+        override_tier = st.selectbox("New Tier", list(TIER_LEVELS.keys()))
+        if st.form_submit_button("Apply Override"):
+            if override_user:
+                from auth.auth_manager import update_user_tier
+                update_user_tier(override_user, override_tier)
+                st.success(f"Tier override applied: {override_user} → {override_tier}")
+            else:
+                st.warning("Enter a username.")
 
     st.markdown("---")
     st.markdown("##### Cache Management")

@@ -59,7 +59,7 @@ app.add_middleware(
 )
 
 # Register routers
-from api.routers import portfolio, optimisation, regime, saa, commentary, health  # noqa: E402
+from api.routers import portfolio, optimisation, regime, saa, commentary, health, billing  # noqa: E402
 
 app.include_router(health.router, prefix="/v1", tags=["Health & Admin"])
 app.include_router(portfolio.router, prefix="/v1/portfolio", tags=["Portfolio Analytics"])
@@ -67,3 +67,4 @@ app.include_router(optimisation.router, prefix="/v1/portfolio", tags=["Portfolio
 app.include_router(regime.router, prefix="/v1/regime", tags=["Market Intelligence"])
 app.include_router(saa.router, prefix="/v1/macro", tags=["Strategic Asset Allocation"])
 app.include_router(commentary.router, prefix="/v1/commentary", tags=["Commentary"])
+app.include_router(billing.router, prefix="/v1", tags=["Billing"])

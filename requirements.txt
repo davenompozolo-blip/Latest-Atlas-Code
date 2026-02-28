@@ -48,3 +48,6 @@ pydantic>=2.5.0
 # Scheduled Reports (Phase 8)
 APScheduler>=3.10.0
 sendgrid>=6.10.0
+
+# Stripe Billing (Phase 9)
+stripe>=7.0.0
