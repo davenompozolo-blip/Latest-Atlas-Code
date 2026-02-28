@@ -273,6 +273,14 @@ PAGE_REGISTRY = [
         handler=_load_handler("ui.pages.admin_panel", "render_admin_panel", "Admin Panel", "⚙️"),
         category="admin",
     ),
+
+    PageDefinition(
+        key="analytics_dashboard",
+        title="Analytics Dashboard",
+        icon="📊",
+        handler=_load_handler("ui.pages.analytics_dashboard", "render_analytics_dashboard", "Analytics Dashboard", "📊"),
+        category="admin",
+    ),
 ]
 
 
@@ -308,6 +316,7 @@ TIER_REQUIREMENTS = {
     "investopedia_live": "professional",
     # Admin — admin only
     "admin_panel": "admin",
+    "analytics_dashboard": "admin",
     # Free tier pages: phoenix_parser, portfolio_home, market_watch, about
 }
 

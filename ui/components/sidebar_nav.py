@@ -48,6 +48,7 @@ _NAV_TO_REGISTRY = {
     "📝 Commentary Generator": "commentary_generator",
     "ℹ️ About": "about",
     "⚙️ Admin Panel": "admin_panel",
+    "📊 Analytics Dashboard": "analytics_dashboard",
 }
 
 
@@ -94,6 +95,7 @@ def render_sidebar_navigation(default_page: str = "Portfolio Home") -> str:
         "System": [
             {"key": "ℹ️ About", "label": "About"},
             {"key": "⚙️ Admin Panel", "label": "Admin Panel"},
+            {"key": "📊 Analytics Dashboard", "label": "Analytics Dashboard"},
         ],
     }
 
