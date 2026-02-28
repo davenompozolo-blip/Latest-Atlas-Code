@@ -46,8 +46,10 @@ _NAV_TO_REGISTRY = {
     "📡 Investopedia Live": "investopedia_live",
     "🎯 Strategic Asset Allocation": "saa_tool",
     "📝 Commentary Generator": "commentary_generator",
+    "📚 CFA Level II Prep": "cfa_prep",
     "ℹ️ About": "about",
     "⚙️ Admin Panel": "admin_panel",
+    "📊 Analytics Dashboard": "analytics_dashboard",
 }
 
 
@@ -91,9 +93,13 @@ def render_sidebar_navigation(default_page: str = "Portfolio Home") -> str:
             {"key": "🎯 Strategic Asset Allocation", "label": "Strategic Asset Allocation"},
             {"key": "📝 Commentary Generator", "label": "Commentary Generator"},
         ],
+        "Study": [
+            {"key": "📚 CFA Level II Prep", "label": "CFA Level II Prep"},
+        ],
         "System": [
             {"key": "ℹ️ About", "label": "About"},
             {"key": "⚙️ Admin Panel", "label": "Admin Panel"},
+            {"key": "📊 Analytics Dashboard", "label": "Analytics Dashboard"},
         ],
     }
 
@@ -117,6 +123,37 @@ def render_sidebar_navigation(default_page: str = "Portfolio Home") -> str:
                     f'({tier})</span></div>',
                     unsafe_allow_html=True,
                 )
+                # Manage Billing link for Professional+ users (Phase 9)
+                if user_has_tier("professional") and not user_has_tier("admin"):
+                    import os
+                    _stripe_ok = bool(os.getenv("STRIPE_SECRET_KEY") or
+                                      st.secrets.get("stripe", {}).get("secret_key"))
+                    if _stripe_ok:
+                        if st.button("Manage Billing", key="atlas_billing_btn", use_container_width=True):
+                            try:
+                                import json
+                                from pathlib import Path
+                                sub_file = Path(__file__).resolve().parent.parent.parent / ".atlas_subscriptions.json"
+                                customer_id = None
+                                if sub_file.exists():
+                                    subs = json.loads(sub_file.read_text(encoding="utf-8"))
+                                    user_sub = subs.get(get_current_user(), {})
+                                    customer_id = user_sub.get("stripe_customer_id")
+                                if customer_id:
+                                    import stripe
+                                    stripe.api_key = (os.getenv("STRIPE_SECRET_KEY") or
+                                                      st.secrets.get("stripe", {}).get("secret_key", ""))
+                                    base_url = os.getenv("ATLAS_BASE_URL", "http://localhost:8501")
+                                    portal = stripe.billing_portal.Session.create(
+                                        customer=customer_id, return_url=base_url)
+                                    st.markdown(
+                                        f'<meta http-equiv="refresh" content="0;url={portal.url}">',
+                                        unsafe_allow_html=True)
+                                else:
+                                    st.info("No active subscription found.")
+                            except Exception as e:
+                                st.error(f"Billing portal error: {e}")
+
                 if st.button("Logout", key="atlas_logout_btn", use_container_width=True):
                     logout()
                     st.rerun()
