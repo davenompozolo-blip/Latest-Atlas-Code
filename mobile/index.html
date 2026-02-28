@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#6366f1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.json">
+<title>ATLAS Terminal</title>
+<style>
+  :root {
+    --bg: #0a0b14;
+    --card: #111827;
+    --border: rgba(255,255,255,0.06);
+    --primary: #6366f1;
+    --accent: #00d4ff;
+    --green: #10b981;
+    --red: #ef4444;
+    --text: rgba(255,255,255,0.92);
+    --text-sec: rgba(255,255,255,0.52);
+    --text-muted: rgba(255,255,255,0.28);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── API Key Screen ── */
+  #auth-screen {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; min-height: 100vh; padding: 24px;
+  }
+  #auth-screen .logo {
+    font-size: 28px; font-weight: 800; letter-spacing: 4px;
+    color: var(--accent); text-shadow: 0 0 30px rgba(0,212,255,0.4);
+    margin-bottom: 4px;
+  }
+  #auth-screen .subtitle {
+    font-size: 11px; color: var(--text-muted); letter-spacing: 2px;
+    text-transform: uppercase; margin-bottom: 36px;
+  }
+  #auth-screen input {
+    width: 100%; max-width: 320px; padding: 14px 16px;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; color: var(--text); font-size: 14px;
+    outline: none; margin-bottom: 8px;
+  }
+  #auth-screen input::placeholder { color: var(--text-muted); }
+  #auth-screen input:focus { border-color: var(--primary); }
+  #api-url-input { margin-bottom: 12px; }
+  #auth-screen button {
+    width: 100%; max-width: 320px; padding: 14px;
+    background: linear-gradient(135deg, var(--primary), #8b5cf6);
+    color: #fff; border: none; border-radius: 10px;
+    font-size: 14px; font-weight: 600; cursor: pointer;
+    margin-top: 8px;
+  }
+  #auth-error {
+    color: var(--red); font-size: 12px; margin-top: 12px;
+    max-width: 320px; text-align: center;
+  }
+
+  /* ── App Shell ── */
+  #app { display: none; min-height: 100vh; padding-bottom: 72px; }
+
+  /* Header */
+  .header {
+    position: sticky; top: 0; z-index: 100;
+    background: var(--bg); border-bottom: 1px solid var(--border);
+    padding: 16px 20px 12px;
+  }
+  .header-title {
+    font-size: 13px; font-weight: 700; letter-spacing: 2px;
+    text-transform: uppercase; color: var(--text);
+  }
+  .header-sub {
+    font-size: 10px; color: var(--text-muted); margin-top: 2px;
+  }
+
+  /* Bottom nav */
+  .bottom-nav {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: var(--card); border-top: 1px solid var(--border);
+    display: flex; z-index: 100;
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+  .nav-tab {
+    flex: 1; display: flex; flex-direction: column; align-items: center;
+    padding: 10px 0 8px; cursor: pointer; border: none;
+    background: none; color: var(--text-muted); font-size: 10px;
+    letter-spacing: 0.5px; transition: color 0.2s;
+  }
+  .nav-tab.active { color: var(--accent); }
+  .nav-tab svg { width: 20px; height: 20px; margin-bottom: 4px; }
+
+  /* Tab content */
+  .tab-content { display: none; padding: 20px; }
+  .tab-content.active { display: block; }
+
+  /* Cards */
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px; margin-bottom: 12px;
+  }
+  .card-label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px;
+    color: var(--text-muted); margin-bottom: 6px;
+  }
+
+  /* Portfolio value */
+  .portfolio-value {
+    font-size: 28px; font-weight: 700; text-align: center; margin: 8px 0 4px;
+  }
+  .portfolio-change {
+    text-align: center; font-size: 14px; font-weight: 600; margin-bottom: 16px;
+  }
+  .positive { color: var(--green); }
+  .negative { color: var(--red); }
+
+  /* Holdings table */
+  .holdings-table { width: 100%; border-collapse: collapse; }
+  .holdings-table th {
+    font-size: 9px; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--text-muted); text-align: left; padding: 8px 4px;
+    border-bottom: 1px solid var(--border);
+  }
+  .holdings-table th:last-child { text-align: right; }
+  .holdings-table td {
+    font-size: 13px; padding: 10px 4px;
+    border-bottom: 1px solid var(--border);
+  }
+  .holdings-table td:last-child { text-align: right; font-weight: 600; }
+
+  /* Return pills */
+  .return-row { display: flex; gap: 8px; margin-bottom: 16px; }
+  .return-pill {
+    flex: 1; text-align: center; padding: 12px 8px;
+    background: rgba(255,255,255,0.02); border-radius: 10px;
+  }
+  .return-pill .label {
+    font-size: 9px; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--text-muted);
+  }
+  .return-pill .value {
+    font-size: 17px; font-weight: 700; margin-top: 2px;
+  }
+
+  /* Regime */
+  .regime-badge {
+    font-size: 22px; font-weight: 800; text-align: center;
+    padding: 20px; letter-spacing: 2px;
+  }
+  .regime-confidence {
+    text-align: center; font-size: 13px; color: var(--text-sec);
+  }
+  .regime-row {
+    display: flex; gap: 8px; margin-top: 12px;
+  }
+  .regime-chip {
+    flex: 1; padding: 12px; background: rgba(255,255,255,0.02);
+    border-radius: 10px;
+  }
+  .regime-chip .label {
+    font-size: 9px; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--text-muted);
+  }
+  .regime-chip .value {
+    font-size: 14px; font-weight: 600; margin-top: 4px;
+  }
+  .implication {
+    margin-top: 12px; padding: 14px;
+    background: rgba(99,102,241,0.06); border-left: 2px solid var(--primary);
+    border-radius: 0 8px 8px 0; font-size: 13px;
+    color: var(--text-sec); line-height: 1.6;
+  }
+
+  /* Commentary */
+  .commentary-meta {
+    font-size: 12px; color: var(--text-sec); margin-bottom: 12px;
+  }
+  .commentary-body {
+    font-size: 14px; line-height: 1.7; color: var(--text);
+    white-space: pre-wrap;
+  }
+  .cta-link {
+    display: block; text-align: center; margin-top: 16px;
+    padding: 12px; background: linear-gradient(135deg, var(--primary), #8b5cf6);
+    color: #fff; text-decoration: none; border-radius: 10px;
+    font-size: 13px; font-weight: 600;
+  }
+
+  /* Loading / error states */
+  .loading {
+    text-align: center; padding: 40px; color: var(--text-muted);
+    font-size: 13px;
+  }
+  .spinner {
+    width: 24px; height: 24px; border: 2px solid var(--border);
+    border-top-color: var(--accent); border-radius: 50%;
+    animation: spin 0.8s linear infinite; margin: 0 auto 12px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Footer meta */
+  .footer-meta {
+    text-align: center; font-size: 10px; color: var(--text-muted);
+    padding: 8px; margin-top: 4px;
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Auth Screen ── -->
+<div id="auth-screen">
+  <div class="logo">ATLAS</div>
+  <div class="subtitle">Analytics Terminal</div>
+  <input id="api-url-input" type="url" placeholder="API URL (e.g. https://api.example.com)">
+  <input id="api-key-input" type="password" placeholder="Enter API Key">
+  <button onclick="connectAPI()">Connect</button>
+  <div id="auth-error"></div>
+</div>
+
+<!-- ── App Shell ── -->
+<div id="app">
+
+  <!-- Tab: Portfolio -->
+  <div id="tab-portfolio" class="tab-content active">
+    <div class="header">
+      <div class="header-title">Portfolio</div>
+      <div class="header-sub" id="portfolio-updated"></div>
+    </div>
+    <div id="portfolio-content"><div class="loading"><div class="spinner"></div>Loading portfolio...</div></div>
+  </div>
+
+  <!-- Tab: Regime -->
+  <div id="tab-regime" class="tab-content">
+    <div class="header">
+      <div class="header-title">Market Regime</div>
+      <div class="header-sub" id="regime-updated"></div>
+    </div>
+    <div id="regime-content"><div class="loading"><div class="spinner"></div>Loading regime...</div></div>
+  </div>
+
+  <!-- Tab: Commentary -->
+  <div id="tab-commentary" class="tab-content">
+    <div class="header">
+      <div class="header-title">Commentary</div>
+      <div class="header-sub" id="commentary-updated"></div>
+    </div>
+    <div id="commentary-content"><div class="loading"><div class="spinner"></div>Loading commentary...</div></div>
+  </div>
+
+  <!-- Bottom Nav -->
+  <nav class="bottom-nav">
+    <button class="nav-tab active" data-tab="portfolio" onclick="switchTab('portfolio')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M3 3v18h18"/><path d="M7 16l4-8 4 4 4-6"/>
+      </svg>
+      Portfolio
+    </button>
+    <button class="nav-tab" data-tab="regime" onclick="switchTab('regime')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+      </svg>
+      Regime
+    </button>
+    <button class="nav-tab" data-tab="commentary" onclick="switchTab('commentary')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+        <path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/>
+      </svg>
+      Commentary
+    </button>
+  </nav>
+</div>
+
+<script>
+// ── State ──
+let API_URL = "";
+let API_KEY = "";
+
+// ── Auth ──
+function connectAPI() {
+  const urlInput = document.getElementById("api-url-input");
+  const keyInput = document.getElementById("api-key-input");
+  const error = document.getElementById("auth-error");
+
+  API_URL = urlInput.value.replace(/\/+$/, "");
+  API_KEY = keyInput.value.trim();
+
+  if (!API_URL || !API_KEY) {
+    error.textContent = "Please enter both API URL and API Key.";
+    return;
+  }
+
+  error.textContent = "Connecting...";
+
+  apiFetch("/v1/health")
+    .then((data) => {
+      if (data && data.status === "healthy") {
+        localStorage.setItem("atlas_api_url", API_URL);
+        localStorage.setItem("atlas_api_key", API_KEY);
+        showApp();
+      } else {
+        error.textContent = "Unexpected response from API.";
+      }
+    })
+    .catch((err) => {
+      error.textContent = err.message || "Connection failed.";
+    });
+}
+
+// ── API helper ──
+async function apiFetch(path, options = {}) {
+  const url = API_URL + path;
+  const headers = { "X-API-Key": API_KEY, "Content-Type": "application/json", ...options.headers };
+  const res = await fetch(url, { ...options, headers });
+  if (res.status === 401) throw new Error("Invalid API key.");
+  if (res.status === 403) throw new Error("Insufficient tier.");
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  return res.json();
+}
+
+// ── Tab switching ──
+function switchTab(tab) {
+  document.querySelectorAll(".tab-content").forEach((t) => t.classList.remove("active"));
+  document.querySelectorAll(".nav-tab").forEach((t) => t.classList.remove("active"));
+  document.getElementById("tab-" + tab).classList.add("active");
+  document.querySelector(`.nav-tab[data-tab="${tab}"]`).classList.add("active");
+
+  if (tab === "portfolio") loadPortfolio();
+  else if (tab === "regime") loadRegime();
+  else if (tab === "commentary") loadCommentary();
+}
+
+// ── Show app ──
+function showApp() {
+  document.getElementById("auth-screen").style.display = "none";
+  document.getElementById("app").style.display = "block";
+  loadPortfolio();
+}
+
+// ── Portfolio ──
+async function loadPortfolio() {
+  const el = document.getElementById("portfolio-content");
+  try {
+    const data = await apiFetch("/v1/portfolio/metrics", {
+      method: "POST",
+      body: JSON.stringify({ tickers: getSavedTickers(), weights: getSavedWeights() }),
+    });
+
+    const metrics = data.metrics || data;
+    const totalReturn = metrics.total_return || metrics.ytd_return || 0;
+    const weekReturn = metrics.week_return || 0;
+    const mtdReturn = metrics.mtd_return || 0;
+    const ytdReturn = metrics.ytd_return || totalReturn;
+    const sharpe = metrics.sharpe_ratio || 0;
+    const holdings = data.holdings || [];
+
+    let holdingsHtml = "";
+    if (holdings.length > 0) {
+      holdingsHtml = `<table class="holdings-table">
+        <tr><th>Ticker</th><th>Weight</th><th>Return</th></tr>
+        ${holdings.map((h) => `<tr>
+          <td>${h.ticker}</td>
+          <td>${(h.weight * 100).toFixed(1)}%</td>
+          <td class="${h.return >= 0 ? "positive" : "negative"}">${h.return >= 0 ? "+" : ""}${(h.return * 100).toFixed(1)}%</td>
+        </tr>`).join("")}
+      </table>`;
+    }
+
+    el.innerHTML = `
+      <div class="card">
+        <div class="portfolio-value">${data.portfolio_value || "—"}</div>
+        <div class="portfolio-change ${weekReturn >= 0 ? "positive" : "negative"}">
+          ${weekReturn >= 0 ? "+" : ""}${(weekReturn * 100).toFixed(1)}% this week
+        </div>
+        <div class="return-row">
+          <div class="return-pill">
+            <div class="label">Week</div>
+            <div class="value ${weekReturn >= 0 ? "positive" : "negative"}">${weekReturn >= 0 ? "+" : ""}${(weekReturn * 100).toFixed(1)}%</div>
+          </div>
+          <div class="return-pill">
+            <div class="label">MTD</div>
+            <div class="value ${mtdReturn >= 0 ? "positive" : "negative"}">${mtdReturn >= 0 ? "+" : ""}${(mtdReturn * 100).toFixed(1)}%</div>
+          </div>
+          <div class="return-pill">
+            <div class="label">YTD</div>
+            <div class="value ${ytdReturn >= 0 ? "positive" : "negative"}">${ytdReturn >= 0 ? "+" : ""}${(ytdReturn * 100).toFixed(1)}%</div>
+          </div>
+        </div>
+        <div class="card-label">Sharpe Ratio</div>
+        <div style="font-size:18px; font-weight:700;">${sharpe.toFixed(2)}</div>
+      </div>
+      ${holdingsHtml ? `<div class="card">${holdingsHtml}</div>` : ""}
+    `;
+    document.getElementById("portfolio-updated").textContent = "Updated " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  } catch (err) {
+    el.innerHTML = `<div class="card"><p style="color:var(--red);font-size:13px;">${err.message}</p></div>`;
+  }
+}
+
+// ── Regime ──
+async function loadRegime() {
+  const el = document.getElementById("regime-content");
+  try {
+    const data = await apiFetch("/v1/regime/current");
+    const regime = data.regime || data;
+
+    const quant = regime.quant_regime || regime.quantitative || "N/A";
+    const macro = regime.macro_regime || regime.macro || "N/A";
+    const consensus = regime.consensus || quant;
+    const confidence = regime.confidence || 0;
+    const implication = regime.implication || regime.investment_implication || "";
+
+    const regimeColour = consensus.toLowerCase().includes("risk-on") || consensus.toLowerCase().includes("goldilocks")
+      ? "var(--green)" : consensus.toLowerCase().includes("risk-off") || consensus.toLowerCase().includes("crisis")
+      ? "var(--red)" : "var(--accent)";
+
+    el.innerHTML = `
+      <div class="card">
+        <div class="regime-badge" style="color:${regimeColour};">${consensus.toUpperCase()}</div>
+        <div class="regime-confidence">Confidence: ${(confidence * 100).toFixed(0)}%</div>
+        <div class="regime-row">
+          <div class="regime-chip">
+            <div class="label">Quantitative</div>
+            <div class="value">${quant}</div>
+          </div>
+          <div class="regime-chip">
+            <div class="label">Macro</div>
+            <div class="value">${macro}</div>
+          </div>
+        </div>
+        ${implication ? `<div class="implication">${implication}</div>` : ""}
+      </div>
+    `;
+    document.getElementById("regime-updated").textContent = "Updated " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  } catch (err) {
+    el.innerHTML = `<div class="card"><p style="color:var(--red);font-size:13px;">${err.message}</p></div>`;
+  }
+}
+
+// ── Commentary ──
+async function loadCommentary() {
+  const el = document.getElementById("commentary-content");
+  try {
+    const data = await apiFetch("/v1/commentary/latest");
+    const commentary = data.commentary || "";
+    const type = data.commentary_type || "Commentary";
+    const generated = data.generated_at || "";
+
+    let dateStr = "";
+    if (generated) {
+      const d = new Date(generated);
+      dateStr = d.toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" });
+    }
+
+    // Truncate for mobile
+    const words = commentary.split(/\s+/);
+    const truncated = words.length > 150 ? words.slice(0, 150).join(" ") + "..." : commentary;
+
+    el.innerHTML = `
+      <div class="card">
+        <div class="card-label">${type}</div>
+        <div class="commentary-meta">${dateStr ? "Generated: " + dateStr : ""} &middot; ${words.length} words</div>
+        <div class="commentary-body">${truncated}</div>
+        ${words.length > 150 ? `<a href="${API_URL.replace('/v1','').replace(':8000',':8501')}" class="cta-link" target="_blank">Read full commentary</a>` : ""}
+      </div>
+    `;
+    document.getElementById("commentary-updated").textContent = "Updated " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  } catch (err) {
+    el.innerHTML = `<div class="card"><p style="color:var(--red);font-size:13px;">${err.message}</p></div>`;
+  }
+}
+
+// ── Helpers ──
+function getSavedTickers() {
+  try { return JSON.parse(localStorage.getItem("atlas_tickers")) || []; }
+  catch { return []; }
+}
+function getSavedWeights() {
+  try { return JSON.parse(localStorage.getItem("atlas_weights")) || {}; }
+  catch { return {}; }
+}
+
+// ── Init ──
+(function init() {
+  const savedUrl = localStorage.getItem("atlas_api_url");
+  const savedKey = localStorage.getItem("atlas_api_key");
+  if (savedUrl && savedKey) {
+    API_URL = savedUrl;
+    API_KEY = savedKey;
+    document.getElementById("api-url-input").value = savedUrl;
+    document.getElementById("api-key-input").value = savedKey;
+    // Auto-connect
+    showApp();
+  }
+})();
+
+// ── Register Service Worker ──
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+}
+</script>
+</body>
+</html>

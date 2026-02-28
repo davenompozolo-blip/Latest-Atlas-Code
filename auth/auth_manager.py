@@ -121,14 +121,22 @@ def render_login_form() -> bool:
 
     credentials = st.secrets["auth"]["credentials"]
 
+    try:
+        from config.branding import get_branding
+        _b = get_branding()
+        _logo = _b["logo_text"]
+        _accent = _b["accent_colour"]
+    except Exception:
+        _logo, _accent = "ATLAS", "#00d4ff"
+
     st.markdown(
         '<div style="text-align:center; margin-bottom:1.5rem;">'
-        '<div style="font-family:\'Syne\',sans-serif; font-size:22px;'
-        ' font-weight:700; letter-spacing:3px; color:#00d4ff;'
-        ' text-shadow:0 0 20px rgba(0,212,255,0.4);">ATLAS</div>'
+        f'<div style="font-family:\'Syne\',sans-serif; font-size:22px;'
+        f' font-weight:700; letter-spacing:3px; color:{_accent};'
+        f' text-shadow:0 0 20px {_accent}66;">{_logo}</div>'
         '<div style="font-size:11px; color:rgba(255,255,255,0.35);'
         ' letter-spacing:1.8px; text-transform:uppercase; margin-top:3px;">'
-        'Terminal Login</div></div>',
+        'Login</div></div>',
         unsafe_allow_html=True,
     )
 

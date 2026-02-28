@@ -6,6 +6,7 @@ Includes authentication gate (Phase 7).
 
 import streamlit as st
 
+from config.branding import get_branding, get_theme
 from auth.auth_manager import (
     auth_configured,
     get_current_user,
@@ -109,7 +110,7 @@ def render_sidebar_navigation(default_page: str = "Portfolio Home") -> str:
                 st.markdown(
                     f'<div style="padding:8px 16px 12px; font-size:11px;'
                     f' color:rgba(255,255,255,0.45);">'
-                    f'Signed in as <span style="color:#00d4ff; font-weight:600;">'
+                    f'Signed in as <span style="color:{get_branding()["accent_colour"]}; font-weight:600;">'
                     f'{user_name}</span>'
                     f' <span style="font-size:9px; color:rgba(255,255,255,0.25);'
                     f' text-transform:uppercase; letter-spacing:0.5px;">'
@@ -166,14 +167,15 @@ def render_sidebar_navigation(default_page: str = "Portfolio Home") -> str:
         }
         </style>""", unsafe_allow_html=True)
 
-        # ── ATLAS Logo ──
-        st.markdown("""
+        # ── Brand Logo (reads from config/branding.toml) ──
+        _brand = get_branding()
+        st.markdown(f"""
         <div style="padding: 0 16px 20px; border-bottom: 1px solid rgba(255,255,255,0.07); margin-bottom: 8px;">
             <div style="font-family: 'Syne', sans-serif; font-size: 19px; font-weight: 700;
-                        letter-spacing: 3px; color: #00d4ff;
-                        text-shadow: 0 0 20px rgba(0, 212, 255, 0.4);">ATLAS</div>
+                        letter-spacing: 3px; color: {_brand['accent_colour']};
+                        text-shadow: 0 0 20px {_brand['accent_colour']}66;">{_brand['logo_text']}</div>
             <div style="font-size: 11px; color: rgba(255,255,255,0.35);
-                        letter-spacing: 1.8px; text-transform: uppercase; margin-top: 3px;">Analytics Terminal</div>
+                        letter-spacing: 1.8px; text-transform: uppercase; margin-top: 3px;">{_brand['tagline']}</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -208,20 +210,21 @@ def render_sidebar_navigation(default_page: str = "Portfolio Home") -> str:
                         st.session_state["atlas_selected_page"] = item["key"]
                         st.rerun()
                 elif is_active:
-                    # Active state — indigo left border + indigo dot + bright text
+                    # Active state — branded accent border + dot + bright text
+                    _pc = _brand['primary_colour']
                     st.markdown(f'''
                     <div style="display: flex; align-items: center; gap: 8px;
                                 padding: 7px 16px; font-size: 11.5px;
                                 line-height: 1.3; letter-spacing: 0.1px;
                                 color: rgba(255,255,255,0.92); cursor: default;
-                                background: rgba(99,102,241,0.1);
-                                border-left: 2px solid #6366f1;
+                                background: {_pc}1a;
+                                border-left: 2px solid {_pc};
                                 position: relative;">
                         <div style="width: 5px; height: 5px; border-radius: 50%;
-                                    background: #6366f1; flex-shrink: 0;"></div>
+                                    background: {_pc}; flex-shrink: 0;"></div>
                         <span style="font-family: 'DM Sans', sans-serif;">{item['label']}</span>
                         <div style="position: absolute; right: 0; top: 20%; width: 3px; height: 60%;
-                                    background: #6366f1; border-radius: 2px 0 0 2px; opacity: 0.5;"></div>
+                                    background: {_pc}; border-radius: 2px 0 0 2px; opacity: 0.5;"></div>
                     </div>''', unsafe_allow_html=True)
                 else:
                     # Inactive — clickable button with dot prefix

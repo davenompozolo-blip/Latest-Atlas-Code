@@ -42,8 +42,12 @@ _WORD_COUNTS = {
     "Detailed": 1200,
 }
 
-# RisCura header colour (dark blue)
-_HEADER_RGB = (31, 41, 63)
+# Header colour — reads from branding config
+try:
+    from config.branding import get_docx_config as _get_docx
+    _HEADER_RGB = tuple(_get_docx()["header_rgb"])
+except Exception:
+    _HEADER_RGB = (31, 41, 63)
 
 # ---------------------------------------------------------------------------
 # System prompts
@@ -162,7 +166,12 @@ def _build_docx(commentary: str, commentary_type: str, date_str: str) -> bytes:
     # -- Header bar --
     header_para = doc.add_paragraph()
     header_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    run = header_para.add_run(f"ATLAS Terminal  —  {commentary_type}")
+    try:
+        from config.branding import get_branding as _gb
+        _firm = _gb()["firm_name"]
+    except Exception:
+        _firm = "ATLAS Terminal"
+    run = header_para.add_run(f"{_firm}  —  {commentary_type}")
     run.font.name = "Calibri"
     run.font.size = Pt(16)
     run.font.bold = True

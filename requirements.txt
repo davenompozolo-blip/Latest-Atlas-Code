@@ -39,3 +39,12 @@ python-docx>=0.8.11
 
 # Authentication (Phase 7)
 bcrypt>=4.0.0
+
+# REST API Layer (Phase 8)
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+pydantic>=2.5.0
+
+# Scheduled Reports (Phase 8)
+APScheduler>=3.10.0
+sendgrid>=6.10.0

@@ -15,6 +15,12 @@ from .registry import get_page_by_key, PAGE_REGISTRY, TIER_REQUIREMENTS
 def _render_upgrade_prompt(page_title: str, required_tier: str):
     """Render upgrade prompt for gated pages."""
     import streamlit as st
+    try:
+        from config.branding import get_branding
+        _accent = get_branding()["accent_colour"]
+        _primary = get_branding()["primary_colour"]
+    except Exception:
+        _accent, _primary = "#00d4ff", "#6366f1"
 
     st.markdown(
         '<div style="text-align:center; margin-top:6rem;">'
@@ -22,10 +28,10 @@ def _render_upgrade_prompt(page_title: str, required_tier: str):
         f'<h2 style="color:rgba(255,255,255,0.85); margin-bottom:0.5rem;">'
         f'{page_title}</h2>'
         f'<p style="color:rgba(255,255,255,0.45); font-size:14px;">'
-        f'This page requires the <span style="color:#00d4ff; font-weight:700;">'
+        f'This page requires the <span style="color:{_accent}; font-weight:700;">'
         f'{required_tier.title()}</span> tier.</p>'
-        '<div style="margin-top:2rem; padding:1.5rem; background:rgba(99,102,241,0.06);'
-        ' border:1px solid rgba(99,102,241,0.18); border-radius:12px;'
+        f'<div style="margin-top:2rem; padding:1.5rem; background:{_primary}0f;'
+        f' border:1px solid {_primary}2e; border-radius:12px;'
         ' display:inline-block; max-width:400px;">'
         '<p style="font-size:13px; color:rgba(255,255,255,0.6); margin:0;">'
         'Contact your administrator to upgrade your access tier.</p>'

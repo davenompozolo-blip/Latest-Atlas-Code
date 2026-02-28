@@ -29,8 +29,15 @@ async def lifespan(app: FastAPI):
     yield
 
 
+try:
+    from config.branding import get_branding as _get_brand
+    _brand = _get_brand()
+    _api_title = f"{_brand['firm_name']} API"
+except Exception:
+    _api_title = "ATLAS Terminal API"
+
 app = FastAPI(
-    title="ATLAS Terminal API",
+    title=_api_title,
     description=(
         "Institutional investment analytics API. "
         "Portfolio optimisation, regime detection, SAA, and AI commentary."
