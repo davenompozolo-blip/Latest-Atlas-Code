@@ -44,8 +44,8 @@ def render_phoenix_parser():
     def render_data_source_cards():
         if 'portfolio_data_source_mode' not in st.session_state:
             st.session_state['portfolio_data_source_mode'] = "📁 Classic Mode (Excel Upload)"
-        sources = ["📁 Classic Mode (Excel Upload)", "🔗 Easy Equities (Live Sync)", "🦙 Alpaca Markets (Live Sync)"]
-        cols = st.columns(3)
+        sources = ["📁 Classic Mode (Excel Upload)", "🔗 Easy Equities (Live Sync)", "🦙 Alpaca Markets (Live Sync)", "📈 IRESS Import (JSE)"]
+        cols = st.columns(4)
         for i, src in enumerate(sources):
             with cols[i]:
                 if st.button(src.split(" ")[0] + " " + src.split("(")[0].split(" ", 1)[1].strip(), key=f"src_{i}", use_container_width=True):
@@ -863,6 +863,83 @@ def render_phoenix_parser():
             st.error(f"Error loading performance history: {e}")
             import traceback
             st.code(traceback.format_exc())
+
+    # ===== IRESS IMPORT MODE (Phase 10 JSE Integration) =====
+    elif portfolio_mode == "📈 IRESS Import (JSE)":
+        st.subheader("📈 Import from IRESS")
+        st.info(
+            "Upload a CSV export from IRESS. Supports two formats:\n"
+            "- **Price History**: Date, Code, Open, High, Low, Close, Volume\n"
+            "- **Holdings**: Code, Description, Quantity, Price, Value"
+        )
+
+        iress_file = st.file_uploader(
+            "Upload IRESS CSV Export",
+            type=["csv"],
+            key="iress_upload",
+        )
+
+        if iress_file is not None:
+            try:
+                from data.fetchers.iress import validate_iress_export, import_iress_prices, import_iress_holdings
+                import io
+
+                # Read the file once into bytes
+                raw_bytes = iress_file.read()
+
+                # Validate format
+                validation = validate_iress_export(io.BytesIO(raw_bytes))
+                if not validation["valid"]:
+                    st.error(f"Invalid IRESS export: {validation.get('error', 'Unknown error')}")
+                else:
+                    st.success(f"Detected format: **{validation['format']}** ({validation['rows']} rows)")
+                    if validation.get("tickers"):
+                        st.caption(f"Tickers found: {', '.join(validation['tickers'][:10])}")
+
+                    if validation["format"] == "prices":
+                        # Import price data
+                        price_df = import_iress_prices(io.BytesIO(raw_bytes))
+                        if not price_df.empty:
+                            st.success(f"Imported {len(price_df)} price records")
+                            st.dataframe(price_df.tail(20), use_container_width=True)
+
+                            # Store in session state for use by other modules
+                            st.session_state["iress_price_data"] = price_df
+                            show_toast("IRESS price data loaded", "success")
+                        else:
+                            st.warning("No price data could be parsed from the export.")
+
+                    elif validation["format"] == "holdings":
+                        # Import holdings
+                        holdings_df = import_iress_holdings(io.BytesIO(raw_bytes))
+                        if not holdings_df.empty:
+                            st.success(f"Imported {len(holdings_df)} holdings")
+                            st.dataframe(holdings_df, use_container_width=True)
+
+                            # Convert to ATLAS portfolio format and store
+                            if "ticker" in holdings_df.columns and "market_value" in holdings_df.columns:
+                                total_value = holdings_df["market_value"].sum()
+                                if total_value > 0:
+                                    from data.fetchers.jse_tickers import jse_to_yahoo
+                                    atlas_portfolio = []
+                                    for _, row in holdings_df.iterrows():
+                                        atlas_portfolio.append({
+                                            "Ticker": jse_to_yahoo(row["ticker"]),
+                                            "Weight": row["market_value"] / total_value,
+                                            "Shares": row.get("quantity", 0),
+                                            "Market_Value": row.get("market_value", 0),
+                                        })
+                                    portfolio_df = pd.DataFrame(atlas_portfolio)
+                                    save_portfolio_data(portfolio_df)
+                                    st.success("Portfolio saved to ATLAS data store")
+                                    show_toast("IRESS portfolio imported", "success")
+                        else:
+                            st.warning("No holdings data could be parsed from the export.")
+
+            except ImportError:
+                st.error("IRESS import module not available. Check data/fetchers/iress.py.")
+            except Exception as e:
+                st.error(f"IRESS import error: {e}")
 
     # ========================================================================
     # v10.0 ANALYTICS - NEW ADVANCED FEATURES
