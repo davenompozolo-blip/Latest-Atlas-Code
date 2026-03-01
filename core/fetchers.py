@@ -442,6 +442,20 @@ def fetch_market_data(ticker):
 
 @st.cache_data(ttl=600)
 def fetch_historical_data(ticker, start_date, end_date):
+    # Phase 10: Try JSE-specific fetcher first for JSE tickers
+    try:
+        from data.fetchers.jse_tickers import is_jse_ticker
+        if is_jse_ticker(str(ticker)):
+            from data.fetchers.jse import JSEDataFetcher
+            from datetime import date as _date
+            _start = _date.fromisoformat(str(start_date)[:10]) if not isinstance(start_date, _date) else start_date
+            _end = _date.fromisoformat(str(end_date)[:10]) if not isinstance(end_date, _date) else end_date
+            jse_data = JSEDataFetcher.get_prices(ticker, _start, _end)
+            if jse_data is not None and not jse_data.empty:
+                return jse_data
+    except Exception:
+        pass  # Fall through to Yahoo Finance
+
     try:
         # Import ticker conversion utility
         from modules import convert_ee_ticker_to_yahoo

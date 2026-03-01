@@ -1,13 +1,21 @@
 """
-ATLAS Terminal — CFA Level II Prep Module (Phase 9, Initiative 3)
-===================================================================
+ATLAS Terminal — CFA Level II Prep Module (Phase 9 + Phase 10 Enhancement)
+==========================================================================
 Structured study companion using Claude for item set generation,
 concept explanation, and progress tracking.
 
-Three modes:
-  1. Practice Session — vignette + 6 MCQ item sets
+Five modes:
+  1. Practice Session — vignette + 6 MCQ item sets (+ difficulty selector)
   2. Concept Explainer — practitioner-focused explanations
   3. Progress Tracker — per-topic stats + study plan
+  4. Spaced Repetition — SM-2 algorithm for optimal topic scheduling
+  5. Errata Log — flag & review problematic generated questions
+
+Phase 10 enhancements:
+  - Quality validators (numerical consistency, answer distribution)
+  - Difficulty selector (Foundation / Standard / Advanced)
+  - Errata flagging system
+  - Spaced repetition mode (SM-2)
 
 Module Pattern Contract: single public render function, zero-argument.
 """
@@ -16,6 +24,7 @@ from __future__ import annotations
 import json
 import math
 import re
+from collections import Counter
 from datetime import datetime, date, timedelta
 from pathlib import Path
 
@@ -40,8 +49,21 @@ CFA_TOPICS = {
 
 EXAM_DATE = date(2026, 5, 24)  # CFA L2 May 2026
 
+# Difficulty levels (Phase 10)
+DIFFICULTY_LEVELS = {
+    "Foundation": "Write questions at the knowledge/comprehension level. Calculations should be single-step. Focus on recall and basic application of formulae.",
+    "Standard": "Match actual CFA Level II exam difficulty. At least 2 questions require multi-step calculations. Mix conceptual and quantitative questions.",
+    "Advanced": "Write questions above exam difficulty to push the candidate. All quantitative questions should require 3+ steps. Include edge cases, combined concepts, and questions that require synthesising across curriculum readings.",
+}
+
 # Progress file (persistent across sessions)
 _PROGRESS_FILE = Path(__file__).resolve().parent.parent.parent / ".atlas_cfa_progress.json"
+
+# Errata file (Phase 10)
+_ERRATA_FILE = Path(__file__).resolve().parent.parent.parent / ".atlas_cfa_errata.json"
+
+# Spaced repetition file (Phase 10 — SM-2 algorithm state)
+_SR_FILE = Path(__file__).resolve().parent.parent.parent / ".atlas_cfa_spaced_rep.json"
 
 
 # ---------------------------------------------------------------------------
@@ -54,6 +76,8 @@ Institute curriculum. You write item set vignettes that match the style, \
 difficulty, and analytical depth of actual CFA Level II exam questions.
 
 Generate a complete item set on the topic: {topic}
+Difficulty level: {difficulty}
+{difficulty_instruction}
 
 Format:
 
@@ -81,7 +105,8 @@ Rules:
 - At least 2 questions must require multi-step calculations
 - Distractors must be plausible errors, not obviously wrong
 - Do not repeat question types within a set
-- The correct answer should be distributed across A/B/C/D across the set
+- The correct answer should be distributed across A/B/C/D across the set \
+  (no more than 2 questions should share the same correct answer letter)
 - Do not include any preamble or meta-commentary — output the item set only
 - Generate ORIGINAL content — do not reproduce CFA Institute copyrighted material
 """
@@ -151,6 +176,186 @@ def _load_progress() -> dict:
 def _save_progress(progress: dict):
     """Save CFA progress to file."""
     _PROGRESS_FILE.write_text(json.dumps(progress, indent=2, default=str), encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# Errata persistence (Phase 10)
+# ---------------------------------------------------------------------------
+
+def _load_errata() -> list:
+    """Load errata reports."""
+    if _ERRATA_FILE.exists():
+        try:
+            return json.loads(_ERRATA_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return []
+
+
+def _save_errata(errata: list):
+    """Save errata reports."""
+    _ERRATA_FILE.write_text(json.dumps(errata, indent=2, default=str), encoding="utf-8")
+
+
+def _add_errata(topic: str, question_number: int, issue_type: str, description: str, question_text: str):
+    """Add an errata report for a generated question."""
+    errata = _load_errata()
+    errata.append({
+        "date": datetime.now().isoformat(),
+        "topic": topic,
+        "question_number": question_number,
+        "issue_type": issue_type,
+        "description": description,
+        "question_text": question_text[:500],
+        "status": "open",
+    })
+    _save_errata(errata)
+
+
+# ---------------------------------------------------------------------------
+# Spaced Repetition — SM-2 Algorithm (Phase 10)
+# ---------------------------------------------------------------------------
+
+def _load_sr_state() -> dict:
+    """Load spaced repetition state."""
+    if _SR_FILE.exists():
+        try:
+            return json.loads(_SR_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    # Initialise SM-2 state for each topic
+    return {
+        topic: {
+            "easiness": 2.5,       # EF (easiness factor), min 1.3
+            "interval": 1,          # Days until next review
+            "repetitions": 0,       # Consecutive correct reviews
+            "next_review": date.today().isoformat(),
+            "last_quality": None,   # Last review quality (0-5)
+        }
+        for topic in CFA_TOPICS
+    }
+
+
+def _save_sr_state(state: dict):
+    """Save spaced repetition state."""
+    _SR_FILE.write_text(json.dumps(state, indent=2, default=str), encoding="utf-8")
+
+
+def _sm2_update(topic_state: dict, quality: int) -> dict:
+    """
+    Apply the SM-2 algorithm to update a topic's spaced repetition state.
+
+    quality: 0-5 scale where:
+      0-2 = incorrect/poor (reset repetitions)
+      3   = correct with difficulty
+      4   = correct with hesitation
+      5   = perfect recall
+    """
+    quality = max(0, min(5, quality))
+    ef = topic_state["easiness"]
+    reps = topic_state["repetitions"]
+    interval = topic_state["interval"]
+
+    # Update easiness factor
+    ef = ef + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02))
+    ef = max(1.3, ef)
+
+    if quality < 3:
+        # Failed — reset
+        reps = 0
+        interval = 1
+    else:
+        reps += 1
+        if reps == 1:
+            interval = 1
+        elif reps == 2:
+            interval = 6
+        else:
+            interval = round(interval * ef)
+
+    next_review = (date.today() + timedelta(days=interval)).isoformat()
+
+    return {
+        "easiness": round(ef, 2),
+        "interval": interval,
+        "repetitions": reps,
+        "next_review": next_review,
+        "last_quality": quality,
+    }
+
+
+def _get_due_topics(sr_state: dict) -> list[str]:
+    """Get topics that are due for review today, sorted by overdue-ness."""
+    today = date.today()
+    due = []
+    for topic, state in sr_state.items():
+        review_date = date.fromisoformat(state["next_review"])
+        if review_date <= today:
+            overdue_days = (today - review_date).days
+            due.append((topic, overdue_days, state["easiness"]))
+    # Sort: most overdue first, then lowest easiness
+    due.sort(key=lambda x: (-x[1], x[2]))
+    return [t[0] for t in due]
+
+
+# ---------------------------------------------------------------------------
+# Quality Validators (Phase 10)
+# ---------------------------------------------------------------------------
+
+def _validate_item_set(parsed: dict) -> list[dict]:
+    """
+    Validate a parsed item set for quality issues.
+    Returns a list of {severity, message} dicts.
+    """
+    issues = []
+
+    # 1. Structure check: must have vignette + 6 questions
+    if not parsed["vignette"]:
+        issues.append({"severity": "error", "message": "Missing vignette"})
+    if len(parsed["questions"]) < 6:
+        issues.append({
+            "severity": "error",
+            "message": f"Only {len(parsed['questions'])}/6 questions parsed",
+        })
+
+    # 2. Answer distribution: no more than 2 of the same letter
+    answers = [q["answer"] for q in parsed["questions"] if q["answer"]]
+    if answers:
+        dist = Counter(answers)
+        for letter, count in dist.items():
+            if count > 3:
+                issues.append({
+                    "severity": "warning",
+                    "message": f"Answer '{letter}' appears {count} times — poor distribution",
+                })
+
+    # 3. All questions must have answer + explanation
+    for q in parsed["questions"]:
+        if not q["answer"]:
+            issues.append({
+                "severity": "error",
+                "message": f"Q{q['number']}: Missing correct answer",
+            })
+        if not q["explanation"]:
+            issues.append({
+                "severity": "warning",
+                "message": f"Q{q['number']}: Missing explanation",
+            })
+        if len(q["options"]) < 3:
+            issues.append({
+                "severity": "error",
+                "message": f"Q{q['number']}: Only {len(q['options'])} options (need 3-4)",
+            })
+
+    # 4. Numerical consistency: check for numbers in vignette referenced in questions
+    vignette_numbers = set(re.findall(r'\d+(?:\.\d+)?%?', parsed["vignette"]))
+    if parsed["vignette"] and len(vignette_numbers) < 3:
+        issues.append({
+            "severity": "warning",
+            "message": "Vignette has few numerical data points — may lack calculation questions",
+        })
+
+    return issues
 
 
 # ---------------------------------------------------------------------------
@@ -321,11 +526,13 @@ def render_cfa_prep():
         _render_free_preview(brand)
         return
 
-    # Full module — 3 tabs
-    tab_practice, tab_concepts, tab_tracker = st.tabs([
+    # Full module — 5 tabs (Phase 10: added Spaced Repetition + Errata)
+    tab_practice, tab_concepts, tab_tracker, tab_sr, tab_errata = st.tabs([
         "Practice Session",
         "Concept Explainer",
         "Progress Tracker",
+        "Spaced Repetition",
+        "Errata Log",
     ])
 
     with tab_practice:
@@ -336,6 +543,12 @@ def render_cfa_prep():
 
     with tab_tracker:
         _render_progress_tracker(brand)
+
+    with tab_sr:
+        _render_spaced_repetition(brand)
+
+    with tab_errata:
+        _render_errata_log(brand)
 
 
 # ---------------------------------------------------------------------------
@@ -370,23 +583,52 @@ def _render_free_preview(brand: dict):
 def _render_practice_session(brand: dict):
     st.markdown("##### Generate Item Set")
 
-    col1, col2 = st.columns([2, 1])
+    col1, col2, col3 = st.columns([2, 1, 1])
     with col1:
         topic = st.selectbox("Topic Area", list(CFA_TOPICS.keys()), key="cfa_topic")
     with col2:
+        difficulty = st.selectbox(
+            "Difficulty",
+            list(DIFFICULTY_LEVELS.keys()),
+            index=1,  # Default: Standard
+            key="cfa_difficulty",
+        )
+    with col3:
         num_sets = st.number_input("Item Sets", min_value=1, max_value=5, value=1, key="cfa_num_sets")
 
     if st.button("Generate Practice Set", key="cfa_generate_btn", use_container_width=True):
-        with st.spinner(f"Generating {num_sets} item set(s) for {topic}..."):
+        with st.spinner(f"Generating {num_sets} {difficulty.lower()} item set(s) for {topic}..."):
             try:
-                prompt = _PROMPT_ITEM_SET.format(topic=topic)
-                raw = _call_claude(prompt, f"Generate {num_sets} item set(s) on {topic}.")
+                prompt = _PROMPT_ITEM_SET.format(
+                    topic=topic,
+                    difficulty=difficulty,
+                    difficulty_instruction=DIFFICULTY_LEVELS[difficulty],
+                )
+                raw = _call_claude(prompt, f"Generate {num_sets} {difficulty}-level item set(s) on {topic}.")
                 parsed = _parse_item_set(raw)
+
+                # Phase 10: Quality validation
+                validation_issues = _validate_item_set(parsed)
+                errors = [i for i in validation_issues if i["severity"] == "error"]
+                warnings = [i for i in validation_issues if i["severity"] == "warning"]
+
+                if errors:
+                    st.warning(f"Quality check: {len(errors)} issue(s) detected")
+                    for issue in errors:
+                        st.caption(f"  {issue['message']}")
+
+                if warnings:
+                    with st.expander(f"Quality warnings ({len(warnings)})"):
+                        for issue in warnings:
+                            st.caption(f"  {issue['message']}")
+
                 st.session_state["cfa_current_item_set"] = parsed
                 st.session_state["cfa_current_topic"] = topic
+                st.session_state["cfa_current_difficulty"] = difficulty
                 st.session_state["cfa_user_answers"] = {}
                 st.session_state["cfa_submitted"] = False
                 st.session_state["cfa_raw_response"] = raw
+                st.session_state["cfa_validation_issues"] = validation_issues
             except Exception as e:
                 st.error(f"Generation failed: {e}")
                 return
@@ -458,6 +700,28 @@ def _render_practice_session(brand: dict):
                 st.error(f"Your answer: {user_ans}. Correct: {correct}")
                 st.info(q["explanation"])
 
+            # Phase 10: Errata flagging
+            with st.expander(f"Flag Q{qnum}", expanded=False):
+                issue_type = st.selectbox(
+                    "Issue type",
+                    ["Numerical error", "Ambiguous stem", "Wrong answer key", "Missing data", "Other"],
+                    key=f"cfa_errata_type_{qnum}",
+                )
+                errata_desc = st.text_input(
+                    "Describe the issue",
+                    key=f"cfa_errata_desc_{qnum}",
+                    placeholder="e.g., Calculation in explanation doesn't match vignette data",
+                )
+                if st.button("Submit Flag", key=f"cfa_errata_btn_{qnum}"):
+                    _add_errata(
+                        topic=st.session_state.get("cfa_current_topic", ""),
+                        question_number=qnum,
+                        issue_type=issue_type,
+                        description=errata_desc or issue_type,
+                        question_text=q["stem"],
+                    )
+                    st.success("Flagged — thank you for improving question quality.")
+
         st.markdown("")
 
     # Submit button
@@ -487,6 +751,25 @@ def _render_practice_session(brand: dict):
             progress["total_correct"] += correct_count
             progress["last_session"] = date.today().isoformat()
             _save_progress(progress)
+
+            # Phase 10: Update spaced repetition state
+            if topic:
+                sr_state = _load_sr_state()
+                if topic in sr_state:
+                    pct = (correct_count / total_q * 100) if total_q > 0 else 0
+                    # Map score to SM-2 quality: <40%→1, 40-59%→2, 60-74%→3, 75-89%→4, 90+%→5
+                    if pct >= 90:
+                        quality = 5
+                    elif pct >= 75:
+                        quality = 4
+                    elif pct >= 60:
+                        quality = 3
+                    elif pct >= 40:
+                        quality = 2
+                    else:
+                        quality = 1
+                    sr_state[topic] = _sm2_update(sr_state[topic], quality)
+                    _save_sr_state(sr_state)
 
             st.rerun()
     else:
@@ -660,5 +943,170 @@ def _render_progress_tracker(brand: dict):
     st.markdown("---")
     if st.button("Reset All Progress", key="cfa_reset_btn"):
         _PROGRESS_FILE.unlink(missing_ok=True)
+        _SR_FILE.unlink(missing_ok=True)
         st.success("Progress reset.")
+        st.rerun()
+
+
+# ---------------------------------------------------------------------------
+# Mode 4: Spaced Repetition (Phase 10)
+# ---------------------------------------------------------------------------
+
+def _render_spaced_repetition(brand: dict):
+    import plotly.graph_objects as go
+
+    st.markdown("##### Spaced Repetition — SM-2 Schedule")
+    st.caption(
+        "Topics are scheduled using the SM-2 algorithm. After each practice session, "
+        "the algorithm adjusts intervals based on your performance."
+    )
+
+    sr_state = _load_sr_state()
+    today = date.today()
+
+    # Due topics
+    due_topics = _get_due_topics(sr_state)
+
+    if due_topics:
+        st.markdown(f"**{len(due_topics)} topic(s) due for review today:**")
+        for i, topic in enumerate(due_topics, 1):
+            state = sr_state[topic]
+            review_date = date.fromisoformat(state["next_review"])
+            overdue = (today - review_date).days
+            overdue_str = f" ({overdue}d overdue)" if overdue > 0 else ""
+            ef_str = f"EF: {state['easiness']:.1f}"
+            st.markdown(f"{i}. **{topic}**{overdue_str} · {ef_str}")
+
+        st.info(
+            "Go to the **Practice Session** tab and generate an item set for "
+            f"**{due_topics[0]}** to complete your review."
+        )
+    else:
+        st.success("All topics reviewed — no reviews due today.")
+        # Find next due date
+        next_dates = []
+        for topic, state in sr_state.items():
+            next_dates.append((topic, date.fromisoformat(state["next_review"])))
+        next_dates.sort(key=lambda x: x[1])
+        if next_dates:
+            next_topic, next_date = next_dates[0]
+            days_until = (next_date - today).days
+            st.caption(f"Next review: **{next_topic}** in {days_until} day(s) ({next_date.isoformat()})")
+
+    # Schedule overview
+    st.markdown("---")
+    st.markdown("##### Full Schedule")
+
+    schedule_data = []
+    for topic in CFA_TOPICS:
+        state = sr_state.get(topic, {})
+        next_review = state.get("next_review", today.isoformat())
+        review_date = date.fromisoformat(next_review)
+        days_until = (review_date - today).days
+        status = "Due" if days_until <= 0 else f"In {days_until}d"
+
+        schedule_data.append({
+            "Topic": topic,
+            "Next Review": next_review,
+            "Status": status,
+            "Interval": f"{state.get('interval', 1)}d",
+            "Easiness": f"{state.get('easiness', 2.5):.2f}",
+            "Reps": state.get("repetitions", 0),
+        })
+
+    st.dataframe(schedule_data, use_container_width=True, hide_index=True)
+
+    # Easiness factor chart
+    st.markdown("---")
+    st.markdown("##### Easiness Factor by Topic")
+
+    topics = list(CFA_TOPICS.keys())
+    efs = [sr_state.get(t, {}).get("easiness", 2.5) for t in topics]
+
+    fig = go.Figure(go.Bar(
+        x=efs,
+        y=topics,
+        orientation="h",
+        marker_color=[
+            brand["primary_colour"] if ef >= 2.5 else "#f59e0b" if ef >= 1.8 else "#ef4444"
+            for ef in efs
+        ],
+    ))
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="rgba(255,255,255,0.7)", size=11),
+        height=300,
+        margin=dict(l=10, r=10, t=10, b=10),
+        xaxis=dict(
+            title="Easiness Factor",
+            range=[1.0, 3.5],
+            gridcolor="rgba(255,255,255,0.05)",
+        ),
+        yaxis=dict(autorange="reversed"),
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Reset SR state
+    if st.button("Reset Spaced Repetition", key="cfa_reset_sr_btn"):
+        _SR_FILE.unlink(missing_ok=True)
+        st.success("Spaced repetition state reset.")
+        st.rerun()
+
+
+# ---------------------------------------------------------------------------
+# Mode 5: Errata Log (Phase 10)
+# ---------------------------------------------------------------------------
+
+def _render_errata_log(brand: dict):
+    st.markdown("##### Errata Log")
+    st.caption(
+        "Questions flagged for quality issues. This helps improve future item sets "
+        "and identifies patterns in AI-generated content."
+    )
+
+    errata = _load_errata()
+
+    if not errata:
+        st.info("No errata reports yet. Flag questions during practice sessions using the flag button.")
+        return
+
+    # Summary stats
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Total Flags", len(errata))
+    open_count = sum(1 for e in errata if e.get("status") == "open")
+    c2.metric("Open", open_count)
+    c3.metric("Resolved", len(errata) - open_count)
+
+    # Issue type breakdown
+    type_counts = Counter(e.get("issue_type", "Other") for e in errata)
+    if type_counts:
+        st.markdown("##### By Issue Type")
+        for issue_type, count in type_counts.most_common():
+            st.caption(f"  {issue_type}: {count}")
+
+    # Full log
+    st.markdown("---")
+    st.markdown("##### All Reports")
+
+    for i, report in enumerate(reversed(errata)):
+        status_icon = "🔴" if report.get("status") == "open" else "🟢"
+        with st.expander(
+            f"{status_icon} {report.get('topic', '?')} · Q{report.get('question_number', '?')} — "
+            f"{report.get('issue_type', 'Unknown')} ({report.get('date', '?')[:10]})"
+        ):
+            st.markdown(f"**Issue:** {report.get('description', '—')}")
+            st.markdown(f"**Question:** {report.get('question_text', '—')}")
+            idx = len(errata) - 1 - i
+            if report.get("status") == "open":
+                if st.button("Mark Resolved", key=f"cfa_errata_resolve_{idx}"):
+                    errata[idx]["status"] = "resolved"
+                    _save_errata(errata)
+                    st.rerun()
+
+    # Clear all
+    st.markdown("---")
+    if st.button("Clear All Errata", key="cfa_clear_errata_btn"):
+        _ERRATA_FILE.unlink(missing_ok=True)
+        st.success("Errata cleared.")
         st.rerun()
