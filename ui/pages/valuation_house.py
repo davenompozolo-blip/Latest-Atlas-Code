@@ -19,7 +19,7 @@ _ORANGE = THEME['warning']      # #f59e0b  (regime / impact warnings)
 _RED = THEME['danger']          # #ef4444
 _MUTED = THEME['text_muted']    # rgba(255,255,255,0.28)
 _VIOLET = THEME['secondary']    # #8b5cf6
-_CYAN = _CYAN               # Teal-cyan (info / neutral accent)
+_CYAN = THEME['teal']           # Teal-cyan (info / neutral accent)
 _SLATE = '#94a3b8'              # Neutral slate (for N/A states)
 
 
