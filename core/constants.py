@@ -45,6 +45,15 @@ except ImportError:
     BrokerManager = None
     ManualPortfolioAdapter = None
 
+# ALPACA DATA ENGINE (historical trade scraper + performance reconstruction)
+try:
+    from alpaca_data_engine import AlpacaDataEngine, prompt_credentials as alpaca_prompt_credentials
+    ALPACA_DATA_ENGINE_AVAILABLE = True
+except ImportError:
+    ALPACA_DATA_ENGINE_AVAILABLE = False
+    AlpacaDataEngine = None
+    alpaca_prompt_credentials = None
+
 # PROFESSIONAL THEME (monolith lines 101-124)
 try:
     from ui.theme import (
