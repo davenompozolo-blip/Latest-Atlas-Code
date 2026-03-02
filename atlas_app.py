@@ -606,6 +606,7 @@ def main():
         "🧮 Quant Optimizer": "quant_optimizer",
         "📊 Leverage Tracker": "leverage_tracker",
         "📡 Investopedia Live": "investopedia_live",
+        "⬡ Quant Dashboard": "quant_dashboard",
         "ℹ️ About": "about",
         "💎 Equity Research": "equity_research",
         "🌐 Macro Intelligence": "macro_intelligence",

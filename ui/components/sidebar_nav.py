@@ -44,6 +44,7 @@ _NAV_TO_REGISTRY = {
     "🧮 Quant Optimizer": "quant_optimizer",
     "📊 Leverage Tracker": "leverage_tracker",
     "📡 Investopedia Live": "investopedia_live",
+    "⬡ Quant Dashboard": "quant_dashboard",
     "🎯 Strategic Asset Allocation": "saa_tool",
     "📝 Commentary Generator": "commentary_generator",
     "📚 CFA Level II Prep": "cfa_prep",
@@ -81,6 +82,7 @@ def render_sidebar_navigation(default_page: str = "Portfolio Home") -> str:
         ],
         "Analysis": [
             {"key": "💎 Performance Suite", "label": "Performance Suite"},
+            {"key": "⬡ Quant Dashboard", "label": "Quant Dashboard"},
             {"key": "🔬 Portfolio Deep Dive", "label": "Portfolio Deep Dive"},
             {"key": "📊 Multi-Factor Analysis", "label": "Multi-Factor Analysis"},
             {"key": "💰 Valuation House", "label": "Valuation House"},
