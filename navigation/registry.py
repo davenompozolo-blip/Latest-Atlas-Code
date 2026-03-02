@@ -151,6 +151,14 @@ PAGE_REGISTRY = [
     ),
 
     PageDefinition(
+        key="quant_dashboard",
+        title="Quant Dashboard",
+        icon="⬡",
+        handler=_load_handler("ui.pages.quant_dashboard", "render_quant_dashboard", "Quant Dashboard", "⬡"),
+        category="analysis",
+    ),
+
+    PageDefinition(
         key="portfolio_deep_dive",
         title="Portfolio Deep Dive",
         icon="🔬",
@@ -305,6 +313,7 @@ TIER_REQUIREMENTS = {
     # Analysis pages — Professional
     "risk_analysis": "professional",
     "performance_suite": "professional",
+    "quant_dashboard": "professional",
     "portfolio_deep_dive": "professional",
     "multi_factor_analysis": "professional",
     "monte_carlo_engine": "professional",

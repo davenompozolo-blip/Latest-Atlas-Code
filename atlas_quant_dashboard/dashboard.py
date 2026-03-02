@@ -54,12 +54,17 @@ PLOTLY_LAYOUT = dict(
     hovermode="x unified",
 )
 # ─── PAGE CONFIG ──────────────────────────────────────────────────────────────
-st.set_page_config(
-    page_title="ATLAS — Quantitative Dashboard",
-    page_icon="⬡",
-    layout="wide",
-    initial_sidebar_state="collapsed",
-)
+# When running standalone: streamlit run atlas_quant_dashboard/dashboard.py
+# When running inside ATLAS: atlas_app.py already calls set_page_config
+try:
+    st.set_page_config(
+        page_title="ATLAS — Quantitative Dashboard",
+        page_icon="⬡",
+        layout="wide",
+        initial_sidebar_state="collapsed",
+    )
+except st.errors.StreamlitAPIException:
+    pass  # Already called by atlas_app.py
 # ─── GLOBAL CSS ───────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
