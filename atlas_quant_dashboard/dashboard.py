@@ -65,79 +65,26 @@ try:
     )
 except st.errors.StreamlitAPIException:
     pass  # Already called by atlas_app.py
-# ─── GLOBAL CSS ───────────────────────────────────────────────────────────────
-st.markdown("""
+
+# ─── QUANT DASHBOARD CSS ─────────────────────────────────────────────────────
+# Injected inside main() to avoid module-level side effects during import.
+# Only styles specific to the quant dashboard — does NOT override ATLAS shell.
+_QUANT_CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
-:root {
-  --bg: #0A0E1A;
-  --surface: #111827;
-  --card: #161D2E;
-  --border: #1E2D45;
-  --accent: #2563EB;
-  --accent2: #0EA5E9;
-  --text: #E2E8F0;
-  --muted: #64748B;
-  --up: #10B981;
-  --down: #EF4444;
-  --warn: #F59E0B;
-}
-html, body, [class*="css"] {
-  background-color: var(--bg) !important;
-  color: var(--text) !important;
-  font-family: 'IBM Plex Sans', sans-serif;
-}
-.stApp { background-color: var(--bg); }
-/* Hide default streamlit chrome */
-#MainMenu, footer, .stDeployButton { visibility: hidden; }
-header { background: transparent !important; }
+
 /* Health Panel */
 .health-panel {
   background: linear-gradient(135deg, #111827 0%, #0f172a 100%);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border, #1E2D45);
   border-radius: 8px;
   padding: 16px 24px;
   margin-bottom: 20px;
-  position: sticky;
-  top: 0;
-  z-index: 100;
-}
-.health-score-ring {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 52px;
-  font-weight: 600;
-  line-height: 1;
-  letter-spacing: -2px;
-}
-.health-label {
-  font-size: 10px;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  color: var(--muted);
-  font-family: 'IBM Plex Mono', monospace;
-}
-.subscore-card {
-  background: rgba(255,255,255,0.03);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 10px 14px;
-  text-align: center;
-}
-.subscore-value {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 22px;
-  font-weight: 600;
-}
-.subscore-label {
-  font-size: 9px;
-  letter-spacing: 1.5px;
-  text-transform: uppercase;
-  color: var(--muted);
 }
 /* Module cards */
 .module-card {
-  background: var(--card);
-  border: 1px solid var(--border);
+  background: #161D2E;
+  border: 1px solid #1E2D45;
   border-radius: 8px;
   padding: 20px;
   margin-bottom: 16px;
@@ -147,93 +94,18 @@ header { background: transparent !important; }
   font-size: 11px;
   letter-spacing: 2.5px;
   text-transform: uppercase;
-  color: var(--muted);
-  border-bottom: 1px solid var(--border);
+  color: #64748B;
+  border-bottom: 1px solid #1E2D45;
   padding-bottom: 10px;
   margin-bottom: 16px;
-}
-/* Metric tiles */
-.metric-tile {
-  background: rgba(37, 99, 235, 0.07);
-  border: 1px solid rgba(37, 99, 235, 0.2);
-  border-radius: 6px;
-  padding: 12px 16px;
-}
-.metric-value {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 28px;
-  font-weight: 600;
-  line-height: 1.1;
-}
-.metric-label {
-  font-size: 10px;
-  letter-spacing: 1.5px;
-  text-transform: uppercase;
-  color: var(--muted);
-  margin-top: 2px;
-}
-.metric-delta {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px;
-  margin-top: 3px;
-}
-.positive { color: var(--up); }
-.negative { color: var(--down); }
-.neutral { color: var(--muted); }
-.warn { color: var(--warn); }
-/* Quant flags */
-.flag-card {
-  border-radius: 6px;
-  padding: 14px 18px;
-  margin-bottom: 10px;
-  border-left: 3px solid;
-}
-.flag-alert {
-  background: rgba(239, 68, 68, 0.08);
-  border-color: var(--down);
-}
-.flag-watch {
-  background: rgba(245, 158, 11, 0.08);
-  border-color: var(--warn);
-}
-.flag-info {
-  background: rgba(37, 99, 235, 0.08);
-  border-color: var(--accent);
-}
-.flag-title {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 12px;
-  font-weight: 600;
-  margin-bottom: 5px;
-  letter-spacing: 0.5px;
-}
-.flag-narrative {
-  font-size: 12px;
-  color: #94A3B8;
-  line-height: 1.5;
-}
-.flag-data {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 10px;
-  color: var(--muted);
-  margin-top: 8px;
-}
-/* Mode toggle */
-.mode-toggle {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 4px;
-  display: inline-flex;
-  gap: 4px;
 }
 /* Divider */
 .section-divider {
   height: 1px;
-  background: linear-gradient(90deg, transparent, var(--border), transparent);
+  background: linear-gradient(90deg, transparent, #1E2D45, transparent);
   margin: 24px 0;
 }
-/* Section headers */
+/* Section tag */
 .section-tag {
   display: inline-block;
   font-family: 'IBM Plex Mono', monospace;
@@ -242,26 +114,13 @@ header { background: transparent !important; }
   text-transform: uppercase;
   background: rgba(37,99,235,0.15);
   border: 1px solid rgba(37,99,235,0.3);
-  color: var(--accent2);
+  color: #0EA5E9;
   padding: 3px 8px;
   border-radius: 3px;
   margin-bottom: 6px;
 }
-/* ATLAS wordmark */
-.atlas-wordmark {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 13px;
-  letter-spacing: 4px;
-  color: var(--accent2);
-}
-/* Table styling */
-.stDataFrame { border: 1px solid var(--border); border-radius: 6px; }
-/* Scrollbar */
-::-webkit-scrollbar { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: var(--bg); }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 </style>
-""", unsafe_allow_html=True)
+"""
 # ─── DATA LOADING ─────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300, show_spinner=False)
 def load_portfolio_data():
@@ -518,7 +377,7 @@ def render_performance_module(m: dict, window: int):
         fig2 = go.Figure()
         categories = ["Up Capture", "Down Capture"]
         values = [m["up_capture"] * 100, m["down_capture"] * 100]
-        colors = [ATLAS_UP if v >= 100 else ATLAS_DOWN, ATLAS_UP if v <= 100 else ATLAS_DOWN]
+        colors = [ATLAS_UP if values[0] >= 100 else ATLAS_DOWN, ATLAS_UP if values[1] <= 100 else ATLAS_DOWN]
         fig2.add_trace(go.Bar(
             x=categories, y=values,
             marker_color=colors,
@@ -919,15 +778,18 @@ def render_quant_flags(flags: list):
         """, unsafe_allow_html=True)
 # ─── MAIN RENDER ──────────────────────────────────────────────────────────────
 def main():
-    # ── Header
-    col_logo, col_title, col_meta = st.columns([1, 4, 2])
-    with col_logo:
-        st.markdown('<div style="font-family:IBM Plex Mono,monospace; font-size:22px; letter-spacing:5px; color:#0EA5E9; font-weight:600; padding-top:4px;">⬡ ATLAS</div>', unsafe_allow_html=True)
-    with col_title:
-        st.markdown('<div style="font-family:IBM Plex Mono,monospace; font-size:13px; letter-spacing:2px; color:#64748B; padding-top:8px;">QUANTITATIVE DASHBOARD — v10.0</div>', unsafe_allow_html=True)
-    with col_meta:
-        st.markdown('<div style="text-align:right; font-family:IBM Plex Mono,monospace; font-size:10px; color:#475569; padding-top:8px;">SAMPLE PORTFOLIO  ·  756 TRADING DAYS</div>', unsafe_allow_html=True)
-    st.markdown('<hr style="border:none; border-top:1px solid #1E2D45; margin:12px 0 20px 0;">', unsafe_allow_html=True)
+    # ── Inject quant dashboard CSS (inside main, not at module level)
+    st.markdown(_QUANT_CSS, unsafe_allow_html=True)
+
+    # ── Page header (lightweight — ATLAS shell provides the main chrome)
+    st.markdown(
+        '<div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:16px;">'
+        '<div style="font-family:IBM Plex Mono,monospace; font-size:13px; letter-spacing:2px; color:#64748B;">'
+        '⬡ QUANTITATIVE DASHBOARD</div>'
+        '<div style="font-family:IBM Plex Mono,monospace; font-size:10px; color:#475569;">'
+        'SAMPLE PORTFOLIO  ·  756 TRADING DAYS</div></div>',
+        unsafe_allow_html=True,
+    )
     # ── Load & compute
     with st.spinner("Computing quantitative metrics..."):
         data = load_portfolio_data()
@@ -951,6 +813,7 @@ def main():
             ["Summary", "Deep Dive"],
             horizontal=True,
             label_visibility="collapsed",
+            key="quant_view_mode",
         )
     with ctrl_col2:
         window_map = {"1M (21D)": 21, "1Q (63D)": 63, "6M (126D)": 126, "1Y (252D)": 252}
@@ -959,6 +822,7 @@ def main():
             options=list(window_map.keys()),
             value="1Q (63D)",
             label_visibility="collapsed",
+            key="quant_rolling_window",
         )
         window = window_map[window_label]
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
