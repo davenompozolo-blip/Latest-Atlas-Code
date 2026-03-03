@@ -268,11 +268,11 @@ def load_portfolio_data():
     return generate_sample_portfolio()
 @st.cache_data(ttl=300, show_spinner=False)
 def compute_all_metrics(port_ret_values, bench_ret_values, asset_ret_values,
-                         weights_values, dates, asset_cols):
+                         weights_values, _dates, asset_cols):
     """Orchestration layer — computes and caches all metrics."""
-    portfolio_returns = pd.Series(port_ret_values, index=dates)
-    benchmark_returns = pd.Series(bench_ret_values, index=dates)
-    asset_returns = pd.DataFrame(asset_ret_values, index=dates, columns=asset_cols)
+    portfolio_returns = pd.Series(port_ret_values, index=_dates)
+    benchmark_returns = pd.Series(bench_ret_values, index=_dates)
+    asset_returns = pd.DataFrame(asset_ret_values, index=_dates, columns=asset_cols)
     weights = pd.Series(weights_values, index=asset_cols)
     results = {}
     # ── Performance metrics
