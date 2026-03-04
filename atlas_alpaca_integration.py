@@ -726,3 +726,183 @@ def display_alpaca_portfolio_overview(adapter: AlpacaAdapter):
             st.metric("Total Unrealized P&L", f"${total_pl:+,.2f}")
         with col2:
             st.metric("Total Return", f"{total_plpc:+.2f}%")
+
+    # ------------------------------------------------------------------
+    # ORDER HISTORY & ACTIVITY LOG — pulled via AlpacaDataEngine
+    # Verifies that the engine successfully scrapes the Orders and
+    # Activities tabs from Alpaca's API.
+    # ------------------------------------------------------------------
+    _display_order_history_and_activity()
+
+
+def _display_order_history_and_activity():
+    """
+    Pulls and displays the full Order History and Activity Log from Alpaca
+    using the AlpacaDataEngine. This mirrors the Orders and Activities tabs
+    in the Alpaca dashboard exactly, proving the engine scrapes all data.
+    """
+    try:
+        from alpaca_data_engine import AlpacaDataEngine
+    except ImportError:
+        st.warning("AlpacaDataEngine module not available. Cannot display order history.")
+        return
+
+    # Retrieve credentials from session state (set during connection)
+    api_key = st.session_state.get('alpaca_api_key')
+    secret_key = st.session_state.get('alpaca_secret_key')
+    paper = st.session_state.get('alpaca_paper', True)
+
+    if not api_key or not secret_key:
+        st.info("Enter Alpaca credentials above to view Order History and Activity Log.")
+        return
+
+    # Cache the engine in session state so we don't re-fetch on every rerun
+    engine_key = '_alpaca_data_engine'
+    if engine_key not in st.session_state:
+        with st.spinner("Pulling order history and activity log from Alpaca..."):
+            try:
+                engine = AlpacaDataEngine(
+                    api_key=api_key,
+                    api_secret=secret_key,
+                    paper=paper,
+                )
+                # Only fetch the two things we need for verification
+                engine._fetch_all_orders()
+                engine._fetch_all_fills()
+                st.session_state[engine_key] = engine
+            except Exception as e:
+                st.error(f"Failed to fetch data from Alpaca API: {str(e)[:200]}")
+                return
+
+    engine = st.session_state[engine_key]
+
+    # ------------------------------------------------------------------
+    # ORDER HISTORY — mirrors the Alpaca "Orders" tab
+    # ------------------------------------------------------------------
+    st.markdown("---")
+    st.subheader("Order History")
+    st.caption("Pulled from Alpaca API  —  GET /v2/orders?status=all  (paginated)")
+
+    orders = engine.orders_df
+    if orders is not None and not orders.empty:
+        display_orders = orders[[
+            'symbol', 'order_type', 'side', 'qty', 'filled_qty',
+            'avg_fill_price', 'status', 'submitted_at', 'filled_at',
+        ]].copy()
+
+        # Format timestamps for readability
+        for col in ['submitted_at', 'filled_at']:
+            display_orders[col] = display_orders[col].apply(
+                lambda x: x.strftime('%b %d, %Y %I:%M:%S %p') if pd.notna(x) else '-'
+            )
+
+        # Format prices
+        display_orders['avg_fill_price'] = display_orders['avg_fill_price'].apply(
+            lambda x: f"${x:,.6f}" if pd.notna(x) and x > 0 else '-'
+        )
+
+        # Format quantities
+        display_orders['qty'] = display_orders['qty'].apply(
+            lambda x: f"{x:,.2f}" if pd.notna(x) else '-'
+        )
+        display_orders['filled_qty'] = display_orders['filled_qty'].apply(
+            lambda x: f"{x:,.8f}" if pd.notna(x) and x > 0 else '0.00'
+        )
+
+        # Clean column names to match Alpaca UI
+        display_orders.columns = [
+            'Asset', 'Order Type', 'Side', 'Qty', 'Filled Qty',
+            'Avg. Fill Price', 'Status', 'Submitted At', 'Filled At',
+        ]
+
+        # Show most recent first
+        display_orders = display_orders.iloc[::-1].reset_index(drop=True)
+
+        st.dataframe(display_orders, use_container_width=True, hide_index=True)
+
+        # Order summary metrics
+        total = len(orders)
+        filled = len(orders[orders['status'] == 'filled'])
+        accepted = len(orders[orders['status'] == 'accepted'])
+        canceled = len(orders[orders['status'].isin(['canceled', 'expired', 'rejected'])])
+
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            st.metric("Total Orders", total)
+        with c2:
+            st.metric("Filled", filled)
+        with c3:
+            st.metric("Accepted/Pending", accepted)
+        with c4:
+            st.metric("Canceled/Expired", canceled)
+    else:
+        st.info("No order history found.")
+
+    # ------------------------------------------------------------------
+    # ACTIVITY LOG — mirrors the Alpaca "Activities" tab
+    # ------------------------------------------------------------------
+    st.markdown("---")
+    st.subheader("Activity Log")
+    st.caption("Pulled from Alpaca API  —  GET /v2/account/activities  (paginated)")
+
+    fills = engine.fills_df
+    if fills is not None and not fills.empty:
+        display_fills = fills[[
+            'description', 'activity_type', 'qty', 'amount', 'transaction_time',
+        ]].copy()
+
+        # Build description from symbol + side + qty if description is missing
+        if display_fills['description'].isna().all():
+            for idx, row in display_fills.iterrows():
+                sym = fills.at[idx, 'symbol'] or ''
+                side = fills.at[idx, 'side'] or ''
+                q = row['qty']
+                q_str = f"{q:g}" if pd.notna(q) else ''
+                display_fills.at[idx, 'description'] = f"{side.capitalize()} {q_str} {sym}".strip()
+
+        # Format amounts with dollar sign and sign indicator
+        display_fills['amount'] = display_fills['amount'].apply(
+            lambda x: f"${x:+,.2f}" if pd.notna(x) else '-'
+        )
+
+        # Format qty
+        display_fills['qty'] = display_fills['qty'].apply(
+            lambda x: f"{x:g}" if pd.notna(x) else '-'
+        )
+
+        # Format timestamp
+        display_fills['transaction_time'] = display_fills['transaction_time'].apply(
+            lambda x: x.strftime('%b %d, %Y %I:%M:%S %p') if pd.notna(x) else '-'
+        )
+
+        # Rename to match Alpaca UI
+        display_fills.columns = [
+            'Description', 'Type', 'Qty', 'Amount', 'Transaction Date',
+        ]
+
+        # Most recent first
+        display_fills = display_fills.iloc[::-1].reset_index(drop=True)
+
+        st.dataframe(display_fills, use_container_width=True, hide_index=True)
+
+        # Activity summary metrics
+        fills_only = fills[fills['activity_type'] == 'FILL']
+        fees_only = fills[fills['activity_type'].isin(['FEE', 'CFEE', 'TAF'])]
+        total_fee = fees_only['amount'].sum() if not fees_only.empty else 0
+
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.metric("Total Fills", len(fills_only))
+        with c2:
+            st.metric("Fee Entries", len(fees_only))
+        with c3:
+            st.metric("Total Fees", f"${total_fee:,.2f}")
+    else:
+        st.info("No activity log found.")
+
+    # Refresh button
+    st.markdown("---")
+    if st.button("Refresh Order History & Activity Log", type="secondary"):
+        if engine_key in st.session_state:
+            del st.session_state[engine_key]
+        st.rerun()
