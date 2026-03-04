@@ -937,6 +937,10 @@ def calculate_portfolio_returns(df, start_date, end_date, equity=None):
     CRITICAL FIX: Returns calculated on EQUITY basis, not gross exposure.
     With leverage, pct_change() on gross exposure understates returns.
 
+    Data source priority:
+        1. AlpacaDataEngine equity curve (if connected) — most accurate
+        2. yfinance price reconstruction (legacy fallback)
+
     Args:
         df: Portfolio dataframe with positions
         start_date: Start date for historical data
@@ -947,6 +951,22 @@ def calculate_portfolio_returns(df, start_date, end_date, equity=None):
         Returns series calculated on equity basis (leverage amplified)
     """
     try:
+        # Priority 1: Use AlpacaDataEngine daily returns if available
+        # This is the most accurate source — it's the actual equity curve
+        # from Alpaca's portfolio history, not a reconstruction
+        engine = st.session_state.get('_alpaca_data_engine')
+        if engine is not None:
+            alpaca_returns = engine.get_daily_returns()
+            if alpaca_returns is not None and len(alpaca_returns) > 5:
+                # Filter to requested date range if dates are provided
+                if start_date is not None:
+                    start_ts = pd.Timestamp(start_date, tz='UTC')
+                    alpaca_returns = alpaca_returns[alpaca_returns.index >= start_ts]
+                if end_date is not None:
+                    end_ts = pd.Timestamp(end_date, tz='UTC')
+                    alpaca_returns = alpaca_returns[alpaca_returns.index <= end_ts]
+                if len(alpaca_returns) > 2:
+                    return alpaca_returns
         valid_positions = []
         for _, row in df.iterrows():
             if not is_option_ticker(row['Ticker']):
