@@ -629,6 +629,21 @@ def setup_alpaca_integration():
                         st.session_state.alpaca_secret_key = secret_key
                         st.session_state.alpaca_paper = use_paper
 
+                        # Initialize AlpacaDataEngine and fetch all historical data
+                        # This makes equity curve, daily returns, trade ledger,
+                        # performance, and risk metrics available to ALL ATLAS modules
+                        try:
+                            from alpaca_data_engine import AlpacaDataEngine
+                            engine = AlpacaDataEngine(
+                                api_key=api_key,
+                                api_secret=secret_key,
+                                paper=use_paper,
+                            )
+                            engine.fetch_all(verbose=False)
+                            st.session_state['_alpaca_data_engine'] = engine
+                        except Exception:
+                            pass  # Engine is optional enhancement
+
                         # Show account summary
                         account = adapter.get_account_summary()
                         st.info(f"""

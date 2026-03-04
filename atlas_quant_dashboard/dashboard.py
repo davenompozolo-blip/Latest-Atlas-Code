@@ -260,12 +260,107 @@ header { background: transparent !important; }
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* ── PILL BUTTONS (Market Watch style) ── */
+/* Hide the actual radio input */
+div[data-testid="stRadio"] input[type="radio"] {
+    position: absolute !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+/* Hide the circle indicator div */
+div[data-testid="stRadio"] > div > label > div:first-child {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    width: 0 !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    position: absolute !important;
+    left: -9999px !important;
+}
+/* Hide SVG circles */
+div[data-testid="stRadio"] svg {
+    display: none !important;
+}
+/* Hide circle-like elements */
+div[data-testid="stRadio"] [class*="circle"],
+div[data-testid="stRadio"] [class*="radio"],
+div[data-testid="stRadio"] [class*="indicator"] {
+    display: none !important;
+}
+/* Layout - horizontal with gap */
+div[data-testid="stRadio"] > div {
+    flex-direction: row !important;
+    gap: 0.75rem !important;
+    flex-wrap: wrap !important;
+    justify-content: flex-start !important;
+}
+/* Hide the label above radio group */
+div[data-testid="stRadio"] > label {
+    display: none !important;
+}
+/* Gradient button styling */
+div[data-testid="stRadio"] > div > label {
+    background: linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.9) 100%) !important;
+    padding: 0.75rem 1.5rem !important;
+    border-radius: 0.5rem !important;
+    cursor: pointer !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    border: 1px solid rgba(59, 130, 246, 0.2) !important;
+    backdrop-filter: blur(10px) !important;
+    color: #e2e8f0 !important;
+    font-weight: 500 !important;
+    font-size: 0.875rem !important;
+    user-select: none !important;
+}
+/* Hover state */
+div[data-testid="stRadio"] > div > label:hover {
+    background: linear-gradient(135deg, rgba(51, 65, 85, 0.9) 0%, rgba(30, 41, 59, 0.95) 100%) !important;
+    border-color: rgba(59, 130, 246, 0.5) !important;
+    transform: translateY(-2px) !important;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2) !important;
+}
+/* Selected state */
+div[data-testid="stRadio"] > div > label:has(input:checked) {
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+    border-color: #3b82f6 !important;
+    box-shadow: 0 4px 16px rgba(59, 130, 246, 0.4) !important;
+    transform: translateY(-2px) !important;
+    color: white !important;
+}
+/* Ensure text content inherits color */
+div[data-testid="stRadio"] > div > label > div {
+    color: inherit !important;
+}
+div[data-testid="stRadio"] > div > label > div:last-child {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
 </style>
 """, unsafe_allow_html=True)
 # ─── DATA LOADING ─────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300, show_spinner=False)
-def load_portfolio_data():
+def load_sample_portfolio_data():
     return generate_sample_portfolio()
+
+def load_portfolio_data(use_live: bool = False):
+    """Load portfolio data — live from Alpaca or sample."""
+    if use_live:
+        try:
+            from atlas_quant_dashboard.data.alpaca_adapter import load_alpaca_portfolio_data
+            data = load_alpaca_portfolio_data()
+            if data is not None:
+                return data
+        except Exception:
+            pass
+    return load_sample_portfolio_data()
 @st.cache_data(ttl=300, show_spinner=False)
 def compute_all_metrics(port_ret_values, bench_ret_values, asset_ret_values,
                          weights_values, dates, asset_cols):
@@ -918,6 +1013,14 @@ def render_quant_flags(flags: list):
         </div>
         """, unsafe_allow_html=True)
 # ─── MAIN RENDER ──────────────────────────────────────────────────────────────
+def _alpaca_engine_available() -> bool:
+    """Check if AlpacaDataEngine is loaded with sufficient data."""
+    engine = st.session_state.get('_alpaca_data_engine')
+    if engine is None:
+        return False
+    ph = engine.portfolio_history
+    return ph is not None and not ph.empty and len(ph) > 10
+
 def main():
     # ── Header
     col_logo, col_title, col_meta = st.columns([1, 4, 2])
@@ -925,12 +1028,32 @@ def main():
         st.markdown('<div style="font-family:IBM Plex Mono,monospace; font-size:22px; letter-spacing:5px; color:#0EA5E9; font-weight:600; padding-top:4px;">⬡ ATLAS</div>', unsafe_allow_html=True)
     with col_title:
         st.markdown('<div style="font-family:IBM Plex Mono,monospace; font-size:13px; letter-spacing:2px; color:#64748B; padding-top:8px;">QUANTITATIVE DASHBOARD — v10.0</div>', unsafe_allow_html=True)
-    with col_meta:
-        st.markdown('<div style="text-align:right; font-family:IBM Plex Mono,monospace; font-size:10px; color:#475569; padding-top:8px;">SAMPLE PORTFOLIO  ·  756 TRADING DAYS</div>', unsafe_allow_html=True)
+    # ── Data Source Toggle (pill button — only shown when Alpaca is connected)
+    has_live = _alpaca_engine_available()
+    if has_live:
+        with col_meta:
+            data_source = st.radio(
+                "Data Source",
+                ["Live Data", "Sample Data"],
+                horizontal=True,
+                key="quant_data_source",
+                label_visibility="collapsed",
+            )
+        use_live = (data_source == "Live Data")
+    else:
+        with col_meta:
+            st.markdown('<div style="text-align:right; font-family:IBM Plex Mono,monospace; font-size:10px; color:#475569; padding-top:8px;">SAMPLE PORTFOLIO  ·  756 TRADING DAYS</div>', unsafe_allow_html=True)
+        use_live = False
+    # ── Dynamic header label
+    if use_live:
+        engine = st.session_state.get('_alpaca_data_engine')
+        n_days = len(engine.portfolio_history) if engine and engine.portfolio_history is not None else 0
+        mode_label = "PAPER" if (engine and engine.paper) else "LIVE"
+        st.markdown(f'<div style="text-align:right; font-family:IBM Plex Mono,monospace; font-size:10px; color:#10B981; margin-top:-8px; margin-bottom:4px;">ALPACA {mode_label} PORTFOLIO  ·  {n_days} TRADING DAYS</div>', unsafe_allow_html=True)
     st.markdown('<hr style="border:none; border-top:1px solid #1E2D45; margin:12px 0 20px 0;">', unsafe_allow_html=True)
     # ── Load & compute
     with st.spinner("Computing quantitative metrics..."):
-        data = load_portfolio_data()
+        data = load_portfolio_data(use_live=use_live)
         metrics = compute_all_metrics(
             data["portfolio_returns"].values,
             data["benchmark_returns"].values,
@@ -950,6 +1073,7 @@ def main():
             "View Mode",
             ["Summary", "Deep Dive"],
             horizontal=True,
+            key="quant_view_mode",
             label_visibility="collapsed",
         )
     with ctrl_col2:
@@ -1007,12 +1131,13 @@ def main():
             render_quant_flags(metrics["quant_flags"])
     # ── Footer
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+    data_source_label = "ALPACA LIVE DATA" if use_live else "SIMULATED DATA"
     st.markdown(f"""
     <div style="text-align:center; font-family:IBM Plex Mono,monospace; font-size:9px;
                 letter-spacing:2px; color:#334155; padding-bottom:16px;">
       ATLAS TERMINAL  ·  QUANTITATIVE DASHBOARD  ·  PHASE 1
       &nbsp;&nbsp;|&nbsp;&nbsp;
-      ALL METRICS COMPUTED ON SIMULATED DATA  ·  NOT INVESTMENT ADVICE
+      ALL METRICS COMPUTED ON {data_source_label}  ·  NOT INVESTMENT ADVICE
     </div>""", unsafe_allow_html=True)
 if __name__ == "__main__":
     main()
