@@ -54,90 +54,28 @@ PLOTLY_LAYOUT = dict(
     hovermode="x unified",
 )
 # ─── PAGE CONFIG ──────────────────────────────────────────────────────────────
-# When running standalone: streamlit run atlas_quant_dashboard/dashboard.py
-# When running inside ATLAS: atlas_app.py already calls set_page_config
-try:
-    st.set_page_config(
-        page_title="ATLAS — Quantitative Dashboard",
-        page_icon="⬡",
-        layout="wide",
-        initial_sidebar_state="collapsed",
-    )
-except st.errors.StreamlitAPIException:
-    pass  # Already called by atlas_app.py
-# ─── GLOBAL CSS ───────────────────────────────────────────────────────────────
-st.markdown("""
+# Removed: st.set_page_config was running at module-import time and collapsing
+# the sidebar when ATLAS navigated to this page. atlas_app.py owns page config.
+
+# ─── QUANT DASHBOARD CSS ─────────────────────────────────────────────────────
+# Injected inside main() to avoid module-level side effects during import.
+# Only styles specific to the quant dashboard — does NOT override ATLAS shell.
+_QUANT_CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
-:root {
-  --bg: #0A0E1A;
-  --surface: #111827;
-  --card: #161D2E;
-  --border: #1E2D45;
-  --accent: #2563EB;
-  --accent2: #0EA5E9;
-  --text: #E2E8F0;
-  --muted: #64748B;
-  --up: #10B981;
-  --down: #EF4444;
-  --warn: #F59E0B;
-}
-html, body, [class*="css"] {
-  background-color: var(--bg) !important;
-  color: var(--text) !important;
-  font-family: 'IBM Plex Sans', sans-serif;
-}
-.stApp { background-color: var(--bg); }
-/* Hide default streamlit chrome */
-#MainMenu, footer, .stDeployButton { visibility: hidden; }
-header { background: transparent !important; }
+
 /* Health Panel */
 .health-panel {
   background: linear-gradient(135deg, #111827 0%, #0f172a 100%);
-  border: 1px solid var(--border);
+  border: 1px solid #1E2D45;
   border-radius: 8px;
   padding: 16px 24px;
   margin-bottom: 20px;
-  position: sticky;
-  top: 0;
-  z-index: 100;
-}
-.health-score-ring {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 52px;
-  font-weight: 600;
-  line-height: 1;
-  letter-spacing: -2px;
-}
-.health-label {
-  font-size: 10px;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  color: var(--muted);
-  font-family: 'IBM Plex Mono', monospace;
-}
-.subscore-card {
-  background: rgba(255,255,255,0.03);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 10px 14px;
-  text-align: center;
-}
-.subscore-value {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 22px;
-  font-weight: 600;
-}
-.subscore-label {
-  font-size: 9px;
-  letter-spacing: 1.5px;
-  text-transform: uppercase;
-  color: var(--muted);
 }
 /* Module cards */
 .module-card {
-  background: var(--card);
-  border: 1px solid var(--border);
+  background: #161D2E;
+  border: 1px solid #1E2D45;
   border-radius: 8px;
   padding: 20px;
   margin-bottom: 16px;
@@ -147,112 +85,55 @@ header { background: transparent !important; }
   font-size: 11px;
   letter-spacing: 2.5px;
   text-transform: uppercase;
-  color: var(--muted);
-  border-bottom: 1px solid var(--border);
+  color: #64748B;
+  border-bottom: 1px solid #1E2D45;
   padding-bottom: 10px;
   margin-bottom: 16px;
-}
-/* Metric tiles */
-.metric-tile {
-  background: rgba(37, 99, 235, 0.07);
-  border: 1px solid rgba(37, 99, 235, 0.2);
-  border-radius: 6px;
-  padding: 12px 16px;
-}
-.metric-value {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 28px;
-  font-weight: 600;
-  line-height: 1.1;
-}
-.metric-label {
-  font-size: 10px;
-  letter-spacing: 1.5px;
-  text-transform: uppercase;
-  color: var(--muted);
-  margin-top: 2px;
-}
-.metric-delta {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px;
-  margin-top: 3px;
-}
-.positive { color: var(--up); }
-.negative { color: var(--down); }
-.neutral { color: var(--muted); }
-.warn { color: var(--warn); }
-/* Quant flags */
-.flag-card {
-  border-radius: 6px;
-  padding: 14px 18px;
-  margin-bottom: 10px;
-  border-left: 3px solid;
-}
-.flag-alert {
-  background: rgba(239, 68, 68, 0.08);
-  border-color: var(--down);
-}
-.flag-watch {
-  background: rgba(245, 158, 11, 0.08);
-  border-color: var(--warn);
-}
-.flag-info {
-  background: rgba(37, 99, 235, 0.08);
-  border-color: var(--accent);
-}
-.flag-title {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 12px;
-  font-weight: 600;
-  margin-bottom: 5px;
-  letter-spacing: 0.5px;
-}
-.flag-narrative {
-  font-size: 12px;
-  color: #94A3B8;
-  line-height: 1.5;
-}
-.flag-data {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 10px;
-  color: var(--muted);
-  margin-top: 8px;
-}
-/* Mode toggle */
-.mode-toggle {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 4px;
-  display: inline-flex;
-  gap: 4px;
 }
 /* Divider */
 .section-divider {
   height: 1px;
-  background: linear-gradient(90deg, transparent, var(--border), transparent);
+  background: linear-gradient(90deg, transparent, #1E2D45, transparent);
   margin: 24px 0;
 }
-/* Section headers */
-.section-tag {
-  display: inline-block;
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 9px;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  background: rgba(37,99,235,0.15);
-  border: 1px solid rgba(37,99,235,0.3);
-  color: var(--accent2);
-  padding: 3px 8px;
-  border-radius: 3px;
-  margin-bottom: 6px;
+
+/* ── Radio toggle → gradient pill buttons (matches Market Watch pattern) ── */
+div[data-testid="stRadio"] > label {
+    display: none !important;
 }
-/* ATLAS wordmark */
-.atlas-wordmark {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 13px;
-  letter-spacing: 4px;
-  color: var(--accent2);
+div[data-testid="stRadio"] > div > label {
+    background: linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.9) 100%) !important;
+    padding: 0.75rem 1.5rem !important;
+    border-radius: 0.5rem !important;
+    cursor: pointer !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    border: 1px solid rgba(59, 130, 246, 0.2) !important;
+    backdrop-filter: blur(10px) !important;
+    color: #e2e8f0 !important;
+    font-weight: 500 !important;
+    font-size: 0.875rem !important;
+    user-select: none !important;
+}
+div[data-testid="stRadio"] > div > label:hover {
+    background: linear-gradient(135deg, rgba(51, 65, 85, 0.9) 0%, rgba(30, 41, 59, 0.95) 100%) !important;
+    border-color: rgba(59, 130, 246, 0.5) !important;
+    transform: translateY(-2px) !important;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2) !important;
+}
+div[data-testid="stRadio"] > div > label:has(input:checked) {
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+    border-color: #3b82f6 !important;
+    box-shadow: 0 4px 16px rgba(59, 130, 246, 0.4) !important;
+    transform: translateY(-2px) !important;
+    color: white !important;
+}
+div[data-testid="stRadio"] > div > label > div {
+    color: inherit !important;
+}
+div[data-testid="stRadio"] > div > label > div:last-child {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
 }
 /* Table styling */
 .stDataFrame { border: 1px solid var(--border); border-radius: 6px; }
@@ -344,7 +225,7 @@ div[data-testid="stRadio"] > div > label > div:last-child {
     opacity: 1 !important;
 }
 </style>
-""", unsafe_allow_html=True)
+"""
 # ─── DATA LOADING ─────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300, show_spinner=False)
 def load_sample_portfolio_data():
@@ -363,11 +244,11 @@ def load_portfolio_data(use_live: bool = False):
     return load_sample_portfolio_data()
 @st.cache_data(ttl=300, show_spinner=False)
 def compute_all_metrics(port_ret_values, bench_ret_values, asset_ret_values,
-                         weights_values, dates, asset_cols):
+                         weights_values, _dates, asset_cols):
     """Orchestration layer — computes and caches all metrics."""
-    portfolio_returns = pd.Series(port_ret_values, index=dates)
-    benchmark_returns = pd.Series(bench_ret_values, index=dates)
-    asset_returns = pd.DataFrame(asset_ret_values, index=dates, columns=asset_cols)
+    portfolio_returns = pd.Series(port_ret_values, index=_dates)
+    benchmark_returns = pd.Series(bench_ret_values, index=_dates)
+    asset_returns = pd.DataFrame(asset_ret_values, index=_dates, columns=asset_cols)
     weights = pd.Series(weights_values, index=asset_cols)
     results = {}
     # ── Performance metrics
@@ -496,14 +377,44 @@ def render_health_panel(hs: dict, flags: list):
     )
     alert_count = sum(1 for f in flags if f.severity == FlagSeverity.ALERT)
     watch_count = sum(1 for f in flags if f.severity == FlagSeverity.WATCH)
-    flag_html = ""
+
+    # Build flag status text
+    flag_parts = []
     if alert_count > 0:
-        flag_html += f'<span style="color:{ATLAS_DOWN}; font-size:11px; margin-right:12px;">⚠ {alert_count} ALERT</span>'
+        flag_parts.append(f'<span style="color:{ATLAS_DOWN};">&#9888; {alert_count} ALERT</span>')
     if watch_count > 0:
-        flag_html += f'<span style="color:{ATLAS_WARN}; font-size:11px; margin-right:12px;">◉ {watch_count} WATCH</span>'
+        flag_parts.append(f'<span style="color:{ATLAS_WARN};">&#9679; {watch_count} WATCH</span>')
     if not flags:
-        flag_html = f'<span style="color:{ATLAS_UP}; font-size:11px;">✓ NO ANOMALIES DETECTED</span>'
-    sub_cards = ""
+        flag_parts.append(f'<span style="color:{ATLAS_UP};">&#10003; NO ANOMALIES</span>')
+    flag_html = "&nbsp;&nbsp;".join(flag_parts)
+
+    # Row 1: Score + Grade + Flag status
+    score_col, flag_col = st.columns([3, 1])
+    with score_col:
+        st.markdown(
+            f'<div style="display:flex;align-items:center;gap:16px;">'
+            f'<div>'
+            f'<div style="font-family:IBM Plex Mono,monospace;font-size:48px;font-weight:600;'
+            f'line-height:1;color:{grade_color};letter-spacing:-2px;">{total:.0f}</div>'
+            f'<div style="font-size:10px;letter-spacing:2px;color:{ATLAS_MUTED};margin-top:2px;">HEALTH SCORE</div>'
+            f'</div>'
+            f'<div style="width:48px;height:48px;border-radius:50%;border:3px solid {grade_color};'
+            f'display:flex;align-items:center;justify-content:center;'
+            f'font-family:IBM Plex Mono,monospace;font-size:18px;font-weight:600;color:{grade_color};">'
+            f'{grade}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+    with flag_col:
+        st.markdown(
+            f'<div style="text-align:right;padding-top:8px;">'
+            f'<div style="font-size:9px;letter-spacing:2px;color:{ATLAS_MUTED};margin-bottom:6px;">ACTIVE FLAGS</div>'
+            f'<div style="font-family:IBM Plex Mono,monospace;font-size:11px;">{flag_html}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+    # Row 2: Sub-score cards — each in its own st.column with its own st.markdown
     sub_labels = {
         "diversification": "DIVERSIFICATION",
         "risk_efficiency": "RISK EFFICIENCY",
@@ -511,47 +422,23 @@ def render_health_panel(hs: dict, flags: list):
         "statistical_integrity": "STAT INTEGRITY",
         "regime_consistency": "REGIME CONSIST.",
     }
-    for key, label in sub_labels.items():
+    sub_cols = st.columns(len(sub_labels))
+    for col, (key, label) in zip(sub_cols, sub_labels.items()):
         val = subs.get(key, 0)
         bar_pct = val / 20 * 100
         bar_color = ATLAS_UP if val >= 15 else ATLAS_WARN if val >= 10 else ATLAS_DOWN
-        sub_cards += f"""
-        <div style="flex:1; background:rgba(255,255,255,0.03); border:1px solid {ATLAS_BORDER};
-                    border-radius:6px; padding:10px 12px; text-align:center; min-width:110px;">
-          <div style="font-family:'IBM Plex Mono',monospace; font-size:20px; font-weight:600; color:{bar_color};">{val:.0f}<span style="font-size:12px; color:{ATLAS_MUTED};">/20</span></div>
-          <div style="font-size:9px; letter-spacing:1.5px; color:{ATLAS_MUTED}; margin-top:4px;">{label}</div>
-          <div style="height:2px; background:rgba(255,255,255,0.08); border-radius:1px; margin-top:7px;">
-            <div style="height:100%; width:{bar_pct:.0f}%; background:{bar_color}; border-radius:1px;"></div>
-          </div>
-        </div>"""
-    st.markdown(f"""
-    <div class="health-panel">
-      <div style="display:flex; align-items:center; gap:32px; flex-wrap:wrap;">
-        <div style="display:flex; align-items:center; gap:16px; min-width:180px;">
-          <div>
-            <div style="font-family:'IBM Plex Mono',monospace; font-size:48px; font-weight:600;
-                        line-height:1; color:{grade_color}; letter-spacing:-2px;">
-              {total:.0f}
-            </div>
-            <div style="font-size:10px; letter-spacing:2px; color:{ATLAS_MUTED}; margin-top:2px;">HEALTH SCORE</div>
-          </div>
-          <div style="width:48px; height:48px; border-radius:50%;
-                      border:3px solid {grade_color};
-                      display:flex; align-items:center; justify-content:center;
-                      font-family:'IBM Plex Mono',monospace; font-size:18px; font-weight:600; color:{grade_color};">
-            {grade}
-          </div>
-        </div>
-        <div style="display:flex; gap:8px; flex:1; flex-wrap:wrap;">
-          {sub_cards}
-        </div>
-        <div style="text-align:right; min-width:120px;">
-          <div style="font-size:9px; letter-spacing:2px; color:{ATLAS_MUTED}; margin-bottom:6px;">ACTIVE FLAGS</div>
-          {flag_html}
-        </div>
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
+        with col:
+            st.markdown(
+                f'<div style="background:rgba(255,255,255,0.03);border:1px solid {ATLAS_BORDER};'
+                f'border-radius:6px;padding:10px 12px;text-align:center;">'
+                f'<div style="font-family:IBM Plex Mono,monospace;font-size:20px;font-weight:600;color:{bar_color};">'
+                f'{val:.0f}<span style="font-size:12px;color:{ATLAS_MUTED};">/20</span></div>'
+                f'<div style="font-size:9px;letter-spacing:1.5px;color:{ATLAS_MUTED};margin-top:4px;">{label}</div>'
+                f'<div style="height:2px;background:rgba(255,255,255,0.08);border-radius:1px;margin-top:7px;">'
+                f'<div style="height:100%;width:{bar_pct:.0f}%;background:{bar_color};border-radius:1px;"></div>'
+                f'</div></div>',
+                unsafe_allow_html=True,
+            )
 # ─── COMPONENT: METRIC TILE ───────────────────────────────────────────────────
 def metric_tile(label: str, value: str, delta: str = None, delta_positive: bool = True, width: int = 1):
     delta_html = ""
@@ -613,7 +500,7 @@ def render_performance_module(m: dict, window: int):
         fig2 = go.Figure()
         categories = ["Up Capture", "Down Capture"]
         values = [m["up_capture"] * 100, m["down_capture"] * 100]
-        colors = [ATLAS_UP if v >= 100 else ATLAS_DOWN, ATLAS_UP if v <= 100 else ATLAS_DOWN]
+        colors = [ATLAS_UP if values[0] >= 100 else ATLAS_DOWN, ATLAS_UP if values[1] <= 100 else ATLAS_DOWN]
         fig2.add_trace(go.Bar(
             x=categories, y=values,
             marker_color=colors,
@@ -1022,10 +909,18 @@ def _alpaca_engine_available() -> bool:
     return ph is not None and not ph.empty and len(ph) > 10
 
 def main():
-    # ── Header
+    # ── Inject quant dashboard CSS (inside main, not at module level)
+    st.markdown(_QUANT_CSS, unsafe_allow_html=True)
+
+    # ── Custom header with ⬡ logo
     col_logo, col_title, col_meta = st.columns([1, 4, 2])
     with col_logo:
-        st.markdown('<div style="font-family:IBM Plex Mono,monospace; font-size:22px; letter-spacing:5px; color:#0EA5E9; font-weight:600; padding-top:4px;">⬡ ATLAS</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div style="font-family:IBM Plex Mono,monospace;font-size:22px;'
+            'letter-spacing:5px;color:#0EA5E9;font-weight:600;padding-top:4px;'
+            'text-shadow:0 0 20px rgba(14,165,233,0.3);">&#x2B21; ATLAS</div>',
+            unsafe_allow_html=True,
+        )
     with col_title:
         st.markdown('<div style="font-family:IBM Plex Mono,monospace; font-size:13px; letter-spacing:2px; color:#64748B; padding-top:8px;">QUANTITATIVE DASHBOARD — v10.0</div>', unsafe_allow_html=True)
     # ── Data Source Toggle (pill button — only shown when Alpaca is connected)
@@ -1075,6 +970,7 @@ def main():
             horizontal=True,
             key="quant_view_mode",
             label_visibility="collapsed",
+            key="quant_view_mode",
         )
     with ctrl_col2:
         window_map = {"1M (21D)": 21, "1Q (63D)": 63, "6M (126D)": 126, "1Y (252D)": 252}
@@ -1083,6 +979,7 @@ def main():
             options=list(window_map.keys()),
             value="1Q (63D)",
             label_visibility="collapsed",
+            key="quant_rolling_window",
         )
         window = window_map[window_label]
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
