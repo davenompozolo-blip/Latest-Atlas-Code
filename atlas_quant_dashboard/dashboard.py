@@ -872,13 +872,15 @@ def main():
         )
     with col_title:
         st.markdown('<div style="font-family:IBM Plex Mono,monospace; font-size:13px; letter-spacing:2px; color:#64748B; padding-top:8px;">QUANTITATIVE DASHBOARD — v10.0</div>', unsafe_allow_html=True)
-    # ── Data Source Toggle (pill button — only shown when Alpaca is connected)
+    # ── Data Source Toggle (pill button — defaults to Live when Alpaca connected)
     has_live = _alpaca_engine_available()
     if has_live:
         with col_meta:
+            # Default to Live Data (index 0) when engine is available
             data_source = st.radio(
                 "Data Source",
                 ["Live Data", "Sample Data"],
+                index=0,
                 horizontal=True,
                 key="quant_data_source",
                 label_visibility="collapsed",
