@@ -504,6 +504,64 @@ def main():
 
     if 'target_leverage' not in st.session_state:
         st.session_state['target_leverage'] = 1.0  # Default no leverage
+
+    # ============================================================================
+    # ALPACA AUTO-SYNC — Initialize engine if credentials exist but engine doesn't
+    # ============================================================================
+    if '_alpaca_data_engine' not in st.session_state:
+        # Check for stored credentials from prior connection or secrets.toml
+        _auto_key = st.session_state.get('alpaca_api_key', '')
+        _auto_secret = st.session_state.get('alpaca_secret_key', '')
+        _auto_paper = st.session_state.get('alpaca_paper', True)
+
+        # Also check secrets.toml
+        if not _auto_key:
+            try:
+                _auto_key = st.secrets.get('alpaca_key', '')
+                _auto_secret = st.secrets.get('alpaca_secret', '')
+            except Exception:
+                pass
+
+        if _auto_key and _auto_secret:
+            try:
+                from alpaca_data_engine import AlpacaDataEngine
+                _engine = AlpacaDataEngine(
+                    api_key=_auto_key,
+                    api_secret=_auto_secret,
+                    paper=_auto_paper,
+                )
+                _engine.fetch_all(verbose=False)
+                st.session_state['_alpaca_data_engine'] = _engine
+
+                # Also set up the AlpacaAdapter for positions if not already set
+                if 'alpaca_adapter' not in st.session_state:
+                    try:
+                        from atlas_alpaca_integration import AlpacaAdapter
+                        _adapter = AlpacaAdapter(_auto_key, _auto_secret, paper=_auto_paper)
+                        _success, _ = _adapter.test_connection()
+                        if _success:
+                            st.session_state['alpaca_adapter'] = _adapter
+                            st.session_state['alpaca_configured'] = True
+                            # Also fetch positions for portfolio_df
+                            _pos_df = _adapter.get_positions()
+                            if _pos_df is not None and not _pos_df.empty:
+                                st.session_state['portfolio_df'] = _pos_df
+                                st.session_state['portfolio_source'] = 'alpaca'
+                                st.session_state['currency'] = 'USD'
+                                st.session_state['currency_symbol'] = '$'
+                    except Exception as _adapt_err:
+                        print(f"[ATLAS] Auto-sync adapter failed: {_adapt_err}")
+
+                # Update equity capital from engine
+                if _engine.account_snapshot:
+                    _eq = _engine.account_snapshot.get('equity', 0)
+                    if _eq > 0:
+                        st.session_state['equity_capital'] = _eq
+
+                print(f"[ATLAS] Auto-sync complete: AlpacaDataEngine initialized ({_t.time() - _main_start:.2f}s)")
+            except Exception as _auto_err:
+                print(f"[ATLAS] Auto-sync failed: {_auto_err}")
+
     print(f"[MAIN] Session state done ({_t.time() - _main_start:.2f}s)", flush=True)
 
     # ============================================================================
