@@ -167,8 +167,8 @@ print(f"[BOOT] ui.theme done", flush=True)
 # ============================================================================
 print(f"[BOOT] Importing broker manager...", flush=True)
 try:
-    from services.atlas_broker_manager import BrokerManager, ManualPortfolioAdapter
-    from services.atlas_broker_manager import display_manual_portfolio_editor
+    from atlas_broker_manager import BrokerManager, ManualPortfolioAdapter
+    from atlas_broker_manager import display_manual_portfolio_editor
     BROKER_MANAGER_AVAILABLE = True
     print("✅ Broker Manager loaded (Alpaca, Easy Equities, Manual Entry)")
 except ImportError as e:
@@ -249,7 +249,7 @@ except ImportError as e:
 # INSTITUTIONAL-GRADE DCF ENHANCEMENTS (January 2026)
 # ============================================================================
 try:
-    from valuation.atlas_dcf_institutional import (
+    from atlas_dcf_institutional import (
         DCFAssumptionManager,
         DCFValidator,
         RobustDCFEngine,
@@ -283,7 +283,7 @@ except ImportError as e:
 # PM-GRADE PORTFOLIO OPTIMIZATION (January 2026)
 # ============================================================================
 try:
-    from portfolio_tools.atlas_pm_optimization import (
+    from atlas_pm_optimization import (
         PMGradeOptimizer,
         AsymmetricRiskOptimizer,
         MarketRegimeDetector,
@@ -469,6 +469,11 @@ from core.data_loading import get_current_portfolio_metrics
 # ============================================================================
 
 def main():
+    """
+    Initialize application state, render the main UI (header and sidebar), handle health checks, and route to the selected page.
+    
+    Performs a lightweight health check and exits early if requested. Ensures essential session state keys (e.g., equity_capital, target_leverage) are populated, renders the fixed ATLAS header, presents data-source selection widgets, builds a vertical sidebar navigation with a safe fallback, enforces an authentication gate, maps human-friendly sidebar titles to internal page keys (including added items like Strategic Asset Allocation, Analytics Dashboard, and CFA Level II Prep), exposes sidebar settings (time range and benchmark) which are stored in session state and converted into concrete start/end dates, optionally shows Alpha Vantage status and cache controls when available, logs a page view if monitoring is present, and finally routes to the chosen page handler.
+    """
     print("[MAIN] ====== ENTERED main() ======", flush=True)
     import time as _t
     _main_start = _t.time()
@@ -504,64 +509,6 @@ def main():
 
     if 'target_leverage' not in st.session_state:
         st.session_state['target_leverage'] = 1.0  # Default no leverage
-
-    # ============================================================================
-    # ALPACA AUTO-SYNC — Initialize engine if credentials exist but engine doesn't
-    # ============================================================================
-    if '_alpaca_data_engine' not in st.session_state:
-        # Check for stored credentials from prior connection or secrets.toml
-        _auto_key = st.session_state.get('alpaca_api_key', '')
-        _auto_secret = st.session_state.get('alpaca_secret_key', '')
-        _auto_paper = st.session_state.get('alpaca_paper', True)
-
-        # Also check secrets.toml
-        if not _auto_key:
-            try:
-                _auto_key = st.secrets.get('alpaca_key', '')
-                _auto_secret = st.secrets.get('alpaca_secret', '')
-            except Exception:
-                pass
-
-        if _auto_key and _auto_secret:
-            try:
-                from alpaca_data_engine import AlpacaDataEngine
-                _engine = AlpacaDataEngine(
-                    api_key=_auto_key,
-                    api_secret=_auto_secret,
-                    paper=_auto_paper,
-                )
-                _engine.fetch_all(verbose=False)
-                st.session_state['_alpaca_data_engine'] = _engine
-
-                # Also set up the AlpacaAdapter for positions if not already set
-                if 'alpaca_adapter' not in st.session_state:
-                    try:
-                        from atlas_alpaca_integration import AlpacaAdapter
-                        _adapter = AlpacaAdapter(_auto_key, _auto_secret, paper=_auto_paper)
-                        _success, _ = _adapter.test_connection()
-                        if _success:
-                            st.session_state['alpaca_adapter'] = _adapter
-                            st.session_state['alpaca_configured'] = True
-                            # Also fetch positions for portfolio_df
-                            _pos_df = _adapter.get_positions()
-                            if _pos_df is not None and not _pos_df.empty:
-                                st.session_state['portfolio_df'] = _pos_df
-                                st.session_state['portfolio_source'] = 'alpaca'
-                                st.session_state['currency'] = 'USD'
-                                st.session_state['currency_symbol'] = '$'
-                    except Exception as _adapt_err:
-                        print(f"[ATLAS] Auto-sync adapter failed: {_adapt_err}")
-
-                # Update equity capital from engine
-                if _engine.account_snapshot:
-                    _eq = _engine.account_snapshot.get('equity', 0)
-                    if _eq > 0:
-                        st.session_state['equity_capital'] = _eq
-
-                print(f"[ATLAS] Auto-sync complete: AlpacaDataEngine initialized ({_t.time() - _main_start:.2f}s)")
-            except Exception as _auto_err:
-                print(f"[ATLAS] Auto-sync failed: {_auto_err}")
-
     print(f"[MAIN] Session state done ({_t.time() - _main_start:.2f}s)", flush=True)
 
     # ============================================================================
@@ -664,13 +611,15 @@ def main():
         "🧮 Quant Optimizer": "quant_optimizer",
         "📊 Leverage Tracker": "leverage_tracker",
         "📡 Investopedia Live": "investopedia_live",
-        "⬡ Quant Dashboard": "quant_dashboard",
         "ℹ️ About": "about",
         "💎 Equity Research": "equity_research",
         "🌐 Macro Intelligence": "macro_intelligence",
         "📚 Fund Research": "fund_research",
         "📝 Commentary Generator": "commentary_generator",
         "⚙️ Admin Panel": "admin_panel",
+        "🎯 Strategic Asset Allocation": "saa_tool",
+        "📊 Analytics Dashboard": "analytics_dashboard",
+        "📚 CFA Level II Prep": "cfa_prep",
     }
 
     # Get page key from selected title

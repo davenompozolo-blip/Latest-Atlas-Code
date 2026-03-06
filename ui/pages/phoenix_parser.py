@@ -42,9 +42,17 @@ def render_phoenix_parser():
     # Also need render_data_source_cards which is defined in atlas_app main()
     # For now, define a simple version here
     def render_data_source_cards():
+        """
+        Render four portfolio data-source selection cards in the Streamlit UI and persist the chosen mode.
+        
+        If no selection exists, defaults the session state key 'portfolio_data_source_mode' to "📁 Classic Mode (Excel Upload)". When a source is selected the function updates that session state value and may trigger a Streamlit rerun to apply the change.
+        
+        Returns:
+            str: The currently selected portfolio data source mode from `st.session_state['portfolio_data_source_mode']`.
+        """
         if 'portfolio_data_source_mode' not in st.session_state:
             st.session_state['portfolio_data_source_mode'] = "📁 Classic Mode (Excel Upload)"
-        sources = ["📁 Classic Mode (Excel Upload)", "🔗 Easy Equities (Live Sync)", "🦙 Alpaca Markets (Live Sync)", "📈 IRESS Import (JSE)"]
+        sources = ["📁 Classic Mode (Excel Upload)", "🔗 Easy Equities (Live Sync)", "🦙 Alpaca Markets (Live Sync)", "📈 IRESS Import (JSE - Johannesburg)"]
         cols = st.columns(4)
         for i, src in enumerate(sources):
             with cols[i]:
@@ -52,112 +60,6 @@ def render_phoenix_parser():
                     st.session_state['portfolio_data_source_mode'] = src
                     st.rerun()
         return st.session_state['portfolio_data_source_mode']
-
-    # ------------------------------------------------------------------
-    # HELPER: Render AlpacaDataEngine verification tables
-    # ------------------------------------------------------------------
-    def _render_engine_verification(eng):
-        """Display Order History, Activity Log, Trade Ledger & metrics from the engine."""
-        st.markdown("---")
-        st.markdown("### 🦙 Alpaca Data Engine — Live Data Verification")
-        st.caption("Visual proof that the AlpacaDataEngine is active and pulling real data from Alpaca's API")
-
-        # --- Summary metrics ---
-        _ade_cols = st.columns(4)
-        with _ade_cols[0]:
-            _n_orders = len(eng.orders_df) if eng.orders_df is not None else 0
-            st.metric("Orders Fetched", f"{_n_orders:,}")
-        with _ade_cols[1]:
-            _n_fills = len(eng.fills_df) if eng.fills_df is not None else 0
-            st.metric("Fill Activities", f"{_n_fills:,}")
-        with _ade_cols[2]:
-            _n_ledger = len(eng.trade_ledger) if eng.trade_ledger is not None else 0
-            st.metric("Trade Ledger Entries", f"{_n_ledger:,}")
-        with _ade_cols[3]:
-            _n_hist = len(eng.portfolio_history) if eng.portfolio_history is not None else 0
-            st.metric("Portfolio History Days", f"{_n_hist:,}")
-
-        # --- Performance metrics ---
-        if eng.performance:
-            st.markdown("#### 📈 Performance Metrics (from Alpaca Data)")
-            _perf = eng.performance
-            _pc1, _pc2, _pc3, _pc4, _pc5 = st.columns(5)
-            with _pc1:
-                st.metric("Sharpe Ratio", f"{_perf.get('sharpe_ratio', 0):.2f}")
-            with _pc2:
-                st.metric("Sortino Ratio", f"{_perf.get('sortino_ratio', 0):.2f}")
-            with _pc3:
-                st.metric("CAGR", f"{_perf.get('cagr', 0)*100:.1f}%")
-            with _pc4:
-                st.metric("Max Drawdown", f"{_perf.get('max_drawdown', 0)*100:.1f}%")
-            with _pc5:
-                st.metric("Win Rate", f"{_perf.get('win_rate', 0)*100:.0f}%")
-
-        # --- Order History ---
-        if eng.orders_df is not None and not eng.orders_df.empty:
-            with st.expander("📋 Order History (Alpaca API /v2/orders)", expanded=True):
-                _orders_display = eng.orders_df.copy()
-                _order_cols = [c for c in ['symbol', 'side', 'qty', 'filled_qty', 'type', 'status',
-                               'submitted_at', 'filled_at', 'filled_avg_price'] if c in _orders_display.columns]
-                if _order_cols:
-                    _orders_show = _orders_display[_order_cols].head(50)
-                    for _tc in ['submitted_at', 'filled_at']:
-                        if _tc in _orders_show.columns:
-                            _orders_show[_tc] = pd.to_datetime(_orders_show[_tc], errors='coerce').dt.strftime('%Y-%m-%d %H:%M')
-                    st.dataframe(_orders_show, use_container_width=True, hide_index=True)
-                    if len(_orders_display) > 50:
-                        st.caption(f"Showing 50 of {len(_orders_display)} orders.")
-        else:
-            st.info("ℹ️ No order history — account may have no past orders.")
-
-        # --- Activity / Fills ---
-        if eng.fills_df is not None and not eng.fills_df.empty:
-            with st.expander("📜 Activity Log / Fills (Alpaca API /v2/account/activities)", expanded=True):
-                _fills_display = eng.fills_df.copy()
-                _fill_cols = [c for c in ['symbol', 'side', 'qty', 'price', 'transaction_time',
-                              'activity_type', 'order_id'] if c in _fills_display.columns]
-                if _fill_cols:
-                    _fills_show = _fills_display[_fill_cols].head(50)
-                    for _tc in ['transaction_time']:
-                        if _tc in _fills_show.columns:
-                            _fills_show[_tc] = pd.to_datetime(_fills_show[_tc], errors='coerce').dt.strftime('%Y-%m-%d %H:%M')
-                    st.dataframe(_fills_show, use_container_width=True, hide_index=True)
-                    if len(_fills_display) > 50:
-                        st.caption(f"Showing 50 of {len(_fills_display)} activities.")
-        else:
-            st.info("ℹ️ No fill activities available.")
-
-        # --- Trade Ledger (FIFO P&L) ---
-        if eng.trade_ledger is not None and not eng.trade_ledger.empty:
-            with st.expander("💰 Trade Ledger — FIFO Realized P&L", expanded=True):
-                _ledger_display = eng.trade_ledger.copy()
-                _ledger_cols = [c for c in ['symbol', 'side', 'qty', 'entry_price', 'exit_price',
-                                'realized_pnl', 'status', 'entry_date', 'exit_date'] if c in _ledger_display.columns]
-                if _ledger_cols:
-                    _ledger_show = _ledger_display[_ledger_cols].head(50)
-                    for _mc in ['realized_pnl', 'entry_price', 'exit_price']:
-                        if _mc in _ledger_show.columns:
-                            _ledger_show[_mc] = _ledger_show[_mc].apply(
-                                lambda x: f"${x:,.2f}" if pd.notna(x) else "—"
-                            )
-                    st.dataframe(_ledger_show, use_container_width=True, hide_index=True)
-                    if len(_ledger_display) > 50:
-                        st.caption(f"Showing 50 of {len(_ledger_display)} ledger entries.")
-        else:
-            st.info("ℹ️ No trade ledger entries — FIFO matching requires filled orders.")
-
-        # --- Refresh ---
-        if st.button("🔄 Refresh Engine Data", key="refresh_ade_phoenix"):
-            try:
-                with st.spinner("Refreshing AlpacaDataEngine..."):
-                    eng.fetch_all(verbose=False)
-                    st.session_state['_alpaca_data_engine'] = eng
-                    st.success("✅ Engine data refreshed")
-                    st.rerun()
-            except Exception as _ref_err:
-                st.error(f"Refresh failed: {_ref_err}")
-
-        st.caption("🦙 Data sourced from Alpaca REST API via AlpacaDataEngine | Engine stored in session state")
 
     st.markdown("## 🔥 PHOENIX MODE")
 
@@ -513,25 +415,12 @@ def render_phoenix_parser():
 
         # Import Alpaca integration module
         try:
-            from integrations.atlas_alpaca_integration import AlpacaAdapter
+            from atlas_alpaca_integration import AlpacaAdapter
             ALPACA_MODULE_AVAILABLE = True
         except ImportError as e:
             ALPACA_MODULE_AVAILABLE = False
             st.error(f"❌ Alpaca module not available: {e}")
             st.info("Please ensure alpaca-py is installed: `pip install alpaca-py`")
-
-        # Import AlpacaDataEngine for comprehensive trade history
-        try:
-            from alpaca_data_engine import AlpacaDataEngine
-            DATA_ENGINE_AVAILABLE = True
-        except ImportError:
-            DATA_ENGINE_AVAILABLE = False
-
-        # Show engine data if already connected (from integration page or prior sync)
-        _existing_engine = st.session_state.get('_alpaca_data_engine')
-        if _existing_engine is not None:
-            st.success("✅ AlpacaDataEngine is active — connected via Alpaca Integration or previous sync")
-            _render_engine_verification(_existing_engine)
 
         if ALPACA_MODULE_AVAILABLE:
             # Check for stored credentials in secrets
@@ -714,25 +603,6 @@ def render_phoenix_parser():
 
                                         st.success("✅ Portfolio data is now available for all ATLAS analysis modules!")
 
-                                        # === ALPACA DATA ENGINE: Fetch comprehensive trade history ===
-                                        if DATA_ENGINE_AVAILABLE:
-                                            try:
-                                                with st.spinner("🔄 Fetching comprehensive trade history via AlpacaDataEngine..."):
-                                                    engine = AlpacaDataEngine(
-                                                        api_key=final_api_key,
-                                                        api_secret=final_secret,
-                                                        paper=use_paper
-                                                    )
-                                                    engine.fetch_all(verbose=False)
-                                                    st.session_state['_alpaca_data_engine'] = engine
-                                                    st.success("✅ AlpacaDataEngine initialized — Order History, Activity Log & Trade Ledger loaded")
-                                            except Exception as eng_err:
-                                                print(f"[ATLAS] AlpacaDataEngine init failed on Phoenix Parser: {eng_err}")
-                                                st.error(f"❌ Data engine init failed: {eng_err}")
-                                                import traceback
-                                                with st.expander("🔍 Engine Error Details"):
-                                                    st.code(traceback.format_exc())
-
                         except Exception as e:
                             st.error(f"❌ Sync failed: {str(e)}")
                             st.info(
@@ -748,11 +618,6 @@ def render_phoenix_parser():
                             with st.expander("🔍 Technical Error Details"):
                                 import traceback
                                 st.code(traceback.format_exc())
-
-    # ===== ALPACA DATA ENGINE: Persistent Display (shows whenever engine is in session) =====
-    _ade = st.session_state.get('_alpaca_data_engine')
-    if _ade is not None:
-        _render_engine_verification(_ade)
 
     # PHASE 4: Database Management Section
     st.markdown("---")
@@ -1008,10 +873,10 @@ def render_phoenix_parser():
             st.code(traceback.format_exc())
 
     # ===== IRESS IMPORT MODE (Phase 10 JSE Integration) =====
-    elif portfolio_mode == "📈 IRESS Import (JSE)":
-        st.subheader("📈 Import from IRESS")
+    elif portfolio_mode == "📈 IRESS Import (JSE - Johannesburg)":
+        st.subheader("📈 Import from IRESS — Johannesburg Stock Exchange")
         st.info(
-            "Upload a CSV export from IRESS. Supports two formats:\n"
+            "Upload a CSV export from IRESS (JSE — Johannesburg Stock Exchange). Supports two formats:\n"
             "- **Price History**: Date, Code, Open, High, Low, Close, Volume\n"
             "- **Holdings**: Code, Description, Quantity, Price, Value"
         )
