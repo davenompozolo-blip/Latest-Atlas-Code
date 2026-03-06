@@ -116,10 +116,32 @@ Do not pad. Target {word_count} words.\
 # ---------------------------------------------------------------------------
 
 def _generate_commentary(system_prompt: str, user_message: str) -> str:
-    """Call Anthropic API and return the generated commentary text."""
+    """
+    Generate commentary text using the Anthropic Claude model.
+    
+    Parameters:
+        system_prompt (str): System-level instructions and constraints for the model.
+        user_message (str): User-provided content to include in the model prompt.
+    
+    Returns:
+        commentary (str): Generated commentary text returned by the model, with leading and trailing whitespace removed.
+    
+    Raises:
+        ValueError: If the Anthropic API key is not configured via Streamlit secrets or the ANTHROPIC_API_KEY environment variable.
+    """
+    import os
     import anthropic
 
-    client = anthropic.Anthropic()
+    api_key = st.secrets.get("anthropic", {}).get("api_key", "")
+    if not api_key:
+        api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        raise ValueError(
+            "Anthropic API key not configured. Set ANTHROPIC_API_KEY environment "
+            "variable or add [anthropic] api_key to .streamlit/secrets.toml"
+        )
+
+    client = anthropic.Anthropic(api_key=api_key)
     response = client.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=4096,
