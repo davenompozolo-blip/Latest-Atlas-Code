@@ -635,7 +635,7 @@ def setup_alpaca_integration():
                         # This makes equity curve, daily returns, trade ledger,
                         # performance, and risk metrics available to ALL ATLAS modules
                         try:
-                            from alpaca_data_engine import AlpacaDataEngine
+                            from data.alpaca_data_engine import AlpacaDataEngine
                             engine = AlpacaDataEngine(
                                 api_key=api_key,
                                 api_secret=secret_key,
@@ -760,7 +760,7 @@ def _display_order_history_and_activity():
     in the Alpaca dashboard exactly, proving the engine scrapes all data.
     """
     try:
-        from alpaca_data_engine import AlpacaDataEngine
+        from data.alpaca_data_engine import AlpacaDataEngine
     except ImportError:
         st.warning("AlpacaDataEngine module not available. Cannot display order history.")
         return

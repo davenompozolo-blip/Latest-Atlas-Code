@@ -12,7 +12,7 @@ HOW TO USE EACH SESSION:
 NEVER commit API keys to git. Keys are only valid for the current session.
 """
 
-from alpaca_data_engine import AlpacaDataEngine, prompt_credentials
+from data.alpaca_data_engine import AlpacaDataEngine, prompt_credentials
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker

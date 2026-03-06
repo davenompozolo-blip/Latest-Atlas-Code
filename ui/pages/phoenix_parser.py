@@ -407,7 +407,7 @@ def render_phoenix_parser():
 
         # Import Alpaca integration module
         try:
-            from atlas_alpaca_integration import AlpacaAdapter
+            from integrations.atlas_alpaca_integration import AlpacaAdapter
             ALPACA_MODULE_AVAILABLE = True
         except ImportError as e:
             ALPACA_MODULE_AVAILABLE = False

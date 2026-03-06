@@ -146,6 +146,6 @@ def render_market_watch():
     )
 
     # Render selected page using original market_watch_components module
-    from market_watch_components import render_market_watch_page
+    from ui.market_watch_components import render_market_watch_page
     render_market_watch_page(market_watch_tab)
 

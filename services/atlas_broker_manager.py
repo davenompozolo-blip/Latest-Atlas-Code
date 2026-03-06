@@ -16,7 +16,7 @@ from datetime import datetime
 
 # Import broker adapters
 try:
-    from atlas_alpaca_integration import AlpacaAdapter, setup_alpaca_integration
+    from integrations.atlas_alpaca_integration import AlpacaAdapter, setup_alpaca_integration
     ALPACA_AVAILABLE = True
 except ImportError:
     ALPACA_AVAILABLE = False

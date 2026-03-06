@@ -12,7 +12,7 @@ from utils.formatting import format_currency, format_percentage, format_large_nu
 
 # PM-Grade Optimization availability
 try:
-    from atlas_pm_optimization import MarketRegimeDetector as _PMRegimeDetector
+    from portfolio_tools.atlas_pm_optimization import MarketRegimeDetector as _PMRegimeDetector
     _PM_AVAILABLE = True
 except ImportError:
     _PM_AVAILABLE = False

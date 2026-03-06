@@ -13,7 +13,7 @@ from utils.formatting import format_percentage
 
 # PM-Grade Optimization availability
 try:
-    from atlas_pm_optimization import AsymmetricRiskOptimizer as _AsymmetricRisk
+    from portfolio_tools.atlas_pm_optimization import AsymmetricRiskOptimizer as _AsymmetricRisk
     _PM_AVAILABLE = True
 except ImportError:
     _PM_AVAILABLE = False

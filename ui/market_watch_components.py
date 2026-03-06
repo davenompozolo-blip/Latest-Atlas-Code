@@ -28,8 +28,8 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 from textwrap import dedent
-from market_data_fetcher import *
-from visualization_components import *
+from data.market_data_fetcher import *
+from ui.visualization_components import *
 
 
 # ============================================================

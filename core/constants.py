@@ -38,7 +38,7 @@ except ImportError:
 
 # BROKER MANAGER (monolith lines 106-113)
 try:
-    from atlas_broker_manager import BrokerManager, ManualPortfolioAdapter
+    from services.atlas_broker_manager import BrokerManager, ManualPortfolioAdapter
     BROKER_MANAGER_AVAILABLE = True
 except ImportError:
     BROKER_MANAGER_AVAILABLE = False
@@ -47,7 +47,7 @@ except ImportError:
 
 # ALPACA DATA ENGINE (historical trade scraper + performance reconstruction)
 try:
-    from alpaca_data_engine import AlpacaDataEngine, prompt_credentials as alpaca_prompt_credentials
+    from data.alpaca_data_engine import AlpacaDataEngine, prompt_credentials as alpaca_prompt_credentials
     ALPACA_DATA_ENGINE_AVAILABLE = True
 except ImportError:
     ALPACA_DATA_ENGINE_AVAILABLE = False

@@ -167,8 +167,8 @@ print(f"[BOOT] ui.theme done", flush=True)
 # ============================================================================
 print(f"[BOOT] Importing broker manager...", flush=True)
 try:
-    from atlas_broker_manager import BrokerManager, ManualPortfolioAdapter
-    from atlas_broker_manager import display_manual_portfolio_editor
+    from services.atlas_broker_manager import BrokerManager, ManualPortfolioAdapter
+    from services.atlas_broker_manager import display_manual_portfolio_editor
     BROKER_MANAGER_AVAILABLE = True
     print("✅ Broker Manager loaded (Alpaca, Easy Equities, Manual Entry)")
 except ImportError as e:
@@ -249,7 +249,7 @@ except ImportError as e:
 # INSTITUTIONAL-GRADE DCF ENHANCEMENTS (January 2026)
 # ============================================================================
 try:
-    from atlas_dcf_institutional import (
+    from valuation.atlas_dcf_institutional import (
         DCFAssumptionManager,
         DCFValidator,
         RobustDCFEngine,
@@ -283,7 +283,7 @@ except ImportError as e:
 # PM-GRADE PORTFOLIO OPTIMIZATION (January 2026)
 # ============================================================================
 try:
-    from atlas_pm_optimization import (
+    from portfolio_tools.atlas_pm_optimization import (
         PMGradeOptimizer,
         AsymmetricRiskOptimizer,
         MarketRegimeDetector,

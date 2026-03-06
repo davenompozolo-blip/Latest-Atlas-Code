@@ -148,7 +148,7 @@ def render_valuation_house():
 
     # Institutional-grade DCF enhancements (optional)
     try:
-        from atlas_dcf_institutional import (
+        from valuation.atlas_dcf_institutional import (
             DCFAssumptionManager,
             DCFValidator,
             RobustDCFEngine,

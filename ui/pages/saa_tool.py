@@ -32,7 +32,7 @@ from ui.components import atlas_table
 
 # PM-Grade Optimization availability
 try:
-    from atlas_pm_optimization import ForwardLookingReturns as _ForwardLookingReturns
+    from portfolio_tools.atlas_pm_optimization import ForwardLookingReturns as _ForwardLookingReturns
     _PM_AVAILABLE = True
 except ImportError:
     _PM_AVAILABLE = False
