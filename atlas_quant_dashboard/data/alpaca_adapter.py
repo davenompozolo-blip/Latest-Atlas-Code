@@ -17,6 +17,20 @@ import numpy as np
 import streamlit as st
 
 
+def _align_tz(index: pd.Index, target_dates: pd.DatetimeIndex) -> pd.Index:
+    """Ensure index timezone matches target_dates timezone."""
+    if target_dates.tz is not None:
+        # Target is tz-aware — localize source if naive, convert if different tz
+        if index.tz is None:
+            return index.tz_localize('UTC')
+        return index.tz_convert(target_dates.tz)
+    else:
+        # Target is tz-naive — strip timezone from source
+        if index.tz is not None:
+            return index.tz_localize(None)
+        return index
+
+
 def load_alpaca_portfolio_data() -> dict | None:
     """
     Build quant-dashboard-compatible data dict from the AlpacaDataEngine
@@ -69,17 +83,18 @@ def _fetch_benchmark_returns(dates: pd.DatetimeIndex) -> pd.Series:
             if isinstance(close, pd.DataFrame):
                 close = close.iloc[:, 0]
             spy_ret = close.pct_change().dropna()
-            spy_ret.index = spy_ret.index.tz_localize('UTC')
-            # Align to portfolio dates
+            # Align timezone to match portfolio dates
+            spy_ret.index = _align_tz(spy_ret.index, dates)
             spy_ret = spy_ret.reindex(dates).ffill().fillna(0)
             return spy_ret.rename("Benchmark")
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[ATLAS] SPY benchmark fetch failed: {e}")
 
-    # Fallback: synthetic benchmark (slightly dampened portfolio)
+    # Fallback: synthetic benchmark — flag it so the dashboard can warn
+    st.session_state['_using_synthetic_benchmark'] = True
     np.random.seed(42)
     noise = np.random.normal(0, 0.001, len(dates))
-    return pd.Series(noise, index=dates, name="Benchmark")
+    return pd.Series(noise, index=dates, name="Benchmark (Synthetic)")
 
 
 def _build_asset_data(dates: pd.DatetimeIndex, engine) -> tuple:
@@ -112,7 +127,8 @@ def _build_asset_data(dates: pd.DatetimeIndex, engine) -> tuple:
             if isinstance(close, pd.Series):
                 close = close.to_frame(symbols[0])
             asset_ret = close.pct_change().dropna()
-            asset_ret.index = asset_ret.index.tz_localize('UTC')
+            # Align timezone to match portfolio dates
+            asset_ret.index = _align_tz(asset_ret.index, dates)
             asset_ret = asset_ret.reindex(dates).ffill().fillna(0)
             # Filter to symbols we actually got data for
             valid = [s for s in symbols if s in asset_ret.columns]
@@ -120,14 +136,14 @@ def _build_asset_data(dates: pd.DatetimeIndex, engine) -> tuple:
                 weights = weights.reindex(valid)
                 weights = weights / weights.sum()  # Re-normalize
                 return asset_ret[valid], weights
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[ATLAS] Asset return fetch failed: {e}")
 
     # Fallback: synthetic decomposition from portfolio returns
     port_ret = engine.portfolio_history["daily_return"].dropna().reindex(dates).fillna(0)
     np.random.seed(42)
     asset_returns_data = {}
-    for i, sym in enumerate(symbols):
+    for sym in symbols:
         noise = np.random.normal(0, 0.002, len(dates))
         asset_returns_data[sym] = port_ret.values + noise
     asset_returns = pd.DataFrame(asset_returns_data, index=dates)

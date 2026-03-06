@@ -238,9 +238,12 @@ def load_portfolio_data(use_live: bool = False):
             from atlas_quant_dashboard.data.alpaca_adapter import load_alpaca_portfolio_data
             data = load_alpaca_portfolio_data()
             if data is not None:
+                st.session_state['_quant_data_source_active'] = 'live'
                 return data
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[ATLAS] Live data unavailable, falling back to sample: {e}")
+            st.session_state['_quant_data_source_active'] = 'sample_fallback'
+    st.session_state['_quant_data_source_active'] = 'sample'
     return load_sample_portfolio_data()
 @st.cache_data(ttl=300, show_spinner=False)
 def compute_all_metrics(port_ret_values, bench_ret_values, asset_ret_values,
@@ -959,6 +962,12 @@ def main():
         )
         # Inject portfolio_returns reference
         metrics["portfolio_returns"] = data["portfolio_returns"]
+    # Show fallback warning if user selected Live but got sample data
+    if use_live and st.session_state.get('_quant_data_source_active') == 'sample_fallback':
+        st.warning("Live data unavailable — displaying sample data. Check Alpaca connection.")
+    # Show synthetic benchmark warning if SPY fetch failed
+    if st.session_state.get('_using_synthetic_benchmark') and use_live:
+        st.caption("Benchmark: synthetic (SPY fetch unavailable)")
     # ── Health Panel
     render_health_panel(metrics["health_score"], metrics["quant_flags"])
     # ── Controls Row

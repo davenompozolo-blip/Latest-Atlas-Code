@@ -559,6 +559,8 @@ def setup_alpaca_integration():
                 st.session_state.alpaca_configured = False
                 if 'alpaca_adapter' in st.session_state:
                     del st.session_state.alpaca_adapter
+                if '_alpaca_data_engine' in st.session_state:
+                    del st.session_state['_alpaca_data_engine']
                 st.rerun()
 
         return st.session_state.alpaca_adapter
@@ -641,8 +643,9 @@ def setup_alpaca_integration():
                             )
                             engine.fetch_all(verbose=False)
                             st.session_state['_alpaca_data_engine'] = engine
-                        except Exception:
-                            pass  # Engine is optional enhancement
+                        except Exception as engine_err:
+                            # Engine is optional — live data features will be unavailable
+                            print(f"[ATLAS] AlpacaDataEngine init failed: {engine_err}")
 
                         # Show account summary
                         account = adapter.get_account_summary()
@@ -771,7 +774,7 @@ def _display_order_history_and_activity():
         st.info("Enter Alpaca credentials above to view Order History and Activity Log.")
         return
 
-    # Cache the engine in session state so we don't re-fetch on every rerun
+    # Use the engine from session state, or create and fully initialize one
     engine_key = '_alpaca_data_engine'
     if engine_key not in st.session_state:
         with st.spinner("Pulling order history and activity log from Alpaca..."):
@@ -781,9 +784,7 @@ def _display_order_history_and_activity():
                     api_secret=secret_key,
                     paper=paper,
                 )
-                # Only fetch the two things we need for verification
-                engine._fetch_all_orders()
-                engine._fetch_all_fills()
+                engine.fetch_all(verbose=False)
                 st.session_state[engine_key] = engine
             except Exception as e:
                 st.error(f"Failed to fetch data from Alpaca API: {str(e)[:200]}")
@@ -799,36 +800,52 @@ def _display_order_history_and_activity():
     st.caption("Pulled from Alpaca API  —  GET /v2/orders?status=all  (paginated)")
 
     orders = engine.orders_df
+    required_order_cols = [
+        'symbol', 'order_type', 'side', 'qty', 'filled_qty',
+        'avg_fill_price', 'status', 'submitted_at', 'filled_at',
+    ]
     if orders is not None and not orders.empty:
-        display_orders = orders[[
-            'symbol', 'order_type', 'side', 'qty', 'filled_qty',
-            'avg_fill_price', 'status', 'submitted_at', 'filled_at',
-        ]].copy()
+        # Only select columns that exist in the DataFrame
+        available_cols = [c for c in required_order_cols if c in orders.columns]
+        if not available_cols:
+            st.warning("Order data format unexpected — no recognized columns.")
+        else:
+            if len(available_cols) < len(required_order_cols):
+                missing = set(required_order_cols) - set(available_cols)
+                st.caption(f"Some columns unavailable: {', '.join(missing)}")
+        display_orders = orders[available_cols].copy()
 
         # Format timestamps for readability
         for col in ['submitted_at', 'filled_at']:
-            display_orders[col] = display_orders[col].apply(
-                lambda x: x.strftime('%b %d, %Y %I:%M:%S %p') if pd.notna(x) else '-'
-            )
+            if col in display_orders.columns:
+                display_orders[col] = display_orders[col].apply(
+                    lambda x: x.strftime('%b %d, %Y %I:%M:%S %p') if pd.notna(x) else '-'
+                )
 
         # Format prices
-        display_orders['avg_fill_price'] = display_orders['avg_fill_price'].apply(
-            lambda x: f"${x:,.6f}" if pd.notna(x) and x > 0 else '-'
-        )
+        if 'avg_fill_price' in display_orders.columns:
+            display_orders['avg_fill_price'] = display_orders['avg_fill_price'].apply(
+                lambda x: f"${x:,.6f}" if pd.notna(x) and x > 0 else '-'
+            )
 
         # Format quantities
-        display_orders['qty'] = display_orders['qty'].apply(
-            lambda x: f"{x:,.2f}" if pd.notna(x) else '-'
-        )
-        display_orders['filled_qty'] = display_orders['filled_qty'].apply(
-            lambda x: f"{x:,.8f}" if pd.notna(x) and x > 0 else '0.00'
-        )
+        if 'qty' in display_orders.columns:
+            display_orders['qty'] = display_orders['qty'].apply(
+                lambda x: f"{x:,.2f}" if pd.notna(x) else '-'
+            )
+        if 'filled_qty' in display_orders.columns:
+            display_orders['filled_qty'] = display_orders['filled_qty'].apply(
+                lambda x: f"{x:,.8f}" if pd.notna(x) and x > 0 else '0.00'
+            )
 
         # Clean column names to match Alpaca UI
-        display_orders.columns = [
-            'Asset', 'Order Type', 'Side', 'Qty', 'Filled Qty',
-            'Avg. Fill Price', 'Status', 'Submitted At', 'Filled At',
-        ]
+        col_rename = {
+            'symbol': 'Asset', 'order_type': 'Order Type', 'side': 'Side',
+            'qty': 'Qty', 'filled_qty': 'Filled Qty',
+            'avg_fill_price': 'Avg. Fill Price', 'status': 'Status',
+            'submitted_at': 'Submitted At', 'filled_at': 'Filled At',
+        }
+        display_orders = display_orders.rename(columns=col_rename)
 
         # Show most recent first
         display_orders = display_orders.iloc[::-1].reset_index(drop=True)
@@ -866,14 +883,14 @@ def _display_order_history_and_activity():
             'description', 'activity_type', 'qty', 'amount', 'transaction_time',
         ]].copy()
 
-        # Build description from symbol + side + qty if description is missing
+        # Build description from symbol + side + qty if description is missing.
+        # display_fills shares the same index as fills (no reset_index yet),
+        # so we can safely read symbol/side from the original fills DataFrame.
         if display_fills['description'].isna().all():
-            for idx, row in display_fills.iterrows():
-                sym = fills.at[idx, 'symbol'] or ''
-                side = fills.at[idx, 'side'] or ''
-                q = row['qty']
-                q_str = f"{q:g}" if pd.notna(q) else ''
-                display_fills.at[idx, 'description'] = f"{side.capitalize()} {q_str} {sym}".strip()
+            sym = fills['symbol'].fillna('')
+            side = fills['side'].fillna('').str.capitalize()
+            qty_str = fills['qty'].apply(lambda x: f"{x:g}" if pd.notna(x) else '')
+            display_fills['description'] = (side + ' ' + qty_str + ' ' + sym).str.strip()
 
         # Format amounts with dollar sign and sign indicator
         display_fills['amount'] = display_fills['amount'].apply(
