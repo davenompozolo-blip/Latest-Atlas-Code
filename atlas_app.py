@@ -612,6 +612,9 @@ def main():
         "📚 Fund Research": "fund_research",
         "📝 Commentary Generator": "commentary_generator",
         "⚙️ Admin Panel": "admin_panel",
+        "🎯 Strategic Asset Allocation": "saa_tool",
+        "📊 Analytics Dashboard": "analytics_dashboard",
+        "📚 CFA Level II Prep": "cfa_prep",
     }
 
     # Get page key from selected title

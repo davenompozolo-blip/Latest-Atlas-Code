@@ -1,8 +1,9 @@
 """
 ATLAS Terminal — JSE Data Fetcher (Phase 10, Initiative 1)
 ============================================================
-South African market data layer. Uses Yahoo Finance (.JO tickers)
-as primary source with proper JSE ticker normalisation.
+Johannesburg Stock Exchange (JSE) market data layer.
+Uses Yahoo Finance (.JO suffix = Johannesburg) as primary source
+with proper JSE ticker normalisation.
 
 Interface is designed so a real JSE API (LSEG, EODHD, etc.) can
 slot in later by replacing the internal _fetch_* methods without
