@@ -17,19 +17,20 @@ This repository now includes Supabase scaffolding for persistent portfolio data 
 - `services/portfolioQueries.js` with example query helpers for:
   - fetch portfolios
   - fetch positions for a portfolio
+- `services/portfolioDataService.js` with modular insert + fetch functions for persistent portfolio workflows.
 - Environment variable support in `config/config.py` for:
   - `SUPABASE_URL`
   - `SUPABASE_ANON_KEY`
 
 ## Setup
 
-### 1. Install Supabase CLI
+### 1. Install Supabase client dependency
 
-Install the Supabase CLI in your local environment (examples):
+Install the JavaScript client package in your local environment:
 
-- macOS (Homebrew): `brew install supabase/tap/supabase`
-- npm: `npm install supabase --save-dev`
-- Other options: https://supabase.com/docs/guides/cli
+```bash
+npm install @supabase/supabase-js
+```
 
 ### 2. Initialize / verify Supabase project files
 
@@ -50,23 +51,58 @@ SUPABASE_URL="https://YOUR_PROJECT_ID.supabase.co"
 SUPABASE_ANON_KEY="YOUR_SUPABASE_ANON_PUBLIC_KEY"
 ```
 
-### 4. Run Supabase locally and apply migrations
+### 4. Apply migrations in your Supabase project
+
+Apply the migration SQL from `supabase/migrations/20260306211500_initial_portfolio_schema.sql` in Supabase SQL Editor (or your deployment pipeline).
+
+## Portfolio data service API
+
+`services/portfolioDataService.js` is intentionally independent of Alpaca sync and only accepts data payloads for inserts/queries.
+
+### Insert functions
+
+- `insertPortfolio(portfolioInput)`
+- `upsertAsset(assetInput)`
+- `insertPosition(positionInput)`
+- `insertTransaction(transactionInput)`
+- `insertPriceHistory(priceInput)`
+
+Duplicate checks are included for:
+
+- positions on `(portfolio_id, asset_id, as_of_date)`
+- transactions on `(portfolio_id, external_id)` when `external_id` is provided, with a deterministic fallback check when not provided
+- price history on `(asset_id, price_date)`
+
+### Fetch functions
+
+- `fetchPortfolioWithPositions(portfolioId)`
+- `fetchPortfolioSnapshot(portfolioId, snapshotDate)`
+- `fetchPortfolios()` (in `services/portfolioQueries.js`)
+- `fetchPositionsForPortfolio(portfolioId)` (in `services/portfolioQueries.js`)
+
+## Manual verification scripts
+
+### Node demo (insert + fetch with example rows)
 
 ```bash
-supabase start
-supabase db reset
+SUPABASE_URL="https://YOUR_PROJECT_ID.supabase.co" \
+SUPABASE_ANON_KEY="YOUR_SUPABASE_ANON_PUBLIC_KEY" \
+node scripts/supabaseDemo.mjs
 ```
 
-### 5. Use the modular query helpers
+This script inserts example rows for `portfolios`, `assets`, `positions`, `transactions`, and `price_history`, then prints a joined portfolio view + dated snapshot.
 
-```javascript
-import { fetchPortfolios, fetchPositionsForPortfolio } from './services/portfolioQueries';
+### Python demo (read rows from Supabase REST API)
 
-const portfolios = await fetchPortfolios();
-const positions = await fetchPositionsForPortfolio(portfolios[0].id);
+```bash
+SUPABASE_URL="https://YOUR_PROJECT_ID.supabase.co" \
+SUPABASE_ANON_KEY="YOUR_SUPABASE_ANON_PUBLIC_KEY" \
+python scripts/supabase_fetch_demo.py
 ```
+
+This script fetches and prints recent rows from `portfolios`, `positions`, and `price_history`.
 
 ## Notes
 
-- Supabase integration is intentionally modular so it can be extended later without disrupting existing Atlas services.
+- Supabase integration is modular so Claude Code can extend it without refactoring existing Atlas analytics modules.
 - Existing Alpaca sync functionality was not modified.
