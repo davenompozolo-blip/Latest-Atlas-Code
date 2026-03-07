@@ -2,11 +2,97 @@
 ATLAS Terminal - Phoenix Parser Page
 Extracted from atlas_app.py for modular page-level editing.
 """
+import json
+import logging
+import os
+import threading
+
 import pandas as pd
 import streamlit as st
 
 from app.config import COLORS
 from utils.formatting import format_currency, format_percentage, format_large_number, add_arrow_indicator
+
+_pipeline_logger = logging.getLogger('atlas.phoenix_pipeline')
+_PIPELINE_RESULT_PATH = '/tmp/atlas_ingestion_result.json'
+
+
+def _run_supabase_pipeline(api_key: str, api_secret: str, paper: bool, tickers: list) -> None:
+    """
+    Full Supabase data pipeline — runs in a daemon background thread.
+
+    Step 1: Write Alpaca portfolio (assets, positions, transactions) to Supabase
+            via services/alpaca_sync.run_sync().
+    Step 2: Fetch 5-year daily price history per ticker via
+            services/market_data.MarketDataIngestionService.
+
+    Results are written to _PIPELINE_RESULT_PATH for the UI to pick up on
+    the next Streamlit rerun.  All per-ticker errors are non-fatal.
+    """
+    result = {
+        'supabase_stats': {},
+        'ingestion_results': {},
+        'ingestion_errors': {},
+        'error': None,
+    }
+
+    # Expose credentials for alpaca_sync.run_sync() which reads from os.environ.
+    # Atlas is a single-user deployment so process-wide env mutation is safe here.
+    os.environ['ALPACA_API_KEY'] = api_key
+    os.environ['ALPACA_API_SECRET'] = api_secret
+    os.environ['ALPACA_PAPER'] = 'true' if paper else 'false'
+
+    # ------------------------------------------------------------------ #
+    # Step 1 — Write portfolio snapshot to Supabase
+    # ------------------------------------------------------------------ #
+    try:
+        from services.alpaca_sync import run_sync
+        result['supabase_stats'] = run_sync()
+        _pipeline_logger.info(
+            "[Phoenix Pipeline] Supabase portfolio write complete: %s",
+            result['supabase_stats'],
+        )
+    except Exception as exc:
+        result['error'] = str(exc)
+        _pipeline_logger.error(
+            "[Phoenix Pipeline] Supabase portfolio write failed: %s", exc, exc_info=True
+        )
+        with open(_PIPELINE_RESULT_PATH, 'w') as f:
+            json.dump(result, f)
+        return
+
+    # ------------------------------------------------------------------ #
+    # Step 2 — Per-ticker market data ingestion with result tracking
+    # ------------------------------------------------------------------ #
+    try:
+        from services.supabase_client import get_supabase_client
+        from services.market_data.ingestion_service import MarketDataIngestionService
+
+        supabase = get_supabase_client()
+        svc = MarketDataIngestionService(supabase)
+
+        for ticker in tickers:
+            try:
+                count = svc.sync_ticker(ticker)
+                result['ingestion_results'][ticker] = count
+            except Exception as exc:
+                result['ingestion_errors'][ticker] = str(exc)
+                _pipeline_logger.warning(
+                    "[Phoenix Pipeline] Ingestion failed for %s: %s", ticker, exc
+                )
+    except Exception as exc:
+        result['ingestion_errors']['_setup'] = str(exc)
+        _pipeline_logger.error(
+            "[Phoenix Pipeline] MarketDataIngestionService setup failed: %s", exc, exc_info=True
+        )
+
+    _pipeline_logger.info(
+        "[Phoenix Pipeline] Complete. ingestion_results=%d tickers, errors=%d",
+        len(result['ingestion_results']),
+        len(result['ingestion_errors']),
+    )
+    with open(_PIPELINE_RESULT_PATH, 'w') as f:
+        json.dump(result, f)
 
 
 def render_phoenix_parser():
@@ -714,6 +800,20 @@ def render_phoenix_parser():
 
                                         st.success("✅ Portfolio data is now available for all ATLAS analysis modules!")
 
+                                        # === SUPABASE PIPELINE: write portfolio + kick off price-history ingestion ===
+                                        _tickers = df['Ticker'].tolist()
+                                        st.session_state['supabase_sync_status'] = 'running'
+                                        st.session_state['ingestion_status'] = 'running'
+                                        st.session_state['ingestion_ticker_count'] = len(_tickers)
+                                        # Clear any stale result file from a previous run
+                                        if os.path.exists(_PIPELINE_RESULT_PATH):
+                                            os.remove(_PIPELINE_RESULT_PATH)
+                                        threading.Thread(
+                                            target=_run_supabase_pipeline,
+                                            args=(final_api_key, final_secret, use_paper, _tickers),
+                                            daemon=True,
+                                        ).start()
+
                                         # === ALPACA DATA ENGINE: Fetch comprehensive trade history ===
                                         if DATA_ENGINE_AVAILABLE:
                                             try:
@@ -753,6 +853,85 @@ def render_phoenix_parser():
     _ade = st.session_state.get('_alpaca_data_engine')
     if _ade is not None:
         _render_engine_verification(_ade)
+
+    # ===== DATA PIPELINE STATUS =====
+    _supabase_status = st.session_state.get('supabase_sync_status')
+    _ingestion_status = st.session_state.get('ingestion_status')
+
+    if _supabase_status or _ingestion_status:
+        st.markdown("---")
+        st.markdown("### 📡 Data Pipeline Status")
+
+        # --- Supabase portfolio write status ---
+        if _supabase_status == 'running':
+            st.info("🔄 Writing portfolio to Supabase...")
+        elif _supabase_status == 'success':
+            st.success(f"✅ {st.session_state.get('supabase_sync_message', 'Portfolio written to Supabase.')}")
+        elif _supabase_status == 'error':
+            st.error(f"❌ {st.session_state.get('supabase_sync_message', 'Supabase write failed.')}")
+
+        # --- Market data ingestion status ---
+        _ticker_count = st.session_state.get('ingestion_ticker_count', 0)
+
+        if _ingestion_status == 'running':
+            # Check whether the background thread has finished
+            if os.path.exists(_PIPELINE_RESULT_PATH):
+                try:
+                    with open(_PIPELINE_RESULT_PATH) as _f:
+                        _pipeline_result = json.load(_f)
+
+                    # Pipeline error (Supabase write failed before ingestion)
+                    if _pipeline_result.get('error'):
+                        st.session_state['supabase_sync_status'] = 'error'
+                        st.session_state['supabase_sync_message'] = (
+                            f"Supabase sync failed: {_pipeline_result['error']}"
+                        )
+                        st.session_state['ingestion_status'] = None
+                    else:
+                        # Supabase write succeeded
+                        _sb_stats = _pipeline_result.get('supabase_stats', {})
+                        st.session_state['supabase_sync_status'] = 'success'
+                        st.session_state['supabase_sync_message'] = (
+                            f"Portfolio written to Supabase. "
+                            f"({_sb_stats.get('assets_upserted', 0)} assets, "
+                            f"{_sb_stats.get('positions_upserted', 0)} positions)"
+                        )
+                        # Ingestion results
+                        _ing_results = _pipeline_result.get('ingestion_results', {})
+                        _ing_errors = _pipeline_result.get('ingestion_errors', {})
+                        _total_records = sum(_ing_results.values())
+                        st.session_state['ingestion_status'] = 'complete'
+                        st.session_state['ingestion_total_records'] = _total_records
+                        st.session_state['ingestion_error_count'] = len(_ing_errors)
+
+                    os.remove(_PIPELINE_RESULT_PATH)
+                    st.rerun()
+                except Exception:
+                    pass  # File may still be mid-write — try again next rerun
+
+            # Still running — show spinner message + manual refresh
+            if st.session_state.get('ingestion_status') == 'running':
+                st.info(
+                    f"🔄 Market data ingestion running for **{_ticker_count} tickers** "
+                    f"in background. Backfilling up to 5 years of daily price history. "
+                    f"This may take a few minutes."
+                )
+                if st.button("🔄 Check ingestion status", key="check_ingestion_btn"):
+                    st.rerun()
+
+        elif _ingestion_status == 'complete':
+            _total = st.session_state.get('ingestion_total_records', 0)
+            _errors = st.session_state.get('ingestion_error_count', 0)
+            if _total > 0:
+                _msg = (
+                    f"✅ Price history sync complete: **{_total:,} records** written "
+                    f"across **{_ticker_count} tickers**."
+                )
+            else:
+                _msg = f"✅ Price history up to date for **{_ticker_count} tickers**."
+            if _errors > 0:
+                _msg += f" ⚠️ {_errors} ticker(s) failed — check logs."
+            st.success(_msg)
 
     # PHASE 4: Database Management Section
     st.markdown("---")
