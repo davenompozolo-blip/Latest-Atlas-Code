@@ -62,11 +62,17 @@ def stop_scheduler():
     _ingestion_service = None
 def trigger_sync_now(ticker: str | None = None, portfolio_id: str | None = None):
     """
-    Manually trigger a sync outside of the schedule.
-    Useful when a new asset or portfolio is added.
-    Args:
-        ticker:       Sync a specific ticker immediately.
-        portfolio_id: Sync all tickers in a portfolio immediately.
+    Trigger an immediate market data sync for a single ticker or for all tickers in a portfolio.
+    
+    Raises:
+        RuntimeError: If the scheduler/ingestion service has not been started via start_scheduler().
+    
+    Parameters:
+        ticker (str | None): Ticker symbol to sync immediately. If provided, triggers a ticker sync.
+        portfolio_id (str | None): Portfolio identifier to sync immediately. If provided and `ticker` is not, triggers a portfolio sync.
+    
+    Returns:
+        The result returned by the ingestion service's sync method when a ticker or portfolio is specified, or an empty dict if neither `ticker` nor `portfolio_id` is provided.
     """
     if not _ingestion_service:
         raise RuntimeError(

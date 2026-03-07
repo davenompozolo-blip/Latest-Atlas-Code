@@ -196,6 +196,13 @@ _supabase_client = None
 
 def get_supabase_client():
     """
+    Provide a process-global Supabase client, creating and caching it on first call.
+    
+    Returns:
+        Supabase client instance created by supabase.create_client.
+    
+    Raises:
+        RuntimeError: If SUPABASE_URL or SUPABASE_ANON_KEY environment variables are missing or empty.
     Return a cached official supabase-py client for use with the market data
     ingestion service (requires .table() / fluent query builder API).
     Singleton: the client is created once per process and reused on subsequent calls.

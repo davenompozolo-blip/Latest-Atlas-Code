@@ -39,8 +39,10 @@ class BaseMarketDataProvider(ABC):
     @abstractmethod
     def is_available(self) -> bool:
         """
-        Health check -- returns True if the provider is reachable
-        and credentials (if any) are valid.
+        Perform a health check to verify that the provider is reachable and any credentials are valid.
+        
+        Returns:
+            True if the provider is reachable and credentials (if any) are valid, False otherwise.
         """
         pass
     def fetch_with_fallback(
@@ -52,8 +54,15 @@ class BaseMarketDataProvider(ABC):
         fallback: Optional["BaseMarketDataProvider"] = None
     ) -> list[OHLCVRecord]:
         """
-        Attempt fetch from this provider; if it fails and a fallback
-        is provided, try the fallback instead.
+        Fetch OHLCV data for a ticker from this provider, falling back to an alternative provider if this provider fails.
+        
+        If this provider raises an exception during fetch and a `fallback` provider is supplied, this function logs a warning and returns the result from `fallback.fetch_ohlcv(...)`. If no `fallback` is provided, the original exception is propagated.
+        
+        Parameters:
+            fallback (Optional[BaseMarketDataProvider]): Provider to use if this provider's fetch fails.
+        
+        Returns:
+            list[OHLCVRecord]: OHLCV records for the requested ticker, date range, and interval.
         """
         try:
             return self.fetch_ohlcv(ticker, start, end, interval)
