@@ -157,14 +157,23 @@ def write_to_supabase(normalized_data: Dict[str, Any]) -> Dict[str, int]:
     positions = supabase.upsert_positions(normalized_data["positions"], asset_id_by_symbol)
     transactions = supabase.upsert_transactions(normalized_data["transactions"], asset_id_by_symbol)
 
-    # Trigger market data sync for all tickers in this batch.
+    # Trigger market data sync for all tickers in this batch in parallel.
     # Gap detection in ingestion_service will no-op for tickers already up to date.
-    for ticker in asset_id_by_symbol:
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    def _sync_ticker(ticker: str) -> None:
         try:
             trigger_sync_now(ticker=ticker)
         except Exception as e:
             logger.warning(f"Market data sync failed for {ticker}: {e}")
             # Non-fatal — nightly scheduler will catch it
+
+    tickers = list(asset_id_by_symbol.keys())
+    if tickers:
+        with ThreadPoolExecutor(max_workers=min(len(tickers), 4)) as executor:
+            futures = {executor.submit(_sync_ticker, t): t for t in tickers}
+            for future in as_completed(futures):
+                future.result()  # exceptions already logged inside _sync_ticker
 
     stats = {
         "assets_upserted": len(assets),

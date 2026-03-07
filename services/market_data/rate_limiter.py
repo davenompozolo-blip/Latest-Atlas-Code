@@ -1,5 +1,6 @@
 import time
 import logging
+from functools import wraps
 from threading import Lock
 logger = logging.getLogger(__name__)
 class RateLimiter:
@@ -24,6 +25,7 @@ class RateLimiter:
             self.last_call = time.time()
     def __call__(self, func):
         """Allow use as a decorator."""
+        @wraps(func)
         def wrapper(*args, **kwargs):
             self.wait()
             return func(*args, **kwargs)

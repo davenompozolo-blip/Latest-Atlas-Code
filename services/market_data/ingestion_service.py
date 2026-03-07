@@ -6,23 +6,26 @@ Orchestrates the full market data pipeline for Atlas:
   2. Check Supabase for existing coverage (gap detection)
   3. Fetch only missing data from the provider
   4. Normalise and upsert into price_history
-Designed to be idempotent — safe to run multiple times.
+Designed to be idempotent -- safe to run multiple times.
 """
 import logging
 from datetime import date, datetime, timedelta
 from typing import Optional
-import pandas as pd
 from .base_provider import BaseMarketDataProvider, OHLCVRecord
 from .provider_factory import get_default_provider
 logger = logging.getLogger(__name__)
 # Default historical backfill window for new assets
 DEFAULT_BACKFILL_YEARS = 5
+# Intervals that are date-only (YYYY-MM-DD) vs timestamp-based
+DAILY_INTERVALS = {"1d", "1wk", "1mo"}
 # Trading calendar: simple weekday filter (extend later with pandas_market_calendars)
 def _generate_trading_dates(start: str, end: str) -> set[str]:
     """
     Generate expected trading dates between start and end (inclusive).
-    Uses a simple Mon–Fri filter. Extend with market-specific calendars
+    Uses a simple Mon-Fri filter. Extend with market-specific calendars
     (pandas_market_calendars) for JSE/NYSE holidays.
+    Only valid for daily/weekly/monthly intervals. Intraday gap detection
+    is not supported here -- intraday sync always fetches the full range.
     """
     start_dt = datetime.strptime(start, "%Y-%m-%d").date()
     end_dt = datetime.strptime(end, "%Y-%m-%d").date()
@@ -49,13 +52,18 @@ class MarketDataIngestionService:
         """
         Args:
             supabase_client: Initialised Supabase client from supabase_client.py
-            provider:        Market data provider. Defaults to yfinance.
+            provider:        Explicit provider to use. If None, provider selection
+                             happens at sync time via get_default_provider() so
+                             transient failures at startup don't lock in a bad choice.
         """
         self.supabase = supabase_client
-        self.provider = provider or get_default_provider()
-        logger.info(
-            f"[Ingestion] Initialised with provider: {self.provider.provider_name}"
-        )
+        self._explicit_provider = provider  # None = resolve at sync time
+        if provider:
+            logger.info(
+                f"[Ingestion] Initialised with explicit provider: {provider.provider_name}"
+            )
+        else:
+            logger.info("[Ingestion] Initialised. Provider will be resolved at sync time.")
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -78,10 +86,13 @@ class MarketDataIngestionService:
         Returns:
             Number of records upserted.
         """
+        provider = self._resolve_provider()
         end_date = end or date.today().strftime("%Y-%m-%d")
         start_date = start or self._default_start_date()
         asset_id = self._get_or_create_asset(ticker)
-        if force_full:
+        if force_full or interval not in DAILY_INTERVALS:
+            # Intraday: always fetch the full requested range (gap detection
+            # would require timestamp-level comparison which is not implemented)
             missing_ranges = [(start_date, end_date)]
         else:
             missing_ranges = self._get_missing_ranges(
@@ -93,11 +104,21 @@ class MarketDataIngestionService:
         total_upserted = 0
         for range_start, range_end in missing_ranges:
             logger.info(
-                f"[Ingestion] Fetching {ticker} | {range_start} → {range_end}"
+                f"[Ingestion] Fetching {ticker} | {range_start} -> {range_end}"
             )
-            records = self.provider.fetch_ohlcv(
-                ticker, range_start, range_end, interval
-            )
+            try:
+                records = provider.fetch_ohlcv(ticker, range_start, range_end, interval)
+            except Exception as fetch_err:
+                # If the primary provider fails mid-sync, try the fallback once
+                fallback = self._get_fallback_provider(provider)
+                if fallback:
+                    logger.warning(
+                        f"[Ingestion] Primary provider failed for {ticker}: {fetch_err}. "
+                        f"Retrying with {fallback.provider_name}."
+                    )
+                    records = fallback.fetch_ohlcv(ticker, range_start, range_end, interval)
+                else:
+                    raise
             if records:
                 upserted = self._upsert_records(asset_id, records)
                 total_upserted += upserted
@@ -118,7 +139,7 @@ class MarketDataIngestionService:
             interval:     Data frequency. Default '1d'.
             force_full:   If True, re-fetch all history for all tickers.
         Returns:
-            Dict mapping ticker → number of records upserted.
+            Dict mapping ticker -> number of records upserted.
         """
         tickers = self._get_portfolio_tickers(portfolio_id)
         if not tickers:
@@ -136,7 +157,7 @@ class MarketDataIngestionService:
                     ticker, interval=interval, force_full=force_full
                 )
             except Exception as e:
-                logger.error(
+                logger.exception(
                     f"[Ingestion] Failed to sync {ticker}: {e}"
                 )
                 results[ticker] = 0
@@ -158,9 +179,11 @@ class MarketDataIngestionService:
             if not ticker:
                 continue
             try:
-                results[ticker] = self.sync_ticker(ticker, interval=interval)
+                results[ticker] = self.sync_ticker(
+                    ticker, interval=interval, force_full=force_full
+                )
             except Exception as e:
-                logger.error(f"[Ingestion] Nightly sync failed for {ticker}: {e}")
+                logger.exception(f"[Ingestion] Nightly sync failed for {ticker}: {e}")
                 results[ticker] = 0
         return results
     # ------------------------------------------------------------------
@@ -179,7 +202,7 @@ class MarketDataIngestionService:
         Returns a list of (start, end) tuples representing gaps.
         For daily data, this typically returns either:
         - Empty list (fully up to date)
-        - One range from last_known_date+1 → today
+        - One range from last_known_date+1 -> today
         - One full range if no data exists yet
         """
         existing_dates = self._get_existing_dates(asset_id, interval, start, end)
@@ -215,21 +238,21 @@ class MarketDataIngestionService:
         start: str,
         end: str,
     ) -> set[str]:
-        """Query Supabase for dates already in price_history."""
-        try:
-            response = (
-                self.supabase.table("price_history")
-                .select("price_date")
-                .eq("asset_id", asset_id)
-                .eq("interval", interval)
-                .gte("price_date", start)
-                .lte("price_date", end)
-                .execute()
-            )
-            return {row["price_date"] for row in (response.data or [])}
-        except Exception as e:
-            logger.error(f"[Ingestion] Failed to query existing dates: {e}")
-            return set()
+        """
+        Query Supabase for dates already in price_history.
+        Raises on failure so the caller skips this asset instead of
+        treating the entire window as missing and triggering a full backfill.
+        """
+        response = (
+            self.supabase.table("price_history")
+            .select("price_date")
+            .eq("asset_id", asset_id)
+            .eq("interval", interval)
+            .gte("price_date", start)
+            .lte("price_date", end)
+            .execute()
+        )
+        return {row["price_date"] for row in (response.data or [])}
     # ------------------------------------------------------------------
     # Upsert
     # ------------------------------------------------------------------
@@ -240,7 +263,7 @@ class MarketDataIngestionService:
     ) -> int:
         """
         Upsert a list of OHLCVRecord objects into price_history.
-        Uses ON CONFLICT (asset_id, provider, interval, date) DO UPDATE.
+        Uses ON CONFLICT (asset_id, source, interval, price_date) DO UPDATE.
         """
         rows = [
             {
@@ -274,24 +297,21 @@ class MarketDataIngestionService:
         """
         Return the asset_id for a ticker, creating the asset record if
         it doesn't exist yet.
+        Uses an atomic upsert to avoid the select-then-insert race condition
+        when two concurrent syncs encounter the same new ticker simultaneously.
         """
         try:
             response = (
                 self.supabase.table("assets")
-                .select("id")
-                .eq("symbol", ticker)
+                .upsert(
+                    {"symbol": ticker, "name": ticker},
+                    on_conflict="symbol",
+                    returning="representation",
+                )
                 .execute()
             )
-            if response.data:
-                return response.data[0]["id"]
-            # Asset doesn't exist — create it
-            insert_response = (
-                self.supabase.table("assets")
-                .insert({"symbol": ticker, "name": ticker})
-                .execute()
-            )
-            asset_id = insert_response.data[0]["id"]
-            logger.info(f"[Ingestion] Created new asset record for {ticker}: {asset_id}")
+            asset_id = response.data[0]["id"]
+            logger.debug(f"[Ingestion] Asset upserted for {ticker}: {asset_id}")
             return asset_id
         except Exception as e:
             logger.error(f"[Ingestion] Failed to get/create asset for {ticker}: {e}")
@@ -324,6 +344,31 @@ class MarketDataIngestionService:
         except Exception as e:
             logger.error(f"[Ingestion] Failed to fetch assets: {e}")
             return []
+    # ------------------------------------------------------------------
+    # Provider helpers
+    # ------------------------------------------------------------------
+    def _resolve_provider(self) -> BaseMarketDataProvider:
+        """
+        Return the active provider. Uses the explicit provider if one was
+        supplied at construction time; otherwise resolves at call time so
+        transient failures during startup don't lock in a bad state.
+        """
+        return self._explicit_provider or get_default_provider()
+    @staticmethod
+    def _get_fallback_provider(
+        current: BaseMarketDataProvider,
+    ) -> Optional[BaseMarketDataProvider]:
+        """
+        Return an alternative provider when the current one fails.
+        If Alpha Vantage key is configured and the current provider is not
+        already Alpha Vantage, return an Alpha Vantage instance.
+        """
+        import os
+        from .alpha_vantage_provider import AlphaVantageProvider
+        av_key = os.getenv("ALPHA_VANTAGE_API_KEY")
+        if av_key and not isinstance(current, AlphaVantageProvider):
+            return AlphaVantageProvider(api_key=av_key)
+        return None
     @staticmethod
     def _default_start_date() -> str:
         """Default backfill start: 5 years ago."""
