@@ -12,10 +12,17 @@ ALTER TABLE price_history
 ALTER TABLE price_history
   DROP CONSTRAINT IF EXISTS price_history_asset_id_price_date_key;
 
--- Add correct composite unique constraint using actual column names
-ALTER TABLE price_history
-  ADD CONSTRAINT price_history_unique_row
-  UNIQUE (asset_id, source, interval, price_date);
+-- Add correct composite unique constraint (idempotent via DO block)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'price_history_unique_row'
+  ) THEN
+    ALTER TABLE price_history
+      ADD CONSTRAINT price_history_unique_row
+      UNIQUE (asset_id, source, interval, price_date);
+  END IF;
+END $$;
 
 -- Index for fast range queries (performance analytics engine)
 CREATE INDEX IF NOT EXISTS idx_price_history_asset_interval_date

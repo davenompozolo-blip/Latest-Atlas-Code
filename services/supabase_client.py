@@ -191,14 +191,22 @@ def create_supabase_sync_client() -> SupabaseSyncClient:
     return SupabaseSyncClient()
 
 
+_supabase_client = None
+
+
 def get_supabase_client():
     """
-    Return an official supabase-py client for use with the market data
+    Return a cached official supabase-py client for use with the market data
     ingestion service (requires .table() / fluent query builder API).
+    Singleton: the client is created once per process and reused on subsequent calls.
     """
+    global _supabase_client
+    if _supabase_client is not None:
+        return _supabase_client
     from supabase import create_client
     url = os.getenv("SUPABASE_URL", "").rstrip("/")
     key = os.getenv("SUPABASE_ANON_KEY", "")
     if not url or not key:
         raise RuntimeError("SUPABASE_URL and SUPABASE_ANON_KEY are required.")
-    return create_client(url, key)
+    _supabase_client = create_client(url, key)
+    return _supabase_client

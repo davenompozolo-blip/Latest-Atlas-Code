@@ -14,25 +14,31 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from .ingestion_service import MarketDataIngestionService
 logger = logging.getLogger(__name__)
-_scheduler: BackgroundScheduler = None
-_ingestion_service: MarketDataIngestionService = None
+_scheduler: BackgroundScheduler | None = None
+_ingestion_service: MarketDataIngestionService | None = None
 def start_scheduler(supabase_client, provider=None):
     """
     Initialise and start the background scheduler.
+    Guards against duplicate starts — safe to call from atlas_app.py on
+    every Streamlit rerun; a running scheduler is returned as-is.
     Jobs registered:
-    - Nightly daily price sync: runs Mon–Sat at 18:00 (post-market close).
+    - Nightly daily price sync: runs Mon-Sat at 18:00 (post-market close).
       Adjust hour/timezone to match your primary market (SAST for JSE, EST for NYSE).
     Args:
         supabase_client: Initialised Supabase client.
         provider:        Optional market data provider override.
     """
     global _scheduler, _ingestion_service
+    # Process-level guard: skip if a scheduler is already running.
+    if _scheduler is not None and _scheduler.running:
+        logger.debug("[Scheduler] Already running. Skipping re-initialisation.")
+        return _scheduler
     _ingestion_service = MarketDataIngestionService(
         supabase_client=supabase_client,
         provider=provider,
     )
     _scheduler = BackgroundScheduler(timezone="Africa/Johannesburg")
-    # Nightly sync — Mon to Sat at 18:00 SAST
+    # Nightly sync - Mon to Sat at 18:00 SAST
     # Runs 6 days to catch Saturday corrections on some data providers
     _scheduler.add_job(
         func=_run_nightly_sync,
@@ -44,15 +50,17 @@ def start_scheduler(supabase_client, provider=None):
     )
     _scheduler.start()
     logger.info("[Scheduler] Atlas market data scheduler started.")
-    logger.info("[Scheduler] Nightly sync scheduled: Mon–Sat 18:00 SAST.")
+    logger.info("[Scheduler] Nightly sync scheduled: Mon-Sat 18:00 SAST.")
     return _scheduler
 def stop_scheduler():
-    """Gracefully shut down the scheduler."""
-    global _scheduler
+    """Gracefully shut down the scheduler and reset module state."""
+    global _scheduler, _ingestion_service
     if _scheduler and _scheduler.running:
         _scheduler.shutdown(wait=False)
-        logger.info("[Scheduler] Scheduler stopped.")
-def trigger_sync_now(ticker: str = None, portfolio_id: str = None):
+        logger.info("[Scheduler] Scheduler stopped and state reset.")
+    _scheduler = None
+    _ingestion_service = None
+def trigger_sync_now(ticker: str | None = None, portfolio_id: str | None = None):
     """
     Manually trigger a sync outside of the schedule.
     Useful when a new asset or portfolio is added.

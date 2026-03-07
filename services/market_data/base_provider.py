@@ -1,12 +1,13 @@
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Optional
-import pandas as pd
+logger = logging.getLogger(__name__)
 @dataclass
 class OHLCVRecord:
     """Standardised OHLCV record across all providers."""
     ticker: str
-    date: str               # ISO format: YYYY-MM-DD
+    date: str               # YYYY-MM-DD for daily; ISO-8601 timestamp for intraday
     interval: str           # '1d', '1h', '1m'
     open: float
     high: float
@@ -19,7 +20,7 @@ class BaseMarketDataProvider(ABC):
     """
     Abstract base class for all market data providers.
     Every provider must implement fetch_ohlcv and return
-    a list of OHLCVRecord objects — normalised and provider-agnostic.
+    a list of OHLCVRecord objects -- normalised and provider-agnostic.
     """
     provider_name: str = "base"
     @abstractmethod
@@ -38,7 +39,7 @@ class BaseMarketDataProvider(ABC):
     @abstractmethod
     def is_available(self) -> bool:
         """
-        Health check — returns True if the provider is reachable
+        Health check -- returns True if the provider is reachable
         and credentials (if any) are valid.
         """
         pass
@@ -58,8 +59,7 @@ class BaseMarketDataProvider(ABC):
             return self.fetch_ohlcv(ticker, start, end, interval)
         except Exception as e:
             if fallback:
-                import logging
-                logging.getLogger(__name__).warning(
+                logger.warning(
                     f"[{self.provider_name}] Failed for {ticker}: {e}. "
                     f"Falling back to {fallback.provider_name}."
                 )
