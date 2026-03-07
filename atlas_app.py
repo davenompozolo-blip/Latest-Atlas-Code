@@ -418,6 +418,22 @@ else:
         st.stop()
 
 # ============================================================================
+# MARKET DATA SCHEDULER — start once per process
+# ============================================================================
+if 'scheduler_started' not in st.session_state:
+    try:
+        from services.supabase_client import get_supabase_client
+        from services.market_data import start_scheduler
+        _md_supabase = get_supabase_client()
+        start_scheduler(_md_supabase)
+        st.session_state['scheduler_started'] = True
+        print("[BOOT] Market data scheduler started.", flush=True)
+    except Exception as _sched_err:
+        st.session_state['scheduler_started'] = False
+        print(f"[BOOT] Market data scheduler failed to start: {_sched_err}", flush=True)
+
+
+# ============================================================================
 # CHART THEME FUNCTION & COLORSCALES
 # ============================================================================
 

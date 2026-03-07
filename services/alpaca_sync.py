@@ -138,6 +138,8 @@ def normalize_data(raw_data: Dict[str, Any]) -> Dict[str, Any]:
 
 def write_to_supabase(normalized_data: Dict[str, Any]) -> Dict[str, int]:
     """Write normalized rows to Supabase using idempotent upserts."""
+    from services.market_data import trigger_sync_now
+
     supabase = create_supabase_sync_client()
 
     portfolio = supabase.upsert_portfolio(normalized_data["portfolio"])
@@ -154,6 +156,15 @@ def write_to_supabase(normalized_data: Dict[str, Any]) -> Dict[str, int]:
 
     positions = supabase.upsert_positions(normalized_data["positions"], asset_id_by_symbol)
     transactions = supabase.upsert_transactions(normalized_data["transactions"], asset_id_by_symbol)
+
+    # Trigger market data sync for all tickers in this batch.
+    # Gap detection in ingestion_service will no-op for tickers already up to date.
+    for ticker in asset_id_by_symbol:
+        try:
+            trigger_sync_now(ticker=ticker)
+        except Exception as e:
+            logger.warning(f"Market data sync failed for {ticker}: {e}")
+            # Non-fatal — nightly scheduler will catch it
 
     stats = {
         "assets_upserted": len(assets),

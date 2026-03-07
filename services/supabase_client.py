@@ -189,3 +189,16 @@ class SupabaseSyncClient:
 def create_supabase_sync_client() -> SupabaseSyncClient:
     """Factory for dependency injection and testing."""
     return SupabaseSyncClient()
+
+
+def get_supabase_client():
+    """
+    Return an official supabase-py client for use with the market data
+    ingestion service (requires .table() / fluent query builder API).
+    """
+    from supabase import create_client
+    url = os.getenv("SUPABASE_URL", "").rstrip("/")
+    key = os.getenv("SUPABASE_ANON_KEY", "")
+    if not url or not key:
+        raise RuntimeError("SUPABASE_URL and SUPABASE_ANON_KEY are required.")
+    return create_client(url, key)
