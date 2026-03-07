@@ -137,7 +137,26 @@ def normalize_data(raw_data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def write_to_supabase(normalized_data: Dict[str, Any]) -> Dict[str, int]:
-    """Write normalized rows to Supabase using idempotent upserts."""
+    """
+    Upserts normalized portfolio, asset, position, and transaction rows into Supabase and triggers parallel market-data syncs for the affected tickers.
+    
+    Parameters:
+        normalized_data (Dict[str, Any]): Mapping with keys:
+            - "portfolio": dict representing the portfolio row to upsert.
+            - "assets": iterable of asset rows (each must include a `symbol`).
+            - "positions": iterable of position rows; their `portfolio_id` will be set to the upserted portfolio's id.
+            - "transactions": iterable of transaction rows; their `portfolio_id` will be set to the upserted portfolio's id.
+    
+    Returns:
+        Dict[str, int]: Statistics for the upsert operation with keys:
+            - "assets_upserted": number of asset rows upserted.
+            - "positions_upserted": number of position rows upserted.
+            - "transactions_upserted": number of transaction rows upserted.
+    
+    Notes:
+        - Asset `symbol` values are used to trigger market-data synchronization; syncs run in parallel (up to 4 workers).
+        - Market-data sync failures are logged as warnings and treated as non-fatal.
+    """
     from services.market_data import trigger_sync_now
 
     supabase = create_supabase_sync_client()
@@ -157,14 +176,29 @@ def write_to_supabase(normalized_data: Dict[str, Any]) -> Dict[str, int]:
     positions = supabase.upsert_positions(normalized_data["positions"], asset_id_by_symbol)
     transactions = supabase.upsert_transactions(normalized_data["transactions"], asset_id_by_symbol)
 
-    # Trigger market data sync for all tickers in this batch.
+    # Trigger market data sync for all tickers in this batch in parallel.
     # Gap detection in ingestion_service will no-op for tickers already up to date.
-    for ticker in asset_id_by_symbol:
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    def _sync_ticker(ticker: str) -> None:
+        """
+        Attempt to trigger an immediate market-data synchronization for the given ticker and log any non-fatal failures.
+        
+        Parameters:
+            ticker (str): The market symbol to synchronize. Failures are logged and not propagated.
+        """
         try:
             trigger_sync_now(ticker=ticker)
         except Exception as e:
             logger.warning(f"Market data sync failed for {ticker}: {e}")
             # Non-fatal — nightly scheduler will catch it
+
+    tickers = list(asset_id_by_symbol.keys())
+    if tickers:
+        with ThreadPoolExecutor(max_workers=min(len(tickers), 4)) as executor:
+            futures = {executor.submit(_sync_ticker, t): t for t in tickers}
+            for future in as_completed(futures):
+                future.result()  # exceptions already logged inside _sync_ticker
 
     stats = {
         "assets_upserted": len(assets),

@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 import pandas as pd
 import yfinance as yf
 from .base_provider import BaseMarketDataProvider, OHLCVRecord
@@ -14,6 +14,8 @@ INTERVAL_MAP = {
     "1wk": "1wk",
     "1mo": "1mo",
 }
+# Daily-or-coarser intervals — store date only, no time component
+DAILY_INTERVALS = {"1d", "1wk", "1mo"}
 class YFinanceProvider(BaseMarketDataProvider):
     """
     Primary market data provider using yfinance.
@@ -38,14 +40,22 @@ class YFinanceProvider(BaseMarketDataProvider):
         interval: str = "1d"
     ) -> list[OHLCVRecord]:
         """
-        Fetch OHLCV data from Yahoo Finance.
-        Args:
-            ticker:   Ticker symbol. Use .JO suffix for JSE (e.g. 'NPN.JO').
-            start:    Start date as YYYY-MM-DD string.
-            end:      End date as YYYY-MM-DD string.
-            interval: Data frequency. Default '1d'.
+        Fetch OHLCV data from Yahoo Finance for a ticker over a date range.
+        
+        Parameters:
+            ticker (str): Ticker symbol (use '.JO' suffix for JSE tickers, e.g. 'NPN.JO').
+            start (str): Start date as 'YYYY-MM-DD' (inclusive).
+            end (str): End date as 'YYYY-MM-DD' (inclusive).
+            interval (str): Data frequency key (see INTERVAL_MAP); defaults to '1d'.
+        
+        Notes:
+            The function treats the provided `end` as inclusive when querying Yahoo Finance.
+            For daily-or-coarser intervals the record `date` stores only the 'YYYY-MM-DD' date;
+            for intraday intervals the record `date` stores a full ISO-8601 timestamp so
+            multiple bars on the same day do not collide.
+        
         Returns:
-            List of OHLCVRecord objects, sorted ascending by date.
+            list[OHLCVRecord]: OHLCV records for the requested range, sorted ascending by date/datetime.
         """
         yf_interval = INTERVAL_MAP.get(interval)
         if not yf_interval:
@@ -53,14 +63,17 @@ class YFinanceProvider(BaseMarketDataProvider):
                 f"Unsupported interval '{interval}'. "
                 f"Supported: {list(INTERVAL_MAP.keys())}"
             )
+        # yfinance end is exclusive — add 1 day to include the requested end date
+        end_dt = datetime.strptime(end, "%Y-%m-%d") + timedelta(days=1)
+        end_exclusive = end_dt.strftime("%Y-%m-%d")
         logger.info(
-            f"[yfinance] Fetching {ticker} | {start} → {end} | {interval}"
+            f"[yfinance] Fetching {ticker} | {start} -> {end} | {interval}"
         )
         try:
             raw = yf.download(
                 ticker,
                 start=start,
-                end=end,
+                end=end_exclusive,
                 interval=yf_interval,
                 auto_adjust=False,   # Keep raw + adj_close separate
                 progress=False,
@@ -76,13 +89,18 @@ class YFinanceProvider(BaseMarketDataProvider):
         # Flatten if necessary
         if isinstance(raw.columns, pd.MultiIndex):
             raw.columns = raw.columns.get_level_values(0)
+        use_date_only = interval in DAILY_INTERVALS
         records = []
         for dt, row in raw.iterrows():
-            date_str = (
-                dt.strftime("%Y-%m-%d")
-                if isinstance(dt, (pd.Timestamp, datetime))
-                else str(dt)[:10]
-            )
+            if isinstance(dt, pd.Timestamp):
+                if use_date_only:
+                    date_str = dt.strftime("%Y-%m-%d")
+                else:
+                    # Preserve full timestamp for intraday bars so that
+                    # multiple bars per day don't overwrite each other on upsert
+                    date_str = dt.isoformat()
+            else:
+                date_str = str(dt)[:10] if use_date_only else str(dt)
             try:
                 record = OHLCVRecord(
                     ticker=ticker,
