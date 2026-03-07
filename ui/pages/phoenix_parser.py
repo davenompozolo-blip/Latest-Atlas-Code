@@ -44,7 +44,7 @@ def render_phoenix_parser():
     def render_data_source_cards():
         if 'portfolio_data_source_mode' not in st.session_state:
             st.session_state['portfolio_data_source_mode'] = "📁 Classic Mode (Excel Upload)"
-        sources = ["📁 Classic Mode (Excel Upload)", "🔗 Easy Equities (Live Sync)", "🦙 Alpaca Markets (Live Sync)", "📈 IRESS Import (JSE)"]
+        sources = ["📁 Classic Mode (Excel Upload)", "🔗 Easy Equities (Live Sync)", "🦙 Alpaca Markets (Live Sync)", "📈 IRESS Import (JSE - Johannesburg)"]
         cols = st.columns(4)
         for i, src in enumerate(sources):
             with cols[i]:
@@ -1008,10 +1008,10 @@ def render_phoenix_parser():
             st.code(traceback.format_exc())
 
     # ===== IRESS IMPORT MODE (Phase 10 JSE Integration) =====
-    elif portfolio_mode == "📈 IRESS Import (JSE)":
-        st.subheader("📈 Import from IRESS")
+    elif portfolio_mode == "📈 IRESS Import (JSE - Johannesburg)":
+        st.subheader("📈 Import from IRESS — Johannesburg Stock Exchange")
         st.info(
-            "Upload a CSV export from IRESS. Supports two formats:\n"
+            "Upload a CSV export from IRESS (JSE — Johannesburg Stock Exchange). Supports two formats:\n"
             "- **Price History**: Date, Code, Open, High, Low, Close, Volume\n"
             "- **Holdings**: Code, Description, Quantity, Price, Value"
         )

@@ -117,9 +117,19 @@ Do not pad. Target {word_count} words.\
 
 def _generate_commentary(system_prompt: str, user_message: str) -> str:
     """Call Anthropic API and return the generated commentary text."""
+    import os
     import anthropic
 
-    client = anthropic.Anthropic()
+    api_key = st.secrets.get("anthropic", {}).get("api_key", "")
+    if not api_key:
+        api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        raise ValueError(
+            "Anthropic API key not configured. Set ANTHROPIC_API_KEY environment "
+            "variable or add [anthropic] api_key to .streamlit/secrets.toml"
+        )
+
+    client = anthropic.Anthropic(api_key=api_key)
     response = client.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=4096,
