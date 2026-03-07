@@ -40,6 +40,7 @@ class RateLimiter:
         Returns:
             callable: A wrapper that enforces the limiter then calls `func`.
         """
+        """Allow use as a decorator."""
         @wraps(func)
         def wrapper(*args, **kwargs):
             """

@@ -111,9 +111,9 @@ class AlphaVantageProvider(BaseMarketDataProvider):
                 f"[alpha_vantage] API error for {ticker}: {data['Error Message']}"
             )
         if "Note" in data:
-            logger.warning(
-                f"[alpha_vantage] Rate limit warning: {data['Note']}"
-            )
+            msg = f"[alpha_vantage] API quota/rate-limit hit for {ticker}: {data['Note']}"
+            logger.warning(msg)
+            raise RuntimeError(msg)
         # Identify the time series key in the response
         if function == "TIME_SERIES_INTRADAY":
             ts_key = f"Time Series ({INTRADAY_INTERVAL_MAP[interval]})"

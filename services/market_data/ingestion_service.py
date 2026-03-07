@@ -31,6 +31,11 @@ def _generate_trading_dates(start: str, end: str) -> set[str]:
     
     Returns:
         set[str]: Set of trading date strings in 'YYYY-MM-DD' format between start and end, inclusive.
+    Generate expected trading dates between start and end (inclusive).
+    Uses a simple Mon-Fri filter. Extend with market-specific calendars
+    (pandas_market_calendars) for JSE/NYSE holidays.
+    Only valid for daily/weekly/monthly intervals. Intraday gap detection
+    is not supported here -- intraday sync always fetches the full range.
     """
     start_dt = datetime.strptime(start, "%Y-%m-%d").date()
     end_dt = datetime.strptime(end, "%Y-%m-%d").date()
@@ -60,6 +65,11 @@ class MarketDataIngestionService:
         Parameters:
             supabase_client: Initialized Supabase client used for database operations.
             provider: Optional explicit BaseMarketDataProvider to use for all syncs. If not provided, the active provider will be resolved at sync time to avoid binding to a provider during startup.
+        Args:
+            supabase_client: Initialised Supabase client from supabase_client.py
+            provider:        Explicit provider to use. If None, provider selection
+                             happens at sync time via get_default_provider() so
+                             transient failures at startup don't lock in a bad choice.
         """
         self.supabase = supabase_client
         self._explicit_provider = provider  # None = resolve at sync time
@@ -149,6 +159,7 @@ class MarketDataIngestionService:
         
         Returns:
             dict[str, int]: Mapping from ticker symbol to the number of records upserted for that ticker.
+            Dict mapping ticker -> number of records upserted.
         """
         tickers = self._get_portfolio_tickers(portfolio_id)
         if not tickers:
@@ -219,6 +230,12 @@ class MarketDataIngestionService:
         
         Returns:
             list[tuple[str, str]]: List of (start_date, end_date) tuples in "YYYY-MM-DD" format representing inclusive fetch ranges for missing trading dates.
+        Compare expected trading dates against what's already in Supabase.
+        Returns a list of (start, end) tuples representing gaps.
+        For daily data, this typically returns either:
+        - Empty list (fully up to date)
+        - One range from last_known_date+1 -> today
+        - One full range if no data exists yet
         """
         existing_dates = self._get_existing_dates(asset_id, interval, start, end)
         expected_dates = _generate_trading_dates(start, end)
@@ -264,6 +281,9 @@ class MarketDataIngestionService:
         
         Returns:
             set[str]: Set of `price_date` strings (YYYY-MM-DD) present in the price_history table for the given asset, interval, and date range.
+        Query Supabase for dates already in price_history.
+        Raises on failure so the caller skips this asset instead of
+        treating the entire window as missing and triggering a full backfill.
         """
         response = (
             self.supabase.table("price_history")
@@ -293,6 +313,8 @@ class MarketDataIngestionService:
         
         Raises:
         	Exception: If the database upsert operation fails.
+        Upsert a list of OHLCVRecord objects into price_history.
+        Uses ON CONFLICT (asset_id, source, interval, price_date) DO UPDATE.
         """
         rows = [
             {
@@ -330,6 +352,10 @@ class MarketDataIngestionService:
         
         Returns:
             asset_id (str): The id of the existing or newly created asset.
+        Return the asset_id for a ticker, creating the asset record if
+        it doesn't exist yet.
+        Uses an atomic upsert to avoid the select-then-insert race condition
+        when two concurrent syncs encounter the same new ticker simultaneously.
         """
         try:
             response = (
@@ -391,6 +417,9 @@ class MarketDataIngestionService:
         
         Returns:
             provider (BaseMarketDataProvider): The resolved market data provider instance.
+        Return the active provider. Uses the explicit provider if one was
+        supplied at construction time; otherwise resolves at call time so
+        transient failures during startup don't lock in a bad state.
         """
         return self._explicit_provider or get_default_provider()
     @staticmethod
@@ -402,6 +431,9 @@ class MarketDataIngestionService:
         
         Returns:
             An `AlphaVantageProvider` configured with `ALPHA_VANTAGE_API_KEY` if the environment variable is present and `current` is not an Alpha Vantage provider, `None` otherwise.
+        Return an alternative provider when the current one fails.
+        If Alpha Vantage key is configured and the current provider is not
+        already Alpha Vantage, return an Alpha Vantage instance.
         """
         import os
         from .alpha_vantage_provider import AlphaVantageProvider

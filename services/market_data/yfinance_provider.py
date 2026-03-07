@@ -56,6 +56,20 @@ class YFinanceProvider(BaseMarketDataProvider):
         
         Returns:
             list[OHLCVRecord]: OHLCV records for the requested range, sorted ascending by date/datetime.
+        Fetch OHLCV data from Yahoo Finance.
+        Args:
+            ticker:   Ticker symbol. Use .JO suffix for JSE (e.g. 'NPN.JO').
+            start:    Start date as YYYY-MM-DD string (inclusive).
+            end:      End date as YYYY-MM-DD string (inclusive).
+            interval: Data frequency. Default '1d'.
+        Returns:
+            List of OHLCVRecord objects, sorted ascending by date/datetime.
+        Notes:
+            yfinance treats `end` as exclusive, so we add one calendar day
+            to ensure the final requested date is always included.
+            For intraday intervals the full ISO-8601 timestamp is preserved
+            in OHLCVRecord.date so bars from the same day don't collide on
+            the (asset_id, source, interval, price_date) unique key.
         """
         yf_interval = INTERVAL_MAP.get(interval)
         if not yf_interval:
