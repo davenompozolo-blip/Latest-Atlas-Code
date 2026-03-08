@@ -2,6 +2,27 @@
 ATLAS Configuration
 Central configuration for portfolio optimization and trading
 """
+import os
+
+# Bridge Streamlit Cloud secrets → os.environ so all os.getenv() calls work
+try:
+    import streamlit as st
+    _secrets = st.secrets
+    _keys = [
+        "SUPABASE_URL",
+        "SUPABASE_ANON_KEY",
+        "ALPACA_API_KEY",
+        "ALPACA_API_SECRET",
+        "ALPACA_PAPER",
+        "ALPHA_VANTAGE_API_KEY",
+        "FRED_API_KEY",
+    ]
+    for _key in _keys:
+        if _key in _secrets and not os.environ.get(_key):
+            os.environ[_key] = str(_secrets[_key])
+except Exception:
+    pass  # Not running on Streamlit Cloud, or streamlit not yet initialised — fall through to .env
+
 from dotenv import load_dotenv
 load_dotenv()
 
