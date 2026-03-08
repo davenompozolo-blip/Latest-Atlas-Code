@@ -24,9 +24,9 @@ try:
     has_secrets = api_key and secret_key
 except:
     # Try environment variables or hardcode for testing
-    import os
-    api_key = os.getenv("ALPACA_API_KEY", "")
-    secret_key = os.getenv("ALPACA_SECRET_KEY", "")
+    from services.secrets_helper import get_secret
+    api_key = get_secret("ALPACA_API_KEY", "")
+    secret_key = get_secret("ALPACA_SECRET_KEY", "")
     has_secrets = api_key and secret_key
 
 if not has_secrets:

@@ -4,6 +4,7 @@ from datetime import datetime
 import requests
 from .base_provider import BaseMarketDataProvider, OHLCVRecord
 from .rate_limiter import RateLimiter
+from services.secrets_helper import get_secret
 logger = logging.getLogger(__name__)
 BASE_URL = "https://www.alphavantage.co/query"
 # Alpha Vantage function names by interval
@@ -46,7 +47,7 @@ class AlphaVantageProvider(BaseMarketDataProvider):
     """
     provider_name = "alpha_vantage"
     def __init__(self, api_key: str = None, calls_per_minute: int = 5):
-        self.api_key = api_key or os.getenv("ALPHA_VANTAGE_API_KEY")
+        self.api_key = api_key or get_secret("ALPHA_VANTAGE_API_KEY")
         if not self.api_key:
             raise ValueError(
                 "Alpha Vantage API key not provided. "

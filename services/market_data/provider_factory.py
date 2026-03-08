@@ -3,6 +3,7 @@ import logging
 from .base_provider import BaseMarketDataProvider
 from .yfinance_provider import YFinanceProvider
 from .alpha_vantage_provider import AlphaVantageProvider
+from services.secrets_helper import get_secret
 logger = logging.getLogger(__name__)
 PROVIDER_REGISTRY = {
     "yfinance": YFinanceProvider,
@@ -40,7 +41,7 @@ def get_default_provider() -> BaseMarketDataProvider:
     logger.warning(
         "[ProviderFactory] yfinance unavailable. Attempting Alpha Vantage fallback."
     )
-    av_key = os.getenv("ALPHA_VANTAGE_API_KEY")
+    av_key = get_secret("ALPHA_VANTAGE_API_KEY")
     if av_key:
         return get_provider("alpha_vantage", api_key=av_key)
     raise RuntimeError(

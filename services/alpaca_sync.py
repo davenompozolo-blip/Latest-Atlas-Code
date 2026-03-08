@@ -10,6 +10,7 @@ import argparse
 import logging
 import os
 from datetime import datetime, timezone
+from services.secrets_helper import get_secret
 from typing import Any, Dict, List
 
 from alpaca.trading.client import TradingClient
@@ -34,9 +35,9 @@ def _configure_logging(level: str = "INFO") -> None:
 
 def connect_to_alpaca() -> TradingClient:
     """Initialize and return Alpaca trading client from env credentials."""
-    api_key = os.getenv("ALPACA_API_KEY", "")
-    api_secret = os.getenv("ALPACA_API_SECRET", "")
-    paper = os.getenv("ALPACA_PAPER", "true").lower() == "true"
+    api_key = get_secret("ALPACA_API_KEY", "")
+    api_secret = get_secret("ALPACA_API_SECRET", "")
+    paper = get_secret("ALPACA_PAPER", "true").lower() == "true"
 
     if not api_key or not api_secret:
         raise RuntimeError("ALPACA_API_KEY and ALPACA_API_SECRET are required.")

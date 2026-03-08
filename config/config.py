@@ -26,6 +26,8 @@ except Exception:
 from dotenv import load_dotenv
 load_dotenv()
 
+from services.secrets_helper import get_secret
+
 # Risk-free rate (annual)
 RISK_FREE_RATE = 0.045  # 4.5%
 
@@ -35,11 +37,10 @@ MIN_WEIGHT = 0.05  # 5% minimum position size
 MAX_WEIGHT = 0.30  # 30% maximum position size
 
 # API Keys (load from environment or set here)
-import os
-ALPHA_VANTAGE_API_KEY = os.getenv('ALPHA_VANTAGE_API_KEY', '')
-FMP_API_KEY = os.getenv('FMP_API_KEY', '')
-SUPABASE_URL = os.getenv('SUPABASE_URL', '')
-SUPABASE_ANON_KEY = os.getenv('SUPABASE_ANON_KEY', '')
+ALPHA_VANTAGE_API_KEY = get_secret('ALPHA_VANTAGE_API_KEY', '')
+FMP_API_KEY = get_secret('FMP_API_KEY', '')
+SUPABASE_URL = get_secret('SUPABASE_URL', '')
+SUPABASE_ANON_KEY = get_secret('SUPABASE_ANON_KEY', '')
 
 # Market parameters
 MARKET_RETURN = 0.10  # 10% expected market return

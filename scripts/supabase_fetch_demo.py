@@ -9,12 +9,13 @@ import json
 import os
 import urllib.parse
 import urllib.request
+from services.secrets_helper import get_secret
 
 
 def fetch_rows(table: str, select_clause: str = '*', limit: int = 5):
     """Fetch rows from a Supabase table via PostgREST."""
-    supabase_url = os.getenv('SUPABASE_URL', '').rstrip('/')
-    supabase_anon_key = os.getenv('SUPABASE_ANON_KEY', '')
+    supabase_url = get_secret('SUPABASE_URL', '').rstrip('/')
+    supabase_anon_key = get_secret('SUPABASE_ANON_KEY', '')
 
     if not supabase_url or not supabase_anon_key:
         raise RuntimeError('SUPABASE_URL and SUPABASE_ANON_KEY are required.')
