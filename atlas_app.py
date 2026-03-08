@@ -419,20 +419,6 @@ else:
         st.stop()
 
 # ============================================================================
-# MARKET DATA SCHEDULER — start_scheduler() has a process-level guard
-# so calling it on every Streamlit rerun is safe; duplicate starts are no-ops.
-# ============================================================================
-try:
-    from services.supabase_client import get_supabase_client
-    from services.market_data import start_scheduler
-    _md_supabase = get_supabase_client()
-    start_scheduler(_md_supabase)
-    print("[BOOT] Market data scheduler running.", flush=True)
-except Exception as _sched_err:
-    print(f"[BOOT] Market data scheduler failed to start: {_sched_err}", flush=True)
-
-
-# ============================================================================
 # CHART THEME FUNCTION & COLORSCALES
 # ============================================================================
 
@@ -487,6 +473,22 @@ def main():
     print("[MAIN] ====== ENTERED main() ======", flush=True)
     import time as _t
     _main_start = _t.time()
+
+    # ── Market data scheduler ────────────────────────────────────────────────
+    # Must be inside main() so st.secrets (and get_secret()) are available.
+    # Session state guard means it only attempts once per browser session;
+    # start_scheduler() itself has a process-level guard against double-starts.
+    if not st.session_state.get("scheduler_started"):
+        try:
+            from services.supabase_client import get_supabase_client
+            from services.market_data import start_scheduler
+            _md_supabase = get_supabase_client()
+            start_scheduler(_md_supabase)
+            st.session_state["scheduler_started"] = True
+            print("[MAIN] Market data scheduler running.", flush=True)
+        except Exception as _sched_err:
+            print(f"[MAIN] Market data scheduler failed to start: {_sched_err}", flush=True)
+    # ────────────────────────────────────────────────────────────────────────
 
     # ========================================================================
     # HEALTH CHECK ENDPOINT - Proves app can render without loading data
