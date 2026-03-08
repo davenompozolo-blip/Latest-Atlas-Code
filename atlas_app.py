@@ -46,6 +46,23 @@ socket.setdefaulttimeout(15)  # 15 second timeout for ALL network operations
 import os
 os.environ['YFINANCE_TIMEOUT'] = '10'
 
+import streamlit as st
+
+# ── Streamlit Cloud secrets bootstrap ───────────────────────────────────────
+# Must run BEFORE any other imports that trigger config.py (which reads
+# os.getenv() at module level). On Streamlit Cloud, st.secrets is available
+# immediately; this loop copies all root-level secrets into os.environ so that
+# every downstream os.getenv() call works correctly.
+# On local dev, st.secrets reads from .streamlit/secrets.toml (if present),
+# and load_dotenv() in config.py handles the .env file as a fallback.
+try:
+    for _k, _v in st.secrets.items():
+        if isinstance(_v, str) and _k not in os.environ:
+            os.environ[_k] = _v
+except Exception:
+    pass  # Running locally without secrets.toml — load_dotenv() in config.py handles it
+# ─────────────────────────────────────────────────────────────────────────────
+
 # ============================================================================
 # EARLY BOOT DIAGNOSTICS - TRACE IMPORT FAILURES
 # ============================================================================
@@ -62,7 +79,6 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import streamlit as st
 print(f"[BOOT] Standard libs + streamlit OK", flush=True)
 
 # ============================================================================
