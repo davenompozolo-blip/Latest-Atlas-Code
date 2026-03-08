@@ -52,5 +52,8 @@ sendgrid>=6.10.0
 # Supabase client (market data ingestion service)
 supabase>=2.0.0
 
+# .env file loading — must come before first os.getenv() call at app startup
+python-dotenv>=1.0.0
+
 # Stripe Billing (Phase 9)
 stripe>=7.0.0

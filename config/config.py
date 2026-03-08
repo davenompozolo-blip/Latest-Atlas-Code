@@ -2,6 +2,8 @@
 ATLAS Configuration
 Central configuration for portfolio optimization and trading
 """
+from dotenv import load_dotenv
+load_dotenv()
 
 # Risk-free rate (annual)
 RISK_FREE_RATE = 0.045  # 4.5%
