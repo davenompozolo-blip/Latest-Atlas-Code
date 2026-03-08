@@ -363,9 +363,9 @@ class MarketDataIngestionService:
         If Alpha Vantage key is configured and the current provider is not
         already Alpha Vantage, return an Alpha Vantage instance.
         """
-        import os
+        from services.secrets_helper import get_secret
         from .alpha_vantage_provider import AlphaVantageProvider
-        av_key = os.getenv("ALPHA_VANTAGE_API_KEY")
+        av_key = get_secret("ALPHA_VANTAGE_API_KEY")
         if av_key and not isinstance(current, AlphaVantageProvider):
             return AlphaVantageProvider(api_key=av_key)
         return None

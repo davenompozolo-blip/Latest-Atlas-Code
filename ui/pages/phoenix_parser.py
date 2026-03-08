@@ -7,6 +7,8 @@ import logging
 import os
 import threading
 
+from services.secrets_helper import get_secret
+
 import pandas as pd
 import streamlit as st
 
@@ -221,8 +223,8 @@ def _render_status_dashboard() -> None:
         "Portfolio and price history sync automatically on page load."
     )
 
-    _env_key = os.getenv('ALPACA_API_KEY', '')
-    _env_paper = os.getenv('ALPACA_PAPER', 'true').lower() == 'true'
+    _env_key = get_secret('ALPACA_API_KEY', '')
+    _env_paper = get_secret('ALPACA_PAPER', 'true').lower() == 'true'
     _account_label = "Paper Trading" if _env_paper else "Live Trading"
     st.caption(
         f"Account type: **{_account_label}** | "
@@ -445,9 +447,9 @@ def render_phoenix_parser():
         st.caption("🦙 Data sourced from Alpaca REST API via AlpacaDataEngine | Engine stored in session state")
 
     # ── AUTO-SYNC: fire once per session when env credentials are configured ──
-    _env_alpaca_key = os.getenv('ALPACA_API_KEY')
-    _env_alpaca_secret = os.getenv('ALPACA_API_SECRET')
-    _env_alpaca_paper = os.getenv('ALPACA_PAPER', 'true').lower() == 'true'
+    _env_alpaca_key = get_secret('ALPACA_API_KEY')
+    _env_alpaca_secret = get_secret('ALPACA_API_SECRET')
+    _env_alpaca_paper = get_secret('ALPACA_PAPER', 'true').lower() == 'true'
     env_credentials_available = bool(_env_alpaca_key and _env_alpaca_secret)
 
     if env_credentials_available and not st.session_state.get('alpaca_synced'):

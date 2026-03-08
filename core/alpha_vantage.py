@@ -27,6 +27,7 @@ License: MIT
 
 import os
 import json
+from services.secrets_helper import get_secret
 import time
 import hashlib
 import sqlite3
@@ -271,7 +272,7 @@ class AlphaVantageClient:
             pass
 
         # Pattern 5: Environment variable
-        return os.getenv("ALPHA_VANTAGE_API_KEY")
+        return get_secret("ALPHA_VANTAGE_API_KEY")
 
     @property
     def is_configured(self) -> bool:

@@ -10,6 +10,7 @@ import logging
 import os
 import urllib.parse
 import urllib.request
+from services.secrets_helper import get_secret
 from typing import Any, Dict, Iterable, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -19,8 +20,8 @@ class SupabaseSyncClient:
     """Thin wrapper around Supabase REST API with idempotent upsert helpers."""
 
     def __init__(self, url: Optional[str] = None, key: Optional[str] = None):
-        supabase_url = (url or os.getenv("SUPABASE_URL", "")).rstrip("/")
-        supabase_key = key or os.getenv("SUPABASE_ANON_KEY", "")
+        supabase_url = (url or get_secret("SUPABASE_URL", "")).rstrip("/")
+        supabase_key = key or get_secret("SUPABASE_ANON_KEY", "")
 
         if not supabase_url or not supabase_key:
             raise RuntimeError("SUPABASE_URL and SUPABASE_ANON_KEY are required.")
@@ -204,8 +205,8 @@ def get_supabase_client():
     if _supabase_client is not None:
         return _supabase_client
     from supabase import create_client
-    url = os.getenv("SUPABASE_URL", "").rstrip("/")
-    key = os.getenv("SUPABASE_ANON_KEY", "")
+    url = get_secret("SUPABASE_URL", "").rstrip("/")
+    key = get_secret("SUPABASE_ANON_KEY", "")
     if not url or not key:
         raise RuntimeError("SUPABASE_URL and SUPABASE_ANON_KEY are required.")
     _supabase_client = create_client(url, key)
