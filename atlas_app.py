@@ -480,6 +480,18 @@ def main():
     # start_scheduler() itself has a process-level guard against double-starts.
     if not st.session_state.get("scheduler_started"):
         try:
+            from services.secrets_helper import get_secret as _gs_diag
+            _sb_url_found = bool(_gs_diag("SUPABASE_URL"))
+            _sb_key_found = bool(_gs_diag("SUPABASE_ANON_KEY"))
+            print(f"[MAIN] Secrets check — SUPABASE_URL present: {_sb_url_found}, SUPABASE_ANON_KEY present: {_sb_key_found}", flush=True)
+            try:
+                _secret_keys = list(st.secrets.keys())
+                print(f"[MAIN] st.secrets top-level keys: {_secret_keys}", flush=True)
+            except Exception as _sk_err:
+                print(f"[MAIN] st.secrets not readable: {_sk_err}", flush=True)
+        except Exception:
+            pass
+        try:
             from services.supabase_client import get_supabase_client
             from services.market_data import start_scheduler
             _md_supabase = get_supabase_client()
@@ -657,7 +669,7 @@ def main():
     # ============================================================================
     print(f"[MAIN] Building sidebar navigation... ({_t.time() - _main_start:.2f}s)", flush=True)
     try:
-        page = render_sidebar_navigation(default_page="🔥 Phoenix Parser")
+        page = render_sidebar_navigation(default_page="Phoenix Parser")
     except Exception as e:
         print(f"[MAIN] ERROR in sidebar navigation: {e}", flush=True)
         # Fallback sidebar if render_sidebar_navigation fails
