@@ -40,6 +40,22 @@ class YFinanceProvider(BaseMarketDataProvider):
         interval: str = "1d"
     ) -> list[OHLCVRecord]:
         """
+        Fetch OHLCV data from Yahoo Finance for a ticker over a date range.
+        
+        Parameters:
+            ticker (str): Ticker symbol (use '.JO' suffix for JSE tickers, e.g. 'NPN.JO').
+            start (str): Start date as 'YYYY-MM-DD' (inclusive).
+            end (str): End date as 'YYYY-MM-DD' (inclusive).
+            interval (str): Data frequency key (see INTERVAL_MAP); defaults to '1d'.
+        
+        Notes:
+            The function treats the provided `end` as inclusive when querying Yahoo Finance.
+            For daily-or-coarser intervals the record `date` stores only the 'YYYY-MM-DD' date;
+            for intraday intervals the record `date` stores a full ISO-8601 timestamp so
+            multiple bars on the same day do not collide.
+        
+        Returns:
+            list[OHLCVRecord]: OHLCV records for the requested range, sorted ascending by date/datetime.
         Fetch OHLCV data from Yahoo Finance.
         Args:
             ticker:   Ticker symbol. Use .JO suffix for JSE (e.g. 'NPN.JO').

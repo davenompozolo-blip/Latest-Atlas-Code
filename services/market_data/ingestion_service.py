@@ -21,6 +21,16 @@ DAILY_INTERVALS = {"1d", "1wk", "1mo"}
 # Trading calendar: simple weekday filter (extend later with pandas_market_calendars)
 def _generate_trading_dates(start: str, end: str) -> set[str]:
     """
+    Generate expected trading dates between two dates, inclusive.
+    
+    Start and end must be strings in YYYY-MM-DD format. Weekends are excluded; market holidays are not considered. This function is intended for daily/weekly/monthly gap detection only—intraday gap detection is unsupported.
+    
+    Parameters:
+        start (str): Start date as 'YYYY-MM-DD'.
+        end (str): End date as 'YYYY-MM-DD'.
+    
+    Returns:
+        set[str]: Set of trading date strings in 'YYYY-MM-DD' format between start and end, inclusive.
     Generate expected trading dates between start and end (inclusive).
     Uses a simple Mon-Fri filter. Extend with market-specific calendars
     (pandas_market_calendars) for JSE/NYSE holidays.
@@ -50,6 +60,11 @@ class MarketDataIngestionService:
     """
     def __init__(self, supabase_client, provider: Optional[BaseMarketDataProvider] = None):
         """
+        Initialize the ingestion service with a Supabase client and an optional explicit market data provider.
+        
+        Parameters:
+            supabase_client: Initialized Supabase client used for database operations.
+            provider: Optional explicit BaseMarketDataProvider to use for all syncs. If not provided, the active provider will be resolved at sync time to avoid binding to a provider during startup.
         Args:
             supabase_client: Initialised Supabase client from supabase_client.py
             provider:        Explicit provider to use. If None, provider selection
@@ -76,15 +91,17 @@ class MarketDataIngestionService:
         force_full: bool = False,
     ) -> int:
         """
-        Sync price history for a single ticker.
-        Args:
-            ticker:      Ticker symbol (e.g. 'AAPL', 'NPN.JO')
-            interval:    Data frequency. Default '1d'.
-            start:       Override start date (YYYY-MM-DD). Defaults to 5yr backfill.
-            end:         Override end date. Defaults to today.
-            force_full:  If True, re-fetch and overwrite all existing data.
+        Sync price history for a single ticker into the price_history table.
+        
+        Parameters:
+            ticker (str): Ticker symbol (e.g. "AAPL", "NPN.JO").
+            interval (str): Data frequency (e.g. "1d", "1wk"). Defaults to "1d".
+            start (Optional[str]): Override start date in YYYY-MM-DD; when omitted uses the service's default backfill start.
+            end (Optional[str]): Override end date in YYYY-MM-DD; when omitted uses today's date.
+            force_full (bool): If True, fetches and upserts the entire requested range rather than only missing dates.
+        
         Returns:
-            Number of records upserted.
+            int: Number of records upserted (0 if no data was fetched).
         """
         provider = self._resolve_provider()
         end_date = end or date.today().strftime("%Y-%m-%d")
@@ -133,12 +150,15 @@ class MarketDataIngestionService:
         force_full: bool = False,
     ) -> dict[str, int]:
         """
-        Sync price history for all assets currently held in a portfolio.
-        Args:
-            portfolio_id: Supabase portfolio UUID.
-            interval:     Data frequency. Default '1d'.
-            force_full:   If True, re-fetch all history for all tickers.
+        Synchronizes price history for every ticker currently held in the given portfolio.
+        
+        Parameters:
+            portfolio_id (str): Supabase portfolio UUID whose positions determine tickers to sync.
+            interval (str): Data frequency to sync (e.g., "1d", "1wk", "1mo"). Defaults to "1d".
+            force_full (bool): If True, re-fetches the entire available history for each ticker instead of only missing ranges.
+        
         Returns:
+            dict[str, int]: Mapping from ticker symbol to the number of records upserted for that ticker.
             Dict mapping ticker -> number of records upserted.
         """
         tickers = self._get_portfolio_tickers(portfolio_id)
@@ -168,8 +188,14 @@ class MarketDataIngestionService:
         force_full: bool = False,
     ) -> dict[str, int]:
         """
-        Sync price history for every asset in the assets table.
-        Intended for the nightly scheduled job.
+        Trigger a full sync of price history for every asset in the assets table (typically used by a nightly job).
+        
+        Parameters:
+            interval (str): OHLCV interval to sync (e.g., "1d", "1wk", "1mo").
+            force_full (bool): If True, fetch full ranges for each asset instead of only missing data.
+        
+        Returns:
+            dict[str, int]: Mapping from asset symbol (ticker) to the number of upserted records for that ticker.
         """
         assets = self._get_all_assets()
         logger.info(f"[Ingestion] Nightly sync: {len(assets)} assets.")
@@ -198,6 +224,12 @@ class MarketDataIngestionService:
         end: str,
     ) -> list[tuple[str, str]]:
         """
+        Compute contiguous date ranges of missing trading data for an asset between `start` and `end`.
+        
+        The function compares expected trading dates with existing records and consolidates consecutive missing trading dates into inclusive (start_date, end_date) tuples. Gaps separated by up to 3 calendar days are merged (to allow weekend bridges). If there are no missing trading dates, an empty list is returned.
+        
+        Returns:
+            list[tuple[str, str]]: List of (start_date, end_date) tuples in "YYYY-MM-DD" format representing inclusive fetch ranges for missing trading dates.
         Compare expected trading dates against what's already in Supabase.
         Returns a list of (start, end) tuples representing gaps.
         For daily data, this typically returns either:
@@ -239,6 +271,16 @@ class MarketDataIngestionService:
         end: str,
     ) -> set[str]:
         """
+        Retrieve existing `price_date` values for an asset within a date range.
+        
+        Parameters:
+            asset_id (str): The asset's unique identifier.
+            interval (str): The price interval (e.g., "1d", "1wk").
+            start (str): Inclusive start date in YYYY-MM-DD format.
+            end (str): Inclusive end date in YYYY-MM-DD format.
+        
+        Returns:
+            set[str]: Set of `price_date` strings (YYYY-MM-DD) present in the price_history table for the given asset, interval, and date range.
         Query Supabase for dates already in price_history.
         Raises on failure so the caller skips this asset instead of
         treating the entire window as missing and triggering a full backfill.
@@ -262,6 +304,15 @@ class MarketDataIngestionService:
         records: list[OHLCVRecord],
     ) -> int:
         """
+        Upsert OHLCV records for an asset into the price_history table.
+        
+        Each record is written as a row; conflicts on (asset_id, source, interval, price_date) update the existing row.
+        
+        Returns:
+        	int: Number of rows upserted.
+        
+        Raises:
+        	Exception: If the database upsert operation fails.
         Upsert a list of OHLCVRecord objects into price_history.
         Uses ON CONFLICT (asset_id, source, interval, price_date) DO UPDATE.
         """
@@ -295,6 +346,12 @@ class MarketDataIngestionService:
     # ------------------------------------------------------------------
     def _get_or_create_asset(self, ticker: str) -> str:
         """
+        Get or create an asset for the given ticker and return its asset id.
+        
+        Performs an atomic upsert on the assets table to avoid select-then-insert race conditions when concurrent syncs encounter the same new ticker.
+        
+        Returns:
+            asset_id (str): The id of the existing or newly created asset.
         Return the asset_id for a ticker, creating the asset record if
         it doesn't exist yet.
         Uses an atomic upsert to avoid the select-then-insert race condition
@@ -337,7 +394,12 @@ class MarketDataIngestionService:
             )
             return []
     def _get_all_assets(self) -> list[dict]:
-        """Return all assets from the assets table."""
+        """
+        Retrieve all assets' `id` and `symbol` from the assets table.
+        
+        Returns:
+            list[dict]: List of asset objects each containing `id` and `symbol`; returns an empty list if the query fails or no assets are found.
+        """
         try:
             response = self.supabase.table("assets").select("id, symbol").execute()
             return response.data or []
@@ -349,6 +411,12 @@ class MarketDataIngestionService:
     # ------------------------------------------------------------------
     def _resolve_provider(self) -> BaseMarketDataProvider:
         """
+        Resolve the active market data provider.
+        
+        Prefers the explicit provider supplied at construction; if none was provided, obtains the default provider at call time.
+        
+        Returns:
+            provider (BaseMarketDataProvider): The resolved market data provider instance.
         Return the active provider. Uses the explicit provider if one was
         supplied at construction time; otherwise resolves at call time so
         transient failures during startup don't lock in a bad state.
@@ -359,6 +427,10 @@ class MarketDataIngestionService:
         current: BaseMarketDataProvider,
     ) -> Optional[BaseMarketDataProvider]:
         """
+        Return an Alpha Vantage provider instance if an API key is configured and the current provider is not Alpha Vantage.
+        
+        Returns:
+            An `AlphaVantageProvider` configured with `ALPHA_VANTAGE_API_KEY` if the environment variable is present and `current` is not an Alpha Vantage provider, `None` otherwise.
         Return an alternative provider when the current one fails.
         If Alpha Vantage key is configured and the current provider is not
         already Alpha Vantage, return an Alpha Vantage instance.
@@ -371,6 +443,11 @@ class MarketDataIngestionService:
         return None
     @staticmethod
     def _default_start_date() -> str:
-        """Default backfill start: 5 years ago."""
+        """
+        Compute the default backfill start date string used for ingestion.
+        
+        Returns:
+            start_date (str): Date in YYYY-MM-DD format equal to today minus DEFAULT_BACKFILL_YEARS years.
+        """
         start = date.today() - timedelta(days=365 * DEFAULT_BACKFILL_YEARS)
         return start.strftime("%Y-%m-%d")
