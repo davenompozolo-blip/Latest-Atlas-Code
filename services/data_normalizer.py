@@ -139,7 +139,8 @@ def normalize_transaction(raw_transaction: Any, *, portfolio_id: str) -> Dict[st
         dict ready for Supabase `transactions` upsert.
     """
     source = _to_mapping(raw_transaction)
-    symbol = str(source.get("symbol", "")).upper().strip()
+    raw_sym = source.get("symbol")
+    symbol = str(raw_sym).upper().strip() if raw_sym is not None else ""
     if not symbol:
         raise ValueError("Transaction symbol is required.")
 
