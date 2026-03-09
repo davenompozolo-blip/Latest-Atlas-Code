@@ -8,6 +8,7 @@ import os
 import threading
 
 from services.secrets_helper import get_secret
+from services.auto_sync import PIPELINE_RESULT_PATH
 
 import pandas as pd
 import streamlit as st
@@ -16,7 +17,6 @@ from app.config import COLORS
 from utils.formatting import format_currency, format_percentage, format_large_number, add_arrow_indicator
 
 _pipeline_logger = logging.getLogger('atlas.phoenix_pipeline')
-_PIPELINE_RESULT_PATH = '/tmp/atlas_ingestion_result.json'
 
 
 def _run_supabase_pipeline(api_key: str, api_secret: str, paper: bool, tickers: list) -> None:
@@ -28,7 +28,7 @@ def _run_supabase_pipeline(api_key: str, api_secret: str, paper: bool, tickers: 
     Step 2: Fetch 5-year daily price history per ticker via
             services/market_data.MarketDataIngestionService.
 
-    Results are written to _PIPELINE_RESULT_PATH for the UI to pick up on
+    Results are written to PIPELINE_RESULT_PATH for the UI to pick up on
     the next Streamlit rerun.  All per-ticker errors are non-fatal.
     """
     result = {
@@ -59,7 +59,7 @@ def _run_supabase_pipeline(api_key: str, api_secret: str, paper: bool, tickers: 
         _pipeline_logger.error(
             "[Phoenix Pipeline] Supabase portfolio write failed: %s", exc, exc_info=True
         )
-        with open(_PIPELINE_RESULT_PATH, 'w') as f:
+        with open(PIPELINE_RESULT_PATH, 'w') as f:
             json.dump(result, f)
         return
 
@@ -93,119 +93,8 @@ def _run_supabase_pipeline(api_key: str, api_secret: str, paper: bool, tickers: 
         len(result['ingestion_results']),
         len(result['ingestion_errors']),
     )
-    with open(_PIPELINE_RESULT_PATH, 'w') as f:
+    with open(PIPELINE_RESULT_PATH, 'w') as f:
         json.dump(result, f)
-
-
-def _run_ingestion_only(tickers: list) -> None:
-    """
-    Background price-history ingestion for a list of tickers.
-
-    Used by auto-sync when env credentials are present — the Supabase portfolio
-    write is handled separately by _run_full_sync(); this function only runs the
-    market data step.  Results are written to _PIPELINE_RESULT_PATH for UI polling.
-    """
-    result = {
-        'supabase_stats': {},
-        'ingestion_results': {},
-        'ingestion_errors': {},
-        'error': None,
-    }
-    try:
-        from services.supabase_client import get_supabase_client
-        from services.market_data.ingestion_service import MarketDataIngestionService
-
-        supabase = get_supabase_client()
-        svc = MarketDataIngestionService(supabase)
-
-        for ticker in tickers:
-            try:
-                count = svc.sync_ticker(ticker)
-                result['ingestion_results'][ticker] = count
-            except Exception as exc:
-                result['ingestion_errors'][ticker] = str(exc)
-                _pipeline_logger.warning(
-                    "[Phoenix Pipeline] Auto-sync ingestion failed for %s: %s", ticker, exc
-                )
-    except Exception as exc:
-        result['ingestion_errors']['_setup'] = str(exc)
-        _pipeline_logger.error(
-            "[Phoenix Pipeline] Auto-sync ingestion setup failed: %s", exc, exc_info=True
-        )
-
-    _pipeline_logger.info(
-        "[Phoenix Pipeline] Auto-sync ingestion complete. results=%d, errors=%d",
-        len(result['ingestion_results']),
-        len(result['ingestion_errors']),
-    )
-    with open(_PIPELINE_RESULT_PATH, 'w') as f:
-        json.dump(result, f)
-
-
-def _run_full_sync(api_key: str, api_secret: str, paper: bool) -> None:
-    """
-    Auto-sync entry point when env credentials are configured.
-
-    1. Writes Alpaca credentials into os.environ for run_sync().
-    2. Calls run_sync() to write the portfolio snapshot to Supabase.
-    3. Fetches current positions, then starts _run_ingestion_only in a daemon
-       thread to backfill price history.
-
-    Must be called from the main Streamlit thread so that session_state writes
-    are safe.  The background ingestion thread writes results to a JSON file
-    that the UI polls on each rerun via _render_status_dashboard().
-    """
-    os.environ['ALPACA_API_KEY'] = api_key
-    os.environ['ALPACA_API_SECRET'] = api_secret
-    os.environ['ALPACA_PAPER'] = 'true' if paper else 'false'
-
-    # Step 1 — portfolio write
-    try:
-        from services.alpaca_sync import run_sync
-        stats = run_sync()
-        st.session_state['alpaca_synced'] = True
-        st.session_state['alpaca_sync_stats'] = stats
-        st.session_state['supabase_sync_status'] = 'success'
-        st.session_state['supabase_sync_message'] = (
-            f"Portfolio written to Supabase. "
-            f"({stats.get('assets_upserted', 0)} assets, "
-            f"{stats.get('positions_upserted', 0)} positions)"
-        )
-        _pipeline_logger.info(
-            "[Phoenix Pipeline] Auto-sync portfolio write complete: %s", stats
-        )
-    except Exception as exc:
-        # Mark synced=True so we don't retry every page load
-        st.session_state['alpaca_synced'] = True
-        st.session_state['supabase_sync_status'] = 'error'
-        st.session_state['supabase_sync_message'] = f"Supabase sync failed: {exc}"
-        _pipeline_logger.error(
-            "[Phoenix Pipeline] Auto-sync portfolio write failed: %s", exc, exc_info=True
-        )
-        return
-
-    # Step 2 — kick off ingestion in background
-    try:
-        from integrations.atlas_alpaca_integration import AlpacaAdapter
-        adapter = AlpacaAdapter(api_key, secret_key=api_secret, paper=paper)
-        positions_df = adapter.get_positions()
-        tickers = positions_df['Ticker'].tolist() if not positions_df.empty else []
-    except Exception as exc:
-        _pipeline_logger.warning(
-            "[Phoenix Pipeline] Could not fetch tickers for ingestion: %s", exc
-        )
-        tickers = []
-
-    if tickers:
-        st.session_state['ingestion_status'] = 'running'
-        st.session_state['ingestion_ticker_count'] = len(tickers)
-        if os.path.exists(_PIPELINE_RESULT_PATH):
-            os.remove(_PIPELINE_RESULT_PATH)
-        threading.Thread(
-            target=_run_ingestion_only,
-            args=(tickers,),
-            daemon=True,
-        ).start()
 
 
 def _render_status_dashboard() -> None:
@@ -214,7 +103,7 @@ def _render_status_dashboard() -> None:
 
     Replaces the manual credential form.  Displays:
     - Supabase portfolio write outcome
-    - Market data ingestion progress / results (polls _PIPELINE_RESULT_PATH)
+    - Market data ingestion progress / results (polls PIPELINE_RESULT_PATH)
     - Force Re-Sync button to re-trigger the full pipeline
     """
     st.markdown("#### 🤖 Auto-Sync Active")
@@ -250,9 +139,9 @@ def _render_status_dashboard() -> None:
 
     if _ing_status == 'running':
         # Poll the result file written by _run_ingestion_only
-        if os.path.exists(_PIPELINE_RESULT_PATH):
+        if os.path.exists(PIPELINE_RESULT_PATH):
             try:
-                with open(_PIPELINE_RESULT_PATH) as _f:
+                with open(PIPELINE_RESULT_PATH) as _f:
                     _result = json.load(_f)
                 _ing_results = _result.get('ingestion_results', {})
                 _ing_errors = _result.get('ingestion_errors', {})
@@ -260,7 +149,7 @@ def _render_status_dashboard() -> None:
                 st.session_state['ingestion_status'] = 'complete'
                 st.session_state['ingestion_total_records'] = _total
                 st.session_state['ingestion_error_count'] = len(_ing_errors)
-                os.remove(_PIPELINE_RESULT_PATH)
+                os.remove(PIPELINE_RESULT_PATH)
                 st.rerun()
             except Exception:
                 pass  # File may be mid-write; try again next rerun
@@ -289,8 +178,8 @@ def _render_status_dashboard() -> None:
     # --- Force Re-Sync ---
     st.markdown("---")
     if st.button("🔄 Force Re-Sync Now", key="force_resync_btn", type="secondary"):
-        for _k in ('alpaca_synced', 'supabase_sync_status', 'supabase_sync_message',
-                   'ingestion_status', 'ingestion_ticker_count',
+        for _k in ('alpaca_synced', 'alpaca_sync_attempts', 'supabase_sync_status',
+                   'supabase_sync_message', 'ingestion_status', 'ingestion_ticker_count',
                    'ingestion_total_records', 'ingestion_error_count'):
             st.session_state.pop(_k, None)
         st.rerun()
@@ -446,15 +335,10 @@ def render_phoenix_parser():
 
         st.caption("🦙 Data sourced from Alpaca REST API via AlpacaDataEngine | Engine stored in session state")
 
-    # ── AUTO-SYNC: fire once per session when env credentials are configured ──
+    # ── Check if env credentials are configured (for form/dashboard branching) ──
     _env_alpaca_key = get_secret('ALPACA_API_KEY')
     _env_alpaca_secret = get_secret('ALPACA_API_SECRET')
-    _env_alpaca_paper = get_secret('ALPACA_PAPER', 'true').lower() == 'true'
     env_credentials_available = bool(_env_alpaca_key and _env_alpaca_secret)
-
-    if env_credentials_available and not st.session_state.get('alpaca_synced'):
-        with st.spinner("🔄 Auto-syncing portfolio from Alpaca..."):
-            _run_full_sync(_env_alpaca_key, _env_alpaca_secret, _env_alpaca_paper)
 
     st.markdown("## 🔥 PHOENIX MODE")
 
@@ -1022,8 +906,8 @@ def render_phoenix_parser():
                                             st.session_state['ingestion_status'] = 'running'
                                             st.session_state['ingestion_ticker_count'] = len(_tickers)
                                             # Clear any stale result file from a previous run
-                                            if os.path.exists(_PIPELINE_RESULT_PATH):
-                                                os.remove(_PIPELINE_RESULT_PATH)
+                                            if os.path.exists(PIPELINE_RESULT_PATH):
+                                                os.remove(PIPELINE_RESULT_PATH)
                                             threading.Thread(
                                                 target=_run_supabase_pipeline,
                                                 args=(final_api_key, final_secret, use_paper, _tickers),
@@ -1097,9 +981,9 @@ def render_phoenix_parser():
 
         if _ingestion_status == 'running':
             # Check whether the background thread has finished
-            if os.path.exists(_PIPELINE_RESULT_PATH):
+            if os.path.exists(PIPELINE_RESULT_PATH):
                 try:
-                    with open(_PIPELINE_RESULT_PATH) as _f:
+                    with open(PIPELINE_RESULT_PATH) as _f:
                         _pipeline_result = json.load(_f)
 
                     # Pipeline error (Supabase write failed before ingestion)
@@ -1126,7 +1010,7 @@ def render_phoenix_parser():
                         st.session_state['ingestion_total_records'] = _total_records
                         st.session_state['ingestion_error_count'] = len(_ing_errors)
 
-                    os.remove(_PIPELINE_RESULT_PATH)
+                    os.remove(PIPELINE_RESULT_PATH)
                     st.rerun()
                 except Exception:
                     pass  # File may still be mid-write — try again next rerun
