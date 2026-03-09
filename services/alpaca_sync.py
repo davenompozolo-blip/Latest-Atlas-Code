@@ -15,7 +15,7 @@ from services.secrets_helper import get_secret
 from typing import Any, Dict, List
 
 from alpaca.trading.client import TradingClient
-from alpaca.trading.enums import OrderStatus
+from alpaca.trading.enums import QueryOrderStatus
 from alpaca.trading.requests import GetOrdersRequest
 
 from services.data_normalizer import (
@@ -26,6 +26,18 @@ from services.data_normalizer import (
 from services.supabase_client import create_supabase_sync_client
 
 logger = logging.getLogger(__name__)
+
+SYNC_LOG_PATH = "/tmp/atlas_sync_log.txt"
+
+
+def _log_to_file(msg: str) -> None:
+    """Append a timestamped line to the sync log file."""
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        with open(SYNC_LOG_PATH, "a") as _f:
+            _f.write(f"[{ts}] {msg}\n")
+    except Exception:
+        pass
 
 
 def _is_options_ticker(symbol: str) -> bool:
@@ -66,7 +78,7 @@ def fetch_data(client: TradingClient, order_limit: int = 500) -> Dict[str, Any]:
     # Paginate through ALL historical orders (Alpaca returns newest-first)
     print("[AlpacaSync] Fetching orders (paginated, status=ALL)...", flush=True)
     request = GetOrdersRequest(
-        status=OrderStatus.ALL,
+        status=QueryOrderStatus.ALL,
         limit=500,
         nested=False,
         after=None,
@@ -224,10 +236,14 @@ def normalize_data(raw_data: Dict[str, Any]) -> Dict[str, Any]:
 
 def write_to_supabase(normalized_data: Dict[str, Any]) -> Dict[str, int]:
     """Write normalized rows to Supabase using idempotent upserts."""
+    n_assets = len(normalized_data.get('assets', []))
+    n_positions = len(normalized_data.get('positions', []))
+    n_transactions = len(normalized_data.get('transactions', []))
     print(f"[AlpacaSync] Writing to Supabase: "
-          f"{len(normalized_data.get('assets', []))} assets, "
-          f"{len(normalized_data.get('positions', []))} positions, "
-          f"{len(normalized_data.get('transactions', []))} transactions", flush=True)
+          f"{n_assets} assets, "
+          f"{n_positions} positions, "
+          f"{n_transactions} transactions", flush=True)
+    _log_to_file(f"write_to_supabase START: {n_assets} assets, {n_positions} positions, {n_transactions} transactions")
 
     supabase = create_supabase_sync_client()
 
@@ -235,6 +251,7 @@ def write_to_supabase(normalized_data: Dict[str, Any]) -> Dict[str, int]:
     portfolio = supabase.upsert_portfolio(normalized_data["portfolio"])
     portfolio_id = portfolio["id"]
     print(f"[AlpacaSync]   Portfolio id: {portfolio_id}", flush=True)
+    _log_to_file(f"portfolio upserted: id={portfolio_id}")
 
     for row in normalized_data["positions"]:
         row["portfolio_id"] = portfolio_id
@@ -247,14 +264,17 @@ def write_to_supabase(normalized_data: Dict[str, Any]) -> Dict[str, int]:
     print(f"[AlpacaSync]   Supabase returned {len(assets)} assets after upsert", flush=True)
     asset_id_by_symbol = {asset["symbol"]: asset["id"] for asset in assets}
     print(f"[AlpacaSync]   asset_id_by_symbol has {len(asset_id_by_symbol)} entries", flush=True)
+    _log_to_file(f"assets: sent={len(normalized_data['assets'])}, returned={len(assets)}, id_map_size={len(asset_id_by_symbol)}")
 
     print(f"[AlpacaSync]   Upserting {len(normalized_data['positions'])} positions...", flush=True)
     positions = supabase.upsert_positions(normalized_data["positions"], asset_id_by_symbol)
     print(f"[AlpacaSync]   Supabase returned {len(positions)} positions after upsert", flush=True)
+    _log_to_file(f"positions: sent={len(normalized_data['positions'])}, returned={len(positions)}")
 
     print(f"[AlpacaSync]   Upserting {len(normalized_data['transactions'])} transactions...", flush=True)
     transactions = supabase.upsert_transactions(normalized_data["transactions"], asset_id_by_symbol)
     print(f"[AlpacaSync]   Supabase returned {len(transactions)} transactions after upsert", flush=True)
+    _log_to_file(f"transactions: sent={len(normalized_data['transactions'])}, returned={len(transactions)}")
 
     stats = {
         "assets_upserted": len(assets),
@@ -262,6 +282,7 @@ def write_to_supabase(normalized_data: Dict[str, Any]) -> Dict[str, int]:
         "transactions_upserted": len(transactions),
     }
     print(f"[AlpacaSync] Sync complete: {stats}", flush=True)
+    _log_to_file(f"SYNC COMPLETE: {stats}")
     logger.info("supabase_write_complete", extra=stats)
     return stats
 
@@ -269,10 +290,18 @@ def write_to_supabase(normalized_data: Dict[str, Any]) -> Dict[str, int]:
 def run_sync(order_limit: int = 200) -> Dict[str, int]:
     """Execute full sync flow: connect, fetch, normalize, write."""
     print("[AlpacaSync] ===== run_sync() started =====", flush=True)
+    # Truncate log for a fresh run so the UI shows the latest sync only
+    try:
+        with open(SYNC_LOG_PATH, "w") as _f:
+            _f.write(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}] run_sync() started\n")
+    except Exception:
+        pass
     client = connect_to_alpaca()
     print("[AlpacaSync] Connected to Alpaca", flush=True)
     raw_data = fetch_data(client, order_limit=order_limit)
+    _log_to_file(f"fetch_data complete: {len(raw_data.get('positions', []))} positions, {len(raw_data.get('orders', []))} orders")
     normalized = normalize_data(raw_data)
+    _log_to_file(f"normalize_data complete: {len(normalized.get('assets', []))} assets, {len(normalized.get('positions', []))} positions, {len(normalized.get('transactions', []))} transactions")
     result = write_to_supabase(normalized)
     print("[AlpacaSync] ===== run_sync() complete =====", flush=True)
     return result

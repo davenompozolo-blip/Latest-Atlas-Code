@@ -9,6 +9,7 @@ import threading
 
 from services.secrets_helper import get_secret
 from services.auto_sync import PIPELINE_RESULT_PATH
+from services.alpaca_sync import SYNC_LOG_PATH
 
 import pandas as pd
 import streamlit as st
@@ -183,6 +184,17 @@ def _render_status_dashboard() -> None:
                    'ingestion_total_records', 'ingestion_error_count'):
             st.session_state.pop(_k, None)
         st.rerun()
+
+    # --- Pipeline debug log ---
+    if os.path.exists(SYNC_LOG_PATH):
+        try:
+            with open(SYNC_LOG_PATH) as _lf:
+                _log_contents = _lf.read().strip()
+            if _log_contents:
+                with st.expander("🪵 Pipeline Debug Log", expanded=True):
+                    st.code(_log_contents, language="text")
+        except Exception:
+            pass
 
 
 def render_phoenix_parser():
