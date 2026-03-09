@@ -816,6 +816,22 @@ def create_enhanced_holdings_table(df):
     for idx, row in enhanced_df.iterrows():
         ticker = row['Ticker']
 
+        # Skip options tickers — yfinance has no data for OCC-format contracts
+        import re as _re
+        if _re.match(r'^[A-Z]{1,6}\d{6}[PC]\d{8}$', str(ticker)):
+            enhanced_df.at[idx, 'Asset Name'] = ticker
+            enhanced_df.at[idx, 'Sector'] = 'Options'
+            enhanced_df.at[idx, 'Beta'] = 0.0
+            enhanced_df.at[idx, 'Daily Change'] = 0.0
+            enhanced_df.at[idx, 'Daily Change %'] = 0.0
+            enhanced_df.at[idx, '5D Return %'] = 0.0
+            enhanced_df.at[idx, 'Volume'] = 0
+            enhanced_df.at[idx, 'Analyst Rating'] = 'N/A'
+            enhanced_df.at[idx, 'Price Target'] = None
+            enhanced_df.at[idx, 'Quality Score'] = 5.0
+            _skipped_count += 1
+            continue
+
         # Check time budget - skip remaining tickers if over budget
         _elapsed = _enrich_time.time() - _enrich_start
         if _elapsed > _ENRICH_BUDGET_SECONDS:
