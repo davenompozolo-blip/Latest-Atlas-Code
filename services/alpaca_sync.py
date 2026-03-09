@@ -115,9 +115,16 @@ def normalize_data(raw_data: Dict[str, Any]) -> Dict[str, Any]:
         for row in positions
     ]
 
+    def _order_has_symbol(order: Any) -> bool:
+        sym = getattr(order, "symbol", None)
+        if sym is None and isinstance(order, dict):
+            sym = order.get("symbol")
+        return bool(sym)
+
     normalized_transactions = [
         normalize_transaction(row, portfolio_id="__RESOLVE_AT_WRITE__")
         for row in orders
+        if _order_has_symbol(row)
     ]
 
     logger.info(

@@ -623,7 +623,7 @@ def main():
     def render_data_source_cards():
         """FIGMA REDESIGN: Clickable cards for data source selection."""
         if 'portfolio_data_source_mode' not in st.session_state:
-            st.session_state['portfolio_data_source_mode'] = "📁 Classic Mode (Excel Upload)"
+            st.session_state['portfolio_data_source_mode'] = "🦙 Alpaca Markets (Live Sync)"
 
         sources = [
             {"key": "📁 Classic Mode (Excel Upload)", "icon": "📁", "title": "Classic Mode", "desc": "Upload Excel files"},
