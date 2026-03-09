@@ -15,7 +15,7 @@ from services.secrets_helper import get_secret
 from typing import Any, Dict, List
 
 from alpaca.trading.client import TradingClient
-from alpaca.trading.enums import OrderStatus
+from alpaca.trading.enums import QueryOrderStatus
 from alpaca.trading.requests import GetOrdersRequest
 
 from services.data_normalizer import (
@@ -78,7 +78,7 @@ def fetch_data(client: TradingClient, order_limit: int = 500) -> Dict[str, Any]:
     # Paginate through ALL historical orders (Alpaca returns newest-first)
     print("[AlpacaSync] Fetching orders (paginated, status=ALL)...", flush=True)
     request = GetOrdersRequest(
-        status=OrderStatus.ALL,
+        status=QueryOrderStatus.ALL,
         limit=500,
         nested=False,
         after=None,
