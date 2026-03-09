@@ -173,13 +173,10 @@ def run_full_sync(api_key: str, api_secret: str, paper: bool) -> None:
         tickers = []
 
     if tickers:
-        st.session_state["ingestion_status"] = "running"
         st.session_state["ingestion_ticker_count"] = len(tickers)
         if os.path.exists(PIPELINE_RESULT_PATH):
             os.remove(PIPELINE_RESULT_PATH)
-        threading.Thread(
-            target=run_ingestion_only,
-            args=(tickers,),
-            daemon=True,
-        ).start()
-        _logger.info("Ingestion started in background for %d tickers.", len(tickers))
+        _logger.info("Running ingestion synchronously for %d tickers.", len(tickers))
+        run_ingestion_only(tickers)
+        st.session_state["ingestion_status"] = "complete"
+        _logger.info("Ingestion complete (synchronous).")
