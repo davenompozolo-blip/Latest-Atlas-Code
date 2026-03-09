@@ -51,7 +51,7 @@ def _fetch_yf_info_safe(ticker, timeout=10):
     """Safely fetch yfinance info with timeout protection."""
     def _do_fetch():
         stock = yf.Ticker(ticker)
-        return stock.info
+        return stock.info or {}  # yfinance 1.2+ returns None on 401 — normalise to {}
     return _run_with_timeout(_do_fetch, timeout_seconds=timeout, default={})
 
 
@@ -397,6 +397,8 @@ def fetch_market_data(ticker):
             # Use timeout-protected fetchers to prevent hangs
             info = _fetch_yf_info_safe(yahoo_ticker, timeout=10)
             hist = _fetch_yf_history_safe(yahoo_ticker, period="5d", timeout=10)
+
+        info = info or {}  # guard: yfinance may return None on 401/auth failure
 
         if hist is None or (isinstance(hist, pd.DataFrame) and hist.empty):
             return None

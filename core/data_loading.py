@@ -431,7 +431,7 @@ def get_gics_sector(ticker):
     # Priority 3: Fetch from yfinance and standardize
     try:
         stock = yf.Ticker(ticker_upper)
-        info = stock.info
+        info = stock.info or {}  # yfinance 1.2+ returns None on 401 — guard against NoneType
         sector = info.get('sector', 'Other')
 
         # Map to standard GICS
