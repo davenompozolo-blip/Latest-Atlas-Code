@@ -581,6 +581,25 @@ def main():
 
     print(f"[MAIN] Session state done ({_t.time() - _main_start:.2f}s)", flush=True)
 
+    # ── Supabase pipeline auto-sync ──────────────────────────────────────────
+    # Fires once per session on the very first main() call, regardless of which
+    # page the user lands on.  Retries up to 3× to tolerate transient boot
+    # failures; alpaca_synced is only set True on success so each attempt counts
+    # independently.  Ingestion continues in a background thread after return.
+    _sync_attempts = st.session_state.get("alpaca_sync_attempts", 0)
+    if not st.session_state.get("alpaca_synced") and _sync_attempts < 3:
+        from services.secrets_helper import get_secret as _gs
+        _ak = _gs("ALPACA_API_KEY")
+        _as = _gs("ALPACA_API_SECRET")
+        if _ak and _as:
+            st.session_state["alpaca_sync_attempts"] = _sync_attempts + 1
+            with st.spinner("🔄 Syncing portfolio to Supabase..."):
+                from services.auto_sync import run_full_sync as _rfs
+                _rfs(_ak, _as, _gs("ALPACA_PAPER", "true").lower() == "true")
+            print(f"[MAIN] Supabase pipeline sync attempt {_sync_attempts + 1} done "
+                  f"({_t.time() - _main_start:.2f}s)", flush=True)
+    # ────────────────────────────────────────────────────────────────────────
+
     # ============================================================================
     # ATLAS TERMINAL HEADER - FIGMA REDESIGN (JetBrains Mono)
     # ============================================================================
@@ -638,12 +657,12 @@ def main():
     # ============================================================================
     print(f"[MAIN] Building sidebar navigation... ({_t.time() - _main_start:.2f}s)", flush=True)
     try:
-        page = render_sidebar_navigation(default_page="Portfolio Home")
+        page = render_sidebar_navigation(default_page="🔥 Phoenix Parser")
     except Exception as e:
         print(f"[MAIN] ERROR in sidebar navigation: {e}", flush=True)
         # Fallback sidebar if render_sidebar_navigation fails
         with st.sidebar:
-            page = st.radio("Navigation", ["Portfolio Home", "Phoenix Parser", "Market Watch", "Stock Screener", "Valuation House"], label_visibility="collapsed")
+            page = st.radio("Navigation", ["🔥 Phoenix Parser", "🏠 Portfolio Home", "Market Watch", "Stock Screener", "Valuation House"], label_visibility="collapsed")
     print(f"[MAIN] Sidebar done, selected page: {page} ({_t.time() - _main_start:.2f}s)", flush=True)
 
     # Auth gate — if sidebar returned None, user is not authenticated
