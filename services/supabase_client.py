@@ -153,11 +153,14 @@ class SupabaseSyncClient:
     ) -> List[Dict[str, Any]]:
         """Upsert transactions idempotently by (portfolio_id, external_id)."""
         prepared: List[Dict[str, Any]] = []
+        skipped: List[str] = []
         for row in transactions:
             symbol = row.get("asset_symbol")
             asset_id = asset_id_by_symbol.get(symbol)
             if not asset_id:
-                raise ValueError(f"Missing asset id for symbol={symbol}")
+                print(f"[AlpacaSync][WARN] Skipping transaction — no asset_id for symbol={symbol}", flush=True)
+                skipped.append(str(symbol))
+                continue
 
             external_id = row.get("external_id")
             if not external_id:
@@ -187,6 +190,8 @@ class SupabaseSyncClient:
                 }
             )
 
+        print(f"[AlpacaSync] transactions: written={len(prepared)}, skipped={len(skipped)}"
+              + (f" (skipped: {skipped})" if skipped else ""), flush=True)
         if not prepared:
             return []
 
