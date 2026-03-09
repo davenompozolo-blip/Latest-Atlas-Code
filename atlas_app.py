@@ -612,6 +612,32 @@ def main():
                   f"({_t.time() - _main_start:.2f}s)", flush=True)
     # ────────────────────────────────────────────────────────────────────────
 
+    # ── Load Alpaca positions → portfolio_df (runs each render if missing) ───
+    # The Supabase sync writes data OUT but doesn't populate session state.
+    # Pages check st.session_state['portfolio_df'] first, so we must load it
+    # here whenever it's absent (fresh session, server restart, etc.)
+    if st.session_state.get('portfolio_df') is None or \
+            'portfolio_df' not in st.session_state:
+        try:
+            from services.secrets_helper import get_secret as _gspos
+            _pos_key = _gspos("ALPACA_API_KEY")
+            _pos_sec = _gspos("ALPACA_API_SECRET")
+            if _pos_key and _pos_sec:
+                from integrations.atlas_alpaca_integration import AlpacaAdapter
+                _pos_paper = _gspos("ALPACA_PAPER", "true").lower() == "true"
+                _pos_adapter = AlpacaAdapter(_pos_key, _pos_sec, paper=_pos_paper)
+                _pos_df = _pos_adapter.get_positions()
+                if _pos_df is not None and not _pos_df.empty:
+                    st.session_state['portfolio_df'] = _pos_df
+                    st.session_state['portfolio_source'] = 'alpaca'
+                    st.session_state['currency'] = 'USD'
+                    st.session_state['currency_symbol'] = '$'
+                    print(f"[MAIN] portfolio_df loaded from Alpaca "
+                          f"({len(_pos_df)} positions)", flush=True)
+        except Exception as _pos_err:
+            print(f"[MAIN] Alpaca positions load failed: {_pos_err}", flush=True)
+    # ────────────────────────────────────────────────────────────────────────
+
     # ============================================================================
     # ATLAS TERMINAL HEADER - FIGMA REDESIGN (JetBrains Mono)
     # ============================================================================
