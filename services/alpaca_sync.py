@@ -57,10 +57,14 @@ def connect_to_alpaca() -> TradingClient:
 
 def fetch_data(client: TradingClient, order_limit: int = 500) -> Dict[str, Any]:
     """Fetch account, positions, full order history, and asset names from Alpaca."""
+    print("[AlpacaSync] Fetching account...", flush=True)
     account = client.get_account()
+    print("[AlpacaSync] Fetching positions...", flush=True)
     positions = client.get_all_positions()
+    print(f"[AlpacaSync] Got {len(positions)} positions from Alpaca", flush=True)
 
     # Paginate through ALL historical orders (Alpaca returns newest-first)
+    print("[AlpacaSync] Fetching orders (paginated, status=ALL)...", flush=True)
     request = GetOrdersRequest(
         status=OrderStatus.ALL,
         limit=500,
@@ -69,17 +73,24 @@ def fetch_data(client: TradingClient, order_limit: int = 500) -> Dict[str, Any]:
         until=None,
     )
     all_orders: List[Any] = []
+    page_num = 0
     while True:
         page = client.get_orders(filter=request)
+        page_num += 1
         if not page:
+            print(f"[AlpacaSync]   Page {page_num}: empty — stopping pagination", flush=True)
             break
         all_orders.extend(page)
+        print(f"[AlpacaSync]   Page {page_num}: {len(page)} orders (running total: {len(all_orders)})", flush=True)
         if len(page) < 500:
             break
         # Advance pagination window: fetch orders older than the last one seen
         request.until = page[-1].submitted_at
 
+    print(f"[AlpacaSync] Got {len(all_orders)} total orders from Alpaca", flush=True)
+
     # Fetch real asset names for current positions
+    print(f"[AlpacaSync] Fetching asset names for {len(positions)} positions...", flush=True)
     asset_names: Dict[str, str] = {}
     for pos in positions:
         try:
@@ -89,6 +100,7 @@ def fetch_data(client: TradingClient, order_limit: int = 500) -> Dict[str, Any]:
                 asset_names[str(pos.symbol).upper()] = name
         except Exception:
             pass
+    print(f"[AlpacaSync] Got names for {len(asset_names)}/{len(positions)} positions", flush=True)
 
     logger.info(
         "alpaca_fetch_complete",
@@ -114,6 +126,7 @@ def normalize_data(raw_data: Dict[str, Any]) -> Dict[str, Any]:
     orders = raw_data["orders"]
     asset_names: Dict[str, str] = raw_data.get("asset_names", {})
 
+    print(f"[AlpacaSync] Normalizing: {len(positions)} positions, {len(orders)} orders", flush=True)
     sync_timestamp = datetime.now(timezone.utc)
 
     portfolio_row = {
@@ -132,6 +145,7 @@ def normalize_data(raw_data: Dict[str, Any]) -> Dict[str, Any]:
     }
 
     normalized_assets = normalize_assets_from_positions(positions)
+    print(f"[AlpacaSync]   Assets from positions: {len(normalized_assets)}", flush=True)
 
     # Enrich current-position assets with real names from the asset catalog
     for asset in normalized_assets:
@@ -140,12 +154,17 @@ def normalize_data(raw_data: Dict[str, Any]) -> Dict[str, Any]:
             asset["name"] = real_name
 
     # Include asset symbols appearing only in orders (skip options contracts)
+    orders_skipped_no_sym = 0
+    orders_skipped_options = 0
+    orders_added_as_asset = 0
     for order in orders:
         order_symbol = getattr(order, "symbol", "")
         if not order_symbol:
+            orders_skipped_no_sym += 1
             continue
         symbol = str(order_symbol).upper()
         if _is_options_ticker(symbol):
+            orders_skipped_options += 1
             continue
         if not any(asset["symbol"] == symbol for asset in normalized_assets):
             normalized_assets.append(
@@ -158,11 +177,17 @@ def normalize_data(raw_data: Dict[str, Any]) -> Dict[str, Any]:
                     "metadata": {"source": "alpaca_order"},
                 }
             )
+            orders_added_as_asset += 1
+
+    print(f"[AlpacaSync]   Orders: skipped {orders_skipped_no_sym} (no symbol), "
+          f"{orders_skipped_options} (options); added {orders_added_as_asset} new assets", flush=True)
+    print(f"[AlpacaSync]   Total assets after order enrichment: {len(normalized_assets)}", flush=True)
 
     normalized_positions = [
         normalize_position(row, portfolio_id="__RESOLVE_AT_WRITE__", as_of_timestamp=sync_timestamp)
         for row in positions
     ]
+    print(f"[AlpacaSync]   Normalized positions: {len(normalized_positions)}", flush=True)
 
     def _order_has_symbol(order: Any) -> bool:
         sym = getattr(order, "symbol", None)
@@ -175,6 +200,10 @@ def normalize_data(raw_data: Dict[str, Any]) -> Dict[str, Any]:
         for row in orders
         if _order_has_symbol(row)
     ]
+    print(f"[AlpacaSync]   Normalized transactions: {len(normalized_transactions)}", flush=True)
+
+    print(f"[AlpacaSync] After normalization: {len(normalized_assets)} assets, "
+          f"{len(normalized_positions)} positions, {len(normalized_transactions)} transactions", flush=True)
 
     logger.info(
         "normalize_complete",
@@ -195,10 +224,17 @@ def normalize_data(raw_data: Dict[str, Any]) -> Dict[str, Any]:
 
 def write_to_supabase(normalized_data: Dict[str, Any]) -> Dict[str, int]:
     """Write normalized rows to Supabase using idempotent upserts."""
+    print(f"[AlpacaSync] Writing to Supabase: "
+          f"{len(normalized_data.get('assets', []))} assets, "
+          f"{len(normalized_data.get('positions', []))} positions, "
+          f"{len(normalized_data.get('transactions', []))} transactions", flush=True)
+
     supabase = create_supabase_sync_client()
 
+    print("[AlpacaSync]   Upserting portfolio...", flush=True)
     portfolio = supabase.upsert_portfolio(normalized_data["portfolio"])
     portfolio_id = portfolio["id"]
+    print(f"[AlpacaSync]   Portfolio id: {portfolio_id}", flush=True)
 
     for row in normalized_data["positions"]:
         row["portfolio_id"] = portfolio_id
@@ -206,27 +242,40 @@ def write_to_supabase(normalized_data: Dict[str, Any]) -> Dict[str, int]:
     for row in normalized_data["transactions"]:
         row["portfolio_id"] = portfolio_id
 
+    print(f"[AlpacaSync]   Upserting {len(normalized_data['assets'])} assets...", flush=True)
     assets = supabase.upsert_assets(normalized_data["assets"])
+    print(f"[AlpacaSync]   Supabase returned {len(assets)} assets after upsert", flush=True)
     asset_id_by_symbol = {asset["symbol"]: asset["id"] for asset in assets}
+    print(f"[AlpacaSync]   asset_id_by_symbol has {len(asset_id_by_symbol)} entries", flush=True)
 
+    print(f"[AlpacaSync]   Upserting {len(normalized_data['positions'])} positions...", flush=True)
     positions = supabase.upsert_positions(normalized_data["positions"], asset_id_by_symbol)
+    print(f"[AlpacaSync]   Supabase returned {len(positions)} positions after upsert", flush=True)
+
+    print(f"[AlpacaSync]   Upserting {len(normalized_data['transactions'])} transactions...", flush=True)
     transactions = supabase.upsert_transactions(normalized_data["transactions"], asset_id_by_symbol)
+    print(f"[AlpacaSync]   Supabase returned {len(transactions)} transactions after upsert", flush=True)
 
     stats = {
         "assets_upserted": len(assets),
         "positions_upserted": len(positions),
         "transactions_upserted": len(transactions),
     }
+    print(f"[AlpacaSync] Sync complete: {stats}", flush=True)
     logger.info("supabase_write_complete", extra=stats)
     return stats
 
 
 def run_sync(order_limit: int = 200) -> Dict[str, int]:
     """Execute full sync flow: connect, fetch, normalize, write."""
+    print("[AlpacaSync] ===== run_sync() started =====", flush=True)
     client = connect_to_alpaca()
+    print("[AlpacaSync] Connected to Alpaca", flush=True)
     raw_data = fetch_data(client, order_limit=order_limit)
     normalized = normalize_data(raw_data)
-    return write_to_supabase(normalized)
+    result = write_to_supabase(normalized)
+    print("[AlpacaSync] ===== run_sync() complete =====", flush=True)
+    return result
 
 
 def _parse_args() -> argparse.Namespace:
