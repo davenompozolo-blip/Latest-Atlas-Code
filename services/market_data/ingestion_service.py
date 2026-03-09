@@ -9,11 +9,19 @@ Orchestrates the full market data pipeline for Atlas:
 Designed to be idempotent -- safe to run multiple times.
 """
 import logging
+import re
 from datetime import date, datetime, timedelta
 from typing import Optional
 from .base_provider import BaseMarketDataProvider, OHLCVRecord
 from .provider_factory import get_default_provider
 logger = logging.getLogger(__name__)
+
+
+def _is_options_ticker(symbol: str) -> bool:
+    """Return True if symbol looks like an options contract."""
+    if not symbol or not isinstance(symbol, str):
+        return True
+    return bool(re.match(r'^[A-Z]{1,6}\d{6}[PC]\d{8}$', symbol))
 # Default historical backfill window for new assets
 DEFAULT_BACKFILL_YEARS = 5
 # Intervals that are date-only (YYYY-MM-DD) vs timestamp-based
@@ -103,6 +111,9 @@ class MarketDataIngestionService:
         Returns:
             int: Number of records upserted (0 if no data was fetched).
         """
+        if _is_options_ticker(ticker):
+            logger.info(f"[Ingestion] Skipping options ticker: {ticker}")
+            return 0
         provider = self._resolve_provider()
         end_date = end or date.today().strftime("%Y-%m-%d")
         start_date = start or self._default_start_date()
@@ -118,6 +129,12 @@ class MarketDataIngestionService:
         if not missing_ranges:
             logger.info(f"[Ingestion] {ticker} is up to date. Nothing to fetch.")
             return 0
+        # Collapse all gaps into a single range to minimise yfinance API calls.
+        # yfinance already returns only trading days so fetching a wider range
+        # that covers all gaps costs nothing extra but avoids rate-limit issues
+        # from many small requests.
+        if len(missing_ranges) > 1:
+            missing_ranges = [(missing_ranges[0][0], missing_ranges[-1][1])]
         total_upserted = 0
         for range_start, range_end in missing_ranges:
             logger.info(
@@ -133,9 +150,16 @@ class MarketDataIngestionService:
                         f"[Ingestion] Primary provider failed for {ticker}: {fetch_err}. "
                         f"Retrying with {fallback.provider_name}."
                     )
-                    records = fallback.fetch_ohlcv(ticker, range_start, range_end, interval)
+                    try:
+                        records = fallback.fetch_ohlcv(ticker, range_start, range_end, interval)
+                    except Exception as fallback_err:
+                        logger.warning(
+                            f"[Ingestion] Fallback also failed for {ticker}: {fallback_err}. Skipping."
+                        )
+                        continue
                 else:
-                    raise
+                    logger.warning(f"[Ingestion] Skipping {ticker}: {fetch_err}")
+                    continue
             if records:
                 upserted = self._upsert_records(asset_id, records)
                 total_upserted += upserted
