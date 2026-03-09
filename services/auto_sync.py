@@ -25,11 +25,19 @@ PIPELINE_RESULT_PATH
 import json
 import logging
 import os
+import re
 import threading
 
 from services.secrets_helper import get_secret
 
 _logger = logging.getLogger("atlas.auto_sync")
+
+
+def _is_options_ticker(symbol: str) -> bool:
+    """Return True if symbol looks like an options contract (not a stock)."""
+    if not symbol or not isinstance(symbol, str):
+        return True
+    return bool(re.match(r'^[A-Z]{1,6}\d{6}[PC]\d{8}$', symbol))
 
 PIPELINE_RESULT_PATH = "/tmp/atlas_ingestion_result.json"
 
@@ -153,7 +161,13 @@ def run_full_sync(api_key: str, api_secret: str, paper: bool) -> None:
         from integrations.atlas_alpaca_integration import AlpacaAdapter
         adapter = AlpacaAdapter(api_key, secret_key=api_secret, paper=paper)
         positions_df = adapter.get_positions()
-        tickers = positions_df["Ticker"].tolist() if not positions_df.empty else []
+        raw_tickers = positions_df["Ticker"].tolist() if not positions_df.empty else []
+        tickers = [t for t in raw_tickers if not _is_options_ticker(t)]
+        if len(tickers) < len(raw_tickers):
+            _logger.info(
+                "Filtered %d options tickers from ingestion list.",
+                len(raw_tickers) - len(tickers),
+            )
     except Exception as exc:
         _logger.warning("Could not fetch tickers for ingestion: %s", exc)
         tickers = []

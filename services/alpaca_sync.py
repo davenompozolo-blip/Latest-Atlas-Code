@@ -9,11 +9,13 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import re
 from datetime import datetime, timezone
 from services.secrets_helper import get_secret
 from typing import Any, Dict, List
 
 from alpaca.trading.client import TradingClient
+from alpaca.trading.enums import OrderStatus
 from alpaca.trading.requests import GetOrdersRequest
 
 from services.data_normalizer import (
@@ -24,6 +26,13 @@ from services.data_normalizer import (
 from services.supabase_client import create_supabase_sync_client
 
 logger = logging.getLogger(__name__)
+
+
+def _is_options_ticker(symbol: str) -> bool:
+    """Return True if symbol looks like an options contract (not a stock)."""
+    if not symbol or not isinstance(symbol, str):
+        return True
+    return bool(re.match(r'^[A-Z]{1,6}\d{6}[PC]\d{8}$', symbol))
 
 
 def _configure_logging(level: str = "INFO") -> None:
@@ -46,17 +55,46 @@ def connect_to_alpaca() -> TradingClient:
     return TradingClient(api_key=api_key, secret_key=api_secret, paper=paper)
 
 
-def fetch_data(client: TradingClient, order_limit: int = 200) -> Dict[str, Any]:
-    """Fetch account, current positions, and latest orders from Alpaca."""
+def fetch_data(client: TradingClient, order_limit: int = 500) -> Dict[str, Any]:
+    """Fetch account, positions, full order history, and asset names from Alpaca."""
     account = client.get_account()
     positions = client.get_all_positions()
-    orders = client.get_orders(filter=GetOrdersRequest(limit=order_limit, nested=False))
+
+    # Paginate through ALL historical orders (Alpaca returns newest-first)
+    request = GetOrdersRequest(
+        status=OrderStatus.ALL,
+        limit=500,
+        nested=False,
+        after=None,
+        until=None,
+    )
+    all_orders: List[Any] = []
+    while True:
+        page = client.get_orders(filter=request)
+        if not page:
+            break
+        all_orders.extend(page)
+        if len(page) < 500:
+            break
+        # Advance pagination window: fetch orders older than the last one seen
+        request.until = page[-1].submitted_at
+
+    # Fetch real asset names for current positions
+    asset_names: Dict[str, str] = {}
+    for pos in positions:
+        try:
+            asset_obj = client.get_asset(pos.symbol)
+            name = getattr(asset_obj, "name", None)
+            if name:
+                asset_names[str(pos.symbol).upper()] = name
+        except Exception:
+            pass
 
     logger.info(
         "alpaca_fetch_complete",
         extra={
             "positions": len(positions),
-            "orders": len(orders),
+            "orders": len(all_orders),
             "account_id": str(account.id),
         },
     )
@@ -64,7 +102,8 @@ def fetch_data(client: TradingClient, order_limit: int = 200) -> Dict[str, Any]:
     return {
         "account": account,
         "positions": positions,
-        "orders": orders,
+        "orders": all_orders,
+        "asset_names": asset_names,
     }
 
 
@@ -73,6 +112,7 @@ def normalize_data(raw_data: Dict[str, Any]) -> Dict[str, Any]:
     account = raw_data["account"]
     positions = raw_data["positions"]
     orders = raw_data["orders"]
+    asset_names: Dict[str, str] = raw_data.get("asset_names", {})
 
     sync_timestamp = datetime.now(timezone.utc)
 
@@ -93,22 +133,31 @@ def normalize_data(raw_data: Dict[str, Any]) -> Dict[str, Any]:
 
     normalized_assets = normalize_assets_from_positions(positions)
 
-    # Include asset symbols appearing only in recent orders.
+    # Enrich current-position assets with real names from the asset catalog
+    for asset in normalized_assets:
+        real_name = asset_names.get(asset["symbol"])
+        if real_name:
+            asset["name"] = real_name
+
+    # Include asset symbols appearing only in orders (skip options contracts)
     for order in orders:
         order_symbol = getattr(order, "symbol", "")
-        if order_symbol:
-            symbol = str(order_symbol).upper()
-            if not any(asset["symbol"] == symbol for asset in normalized_assets):
-                normalized_assets.append(
-                    {
-                        "symbol": symbol,
-                        "name": symbol,
-                        "asset_class": "equity",
-                        "exchange": None,
-                        "currency": "USD",
-                        "metadata": {"source": "alpaca_order"},
-                    }
-                )
+        if not order_symbol:
+            continue
+        symbol = str(order_symbol).upper()
+        if _is_options_ticker(symbol):
+            continue
+        if not any(asset["symbol"] == symbol for asset in normalized_assets):
+            normalized_assets.append(
+                {
+                    "symbol": symbol,
+                    "name": asset_names.get(symbol, symbol),
+                    "asset_class": "equity",
+                    "exchange": None,
+                    "currency": "USD",
+                    "metadata": {"source": "alpaca_order"},
+                }
+            )
 
     normalized_positions = [
         normalize_position(row, portfolio_id="__RESOLVE_AT_WRITE__", as_of_timestamp=sync_timestamp)
