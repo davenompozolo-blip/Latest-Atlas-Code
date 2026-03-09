@@ -10,10 +10,23 @@ import logging
 import os
 import urllib.parse
 import urllib.request
+import uuid
+from datetime import date, datetime
 from services.secrets_helper import get_secret
 from typing import Any, Dict, Iterable, List, Optional
 
 logger = logging.getLogger(__name__)
+
+
+class _SafeEncoder(json.JSONEncoder):
+    """Encode UUID and datetime values that Alpaca SDK returns as objects."""
+
+    def default(self, o: Any) -> Any:
+        if isinstance(o, (uuid.UUID,)):
+            return str(o)
+        if isinstance(o, (datetime, date)):
+            return o.isoformat()
+        return super().default(o)
 
 
 class SupabaseSyncClient:
@@ -54,7 +67,7 @@ class SupabaseSyncClient:
 
         body = None
         if json_payload is not None:
-            body = json.dumps(json_payload).encode("utf-8")
+            body = json.dumps(json_payload, cls=_SafeEncoder).encode("utf-8")
 
         request = urllib.request.Request(url, data=body, headers=headers, method=method)
         with urllib.request.urlopen(request) as response:
