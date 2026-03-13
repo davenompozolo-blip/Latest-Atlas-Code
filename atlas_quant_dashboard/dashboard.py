@@ -16,7 +16,6 @@ from plotly.subplots import make_subplots
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from atlas_quant_dashboard.data.sample_data import generate_sample_portfolio
 from atlas_quant_dashboard.analytics import performance_metrics as pm
 from atlas_quant_dashboard.analytics import risk_metrics as rm
 from atlas_quant_dashboard.analytics import structure_metrics as sm
@@ -173,24 +172,18 @@ div[data-testid="stRadio"] > div > label > div:last-child {
 </style>
 """
 # ─── DATA LOADING ─────────────────────────────────────────────────────────────
-@st.cache_data(ttl=300, show_spinner=False)
-def load_sample_portfolio_data():
-    return generate_sample_portfolio()
-
 def load_portfolio_data(use_live: bool = False):
-    """Load portfolio data — live from Alpaca or sample."""
-    if use_live:
-        try:
-            from atlas_quant_dashboard.data.alpaca_adapter import load_alpaca_portfolio_data
-            data = load_alpaca_portfolio_data()
-            if data is not None:
-                st.session_state['_quant_data_source_active'] = 'live'
-                return data
-        except Exception as e:
-            print(f"[ATLAS] Live data unavailable, falling back to sample: {e}")
-            st.session_state['_quant_data_source_active'] = 'sample_fallback'
-    st.session_state['_quant_data_source_active'] = 'sample'
-    return load_sample_portfolio_data()
+    """Load portfolio data from Alpaca live source."""
+    try:
+        from atlas_quant_dashboard.data.alpaca_adapter import load_alpaca_portfolio_data
+        data = load_alpaca_portfolio_data()
+        if data is not None:
+            st.session_state['_quant_data_source_active'] = 'live'
+            return data
+    except Exception as e:
+        print(f"[ATLAS] Live data unavailable: {e}")
+    st.warning("Awaiting sync. Run Alpaca sync and refresh.")
+    st.stop()
 @st.cache_data(ttl=300, show_spinner=False)
 def compute_all_metrics(port_ret_values, bench_ret_values, asset_ret_values,
                          weights_values, _dates, asset_cols):
