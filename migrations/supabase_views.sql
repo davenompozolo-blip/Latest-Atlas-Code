@@ -14,6 +14,10 @@
 --   transactions  : portfolio_id, asset_id, transaction_type, quantity,
 --                   price, fees, transaction_date, external_id, notes, metadata
 --   assets        : id, symbol, name, asset_class, exchange, currency, metadata
+--
+-- NOTE: positions accumulates one snapshot row per (portfolio_id, asset_id,
+-- as_of_date) on each daily sync. All views use a latest_pos CTE that selects
+-- only the most-recent snapshot per asset to avoid duplicate rows.
 -- =============================================================================
 
 -- ---------------------------------------------------------------------------
@@ -21,7 +25,12 @@
 -- Portfolio-level position analytics with concentration and tail risk flags.
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE VIEW vw_portfolio_home AS
-WITH latest_prices AS (
+WITH latest_pos AS (
+    SELECT DISTINCT ON (asset_id)
+        asset_id, quantity, average_cost, market_value, as_of_date
+    FROM positions
+    ORDER BY asset_id, as_of_date DESC
+), latest_prices AS (
     SELECT DISTINCT ON (asset_id)
         asset_id,
         close AS current_price,
@@ -48,12 +57,12 @@ WITH latest_prices AS (
     GROUP BY asset_id
 ), nav AS (
     SELECT SUM(market_value) AS total_nav
-    FROM positions
+    FROM latest_pos
 ), hhi AS (
     SELECT
         SUM(POWER(market_value / NULLIF(nav.total_nav, 0), 2)) AS hhi_score,
         COUNT(*) AS n_positions
-    FROM positions
+    FROM latest_pos
     CROSS JOIN nav
 )
 SELECT
@@ -71,7 +80,7 @@ SELECT
     h.n_positions,
     CASE WHEN p.market_value / NULLIF(nav.total_nav, 0) > 0.10 THEN true ELSE false END AS is_concentrated,
     lp.price_date
-FROM positions p
+FROM latest_pos p
 JOIN assets a ON a.id = p.asset_id
 JOIN latest_prices lp ON lp.asset_id = p.asset_id
 JOIN stats s ON s.asset_id = p.asset_id
@@ -84,7 +93,12 @@ ORDER BY p.market_value DESC;
 -- Market regime detection, momentum scores, and mean reversion signals.
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE VIEW vw_quant_dashboard AS
-WITH ranked_prices AS (
+WITH latest_pos AS (
+    SELECT DISTINCT ON (asset_id)
+        asset_id
+    FROM positions
+    ORDER BY asset_id, as_of_date DESC
+), ranked_prices AS (
     SELECT
         asset_id,
         price_date,
@@ -156,10 +170,10 @@ SELECT
     vs.vol_20d * SQRT(252) AS annualised_vol_20d,
     vs.vol_60d * SQRT(252) AS annualised_vol_60d,
     mc.total_days AS trading_days_available
-FROM positions p
-JOIN assets a ON a.id = p.asset_id
-JOIN ma_calc mc ON mc.asset_id = p.asset_id
-JOIN vol_stats vs ON vs.asset_id = p.asset_id
+FROM latest_pos lp
+JOIN assets a ON a.id = lp.asset_id
+JOIN ma_calc mc ON mc.asset_id = lp.asset_id
+JOIN vol_stats vs ON vs.asset_id = lp.asset_id
 ORDER BY mc.current_price / NULLIF(mc.ma_50, 0) DESC;
 
 -- ---------------------------------------------------------------------------
@@ -167,7 +181,12 @@ ORDER BY mc.current_price / NULLIF(mc.ma_50, 0) DESC;
 -- Marginal volatility contribution per position.
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE VIEW vw_risk_analysis AS
-WITH returns AS (
+WITH latest_pos AS (
+    SELECT DISTINCT ON (asset_id)
+        asset_id, quantity, average_cost, market_value, as_of_date
+    FROM positions
+    ORDER BY asset_id, as_of_date DESC
+), returns AS (
     SELECT
         ph.asset_id,
         ph.price_date,
@@ -188,7 +207,7 @@ WITH returns AS (
     WHERE r IS NOT NULL
     GROUP BY asset_id
 ), nav AS (
-    SELECT SUM(market_value) AS total_nav FROM positions
+    SELECT SUM(market_value) AS total_nav FROM latest_pos
 )
 SELECT
     a.symbol,
@@ -206,7 +225,7 @@ SELECT
         WHEN v.annual_vol > 0.20 THEN 'Moderate Risk'
         ELSE 'Low Risk'
     END AS risk_tier
-FROM positions p
+FROM latest_pos p
 JOIN assets a ON a.id = p.asset_id
 JOIN vol_per_position v ON v.asset_id = p.asset_id
 CROSS JOIN nav
@@ -287,12 +306,17 @@ ORDER BY annualised_return DESC NULLS LAST;
 -- Single-row ATLAS Health Score, Sortino ratio, portfolio VaR.
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE VIEW vw_command_centre AS
-WITH daily_returns AS (
+WITH latest_pos AS (
+    SELECT DISTINCT ON (asset_id)
+        asset_id, quantity, average_cost, market_value, as_of_date
+    FROM positions
+    ORDER BY asset_id, as_of_date DESC
+), daily_returns AS (
     SELECT
         ph.price_date,
         SUM(ph.close * p.quantity) AS nav
     FROM price_history ph
-    JOIN positions p ON p.asset_id = ph.asset_id
+    JOIN latest_pos p ON p.asset_id = ph.asset_id
     WHERE ph.interval = '1d'
     GROUP BY ph.price_date
     ORDER BY ph.price_date
@@ -314,11 +338,11 @@ WITH daily_returns AS (
     FROM nav_returns
     WHERE r IS NOT NULL
 ), current_nav AS (
-    SELECT SUM(market_value) AS nav FROM positions
+    SELECT SUM(market_value) AS nav FROM latest_pos
 ), position_count AS (
-    SELECT COUNT(*) AS n FROM positions
+    SELECT COUNT(*) AS n FROM latest_pos
 ), total_cost AS (
-    SELECT SUM(average_cost * quantity) AS total_invested FROM positions
+    SELECT SUM(average_cost * quantity) AS total_invested FROM latest_pos
 )
 SELECT
     cn.nav AS portfolio_nav,

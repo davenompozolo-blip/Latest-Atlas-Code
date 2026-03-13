@@ -252,8 +252,8 @@ def render_risk_analysis():
         portfolio_data = load_portfolio_data()
 
     if portfolio_data is None or (isinstance(portfolio_data, pd.DataFrame) and portfolio_data.empty):
-        st.warning("No portfolio data available.")
-        st.stop()
+        st.warning("No portfolio data available. Ensure Alpaca sync has completed.")
+        return
 
     # Don't wrap in pd.DataFrame() - it destroys attrs
     df = portfolio_data if isinstance(portfolio_data, pd.DataFrame) else pd.DataFrame(portfolio_data)
@@ -267,8 +267,12 @@ def render_risk_analysis():
         benchmark_returns = calculate_benchmark_returns(selected_benchmark, start_date, end_date)
 
         if not is_valid_series(portfolio_returns):
-            st.warning("Insufficient data")
-            st.stop()
+            st.warning(
+                "Insufficient return data to compute risk metrics. "
+                "This may be due to rate limits on market data. "
+                "Supabase risk data is shown above."
+            )
+            return
         sharpe = calculate_sharpe_ratio(portfolio_returns)
         sortino = calculate_sortino_ratio(portfolio_returns)
         calmar = calculate_calmar_ratio(portfolio_returns)

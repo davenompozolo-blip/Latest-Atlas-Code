@@ -1054,6 +1054,8 @@ def is_option_ticker(ticker):
     Detect if ticker is an option symbol
     Options typically have format: TICKER[DATE][TYPE][STRIKE]
     Examples: AU2520F50, META2405D482.5, AAPL240119C150
+    OCC standard: SYMBOL(1-5) + YYMMDD(6) + C/P(1) + STRIKE(8)
+    e.g. GDX260320P00098000
     """
     import re
 
@@ -1064,6 +1066,12 @@ def is_option_ticker(ticker):
     # Specific known options to exclude
     known_options = ['AU2520F50', 'META2405D482.5']
     if ticker.upper() in known_options:
+        return True
+
+    # OCC standard format: 1-5 letters + 6-digit date (YYMMDD) + C/P + 8-digit strike
+    # e.g. GDX260320P00098000, AAPL240119C00150000
+    occ_pattern = r'^[A-Z]{1,5}\d{6}[CP]\d{8}$'
+    if re.match(occ_pattern, ticker.upper()):
         return True
 
     # General option pattern detection
