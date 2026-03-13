@@ -621,7 +621,11 @@ def render_portfolio_deep_dive():
                                                      datetime.now() - timedelta(days=252),
                                                      datetime.now())
                     if hist_data is not None and len(hist_data) > 0:
-                        returns_data[ticker] = hist_data['Close'].pct_change().dropna()
+                        close_col = hist_data['Close']
+                        # yfinance may return a multi-column DataFrame for Close; squeeze to Series
+                        if isinstance(close_col, pd.DataFrame):
+                            close_col = close_col.iloc[:, 0]
+                        returns_data[ticker] = close_col.squeeze().pct_change().dropna()
 
                 # Create returns dataframe
                 returns_df = pd.DataFrame(returns_data)
