@@ -17,8 +17,8 @@ def render_quant_dashboard():
     quant_df = fetch_view("vw_quant_dashboard")
 
     if quant_df.empty:
-        st.warning("No portfolio data available. Ensure Alpaca sync has completed.")
-        st.stop()
+        st.warning("No portfolio data available. Ensure Alpaca sync has completed and the Supabase views have been created.")
+        return
 
     # ── Regime Overview ──────────────────────────────────────────────────────
     col1, col2, col3 = st.columns(3)

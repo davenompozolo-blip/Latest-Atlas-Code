@@ -29,5 +29,13 @@ def fetch_view(view_name: str) -> pd.DataFrame:
         result = supabase.table(view_name).select("*").execute()
         return pd.DataFrame(result.data) if result.data else pd.DataFrame()
     except Exception as e:
-        st.error(f"[ATLAS] Failed to load {view_name}: {e}")
+        err_str = str(e)
+        # PGRST205 = view not yet created in Supabase schema cache
+        if "PGRST205" in err_str or "schema cache" in err_str:
+            st.warning(
+                f"**{view_name}** not found in Supabase. "
+                "Run `migrations/supabase_views.sql` in the Supabase SQL Editor to create the analytics views."
+            )
+        else:
+            st.warning(f"[ATLAS] Could not load {view_name}. Check Supabase connection.")
         return pd.DataFrame()

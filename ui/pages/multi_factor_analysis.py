@@ -34,7 +34,12 @@ def render_multi_factor_analysis():
 
     st.markdown("---")
 
-    portfolio_data = load_portfolio_data()
+    # Prefer live session-state portfolio (Alpaca / Easy Equities) over stored data
+    if 'portfolio_df' in st.session_state and st.session_state['portfolio_df'] is not None \
+            and len(st.session_state['portfolio_df']) > 0:
+        portfolio_data = st.session_state['portfolio_df']
+    else:
+        portfolio_data = load_portfolio_data()
 
     if portfolio_data is None or (isinstance(portfolio_data, pd.DataFrame) and portfolio_data.empty):
         st.warning("⚠️ No portfolio data.")
