@@ -46,6 +46,8 @@ socket.setdefaulttimeout(15)  # 15 second timeout for ALL network operations
 import os
 os.environ['YFINANCE_TIMEOUT'] = '10'
 
+import streamlit as st
+
 # ============================================================================
 # EARLY BOOT DIAGNOSTICS - TRACE IMPORT FAILURES
 # ============================================================================
@@ -62,7 +64,6 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import streamlit as st
 print(f"[BOOT] Standard libs + streamlit OK", flush=True)
 
 # ============================================================================
@@ -478,6 +479,34 @@ def main():
     import time as _t
     _main_start = _t.time()
 
+    # ── Market data scheduler ────────────────────────────────────────────────
+    # Must be inside main() so st.secrets (and get_secret()) are available.
+    # Session state guard means it only attempts once per browser session;
+    # start_scheduler() itself has a process-level guard against double-starts.
+    if not st.session_state.get("scheduler_started"):
+        try:
+            from services.secrets_helper import get_secret as _gs_diag
+            _sb_url_found = bool(_gs_diag("SUPABASE_URL"))
+            _sb_key_found = bool(_gs_diag("SUPABASE_ANON_KEY"))
+            print(f"[MAIN] Secrets check — SUPABASE_URL present: {_sb_url_found}, SUPABASE_ANON_KEY present: {_sb_key_found}", flush=True)
+            try:
+                _secret_keys = list(st.secrets.keys())
+                print(f"[MAIN] st.secrets top-level keys: {_secret_keys}", flush=True)
+            except Exception as _sk_err:
+                print(f"[MAIN] st.secrets not readable: {_sk_err}", flush=True)
+        except Exception:
+            pass
+        try:
+            from services.supabase_client import get_supabase_client
+            from services.market_data import start_scheduler
+            _md_supabase = get_supabase_client()
+            start_scheduler(_md_supabase)
+            st.session_state["scheduler_started"] = True
+            print("[MAIN] Market data scheduler running.", flush=True)
+        except Exception as _sched_err:
+            print(f"[MAIN] Market data scheduler failed to start: {_sched_err}", flush=True)
+    # ────────────────────────────────────────────────────────────────────────
+
     # ========================================================================
     # HEALTH CHECK ENDPOINT - Proves app can render without loading data
     # Test with: https://your-app.streamlit.app/?health=check
@@ -511,6 +540,51 @@ def main():
         st.session_state['target_leverage'] = 1.0  # Default no leverage
     print(f"[MAIN] Session state done ({_t.time() - _main_start:.2f}s)", flush=True)
 
+    # ── Supabase pipeline auto-sync ──────────────────────────────────────────
+    # Fires once per session on the very first main() call, regardless of which
+    # page the user lands on.  Retries up to 3× to tolerate transient boot
+    # failures; alpaca_synced is only set True on success so each attempt counts
+    # independently.  Ingestion continues in a background thread after return.
+    _sync_attempts = st.session_state.get("alpaca_sync_attempts", 0)
+    if not st.session_state.get("alpaca_synced") and _sync_attempts < 3:
+        from services.secrets_helper import get_secret as _gs
+        _ak = _gs("ALPACA_API_KEY")
+        _as = _gs("ALPACA_API_SECRET")
+        if _ak and _as:
+            st.session_state["alpaca_sync_attempts"] = _sync_attempts + 1
+            with st.spinner("🔄 Syncing portfolio to Supabase..."):
+                from services.auto_sync import run_full_sync as _rfs
+                _rfs(_ak, _as, _gs("ALPACA_PAPER", "true").lower() == "true")
+            print(f"[MAIN] Supabase pipeline sync attempt {_sync_attempts + 1} done "
+                  f"({_t.time() - _main_start:.2f}s)", flush=True)
+    # ────────────────────────────────────────────────────────────────────────
+
+    # ── Load Alpaca positions → portfolio_df (runs each render if missing) ───
+    # The Supabase sync writes data OUT but doesn't populate session state.
+    # Pages check st.session_state['portfolio_df'] first, so we must load it
+    # here whenever it's absent (fresh session, server restart, etc.)
+    if st.session_state.get('portfolio_df') is None or \
+            'portfolio_df' not in st.session_state:
+        try:
+            from services.secrets_helper import get_secret as _gspos
+            _pos_key = _gspos("ALPACA_API_KEY")
+            _pos_sec = _gspos("ALPACA_API_SECRET")
+            if _pos_key and _pos_sec:
+                from integrations.atlas_alpaca_integration import AlpacaAdapter
+                _pos_paper = _gspos("ALPACA_PAPER", "true").lower() == "true"
+                _pos_adapter = AlpacaAdapter(_pos_key, _pos_sec, paper=_pos_paper)
+                _pos_df = _pos_adapter.get_positions()
+                if _pos_df is not None and not _pos_df.empty:
+                    st.session_state['portfolio_df'] = _pos_df
+                    st.session_state['portfolio_source'] = 'alpaca'
+                    st.session_state['currency'] = 'USD'
+                    st.session_state['currency_symbol'] = '$'
+                    print(f"[MAIN] portfolio_df loaded from Alpaca "
+                          f"({len(_pos_df)} positions)", flush=True)
+        except Exception as _pos_err:
+            print(f"[MAIN] Alpaca positions load failed: {_pos_err}", flush=True)
+    # ────────────────────────────────────────────────────────────────────────
+
     # ============================================================================
     # ATLAS TERMINAL HEADER - FIGMA REDESIGN (JetBrains Mono)
     # ============================================================================
@@ -522,7 +596,7 @@ def main():
     def render_data_source_cards():
         """FIGMA REDESIGN: Clickable cards for data source selection."""
         if 'portfolio_data_source_mode' not in st.session_state:
-            st.session_state['portfolio_data_source_mode'] = "📁 Classic Mode (Excel Upload)"
+            st.session_state['portfolio_data_source_mode'] = "🦙 Alpaca Markets (Live Sync)"
 
         sources = [
             {"key": "📁 Classic Mode (Excel Upload)", "icon": "📁", "title": "Classic Mode", "desc": "Upload Excel files"},
@@ -568,12 +642,12 @@ def main():
     # ============================================================================
     print(f"[MAIN] Building sidebar navigation... ({_t.time() - _main_start:.2f}s)", flush=True)
     try:
-        page = render_sidebar_navigation(default_page="Portfolio Home")
+        page = render_sidebar_navigation(default_page="Phoenix Parser")
     except Exception as e:
         print(f"[MAIN] ERROR in sidebar navigation: {e}", flush=True)
         # Fallback sidebar if render_sidebar_navigation fails
         with st.sidebar:
-            page = st.radio("Navigation", ["Portfolio Home", "Phoenix Parser", "Market Watch", "Stock Screener", "Valuation House"], label_visibility="collapsed")
+            page = st.radio("Navigation", ["🔥 Phoenix Parser", "🏠 Portfolio Home", "Market Watch", "Stock Screener", "Valuation House"], label_visibility="collapsed")
     print(f"[MAIN] Sidebar done, selected page: {page} ({_t.time() - _main_start:.2f}s)", flush=True)
 
     # Auth gate — if sidebar returned None, user is not authenticated

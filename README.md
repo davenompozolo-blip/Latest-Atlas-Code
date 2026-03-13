@@ -13,60 +13,90 @@ This repository now includes Supabase scaffolding for persistent portfolio data 
   - `positions`
   - `transactions`
   - `price_history`
-- `services/supabaseClient.js` as a modular Supabase client initializer.
-- `services/portfolioQueries.js` with example query helpers for:
-  - fetch portfolios
-  - fetch positions for a portfolio
+- JavaScript modules:
+  - `services/supabaseClient.js`
+  - `services/portfolioQueries.js`
+  - `services/portfolioDataService.js`
+- Python Alpaca ingestion modules:
+  - `services/supabase_client.py`
+  - `services/data_normalizer.py`
+  - `services/alpaca_sync.py`
 - Environment variable support in `config/config.py` for:
   - `SUPABASE_URL`
   - `SUPABASE_ANON_KEY`
 
 ## Setup
 
-### 1. Install Supabase CLI
-
-Install the Supabase CLI in your local environment (examples):
-
-- macOS (Homebrew): `brew install supabase/tap/supabase`
-- npm: `npm install supabase --save-dev`
-- Other options: https://supabase.com/docs/guides/cli
-
-### 2. Initialize / verify Supabase project files
-
-If starting fresh:
+### 1. Install dependencies
 
 ```bash
-supabase init
+pip install -r requirements.txt
+npm install @supabase/supabase-js
 ```
 
-In this repo, the scaffold is already present under `supabase/` with config and migrations.
-
-### 3. Configure environment variables
-
-Set the following in your environment or local `.env` (never commit secrets):
+### 2. Configure environment variables
 
 ```bash
 SUPABASE_URL="https://YOUR_PROJECT_ID.supabase.co"
 SUPABASE_ANON_KEY="YOUR_SUPABASE_ANON_PUBLIC_KEY"
+ALPACA_API_KEY="YOUR_ALPACA_KEY"
+ALPACA_API_SECRET="YOUR_ALPACA_SECRET"
+ALPACA_PAPER="true"
 ```
 
-### 4. Run Supabase locally and apply migrations
+### 3. Apply migrations in Supabase
+
+Apply `supabase/migrations/20260306211500_initial_portfolio_schema.sql` via Supabase SQL Editor or deployment pipeline.
+
+## Python Alpaca → Supabase pipeline
+
+Run manually:
 
 ```bash
-supabase start
-supabase db reset
+python -m services.alpaca_sync --order-limit 200 --log-level INFO
 ```
 
-### 5. Use the modular query helpers
+Pipeline stages:
 
-```javascript
-import { fetchPortfolios, fetchPositionsForPortfolio } from './services/portfolioQueries';
+1. `connect_to_alpaca()`
+2. `fetch_data()` (account, positions, orders)
+3. `normalize_data()`
+4. `write_to_supabase()`
 
-const portfolios = await fetchPortfolios();
-const positions = await fetchPositionsForPortfolio(portfolios[0].id);
+### Idempotency strategy
+
+- Portfolios: upsert by `external_id`.
+- Assets: upsert by `symbol`.
+- Positions: upsert by `(portfolio_id, asset_id, as_of_date)`.
+- Transactions: upsert by `(portfolio_id, external_id)`; synthetic external IDs are generated when absent.
+
+### Normalization guarantees
+
+`services/data_normalizer.py` enforces:
+
+- uppercase symbols
+- numeric quantities/prices
+- ISO 8601 timestamps
+
+## Manual verification scripts
+
+### Node demo (insert + fetch with example rows)
+
+```bash
+SUPABASE_URL="https://YOUR_PROJECT_ID.supabase.co" \
+SUPABASE_ANON_KEY="YOUR_SUPABASE_ANON_PUBLIC_KEY" \
+node scripts/supabaseDemo.mjs
+```
+
+### Python demo (read rows from Supabase REST API)
+
+```bash
+SUPABASE_URL="https://YOUR_PROJECT_ID.supabase.co" \
+SUPABASE_ANON_KEY="YOUR_SUPABASE_ANON_PUBLIC_KEY" \
+python scripts/supabase_fetch_demo.py
 ```
 
 ## Notes
 
-- Supabase integration is intentionally modular so it can be extended later without disrupting existing Atlas services.
+- Supabase integration is modular so Claude Code can extend it without refactoring existing Atlas analytics modules.
 - Existing Alpaca sync functionality was not modified.

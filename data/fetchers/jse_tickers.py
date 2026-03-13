@@ -1,13 +1,15 @@
 """
 ATLAS Terminal — JSE Ticker Normalisation (Phase 10)
 ======================================================
-Converts between JSE ticker formats:
-  Bare:    NPN
-  Yahoo:   NPN.JO
-  Bloomberg: NPN SJ
-  IRESS:   NPN (same as bare)
+Johannesburg Stock Exchange (JSE) ticker format conversion.
 
-Also provides a lookup table of common JSE tickers for search/display.
+Converts between JSE ticker formats:
+  Bare:      NPN
+  Yahoo:     NPN.JO   (.JO = Johannesburg Stock Exchange on Yahoo Finance)
+  Bloomberg: NPN SJ   (SJ = South Africa / Johannesburg)
+  IRESS:     NPN      (same as bare)
+
+Also provides a lookup table of common JSE-listed equities for search/display.
 """
 from __future__ import annotations
 

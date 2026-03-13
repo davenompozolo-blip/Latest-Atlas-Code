@@ -2,11 +2,199 @@
 ATLAS Terminal - Phoenix Parser Page
 Extracted from atlas_app.py for modular page-level editing.
 """
+import json
+import logging
+import os
+import threading
+
+from services.secrets_helper import get_secret
+from services.auto_sync import PIPELINE_RESULT_PATH
+from services.alpaca_sync import SYNC_LOG_PATH
+
 import pandas as pd
 import streamlit as st
 
 from app.config import COLORS
 from utils.formatting import format_currency, format_percentage, format_large_number, add_arrow_indicator
+
+_pipeline_logger = logging.getLogger('atlas.phoenix_pipeline')
+
+
+def _run_supabase_pipeline(api_key: str, api_secret: str, paper: bool, tickers: list) -> None:
+    """
+    Full Supabase data pipeline — runs in a daemon background thread.
+
+    Step 1: Write Alpaca portfolio (assets, positions, transactions) to Supabase
+            via services/alpaca_sync.run_sync().
+    Step 2: Fetch 5-year daily price history per ticker via
+            services/market_data.MarketDataIngestionService.
+
+    Results are written to PIPELINE_RESULT_PATH for the UI to pick up on
+    the next Streamlit rerun.  All per-ticker errors are non-fatal.
+    """
+    result = {
+        'supabase_stats': {},
+        'ingestion_results': {},
+        'ingestion_errors': {},
+        'error': None,
+    }
+
+    # Expose credentials for alpaca_sync.run_sync() which reads from os.environ.
+    # Atlas is a single-user deployment so process-wide env mutation is safe here.
+    os.environ['ALPACA_API_KEY'] = api_key
+    os.environ['ALPACA_API_SECRET'] = api_secret
+    os.environ['ALPACA_PAPER'] = 'true' if paper else 'false'
+
+    # ------------------------------------------------------------------ #
+    # Step 1 — Write portfolio snapshot to Supabase
+    # ------------------------------------------------------------------ #
+    try:
+        from services.alpaca_sync import run_sync
+        result['supabase_stats'] = run_sync()
+        _pipeline_logger.info(
+            "[Phoenix Pipeline] Supabase portfolio write complete: %s",
+            result['supabase_stats'],
+        )
+    except Exception as exc:
+        result['error'] = str(exc)
+        _pipeline_logger.error(
+            "[Phoenix Pipeline] Supabase portfolio write failed: %s", exc, exc_info=True
+        )
+        with open(PIPELINE_RESULT_PATH, 'w') as f:
+            json.dump(result, f)
+        return
+
+    # ------------------------------------------------------------------ #
+    # Step 2 — Per-ticker market data ingestion with result tracking
+    # ------------------------------------------------------------------ #
+    try:
+        from services.supabase_client import get_supabase_client
+        from services.market_data.ingestion_service import MarketDataIngestionService
+
+        supabase = get_supabase_client()
+        svc = MarketDataIngestionService(supabase)
+
+        for ticker in tickers:
+            try:
+                count = svc.sync_ticker(ticker)
+                result['ingestion_results'][ticker] = count
+            except Exception as exc:
+                result['ingestion_errors'][ticker] = str(exc)
+                _pipeline_logger.warning(
+                    "[Phoenix Pipeline] Ingestion failed for %s: %s", ticker, exc
+                )
+    except Exception as exc:
+        result['ingestion_errors']['_setup'] = str(exc)
+        _pipeline_logger.error(
+            "[Phoenix Pipeline] MarketDataIngestionService setup failed: %s", exc, exc_info=True
+        )
+
+    _pipeline_logger.info(
+        "[Phoenix Pipeline] Complete. ingestion_results=%d tickers, errors=%d",
+        len(result['ingestion_results']),
+        len(result['ingestion_errors']),
+    )
+    with open(PIPELINE_RESULT_PATH, 'w') as f:
+        json.dump(result, f)
+
+
+def _render_status_dashboard() -> None:
+    """
+    Status dashboard shown in Alpaca mode when env credentials are configured.
+
+    Replaces the manual credential form.  Displays:
+    - Supabase portfolio write outcome
+    - Market data ingestion progress / results (polls PIPELINE_RESULT_PATH)
+    - Force Re-Sync button to re-trigger the full pipeline
+    """
+    st.markdown("#### 🤖 Auto-Sync Active")
+    st.info(
+        "Alpaca credentials are configured via environment variables. "
+        "Portfolio and price history sync automatically on page load."
+    )
+
+    _env_key = get_secret('ALPACA_API_KEY', '')
+    _env_paper = get_secret('ALPACA_PAPER', 'true').lower() == 'true'
+    _account_label = "Paper Trading" if _env_paper else "Live Trading"
+    st.caption(
+        f"Account type: **{_account_label}** | "
+        f"API Key: `{_env_key[:8]}...`" if len(_env_key) >= 8 else f"API Key: `{_env_key}`"
+    )
+
+    # --- Supabase portfolio write status ---
+    _sb_status = st.session_state.get('supabase_sync_status')
+    if _sb_status == 'success':
+        st.success(
+            f"✅ {st.session_state.get('supabase_sync_message', 'Portfolio synced to Supabase.')}"
+        )
+    elif _sb_status == 'error':
+        st.error(
+            f"❌ {st.session_state.get('supabase_sync_message', 'Supabase sync failed.')}"
+        )
+    elif _sb_status == 'running':
+        st.info("🔄 Writing portfolio snapshot to Supabase...")
+
+    # --- Market data ingestion status ---
+    _ing_status = st.session_state.get('ingestion_status')
+    _ticker_count = st.session_state.get('ingestion_ticker_count', 0)
+
+    if _ing_status == 'running':
+        # Poll the result file written by _run_ingestion_only
+        if os.path.exists(PIPELINE_RESULT_PATH):
+            try:
+                with open(PIPELINE_RESULT_PATH) as _f:
+                    _result = json.load(_f)
+                _ing_results = _result.get('ingestion_results', {})
+                _ing_errors = _result.get('ingestion_errors', {})
+                _total = sum(_ing_results.values())
+                st.session_state['ingestion_status'] = 'complete'
+                st.session_state['ingestion_total_records'] = _total
+                st.session_state['ingestion_error_count'] = len(_ing_errors)
+                os.remove(PIPELINE_RESULT_PATH)
+                st.rerun()
+            except Exception:
+                pass  # File may be mid-write; try again next rerun
+
+        st.info(
+            f"🔄 Market data ingestion running for **{_ticker_count} tickers** in background. "
+            f"Backfilling up to 5 years of daily price history."
+        )
+        if st.button("🔄 Check ingestion status", key="auto_check_ingestion_btn"):
+            st.rerun()
+
+    elif _ing_status == 'complete':
+        _total = st.session_state.get('ingestion_total_records', 0)
+        _errors = st.session_state.get('ingestion_error_count', 0)
+        if _total > 0:
+            _msg = (
+                f"✅ Price history: **{_total:,} records** written "
+                f"across **{_ticker_count} tickers**."
+            )
+        else:
+            _msg = f"✅ Price history up to date for **{_ticker_count} tickers**."
+        if _errors > 0:
+            _msg += f" ⚠️ {_errors} ticker(s) failed — check logs."
+        st.success(_msg)
+
+    # --- Force Re-Sync ---
+    st.markdown("---")
+    if st.button("🔄 Force Re-Sync Now", key="force_resync_btn", type="secondary"):
+        for _k in ('alpaca_synced', 'alpaca_sync_attempts', 'supabase_sync_status',
+                   'supabase_sync_message', 'ingestion_status', 'ingestion_ticker_count',
+                   'ingestion_total_records', 'ingestion_error_count'):
+            st.session_state.pop(_k, None)
+        st.rerun()
+
+    # --- Pipeline debug log ---
+    if os.path.exists(SYNC_LOG_PATH):
+        try:
+            with open(SYNC_LOG_PATH) as _lf:
+                _log_contents = _lf.read().strip()
+            if _log_contents:
+                with st.expander("🪵 Pipeline Debug Log", expanded=True):
+                    st.code(_log_contents, language="text")
+        except Exception:
+            pass
 
 
 def render_phoenix_parser():
@@ -423,153 +611,116 @@ def render_phoenix_parser():
             st.info("Please ensure alpaca-py is installed: `pip install alpaca-py`")
 
         if ALPACA_MODULE_AVAILABLE:
-            # Check for stored credentials in secrets
-            try:
-                api_key = st.secrets.get("alpaca_key", "")
-                secret_key = st.secrets.get("alpaca_secret", "")
-                has_secrets = api_key and secret_key
-            except:
-                has_secrets = False
+            if env_credentials_available:
+                # ── ENV CREDENTIALS MODE: show status dashboard instead of form ──
+                _render_status_dashboard()
+            else:
+                # ── MANUAL CREDENTIALS MODE: credential form + sync button ──
+                # Check for stored credentials in secrets
+                try:
+                    api_key = st.secrets.get("alpaca_key", "")
+                    secret_key = st.secrets.get("alpaca_secret", "")
+                    has_secrets = api_key and secret_key
+                except:
+                    has_secrets = False
 
-            # Connection form
-            with st.form("alpaca_sync_form"):
-                st.markdown("#### 🔐 API Credentials")
+                # Connection form
+                with st.form("alpaca_sync_form"):
+                    st.markdown("#### 🔐 API Credentials")
 
-                col1, col2 = st.columns(2)
+                    col1, col2 = st.columns(2)
 
-                with col1:
-                    if has_secrets:
-                        st.info("✅ Using credentials from secrets.toml")
-                        api_key_input = api_key
+                    with col1:
+                        if has_secrets:
+                            st.info("✅ Using credentials from secrets.toml")
+                            api_key_input = api_key
+                        else:
+                            api_key_input = st.text_input(
+                                "API Key",
+                                type="password",
+                                placeholder="Your Alpaca API key",
+                                help="Get your API credentials from alpaca.markets/paper/dashboard/overview"
+                            )
+
+                    with col2:
+                        if has_secrets:
+                            secret_key_input = secret_key
+                        else:
+                            secret_key_input = st.text_input(
+                                "Secret Key",
+                                type="password",
+                                placeholder="Your Alpaca secret key",
+                                help="Keep your secret key secure - never share it"
+                            )
+
+                    # Paper vs Live trading toggle
+                    use_paper = st.checkbox(
+                        "📝 Use Paper Trading Account",
+                        value=True,
+                        help="Paper trading for testing, Live trading for real money"
+                    )
+
+                    # Sync button
+                    sync_button = st.form_submit_button(
+                        "🔄 Sync Portfolio from Alpaca",
+                        use_container_width=True,
+                        type="primary"
+                    )
+
+                # Process sync when button clicked
+                if sync_button:
+                    # Use form inputs or secrets
+                    final_api_key = api_key_input if not has_secrets else api_key
+                    final_secret = secret_key_input if not has_secrets else secret_key
+
+                    if not final_api_key or not final_secret:
+                        st.error("❌ Please enter both API Key and Secret Key")
                     else:
-                        api_key_input = st.text_input(
-                            "API Key",
-                            type="password",
-                            placeholder="Your Alpaca API key",
-                            help="Get your API credentials from alpaca.markets/paper/dashboard/overview"
-                        )
+                        account_type_display = "Paper Trading" if use_paper else "Live Trading"
+                        with st.spinner(f"🔄 Connecting to Alpaca {account_type_display} account..."):
+                            try:
+                                # Create adapter and test connection
+                                adapter = AlpacaAdapter(final_api_key, final_secret, paper=use_paper)
+                                success, message = adapter.test_connection()
 
-                with col2:
-                    if has_secrets:
-                        secret_key_input = secret_key
-                    else:
-                        secret_key_input = st.text_input(
-                            "Secret Key",
-                            type="password",
-                            placeholder="Your Alpaca secret key",
-                            help="Keep your secret key secure - never share it"
-                        )
+                                if not success:
+                                    st.error(f"❌ Connection failed: {message}")
+                                else:
+                                    st.success(message)
 
-                # Paper vs Live trading toggle
-                use_paper = st.checkbox(
-                    "📝 Use Paper Trading Account",
-                    value=True,
-                    help="Paper trading for testing, Live trading for real money"
-                )
+                                    # Fetch portfolio positions
+                                    with st.spinner("📊 Fetching portfolio positions..."):
+                                        df = adapter.get_positions()
 
-                # Sync button
-                sync_button = st.form_submit_button(
-                    "🔄 Sync Portfolio from Alpaca",
-                    use_container_width=True,
-                    type="primary"
-                )
+                                        if df.empty:
+                                            st.warning("⚠️ No positions found in your Alpaca account")
+                                            st.info("Add some positions in your Alpaca account and try syncing again")
+                                        else:
+                                            # Store in session state (same format as Easy Equities)
+                                            st.session_state['portfolio_df'] = df
+                                            st.session_state['portfolio_source'] = 'alpaca'
+                                            st.session_state['alpaca_adapter'] = adapter
 
-            # Process sync when button clicked
-            if sync_button:
-                # Use form inputs or secrets
-                final_api_key = api_key_input if not has_secrets else api_key
-                final_secret = secret_key_input if not has_secrets else secret_key
+                                            # Store currency in session_state
+                                            st.session_state['currency'] = 'USD'
+                                            st.session_state['currency_symbol'] = '$'
 
-                if not final_api_key or not final_secret:
-                    st.error("❌ Please enter both API Key and Secret Key")
-                else:
-                    account_type_display = "Paper Trading" if use_paper else "Live Trading"
-                    with st.spinner(f"🔄 Connecting to Alpaca {account_type_display} account..."):
-                        try:
-                            # Create adapter and test connection
-                            adapter = AlpacaAdapter(final_api_key, final_secret, paper=use_paper)
-                            success, message = adapter.test_connection()
+                                            # Save to portfolio data for persistence
+                                            save_portfolio_data(df.to_dict('records'))
 
-                            if not success:
-                                st.error(f"❌ Connection failed: {message}")
-                            else:
-                                st.success(message)
+                                            # Get account summary
+                                            account = adapter.get_account_summary()
 
-                                # Fetch portfolio positions
-                                with st.spinner("📊 Fetching portfolio positions..."):
-                                    df = adapter.get_positions()
-
-                                    if df.empty:
-                                        st.warning("⚠️ No positions found in your Alpaca account")
-                                        st.info("Add some positions in your Alpaca account and try syncing again")
-                                    else:
-                                        # Store in session state (same format as Easy Equities)
-                                        st.session_state['portfolio_df'] = df
-                                        st.session_state['portfolio_source'] = 'alpaca'
-                                        st.session_state['alpaca_adapter'] = adapter
-
-                                        # Store currency in session_state
-                                        st.session_state['currency'] = 'USD'
-                                        st.session_state['currency_symbol'] = '$'
-
-                                        # Save to portfolio data for persistence
-                                        save_portfolio_data(df.to_dict('records'))
-
-                                        # Get account summary
-                                        account = adapter.get_account_summary()
-
-                                        # Success message
-                                        st.success(
-                                            f"✅ Successfully synced **{len(df)}** positions from "
-                                            f"**Alpaca {account['account_type']}** account"
-                                        )
-
-                                        show_toast(
-                                            f"🎉 Alpaca sync complete: {len(df)} positions imported!",
-                                            toast_type="success",
-                                            duration=4000
-                                        )
-
-                                        # Portfolio preview section
-                                        st.markdown("---")
-                                        st.subheader("📊 Synced Portfolio Preview")
-
-                                        # Account summary metrics
-                                        st.markdown("##### Account Summary")
-                                        col1, col2, col3, col4 = st.columns(4)
-
-                                        with col1:
-                                            st.metric(
-                                                "Portfolio Value",
-                                                f"${account.get('portfolio_value', 0):,.2f}",
-                                                help="Total equity value"
+                                            # Success message
+                                            st.success(
+                                                f"✅ Successfully synced **{len(df)}** positions from "
+                                                f"**Alpaca {account['account_type']}** account"
                                             )
 
-                                        with col2:
-                                            st.metric(
-                                                "Cash",
-                                                f"${account.get('cash', 0):,.2f}",
-                                                help="Available cash"
-                                            )
-
-                                        with col3:
-                                            total_pnl = df['Unrealized_PnL'].sum()
-                                            total_value = df['Market_Value'].sum()
-                                            total_cost = df['Purchase_Value'].sum()
-                                            pnl_pct = (total_pnl / total_cost * 100) if total_cost > 0 else 0
-
-                                            st.metric(
-                                                "Total P&L",
-                                                f"${total_pnl:,.2f}",
-                                                delta=f"{pnl_pct:+.2f}%",
-                                                help="Unrealized profit/loss"
-                                            )
-
-                                        with col4:
-                                            st.metric(
-                                                "Positions",
-                                                f"{len(df)}",
-                                                help="Number of holdings"
+                                            show_toast(
+                                                f"🎉 Alpaca sync complete: {len(df)} positions imported!",
+                                                toast_type="success",
+                                                duration=4000
                                             )
 
                                         # Show dataframe preview
@@ -614,10 +765,10 @@ def render_phoenix_parser():
                                 "5. Check your internet connection"
                             )
 
-                            # Show debug info in expander
-                            with st.expander("🔍 Technical Error Details"):
-                                import traceback
-                                st.code(traceback.format_exc())
+                                # Show debug info in expander
+                                with st.expander("🔍 Technical Error Details"):
+                                    import traceback
+                                    st.code(traceback.format_exc())
 
     # PHASE 4: Database Management Section
     st.markdown("---")
