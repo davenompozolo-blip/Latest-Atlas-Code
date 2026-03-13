@@ -4,6 +4,16 @@
 --
 -- Run each block in Supabase SQL Editor to create the views.
 -- Validation query at the bottom verifies all five views return data.
+--
+-- Actual table column reference (from services/supabase_client.py +
+-- services/data_normalizer.py + services/market_data/ingestion_service.py):
+--   price_history : asset_id, source, interval, price_date, open, high, low,
+--                   close, adjusted_close, volume
+--   positions     : portfolio_id, asset_id, quantity, average_cost,
+--                   market_value, as_of_date
+--   transactions  : portfolio_id, asset_id, transaction_type, quantity,
+--                   price, fees, transaction_date, external_id, notes, metadata
+--   assets        : id, symbol, name, asset_class, exchange, currency, metadata
 -- =============================================================================
 
 -- ---------------------------------------------------------------------------
@@ -15,16 +25,18 @@ WITH latest_prices AS (
     SELECT DISTINCT ON (asset_id)
         asset_id,
         close AS current_price,
-        date AS price_date
+        price_date
     FROM price_history
-    ORDER BY asset_id, date DESC
+    WHERE interval = '1d'
+    ORDER BY asset_id, price_date DESC
 ), returns AS (
     SELECT
         ph.asset_id,
-        ph.date,
-        (ph.close - LAG(ph.close) OVER (PARTITION BY ph.asset_id ORDER BY ph.date))
-            / NULLIF(LAG(ph.close) OVER (PARTITION BY ph.asset_id ORDER BY ph.date), 0) AS daily_return
+        ph.price_date,
+        (ph.close - LAG(ph.close) OVER (PARTITION BY ph.asset_id ORDER BY ph.price_date))
+            / NULLIF(LAG(ph.close) OVER (PARTITION BY ph.asset_id ORDER BY ph.price_date), 0) AS daily_return
     FROM price_history ph
+    WHERE ph.interval = '1d'
 ), stats AS (
     SELECT
         asset_id,
@@ -48,10 +60,10 @@ SELECT
     a.symbol,
     a.name,
     p.quantity,
-    p.cost_basis,
+    p.average_cost AS cost_basis,
     lp.current_price,
     p.market_value,
-    (lp.current_price - p.cost_basis) / NULLIF(p.cost_basis, 0) AS unrealised_return_pct,
+    (lp.current_price - p.average_cost) / NULLIF(p.average_cost, 0) AS unrealised_return_pct,
     p.market_value / NULLIF(nav.total_nav, 0) AS portfolio_weight,
     s.sigma * SQRT(252) AS annualised_vol,
     s.mu / NULLIF(s.sigma, 0) * SQRT(252) AS sharpe_approx,
@@ -75,11 +87,12 @@ CREATE OR REPLACE VIEW vw_quant_dashboard AS
 WITH ranked_prices AS (
     SELECT
         asset_id,
-        date,
+        price_date,
         close,
-        ROW_NUMBER() OVER (PARTITION BY asset_id ORDER BY date DESC) AS rn,
+        ROW_NUMBER() OVER (PARTITION BY asset_id ORDER BY price_date DESC) AS rn,
         COUNT(*) OVER (PARTITION BY asset_id) AS total_days
     FROM price_history
+    WHERE interval = '1d'
 ), ma_calc AS (
     SELECT
         asset_id,
@@ -96,15 +109,16 @@ WITH ranked_prices AS (
 ), returns AS (
     SELECT
         asset_id,
-        date,
-        (close - LAG(close) OVER (PARTITION BY asset_id ORDER BY date))
-            / NULLIF(LAG(close) OVER (PARTITION BY asset_id ORDER BY date), 0) AS r
+        price_date,
+        (close - LAG(close) OVER (PARTITION BY asset_id ORDER BY price_date))
+            / NULLIF(LAG(close) OVER (PARTITION BY asset_id ORDER BY price_date), 0) AS r
     FROM price_history
+    WHERE interval = '1d'
 ), vol_stats AS (
     SELECT
         asset_id,
-        STDDEV(r) FILTER (WHERE date >= CURRENT_DATE - 20) AS vol_20d,
-        STDDEV(r) FILTER (WHERE date >= CURRENT_DATE - 60) AS vol_60d
+        STDDEV(r) FILTER (WHERE price_date >= CURRENT_DATE - 20) AS vol_20d,
+        STDDEV(r) FILTER (WHERE price_date >= CURRENT_DATE - 60) AS vol_60d
     FROM returns
     WHERE r IS NOT NULL
     GROUP BY asset_id
@@ -156,11 +170,12 @@ CREATE OR REPLACE VIEW vw_risk_analysis AS
 WITH returns AS (
     SELECT
         ph.asset_id,
-        ph.date,
-        (ph.close - LAG(ph.close) OVER (PARTITION BY ph.asset_id ORDER BY ph.date))
-            / NULLIF(LAG(ph.close) OVER (PARTITION BY ph.asset_id ORDER BY ph.date), 0) AS r
+        ph.price_date,
+        (ph.close - LAG(ph.close) OVER (PARTITION BY ph.asset_id ORDER BY ph.price_date))
+            / NULLIF(LAG(ph.close) OVER (PARTITION BY ph.asset_id ORDER BY ph.price_date), 0) AS r
     FROM price_history ph
-    WHERE ph.date >= CURRENT_DATE - INTERVAL '252 days'
+    WHERE ph.interval = '1d'
+      AND ph.price_date >= CURRENT_DATE - INTERVAL '252 days'
 ), vol_per_position AS (
     SELECT
         asset_id,
@@ -206,11 +221,11 @@ WITH first_buys AS (
     SELECT DISTINCT ON (asset_id)
         asset_id,
         price AS entry_price,
-        filled_at AS entry_date,
+        transaction_date AS entry_date,
         quantity
     FROM transactions
-    WHERE side = 'buy'
-    ORDER BY asset_id, filled_at ASC
+    WHERE transaction_type = 'buy'
+    ORDER BY asset_id, transaction_date ASC
 ), price_at_entry AS (
     SELECT
         fb.asset_id,
@@ -221,14 +236,17 @@ WITH first_buys AS (
         MIN(ph.low)  AS low_30d_post_entry
     FROM first_buys fb
     JOIN price_history ph ON ph.asset_id = fb.asset_id
-        AND ph.date BETWEEN fb.entry_date AND fb.entry_date + INTERVAL '30 days'
+        AND ph.interval = '1d'
+        AND ph.price_date BETWEEN fb.entry_date::date
+                               AND (fb.entry_date::date + INTERVAL '30 days')
     GROUP BY fb.asset_id, fb.entry_price, fb.entry_date, fb.quantity
 ), latest_prices AS (
     SELECT DISTINCT ON (asset_id)
         asset_id,
         close AS current_price
     FROM price_history
-    ORDER BY asset_id, date DESC
+    WHERE interval = '1d'
+    ORDER BY asset_id, price_date DESC
 )
 SELECT
     a.symbol,
@@ -245,7 +263,7 @@ SELECT
     (lp.current_price - pe.entry_price) / NULLIF(pe.entry_price, 0) AS total_return_pct,
     -- Annualised return
     CASE
-        WHEN CURRENT_DATE > pe.entry_date THEN
+        WHEN CURRENT_DATE > pe.entry_date::date THEN
             POWER(
                 lp.current_price / NULLIF(pe.entry_price, 0),
                 365.0 / NULLIF(CURRENT_DATE - pe.entry_date::date, 0)
@@ -271,17 +289,18 @@ ORDER BY annualised_return DESC NULLS LAST;
 CREATE OR REPLACE VIEW vw_command_centre AS
 WITH daily_returns AS (
     SELECT
-        ph.date,
+        ph.price_date,
         SUM(ph.close * p.quantity) AS nav
     FROM price_history ph
     JOIN positions p ON p.asset_id = ph.asset_id
-    GROUP BY ph.date
-    ORDER BY ph.date
+    WHERE ph.interval = '1d'
+    GROUP BY ph.price_date
+    ORDER BY ph.price_date
 ), nav_returns AS (
     SELECT
-        date,
+        price_date,
         nav,
-        (nav - LAG(nav) OVER (ORDER BY date)) / NULLIF(LAG(nav) OVER (ORDER BY date), 0) AS r
+        (nav - LAG(nav) OVER (ORDER BY price_date)) / NULLIF(LAG(nav) OVER (ORDER BY price_date), 0) AS r
     FROM daily_returns
 ), stats AS (
     SELECT
@@ -299,7 +318,7 @@ WITH daily_returns AS (
 ), position_count AS (
     SELECT COUNT(*) AS n FROM positions
 ), total_cost AS (
-    SELECT SUM(cost_basis * quantity) AS total_invested FROM positions
+    SELECT SUM(average_cost * quantity) AS total_invested FROM positions
 )
 SELECT
     cn.nav AS portfolio_nav,
