@@ -76,7 +76,7 @@ JOIN assets a ON a.id = p.asset_id
 JOIN latest_prices lp ON lp.asset_id = p.asset_id
 JOIN stats s ON s.asset_id = p.asset_id
 CROSS JOIN nav
-CROSS JOIN hhi
+CROSS JOIN hhi h
 ORDER BY p.market_value DESC;
 
 -- ---------------------------------------------------------------------------
