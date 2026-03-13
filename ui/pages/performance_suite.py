@@ -7,6 +7,7 @@ import streamlit as st
 
 from app.config import COLORS
 from ui.theme import ATLAS_COLORS as THEME
+from services.supabase_views import fetch_view
 
 # Semantic colors from theme (metric thresholds)
 _GREEN = THEME['success']          # #10b981
@@ -48,6 +49,32 @@ def render_performance_suite():
             return None
 
     st.markdown('<h1 style="font-size: 2.5rem; font-weight: 800; color: #f8fafc; margin-bottom: 0.5rem;"><span style="font-size: 2rem;">💎</span> <span style="background: linear-gradient(135deg, #818cf8, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">PERFORMANCE SUITE</span></h1>', unsafe_allow_html=True)
+
+    # ── Supabase Performance View ─────────────────────────────────────────────
+    # Entry efficiency, annualised returns, and cut candidates from the DB.
+    perf_df = fetch_view("vw_performance_suite")
+    if not perf_df.empty:
+        cut_candidates = perf_df[perf_df.get('cut_candidate_flag', perf_df.get('cut_candidate_flag', False)) == True] if 'cut_candidate_flag' in perf_df.columns else perf_df.iloc[0:0]
+        if not cut_candidates.empty:
+            st.warning(f"{len(cut_candidates)} position(s) flagged as cut candidates")
+            cut_cols = [c for c in ['symbol', 'entry_price', 'total_return_pct', 'days_held', 'entry_efficiency_score'] if c in cut_candidates.columns]
+            st.dataframe(cut_candidates[cut_cols], use_container_width=True)
+
+        st.subheader("Entry Efficiency & Annualised Returns")
+        perf_display_cols = [c for c in ['symbol', 'entry_efficiency_score', 'total_return_pct', 'annualised_return', 'days_held'] if c in perf_df.columns]
+        if perf_display_cols:
+            fmt_perf = {}
+            if 'entry_efficiency_score' in perf_display_cols:
+                fmt_perf['entry_efficiency_score'] = '{:.1f}'
+            if 'total_return_pct' in perf_display_cols:
+                fmt_perf['total_return_pct'] = '{:.2%}'
+            if 'annualised_return' in perf_display_cols:
+                fmt_perf['annualised_return'] = '{:.2%}'
+            st.dataframe(
+                perf_df[perf_display_cols].style.format(fmt_perf),
+                use_container_width=True,
+            )
+        st.markdown("---")
 
     # CRITICAL FIX: Check session_state FIRST for fresh EE data
     if 'portfolio_df' in st.session_state and st.session_state['portfolio_df'] is not None and len(st.session_state['portfolio_df']) > 0:

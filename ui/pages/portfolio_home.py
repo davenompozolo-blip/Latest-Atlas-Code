@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from app.config import COLORS
 from utils.formatting import format_currency, format_percentage, add_arrow_indicator
 from ui.components.charts import apply_chart_theme
+from services.supabase_views import fetch_view
 
 
 def _regime_is_fresh(regime: dict, max_age_minutes: int = 30) -> bool:
@@ -257,6 +258,21 @@ def render_portfolio_home():
         </div>
     </div>
     ''', unsafe_allow_html=True)
+
+    # ══════════════════════════════════════════════════════
+    # COMMAND CENTRE — Supabase pre-computed header metrics
+    # ══════════════════════════════════════════════════════
+    health_df = fetch_view("vw_command_centre")
+    if not health_df.empty:
+        h = health_df.iloc[0]
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.metric("Portfolio NAV",  f"${h.get('portfolio_nav', 0):,.2f}")
+        c2.metric("Total Return",   f"{h.get('total_return_pct', 0) * 100:.2f}%")
+        c3.metric("Sharpe Ratio",   f"{h.get('sharpe_ratio', 0):.2f}")
+        c4.metric("Sortino Ratio",  f"{h.get('sortino_ratio', 0):.2f}")
+        c5.metric("ATLAS Health",
+                  f"{h.get('atlas_health_score', 0):.0f} — {h.get('portfolio_health_status', '')}")
+        st.markdown('<div style="height: 16px;"></div>', unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════
     # MACRO REGIME BANNER (cross-module integration from Macro Intelligence)

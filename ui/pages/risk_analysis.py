@@ -10,6 +10,7 @@ import streamlit as st
 from app.config import COLORS
 from ui.theme import ATLAS_COLORS as THEME
 from utils.formatting import format_percentage
+from services.supabase_views import fetch_view
 
 # PM-Grade Optimization availability
 try:
@@ -162,7 +163,24 @@ def render_risk_analysis():
     if _PM_AVAILABLE:
         _render_asymmetric_sidebar()
 
-    # Lazy imports to avoid circular dependency with atlas_app
+    # ── Supabase Risk View ────────────────────────────────────────────────────
+    # Pre-computed marginal volatility contribution and risk tiers from the DB.
+    risk_df = fetch_view("vw_risk_analysis")
+    if not risk_df.empty:
+        st.subheader("Marginal Volatility Contribution by Position")
+        if 'symbol' in risk_df.columns and 'marginal_vol_contribution' in risk_df.columns:
+            st.bar_chart(risk_df.set_index('symbol')['marginal_vol_contribution'])
+
+        risk_display_cols = [c for c in [
+            'symbol', 'weight', 'annual_vol',
+            'marginal_vol_contribution', 'dollar_var_95_daily', 'risk_tier'
+        ] if c in risk_df.columns]
+        if risk_display_cols:
+            st.dataframe(risk_df[risk_display_cols], use_container_width=True)
+
+        st.markdown("---")
+
+    # ── Lazy imports to avoid circular dependency with atlas_app ─────────────
     from core import (
         ATLASFormatter, load_portfolio_data, create_enhanced_holdings_table,
         calculate_portfolio_returns, calculate_benchmark_returns, is_valid_series,
