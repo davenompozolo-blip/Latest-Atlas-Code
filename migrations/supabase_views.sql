@@ -234,9 +234,15 @@ ORDER BY marginal_vol_contribution DESC;
 -- ---------------------------------------------------------------------------
 -- VIEW 4: vw_performance_suite
 -- Entry efficiency scoring and annualised return per position.
+--
+-- NOTE: entry_efficiency_score uses the 30-day post-entry price range from
+-- price_history. When the entry date is older than the available price_history
+-- (e.g. bought > 1 year ago), that range won't exist — the view handles this
+-- gracefully via LEFT JOIN and returns NULL for the score rather than 0 rows.
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE VIEW vw_performance_suite AS
 WITH first_buys AS (
+    -- Earliest buy transaction per asset
     SELECT DISTINCT ON (asset_id)
         asset_id,
         price AS entry_price,
@@ -245,20 +251,18 @@ WITH first_buys AS (
     FROM transactions
     WHERE transaction_type = 'buy'
     ORDER BY asset_id, transaction_date ASC
-), price_at_entry AS (
+), post_entry_range AS (
+    -- 30-day high/low AFTER entry date (may be empty if entry predates price_history)
     SELECT
         fb.asset_id,
-        fb.entry_price,
-        fb.entry_date,
-        fb.quantity,
         MAX(ph.high) AS high_30d_post_entry,
         MIN(ph.low)  AS low_30d_post_entry
     FROM first_buys fb
-    JOIN price_history ph ON ph.asset_id = fb.asset_id
+    LEFT JOIN price_history ph ON ph.asset_id = fb.asset_id
         AND ph.interval = '1d'
         AND ph.price_date BETWEEN fb.entry_date::date
                                AND (fb.entry_date::date + INTERVAL '30 days')
-    GROUP BY fb.asset_id, fb.entry_price, fb.entry_date, fb.quantity
+    GROUP BY fb.asset_id
 ), latest_prices AS (
     SELECT DISTINCT ON (asset_id)
         asset_id,
@@ -270,35 +274,37 @@ WITH first_buys AS (
 SELECT
     a.symbol,
     a.name,
-    pe.entry_price,
-    pe.entry_date,
+    fb.entry_price,
+    fb.entry_date,
     lp.current_price,
     -- Entry efficiency: where in the 30-day post-entry range did we buy?
+    -- NULL when that range is unavailable (entry predates price_history).
     ROUND(
-        (1 - (pe.entry_price - pe.low_30d_post_entry)
-            / NULLIF(pe.high_30d_post_entry - pe.low_30d_post_entry, 0)) * 100
+        (1 - (fb.entry_price - per.low_30d_post_entry)
+            / NULLIF(per.high_30d_post_entry - per.low_30d_post_entry, 0)) * 100
     , 1) AS entry_efficiency_score,
-    -- Return since entry
-    (lp.current_price - pe.entry_price) / NULLIF(pe.entry_price, 0) AS total_return_pct,
+    -- Return since entry (always computable from entry_price + current_price)
+    (lp.current_price - fb.entry_price) / NULLIF(fb.entry_price, 0) AS total_return_pct,
     -- Annualised return
     CASE
-        WHEN CURRENT_DATE > pe.entry_date::date THEN
+        WHEN CURRENT_DATE > fb.entry_date::date THEN
             POWER(
-                lp.current_price / NULLIF(pe.entry_price, 0),
-                365.0 / NULLIF(CURRENT_DATE - pe.entry_date::date, 0)
+                lp.current_price / NULLIF(fb.entry_price, 0),
+                365.0 / NULLIF(CURRENT_DATE - fb.entry_date::date, 0)
             ) - 1
         ELSE NULL
     END AS annualised_return,
-    CURRENT_DATE - pe.entry_date::date AS days_held,
+    CURRENT_DATE - fb.entry_date::date AS days_held,
     -- Cut candidate: held >180 days, negative total return
     CASE
-        WHEN (CURRENT_DATE - pe.entry_date::date) > 180
-            AND (lp.current_price - pe.entry_price) / NULLIF(pe.entry_price, 0) < 0
+        WHEN (CURRENT_DATE - fb.entry_date::date) > 180
+            AND (lp.current_price - fb.entry_price) / NULLIF(fb.entry_price, 0) < 0
         THEN true ELSE false
     END AS cut_candidate_flag
-FROM price_at_entry pe
-JOIN assets a ON a.id = pe.asset_id
-JOIN latest_prices lp ON lp.asset_id = pe.asset_id
+FROM first_buys fb
+JOIN assets a ON a.id = fb.asset_id
+JOIN latest_prices lp ON lp.asset_id = fb.asset_id
+LEFT JOIN post_entry_range per ON per.asset_id = fb.asset_id
 ORDER BY annualised_return DESC NULLS LAST;
 
 -- ---------------------------------------------------------------------------
