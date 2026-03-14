@@ -97,6 +97,10 @@ def render_performance_suite():
         portfolio_returns = calculate_portfolio_returns(df, start_date, end_date)
         benchmark_returns = calculate_benchmark_returns(selected_benchmark, start_date, end_date)
 
+    # Pre-fetch Supabase command centre metrics (used to override yfinance values in cards)
+    _cmd_df = fetch_view("vw_command_centre")
+    _cmd = _cmd_df.iloc[0] if not _cmd_df.empty else None
+
     # === TAB STRUCTURE ===
     tab1, tab2, tab3, tab4 = st.tabs([
         "📈 Portfolio Performance",
@@ -116,10 +120,19 @@ def render_performance_suite():
             # === KEY METRICS GRID ===
             col1, col2, col3, col4 = st.columns(4)
 
-            # Total Return
+            # Total Return — prefer Supabase canonical value
             total_return = (1 + portfolio_returns).prod() - 1
             n_years = len(portfolio_returns) / 252
             annualized_return = (1 + total_return) ** (1/n_years) - 1 if n_years > 0 else 0
+            if _cmd is not None:
+                try:
+                    if _cmd.get('total_return_pct') is not None:
+                        total_return = float(_cmd['total_return_pct'])
+                    _dh = float(_cmd.get('days_of_history') or 0)
+                    if _dh > 0 and total_return != 0:
+                        annualized_return = (1 + total_return) ** (365.0 / _dh) - 1
+                except (TypeError, ValueError):
+                    pass
 
             # STORE FOR ATTRIBUTION SECTION TO USE
             st.session_state['portfolio_annualized_return'] = annualized_return * 100
@@ -139,8 +152,13 @@ def render_performance_suite():
                 vol_status = 'Low Vol' if annualized_vol < 0.20 else ('Moderate' if annualized_vol < 0.30 else 'High Vol')
                 st.markdown(f'<div style="background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(6,182,212,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #06b6d4, #3b82f6); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📊</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">ANNUALIZED VOLATILITY</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {vol_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{annualized_vol*100:.2f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(6,182,212,0.12); border-radius: 10px; border: 1px solid rgba(6,182,212,0.25);"><p style="font-size: 0.7rem; color: #a5f3fc; margin: 0; font-weight: 600;">{vol_status}</p></div></div>', unsafe_allow_html=True)
 
-            # Sharpe Ratio
+            # Sharpe Ratio — prefer Supabase canonical value
             sharpe = calculate_sharpe_ratio(portfolio_returns)
+            if _cmd is not None and _cmd.get('sharpe_ratio') is not None:
+                try:
+                    sharpe = float(_cmd['sharpe_ratio'])
+                except (TypeError, ValueError):
+                    pass
 
             # Card 3: Sharpe Ratio
             with col3:
@@ -149,8 +167,13 @@ def render_performance_suite():
                 sharpe_val = f"{sharpe:.2f}" if sharpe else "N/A"
                 st.markdown(f'<div style="background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(139,92,246,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🔥</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">SHARPE RATIO</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {sharpe_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{sharpe_val}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(139,92,246,0.12); border-radius: 10px; border: 1px solid rgba(139,92,246,0.25);"><p style="font-size: 0.7rem; color: #d8b4fe; margin: 0; font-weight: 600;">{sharpe_delta}</p></div></div>', unsafe_allow_html=True)
 
-            # Max Drawdown
+            # Max Drawdown — prefer Supabase canonical value
             max_dd = calculate_max_drawdown(portfolio_returns)
+            if _cmd is not None and _cmd.get('drawdown_pct') is not None:
+                try:
+                    max_dd = float(_cmd['drawdown_pct'])
+                except (TypeError, ValueError):
+                    pass
 
             # Card 4: Max Drawdown
             with col4:
@@ -260,8 +283,13 @@ def render_performance_suite():
 
             metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
 
-            # Sortino Ratio
+            # Sortino Ratio — prefer Supabase canonical value
             sortino = calculate_sortino_ratio(portfolio_returns)
+            if _cmd is not None and _cmd.get('sortino_ratio') is not None:
+                try:
+                    sortino = float(_cmd['sortino_ratio'])
+                except (TypeError, ValueError):
+                    pass
 
             with metric_col1:
                 sortino_color = _GREEN if sortino and sortino > 1.5 else (_NEUTRAL if sortino and sortino > 0.5 else _RED)
@@ -286,8 +314,16 @@ def render_performance_suite():
                 winrate_status = 'High Win %' if win_rate > 55 else ('Balanced' if win_rate > 50 else 'Low Win %')
                 st.markdown(f'<div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(16,185,129,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #059669); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">🎯</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">WIN RATE</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {winrate_color}; margin: 0.5rem 0 0.75rem 0; line-height: 1;">{win_rate:.1f}%</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(16,185,129,0.12); border-radius: 10px; border: 1px solid rgba(16,185,129,0.25);"><p style="font-size: 0.7rem; color: #6ee7b7; margin: 0; font-weight: 600;">{winrate_status}</p></div></div>', unsafe_allow_html=True)
 
-            # VaR (95%)
+            # VaR (95%) — prefer Supabase dollar VaR converted to % of NAV
             var_95 = calculate_var(portfolio_returns, confidence=0.95)
+            if _cmd is not None:
+                try:
+                    _nav = float(_cmd.get('portfolio_nav') or 0)
+                    _dvar = float(_cmd.get('dollar_var_95') or 0)
+                    if _nav > 0 and _dvar > 0:
+                        var_95 = -(_dvar / _nav * 100)
+                except (TypeError, ValueError):
+                    pass
 
             with metric_col4:
                 var_color = _RED if var_95 and abs(var_95) > 15 else (_AMBER if var_95 and abs(var_95) > 10 else _GREEN)

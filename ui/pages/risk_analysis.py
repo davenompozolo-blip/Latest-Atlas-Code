@@ -282,6 +282,26 @@ def render_risk_analysis():
     # v9.7 ENHANCEMENT: Added CVaR metric
     cvar_95 = calculate_cvar(portfolio_returns, 0.95)
 
+    # ── Supabase Override: prefer pre-computed metrics from vw_command_centre ──
+    # These are computed from the full price_history in the DB and are the
+    # canonical source of truth. Override the yfinance-computed values where available.
+    _cmd_df = fetch_view("vw_command_centre")
+    if not _cmd_df.empty:
+        _cmd = _cmd_df.iloc[0]
+        try:
+            if _cmd.get('sharpe_ratio') is not None:
+                sharpe = float(_cmd['sharpe_ratio'])
+            if _cmd.get('sortino_ratio') is not None:
+                sortino = float(_cmd['sortino_ratio'])
+            if _cmd.get('drawdown_pct') is not None:
+                max_dd = float(_cmd['drawdown_pct'])
+            _nav = float(_cmd.get('portfolio_nav') or 0)
+            _dvar = float(_cmd.get('dollar_var_95') or 0)
+            if _nav > 0 and _dvar > 0:
+                var_95 = -(_dvar / _nav * 100)
+        except (TypeError, ValueError):
+            pass
+
     # Risk Alerts - Check for threshold violations
     risk_alerts = []
 

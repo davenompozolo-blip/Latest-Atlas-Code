@@ -2473,7 +2473,10 @@ def create_sector_rotation_heatmap(df, start_date, end_date, use_professional_th
 
         hist_data = fetch_historical_data(ticker, start_date, end_date)
         if hist_data is not None and len(hist_data) > 30:
-            monthly_data = hist_data['Close'].resample('M').last()
+            close_col = hist_data['Close']
+            if isinstance(close_col, pd.DataFrame):
+                close_col = close_col.iloc[:, 0]
+            monthly_data = close_col.squeeze().resample('M').last()
             monthly_returns = monthly_data.pct_change() * 100
 
             # FIX: Convert index to timezone-naive before comparison
@@ -2493,12 +2496,11 @@ def create_sector_rotation_heatmap(df, start_date, end_date, use_professional_th
         combined = pd.concat(returns_list, axis=1).mean(axis=1)
         sector_avg[sector] = combined
     
-    sectors = list(sector_avg.keys())
-    months = sector_avg[sectors[0]].index
-    
-    matrix = []
-    for sector in sectors:
-        matrix.append(sector_avg[sector].values)
+    # Align all sector series to a common month index (sectors may span different date ranges)
+    sector_df = pd.DataFrame(sector_avg).fillna(0)
+    sectors = sector_df.columns.tolist()
+    months = sector_df.index
+    matrix = [sector_df[s].values.tolist() for s in sectors]
     
     # Theme colors - Magenta-Cyan gradient (vibrant, LinkedIn-ready)
     if use_professional_theme and PROFESSIONAL_THEME_AVAILABLE:
