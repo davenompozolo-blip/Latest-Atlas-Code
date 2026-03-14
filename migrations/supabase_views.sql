@@ -235,34 +235,53 @@ ORDER BY marginal_vol_contribution DESC;
 -- VIEW 4: vw_performance_suite
 -- Entry efficiency scoring and annualised return per position.
 --
--- NOTE: entry_efficiency_score uses the 30-day post-entry price range from
--- price_history. When the entry date is older than the available price_history
--- (e.g. bought > 1 year ago), that range won't exist — the view handles this
--- gracefully via LEFT JOIN and returns NULL for the score rather than 0 rows.
+-- Root cause of 0-row problem: the old version used first_buys (transactions)
+-- as the base table. If the transactions table is empty or transaction_type
+-- values differ from 'buy' (e.g. uppercase), the entire view returns 0.
+--
+-- Fix: use latest_pos (same base as every other view → guaranteed 55 rows),
+-- LEFT JOIN to first_buys so transactions enrich where available, and
+-- COALESCE to fall back to positions.average_cost / as_of_date when no
+-- transaction history exists.
+-- Also: LOWER(transaction_type) = 'buy' for case-insensitive matching.
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE VIEW vw_performance_suite AS
-WITH first_buys AS (
-    -- Earliest buy transaction per asset
+WITH latest_pos AS (
+    SELECT DISTINCT ON (asset_id)
+        asset_id, quantity, average_cost, as_of_date
+    FROM positions
+    ORDER BY asset_id, as_of_date DESC
+), first_buys AS (
+    -- Earliest buy per asset from transaction history (may be empty)
     SELECT DISTINCT ON (asset_id)
         asset_id,
-        price AS entry_price,
-        transaction_date AS entry_date,
-        quantity
+        price        AS tx_entry_price,
+        transaction_date AS tx_entry_date
     FROM transactions
-    WHERE transaction_type = 'buy'
+    WHERE LOWER(transaction_type) = 'buy'
     ORDER BY asset_id, transaction_date ASC
-), post_entry_range AS (
-    -- 30-day high/low AFTER entry date (may be empty if entry predates price_history)
+), position_base AS (
+    -- Combine positions with optional transaction data
     SELECT
-        fb.asset_id,
+        lp.asset_id,
+        -- Prefer transaction entry price; fall back to positions average_cost
+        COALESCE(fb.tx_entry_price,  lp.average_cost)       AS entry_price,
+        -- Prefer transaction entry date; fall back to first known position date
+        COALESCE(fb.tx_entry_date::date, lp.as_of_date::date) AS entry_date
+    FROM latest_pos lp
+    LEFT JOIN first_buys fb ON fb.asset_id = lp.asset_id
+), post_entry_range AS (
+    -- 30-day high/low after entry (NULL when entry predates price_history)
+    SELECT
+        pb.asset_id,
         MAX(ph.high) AS high_30d_post_entry,
         MIN(ph.low)  AS low_30d_post_entry
-    FROM first_buys fb
-    LEFT JOIN price_history ph ON ph.asset_id = fb.asset_id
+    FROM position_base pb
+    LEFT JOIN price_history ph ON ph.asset_id = pb.asset_id
         AND ph.interval = '1d'
-        AND ph.price_date BETWEEN fb.entry_date::date
-                               AND (fb.entry_date::date + INTERVAL '30 days')
-    GROUP BY fb.asset_id
+        AND ph.price_date BETWEEN pb.entry_date
+                               AND (pb.entry_date + INTERVAL '30 days')
+    GROUP BY pb.asset_id
 ), latest_prices AS (
     SELECT DISTINCT ON (asset_id)
         asset_id,
@@ -274,37 +293,36 @@ WITH first_buys AS (
 SELECT
     a.symbol,
     a.name,
-    fb.entry_price,
-    fb.entry_date,
+    pb.entry_price,
+    pb.entry_date,
     lp.current_price,
-    -- Entry efficiency: where in the 30-day post-entry range did we buy?
-    -- NULL when that range is unavailable (entry predates price_history).
+    -- Entry efficiency (NULL when 30-day post-entry range is unavailable)
     ROUND(
-        (1 - (fb.entry_price - per.low_30d_post_entry)
+        (1 - (pb.entry_price - per.low_30d_post_entry)
             / NULLIF(per.high_30d_post_entry - per.low_30d_post_entry, 0)) * 100
     , 1) AS entry_efficiency_score,
-    -- Return since entry (always computable from entry_price + current_price)
-    (lp.current_price - fb.entry_price) / NULLIF(fb.entry_price, 0) AS total_return_pct,
-    -- Annualised return
+    -- Total return from entry price to current price
+    (lp.current_price - pb.entry_price) / NULLIF(pb.entry_price, 0) AS total_return_pct,
+    -- Annualised return (CAGR)
     CASE
-        WHEN CURRENT_DATE > fb.entry_date::date THEN
+        WHEN CURRENT_DATE > pb.entry_date THEN
             POWER(
-                lp.current_price / NULLIF(fb.entry_price, 0),
-                365.0 / NULLIF(CURRENT_DATE - fb.entry_date::date, 0)
+                lp.current_price / NULLIF(pb.entry_price, 0),
+                365.0 / NULLIF(CURRENT_DATE - pb.entry_date, 0)
             ) - 1
         ELSE NULL
     END AS annualised_return,
-    CURRENT_DATE - fb.entry_date::date AS days_held,
-    -- Cut candidate: held >180 days, negative total return
+    CURRENT_DATE - pb.entry_date AS days_held,
+    -- Cut candidate: held > 180 days AND negative total return
     CASE
-        WHEN (CURRENT_DATE - fb.entry_date::date) > 180
-            AND (lp.current_price - fb.entry_price) / NULLIF(fb.entry_price, 0) < 0
+        WHEN (CURRENT_DATE - pb.entry_date) > 180
+            AND (lp.current_price - pb.entry_price) / NULLIF(pb.entry_price, 0) < 0
         THEN true ELSE false
     END AS cut_candidate_flag
-FROM first_buys fb
-JOIN assets a ON a.id = fb.asset_id
-JOIN latest_prices lp ON lp.asset_id = fb.asset_id
-LEFT JOIN post_entry_range per ON per.asset_id = fb.asset_id
+FROM position_base pb
+JOIN assets a     ON a.id           = pb.asset_id
+JOIN latest_prices lp ON lp.asset_id = pb.asset_id
+LEFT JOIN post_entry_range per ON per.asset_id = pb.asset_id
 ORDER BY annualised_return DESC NULLS LAST;
 
 -- ---------------------------------------------------------------------------
