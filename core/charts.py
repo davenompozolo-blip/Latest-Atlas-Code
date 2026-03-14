@@ -2520,7 +2520,7 @@ def create_sector_rotation_heatmap(df, start_date, end_date, use_professional_th
         y=sectors,
         colorscale=colorscale,
         zmid=0,
-        text=np.round(matrix, 1),
+        text=[[round(float(v), 1) for v in row] for row in matrix],
         texttemplate='%{text}%',
         textfont={"size": 10, "family": "JetBrains Mono", "color": "white"},
         colorbar=dict(title=dict(text="Return %", font=dict(family='JetBrains Mono', size=11, color='white')), tickfont=dict(family='JetBrains Mono', size=10, color='white'))
