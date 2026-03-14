@@ -54,6 +54,7 @@ def _error_ui(page_name, icon, e):
     st.error(f"**{icon} {page_name}** failed to load: `{type(e).__name__}: {e}`")
     with st.expander("Traceback"):
         st.code(traceback.format_exc())
+    st.stop()  # Prevent home page bleeding through after a failed import
 
 
 def _load_handler(module_path: str, func_name: str, page_name: str, icon: str):

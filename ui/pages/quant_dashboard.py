@@ -110,31 +110,9 @@ def render_quant_dashboard():
     quant_df = fetch_view("vw_quant_dashboard")
 
     if quant_df.empty:
-        # Attempt to compute signals from portfolio session state + yfinance
-        portfolio_df = st.session_state.get("portfolio_df")
-        tickers = []
-        if portfolio_df is not None and len(portfolio_df) > 0:
-            if isinstance(portfolio_df, pd.DataFrame):
-                ticker_col = next(
-                    (c for c in ["Ticker", "ticker", "symbol", "Symbol"] if c in portfolio_df.columns),
-                    None,
-                )
-                if ticker_col:
-                    tickers = portfolio_df[ticker_col].dropna().unique().tolist()
-
-        if tickers:
-            with st.spinner("Computing quant signals from market data..."):
-                quant_df = _compute_quant_signals_from_yfinance(tickers)
-
-        if quant_df.empty:
-            st.warning(
-                "No quant data available. Ensure:\n"
-                "1. Alpaca sync has completed (positions visible on Portfolio Home)\n"
-                "2. `migrations/supabase_views.sql` has been run in the Supabase SQL Editor"
-            )
-            return
-
-        st.info("Showing live-computed signals (Supabase view not yet populated).")
+        from services.supabase_data import render_data_diagnostic
+        render_data_diagnostic("Quant Dashboard — vw_quant_dashboard")
+        return
 
     # ── Regime Overview ──────────────────────────────────────────────────────
     col1, col2, col3 = st.columns(3)
