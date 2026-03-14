@@ -410,29 +410,40 @@ CROSS JOIN total_cost tc;
 
 -- ---------------------------------------------------------------------------
 -- VIEW 6: vw_portfolio_returns_daily
--- Daily portfolio NAV and returns time series from price_history.
--- This is the canonical source for calculate_portfolio_returns() in Python —
--- replaces the yfinance reconstruction fallback with pre-computed Supabase data.
+-- Daily portfolio NAV and return series reconstructed from ACTUAL position
+-- snapshots stored in the positions table (one row per asset per Alpaca sync).
 --
--- Uses current position snapshot (latest_pos) × historical daily close prices.
--- Returns are NAV-based (Δ_NAV / previous_NAV), matching standard market convention.
+-- KEY DESIGN: Uses positions.as_of_date snapshots × matching price_history close
+-- prices — NOT today's holdings back-projected through all history.
+-- This means:
+--   • Time series starts from the first Alpaca sync (when portfolio first existed)
+--   • Changing position sizes over time are respected (buys/sells show as NAV changes)
+--   • No bootstrap artefacts from applying current weights to pre-portfolio history
+--
+-- Returns are NAV-based (Δ_NAV / previous_NAV), standard market convention.
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE VIEW vw_portfolio_returns_daily AS
-WITH latest_pos AS (
-    SELECT DISTINCT ON (asset_id)
-        asset_id, quantity
+WITH position_snapshots AS (
+    -- All daily position snapshots from Alpaca syncs (quantity > 0 only)
+    SELECT DISTINCT
+        as_of_date::date AS snapshot_date,
+        asset_id,
+        quantity
     FROM positions
-    ORDER BY asset_id, as_of_date DESC
+    WHERE quantity > 0
 ),
 daily_nav AS (
+    -- For each snapshot day, value each position at that day's closing price
     SELECT
-        ph.price_date,
-        SUM(ph.close * lp.quantity) AS portfolio_nav
-    FROM price_history ph
-    JOIN latest_pos lp ON lp.asset_id = ph.asset_id
-    WHERE ph.interval = '1d'
-    GROUP BY ph.price_date
-    HAVING SUM(ph.close * lp.quantity) > 0
+        ps.snapshot_date                    AS price_date,
+        SUM(ph.close * ps.quantity)         AS portfolio_nav
+    FROM position_snapshots ps
+    JOIN price_history ph
+        ON  ph.asset_id  = ps.asset_id
+        AND ph.price_date = ps.snapshot_date
+        AND ph.interval  = '1d'
+    GROUP BY ps.snapshot_date
+    HAVING SUM(ph.close * ps.quantity) > 0
 )
 SELECT
     price_date,

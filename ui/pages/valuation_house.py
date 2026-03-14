@@ -9,6 +9,7 @@ import streamlit as st
 from app.config import COLORS
 from ui.theme import ATLAS_COLORS as THEME
 from utils.formatting import format_currency, format_percentage, format_large_number, add_arrow_indicator
+from core.charts import apply_chart_theme
 
 INSTITUTIONAL_DCF_AVAILABLE = False
 

@@ -71,7 +71,7 @@ def render_performance_suite():
             if 'annualised_return' in perf_display_cols:
                 fmt_perf['annualised_return'] = '{:.2%}'
             st.dataframe(
-                perf_df[perf_display_cols].style.format(fmt_perf),
+                perf_df[perf_display_cols].style.format(fmt_perf, na_rep='—'),
                 use_container_width=True,
             )
         st.markdown("---")
