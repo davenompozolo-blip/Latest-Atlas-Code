@@ -27,7 +27,14 @@ def fetch_view(view_name: str) -> pd.DataFrame:
         from services.supabase_client import get_supabase_client
         supabase = get_supabase_client()
         result = supabase.table(view_name).select("*").execute()
-        return pd.DataFrame(result.data) if result.data else pd.DataFrame()
+        if not result.data:
+            return pd.DataFrame()
+        df = pd.DataFrame(result.data)
+        # Blanket numeric cast — Postgres returns Decimal types that crash
+        # Pandas .style.format().  errors='ignore' leaves strings untouched.
+        for col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='ignore')
+        return df
     except Exception as e:
         err_str = str(e)
         # PGRST205 = view not yet created in Supabase schema cache
@@ -37,5 +44,5 @@ def fetch_view(view_name: str) -> pd.DataFrame:
                 "Run `migrations/supabase_views.sql` in the Supabase SQL Editor to create the analytics views."
             )
         else:
-            st.warning(f"[ATLAS] Could not load {view_name}. Check Supabase connection.")
+            st.warning(f"⚠️ View `{view_name}` failed: {type(e).__name__}: {e}")
         return pd.DataFrame()

@@ -109,6 +109,13 @@ def render_quant_dashboard():
 
     quant_df = fetch_view("vw_quant_dashboard")
 
+    # --- DEBUG: remove after confirming fix ---
+    if not quant_df.empty:
+        st.write("### Debug: vw_quant_dashboard schema")
+        st.write(quant_df.dtypes)
+        st.write(quant_df.head(3))
+    # --- END DEBUG ---
+
     if quant_df.empty:
         from services.supabase_data import render_data_diagnostic
         render_data_diagnostic("Quant Dashboard — vw_quant_dashboard")

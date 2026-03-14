@@ -266,6 +266,12 @@ def render_risk_analysis():
         portfolio_returns = calculate_portfolio_returns(df, start_date, end_date)
         benchmark_returns = calculate_benchmark_returns(selected_benchmark, start_date, end_date)
 
+        # Clamp returns series to sidebar date range so rolling charts honour it
+        if is_valid_series(portfolio_returns) and start_date and end_date:
+            mask = (portfolio_returns.index >= pd.to_datetime(start_date)) & \
+                   (portfolio_returns.index <= pd.to_datetime(end_date))
+            portfolio_returns = portfolio_returns[mask]
+
         if not is_valid_series(portfolio_returns):
             from services.supabase_data import render_data_diagnostic
             render_data_diagnostic("Risk Analysis — portfolio returns series")
