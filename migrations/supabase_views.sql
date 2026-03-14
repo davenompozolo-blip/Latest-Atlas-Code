@@ -245,7 +245,8 @@ ORDER BY marginal_vol_contribution DESC;
 -- transaction history exists.
 -- Also: LOWER(transaction_type) = 'buy' for case-insensitive matching.
 -- ---------------------------------------------------------------------------
-CREATE OR REPLACE VIEW vw_performance_suite AS
+DROP VIEW IF EXISTS vw_performance_suite;
+CREATE VIEW vw_performance_suite AS
 WITH latest_pos AS (
     SELECT DISTINCT ON (asset_id)
         asset_id, quantity, average_cost, as_of_date
