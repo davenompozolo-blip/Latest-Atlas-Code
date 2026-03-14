@@ -267,11 +267,8 @@ def render_risk_analysis():
         benchmark_returns = calculate_benchmark_returns(selected_benchmark, start_date, end_date)
 
         if not is_valid_series(portfolio_returns):
-            st.warning(
-                "Insufficient return data to compute risk metrics. "
-                "This may be due to rate limits on market data. "
-                "Supabase risk data is shown above."
-            )
+            from services.supabase_data import render_data_diagnostic
+            render_data_diagnostic("Risk Analysis — portfolio returns series")
             return
         sharpe = calculate_sharpe_ratio(portfolio_returns)
         sortino = calculate_sortino_ratio(portfolio_returns)

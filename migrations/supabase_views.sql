@@ -390,15 +390,54 @@ CROSS JOIN position_count pc
 CROSS JOIN total_cost tc;
 
 -- ---------------------------------------------------------------------------
--- VALIDATION QUERY — Run after creating all views to confirm row counts
--- Expected: position views ~55 rows each, vw_command_centre exactly 1 row
+-- VIEW 6: vw_portfolio_returns_daily
+-- Daily portfolio NAV and returns time series from price_history.
+-- This is the canonical source for calculate_portfolio_returns() in Python —
+-- replaces the yfinance reconstruction fallback with pre-computed Supabase data.
+--
+-- Uses current position snapshot (latest_pos) × historical daily close prices.
+-- Returns are NAV-based (Δ_NAV / previous_NAV), matching standard market convention.
 -- ---------------------------------------------------------------------------
-SELECT 'vw_portfolio_home'    AS view_name, COUNT(*) AS rows FROM vw_portfolio_home
+CREATE OR REPLACE VIEW vw_portfolio_returns_daily AS
+WITH latest_pos AS (
+    SELECT DISTINCT ON (asset_id)
+        asset_id, quantity
+    FROM positions
+    ORDER BY asset_id, as_of_date DESC
+),
+daily_nav AS (
+    SELECT
+        ph.price_date,
+        SUM(ph.close * lp.quantity) AS portfolio_nav
+    FROM price_history ph
+    JOIN latest_pos lp ON lp.asset_id = ph.asset_id
+    WHERE ph.interval = '1d'
+    GROUP BY ph.price_date
+    HAVING SUM(ph.close * lp.quantity) > 0
+)
+SELECT
+    price_date,
+    portfolio_nav,
+    ROUND(
+        ((portfolio_nav - LAG(portfolio_nav) OVER (ORDER BY price_date))
+        / NULLIF(LAG(portfolio_nav) OVER (ORDER BY price_date), 0))::numeric
+    , 6) AS daily_return
+FROM daily_nav
+ORDER BY price_date;
+
+-- ---------------------------------------------------------------------------
+-- VALIDATION QUERY — Run after creating all views to confirm row counts
+-- Expected: position views ~55 rows each, vw_command_centre exactly 1 row,
+--           vw_portfolio_returns_daily ≥ 2 rows (days of price_history)
+-- ---------------------------------------------------------------------------
+SELECT 'vw_portfolio_home'           AS view_name, COUNT(*) AS rows FROM vw_portfolio_home
 UNION ALL
-SELECT 'vw_quant_dashboard',  COUNT(*) FROM vw_quant_dashboard
+SELECT 'vw_quant_dashboard',          COUNT(*) FROM vw_quant_dashboard
 UNION ALL
-SELECT 'vw_risk_analysis',    COUNT(*) FROM vw_risk_analysis
+SELECT 'vw_risk_analysis',            COUNT(*) FROM vw_risk_analysis
 UNION ALL
-SELECT 'vw_performance_suite', COUNT(*) FROM vw_performance_suite
+SELECT 'vw_performance_suite',        COUNT(*) FROM vw_performance_suite
 UNION ALL
-SELECT 'vw_command_centre',   COUNT(*) FROM vw_command_centre;
+SELECT 'vw_command_centre',           COUNT(*) FROM vw_command_centre
+UNION ALL
+SELECT 'vw_portfolio_returns_daily',  COUNT(*) FROM vw_portfolio_returns_daily;

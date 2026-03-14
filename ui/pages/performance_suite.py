@@ -332,31 +332,9 @@ def render_performance_suite():
                 st.markdown(f'<div style="background: linear-gradient(135deg, rgba(239,68,68,0.08), rgba(21,25,50,0.95)); backdrop-filter: blur(24px); border-radius: 24px; border: 1px solid rgba(239,68,68,0.2); padding: 1.75rem 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-height: 200px; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #ef4444, #dc2626); opacity: 0.8;"></div><div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.875rem;"><span style="font-size: 1rem;">📉</span><p style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; font-weight: 600;">VaR 95%</p></div><h3 style="font-size: 2.5rem; font-weight: 800; color: {var_color}; margin: 0.5rem 0 0.75rem 0; text-shadow: 0 0 24px rgba(239,68,68,0.5); line-height: 1;">{var_val}</h3><div style="display: inline-block; padding: 0.4rem 0.75rem; background: rgba(239,68,68,0.12); border-radius: 10px; border: 1px solid rgba(239,68,68,0.25);"><p style="font-size: 0.7rem; color: #fca5a5; margin: 0; font-weight: 600;">{var_status}</p></div></div>', unsafe_allow_html=True)
 
         else:
-            # Fallback: show pre-computed metrics from Supabase vw_command_centre
-            st.info(
-                "Live return series unavailable (market data may be rate-limited). "
-                "Showing Supabase pre-computed metrics instead."
-            )
-            cmd_df = fetch_view("vw_command_centre")
-            if not cmd_df.empty:
-                row = cmd_df.iloc[0]
-                fc1, fc2, fc3, fc4 = st.columns(4)
-                with fc1:
-                    st.metric("Portfolio NAV", f"${row.get('portfolio_nav', 0):,.2f}" if row.get('portfolio_nav') else "N/A")
-                    st.metric("Total Return", f"{row.get('total_return_pct', 0)*100:.2f}%" if row.get('total_return_pct') is not None else "N/A")
-                with fc2:
-                    st.metric("Sharpe Ratio", f"{row.get('sharpe_ratio', 'N/A')}")
-                    st.metric("Sortino Ratio", f"{row.get('sortino_ratio', 'N/A')}")
-                with fc3:
-                    st.metric("Max Drawdown", f"{row.get('drawdown_pct', 'N/A')}%")
-                    st.metric("Dollar VaR 95%", f"${row.get('dollar_var_95', 0):,.2f}" if row.get('dollar_var_95') else "N/A")
-                with fc4:
-                    health = row.get('atlas_health_score', 'N/A')
-                    status = row.get('portfolio_health_status', '')
-                    st.metric("ATLAS Health Score", f"{health}/100", delta=status)
-                    st.metric("Positions", str(row.get('position_count', 'N/A')))
-            else:
-                st.warning("Supabase pre-computed metrics unavailable. Run `migrations/supabase_views.sql` in the Supabase SQL Editor.")
+            # portfolio_returns is None — show data diagnostic instead of wrong values
+            from services.supabase_data import render_data_diagnostic
+            render_data_diagnostic("Performance Suite — portfolio returns series")
 
     # ============================================================
     # TAB 2: INDIVIDUAL SECURITIES ANALYSIS (NEW - GAME CHANGER)

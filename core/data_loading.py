@@ -574,24 +574,36 @@ def save_portfolio_data(data):
 
 def load_portfolio_data():
     """
-    Load portfolio data from session state, pickle cache, or CSV backup.
+    Load portfolio data from Supabase, session state, pickle cache, or CSV backup.
 
     Returns:
         pd.DataFrame or None: Portfolio data if available, None otherwise.
 
     Load Order:
-        1. Session state (user's current session data)
-        2. Pickle cache (persisted from previous sessions)
-        3. In-repo CSV backup (survives Streamlit Cloud redeploys)
-        4. None (no data available - user needs to upload via Phoenix Parser)
+        1. Session state  — fresh data set by the current Alpaca sync
+        2. Supabase vw_portfolio_home  — canonical cross-session source of truth
+        3. Pickle cache  — legacy local fallback
+        4. In-repo CSV backup  — last-resort fallback
+        5. None — no data; user needs to sync via Phoenix Parser
     """
-    # 1. Check session state first (current session data)
+    # 1. Check session state first (may have been set by this session's Alpaca sync)
     if 'portfolio_df' in st.session_state:
         df = st.session_state['portfolio_df']
         if df is not None and isinstance(df, pd.DataFrame) and not df.empty:
             return df
 
-    # 2. Check pickle cache (persisted data)
+    # 2. Supabase vw_portfolio_home — canonical source of truth
+    try:
+        from services.supabase_data import get_portfolio_df as _get_supabase_portfolio
+        supabase_df = _get_supabase_portfolio()
+        if supabase_df is not None and not supabase_df.empty:
+            st.session_state['portfolio_df'] = supabase_df
+            print(f"[ATLAS] Loaded {len(supabase_df)} positions from Supabase vw_portfolio_home")
+            return supabase_df
+    except Exception as _e:
+        print(f"[ATLAS] Supabase portfolio load skipped: {_e}")
+
+    # 3. Check pickle cache (legacy persisted data)
     cache_dir = Path('.cache')
     cache_file = cache_dir / 'portfolio.pkl'
 
@@ -605,7 +617,7 @@ def load_portfolio_data():
         except Exception as e:
             print(f"⚠️ Could not load cached portfolio: {e}")
 
-    # 3. Check in-repo CSV backup (survives Streamlit Cloud redeploys)
+    # 4. Check in-repo CSV backup (last resort — survives Streamlit Cloud redeploys)
     backup_path = _csv_backup_path()
     if backup_path.exists():
         try:
@@ -617,7 +629,7 @@ def load_portfolio_data():
         except Exception as e:
             print(f"⚠️ Could not load CSV backup: {e}")
 
-    # 4. No data available
+    # 5. No data available
     return None
 
 

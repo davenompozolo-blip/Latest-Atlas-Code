@@ -967,6 +967,17 @@ def calculate_portfolio_returns(df, start_date, end_date, equity=None):
                     alpaca_returns = alpaca_returns[alpaca_returns.index <= end_ts]
                 if len(alpaca_returns) > 2:
                     return alpaca_returns
+
+        # Priority 2: Supabase vw_portfolio_returns_daily
+        # Pre-computed from price_history × current positions — no yfinance needed.
+        try:
+            from services.supabase_data import get_portfolio_returns as _get_supabase_returns
+            supabase_returns = _get_supabase_returns(start_date, end_date)
+            if supabase_returns is not None and len(supabase_returns) > 2:
+                return supabase_returns
+        except Exception:
+            pass
+
         valid_positions = []
         for _, row in df.iterrows():
             if not is_option_ticker(row['Ticker']):
