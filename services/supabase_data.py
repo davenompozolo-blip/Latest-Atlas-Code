@@ -114,17 +114,20 @@ def get_portfolio_returns(
     insufficient data exists.  Callers should treat None as a signal to
     call render_data_diagnostic().
     """
+    required_cols = {"price_date", "daily_return"}
+
     # Primary: FIFO transaction-based NAV
     df = fetch_view("vw_portfolio_nav_daily")
 
     # Fallback: legacy position-snapshot view
-    if df.empty or "daily_return" not in df.columns:
+    if df.empty or not required_cols.issubset(df.columns):
         df = fetch_view("vw_portfolio_returns_daily")
 
-    if df.empty or "daily_return" not in df.columns:
+    if df.empty or not required_cols.issubset(df.columns):
         return None
 
-    df['price_date'] = pd.to_datetime(df['price_date'])
+    df['price_date'] = pd.to_datetime(df['price_date'], errors='coerce')
+    df = df.dropna(subset=['price_date'])
     if df['price_date'].dt.tz is not None:
         df['price_date'] = df['price_date'].dt.tz_localize(None)
     df = df.set_index('price_date').sort_index()

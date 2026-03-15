@@ -268,8 +268,11 @@ def render_risk_analysis():
 
         # Clamp returns series to sidebar date range so rolling charts honour it
         if is_valid_series(portfolio_returns) and start_date and end_date:
-            mask = (portfolio_returns.index >= pd.to_datetime(start_date)) & \
-                   (portfolio_returns.index <= pd.to_datetime(end_date))
+            idx = portfolio_returns.index
+            if idx.tz is not None:
+                idx = idx.tz_localize(None)
+            mask = (idx >= pd.to_datetime(start_date)) & \
+                   (idx <= pd.to_datetime(end_date))
             portfolio_returns = portfolio_returns[mask]
 
         if not is_valid_series(portfolio_returns):
