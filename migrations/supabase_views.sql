@@ -327,41 +327,129 @@ LEFT JOIN post_entry_range per ON per.asset_id = pb.asset_id
 ORDER BY annualised_return DESC NULLS LAST;
 
 -- ---------------------------------------------------------------------------
--- VIEW 5: vw_command_centre
--- Single-row ATLAS Health Score, Sortino ratio, portfolio VaR.
+-- VIEW 5: vw_portfolio_nav_daily
+-- FIFO transaction-based portfolio NAV reconstruction.
+-- Uses cumulative buy/sell transactions to build a daily holdings ledger,
+-- forward-fills on non-transaction days, and values at closing prices.
+-- This is the CORRECT approach — no position-snapshot back-projection artefacts.
+--
+-- MUST be defined before vw_command_centre (which depends on it).
 -- ---------------------------------------------------------------------------
-CREATE OR REPLACE VIEW vw_command_centre AS
+DROP VIEW IF EXISTS vw_command_centre;   -- depends on nav_daily, drop first
+DROP VIEW IF EXISTS vw_portfolio_nav_daily;
+CREATE VIEW vw_portfolio_nav_daily AS
+WITH ordered_transactions AS (
+    SELECT
+        asset_id,
+        transaction_date::date AS tx_date,
+        LOWER(transaction_type) AS tx_type,
+        quantity,
+        price
+    FROM transactions
+),
+-- Aggregate to daily net flow per asset to handle multiple same-day
+-- transactions deterministically (Fix 3: nondeterminism).
+daily_net AS (
+    SELECT
+        asset_id,
+        tx_date,
+        SUM(
+            CASE
+                WHEN tx_type = 'buy' THEN quantity
+                WHEN tx_type = 'sell' THEN -quantity
+                ELSE 0
+            END
+        ) AS net_qty
+    FROM ordered_transactions
+    GROUP BY asset_id, tx_date
+),
+cumulative_holdings AS (
+    SELECT
+        asset_id,
+        tx_date,
+        SUM(net_qty) OVER (PARTITION BY asset_id ORDER BY tx_date) AS running_qty
+    FROM daily_net
+),
+inception AS (
+    SELECT MIN(tx_date) AS start_date FROM ordered_transactions
+),
+trading_days AS (
+    SELECT DISTINCT price_date::date AS cal_date
+    FROM price_history
+    WHERE price_date::date >= (SELECT start_date FROM inception)
+      AND interval = '1d'
+),
+daily_holdings AS (
+    SELECT
+        td.cal_date,
+        a.asset_id,
+        (
+            SELECT ch.running_qty
+            FROM cumulative_holdings ch
+            WHERE ch.asset_id = a.asset_id
+              AND ch.tx_date <= td.cal_date
+            ORDER BY ch.tx_date DESC
+            LIMIT 1
+        ) AS quantity
+    FROM trading_days td
+    CROSS JOIN (SELECT DISTINCT asset_id FROM cumulative_holdings) a
+),
+daily_valued AS (
+    SELECT
+        dh.cal_date,
+        dh.asset_id,
+        COALESCE(dh.quantity, 0) AS quantity,
+        ph.close AS close_price,
+        COALESCE(dh.quantity, 0) * ph.close AS position_value
+    FROM daily_holdings dh
+    LEFT JOIN price_history ph
+        ON ph.asset_id = dh.asset_id
+        AND ph.price_date::date = dh.cal_date
+        AND ph.interval = '1d'
+    WHERE dh.quantity IS NOT NULL AND dh.quantity > 0
+),
+daily_nav AS (
+    SELECT
+        cal_date,
+        SUM(position_value) AS nav
+    FROM daily_valued
+    GROUP BY cal_date
+    HAVING SUM(position_value) > 0
+)
+SELECT
+    cal_date AS price_date,
+    nav,
+    (nav - LAG(nav) OVER (ORDER BY cal_date))
+        / NULLIF(LAG(nav) OVER (ORDER BY cal_date), 0) AS daily_return
+FROM daily_nav
+ORDER BY cal_date;
+
+-- ---------------------------------------------------------------------------
+-- VIEW 6: vw_command_centre
+-- Single-row ATLAS Health Score, Sortino ratio, portfolio VaR.
+-- NOW sourced from vw_portfolio_nav_daily (FIFO transaction-based NAV).
+-- ---------------------------------------------------------------------------
+CREATE VIEW vw_command_centre AS
 WITH latest_pos AS (
     SELECT DISTINCT ON (asset_id)
         asset_id, quantity, average_cost, market_value, as_of_date
     FROM positions
     ORDER BY asset_id, as_of_date DESC
-), daily_returns AS (
-    SELECT
-        ph.price_date,
-        SUM(ph.close * p.quantity) AS nav
-    FROM price_history ph
-    JOIN latest_pos p ON p.asset_id = ph.asset_id
-    WHERE ph.interval = '1d'
-    GROUP BY ph.price_date
-    ORDER BY ph.price_date
 ), nav_returns AS (
-    SELECT
-        price_date,
-        nav,
-        (nav - LAG(nav) OVER (ORDER BY price_date)) / NULLIF(LAG(nav) OVER (ORDER BY price_date), 0) AS r
-    FROM daily_returns
+    SELECT daily_return
+    FROM vw_portfolio_nav_daily
+    WHERE daily_return IS NOT NULL
 ), stats AS (
     SELECT
         COUNT(*) AS trading_days,
-        AVG(r) AS mu,
-        STDDEV(r) AS sigma,
-        STDDEV(r) FILTER (WHERE r < 0) AS downside_sigma,
-        MIN(nav) AS nav_low,
-        MAX(nav) AS nav_high,
-        PERCENTILE_CONT(0.05) WITHIN GROUP (ORDER BY r) AS var_95_daily
+        AVG(daily_return) AS mu,
+        STDDEV(daily_return) AS sigma,
+        STDDEV(daily_return) FILTER (WHERE daily_return < 0) AS downside_sigma,
+        PERCENTILE_CONT(0.05) WITHIN GROUP (ORDER BY daily_return) AS var_95_daily
     FROM nav_returns
-    WHERE r IS NOT NULL
+), max_drawdown AS (
+    SELECT MIN(nav / MAX(nav) OVER (ORDER BY price_date) - 1) AS dd
+    FROM vw_portfolio_nav_daily
 ), current_nav AS (
     SELECT SUM(market_value) AS nav FROM latest_pos
 ), position_count AS (
@@ -377,25 +465,25 @@ SELECT
     ROUND(((s.mu - 0.000178) / NULLIF(s.sigma, 0) * SQRT(252))::numeric, 2) AS sharpe_ratio,
     -- Sortino ratio (annualised, penalises downside only)
     ROUND(((s.mu - 0.000178) / NULLIF(s.downside_sigma, 0) * SQRT(252))::numeric, 2) AS sortino_ratio,
-    -- Max drawdown
-    ROUND(((cn.nav - s.nav_high) / NULLIF(s.nav_high, 0) * 100)::numeric, 2) AS drawdown_pct,
+    -- Max drawdown from FIFO NAV series
+    ROUND((md.dd * 100)::numeric, 2) AS drawdown_pct,
     -- Portfolio dollar VaR at 95% confidence (daily)
     ROUND((ABS(s.var_95_daily) * cn.nav)::numeric, 2) AS dollar_var_95,
     -- ATLAS Health Score (0-100)
     ROUND(LEAST(100, GREATEST(0,
         ((s.mu - 0.000178) / NULLIF(s.sigma, 0) * SQRT(252)) * 40
-        + (1 + (cn.nav - s.nav_high) / NULLIF(s.nav_high, 0)) * 40
+        + (1 + md.dd) * 40
         + LEAST(20, pc.n)
     ))::numeric, 1) AS atlas_health_score,
     CASE
         WHEN LEAST(100, GREATEST(0,
             ((s.mu - 0.000178) / NULLIF(s.sigma, 0) * SQRT(252)) * 40
-            + (1 + (cn.nav - s.nav_high) / NULLIF(s.nav_high, 0)) * 40
+            + (1 + md.dd) * 40
             + LEAST(20, pc.n)
         )) >= 75 THEN 'Strong'
         WHEN LEAST(100, GREATEST(0,
             ((s.mu - 0.000178) / NULLIF(s.sigma, 0) * SQRT(252)) * 40
-            + (1 + (cn.nav - s.nav_high) / NULLIF(s.nav_high, 0)) * 40
+            + (1 + md.dd) * 40
             + LEAST(20, pc.n)
         )) >= 50 THEN 'Moderate'
         ELSE 'Needs Attention'
@@ -404,12 +492,13 @@ SELECT
     s.trading_days AS days_of_history,
     NOW() AS computed_at
 FROM stats s
+CROSS JOIN max_drawdown md
 CROSS JOIN current_nav cn
 CROSS JOIN position_count pc
 CROSS JOIN total_cost tc;
 
 -- ---------------------------------------------------------------------------
--- VIEW 6: vw_portfolio_returns_daily
+-- VIEW 7: vw_portfolio_returns_daily (legacy — kept for fallback)
 -- Daily portfolio NAV and return series reconstructed from ACTUAL position
 -- snapshots stored in the positions table (one row per asset per Alpaca sync).
 --
@@ -470,4 +559,6 @@ SELECT 'vw_performance_suite',        COUNT(*) FROM vw_performance_suite
 UNION ALL
 SELECT 'vw_command_centre',           COUNT(*) FROM vw_command_centre
 UNION ALL
-SELECT 'vw_portfolio_returns_daily',  COUNT(*) FROM vw_portfolio_returns_daily;
+SELECT 'vw_portfolio_returns_daily',  COUNT(*) FROM vw_portfolio_returns_daily
+UNION ALL
+SELECT 'vw_portfolio_nav_daily',      COUNT(*) FROM vw_portfolio_nav_daily;

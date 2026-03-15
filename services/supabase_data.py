@@ -105,30 +105,45 @@ def get_portfolio_returns(
     end_date=None,
 ) -> pd.Series | None:
     """
-    Load the daily portfolio return series from vw_portfolio_returns_daily.
+    Fetch FIFO-based daily returns from vw_portfolio_nav_daily.
+
+    Falls back to vw_portfolio_returns_daily if the FIFO view is empty
+    (e.g. migrations not yet re-run).
 
     Returns a pd.Series indexed by date (timezone-naive), or None if
     insufficient data exists.  Callers should treat None as a signal to
     call render_data_diagnostic().
     """
-    df = fetch_view("vw_portfolio_returns_daily")
-    if df.empty or "daily_return" not in df.columns:
+    required_cols = {"price_date", "daily_return"}
+
+    # Primary: FIFO transaction-based NAV
+    df = fetch_view("vw_portfolio_nav_daily")
+
+    # Fallback: legacy position-snapshot view
+    if df.empty or not required_cols.issubset(df.columns):
+        df = fetch_view("vw_portfolio_returns_daily")
+
+    if df.empty or not required_cols.issubset(df.columns):
         return None
 
-    df = df.dropna(subset=["daily_return"]).copy()
-    if len(df) < 2:
+    df['price_date'] = pd.to_datetime(df['price_date'], errors='coerce')
+    df = df.dropna(subset=['price_date'])
+    if df['price_date'].dt.tz is not None:
+        df['price_date'] = df['price_date'].dt.tz_localize(None)
+    df = df.set_index('price_date').sort_index()
+    df['daily_return'] = pd.to_numeric(df['daily_return'], errors='coerce')
+
+    returns = df['daily_return'].dropna()
+
+    if start_date:
+        returns = returns[returns.index >= pd.to_datetime(start_date)]
+    if end_date:
+        returns = returns[returns.index <= pd.to_datetime(end_date)]
+
+    if len(returns) < 2:
         return None
 
-    df["price_date"] = pd.to_datetime(df["price_date"]).dt.tz_localize(None)
-    df = df.set_index("price_date").sort_index()
-    series = df["daily_return"].astype(float)
-
-    if start_date is not None:
-        series = series[series.index >= pd.Timestamp(start_date)]
-    if end_date is not None:
-        series = series[series.index <= pd.Timestamp(end_date)]
-
-    return series if len(series) >= 2 else None
+    return returns
 
 
 # ---------------------------------------------------------------------------
@@ -137,6 +152,7 @@ def get_portfolio_returns(
 
 _REQUIRED_VIEWS = [
     "vw_portfolio_home",
+    "vw_portfolio_nav_daily",
     "vw_portfolio_returns_daily",
     "vw_command_centre",
     "vw_performance_suite",

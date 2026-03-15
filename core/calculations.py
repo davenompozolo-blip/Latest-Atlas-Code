@@ -978,73 +978,11 @@ def calculate_portfolio_returns(df, start_date, end_date, equity=None):
         except Exception:
             pass
 
-        valid_positions = []
-        for _, row in df.iterrows():
-            if not is_option_ticker(row['Ticker']):
-                valid_positions.append(row)
-
-        if not valid_positions:
-            return None
-
-        valid_df = pd.DataFrame(valid_positions)
-        all_data = {}
-
-        for _, row in valid_df.iterrows():
-            ticker = row['Ticker']
-            data = fetch_historical_data(ticker, start_date, end_date)
-            if data is not None and len(data) > 0:
-                all_data[ticker] = data
-
-        if not all_data:
-            return None
-
-        common_dates = None
-        for ticker, data in all_data.items():
-            dates = set(data.index)
-            common_dates = dates if common_dates is None else common_dates.intersection(dates)
-
-        common_dates = sorted(list(common_dates))
-        if len(common_dates) < 2:
-            return None
-
-        # Calculate daily portfolio gross values
-        portfolio_values = []
-        for date in common_dates:
-            daily_value = 0
-            for _, row in valid_df.iterrows():
-                ticker = row['Ticker']
-                if ticker in all_data:
-                    try:
-                        price = all_data[ticker].loc[date, 'Close']
-                        daily_value += price * row['Shares']
-                    except KeyError:
-                        continue
-            portfolio_values.append(daily_value)
-
-        portfolio_series = pd.Series(portfolio_values, index=common_dates)
-
-        # CRITICAL FIX: Calculate returns on EQUITY basis, not gross exposure
-        # Get equity from performance history or session state if not provided
-        if equity is None:
-            # Try to get from performance history first
-            metrics = get_current_portfolio_metrics()
-            if metrics and metrics.get('equity', 0) > 0:
-                equity = metrics['equity']
-            else:
-                # Fallback to session state, then initial portfolio value
-                equity = st.session_state.get('equity_capital', portfolio_values[0])
-
-        # Calculate dollar changes in portfolio value
-        portfolio_changes = portfolio_series.diff()
-
-        # Returns = dollar change / equity (not / previous gross value)
-        # This correctly amplifies returns with leverage
-        returns = portfolio_changes / equity
-
-        # Drop first NaN value
-        returns = returns.dropna()
-
-        return returns
+        # No Alpaca engine and no Supabase data — show diagnostic instead
+        # of silently producing incorrect yfinance-reconstructed numbers.
+        from services.supabase_data import render_data_diagnostic
+        render_data_diagnostic("Portfolio returns — no data source available")
+        return None
     except:
         return None
 
