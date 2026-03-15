@@ -754,16 +754,16 @@ def render_phoenix_parser():
 
                                         st.success("✅ Portfolio data is now available for all ATLAS analysis modules!")
 
-                        except Exception as e:
-                            st.error(f"❌ Sync failed: {str(e)}")
-                            st.info(
-                                "**Troubleshooting Steps:**\n\n"
-                                "1. Verify your Alpaca API credentials are correct\n"
-                                "2. Check that you selected the correct account type (Paper vs Live)\n"
-                                "3. Ensure your account has positions\n"
-                                "4. Verify your API keys have proper permissions\n"
-                                "5. Check your internet connection"
-                            )
+                            except Exception as e:
+                                st.error(f"❌ Sync failed: {str(e)}")
+                                st.info(
+                                    "**Troubleshooting Steps:**\n\n"
+                                    "1. Verify your Alpaca API credentials are correct\n"
+                                    "2. Check that you selected the correct account type (Paper vs Live)\n"
+                                    "3. Ensure your account has positions\n"
+                                    "4. Verify your API keys have proper permissions\n"
+                                    "5. Check your internet connection"
+                                )
 
                                 # Show debug info in expander
                                 with st.expander("🔍 Technical Error Details"):
