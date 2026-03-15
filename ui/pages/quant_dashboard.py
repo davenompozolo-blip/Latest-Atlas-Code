@@ -121,20 +121,31 @@ def render_quant_dashboard():
         render_data_diagnostic("Quant Dashboard — vw_quant_dashboard")
         return
 
+    try:
+        _render_quant_content(quant_df)
+    except Exception as render_err:
+        st.error(f"Quant Dashboard render error: {type(render_err).__name__}: {render_err}")
+        st.info("Falling back to raw data view.")
+        st.dataframe(quant_df, use_container_width=True)
+
+
+def _render_quant_content(quant_df: pd.DataFrame):
+    """Inner render — separated so a crash shows a fallback instead of redirecting."""
+
     # ── Regime Overview ──────────────────────────────────────────────────────
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        uptrend_count = (quant_df['price_regime'] == 'Uptrend').sum()
+        uptrend_count = int((quant_df.get('price_regime', pd.Series()) == 'Uptrend').sum())
         st.metric("Uptrend Positions", f"{uptrend_count} / {len(quant_df)}")
 
     with col2:
-        expanding_vol = (quant_df['vol_regime'] == 'Expanding').sum()
+        expanding_vol = int((quant_df.get('vol_regime', pd.Series()) == 'Expanding').sum())
         st.metric("Expanding Vol", f"{expanding_vol} / {len(quant_df)}")
 
     with col3:
-        overbought = (quant_df['mean_reversion_signal'] == 'Overbought').sum()
-        oversold = (quant_df['mean_reversion_signal'] == 'Oversold').sum()
+        overbought = int((quant_df.get('mean_reversion_signal', pd.Series()) == 'Overbought').sum())
+        oversold = int((quant_df.get('mean_reversion_signal', pd.Series()) == 'Oversold').sum())
         st.metric("Overbought / Oversold", f"{overbought} / {oversold}")
 
     # ── Main data table ──────────────────────────────────────────────────────
@@ -146,6 +157,12 @@ def render_quant_dashboard():
         'annualised_vol_20d'
     ]
     available_cols = [c for c in display_cols if c in quant_df.columns]
+
+    # Ensure numeric columns are float (not Decimal) before formatting
+    numeric_cols = ['current_price', 'zscore_20d', 'momentum_pct_rank_20d', 'annualised_vol_20d']
+    for col in numeric_cols:
+        if col in quant_df.columns:
+            quant_df[col] = pd.to_numeric(quant_df[col], errors='coerce')
 
     fmt = {}
     if 'current_price' in available_cols:
@@ -163,9 +180,10 @@ def render_quant_dashboard():
     )
 
     # ── Mean Reversion Flags ─────────────────────────────────────────────────
-    flags_df = quant_df[quant_df['mean_reversion_signal'].isin(['Overbought', 'Oversold'])]
-    if not flags_df.empty:
-        st.subheader("Mean Reversion Flags")
-        flag_cols = [c for c in ['symbol', 'mean_reversion_signal', 'zscore_20d', 'current_price']
-                     if c in flags_df.columns]
-        st.dataframe(flags_df[flag_cols], use_container_width=True)
+    if 'mean_reversion_signal' in quant_df.columns:
+        flags_df = quant_df[quant_df['mean_reversion_signal'].isin(['Overbought', 'Oversold'])]
+        if not flags_df.empty:
+            st.subheader("Mean Reversion Flags")
+            flag_cols = [c for c in ['symbol', 'mean_reversion_signal', 'zscore_20d', 'current_price']
+                         if c in flags_df.columns]
+            st.dataframe(flags_df[flag_cols], use_container_width=True)

@@ -513,26 +513,55 @@ CROSS JOIN total_cost tc;
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE VIEW vw_portfolio_returns_daily AS
 WITH position_snapshots AS (
-    -- All daily position snapshots from Alpaca syncs (quantity > 0 only)
-    SELECT DISTINCT
+    -- All position snapshots from Alpaca syncs (quantity > 0 only)
+    SELECT DISTINCT ON (asset_id, as_of_date::date)
         as_of_date::date AS snapshot_date,
         asset_id,
         quantity
     FROM positions
     WHERE quantity > 0
+    ORDER BY asset_id, as_of_date::date DESC
+),
+-- Earliest snapshot date = portfolio inception for this view
+inception AS (
+    SELECT MIN(snapshot_date) AS start_date FROM position_snapshots
+),
+-- All trading days from price_history since portfolio inception
+trading_days AS (
+    SELECT DISTINCT price_date::date AS cal_date
+    FROM price_history
+    WHERE interval = '1d'
+      AND price_date::date >= (SELECT start_date FROM inception)
+),
+-- Forward-fill: for each (cal_date, asset), carry the most recent
+-- position snapshot quantity on or before that date.
+daily_holdings AS (
+    SELECT
+        td.cal_date,
+        a.asset_id,
+        (
+            SELECT ps.quantity
+            FROM position_snapshots ps
+            WHERE ps.asset_id = a.asset_id
+              AND ps.snapshot_date <= td.cal_date
+            ORDER BY ps.snapshot_date DESC
+            LIMIT 1
+        ) AS quantity
+    FROM trading_days td
+    CROSS JOIN (SELECT DISTINCT asset_id FROM position_snapshots) a
 ),
 daily_nav AS (
-    -- For each snapshot day, value each position at that day's closing price
     SELECT
-        ps.snapshot_date                    AS price_date,
-        SUM(ph.close * ps.quantity)         AS portfolio_nav
-    FROM position_snapshots ps
+        dh.cal_date AS price_date,
+        SUM(ph.close * dh.quantity) AS portfolio_nav
+    FROM daily_holdings dh
     JOIN price_history ph
-        ON  ph.asset_id  = ps.asset_id
-        AND ph.price_date = ps.snapshot_date
+        ON  ph.asset_id  = dh.asset_id
+        AND ph.price_date::date = dh.cal_date
         AND ph.interval  = '1d'
-    GROUP BY ps.snapshot_date
-    HAVING SUM(ph.close * ps.quantity) > 0
+    WHERE dh.quantity IS NOT NULL AND dh.quantity > 0
+    GROUP BY dh.cal_date
+    HAVING SUM(ph.close * dh.quantity) > 0
 )
 SELECT
     price_date,

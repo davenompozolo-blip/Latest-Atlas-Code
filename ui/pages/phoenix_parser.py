@@ -708,6 +708,49 @@ def render_phoenix_parser():
                                             # Save to portfolio data for persistence
                                             save_portfolio_data(df.to_dict('records'))
 
+                                            # ── Supabase deep sync ──────────────────
+                                            # run_sync() writes positions, assets, AND
+                                            # transactions (order history) to Supabase.
+                                            # Without this, vw_portfolio_nav_daily is empty.
+                                            import os
+                                            os.environ['ALPACA_API_KEY'] = final_api_key
+                                            os.environ['ALPACA_API_SECRET'] = final_secret
+                                            os.environ['ALPACA_PAPER'] = 'true' if use_paper else 'false'
+
+                                            with st.spinner("🔄 Syncing transactions & positions to Supabase..."):
+                                                try:
+                                                    from services.alpaca_sync import run_sync
+                                                    sync_stats = run_sync()
+                                                    st.success(
+                                                        f"✅ Supabase sync: "
+                                                        f"{sync_stats.get('assets_upserted', 0)} assets, "
+                                                        f"{sync_stats.get('positions_upserted', 0)} positions, "
+                                                        f"{sync_stats.get('transactions_upserted', 0)} transactions"
+                                                    )
+                                                except Exception as sync_exc:
+                                                    st.warning(f"⚠️ Supabase deep sync failed: {sync_exc}")
+
+                                            # ── Price history backfill ──────────────
+                                            # Fetch historical close prices for all
+                                            # portfolio tickers so the time-series
+                                            # views (NAV, returns, Sharpe) have data.
+                                            tickers_to_sync = df['Ticker'].tolist() if 'Ticker' in df.columns else []
+                                            if tickers_to_sync:
+                                                with st.spinner(f"📈 Backfilling price history for {len(tickers_to_sync)} tickers..."):
+                                                    try:
+                                                        from services.supabase_client import get_supabase_client
+                                                        from services.market_data.ingestion_service import MarketDataIngestionService
+                                                        svc = MarketDataIngestionService(get_supabase_client())
+                                                        ingested = 0
+                                                        for ticker in tickers_to_sync:
+                                                            try:
+                                                                ingested += svc.sync_ticker(ticker)
+                                                            except Exception:
+                                                                pass
+                                                        st.success(f"✅ Price history: {ingested} records across {len(tickers_to_sync)} tickers")
+                                                    except Exception as ingest_exc:
+                                                        st.warning(f"⚠️ Price history backfill failed: {ingest_exc}")
+
                                             # Get account summary
                                             account = adapter.get_account_summary()
 
