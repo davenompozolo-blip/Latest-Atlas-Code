@@ -1,0 +1,37 @@
+-- =============================================================================
+-- ATLAS Backend — Supabase SQL Editor Run Order
+-- =============================================================================
+--
+-- Paste each file into the Supabase SQL Editor (Dashboard > SQL Editor)
+-- and run them IN THIS ORDER:
+--
+-- 1. supabase/migrations/20260306211500_initial_portfolio_schema.sql
+--    (base tables: portfolios, assets, positions, transactions, price_history)
+--
+-- 2. supabase/migrations/20260307000000_price_history_market_data_columns.sql
+--    (adds interval column + updated unique constraint on price_history)
+--
+-- 3. supabase/migrations/20260329000000_org_model.sql
+--    (organizations table, org_members table, organization_id on portfolios)
+--
+-- 4. supabase/migrations/20260329000001_rls_policies.sql
+--    (RLS enabled on ALL tables + per-org policies + helper functions)
+--
+-- 5. supabase/migrations/20260329000002_sync_jobs.sql
+--    (sync_jobs table for tracking ingestion runs)
+--
+-- 6. migrations/supabase_views.sql
+--    (all 7 analytics views)
+--
+-- 7. migrations/supabase_views_security.sql
+--    (enable security_invoker on views so they respect RLS)
+--
+-- =============================================================================
+-- IMPORTANT: If you already ran some of these in the live DB via the
+-- Supabase Assistant, the IF NOT EXISTS / IF EXISTS guards will skip
+-- what already exists. The RLS policies use CREATE POLICY (not
+-- CREATE OR REPLACE), so if a policy name already exists, you may
+-- need to DROP POLICY <name> ON <table> first, or skip that file.
+-- =============================================================================
+
+SELECT 'Read the comments above for run order. This file is documentation only.' AS info;
