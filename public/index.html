@@ -500,7 +500,7 @@
                 React.createElement('div', { style: { color: 'rgba(255,255,255,0.52)', marginBottom: 32, maxWidth: 480, margin: '0 auto 32px' } },
                     'Running in demo mode. To connect to live Supabase data, set your anon key:'),
                 React.createElement('pre', { style: { background: '#0d0f1a', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, padding: 20, textAlign: 'left', maxWidth: 600, margin: '0 auto', fontSize: 13, fontFamily: 'JetBrains Mono', color: 'rgba(255,255,255,0.7)', overflowX: 'auto' } },
-                    '<script>\nwindow.ATLAS_CONFIG = {\n  supabaseKey: "your-anon-key-here"\n};\n</script>'),
+                    '\x3Cscript\x3E\nwindow.ATLAS_CONFIG = {\n  supabaseKey: "your-anon-key-here"\n};\n\x3C/script\x3E'),
                 React.createElement('div', { style: { color: 'rgba(255,255,255,0.28)', marginTop: 20, fontSize: 12 } }, 'Add the script block above BEFORE the terminal script tag, or deploy with environment injection.')
             );
         }
