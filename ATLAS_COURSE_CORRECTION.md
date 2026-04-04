@@ -329,4 +329,54 @@ Latest-Atlas-Code/
 
 ---
 
+---
+
+## 9. inject-env.js Mismatch — FIXED
+
+The terminal was showing MOCK DATA even after Vercel env vars were set because `inject-env.js` was searching for the wrong string.
+
+**Root cause:** The HTML was changed to use `window.ATLAS_CONFIG.supabaseKey || ''` but inject-env.js was still looking for `const SUPABASE_KEY = '';`.
+
+**Fix applied:** Updated inject-env.js to match the actual HTML pattern:
+```javascript
+html.replace(
+  "const SUPABASE_KEY = window.ATLAS_CONFIG.supabaseKey || '';",
+  `const SUPABASE_KEY = window.ATLAS_CONFIG.supabaseKey || '${process.env.SUPABASE_ANON_KEY}';`
+);
+```
+With a fallback to the old pattern if the primary doesn't match.
+
+---
+
+## 10. Supabase MCP — Setup Required
+
+The course correction brief mentions a Supabase MCP server configured on branch `claude/add-supabase-mcp-server-o2Nbg`. This was NOT merged into the working branch. For CC to have direct SQL access:
+
+1. Add `.mcp.json` to repo root:
+```json
+{
+  "mcpServers": {
+    "supabase": {
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp?project_ref=vdmojjszvvcithuxwexx"
+    }
+  }
+}
+```
+2. Authenticate via `claude /mcp` → select supabase → OAuth flow
+3. Verify: `SELECT COUNT(*) FROM vw_portfolio_home`
+
+---
+
+## 11. Command Centre — Redesigned
+
+The Command Centre has been rewritten to match the target design (Image 3):
+- **Horizontal agent tabs** (not sidebar)
+- **Session Brief** expandable section with APPLY/ACTIVE badge
+- **Quick-action chips** per agent
+- **Agent specialty tags** below name
+- **Agent status** "4 AGENTS ONLINE" in top bar
+
+---
+
 *End of course correction document. Defer to what you find in the actual repo over what this doc says.*
