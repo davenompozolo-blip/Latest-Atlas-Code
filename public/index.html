@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="ATLAS Terminal — Institutional Investment Analytics">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>ATLAS Terminal</title>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700;800&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
+
+    <!-- React 18 -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+    <!-- Babel Standalone (JSX transpilation) -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Chart.js 4 -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+
+    <!-- Supabase JS v2 -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <!-- ATLAS Configuration -->
+    <script>
+        window.ATLAS_CONFIG = window.ATLAS_CONFIG || {};
+        const SUPABASE_URL = window.ATLAS_CONFIG.supabaseUrl || 'https://vdmojjszvvcithuxwexx.supabase.co';
+        const SUPABASE_KEY = window.ATLAS_CONFIG.supabaseKey || '';
+    </script>
+
+    <style>
+        /* ============================================
+           ATLAS Terminal — Design System & Styles
+           ============================================ */
+
+        :root {
+            --bg: #070814;
+            --card: #0d0f1a;
+            --card-border: rgba(255, 255, 255, 0.06);
+            --cyan: #00d4ff;
+            --indigo: #6366f1;
+            --violet: #8b5cf6;
+            --green: #10b981;
+            --red: #ef4444;
+            --amber: #f59e0b;
+            --text: rgba(255, 255, 255, 0.92);
+            --text-sec: rgba(255, 255, 255, 0.52);
+            --text-muted: rgba(255, 255, 255, 0.28);
+        }
+
+        /* === Reset & Base === */
+
+        *, *::before, *::after {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-size: 14px;
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        /* === App Layout === */
+
+        .app-container {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        /* === Top Bar === */
+
+        .top-bar {
+            height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+            background: var(--card);
+            border-bottom: 1px solid var(--card-border);
+            flex-shrink: 0;
+        }
+
+        .top-bar .logo {
+            font-family: 'Syne', sans-serif;
+            font-size: 16px;
+            font-weight: 800;
+            letter-spacing: 4px;
+            color: var(--cyan);
+            text-shadow: 0 0 20px rgba(0, 212, 255, 0.3), 0 0 40px rgba(0, 212, 255, 0.1);
+        }
+
+        .top-bar .status {
+            font-size: 11px;
+            color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* === Navigation Bar === */
+
+        .nav-bar {
+            display: flex;
+            gap: 0;
+            border-bottom: 1px solid var(--card-border);
+            background: var(--bg);
+            flex-shrink: 0;
+            overflow-x: auto;
+        }
+
+        .nav-tab {
+            padding: 12px 24px;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-sec);
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            border-top: none;
+            border-left: none;
+            border-right: none;
+            background: none;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+            font-family: 'DM Sans', -apple-system, sans-serif;
+        }
+
+        .nav-tab:hover {
+            color: var(--text);
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .nav-tab.active {
+            color: var(--cyan);
+            border-bottom-color: var(--cyan);
+        }
+
+        /* === Main Content === */
+
+        .main-content {
+            flex: 1;
+            padding: 24px;
+            overflow-y: auto;
+            max-width: 1400px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        /* === Page Title === */
+
+        .page-title {
+            font-family: 'Syne', sans-serif;
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 20px;
+            letter-spacing: 1px;
+        }
+
+        /* === Metrics Row === */
+
+        .metrics-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        /* === Metric Card === */
+
+        .metric-card {
+            background: var(--card);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .metric-card .label {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 6px;
+        }
+
+        .metric-card .value {
+            font-size: 24px;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text);
+        }
+
+        .metric-card .sub {
+            font-size: 12px;
+            color: var(--text-sec);
+            margin-top: 4px;
+        }
+
+        /* === Card === */
+
+        .card {
+            background: var(--card);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+
+        .card-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 16px;
+            letter-spacing: 0.5px;
+        }
+
+        /* === Data Table === */
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .data-table th {
+            text-align: left;
+            padding: 10px 12px;
+            color: var(--text-muted);
+            font-weight: 500;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-bottom: 1px solid var(--card-border);
+        }
+
+        .data-table td {
+            padding: 10px 12px;
+            color: var(--text);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .data-table tr:hover {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        /* === Value Colors === */
+
+        .positive {
+            color: var(--green);
+        }
+
+        .negative {
+            color: var(--red);
+        }
+
+        .neutral {
+            color: var(--amber);
+        }
+
+        /* === Badges === */
+
+        .badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .badge.green {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--green);
+        }
+
+        .badge.red {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--red);
+        }
+
+        .badge.amber {
+            background: rgba(245, 158, 11, 0.15);
+            color: var(--amber);
+        }
+
+        .badge.blue {
+            background: rgba(99, 102, 241, 0.15);
+            color: var(--indigo);
+        }
+
+        /* === Chart Container === */
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin-top: 12px;
+        }
+
+        /* === Grid Layouts === */
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .grid-3 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+
+            .grid-3 {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* === Loading Spinner === */
+
+        .loading-spinner {
+            text-align: center;
+            padding: 60px;
+            color: var(--text-muted);
+        }
+
+        .loading-spinner::after {
+            content: '';
+            display: block;
+            width: 32px;
+            height: 32px;
+            margin: 16px auto;
+            border: 3px solid var(--card-border);
+            border-top-color: var(--cyan);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* === States === */
+
+        .error-state {
+            text-align: center;
+            padding: 40px;
+            color: var(--red);
+            font-size: 14px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px;
+            color: var(--text-muted);
+        }
+
+        /* === Health Score === */
+
+        .health-score {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            font-size: 28px;
+            font-weight: 800;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .health-score.strong {
+            border: 3px solid var(--green);
+            color: var(--green);
+        }
+
+        .health-score.moderate {
+            border: 3px solid var(--amber);
+            color: var(--amber);
+        }
+
+        .health-score.weak {
+            border: 3px solid var(--red);
+            color: var(--red);
+        }
+
+        /* === Donut Container === */
+
+        .donut-container {
+            width: 200px;
+            height: 200px;
+            margin: 0 auto;
+        }
+
+        /* === Custom Scrollbar === */
+
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.18);
+        }
+
+        /* Firefox scrollbar */
+        * {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // === ATLAS TERMINAL — React Application ===
+        const { useState, useEffect, useRef, useCallback } = React;
+
+        // --- Supabase Client ---
+        const sb = SUPABASE_KEY
+            ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+            : null;
+
+        async function loadView(viewName, fallback = []) {
+            if (!sb) return fallback;
+            try {
+                const { data, error } = await sb.from(viewName).select('*');
+                if (error) throw error;
+                return data && data.length ? data : fallback;
+            } catch (e) {
+                console.warn('[ATLAS] ' + viewName + ':', e.message);
+                return fallback;
+            }
+        }
+
+        // --- Formatters ---
+        function fmt(n, d = 2) { return n != null ? Number(n).toFixed(d) : '\u2014'; }
+        function fmtPct(n) { return n != null ? (Number(n) * 100).toFixed(2) + '%' : '\u2014'; }
+        function fmtCurrency(n) {
+            if (n == null) return '\u2014';
+            return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+        function cls(val) { return val > 0 ? 'positive' : val < 0 ? 'negative' : ''; }
+        function badgeCls(tier) {
+            const t = (tier || '').toLowerCase();
+            if (t.includes('high') || t.includes('downtrend') || t.includes('overbought') || t.includes('needs')) return 'red';
+            if (t.includes('moderate') || t.includes('sideways') || t.includes('amber') || t.includes('expanding')) return 'amber';
+            if (t.includes('low') || t.includes('uptrend') || t.includes('oversold') || t.includes('strong') || t.includes('compressing')) return 'green';
+            return 'blue';
+        }
+        function healthCls(score) { return score >= 75 ? 'strong' : score >= 50 ? 'moderate' : 'weak'; }
+
+        // --- Mock Data (fallback when no Supabase key) ---
+        const MOCK_POSITIONS = [
+            { symbol: 'AAPL', name: 'Apple Inc.', quantity: 50, cost_basis: 178.50, current_price: 195.20, market_value: 9760, unrealised_return_pct: 0.0936, portfolio_weight: 0.082, annualised_vol: 0.28, sharpe_approx: 1.2, is_concentrated: false },
+            { symbol: 'MSFT', name: 'Microsoft Corp', quantity: 30, cost_basis: 380.00, current_price: 425.80, market_value: 12774, unrealised_return_pct: 0.1205, portfolio_weight: 0.107, annualised_vol: 0.25, sharpe_approx: 1.5, is_concentrated: true },
+            { symbol: 'NVDA', name: 'NVIDIA Corp', quantity: 20, cost_basis: 650.00, current_price: 890.50, market_value: 17810, unrealised_return_pct: 0.3700, portfolio_weight: 0.149, annualised_vol: 0.52, sharpe_approx: 2.1, is_concentrated: true },
+            { symbol: 'GOOGL', name: 'Alphabet Inc.', quantity: 40, cost_basis: 140.00, current_price: 162.30, market_value: 6492, unrealised_return_pct: 0.1593, portfolio_weight: 0.054, annualised_vol: 0.30, sharpe_approx: 0.9, is_concentrated: false },
+        ];
+        const MOCK_COMMAND = { portfolio_nav: 119500, total_invested: 98000, total_return_pct: 0.2194, sharpe_ratio: 1.35, sortino_ratio: 1.82, drawdown_pct: -8.4, dollar_var_95: 2850, atlas_health_score: 72, portfolio_health_status: 'Moderate', position_count: 55, days_of_history: 420, computed_at: new Date().toISOString() };
+
+        // --- Loading Component ---
+        function Loading({ text }) {
+            return React.createElement('div', { className: 'loading-spinner' }, text || 'Loading data...');
+        }
+
+        // --- Empty State ---
+        function EmptyState({ message }) {
+            return React.createElement('div', { className: 'empty-state' },
+                React.createElement('div', { style: { fontSize: 36, marginBottom: 12 } }, '\u26A0'),
+                React.createElement('div', null, message || 'No data available \u2014 run Alpaca sync first')
+            );
+        }
+
+        // --- Config Prompt (shown when no Supabase key) ---
+        function ConfigPrompt() {
+            return React.createElement('div', { style: { textAlign: 'center', padding: '80px 24px' } },
+                React.createElement('div', { style: { fontFamily: 'Syne', fontSize: 32, fontWeight: 800, color: '#00d4ff', marginBottom: 16 } }, 'ATLAS TERMINAL'),
+                React.createElement('div', { style: { color: 'rgba(255,255,255,0.52)', marginBottom: 32, maxWidth: 480, margin: '0 auto 32px' } },
+                    'Running in demo mode. To connect to live Supabase data, set your anon key:'),
+                React.createElement('pre', { style: { background: '#0d0f1a', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, padding: 20, textAlign: 'left', maxWidth: 600, margin: '0 auto', fontSize: 13, fontFamily: 'JetBrains Mono', color: 'rgba(255,255,255,0.7)', overflowX: 'auto' } },
+                    '<script>\nwindow.ATLAS_CONFIG = {\n  supabaseKey: "your-anon-key-here"\n};\n</script>'),
+                React.createElement('div', { style: { color: 'rgba(255,255,255,0.28)', marginTop: 20, fontSize: 12 } }, 'Add the script block above BEFORE the terminal script tag, or deploy with environment injection.')
+            );
+        }
+
+        // ============================================================
+        // TAB 1: PORTFOLIO HOME
+        // ============================================================
+        function PortfolioHome() {
+            const [positions, setPositions] = useState(null);
+            const [command, setCommand] = useState(null);
+            const [loading, setLoading] = useState(true);
+            const chartRef = useRef(null);
+            const chartInstance = useRef(null);
+
+            useEffect(() => {
+                Promise.all([
+                    loadView('vw_portfolio_home', MOCK_POSITIONS),
+                    loadView('vw_command_centre', [MOCK_COMMAND])
+                ]).then(([pos, cmd]) => {
+                    setPositions(pos);
+                    setCommand(cmd[0] || MOCK_COMMAND);
+                    setLoading(false);
+                });
+            }, []);
+
+            useEffect(() => {
+                if (!positions || !chartRef.current) return;
+                if (chartInstance.current) chartInstance.current.destroy();
+                const top10 = positions.slice(0, 10);
+                chartInstance.current = new Chart(chartRef.current, {
+                    type: 'doughnut',
+                    data: {
+                        labels: top10.map(p => p.symbol),
+                        datasets: [{
+                            data: top10.map(p => Number(p.market_value) || 0),
+                            backgroundColor: ['#00d4ff', '#6366f1', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#14b8a6', '#f97316', '#a855f7'],
+                            borderWidth: 0
+                        }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: {
+                            legend: { position: 'right', labels: { color: 'rgba(255,255,255,0.6)', font: { size: 11, family: 'DM Sans' }, padding: 8, boxWidth: 12 } }
+                        }
+                    }
+                });
+                return () => { if (chartInstance.current) chartInstance.current.destroy(); };
+            }, [positions]);
+
+            if (loading) return React.createElement(Loading, null);
+            const c = command || MOCK_COMMAND;
+
+            return React.createElement('div', null,
+                React.createElement('div', { className: 'page-title' }, 'Portfolio Home'),
+                // Metrics Row
+                React.createElement('div', { className: 'metrics-row' },
+                    React.createElement('div', { className: 'metric-card' },
+                        React.createElement('div', { className: 'label' }, 'Portfolio NAV'),
+                        React.createElement('div', { className: 'value' }, fmtCurrency(c.portfolio_nav)),
+                        React.createElement('div', { className: 'sub' }, 'Total invested: ' + fmtCurrency(c.total_invested))
+                    ),
+                    React.createElement('div', { className: 'metric-card' },
+                        React.createElement('div', { className: 'label' }, 'Total Return'),
+                        React.createElement('div', { className: 'value ' + cls(c.total_return_pct) }, fmtPct(c.total_return_pct)),
+                        React.createElement('div', { className: 'sub' }, 'Sharpe: ' + fmt(c.sharpe_ratio))
+                    ),
+                    React.createElement('div', { className: 'metric-card' },
+                        React.createElement('div', { className: 'label' }, 'Positions'),
+                        React.createElement('div', { className: 'value' }, c.position_count || positions.length),
+                        React.createElement('div', { className: 'sub' }, (c.days_of_history || 0) + ' days of history')
+                    ),
+                    React.createElement('div', { className: 'metric-card' },
+                        React.createElement('div', { className: 'label' }, 'Health Score'),
+                        React.createElement('div', { className: 'health-score ' + healthCls(c.atlas_health_score), style: { marginTop: 4 } }, Math.round(c.atlas_health_score || 0)),
+                        React.createElement('div', { className: 'sub' }, c.portfolio_health_status || '')
+                    )
+                ),
+                // Two-column layout
+                React.createElement('div', { className: 'grid-2' },
+                    // Positions Table
+                    React.createElement('div', { className: 'card', style: { gridColumn: '1 / -1' } },
+                        React.createElement('div', { className: 'card-title' }, 'Positions (' + positions.length + ')'),
+                        React.createElement('div', { style: { overflowX: 'auto' } },
+                            React.createElement('table', { className: 'data-table' },
+                                React.createElement('thead', null,
+                                    React.createElement('tr', null,
+                                        ['Symbol', 'Name', 'Qty', 'Avg Cost', 'Price', 'Mkt Value', 'Return %', 'Weight %', 'Vol', 'Sharpe'].map(h =>
+                                            React.createElement('th', { key: h }, h)
+                                        )
+                                    )
+                                ),
+                                React.createElement('tbody', null,
+                                    positions.map(p =>
+                                        React.createElement('tr', { key: p.symbol },
+                                            React.createElement('td', { style: { fontWeight: 600, color: '#00d4ff' } },
+                                                p.symbol, p.is_concentrated ? React.createElement('span', { className: 'badge amber', style: { marginLeft: 6, fontSize: 9 } }, 'CONC') : null),
+                                            React.createElement('td', { style: { fontFamily: 'DM Sans', color: 'rgba(255,255,255,0.6)' } }, p.name),
+                                            React.createElement('td', null, fmt(p.quantity, 0)),
+                                            React.createElement('td', null, fmtCurrency(p.cost_basis)),
+                                            React.createElement('td', null, fmtCurrency(p.current_price)),
+                                            React.createElement('td', null, fmtCurrency(p.market_value)),
+                                            React.createElement('td', { className: cls(p.unrealised_return_pct) }, fmtPct(p.unrealised_return_pct)),
+                                            React.createElement('td', null, fmtPct(p.portfolio_weight)),
+                                            React.createElement('td', null, fmt(p.annualised_vol)),
+                                            React.createElement('td', null, fmt(p.sharpe_approx))
+                                        )
+                                    )
+                                )
+                            )
+                        )
+                    ),
+                    // Allocation Chart
+                    React.createElement('div', { className: 'card', style: { gridColumn: '1 / -1' } },
+                        React.createElement('div', { className: 'card-title' }, 'Portfolio Allocation (Top 10)'),
+                        React.createElement('div', { className: 'chart-container', style: { height: 280 } },
+                            React.createElement('canvas', { ref: chartRef })
+                        )
+                    )
+                )
+            );
+        }
+
+        // ============================================================
+        // TAB 2: QUANT DASHBOARD
+        // ============================================================
+        function QuantDashboard() {
+            const [data, setData] = useState(null);
+            const [loading, setLoading] = useState(true);
+
+            useEffect(() => {
+                loadView('vw_quant_dashboard', []).then(d => { setData(d); setLoading(false); });
+            }, []);
+
+            if (loading) return React.createElement(Loading, null);
+            if (!data || !data.length) return React.createElement(EmptyState, null);
+
+            const uptrend = data.filter(d => d.price_regime === 'Uptrend').length;
+            const downtrend = data.filter(d => d.price_regime === 'Downtrend').length;
+            const sideways = data.filter(d => d.price_regime === 'Sideways').length;
+            const overbought = data.filter(d => d.mean_reversion_signal === 'Overbought').length;
+            const oversold = data.filter(d => d.mean_reversion_signal === 'Oversold').length;
+
+            return React.createElement('div', null,
+                React.createElement('div', { className: 'page-title' }, 'Quant Dashboard'),
+                React.createElement('div', { className: 'metrics-row' },
+                    React.createElement('div', { className: 'metric-card' },
+                        React.createElement('div', { className: 'label' }, 'Uptrend'), React.createElement('div', { className: 'value positive' }, uptrend)),
+                    React.createElement('div', { className: 'metric-card' },
+                        React.createElement('div', { className: 'label' }, 'Downtrend'), React.createElement('div', { className: 'value negative' }, downtrend)),
+                    React.createElement('div', { className: 'metric-card' },
+                        React.createElement('div', { className: 'label' }, 'Sideways'), React.createElement('div', { className: 'value neutral' }, sideways)),
+                    React.createElement('div', { className: 'metric-card' },
+                        React.createElement('div', { className: 'label' }, 'Overbought'), React.createElement('div', { className: 'value negative' }, overbought)),
+                    React.createElement('div', { className: 'metric-card' },
+                        React.createElement('div', { className: 'label' }, 'Oversold'), React.createElement('div', { className: 'value positive' }, oversold))
+                ),
+                React.createElement('div', { className: 'card' },
+                    React.createElement('div', { className: 'card-title' }, 'Market Regime & Signals (' + data.length + ' positions)'),
+                    React.createElement('div', { style: { overflowX: 'auto' } },
+                        React.createElement('table', { className: 'data-table' },
+                            React.createElement('thead', null,
+                                React.createElement('tr', null,
+                                    ['Symbol', 'Price', 'MA20', 'MA50', 'MA200', 'Regime', 'Vol Regime', 'Z-Score', 'Signal', 'Momentum %'].map(h =>
+                                        React.createElement('th', { key: h }, h)))),
+                            React.createElement('tbody', null,
+                                data.map(d =>
+                                    React.createElement('tr', { key: d.symbol },
+                                        React.createElement('td', { style: { fontWeight: 600, color: '#00d4ff' } }, d.symbol),
+                                        React.createElement('td', null, fmtCurrency(d.current_price)),
+                                        React.createElement('td', null, fmt(d.ma_20)),
+                                        React.createElement('td', null, fmt(d.ma_50)),
+                                        React.createElement('td', null, fmt(d.ma_200)),
+                                        React.createElement('td', null, React.createElement('span', { className: 'badge ' + badgeCls(d.price_regime) }, d.price_regime)),
+                                        React.createElement('td', null, React.createElement('span', { className: 'badge ' + badgeCls(d.vol_regime) }, d.vol_regime)),
+                                        React.createElement('td', { className: cls(d.zscore_20d) }, fmt(d.zscore_20d)),
+                                        React.createElement('td', null, React.createElement('span', { className: 'badge ' + badgeCls(d.mean_reversion_signal) }, d.mean_reversion_signal)),
+                                        React.createElement('td', null, fmt(d.momentum_pct_rank_20d, 1) + '%')
+                                    ))
+                            )
+                        )
+                    )
+                )
+            );
+        }
+
+        // ============================================================
+        // TAB 3: RISK ANALYSIS
+        // ============================================================
+        function RiskAnalysis() {
+            const [risk, setRisk] = useState(null);
+            const [command, setCommand] = useState(null);
+            const [loading, setLoading] = useState(true);
+
+            useEffect(() => {
+                Promise.all([
+                    loadView('vw_risk_analysis', []),
+                    loadView('vw_command_centre', [MOCK_COMMAND])
+                ]).then(([r, c]) => { setRisk(r); setCommand(c[0] || MOCK_COMMAND); setLoading(false); });
+            }, []);
+
+            if (loading) return React.createElement(Loading, null);
+            if (!risk || !risk.length) return React.createElement(EmptyState, null);
+
+            const c = command || MOCK_COMMAND;
+            const highRisk = risk.filter(r => r.risk_tier === 'High Risk').length;
+            const modRisk = risk.filter(r => r.risk_tier === 'Moderate Risk').length;
+            const lowRisk = risk.filter(r => r.risk_tier === 'Low Risk').length;
+
+            return React.createElement('div', null,
+                React.createElement('div', { className: 'page-title' }, 'Risk Analysis'),
+                React.createElement('div', { className: 'metrics-row' },
+                    React.createElement('div', { className: 'metric-card' },
+                        React.createElement('div', { className: 'label' }, 'Sharpe Ratio'), React.createElement('div', { className: 'value' }, fmt(c.sharpe_ratio))),
+                    React.createElement('div', { className: 'metric-card' },
+                        React.createElement('div', { className: 'label' }, 'Sortino Ratio'), React.createElement('div', { className: 'value' }, fmt(c.sortino_ratio))),
+                    React.createElement('div', { className: 'metric-card' },
+                        React.createElement('div', { className: 'label' }, 'Max Drawdown'), React.createElement('div', { className: 'value negative' }, fmt(c.drawdown_pct) + '%')),
+                    React.createElement('div', { className: 'metric-card' },
+                        React.createElement('div', { className: 'label' }, 'Portfolio VaR (95%)'), React.createElement('div', { className: 'value' }, fmtCurrency(c.dollar_var_95)))
+                ),
+                React.createElement('div', { className: 'metrics-row', style: { gridTemplateColumns: 'repeat(3, 1fr)' } },
+                    React.createElement('div', { className: 'metric-card' },
+                        React.createElement('div', { className: 'label' }, 'High Risk'), React.createElement('div', { className: 'value negative' }, highRisk)),
+                    React.createElement('div', { className: 'metric-card' },
+                        React.createElement('div', { className: 'label' }, 'Moderate Risk'), React.createElement('div', { className: 'value neutral' }, modRisk)),
+                    React.createElement('div', { className: 'metric-card' },
+                        React.createElement('div', { className: 'label' }, 'Low Risk'), React.createElement('div', { className: 'value positive' }, lowRisk))
+                ),
+                React.createElement('div', { className: 'card' },
+                    React.createElement('div', { className: 'card-title' }, 'Position Risk Breakdown'),
+                    React.createElement('div', { style: { overflowX: 'auto' } },
+                        React.createElement('table', { className: 'data-table' },
+                            React.createElement('thead', null,
+                                React.createElement('tr', null,
+                                    ['Symbol', 'Market Value', 'Weight %', 'Annual Vol', 'Vol Contribution', 'Daily VaR $', 'Risk Tier'].map(h =>
+                                        React.createElement('th', { key: h }, h)))),
+                            React.createElement('tbody', null,
+                                risk.map(r =>
+                                    React.createElement('tr', { key: r.symbol },
+                                        React.createElement('td', { style: { fontWeight: 600, color: '#00d4ff' } }, r.symbol),
+                                        React.createElement('td', null, fmtCurrency(r.market_value)),
+                                        React.createElement('td', null, fmtPct(r.weight)),
+                                        React.createElement('td', null, fmtPct(r.annual_vol)),
+                                        React.createElement('td', null, fmtPct(r.marginal_vol_contribution)),
+                                        React.createElement('td', null, fmtCurrency(r.dollar_var_95_daily)),
+                                        React.createElement('td', null, React.createElement('span', { className: 'badge ' + badgeCls(r.risk_tier) }, r.risk_tier))
+                                    ))
+                            )
+                        )
+                    )
+                )
+            );
+        }
+
+        // ============================================================
+        // TAB 4: PERFORMANCE SUITE
+        // ============================================================
+        function PerformanceSuite() {
+            const [perf, setPerf] = useState(null);
+            const [nav, setNav] = useState(null);
+            const [loading, setLoading] = useState(true);
+            const chartRef = useRef(null);
+            const chartInstance = useRef(null);
+
+            useEffect(() => {
+                Promise.all([
+                    loadView('vw_performance_suite', []),
+                    loadView('vw_portfolio_nav_daily', [])
+                ]).then(([p, n]) => { setPerf(p); setNav(n); setLoading(false); });
+            }, []);
+
+            useEffect(() => {
+                if (!nav || !nav.length || !chartRef.current) return;
+                if (chartInstance.current) chartInstance.current.destroy();
+                const sorted = [...nav].sort((a, b) => new Date(a.price_date) - new Date(b.price_date));
+                chartInstance.current = new Chart(chartRef.current, {
+                    type: 'line',
+                    data: {
+                        labels: sorted.map(d => d.price_date),
+                        datasets: [{
+                            label: 'Portfolio NAV',
+                            data: sorted.map(d => Number(d.nav)),
+                            borderColor: '#00d4ff',
+                            backgroundColor: 'rgba(0,212,255,0.05)',
+                            borderWidth: 2,
+                            pointRadius: 0,
+                            fill: true,
+                            tension: 0.3
+                        }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        scales: {
+                            x: { ticks: { color: 'rgba(255,255,255,0.3)', maxTicksLimit: 12, font: { size: 10 } }, grid: { display: false } },
+                            y: { ticks: { color: 'rgba(255,255,255,0.3)', callback: v => '$' + (v/1000).toFixed(0) + 'k', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.04)' } }
+                        },
+                        plugins: { legend: { display: false } }
+                    }
+                });
+                return () => { if (chartInstance.current) chartInstance.current.destroy(); };
+            }, [nav]);
+
+            if (loading) return React.createElement(Loading, null);
+            if (!perf || !perf.length) return React.createElement(EmptyState, null);
+
+            const avgEfficiency = perf.reduce((s, p) => s + (Number(p.entry_efficiency_score) || 0), 0) / perf.length;
+            const avgCAGR = perf.reduce((s, p) => s + (Number(p.annualised_return) || 0), 0) / perf.length;
+            const cuts = perf.filter(p => p.cut_candidate_flag).length;
+            const best = perf.reduce((b, p) => (Number(p.total_return_pct) || 0) > (Number(b.total_return_pct) || 0) ? p : b, perf[0]);
+
+            return React.createElement('div', null,
+                React.createElement('div', { className: 'page-title' }, 'Performance Suite'),
+                React.createElement('div', { className: 'metrics-row' },
+                    React.createElement('div', { className: 'metric-card' },
+                        React.createElement('div', { className: 'label' }, 'Avg Entry Efficiency'), React.createElement('div', { className: 'value' }, fmt(avgEfficiency, 1) + '%')),
+                    React.createElement('div', { className: 'metric-card' },
+                        React.createElement('div', { className: 'label' }, 'Avg Annualised Return'), React.createElement('div', { className: 'value ' + cls(avgCAGR) }, fmtPct(avgCAGR))),
+                    React.createElement('div', { className: 'metric-card' },
+                        React.createElement('div', { className: 'label' }, 'Cut Candidates'), React.createElement('div', { className: 'value ' + (cuts > 0 ? 'negative' : 'positive') }, cuts)),
+                    React.createElement('div', { className: 'metric-card' },
+                        React.createElement('div', { className: 'label' }, 'Best Performer'), React.createElement('div', { className: 'value positive' }, best.symbol),
+                        React.createElement('div', { className: 'sub' }, fmtPct(best.total_return_pct)))
+                ),
+                nav && nav.length > 0 ? React.createElement('div', { className: 'card' },
+                    React.createElement('div', { className: 'card-title' }, 'Portfolio NAV (FIFO)'),
+                    React.createElement('div', { className: 'chart-container' }, React.createElement('canvas', { ref: chartRef }))
+                ) : null,
+                React.createElement('div', { className: 'card' },
+                    React.createElement('div', { className: 'card-title' }, 'Position Performance (' + perf.length + ')'),
+                    React.createElement('div', { style: { overflowX: 'auto' } },
+                        React.createElement('table', { className: 'data-table' },
+                            React.createElement('thead', null,
+                                React.createElement('tr', null,
+                                    ['Symbol', 'Entry $', 'Current $', 'Entry Date', 'Days Held', 'Return %', 'CAGR %', 'Efficiency', 'Cut?'].map(h =>
+                                        React.createElement('th', { key: h }, h)))),
+                            React.createElement('tbody', null,
+                                perf.map(p =>
+                                    React.createElement('tr', { key: p.symbol },
+                                        React.createElement('td', { style: { fontWeight: 600, color: '#00d4ff' } }, p.symbol),
+                                        React.createElement('td', null, fmtCurrency(p.entry_price)),
+                                        React.createElement('td', null, fmtCurrency(p.current_price)),
+                                        React.createElement('td', { style: { fontFamily: 'DM Sans' } }, p.entry_date ? new Date(p.entry_date).toLocaleDateString() : '\u2014'),
+                                        React.createElement('td', null, p.days_held || '\u2014'),
+                                        React.createElement('td', { className: cls(p.total_return_pct) }, fmtPct(p.total_return_pct)),
+                                        React.createElement('td', { className: cls(p.annualised_return) }, fmtPct(p.annualised_return)),
+                                        React.createElement('td', null, fmt(p.entry_efficiency_score, 1)),
+                                        React.createElement('td', null, p.cut_candidate_flag ? React.createElement('span', { className: 'badge red' }, 'CUT') : React.createElement('span', { className: 'badge green' }, 'HOLD'))
+                                    ))
+                            )
+                        )
+                    )
+                )
+            );
+        }
+
+        // ============================================================
+        // TAB 5: COMMAND CENTRE
+        // ============================================================
+        function CommandCentre() {
+            const [command, setCommand] = useState(null);
+            const [loading, setLoading] = useState(true);
+
+            useEffect(() => {
+                loadView('vw_command_centre', [MOCK_COMMAND]).then(d => { setCommand(d[0] || MOCK_COMMAND); setLoading(false); });
+            }, []);
+
+            if (loading) return React.createElement(Loading, null);
+            const c = command || MOCK_COMMAND;
+
+            return React.createElement('div', null,
+                React.createElement('div', { className: 'page-title' }, 'Command Centre'),
+                // Health Score Hero
+                React.createElement('div', { style: { textAlign: 'center', marginBottom: 32 } },
+                    React.createElement('div', { className: 'health-score ' + healthCls(c.atlas_health_score), style: { width: 120, height: 120, fontSize: 42, margin: '0 auto 12px' } },
+                        Math.round(c.atlas_health_score || 0)),
+                    React.createElement('div', { style: { fontSize: 18, fontWeight: 600 } }, 'ATLAS Health Score'),
+                    React.createElement('div', null, React.createElement('span', { className: 'badge ' + badgeCls(c.portfolio_health_status), style: { marginTop: 8, fontSize: 13, padding: '5px 16px' } }, c.portfolio_health_status))
+                ),
+                // Metrics Grid
+                React.createElement('div', { className: 'metrics-row', style: { gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' } },
+                    React.createElement('div', { className: 'metric-card' },
+                        React.createElement('div', { className: 'label' }, 'Portfolio NAV'), React.createElement('div', { className: 'value' }, fmtCurrency(c.portfolio_nav))),
+                    React.createElement('div', { className: 'metric-card' },
+                        React.createElement('div', { className: 'label' }, 'Total Invested'), React.createElement('div', { className: 'value' }, fmtCurrency(c.total_invested))),
+                    React.createElement('div', { className: 'metric-card' },
+                        React.createElement('div', { className: 'label' }, 'Total Return'), React.createElement('div', { className: 'value ' + cls(c.total_return_pct) }, fmtPct(c.total_return_pct))),
+                    React.createElement('div', { className: 'metric-card' },
+                        React.createElement('div', { className: 'label' }, 'Sharpe Ratio'), React.createElement('div', { className: 'value' }, fmt(c.sharpe_ratio))),
+                    React.createElement('div', { className: 'metric-card' },
+                        React.createElement('div', { className: 'label' }, 'Sortino Ratio'), React.createElement('div', { className: 'value' }, fmt(c.sortino_ratio))),
+                    React.createElement('div', { className: 'metric-card' },
+                        React.createElement('div', { className: 'label' }, 'Max Drawdown'), React.createElement('div', { className: 'value negative' }, fmt(c.drawdown_pct) + '%')),
+                    React.createElement('div', { className: 'metric-card' },
+                        React.createElement('div', { className: 'label' }, 'Daily VaR (95%)'), React.createElement('div', { className: 'value' }, fmtCurrency(c.dollar_var_95))),
+                    React.createElement('div', { className: 'metric-card' },
+                        React.createElement('div', { className: 'label' }, 'Positions'), React.createElement('div', { className: 'value' }, c.position_count)),
+                    React.createElement('div', { className: 'metric-card' },
+                        React.createElement('div', { className: 'label' }, 'Days of History'), React.createElement('div', { className: 'value' }, c.days_of_history))
+                ),
+                // System Status
+                React.createElement('div', { className: 'card' },
+                    React.createElement('div', { className: 'card-title' }, 'System Status'),
+                    React.createElement('table', { className: 'data-table' },
+                        React.createElement('tbody', null,
+                            React.createElement('tr', null,
+                                React.createElement('td', { style: { fontFamily: 'DM Sans', color: 'rgba(255,255,255,0.5)' } }, 'Supabase Connection'),
+                                React.createElement('td', null, sb ? React.createElement('span', { className: 'badge green' }, 'Connected') : React.createElement('span', { className: 'badge amber' }, 'Demo Mode'))),
+                            React.createElement('tr', null,
+                                React.createElement('td', { style: { fontFamily: 'DM Sans', color: 'rgba(255,255,255,0.5)' } }, 'Last Computed'),
+                                React.createElement('td', null, c.computed_at ? new Date(c.computed_at).toLocaleString() : '\u2014')),
+                            React.createElement('tr', null,
+                                React.createElement('td', { style: { fontFamily: 'DM Sans', color: 'rgba(255,255,255,0.5)' } }, 'Data Source'),
+                                React.createElement('td', null, 'Supabase PostgreSQL + Alpaca Markets API')),
+                            React.createElement('tr', null,
+                                React.createElement('td', { style: { fontFamily: 'DM Sans', color: 'rgba(255,255,255,0.5)' } }, 'NAV Methodology'),
+                                React.createElement('td', null, 'FIFO Transaction-Based Reconstruction'))
+                        )
+                    )
+                )
+            );
+        }
+
+        // ============================================================
+        // APP SHELL
+        // ============================================================
+        const TABS = [
+            { id: 'portfolio', label: 'Portfolio Home', component: PortfolioHome },
+            { id: 'quant', label: 'Quant Dashboard', component: QuantDashboard },
+            { id: 'risk', label: 'Risk Analysis', component: RiskAnalysis },
+            { id: 'performance', label: 'Performance Suite', component: PerformanceSuite },
+            { id: 'command', label: 'Command Centre', component: CommandCentre },
+        ];
+
+        function App() {
+            const [activeTab, setActiveTab] = useState('portfolio');
+            const ActiveComponent = TABS.find(t => t.id === activeTab).component;
+
+            return React.createElement('div', { className: 'app-container' },
+                // Gradient top line
+                React.createElement('div', { style: { height: 2, background: 'linear-gradient(90deg, transparent, #00d4ff, #8b5cf6, transparent)' } }),
+                // Top Bar
+                React.createElement('div', { className: 'top-bar' },
+                    React.createElement('div', { className: 'logo' }, 'ATLAS'),
+                    React.createElement('div', { className: 'status' },
+                        sb ? '\u25CF LIVE' : '\u25CB DEMO',
+                        ' \u2022 ',
+                        new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                    )
+                ),
+                // Nav Bar
+                React.createElement('div', { className: 'nav-bar' },
+                    TABS.map(tab =>
+                        React.createElement('button', {
+                            key: tab.id,
+                            className: 'nav-tab' + (activeTab === tab.id ? ' active' : ''),
+                            onClick: () => setActiveTab(tab.id)
+                        }, tab.label)
+                    )
+                ),
+                // Main Content
+                React.createElement('div', { className: 'main-content' },
+                    !sb ? React.createElement(ConfigPrompt, null) : null,
+                    React.createElement(ActiveComponent, null)
+                )
+            );
+        }
+
+        // --- Mount ---
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(React.createElement(App, null));
+    </script>
+</body>
+</html>
