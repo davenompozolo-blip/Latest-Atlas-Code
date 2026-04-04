@@ -13,8 +13,7 @@
 :root {
   --bg: #070814;
   --card: #0d0f1a;
-  --card-hover: #131628;
-  --card-active: #1a1d35;
+  --border: rgba(255,255,255,0.06);
   --text-primary: rgba(255,255,255,0.92);
   --text-secondary: rgba(255,255,255,0.52);
   --text-muted: rgba(255,255,255,0.28);
@@ -22,340 +21,476 @@
   --violet: #8b5cf6;
   --green: #10b981;
   --amber: #f59e0b;
-  --sidebar-w: 240px;
-  --topbar-h: 60px;
 }
 
 html, body {
   height: 100%;
+  overflow: hidden;
   background: var(--bg);
   color: var(--text-primary);
   font-family: 'DM Sans', sans-serif;
   font-size: 14px;
-  line-height: 1.6;
-  overflow: hidden;
+  line-height: 1.5;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
 }
 
 /* ── Gradient top line ── */
-body::before {
-  content: '';
+.gradient-line {
   position: fixed;
-  top: 0; left: 0; right: 0;
+  top: 0;
+  left: 0;
+  right: 0;
   height: 2px;
   background: linear-gradient(90deg, var(--cyan), var(--violet), var(--green), var(--amber));
   z-index: 1000;
 }
 
-/* ── Top bar ── */
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
+
+/* ── Topbar ── */
 .topbar {
-  position: fixed;
-  top: 2px; left: 0; right: 0;
-  height: var(--topbar-h);
-  background: var(--card);
-  border-bottom: 1px solid rgba(255,255,255,0.06);
   display: flex;
   align-items: center;
-  padding: 0 24px;
-  z-index: 100;
-  gap: 12px;
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  margin-top: 2px;
+  flex-shrink: 0;
+  gap: 16px;
 }
 
-.topbar-logo {
+.logo-group {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.logo-text {
   font-family: 'Syne', sans-serif;
   font-weight: 800;
-  font-size: 22px;
+  font-size: 18px;
   color: var(--cyan);
-  letter-spacing: 2px;
+  letter-spacing: 3px;
 }
 
-.topbar-subtitle {
-  font-family: 'Syne', sans-serif;
-  font-weight: 600;
-  font-size: 11px;
+.logo-subtitle {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
   color: var(--text-muted);
-  letter-spacing: 3px;
+  letter-spacing: 2px;
   text-transform: uppercase;
-  margin-top: 2px;
 }
 
 .topbar-sep {
   width: 1px;
-  height: 24px;
-  background: rgba(255,255,255,0.08);
-  margin: 0 4px;
+  height: 20px;
+  background: var(--border);
 }
 
-/* ── Layout ── */
-.layout {
+.agents-status {
   display: flex;
-  position: fixed;
-  top: calc(2px + var(--topbar-h));
-  left: 0; right: 0; bottom: 0;
-}
-
-/* ── Sidebar ── */
-.sidebar {
-  width: var(--sidebar-w);
-  min-width: var(--sidebar-w);
-  background: var(--card);
-  border-right: 1px solid rgba(255,255,255,0.06);
-  display: flex;
-  flex-direction: column;
-  padding: 16px 12px;
+  align-items: center;
   gap: 8px;
-  overflow-y: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--green);
+  letter-spacing: 1px;
 }
 
-.sidebar-label {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 2px;
-  text-transform: uppercase;
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green);
+}
+
+.spacer { flex: 1; }
+
+.date {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
   color: var(--text-muted);
-  padding: 4px 8px 8px;
+  letter-spacing: 1px;
 }
 
-.agent-card {
-  padding: 12px 14px;
-  border-radius: 8px;
-  background: transparent;
-  border: none;
-  border-left: 3px solid transparent;
+/* ── Session Brief ── */
+.session-brief {
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  flex-shrink: 0;
+}
+
+.brief-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 24px;
   cursor: pointer;
-  transition: all 0.2s ease;
-  text-align: left;
-  width: 100%;
-  outline: none;
+  user-select: none;
+  transition: background 0.15s;
 }
 
-.agent-card:hover {
-  background: var(--card-hover);
+.brief-header:hover {
+  background: rgba(255,255,255,0.02);
 }
 
-.agent-card.active {
-  background: var(--card-active);
+.brief-icon {
+  font-size: 14px;
+  color: var(--amber);
 }
 
-.agent-card-name {
-  font-family: 'DM Sans', sans-serif;
-  font-weight: 600;
-  font-size: 13px;
-  color: var(--text-primary);
-  margin-bottom: 2px;
-}
-
-.agent-card-desc {
+.brief-label {
+  font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
   color: var(--text-secondary);
-  line-height: 1.4;
+  letter-spacing: 2px;
 }
 
-/* ── Main area ── */
-.main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
+.brief-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-weight: 600;
 }
 
-.agent-header {
-  padding: 20px 28px 16px;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-shrink: 0;
+.brief-badge.apply {
+  background: rgba(245,158,11,0.12);
+  color: var(--amber);
+  border: 1px solid rgba(245,158,11,0.25);
 }
 
-.agent-header-left {
-  display: flex;
-  align-items: center;
-  gap: 14px;
+.brief-badge.active {
+  background: rgba(16,185,129,0.12);
+  color: var(--green);
+  border: 1px solid rgba(16,185,129,0.25);
 }
 
-.agent-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  flex-shrink: 0;
-}
-
-.agent-header-name {
-  font-family: 'Syne', sans-serif;
-  font-weight: 700;
-  font-size: 18px;
-}
-
-.agent-header-desc {
+.brief-chevron {
+  margin-left: auto;
   font-size: 12px;
-  color: var(--text-secondary);
-  margin-top: 2px;
+  color: var(--text-muted);
+  transition: transform 0.2s;
 }
 
-.btn-clear {
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.08);
-  color: var(--text-secondary);
-  font-family: 'DM Sans', sans-serif;
+.brief-body {
+  display: none;
+  padding: 0 24px 14px 24px;
+}
+
+.brief-body.open {
+  display: block;
+}
+
+.brief-textarea {
+  width: 100%;
+  min-height: 72px;
+  max-height: 160px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', monospace;
   font-size: 12px;
-  padding: 6px 14px;
+  padding: 12px;
+  resize: vertical;
+  outline: none;
+  margin-bottom: 10px;
+  transition: border-color 0.2s;
+}
+
+.brief-textarea:focus {
+  border-color: rgba(245,158,11,0.35);
+}
+
+.brief-textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.btn-apply {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  padding: 6px 18px;
   border-radius: 6px;
+  border: 1px solid rgba(245,158,11,0.3);
+  background: rgba(245,158,11,0.08);
+  color: var(--amber);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background 0.15s, border-color 0.15s;
 }
 
-.btn-clear:hover {
-  background: rgba(255,255,255,0.08);
+.btn-apply:hover {
+  background: rgba(245,158,11,0.15);
+  border-color: rgba(245,158,11,0.5);
+}
+
+/* ── Agent Tabs ── */
+.agent-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+
+.agent-tab {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 12px 20px;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.agent-tab:hover {
+  color: var(--text-secondary);
+}
+
+.agent-tab.active {
   color: var(--text-primary);
 }
 
-/* ── Chat area ── */
+.agent-tab-icon {
+  font-size: 13px;
+}
+
+.tab-separator {
+  color: var(--text-muted);
+  font-size: 11px;
+  padding: 0 2px;
+  opacity: 0.3;
+  user-select: none;
+}
+
+/* ── Agent Info ── */
+.agent-info {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 16px 24px 12px 24px;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  flex-shrink: 0;
+  position: relative;
+}
+
+.agent-info-name {
+  font-family: 'Syne', sans-serif;
+  font-weight: 700;
+  font-size: 22px;
+  letter-spacing: 2px;
+}
+
+.agent-info-tags {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+}
+
+.agent-info-tags span {
+  color: var(--text-secondary);
+}
+
+.agent-info-tags .dot {
+  color: var(--text-muted);
+  margin: 0 6px;
+}
+
+.btn-clear-chat {
+  position: absolute;
+  right: 24px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 14px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.btn-clear-chat:hover {
+  color: var(--text-secondary);
+  border-color: rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.03);
+}
+
+/* ── Chat Area ── */
 .chat-area {
   flex: 1;
   overflow-y: auto;
-  padding: 24px 28px;
+  padding: 24px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
 }
 
-.chat-area::-webkit-scrollbar { width: 6px; }
-.chat-area::-webkit-scrollbar-track { background: transparent; }
-.chat-area::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 3px; }
-
+/* Empty state */
 .chat-empty {
   flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 }
 
-.chat-empty-icon {
-  font-size: 40px;
-  opacity: 0.2;
-}
-
-.chat-empty-text {
+.empty-icon {
+  font-size: 64px;
   color: var(--text-muted);
+  opacity: 0.35;
+  margin-bottom: 8px;
+}
+
+.empty-text {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  letter-spacing: 3px;
+  color: var(--text-muted);
+}
+
+/* Quick actions */
+.quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 28px;
+  max-width: 640px;
+}
+
+.quick-chip {
+  font-family: 'DM Sans', sans-serif;
   font-size: 13px;
-  text-align: center;
-  line-height: 1.6;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 8px 18px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.2s, background 0.15s;
 }
 
-/* ── Message bubbles ── */
+.quick-chip:hover {
+  color: var(--text-primary);
+  border-color: rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.03);
+}
+
+/* Messages */
 .msg {
-  max-width: 720px;
-  animation: fadeIn 0.25s ease;
+  max-width: 680px;
+  margin-bottom: 16px;
+  animation: msgIn 0.3s ease-out;
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(6px); }
+@keyframes msgIn {
+  from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
 .msg-user {
   align-self: flex-end;
+  background: rgba(0,212,255,0.08);
+  border: 1px solid rgba(0,212,255,0.15);
+  border-radius: 14px 14px 4px 14px;
+  padding: 10px 16px;
+  color: var(--text-primary);
+  font-size: 13.5px;
+  line-height: 1.55;
 }
 
-.msg-agent {
+.msg-prompt {
   align-self: flex-start;
   width: 100%;
-  max-width: 720px;
+  max-width: 680px;
 }
 
-.msg-bubble-user {
-  background: rgba(255,255,255,0.06);
-  border-radius: 12px 12px 4px 12px;
-  padding: 12px 16px;
-  font-size: 13px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.msg-time {
+.msg-prompt-label {
+  font-family: 'JetBrains Mono', monospace;
   font-size: 10px;
+  letter-spacing: 2px;
   color: var(--text-muted);
-  margin-top: 4px;
+  margin-bottom: 8px;
 }
 
-.msg-user .msg-time { text-align: right; }
-
-.msg-agent-label {
-  font-size: 11px;
-  font-weight: 600;
-  margin-bottom: 6px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.msg-agent-dot {
-  width: 6px; height: 6px;
-  border-radius: 50%;
-  display: inline-block;
-}
-
-/* ── Prompt block ── */
-.prompt-block {
-  background: #0a0c16;
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 8px;
+.msg-prompt-block {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
   overflow: hidden;
 }
 
-.prompt-block-header {
+.msg-prompt-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 8px 14px;
-  background: rgba(255,255,255,0.03);
-  border-bottom: 1px solid rgba(255,255,255,0.06);
+  border-bottom: 1px solid var(--border);
 }
 
-.prompt-block-title {
-  font-size: 11px;
+.msg-prompt-header span {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 1.5px;
   color: var(--text-muted);
-  font-weight: 500;
-  letter-spacing: 0.5px;
 }
 
 .btn-copy {
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.1);
-  color: var(--text-secondary);
-  font-family: 'DM Sans', sans-serif;
-  font-size: 11px;
-  padding: 4px 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid var(--border);
   border-radius: 4px;
+  padding: 3px 10px;
   cursor: pointer;
-  transition: all 0.15s ease;
-  display: flex;
-  align-items: center;
-  gap: 5px;
+  transition: color 0.15s, border-color 0.15s;
 }
 
 .btn-copy:hover {
-  background: rgba(255,255,255,0.1);
-  color: var(--text-primary);
+  color: var(--text-secondary);
+  border-color: rgba(255,255,255,0.12);
 }
 
 .btn-copy.copied {
   color: var(--green);
-  border-color: var(--green);
+  border-color: rgba(16,185,129,0.3);
 }
 
-.prompt-block-body {
-  padding: 14px 16px;
+.msg-prompt-code {
+  padding: 14px;
   font-family: 'JetBrains Mono', monospace;
   font-size: 12px;
-  line-height: 1.7;
+  line-height: 1.65;
   color: var(--text-secondary);
   white-space: pre-wrap;
   word-break: break-word;
@@ -363,394 +498,456 @@ body::before {
   overflow-y: auto;
 }
 
-.prompt-block-body::-webkit-scrollbar { width: 4px; }
-.prompt-block-body::-webkit-scrollbar-track { background: transparent; }
-.prompt-block-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 2px; }
-
-/* ── Input area ── */
+/* ── Input Area ── */
 .input-area {
-  padding: 16px 28px 20px;
-  border-top: 1px solid rgba(255,255,255,0.06);
+  padding: 12px 24px 18px 24px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
   flex-shrink: 0;
-}
-
-.input-wrapper {
   display: flex;
-  gap: 10px;
   align-items: flex-end;
+  gap: 12px;
 }
 
 .input-field {
   flex: 1;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 10px;
-  padding: 12px 16px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
   color: var(--text-primary);
   font-family: 'DM Sans', sans-serif;
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 14px;
+  padding: 12px 16px;
   resize: none;
   outline: none;
+  line-height: 1.5;
   min-height: 44px;
   max-height: 160px;
-  transition: border-color 0.15s ease;
+  overflow-y: auto;
+  transition: border-color 0.2s;
+}
+
+.input-field:focus {
+  border-color: rgba(255,255,255,0.12);
 }
 
 .input-field::placeholder {
   color: var(--text-muted);
 }
 
-.input-field:focus {
-  border-color: rgba(255,255,255,0.16);
-}
-
 .btn-send {
+  width: 44px;
   height: 44px;
-  padding: 0 20px;
-  border-radius: 10px;
-  border: none;
-  font-family: 'DM Sans', sans-serif;
-  font-weight: 600;
-  font-size: 13px;
-  color: #070814;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 18px;
   cursor: pointer;
-  transition: all 0.15s ease;
-  flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  flex-shrink: 0;
 }
 
 .btn-send:hover {
-  filter: brightness(1.1);
-  transform: translateY(-1px);
+  color: var(--text-primary);
+  border-color: rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.04);
 }
 
-.btn-send:active {
-  transform: translateY(0);
+.btn-send.has-text {
+  color: var(--cyan);
+  border-color: rgba(0,212,255,0.3);
 }
 
-.input-hint {
-  font-size: 10px;
-  color: var(--text-muted);
-  margin-top: 6px;
-  padding-left: 2px;
-}
-
-/* ── Responsive: sidebar becomes horizontal tabs ── */
-@media (max-width: 768px) {
-  .layout {
-    flex-direction: column;
-  }
-
-  .sidebar {
-    width: 100%;
-    min-width: unset;
-    flex-direction: row;
-    padding: 10px 12px;
-    gap: 6px;
-    overflow-x: auto;
-    overflow-y: hidden;
-    border-right: none;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
-  }
-
-  .sidebar-label { display: none; }
-
-  .agent-card {
-    min-width: 140px;
-    flex-shrink: 0;
-    border-left: none;
-    border-top: 3px solid transparent;
-    padding: 8px 12px;
-  }
-
-  .agent-card.active {
-    border-left: none;
-  }
-
-  .agent-card-desc { display: none; }
-
-  .agent-header { padding: 14px 16px 12px; }
-  .chat-area { padding: 16px; }
-  .input-area { padding: 12px 16px 16px; }
+.btn-send.has-text:hover {
+  background: rgba(0,212,255,0.08);
 }
 </style>
 </head>
 <body>
 
-<!-- Top bar -->
+<div class="gradient-line"></div>
+
 <header class="topbar">
-  <div class="topbar-logo">ATLAS</div>
+  <div class="logo-group">
+    <span class="logo-text">ATLAS</span>
+    <span class="logo-subtitle">COMMAND CENTRE</span>
+  </div>
   <div class="topbar-sep"></div>
-  <div class="topbar-subtitle">Command Centre</div>
+  <div class="agents-status">
+    <span class="status-dot"></span>
+    4 AGENTS ONLINE
+  </div>
+  <div class="spacer"></div>
+  <div class="date" id="topDate"></div>
 </header>
 
-<!-- Layout -->
-<div class="layout">
-  <!-- Sidebar -->
-  <nav class="sidebar" id="sidebar">
-    <div class="sidebar-label">Agents</div>
-  </nav>
-
-  <!-- Main -->
-  <div class="main">
-    <div class="agent-header" id="agentHeader">
-      <div class="agent-header-left">
-        <div class="agent-icon" id="agentIcon"></div>
-        <div>
-          <div class="agent-header-name" id="agentName"></div>
-          <div class="agent-header-desc" id="agentDesc"></div>
-        </div>
-      </div>
-      <button class="btn-clear" id="btnClear" onclick="clearChat()">Clear Chat</button>
-    </div>
-
-    <div class="chat-area" id="chatArea"></div>
-
-    <div class="input-area">
-      <div class="input-wrapper">
-        <textarea
-          class="input-field"
-          id="inputField"
-          placeholder="Ask the agent a question..."
-          rows="1"
-        ></textarea>
-        <button class="btn-send" id="btnSend" onclick="sendMessage()">
-          Send <span style="font-size:15px">&#8593;</span>
-        </button>
-      </div>
-      <div class="input-hint">Enter to send &middot; Shift+Enter for new line</div>
-    </div>
+<div class="session-brief">
+  <div class="brief-header" id="briefHeader">
+    <span class="brief-icon">&#9889;</span>
+    <span class="brief-label">SESSION BRIEF</span>
+    <span class="brief-badge apply" id="briefBadge">APPLY</span>
+    <span class="brief-chevron" id="briefChevron">&#9662;</span>
+  </div>
+  <div class="brief-body" id="briefBody">
+    <textarea class="brief-textarea" id="briefTextarea" placeholder="Paste session context here... This will be appended to every agent prompt."></textarea>
+    <button class="btn-apply" id="btnApply">APPLY BRIEF</button>
   </div>
 </div>
 
+<nav class="agent-tabs" id="agentTabs"></nav>
+
+<div class="agent-info" id="agentInfo">
+  <div class="agent-info-name" id="agentName"></div>
+  <div class="agent-info-tags" id="agentTags"></div>
+  <button class="btn-clear-chat" id="btnClear">CLEAR CHAT</button>
+</div>
+
+<div class="chat-area" id="chatArea"></div>
+
+<div class="input-area">
+  <textarea class="input-field" id="inputField" placeholder="" rows="1"></textarea>
+  <button class="btn-send" id="btnSend">&#8594;</button>
+</div>
+
 <script>
-// ── Agent definitions ──
+/* ── Agent Data ── */
 const agents = [
   {
     id: 'archivist',
-    name: 'The Archivist',
-    specialty: 'project state recall, history tracking, and decision logging',
-    description: 'Recalls project history, decisions, and current state',
+    name: 'THE ARCHIVIST',
+    icon: '\u25CE',
     color: '#00d4ff',
-    icon: '\u{1F4DC}',
-    context: 'ATLAS is an investment analytics terminal built on Supabase + React. It tracks ~55 equity positions via Alpaca paper trading. Uses FIFO NAV methodology. Frontend is a single-file React SPA at atlas-terminal.vercel.app. Backend is PostgreSQL views in Supabase. Sync runs via GitHub Actions every 15 minutes.',
+    tags: ['State recall', 'Open issues', 'Version history', 'Project status'],
+    quickActions: [
+      'Where are we with ATLAS right now?',
+      'What bugs are currently open?',
+      'Give me a full project status report',
+      'What were we last working on?'
+    ],
+    context: 'ATLAS is an investment analytics terminal built on Supabase + React. It tracks ~55 equity positions via Alpaca paper trading. Uses FIFO NAV methodology. Frontend is a single-file React SPA deployed on Vercel. Backend is PostgreSQL views in Supabase. Sync runs via GitHub Actions every 15 minutes.',
     history: []
   },
   {
     id: 'architect',
-    name: 'The Architect',
-    specialty: 'database schema design, SQL views, and data architecture',
-    description: 'Designs database schemas, SQL views, and data architecture',
+    name: 'THE ARCHITECT',
+    icon: '\u2B21',
     color: '#8b5cf6',
-    icon: '\u{1F3D7}',
-    context: 'ATLAS uses Supabase PostgreSQL with 5 base tables (portfolios, assets, positions, transactions, price_history) and 7 analytics views (vw_portfolio_home, vw_quant_dashboard, vw_risk_analysis, vw_performance_suite, vw_command_centre, vw_portfolio_nav_daily, vw_portfolio_returns_daily). All analytics are computed in SQL views, never in the frontend. FIFO NAV reconstruction lives in vw_portfolio_nav_daily.',
+    tags: ['Schema design', 'SQL views', 'Data architecture', 'Migration strategy'],
+    quickActions: [
+      'Show me the current database schema',
+      'Which views need optimization?',
+      'Design a new view for X',
+      'Audit the FIFO NAV calculation'
+    ],
+    context: 'ATLAS uses Supabase PostgreSQL with 5 base tables (portfolios, assets, positions, transactions, price_history) and 7 analytics views (vw_portfolio_home, vw_quant_dashboard, vw_risk_analysis, vw_performance_suite, vw_command_centre, vw_portfolio_nav_daily, vw_portfolio_returns_daily). All analytics computed in SQL, never frontend. FIFO NAV in vw_portfolio_nav_daily.',
     history: []
   },
   {
     id: 'engineer',
-    name: 'The Engineer',
-    specialty: 'implementation specifications, code architecture, and deployment pipelines',
-    description: 'Generates precise implementation specs for Claude Code',
+    name: 'THE ENGINEER',
+    icon: '\u25C8',
     color: '#10b981',
-    icon: '\u{2699}',
-    context: 'Repo: davenompozolo-blip/Latest-Atlas-Code. Frontend: public/index.html (React SPA via CDN). Sync pipeline: sync/run_sync.py (runs in GitHub Actions). Services layer: services/. Streamlit pages (legacy): ui/pages/. Deploy: Vercel static site from public/ directory. Key config: vercel.json, inject-env.js for Supabase key injection.',
+    tags: ['Implementation specs', 'Bug fixes', 'Code architecture', 'Deployment'],
+    quickActions: [
+      'Write a spec for the next feature',
+      'How should I fix this bug?',
+      'Review the sync pipeline architecture',
+      'Generate a deployment checklist'
+    ],
+    context: 'Repo: davenompozolo-blip/Latest-Atlas-Code. Frontend: public/index.html (React SPA via CDN). Sync: sync/run_sync.py (GitHub Actions). Services: services/. Legacy Streamlit: ui/pages/. Deploy: Vercel static site. Config: vercel.json, inject-env.js for key injection.',
     history: []
   },
   {
     id: 'strategist',
-    name: 'The Strategist',
-    specialty: 'product direction, feature prioritization, and release planning',
-    description: 'Guides product direction, feature prioritization, and release planning',
+    name: 'THE STRATEGIST',
+    icon: '\u25C6',
     color: '#f59e0b',
-    icon: '\u{1F9ED}',
-    context: 'Current state: React terminal deployed to Vercel, Alpaca sync via GitHub Actions cron, Streamlit being retired. Completed: FIFO NAV views, all 7 analytics views, OCC options fix, Vercel deployment architecture. Next: confirm scheduled sync stability, retire Streamlit, add real-time features.',
+    tags: ['Product roadmap', 'Feature priority', 'Release planning', 'Commercial strategy'],
+    quickActions: [
+      'What should we build next?',
+      'Prioritize the current backlog',
+      'Create a release plan for v2',
+      'How do we monetize ATLAS?'
+    ],
+    context: 'Current: React terminal on Vercel, Alpaca sync via GitHub Actions, Streamlit being retired. Done: FIFO NAV views, 7 analytics views, OCC options fix, Vercel deployment. Next: live data pipeline, scheduled sync stability, Streamlit retirement, real-time features.',
     history: []
   }
 ];
 
-let activeAgentId = agents[0].id;
+/* ── State ── */
+let activeAgentId = 'archivist';
+let sessionBrief = '';
+let briefOpen = false;
 
-// ── Render sidebar ──
-function renderSidebar() {
-  const sidebar = document.getElementById('sidebar');
-  // Keep the label
-  const label = sidebar.querySelector('.sidebar-label');
-  sidebar.innerHTML = '';
-  sidebar.appendChild(label);
+/* ── DOM refs ── */
+const $tabs = document.getElementById('agentTabs');
+const $agentName = document.getElementById('agentName');
+const $agentTags = document.getElementById('agentTags');
+const $chatArea = document.getElementById('chatArea');
+const $input = document.getElementById('inputField');
+const $btnSend = document.getElementById('btnSend');
+const $btnClear = document.getElementById('btnClear');
+const $briefHeader = document.getElementById('briefHeader');
+const $briefBody = document.getElementById('briefBody');
+const $briefBadge = document.getElementById('briefBadge');
+const $briefChevron = document.getElementById('briefChevron');
+const $briefTextarea = document.getElementById('briefTextarea');
+const $btnApply = document.getElementById('btnApply');
+const $topDate = document.getElementById('topDate');
 
-  agents.forEach(agent => {
-    const card = document.createElement('button');
-    card.className = 'agent-card' + (agent.id === activeAgentId ? ' active' : '');
-    card.style.borderLeftColor = agent.id === activeAgentId ? agent.color : 'transparent';
-    card.onclick = () => selectAgent(agent.id);
-    card.innerHTML =
-      '<div class="agent-card-name" style="color:' + (agent.id === activeAgentId ? agent.color : 'var(--text-primary)') + '">' +
-        agent.icon + ' ' + agent.name +
-      '</div>' +
-      '<div class="agent-card-desc">' + agent.description + '</div>';
-    sidebar.appendChild(card);
+/* ── Date ── */
+function formatDate() {
+  const d = new Date();
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${day} ${months[d.getMonth()]} ${d.getFullYear()}`;
+}
+$topDate.textContent = formatDate();
+
+/* ── Render Tabs ── */
+function renderTabs() {
+  $tabs.innerHTML = '';
+  agents.forEach((agent, i) => {
+    if (i > 0) {
+      const sep = document.createElement('span');
+      sep.className = 'tab-separator';
+      sep.textContent = '|';
+      $tabs.appendChild(sep);
+    }
+    const btn = document.createElement('button');
+    btn.className = 'agent-tab' + (agent.id === activeAgentId ? ' active' : '');
+    btn.innerHTML = `<span class="agent-tab-icon">${agent.icon}</span>${agent.name}`;
+    if (agent.id === activeAgentId) {
+      btn.style.borderBottomColor = agent.color;
+      btn.style.color = 'var(--text-primary)';
+    }
+    btn.addEventListener('click', () => switchAgent(agent.id));
+    $tabs.appendChild(btn);
   });
 }
 
-// ── Select agent ──
-function selectAgent(id) {
+/* ── Switch Agent ── */
+function switchAgent(id) {
   activeAgentId = id;
-  renderSidebar();
-  renderHeader();
+  renderTabs();
+  renderAgentInfo();
   renderChat();
-  document.getElementById('inputField').focus();
+  updateInputPlaceholder();
 }
 
-// ── Render header ──
-function renderHeader() {
+/* ── Agent Info ── */
+function renderAgentInfo() {
   const agent = agents.find(a => a.id === activeAgentId);
-  const icon = document.getElementById('agentIcon');
-  icon.style.background = agent.color + '18';
-  icon.textContent = agent.icon;
-  document.getElementById('agentName').textContent = agent.name;
-  document.getElementById('agentName').style.color = agent.color;
-  document.getElementById('agentDesc').textContent = agent.description;
-  document.getElementById('btnSend').style.background = agent.color;
+  $agentName.textContent = agent.name;
+  $agentName.style.color = agent.color;
+
+  $agentTags.innerHTML = agent.tags.map((t, i) =>
+    `<span>${t}</span>${i < agent.tags.length - 1 ? '<span class="dot">&middot;</span>' : ''}`
+  ).join('');
 }
 
-// ── Time formatter ──
-function formatTime(date) {
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+/* ── Input Placeholder ── */
+function updateInputPlaceholder() {
+  const agent = agents.find(a => a.id === activeAgentId);
+  const label = agent.name.replace('THE ', '').toLowerCase();
+  $input.placeholder = `Message the ${label}...`;
 }
 
-// ── Render chat ──
+/* ── Render Chat ── */
 function renderChat() {
-  const area = document.getElementById('chatArea');
   const agent = agents.find(a => a.id === activeAgentId);
+  $chatArea.innerHTML = '';
 
   if (agent.history.length === 0) {
-    area.innerHTML =
-      '<div class="chat-empty">' +
-        '<div class="chat-empty-icon">' + agent.icon + '</div>' +
-        '<div class="chat-empty-text">' +
-          'Ask <strong style="color:' + agent.color + '">' + agent.name + '</strong> a question.<br>' +
-          'A structured prompt will be generated for you to copy.' +
-        '</div>' +
-      '</div>';
-    return;
+    /* Empty state */
+    const empty = document.createElement('div');
+    empty.className = 'chat-empty';
+    empty.innerHTML = `
+      <div class="empty-icon">${agent.icon}</div>
+      <div class="empty-text">${agent.name} STANDING BY</div>
+      <div class="quick-actions" id="quickActions"></div>
+    `;
+    $chatArea.appendChild(empty);
+
+    const qa = empty.querySelector('#quickActions');
+    agent.quickActions.forEach(text => {
+      const chip = document.createElement('button');
+      chip.className = 'quick-chip';
+      chip.textContent = text;
+      chip.addEventListener('click', () => {
+        $input.value = text;
+        autoResize();
+        sendMessage();
+      });
+      qa.appendChild(chip);
+    });
+  } else {
+    agent.history.forEach(msg => {
+      appendMessageDOM(msg);
+    });
+    scrollToBottom();
+  }
+}
+
+/* ── Append Message ── */
+function appendMessageDOM(msg) {
+  if (msg.role === 'user') {
+    const div = document.createElement('div');
+    div.className = 'msg msg-user';
+    div.textContent = msg.text;
+    $chatArea.appendChild(div);
+  } else if (msg.role === 'prompt') {
+    const div = document.createElement('div');
+    div.className = 'msg msg-prompt';
+    div.innerHTML = `
+      <div class="msg-prompt-label">GENERATED PROMPT</div>
+      <div class="msg-prompt-block">
+        <div class="msg-prompt-header">
+          <span>PROMPT</span>
+          <button class="btn-copy">COPY TO CLIPBOARD</button>
+        </div>
+        <div class="msg-prompt-code"></div>
+      </div>
+    `;
+    div.querySelector('.msg-prompt-code').textContent = msg.text;
+    const copyBtn = div.querySelector('.btn-copy');
+    copyBtn.addEventListener('click', () => {
+      navigator.clipboard.writeText(msg.text).then(() => {
+        copyBtn.textContent = 'COPIED';
+        copyBtn.classList.add('copied');
+        setTimeout(() => {
+          copyBtn.textContent = 'COPY TO CLIPBOARD';
+          copyBtn.classList.remove('copied');
+        }, 2000);
+      });
+    });
+    $chatArea.appendChild(div);
+  }
+}
+
+/* ── Build Prompt ── */
+function buildPrompt(agent, userMessage) {
+  let systemPrompt = agent.context;
+  if (sessionBrief.trim()) {
+    systemPrompt += '\n\nSESSION BRIEF:\n' + sessionBrief;
   }
 
-  area.innerHTML = '';
-  agent.history.forEach(entry => {
-    // User message
-    const userDiv = document.createElement('div');
-    userDiv.className = 'msg msg-user';
-    userDiv.innerHTML =
-      '<div class="msg-bubble-user">' + escapeHtml(entry.question) + '</div>' +
-      '<div class="msg-time">' + formatTime(entry.time) + '</div>';
-    area.appendChild(userDiv);
+  return `You are ${agent.name}, a specialist in ${agent.tags.join(', ')} for the ATLAS investment analytics terminal.
 
-    // Agent prompt response
-    const agentDiv = document.createElement('div');
-    agentDiv.className = 'msg msg-agent';
+Context:
+${systemPrompt}
 
-    const promptText = buildPrompt(agent, entry.question);
-    const copyId = 'copy-' + entry.time.getTime();
+User's Question:
+${userMessage}
 
-    agentDiv.innerHTML =
-      '<div class="msg-agent-label">' +
-        '<span class="msg-agent-dot" style="background:' + agent.color + '"></span>' +
-        '<span style="color:' + agent.color + '">' + agent.name + '</span>' +
-        '<span style="color:var(--text-muted);font-weight:400"> generated a prompt</span>' +
-      '</div>' +
-      '<div class="prompt-block">' +
-        '<div class="prompt-block-header">' +
-          '<span class="prompt-block-title">COPY-READY PROMPT</span>' +
-          '<button class="btn-copy" id="' + copyId + '" onclick="copyPrompt(this)">' +
-            '<span class="copy-label">Copy to Clipboard</span>' +
-          '</button>' +
-        '</div>' +
-        '<div class="prompt-block-body">' + escapeHtml(promptText) + '</div>' +
-      '</div>' +
-      '<div class="msg-time">' + formatTime(entry.time) + '</div>';
-    area.appendChild(agentDiv);
-  });
-
-  // Scroll to bottom
-  requestAnimationFrame(() => {
-    area.scrollTop = area.scrollHeight;
-  });
+Please provide a detailed, actionable response.`;
 }
 
-// ── Build the copy-ready prompt ──
-function buildPrompt(agent, question) {
-  return 'You are ' + agent.name + ', a specialist in ' + agent.specialty + ' for the ATLAS investment analytics terminal.\n\nContext:\n' + agent.context + '\n\nUser\'s Question:\n' + question + '\n\nPlease provide a detailed, actionable response.';
-}
-
-// ── Copy to clipboard ──
-function copyPrompt(btn) {
-  const body = btn.closest('.prompt-block').querySelector('.prompt-block-body');
-  const text = body.textContent;
-  navigator.clipboard.writeText(text).then(() => {
-    btn.classList.add('copied');
-    btn.querySelector('.copy-label').textContent = 'Copied!';
-    setTimeout(() => {
-      btn.classList.remove('copied');
-      btn.querySelector('.copy-label').textContent = 'Copy to Clipboard';
-    }, 2000);
-  });
-}
-
-// ── Escape HTML ──
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-}
-
-// ── Send message ──
+/* ── Send Message ── */
 function sendMessage() {
-  const input = document.getElementById('inputField');
-  const text = input.value.trim();
+  const text = $input.value.trim();
   if (!text) return;
 
   const agent = agents.find(a => a.id === activeAgentId);
-  agent.history.push({
-    question: text,
-    time: new Date()
+
+  /* User message */
+  const userMsg = { role: 'user', text };
+  agent.history.push(userMsg);
+
+  /* Build prompt */
+  const promptText = buildPrompt(agent, text);
+  const promptMsg = { role: 'prompt', text: promptText };
+  agent.history.push(promptMsg);
+
+  /* Clear input */
+  $input.value = '';
+  autoResize();
+  updateSendButton();
+
+  /* Render */
+  renderChat();
+  scrollToBottom();
+}
+
+/* ── Scroll ── */
+function scrollToBottom() {
+  requestAnimationFrame(() => {
+    $chatArea.scrollTop = $chatArea.scrollHeight;
   });
-
-  input.value = '';
-  input.style.height = 'auto';
-  renderChat();
-  input.focus();
 }
 
-// ── Clear chat ──
-function clearChat() {
-  const agent = agents.find(a => a.id === activeAgentId);
-  agent.history = [];
-  renderChat();
+/* ── Auto-resize textarea ── */
+function autoResize() {
+  $input.style.height = 'auto';
+  $input.style.height = Math.min($input.scrollHeight, 160) + 'px';
 }
 
-// ── Input: auto-resize and keyboard handling ──
-const inputField = document.getElementById('inputField');
+/* ── Send button state ── */
+function updateSendButton() {
+  if ($input.value.trim()) {
+    $btnSend.classList.add('has-text');
+  } else {
+    $btnSend.classList.remove('has-text');
+  }
+}
 
-inputField.addEventListener('input', function() {
-  this.style.height = 'auto';
-  this.style.height = Math.min(this.scrollHeight, 160) + 'px';
+/* ── Event Listeners ── */
+
+/* Input */
+$input.addEventListener('input', () => {
+  autoResize();
+  updateSendButton();
 });
 
-inputField.addEventListener('keydown', function(e) {
+$input.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
     sendMessage();
   }
 });
 
-// ── Init ──
-renderSidebar();
-renderHeader();
+$btnSend.addEventListener('click', sendMessage);
+
+/* Clear chat */
+$btnClear.addEventListener('click', () => {
+  const agent = agents.find(a => a.id === activeAgentId);
+  agent.history = [];
+  renderChat();
+});
+
+/* Session Brief toggle */
+$briefHeader.addEventListener('click', () => {
+  briefOpen = !briefOpen;
+  if (briefOpen) {
+    $briefBody.classList.add('open');
+    $briefChevron.innerHTML = '&#9652;';
+  } else {
+    $briefBody.classList.remove('open');
+    $briefChevron.innerHTML = '&#9662;';
+  }
+});
+
+/* Apply brief */
+$btnApply.addEventListener('click', () => {
+  sessionBrief = $briefTextarea.value.trim();
+  if (sessionBrief) {
+    $briefBadge.textContent = 'ACTIVE';
+    $briefBadge.className = 'brief-badge active';
+  } else {
+    $briefBadge.textContent = 'APPLY';
+    $briefBadge.className = 'brief-badge apply';
+  }
+});
+
+/* ── Init ── */
+renderTabs();
+renderAgentInfo();
 renderChat();
-inputField.focus();
+updateInputPlaceholder();
 </script>
 </body>
 </html>
