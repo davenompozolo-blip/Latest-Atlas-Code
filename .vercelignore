@@ -1,0 +1,12 @@
+# Hide Python/Streamlit artefacts from Vercel so it doesn't auto-detect
+# a Python runtime and bloat the Lambda past the 250MB limit.
+# These files MUST stay at repo root for Streamlit Cloud to work.
+requirements.txt
+runtime.txt
+atlas_app.py
+pages/
+sync/
+.github/
+migrations/
+*.md
+.streamlit/
