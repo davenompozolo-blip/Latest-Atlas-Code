@@ -1,4 +1,6 @@
 {
+  "framework": null,
+  "installCommand": "echo 'skip install'",
   "outputDirectory": "public",
   "buildCommand": "node inject-env.js",
   "rewrites": [
