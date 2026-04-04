@@ -79,66 +79,162 @@
         /* === Top Bar === */
 
         .top-bar {
-            height: 48px;
+            height: 52px;
             display: flex;
             align-items: center;
-            justify-content: space-between;
             padding: 0 24px;
             background: var(--card);
             border-bottom: 1px solid var(--card-border);
             flex-shrink: 0;
+            gap: 20px;
         }
 
         .top-bar .logo {
             font-family: 'Syne', sans-serif;
-            font-size: 16px;
+            font-size: 18px;
             font-weight: 800;
-            letter-spacing: 4px;
+            letter-spacing: 5px;
             color: var(--cyan);
             text-shadow: 0 0 20px rgba(0, 212, 255, 0.3), 0 0 40px rgba(0, 212, 255, 0.1);
         }
 
-        .top-bar .status {
+        .top-bar .logo-sub {
+            font-size: 9px;
+            color: var(--text-muted);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            font-family: 'DM Sans', sans-serif;
+        }
+
+        .top-bar .nav-summary {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .top-bar .nav-pnl {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .top-bar .sparkline-container {
+            width: 120px;
+            height: 32px;
+        }
+
+        .top-bar .spacer { flex: 1; }
+
+        .top-bar .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+            letter-spacing: 0.5px;
+        }
+
+        .top-bar .status-badge.live {
+            background: rgba(16, 185, 129, 0.12);
+            color: var(--green);
+            border: 1px solid rgba(16, 185, 129, 0.25);
+        }
+
+        .top-bar .status-badge.demo {
+            background: rgba(245, 158, 11, 0.12);
+            color: var(--amber);
+            border: 1px solid rgba(245, 158, 11, 0.25);
+        }
+
+        .top-bar .date {
             font-size: 11px;
             color: var(--text-muted);
             font-family: 'JetBrains Mono', monospace;
         }
 
-        /* === Navigation Bar === */
+        /* === Body Layout (sidebar + content) === */
 
-        .nav-bar {
+        .body-layout {
             display: flex;
-            gap: 0;
-            border-bottom: 1px solid var(--card-border);
-            background: var(--bg);
-            flex-shrink: 0;
-            overflow-x: auto;
+            flex: 1;
+            overflow: hidden;
         }
 
-        .nav-tab {
-            padding: 12px 24px;
-            font-size: 13px;
-            font-weight: 500;
+        /* === Left Sidebar Nav === */
+
+        .sidebar {
+            width: 180px;
+            background: var(--card);
+            border-right: 1px solid var(--card-border);
+            display: flex;
+            flex-direction: column;
+            padding: 16px 0;
+            flex-shrink: 0;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 20px;
             color: var(--text-sec);
             cursor: pointer;
-            border-bottom: 2px solid transparent;
-            border-top: none;
-            border-left: none;
-            border-right: none;
+            font-size: 13px;
+            font-weight: 500;
+            border: none;
             background: none;
-            transition: all 0.2s ease;
-            white-space: nowrap;
-            font-family: 'DM Sans', -apple-system, sans-serif;
+            text-align: left;
+            transition: all 0.15s ease;
+            border-left: 3px solid transparent;
+            font-family: 'DM Sans', sans-serif;
         }
 
-        .nav-tab:hover {
+        .nav-item:hover {
             color: var(--text);
             background: rgba(255, 255, 255, 0.03);
         }
 
-        .nav-tab.active {
+        .nav-item.active {
             color: var(--cyan);
-            border-bottom-color: var(--cyan);
+            border-left-color: var(--cyan);
+            background: rgba(0, 212, 255, 0.05);
+        }
+
+        .nav-item .nav-icon {
+            font-size: 14px;
+            width: 18px;
+            text-align: center;
+            opacity: 0.7;
+        }
+
+        .nav-item.active .nav-icon { opacity: 1; }
+
+        .nav-item .nav-label {
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 12px;
+            letter-spacing: 1px;
+        }
+
+        .nav-item .nav-sublabel {
+            font-size: 10px;
+            color: var(--text-muted);
+            font-weight: 400;
+            letter-spacing: 0;
+            text-transform: none;
+        }
+
+        .sidebar-footer {
+            margin-top: auto;
+            padding: 16px 20px;
+            font-size: 10px;
+            color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+            line-height: 1.6;
         }
 
         /* === Main Content === */
@@ -147,9 +243,24 @@
             flex: 1;
             padding: 24px;
             overflow-y: auto;
-            max-width: 1400px;
-            margin: 0 auto;
-            width: 100%;
+        }
+
+        /* === Content with Right Sidebar === */
+
+        .content-with-sidebar {
+            display: grid;
+            grid-template-columns: 1fr 320px;
+            gap: 20px;
+        }
+
+        .content-primary { min-width: 0; }
+        .content-sidebar { min-width: 0; }
+
+        @media (max-width: 1100px) {
+            .content-with-sidebar {
+                grid-template-columns: 1fr;
+            }
+            .sidebar { display: none; }
         }
 
         /* === Page Title === */
@@ -500,7 +611,7 @@
                 React.createElement('div', { style: { color: 'rgba(255,255,255,0.52)', marginBottom: 32, maxWidth: 480, margin: '0 auto 32px' } },
                     'Running in demo mode. To connect to live Supabase data, set your anon key:'),
                 React.createElement('pre', { style: { background: '#0d0f1a', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, padding: 20, textAlign: 'left', maxWidth: 600, margin: '0 auto', fontSize: 13, fontFamily: 'JetBrains Mono', color: 'rgba(255,255,255,0.7)', overflowX: 'auto' } },
-                    '<script>\nwindow.ATLAS_CONFIG = {\n  supabaseKey: "your-anon-key-here"\n};\n</script>'),
+                    '\x3Cscript\x3E\nwindow.ATLAS_CONFIG = {\n  supabaseKey: "your-anon-key-here"\n};\n\x3C/script\x3E'),
                 React.createElement('div', { style: { color: 'rgba(255,255,255,0.28)', marginTop: 20, fontSize: 12 } }, 'Add the script block above BEFORE the terminal script tag, or deploy with environment injection.')
             );
         }
@@ -509,114 +620,170 @@
         // TAB 1: PORTFOLIO HOME
         // ============================================================
         function PortfolioHome() {
-            const [positions, setPositions] = useState(null);
-            const [command, setCommand] = useState(null);
-            const [loading, setLoading] = useState(true);
-            const chartRef = useRef(null);
-            const chartInstance = useRef(null);
+            var _p = useState(null), positions = _p[0], setPositions = _p[1];
+            var _c = useState(null), command = _c[0], setCommand = _c[1];
+            var _l = useState(true), loading = _l[0], setLoading = _l[1];
+            var donutRef = useRef(null);
+            var donutInst = useRef(null);
+            var benchRef = useRef(null);
+            var benchInst = useRef(null);
+            var _n = useState(null), navData = _n[0], setNavData = _n[1];
 
-            useEffect(() => {
+            useEffect(function() {
                 Promise.all([
                     loadView('vw_portfolio_home', MOCK_POSITIONS),
-                    loadView('vw_command_centre', [MOCK_COMMAND])
-                ]).then(([pos, cmd]) => {
-                    setPositions(pos);
-                    setCommand(cmd[0] || MOCK_COMMAND);
+                    loadView('vw_command_centre', [MOCK_COMMAND]),
+                    loadView('vw_portfolio_nav_daily', [])
+                ]).then(function(res) {
+                    setPositions(res[0]);
+                    setCommand(res[1][0] || MOCK_COMMAND);
+                    setNavData(res[2]);
                     setLoading(false);
                 });
             }, []);
 
-            useEffect(() => {
-                if (!positions || !chartRef.current) return;
-                if (chartInstance.current) chartInstance.current.destroy();
-                const top10 = positions.slice(0, 10);
-                chartInstance.current = new Chart(chartRef.current, {
+            // Donut chart
+            useEffect(function() {
+                if (!positions || !donutRef.current) return;
+                if (donutInst.current) donutInst.current.destroy();
+                var top10 = positions.slice(0, 10);
+                var totalMv = top10.reduce(function(s, p) { return s + Number(p.market_value || 0); }, 0);
+                donutInst.current = new Chart(donutRef.current, {
                     type: 'doughnut',
                     data: {
-                        labels: top10.map(p => p.symbol),
-                        datasets: [{
-                            data: top10.map(p => Number(p.market_value) || 0),
+                        labels: top10.map(function(p) { return p.symbol; }),
+                        datasets: [{ data: top10.map(function(p) { return Number(p.market_value) || 0; }),
                             backgroundColor: ['#00d4ff', '#6366f1', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#14b8a6', '#f97316', '#a855f7'],
-                            borderWidth: 0
+                            borderWidth: 0 }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false, cutout: '65%',
+                        plugins: {
+                            legend: { position: 'bottom', labels: { color: 'rgba(255,255,255,0.55)', font: { size: 10, family: 'DM Sans' }, padding: 6, boxWidth: 10, usePointStyle: true } }
+                        }
+                    },
+                    plugins: [{ id: 'centerText', beforeDraw: function(chart) {
+                        var ctx = chart.ctx, w = chart.width, h = chart.height;
+                        ctx.save();
+                        ctx.font = '700 18px JetBrains Mono';
+                        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(fmtCurrency(totalMv), w / 2, h / 2 - 4);
+                        ctx.restore();
+                    }}]
+                });
+                return function() { if (donutInst.current) donutInst.current.destroy(); };
+            }, [positions]);
+
+            // Benchmark line chart
+            useEffect(function() {
+                if (!navData || !navData.length || !benchRef.current) return;
+                if (benchInst.current) benchInst.current.destroy();
+                var sorted = navData.slice().sort(function(a, b) { return new Date(a.price_date) - new Date(b.price_date); });
+                var baseNav = sorted[0].nav;
+                benchInst.current = new Chart(benchRef.current, {
+                    type: 'line',
+                    data: {
+                        labels: sorted.map(function(d) { return ''; }),
+                        datasets: [{
+                            label: 'ATLAS',
+                            data: sorted.map(function(d) { return ((d.nav / baseNav) - 1) * 100; }),
+                            borderColor: '#00d4ff', backgroundColor: 'rgba(0,212,255,0.05)', borderWidth: 2, pointRadius: 0, fill: true, tension: 0.3
                         }]
                     },
                     options: {
                         responsive: true, maintainAspectRatio: false,
-                        plugins: {
-                            legend: { position: 'right', labels: { color: 'rgba(255,255,255,0.6)', font: { size: 11, family: 'DM Sans' }, padding: 8, boxWidth: 12 } }
-                        }
+                        scales: {
+                            x: { display: false },
+                            y: { display: true, grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: 'rgba(255,255,255,0.3)', font: { size: 10, family: 'JetBrains Mono' }, callback: function(v) { return v.toFixed(0) + '%'; } } }
+                        },
+                        plugins: { legend: { display: true, labels: { color: 'rgba(255,255,255,0.5)', font: { size: 10 }, boxWidth: 10, usePointStyle: true } } }
                     }
                 });
-                return () => { if (chartInstance.current) chartInstance.current.destroy(); };
-            }, [positions]);
+                return function() { if (benchInst.current) benchInst.current.destroy(); };
+            }, [navData]);
 
             if (loading) return React.createElement(Loading, null);
-            const c = command || MOCK_COMMAND;
+            var c = command || MOCK_COMMAND;
 
             return React.createElement('div', null,
-                React.createElement('div', { className: 'page-title' }, 'Portfolio Home'),
                 // Metrics Row
-                React.createElement('div', { className: 'metrics-row' },
+                React.createElement('div', { className: 'metrics-row', style: { gridTemplateColumns: 'repeat(4, 1fr)' } },
                     React.createElement('div', { className: 'metric-card' },
-                        React.createElement('div', { className: 'label' }, 'Portfolio NAV'),
+                        React.createElement('div', { className: 'label' }, 'PORTFOLIO NAV'),
                         React.createElement('div', { className: 'value' }, fmtCurrency(c.portfolio_nav)),
-                        React.createElement('div', { className: 'sub' }, 'Total invested: ' + fmtCurrency(c.total_invested))
+                        React.createElement('div', { className: 'sub' }, (c.position_count || positions.length) + ' positions + cash')
                     ),
                     React.createElement('div', { className: 'metric-card' },
-                        React.createElement('div', { className: 'label' }, 'Total Return'),
-                        React.createElement('div', { className: 'value ' + cls(c.total_return_pct) }, fmtPct(c.total_return_pct)),
-                        React.createElement('div', { className: 'sub' }, 'Sharpe: ' + fmt(c.sharpe_ratio))
+                        React.createElement('div', { className: 'label' }, 'INVESTED (EQUITIES)'),
+                        React.createElement('div', { className: 'value' }, fmtCurrency(c.total_invested)),
+                        React.createElement('div', { className: 'sub' }, 'Market value')
                     ),
                     React.createElement('div', { className: 'metric-card' },
-                        React.createElement('div', { className: 'label' }, 'Positions'),
-                        React.createElement('div', { className: 'value' }, c.position_count || positions.length),
-                        React.createElement('div', { className: 'sub' }, (c.days_of_history || 0) + ' days of history')
+                        React.createElement('div', { className: 'label' }, 'UNREALISED P&L'),
+                        React.createElement('div', { className: 'value ' + cls(c.total_return_pct) }, fmtCurrency(c.portfolio_nav - c.total_invested)),
+                        React.createElement('div', { className: 'sub ' + cls(c.total_return_pct) }, fmtPct(c.total_return_pct))
                     ),
                     React.createElement('div', { className: 'metric-card' },
-                        React.createElement('div', { className: 'label' }, 'Health Score'),
-                        React.createElement('div', { className: 'health-score ' + healthCls(c.atlas_health_score), style: { marginTop: 4 } }, Math.round(c.atlas_health_score || 0)),
-                        React.createElement('div', { className: 'sub' }, c.portfolio_health_status || '')
+                        React.createElement('div', { className: 'label' }, 'CASH'),
+                        React.createElement('div', { className: 'value' }, fmtCurrency((c.portfolio_nav || 0) - (c.total_invested || 0) > 0 ? (c.portfolio_nav - c.total_invested) : 0)),
+                        React.createElement('div', { className: 'sub' }, fmtPct(c.total_return_pct) + ' of NAV')
                     )
                 ),
-                // Two-column layout
-                React.createElement('div', { className: 'grid-2' },
-                    // Positions Table
-                    React.createElement('div', { className: 'card', style: { gridColumn: '1 / -1' } },
-                        React.createElement('div', { className: 'card-title' }, 'Positions (' + positions.length + ')'),
-                        React.createElement('div', { style: { overflowX: 'auto' } },
-                            React.createElement('table', { className: 'data-table' },
-                                React.createElement('thead', null,
-                                    React.createElement('tr', null,
-                                        ['Symbol', 'Name', 'Qty', 'Avg Cost', 'Price', 'Mkt Value', 'Return %', 'Weight %', 'Vol', 'Sharpe'].map(h =>
-                                            React.createElement('th', { key: h }, h)
+                // Content with right sidebar
+                React.createElement('div', { className: 'content-with-sidebar' },
+                    // Left: Positions table
+                    React.createElement('div', { className: 'content-primary' },
+                        React.createElement('div', { className: 'card', style: { padding: '16px 20px' } },
+                            React.createElement('div', { className: 'card-title', style: { fontSize: 16, fontFamily: 'Syne', fontWeight: 700, letterSpacing: 1 } }, 'POSITIONS'),
+                            React.createElement('div', { style: { overflowX: 'auto' } },
+                                React.createElement('table', { className: 'data-table' },
+                                    React.createElement('thead', null,
+                                        React.createElement('tr', null,
+                                            ['Ticker', 'Name', 'Qty', 'Avg Cost', 'Price', 'Mkt Val', 'Unreal. P&L', '%', 'Th', 'Signal'].map(function(h) {
+                                                return React.createElement('th', { key: h }, h);
+                                            })
                                         )
-                                    )
-                                ),
-                                React.createElement('tbody', null,
-                                    positions.map(p =>
-                                        React.createElement('tr', { key: p.symbol },
-                                            React.createElement('td', { style: { fontWeight: 600, color: '#00d4ff' } },
-                                                p.symbol, p.is_concentrated ? React.createElement('span', { className: 'badge amber', style: { marginLeft: 6, fontSize: 9 } }, 'CONC') : null),
-                                            React.createElement('td', { style: { fontFamily: 'DM Sans', color: 'rgba(255,255,255,0.6)' } }, p.name),
-                                            React.createElement('td', null, fmt(p.quantity, 0)),
-                                            React.createElement('td', null, fmtCurrency(p.cost_basis)),
-                                            React.createElement('td', null, fmtCurrency(p.current_price)),
-                                            React.createElement('td', null, fmtCurrency(p.market_value)),
-                                            React.createElement('td', { className: cls(p.unrealised_return_pct) }, fmtPct(p.unrealised_return_pct)),
-                                            React.createElement('td', null, fmtPct(p.portfolio_weight)),
-                                            React.createElement('td', null, fmt(p.annualised_vol)),
-                                            React.createElement('td', null, fmt(p.sharpe_approx))
-                                        )
+                                    ),
+                                    React.createElement('tbody', null,
+                                        positions.map(function(p) {
+                                            var pnl = (p.current_price - p.cost_basis) * p.quantity;
+                                            var signal = p.sharpe_approx > 1.5 ? 'BUY' : p.sharpe_approx < 0.5 ? 'SELL' : 'HOLD';
+                                            var sigCls = signal === 'BUY' ? 'green' : signal === 'SELL' ? 'red' : 'blue';
+                                            return React.createElement('tr', { key: p.symbol },
+                                                React.createElement('td', { style: { fontWeight: 600, color: '#00d4ff' } }, p.symbol),
+                                                React.createElement('td', { style: { fontFamily: 'DM Sans', color: 'rgba(255,255,255,0.6)' } }, p.name),
+                                                React.createElement('td', null, fmt(p.quantity, 0)),
+                                                React.createElement('td', null, fmtCurrency(p.cost_basis)),
+                                                React.createElement('td', null, fmtCurrency(p.current_price)),
+                                                React.createElement('td', null, fmtCurrency(p.market_value)),
+                                                React.createElement('td', { className: cls(pnl) }, (pnl >= 0 ? '+' : '') + fmtCurrency(pnl)),
+                                                React.createElement('td', { className: cls(p.unrealised_return_pct) }, fmtPct(p.unrealised_return_pct)),
+                                                React.createElement('td', null, ''),
+                                                React.createElement('td', null, React.createElement('span', { className: 'badge ' + sigCls }, signal))
+                                            );
+                                        })
                                     )
                                 )
                             )
                         )
                     ),
-                    // Allocation Chart
-                    React.createElement('div', { className: 'card', style: { gridColumn: '1 / -1' } },
-                        React.createElement('div', { className: 'card-title' }, 'Portfolio Allocation (Top 10)'),
-                        React.createElement('div', { className: 'chart-container', style: { height: 280 } },
-                            React.createElement('canvas', { ref: chartRef })
+                    // Right sidebar: charts
+                    React.createElement('div', { className: 'content-sidebar' },
+                        // Sector Allocation donut
+                        React.createElement('div', { className: 'card' },
+                            React.createElement('div', { className: 'card-title', style: { fontSize: 12, letterSpacing: 1.5, textTransform: 'uppercase' } }, 'SECTOR ALLOCATION'),
+                            React.createElement('div', { style: { height: 260 } },
+                                React.createElement('canvas', { ref: donutRef })
+                            )
+                        ),
+                        // Portfolio vs Benchmark chart
+                        React.createElement('div', { className: 'card' },
+                            React.createElement('div', { className: 'card-title', style: { fontSize: 12, letterSpacing: 1.5, textTransform: 'uppercase' } }, 'PORTFOLIO VS BENCHMARK (%)'),
+                            React.createElement('div', { style: { height: 200 } },
+                                React.createElement('canvas', { ref: benchRef })
+                            )
                         )
                     )
                 )
@@ -924,46 +1091,118 @@
         }
 
         // ============================================================
-        // APP SHELL
+        // APP SHELL — Left Sidebar Layout
         // ============================================================
         const TABS = [
-            { id: 'portfolio', label: 'Portfolio Home', component: PortfolioHome },
-            { id: 'quant', label: 'Quant Dashboard', component: QuantDashboard },
-            { id: 'risk', label: 'Risk Analysis', component: RiskAnalysis },
-            { id: 'performance', label: 'Performance Suite', component: PerformanceSuite },
-            { id: 'command', label: 'Command Centre', component: CommandCentre },
+            { id: 'portfolio', label: 'PORTFOLIO', sub: 'Positions & NAV', icon: '\u25CB', component: PortfolioHome },
+            { id: 'quant', label: 'QUANT', sub: 'Quantitative Signals', icon: '\u25C7', component: QuantDashboard },
+            { id: 'risk', label: 'RISK', sub: 'Metrics & Drawdown', icon: '\u25B3', component: RiskAnalysis },
+            { id: 'performance', label: 'PERFORMANCE', sub: 'Returns & Attribution', icon: '\u25C6', component: PerformanceSuite },
+            { id: 'command', label: 'COMMAND', sub: 'System Overview', icon: '\u2726', component: CommandCentre },
         ];
 
+        // Top bar sparkline (tiny inline chart)
+        function TopBarSparkline({ nav }) {
+            var canvasRef = useRef(null);
+            useEffect(function() {
+                if (!nav || !nav.length || !canvasRef.current) return;
+                var ctx = canvasRef.current.getContext('2d');
+                var w = canvasRef.current.width;
+                var h = canvasRef.current.height;
+                ctx.clearRect(0, 0, w, h);
+                var vals = nav.slice(-60).map(function(d) { return d.nav; });
+                var min = Math.min.apply(null, vals);
+                var max = Math.max.apply(null, vals);
+                var range = max - min || 1;
+                ctx.beginPath();
+                ctx.strokeStyle = '#10b981';
+                ctx.lineWidth = 1.5;
+                vals.forEach(function(v, i) {
+                    var x = (i / (vals.length - 1)) * w;
+                    var y = h - ((v - min) / range) * (h - 4) - 2;
+                    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                });
+                ctx.stroke();
+            }, [nav]);
+            return React.createElement('canvas', { ref: canvasRef, width: 120, height: 32, className: 'sparkline-container' });
+        }
+
         function App() {
-            const [activeTab, setActiveTab] = useState('portfolio');
-            const ActiveComponent = TABS.find(t => t.id === activeTab).component;
+            var _s = useState('portfolio');
+            var activeTab = _s[0];
+            var setActiveTab = _s[1];
+            var _n = useState(null);
+            var topNav = _n[0];
+            var setTopNav = _n[1];
+            var _c = useState(null);
+            var topCmd = _c[0];
+            var setTopCmd = _c[1];
+            var ActiveComponent = TABS.find(function(t) { return t.id === activeTab; }).component;
+
+            // Load summary data for top bar
+            useEffect(function() {
+                Promise.all([
+                    loadView('vw_portfolio_nav_daily', []),
+                    loadView('vw_command_centre', MOCK_COMMAND)
+                ]).then(function(res) {
+                    setTopNav(res[0]);
+                    var cmd = Array.isArray(res[1]) ? res[1][0] : res[1];
+                    setTopCmd(cmd || MOCK_COMMAND);
+                });
+            }, []);
+
+            var c = topCmd || MOCK_COMMAND;
+            var pnl = c.total_return_pct;
+            var pnlStr = pnl != null ? (pnl >= 0 ? '+' : '') + fmtCurrency(c.portfolio_nav - c.total_invested) + ' (' + fmtPct(pnl) + ')' : '';
 
             return React.createElement('div', { className: 'app-container' },
                 // Gradient top line
                 React.createElement('div', { style: { height: 2, background: 'linear-gradient(90deg, transparent, #00d4ff, #8b5cf6, transparent)' } }),
                 // Top Bar
                 React.createElement('div', { className: 'top-bar' },
-                    React.createElement('div', { className: 'logo' }, 'ATLAS'),
-                    React.createElement('div', { className: 'status' },
-                        sb ? '\u25CF LIVE' : '\u25CB DEMO',
-                        ' \u2022 ',
-                        new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                    React.createElement('div', null,
+                        React.createElement('div', { className: 'logo' }, 'ATLAS'),
+                        React.createElement('div', { className: 'logo-sub' }, 'TERMINAL')
+                    ),
+                    React.createElement('div', { className: 'nav-summary' }, fmtCurrency(c.portfolio_nav)),
+                    React.createElement('div', { className: 'nav-pnl ' + cls(pnl) }, pnlStr),
+                    React.createElement(TopBarSparkline, { nav: topNav }),
+                    React.createElement('div', { className: 'spacer' }),
+                    React.createElement('div', { className: 'status-badge ' + (sb ? 'live' : 'demo') },
+                        sb ? '\u25CF LIVE DATA' : '\u25CB MOCK DATA'
+                    ),
+                    React.createElement('div', { className: 'date' },
+                        new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })
                     )
                 ),
-                // Nav Bar
-                React.createElement('div', { className: 'nav-bar' },
-                    TABS.map(tab =>
-                        React.createElement('button', {
-                            key: tab.id,
-                            className: 'nav-tab' + (activeTab === tab.id ? ' active' : ''),
-                            onClick: () => setActiveTab(tab.id)
-                        }, tab.label)
+                // Body layout (sidebar + content)
+                React.createElement('div', { className: 'body-layout' },
+                    // Left Sidebar
+                    React.createElement('div', { className: 'sidebar' },
+                        TABS.map(function(tab) {
+                            return React.createElement('button', {
+                                key: tab.id,
+                                className: 'nav-item' + (activeTab === tab.id ? ' active' : ''),
+                                onClick: function() { setActiveTab(tab.id); }
+                            },
+                                React.createElement('span', { className: 'nav-icon' }, tab.icon),
+                                React.createElement('div', null,
+                                    React.createElement('div', { className: 'nav-label' }, tab.label),
+                                    React.createElement('div', { className: 'nav-sublabel' }, tab.sub)
+                                )
+                            );
+                        }),
+                        React.createElement('div', { className: 'sidebar-footer' },
+                            'ATLAS TERMINAL v1.0',
+                            React.createElement('br'),
+                            '\u00A9 2026 ATLAS'
+                        )
+                    ),
+                    // Main Content
+                    React.createElement('div', { className: 'main-content' },
+                        !sb ? React.createElement(ConfigPrompt, null) : null,
+                        React.createElement(ActiveComponent, null)
                     )
-                ),
-                // Main Content
-                React.createElement('div', { className: 'main-content' },
-                    !sb ? React.createElement(ConfigPrompt, null) : null,
-                    React.createElement(ActiveComponent, null)
                 )
             );
         }
