@@ -1,9 +1,66 @@
 # ATLAS Terminal — Course Correction & Implementation Status
-**Date:** 2026-04-04
+**Last updated:** 2026-04-05 (V3.1 handoff integrated)
 **Branch:** `claude/atlas-terminal-implementation-dFYbI`
 **Repo:** `davenompozolo-blip/Latest-Atlas-Code`
 **Supabase:** `vdmojjszvvcithuxwexx.supabase.co`
 **Vercel URL:** (deployed — currently showing MOCK DATA mode)
+
+---
+
+## 0. V3.1 DELTAS (authoritative going forward)
+
+This section captures the direction change from the V3.1 handoff. Where it
+conflicts with older sections below, V3.1 wins.
+
+### 0a. Retrofit philosophy
+- **The Streamlit app is the reference layer.** It stays alive as a read-only
+  ground truth against which the React terminal is retrofitted view-by-view.
+- The Streamlit codebase is NOT being migrated file-by-file. We lift the
+  computed values out of its views, re-express them as SQL in Supabase, and
+  render them in React.
+- Streamlit Cloud deploy MUST keep working. `requirements.txt` and
+  `runtime.txt` live at repo root; `.vercelignore` shields them from Vercel
+  so the static-site build doesn't auto-detect a Python runtime.
+
+### 0b. Sync pipeline architecture
+- Authoritative sync path is a **Supabase Edge Function** (owner already
+  built + deployed + tested). The Python `sync/run_sync.py` and GitHub
+  Actions workflow are SECONDARY and only used as a manual fallback.
+- **Action item:** commit the live Edge Function source under
+  `supabase/functions/<name>/index.ts` so it lives in git. Blocked until
+  Supabase MCP is re-authenticated in the dev session.
+- New table `public.sync_log` and view `public.vw_sync_status` added via
+  migration `supabase/migrations/20260404000000_sync_log.sql`. The Edge
+  Function must be instrumented to `insert` a row at start and `update`
+  it on finish (status, counts, error_message, details jsonb).
+
+### 0c. Command Centre: real API, no prompt-builder
+- Command Centre is now a real chat interface calling the Anthropic
+  Messages API via a Vercel serverless proxy at `/api/command-centre.js`.
+- Conversation history is forwarded in Anthropic shape
+  (`{role, content}[]`) each turn. System prompt is composed per agent
+  from `agent.context` + the optional Session Brief.
+- `ANTHROPIC_API_KEY` must be set in Vercel project env vars (server-side).
+  Optional: `ANTHROPIC_MODEL` (default `claude-opus-4-6`),
+  `ATLAS_ALLOWED_ORIGIN`.
+- The old "copy-to-clipboard generated prompt" flow is removed.
+
+### 0d. View name authority
+- The canonical view names (already live in Supabase) are:
+  `vw_portfolio_home`, `vw_quant_dashboard`, `vw_risk_analysis`,
+  `vw_performance_suite`, `vw_command_centre`, `vw_portfolio_nav_daily`,
+  `vw_portfolio_returns_daily`. The shortened forms referenced in some
+  earlier drafts (`vw_quant`, `vw_risk`, `vw_performance`) are NOT used
+  anywhere in the committed code and should be ignored.
+
+### 0e. Outstanding before V3.1 can be called complete
+1. Edge Function source committed + `sync_log` instrumentation added.
+2. `sync_log` migration applied to the live Supabase project.
+3. `ANTHROPIC_API_KEY` set in Vercel (Command Centre currently errors 500
+   without it).
+4. Schema audit against the Streamlit reference (V3.1 Section 3) —
+   requires live Supabase schema read via MCP.
+5. Portfolio Home retrofit from the Streamlit reference view.
 
 ---
 
@@ -21,24 +78,29 @@
 - **Data loading:** Each view calls `loadView('vw_xxx')` against Supabase
 - **Problem:** Running in MOCK DATA mode because `SUPABASE_ANON_KEY` is not being injected at build time
 
-### 1b. ATLAS Command Centre (`public/command-centre/index.html`) — BUILT, NEEDS AUDIT
-- **Status:** Built (756 lines), deployed at `/command-centre` route on Vercel
-- **What it has:** 4 agents (Archivist/Architect/Engineer/Strategist), left sidebar agent selection, chat interface, copy-to-clipboard prompt builder
-- **NEEDS AUDIT:** Current design uses a LEFT SIDEBAR for agent selection. The target design (from Hlobo's screenshots) shows HORIZONTAL TABS across the top, a "SESSION BRIEF" expandable section, and quick-action prompt buttons. These UI differences need to be reconciled.
+### 1b. ATLAS Command Centre (`public/command-centre/index.html`) — WIRED TO ANTHROPIC
+- **Status:** Deployed at `/command-centre`. UI now matches V3.1 target
+  (horizontal agent tabs, Session Brief, quick-action chips).
+- **Wiring:** Real Anthropic Messages API via `/api/command-centre.js`
+  Vercel serverless proxy. Full conversation history forwarded per turn.
+- **Blocker:** `ANTHROPIC_API_KEY` env var must be set in Vercel before
+  the Command Centre will return anything other than a 500 error.
 
-### 1c. Phoenix Parser Sync (`sync/run_sync.py`) — BUILT, UNTESTED
-- **Status:** Self-contained Python script (no Streamlit dependency), 300+ lines
-- **What it does:**
-  1. Connects to Alpaca via `alpaca-py` SDK
-  2. Fetches account, positions, paginated order history
-  3. Filters OCC options symbols via regex (`^[A-Z]{1,6}\d{6}[PC]\d{8}$`)
-  4. Normalizes data and upserts to Supabase (portfolios, assets, positions, transactions)
-  5. Ingests 30-day price history per equity ticker
-- **Problem:** Has never been run. Needs actual testing with Alpaca paper account credentials.
+### 1c. Supabase Edge Function (sync) — LIVE IN SUPABASE, NOT IN REPO
+- **Status:** Owner has deployed and tested the Edge Function in the
+  Supabase project. Source has not yet been committed to git.
+- **Action:** Commit source under `supabase/functions/<name>/index.ts`
+  and add `sync_log` instrumentation (insert at start, update at finish).
+- **Blocker:** Supabase MCP needs to be re-authenticated in the dev
+  session to pull the live source.
 
-### 1d. GitHub Actions Workflow (`.github/workflows/atlas-sync.yml`) — CONFIG DONE
-- **Status:** YAML file exists, runs `sync/run_sync.py` every 15 minutes
-- **Problem:** Requires 4 GitHub repository secrets to be configured (see Section 3)
+### 1c-legacy. Phoenix Parser Sync (`sync/run_sync.py`) — FALLBACK ONLY
+- Self-contained Python script retained as a manual fallback. Not the
+  primary sync path under V3.1 — the Edge Function is.
+
+### 1d. GitHub Actions Workflow (`.github/workflows/atlas-sync.yml`) — DEPRECATED
+- Retained but no longer the sync trigger. Edge Function runs on its own
+  Supabase-native schedule.
 
 ### 1e. Vercel Deployment — DEPLOYING, ENV VARS MISSING
 - **Status:** `vercel.json` configured, `inject-env.js` exists for build-time key injection

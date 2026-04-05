@@ -427,75 +427,53 @@ body {
   line-height: 1.55;
 }
 
-.msg-prompt {
+.msg-assistant {
   align-self: flex-start;
   width: 100%;
   max-width: 680px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px 14px 14px 4px;
+  padding: 12px 16px;
+  color: var(--text-primary);
+  font-size: 13.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
-.msg-prompt-label {
+.msg-assistant.error {
+  border-color: rgba(239,68,68,0.3);
+  background: rgba(239,68,68,0.06);
+  color: #fca5a5;
+}
+
+.msg-assistant-label {
   font-family: 'JetBrains Mono', monospace;
   font-size: 10px;
   letter-spacing: 2px;
   color: var(--text-muted);
-  margin-bottom: 8px;
+  margin-bottom: 6px;
+  text-transform: uppercase;
 }
 
-.msg-prompt-block {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  overflow: hidden;
-}
-
-.msg-prompt-header {
-  display: flex;
+.typing {
+  display: inline-flex;
+  gap: 4px;
   align-items: center;
-  justify-content: space-between;
-  padding: 8px 14px;
-  border-bottom: 1px solid var(--border);
 }
-
-.msg-prompt-header span {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
-  letter-spacing: 1.5px;
-  color: var(--text-muted);
+.typing span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  animation: typing 1.2s infinite ease-in-out;
 }
-
-.btn-copy {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
-  letter-spacing: 1px;
-  color: var(--text-muted);
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 3px 10px;
-  cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
-}
-
-.btn-copy:hover {
-  color: var(--text-secondary);
-  border-color: rgba(255,255,255,0.12);
-}
-
-.btn-copy.copied {
-  color: var(--green);
-  border-color: rgba(16,185,129,0.3);
-}
-
-.msg-prompt-code {
-  padding: 14px;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 12px;
-  line-height: 1.65;
-  color: var(--text-secondary);
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 360px;
-  overflow-y: auto;
+.typing span:nth-child(2) { animation-delay: 0.15s; }
+.typing span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes typing {
+  0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-3px); }
 }
 
 /* ── Input Area ── */
@@ -798,79 +776,94 @@ function appendMessageDOM(msg) {
   if (msg.role === 'user') {
     const div = document.createElement('div');
     div.className = 'msg msg-user';
-    div.textContent = msg.text;
+    div.textContent = msg.content;
     $chatArea.appendChild(div);
-  } else if (msg.role === 'prompt') {
+  } else if (msg.role === 'assistant') {
     const div = document.createElement('div');
-    div.className = 'msg msg-prompt';
-    div.innerHTML = `
-      <div class="msg-prompt-label">GENERATED PROMPT</div>
-      <div class="msg-prompt-block">
-        <div class="msg-prompt-header">
-          <span>PROMPT</span>
-          <button class="btn-copy">COPY TO CLIPBOARD</button>
-        </div>
-        <div class="msg-prompt-code"></div>
-      </div>
-    `;
-    div.querySelector('.msg-prompt-code').textContent = msg.text;
-    const copyBtn = div.querySelector('.btn-copy');
-    copyBtn.addEventListener('click', () => {
-      navigator.clipboard.writeText(msg.text).then(() => {
-        copyBtn.textContent = 'COPIED';
-        copyBtn.classList.add('copied');
-        setTimeout(() => {
-          copyBtn.textContent = 'COPY TO CLIPBOARD';
-          copyBtn.classList.remove('copied');
-        }, 2000);
-      });
-    });
+    div.className = 'msg msg-assistant' + (msg.error ? ' error' : '');
+    const label = document.createElement('div');
+    label.className = 'msg-assistant-label';
+    const agent = agents.find(a => a.id === activeAgentId);
+    label.textContent = msg.error ? 'ERROR' : agent.name;
+    const body = document.createElement('div');
+    body.textContent = msg.content;
+    div.appendChild(label);
+    div.appendChild(body);
     $chatArea.appendChild(div);
   }
 }
 
-/* ── Build Prompt ── */
-function buildPrompt(agent, userMessage) {
-  let systemPrompt = agent.context;
+/* ── Build System Prompt ── */
+function buildSystem(agent) {
+  let system = `You are ${agent.name}, a specialist in ${agent.tags.join(', ')} for the ATLAS investment analytics terminal.\n\nContext:\n${agent.context}`;
   if (sessionBrief.trim()) {
-    systemPrompt += '\n\nSESSION BRIEF:\n' + sessionBrief;
+    system += '\n\nSESSION BRIEF:\n' + sessionBrief;
   }
-
-  return `You are ${agent.name}, a specialist in ${agent.tags.join(', ')} for the ATLAS investment analytics terminal.
-
-Context:
-${systemPrompt}
-
-User's Question:
-${userMessage}
-
-Please provide a detailed, actionable response.`;
+  system += '\n\nRespond with detailed, actionable answers. Cite files, tables, or views by name when relevant.';
+  return system;
 }
 
 /* ── Send Message ── */
-function sendMessage() {
+let inflight = false;
+async function sendMessage() {
+  if (inflight) return;
   const text = $input.value.trim();
   if (!text) return;
 
   const agent = agents.find(a => a.id === activeAgentId);
 
-  /* User message */
-  const userMsg = { role: 'user', text };
-  agent.history.push(userMsg);
-
-  /* Build prompt */
-  const promptText = buildPrompt(agent, text);
-  const promptMsg = { role: 'prompt', text: promptText };
-  agent.history.push(promptMsg);
+  /* Push user message into history (Anthropic-shaped) */
+  agent.history.push({ role: 'user', content: text });
 
   /* Clear input */
   $input.value = '';
   autoResize();
   updateSendButton();
 
-  /* Render */
+  /* Render user message + typing indicator */
   renderChat();
+  const typingEl = document.createElement('div');
+  typingEl.className = 'msg msg-assistant';
+  typingEl.innerHTML = `<div class="msg-assistant-label">${agent.name}</div><div class="typing"><span></span><span></span><span></span></div>`;
+  $chatArea.appendChild(typingEl);
   scrollToBottom();
+
+  inflight = true;
+  try {
+    const resp = await fetch('/api/command-centre', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        agent: agent.id,
+        system: buildSystem(agent),
+        messages: agent.history.map(m => ({ role: m.role, content: m.content })),
+        max_tokens: 2048,
+      }),
+    });
+
+    const data = await resp.json();
+    typingEl.remove();
+
+    if (!resp.ok) {
+      const errMsg = (data && (data.error || data.detail)) || `HTTP ${resp.status}`;
+      agent.history.push({ role: 'assistant', content: String(errMsg), error: true });
+    } else {
+      const assistantText = Array.isArray(data.content)
+        ? data.content.filter(b => b.type === 'text').map(b => b.text).join('\n\n')
+        : (data.completion || '[empty response]');
+      agent.history.push({ role: 'assistant', content: assistantText });
+    }
+  } catch (err) {
+    typingEl.remove();
+    agent.history.push({
+      role: 'assistant',
+      content: 'Network error: ' + (err && err.message ? err.message : String(err)),
+      error: true,
+    });
+  } finally {
+    inflight = false;
+    renderChat();
+  }
 }
 
 /* ── Scroll ── */

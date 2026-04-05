@@ -150,6 +150,25 @@
             border: 1px solid rgba(245, 158, 11, 0.25);
         }
 
+        .top-bar .sync-pill {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 10.5px;
+            font-weight: 500;
+            font-family: 'JetBrains Mono', monospace;
+            letter-spacing: 0.5px;
+            border: 1px solid rgba(255,255,255,0.08);
+            background: rgba(255,255,255,0.02);
+            color: rgba(255,255,255,0.55);
+        }
+        .top-bar .sync-pill.ok    { color: var(--green); border-color: rgba(16,185,129,0.25); background: rgba(16,185,129,0.08); }
+        .top-bar .sync-pill.warn  { color: var(--amber); border-color: rgba(245,158,11,0.25); background: rgba(245,158,11,0.08); }
+        .top-bar .sync-pill.err   { color: #f87171;      border-color: rgba(239,68,68,0.3);   background: rgba(239,68,68,0.08); }
+        .top-bar .sync-pill .dot  { width: 6px; height: 6px; border-radius: 50%; background: currentColor; box-shadow: 0 0 6px currentColor; }
+
         .top-bar .date {
             font-size: 11px;
             color: var(--text-muted);
@@ -1127,6 +1146,57 @@
             return React.createElement('canvas', { ref: canvasRef, width: 120, height: 32, className: 'sparkline-container' });
         }
 
+        // Sync status pill — reads vw_sync_status (latest row from sync_log)
+        function SyncStatusPill() {
+            var _s = useState(null);
+            var sync = _s[0];
+            var setSync = _s[1];
+
+            useEffect(function() {
+                if (!sb) return;
+                function load() {
+                    loadView('vw_sync_status', []).then(function(rows) {
+                        setSync(rows && rows.length ? rows[0] : null);
+                    });
+                }
+                load();
+                var t = setInterval(load, 60000); // refresh every minute
+                return function() { clearInterval(t); };
+            }, []);
+
+            if (!sb) return null;
+            if (!sync) {
+                return React.createElement('div', { className: 'sync-pill', title: 'No sync data yet' },
+                    React.createElement('span', { className: 'dot' }),
+                    'SYNC \u2014'
+                );
+            }
+
+            // Tier: ok (<20m, success), warn (20-60m or partial), err (>60m or error/running stale)
+            var seconds = sync.seconds_since != null ? sync.seconds_since : 9999;
+            var tier = 'ok';
+            if (sync.status === 'error') tier = 'err';
+            else if (sync.status === 'running' && seconds > 600) tier = 'warn';
+            else if (seconds > 3600) tier = 'err';
+            else if (seconds > 1200 || sync.status === 'partial') tier = 'warn';
+
+            var rel;
+            if (seconds < 60) rel = Math.max(1, Math.round(seconds)) + 's';
+            else if (seconds < 3600) rel = Math.round(seconds / 60) + 'm';
+            else if (seconds < 86400) rel = Math.round(seconds / 3600) + 'h';
+            else rel = Math.round(seconds / 86400) + 'd';
+
+            var title = 'Status: ' + sync.status
+                + (sync.positions_upserted != null ? '\nPositions: ' + sync.positions_upserted : '')
+                + (sync.duration_ms != null ? '\nDuration: ' + sync.duration_ms + 'ms' : '')
+                + (sync.error_message ? '\nError: ' + sync.error_message : '');
+
+            return React.createElement('div', { className: 'sync-pill ' + tier, title: title },
+                React.createElement('span', { className: 'dot' }),
+                'SYNC ' + rel + ' AGO'
+            );
+        }
+
         function App() {
             var _s = useState('portfolio');
             var activeTab = _s[0];
@@ -1171,6 +1241,7 @@
                     React.createElement('div', { className: 'status-badge ' + (sb ? 'live' : 'demo') },
                         sb ? '\u25CF LIVE DATA' : '\u25CB MOCK DATA'
                     ),
+                    React.createElement(SyncStatusPill, null),
                     React.createElement('div', { className: 'date' },
                         new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })
                     )
