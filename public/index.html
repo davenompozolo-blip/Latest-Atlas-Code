@@ -1216,6 +1216,9 @@
             var _c = useState(null);
             var topCmd = _c[0];
             var setTopCmd = _c[1];
+            var _dm = useState(sb ? 'pending' : 'mock');
+            var dataMode = _dm[0];
+            var setDataMode = _dm[1];
             var ActiveComponent = TABS.find(function(t) { return t.id === activeTab; }).component;
 
             // Load summary data for top bar
@@ -1227,6 +1230,8 @@
                     setTopNav(res[0]);
                     var cmd = Array.isArray(res[1]) ? res[1][0] : res[1];
                     setTopCmd(cmd || MOCK_COMMAND);
+                    // Promote flag from window global (set by loadView) into React state
+                    setDataMode(window.__ATLAS_DATA_MODE__ || 'mock');
                 });
             }, []);
 
@@ -1248,12 +1253,12 @@
                     React.createElement(TopBarSparkline, { nav: topNav }),
                     React.createElement('div', { className: 'spacer' }),
                     React.createElement('div', {
-                            className: 'status-badge ' + (window.__ATLAS_DATA_MODE__ === 'live' ? 'live' : 'demo'),
-                            title: window.__ATLAS_DATA_MODE__ === 'live'
+                            className: 'status-badge ' + (dataMode === 'live' ? 'live' : 'demo'),
+                            title: dataMode === 'live'
                                 ? 'Supabase views returned rows under anon key'
-                                : 'Anon key not returning rows — check RLS policies on positions/transactions/price_history/assets'
+                                : 'Anon key not returning rows — open DevTools console for [ATLAS] warnings'
                         },
-                        window.__ATLAS_DATA_MODE__ === 'live' ? '\u25CF LIVE DATA' : '\u25CB MOCK DATA'
+                        dataMode === 'live' ? '\u25CF LIVE DATA' : '\u25CB MOCK DATA'
                     ),
                     React.createElement(SyncStatusPill, null),
                     React.createElement('div', { className: 'date' },
