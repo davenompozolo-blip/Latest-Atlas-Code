@@ -20,7 +20,12 @@ create index if not exists sync_log_function_name_started_at_idx
 -- vw_sync_status now returns the latest top-level run (parent_id is null).
 -- That's the orchestrator row when sync_alpaca_all runs, or a standalone
 -- function row when a single function is invoked manually.
-create or replace view public.vw_sync_status as
+--
+-- DROP first because the earlier sync_log migration created this view with
+-- a different column order and Postgres's CREATE OR REPLACE VIEW cannot
+-- rename or reorder existing output columns — it can only append new ones.
+drop view if exists public.vw_sync_status;
+create view public.vw_sync_status as
 select
     id,
     started_at,
