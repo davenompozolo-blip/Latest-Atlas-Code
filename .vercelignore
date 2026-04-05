@@ -1,0 +1,54 @@
+# Hide Python/Streamlit artefacts from Vercel so it doesn't auto-detect
+# a Python runtime and bloat the Lambda past the 250MB limit.
+# These files MUST stay at repo root for Streamlit Cloud to work.
+requirements.txt
+runtime.txt
+atlas_app.py
+pages/
+sync/
+.github/
+migrations/
+*.md
+.streamlit/
+
+# Legacy FastAPI app — NOT the Vercel serverless functions.
+# We keep /api/*.js for Vercel (Command Centre proxy, etc.) and exclude
+# every Python artefact so Vercel doesn't treat this as a Python project.
+api/__init__.py
+api/main.py
+api/auth.py
+api/Dockerfile
+api/models/
+api/routers/
+
+# Other legacy Python areas that must never reach the Vercel build
+analytics/
+atlas_client/
+atlas_quant_dashboard/
+atlas_terminal/
+auth/
+config/
+core/
+data/
+integrations/
+investopedia_integration/
+legacy/
+mobile/
+modules/
+multi_source_data/
+navigation/
+news_aggregator.py
+patches/
+portfolio_tools/
+quant_optimizer/
+risk_analytics/
+scheduler/
+scripts/
+services/
+tests/
+ui/
+utils/
+valuation/
+*.py
+supabase/
+
