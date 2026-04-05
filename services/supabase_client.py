@@ -88,6 +88,9 @@ class SupabaseSyncClient:
             "base_currency": portfolio_row.get("base_currency") or "USD",
             "metadata": portfolio_row.get("metadata") or {},
         }
+        # Include organization_id if provided (per-org tenancy)
+        if portfolio_row.get("organization_id"):
+            payload["organization_id"] = portfolio_row["organization_id"]
 
         logger.info("supabase_upsert_portfolio", extra={"external_id": payload["external_id"]})
         rows = self._request(
@@ -202,6 +205,71 @@ class SupabaseSyncClient:
             query={"on_conflict": "portfolio_id,external_id"},
             json_payload=prepared,
             prefer="resolution=merge-duplicates,return=representation",
+        )
+
+
+    # ------------------------------------------------------------------
+    # Sync job tracking
+    # ------------------------------------------------------------------
+
+    def create_sync_job(
+        self,
+        organization_id: str,
+        user_id: str,
+        broker: str = "alpaca",
+        portfolio_id: Optional[str] = None,
+        settings: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Create a sync_jobs row and return it (status='queued')."""
+        payload: Dict[str, Any] = {
+            "organization_id": organization_id,
+            "user_id": user_id,
+            "broker": broker,
+            "status": "queued",
+            "settings": settings or {},
+        }
+        if portfolio_id:
+            payload["portfolio_id"] = portfolio_id
+
+        rows = self._request(
+            "POST",
+            "sync_jobs",
+            json_payload=payload,
+            prefer="return=representation",
+        )
+        return rows[0]
+
+    def update_sync_job(
+        self,
+        job_id: str,
+        *,
+        status: Optional[str] = None,
+        error_message: Optional[str] = None,
+        rows_synced: Optional[int] = None,
+        started_at: Optional[str] = None,
+        finished_at: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Update a sync_jobs row by id."""
+        payload: Dict[str, Any] = {}
+        if status:
+            payload["status"] = status
+        if error_message is not None:
+            payload["error_message"] = error_message
+        if rows_synced is not None:
+            payload["rows_synced"] = rows_synced
+        if started_at:
+            payload["started_at"] = started_at
+        if finished_at:
+            payload["finished_at"] = finished_at
+        if not payload:
+            return []
+
+        return self._request(
+            "PATCH",
+            "sync_jobs",
+            query={"id": f"eq.{job_id}"},
+            json_payload=payload,
+            prefer="return=representation",
         )
 
 
