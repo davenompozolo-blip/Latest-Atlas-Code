@@ -572,12 +572,21 @@
             ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
             : null;
 
+        // Global data-mode flag: 'live' only if at least one view returned
+        // rows under the anon key. Otherwise 'mock' (fallback/demo).
+        window.__ATLAS_DATA_MODE__ = sb ? 'pending' : 'mock';
+
         async function loadView(viewName, fallback = []) {
             if (!sb) return fallback;
             try {
                 const { data, error } = await sb.from(viewName).select('*');
                 if (error) throw error;
-                return data && data.length ? data : fallback;
+                if (data && data.length) {
+                    window.__ATLAS_DATA_MODE__ = 'live';
+                    return data;
+                }
+                console.warn('[ATLAS] ' + viewName + ': empty result (RLS blocking anon, or view has no rows) — using fallback');
+                return fallback;
             } catch (e) {
                 console.warn('[ATLAS] ' + viewName + ':', e.message);
                 return fallback;
@@ -1238,8 +1247,13 @@
                     React.createElement('div', { className: 'nav-pnl ' + cls(pnl) }, pnlStr),
                     React.createElement(TopBarSparkline, { nav: topNav }),
                     React.createElement('div', { className: 'spacer' }),
-                    React.createElement('div', { className: 'status-badge ' + (sb ? 'live' : 'demo') },
-                        sb ? '\u25CF LIVE DATA' : '\u25CB MOCK DATA'
+                    React.createElement('div', {
+                            className: 'status-badge ' + (window.__ATLAS_DATA_MODE__ === 'live' ? 'live' : 'demo'),
+                            title: window.__ATLAS_DATA_MODE__ === 'live'
+                                ? 'Supabase views returned rows under anon key'
+                                : 'Anon key not returning rows — check RLS policies on positions/transactions/price_history/assets'
+                        },
+                        window.__ATLAS_DATA_MODE__ === 'live' ? '\u25CF LIVE DATA' : '\u25CB MOCK DATA'
                     ),
                     React.createElement(SyncStatusPill, null),
                     React.createElement('div', { className: 'date' },
