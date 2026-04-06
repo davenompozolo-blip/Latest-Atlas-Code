@@ -10,11 +10,15 @@ if (!fs.existsSync(indexPath)) {
 
 let html = fs.readFileSync(indexPath, 'utf8');
 
-if (process.env.SUPABASE_ANON_KEY) {
+// ATLAS_SUPABASE_KEY takes priority — use this to bypass store-linked
+// SUPABASE_ANON_KEY that Vercel won't let you edit/delete.
+const anonKey = process.env.ATLAS_SUPABASE_KEY || process.env.SUPABASE_ANON_KEY;
+
+if (anonKey) {
   // Match the actual pattern in index.html line 29
   const replaced = html.replace(
     "const SUPABASE_KEY = window.ATLAS_CONFIG.supabaseKey || '';",
-    `const SUPABASE_KEY = window.ATLAS_CONFIG.supabaseKey || '${process.env.SUPABASE_ANON_KEY}';`
+    `const SUPABASE_KEY = window.ATLAS_CONFIG.supabaseKey || '${anonKey}';`
   );
   if (replaced === html) {
     console.log('[ATLAS] WARNING: replacement pattern not found — trying fallback patterns');
