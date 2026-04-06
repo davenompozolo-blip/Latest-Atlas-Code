@@ -746,17 +746,18 @@
                     React.createElement('div', { className: 'metric-card' },
                         React.createElement('div', { className: 'label' }, 'INVESTED (EQUITIES)'),
                         React.createElement('div', { className: 'value' }, fmtCurrency(c.total_invested)),
-                        React.createElement('div', { className: 'sub' }, 'Market value')
+                        React.createElement('div', { className: 'sub' }, 'Cost basis')
                     ),
                     React.createElement('div', { className: 'metric-card' },
                         React.createElement('div', { className: 'label' }, 'UNREALISED P&L'),
-                        React.createElement('div', { className: 'value ' + cls(c.total_return_pct) }, fmtCurrency(c.portfolio_nav - c.total_invested)),
-                        React.createElement('div', { className: 'sub ' + cls(c.total_return_pct) }, fmtPct(c.total_return_pct))
+                        React.createElement('div', { className: 'value ' + cls(c.unrealised_pnl) }, fmtCurrency(c.unrealised_pnl)),
+                        React.createElement('div', { className: 'sub ' + cls(c.unrealised_return_pct) }, fmtPct(c.unrealised_return_pct))
                     ),
                     React.createElement('div', { className: 'metric-card' },
                         React.createElement('div', { className: 'label' }, 'CASH'),
-                        React.createElement('div', { className: 'value' }, fmtCurrency((c.portfolio_nav || 0) - (c.total_invested || 0) > 0 ? (c.portfolio_nav - c.total_invested) : 0)),
-                        React.createElement('div', { className: 'sub' }, fmtPct(c.total_return_pct) + ' of NAV')
+                        React.createElement('div', { className: 'value ' + cls(c.cash_balance) }, fmtCurrency(c.cash_balance)),
+                        React.createElement('div', { className: 'sub' },
+                            c.gross_leverage != null ? 'Leverage: ' + Number(c.gross_leverage).toFixed(2) + 'x' : '\u2014 of NAV')
                     )
                 ),
                 // Content with right sidebar
