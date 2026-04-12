@@ -558,6 +558,80 @@
             scrollbar-width: thin;
             scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
         }
+
+        /* === Column Manager === */
+
+        .col-manager-panel {
+            background: rgba(255,255,255,0.02);
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 12px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .col-toggle {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 10px;
+            border-radius: 16px;
+            font-size: 11px;
+            font-weight: 500;
+            cursor: pointer;
+            border: 1px solid var(--card-border);
+            background: transparent;
+            color: var(--text-sec);
+            font-family: 'DM Sans', sans-serif;
+            transition: all 0.15s ease;
+        }
+
+        .col-toggle.active {
+            background: rgba(0, 212, 255, 0.1);
+            border-color: rgba(0, 212, 255, 0.3);
+            color: var(--cyan);
+        }
+
+        .col-toggle:hover {
+            border-color: rgba(255,255,255,0.15);
+        }
+
+        /* === Nav Section Headers === */
+
+        .nav-section-header {
+            padding: 18px 20px 6px;
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--text-muted);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            font-family: 'DM Sans', sans-serif;
+        }
+
+        .nav-section-header:first-child {
+            padding-top: 4px;
+        }
+
+        .nav-item.disabled {
+            opacity: 0.3;
+            cursor: default;
+            pointer-events: none;
+        }
+
+        /* === Quality Score Badge === */
+
+        .quality-pill {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .quality-pill.high { background: rgba(16,185,129,0.15); color: var(--green); }
+        .quality-pill.mid  { background: rgba(245,158,11,0.15); color: var(--amber); }
+        .quality-pill.low  { background: rgba(239,68,68,0.15);  color: var(--red); }
     </style>
 </head>
 <body>
@@ -610,6 +684,75 @@
         }
         function healthCls(score) { return score >= 75 ? 'strong' : score >= 50 ? 'moderate' : 'weak'; }
 
+        // --- Portfolio Column Config ---
+        var DEFAULT_COLS = ['symbol','name','quantity','current_price','market_value','daily_change_pct','return_5d_pct','weight_equity_pct','weight_gross_pct','total_gain_loss_dollar','unrealised_return_pct','quality_score'];
+        var ALL_COLS = [
+            { key: 'symbol', label: 'Ticker' },
+            { key: 'name', label: 'Asset Name' },
+            { key: 'side', label: 'Side' },
+            { key: 'quantity', label: 'Shares' },
+            { key: 'cost_basis', label: 'Avg Cost' },
+            { key: 'current_price', label: 'Price' },
+            { key: 'market_value', label: 'Total Value' },
+            { key: 'daily_change_pct', label: 'Daily Chg %' },
+            { key: 'return_5d_pct', label: '5D Return' },
+            { key: 'weight_equity_pct', label: 'Wt% Equity' },
+            { key: 'weight_gross_pct', label: 'Wt% Gross' },
+            { key: 'total_gain_loss_dollar', label: 'Gain/Loss $' },
+            { key: 'unrealised_return_pct', label: 'Gain/Loss %' },
+            { key: 'quality_score', label: 'Quality' },
+            { key: 'annualised_vol', label: 'Ann. Vol' },
+            { key: 'sharpe_approx', label: 'Sharpe' },
+            { key: 'asset_class', label: 'Class' },
+        ];
+        function getVisibleCols() {
+            try { return JSON.parse(localStorage.getItem('atlas_cols')) || DEFAULT_COLS; }
+            catch(e) { return DEFAULT_COLS; }
+        }
+        function cellValue(p, key) {
+            switch(key) {
+                case 'symbol': return p.symbol;
+                case 'name': return p.name || p.symbol;
+                case 'side': return p.side === 'short' ? 'SHORT' : 'LONG';
+                case 'quantity': return fmt(p.quantity, 0);
+                case 'cost_basis': return fmtCurrency(p.cost_basis);
+                case 'current_price': return fmtCurrency(p.current_price);
+                case 'market_value': return fmtCurrency(p.market_value);
+                case 'daily_change_pct': return fmtPct(p.daily_change_pct);
+                case 'return_5d_pct': return fmtPct(p.return_5d_pct);
+                case 'weight_equity_pct': return fmtPct(p.weight_equity_pct);
+                case 'weight_gross_pct': return fmtPct(p.weight_gross_pct);
+                case 'total_gain_loss_dollar': return fmtCurrency(p.total_gain_loss_dollar != null ? p.total_gain_loss_dollar : ((p.current_price - p.cost_basis) * p.quantity));
+                case 'unrealised_return_pct': return fmtPct(p.unrealised_return_pct);
+                case 'quality_score': return Math.round(p.quality_score || 0);
+                case 'annualised_vol': return fmtPct(p.annualised_vol);
+                case 'sharpe_approx': return fmt(p.sharpe_approx);
+                case 'asset_class': return p.asset_class || '\u2014';
+                default: return '\u2014';
+            }
+        }
+        function cellClass(p, key) {
+            switch(key) {
+                case 'daily_change_pct': return cls(p.daily_change_pct);
+                case 'return_5d_pct': return cls(p.return_5d_pct);
+                case 'total_gain_loss_dollar': return cls(p.total_gain_loss_dollar != null ? p.total_gain_loss_dollar : ((p.current_price - p.cost_basis) * p.quantity));
+                case 'unrealised_return_pct': return cls(p.unrealised_return_pct);
+                case 'quality_score': return '';
+                case 'side': return p.side === 'short' ? 'negative' : '';
+                default: return '';
+            }
+        }
+        function cellStyle(key) {
+            if (key === 'symbol') return { fontWeight: 600, color: '#00d4ff' };
+            if (key === 'name') return { fontFamily: 'DM Sans', color: 'rgba(255,255,255,0.6)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
+            return {};
+        }
+        function qualityPill(score) {
+            var s = Math.round(score || 0);
+            var tier = s >= 60 ? 'high' : s >= 40 ? 'mid' : 'low';
+            return React.createElement('span', { className: 'quality-pill ' + tier }, s);
+        }
+
         // --- Mock Data (fallback when no Supabase key) ---
         const MOCK_POSITIONS = [
             { symbol: 'AAPL', name: 'Apple Inc.', quantity: 50, cost_basis: 178.50, current_price: 195.20, market_value: 9760, unrealised_return_pct: 0.0936, portfolio_weight: 0.082, annualised_vol: 0.28, sharpe_approx: 1.2, is_concentrated: false },
@@ -651,11 +794,15 @@
             var _p = useState(null), positions = _p[0], setPositions = _p[1];
             var _c = useState(null), command = _c[0], setCommand = _c[1];
             var _l = useState(true), loading = _l[0], setLoading = _l[1];
+            var _n = useState(null), navData = _n[0], setNavData = _n[1];
+            var _vc = useState(getVisibleCols), visCols = _vc[0], setVisCols = _vc[1];
+            var _cm = useState(false), showCols = _cm[0], setShowCols = _cm[1];
             var donutRef = useRef(null);
             var donutInst = useRef(null);
             var benchRef = useRef(null);
             var benchInst = useRef(null);
-            var _n = useState(null), navData = _n[0], setNavData = _n[1];
+            var pnlRef = useRef(null);
+            var pnlInst = useRef(null);
 
             useEffect(function() {
                 Promise.all([
@@ -670,17 +817,29 @@
                 });
             }, []);
 
+            // Column toggle handler
+            function toggleCol(key) {
+                setVisCols(function(prev) {
+                    var next = prev.indexOf(key) >= 0 ? prev.filter(function(k) { return k !== key; }) : prev.concat([key]);
+                    try { localStorage.setItem('atlas_cols', JSON.stringify(next)); } catch(e) {}
+                    return next;
+                });
+            }
+            function resetCols() {
+                setVisCols(DEFAULT_COLS);
+                try { localStorage.setItem('atlas_cols', JSON.stringify(DEFAULT_COLS)); } catch(e) {}
+            }
+
             // Donut chart
             useEffect(function() {
                 if (!positions || !donutRef.current) return;
                 if (donutInst.current) donutInst.current.destroy();
                 var top10 = positions.slice(0, 10);
-                var totalMv = top10.reduce(function(s, p) { return s + Number(p.market_value || 0); }, 0);
                 donutInst.current = new Chart(donutRef.current, {
                     type: 'doughnut',
                     data: {
                         labels: top10.map(function(p) { return p.symbol; }),
-                        datasets: [{ data: top10.map(function(p) { return Number(p.market_value) || 0; }),
+                        datasets: [{ data: top10.map(function(p) { return Math.abs(Number(p.market_value) || 0); }),
                             backgroundColor: ['#00d4ff', '#6366f1', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#14b8a6', '#f97316', '#a855f7'],
                             borderWidth: 0 }]
                     },
@@ -697,6 +856,7 @@
                         ctx.fillStyle = 'rgba(255,255,255,0.9)';
                         ctx.textAlign = 'center';
                         ctx.textBaseline = 'middle';
+                        var totalMv = top10.reduce(function(s, p) { return s + Math.abs(Number(p.market_value) || 0); }, 0);
                         ctx.fillText(fmtCurrency(totalMv), w / 2, h / 2 - 4);
                         ctx.restore();
                     }}]
@@ -732,8 +892,52 @@
                 return function() { if (benchInst.current) benchInst.current.destroy(); };
             }, [navData]);
 
+            // P&L contributors chart
+            useEffect(function() {
+                if (!positions || !positions.length || !pnlRef.current) return;
+                if (pnlInst.current) pnlInst.current.destroy();
+                var withPnl = positions.map(function(p) {
+                    var pnl = p.total_gain_loss_dollar != null ? Number(p.total_gain_loss_dollar) :
+                        (Number(p.current_price || 0) - Number(p.cost_basis || 0)) * Number(p.quantity || 0);
+                    return { symbol: p.symbol, pnl: pnl };
+                }).filter(function(p) { return isFinite(p.pnl); });
+                withPnl.sort(function(a, b) { return b.pnl - a.pnl; });
+                var top5 = withPnl.slice(0, 5);
+                var bottom5 = withPnl.slice(-5).reverse();
+                var chartItems = top5.concat(bottom5);
+                var seen = {};
+                chartItems = chartItems.filter(function(item) {
+                    if (seen[item.symbol]) return false;
+                    seen[item.symbol] = true;
+                    return true;
+                });
+                pnlInst.current = new Chart(pnlRef.current, {
+                    type: 'bar',
+                    data: {
+                        labels: chartItems.map(function(p) { return p.symbol; }),
+                        datasets: [{
+                            data: chartItems.map(function(p) { return p.pnl; }),
+                            backgroundColor: chartItems.map(function(p) { return p.pnl >= 0 ? 'rgba(16,185,129,0.7)' : 'rgba(239,68,68,0.7)'; }),
+                            borderWidth: 0,
+                            borderRadius: 3
+                        }]
+                    },
+                    options: {
+                        indexAxis: 'y',
+                        responsive: true, maintainAspectRatio: false,
+                        scales: {
+                            x: { ticks: { color: 'rgba(255,255,255,0.3)', font: { size: 10, family: 'JetBrains Mono' }, callback: function(v) { return '$' + (v / 1000).toFixed(1) + 'k'; } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+                            y: { ticks: { color: 'rgba(255,255,255,0.7)', font: { size: 11, family: 'JetBrains Mono' } }, grid: { display: false } }
+                        },
+                        plugins: { legend: { display: false } }
+                    }
+                });
+                return function() { if (pnlInst.current) pnlInst.current.destroy(); };
+            }, [positions]);
+
             if (loading) return React.createElement(Loading, null);
             var c = command || MOCK_COMMAND;
+            var activeCols = ALL_COLS.filter(function(col) { return visCols.indexOf(col.key) >= 0; });
 
             return React.createElement('div', null,
                 // Metrics Row
@@ -741,10 +945,10 @@
                     React.createElement('div', { className: 'metric-card' },
                         React.createElement('div', { className: 'label' }, 'PORTFOLIO NAV'),
                         React.createElement('div', { className: 'value' }, fmtCurrency(c.portfolio_nav)),
-                        React.createElement('div', { className: 'sub' }, (c.position_count || positions.length) + ' positions + cash')
+                        React.createElement('div', { className: 'sub' }, (c.position_count || positions.length) + ' positions')
                     ),
                     React.createElement('div', { className: 'metric-card' },
-                        React.createElement('div', { className: 'label' }, 'INVESTED (EQUITIES)'),
+                        React.createElement('div', { className: 'label' }, 'INVESTED'),
                         React.createElement('div', { className: 'value' }, fmtCurrency(c.total_invested)),
                         React.createElement('div', { className: 'sub' }, 'Cost basis')
                     ),
@@ -757,7 +961,7 @@
                         React.createElement('div', { className: 'label' }, 'CASH'),
                         React.createElement('div', { className: 'value ' + cls(c.cash_balance) }, fmtCurrency(c.cash_balance)),
                         React.createElement('div', { className: 'sub' },
-                            c.gross_leverage != null ? 'Leverage: ' + Number(c.gross_leverage).toFixed(2) + 'x' : '\u2014 of NAV')
+                            c.gross_leverage != null ? 'Leverage: ' + Number(c.gross_leverage).toFixed(2) + 'x' : '\u2014')
                     )
                 ),
                 // Content with right sidebar
@@ -765,32 +969,51 @@
                     // Left: Positions table
                     React.createElement('div', { className: 'content-primary' },
                         React.createElement('div', { className: 'card', style: { padding: '16px 20px' } },
-                            React.createElement('div', { className: 'card-title', style: { fontSize: 16, fontFamily: 'Syne', fontWeight: 700, letterSpacing: 1 } }, 'POSITIONS'),
+                            // Title row with column manager toggle
+                            React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 } },
+                                React.createElement('div', { className: 'card-title', style: { fontSize: 16, fontFamily: 'Syne', fontWeight: 700, letterSpacing: 1, margin: 0 } }, 'POSITIONS'),
+                                React.createElement('button', {
+                                    onClick: function() { setShowCols(!showCols); },
+                                    style: { background: showCols ? 'rgba(0,212,255,0.1)' : 'rgba(255,255,255,0.04)', border: '1px solid ' + (showCols ? 'rgba(0,212,255,0.3)' : 'rgba(255,255,255,0.08)'), color: showCols ? '#00d4ff' : 'rgba(255,255,255,0.5)', borderRadius: 6, padding: '4px 12px', fontSize: 11, fontWeight: 500, cursor: 'pointer', fontFamily: 'DM Sans' }
+                                }, '\u2699 Columns')
+                            ),
+                            // Column manager panel
+                            showCols ? React.createElement('div', { className: 'col-manager-panel' },
+                                ALL_COLS.map(function(col) {
+                                    var isActive = visCols.indexOf(col.key) >= 0;
+                                    return React.createElement('button', {
+                                        key: col.key,
+                                        className: 'col-toggle' + (isActive ? ' active' : ''),
+                                        onClick: function() { toggleCol(col.key); }
+                                    }, col.label);
+                                }),
+                                React.createElement('button', {
+                                    className: 'col-toggle',
+                                    onClick: resetCols,
+                                    style: { borderColor: 'rgba(245,158,11,0.3)', color: '#f59e0b' }
+                                }, '\u21BA Reset')
+                            ) : null,
+                            // Table
                             React.createElement('div', { style: { overflowX: 'auto' } },
                                 React.createElement('table', { className: 'data-table' },
                                     React.createElement('thead', null,
                                         React.createElement('tr', null,
-                                            ['Ticker', 'Name', 'Qty', 'Avg Cost', 'Price', 'Mkt Val', 'Unreal. P&L', '%', 'Th', 'Signal'].map(function(h) {
-                                                return React.createElement('th', { key: h }, h);
+                                            activeCols.map(function(col) {
+                                                return React.createElement('th', { key: col.key }, col.label);
                                             })
                                         )
                                     ),
                                     React.createElement('tbody', null,
                                         positions.map(function(p) {
-                                            var pnl = (p.current_price - p.cost_basis) * p.quantity;
-                                            var signal = p.sharpe_approx > 1.5 ? 'BUY' : p.sharpe_approx < 0.5 ? 'SELL' : 'HOLD';
-                                            var sigCls = signal === 'BUY' ? 'green' : signal === 'SELL' ? 'red' : 'blue';
                                             return React.createElement('tr', { key: p.symbol },
-                                                React.createElement('td', { style: { fontWeight: 600, color: '#00d4ff' } }, p.symbol),
-                                                React.createElement('td', { style: { fontFamily: 'DM Sans', color: 'rgba(255,255,255,0.6)' } }, p.name),
-                                                React.createElement('td', null, fmt(p.quantity, 0)),
-                                                React.createElement('td', null, fmtCurrency(p.cost_basis)),
-                                                React.createElement('td', null, fmtCurrency(p.current_price)),
-                                                React.createElement('td', null, fmtCurrency(p.market_value)),
-                                                React.createElement('td', { className: cls(pnl) }, (pnl >= 0 ? '+' : '') + fmtCurrency(pnl)),
-                                                React.createElement('td', { className: cls(p.unrealised_return_pct) }, fmtPct(p.unrealised_return_pct)),
-                                                React.createElement('td', null, ''),
-                                                React.createElement('td', null, React.createElement('span', { className: 'badge ' + sigCls }, signal))
+                                                activeCols.map(function(col) {
+                                                    var val = col.key === 'quality_score' ? qualityPill(p.quality_score) : cellValue(p, col.key);
+                                                    return React.createElement('td', {
+                                                        key: col.key,
+                                                        className: cellClass(p, col.key),
+                                                        style: cellStyle(col.key)
+                                                    }, val);
+                                                })
                                             );
                                         })
                                     )
@@ -800,9 +1023,9 @@
                     ),
                     // Right sidebar: charts
                     React.createElement('div', { className: 'content-sidebar' },
-                        // Sector Allocation donut
+                        // Top holdings donut
                         React.createElement('div', { className: 'card' },
-                            React.createElement('div', { className: 'card-title', style: { fontSize: 12, letterSpacing: 1.5, textTransform: 'uppercase' } }, 'SECTOR ALLOCATION'),
+                            React.createElement('div', { className: 'card-title', style: { fontSize: 12, letterSpacing: 1.5, textTransform: 'uppercase' } }, 'TOP HOLDINGS'),
                             React.createElement('div', { style: { height: 260 } },
                                 React.createElement('canvas', { ref: donutRef })
                             )
@@ -814,6 +1037,13 @@
                                 React.createElement('canvas', { ref: benchRef })
                             )
                         )
+                    )
+                ),
+                // P&L Contributors & Detractors chart
+                React.createElement('div', { className: 'card' },
+                    React.createElement('div', { className: 'card-title', style: { fontSize: 12, letterSpacing: 1.5, textTransform: 'uppercase' } }, 'TOP P&L CONTRIBUTORS & DETRACTORS'),
+                    React.createElement('div', { style: { height: 320 } },
+                        React.createElement('canvas', { ref: pnlRef })
                     )
                 )
             );
@@ -1130,6 +1360,24 @@
             { id: 'command', label: 'COMMAND', sub: 'System Overview', icon: '\u2726', component: CommandCentre },
         ];
 
+        // Sidebar navigation structure with section headers
+        const NAV_STRUCTURE = [
+            { type: 'header', label: 'CORE' },
+            { type: 'tab', id: 'portfolio' },
+            { type: 'header', label: 'ANALYSIS' },
+            { type: 'tab', id: 'performance' },
+            { type: 'tab', id: 'quant' },
+            { type: 'header', label: 'SYSTEM' },
+            { type: 'tab', id: 'risk' },
+            { type: 'tab', id: 'command' },
+            { type: 'header', label: 'RESEARCH' },
+            { type: 'placeholder', label: 'EQUITY', sub: 'Coming Soon' },
+            { type: 'placeholder', label: 'MACRO', sub: 'Coming Soon' },
+            { type: 'placeholder', label: 'FUNDS', sub: 'Coming Soon' },
+            { type: 'header', label: 'MARKETS' },
+            { type: 'placeholder', label: 'MARKET', sub: 'Coming Soon' },
+        ];
+
         // Top bar sparkline (tiny inline chart)
         function TopBarSparkline({ nav }) {
             var canvasRef = useRef(null);
@@ -1270,7 +1518,21 @@
                 React.createElement('div', { className: 'body-layout' },
                     // Left Sidebar
                     React.createElement('div', { className: 'sidebar' },
-                        TABS.map(function(tab) {
+                        NAV_STRUCTURE.map(function(item, idx) {
+                            if (item.type === 'header') {
+                                return React.createElement('div', { key: 'h' + idx, className: 'nav-section-header' }, item.label);
+                            }
+                            if (item.type === 'placeholder') {
+                                return React.createElement('div', { key: 'p' + idx, className: 'nav-item disabled' },
+                                    React.createElement('span', { className: 'nav-icon' }, '\u25CB'),
+                                    React.createElement('div', null,
+                                        React.createElement('div', { className: 'nav-label' }, item.label),
+                                        React.createElement('div', { className: 'nav-sublabel' }, item.sub)
+                                    )
+                                );
+                            }
+                            var tab = TABS.find(function(t) { return t.id === item.id; });
+                            if (!tab) return null;
                             return React.createElement('button', {
                                 key: tab.id,
                                 className: 'nav-item' + (activeTab === tab.id ? ' active' : ''),
@@ -1284,7 +1546,7 @@
                             );
                         }),
                         React.createElement('div', { className: 'sidebar-footer' },
-                            'ATLAS TERMINAL v1.0',
+                            'ATLAS TERMINAL v2.0',
                             React.createElement('br'),
                             '\u00A9 2026 ATLAS'
                         )
