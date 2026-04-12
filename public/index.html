@@ -167,7 +167,7 @@
         .top-bar .sync-pill.ok    { color: var(--green); border-color: rgba(16,185,129,0.25); background: rgba(16,185,129,0.08); }
         .top-bar .sync-pill.warn  { color: var(--amber); border-color: rgba(245,158,11,0.25); background: rgba(245,158,11,0.08); }
         .top-bar .sync-pill.err   { color: #f87171;      border-color: rgba(239,68,68,0.3);   background: rgba(239,68,68,0.08); }
-        .top-bar .sync-pill .dot  { width: 6px; height: 6px; border-radius: 50%; background: currentColor; box-shadow: 0 0 6px currentColor; }
+        .top-bar .sync-pill .dot  { width: 6px; height: 6px; border-radius: 50%; background: currentColor; box-shadow: 0 0 6px currentColor; animation: glowPulse 2s ease-in-out infinite; }
 
         .top-bar .date {
             font-size: 11px;
@@ -302,6 +302,28 @@
             margin-bottom: 24px;
         }
 
+        /* === Animations === */
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(16px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to   { opacity: 1; }
+        }
+
+        @keyframes shimmer {
+            0%   { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+
+        @keyframes glowPulse {
+            0%, 100% { box-shadow: 0 0 8px rgba(0, 212, 255, 0.1); }
+            50%      { box-shadow: 0 0 20px rgba(0, 212, 255, 0.25); }
+        }
+
         /* === Metric Card === */
 
         .metric-card {
@@ -309,7 +331,21 @@
             border: 1px solid var(--card-border);
             border-radius: 12px;
             padding: 20px;
+            animation: fadeInUp 0.5s ease-out both;
+            transition: transform 0.2s ease, border-color 0.3s ease, box-shadow 0.3s ease;
         }
+
+        .metric-card:hover {
+            transform: translateY(-3px);
+            border-color: rgba(0, 212, 255, 0.2);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3), 0 0 12px rgba(0, 212, 255, 0.08);
+        }
+
+        .metric-card:nth-child(1) { animation-delay: 0.0s; }
+        .metric-card:nth-child(2) { animation-delay: 0.08s; }
+        .metric-card:nth-child(3) { animation-delay: 0.16s; }
+        .metric-card:nth-child(4) { animation-delay: 0.24s; }
+        .metric-card:nth-child(5) { animation-delay: 0.32s; }
 
         .metric-card .label {
             font-size: 11px;
@@ -340,6 +376,13 @@
             border-radius: 12px;
             padding: 24px;
             margin-bottom: 20px;
+            animation: fadeInUp 0.6s ease-out both;
+            animation-delay: 0.15s;
+            transition: border-color 0.3s ease;
+        }
+
+        .card:hover {
+            border-color: rgba(255, 255, 255, 0.1);
         }
 
         .card-title {
@@ -376,8 +419,13 @@
             font-family: 'JetBrains Mono', monospace;
         }
 
+        .data-table tbody tr {
+            animation: fadeIn 0.3s ease-out both;
+            transition: background 0.15s ease;
+        }
+
         .data-table tr:hover {
-            background: rgba(255, 255, 255, 0.02);
+            background: rgba(255, 255, 255, 0.03);
         }
 
         /* === Value Colors === */
@@ -704,6 +752,7 @@
             { key: 'annualised_vol', label: 'Ann. Vol' },
             { key: 'sharpe_approx', label: 'Sharpe' },
             { key: 'asset_class', label: 'Class' },
+            { key: 'sector', label: 'Sector' },
         ];
         function getVisibleCols() {
             try { return JSON.parse(localStorage.getItem('atlas_cols')) || DEFAULT_COLS; }
@@ -728,6 +777,7 @@
                 case 'annualised_vol': return fmtPct(p.annualised_vol);
                 case 'sharpe_approx': return fmt(p.sharpe_approx);
                 case 'asset_class': return p.asset_class || '\u2014';
+                case 'sector': return p.sector || '\u2014';
                 default: return '\u2014';
             }
         }
@@ -803,6 +853,8 @@
             var benchInst = useRef(null);
             var pnlRef = useRef(null);
             var pnlInst = useRef(null);
+            var sectorRef = useRef(null);
+            var sectorInst = useRef(null);
 
             useEffect(function() {
                 Promise.all([
@@ -935,6 +987,44 @@
                 return function() { if (pnlInst.current) pnlInst.current.destroy(); };
             }, [positions]);
 
+            // Sector P&L waterfall chart
+            useEffect(function() {
+                if (!positions || !positions.length || !sectorRef.current) return;
+                if (sectorInst.current) sectorInst.current.destroy();
+                var bySector = {};
+                positions.forEach(function(p) {
+                    var sec = p.sector || 'Other';
+                    var pnl = p.total_gain_loss_dollar != null ? Number(p.total_gain_loss_dollar) :
+                        (Number(p.current_price || 0) - Number(p.cost_basis || 0)) * Number(p.quantity || 0);
+                    if (!isFinite(pnl)) return;
+                    bySector[sec] = (bySector[sec] || 0) + pnl;
+                });
+                var sectors = Object.keys(bySector).sort(function(a, b) { return bySector[b] - bySector[a]; });
+                var sectorPnl = sectors.map(function(s) { return bySector[s]; });
+                var sectorColors = sectors.map(function(s) { return bySector[s] >= 0 ? 'rgba(16,185,129,0.7)' : 'rgba(239,68,68,0.7)'; });
+                sectorInst.current = new Chart(sectorRef.current, {
+                    type: 'bar',
+                    data: {
+                        labels: sectors,
+                        datasets: [{
+                            data: sectorPnl,
+                            backgroundColor: sectorColors,
+                            borderWidth: 0,
+                            borderRadius: 3
+                        }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        scales: {
+                            x: { ticks: { color: 'rgba(255,255,255,0.5)', font: { size: 10, family: 'DM Sans' }, maxRotation: 45 }, grid: { display: false } },
+                            y: { ticks: { color: 'rgba(255,255,255,0.3)', font: { size: 10, family: 'JetBrains Mono' }, callback: function(v) { return '$' + (v / 1000).toFixed(1) + 'k'; } }, grid: { color: 'rgba(255,255,255,0.04)' } }
+                        },
+                        plugins: { legend: { display: false } }
+                    }
+                });
+                return function() { if (sectorInst.current) sectorInst.current.destroy(); };
+            }, [positions]);
+
             if (loading) return React.createElement(Loading, null);
             var c = command || MOCK_COMMAND;
             var activeCols = ALL_COLS.filter(function(col) { return visCols.indexOf(col.key) >= 0; });
@@ -948,9 +1038,9 @@
                         React.createElement('div', { className: 'sub' }, (c.position_count || positions.length) + ' positions')
                     ),
                     React.createElement('div', { className: 'metric-card' },
-                        React.createElement('div', { className: 'label' }, 'INVESTED'),
-                        React.createElement('div', { className: 'value' }, fmtCurrency(c.total_invested)),
-                        React.createElement('div', { className: 'sub' }, 'Cost basis')
+                        React.createElement('div', { className: 'label' }, 'INITIAL EQUITY'),
+                        React.createElement('div', { className: 'value' }, fmtCurrency(c.initial_equity || 100000)),
+                        React.createElement('div', { className: 'sub' }, 'Cost basis: ' + fmtCurrency(c.total_invested))
                     ),
                     React.createElement('div', { className: 'metric-card' },
                         React.createElement('div', { className: 'label' }, 'UNREALISED P&L'),
@@ -1044,6 +1134,13 @@
                     React.createElement('div', { className: 'card-title', style: { fontSize: 12, letterSpacing: 1.5, textTransform: 'uppercase' } }, 'TOP P&L CONTRIBUTORS & DETRACTORS'),
                     React.createElement('div', { style: { height: 320 } },
                         React.createElement('canvas', { ref: pnlRef })
+                    )
+                ),
+                // Sector P&L Waterfall
+                React.createElement('div', { className: 'card' },
+                    React.createElement('div', { className: 'card-title', style: { fontSize: 12, letterSpacing: 1.5, textTransform: 'uppercase' } }, 'SECTOR P&L ATTRIBUTION'),
+                    React.createElement('div', { style: { height: 280 } },
+                        React.createElement('canvas', { ref: sectorRef })
                     )
                 )
             );
@@ -1490,7 +1587,7 @@
 
             return React.createElement('div', { className: 'app-container' },
                 // Gradient top line
-                React.createElement('div', { style: { height: 2, background: 'linear-gradient(90deg, transparent, #00d4ff, #8b5cf6, transparent)' } }),
+                React.createElement('div', { style: { height: 2, background: 'linear-gradient(90deg, transparent, #00d4ff, #8b5cf6, transparent)', backgroundSize: '200% 100%', animation: 'shimmer 4s linear infinite' } }),
                 // Top Bar
                 React.createElement('div', { className: 'top-bar' },
                     React.createElement('div', null,
