@@ -680,6 +680,167 @@
         .quality-pill.high { background: rgba(16,185,129,0.15); color: var(--green); }
         .quality-pill.mid  { background: rgba(245,158,11,0.15); color: var(--amber); }
         .quality-pill.low  { background: rgba(239,68,68,0.15);  color: var(--red); }
+
+        /* === Quant Dashboard — view tabs === */
+
+        .view-tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 20px;
+            border-bottom: 1px solid var(--card-border);
+            padding: 0 4px;
+        }
+
+        .view-tab {
+            padding: 10px 18px;
+            cursor: pointer;
+            color: var(--text-sec);
+            border-bottom: 2px solid transparent;
+            font-size: 13px;
+            font-weight: 500;
+            transition: color 0.15s ease, border-color 0.15s ease;
+            user-select: none;
+        }
+
+        .view-tab:hover { color: var(--text); }
+
+        .view-tab.active {
+            color: var(--cyan);
+            border-bottom-color: var(--cyan);
+        }
+
+        .view-tab .count-pill {
+            display: inline-block;
+            margin-left: 8px;
+            padding: 1px 7px;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.05);
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--text-muted);
+        }
+
+        .view-tab.active .count-pill {
+            background: rgba(0,212,255,0.12);
+            color: var(--cyan);
+        }
+
+        /* === Quant Dashboard — correlation heatmap === */
+
+        .corr-heatmap-wrap {
+            overflow: auto;
+            max-height: 560px;
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+        }
+
+        .corr-heatmap {
+            border-collapse: collapse;
+            font-size: 10px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .corr-heatmap th,
+        .corr-heatmap td {
+            padding: 4px 6px;
+            text-align: center;
+            border: 1px solid rgba(255,255,255,0.04);
+            min-width: 44px;
+            white-space: nowrap;
+        }
+
+        .corr-heatmap th {
+            background: var(--card);
+            color: var(--text-muted);
+            font-weight: 600;
+            font-size: 10px;
+            position: sticky;
+            top: 0;
+            z-index: 2;
+        }
+
+        .corr-heatmap th.row-label {
+            position: sticky;
+            left: 0;
+            z-index: 3;
+            color: var(--cyan);
+            text-align: left;
+            padding-left: 10px;
+        }
+
+        .corr-heatmap td.row-label {
+            position: sticky;
+            left: 0;
+            background: var(--card);
+            color: var(--cyan);
+            font-weight: 600;
+            text-align: left;
+            padding-left: 10px;
+            z-index: 1;
+        }
+
+        .corr-heatmap td.diag {
+            background: rgba(255,255,255,0.04);
+            color: var(--text-muted);
+        }
+
+        /* === Quant Dashboard — drawdown bar === */
+
+        .dd-bar-wrap {
+            position: relative;
+            display: inline-block;
+            width: 80px;
+            height: 6px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 3px;
+            overflow: hidden;
+            vertical-align: middle;
+            margin-left: 8px;
+        }
+
+        .dd-bar {
+            position: absolute;
+            top: 0; left: 0;
+            height: 100%;
+            background: linear-gradient(90deg, var(--amber), var(--red));
+            border-radius: 3px;
+        }
+
+        /* === Quant Dashboard — RSI sparkline gauge === */
+
+        .rsi-gauge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .rsi-gauge .rsi-track {
+            position: relative;
+            width: 56px;
+            height: 5px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 3px;
+        }
+
+        .rsi-gauge .rsi-fill {
+            position: absolute;
+            top: 0; left: 0;
+            height: 100%;
+            border-radius: 3px;
+        }
+
+        /* === Quant Dashboard — return chip (rolling returns matrix) === */
+
+        .ret-chip {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+            min-width: 56px;
+            text-align: right;
+        }
     </style>
 </head>
 <body>
@@ -1148,60 +1309,654 @@
 
         // ============================================================
         // TAB 2: QUANT DASHBOARD
+        // ------------------------------------------------------------
+        // Consumes four Supabase views:
+        //   vw_quant_dashboard      — per-position signals (regime,
+        //                             RSI-14, ATR-14, BB width,
+        //                             52W range, momentum, z-score)
+        //   vw_quant_rolling_returns — per-position 1D…1Y / YTD returns
+        //   vw_quant_correlation     — pairwise 252d correlation
+        //   vw_quant_drawdown        — current drawdown from peak
         // ============================================================
+
+        // --- Quant helpers --------------------------------------------------
+        function quantTile(label, value, valueClass, sub) {
+            return React.createElement('div', { className: 'metric-card' },
+                React.createElement('div', { className: 'label' }, label),
+                React.createElement('div', { className: 'value' + (valueClass ? ' ' + valueClass : '') }, value),
+                sub ? React.createElement('div', { className: 'sub' }, sub) : null
+            );
+        }
+
+        // Return a background colour for a correlation cell (-1..+1).
+        // Cyan = uncorrelated/negative (good diversifier).
+        // Red  = strongly positive correlation (redundant exposure).
+        function corrBg(c) {
+            if (c == null || isNaN(c)) return 'transparent';
+            const v = Math.max(-1, Math.min(1, Number(c)));
+            if (v >= 0) {
+                // 0 → transparent, 1 → strong red
+                const a = Math.pow(v, 1.4) * 0.7;
+                return 'rgba(239,68,68,' + a.toFixed(3) + ')';
+            }
+            // Negative correlation — desirable, cyan tint
+            const a = Math.pow(-v, 1.4) * 0.5;
+            return 'rgba(0,212,255,' + a.toFixed(3) + ')';
+        }
+        function corrTextColor(c) {
+            return Math.abs(Number(c) || 0) > 0.55 ? '#fff' : 'rgba(255,255,255,0.85)';
+        }
+
+        // RSI 0..100 → coloured fill width and tone
+        function rsiFillStyle(rsi) {
+            if (rsi == null || isNaN(rsi)) return { width: '0%', background: 'transparent' };
+            const v = Math.max(0, Math.min(100, Number(rsi)));
+            let bg = '#10b981';                // neutral green
+            if (v >= 70) bg = '#ef4444';       // overbought
+            else if (v <= 30) bg = '#00d4ff';  // oversold
+            else if (v >= 60) bg = '#f59e0b';
+            return { width: v.toFixed(0) + '%', background: bg };
+        }
+
+        // Format a return value into a coloured chip (used in rolling-returns matrix)
+        function returnChip(v, decimals) {
+            if (v == null || isNaN(v)) {
+                return React.createElement('span', { className: 'ret-chip', style: { color: 'var(--text-muted)' } }, '\u2014');
+            }
+            const num = Number(v);
+            const pct = num * 100;
+            const bg = num > 0 ? 'rgba(16,185,129,0.12)'
+                     : num < 0 ? 'rgba(239,68,68,0.12)'
+                     : 'rgba(255,255,255,0.04)';
+            const color = num > 0 ? 'var(--green)' : num < 0 ? 'var(--red)' : 'var(--text-sec)';
+            const txt = (num > 0 ? '+' : '') + pct.toFixed(decimals != null ? decimals : 2) + '%';
+            return React.createElement('span', { className: 'ret-chip', style: { background: bg, color: color } }, txt);
+        }
+
         function QuantDashboard() {
-            const [data, setData] = useState(null);
-            const [loading, setLoading] = useState(true);
+            const [signals, setSignals]         = useState(null);
+            const [rolling, setRolling]         = useState(null);
+            const [correlation, setCorrelation] = useState(null);
+            const [drawdown, setDrawdown]       = useState(null);
+            const [loading, setLoading]         = useState(true);
+            const [activePanel, setActivePanel] = useState('signals');
 
             useEffect(() => {
-                loadView('vw_quant_dashboard', []).then(d => { setData(d); setLoading(false); });
+                Promise.all([
+                    loadView('vw_quant_dashboard', []),
+                    loadView('vw_quant_rolling_returns', []),
+                    loadView('vw_quant_correlation', []),
+                    loadView('vw_quant_drawdown', []),
+                ]).then(([s, r, c, d]) => {
+                    setSignals(s || []);
+                    setRolling(r || []);
+                    setCorrelation(c || []);
+                    setDrawdown(d || []);
+                    setLoading(false);
+                });
             }, []);
 
             if (loading) return React.createElement(Loading, null);
-            if (!data || !data.length) return React.createElement(EmptyState, null);
 
-            const uptrend = data.filter(d => d.price_regime === 'Uptrend').length;
-            const downtrend = data.filter(d => d.price_regime === 'Downtrend').length;
-            const sideways = data.filter(d => d.price_regime === 'Sideways').length;
-            const overbought = data.filter(d => d.mean_reversion_signal === 'Overbought').length;
-            const oversold = data.filter(d => d.mean_reversion_signal === 'Oversold').length;
+            const sig = signals || [];
+            const roll = rolling || [];
+            const corr = correlation || [];
+            const dd  = drawdown || [];
+
+            if (!sig.length && !roll.length && !corr.length && !dd.length) {
+                return React.createElement(EmptyState, null);
+            }
+
+            // --- Aggregate banner stats ---
+            const uptrend    = sig.filter(d => d.price_regime === 'Uptrend').length;
+            const downtrend  = sig.filter(d => d.price_regime === 'Downtrend').length;
+            const sideways   = sig.filter(d => d.price_regime === 'Sideways').length;
+            const overbought = sig.filter(d => d.mean_reversion_signal === 'Overbought').length;
+            const oversold   = sig.filter(d => d.mean_reversion_signal === 'Oversold').length;
+            const expanding  = sig.filter(d => d.vol_regime === 'Expanding').length;
+            const rsiOver    = sig.filter(d => Number(d.rsi_14) >= 70).length;
+            const rsiUnder   = sig.filter(d => Number(d.rsi_14) <= 30).length;
+
+            const offCorrVals = corr
+                .filter(c => c.symbol_a !== c.symbol_b && c.correlation != null)
+                .map(c => Number(c.correlation));
+            const avgCorr = offCorrVals.length
+                ? offCorrVals.reduce((a, b) => a + b, 0) / offCorrVals.length
+                : null;
+            const highCorrPairs = corr.filter(c =>
+                c.symbol_a !== c.symbol_b && Number(c.correlation) >= 0.80
+            ).length / 2;  // each pair counted twice in symmetric matrix
+
+            const inDD20  = dd.filter(d => Number(d.current_drawdown_pct) <= -0.20).length;
+            const inDD10  = dd.filter(d => Number(d.current_drawdown_pct) <= -0.10).length;
 
             return React.createElement('div', null,
                 React.createElement('div', { className: 'page-title' }, 'Quant Dashboard'),
+
+                // === Aggregate metric strip ===
+                React.createElement('div', { className: 'metrics-row' },
+                    quantTile('Positions', sig.length || dd.length || roll.length),
+                    quantTile('Trend (Up / Side / Down)',
+                              uptrend + ' / ' + sideways + ' / ' + downtrend,
+                              uptrend > downtrend ? 'positive' : downtrend > uptrend ? 'negative' : 'neutral'),
+                    quantTile('Mean-Rev (OB / OS)',
+                              overbought + ' / ' + oversold,
+                              overbought > oversold ? 'negative' : oversold > overbought ? 'positive' : ''),
+                    quantTile('RSI Extremes (>70 / <30)',
+                              rsiOver + ' / ' + rsiUnder,
+                              rsiOver > 0 ? 'negative' : rsiUnder > 0 ? 'positive' : ''),
+                    quantTile('Expanding Vol', expanding,
+                              expanding > sig.length / 3 ? 'negative' : expanding > 0 ? 'neutral' : ''),
+                    quantTile('Avg Pairwise ρ',
+                              avgCorr != null ? avgCorr.toFixed(2) : '\u2014',
+                              avgCorr == null ? '' : avgCorr > 0.6 ? 'negative' : avgCorr > 0.4 ? 'neutral' : 'positive',
+                              highCorrPairs > 0 ? (highCorrPairs.toFixed(0) + ' pair(s) ρ ≥ 0.8') : null),
+                    quantTile('Drawdowns (≤-10 / ≤-20%)',
+                              inDD10 + ' / ' + inDD20,
+                              inDD20 > 0 ? 'negative' : inDD10 > 0 ? 'neutral' : 'positive')
+                ),
+
+                // === Panel tabs ===
+                React.createElement('div', { className: 'view-tabs' },
+                    React.createElement('div', {
+                        className: 'view-tab' + (activePanel === 'signals' ? ' active' : ''),
+                        onClick: () => setActivePanel('signals')
+                    }, 'Position Signals',
+                        React.createElement('span', { className: 'count-pill' }, sig.length)),
+                    React.createElement('div', {
+                        className: 'view-tab' + (activePanel === 'rolling' ? ' active' : ''),
+                        onClick: () => setActivePanel('rolling')
+                    }, 'Rolling Returns',
+                        React.createElement('span', { className: 'count-pill' }, roll.length)),
+                    React.createElement('div', {
+                        className: 'view-tab' + (activePanel === 'correlation' ? ' active' : ''),
+                        onClick: () => setActivePanel('correlation')
+                    }, 'Correlation Matrix',
+                        React.createElement('span', { className: 'count-pill' }, corr.length)),
+                    React.createElement('div', {
+                        className: 'view-tab' + (activePanel === 'drawdown' ? ' active' : ''),
+                        onClick: () => setActivePanel('drawdown')
+                    }, 'Drawdown Map',
+                        React.createElement('span', { className: 'count-pill' }, dd.length))
+                ),
+
+                // === Active panel content ===
+                activePanel === 'signals'    ? React.createElement(SignalsPanel,    { rows: sig })
+              : activePanel === 'rolling'    ? React.createElement(RollingPanel,    { rows: roll })
+              : activePanel === 'correlation'? React.createElement(CorrelationPanel,{ rows: corr })
+              :                                React.createElement(DrawdownPanel,   { rows: dd })
+            );
+        }
+
+        // ------------------------------------------------------------
+        // PANEL: Position Signals
+        // ------------------------------------------------------------
+        function SignalsPanel({ rows }) {
+            const [sortKey, setSortKey] = useState('zscore_20d');
+            const [sortDir, setSortDir] = useState('desc');
+
+            if (!rows || !rows.length) {
+                return React.createElement('div', { className: 'card' },
+                    React.createElement('div', { className: 'empty-state' },
+                        'No quant signals available — awaiting price history.'));
+            }
+
+            const cols = [
+                { key: 'symbol',                label: 'Ticker' },
+                { key: 'current_price',         label: 'Price' },
+                { key: 'price_regime',          label: 'Trend' },
+                { key: 'vol_regime',            label: 'Vol Regime' },
+                { key: 'rsi_14',                label: 'RSI-14' },
+                { key: 'zscore_20d',            label: 'Z-20D' },
+                { key: 'mean_reversion_signal', label: 'Mean-Rev' },
+                { key: 'momentum_pct_rank_20d', label: '20D Range %' },
+                { key: 'atr_14',                label: 'ATR-14' },
+                { key: 'bb_width',              label: 'BB Width' },
+                { key: 'pct_off_52w_high',      label: 'Off 52W Hi' },
+                { key: 'annualised_vol_20d',    label: 'Vol-20D (ann)' },
+            ];
+
+            const sorted = [...rows].sort((a, b) => {
+                const av = a[sortKey], bv = b[sortKey];
+                if (av == null && bv == null) return 0;
+                if (av == null) return 1;
+                if (bv == null) return -1;
+                const cmp = (typeof av === 'number' || !isNaN(Number(av)))
+                    ? Number(av) - Number(bv)
+                    : String(av).localeCompare(String(bv));
+                return sortDir === 'asc' ? cmp : -cmp;
+            });
+
+            const onHeaderClick = (k) => {
+                if (sortKey === k) setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
+                else { setSortKey(k); setSortDir('desc'); }
+            };
+
+            return React.createElement('div', { className: 'card' },
+                React.createElement('div', { className: 'card-title' },
+                    'Per-Position Signals (' + rows.length + ')'),
+                React.createElement('div', { style: { overflowX: 'auto' } },
+                    React.createElement('table', { className: 'data-table' },
+                        React.createElement('thead', null,
+                            React.createElement('tr', null,
+                                cols.map(c => React.createElement('th', {
+                                    key: c.key,
+                                    onClick: () => onHeaderClick(c.key),
+                                    style: { cursor: 'pointer', userSelect: 'none' }
+                                }, c.label + (sortKey === c.key ? (sortDir === 'asc' ? ' \u25B2' : ' \u25BC') : ''))))),
+                        React.createElement('tbody', null,
+                            sorted.map(d => React.createElement('tr', { key: d.symbol },
+                                React.createElement('td', { style: { fontWeight: 600, color: '#00d4ff' } }, d.symbol),
+                                React.createElement('td', null, fmtCurrency(d.current_price)),
+                                React.createElement('td', null,
+                                    React.createElement('span', { className: 'badge ' + badgeCls(d.price_regime) }, d.price_regime || '\u2014')),
+                                React.createElement('td', null,
+                                    React.createElement('span', { className: 'badge ' + badgeCls(d.vol_regime) }, d.vol_regime || '\u2014')),
+                                React.createElement('td', null,
+                                    React.createElement('div', { className: 'rsi-gauge' },
+                                        React.createElement('span', { style: { minWidth: 30, display: 'inline-block' } },
+                                            d.rsi_14 != null ? Number(d.rsi_14).toFixed(0) : '\u2014'),
+                                        React.createElement('div', { className: 'rsi-track' },
+                                            React.createElement('div', { className: 'rsi-fill', style: rsiFillStyle(d.rsi_14) })))),
+                                React.createElement('td', { className: cls(d.zscore_20d) }, fmt(d.zscore_20d)),
+                                React.createElement('td', null,
+                                    React.createElement('span', { className: 'badge ' + badgeCls(d.mean_reversion_signal) },
+                                        d.mean_reversion_signal || '\u2014')),
+                                React.createElement('td', null, d.momentum_pct_rank_20d != null
+                                    ? fmt(d.momentum_pct_rank_20d, 1) + '%' : '\u2014'),
+                                React.createElement('td', null, d.atr_14 != null ? fmt(d.atr_14, 2) : '\u2014'),
+                                React.createElement('td', null, d.bb_width != null ? fmt(Number(d.bb_width) * 100, 1) + '%' : '\u2014'),
+                                React.createElement('td', { className: cls(-Number(d.pct_off_52w_high || 0)) },
+                                    d.pct_off_52w_high != null ? fmt(Number(d.pct_off_52w_high) * 100, 1) + '%' : '\u2014'),
+                                React.createElement('td', null, d.annualised_vol_20d != null
+                                    ? fmt(Number(d.annualised_vol_20d) * 100, 1) + '%' : '\u2014')
+                            )))
+                    )
+                )
+            );
+        }
+
+        // ------------------------------------------------------------
+        // PANEL: Rolling Returns Matrix
+        // ------------------------------------------------------------
+        function RollingPanel({ rows }) {
+            const [sortKey, setSortKey] = useState('return_1m');
+            const [sortDir, setSortDir] = useState('desc');
+
+            if (!rows || !rows.length) {
+                return React.createElement('div', { className: 'card' },
+                    React.createElement('div', { className: 'empty-state' },
+                        'No rolling-return data available.'));
+            }
+
+            // Pick whichever return columns the view actually exposes
+            const candidateCols = [
+                { key: 'return_1d',  label: '1D'  },
+                { key: 'return_1w',  label: '1W'  },
+                { key: 'return_1m',  label: '1M'  },
+                { key: 'return_3m',  label: '3M'  },
+                { key: 'return_6m',  label: '6M'  },
+                { key: 'return_ytd', label: 'YTD' },
+                { key: 'return_1y',  label: '1Y'  },
+            ];
+            const sample = rows[0] || {};
+            const periodCols = candidateCols.filter(c => c.key in sample);
+
+            const sorted = [...rows].sort((a, b) => {
+                const av = a[sortKey], bv = b[sortKey];
+                if (av == null && bv == null) return 0;
+                if (av == null) return 1;
+                if (bv == null) return -1;
+                const cmp = (typeof av === 'number' || !isNaN(Number(av)))
+                    ? Number(av) - Number(bv)
+                    : String(av).localeCompare(String(bv));
+                return sortDir === 'asc' ? cmp : -cmp;
+            });
+
+            const onHeaderClick = (k) => {
+                if (sortKey === k) setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
+                else { setSortKey(k); setSortDir('desc'); }
+            };
+
+            // Top 5 / bottom 5 by 1M return (or first available)
+            const headerKey = periodCols[0]?.key || 'return_1m';
+            const ranked = [...rows]
+                .filter(r => r[headerKey] != null)
+                .sort((a, b) => Number(b[headerKey]) - Number(a[headerKey]));
+            const winners = ranked.slice(0, 5);
+            const losers  = ranked.slice(-5).reverse();
+
+            return React.createElement('div', null,
+                // Winners / losers card
+                React.createElement('div', { className: 'card' },
+                    React.createElement('div', { className: 'card-title' },
+                        'Leaders & Laggards (' + (periodCols.find(c => c.key === headerKey)?.label || '1M') + ')'),
+                    React.createElement('div', { className: 'grid-2' },
+                        React.createElement('div', null,
+                            React.createElement('div', { style: { fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 } }, 'Top 5'),
+                            React.createElement('table', { className: 'data-table' },
+                                React.createElement('tbody', null,
+                                    winners.map(w => React.createElement('tr', { key: w.symbol },
+                                        React.createElement('td', { style: { fontWeight: 600, color: '#00d4ff', width: 90 } }, w.symbol),
+                                        React.createElement('td', { style: { color: 'var(--text-sec)' } }, w.name || ''),
+                                        React.createElement('td', { style: { textAlign: 'right' } }, returnChip(w[headerKey]))
+                                    ))
+                                )
+                            )
+                        ),
+                        React.createElement('div', null,
+                            React.createElement('div', { style: { fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 } }, 'Bottom 5'),
+                            React.createElement('table', { className: 'data-table' },
+                                React.createElement('tbody', null,
+                                    losers.map(w => React.createElement('tr', { key: w.symbol },
+                                        React.createElement('td', { style: { fontWeight: 600, color: '#00d4ff', width: 90 } }, w.symbol),
+                                        React.createElement('td', { style: { color: 'var(--text-sec)' } }, w.name || ''),
+                                        React.createElement('td', { style: { textAlign: 'right' } }, returnChip(w[headerKey]))
+                                    ))
+                                )
+                            )
+                        )
+                    )
+                ),
+
+                // Full matrix
+                React.createElement('div', { className: 'card' },
+                    React.createElement('div', { className: 'card-title' },
+                        'Rolling Returns Matrix (' + rows.length + ' positions, sorted by ' +
+                        (periodCols.find(c => c.key === sortKey)?.label || sortKey) + ')'),
+                    React.createElement('div', { style: { overflowX: 'auto' } },
+                        React.createElement('table', { className: 'data-table' },
+                            React.createElement('thead', null,
+                                React.createElement('tr', null, [
+                                    React.createElement('th', {
+                                        key: 'symbol',
+                                        onClick: () => onHeaderClick('symbol'),
+                                        style: { cursor: 'pointer', userSelect: 'none' }
+                                    }, 'Ticker' + (sortKey === 'symbol' ? (sortDir === 'asc' ? ' \u25B2' : ' \u25BC') : '')),
+                                    React.createElement('th', { key: 'name' }, 'Name')
+                                ].concat(periodCols.map(c => React.createElement('th', {
+                                    key: c.key,
+                                    onClick: () => onHeaderClick(c.key),
+                                    style: { cursor: 'pointer', userSelect: 'none', textAlign: 'right' }
+                                }, c.label + (sortKey === c.key ? (sortDir === 'asc' ? ' \u25B2' : ' \u25BC') : '')))))),
+                            React.createElement('tbody', null,
+                                sorted.map(r => React.createElement('tr', { key: r.symbol }, [
+                                    React.createElement('td', { key: 's', style: { fontWeight: 600, color: '#00d4ff' } }, r.symbol),
+                                    React.createElement('td', { key: 'n', style: { color: 'var(--text-sec)' } }, r.name || '\u2014')
+                                ].concat(periodCols.map(c =>
+                                    React.createElement('td', { key: c.key, style: { textAlign: 'right' } },
+                                        returnChip(r[c.key]))
+                                )))))
+                        )
+                    )
+                )
+            );
+        }
+
+        // ------------------------------------------------------------
+        // PANEL: Correlation Matrix (252d pairwise Pearson)
+        // ------------------------------------------------------------
+        function CorrelationPanel({ rows }) {
+            if (!rows || !rows.length) {
+                return React.createElement('div', { className: 'card' },
+                    React.createElement('div', { className: 'empty-state' },
+                        'No correlation data available — needs at least ~60 shared trading days per pair.'));
+            }
+
+            // Build square matrix from pairwise rows.
+            // Accept column aliases: symbol_a / symbol_b, OR sym_a / sym_b.
+            const sa = 'symbol_a' in rows[0] ? 'symbol_a' : 'sym_a';
+            const sb = 'symbol_b' in rows[0] ? 'symbol_b' : 'sym_b';
+
+            const symbolSet = new Set();
+            rows.forEach(r => { symbolSet.add(r[sa]); symbolSet.add(r[sb]); });
+            const symbols = Array.from(symbolSet).sort();
+
+            const lookup = {};
+            rows.forEach(r => {
+                const key = r[sa] + '|' + r[sb];
+                lookup[key] = Number(r.correlation);
+            });
+            const getCorr = (a, b) => {
+                if (a === b) return 1;
+                return lookup[a + '|' + b] ?? lookup[b + '|' + a] ?? null;
+            };
+
+            // Find highest redundancy (strongest off-diagonal positive corr)
+            const redundant = rows
+                .filter(r => r[sa] !== r[sb] && r.correlation != null)
+                .map(r => ({ a: r[sa], b: r[sb], c: Number(r.correlation) }))
+                .sort((x, y) => y.c - x.c);
+            // Dedupe unordered pairs
+            const seen = new Set();
+            const topRedundant = [];
+            for (const p of redundant) {
+                const k = [p.a, p.b].sort().join('|');
+                if (seen.has(k)) continue;
+                seen.add(k);
+                topRedundant.push(p);
+                if (topRedundant.length >= 8) break;
+            }
+            const mostDiversifying = [...topRedundant].length
+                ? redundant.slice().reverse().filter(p => {
+                    const k = [p.a, p.b].sort().join('|');
+                    return !seen.has(k + '_neg'); // allow all negatives
+                }).slice(0, 5)
+                : [];
+
+            // Warn if the matrix is too large to render cleanly
+            const tooLarge = symbols.length > 40;
+
+            return React.createElement('div', null,
+                // Redundant pairs card
+                React.createElement('div', { className: 'card' },
+                    React.createElement('div', { className: 'card-title' },
+                        'Most Redundant Pairs (ρ highest — potential concentration risk)'),
+                    topRedundant.length === 0
+                        ? React.createElement('div', { className: 'empty-state', style: { padding: 20 } },
+                            'No positive-correlation pairs detected.')
+                        : React.createElement('table', { className: 'data-table' },
+                            React.createElement('thead', null,
+                                React.createElement('tr', null,
+                                    ['Asset A', 'Asset B', 'ρ (252d)', 'Severity'].map(h =>
+                                        React.createElement('th', { key: h }, h)))),
+                            React.createElement('tbody', null,
+                                topRedundant.map(p => React.createElement('tr', { key: p.a + '_' + p.b },
+                                    React.createElement('td', { style: { fontWeight: 600, color: '#00d4ff' } }, p.a),
+                                    React.createElement('td', { style: { fontWeight: 600, color: '#00d4ff' } }, p.b),
+                                    React.createElement('td', { style: { color: p.c >= 0.85 ? 'var(--red)' : p.c >= 0.7 ? 'var(--amber)' : 'var(--text)' } },
+                                        p.c.toFixed(3)),
+                                    React.createElement('td', null,
+                                        React.createElement('span', {
+                                            className: 'badge ' + (p.c >= 0.85 ? 'red' : p.c >= 0.7 ? 'amber' : 'blue')
+                                        }, p.c >= 0.85 ? 'High' : p.c >= 0.7 ? 'Moderate' : 'Low')
+                                    )
+                                ))
+                            )
+                        )
+                ),
+
+                // Full heatmap
+                React.createElement('div', { className: 'card' },
+                    React.createElement('div', { className: 'card-title' },
+                        'Correlation Heatmap — ' + symbols.length + ' assets (252d window)'),
+                    tooLarge
+                        ? React.createElement('div', { style: { color: 'var(--text-muted)', fontSize: 12, marginBottom: 12 } },
+                            'Showing first 40 of ' + symbols.length + ' tickers. Use the redundant-pairs table above to drill into specific relationships.')
+                        : null,
+                    React.createElement('div', { className: 'corr-heatmap-wrap' },
+                        React.createElement('table', { className: 'corr-heatmap' },
+                            React.createElement('thead', null,
+                                React.createElement('tr', null, [
+                                    React.createElement('th', { key: 'corner', className: 'row-label' }, ''),
+                                ].concat(symbols.slice(0, 40).map(s =>
+                                    React.createElement('th', { key: s }, s))))),
+                            React.createElement('tbody', null,
+                                symbols.slice(0, 40).map(rowSym =>
+                                    React.createElement('tr', { key: rowSym }, [
+                                        React.createElement('td', { key: 'label', className: 'row-label' }, rowSym),
+                                    ].concat(symbols.slice(0, 40).map(colSym => {
+                                        const v = getCorr(rowSym, colSym);
+                                        if (rowSym === colSym) {
+                                            return React.createElement('td', { key: colSym, className: 'diag' }, '\u2014');
+                                        }
+                                        return React.createElement('td', {
+                                            key: colSym,
+                                            style: {
+                                                background: corrBg(v),
+                                                color: corrTextColor(v)
+                                            },
+                                            title: rowSym + ' vs ' + colSym + ': ρ = ' + (v != null ? v.toFixed(3) : 'n/a')
+                                        }, v != null ? v.toFixed(2) : '\u2014');
+                                    }))))
+                            )
+                        )
+                    ),
+                    // Legend
+                    React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginTop: 12, fontSize: 11, color: 'var(--text-muted)' } },
+                        React.createElement('span', null, 'Legend:'),
+                        React.createElement('span', { style: { background: corrBg(-0.8), padding: '2px 10px', borderRadius: 3, color: '#fff' } }, '-0.8'),
+                        React.createElement('span', { style: { background: corrBg(-0.3), padding: '2px 10px', borderRadius: 3 } }, '-0.3'),
+                        React.createElement('span', { style: { background: corrBg(0),    padding: '2px 10px', borderRadius: 3, border: '1px solid var(--card-border)' } }, '0'),
+                        React.createElement('span', { style: { background: corrBg(0.3),  padding: '2px 10px', borderRadius: 3 } }, '+0.3'),
+                        React.createElement('span', { style: { background: corrBg(0.8),  padding: '2px 10px', borderRadius: 3, color: '#fff' } }, '+0.8'),
+                        React.createElement('span', { style: { marginLeft: 16 } }, 'Low/negative ρ = better diversification')
+                    )
+                )
+            );
+        }
+
+        // ------------------------------------------------------------
+        // PANEL: Drawdown Map
+        // ------------------------------------------------------------
+        function DrawdownPanel({ rows }) {
+            const [sortKey, setSortKey] = useState('current_drawdown_pct');
+            const [sortDir, setSortDir] = useState('asc');  // most negative first
+
+            if (!rows || !rows.length) {
+                return React.createElement('div', { className: 'card' },
+                    React.createElement('div', { className: 'empty-state' },
+                        'No drawdown data available.'));
+            }
+
+            // Defensive: support schema variants for recovery needed & regime
+            const sample = rows[0] || {};
+            const recoveryKey = 'recovery_needed_pct' in sample ? 'recovery_needed_pct'
+                              : 'recovery_needed'     in sample ? 'recovery_needed'
+                              : null;
+            const regimeKey   = 'drawdown_regime'     in sample ? 'drawdown_regime'
+                              : 'dd_regime'           in sample ? 'dd_regime'
+                              : null;
+            const peakDateKey = 'peak_date'           in sample ? 'peak_date'
+                              : 'peak_price_date'     in sample ? 'peak_price_date'
+                              : null;
+            const peakPriceKey = 'peak_price'         in sample ? 'peak_price' : null;
+
+            const sorted = [...rows].sort((a, b) => {
+                const av = a[sortKey], bv = b[sortKey];
+                if (av == null && bv == null) return 0;
+                if (av == null) return 1;
+                if (bv == null) return -1;
+                const cmp = (typeof av === 'number' || !isNaN(Number(av)))
+                    ? Number(av) - Number(bv)
+                    : String(av).localeCompare(String(bv));
+                return sortDir === 'asc' ? cmp : -cmp;
+            });
+
+            const onHeaderClick = (k) => {
+                if (sortKey === k) setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
+                else { setSortKey(k); setSortDir(k === 'symbol' ? 'asc' : 'desc'); }
+            };
+
+            // Banner stats
+            const atPeak = rows.filter(r => Number(r.current_drawdown_pct) >= -0.005).length;
+            const moderate = rows.filter(r => {
+                const d = Number(r.current_drawdown_pct);
+                return d < -0.005 && d > -0.10;
+            }).length;
+            const severe = rows.filter(r => Number(r.current_drawdown_pct) <= -0.10 && Number(r.current_drawdown_pct) > -0.20).length;
+            const deep = rows.filter(r => Number(r.current_drawdown_pct) <= -0.20).length;
+
+            // Max DD magnitude across portfolio for bar scaling
+            const maxMagnitude = Math.max(0.01, ...rows.map(r => Math.abs(Number(r.current_drawdown_pct) || 0)));
+
+            // Worst drawdown in portfolio
+            const worst = rows.reduce((w, r) =>
+                Number(r.current_drawdown_pct) < Number(w.current_drawdown_pct) ? r : w, rows[0]);
+
+            return React.createElement('div', null,
+                // Summary strip
                 React.createElement('div', { className: 'metrics-row' },
                     React.createElement('div', { className: 'metric-card' },
-                        React.createElement('div', { className: 'label' }, 'Uptrend'), React.createElement('div', { className: 'value positive' }, uptrend)),
+                        React.createElement('div', { className: 'label' }, 'At / Near Peak'),
+                        React.createElement('div', { className: 'value positive' }, atPeak)),
                     React.createElement('div', { className: 'metric-card' },
-                        React.createElement('div', { className: 'label' }, 'Downtrend'), React.createElement('div', { className: 'value negative' }, downtrend)),
+                        React.createElement('div', { className: 'label' }, 'Moderate DD (0 to -10%)'),
+                        React.createElement('div', { className: 'value' }, moderate)),
                     React.createElement('div', { className: 'metric-card' },
-                        React.createElement('div', { className: 'label' }, 'Sideways'), React.createElement('div', { className: 'value neutral' }, sideways)),
+                        React.createElement('div', { className: 'label' }, 'Severe DD (-10 to -20%)'),
+                        React.createElement('div', { className: 'value neutral' }, severe)),
                     React.createElement('div', { className: 'metric-card' },
-                        React.createElement('div', { className: 'label' }, 'Overbought'), React.createElement('div', { className: 'value negative' }, overbought)),
+                        React.createElement('div', { className: 'label' }, 'Deep DD (\u2264 -20%)'),
+                        React.createElement('div', { className: 'value negative' }, deep)),
                     React.createElement('div', { className: 'metric-card' },
-                        React.createElement('div', { className: 'label' }, 'Oversold'), React.createElement('div', { className: 'value positive' }, oversold))
+                        React.createElement('div', { className: 'label' }, 'Worst Position'),
+                        React.createElement('div', { className: 'value negative' }, worst.symbol),
+                        React.createElement('div', { className: 'sub' },
+                            fmt(Number(worst.current_drawdown_pct) * 100, 1) + '%'))
                 ),
+
+                // Full table
                 React.createElement('div', { className: 'card' },
-                    React.createElement('div', { className: 'card-title' }, 'Market Regime & Signals (' + data.length + ' positions)'),
+                    React.createElement('div', { className: 'card-title' },
+                        'Drawdown Map (' + rows.length + ' positions)'),
                     React.createElement('div', { style: { overflowX: 'auto' } },
                         React.createElement('table', { className: 'data-table' },
                             React.createElement('thead', null,
                                 React.createElement('tr', null,
-                                    ['Symbol', 'Price', 'MA20', 'MA50', 'MA200', 'Regime', 'Vol Regime', 'Z-Score', 'Signal', 'Momentum %'].map(h =>
-                                        React.createElement('th', { key: h }, h)))),
+                                    [
+                                        { key: 'symbol', label: 'Ticker' },
+                                        peakPriceKey ? { key: peakPriceKey, label: 'Peak $' } : null,
+                                        peakDateKey  ? { key: peakDateKey,  label: 'Peak Date' } : null,
+                                        { key: 'current_price', label: 'Current $' },
+                                        { key: 'current_drawdown_pct', label: 'Drawdown %' },
+                                        recoveryKey ? { key: recoveryKey, label: 'Recovery Needed' } : null,
+                                        regimeKey   ? { key: regimeKey,   label: 'Regime' } : null,
+                                    ].filter(Boolean).map(c => React.createElement('th', {
+                                        key: c.key,
+                                        onClick: () => onHeaderClick(c.key),
+                                        style: { cursor: 'pointer', userSelect: 'none' }
+                                    }, c.label + (sortKey === c.key ? (sortDir === 'asc' ? ' \u25B2' : ' \u25BC') : ''))))),
                             React.createElement('tbody', null,
-                                data.map(d =>
-                                    React.createElement('tr', { key: d.symbol },
-                                        React.createElement('td', { style: { fontWeight: 600, color: '#00d4ff' } }, d.symbol),
-                                        React.createElement('td', null, fmtCurrency(d.current_price)),
-                                        React.createElement('td', null, fmt(d.ma_20)),
-                                        React.createElement('td', null, fmt(d.ma_50)),
-                                        React.createElement('td', null, fmt(d.ma_200)),
-                                        React.createElement('td', null, React.createElement('span', { className: 'badge ' + badgeCls(d.price_regime) }, d.price_regime)),
-                                        React.createElement('td', null, React.createElement('span', { className: 'badge ' + badgeCls(d.vol_regime) }, d.vol_regime)),
-                                        React.createElement('td', { className: cls(d.zscore_20d) }, fmt(d.zscore_20d)),
-                                        React.createElement('td', null, React.createElement('span', { className: 'badge ' + badgeCls(d.mean_reversion_signal) }, d.mean_reversion_signal)),
-                                        React.createElement('td', null, fmt(d.momentum_pct_rank_20d, 1) + '%')
-                                    ))
+                                sorted.map(r => {
+                                    const dd = Number(r.current_drawdown_pct) || 0;
+                                    const magnitude = Math.abs(dd);
+                                    const barWidth = (magnitude / maxMagnitude) * 100;
+                                    const cells = [
+                                        React.createElement('td', { key: 's', style: { fontWeight: 600, color: '#00d4ff' } }, r.symbol),
+                                    ];
+                                    if (peakPriceKey) cells.push(
+                                        React.createElement('td', { key: 'pp' }, fmtCurrency(r[peakPriceKey])));
+                                    if (peakDateKey) cells.push(
+                                        React.createElement('td', { key: 'pd', style: { fontFamily: 'DM Sans' } },
+                                            r[peakDateKey] ? new Date(r[peakDateKey]).toLocaleDateString() : '\u2014'));
+                                    cells.push(
+                                        React.createElement('td', { key: 'cp' }, fmtCurrency(r.current_price)));
+                                    cells.push(
+                                        React.createElement('td', { key: 'dd', className: cls(dd) },
+                                            fmt(dd * 100, 2) + '%',
+                                            React.createElement('span', { className: 'dd-bar-wrap' },
+                                                React.createElement('span', { className: 'dd-bar', style: { width: barWidth.toFixed(1) + '%' } })
+                                            )));
+                                    if (recoveryKey) cells.push(
+                                        React.createElement('td', { key: 'rn' },
+                                            r[recoveryKey] != null ? fmt(Number(r[recoveryKey]) * 100, 2) + '%' : '\u2014'));
+                                    if (regimeKey) cells.push(
+                                        React.createElement('td', { key: 'rg' },
+                                            React.createElement('span', { className: 'badge ' + badgeCls(r[regimeKey]) },
+                                                r[regimeKey] || '\u2014')));
+                                    return React.createElement('tr', { key: r.symbol }, cells);
+                                })
                             )
                         )
                     )
