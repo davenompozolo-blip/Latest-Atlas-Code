@@ -841,6 +841,111 @@
             min-width: 56px;
             text-align: right;
         }
+
+        /* === Narrative insight strip === */
+
+        .narrative-strip {
+            background: linear-gradient(135deg, rgba(0,212,255,0.04), rgba(99,102,241,0.04));
+            border: 1px solid rgba(0,212,255,0.12);
+            border-left: 3px solid var(--cyan);
+            border-radius: 8px;
+            padding: 14px 18px;
+            margin-bottom: 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .narrative-line {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            font-size: 13px;
+            color: var(--text);
+            line-height: 1.55;
+        }
+
+        .narrative-icon {
+            color: var(--cyan);
+            font-size: 11px;
+            margin-top: 4px;
+            flex-shrink: 0;
+        }
+
+        .narrative-text strong { color: var(--cyan); font-weight: 600; }
+        .narrative-text .pos   { color: var(--green); font-weight: 600; }
+        .narrative-text .neg   { color: var(--red);   font-weight: 600; }
+        .narrative-text .neu   { color: var(--amber); font-weight: 600; }
+        .narrative-text .mono  { font-family: 'JetBrains Mono', monospace; }
+
+        /* === Chart panes === */
+
+        .chart-pane {
+            position: relative;
+            height: 220px;
+            margin-top: 8px;
+        }
+
+        .chart-pane.tall { height: 320px; }
+        .chart-pane.short { height: 160px; }
+
+        /* === Stacked bar (regime distribution) === */
+
+        .stacked-bar {
+            display: flex;
+            width: 100%;
+            height: 18px;
+            border-radius: 4px;
+            overflow: hidden;
+            background: rgba(255,255,255,0.04);
+            margin: 8px 0 4px;
+        }
+        .stacked-bar > .seg {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 600;
+            color: rgba(255,255,255,0.85);
+            transition: filter 0.15s ease;
+        }
+        .stacked-bar > .seg:hover { filter: brightness(1.25); }
+
+        .stacked-bar-legend {
+            display: flex;
+            gap: 14px;
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+        }
+        .stacked-bar-legend .dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 2px;
+            margin-right: 6px;
+            vertical-align: middle;
+        }
+
+        /* === Inline mini-bar (used inside table rows) === */
+        .inline-bar-cell {
+            position: relative;
+            min-width: 110px;
+        }
+        .inline-bar-cell .ib-track {
+            position: absolute;
+            left: 0; right: 0; bottom: 4px;
+            height: 3px;
+            background: rgba(255,255,255,0.04);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        .inline-bar-cell .ib-fill {
+            position: absolute;
+            top: 0; bottom: 0;
+            border-radius: 2px;
+        }
     </style>
 </head>
 <body>
@@ -1373,6 +1478,135 @@
             return React.createElement('span', { className: 'ret-chip', style: { background: bg, color: color } }, txt);
         }
 
+        // ------------------------------------------------------------
+        // Schema auto-detection (defensive against view name variance)
+        // ------------------------------------------------------------
+
+        // Detect first/second symbol columns from a pairwise correlation row
+        function detectSymbolPair(sample) {
+            if (!sample) return [null, null];
+            const candidates = [
+                ['symbol_a', 'symbol_b'],
+                ['sym_a', 'sym_b'],
+                ['asset_a', 'asset_b'],
+                ['ticker_a', 'ticker_b'],
+                ['symbol_1', 'symbol_2'],
+                ['sym_1', 'sym_2'],
+                ['asset_1', 'asset_2'],
+                ['from_symbol', 'to_symbol'],
+                ['symbol_x', 'symbol_y'],
+                ['x_symbol', 'y_symbol'],
+            ];
+            for (const [a, b] of candidates) {
+                if (a in sample && b in sample) return [a, b];
+            }
+            // Heuristic fallback
+            const keys = Object.keys(sample);
+            const a = keys.find(k => /(_a|_1|_x|_from)$/i.test(k));
+            const b = keys.find(k => /(_b|_2|_y|_to)$/i.test(k));
+            return [a || null, b || null];
+        }
+
+        function detectCorrelationCol(sample) {
+            if (!sample) return null;
+            const candidates = ['correlation', 'corr', 'pearson', 'rho', 'r', 'value', 'coef'];
+            for (const c of candidates) if (c in sample) return c;
+            // Find the first numeric, non-symbol column
+            const keys = Object.keys(sample);
+            return keys.find(k => typeof sample[k] === 'number' && !/symbol|asset|ticker|date/i.test(k)) || null;
+        }
+
+        // Map period -> actual column name. Returns ordered { '1d': 'return_1d', ... }.
+        function detectReturnCols(sample) {
+            if (!sample) return [];
+            const periods = [
+                { label: '1D',  aliases: ['1d',  'day',  '1day',  'daily']  },
+                { label: '1W',  aliases: ['1w',  '5d',   'week',  '1week']  },
+                { label: '1M',  aliases: ['1m',  '21d',  'month', '1month'] },
+                { label: '3M',  aliases: ['3m',  '63d',  '3month', 'qtr', 'quarter'] },
+                { label: '6M',  aliases: ['6m',  '126d', '6month'] },
+                { label: 'YTD', aliases: ['ytd', 'year_to_date'] },
+                { label: '1Y',  aliases: ['1y',  '252d', 'year',  '1year', 'annual'] },
+            ];
+            const prefixes = ['return_', 'ret_', 'r_', 'pct_', '', 'roi_', 'change_'];
+            const suffixes = ['_return', '_ret', '_pct', ''];
+            const out = [];
+            const seen = new Set();
+            for (const p of periods) {
+                for (const alias of p.aliases) {
+                    let found = null;
+                    for (const pre of prefixes) {
+                        for (const suf of suffixes) {
+                            const k = pre + alias + suf;
+                            if (k in sample && !seen.has(k)) { found = k; break; }
+                        }
+                        if (found) break;
+                    }
+                    if (found) {
+                        seen.add(found);
+                        out.push({ key: found, label: p.label });
+                        break;
+                    }
+                }
+            }
+            return out;
+        }
+
+        // True if values look like percentages (e.g. -76.43) rather than decimals (-0.7643).
+        // Uses median magnitude — robust against outliers and zeros.
+        function isPercentScale(values) {
+            const nums = values.filter(v => v != null && !isNaN(v) && Number(v) !== 0).map(v => Math.abs(Number(v)));
+            if (nums.length < 3) return false;
+            const sorted = [...nums].sort((a, b) => a - b);
+            const median = sorted[Math.floor(sorted.length / 2)];
+            // Decimals (e.g. 0.05 = 5%) virtually never exceed 1.5 in magnitude.
+            // Percent representation (e.g. 5 = 5%) very rarely sits below 1.5 at the median.
+            return median > 1.5;
+        }
+
+        // Convert a value to a 0..1 ratio for display, given a known scale.
+        function toRatio(val, isPct) {
+            if (val == null || isNaN(val)) return null;
+            return isPct ? Number(val) / 100 : Number(val);
+        }
+
+        // Render a return chip when you already know the scale
+        function returnChipScaled(v, isPct, decimals) {
+            const ratio = toRatio(v, isPct);
+            if (ratio == null) return React.createElement('span', { className: 'ret-chip', style: { color: 'var(--text-muted)' } }, '\u2014');
+            const pct = ratio * 100;
+            const bg = ratio > 0 ? 'rgba(16,185,129,0.12)' : ratio < 0 ? 'rgba(239,68,68,0.12)' : 'rgba(255,255,255,0.04)';
+            const color = ratio > 0 ? 'var(--green)' : ratio < 0 ? 'var(--red)' : 'var(--text-sec)';
+            const txt = (ratio > 0 ? '+' : '') + pct.toFixed(decimals != null ? decimals : 2) + '%';
+            return React.createElement('span', { className: 'ret-chip', style: { background: bg, color: color } }, txt);
+        }
+
+        // ------------------------------------------------------------
+        // Narrative builder (one-line insight strip per panel)
+        // ------------------------------------------------------------
+        function NarrativeStrip({ items }) {
+            if (!items || !items.length) return null;
+            return React.createElement('div', { className: 'narrative-strip' },
+                items.map((it, i) => React.createElement('div', { key: i, className: 'narrative-line' },
+                    React.createElement('span', { className: 'narrative-icon' }, it.icon || '\u25C7'),
+                    React.createElement('span', { className: 'narrative-text', dangerouslySetInnerHTML: { __html: it.text } })
+                ))
+            );
+        }
+
+        // Reusable Chart.js wrapper hook
+        function useChart(containerRef, configFactory, deps) {
+            const instanceRef = useRef(null);
+            useEffect(() => {
+                if (!containerRef.current) return;
+                if (instanceRef.current) { instanceRef.current.destroy(); instanceRef.current = null; }
+                const cfg = configFactory();
+                if (!cfg) return;
+                instanceRef.current = new Chart(containerRef.current, cfg);
+                return () => { if (instanceRef.current) { instanceRef.current.destroy(); instanceRef.current = null; } };
+            }, deps);
+        }
+
         function QuantDashboard() {
             const [signals, setSignals]         = useState(null);
             const [rolling, setRolling]         = useState(null);
@@ -1494,12 +1728,119 @@
         function SignalsPanel({ rows }) {
             const [sortKey, setSortKey] = useState('zscore_20d');
             const [sortDir, setSortDir] = useState('desc');
+            const rsiRef = useRef(null);
+            const zRef   = useRef(null);
 
             if (!rows || !rows.length) {
                 return React.createElement('div', { className: 'card' },
                     React.createElement('div', { className: 'empty-state' },
                         'No quant signals available — awaiting price history.'));
             }
+
+            // === Regime / signal aggregation ===
+            const trendCounts = { Uptrend: 0, Sideways: 0, Downtrend: 0, Other: 0 };
+            const volCounts   = { Low: 0, Normal: 0, Elevated: 0, High: 0, Other: 0 };
+            const mrCounts    = { Oversold: 0, Neutral: 0, Overbought: 0, Other: 0 };
+            rows.forEach(r => {
+                const tr = r.price_regime || 'Other';
+                trendCounts[tr] != null ? trendCounts[tr]++ : trendCounts.Other++;
+                const vr = r.vol_regime || 'Other';
+                volCounts[vr] != null ? volCounts[vr]++ : volCounts.Other++;
+                const mr = r.mean_reversion_signal || 'Other';
+                mrCounts[mr] != null ? mrCounts[mr]++ : mrCounts.Other++;
+            });
+
+            const rsiVals = rows.map(r => Number(r.rsi_14)).filter(v => !isNaN(v));
+            const overbought = rsiVals.filter(v => v >= 70).length;
+            const oversold   = rsiVals.filter(v => v <= 30).length;
+            const meanRsi    = rsiVals.length ? rsiVals.reduce((a, b) => a + b, 0) / rsiVals.length : null;
+
+            const zVals = rows.map(r => Number(r.zscore_20d)).filter(v => !isNaN(v));
+            const extremeHigh = zVals.filter(v => v >= 2).length;
+            const extremeLow  = zVals.filter(v => v <= -2).length;
+
+            // === RSI histogram (10-wide bins) ===
+            useChart(rsiRef, () => {
+                if (!rsiVals.length) return null;
+                const edges = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100.01];
+                const counts = new Array(edges.length - 1).fill(0);
+                rsiVals.forEach(v => {
+                    for (let i = 0; i < edges.length - 1; i++) {
+                        if (v >= edges[i] && v < edges[i + 1]) { counts[i]++; break; }
+                    }
+                });
+                const labels = edges.slice(0, -1).map((e, i) => e + '\u2013' + (edges[i + 1] > 100 ? 100 : edges[i + 1]));
+                const colors = edges.slice(0, -1).map(lo =>
+                    lo >= 70 ? 'rgba(239,68,68,0.75)'
+                    : lo >= 60 ? 'rgba(245,158,11,0.60)'
+                    : lo >= 40 ? 'rgba(100,150,255,0.45)'
+                    : lo >= 30 ? 'rgba(16,185,129,0.40)'
+                    :            'rgba(16,185,129,0.75)');
+                return {
+                    type: 'bar',
+                    data: { labels, datasets: [{ data: counts, backgroundColor: colors, borderRadius: 3, borderSkipped: false }] },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        scales: {
+                            x: { ticks: { color: 'rgba(255,255,255,0.5)', font: { size: 10 } }, grid: { display: false } },
+                            y: { ticks: { color: 'rgba(255,255,255,0.4)', font: { size: 10 }, stepSize: 1 },
+                                 grid: { color: 'rgba(255,255,255,0.04)' } }
+                        },
+                        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ctx.parsed.y + ' positions' } } }
+                    }
+                };
+            }, [rows]);
+
+            // === Z-score distribution ===
+            useChart(zRef, () => {
+                if (!zVals.length) return null;
+                const edges = [-4, -3, -2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 3, 4.01];
+                const counts = new Array(edges.length - 1).fill(0);
+                zVals.forEach(v => {
+                    for (let i = 0; i < edges.length - 1; i++) {
+                        if (v >= edges[i] && v < edges[i + 1]) { counts[i]++; break; }
+                    }
+                });
+                const labels = edges.slice(0, -1).map((e, i) => e.toFixed(1) + '\u2192' + (edges[i + 1] > 4 ? '4' : edges[i + 1].toFixed(1)));
+                const colors = edges.slice(0, -1).map(lo =>
+                    lo >= 2   ? 'rgba(239,68,68,0.75)' :
+                    lo >= 1   ? 'rgba(245,158,11,0.55)' :
+                    lo >= -1  ? 'rgba(100,150,255,0.45)' :
+                    lo >= -2  ? 'rgba(245,158,11,0.55)' :
+                                'rgba(16,185,129,0.75)');
+                return {
+                    type: 'bar',
+                    data: { labels, datasets: [{ data: counts, backgroundColor: colors, borderRadius: 3, borderSkipped: false }] },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        scales: {
+                            x: { ticks: { color: 'rgba(255,255,255,0.5)', font: { size: 9 } }, grid: { display: false } },
+                            y: { ticks: { color: 'rgba(255,255,255,0.4)', font: { size: 10 }, stepSize: 1 },
+                                 grid: { color: 'rgba(255,255,255,0.04)' } }
+                        },
+                        plugins: { legend: { display: false } }
+                    }
+                };
+            }, [rows]);
+
+            // === Narrative ===
+            const n = rows.length;
+            const pctOf = (x) => n ? ((x / n) * 100).toFixed(0) + '%' : 'n/a';
+            const narrative = [
+                { icon: '\u25B2', text: 'Trend mix: <strong class="pos">' + trendCounts.Uptrend + '</strong> uptrend, '
+                    + '<strong>' + trendCounts.Sideways + '</strong> sideways, '
+                    + '<strong class="neg">' + trendCounts.Downtrend + '</strong> downtrend '
+                    + '(' + pctOf(trendCounts.Uptrend) + ' of book trending up).' },
+                { icon: '\u25C6', text: 'RSI: <strong class="neg">' + overbought + '</strong> overbought (≥70), '
+                    + '<strong class="pos">' + oversold + '</strong> oversold (≤30), mean = <span class="mono">'
+                    + (meanRsi != null ? meanRsi.toFixed(1) : 'n/a') + '</span>.' },
+                { icon: '\u25C8', text: 'Z-20D: <strong class="neg">' + extremeHigh + '</strong> stretched (Z≥2), '
+                    + '<strong class="pos">' + extremeLow + '</strong> depressed (Z≤-2) '
+                    + '\u2022 Vol regime: <strong>' + volCounts.High + '</strong> high, '
+                    + '<strong>' + volCounts.Elevated + '</strong> elevated, '
+                    + '<strong>' + volCounts.Normal + '</strong> normal, '
+                    + '<strong>' + volCounts.Low + '</strong> low.' }
+            ];
 
             const cols = [
                 { key: 'symbol',                label: 'Ticker' },
@@ -1532,7 +1873,24 @@
                 else { setSortKey(k); setSortDir('desc'); }
             };
 
-            return React.createElement('div', { className: 'card' },
+            return React.createElement('div', null,
+                React.createElement(NarrativeStrip, { items: narrative }),
+
+                // Distribution charts
+                React.createElement('div', { className: 'grid-2' },
+                    React.createElement('div', { className: 'card' },
+                        React.createElement('div', { className: 'card-title' }, 'RSI-14 Distribution'),
+                        React.createElement('div', { className: 'chart-pane' },
+                            React.createElement('canvas', { ref: rsiRef }))
+                    ),
+                    React.createElement('div', { className: 'card' },
+                        React.createElement('div', { className: 'card-title' }, 'Z-Score (20D) Distribution'),
+                        React.createElement('div', { className: 'chart-pane' },
+                            React.createElement('canvas', { ref: zRef }))
+                    )
+                ),
+
+                React.createElement('div', { className: 'card' },
                 React.createElement('div', { className: 'card-title' },
                     'Per-Position Signals (' + rows.length + ')'),
                 React.createElement('div', { style: { overflowX: 'auto' } },
@@ -1572,7 +1930,7 @@
                                     ? fmt(Number(d.annualised_vol_20d) * 100, 1) + '%' : '\u2014')
                             )))
                     )
-                )
+                ))
             );
         }
 
@@ -1580,90 +1938,166 @@
         // PANEL: Rolling Returns Matrix
         // ------------------------------------------------------------
         function RollingPanel({ rows }) {
-            const [sortKey, setSortKey] = useState('return_1m');
+            const sample = rows && rows[0] ? rows[0] : {};
+            const periodCols = detectReturnCols(sample);
+            // Per-column scale detection
+            const scales = {};
+            periodCols.forEach(c => { scales[c.key] = isPercentScale((rows || []).map(r => r[c.key])); });
+
+            // Pick a reasonable default "anchor" period: prefer 1M, else 3M, else first
+            const preferred = ['1M', '3M', '1W', '1D', '6M', 'YTD', '1Y'];
+            const defaultCol = preferred
+                .map(lbl => periodCols.find(c => c.label === lbl))
+                .find(Boolean) || periodCols[0] || { key: null, label: '—' };
+
+            const [anchorKey, setAnchorKey] = useState(defaultCol.key);
+            const [sortKey, setSortKey] = useState(defaultCol.key || 'symbol');
             const [sortDir, setSortDir] = useState('desc');
+            const leadersRef = useRef(null);
 
             if (!rows || !rows.length) {
                 return React.createElement('div', { className: 'card' },
                     React.createElement('div', { className: 'empty-state' },
                         'No rolling-return data available.'));
             }
+            if (!periodCols.length) {
+                return React.createElement('div', { className: 'card' },
+                    React.createElement('div', { className: 'empty-state' },
+                        'No return-period columns detected in vw_quant_rolling_returns.'));
+            }
 
-            // Pick whichever return columns the view actually exposes
-            const candidateCols = [
-                { key: 'return_1d',  label: '1D'  },
-                { key: 'return_1w',  label: '1W'  },
-                { key: 'return_1m',  label: '1M'  },
-                { key: 'return_3m',  label: '3M'  },
-                { key: 'return_6m',  label: '6M'  },
-                { key: 'return_ytd', label: 'YTD' },
-                { key: 'return_1y',  label: '1Y'  },
-            ];
-            const sample = rows[0] || {};
-            const periodCols = candidateCols.filter(c => c.key in sample);
+            const headerKey = anchorKey || defaultCol.key;
+            const headerLabel = periodCols.find(c => c.key === headerKey)?.label || defaultCol.label;
+            const headerIsPct = !!scales[headerKey];
+            const ratio = (v, isPct) => toRatio(v, isPct);
+
+            const ranked = [...rows]
+                .filter(r => r[headerKey] != null)
+                .map(r => ({ ...r, __r: ratio(r[headerKey], headerIsPct) }))
+                .filter(r => r.__r != null)
+                .sort((a, b) => b.__r - a.__r);
+            const winners = ranked.slice(0, 8);
+            const losers  = ranked.slice(-8).reverse();
+
+            // === Leaders & Laggards horizontal bar ===
+            useChart(leadersRef, () => {
+                if (!ranked.length) return null;
+                const N = 10;
+                const top = ranked.slice(0, N);
+                const bot = ranked.slice(-Math.min(N, Math.max(0, ranked.length - N))).reverse();
+                const combined = [...top, ...bot];
+                if (!combined.length) return null;
+                return {
+                    type: 'bar',
+                    data: {
+                        labels: combined.map(p => p.symbol),
+                        datasets: [{
+                            data: combined.map(p => +(p.__r * 100).toFixed(3)),
+                            backgroundColor: combined.map(p =>
+                                p.__r >= 0.05 ? 'rgba(16,185,129,0.85)' :
+                                p.__r >  0    ? 'rgba(16,185,129,0.45)' :
+                                p.__r > -0.05 ? 'rgba(239,68,68,0.45)' :
+                                                'rgba(239,68,68,0.85)'),
+                            borderRadius: 3,
+                            borderSkipped: false,
+                        }]
+                    },
+                    options: {
+                        indexAxis: 'y',
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: {
+                                ticks: { color: 'rgba(255,255,255,0.4)', callback: v => v + '%', font: { size: 10 } },
+                                grid: { color: 'rgba(255,255,255,0.04)' }
+                            },
+                            y: {
+                                ticks: { color: 'rgba(255,255,255,0.6)', font: { family: 'JetBrains Mono', size: 10 } },
+                                grid: { display: false }
+                            }
+                        },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: { callbacks: { label: ctx => (ctx.parsed.x > 0 ? '+' : '') + ctx.parsed.x.toFixed(2) + '%' } }
+                        }
+                    }
+                };
+            }, [rows, anchorKey, headerIsPct]);
 
             const sorted = [...rows].sort((a, b) => {
-                const av = a[sortKey], bv = b[sortKey];
+                let av, bv;
+                if (sortKey === 'symbol' || sortKey === 'name') { av = a[sortKey]; bv = b[sortKey]; }
+                else {
+                    av = ratio(a[sortKey], !!scales[sortKey]);
+                    bv = ratio(b[sortKey], !!scales[sortKey]);
+                }
                 if (av == null && bv == null) return 0;
                 if (av == null) return 1;
                 if (bv == null) return -1;
-                const cmp = (typeof av === 'number' || !isNaN(Number(av)))
-                    ? Number(av) - Number(bv)
-                    : String(av).localeCompare(String(bv));
+                const cmp = (typeof av === 'number') ? av - bv : String(av).localeCompare(String(bv));
                 return sortDir === 'asc' ? cmp : -cmp;
             });
-
             const onHeaderClick = (k) => {
                 if (sortKey === k) setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
                 else { setSortKey(k); setSortDir('desc'); }
             };
 
-            // Top 5 / bottom 5 by 1M return (or first available)
-            const headerKey = periodCols[0]?.key || 'return_1m';
-            const ranked = [...rows]
-                .filter(r => r[headerKey] != null)
-                .sort((a, b) => Number(b[headerKey]) - Number(a[headerKey]));
-            const winners = ranked.slice(0, 5);
-            const losers  = ranked.slice(-5).reverse();
+            // === Heatmap cell colour ===
+            const heatBg = (r) => {
+                if (r == null) return 'transparent';
+                const mag = Math.min(Math.abs(r) / 0.15, 1); // saturate at ±15%
+                return r >= 0
+                    ? 'rgba(16,185,129,' + (0.08 + mag * 0.55).toFixed(2) + ')'
+                    : 'rgba(239,68,68,' + (0.08 + mag * 0.55).toFixed(2) + ')';
+            };
+
+            // === Narrative ===
+            const posN = ranked.filter(r => r.__r > 0).length;
+            const negN = ranked.filter(r => r.__r < 0).length;
+            const best = ranked[0];
+            const worst = ranked[ranked.length - 1];
+            const median = ranked.length
+                ? ranked[Math.floor(ranked.length / 2)].__r : null;
+            const avg = ranked.length
+                ? ranked.reduce((s, r) => s + r.__r, 0) / ranked.length : null;
+
+            const pctStr = (v, d) => v == null ? 'n/a' : (v > 0 ? '+' : '') + (v * 100).toFixed(d != null ? d : 2) + '%';
+            const narrative = ranked.length ? [
+                { icon: '\u25B2', text: 'Over the <strong>' + headerLabel + '</strong> window, '
+                    + '<strong class="pos">' + posN + '</strong> position(s) are positive and '
+                    + '<strong class="neg">' + negN + '</strong> are negative. '
+                    + 'Portfolio breadth: <span class="mono">' + (ranked.length ? ((posN / ranked.length) * 100).toFixed(0) + '%' : 'n/a') + '</span> positive.' },
+                { icon: '\u2726', text: 'Best: <span class="mono">' + best.symbol + '</span> at <span class="pos">' + pctStr(best.__r) + '</span>'
+                    + ' \u2022 Worst: <span class="mono">' + worst.symbol + '</span> at <span class="neg">' + pctStr(worst.__r) + '</span>' },
+                { icon: '\u25C8', text: 'Median position: <span class="mono">' + pctStr(median) + '</span>'
+                    + ' \u2022 Mean: <span class="mono">' + pctStr(avg) + '</span>'
+                    + ' \u2022 Dispersion (best \u2212 worst): <span class="mono">' + pctStr(best.__r - worst.__r, 1) + '</span>' }
+            ] : [];
 
             return React.createElement('div', null,
-                // Winners / losers card
-                React.createElement('div', { className: 'card' },
-                    React.createElement('div', { className: 'card-title' },
-                        'Leaders & Laggards (' + (periodCols.find(c => c.key === headerKey)?.label || '1M') + ')'),
-                    React.createElement('div', { className: 'grid-2' },
-                        React.createElement('div', null,
-                            React.createElement('div', { style: { fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 } }, 'Top 5'),
-                            React.createElement('table', { className: 'data-table' },
-                                React.createElement('tbody', null,
-                                    winners.map(w => React.createElement('tr', { key: w.symbol },
-                                        React.createElement('td', { style: { fontWeight: 600, color: '#00d4ff', width: 90 } }, w.symbol),
-                                        React.createElement('td', { style: { color: 'var(--text-sec)' } }, w.name || ''),
-                                        React.createElement('td', { style: { textAlign: 'right' } }, returnChip(w[headerKey]))
-                                    ))
-                                )
-                            )
-                        ),
-                        React.createElement('div', null,
-                            React.createElement('div', { style: { fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 } }, 'Bottom 5'),
-                            React.createElement('table', { className: 'data-table' },
-                                React.createElement('tbody', null,
-                                    losers.map(w => React.createElement('tr', { key: w.symbol },
-                                        React.createElement('td', { style: { fontWeight: 600, color: '#00d4ff', width: 90 } }, w.symbol),
-                                        React.createElement('td', { style: { color: 'var(--text-sec)' } }, w.name || ''),
-                                        React.createElement('td', { style: { textAlign: 'right' } }, returnChip(w[headerKey]))
-                                    ))
-                                )
-                            )
-                        )
-                    )
+                React.createElement(NarrativeStrip, { items: narrative }),
+
+                // Anchor period selector
+                React.createElement('div', { className: 'view-tabs', style: { marginBottom: 12 } },
+                    periodCols.map(c => React.createElement('button', {
+                        key: c.key,
+                        className: 'view-tab' + (c.key === anchorKey ? ' active' : ''),
+                        onClick: () => { setAnchorKey(c.key); setSortKey(c.key); setSortDir('desc'); }
+                    }, c.label))
                 ),
 
-                // Full matrix
+                // Leaders & laggards chart
                 React.createElement('div', { className: 'card' },
                     React.createElement('div', { className: 'card-title' },
-                        'Rolling Returns Matrix (' + rows.length + ' positions, sorted by ' +
-                        (periodCols.find(c => c.key === sortKey)?.label || sortKey) + ')'),
+                        'Leaders & Laggards \u2014 ' + headerLabel + ' return'),
+                    React.createElement('div', { className: 'chart-pane tall' },
+                        React.createElement('canvas', { ref: leadersRef }))
+                ),
+
+                // Full matrix as heatmap table
+                React.createElement('div', { className: 'card' },
+                    React.createElement('div', { className: 'card-title' },
+                        'Rolling Returns Matrix \u2014 ' + rows.length + ' positions'),
                     React.createElement('div', { style: { overflowX: 'auto' } },
                         React.createElement('table', { className: 'data-table' },
                             React.createElement('thead', null,
@@ -1677,16 +2111,27 @@
                                 ].concat(periodCols.map(c => React.createElement('th', {
                                     key: c.key,
                                     onClick: () => onHeaderClick(c.key),
-                                    style: { cursor: 'pointer', userSelect: 'none', textAlign: 'right' }
+                                    style: { cursor: 'pointer', userSelect: 'none', textAlign: 'center' }
                                 }, c.label + (sortKey === c.key ? (sortDir === 'asc' ? ' \u25B2' : ' \u25BC') : '')))))),
                             React.createElement('tbody', null,
                                 sorted.map(r => React.createElement('tr', { key: r.symbol }, [
                                     React.createElement('td', { key: 's', style: { fontWeight: 600, color: '#00d4ff' } }, r.symbol),
                                     React.createElement('td', { key: 'n', style: { color: 'var(--text-sec)' } }, r.name || '\u2014')
-                                ].concat(periodCols.map(c =>
-                                    React.createElement('td', { key: c.key, style: { textAlign: 'right' } },
-                                        returnChip(r[c.key]))
-                                )))))
+                                ].concat(periodCols.map(c => {
+                                    const rt = ratio(r[c.key], !!scales[c.key]);
+                                    return React.createElement('td', {
+                                        key: c.key,
+                                        style: {
+                                            textAlign: 'center',
+                                            background: heatBg(rt),
+                                            fontFamily: 'JetBrains Mono',
+                                            fontSize: 11,
+                                            color: rt == null ? 'var(--text-muted)' : rt > 0 ? 'var(--green)' : rt < 0 ? 'var(--red)' : 'var(--text-sec)',
+                                            fontWeight: 600
+                                        }
+                                    }, rt == null ? '\u2014' : (rt > 0 ? '+' : '') + (rt * 100).toFixed(2) + '%');
+                                }))))
+                            )
                         )
                     )
                 )
@@ -1697,16 +2142,23 @@
         // PANEL: Correlation Matrix (252d pairwise Pearson)
         // ------------------------------------------------------------
         function CorrelationPanel({ rows }) {
+            const distRef = useRef(null);
+
             if (!rows || !rows.length) {
                 return React.createElement('div', { className: 'card' },
                     React.createElement('div', { className: 'empty-state' },
                         'No correlation data available — needs at least ~60 shared trading days per pair.'));
             }
 
-            // Build square matrix from pairwise rows.
-            // Accept column aliases: symbol_a / symbol_b, OR sym_a / sym_b.
-            const sa = 'symbol_a' in rows[0] ? 'symbol_a' : 'sym_a';
-            const sb = 'symbol_b' in rows[0] ? 'symbol_b' : 'sym_b';
+            // Defensive schema detection
+            const [sa, sb] = detectSymbolPair(rows[0]);
+            const corrCol = detectCorrelationCol(rows[0]);
+            if (!sa || !sb || !corrCol) {
+                return React.createElement('div', { className: 'card' },
+                    React.createElement('div', { className: 'empty-state' },
+                        'Could not detect symbol/correlation columns in vw_quant_correlation. Found keys: ' +
+                        Object.keys(rows[0]).join(', ')));
+            }
 
             const symbolSet = new Set();
             rows.forEach(r => { symbolSet.add(r[sa]); symbolSet.add(r[sb]); });
@@ -1714,40 +2166,97 @@
 
             const lookup = {};
             rows.forEach(r => {
-                const key = r[sa] + '|' + r[sb];
-                lookup[key] = Number(r.correlation);
+                const v = Number(r[corrCol]);
+                if (!isNaN(v)) lookup[r[sa] + '|' + r[sb]] = v;
             });
             const getCorr = (a, b) => {
                 if (a === b) return 1;
                 return lookup[a + '|' + b] ?? lookup[b + '|' + a] ?? null;
             };
 
-            // Find highest redundancy (strongest off-diagonal positive corr)
-            const redundant = rows
-                .filter(r => r[sa] !== r[sb] && r.correlation != null)
-                .map(r => ({ a: r[sa], b: r[sb], c: Number(r.correlation) }))
-                .sort((x, y) => y.c - x.c);
-            // Dedupe unordered pairs
-            const seen = new Set();
-            const topRedundant = [];
-            for (const p of redundant) {
-                const k = [p.a, p.b].sort().join('|');
-                if (seen.has(k)) continue;
-                seen.add(k);
-                topRedundant.push(p);
-                if (topRedundant.length >= 8) break;
-            }
-            const mostDiversifying = [...topRedundant].length
-                ? redundant.slice().reverse().filter(p => {
-                    const k = [p.a, p.b].sort().join('|');
-                    return !seen.has(k + '_neg'); // allow all negatives
-                }).slice(0, 5)
-                : [];
+            // Dedupe unordered pairs: build canonical list of unique pair correlations
+            const uniqueSeen = new Set();
+            const uniquePairs = [];
+            rows.forEach(r => {
+                if (r[sa] === r[sb]) return;
+                const v = Number(r[corrCol]);
+                if (isNaN(v)) return;
+                const k = [r[sa], r[sb]].sort().join('|');
+                if (uniqueSeen.has(k)) return;
+                uniqueSeen.add(k);
+                uniquePairs.push({ a: r[sa], b: r[sb], c: v });
+            });
+            const sortedDesc = [...uniquePairs].sort((x, y) => y.c - x.c);
+            const topRedundant   = sortedDesc.slice(0, 8);
+            const topDiversifying = sortedDesc.slice(-5).reverse();
+
+            const meanCorr = uniquePairs.length
+                ? uniquePairs.reduce((s, p) => s + p.c, 0) / uniquePairs.length : 0;
+            const highCorr = uniquePairs.filter(p => p.c >= 0.70).length;
+            const negCorr  = uniquePairs.filter(p => p.c < 0).length;
+
+            // === Distribution histogram ===
+            useChart(distRef, () => {
+                if (!uniquePairs.length) return null;
+                const bins = [-1.0, -0.8, -0.6, -0.4, -0.2, 0.0, 0.2, 0.4, 0.6, 0.8, 1.01];
+                const counts = new Array(bins.length - 1).fill(0);
+                uniquePairs.forEach(p => {
+                    for (let i = 0; i < bins.length - 1; i++) {
+                        if (p.c >= bins[i] && p.c < bins[i + 1]) { counts[i]++; break; }
+                    }
+                });
+                const labels = [];
+                for (let i = 0; i < bins.length - 1; i++) {
+                    labels.push(bins[i].toFixed(1) + ' \u2192 ' + (bins[i + 1] >= 1 ? '1.0' : bins[i + 1].toFixed(1)));
+                }
+                const colors = bins.slice(0, -1).map(lo => corrBg(lo + 0.1));
+                return {
+                    type: 'bar',
+                    data: { labels, datasets: [{ data: counts, backgroundColor: colors, borderRadius: 3, borderSkipped: false }] },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        scales: {
+                            x: { ticks: { color: 'rgba(255,255,255,0.5)', font: { size: 10 } }, grid: { display: false } },
+                            y: { ticks: { color: 'rgba(255,255,255,0.4)', font: { size: 10 }, stepSize: 1 },
+                                 grid: { color: 'rgba(255,255,255,0.04)' }, title: { display: true, text: 'Pair count', color: 'rgba(255,255,255,0.5)' } }
+                        },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: { callbacks: { label: ctx => ctx.parsed.y + ' pair(s)' } }
+                        }
+                    }
+                };
+            }, [rows]);
 
             // Warn if the matrix is too large to render cleanly
             const tooLarge = symbols.length > 40;
 
+            // === Narrative ===
+            const mc = meanCorr;
+            const regimeText = mc > 0.5 ? '<span class="neg">high co-movement regime</span> \u2014 diversification is <em>limited</em>'
+                             : mc > 0.3 ? '<span class="neu">moderate co-movement</span> \u2014 some diversification benefit'
+                             : mc > 0.1 ? '<span class="pos">mild co-movement</span> \u2014 healthy diversification'
+                             : '<span class="pos">low co-movement</span> \u2014 strong diversification across names';
+
+            const narrative = uniquePairs.length ? [
+                { icon: '\u25C6', text: 'Across <strong>' + uniquePairs.length + '</strong> unique pair(s), mean ρ is <span class="mono">' + mc.toFixed(3) + '</span> \u2014 ' + regimeText + '.' },
+                { icon: '\u25B2', text: '<strong class="neg">' + highCorr + '</strong> pair(s) with ρ ≥ 0.70 (redundancy risk)'
+                    + (topRedundant[0] ? '. Highest: <span class="mono">' + topRedundant[0].a + ' / ' + topRedundant[0].b + '</span> at <span class="neg">ρ = ' + topRedundant[0].c.toFixed(3) + '</span>' : '') + '.' },
+                { icon: '\u25BC', text: '<strong class="pos">' + negCorr + '</strong> pair(s) with negative ρ (genuine diversifiers)'
+                    + (topDiversifying[0] ? '. Most negative: <span class="mono">' + topDiversifying[0].a + ' / ' + topDiversifying[0].b + '</span> at <span class="pos">ρ = ' + topDiversifying[0].c.toFixed(3) + '</span>' : '') + '.' }
+            ] : [];
+
             return React.createElement('div', null,
+                React.createElement(NarrativeStrip, { items: narrative }),
+
+                // Pair-correlation distribution histogram
+                React.createElement('div', { className: 'card' },
+                    React.createElement('div', { className: 'card-title' },
+                        'Pairwise Correlation Distribution \u2014 ' + uniquePairs.length + ' pairs (252d)'),
+                    React.createElement('div', { className: 'chart-pane' },
+                        React.createElement('canvas', { ref: distRef }))
+                ),
+
                 // Redundant pairs card
                 React.createElement('div', { className: 'card' },
                     React.createElement('div', { className: 'card-title' },
@@ -1827,11 +2336,12 @@
         }
 
         // ------------------------------------------------------------
-        // PANEL: Drawdown Map
+        // PANEL: Drawdown Map (with waterfall + scale auto-detection)
         // ------------------------------------------------------------
         function DrawdownPanel({ rows }) {
             const [sortKey, setSortKey] = useState('current_drawdown_pct');
             const [sortDir, setSortDir] = useState('asc');  // most negative first
+            const waterfallRef = useRef(null);
 
             if (!rows || !rows.length) {
                 return React.createElement('div', { className: 'card' },
@@ -1839,21 +2349,53 @@
                         'No drawdown data available.'));
             }
 
-            // Defensive: support schema variants for recovery needed & regime
             const sample = rows[0] || {};
             const recoveryKey = 'recovery_needed_pct' in sample ? 'recovery_needed_pct'
                               : 'recovery_needed'     in sample ? 'recovery_needed'
+                              : 'recovery_pct'        in sample ? 'recovery_pct'
                               : null;
             const regimeKey   = 'drawdown_regime'     in sample ? 'drawdown_regime'
                               : 'dd_regime'           in sample ? 'dd_regime'
+                              : 'regime'              in sample ? 'regime'
                               : null;
             const peakDateKey = 'peak_date'           in sample ? 'peak_date'
                               : 'peak_price_date'     in sample ? 'peak_price_date'
                               : null;
             const peakPriceKey = 'peak_price'         in sample ? 'peak_price' : null;
 
+            // Auto-detect scale: percent (-76.43) vs decimal (-0.7643)
+            const ddIsPct  = isPercentScale(rows.map(r => r.current_drawdown_pct));
+            const recIsPct = recoveryKey ? isPercentScale(rows.map(r => r[recoveryKey])) : false;
+            const ddRatio  = (r) => toRatio(r.current_drawdown_pct, ddIsPct);
+            const recRatio = (r) => recoveryKey ? toRatio(r[recoveryKey], recIsPct) : null;
+
+            // Bucketing using ratios so thresholds are scale-correct
+            const tier = (d) => d == null ? null
+                              : d >= -0.005 ? 'peak'
+                              : d > -0.10   ? 'moderate'
+                              : d > -0.20   ? 'severe'
+                              : 'deep';
+
+            const buckets = { peak: 0, moderate: 0, severe: 0, deep: 0 };
+            rows.forEach(r => { const t = tier(ddRatio(r)); if (t) buckets[t]++; });
+
+            const worst = rows.reduce((w, r) =>
+                (ddRatio(r) ?? 0) < (ddRatio(w) ?? 0) ? r : w, rows[0]);
+            const worstDD = ddRatio(worst);
+
+            const inDD = rows.filter(r => (ddRatio(r) ?? 0) < -0.005);
+            const avgRecovery = inDD.length && recoveryKey
+                ? inDD.reduce((s, r) => s + (recRatio(r) ?? 0), 0) / inDD.length : null;
+            const medianDD = (() => {
+                const vals = rows.map(ddRatio).filter(v => v != null).sort((a, b) => a - b);
+                return vals.length ? vals[Math.floor(vals.length / 2)] : null;
+            })();
+
             const sorted = [...rows].sort((a, b) => {
-                const av = a[sortKey], bv = b[sortKey];
+                let av, bv;
+                if (sortKey === 'current_drawdown_pct') { av = ddRatio(a); bv = ddRatio(b); }
+                else if (sortKey === recoveryKey)        { av = recRatio(a); bv = recRatio(b); }
+                else { av = a[sortKey]; bv = b[sortKey]; }
                 if (av == null && bv == null) return 0;
                 if (av == null) return 1;
                 if (bv == null) return -1;
@@ -1868,48 +2410,119 @@
                 else { setSortKey(k); setSortDir(k === 'symbol' ? 'asc' : 'desc'); }
             };
 
-            // Banner stats
-            const atPeak = rows.filter(r => Number(r.current_drawdown_pct) >= -0.005).length;
-            const moderate = rows.filter(r => {
-                const d = Number(r.current_drawdown_pct);
-                return d < -0.005 && d > -0.10;
-            }).length;
-            const severe = rows.filter(r => Number(r.current_drawdown_pct) <= -0.10 && Number(r.current_drawdown_pct) > -0.20).length;
-            const deep = rows.filter(r => Number(r.current_drawdown_pct) <= -0.20).length;
+            // === Waterfall chart (Chart.js) ===
+            // Sort by drawdown ascending (worst first), cap at 30 names
+            useChart(
+                waterfallRef,
+                () => {
+                    const top = [...rows]
+                        .map(r => ({ symbol: r.symbol, dd: (ddRatio(r) ?? 0) * 100 }))
+                        .sort((a, b) => a.dd - b.dd)
+                        .slice(0, 30);
+                    if (!top.length) return null;
+                    const colors = top.map(p =>
+                        p.dd <= -20 ? 'rgba(239,68,68,0.85)' :
+                        p.dd <= -10 ? 'rgba(239,68,68,0.55)' :
+                        p.dd <= -5  ? 'rgba(245,158,11,0.7)' :
+                        p.dd <  -0.5 ? 'rgba(245,158,11,0.45)' :
+                                       'rgba(16,185,129,0.55)'
+                    );
+                    return {
+                        type: 'bar',
+                        data: {
+                            labels: top.map(p => p.symbol),
+                            datasets: [{
+                                data: top.map(p => p.dd),
+                                backgroundColor: colors,
+                                borderRadius: 3,
+                                borderSkipped: false,
+                            }]
+                        },
+                        options: {
+                            indexAxis: 'y',
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            scales: {
+                                x: {
+                                    ticks: { color: 'rgba(255,255,255,0.4)', callback: v => v + '%', font: { size: 10 } },
+                                    grid: { color: 'rgba(255,255,255,0.04)' },
+                                    suggestedMin: Math.min(-25, Math.floor(top[0].dd / 5) * 5),
+                                    suggestedMax: 0
+                                },
+                                y: {
+                                    ticks: { color: 'rgba(255,255,255,0.6)', font: { family: 'JetBrains Mono', size: 10 } },
+                                    grid: { display: false }
+                                }
+                            },
+                            plugins: {
+                                legend: { display: false },
+                                tooltip: { callbacks: { label: ctx => ctx.parsed.x.toFixed(2) + '%' } }
+                            }
+                        }
+                    };
+                },
+                [rows, ddIsPct]
+            );
 
-            // Max DD magnitude across portfolio for bar scaling
-            const maxMagnitude = Math.max(0.01, ...rows.map(r => Math.abs(Number(r.current_drawdown_pct) || 0)));
-
-            // Worst drawdown in portfolio
-            const worst = rows.reduce((w, r) =>
-                Number(r.current_drawdown_pct) < Number(w.current_drawdown_pct) ? r : w, rows[0]);
+            // === Narrative ===
+            const pctStr = (v, d) => v == null ? 'n/a' : (v * 100).toFixed(d != null ? d : 1) + '%';
+            const narrative = [
+                {
+                    icon: '\u25C7',
+                    text: '<strong>' + buckets.deep + '</strong> position(s) are in <span class="neg">deep drawdown (worse than -20%)</span>, ' +
+                          '<strong>' + buckets.severe + '</strong> in severe (-10% to -20%), and ' +
+                          '<strong>' + (buckets.peak + buckets.moderate) + '</strong> within 10% of peak.'
+                },
+                {
+                    icon: '\u25BC',
+                    text: 'Worst position: <span class="mono neg">' + worst.symbol + '</span> at <span class="neg">' + pctStr(worstDD, 2) + '</span>' +
+                          (recoveryKey && recRatio(worst) != null ? ', requiring <span class="mono">' + pctStr(recRatio(worst), 1) + '</span> recovery to make new highs.' : '.')
+                },
+                {
+                    icon: '\u25C8',
+                    text: 'Median position drawdown: <span class="mono">' + pctStr(medianDD, 2) + '</span>' +
+                          (avgRecovery != null
+                              ? '. Average recovery needed across in-drawdown names: <span class="mono">' + pctStr(avgRecovery, 1) + '</span>.'
+                              : '.')
+                }
+            ];
 
             return React.createElement('div', null,
-                // Summary strip
+                React.createElement(NarrativeStrip, { items: narrative }),
+
+                // Tier summary strip
                 React.createElement('div', { className: 'metrics-row' },
                     React.createElement('div', { className: 'metric-card' },
                         React.createElement('div', { className: 'label' }, 'At / Near Peak'),
-                        React.createElement('div', { className: 'value positive' }, atPeak)),
+                        React.createElement('div', { className: 'value positive' }, buckets.peak),
+                        React.createElement('div', { className: 'sub' }, 'within 0.5% of high')),
                     React.createElement('div', { className: 'metric-card' },
-                        React.createElement('div', { className: 'label' }, 'Moderate DD (0 to -10%)'),
-                        React.createElement('div', { className: 'value' }, moderate)),
+                        React.createElement('div', { className: 'label' }, 'Moderate (-0.5 to -10%)'),
+                        React.createElement('div', { className: 'value' }, buckets.moderate)),
                     React.createElement('div', { className: 'metric-card' },
-                        React.createElement('div', { className: 'label' }, 'Severe DD (-10 to -20%)'),
-                        React.createElement('div', { className: 'value neutral' }, severe)),
+                        React.createElement('div', { className: 'label' }, 'Severe (-10 to -20%)'),
+                        React.createElement('div', { className: 'value neutral' }, buckets.severe)),
                     React.createElement('div', { className: 'metric-card' },
-                        React.createElement('div', { className: 'label' }, 'Deep DD (\u2264 -20%)'),
-                        React.createElement('div', { className: 'value negative' }, deep)),
+                        React.createElement('div', { className: 'label' }, 'Deep (\u2264 -20%)'),
+                        React.createElement('div', { className: 'value negative' }, buckets.deep)),
                     React.createElement('div', { className: 'metric-card' },
                         React.createElement('div', { className: 'label' }, 'Worst Position'),
                         React.createElement('div', { className: 'value negative' }, worst.symbol),
-                        React.createElement('div', { className: 'sub' },
-                            fmt(Number(worst.current_drawdown_pct) * 100, 1) + '%'))
+                        React.createElement('div', { className: 'sub' }, pctStr(worstDD, 2)))
                 ),
 
-                // Full table
+                // Waterfall chart card
                 React.createElement('div', { className: 'card' },
                     React.createElement('div', { className: 'card-title' },
-                        'Drawdown Map (' + rows.length + ' positions)'),
+                        'Drawdown Waterfall — Top 30 by Severity'),
+                    React.createElement('div', { className: 'chart-pane tall' },
+                        React.createElement('canvas', { ref: waterfallRef }))
+                ),
+
+                // Detailed table
+                React.createElement('div', { className: 'card' },
+                    React.createElement('div', { className: 'card-title' },
+                        'Position-Level Drawdown (' + rows.length + ')'),
                     React.createElement('div', { style: { overflowX: 'auto' } },
                         React.createElement('table', { className: 'data-table' },
                             React.createElement('thead', null,
@@ -1919,7 +2532,7 @@
                                         peakPriceKey ? { key: peakPriceKey, label: 'Peak $' } : null,
                                         peakDateKey  ? { key: peakDateKey,  label: 'Peak Date' } : null,
                                         { key: 'current_price', label: 'Current $' },
-                                        { key: 'current_drawdown_pct', label: 'Drawdown %' },
+                                        { key: 'current_drawdown_pct', label: 'Drawdown' },
                                         recoveryKey ? { key: recoveryKey, label: 'Recovery Needed' } : null,
                                         regimeKey   ? { key: regimeKey,   label: 'Regime' } : null,
                                     ].filter(Boolean).map(c => React.createElement('th', {
@@ -1929,9 +2542,9 @@
                                     }, c.label + (sortKey === c.key ? (sortDir === 'asc' ? ' \u25B2' : ' \u25BC') : ''))))),
                             React.createElement('tbody', null,
                                 sorted.map(r => {
-                                    const dd = Number(r.current_drawdown_pct) || 0;
+                                    const dd = ddRatio(r) ?? 0;
                                     const magnitude = Math.abs(dd);
-                                    const barWidth = (magnitude / maxMagnitude) * 100;
+                                    const barWidth = Math.min(100, (magnitude / 0.30) * 100);  // anchor scale at -30%
                                     const cells = [
                                         React.createElement('td', { key: 's', style: { fontWeight: 600, color: '#00d4ff' } }, r.symbol),
                                     ];
@@ -1944,13 +2557,15 @@
                                         React.createElement('td', { key: 'cp' }, fmtCurrency(r.current_price)));
                                     cells.push(
                                         React.createElement('td', { key: 'dd', className: cls(dd) },
-                                            fmt(dd * 100, 2) + '%',
+                                            (dd * 100).toFixed(2) + '%',
                                             React.createElement('span', { className: 'dd-bar-wrap' },
                                                 React.createElement('span', { className: 'dd-bar', style: { width: barWidth.toFixed(1) + '%' } })
                                             )));
-                                    if (recoveryKey) cells.push(
-                                        React.createElement('td', { key: 'rn' },
-                                            r[recoveryKey] != null ? fmt(Number(r[recoveryKey]) * 100, 2) + '%' : '\u2014'));
+                                    if (recoveryKey) {
+                                        const rec = recRatio(r);
+                                        cells.push(React.createElement('td', { key: 'rn' },
+                                            rec != null ? (rec * 100).toFixed(2) + '%' : '\u2014'));
+                                    }
                                     if (regimeKey) cells.push(
                                         React.createElement('td', { key: 'rg' },
                                             React.createElement('span', { className: 'badge ' + badgeCls(r[regimeKey]) },
