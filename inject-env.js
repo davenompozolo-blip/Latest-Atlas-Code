@@ -1,35 +1,35 @@
 // inject-env.js — Vercel build-time Supabase key injection
+//
+// After the 2026-04 refactor, the SUPABASE_KEY line lives in
+// public/js/config.js (it used to be inline in public/index.html).
+// Vercel runs this during `vercel build` via vercel.json#buildCommand.
 const fs = require('fs');
 
-const indexPath = 'public/index.html';
+const configPath = 'public/js/config.js';
 
-if (!fs.existsSync(indexPath)) {
-  console.log('[ATLAS] No public/index.html found — skipping injection');
+if (!fs.existsSync(configPath)) {
+  console.log('[ATLAS] No ' + configPath + ' found — skipping injection');
   process.exit(0);
 }
 
-let html = fs.readFileSync(indexPath, 'utf8');
+let js = fs.readFileSync(configPath, 'utf8');
 
 // ATLAS_SUPABASE_KEY takes priority — use this to bypass store-linked
 // SUPABASE_ANON_KEY that Vercel won't let you edit/delete.
 const anonKey = process.env.ATLAS_SUPABASE_KEY || process.env.SUPABASE_ANON_KEY;
 
 if (anonKey) {
-  // Match the actual pattern in index.html line 29
-  const replaced = html.replace(
-    "const SUPABASE_KEY = window.ATLAS_CONFIG.supabaseKey || '';",
-    `const SUPABASE_KEY = window.ATLAS_CONFIG.supabaseKey || '${anonKey}';`
-  );
-  if (replaced === html) {
-    console.log('[ATLAS] WARNING: replacement pattern not found — trying fallback patterns');
-    // Fallback: try the simple pattern
-    html = html.replace("const SUPABASE_KEY = '';", `const SUPABASE_KEY = '${process.env.SUPABASE_ANON_KEY}';`);
+  // Match the exact pattern in public/js/config.js
+  const pattern = "export const SUPABASE_KEY = window.ATLAS_CONFIG.supabaseKey || '';";
+  const replacement = `export const SUPABASE_KEY = window.ATLAS_CONFIG.supabaseKey || '${anonKey}';`;
+  const replaced = js.replace(pattern, replacement);
+  if (replaced === js) {
+    console.log('[ATLAS] WARNING: replacement pattern not found in ' + configPath);
   } else {
-    html = replaced;
+    js = replaced;
+    console.log('[ATLAS] Supabase anon key injected into ' + configPath);
   }
-  console.log('[ATLAS] Supabase anon key injected successfully');
+  fs.writeFileSync(configPath, js);
 } else {
   console.log('[ATLAS] Warning: SUPABASE_ANON_KEY not set — terminal will run in demo mode');
 }
-
-fs.writeFileSync(indexPath, html);
