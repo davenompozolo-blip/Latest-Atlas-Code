@@ -16,6 +16,7 @@ import { ConfigPrompt, TopBarSparkline, SyncStatusPill } from './components.js';
 import { PortfolioHome } from './portfolio-home.js';
 import { QuantDashboard } from './quant-dashboard.js';
 import { RiskAnalysis, PerformanceSuite, CommandCentre } from './pages-other.js';
+import { EquityResearch } from './equity-research.js';
 
 const { useState, useEffect } = React;
 
@@ -28,6 +29,7 @@ const TABS = [
     { id: 'risk', label: 'RISK', sub: 'Metrics & Drawdown', icon: '\u25B3', component: RiskAnalysis },
     { id: 'performance', label: 'PERFORMANCE', sub: 'Returns & Attribution', icon: '\u25C6', component: PerformanceSuite },
     { id: 'command', label: 'COMMAND', sub: 'System Overview', icon: '\u2726', component: CommandCentre },
+    { id: 'equity', label: 'EQUITY', sub: 'Ticker Research', icon: '\u25A1', component: EquityResearch },
 ];
 
 const NAV_STRUCTURE = [
@@ -40,7 +42,7 @@ const NAV_STRUCTURE = [
     { type: 'tab', id: 'risk' },
     { type: 'tab', id: 'command' },
     { type: 'header', label: 'RESEARCH' },
-    { type: 'placeholder', label: 'EQUITY', sub: 'Coming Soon' },
+    { type: 'tab', id: 'equity' },
     { type: 'placeholder', label: 'MACRO', sub: 'Coming Soon' },
     { type: 'placeholder', label: 'FUNDS', sub: 'Coming Soon' },
     { type: 'header', label: 'MARKETS' },
