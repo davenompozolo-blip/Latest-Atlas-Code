@@ -1,270 +1,343 @@
-// Vercel Serverless Function: Yahoo Finance proxy for ATLAS Equity Research.
+// Vercel Serverless Function: equity data proxy for ATLAS Equity Research.
 //
-// We initially wired this against Alpha Vantage but the 25-request/day free
-// tier is blown after analysing two or three tickers. Yahoo Finance (the same
-// source yfinance uses) has no API key, no documented limit, and returns both
-// fundamentals and daily price history in two calls.
+// History of this file (why it keeps getting rewritten):
+//   1. Alpha Vantage — blown through the 25-req/day free tier instantly.
+//   2. Yahoo Finance — works, but Yahoo IP-bans Vercel's egress pools;
+//      users kept seeing "rate limit" errors because bans are per-IP, not
+//      per-account, so waiting doesn't help.
+//   3. (This version) Alpaca for prices + Yahoo for fundamentals, both
+//      cached durably in Supabase so steady-state traffic never hits the
+//      provider. Alpaca has a 200/min free tier and we already own the
+//      creds (used elsewhere for position sync), so the price path is
+//      effectively free. Yahoo's fundamentals call runs at most once per
+//      symbol per 24h.
 //
-// The proxy normalises the Yahoo payload into the exact Alpha-Vantage-shaped
-// response the browser module (public/js/equity-research.js) already parses,
-// so the frontend needs no changes when the data source pivots again later.
-//
-// Endpoints (query param `endpoint`):
-//   combined  — chart + quoteSummary (default)
-//   overview  — quoteSummary only
-//   daily     — chart only
+// Response shape is unchanged — frontend (public/js/equity-research.js)
+// keeps consuming Alpha-Vantage-keyed fields.
 //
 // Environment variables:
-//   ATLAS_ALLOWED_ORIGIN   — optional CORS allow-list for local dev
+//   ALPACA_API_KEY, ALPACA_API_SECRET   — required for price path
+//   SUPABASE_URL                        — required for durable cache
+//   SUPABASE_SERVICE_ROLE_KEY           — required for durable cache
+//   ATLAS_ALLOWED_ORIGIN                — optional CORS allow-list
 //
-// Notes on Yahoo's quirks:
-//   • The /quoteSummary endpoint requires a "crumb" token + session cookie.
-//     We run a one-time bootstrap against fc.yahoo.com and cache crumb+cookie
-//     for 1 hour (per cold container).
-//   • Yahoo sometimes rate-limits serverless IPs with 429s. We surface those
-//     so the UI can back off.
-//   • Chart endpoint does NOT need a crumb, so a pure price-history request
-//     survives even if the crumb handshake fails.
+// If SUPABASE_SERVICE_ROLE_KEY is missing, caching silently degrades to
+// the in-memory Map (same behaviour as the previous version).
 
-const YF = 'https://query2.finance.yahoo.com';
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36';
-const CACHE_TTL_MS = 15 * 60 * 1000;
-const CRUMB_TTL_MS = 60 * 60 * 1000;
 const SYMBOL_RE = /^[A-Z0-9.\-^=]{1,14}$/;
 const ALLOWED_ENDPOINTS = new Set(['combined', 'overview', 'daily']);
+
+const TTL_DAILY_MS    = 4 * 60 * 60 * 1000;     // 4h
+const TTL_OVERVIEW_MS = 24 * 60 * 60 * 1000;    // 24h
+const MEM_TTL_MS      = 15 * 60 * 1000;          // fallback in-memory only
+const CRUMB_TTL_MS    = 60 * 60 * 1000;
+
+const ALPACA_BASE = 'https://data.alpaca.markets/v2';
+const YF          = 'https://query2.finance.yahoo.com';
 const SUMMARY_MODULES = 'summaryProfile,summaryDetail,financialData,defaultKeyStatistics,recommendationTrend,price';
 
-const _dataCache = new Map();
-let _crumbCache = null;
+const _memCache = new Map();
+let _crumb = null;
 
-// Yahoo uses hyphens for class-share tickers (BRK-B, BF-B) where Bloomberg /
-// Alpha Vantage / most humans use dots (BRK.B). Translate for the upstream
-// call but keep the user-visible symbol as-typed in the cache key + response.
-function yfSymbol(s) { return s.replace(/\./g, '-'); }
-
-function cacheGet(key) {
-  const e = _dataCache.get(key);
-  if (!e) return null;
-  if (Date.now() - e.ts > CACHE_TTL_MS) { _dataCache.delete(key); return null; }
-  return e.data;
-}
-function cacheSet(key, data) { _dataCache.set(key, { ts: Date.now(), data }); }
+// ------------------------------------------------------------
+// Low-level helpers
+// ------------------------------------------------------------
 
 async function fetchWithTimeout(url, opts, ms) {
-  const ac = new AbortController();
-  const timer = setTimeout(function() { ac.abort(); }, ms || 8000);
-  try {
-    return await fetch(url, Object.assign({ signal: ac.signal }, opts || {}));
-  } finally { clearTimeout(timer); }
+    const ac = new AbortController();
+    const t = setTimeout(function() { ac.abort(); }, ms || 8000);
+    try { return await fetch(url, Object.assign({ signal: ac.signal }, opts || {})); }
+    finally { clearTimeout(t); }
 }
+
+function memGet(key) {
+    const e = _memCache.get(key);
+    if (!e) return null;
+    if (Date.now() - e.ts > MEM_TTL_MS) { _memCache.delete(key); return null; }
+    return e.data;
+}
+function memSet(key, data) { _memCache.set(key, { ts: Date.now(), data }); }
+
+// ------------------------------------------------------------
+// Supabase durable cache (read-through / write-back)
+// ------------------------------------------------------------
+
+function supaCfg() {
+    const url = process.env.SUPABASE_URL || process.env.ATLAS_SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!url || !key) return null;
+    return { url: url.replace(/\/$/, ''), key };
+}
+
+async function dbCacheGet(cacheKey) {
+    const cfg = supaCfg();
+    if (!cfg) return null;
+    try {
+        const url = cfg.url + '/rest/v1/equity_cache'
+            + '?cache_key=eq.' + encodeURIComponent(cacheKey)
+            + '&select=payload,expires_at';
+        const r = await fetchWithTimeout(url, {
+            headers: { apikey: cfg.key, Authorization: 'Bearer ' + cfg.key, accept: 'application/json' },
+        }, 4000);
+        if (!r.ok) return null;
+        const rows = await r.json();
+        if (!Array.isArray(rows) || !rows.length) return null;
+        if (new Date(rows[0].expires_at).getTime() < Date.now()) return null;
+        return rows[0].payload;
+    } catch (_) { return null; }
+}
+
+async function dbCacheSet(cacheKey, symbol, endpoint, payload, ttlMs) {
+    const cfg = supaCfg();
+    if (!cfg) return;
+    try {
+        const body = [{
+            cache_key: cacheKey,
+            symbol: symbol,
+            endpoint: endpoint,
+            payload: payload,
+            cached_at: new Date().toISOString(),
+            expires_at: new Date(Date.now() + ttlMs).toISOString(),
+        }];
+        await fetchWithTimeout(cfg.url + '/rest/v1/equity_cache', {
+            method: 'POST',
+            headers: {
+                apikey: cfg.key,
+                Authorization: 'Bearer ' + cfg.key,
+                'Content-Type': 'application/json',
+                Prefer: 'resolution=merge-duplicates,return=minimal',
+            },
+            body: JSON.stringify(body),
+        }, 4000);
+    } catch (_) { /* non-fatal */ }
+}
+
+// ------------------------------------------------------------
+// Upstream A: Alpaca (daily bars) — primary price source
+// ------------------------------------------------------------
+
+async function alpacaBars(symbol) {
+    const key = process.env.ALPACA_API_KEY;
+    const secret = process.env.ALPACA_API_SECRET;
+    if (!key || !secret) throw new Error('Alpaca credentials not configured on server (ALPACA_API_KEY / ALPACA_API_SECRET)');
+
+    // 2-year window so 1Y return + 90D vol have headroom even on holidays.
+    const end = new Date();
+    const start = new Date(end.getTime() - 730 * 24 * 60 * 60 * 1000);
+    // Alpaca class-share convention is dotted (BRK.B). URL-encode to be safe.
+    const url = ALPACA_BASE + '/stocks/' + encodeURIComponent(symbol) + '/bars'
+        + '?timeframe=1Day'
+        + '&start=' + start.toISOString().slice(0, 10)
+        + '&end=' + end.toISOString().slice(0, 10)
+        + '&limit=10000'
+        + '&adjustment=raw'
+        + '&feed=iex';
+
+    const r = await fetchWithTimeout(url, {
+        headers: { 'APCA-API-KEY-ID': key, 'APCA-API-SECRET-KEY': secret, accept: 'application/json' },
+    });
+    if (r.status === 404) throw new Error('Symbol not found on Alpaca: ' + symbol);
+    if (r.status === 403 || r.status === 401) throw new Error('Alpaca auth failed (check ALPACA_API_KEY / ALPACA_API_SECRET)');
+    if (r.status === 429) throw new Error('Alpaca rate limit: try again in a moment');
+    if (!r.ok) throw new Error('Alpaca HTTP ' + r.status);
+    const j = await r.json();
+    return (j && j.bars) || [];
+}
+
+function mapAlpacaDaily(bars) {
+    const series = {};
+    for (let i = 0; i < bars.length; i++) {
+        const b = bars[i];
+        const date = String(b.t).slice(0, 10);
+        if (!date || b.c == null) continue;
+        series[date] = {
+            '1. open':   String(b.o != null ? b.o : b.c),
+            '2. high':   String(b.h != null ? b.h : b.c),
+            '3. low':    String(b.l != null ? b.l : b.c),
+            '4. close':  String(b.c),
+            '5. volume': String(b.v != null ? b.v : 0),
+        };
+    }
+    return { 'Time Series (Daily)': series };
+}
+
+// ------------------------------------------------------------
+// Upstream B: Yahoo quoteSummary — fundamentals only
+// ------------------------------------------------------------
+
+function yfSymbol(s) { return s.replace(/\./g, '-'); }
 
 async function bootstrapCrumb() {
-  if (_crumbCache && Date.now() - _crumbCache.ts < CRUMB_TTL_MS) return _crumbCache;
-  // Step 1: acquire a session cookie. fc.yahoo.com returns consent cookies.
-  const sess = await fetchWithTimeout('https://fc.yahoo.com', {
-    headers: { 'User-Agent': UA, accept: 'text/html' },
-    redirect: 'manual',
-  });
-  const raw = typeof sess.headers.getSetCookie === 'function'
-    ? sess.headers.getSetCookie()
-    : [sess.headers.get('set-cookie')].filter(Boolean);
-  const cookie = raw.map(function(c) { return String(c).split(';')[0]; }).filter(Boolean).join('; ');
-  if (!cookie) throw new Error('Yahoo session cookie handshake failed');
-  // Step 2: exchange cookie for a crumb
-  const crumbRes = await fetchWithTimeout(YF + '/v1/test/getcrumb', {
-    headers: { 'User-Agent': UA, Cookie: cookie, accept: 'text/plain' },
-  });
-  if (!crumbRes.ok) throw new Error('Yahoo crumb request HTTP ' + crumbRes.status);
-  const crumb = (await crumbRes.text()).trim();
-  if (!crumb || crumb.length < 4) throw new Error('Yahoo crumb response empty');
-  _crumbCache = { crumb, cookie, ts: Date.now() };
-  return _crumbCache;
-}
-
-async function yfChart(symbol) {
-  const url = YF + '/v8/finance/chart/' + encodeURIComponent(yfSymbol(symbol)) + '?range=2y&interval=1d&includePrePost=false';
-  const r = await fetchWithTimeout(url, { headers: { 'User-Agent': UA, accept: 'application/json' } });
-  if (r.status === 429) throw new Error('Yahoo rate limit (chart): try again in a few seconds');
-  if (r.status === 404) throw new Error('Symbol not found on Yahoo Finance: ' + symbol);
-  if (!r.ok) throw new Error('Yahoo chart HTTP ' + r.status);
-  const j = await r.json();
-  const err = j && j.chart && j.chart.error;
-  if (err) throw new Error('Yahoo: ' + (err.description || err.code || 'unknown error'));
-  const result = j && j.chart && j.chart.result && j.chart.result[0];
-  if (!result) throw new Error('Yahoo chart returned no result');
-  return result;
+    if (_crumb && Date.now() - _crumb.ts < CRUMB_TTL_MS) return _crumb;
+    const sess = await fetchWithTimeout('https://fc.yahoo.com', {
+        headers: { 'User-Agent': UA, accept: 'text/html' }, redirect: 'manual',
+    });
+    const raw = typeof sess.headers.getSetCookie === 'function'
+        ? sess.headers.getSetCookie()
+        : [sess.headers.get('set-cookie')].filter(Boolean);
+    const cookie = raw.map(function(c) { return String(c).split(';')[0]; }).filter(Boolean).join('; ');
+    if (!cookie) throw new Error('Yahoo cookie handshake failed');
+    const crumbRes = await fetchWithTimeout(YF + '/v1/test/getcrumb', {
+        headers: { 'User-Agent': UA, Cookie: cookie, accept: 'text/plain' },
+    });
+    if (!crumbRes.ok) throw new Error('Yahoo crumb HTTP ' + crumbRes.status);
+    const crumb = (await crumbRes.text()).trim();
+    if (!crumb || crumb.length < 4) throw new Error('Yahoo crumb empty');
+    _crumb = { crumb: crumb, cookie: cookie, ts: Date.now() };
+    return _crumb;
 }
 
 async function yfSummary(symbol) {
-  // Try with crumb; if that fails (serverless IPs sometimes get 401),
-  // fall back to query1 which occasionally lets unauthenticated calls through.
-  try {
-    const { crumb, cookie } = await bootstrapCrumb();
-    const url = YF + '/v10/finance/quoteSummary/' + encodeURIComponent(yfSymbol(symbol))
-              + '?modules=' + SUMMARY_MODULES
-              + '&crumb=' + encodeURIComponent(crumb);
-    const r = await fetchWithTimeout(url, { headers: { 'User-Agent': UA, Cookie: cookie, accept: 'application/json' } });
-    if (r.status === 429) throw new Error('Yahoo rate limit (summary): try again in a few seconds');
-    if (!r.ok) throw new Error('Yahoo summary HTTP ' + r.status);
-    const j = await r.json();
-    const err = j && j.quoteSummary && j.quoteSummary.error;
-    if (err) throw new Error('Yahoo: ' + (err.description || err.code || 'unknown error'));
-    const result = j && j.quoteSummary && j.quoteSummary.result && j.quoteSummary.result[0];
-    if (!result) throw new Error('Yahoo summary returned no result');
-    return result;
-  } catch (e) {
-    // Invalidate crumb cache on failure so the next call re-bootstraps
-    _crumbCache = null;
-    throw e;
-  }
+    try {
+        const b = await bootstrapCrumb();
+        const url = YF + '/v10/finance/quoteSummary/' + encodeURIComponent(yfSymbol(symbol))
+            + '?modules=' + SUMMARY_MODULES + '&crumb=' + encodeURIComponent(b.crumb);
+        const r = await fetchWithTimeout(url, {
+            headers: { 'User-Agent': UA, Cookie: b.cookie, accept: 'application/json' },
+        });
+        if (r.status === 429) throw new Error('Yahoo rate limit (summary)');
+        if (!r.ok) throw new Error('Yahoo summary HTTP ' + r.status);
+        const j = await r.json();
+        const err = j && j.quoteSummary && j.quoteSummary.error;
+        if (err) throw new Error('Yahoo: ' + (err.description || err.code));
+        const result = j && j.quoteSummary && j.quoteSummary.result && j.quoteSummary.result[0];
+        if (!result) throw new Error('Yahoo summary returned no result');
+        return result;
+    } catch (e) { _crumb = null; throw e; }
 }
 
-// ---------------------------------------------------------------
-// Normalisation — map Yahoo shapes onto Alpha-Vantage-style keys so
-// the frontend (which was written against AV) needs no changes.
-// ---------------------------------------------------------------
-
-function rawVal(x) {
-  if (x == null) return null;
-  if (typeof x === 'object' && 'raw' in x) return x.raw;
-  return x;
-}
+function rawVal(x) { if (x == null) return null; return (typeof x === 'object' && 'raw' in x) ? x.raw : x; }
 
 function mapOverview(summary, symbol) {
-  if (!summary) return null;
-  const price = summary.price || {};
-  const profile = summary.summaryProfile || {};
-  const detail = summary.summaryDetail || {};
-  const fin = summary.financialData || {};
-  const stats = summary.defaultKeyStatistics || {};
-  const trend = summary.recommendationTrend && summary.recommendationTrend.trend;
-  const rec = (trend && trend[0]) || null;
+    if (!summary) return { Symbol: symbol, Name: symbol };
+    const price = summary.price || {};
+    const profile = summary.summaryProfile || {};
+    const detail = summary.summaryDetail || {};
+    const fin = summary.financialData || {};
+    const stats = summary.defaultKeyStatistics || {};
+    const trend = summary.recommendationTrend && summary.recommendationTrend.trend;
+    const rec = (trend && trend[0]) || null;
 
-  // Alpha-Vantage OVERVIEW shape. Numeric fields must be stringified because
-  // parseOverview() on the frontend does Number(o[k]) on them.
-  const out = {
-    Symbol: price.symbol || symbol,
-    Name: price.longName || price.shortName || symbol,
-    Description: profile.longBusinessSummary || '',
-    Exchange: price.exchangeName || price.fullExchangeName || '',
-    Currency: price.currency || 'USD',
-    Sector: profile.sector || '',
-    Industry: profile.industry || '',
-  };
-  const set = function(key, v) { if (v != null && isFinite(Number(v))) out[key] = String(v); };
-  set('MarketCapitalization', rawVal(price.marketCap) != null ? rawVal(price.marketCap) : rawVal(detail.marketCap));
-  set('PERatio',       rawVal(detail.trailingPE));
-  set('PEGRatio',      rawVal(stats.pegRatio));
-  set('Beta',          rawVal(detail.beta) != null ? rawVal(detail.beta) : rawVal(stats.beta));
-  set('EPS',           rawVal(stats.trailingEps));
-  set('DividendYield', rawVal(detail.dividendYield));
-  set('AnalystTargetPrice', rawVal(fin.targetMeanPrice));
-  if (rec) {
-    set('AnalystRatingStrongBuy',  rec.strongBuy);
-    set('AnalystRatingBuy',        rec.buy);
-    set('AnalystRatingHold',       rec.hold);
-    set('AnalystRatingSell',       rec.sell);
-    set('AnalystRatingStrongSell', rec.strongSell);
-  }
-  return out;
-}
-
-function mapDaily(chart) {
-  const empty = { 'Time Series (Daily)': {} };
-  if (!chart || !chart.timestamp || !chart.timestamp.length) return empty;
-  const ts = chart.timestamp;
-  const q = (chart.indicators && chart.indicators.quote && chart.indicators.quote[0]) || {};
-  const closes = q.close || [];
-  const opens = q.open || [];
-  const highs = q.high || [];
-  const lows = q.low || [];
-  const vols = q.volume || [];
-  const series = {};
-  for (let i = 0; i < ts.length; i++) {
-    const close = closes[i];
-    if (close == null) continue;
-    const iso = new Date(ts[i] * 1000).toISOString().slice(0, 10);
-    series[iso] = {
-      '1. open':   String(opens[i] != null ? opens[i] : close),
-      '2. high':   String(highs[i] != null ? highs[i] : close),
-      '3. low':    String(lows[i] != null ? lows[i]  : close),
-      '4. close':  String(close),
-      '5. volume': String(vols[i] != null ? vols[i]  : 0),
+    const out = {
+        Symbol: price.symbol || symbol,
+        Name: price.longName || price.shortName || symbol,
+        Description: profile.longBusinessSummary || '',
+        Exchange: price.exchangeName || price.fullExchangeName || '',
+        Currency: price.currency || 'USD',
+        Sector: profile.sector || '',
+        Industry: profile.industry || '',
     };
-  }
-  return { 'Time Series (Daily)': series };
+    const set = function(k, v) { if (v != null && isFinite(Number(v))) out[k] = String(v); };
+    set('MarketCapitalization', rawVal(price.marketCap) != null ? rawVal(price.marketCap) : rawVal(detail.marketCap));
+    set('PERatio',       rawVal(detail.trailingPE));
+    set('PEGRatio',      rawVal(stats.pegRatio));
+    set('Beta',          rawVal(detail.beta) != null ? rawVal(detail.beta) : rawVal(stats.beta));
+    set('EPS',           rawVal(stats.trailingEps));
+    set('DividendYield', rawVal(detail.dividendYield));
+    set('AnalystTargetPrice', rawVal(fin.targetMeanPrice));
+    if (rec) {
+        set('AnalystRatingStrongBuy',  rec.strongBuy);
+        set('AnalystRatingBuy',        rec.buy);
+        set('AnalystRatingHold',       rec.hold);
+        set('AnalystRatingSell',       rec.sell);
+        set('AnalystRatingStrongSell', rec.strongSell);
+    }
+    return out;
 }
 
-// ---------------------------------------------------------------
+// ------------------------------------------------------------
+// Cached getters (read-through → in-mem → DB → upstream → write-back)
+// ------------------------------------------------------------
+
+async function getDaily(symbol) {
+    const key = symbol + ':daily';
+    const mem = memGet(key); if (mem) return { data: mem, cache: 'mem' };
+    const db = await dbCacheGet(key);
+    if (db) { memSet(key, db); return { data: db, cache: 'db' }; }
+    const bars = await alpacaBars(symbol);
+    if (!bars.length) throw new Error('No bars returned for ' + symbol);
+    const data = mapAlpacaDaily(bars);
+    memSet(key, data);
+    dbCacheSet(key, symbol, 'daily', data, TTL_DAILY_MS);  // fire-and-forget
+    return { data: data, cache: 'miss' };
+}
+
+async function getOverview(symbol) {
+    const key = symbol + ':overview';
+    const mem = memGet(key); if (mem) return { data: mem, cache: 'mem' };
+    const db = await dbCacheGet(key);
+    if (db) { memSet(key, db); return { data: db, cache: 'db' }; }
+    const summary = await yfSummary(symbol);
+    const data = mapOverview(summary, symbol);
+    memSet(key, data);
+    dbCacheSet(key, symbol, 'overview', data, TTL_OVERVIEW_MS);
+    return { data: data, cache: 'miss' };
+}
+
+// ------------------------------------------------------------
 // Handler
-// ---------------------------------------------------------------
+// ------------------------------------------------------------
 
 module.exports = async function handler(req, res) {
-  if (req.method === 'OPTIONS') { applyCors(res); return res.status(204).end(); }
-  if (req.method !== 'GET')     { applyCors(res); return res.status(405).json({ error: 'GET only' }); }
+    if (req.method === 'OPTIONS') { applyCors(res); return res.status(204).end(); }
+    if (req.method !== 'GET')     { applyCors(res); return res.status(405).json({ error: 'GET only' }); }
 
-  const rawSymbol = (req.query && req.query.symbol) || '';
-  const symbol = String(rawSymbol).trim().toUpperCase();
-  if (!symbol || !SYMBOL_RE.test(symbol)) {
-    applyCors(res);
-    return res.status(400).json({ error: 'Missing or malformed symbol' });
-  }
-
-  const endpoint = String((req.query && req.query.endpoint) || 'combined').toLowerCase();
-  if (!ALLOWED_ENDPOINTS.has(endpoint)) {
-    applyCors(res);
-    return res.status(400).json({ error: 'Unknown endpoint (expected: combined | overview | daily)' });
-  }
-
-  const cacheKey = symbol + ':' + endpoint;
-  const cached = cacheGet(cacheKey);
-  if (cached) { applyCors(res); res.setHeader('x-cache', 'HIT'); return res.status(200).json(cached); }
-
-  try {
-    const payload = { symbol, cached_at: new Date().toISOString(), source: 'yahoo-finance' };
-    if (endpoint === 'overview') {
-      const summary = await yfSummary(symbol);
-      payload.overview = mapOverview(summary, symbol);
-    } else if (endpoint === 'daily') {
-      const chart = await yfChart(symbol);
-      payload.daily = mapDaily(chart);
-    } else {
-      // Run in parallel — quoteSummary and chart are independent
-      const [summaryResult, chartResult] = await Promise.allSettled([
-        yfSummary(symbol),
-        yfChart(symbol),
-      ]);
-      // Chart is the critical path (price history powers every metric tile)
-      if (chartResult.status !== 'fulfilled') throw chartResult.reason;
-      payload.daily = mapDaily(chartResult.value);
-      // Summary is best-effort — if it fails (401/crumb issue), still return
-      // a usable response with price history and log the error for debugging.
-      if (summaryResult.status === 'fulfilled') {
-        payload.overview = mapOverview(summaryResult.value, symbol);
-      } else {
-        payload.overview = { Symbol: symbol, Name: symbol };
-        payload.overview_error = (summaryResult.reason && summaryResult.reason.message) || 'summary unavailable';
-      }
+    const symbol = String((req.query && req.query.symbol) || '').trim().toUpperCase();
+    if (!symbol || !SYMBOL_RE.test(symbol)) {
+        applyCors(res);
+        return res.status(400).json({ error: 'Missing or malformed symbol' });
     }
-    cacheSet(cacheKey, payload);
-    applyCors(res);
-    res.setHeader('x-cache', 'MISS');
-    return res.status(200).json(payload);
-  } catch (e) {
-    applyCors(res);
-    const msg = (e && e.message) ? e.message : String(e);
-    const status = /rate limit/i.test(msg) ? 429
-                : /no data|not found|delisted|HTTP 404/i.test(msg) ? 404
-                : 502;
-    return res.status(status).json({ error: msg });
-  }
+
+    const endpoint = String((req.query && req.query.endpoint) || 'combined').toLowerCase();
+    if (!ALLOWED_ENDPOINTS.has(endpoint)) {
+        applyCors(res);
+        return res.status(400).json({ error: 'Unknown endpoint (expected: combined | overview | daily)' });
+    }
+
+    try {
+        const payload = { symbol: symbol, cached_at: new Date().toISOString() };
+        const cacheHits = { overview: null, daily: null };
+
+        if (endpoint === 'overview' || endpoint === 'combined') {
+            try {
+                const o = await getOverview(symbol);
+                payload.overview = o.data;
+                cacheHits.overview = o.cache;
+            } catch (e) {
+                if (endpoint === 'overview') throw e;
+                // Combined: fundamentals are best-effort — prices still deliver value
+                payload.overview = { Symbol: symbol, Name: symbol };
+                payload.overview_error = e.message;
+            }
+        }
+        if (endpoint === 'daily' || endpoint === 'combined') {
+            const d = await getDaily(symbol);
+            payload.daily = d.data;
+            cacheHits.daily = d.cache;
+        }
+
+        payload.source = { overview: 'yahoo-finance', daily: 'alpaca' };
+        payload.cache_hits = cacheHits;
+
+        applyCors(res);
+        res.setHeader('x-cache', JSON.stringify(cacheHits));
+        return res.status(200).json(payload);
+    } catch (e) {
+        applyCors(res);
+        const msg = (e && e.message) ? e.message : String(e);
+        const status = /rate limit/i.test(msg) ? 429
+                     : /not found|no bars|HTTP 404/i.test(msg) ? 404
+                     : 502;
+        return res.status(status).json({ error: msg });
+    }
 };
 
 function applyCors(res) {
-  const origin = process.env.ATLAS_ALLOWED_ORIGIN;
-  if (origin) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'content-type');
-  }
+    const origin = process.env.ATLAS_ALLOWED_ORIGIN;
+    if (origin) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'content-type');
+    }
 }
