@@ -356,7 +356,7 @@ export function EquityResearch() {
                 React.createElement('div', { className: 'card-title', style: { color: 'var(--red)' } }, 'Request failed'),
                 React.createElement('div', { style: { fontSize: 13, color: 'rgba(255,255,255,0.7)' } }, errMsg || 'Unknown error'),
                 React.createElement('div', { style: { fontSize: 12, color: 'var(--text-muted)', marginTop: 8 } },
-                    'Check that ALPHA_VANTAGE_API_KEY is configured on Vercel and the ticker is supported by Alpha Vantage.')
+                    'Data source: Yahoo Finance. If you hit a rate-limit, wait a few seconds and retry. Class-share tickers (e.g. BRK.B) are auto-translated to Yahoo format (BRK-B).')
             )
         );
     }
