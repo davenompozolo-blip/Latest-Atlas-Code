@@ -1,0 +1,162 @@
+// ============================================================
+// ATLAS Terminal — Application Shell & Entry Point
+// ------------------------------------------------------------
+// Owns:
+//   • TAB registry + NAV_STRUCTURE sidebar config
+//   • Root <App/> component (top bar, sidebar, content router)
+//   • ReactDOM root mount
+//
+// This is the module entry point loaded by index.html as
+// <script type="module" src="js/app.js"></script>.
+// ============================================================
+
+import { sb, loadView, MOCK_COMMAND } from './config.js';
+import { fmtPct, fmtCurrency, cls } from './utils.js';
+import { ConfigPrompt, TopBarSparkline, SyncStatusPill } from './components.js';
+import { PortfolioHome } from './portfolio-home.js';
+import { QuantDashboard } from './quant-dashboard.js';
+import { RiskAnalysis, PerformanceSuite, CommandCentre } from './pages-other.js';
+
+const { useState, useEffect } = React;
+
+// ------------------------------------------------------------
+// Tab registry & sidebar navigation structure
+// ------------------------------------------------------------
+const TABS = [
+    { id: 'portfolio', label: 'PORTFOLIO', sub: 'Positions & NAV', icon: '\u25CB', component: PortfolioHome },
+    { id: 'quant', label: 'QUANT', sub: 'Quantitative Signals', icon: '\u25C7', component: QuantDashboard },
+    { id: 'risk', label: 'RISK', sub: 'Metrics & Drawdown', icon: '\u25B3', component: RiskAnalysis },
+    { id: 'performance', label: 'PERFORMANCE', sub: 'Returns & Attribution', icon: '\u25C6', component: PerformanceSuite },
+    { id: 'command', label: 'COMMAND', sub: 'System Overview', icon: '\u2726', component: CommandCentre },
+];
+
+const NAV_STRUCTURE = [
+    { type: 'header', label: 'CORE' },
+    { type: 'tab', id: 'portfolio' },
+    { type: 'header', label: 'ANALYSIS' },
+    { type: 'tab', id: 'performance' },
+    { type: 'tab', id: 'quant' },
+    { type: 'header', label: 'SYSTEM' },
+    { type: 'tab', id: 'risk' },
+    { type: 'tab', id: 'command' },
+    { type: 'header', label: 'RESEARCH' },
+    { type: 'placeholder', label: 'EQUITY', sub: 'Coming Soon' },
+    { type: 'placeholder', label: 'MACRO', sub: 'Coming Soon' },
+    { type: 'placeholder', label: 'FUNDS', sub: 'Coming Soon' },
+    { type: 'header', label: 'MARKETS' },
+    { type: 'placeholder', label: 'MARKET', sub: 'Coming Soon' },
+];
+
+// ------------------------------------------------------------
+// Root App shell
+// ------------------------------------------------------------
+function App() {
+    var _s = useState('portfolio');
+    var activeTab = _s[0];
+    var setActiveTab = _s[1];
+    var _n = useState(null);
+    var topNav = _n[0];
+    var setTopNav = _n[1];
+    var _c = useState(null);
+    var topCmd = _c[0];
+    var setTopCmd = _c[1];
+    var _dm = useState(sb ? 'pending' : 'mock');
+    var dataMode = _dm[0];
+    var setDataMode = _dm[1];
+    var ActiveComponent = TABS.find(function(t) { return t.id === activeTab; }).component;
+
+    // Load summary data for top bar
+    useEffect(function() {
+        Promise.all([
+            loadView('vw_portfolio_nav_daily', []),
+            loadView('vw_command_centre', MOCK_COMMAND)
+        ]).then(function(res) {
+            setTopNav(res[0]);
+            var cmd = Array.isArray(res[1]) ? res[1][0] : res[1];
+            setTopCmd(cmd || MOCK_COMMAND);
+            // Promote flag from window global (set by loadView) into React state
+            setDataMode(window.__ATLAS_DATA_MODE__ || 'mock');
+        });
+    }, []);
+
+    var c = topCmd || MOCK_COMMAND;
+    var pnl = c.total_return_pct;
+    var pnlStr = pnl != null ? (pnl >= 0 ? '+' : '') + fmtCurrency(c.portfolio_nav - c.total_invested) + ' (' + fmtPct(pnl) + ')' : '';
+
+    return React.createElement('div', { className: 'app-container' },
+        // Gradient top line
+        React.createElement('div', { style: { height: 2, background: 'linear-gradient(90deg, transparent, #00d4ff, #8b5cf6, transparent)', backgroundSize: '200% 100%', animation: 'shimmer 4s linear infinite' } }),
+        // Top Bar
+        React.createElement('div', { className: 'top-bar' },
+            React.createElement('div', null,
+                React.createElement('div', { className: 'logo' }, 'ATLAS'),
+                React.createElement('div', { className: 'logo-sub' }, 'TERMINAL')
+            ),
+            React.createElement('div', { className: 'nav-summary' }, fmtCurrency(c.portfolio_nav)),
+            React.createElement('div', { className: 'nav-pnl ' + cls(pnl) }, pnlStr),
+            React.createElement(TopBarSparkline, { nav: topNav }),
+            React.createElement('div', { className: 'spacer' }),
+            React.createElement('div', {
+                    className: 'status-badge ' + (dataMode === 'live' ? 'live' : 'demo'),
+                    title: dataMode === 'live'
+                        ? 'Supabase views returned rows under anon key'
+                        : 'Anon key not returning rows — open DevTools console for [ATLAS] warnings'
+                },
+                dataMode === 'live' ? '\u25CF LIVE DATA' : '\u25CB MOCK DATA'
+            ),
+            React.createElement(SyncStatusPill, null),
+            React.createElement('div', { className: 'date' },
+                new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })
+            )
+        ),
+        // Body layout (sidebar + content)
+        React.createElement('div', { className: 'body-layout' },
+            // Left Sidebar
+            React.createElement('div', { className: 'sidebar' },
+                NAV_STRUCTURE.map(function(item, idx) {
+                    if (item.type === 'header') {
+                        return React.createElement('div', { key: 'h' + idx, className: 'nav-section-header' }, item.label);
+                    }
+                    if (item.type === 'placeholder') {
+                        return React.createElement('div', { key: 'p' + idx, className: 'nav-item disabled' },
+                            React.createElement('span', { className: 'nav-icon' }, '\u25CB'),
+                            React.createElement('div', null,
+                                React.createElement('div', { className: 'nav-label' }, item.label),
+                                React.createElement('div', { className: 'nav-sublabel' }, item.sub)
+                            )
+                        );
+                    }
+                    var tab = TABS.find(function(t) { return t.id === item.id; });
+                    if (!tab) return null;
+                    return React.createElement('button', {
+                        key: tab.id,
+                        className: 'nav-item' + (activeTab === tab.id ? ' active' : ''),
+                        onClick: function() { setActiveTab(tab.id); }
+                    },
+                        React.createElement('span', { className: 'nav-icon' }, tab.icon),
+                        React.createElement('div', null,
+                            React.createElement('div', { className: 'nav-label' }, tab.label),
+                            React.createElement('div', { className: 'nav-sublabel' }, tab.sub)
+                        )
+                    );
+                }),
+                React.createElement('div', { className: 'sidebar-footer' },
+                    'ATLAS TERMINAL v2.0',
+                    React.createElement('br'),
+                    '\u00A9 2026 ATLAS'
+                )
+            ),
+            // Main Content
+            React.createElement('div', { className: 'main-content' },
+                !sb ? React.createElement(ConfigPrompt, null) : null,
+                React.createElement(ActiveComponent, null)
+            )
+        )
+    );
+}
+
+// ------------------------------------------------------------
+// Mount
+// ------------------------------------------------------------
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(React.createElement(App, null));
