@@ -5,12 +5,13 @@
 //   2. Yahoo Finance — works, but Yahoo IP-bans Vercel's egress pools;
 //      users kept seeing "rate limit" errors because bans are per-IP, not
 //      per-account, so waiting doesn't help.
-//   3. (This version) Alpaca for prices + Yahoo for fundamentals, both
-//      cached durably in Supabase so steady-state traffic never hits the
-//      provider. Alpaca has a 200/min free tier and we already own the
-//      creds (used elsewhere for position sync), so the price path is
-//      effectively free. Yahoo's fundamentals call runs at most once per
-//      symbol per 24h.
+//   3. Alpaca for prices + Yahoo for fundamentals, both cached in Supabase.
+//      Alpaca has a 200/min free tier and we already own the creds.
+//   4. (This version) Finnhub for fundamentals (primary) + Yahoo fallback.
+//      Finnhub's free tier (60 req/min) is reliable on serverless — no
+//      IP-banning. Yahoo kept as secondary for when Finnhub is unavailable.
+//      Both cached durably in Supabase so steady-state traffic rarely
+//      hits any provider.
 //
 // Response shape is unchanged — frontend (public/js/equity-research.js)
 // keeps consuming Alpha-Vantage-keyed fields.
@@ -19,6 +20,7 @@
 //   ALPACA_API_KEY, ALPACA_API_SECRET   — required for price path
 //   SUPABASE_URL                        — required for durable cache
 //   SUPABASE_SERVICE_ROLE_KEY           — required for durable cache
+//   FINNHUB_API_KEY                     — primary fundamentals (finnhub.io free tier)
 //   ATLAS_ALLOWED_ORIGIN                — optional CORS allow-list
 //
 // If SUPABASE_SERVICE_ROLE_KEY is missing, caching silently degrades to
@@ -36,6 +38,7 @@ const CRUMB_TTL_MS    = 60 * 60 * 1000;
 const ALPACA_BASE = 'https://data.alpaca.markets/v2';
 const YF          = 'https://query2.finance.yahoo.com';
 const SUMMARY_MODULES = 'summaryProfile,summaryDetail,financialData,defaultKeyStatistics,recommendationTrend,price,earnings';
+const FINNHUB_BASE = 'https://finnhub.io/api/v1';
 
 const _memCache = new Map();
 let _crumb = null;
@@ -335,6 +338,160 @@ function mapFinancials(summary) {
 }
 
 // ------------------------------------------------------------
+// Upstream C: Finnhub — primary fundamentals source
+// ------------------------------------------------------------
+// Free tier: 60 req/min, no IP-banning on serverless.
+// 4 calls per symbol, cached 24h → effectively unlimited.
+
+async function finnhubGet(path) {
+    var key = process.env.FINNHUB_API_KEY;
+    if (!key) throw new Error('FINNHUB_API_KEY not configured');
+    var sep = path.indexOf('?') >= 0 ? '&' : '?';
+    var url = FINNHUB_BASE + path + sep + 'token=' + encodeURIComponent(key);
+    var r = await fetchWithTimeout(url, {
+        headers: { accept: 'application/json' },
+    }, 8000);
+    if (r.status === 401 || r.status === 403) throw new Error('Finnhub auth failed (check FINNHUB_API_KEY)');
+    if (r.status === 429) throw new Error('Finnhub rate limit');
+    if (!r.ok) throw new Error('Finnhub HTTP ' + r.status);
+    return r.json();
+}
+
+async function finnhubFundamentals(symbol) {
+    var results = await Promise.all([
+        finnhubGet('/stock/profile2?symbol=' + encodeURIComponent(symbol)),
+        finnhubGet('/stock/metric?symbol=' + encodeURIComponent(symbol) + '&metric=all'),
+        finnhubGet('/stock/recommendation?symbol=' + encodeURIComponent(symbol)),
+        finnhubGet('/stock/earnings?symbol=' + encodeURIComponent(symbol)),
+    ]);
+    var profile = results[0];
+    if (!profile || !profile.ticker) throw new Error('Symbol not found on Finnhub: ' + symbol);
+    return { profile: profile, metrics: results[1], recs: results[2], earnings: results[3] };
+}
+
+function mapFinnhubOverview(data, symbol) {
+    var p = data.profile || {};
+    var m = (data.metrics && data.metrics.metric) || {};
+    var recs = data.recs;
+    var rec = null;
+    if (Array.isArray(recs) && recs.length) {
+        recs.sort(function(a, b) { return a.period < b.period ? 1 : -1; });
+        rec = recs[0];
+    }
+
+    var out = {
+        Symbol: p.ticker || symbol,
+        Name: p.name || symbol,
+        Description: '',
+        Exchange: p.exchange || '',
+        Currency: p.currency || 'USD',
+        Sector: p.finnhubIndustry || '',
+        Industry: p.finnhubIndustry || '',
+    };
+    var set = function(k, v) { if (v != null && isFinite(Number(v))) out[k] = String(v); };
+    set('MarketCapitalization', p.marketCapitalization ? p.marketCapitalization * 1e6 : null);
+    set('PERatio', m.peBasicExclExtraTTM);
+    set('PEGRatio', m.pegRatio);
+    set('Beta', m.beta);
+    set('EPS', m.epsBasicExclExtraItemsTTM);
+    set('DividendYield', m.dividendYieldIndicatedAnnual != null ? m.dividendYieldIndicatedAnnual / 100 : null);
+    set('AnalystTargetPrice', m.targetMedianPrice);
+    if (rec) {
+        set('AnalystRatingStrongBuy', rec.strongBuy);
+        set('AnalystRatingBuy', rec.buy);
+        set('AnalystRatingHold', rec.hold);
+        set('AnalystRatingSell', rec.sell);
+        set('AnalystRatingStrongSell', rec.strongSell);
+    }
+    return out;
+}
+
+function mapFinnhubFinancials(data) {
+    var m = (data.metrics && data.metrics.metric) || {};
+    var ser = (data.metrics && data.metrics.series) || {};
+    var annual = ser.annual || {};
+    var earn = data.earnings;
+
+    function latestVal(key) {
+        var arr = annual[key];
+        if (!Array.isArray(arr) || !arr.length) return null;
+        arr.sort(function(a, b) { return a.period < b.period ? 1 : -1; });
+        return arr[0].v;
+    }
+
+    var snapshot = {};
+    var ss = function(k, v) { if (v != null && isFinite(Number(v))) snapshot[k] = Number(v); };
+
+    ss('totalRevenue', latestVal('revenue'));
+    ss('grossProfits', latestVal('grossProfit'));
+    ss('ebitda', latestVal('ebitda'));
+    ss('netIncome', latestVal('netIncome'));
+    ss('freeCashflow', latestVal('freeCashFlow'));
+    ss('operatingCashflow', latestVal('cashFlowFromOperatingActivities'));
+    if (snapshot.operatingCashflow == null) ss('operatingCashflow', latestVal('operatingCashflow'));
+    ss('totalCash', latestVal('cashAndShortTermInvestments'));
+    if (snapshot.totalCash == null) ss('totalCash', latestVal('totalCash'));
+    ss('totalDebt', latestVal('totalDebt'));
+    ss('debtToEquity', m.totalDebtToEquityQuarterly);
+
+    function mPct(key) { var v = m[key]; return v != null && isFinite(v) ? v / 100 : null; }
+    ss('grossMargins', mPct('grossMarginTTM'));
+    ss('operatingMargins', mPct('operatingMarginTTM'));
+    ss('profitMargins', mPct('netProfitMarginTTM'));
+    if (snapshot.ebitda && snapshot.totalRevenue) {
+        snapshot.ebitdaMargins = snapshot.ebitda / snapshot.totalRevenue;
+    }
+    ss('returnOnEquity', mPct('roeTTM'));
+    ss('returnOnAssets', mPct('roaTTM'));
+
+    function mGrowth(key) { var v = m[key]; return v != null && isFinite(v) ? v / 100 : null; }
+    ss('revenueGrowth', mGrowth('revenueGrowthTTMYoy'));
+    ss('earningsGrowth', mGrowth('epsGrowthTTMYoy'));
+
+    ss('forwardPE', m.peExclExtraAnnual);
+    ss('trailingEps', m.epsBasicExclExtraItemsTTM);
+    ss('forwardEps', m.epsEstimateNextQuarter);
+    ss('pegRatio', m.pegRatio);
+    ss('priceToBook', m.pbQuarterly);
+    ss('bookValue', m.bookValuePerShareQuarterly);
+    ss('enterpriseValue', m.enterpriseValue);
+    if (snapshot.enterpriseValue && snapshot.totalRevenue) {
+        snapshot.evToRevenue = snapshot.enterpriseValue / snapshot.totalRevenue;
+    }
+    if (snapshot.enterpriseValue && snapshot.ebitda) {
+        snapshot.evToEbitda = snapshot.enterpriseValue / snapshot.ebitda;
+    }
+
+    var yearly = [];
+    var revArr = (annual.revenue || []).slice().sort(function(a, b) { return a.period < b.period ? 1 : -1; });
+    var niArr = (annual.netIncome || []).slice().sort(function(a, b) { return a.period < b.period ? 1 : -1; });
+    var years = Math.min(4, revArr.length);
+    for (var yi = years - 1; yi >= 0; yi--) {
+        var year = revArr[yi].period.slice(0, 4);
+        var rev = revArr[yi].v;
+        var ni = null;
+        for (var nj = 0; nj < niArr.length; nj++) {
+            if (niArr[nj].period.slice(0, 4) === year) { ni = niArr[nj].v; break; }
+        }
+        yearly.push({ year: year, revenue: rev, earnings: ni });
+    }
+
+    var quarterly = [];
+    if (Array.isArray(earn) && earn.length) {
+        var sorted = earn.slice().sort(function(a, b) {
+            if (a.year !== b.year) return b.year - a.year;
+            return b.quarter - a.quarter;
+        });
+        quarterly = sorted.slice(0, 4).reverse().map(function(e) {
+            return { quarter: 'Q' + e.quarter + ' ' + e.year, actual: e.actual, estimate: e.estimate };
+        }).filter(function(r) { return r.actual != null; });
+    }
+
+    if (!Object.keys(snapshot).length && !yearly.length) return null;
+    return { snapshot: snapshot, yearly: yearly, quarterly: quarterly };
+}
+
+// ------------------------------------------------------------
 // Cached getters (read-through → in-mem → DB → upstream → write-back)
 // ------------------------------------------------------------
 
@@ -356,8 +513,23 @@ async function getOverview(symbol) {
     const mem = memGet(key); if (mem) return { data: mem, cache: 'mem' };
     const db = await dbCacheGet(key);
     if (db) { memSet(key, db); return { data: db, cache: 'db' }; }
-    const summary = await yfSummary(symbol);
-    const data = { overview: mapOverview(summary, symbol), financials: mapFinancials(summary) };
+
+    var data = null;
+
+    // Primary: Finnhub (reliable on serverless, no IP-banning)
+    if (process.env.FINNHUB_API_KEY) {
+        try {
+            var fh = await finnhubFundamentals(symbol);
+            data = { overview: mapFinnhubOverview(fh, symbol), financials: mapFinnhubFinancials(fh), _source: 'finnhub' };
+        } catch (_) { /* fall through to Yahoo */ }
+    }
+
+    // Fallback: Yahoo quoteSummary
+    if (!data) {
+        var summary = await yfSummary(symbol);
+        data = { overview: mapOverview(summary, symbol), financials: mapFinancials(summary), _source: 'yahoo' };
+    }
+
     memSet(key, data);
     dbCacheSet(key, symbol, 'overview', data, TTL_OVERVIEW_MS);
     return { data: data, cache: 'miss' };
@@ -386,18 +558,19 @@ module.exports = async function handler(req, res) {
     try {
         const payload = { symbol: symbol, cached_at: new Date().toISOString() };
         const cacheHits = { overview: null, daily: null };
+        var ovSource = 'unknown';
 
         if (endpoint === 'overview' || endpoint === 'combined') {
             try {
                 const o = await getOverview(symbol);
-                // getOverview now returns { overview, financials } nested inside data
                 var ovData = o.data;
                 payload.overview = ovData.overview || ovData;
                 payload.financials = ovData.financials || null;
+                ovSource = ovData._source || 'unknown';
                 cacheHits.overview = o.cache;
             } catch (e) {
                 if (endpoint === 'overview') throw e;
-                // Yahoo failed — fall back to Alpaca for at least the company name
+                // Fundamentals failed (Finnhub + Yahoo) — fall back to Alpaca for company name
                 var fallback = await alpacaAssetInfo(symbol);
                 payload.overview = fallback || { Symbol: symbol, Name: symbol };
                 payload.overview_error = e.message;
@@ -410,7 +583,7 @@ module.exports = async function handler(req, res) {
             cacheHits.daily = d.cache;
         }
 
-        payload.source = { overview: 'yahoo-finance', daily: 'alpaca' };
+        payload.source = { overview: ovSource, daily: 'alpaca' };
         payload.cache_hits = cacheHits;
 
         applyCors(res);
