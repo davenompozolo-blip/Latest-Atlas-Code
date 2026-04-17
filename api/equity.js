@@ -147,6 +147,20 @@ async function alpacaBars(symbol) {
 
 function mapAlpacaDaily(bars) {
     const series = {};
+    for (let i = 0; i < bars.length; i++) {
+        const b = bars[i];
+        const date = String(b.t).slice(0, 10);
+        if (!date || b.c == null) continue;
+        series[date] = {
+            '1. open':   String(b.o != null ? b.o : b.c),
+            '2. high':   String(b.h != null ? b.h : b.c),
+            '3. low':    String(b.l != null ? b.l : b.c),
+            '4. close':  String(b.c),
+            '5. volume': String(b.v != null ? b.v : 0),
+        };
+    }
+    return { 'Time Series (Daily)': series };
+}
 
 // Alpaca asset info — fallback for company name when Yahoo is blocked
 async function alpacaAssetInfo(symbol) {
@@ -162,20 +176,6 @@ async function alpacaAssetInfo(symbol) {
         const j = await r.json();
         return { Symbol: j.symbol || symbol, Name: j.name || symbol, Exchange: j.exchange || '' };
     } catch (_) { return null; }
-}
-    for (let i = 0; i < bars.length; i++) {
-        const b = bars[i];
-        const date = String(b.t).slice(0, 10);
-        if (!date || b.c == null) continue;
-        series[date] = {
-            '1. open':   String(b.o != null ? b.o : b.c),
-            '2. high':   String(b.h != null ? b.h : b.c),
-            '3. low':    String(b.l != null ? b.l : b.c),
-            '4. close':  String(b.c),
-            '5. volume': String(b.v != null ? b.v : 0),
-        };
-    }
-    return { 'Time Series (Daily)': series };
 }
 
 // ------------------------------------------------------------
