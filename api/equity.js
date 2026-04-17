@@ -344,13 +344,13 @@ function mapFinancials(summary) {
 // 4 calls per symbol, cached 24h → effectively unlimited.
 
 async function finnhubGet(path) {
-    var key = process.env.FINNHUB_API_KEY;
+    var key = (process.env.FINNHUB_API_KEY || '').trim();
     if (!key) throw new Error('FINNHUB_API_KEY not configured');
     var sep = path.indexOf('?') >= 0 ? '&' : '?';
     var url = FINNHUB_BASE + path + sep + 'token=' + encodeURIComponent(key);
     var r = await fetchWithTimeout(url, {
         headers: { accept: 'application/json' },
-    }, 8000);
+    }, 12000);
     if (r.status === 401 || r.status === 403) throw new Error('Finnhub auth failed (check FINNHUB_API_KEY)');
     if (r.status === 429) throw new Error('Finnhub rate limit');
     if (!r.ok) throw new Error('Finnhub HTTP ' + r.status);
@@ -358,15 +358,24 @@ async function finnhubGet(path) {
 }
 
 async function finnhubFundamentals(symbol) {
-    var results = await Promise.all([
-        finnhubGet('/stock/profile2?symbol=' + encodeURIComponent(symbol)),
-        finnhubGet('/stock/metric?symbol=' + encodeURIComponent(symbol) + '&metric=all'),
-        finnhubGet('/stock/recommendation?symbol=' + encodeURIComponent(symbol)),
-        finnhubGet('/stock/earnings?symbol=' + encodeURIComponent(symbol)),
+    var sym = encodeURIComponent(symbol);
+    var results = await Promise.allSettled([
+        finnhubGet('/stock/profile2?symbol=' + sym),
+        finnhubGet('/stock/metric?symbol=' + sym + '&metric=all'),
+        finnhubGet('/stock/recommendation?symbol=' + sym),
+        finnhubGet('/stock/earnings?symbol=' + sym),
     ]);
-    var profile = results[0];
-    if (!profile || !profile.ticker) throw new Error('Symbol not found on Finnhub: ' + symbol);
-    return { profile: profile, metrics: results[1], recs: results[2], earnings: results[3] };
+    var profile = results[0].status === 'fulfilled' ? results[0].value : {};
+    if (!profile || !profile.ticker) {
+        var reason = results[0].status === 'rejected' ? results[0].reason.message : 'empty profile';
+        throw new Error('Finnhub profile failed for ' + symbol + ': ' + reason);
+    }
+    return {
+        profile: profile,
+        metrics: results[1].status === 'fulfilled' ? results[1].value : {},
+        recs:    results[2].status === 'fulfilled' ? results[2].value : [],
+        earnings: results[3].status === 'fulfilled' ? results[3].value : [],
+    };
 }
 
 function mapFinnhubOverview(data, symbol) {
@@ -518,7 +527,7 @@ async function getOverview(symbol) {
     var finnhubErr = null;
 
     // Primary: Finnhub (reliable on serverless, no IP-banning)
-    if (process.env.FINNHUB_API_KEY) {
+    if ((process.env.FINNHUB_API_KEY || '').trim()) {
         try {
             var fh = await finnhubFundamentals(symbol);
             data = { overview: mapFinnhubOverview(fh, symbol), financials: mapFinnhubFinancials(fh), _source: 'finnhub' };
@@ -565,9 +574,10 @@ module.exports = async function handler(req, res) {
     }
 
     try {
-        const payload = { symbol: symbol, cached_at: new Date().toISOString() };
+        const payload = { symbol: symbol, cached_at: new Date().toISOString(), _v: 4 };
         const cacheHits = { overview: null, daily: null };
         var ovSource = 'unknown';
+        var finnhubKeyPresent = !!(process.env.FINNHUB_API_KEY || '').trim();
 
         if (endpoint === 'overview' || endpoint === 'combined') {
             try {
@@ -592,7 +602,7 @@ module.exports = async function handler(req, res) {
             cacheHits.daily = d.cache;
         }
 
-        payload.source = { overview: ovSource, daily: 'alpaca' };
+        payload.source = { overview: ovSource, daily: 'alpaca', finnhub_key: finnhubKeyPresent };
         payload.cache_hits = cacheHits;
 
         applyCors(res);
