@@ -256,13 +256,17 @@ var TABS = [
     { id: 'valuation', label: 'Valuation' },
 ];
 
-export function FinancialAnalysis({ financials, overview }) {
+export function FinancialAnalysis({ financials, overview, overviewError }) {
     var _t = useState('overview');
     var tab = _t[0];
     var setTab = _t[1];
 
     if (!financials) {
-        return React.createElement('div', { className: 'card', style: { color: 'var(--text-muted)' } }, 'Financial data unavailable for this ticker.');
+        return React.createElement('div', { className: 'card' },
+            React.createElement('div', { style: { color: 'var(--text-muted)', marginBottom: overviewError ? 8 : 0 } }, 'Financial data unavailable \u2014 Yahoo Finance may be blocking this server\'s IP.'),
+            overviewError ? React.createElement('div', { style: { fontSize: 11, color: 'rgba(239,68,68,0.7)', fontFamily: 'monospace' } }, overviewError) : null,
+            React.createElement('div', { style: { fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 8 } }, 'Fundamentals are cached for 24h once fetched successfully. Try again later or from a different network.')
+        );
     }
     var s = financials.snapshot;
     var content = null;

@@ -252,7 +252,7 @@ var RIGHT_TABS = [
     { id: 'dcf', label: 'DCF Engine', placeholder: true },
 ];
 
-function AnalysisPanel({ symbol, financials, overview }) {
+function AnalysisPanel({ symbol, financials, overview, overviewError }) {
     var _t = useState('financials');
     var tab = _t[0];
     var setTab = _t[1];
@@ -276,7 +276,7 @@ function AnalysisPanel({ symbol, financials, overview }) {
             })
         ),
         tab === 'financials'
-            ? React.createElement(FinancialAnalysis, { financials: financials, overview: overview })
+            ? React.createElement(FinancialAnalysis, { financials: financials, overview: overview, overviewError: overviewError })
             : React.createElement('div', { className: 'card', style: { color: 'var(--text-muted)', padding: 32, textAlign: 'center' } },
                 'This module is coming in a future stage.'
             )
@@ -483,6 +483,7 @@ export function EquityResearch() {
                     symbol: symbol,
                     financials: payload && payload.financials,
                     overview: overview,
+                    overviewError: payload && payload.overview_error,
                 })
             )
         )
