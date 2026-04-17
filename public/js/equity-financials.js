@@ -263,9 +263,9 @@ export function FinancialAnalysis({ financials, overview, overviewError }) {
 
     if (!financials) {
         return React.createElement('div', { className: 'card' },
-            React.createElement('div', { style: { color: 'var(--text-muted)', marginBottom: overviewError ? 8 : 0 } }, 'Financial data unavailable \u2014 Yahoo Finance may be blocking this server\'s IP.'),
+            React.createElement('div', { style: { color: 'var(--text-muted)', marginBottom: overviewError ? 8 : 0 } }, 'Financial data unavailable \u2014 data providers could not be reached.'),
             overviewError ? React.createElement('div', { style: { fontSize: 11, color: 'rgba(239,68,68,0.7)', fontFamily: 'monospace' } }, overviewError) : null,
-            React.createElement('div', { style: { fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 8 } }, 'Fundamentals are cached for 24h once fetched successfully. Try again later or from a different network.')
+            React.createElement('div', { style: { fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 8 } }, 'Fundamentals are cached for 24h once fetched successfully. Try again later.')
         );
     }
     var s = financials.snapshot;
