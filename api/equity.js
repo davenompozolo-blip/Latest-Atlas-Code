@@ -147,6 +147,22 @@ async function alpacaBars(symbol) {
 
 function mapAlpacaDaily(bars) {
     const series = {};
+
+// Alpaca asset info — fallback for company name when Yahoo is blocked
+async function alpacaAssetInfo(symbol) {
+    const key = process.env.ALPACA_API_KEY;
+    const secret = process.env.ALPACA_API_SECRET;
+    if (!key || !secret) return null;
+    try {
+        const url = 'https://paper-api.alpaca.markets/v2/assets/' + encodeURIComponent(symbol);
+        const r = await fetchWithTimeout(url, {
+            headers: { 'APCA-API-KEY-ID': key, 'APCA-API-SECRET-KEY': secret, accept: 'application/json' },
+        }, 5000);
+        if (!r.ok) return null;
+        const j = await r.json();
+        return { Symbol: j.symbol || symbol, Name: j.name || symbol, Exchange: j.exchange || '' };
+    } catch (_) { return null; }
+}
     for (let i = 0; i < bars.length; i++) {
         const b = bars[i];
         const date = String(b.t).slice(0, 10);
@@ -189,22 +205,28 @@ async function bootstrapCrumb() {
 }
 
 async function yfSummary(symbol) {
-    try {
-        const b = await bootstrapCrumb();
-        const url = YF + '/v10/finance/quoteSummary/' + encodeURIComponent(yfSymbol(symbol))
-            + '?modules=' + SUMMARY_MODULES + '&crumb=' + encodeURIComponent(b.crumb);
-        const r = await fetchWithTimeout(url, {
-            headers: { 'User-Agent': UA, Cookie: b.cookie, accept: 'application/json' },
-        });
-        if (r.status === 429) throw new Error('Yahoo rate limit (summary)');
-        if (!r.ok) throw new Error('Yahoo summary HTTP ' + r.status);
-        const j = await r.json();
-        const err = j && j.quoteSummary && j.quoteSummary.error;
-        if (err) throw new Error('Yahoo: ' + (err.description || err.code));
-        const result = j && j.quoteSummary && j.quoteSummary.result && j.quoteSummary.result[0];
-        if (!result) throw new Error('Yahoo summary returned no result');
-        return result;
-    } catch (e) { _crumb = null; throw e; }
+    // Try both query hosts — Yahoo sometimes blocks one CDN but not the other
+    var hosts = [YF, 'https://query1.finance.yahoo.com'];
+    var lastErr = null;
+    for (var hi = 0; hi < hosts.length; hi++) {
+        try {
+            const b = await bootstrapCrumb();
+            const url = hosts[hi] + '/v10/finance/quoteSummary/' + encodeURIComponent(yfSymbol(symbol))
+                + '?modules=' + SUMMARY_MODULES + '&crumb=' + encodeURIComponent(b.crumb);
+            const r = await fetchWithTimeout(url, {
+                headers: { 'User-Agent': UA, Cookie: b.cookie, accept: 'application/json' },
+            });
+            if (r.status === 429) { lastErr = new Error('Yahoo rate limit (summary)'); _crumb = null; continue; }
+            if (!r.ok) { lastErr = new Error('Yahoo summary HTTP ' + r.status); _crumb = null; continue; }
+            const j = await r.json();
+            const err = j && j.quoteSummary && j.quoteSummary.error;
+            if (err) { lastErr = new Error('Yahoo: ' + (err.description || err.code)); continue; }
+            const result = j && j.quoteSummary && j.quoteSummary.result && j.quoteSummary.result[0];
+            if (!result) { lastErr = new Error('Yahoo summary returned no result'); continue; }
+            return result;
+        } catch (e) { _crumb = null; lastErr = e; }
+    }
+    throw lastErr || new Error('Yahoo summary failed on all hosts');
 }
 
 function rawVal(x) {
@@ -375,8 +397,11 @@ module.exports = async function handler(req, res) {
                 cacheHits.overview = o.cache;
             } catch (e) {
                 if (endpoint === 'overview') throw e;
-                payload.overview = { Symbol: symbol, Name: symbol };
+                // Yahoo failed — fall back to Alpaca for at least the company name
+                var fallback = await alpacaAssetInfo(symbol);
+                payload.overview = fallback || { Symbol: symbol, Name: symbol };
                 payload.overview_error = e.message;
+                payload.overview_source = fallback ? 'alpaca-fallback' : 'none';
             }
         }
         if (endpoint === 'daily' || endpoint === 'combined') {
