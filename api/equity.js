@@ -515,19 +515,28 @@ async function getOverview(symbol) {
     if (db) { memSet(key, db); return { data: db, cache: 'db' }; }
 
     var data = null;
+    var finnhubErr = null;
 
     // Primary: Finnhub (reliable on serverless, no IP-banning)
     if (process.env.FINNHUB_API_KEY) {
         try {
             var fh = await finnhubFundamentals(symbol);
             data = { overview: mapFinnhubOverview(fh, symbol), financials: mapFinnhubFinancials(fh), _source: 'finnhub' };
-        } catch (_) { /* fall through to Yahoo */ }
+        } catch (e) { finnhubErr = e; }
     }
 
     // Fallback: Yahoo quoteSummary
     if (!data) {
-        var summary = await yfSummary(symbol);
-        data = { overview: mapOverview(summary, symbol), financials: mapFinancials(summary), _source: 'yahoo' };
+        try {
+            var summary = await yfSummary(symbol);
+            data = { overview: mapOverview(summary, symbol), financials: mapFinancials(summary), _source: 'yahoo' };
+        } catch (yahooErr) {
+            var msg = 'Fundamentals unavailable.';
+            if (!process.env.FINNHUB_API_KEY) msg += ' FINNHUB_API_KEY not set.';
+            else if (finnhubErr) msg += ' Finnhub: ' + finnhubErr.message + '.';
+            msg += ' Yahoo: ' + yahooErr.message;
+            throw new Error(msg);
+        }
     }
 
     memSet(key, data);
