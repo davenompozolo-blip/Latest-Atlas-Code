@@ -15,6 +15,7 @@
 
 import { fmt, fmtPct, fmtCurrency, cls, useChart } from './utils.js';
 import { Loading, EmptyState } from './components.js';
+import { FinancialAnalysis } from './equity-financials.js';
 
 const { useState, useEffect, useRef, useCallback } = React;
 
@@ -240,27 +241,45 @@ function CompanyHero({ overview, symbol }) {
 }
 
 // ------------------------------------------------------------
-// Stage-2 placeholder for the right-hand analysis panel
+// Right-hand analysis panel with top-level tab routing
 // ------------------------------------------------------------
 
-function RightPanelPlaceholder({ symbol }) {
-    const tabs = ['Financial Analysis', 'Valuation Engine', 'Risk View', 'Peer Comparison', 'DCF Engine'];
-    return React.createElement('div', { className: 'card' },
-        React.createElement('div', { className: 'card-title' }, 'Analysis Modules'),
+var RIGHT_TABS = [
+    { id: 'financials', label: 'Financial Analysis' },
+    { id: 'valuation', label: 'Valuation Engine', placeholder: true },
+    { id: 'risk', label: 'Risk View', placeholder: true },
+    { id: 'peers', label: 'Peer Comparison', placeholder: true },
+    { id: 'dcf', label: 'DCF Engine', placeholder: true },
+];
+
+function AnalysisPanel({ symbol, financials, overview }) {
+    var _t = useState('financials');
+    var tab = _t[0];
+    var setTab = _t[1];
+
+    return React.createElement('div', null,
         React.createElement('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 } },
-            tabs.map(function(t, i) {
-                return React.createElement('span', {
-                    key: t,
-                    className: 'badge ' + (i === 0 ? 'blue' : 'amber'),
-                    style: { fontSize: 11, padding: '4px 10px', opacity: 0.8 }
-                }, t);
+            RIGHT_TABS.map(function(t) {
+                var active = t.id === tab;
+                return React.createElement('button', {
+                    key: t.id,
+                    onClick: function() { if (!t.placeholder || t.id === 'financials') setTab(t.id); },
+                    style: {
+                        background: active ? 'rgba(0,212,255,0.15)' : t.placeholder ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.04)',
+                        color: active ? '#00d4ff' : t.placeholder ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.6)',
+                        border: '1px solid ' + (active ? 'rgba(0,212,255,0.3)' : 'rgba(255,255,255,0.06)'),
+                        borderRadius: 8, padding: '8px 16px', fontSize: 12,
+                        fontWeight: active ? 600 : 400, cursor: t.placeholder ? 'default' : 'pointer',
+                        letterSpacing: 0.5,
+                    }
+                }, t.label, t.placeholder ? React.createElement('span', { style: { fontSize: 9, marginLeft: 6, opacity: 0.5 } }, 'SOON') : null);
             })
         ),
-        React.createElement('div', { style: { color: 'rgba(255,255,255,0.62)', fontSize: 13, lineHeight: 1.6 } },
-            'Financial statements, valuation engine, risk view, peer comparison, and DCF modules for ',
-            React.createElement('strong', { style: { color: '#00d4ff' } }, symbol || 'selected ticker'),
-            ' land in Stage 2. Stage 1 proves the Alpha Vantage proxy round-trip and the left-panel summary.'
-        )
+        tab === 'financials'
+            ? React.createElement(FinancialAnalysis, { financials: financials, overview: overview })
+            : React.createElement('div', { className: 'card', style: { color: 'var(--text-muted)', padding: 32, textAlign: 'center' } },
+                'This module is coming in a future stage.'
+            )
     );
 }
 
@@ -458,9 +477,13 @@ export function EquityResearch() {
                     React.createElement(Sparkline, { series: series.slice(-252) })
                 )
             ),
-            // --- RIGHT PANEL (Stage 2 placeholder) ---------------------
+            // --- RIGHT PANEL (analysis tabs) ---------------------------
             React.createElement('div', null,
-                React.createElement(RightPanelPlaceholder, { symbol: symbol })
+                React.createElement(AnalysisPanel, {
+                    symbol: symbol,
+                    financials: payload && payload.financials,
+                    overview: overview,
+                })
             )
         )
     );

@@ -35,7 +35,7 @@ const CRUMB_TTL_MS    = 60 * 60 * 1000;
 
 const ALPACA_BASE = 'https://data.alpaca.markets/v2';
 const YF          = 'https://query2.finance.yahoo.com';
-const SUMMARY_MODULES = 'summaryProfile,summaryDetail,financialData,defaultKeyStatistics,recommendationTrend,price';
+const SUMMARY_MODULES = 'summaryProfile,summaryDetail,financialData,defaultKeyStatistics,recommendationTrend,price,earnings';
 
 const _memCache = new Map();
 let _crumb = null;
@@ -207,7 +207,14 @@ async function yfSummary(symbol) {
     } catch (e) { _crumb = null; throw e; }
 }
 
-function rawVal(x) { if (x == null) return null; return (typeof x === 'object' && 'raw' in x) ? x.raw : x; }
+function rawVal(x) {
+    if (x == null) return null;
+    if (typeof x === 'object') {
+        if ('raw' in x) return x.raw;
+        if (Object.keys(x).length === 0) return null;
+    }
+    return x;
+}
 
 function mapOverview(summary, symbol) {
     if (!summary) return { Symbol: symbol, Name: symbol };
@@ -246,6 +253,65 @@ function mapOverview(summary, symbol) {
     return out;
 }
 
+function mapFinancials(summary) {
+    if (!summary) return null;
+    var rv = rawVal;
+    var fd = summary.financialData || {};
+    var stats = summary.defaultKeyStatistics || {};
+    var earn = summary.earnings || {};
+
+    // Snapshot: current-period financial metrics
+    var snapshot = {};
+    var ss = function(k, v) { if (v != null && isFinite(Number(v))) snapshot[k] = Number(v); };
+    ss('totalRevenue',     rv(fd.totalRevenue));
+    ss('grossProfits',     rv(fd.grossProfits));
+    ss('ebitda',           rv(fd.ebitda));
+    ss('operatingCashflow', rv(fd.operatingCashflow));
+    ss('freeCashflow',     rv(fd.freeCashflow));
+    ss('totalCash',        rv(fd.totalCash));
+    ss('totalDebt',        rv(fd.totalDebt));
+    ss('debtToEquity',     rv(fd.debtToEquity));
+    ss('returnOnAssets',   rv(fd.returnOnAssets));
+    ss('returnOnEquity',   rv(fd.returnOnEquity));
+    ss('grossMargins',     rv(fd.grossMargins));
+    ss('ebitdaMargins',    rv(fd.ebitdaMargins));
+    ss('operatingMargins', rv(fd.operatingMargins));
+    ss('profitMargins',    rv(fd.profitMargins));
+    ss('revenueGrowth',    rv(fd.revenueGrowth));
+    ss('earningsGrowth',   rv(fd.earningsGrowth));
+    ss('netIncome',        rv(stats.netIncomeToCommon));
+    ss('enterpriseValue',  rv(stats.enterpriseValue));
+    ss('forwardPE',        rv(stats.forwardPE));
+    ss('trailingEps',      rv(stats.trailingEps));
+    ss('forwardEps',       rv(stats.forwardEps));
+    ss('pegRatio',         rv(stats.pegRatio));
+    ss('priceToBook',      rv(stats.priceToBook));
+    ss('evToRevenue',      rv(stats.enterpriseToRevenue));
+    ss('evToEbitda',       rv(stats.enterpriseToEbitda));
+    ss('bookValue',        rv(stats.bookValue));
+
+    // Yearly revenue + earnings (4 years from earnings module)
+    var yearly = [];
+    var fc = earn.financialsChart;
+    if (fc && fc.yearly) {
+        yearly = fc.yearly.map(function(r) {
+            return { year: String(r.date), revenue: rv(r.revenue), earnings: rv(r.earnings) };
+        }).filter(function(r) { return r.revenue != null || r.earnings != null; });
+    }
+
+    // Quarterly EPS actual vs estimate (4 quarters)
+    var quarterly = [];
+    var ec = earn.earningsChart;
+    if (ec && ec.quarterly) {
+        quarterly = ec.quarterly.map(function(r) {
+            return { quarter: r.date, actual: rv(r.actual), estimate: rv(r.estimate) };
+        }).filter(function(r) { return r.actual != null; });
+    }
+
+    if (!Object.keys(snapshot).length && !yearly.length) return null;
+    return { snapshot: snapshot, yearly: yearly, quarterly: quarterly };
+}
+
 // ------------------------------------------------------------
 // Cached getters (read-through → in-mem → DB → upstream → write-back)
 // ------------------------------------------------------------
@@ -269,7 +335,7 @@ async function getOverview(symbol) {
     const db = await dbCacheGet(key);
     if (db) { memSet(key, db); return { data: db, cache: 'db' }; }
     const summary = await yfSummary(symbol);
-    const data = mapOverview(summary, symbol);
+    const data = { overview: mapOverview(summary, symbol), financials: mapFinancials(summary) };
     memSet(key, data);
     dbCacheSet(key, symbol, 'overview', data, TTL_OVERVIEW_MS);
     return { data: data, cache: 'miss' };
@@ -302,11 +368,13 @@ module.exports = async function handler(req, res) {
         if (endpoint === 'overview' || endpoint === 'combined') {
             try {
                 const o = await getOverview(symbol);
-                payload.overview = o.data;
+                // getOverview now returns { overview, financials } nested inside data
+                var ovData = o.data;
+                payload.overview = ovData.overview || ovData;
+                payload.financials = ovData.financials || null;
                 cacheHits.overview = o.cache;
             } catch (e) {
                 if (endpoint === 'overview') throw e;
-                // Combined: fundamentals are best-effort — prices still deliver value
                 payload.overview = { Symbol: symbol, Name: symbol };
                 payload.overview_error = e.message;
             }
