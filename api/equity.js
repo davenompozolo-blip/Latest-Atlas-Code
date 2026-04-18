@@ -364,17 +364,21 @@ async function finnhubFundamentals(symbol) {
         finnhubGet('/stock/metric?symbol=' + sym + '&metric=all'),
         finnhubGet('/stock/recommendation?symbol=' + sym),
         finnhubGet('/stock/earnings?symbol=' + sym),
+        finnhubGet('/stock/peers?symbol=' + sym),
     ]);
     var profile = results[0].status === 'fulfilled' ? results[0].value : {};
     if (!profile || !profile.ticker) {
         var reason = results[0].status === 'rejected' ? results[0].reason.message : 'empty profile';
         throw new Error('Finnhub profile failed for ' + symbol + ': ' + reason);
     }
+    var rawPeers = results[4].status === 'fulfilled' ? results[4].value : [];
+    var peers = Array.isArray(rawPeers) ? rawPeers.filter(function(p) { return p && p !== symbol; }).slice(0, 8) : [];
     return {
         profile: profile,
         metrics: results[1].status === 'fulfilled' ? results[1].value : {},
         recs:    results[2].status === 'fulfilled' ? results[2].value : [],
         earnings: results[3].status === 'fulfilled' ? results[3].value : [],
+        peers: peers,
     };
 }
 
@@ -649,7 +653,7 @@ async function getOverview(symbol, skipCache) {
     if ((process.env.FINNHUB_API_KEY || '').trim()) {
         try {
             var fh = await finnhubFundamentals(symbol);
-            data = { overview: mapFinnhubOverview(fh, symbol), financials: mapFinnhubFinancials(fh), _source: 'finnhub' };
+            data = { overview: mapFinnhubOverview(fh, symbol), financials: mapFinnhubFinancials(fh), peers: fh.peers || [], _source: 'finnhub' };
         } catch (e) { finnhubErr = e; }
     }
 
@@ -705,6 +709,7 @@ module.exports = async function handler(req, res) {
                 var ovData = o.data;
                 payload.overview = ovData.overview || ovData;
                 payload.financials = ovData.financials || null;
+                payload.peers = ovData.peers || [];
                 ovSource = ovData._source || 'unknown';
                 cacheHits.overview = o.cache;
             } catch (e) {
