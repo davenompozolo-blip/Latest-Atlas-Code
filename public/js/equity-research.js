@@ -16,6 +16,7 @@
 import { fmt, fmtPct, fmtCurrency, cls, useChart } from './utils.js';
 import { Loading, EmptyState } from './components.js';
 import { FinancialAnalysis } from './equity-financials.js';
+import { RiskAnalysis } from './equity-risk.js';
 
 const { useState, useEffect, useRef, useCallback } = React;
 
@@ -247,15 +248,20 @@ function CompanyHero({ overview, symbol }) {
 var RIGHT_TABS = [
     { id: 'financials', label: 'Financial Analysis' },
     { id: 'valuation', label: 'Valuation Engine', placeholder: true },
-    { id: 'risk', label: 'Risk View', placeholder: true },
+    { id: 'risk', label: 'Risk View' },
     { id: 'peers', label: 'Peer Comparison', placeholder: true },
     { id: 'dcf', label: 'DCF Engine', placeholder: true },
 ];
 
-function AnalysisPanel({ symbol, financials, overview, overviewError }) {
+function AnalysisPanel({ symbol, financials, overview, overviewError, series }) {
     var _t = useState('financials');
     var tab = _t[0];
     var setTab = _t[1];
+
+    var content = null;
+    if (tab === 'financials') content = React.createElement(FinancialAnalysis, { financials: financials, overview: overview, overviewError: overviewError });
+    else if (tab === 'risk') content = React.createElement(RiskAnalysis, { symbol: symbol, series: series, overview: overview });
+    else content = React.createElement('div', { className: 'card', style: { color: 'var(--text-muted)', padding: 32, textAlign: 'center' } }, 'This module is coming in a future stage.');
 
     return React.createElement('div', null,
         React.createElement('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 } },
@@ -275,11 +281,7 @@ function AnalysisPanel({ symbol, financials, overview, overviewError }) {
                 }, t.label, t.placeholder ? React.createElement('span', { style: { fontSize: 9, marginLeft: 6, opacity: 0.5 } }, 'SOON') : null);
             })
         ),
-        tab === 'financials'
-            ? React.createElement(FinancialAnalysis, { financials: financials, overview: overview, overviewError: overviewError })
-            : React.createElement('div', { className: 'card', style: { color: 'var(--text-muted)', padding: 32, textAlign: 'center' } },
-                'This module is coming in a future stage.'
-            )
+        content
     );
 }
 
@@ -484,6 +486,7 @@ export function EquityResearch() {
                     financials: payload && payload.financials,
                     overview: overview,
                     overviewError: payload && payload.overview_error,
+                    series: series,
                 })
             )
         )
