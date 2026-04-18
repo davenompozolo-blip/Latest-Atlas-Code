@@ -17,6 +17,7 @@ import { PortfolioHome } from './portfolio-home.js';
 import { QuantDashboard } from './quant-dashboard.js';
 import { RiskAnalysis, PerformanceSuite, CommandCentre } from './pages-other.js';
 import { EquityResearch } from './equity-research.js';
+import { MacroDashboard } from './macro-dashboard.js';
 
 const { useState, useEffect } = React;
 
@@ -30,6 +31,7 @@ const TABS = [
     { id: 'performance', label: 'PERFORMANCE', sub: 'Returns & Attribution', icon: '\u25C6', component: PerformanceSuite },
     { id: 'command', label: 'COMMAND', sub: 'System Overview', icon: '\u2726', component: CommandCentre },
     { id: 'equity', label: 'EQUITY', sub: 'Ticker Research', icon: '\u25A1', component: EquityResearch },
+    { id: 'macro', label: 'MACRO', sub: 'Economic Intelligence', icon: '\u25C9', component: MacroDashboard },
 ];
 
 const NAV_STRUCTURE = [
@@ -43,7 +45,7 @@ const NAV_STRUCTURE = [
     { type: 'tab', id: 'command' },
     { type: 'header', label: 'RESEARCH' },
     { type: 'tab', id: 'equity' },
-    { type: 'placeholder', label: 'MACRO', sub: 'Coming Soon' },
+    { type: 'tab', id: 'macro' },
     { type: 'placeholder', label: 'FUNDS', sub: 'Coming Soon' },
     { type: 'header', label: 'MARKETS' },
     { type: 'placeholder', label: 'MARKET', sub: 'Coming Soon' },
