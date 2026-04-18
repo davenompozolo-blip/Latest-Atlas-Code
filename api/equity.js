@@ -440,76 +440,138 @@ function mapFinnhubFinancials(data) {
         return null;
     }
 
+    // Dynamic search: find first metric key containing substring (case-insensitive)
+    var mKeys = Object.keys(m);
+    function findM(pattern) {
+        var lp = pattern.toLowerCase();
+        for (var i = 0; i < mKeys.length; i++) {
+            if (mKeys[i].toLowerCase().indexOf(lp) >= 0) {
+                var v = m[mKeys[i]];
+                if (v != null && isFinite(Number(v))) return Number(v);
+            }
+        }
+        return null;
+    }
+
+    // Per-share metric × shares helper
+    function perShare(pattern) {
+        var ps = findM(pattern);
+        return ps != null && shares ? ps * shares : null;
+    }
+
     var snapshot = {};
     var ss = function(k, v) { if (v != null && isFinite(Number(v))) snapshot[k] = Number(v); };
 
-    ss('totalRevenue', firstOf(latestVal('revenue'), m.revenuePerShareTTM && shares ? m.revenuePerShareTTM * shares : null));
-    ss('grossProfits', latestVal('grossProfit'));
-    ss('ebitda', latestVal('ebitda'));
-    ss('netIncome', latestVal('netIncome'));
+    // --- Absolute financials: series.annual → per-share × shares → derivation ---
+
+    ss('netIncome', firstOf(
+        latestVal('netIncome'),
+        perShare('netIncomePerShare'),
+        m.epsBasicExclExtraItemsTTM && shares ? m.epsBasicExclExtraItemsTTM * shares : null
+    ));
+
+    ss('totalRevenue', firstOf(
+        latestVal('revenue'),
+        perShare('revenuePerShare'),
+        perShare('salesPerShare'),
+        snapshot.netIncome && m.netProfitMarginTTM && m.netProfitMarginTTM > 0
+            ? snapshot.netIncome / (m.netProfitMarginTTM / 100) : null
+    ));
+
+    ss('grossProfits', firstOf(
+        latestVal('grossProfit'),
+        snapshot.totalRevenue && m.grossMarginTTM ? snapshot.totalRevenue * (m.grossMarginTTM / 100) : null
+    ));
+
+    ss('ebitda', firstOf(
+        latestVal('ebitda'),
+        perShare('ebitdaPerShare'),
+        perShare('ebitPerShare')
+    ));
 
     ss('freeCashflow', firstOf(
         latestVal('freeCashFlow'), latestVal('fcf'), latestVal('freeCashflow'),
-        m.freeCashFlowTTM,
-        m.fcfPerShareTTM && shares ? m.fcfPerShareTTM * shares : null,
-        m.freeCashFlowPerShareTTM && shares ? m.freeCashFlowPerShareTTM * shares : null
+        findM('freeCashFlow'),
+        perShare('fcfPerShare'),
+        perShare('freeCashFlowPerShare')
     ));
 
     ss('operatingCashflow', firstOf(
         latestVal('cashFlowFromOperatingActivities'), latestVal('operatingCashFlow'),
         latestVal('operatingCashflow'), latestVal('cashFromOperations'),
-        m.operatingCashFlowTTM,
-        m.cashFlowPerShareTTM && shares ? m.cashFlowPerShareTTM * shares : null,
-        m.cashFlowPerShareAnnual && shares ? m.cashFlowPerShareAnnual * shares : null
+        findM('operatingCashFlow'),
+        perShare('cashFlowPerShare')
     ));
 
     ss('totalCash', firstOf(
         latestVal('cashAndShortTermInvestments'), latestVal('totalCash'),
         latestVal('cash'), latestVal('cashAndEquivalents'),
-        m.totalCashPerShareQuarterly && shares ? m.totalCashPerShareQuarterly * shares : null,
-        m.cashPerShareQuarterly && shares ? m.cashPerShareQuarterly * shares : null
+        findM('totalCash'),
+        perShare('cashPerShare')
     ));
 
-    ss('totalDebt', firstOf(latestVal('totalDebt'), m.totalDebt));
-    ss('debtToEquity', firstOf(m.totalDebtToEquityQuarterly, m.totalDebtToEquityAnnual));
+    ss('totalDebt', firstOf(
+        latestVal('totalDebt'),
+        findM('totalDebt'),
+        perShare('totalDebtPerShare'),
+        perShare('longTermDebtPerShare')
+    ));
+
+    ss('debtToEquity', firstOf(m.totalDebtToEquityQuarterly, m.totalDebtToEquityAnnual, findM('debtToEquity')));
+
+    // --- Margins (metric TTM → derived from absolutes) ---
 
     function mPct(key) { var v = m[key]; return v != null && isFinite(v) ? v / 100 : null; }
+
     ss('grossMargins', mPct('grossMarginTTM'));
     ss('operatingMargins', mPct('operatingMarginTTM'));
     ss('profitMargins', mPct('netProfitMarginTTM'));
-    ss('ebitdaMargins', firstOf(
+
+    var ebitdaMarginRaw = firstOf(
         mPct('ebitdaMarginTTM'),
+        findM('ebitdaMargin') != null ? findM('ebitdaMargin') / 100 : null,
         snapshot.ebitda && snapshot.totalRevenue ? snapshot.ebitda / snapshot.totalRevenue : null
-    ));
+    );
+    ss('ebitdaMargins', ebitdaMarginRaw);
+
+    // Derive EBITDA from margin if still null
+    if (snapshot.ebitda == null && ebitdaMarginRaw && snapshot.totalRevenue) {
+        snapshot.ebitda = snapshot.totalRevenue * ebitdaMarginRaw;
+    }
+
     ss('returnOnEquity', mPct('roeTTM'));
     ss('returnOnAssets', mPct('roaTTM'));
+
+    // --- Growth ---
 
     function mGrowth(key) { var v = m[key]; return v != null && isFinite(v) ? v / 100 : null; }
     ss('revenueGrowth', mGrowth('revenueGrowthTTMYoy'));
     ss('earningsGrowth', mGrowth('epsGrowthTTMYoy'));
 
+    // --- Valuation multiples ---
+
     ss('trailingEps', m.epsBasicExclExtraItemsTTM);
-    ss('forwardEps', firstOf(m.epsEstimateNextQuarter, m.epsEstimateNextYear));
-    ss('priceToBook', firstOf(m.pbQuarterly, m.pbAnnual));
-    ss('bookValue', firstOf(m.bookValuePerShareQuarterly, m.bookValuePerShareAnnual));
+    ss('forwardEps', firstOf(m.epsEstimateNextQuarter, m.epsEstimateNextYear, findM('epsEstimate')));
+    ss('priceToBook', firstOf(m.pbQuarterly, m.pbAnnual, findM('pb')));
+    ss('bookValue', firstOf(m.bookValuePerShareQuarterly, m.bookValuePerShareAnnual, findM('bookValue')));
 
     ss('forwardPE', firstOf(
-        m.peExclExtraAnnual, m.peNormalizedAnnual, m.peBasicExclExtraAnnual
+        m.peExclExtraAnnual, m.peNormalizedAnnual, m.peBasicExclExtraAnnual, findM('peNormalized')
     ));
     if (snapshot.forwardPE == null && snapshot.forwardEps && snapshot.forwardEps > 0 && mktCap && shares) {
         snapshot.forwardPE = (mktCap / shares) / snapshot.forwardEps;
     }
 
-    ss('pegRatio', firstOf(m.pegRatio, m.pegAnnual));
+    ss('pegRatio', firstOf(m.pegRatio, m.pegAnnual, findM('peg')));
     if (snapshot.pegRatio == null && snapshot.forwardPE && snapshot.earningsGrowth && snapshot.earningsGrowth > 0) {
         snapshot.pegRatio = snapshot.forwardPE / (snapshot.earningsGrowth * 100);
     }
 
-    var evFromSeries = latestVal('ev');
-    if (evFromSeries != null && evFromSeries < 1e6 && mktCap > 1e6) {
-        evFromSeries = evFromSeries * 1e6;
-    }
-    ss('enterpriseValue', firstOf(m.enterpriseValue, evFromSeries));
+    // --- Enterprise Value → EV/Revenue, EV/EBITDA ---
+
+    var evDirect = firstOf(findM('enterpriseValue'), latestVal('ev'));
+    if (evDirect != null && evDirect < 1e6 && mktCap > 1e9) evDirect = null;
+    ss('enterpriseValue', evDirect);
     if (snapshot.enterpriseValue == null && mktCap) {
         snapshot.enterpriseValue = mktCap + (snapshot.totalDebt || 0) - (snapshot.totalCash || 0);
     }
@@ -520,6 +582,8 @@ function mapFinnhubFinancials(data) {
     if (snapshot.enterpriseValue && snapshot.ebitda) {
         snapshot.evToEbitda = snapshot.enterpriseValue / snapshot.ebitda;
     }
+
+    // --- Yearly & quarterly trends ---
 
     var yearly = [];
     var revArr = (annual.revenue || []).slice().sort(function(a, b) { return a.period < b.period ? 1 : -1; });
@@ -549,7 +613,7 @@ function mapFinnhubFinancials(data) {
     if (!Object.keys(snapshot).length && !yearly.length) return null;
     return {
         snapshot: snapshot, yearly: yearly, quarterly: quarterly,
-        _debugKeys: { metric: Object.keys(m).sort(), seriesAnnual: Object.keys(annual).sort() }
+        _debugKeys: { metric: mKeys.sort(), seriesAnnual: Object.keys(annual).sort() }
     };
 }
 
@@ -629,7 +693,7 @@ module.exports = async function handler(req, res) {
     }
 
     try {
-        const payload = { symbol: symbol, cached_at: new Date().toISOString(), _v: 5 };
+        const payload = { symbol: symbol, cached_at: new Date().toISOString(), _v: 6 };
         const cacheHits = { overview: null, daily: null };
         var ovSource = 'unknown';
         var finnhubKeyPresent = !!(process.env.FINNHUB_API_KEY || '').trim();
