@@ -19,6 +19,7 @@ import { FinancialAnalysis } from './equity-financials.js';
 import { RiskAnalysis } from './equity-risk.js';
 import { ValuationEngine } from './equity-valuation.js';
 import { PeerComparison } from './equity-peers.js';
+import { DCFEngine } from './equity-dcf.js';
 
 const { useState, useEffect, useRef, useCallback } = React;
 
@@ -252,7 +253,7 @@ var RIGHT_TABS = [
     { id: 'valuation', label: 'Valuation Engine' },
     { id: 'risk', label: 'Risk View' },
     { id: 'peers', label: 'Peer Comparison' },
-    { id: 'dcf', label: 'DCF Engine', placeholder: true },
+    { id: 'dcf', label: 'DCF Engine' },
 ];
 
 function AnalysisPanel(p) {
@@ -266,6 +267,7 @@ function AnalysisPanel(p) {
     else if (tab === 'valuation') content = React.createElement(ValuationEngine, { financials: financials, overview: overview, series: series });
     else if (tab === 'risk') content = React.createElement(RiskAnalysis, { symbol: symbol, series: series, overview: overview });
     else if (tab === 'peers') content = React.createElement(PeerComparison, { symbol: symbol, financials: financials, overview: overview, peers: p.peers });
+    else if (tab === 'dcf') content = React.createElement(DCFEngine, { financials: financials, overview: overview, series: series });
     else content = React.createElement('div', { className: 'card', style: { color: 'var(--text-muted)', padding: 32, textAlign: 'center' } }, 'This module is coming in a future stage.');
 
     return React.createElement('div', null,
