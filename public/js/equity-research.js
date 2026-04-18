@@ -17,6 +17,7 @@ import { fmt, fmtPct, fmtCurrency, cls, useChart } from './utils.js';
 import { Loading, EmptyState } from './components.js';
 import { FinancialAnalysis } from './equity-financials.js';
 import { RiskAnalysis } from './equity-risk.js';
+import { ValuationEngine } from './equity-valuation.js';
 
 const { useState, useEffect, useRef, useCallback } = React;
 
@@ -247,7 +248,7 @@ function CompanyHero({ overview, symbol }) {
 
 var RIGHT_TABS = [
     { id: 'financials', label: 'Financial Analysis' },
-    { id: 'valuation', label: 'Valuation Engine', placeholder: true },
+    { id: 'valuation', label: 'Valuation Engine' },
     { id: 'risk', label: 'Risk View' },
     { id: 'peers', label: 'Peer Comparison', placeholder: true },
     { id: 'dcf', label: 'DCF Engine', placeholder: true },
@@ -260,6 +261,7 @@ function AnalysisPanel({ symbol, financials, overview, overviewError, series }) 
 
     var content = null;
     if (tab === 'financials') content = React.createElement(FinancialAnalysis, { financials: financials, overview: overview, overviewError: overviewError });
+    else if (tab === 'valuation') content = React.createElement(ValuationEngine, { financials: financials, overview: overview, series: series });
     else if (tab === 'risk') content = React.createElement(RiskAnalysis, { symbol: symbol, series: series, overview: overview });
     else content = React.createElement('div', { className: 'card', style: { color: 'var(--text-muted)', padding: 32, textAlign: 'center' } }, 'This module is coming in a future stage.');
 
