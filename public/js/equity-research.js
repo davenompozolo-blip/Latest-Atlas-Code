@@ -18,6 +18,7 @@ import { Loading, EmptyState } from './components.js';
 import { FinancialAnalysis } from './equity-financials.js';
 import { RiskAnalysis } from './equity-risk.js';
 import { ValuationEngine } from './equity-valuation.js';
+import { PeerComparison } from './equity-peers.js';
 
 const { useState, useEffect, useRef, useCallback } = React;
 
@@ -250,11 +251,12 @@ var RIGHT_TABS = [
     { id: 'financials', label: 'Financial Analysis' },
     { id: 'valuation', label: 'Valuation Engine' },
     { id: 'risk', label: 'Risk View' },
-    { id: 'peers', label: 'Peer Comparison', placeholder: true },
+    { id: 'peers', label: 'Peer Comparison' },
     { id: 'dcf', label: 'DCF Engine', placeholder: true },
 ];
 
-function AnalysisPanel({ symbol, financials, overview, overviewError, series }) {
+function AnalysisPanel(p) {
+    var symbol = p.symbol, financials = p.financials, overview = p.overview, overviewError = p.overviewError, series = p.series;
     var _t = useState('financials');
     var tab = _t[0];
     var setTab = _t[1];
@@ -263,6 +265,7 @@ function AnalysisPanel({ symbol, financials, overview, overviewError, series }) 
     if (tab === 'financials') content = React.createElement(FinancialAnalysis, { financials: financials, overview: overview, overviewError: overviewError });
     else if (tab === 'valuation') content = React.createElement(ValuationEngine, { financials: financials, overview: overview, series: series });
     else if (tab === 'risk') content = React.createElement(RiskAnalysis, { symbol: symbol, series: series, overview: overview });
+    else if (tab === 'peers') content = React.createElement(PeerComparison, { symbol: symbol, financials: financials, overview: overview, peers: p.peers });
     else content = React.createElement('div', { className: 'card', style: { color: 'var(--text-muted)', padding: 32, textAlign: 'center' } }, 'This module is coming in a future stage.');
 
     return React.createElement('div', null,
@@ -489,6 +492,7 @@ export function EquityResearch() {
                     overview: overview,
                     overviewError: payload && payload.overview_error,
                     series: series,
+                    peers: payload && payload.peers,
                 })
             )
         )
