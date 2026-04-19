@@ -1,45 +1,46 @@
 // Vercel Serverless Function: ETF/fund data for ATLAS Terminal.
 // GET /api/funds?symbol=SPY  (required)
 // Optional: &compare=QQQ,IWM  &nocache=1
-// Env: FINNHUB_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, ATLAS_ALLOWED_ORIGIN
+// Env: FINNHUB_API_KEY, ALPACA_API_KEY, ALPACA_API_SECRET, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, ATLAS_ALLOWED_ORIGIN
 
 var SYMBOL_RE = /^[A-Z0-9.\-^=]{1,14}$/;
 var FINNHUB_BASE = 'https://finnhub.io/api/v1';
+var ALPACA_BASE = 'https://data.alpaca.markets/v2';
 var TTL_MS = 30 * 60 * 1000;
 var MEM_TTL_MS = 15 * 60 * 1000;
 var _memCache = new Map();
 
 var ETF_META = {
-    SPY:  { name: 'SPDR S&P 500 ETF',            category: 'Large Blend',               expense: 0.0945 },
-    QQQ:  { name: 'Invesco QQQ Trust',            category: 'Large Growth',              expense: 0.20 },
-    IWM:  { name: 'iShares Russell 2000',         category: 'Small Blend',               expense: 0.19 },
-    VTI:  { name: 'Vanguard Total Stock',         category: 'Large Blend',               expense: 0.03 },
-    VOO:  { name: 'Vanguard S&P 500',             category: 'Large Blend',               expense: 0.03 },
-    EFA:  { name: 'iShares MSCI EAFE',            category: 'Foreign Large Blend',       expense: 0.32 },
-    EEM:  { name: 'iShares MSCI Emerging',        category: 'Emerging Markets',          expense: 0.68 },
-    TLT:  { name: 'iShares 20+ Year Treasury',    category: 'Long-Term Bond',            expense: 0.15 },
-    AGG:  { name: 'iShares Core US Aggregate',    category: 'Intermediate Core Bond',    expense: 0.03 },
-    HYG:  { name: 'iShares High Yield Corporate', category: 'High Yield Bond',           expense: 0.49 },
-    LQD:  { name: 'iShares IG Corporate',         category: 'Corporate Bond',            expense: 0.14 },
-    GLD:  { name: 'SPDR Gold Shares',             category: 'Commodities Precious Metals', expense: 0.40 },
-    SLV:  { name: 'iShares Silver Trust',         category: 'Commodities Precious Metals', expense: 0.50 },
-    VNQ:  { name: 'Vanguard Real Estate',         category: 'Real Estate',               expense: 0.12 },
-    XLK:  { name: 'Technology Select SPDR',       category: 'Technology',                expense: 0.09 },
-    XLF:  { name: 'Financial Select SPDR',        category: 'Financial',                 expense: 0.09 },
-    XLV:  { name: 'Health Care Select SPDR',      category: 'Health',                    expense: 0.09 },
-    XLE:  { name: 'Energy Select SPDR',           category: 'Energy',                    expense: 0.09 },
-    ARKK: { name: 'ARK Innovation ETF',           category: 'Mid-Cap Growth',            expense: 0.75 },
-    SCHD: { name: 'Schwab US Dividend',           category: 'Large Value',               expense: 0.06 },
-    VIG:  { name: 'Vanguard Dividend Appreciation', category: 'Large Blend',             expense: 0.06 },
-    DIA:  { name: 'SPDR Dow Jones Industrial',    category: 'Large Value',               expense: 0.16 },
-    BND:  { name: 'Vanguard Total Bond',          category: 'Intermediate Core Bond',    expense: 0.03 },
-    USO:  { name: 'United States Oil Fund',       category: 'Commodities Energy',        expense: 0.81 },
-    UUP:  { name: 'Invesco DB US Dollar',         category: 'Currency',                  expense: 0.77 },
-    TQQQ: { name: 'ProShares UltraPro QQQ',      category: '3x Leveraged',              expense: 0.86 },
-    VYM:  { name: 'Vanguard High Dividend',       category: 'Large Value',               expense: 0.06 },
-    IEF:  { name: 'iShares 7-10 Year Treasury',   category: 'Intermediate Bond',        expense: 0.15 },
-    TIP:  { name: 'iShares TIPS Bond',            category: 'Inflation-Protected Bond',  expense: 0.19 },
-    EMB:  { name: 'iShares JP Morgan EM Bond',    category: 'Emerging Markets Bond',     expense: 0.39 },
+    SPY:  { name: 'SPDR S&P 500 ETF',            category: 'Large Blend',               expense: 0.000945 },
+    QQQ:  { name: 'Invesco QQQ Trust',            category: 'Large Growth',              expense: 0.0020 },
+    IWM:  { name: 'iShares Russell 2000',         category: 'Small Blend',               expense: 0.0019 },
+    VTI:  { name: 'Vanguard Total Stock',         category: 'Large Blend',               expense: 0.0003 },
+    VOO:  { name: 'Vanguard S&P 500',             category: 'Large Blend',               expense: 0.0003 },
+    EFA:  { name: 'iShares MSCI EAFE',            category: 'Foreign Large Blend',       expense: 0.0032 },
+    EEM:  { name: 'iShares MSCI Emerging',        category: 'Emerging Markets',          expense: 0.0068 },
+    TLT:  { name: 'iShares 20+ Year Treasury',    category: 'Long-Term Bond',            expense: 0.0015 },
+    AGG:  { name: 'iShares Core US Aggregate',    category: 'Intermediate Core Bond',    expense: 0.0003 },
+    HYG:  { name: 'iShares High Yield Corporate', category: 'High Yield Bond',           expense: 0.0049 },
+    LQD:  { name: 'iShares IG Corporate',         category: 'Corporate Bond',            expense: 0.0014 },
+    GLD:  { name: 'SPDR Gold Shares',             category: 'Commodities Precious Metals', expense: 0.0040 },
+    SLV:  { name: 'iShares Silver Trust',         category: 'Commodities Precious Metals', expense: 0.0050 },
+    VNQ:  { name: 'Vanguard Real Estate',         category: 'Real Estate',               expense: 0.0012 },
+    XLK:  { name: 'Technology Select SPDR',       category: 'Technology',                expense: 0.0009 },
+    XLF:  { name: 'Financial Select SPDR',        category: 'Financial',                 expense: 0.0009 },
+    XLV:  { name: 'Health Care Select SPDR',      category: 'Health',                    expense: 0.0009 },
+    XLE:  { name: 'Energy Select SPDR',           category: 'Energy',                    expense: 0.0009 },
+    ARKK: { name: 'ARK Innovation ETF',           category: 'Mid-Cap Growth',            expense: 0.0075 },
+    SCHD: { name: 'Schwab US Dividend',           category: 'Large Value',               expense: 0.0006 },
+    VIG:  { name: 'Vanguard Dividend Appreciation', category: 'Large Blend',             expense: 0.0006 },
+    DIA:  { name: 'SPDR Dow Jones Industrial',    category: 'Large Value',               expense: 0.0016 },
+    BND:  { name: 'Vanguard Total Bond',          category: 'Intermediate Core Bond',    expense: 0.0003 },
+    USO:  { name: 'United States Oil Fund',       category: 'Commodities Energy',        expense: 0.0081 },
+    UUP:  { name: 'Invesco DB US Dollar',         category: 'Currency',                  expense: 0.0077 },
+    TQQQ: { name: 'ProShares UltraPro QQQ',      category: '3x Leveraged',              expense: 0.0086 },
+    VYM:  { name: 'Vanguard High Dividend',       category: 'Large Value',               expense: 0.0006 },
+    IEF:  { name: 'iShares 7-10 Year Treasury',   category: 'Intermediate Bond',        expense: 0.0015 },
+    TIP:  { name: 'iShares TIPS Bond',            category: 'Inflation-Protected Bond',  expense: 0.0019 },
+    EMB:  { name: 'iShares JP Morgan EM Bond',    category: 'Emerging Markets Bond',     expense: 0.0039 },
 };
 
 // -- Helpers ------------------------------------------------------------------
@@ -106,6 +107,36 @@ async function finnhubGet(path) {
     return r.json();
 }
 
+// -- Alpaca daily bars --------------------------------------------------------
+
+async function alpacaBars(symbol) {
+    var key = process.env.ALPACA_API_KEY;
+    var secret = process.env.ALPACA_API_SECRET;
+    if (!key || !secret) return null;
+    var end = new Date();
+    var start = new Date(end.getTime() - 730 * 24 * 60 * 60 * 1000);
+    var url = ALPACA_BASE + '/stocks/' + encodeURIComponent(symbol) + '/bars'
+        + '?timeframe=1Day&start=' + start.toISOString().slice(0, 10)
+        + '&end=' + end.toISOString().slice(0, 10)
+        + '&limit=10000&adjustment=raw&feed=iex';
+    var r = await fetchWithTimeout(url, {
+        headers: { 'APCA-API-KEY-ID': key, 'APCA-API-SECRET-KEY': secret, accept: 'application/json' },
+    }, 12000);
+    if (!r.ok) return null;
+    var j = await r.json();
+    return (j && j.bars) || [];
+}
+
+function alpacaToArrays(bars) {
+    if (!bars || !bars.length) return null;
+    var closes = [], timestamps = [];
+    for (var i = 0; i < bars.length; i++) {
+        closes.push(bars[i].c);
+        timestamps.push(Math.floor(new Date(bars[i].t).getTime() / 1000));
+    }
+    return { c: closes, t: timestamps, s: 'ok' };
+}
+
 // -- Metrics computation ------------------------------------------------------
 
 function computeMetrics(candles) {
@@ -170,26 +201,26 @@ function buildSeries(candles) {
 
 async function fetchFundData(symbol) {
     var sym = encodeURIComponent(symbol);
-    var now = Math.floor(Date.now() / 1000);
-    var from = now - 5 * 365 * 86400;
     var results = await Promise.allSettled([
         finnhubGet('/quote?symbol=' + sym),
         finnhubGet('/stock/profile2?symbol=' + sym),
-        finnhubGet('/stock/candle?symbol=' + sym + '&resolution=D&from=' + from + '&to=' + now),
+        alpacaBars(symbol),
     ]);
     var quote = results[0].status === 'fulfilled' ? results[0].value : null;
     var profile = results[1].status === 'fulfilled' ? results[1].value : null;
-    var candles = results[2].status === 'fulfilled' ? results[2].value : null;
+    var alpacaRaw = results[2].status === 'fulfilled' ? results[2].value : null;
+    var candles = alpacaToArrays(alpacaRaw);
     if (!quote && !candles) {
         var reasons = [];
         if (results[0].status === 'rejected') reasons.push('quote: ' + results[0].reason.message);
-        if (results[2].status === 'rejected') reasons.push('candle: ' + results[2].reason.message);
+        if (results[2].status === 'rejected') reasons.push('bars: ' + results[2].reason.message);
         throw new Error('Failed to fetch data for ' + symbol + ': ' + reasons.join('; '));
     }
     var quoteObj = (quote && quote.c != null) ? { price: quote.c, change: quote.d != null ? quote.d : null, changePct: quote.dp != null ? quote.dp : null } : null;
     var profileObj = (profile && (profile.name || profile.ticker)) ? { name: profile.name || symbol, exchange: profile.exchange || '', logo: profile.logo || null, industry: profile.finnhubIndustry || '' } : null;
-    var metrics = (candles && candles.s === 'ok') ? computeMetrics(candles) : null;
-    var series = (candles && candles.s === 'ok') ? buildSeries(candles) : [];
+    var metrics = candles ? computeMetrics(candles) : null;
+    var series = candles ? buildSeries(candles) : [];
+    if (metrics && quoteObj && quoteObj.price) metrics.current = quoteObj.price;
     return {
         symbol: symbol, profile: profileObj, meta: ETF_META[symbol] || null,
         quote: quoteObj, metrics: metrics, series: series,
