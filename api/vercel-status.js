@@ -36,11 +36,17 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const teamId = process.env.VERCEL_TEAM_ID;
-    const qs     = teamId ? `?limit=5&teamId=${encodeURIComponent(teamId)}` : '?limit=5';
+    const teamId      = process.env.VERCEL_TEAM_ID;
+    const projectId   = process.env.VERCEL_PROJECT_ID;
+    const projectName = process.env.VERCEL_PROJECT_NAME;
+
+    const params = new URLSearchParams({ limit: '5' });
+    if (teamId)      params.set('teamId',    teamId);
+    if (projectId)   params.set('projectId', projectId);
+    else if (projectName) params.set('app',  projectName);
 
     const { status, data } = await fetchJSON(
-      `https://api.vercel.com/v6/deployments${qs}`,
+      `https://api.vercel.com/v6/deployments?${params}`,
       {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',

@@ -499,6 +499,19 @@
     return s.length > n ? s.slice(0, n) + '…' : s;
   }
 
+  function esc(s) {
+    if (!s) return '';
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#x27;');
+  }
+
+  // Truncate then HTML-escape — use for all user-controlled strings in innerHTML.
+  function te(s, n) { return esc(n != null ? trunc(s, n) : s); }
+
   function badge(cls, label) {
     return `<span class="badge ${cls}"><span>●</span>${label}</span>`;
   }
@@ -516,7 +529,14 @@
     const feed = document.getElementById('log-feed');
     const div  = document.createElement('div');
     div.className = 'log-entry';
-    div.innerHTML = `<span class="log-ts">&gt; [${nowHMS()}]</span> <span class="log-msg">${msg}</span>`;
+    const ts = document.createElement('span');
+    ts.className = 'log-ts';
+    ts.textContent = `> [${nowHMS()}]`;
+    const body = document.createElement('span');
+    body.className = 'log-msg';
+    body.textContent = ' ' + msg;
+    div.appendChild(ts);
+    div.appendChild(body);
     feed.prepend(div);
     while (feed.children.length > 60) feed.removeChild(feed.lastChild);
   }
@@ -587,7 +607,7 @@
       const data = await res.json();
 
       if (data.error) {
-        el.innerHTML = `${badge('error','FETCH ERROR')}<div class="err-msg">${data.error}</div>`;
+        el.innerHTML = `${badge('error','FETCH ERROR')}<div class="err-msg">${te(data.error)}</div>`;
         log('Vercel: ' + data.error);
         anyFetchError = true;
         return;
@@ -613,7 +633,7 @@
             ${vercelBadge(d.state)}
             <span class="deploy-time">${timeAgo(d.createdAt)}</span>
           </div>
-          <div class="deploy-branch">⎇ ${d.meta?.githubCommitRef || '—'}</div>
+          <div class="deploy-branch">⎇ ${te(d.meta?.githubCommitRef || '—')}</div>
         </div>`).join('');
 
       el.innerHTML = `
@@ -622,15 +642,15 @@
             ${vercelBadge(latest.state)}
             <span class="deploy-time">${timeAgo(latest.createdAt)}</span>
           </div>
-          <div class="deploy-branch">⎇ ${branch}</div>
-          <div class="deploy-message">${trunc(message, 44)}</div>
-          ${duration ? `<div class="deploy-meta">build: ${duration}</div>` : ''}
+          <div class="deploy-branch">⎇ ${te(branch)}</div>
+          <div class="deploy-message">${te(message, 44)}</div>
+          ${duration ? `<div class="deploy-meta">build: ${esc(duration)}</div>` : ''}
         </div>
         ${prevList.length ? `<div class="divider"></div>${prevList}` : ''}`;
 
       log(`Vercel: latest ${latest.state} on ${branch} (${timeAgo(latest.createdAt)})`);
     } catch (e) {
-      el.innerHTML = `${badge('error','FETCH ERROR')}<div class="err-msg">${e.message}</div>`;
+      el.innerHTML = `${badge('error','FETCH ERROR')}<div class="err-msg">${te(e.message)}</div>`;
       log('Vercel fetch error: ' + e.message);
       anyFetchError = true;
     }
@@ -646,7 +666,7 @@
       const data = await res.json();
 
       if (data.error) {
-        el.innerHTML = `${badge('error','FETCH ERROR')}<div class="err-msg">${data.error}</div>`;
+        el.innerHTML = `${badge('error','FETCH ERROR')}<div class="err-msg">${te(data.error)}</div>`;
         log('GitHub: ' + data.error);
         anyFetchError = true;
         return;
@@ -656,17 +676,17 @@
 
       const branchTags = branches.slice(0, 12).map(b => {
         const cls = b.name === 'main' ? 'main' : b.name.startsWith('feature/') || b.name.startsWith('feat/') ? 'feature' : '';
-        return `<span class="branch-tag ${cls}" title="${b.name}">${trunc(b.name, 24)}</span>`;
+        return `<span class="branch-tag ${cls}" title="${esc(b.name)}">${te(b.name, 24)}</span>`;
       }).join('');
 
       const commitRows = commits.map(c => `
         <div class="commit-row">
           <div class="commit-top">
-            <span class="commit-sha">${c.sha.slice(0, 7)}</span>
-            <span class="commit-author">${trunc(c.author, 14)}</span>
+            <span class="commit-sha">${esc(c.sha.slice(0, 7))}</span>
+            <span class="commit-author">${te(c.author, 14)}</span>
             <span class="commit-time">${timeAgo(c.date)}</span>
           </div>
-          <div class="commit-message">${trunc(c.message, 50)}</div>
+          <div class="commit-message">${te(c.message, 50)}</div>
         </div>`).join('');
 
       el.innerHTML = `
@@ -685,7 +705,7 @@
 
       log(`GitHub: ${branches.length} branches, ${commits.length} recent commits, ${openPRs} open PR(s)`);
     } catch (e) {
-      el.innerHTML = `${badge('error','FETCH ERROR')}<div class="err-msg">${e.message}</div>`;
+      el.innerHTML = `${badge('error','FETCH ERROR')}<div class="err-msg">${te(e.message)}</div>`;
       log('GitHub fetch error: ' + e.message);
       anyFetchError = true;
     }
