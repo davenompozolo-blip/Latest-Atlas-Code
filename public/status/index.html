@@ -467,9 +467,10 @@
   const REFRESH_MS    = 60_000;
   const STALE_MS      = 5 * 60_000;
 
-  let lastSyncTime  = null;
-  let refreshTimer  = null;
-  let anyFetchError = false;
+  let lastSyncTime    = null;
+  let refreshTimer    = null;
+  let anyFetchError   = false;
+  let refreshInFlight = false;
 
   // ── Utilities ─────────────────────────────────────────────────
   function timeAgo(ts) {
@@ -722,15 +723,19 @@
 
   // ── Main refresh cycle ────────────────────────────────────────
   async function fetchAll() {
+    if (refreshInFlight) return;
+    refreshInFlight = true;
     anyFetchError = false;
     setFetching(true);
     log('Refreshing all data sources…');
-
-    await Promise.all([fetchSupabase(), fetchVercel(), fetchGitHub()]);
-
-    lastSyncTime = Date.now();
-    setFetching(false);
-    updateSyncLabel();
+    try {
+      await Promise.all([fetchSupabase(), fetchVercel(), fetchGitHub()]);
+      lastSyncTime = Date.now();
+      updateSyncLabel();
+    } finally {
+      setFetching(false);
+      refreshInFlight = false;
+    }
   }
 
   // ── Bootstrap ─────────────────────────────────────────────────

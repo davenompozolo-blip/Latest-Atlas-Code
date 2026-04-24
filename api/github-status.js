@@ -39,14 +39,17 @@ module.exports = async function handler(req, res) {
 
   const base = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
 
+  // Search API returns total_count so we get the exact count without pagination.
+  const prSearchUrl = `https://api.github.com/search/issues?q=${encodeURIComponent(`repo:${owner}/${repo} type:pr state:open`)}&per_page=1`;
+
   try {
     const [commitsRes, branchesRes, prsRes] = await Promise.all([
       fetchJSON(`${base}/commits?sha=main&per_page=5`, headers),
-      fetchJSON(`${base}/branches?per_page=20`,       headers),
-      fetchJSON(`${base}/pulls?state=open`,           headers),
+      fetchJSON(`${base}/branches?per_page=20`,        headers),
+      fetchJSON(prSearchUrl,                           headers),
     ]);
 
-    // Surface rate-limit errors clearly
+    // Surface all upstream errors — 401, 403, 404, 422, 429, 5xx, etc.
     for (const { status, data } of [commitsRes, branchesRes, prsRes]) {
       if (status === 403 && data.message?.includes('rate limit')) {
         return res.status(200).json({
@@ -60,14 +63,20 @@ module.exports = async function handler(req, res) {
           commits: [], branches: [], openPRs: 0,
         });
       }
+      if (status !== 200) {
+        return res.status(200).json({
+          error: `GitHub API returned HTTP ${status}${data?.message ? `: ${data.message}` : ''}`,
+          commits: [], branches: [], openPRs: 0,
+        });
+      }
     }
 
     const commits = Array.isArray(commitsRes.data)
       ? commitsRes.data.map((c) => ({
-          sha:    c.sha,
+          sha:     c.sha,
           message: (c.commit?.message || '').split('\n')[0],
-          date:   c.commit?.committer?.date || c.commit?.author?.date || null,
-          author: c.commit?.author?.name || 'unknown',
+          date:    c.commit?.committer?.date || c.commit?.author?.date || null,
+          author:  c.commit?.author?.name || 'unknown',
         }))
       : [];
 
@@ -78,7 +87,7 @@ module.exports = async function handler(req, res) {
         }))
       : [];
 
-    const openPRs = Array.isArray(prsRes.data) ? prsRes.data.length : 0;
+    const openPRs = Number.isFinite(prsRes.data?.total_count) ? prsRes.data.total_count : 0;
 
     res.status(200).json({ commits, branches, openPRs });
   } catch (e) {
