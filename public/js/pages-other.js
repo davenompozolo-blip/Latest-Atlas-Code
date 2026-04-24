@@ -1,16 +1,15 @@
 // ============================================================
 // ATLAS Terminal — Secondary Pages
 // ------------------------------------------------------------
-// RiskAnalysis, PerformanceSuite, CommandCentre.
-// These three pages share a similar (lighter) structure than
-// PortfolioHome/QuantDashboard, so they live in a single module.
+// RiskAnalysis, CommandCentre.
+// PerformanceSuite moved to performance-suite.js (v2 retrofit).
 // ============================================================
 
 import { sb, loadView, MOCK_COMMAND } from './config.js';
 import { fmt, fmtPct, fmtCurrency, cls, badgeCls, healthCls } from './utils.js';
 import { Loading, EmptyState } from './components.js';
 
-const { useState, useEffect, useRef } = React;
+const { useState, useEffect } = React;
 
 // ============================================================
 // RISK ANALYSIS
@@ -73,107 +72,6 @@ export function RiskAnalysis() {
                                 React.createElement('td', null, fmtPct(r.marginal_vol_contribution)),
                                 React.createElement('td', null, fmtCurrency(r.dollar_var_95_daily)),
                                 React.createElement('td', null, React.createElement('span', { className: 'badge ' + badgeCls(r.risk_tier) }, r.risk_tier))
-                            ))
-                    )
-                )
-            )
-        )
-    );
-}
-
-// ============================================================
-// PERFORMANCE SUITE
-// ============================================================
-export function PerformanceSuite() {
-    const [perf, setPerf] = useState(null);
-    const [nav, setNav] = useState(null);
-    const [loading, setLoading] = useState(true);
-    const chartRef = useRef(null);
-    const chartInstance = useRef(null);
-
-    useEffect(() => {
-        Promise.all([
-            loadView('vw_performance_suite', []),
-            loadView('vw_portfolio_nav_daily', [])
-        ]).then(([p, n]) => { setPerf(p); setNav(n); setLoading(false); });
-    }, []);
-
-    useEffect(() => {
-        if (!nav || !nav.length || !chartRef.current) return;
-        if (chartInstance.current) chartInstance.current.destroy();
-        const sorted = [...nav].sort((a, b) => new Date(a.price_date) - new Date(b.price_date));
-        chartInstance.current = new Chart(chartRef.current, {
-            type: 'line',
-            data: {
-                labels: sorted.map(d => d.price_date),
-                datasets: [{
-                    label: 'Portfolio NAV',
-                    data: sorted.map(d => Number(d.nav)),
-                    borderColor: '#00d4ff',
-                    backgroundColor: 'rgba(0,212,255,0.05)',
-                    borderWidth: 2,
-                    pointRadius: 0,
-                    fill: true,
-                    tension: 0.3
-                }]
-            },
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                scales: {
-                    x: { ticks: { color: 'rgba(255,255,255,0.3)', maxTicksLimit: 12, font: { size: 10 } }, grid: { display: false } },
-                    y: { ticks: { color: 'rgba(255,255,255,0.3)', callback: v => '$' + (v/1000).toFixed(0) + 'k', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.04)' } }
-                },
-                plugins: { legend: { display: false } }
-            }
-        });
-        return () => { if (chartInstance.current) chartInstance.current.destroy(); };
-    }, [nav]);
-
-    if (loading) return React.createElement(Loading, null);
-    if (!perf || !perf.length) return React.createElement(EmptyState, null);
-
-    const avgEfficiency = perf.reduce((s, p) => s + (Number(p.entry_efficiency_score) || 0), 0) / perf.length;
-    const avgCAGR = perf.reduce((s, p) => s + (Number(p.annualised_return) || 0), 0) / perf.length;
-    const cuts = perf.filter(p => p.cut_candidate_flag).length;
-    const best = perf.reduce((b, p) => (Number(p.total_return_pct) || 0) > (Number(b.total_return_pct) || 0) ? p : b, perf[0]);
-
-    return React.createElement('div', null,
-        React.createElement('div', { className: 'page-title' }, 'Performance Suite'),
-        React.createElement('div', { className: 'metrics-row' },
-            React.createElement('div', { className: 'metric-card' },
-                React.createElement('div', { className: 'label' }, 'Avg Entry Efficiency'), React.createElement('div', { className: 'value' }, fmt(avgEfficiency, 1) + '%')),
-            React.createElement('div', { className: 'metric-card' },
-                React.createElement('div', { className: 'label' }, 'Avg Annualised Return'), React.createElement('div', { className: 'value ' + cls(avgCAGR) }, fmtPct(avgCAGR))),
-            React.createElement('div', { className: 'metric-card' },
-                React.createElement('div', { className: 'label' }, 'Cut Candidates'), React.createElement('div', { className: 'value ' + (cuts > 0 ? 'negative' : 'positive') }, cuts)),
-            React.createElement('div', { className: 'metric-card' },
-                React.createElement('div', { className: 'label' }, 'Best Performer'), React.createElement('div', { className: 'value positive' }, best.symbol),
-                React.createElement('div', { className: 'sub' }, fmtPct(best.total_return_pct)))
-        ),
-        nav && nav.length > 0 ? React.createElement('div', { className: 'card' },
-            React.createElement('div', { className: 'card-title' }, 'Portfolio NAV (FIFO)'),
-            React.createElement('div', { className: 'chart-container' }, React.createElement('canvas', { ref: chartRef }))
-        ) : null,
-        React.createElement('div', { className: 'card' },
-            React.createElement('div', { className: 'card-title' }, 'Position Performance (' + perf.length + ')'),
-            React.createElement('div', { style: { overflowX: 'auto' } },
-                React.createElement('table', { className: 'data-table' },
-                    React.createElement('thead', null,
-                        React.createElement('tr', null,
-                            ['Symbol', 'Entry $', 'Current $', 'Entry Date', 'Days Held', 'Return %', 'CAGR %', 'Efficiency', 'Cut?'].map(h =>
-                                React.createElement('th', { key: h }, h)))),
-                    React.createElement('tbody', null,
-                        perf.map(p =>
-                            React.createElement('tr', { key: p.symbol },
-                                React.createElement('td', { style: { fontWeight: 600, color: '#00d4ff' } }, p.symbol),
-                                React.createElement('td', null, fmtCurrency(p.entry_price)),
-                                React.createElement('td', null, fmtCurrency(p.current_price)),
-                                React.createElement('td', { style: { fontFamily: 'DM Sans' } }, p.entry_date ? new Date(p.entry_date).toLocaleDateString() : '\u2014'),
-                                React.createElement('td', null, p.days_held || '\u2014'),
-                                React.createElement('td', { className: cls(p.total_return_pct) }, fmtPct(p.total_return_pct)),
-                                React.createElement('td', { className: cls(p.annualised_return) }, fmtPct(p.annualised_return)),
-                                React.createElement('td', null, fmt(p.entry_efficiency_score, 1)),
-                                React.createElement('td', null, p.cut_candidate_flag ? React.createElement('span', { className: 'badge red' }, 'CUT') : React.createElement('span', { className: 'badge green' }, 'HOLD'))
                             ))
                     )
                 )
