@@ -7,6 +7,7 @@
 // ============================================================
 
 import { sb, loadView } from './config.js';
+import { heroBadgeCls } from './utils.js';
 
 const { useState, useEffect, useRef } = React;
 
@@ -32,6 +33,17 @@ export function ConfigPrompt() {
         React.createElement('pre', { style: { background: '#0d0f1a', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, padding: 20, textAlign: 'left', maxWidth: 600, margin: '0 auto', fontSize: 13, fontFamily: 'JetBrains Mono', color: 'rgba(255,255,255,0.7)', overflowX: 'auto' } },
             '\x3Cscript\x3E\nwindow.ATLAS_CONFIG = {\n  supabaseKey: "your-anon-key-here"\n};\n\x3C/script\x3E'),
         React.createElement('div', { style: { color: 'rgba(255,255,255,0.28)', marginTop: 20, fontSize: 12 } }, 'Add the script block above BEFORE the terminal script tag, or deploy with environment injection.')
+    );
+}
+
+// --- Hero Card — gradient metric tile with accent line + status badge ---
+export function HeroCard({ icon, label, value, color, accent, badge, sub }) {
+    return React.createElement('div', { className: 'hero-card accent-' + (accent || 'cyan') },
+        icon ? React.createElement('span', { className: 'hc-icon' }, icon) : null,
+        React.createElement('div', { className: 'hc-label' }, label),
+        React.createElement('div', { className: 'hc-value', style: { color: color || 'var(--text)' } }, value),
+        badge ? React.createElement('span', { className: 'hc-badge ' + heroBadgeCls(badge) }, badge) : null,
+        sub ? React.createElement('div', { className: 'hc-sub' }, sub) : null
     );
 }
 
