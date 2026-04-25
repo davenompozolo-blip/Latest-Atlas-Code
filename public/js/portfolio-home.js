@@ -78,7 +78,6 @@ export function PortfolioHome() {
     var pnlRef = useRef(null);
     var pnlInst = useRef(null);
     var sectorRef = useRef(null);
-    var sectorInst = useRef(null);
 
     useEffect(function() {
         Promise.all([
@@ -217,10 +216,9 @@ export function PortfolioHome() {
         return function() { if (pnlInst.current) pnlInst.current.destroy(); };
     }, [positions]);
 
-    // Sector P&L waterfall chart
+    // Sector P&L waterfall (Plotly)
     useEffect(function() {
         if (!positions || !positions.length || !sectorRef.current) return;
-        if (sectorInst.current) sectorInst.current.destroy();
         var bySector = {};
         positions.forEach(function(p) {
             var sec = p.sector || 'Other';
@@ -231,28 +229,32 @@ export function PortfolioHome() {
         });
         var sectors = Object.keys(bySector).sort(function(a, b) { return bySector[b] - bySector[a]; });
         var sectorPnl = sectors.map(function(s) { return bySector[s]; });
-        var sectorColors = sectors.map(function(s) { return bySector[s] >= 0 ? 'rgba(16,185,129,0.7)' : 'rgba(239,68,68,0.7)'; });
-        sectorInst.current = new Chart(sectorRef.current, {
-            type: 'bar',
-            data: {
-                labels: sectors,
-                datasets: [{
-                    data: sectorPnl,
-                    backgroundColor: sectorColors,
-                    borderWidth: 0,
-                    borderRadius: 3
-                }]
-            },
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                scales: {
-                    x: { ticks: { color: 'rgba(255,255,255,0.5)', font: { size: 10, family: 'DM Sans' }, maxRotation: 45 }, grid: { display: false } },
-                    y: { ticks: { color: 'rgba(255,255,255,0.3)', font: { size: 10, family: 'JetBrains Mono' }, callback: function(v) { return '$' + (v / 1000).toFixed(1) + 'k'; } }, grid: { color: 'rgba(255,255,255,0.04)' } }
-                },
-                plugins: { legend: { display: false } }
-            }
-        });
-        return function() { if (sectorInst.current) sectorInst.current.destroy(); };
+        var total = sectorPnl.reduce(function(s, v) { return s + v; }, 0);
+        var labels = sectors.concat(['Total']);
+        var measures = sectors.map(function() { return 'relative'; }).concat(['total']);
+        var values = sectorPnl.concat([total]);
+        var textValues = values.map(function(v) { return (v >= 0 ? '+' : '') + '$' + (v / 1000).toFixed(1) + 'k'; });
+        Plotly.react(sectorRef.current, [{
+            type: 'waterfall',
+            orientation: 'v',
+            measure: measures,
+            x: labels,
+            y: values,
+            text: textValues,
+            textposition: 'outside',
+            textfont: { color: 'rgba(255,255,255,0.7)', size: 10, family: 'JetBrains Mono' },
+            connector: { line: { color: 'rgba(255,255,255,0.1)', width: 1 } },
+            increasing: { marker: { color: 'rgba(16,185,129,0.75)' } },
+            decreasing: { marker: { color: 'rgba(239,68,68,0.75)' } },
+            totals: { marker: { color: 'rgba(0,212,255,0.75)' } },
+            hovertemplate: '<b>%{x}</b><br>P&L: %{y:$,.0f}<extra></extra>',
+        }], {
+            paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+            margin: { l: 48, r: 12, t: 8, b: 60 },
+            xaxis: { tickfont: { color: 'rgba(255,255,255,0.5)', size: 10, family: 'DM Sans' }, tickangle: -30, showgrid: false },
+            yaxis: { gridcolor: 'rgba(255,255,255,0.05)', zeroline: true, zerolinecolor: 'rgba(255,255,255,0.15)', tickfont: { color: 'rgba(255,255,255,0.3)', size: 10, family: 'JetBrains Mono' }, tickprefix: '$', tickformat: ',.0f' },
+            showlegend: false,
+        }, { responsive: true, displayModeBar: false });
     }, [positions]);
 
     if (loading) return React.createElement(Loading, null);
@@ -377,12 +379,10 @@ export function PortfolioHome() {
                 React.createElement('canvas', { ref: pnlRef })
             )
         ),
-        // Sector P&L Waterfall
+        // Sector P&L Waterfall (Plotly)
         React.createElement('div', { className: 'card' },
             React.createElement('div', { className: 'card-title', style: { fontSize: 12, letterSpacing: 1.5, textTransform: 'uppercase' } }, 'SECTOR P&L ATTRIBUTION'),
-            React.createElement('div', { style: { height: 280 } },
-                React.createElement('canvas', { ref: sectorRef })
-            )
+            React.createElement('div', { ref: sectorRef, style: { height: 300 } })
         )
     );
 }
