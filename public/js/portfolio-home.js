@@ -199,10 +199,13 @@ export function PortfolioHome() {
     var donutRef = useRef(null);
     var donutInst = useRef(null);
     var navPlotRef = useRef(null);
+    var navChartRef = useRef(null);
     var _nr = useState('ALL'), navRange = _nr[0], setNavRange = _nr[1];
     var pnlRef = useRef(null);
     var pnlInst = useRef(null);
     var sectorRef = useRef(null);
+    var heatRef = useRef(null);
+    var _hm = useState('day'), heatMode = _hm[0], setHeatMode = _hm[1];
 
     useEffect(function() {
         Promise.all([
@@ -268,87 +271,84 @@ export function PortfolioHome() {
         return function() { if (donutInst.current) donutInst.current.destroy(); };
     }, [positions]);
 
-    // Plotly NAV chart
+    // lightweight-charts NAV chart
     useEffect(function() {
         if (!navData || !navData.length || !navPlotRef.current) return;
+        if (navChartRef.current) { navChartRef.current.remove(); navChartRef.current = null; }
         var sorted = navData.slice().sort(function(a, b) { return new Date(a.price_date) - new Date(b.price_date); });
-        var cutoff = null;
-        var now = new Date();
+        var cutoff = null, now = new Date();
         if (navRange === '1W') cutoff = new Date(now - 7 * 864e5);
         else if (navRange === '1M') cutoff = new Date(now - 30 * 864e5);
         else if (navRange === '3M') cutoff = new Date(now - 90 * 864e5);
         var slice = cutoff ? sorted.filter(function(d) { return new Date(d.price_date) >= cutoff; }) : sorted;
         if (!slice.length) slice = sorted;
         var baseNav = slice[0].nav;
-        var xs = slice.map(function(d) { return d.price_date; });
-        var ys = slice.map(function(d) { return +((d.nav / baseNav - 1) * 100).toFixed(2); });
-        var lastY = ys[ys.length - 1];
-        var fillColor = lastY >= 0 ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)';
+        var lastY = (slice[slice.length - 1].nav / baseNav - 1) * 100;
         var lineColor = lastY >= 0 ? '#10b981' : '#ef4444';
-        // Build entry-point scatter trace from transactions
-        var traces = [{
-            x: xs, y: ys,
-            type: 'scatter', mode: 'lines',
-            fill: 'tozeroy', fillcolor: fillColor,
-            line: { color: lineColor, width: 2, shape: 'spline' },
-            hovertemplate: '%{x}<br><b>%{y:.2f}%</b><extra></extra>',
-            name: 'ATLAS NAV',
-        }];
+        var topFill   = lastY >= 0 ? 'rgba(16,185,129,0.22)' : 'rgba(239,68,68,0.22)';
+        var chart = LightweightCharts.createChart(navPlotRef.current, {
+            width:  navPlotRef.current.clientWidth || 600,
+            height: 260,
+            layout: {
+                background: { type: 'solid', color: 'transparent' },
+                textColor: 'rgba(255,255,255,0.3)',
+                fontFamily: 'JetBrains Mono',
+                fontSize: 10,
+            },
+            grid: { vertLines: { visible: false }, horzLines: { color: 'rgba(255,255,255,0.05)' } },
+            rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.1, bottom: 0.1 } },
+            timeScale: { borderVisible: false, fixLeftEdge: true, fixRightEdge: true },
+            crosshair: {
+                vertLine: { color: 'rgba(255,255,255,0.15)', width: 1, style: 3 },
+                horzLine: { color: 'rgba(255,255,255,0.15)', width: 1, style: 3 },
+            },
+            handleScroll: false,
+            handleScale: false,
+        });
+        navChartRef.current = chart;
+        var areaSeries = chart.addSeries(LightweightCharts.AreaSeries, {
+            lineColor: lineColor,
+            topColor: topFill,
+            bottomColor: 'rgba(0,0,0,0)',
+            lineWidth: 2,
+            lineStyle: 0,
+            crosshairMarkerVisible: true,
+            priceFormat: { type: 'custom', formatter: function(v) { return (v >= 0 ? '+' : '') + v.toFixed(2) + '%'; } },
+        });
+        areaSeries.setData(slice.map(function(d) {
+            return { time: d.price_date, value: +((d.nav / baseNav - 1) * 100).toFixed(3) };
+        }));
         if (txData && txData.length) {
-            // Map NAV by date for Y lookup
             var navByDate = {};
-            slice.forEach(function(d) { navByDate[d.price_date] = ((d.nav / baseNav - 1) * 100); });
-            var sliceStart = slice[0].price_date;
-            var sliceEnd = slice[slice.length - 1].price_date;
-            // Group buys: profitable vs underwater using positions current P&L
+            slice.forEach(function(d) { navByDate[d.price_date] = (d.nav / baseNav - 1) * 100; });
+            var sliceStart = slice[0].price_date, sliceEnd = slice[slice.length - 1].price_date;
             var posMap = {};
             if (positions) positions.forEach(function(p) { posMap[p.symbol] = p; });
-            var txInRange = txData.filter(function(t) {
+            var markers = [];
+            txData.forEach(function(t) {
                 var d = t.transaction_date || t.date || t.trade_date;
-                return d && d >= sliceStart && d <= sliceEnd && (t.side || t.transaction_type || '').toUpperCase().indexOf('BUY') >= 0;
-            });
-            var txGood = [], txBad = [], txLabels = [];
-            txInRange.forEach(function(t) {
-                var d = t.transaction_date || t.date || t.trade_date;
+                if (!d || d < sliceStart || d > sliceEnd) return;
+                if ((t.side || t.transaction_type || '').toUpperCase().indexOf('BUY') < 0) return;
                 var sym = t.symbol || t.ticker;
                 var pos = posMap[sym];
                 var ret = pos && pos.unrealised_return_pct != null ? Number(pos.unrealised_return_pct) : null;
-                // Find nearest nav Y for this date
-                var navY = navByDate[d];
-                if (navY == null) {
-                    // Find closest date in navByDate
-                    var dates = Object.keys(navByDate);
-                    var closest = dates.reduce(function(a, b) { return Math.abs(new Date(b) - new Date(d)) < Math.abs(new Date(a) - new Date(d)) ? b : a; });
-                    navY = navByDate[closest];
-                }
-                if (ret === null || ret >= 0) { txGood.push({ x: d, y: navY, sym: sym, ret: ret }); }
-                else { txBad.push({ x: d, y: navY, sym: sym, ret: ret }); }
+                var good = ret === null || ret >= 0;
+                markers.push({
+                    time: d,
+                    position: 'belowBar',
+                    color: good ? '#10b981' : '#ef4444',
+                    shape: good ? 'arrowUp' : 'arrowDown',
+                    text: sym + (ret != null ? (ret >= 0 ? ' +' : ' ') + (ret * 100).toFixed(1) + '%' : ''),
+                    size: 1,
+                });
             });
-            if (txGood.length) traces.push({
-                x: txGood.map(function(t) { return t.x; }),
-                y: txGood.map(function(t) { return t.y; }),
-                text: txGood.map(function(t) { return t.sym + (t.ret != null ? ' +' + (t.ret * 100).toFixed(1) + '%' : ''); }),
-                type: 'scatter', mode: 'markers', name: 'Entry (profitable)',
-                marker: { color: '#10b981', size: 8, symbol: 'triangle-up', line: { color: 'rgba(16,185,129,0.6)', width: 1 } },
-                hovertemplate: '<b>%{text}</b><br>%{x}<extra>Entry</extra>',
-            });
-            if (txBad.length) traces.push({
-                x: txBad.map(function(t) { return t.x; }),
-                y: txBad.map(function(t) { return t.y; }),
-                text: txBad.map(function(t) { return t.sym + (t.ret != null ? ' ' + (t.ret * 100).toFixed(1) + '%' : ''); }),
-                type: 'scatter', mode: 'markers', name: 'Entry (underwater)',
-                marker: { color: '#ef4444', size: 8, symbol: 'triangle-down', line: { color: 'rgba(239,68,68,0.6)', width: 1 } },
-                hovertemplate: '<b>%{text}</b><br>%{x}<extra>Entry</extra>',
-            });
+            if (markers.length) {
+                markers.sort(function(a, b) { return a.time < b.time ? -1 : a.time > b.time ? 1 : 0; });
+                LightweightCharts.createSeriesMarkers(areaSeries, markers);
+            }
         }
-        Plotly.react(navPlotRef.current, traces, {
-            paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
-            margin: { l: 48, r: 12, t: 8, b: 32 },
-            xaxis: { showgrid: false, tickfont: { color: 'rgba(255,255,255,0.3)', size: 10, family: 'JetBrains Mono' }, tickformat: '%b %d', nticks: 6 },
-            yaxis: { gridcolor: 'rgba(255,255,255,0.05)', zeroline: true, zerolinecolor: 'rgba(255,255,255,0.1)', zerolinewidth: 1, tickfont: { color: 'rgba(255,255,255,0.3)', size: 10, family: 'JetBrains Mono' }, ticksuffix: '%' },
-            showlegend: false,
-            font: { family: 'DM Sans', color: 'rgba(255,255,255,0.5)' },
-        }, { responsive: true, displayModeBar: false });
+        chart.timeScale().fitContent();
+        return function() { if (navChartRef.current) { navChartRef.current.remove(); navChartRef.current = null; } };
     }, [navData, navRange, txData, positions]);
 
     // P&L contributors chart
@@ -434,6 +434,57 @@ export function PortfolioHome() {
             showlegend: false,
         }, { responsive: true, displayModeBar: false });
     }, [positions]);
+
+
+    // Portfolio heatmap (treemap)
+    useEffect(function() {
+        if (!positions || !positions.length || !heatRef.current) return;
+        var colorKey = heatMode === 'day' ? 'daily_change_pct' : 'unrealised_return_pct';
+        var labels = [], values = [], colors = [], texts = [], hovers = [];
+        positions.forEach(function(p) {
+            var mv = Math.abs(Number(p.market_value) || 0);
+            if (!mv) return;
+            var chg = p[colorKey] != null ? Number(p[colorKey]) : 0;
+            var chgPct = (chg * 100).toFixed(2);
+            labels.push(p.symbol);
+            values.push(mv);
+            colors.push(chg);
+            texts.push(p.symbol + '<br>' + (chg >= 0 ? '+' : '') + chgPct + '%');
+            hovers.push('<b>' + p.symbol + '</b><br>' + getName(p.symbol, p) +
+                '<br>' + (heatMode === 'day' ? 'Day' : 'Total') + ': ' + (chg >= 0 ? '+' : '') + chgPct + '%' +
+                '<br>Mkt Value: $' + Number(mv).toLocaleString('en-US', { maximumFractionDigits: 0 }) +
+                '<extra></extra>');
+        });
+        Plotly.react(heatRef.current, [{
+            type: 'treemap',
+            labels: labels,
+            parents: labels.map(function() { return ''; }),
+            values: values,
+            text: texts,
+            customdata: hovers,
+            textinfo: 'text',
+            hovertemplate: '%{customdata}',
+            textfont: { family: 'JetBrains Mono', size: 11, color: 'rgba(255,255,255,0.92)' },
+            marker: {
+                colors: colors,
+                colorscale: [
+                    [0,    'rgba(185,28,28,0.92)'],
+                    [0.35, 'rgba(127,29,29,0.7)'],
+                    [0.48, 'rgba(15,23,42,0.85)'],
+                    [0.52, 'rgba(15,23,42,0.85)'],
+                    [0.65, 'rgba(6,78,59,0.7)'],
+                    [1,    'rgba(5,150,105,0.92)'],
+                ],
+                cmid: 0,
+                showscale: false,
+                line: { width: 1.5, color: 'rgba(0,0,0,0.6)' },
+            },
+            tiling: { pad: 2 },
+        }], {
+            paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+            margin: { l: 0, r: 0, t: 0, b: 0 },
+        }, { responsive: true, displayModeBar: false });
+    }, [positions, heatMode]);
 
     var filtPosns = useMemo(function() {
         if (!positions) return [];
@@ -537,6 +588,30 @@ export function PortfolioHome() {
                 React.createElement('div', { className: 'card-title' }, 'SECTOR P&L ATTRIBUTION'),
                 React.createElement('div', { ref: sectorRef, style: { height: 300 } })
             )
+        ),
+        // Portfolio Heatmap
+        React.createElement('div', { className: 'card', style: { padding: '16px 20px', marginBottom: 16 } },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 } },
+                React.createElement('div', { className: 'card-title', style: { margin: 0 } }, 'PORTFOLIO HEATMAP'),
+                React.createElement('div', { style: { display: 'flex', gap: 4, alignItems: 'center' } },
+                    React.createElement('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'DM Sans', marginRight: 6 } }, 'Sized by NAV weight · Coloured by'),
+                    ['day', 'total'].map(function(m) {
+                        var a = heatMode === m;
+                        return React.createElement('button', { key: m, onClick: function() { setHeatMode(m); }, style: {
+                            background: a ? 'rgba(0,212,255,0.12)' : 'transparent',
+                            color: a ? '#00d4ff' : 'rgba(255,255,255,0.3)',
+                            border: '1px solid ' + (a ? 'rgba(0,212,255,0.3)' : 'rgba(255,255,255,0.06)'),
+                            borderRadius: 4, padding: '3px 9px', fontSize: 10, fontFamily: 'JetBrains Mono',
+                            fontWeight: a ? 700 : 400, cursor: 'pointer', letterSpacing: 0.5
+                        }}, m === 'day' ? 'Day %' : 'Total Return');
+                    }),
+                    React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 4, marginLeft: 10 } },
+                        React.createElement('div', { style: { width: 32, height: 8, background: 'linear-gradient(to right, rgba(185,28,28,0.9), rgba(15,23,42,0.8), rgba(5,150,105,0.9))', borderRadius: 2 } }),
+                        React.createElement('span', { style: { fontSize: 9, color: 'rgba(255,255,255,0.25)', fontFamily: 'JetBrains Mono' } }, '− / +')
+                    )
+                )
+            ),
+            React.createElement('div', { ref: heatRef, style: { height: 280 } })
         ),
         // Portfolio Intelligence Row
         React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 } },
