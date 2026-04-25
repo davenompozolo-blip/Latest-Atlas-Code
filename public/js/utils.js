@@ -18,6 +18,53 @@ export function fmtCurrency(n) {
     return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 export function cls(val) { return val > 0 ? 'positive' : val < 0 ? 'negative' : ''; }
+
+// --- Hero card status helpers ---
+export function heroBadgeCls(s) {
+    if (!s) return '';
+    const l = s.toLowerCase();
+    if (['excellent','strong','low','low vol'].includes(l)) return 'b-excellent';
+    if (['good','positive'].includes(l)) return 'b-good';
+    if (['fair','moderate','elevated','weak'].includes(l)) return 'b-fair';
+    if (['poor','negative','severe','high','high vol'].includes(l)) return 'b-poor';
+    return 'b-good';
+}
+export function sharpeStatus(v) {
+    if (v == null) return '';
+    if (v > 1.5) return 'Excellent';
+    if (v > 1.0) return 'Good';
+    if (v > 0.5) return 'Fair';
+    return 'Poor';
+}
+export function volStatus(v) {
+    if (v == null) return '';
+    if (v < 0.12) return 'Low Vol';
+    if (v < 0.20) return 'Moderate';
+    if (v < 0.30) return 'Elevated';
+    return 'High Vol';
+}
+export function returnStatus(v) {
+    if (v == null) return '';
+    if (v > 0.15) return 'Strong';
+    if (v > 0)    return 'Positive';
+    if (v > -0.10) return 'Weak';
+    return 'Negative';
+}
+export function ddStatus(v) {
+    if (v == null) return '';
+    const abs = Math.abs(v);
+    if (abs < 0.10) return 'Low';
+    if (abs < 0.20) return 'Moderate';
+    return 'Severe';
+}
+export function calmarStatus(v) {
+    if (v == null) return '';
+    if (v > 1.5) return 'Excellent';
+    if (v > 0.5) return 'Good';
+    if (v > 0)   return 'Fair';
+    return 'Poor';
+}
+
 export function badgeCls(tier) {
     const t = (tier || '').toLowerCase();
     if (t.includes('high') || t.includes('downtrend') || t.includes('overbought') || t.includes('needs')) return 'red';

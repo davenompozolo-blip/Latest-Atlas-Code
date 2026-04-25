@@ -465,6 +465,42 @@ export function RiskAnalysis() {
     const modRisk = risk.filter(r => r.risk_tier === 'Moderate Risk').length;
     const lowRisk = risk.filter(r => r.risk_tier === 'Low Risk').length;
 
+    var ddVal = c.drawdown_pct != null ? c.drawdown_pct / 100 : null;
+
+    return React.createElement('div', null,
+        React.createElement('div', { className: 'page-title' }, 'Risk Analysis'),
+        // Primary risk KPIs
+        React.createElement('div', { className: 'hero-grid', style: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 16 } },
+            React.createElement(HeroCard, {
+                icon: '✦',
+                label: 'SHARPE RATIO',
+                value: fmt(c.sharpe_ratio),
+                color: c.sharpe_ratio > 1 ? 'var(--green)' : c.sharpe_ratio > 0 ? 'var(--amber)' : 'var(--red)',
+                accent: 'cyan',
+                badge: sharpeStatus(c.sharpe_ratio)
+            }),
+            React.createElement(HeroCard, {
+                icon: '◈',
+                label: 'SORTINO RATIO',
+                value: fmt(c.sortino_ratio),
+                color: c.sortino_ratio > 1 ? 'var(--green)' : c.sortino_ratio > 0 ? 'var(--amber)' : 'var(--red)',
+                accent: 'violet',
+                badge: sharpeStatus(c.sortino_ratio)
+            }),
+            React.createElement(HeroCard, {
+                icon: '▽',
+                label: 'MAX DRAWDOWN',
+                value: c.drawdown_pct != null ? fmt(c.drawdown_pct, 2) + '%' : '—',
+                color: 'var(--red)',
+                accent: 'red',
+                badge: ddStatus(ddVal)
+            }),
+            React.createElement(HeroCard, {
+                icon: '⚠',
+                label: 'PORTFOLIO VAR (95%)',
+                value: fmtCurrency(c.dollar_var_95),
+                accent: 'amber'
+            })
     const TABS = [
         { id: 'breakdown', label: 'Risk Breakdown' },
         { id: 'corerisk', label: 'Core Risk' },
@@ -519,13 +555,11 @@ export function RiskAnalysis() {
             React.createElement('div', { className: 'metric-card' },
                 React.createElement('div', { className: 'label' }, 'Portfolio VaR (95%)'), React.createElement('div', { className: 'value' }, fmtCurrency(c.dollar_var_95)))
         ),
-        React.createElement('div', { className: 'metrics-row', style: { gridTemplateColumns: 'repeat(3, 1fr)' } },
-            React.createElement('div', { className: 'metric-card' },
-                React.createElement('div', { className: 'label' }, 'High Risk'), React.createElement('div', { className: 'value negative' }, highRisk)),
-            React.createElement('div', { className: 'metric-card' },
-                React.createElement('div', { className: 'label' }, 'Moderate Risk'), React.createElement('div', { className: 'value neutral' }, modRisk)),
-            React.createElement('div', { className: 'metric-card' },
-                React.createElement('div', { className: 'label' }, 'Low Risk'), React.createElement('div', { className: 'value positive' }, lowRisk))
+        // Risk tier counts
+        React.createElement('div', { className: 'hero-grid', style: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 20 } },
+            React.createElement(HeroCard, { icon: '⬡', label: 'HIGH RISK POSITIONS',  value: String(highRisk), color: 'var(--red)',   accent: 'red' }),
+            React.createElement(HeroCard, { icon: '⬡', label: 'MODERATE RISK',        value: String(modRisk),  color: 'var(--amber)', accent: 'amber' }),
+            React.createElement(HeroCard, { icon: '⬡', label: 'LOW RISK POSITIONS',   value: String(lowRisk),  color: 'var(--green)', accent: 'green' })
         ),
         React.createElement('div', { className: 'card' },
             React.createElement('div', { className: 'card-title' }, 'Position Risk Breakdown'),
@@ -576,26 +610,47 @@ export function CommandCentre() {
             React.createElement('div', { style: { fontSize: 18, fontWeight: 600 } }, 'ATLAS Health Score'),
             React.createElement('div', null, React.createElement('span', { className: 'badge ' + badgeCls(c.portfolio_health_status), style: { marginTop: 8, fontSize: 13, padding: '5px 16px' } }, c.portfolio_health_status))
         ),
-        // Metrics Grid
-        React.createElement('div', { className: 'metrics-row', style: { gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' } },
-            React.createElement('div', { className: 'metric-card' },
-                React.createElement('div', { className: 'label' }, 'Portfolio NAV'), React.createElement('div', { className: 'value' }, fmtCurrency(c.portfolio_nav))),
-            React.createElement('div', { className: 'metric-card' },
-                React.createElement('div', { className: 'label' }, 'Total Invested'), React.createElement('div', { className: 'value' }, fmtCurrency(c.total_invested))),
-            React.createElement('div', { className: 'metric-card' },
-                React.createElement('div', { className: 'label' }, 'Total Return'), React.createElement('div', { className: 'value ' + cls(c.total_return_pct) }, fmtPct(c.total_return_pct))),
-            React.createElement('div', { className: 'metric-card' },
-                React.createElement('div', { className: 'label' }, 'Sharpe Ratio'), React.createElement('div', { className: 'value' }, fmt(c.sharpe_ratio))),
-            React.createElement('div', { className: 'metric-card' },
-                React.createElement('div', { className: 'label' }, 'Sortino Ratio'), React.createElement('div', { className: 'value' }, fmt(c.sortino_ratio))),
-            React.createElement('div', { className: 'metric-card' },
-                React.createElement('div', { className: 'label' }, 'Max Drawdown'), React.createElement('div', { className: 'value negative' }, fmt(c.drawdown_pct) + '%')),
-            React.createElement('div', { className: 'metric-card' },
-                React.createElement('div', { className: 'label' }, 'Daily VaR (95%)'), React.createElement('div', { className: 'value' }, fmtCurrency(c.dollar_var_95))),
-            React.createElement('div', { className: 'metric-card' },
-                React.createElement('div', { className: 'label' }, 'Positions'), React.createElement('div', { className: 'value' }, c.position_count)),
-            React.createElement('div', { className: 'metric-card' },
-                React.createElement('div', { className: 'label' }, 'Days of History'), React.createElement('div', { className: 'value' }, c.days_of_history))
+        // Metrics Grid — Hero Cards
+        React.createElement('div', { className: 'hero-grid', style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 20 } },
+            React.createElement(HeroCard, {
+                icon: '◊', label: 'PORTFOLIO NAV', value: fmtCurrency(c.portfolio_nav), accent: 'cyan'
+            }),
+            React.createElement(HeroCard, {
+                icon: '◇', label: 'TOTAL INVESTED', value: fmtCurrency(c.total_invested), accent: 'indigo'
+            }),
+            React.createElement(HeroCard, {
+                icon: (c.total_return_pct || 0) >= 0 ? '▲' : '▽',
+                label: 'TOTAL RETURN',
+                value: fmtPct(c.total_return_pct),
+                color: (c.total_return_pct || 0) >= 0 ? 'var(--green)' : 'var(--red)',
+                accent: (c.total_return_pct || 0) >= 0 ? 'green' : 'red',
+                badge: returnStatus(c.total_return_pct)
+            }),
+            React.createElement(HeroCard, {
+                icon: '✦', label: 'SHARPE RATIO', value: fmt(c.sharpe_ratio),
+                color: c.sharpe_ratio > 1 ? 'var(--green)' : c.sharpe_ratio > 0 ? 'var(--amber)' : 'var(--red)',
+                accent: 'cyan', badge: sharpeStatus(c.sharpe_ratio)
+            }),
+            React.createElement(HeroCard, {
+                icon: '◈', label: 'SORTINO RATIO', value: fmt(c.sortino_ratio),
+                color: c.sortino_ratio > 1 ? 'var(--green)' : c.sortino_ratio > 0 ? 'var(--amber)' : 'var(--red)',
+                accent: 'violet', badge: sharpeStatus(c.sortino_ratio)
+            }),
+            React.createElement(HeroCard, {
+                icon: '▽', label: 'MAX DRAWDOWN',
+                value: c.drawdown_pct != null ? fmt(c.drawdown_pct, 2) + '%' : '—',
+                color: 'var(--red)', accent: 'red',
+                badge: ddStatus(c.drawdown_pct != null ? c.drawdown_pct / 100 : null)
+            }),
+            React.createElement(HeroCard, {
+                icon: '⚠', label: 'DAILY VAR (95%)', value: fmtCurrency(c.dollar_var_95), accent: 'amber'
+            }),
+            React.createElement(HeroCard, {
+                icon: '◉', label: 'POSITIONS', value: String(c.position_count || '—'), accent: 'indigo'
+            }),
+            React.createElement(HeroCard, {
+                icon: '≡', label: 'DAYS OF HISTORY', value: String(c.days_of_history || '—'), accent: 'indigo'
+            })
         ),
         // System Status
         React.createElement('div', { className: 'card' },

@@ -13,7 +13,8 @@ import {
     DEFAULT_COLS, ALL_COLS, getVisibleCols,
     cellValue, cellClass, cellStyle, qualityPill
 } from './utils.js';
-import { Loading } from './components.js';
+import { Loading, HeroCard } from './components.js';
+import { returnStatus } from './utils.js';
 
 const { useState, useEffect, useRef } = React;
 
@@ -259,30 +260,44 @@ export function PortfolioHome() {
     var c = command || MOCK_COMMAND;
     var activeCols = ALL_COLS.filter(function(col) { return visCols.indexOf(col.key) >= 0; });
 
+    var pnlPositive = (c.unrealised_pnl || 0) >= 0;
+    var leverageSub = c.gross_leverage != null ? 'Leverage: ' + Number(c.gross_leverage).toFixed(2) + 'x' : '\u2014';
+
     return React.createElement('div', null,
-        // Metrics Row
-        React.createElement('div', { className: 'metrics-row', style: { gridTemplateColumns: 'repeat(4, 1fr)' } },
-            React.createElement('div', { className: 'metric-card' },
-                React.createElement('div', { className: 'label' }, 'PORTFOLIO NAV'),
-                React.createElement('div', { className: 'value' }, fmtCurrency(c.portfolio_nav)),
-                React.createElement('div', { className: 'sub' }, (c.position_count || positions.length) + ' positions')
-            ),
-            React.createElement('div', { className: 'metric-card' },
-                React.createElement('div', { className: 'label' }, 'INITIAL EQUITY'),
-                React.createElement('div', { className: 'value' }, fmtCurrency(c.initial_equity || 100000)),
-                React.createElement('div', { className: 'sub' }, 'Cost basis: ' + fmtCurrency(c.total_invested))
-            ),
-            React.createElement('div', { className: 'metric-card' },
-                React.createElement('div', { className: 'label' }, 'UNREALISED P&L'),
-                React.createElement('div', { className: 'value ' + cls(c.unrealised_pnl) }, fmtCurrency(c.unrealised_pnl)),
-                React.createElement('div', { className: 'sub ' + cls(c.unrealised_return_pct) }, fmtPct(c.unrealised_return_pct))
-            ),
-            React.createElement('div', { className: 'metric-card' },
-                React.createElement('div', { className: 'label' }, 'CASH'),
-                React.createElement('div', { className: 'value ' + cls(c.cash_balance) }, fmtCurrency(c.cash_balance)),
-                React.createElement('div', { className: 'sub' },
-                    c.gross_leverage != null ? 'Leverage: ' + Number(c.gross_leverage).toFixed(2) + 'x' : '\u2014')
-            )
+        // Metrics Row \u2014 Hero Cards
+        React.createElement('div', { className: 'hero-grid', style: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 } },
+            React.createElement(HeroCard, {
+                icon: '\u25ca',
+                label: 'PORTFOLIO NAV',
+                value: fmtCurrency(c.portfolio_nav),
+                accent: 'cyan',
+                badge: returnStatus(c.unrealised_return_pct),
+                sub: (c.position_count || positions.length) + ' positions'
+            }),
+            React.createElement(HeroCard, {
+                icon: '\u25c7',
+                label: 'INITIAL EQUITY',
+                value: fmtCurrency(c.initial_equity || 100000),
+                accent: 'indigo',
+                sub: 'Cost basis: ' + fmtCurrency(c.total_invested)
+            }),
+            React.createElement(HeroCard, {
+                icon: pnlPositive ? '\u25b2' : '\u25bd',
+                label: 'UNREALISED P&L',
+                value: fmtCurrency(c.unrealised_pnl),
+                color: (c.unrealised_pnl || 0) >= 0 ? 'var(--green)' : 'var(--red)',
+                accent: pnlPositive ? 'green' : 'red',
+                badge: returnStatus(c.unrealised_return_pct),
+                sub: fmtPct(c.unrealised_return_pct)
+            }),
+            React.createElement(HeroCard, {
+                icon: '\u25cb',
+                label: 'CASH',
+                value: fmtCurrency(c.cash_balance),
+                color: (c.cash_balance || 0) >= 0 ? 'var(--text)' : 'var(--red)',
+                accent: 'amber',
+                sub: leverageSub
+            })
         ),
         // Content with right sidebar
         React.createElement('div', { className: 'content-with-sidebar' },

@@ -6,8 +6,7 @@
 // ============================================================
 
 import { loadView } from './config.js';
-import { quantTile } from './utils.js';
-import { Loading, EmptyState } from './components.js';
+import { Loading, EmptyState, HeroCard } from './components.js';
 import { SignalsPanel } from './quant-signals.js';
 import { RollingPanel } from './quant-rolling.js';
 import { CorrelationPanel } from './quant-correlation.js';
@@ -67,35 +66,62 @@ export function QuantDashboard() {
         : null;
     const highCorrPairs = corr.filter(c =>
         c.symbol_a !== c.symbol_b && Number(c.correlation) >= 0.80
-    ).length / 2;  // each pair counted twice in symmetric matrix
+    ).length / 2;
 
-    const inDD20  = dd.filter(d => Number(d.current_drawdown_pct) <= -0.20).length;
-    const inDD10  = dd.filter(d => Number(d.current_drawdown_pct) <= -0.10).length;
+    const inDD20 = dd.filter(d => Number(d.current_drawdown_pct) <= -0.20).length;
+    const inDD10 = dd.filter(d => Number(d.current_drawdown_pct) <= -0.10).length;
+
+    // --- Accent logic for dynamic cards ---
+    const trendAccent = uptrend > downtrend ? 'green' : downtrend > uptrend ? 'red' : 'amber';
+    const trendColor  = uptrend > downtrend ? 'var(--green)' : downtrend > uptrend ? 'var(--red)' : 'var(--amber)';
+    const corrAccent  = avgCorr == null ? 'indigo' : avgCorr > 0.6 ? 'red' : avgCorr > 0.4 ? 'amber' : 'green';
+    const corrColor   = avgCorr == null ? 'var(--text)' : avgCorr > 0.6 ? 'var(--red)' : avgCorr > 0.4 ? 'var(--amber)' : 'var(--green)';
+    const ddAccent    = inDD20 > 0 ? 'red' : inDD10 > 0 ? 'amber' : 'green';
+    const ddColor     = inDD20 > 0 ? 'var(--red)' : inDD10 > 0 ? 'var(--amber)' : 'var(--green)';
 
     return React.createElement('div', null,
         React.createElement('div', { className: 'page-title' }, 'Quant Dashboard'),
 
-        // === Aggregate metric strip ===
-        React.createElement('div', { className: 'metrics-row' },
-            quantTile('Positions', sig.length || dd.length || roll.length),
-            quantTile('Trend (Up / Side / Down)',
-                      uptrend + ' / ' + sideways + ' / ' + downtrend,
-                      uptrend > downtrend ? 'positive' : downtrend > uptrend ? 'negative' : 'neutral'),
-            quantTile('Mean-Rev (OB / OS)',
-                      overbought + ' / ' + oversold,
-                      overbought > oversold ? 'negative' : oversold > overbought ? 'positive' : ''),
-            quantTile('RSI Extremes (>70 / <30)',
-                      rsiOver + ' / ' + rsiUnder,
-                      rsiOver > 0 ? 'negative' : rsiUnder > 0 ? 'positive' : ''),
-            quantTile('Expanding Vol', expanding,
-                      expanding > sig.length / 3 ? 'negative' : expanding > 0 ? 'neutral' : ''),
-            quantTile('Avg Pairwise ρ',
-                      avgCorr != null ? avgCorr.toFixed(2) : '\u2014',
-                      avgCorr == null ? '' : avgCorr > 0.6 ? 'negative' : avgCorr > 0.4 ? 'neutral' : 'positive',
-                      highCorrPairs > 0 ? (highCorrPairs.toFixed(0) + ' pair(s) ρ ≥ 0.8') : null),
-            quantTile('Drawdowns (≤-10 / ≤-20%)',
-                      inDD10 + ' / ' + inDD20,
-                      inDD20 > 0 ? 'negative' : inDD10 > 0 ? 'neutral' : 'positive')
+        // === Aggregate regime banner — Hero Cards ===
+        React.createElement('div', { className: 'hero-grid', style: { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 12, marginBottom: 20 } },
+            React.createElement(HeroCard, {
+                icon: '◉', label: 'POSITIONS', accent: 'indigo',
+                value: String(sig.length || dd.length || roll.length)
+            }),
+            React.createElement(HeroCard, {
+                icon: '◆', label: 'TREND  UP / SIDE / DOWN',
+                value: uptrend + ' / ' + sideways + ' / ' + downtrend,
+                color: trendColor, accent: trendAccent
+            }),
+            React.createElement(HeroCard, {
+                icon: '≈', label: 'MEAN-REV  OB / OS',
+                value: overbought + ' / ' + oversold,
+                color: overbought > oversold ? 'var(--red)' : oversold > overbought ? 'var(--green)' : 'var(--text)',
+                accent: overbought > oversold ? 'red' : oversold > overbought ? 'green' : 'amber'
+            }),
+            React.createElement(HeroCard, {
+                icon: '✦', label: 'RSI EXTREMES  >70 / <30',
+                value: rsiOver + ' / ' + rsiUnder,
+                color: rsiOver > 0 ? 'var(--red)' : rsiUnder > 0 ? 'var(--green)' : 'var(--text)',
+                accent: rsiOver > 0 ? 'red' : 'cyan'
+            }),
+            React.createElement(HeroCard, {
+                icon: '≈', label: 'EXPANDING VOL',
+                value: String(expanding),
+                color: expanding > sig.length / 3 ? 'var(--red)' : expanding > 0 ? 'var(--amber)' : 'var(--green)',
+                accent: expanding > sig.length / 3 ? 'red' : expanding > 0 ? 'amber' : 'green'
+            }),
+            React.createElement(HeroCard, {
+                icon: '◆', label: 'AVG PAIRWISE ρ',
+                value: avgCorr != null ? avgCorr.toFixed(2) : '—',
+                color: corrColor, accent: corrAccent,
+                sub: highCorrPairs > 0 ? highCorrPairs.toFixed(0) + ' pair(s) ρ≥0.8' : null
+            }),
+            React.createElement(HeroCard, {
+                icon: '▽', label: 'DRAWDOWNS  ≤10 / ≤20%',
+                value: inDD10 + ' / ' + inDD20,
+                color: ddColor, accent: ddAccent
+            })
         ),
 
         // === Panel tabs ===
@@ -123,9 +149,9 @@ export function QuantDashboard() {
         ),
 
         // === Active panel content ===
-        activePanel === 'signals'    ? React.createElement(SignalsPanel,    { rows: sig })
-      : activePanel === 'rolling'    ? React.createElement(RollingPanel,    { rows: roll })
-      : activePanel === 'correlation'? React.createElement(CorrelationPanel,{ rows: corr })
-      :                                React.createElement(DrawdownPanel,   { rows: dd })
+        activePanel === 'signals'     ? React.createElement(SignalsPanel,     { rows: sig })
+      : activePanel === 'rolling'     ? React.createElement(RollingPanel,     { rows: roll })
+      : activePanel === 'correlation' ? React.createElement(CorrelationPanel, { rows: corr })
+      :                                 React.createElement(DrawdownPanel,    { rows: dd })
     );
 }
