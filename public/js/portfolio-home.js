@@ -17,6 +17,53 @@ import { Loading } from './components.js';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
+var MOVER_COLORS = { gain: '#10b981', loss: '#ef4444', neutral: 'rgba(255,255,255,0.4)' };
+
+function MoverRow(p) {
+    var chg = Number(p.pos.daily_change_pct) || 0;
+    var chgDollar = Number(p.pos.daily_change_dollar) || 0;
+    var color = chg > 0 ? MOVER_COLORS.gain : chg < 0 ? MOVER_COLORS.loss : MOVER_COLORS.neutral;
+    var arrow = chg > 0 ? '▲' : chg < 0 ? '▼' : '—';
+    return React.createElement('div', {
+        style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }
+    },
+        React.createElement('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 12, color: '#00d4ff', minWidth: 52 } }, p.pos.symbol),
+        React.createElement('span', { style: { fontSize: 11, color: 'rgba(255,255,255,0.5)', flex: 1, paddingLeft: 8 } }, p.pos.asset_name || p.pos.name || ''),
+        React.createElement('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, color: 'rgba(255,255,255,0.6)', minWidth: 64, textAlign: 'right' } },
+            p.pos.current_price ? '$' + Number(p.pos.current_price).toFixed(2) : '—'),
+        React.createElement('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 12, color: color, minWidth: 72, textAlign: 'right', fontWeight: 600 } },
+            arrow + ' ' + (Math.abs(chg) * 100).toFixed(2) + '%'),
+        React.createElement('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, color: color, minWidth: 72, textAlign: 'right', opacity: 0.8 } },
+            chgDollar !== 0 ? (chgDollar > 0 ? '+' : '') + fmtCurrency(chgDollar) : '')
+    );
+}
+
+function TodayMovers(p) {
+    var positions = p.positions;
+    if (!positions || !positions.length) return null;
+    var withChg = positions.filter(function(pos) { return pos.daily_change_pct != null && isFinite(Number(pos.daily_change_pct)); });
+    if (!withChg.length) return null;
+    withChg.sort(function(a, b) { return Number(b.daily_change_pct) - Number(a.daily_change_pct); });
+    var gainers = withChg.slice(0, 4);
+    var losers = withChg.slice(-4).reverse();
+    var colStyle = { flex: 1, minWidth: 0 };
+    var titleStyle = { fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)', marginBottom: 4, fontFamily: 'DM Sans' };
+    return React.createElement('div', { className: 'card', style: { marginBottom: 16 } },
+        React.createElement('div', { className: 'card-title', style: { fontSize: 12, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 12 } }, "TODAY'S MOVERS"),
+        React.createElement('div', { style: { display: 'flex', gap: 24 } },
+            React.createElement('div', { style: colStyle },
+                React.createElement('div', { style: titleStyle }, '▲ Top Gainers'),
+                gainers.map(function(pos) { return React.createElement(MoverRow, { key: pos.symbol, pos: pos }); })
+            ),
+            React.createElement('div', { style: { width: 1, background: 'rgba(255,255,255,0.06)', flexShrink: 0 } }),
+            React.createElement('div', { style: colStyle },
+                React.createElement('div', { style: titleStyle }, '▼ Top Losers'),
+                losers.map(function(pos) { return React.createElement(MoverRow, { key: pos.symbol, pos: pos }); })
+            )
+        )
+    );
+}
+
 export function PortfolioHome() {
     var _p = useState(null), positions = _p[0], setPositions = _p[1];
     var _c = useState(null), command = _c[0], setCommand = _c[1];
@@ -321,6 +368,8 @@ export function PortfolioHome() {
                 )
             )
         ),
+        // Today's Movers
+        React.createElement(TodayMovers, { positions: positions }),
         // P&L Contributors & Detractors chart
         React.createElement('div', { className: 'card' },
             React.createElement('div', { className: 'card-title', style: { fontSize: 12, letterSpacing: 1.5, textTransform: 'uppercase' } }, 'TOP P&L CONTRIBUTORS & DETRACTORS'),
