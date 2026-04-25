@@ -538,6 +538,105 @@ export function PortfolioHome() {
                 React.createElement('div', { ref: sectorRef, style: { height: 300 } })
             )
         ),
+        // Portfolio Intelligence Row
+        React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 } },
+            // Concentration Risk card
+            (function() {
+                var sorted = positions.slice().sort(function(a, b) { return Math.abs(Number(b.market_value)||0) - Math.abs(Number(a.market_value)||0); });
+                var totalMv = sorted.reduce(function(s, p) { return s + Math.abs(Number(p.market_value)||0); }, 0);
+                var top10 = sorted.slice(0, 10);
+                // Herfindahl-Hirschman Index (sum of squared weights)
+                var hhi = sorted.reduce(function(s, p) { var w = totalMv ? Math.abs(Number(p.market_value)||0) / totalMv : 0; return s + w * w; }, 0);
+                var hhiPct = Math.round(hhi * 10000);
+                var hhiColor = hhi > 0.25 ? '#ef4444' : hhi > 0.15 ? '#f59e0b' : '#10b981';
+                var maxPos = top10[0];
+                var maxWt = totalMv && maxPos ? Math.abs(Number(maxPos.market_value)||0) / totalMv : 0;
+                return React.createElement('div', { className: 'card' },
+                    React.createElement('div', { style: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14 } },
+                        React.createElement('div', { className: 'card-title', style: { margin: 0 } }, 'CONCENTRATION RISK'),
+                        React.createElement('div', { style: { textAlign: 'right' } },
+                            React.createElement('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 20, fontWeight: 700, color: hhiColor } }, hhiPct),
+                            React.createElement('div', { style: { fontSize: 9, color: 'rgba(255,255,255,0.3)', letterSpacing: 1, textTransform: 'uppercase' } }, 'HHI Score')
+                        )
+                    ),
+                    top10.map(function(p) {
+                        var wt = totalMv ? Math.abs(Number(p.market_value)||0) / totalMv : 0;
+                        var wtPct = (wt * 100).toFixed(1);
+                        var barW = Math.min(wt / (maxWt || 0.01), 1) * 100;
+                        var type = getType(p.symbol, p);
+                        var ts = TYPE_STYLE[type] || TYPE_STYLE['EQ'];
+                        return React.createElement('div', { key: p.symbol, style: { marginBottom: 7 } },
+                            React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 } },
+                                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 7 } },
+                                    React.createElement('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 700, color: '#00d4ff', minWidth: 48 } }, p.symbol),
+                                    React.createElement('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.45)', fontFamily: 'DM Sans' } }, getName(p.symbol, p))
+                                ),
+                                React.createElement('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, color: 'rgba(255,255,255,0.7)', fontWeight: 600 } }, wtPct + '%')
+                            ),
+                            React.createElement('div', { style: { height: 4, background: 'rgba(255,255,255,0.05)', borderRadius: 2, overflow: 'hidden' } },
+                                React.createElement('div', { style: { width: barW + '%', height: '100%', background: ts.color, borderRadius: 2, opacity: 0.8 } })
+                            )
+                        );
+                    }),
+                    React.createElement('div', { style: { marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between' } },
+                        React.createElement('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'DM Sans' } }, 'Top 5: ' + top10.slice(0,5).reduce(function(s,p) { return s + Math.abs(Number(p.market_value)||0); }, 0) / totalMv * 100 < 50 ? 'Diversified' : 'Concentrated'),
+                        React.createElement('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'JetBrains Mono' } }, 'Max: ' + (maxWt * 100).toFixed(1) + '% ' + (maxPos ? maxPos.symbol : ''))
+                    )
+                );
+            })(),
+            // Exposure Matrix card
+            (function() {
+                var totalMv = positions.reduce(function(s, p) { return s + Math.abs(Number(p.market_value)||0); }, 0);
+                // By sector
+                var bySector = {};
+                positions.forEach(function(p) {
+                    var sec = p.sector || 'Other';
+                    bySector[sec] = (bySector[sec] || 0) + Math.abs(Number(p.market_value)||0);
+                });
+                var sectors = Object.keys(bySector).sort(function(a, b) { return bySector[b] - bySector[a]; }).slice(0, 8);
+                // By type
+                var byType = {};
+                positions.forEach(function(p) {
+                    var t = getType(p.symbol, p);
+                    byType[t] = (byType[t] || 0) + Math.abs(Number(p.market_value)||0);
+                });
+                var types = Object.keys(byType).sort(function(a, b) { return byType[b] - byType[a]; });
+                var SECTOR_COLORS = ['#00d4ff','#6366f1','#8b5cf6','#10b981','#f59e0b','#ef4444','#ec4899','#14b8a6'];
+                return React.createElement('div', { className: 'card' },
+                    React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 } },
+                        React.createElement('div', { className: 'card-title', style: { margin: 0 } }, 'EXPOSURE MATRIX'),
+                        React.createElement('div', { style: { display: 'flex', gap: 6 } },
+                            types.map(function(t) {
+                                var ts = TYPE_STYLE[t] || TYPE_STYLE['EQ'];
+                                var wt = totalMv ? (byType[t] / totalMv * 100).toFixed(0) : 0;
+                                return React.createElement('div', { key: t, style: { background: ts.bg, border: '1px solid ' + ts.border, borderRadius: 4, padding: '2px 7px', fontSize: 10, color: ts.color, fontFamily: 'JetBrains Mono', fontWeight: 700 } }, t + ' ' + wt + '%');
+                            })
+                        )
+                    ),
+                    sectors.map(function(sec, i) {
+                        var wt = totalMv ? bySector[sec] / totalMv : 0;
+                        var wtPct = (wt * 100).toFixed(1);
+                        var color = SECTOR_COLORS[i % SECTOR_COLORS.length];
+                        // Count positions in sector
+                        var count = positions.filter(function(p) { return (p.sector || 'Other') === sec; }).length;
+                        return React.createElement('div', { key: sec, style: { marginBottom: 8 } },
+                            React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 } },
+                                React.createElement('span', { style: { fontSize: 11, color: 'rgba(255,255,255,0.7)', fontFamily: 'DM Sans', display: 'flex', alignItems: 'center', gap: 6 } },
+                                    React.createElement('span', { style: { width: 6, height: 6, borderRadius: '50%', background: color, display: 'inline-block', flexShrink: 0 } }),
+                                    sec),
+                                React.createElement('div', { style: { display: 'flex', gap: 10, alignItems: 'center' } },
+                                    React.createElement('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'DM Sans' } }, count + (count === 1 ? ' pos' : ' pos')),
+                                    React.createElement('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.75)', minWidth: 36, textAlign: 'right' } }, wtPct + '%')
+                                )
+                            ),
+                            React.createElement('div', { style: { height: 4, background: 'rgba(255,255,255,0.05)', borderRadius: 2, overflow: 'hidden' } },
+                                React.createElement('div', { style: { width: (wt * 100) + '%', height: '100%', background: color, borderRadius: 2, opacity: 0.75 } })
+                            )
+                        );
+                    })
+                );
+            })()
+        ),
         // Interactive Holdings Table
         React.createElement('div', { className: 'card', style: { padding: '16px 20px' } },
             React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' } },
