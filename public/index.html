@@ -944,6 +944,115 @@
             top: 0; bottom: 0;
             border-radius: 2px;
         }
+
+        /* ================================================
+           HERO CARD — gradient metric card with accent line
+           Used on Portfolio Home, Risk, Performance, Quant,
+           Command Centre. Replaces flat .metric-card for
+           primary KPI tiles.
+           ================================================ */
+
+        .hero-card {
+            position: relative;
+            overflow: hidden;
+            padding: 18px 20px 16px;
+            border-radius: 12px;
+            border: 1px solid var(--card-border);
+            background: var(--card);
+            transition: transform 0.18s ease, box-shadow 0.18s ease;
+            animation: fadeInUp 0.5s ease-out both;
+        }
+
+        .hero-card::before {
+            content: '';
+            position: absolute;
+            inset: 0 0 auto 0;
+            height: 3px;
+            border-radius: 12px 12px 0 0;
+        }
+
+        /* Accent colour variants */
+        .hero-card.accent-cyan   { background: linear-gradient(145deg, rgba(0,212,255,0.07) 0%, var(--card) 55%);   border-color: rgba(0,212,255,0.14); }
+        .hero-card.accent-cyan::before   { background: linear-gradient(90deg, #00d4ff, rgba(0,212,255,0.15)); }
+
+        .hero-card.accent-green  { background: linear-gradient(145deg, rgba(16,185,129,0.07) 0%, var(--card) 55%);  border-color: rgba(16,185,129,0.14); }
+        .hero-card.accent-green::before  { background: linear-gradient(90deg, #10b981, rgba(16,185,129,0.15)); }
+
+        .hero-card.accent-red    { background: linear-gradient(145deg, rgba(239,68,68,0.07) 0%, var(--card) 55%);   border-color: rgba(239,68,68,0.14); }
+        .hero-card.accent-red::before    { background: linear-gradient(90deg, #ef4444, rgba(239,68,68,0.15)); }
+
+        .hero-card.accent-amber  { background: linear-gradient(145deg, rgba(245,158,11,0.07) 0%, var(--card) 55%);  border-color: rgba(245,158,11,0.14); }
+        .hero-card.accent-amber::before  { background: linear-gradient(90deg, #f59e0b, rgba(245,158,11,0.15)); }
+
+        .hero-card.accent-violet { background: linear-gradient(145deg, rgba(139,92,246,0.07) 0%, var(--card) 55%);  border-color: rgba(139,92,246,0.14); }
+        .hero-card.accent-violet::before { background: linear-gradient(90deg, #8b5cf6, rgba(139,92,246,0.15)); }
+
+        .hero-card.accent-indigo { background: linear-gradient(145deg, rgba(99,102,241,0.07) 0%, var(--card) 55%);  border-color: rgba(99,102,241,0.14); }
+        .hero-card.accent-indigo::before { background: linear-gradient(90deg, #6366f1, rgba(99,102,241,0.15)); }
+
+        .hero-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 28px rgba(0,0,0,0.35);
+        }
+
+        .hero-card .hc-icon {
+            font-size: 13px;
+            margin-bottom: 7px;
+            opacity: 0.5;
+            display: block;
+            line-height: 1;
+        }
+
+        .hero-card .hc-label {
+            font-size: 10px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 5px;
+            font-family: 'DM Sans', sans-serif;
+            font-weight: 600;
+        }
+
+        .hero-card .hc-value {
+            font-size: 24px;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+            line-height: 1.15;
+            margin-bottom: 8px;
+        }
+
+        .hero-card .hc-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+            font-family: 'DM Sans', sans-serif;
+        }
+
+        .hero-card .hc-badge.b-excellent { background: rgba(16,185,129,0.15);  color: var(--green); }
+        .hero-card .hc-badge.b-good      { background: rgba(99,102,241,0.15);  color: #818cf8; }
+        .hero-card .hc-badge.b-fair      { background: rgba(245,158,11,0.15);  color: var(--amber); }
+        .hero-card .hc-badge.b-poor      { background: rgba(239,68,68,0.15);   color: var(--red); }
+
+        .hero-card .hc-sub {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 5px;
+            font-family: 'DM Sans', sans-serif;
+        }
+
+        /* nth-child stagger for hero grid rows */
+        .hero-grid .hero-card:nth-child(1) { animation-delay: 0.00s; }
+        .hero-grid .hero-card:nth-child(2) { animation-delay: 0.06s; }
+        .hero-grid .hero-card:nth-child(3) { animation-delay: 0.12s; }
+        .hero-grid .hero-card:nth-child(4) { animation-delay: 0.18s; }
+        .hero-grid .hero-card:nth-child(5) { animation-delay: 0.24s; }
+        .hero-grid .hero-card:nth-child(6) { animation-delay: 0.30s; }
+        .hero-grid .hero-card:nth-child(7) { animation-delay: 0.36s; }
+        .hero-grid .hero-card:nth-child(8) { animation-delay: 0.42s; }
     </style>
 </head>
 <body>

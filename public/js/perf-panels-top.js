@@ -4,7 +4,8 @@
 // React 18 UMD, no JSX. Chart.js for visualizations.
 // ============================================================
 
-import { fmt, fmtPct, fmtCurrency, cls, useChart } from './utils.js';
+import { fmt, fmtPct, fmtCurrency, cls, useChart, sharpeStatus, volStatus, returnStatus, ddStatus, calmarStatus } from './utils.js';
+import { HeroCard } from './components.js';
 import {
     computePortfolioMetrics, computeDrawdownSeries, computeReturnsBins,
     computeMonthlyReturns, computeCumulativeReturns, computePeriodReturns
@@ -49,14 +50,9 @@ function calendarColor(ret) {
     return 'rgba(239,68,68,' + (0.1 + i * 0.5) + ')';
 }
 
-// --- Metric Tile ---------------------------------------------
-
+// Tile is kept as a thin alias to HeroCard so callers don't change.
 function Tile(p) {
-    return h('div', { className: 'metric-card' },
-        h('div', { className: 'label' }, p.label),
-        h('div', { className: 'value', style: { color: p.color || 'rgba(255,255,255,0.85)' } }, p.value),
-        p.sub ? h('div', { className: 'sub' }, p.sub) : null
-    );
+    return h(HeroCard, { label: p.label, value: p.value, color: p.color, accent: p.accent || 'cyan', badge: p.badge, sub: p.sub, icon: p.icon });
 }
 
 // =============================================================
@@ -80,17 +76,56 @@ export function OverviewPanel(p) {
     var maxDD = cmd.drawdown_pct != null ? cmd.drawdown_pct : m.maxDD;
 
     // A. Hero Metrics
-    var heroGrid = h('div', {
-        style: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }
-    },
-        h(Tile, { label: 'Total Return', value: fmtPct(m.totalReturn), color: retColor(m.totalReturn) }),
-        h(Tile, { label: 'Ann. Return', value: fmtPct(m.annReturn), color: retColor(m.annReturn) }),
-        h(Tile, { label: 'Ann. Volatility', value: fmtPct(m.annVol), color: volColor(m.annVol) }),
-        h(Tile, { label: 'Sharpe Ratio', value: fmt(sharpe, 2), color: ratioColor(sharpe), sub: sharpeLabel(sharpe) }),
-        h(Tile, { label: 'Sortino Ratio', value: fmt(sortino, 2), color: ratioColor(sortino), sub: sharpeLabel(sortino) }),
-        h(Tile, { label: 'Max Drawdown', value: fmtPct(maxDD), color: '#ef4444' }),
-        h(Tile, { label: 'Calmar Ratio', value: fmt(m.calmar, 2), color: m.calmar != null && m.calmar > 1 ? '#10b981' : 'rgba(255,255,255,0.85)' }),
-        h(Tile, { label: 'Win Rate', value: fmtPct(m.winRate), color: m.winRate > 0.55 ? '#10b981' : 'rgba(255,255,255,0.85)' })
+    var heroGrid = h('div', { className: 'hero-grid', style: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 } },
+        h(Tile, {
+            icon: m.totalReturn >= 0 ? '▲' : '▽',
+            label: 'Total Return', value: fmtPct(m.totalReturn),
+            color: retColor(m.totalReturn), accent: m.totalReturn >= 0 ? 'green' : 'red',
+            badge: returnStatus(m.totalReturn)
+        }),
+        h(Tile, {
+            icon: '◆',
+            label: 'Ann. Return', value: fmtPct(m.annReturn),
+            color: retColor(m.annReturn), accent: m.annReturn >= 0 ? 'green' : 'red',
+            badge: returnStatus(m.annReturn)
+        }),
+        h(Tile, {
+            icon: '≋',
+            label: 'Ann. Volatility', value: fmtPct(m.annVol),
+            color: volColor(m.annVol), accent: 'amber',
+            badge: volStatus(m.annVol)
+        }),
+        h(Tile, {
+            icon: '✦',
+            label: 'Sharpe Ratio', value: fmt(sharpe, 2),
+            color: ratioColor(sharpe), accent: 'cyan',
+            badge: sharpeStatus(sharpe)
+        }),
+        h(Tile, {
+            icon: '◈',
+            label: 'Sortino Ratio', value: fmt(sortino, 2),
+            color: ratioColor(sortino), accent: 'violet',
+            badge: sharpeStatus(sortino)
+        }),
+        h(Tile, {
+            icon: '▽',
+            label: 'Max Drawdown', value: fmtPct(maxDD),
+            color: '#ef4444', accent: 'red',
+            badge: ddStatus(maxDD)
+        }),
+        h(Tile, {
+            icon: '≡',
+            label: 'Calmar Ratio', value: fmt(m.calmar, 2),
+            color: m.calmar != null && m.calmar > 1 ? '#10b981' : 'rgba(255,255,255,0.85)',
+            accent: 'indigo', badge: calmarStatus(m.calmar)
+        }),
+        h(Tile, {
+            icon: '◉',
+            label: 'Win Rate', value: fmtPct(m.winRate),
+            color: m.winRate > 0.55 ? '#10b981' : 'rgba(255,255,255,0.85)',
+            accent: m.winRate > 0.55 ? 'green' : 'amber',
+            badge: m.winRate > 0.6 ? 'Strong' : m.winRate > 0.5 ? 'Positive' : 'Fair'
+        })
     );
 
     // B. Equity Curve Chart
@@ -180,15 +215,9 @@ export function OverviewPanel(p) {
     );
 
     // D. Best / Worst Day Card
-    var bestWorst = h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 } },
-        h('div', { className: 'metric-card' },
-            h('div', { className: 'label' }, 'Best Day'),
-            h('div', { className: 'value', style: { color: '#10b981' } }, fmtPct(m.bestDay.value)),
-            h('div', { className: 'sub' }, m.bestDay.date)),
-        h('div', { className: 'metric-card' },
-            h('div', { className: 'label' }, 'Worst Day'),
-            h('div', { className: 'value', style: { color: '#ef4444' } }, fmtPct(m.worstDay.value)),
-            h('div', { className: 'sub' }, m.worstDay.date))
+    var bestWorst = h('div', { className: 'hero-grid', style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 } },
+        h(HeroCard, { icon: '▲', label: 'Best Day', value: fmtPct(m.bestDay.value), color: '#10b981', accent: 'green', sub: m.bestDay.date }),
+        h(HeroCard, { icon: '▽', label: 'Worst Day', value: fmtPct(m.worstDay.value), color: '#ef4444', accent: 'red', sub: m.worstDay.date })
     );
 
     return h('div', null, heroGrid, equityCard, underwaterCard, bestWorst);
