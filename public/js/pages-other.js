@@ -1,7 +1,8 @@
 // ============================================================
 // ATLAS Terminal — Secondary Pages
 // ------------------------------------------------------------
-// RiskAnalysis (tabs: Risk Breakdown + Monte Carlo), CommandCentre.
+// RiskAnalysis (tabs: Risk Breakdown + Core Risk + Monte Carlo),
+// CommandCentre.
 // ============================================================
 
 import { sb, loadView, MOCK_COMMAND } from './config.js';
@@ -9,6 +10,161 @@ import { fmt, fmtPct, fmtCurrency, cls, badgeCls, healthCls, useChart } from './
 import { Loading, EmptyState } from './components.js';
 
 const { useState, useEffect, useRef, useMemo } = React;
+
+// ============================================================
+// Core Risk analytics (VaR distribution + rolling VaR)
+// ============================================================
+
+function computeVaRStats(navSeries) {
+    var returns = [];
+    for (var i = 1; i < navSeries.length; i++) {
+        var r = navSeries[i].daily_return;
+        if (r == null && navSeries[i - 1].nav > 0) r = (navSeries[i].nav - navSeries[i - 1].nav) / navSeries[i - 1].nav;
+        if (r != null && isFinite(r) && Math.abs(r) < 0.5) returns.push({ date: navSeries[i].price_date, value: r });
+    }
+    if (returns.length < 30) return null;
+
+    var vals = returns.map(function(r) { return r.value; }).slice().sort(function(a, b) { return a - b; });
+    var varIdx = Math.floor(vals.length * 0.05);
+    var var95 = vals[varIdx];
+    var cvar = varIdx > 0 ? vals.slice(0, varIdx).reduce(function(s, v) { return s + v; }, 0) / varIdx : var95;
+
+    var mean = vals.reduce(function(s, v) { return s + v; }, 0) / vals.length;
+    var variance = vals.reduce(function(s, v) { return s + (v - mean) * (v - mean); }, 0) / vals.length;
+    var annVol = Math.sqrt(variance) * Math.sqrt(252);
+
+    // Rolling 30-day VaR
+    var window30 = 30;
+    var rolling = [];
+    for (var i = window30; i < returns.length; i++) {
+        var slice = returns.slice(i - window30, i).map(function(r) { return r.value; }).slice().sort(function(a, b) { return a - b; });
+        rolling.push({ date: returns[i].date, var95: slice[Math.floor(slice.length * 0.05)] });
+    }
+
+    // Histogram bins for return distribution
+    var minR = vals[0], maxR = vals[vals.length - 1];
+    var binCt = 40, bw = (maxR - minR) / binCt;
+    var bins = [];
+    for (var b = 0; b < binCt; b++) {
+        var lo = minR + b * bw, ct = 0;
+        for (var j = 0; j < vals.length; j++) if (vals[j] >= lo && vals[j] < lo + bw) ct++;
+        bins.push({ mid: (lo + bw / 2) * 100, count: ct, below: lo + bw <= var95 });
+    }
+
+    return { var95: var95, cvar: cvar, mean: mean, annVol: annVol, bins: bins, rolling: rolling, n: vals.length };
+}
+
+function VaRDistChart(p) {
+    var ref = useRef(null);
+    useChart(ref, function() {
+        if (!p.bins || !p.bins.length) return null;
+        return {
+            type: 'bar',
+            data: {
+                labels: p.bins.map(function(b) { return b.mid.toFixed(1) + '%'; }),
+                datasets: [{
+                    data: p.bins.map(function(b) { return b.count; }),
+                    backgroundColor: p.bins.map(function(b) { return b.below ? 'rgba(239,68,68,0.65)' : 'rgba(99,102,241,0.55)'; }),
+                    borderWidth: 0,
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { ticks: { color: 'rgba(255,255,255,0.45)', font: { size: 9 }, maxRotation: 45, maxTicksLimit: 12 }, grid: { display: false } },
+                    y: { ticks: { color: 'rgba(255,255,255,0.45)', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.04)' } }
+                }
+            }
+        };
+    }, [p.bins]);
+    return React.createElement('div', { style: { height: 220 } }, React.createElement('canvas', { ref: ref }));
+}
+
+function RollingVaRChart(p) {
+    var ref = useRef(null);
+    useChart(ref, function() {
+        if (!p.rolling || !p.rolling.length) return null;
+        return {
+            type: 'line',
+            data: {
+                labels: p.rolling.map(function(r) { return r.date; }),
+                datasets: [{
+                    label: 'Rolling 30d VaR 95%',
+                    data: p.rolling.map(function(r) { return r.var95 * 100; }),
+                    borderColor: '#ef4444',
+                    backgroundColor: 'rgba(239,68,68,0.08)',
+                    borderWidth: 1.5,
+                    pointRadius: 0,
+                    fill: true,
+                    tension: 0.3,
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: true, position: 'top', labels: { color: 'rgba(255,255,255,0.45)', font: { size: 10 }, boxWidth: 20 } } },
+                scales: {
+                    x: { ticks: { color: 'rgba(255,255,255,0.45)', font: { size: 9 }, maxTicksLimit: 8 }, grid: { color: 'rgba(255,255,255,0.03)' } },
+                    y: { ticks: { color: 'rgba(255,255,255,0.45)', font: { size: 9 }, callback: function(v) { return v.toFixed(1) + '%'; } }, grid: { color: 'rgba(255,255,255,0.03)' } }
+                }
+            }
+        };
+    }, [p.rolling]);
+    return React.createElement('div', { style: { height: 220 } }, React.createElement('canvas', { ref: ref }));
+}
+
+function CoreRiskTab(p) {
+    var h = React.createElement;
+    var stats = useMemo(function() { return computeVaRStats(p.navData || []); }, [p.navData]);
+
+    if (!p.navData || p.navData.length < 30) {
+        return h('div', { className: 'card', style: { padding: 32, color: 'var(--text-muted)', textAlign: 'center' } },
+            'Core Risk analytics require 30+ days of portfolio NAV history.');
+    }
+    if (!stats) {
+        return h('div', { className: 'card', style: { padding: 24, color: 'var(--text-muted)', textAlign: 'center' } },
+            'Insufficient return data for analysis.');
+    }
+
+    var fmtPt = function(v) { return v != null ? (v >= 0 ? '+' : '') + (v * 100).toFixed(2) + '%' : '—'; };
+
+    var metricTiles = h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16 } },
+        h('div', { className: 'metric-card' },
+            h('div', { className: 'label' }, 'MEAN DAILY RETURN'),
+            h('div', { className: 'value', style: { color: stats.mean > 0 ? '#10b981' : '#ef4444' } }, fmtPt(stats.mean))
+        ),
+        h('div', { className: 'metric-card' },
+            h('div', { className: 'label' }, 'ANN. VOLATILITY'),
+            h('div', { className: 'value' }, (stats.annVol * 100).toFixed(1) + '%')
+        ),
+        h('div', { className: 'metric-card' },
+            h('div', { className: 'label' }, 'VaR 95% (1-Day)'),
+            h('div', { className: 'value', style: { color: '#ef4444' } }, fmtPt(stats.var95))
+        ),
+        h('div', { className: 'metric-card' },
+            h('div', { className: 'label' }, 'CVaR (Exp. Shortfall)'),
+            h('div', { className: 'value', style: { color: '#ef4444' } }, fmtPt(stats.cvar))
+        )
+    );
+
+    var distCard = h('div', { className: 'card', style: { marginBottom: 16 } },
+        h('div', { className: 'card-title' }, 'Daily Return Distribution  ·  ' + stats.n + ' observations'),
+        h('div', { style: { fontSize: 11, color: 'rgba(239,68,68,0.8)', marginBottom: 8 } },
+            'Red = below VaR 95% (' + (stats.var95 * 100).toFixed(2) + '%)  ·  CVaR ' + (stats.cvar * 100).toFixed(2) + '%'
+        ),
+        h(VaRDistChart, { bins: stats.bins })
+    );
+
+    var rollingCard = h('div', { className: 'card' },
+        h('div', { className: 'card-title' }, 'Rolling 30-Day VaR Evolution'),
+        h('div', { style: { fontSize: 11, color: 'var(--text-sec)', marginBottom: 8 } },
+            'Rising line = tail risk expanding. Falling = risk compressing.'
+        ),
+        h(RollingVaRChart, { rolling: stats.rolling })
+    );
+
+    return h('div', null, metricTiles, distCard, rollingCard);
+}
 
 // ============================================================
 // GBM Monte Carlo engine (pure JS, no dependencies)
@@ -311,6 +467,7 @@ export function RiskAnalysis() {
 
     const TABS = [
         { id: 'breakdown', label: 'Risk Breakdown' },
+        { id: 'corerisk', label: 'Core Risk' },
         { id: 'montecarlo', label: 'Monte Carlo' },
     ];
 
@@ -331,6 +488,14 @@ export function RiskAnalysis() {
             }, t.label);
         })
     );
+
+    if (tab === 'corerisk') {
+        return React.createElement('div', null,
+            React.createElement('div', { className: 'page-title' }, 'Risk Analysis'),
+            tabBar,
+            React.createElement(CoreRiskTab, { navData: navData, command: c })
+        );
+    }
 
     if (tab === 'montecarlo') {
         return React.createElement('div', null,
