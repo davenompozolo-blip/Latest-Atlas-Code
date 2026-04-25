@@ -239,10 +239,24 @@ def render_risk_analysis():
         else:
             st.info(msg)
 
-    # Stub for run_monte_carlo_simulation - may be in atlas_app.py
-    def run_monte_carlo_simulation(returns):
-        """Stub - needs implementation"""
-        return None
+    def run_monte_carlo_simulation(returns, n_scenarios=5000, time_horizon=252, initial_value=100000):
+        """GBM-based Monte Carlo simulation on a portfolio returns series.
+
+        Returns an (n_scenarios, time_horizon) array of portfolio value paths,
+        or None when the returns series is too short to estimate parameters.
+        """
+        if returns is None or len(returns) < 30:
+            return None
+        mu = float(returns.mean())
+        sigma = float(returns.std())
+        if sigma <= 0:
+            return None
+        dt = 1.0
+        rng = np.random.default_rng(seed=42)
+        z = rng.standard_normal((n_scenarios, time_horizon))
+        log_returns = (mu - 0.5 * sigma ** 2) * dt + sigma * np.sqrt(dt) * z
+        paths = initial_value * np.exp(np.cumsum(log_returns, axis=1))
+        return paths
 
 
     # CRITICAL FIX: Check session_state FIRST for fresh EE data
@@ -460,26 +474,87 @@ def render_risk_analysis():
             st.info("Insufficient data for rolling VaR/CVaR analysis (requires 60+ days)")
 
     with tab2:
-        simulations = run_monte_carlo_simulation(portfolio_returns)
-        if simulations is not None:
-            # Get equity from performance history for Monte Carlo initial value
-            mc_metrics = get_current_portfolio_metrics()
-            mc_initial_value = mc_metrics['equity'] if mc_metrics and mc_metrics.get('equity', 0) > 0 else 100000
-            monte_carlo_chart, mc_stats = create_monte_carlo_chart(simulations, mc_initial_value)
+        st.markdown("**Stochastic portfolio forecasting via Geometric Brownian Motion**")
 
+        mc_col1, mc_col2, mc_col3 = st.columns(3)
+        with mc_col1:
+            mc_scenarios = st.number_input("Scenarios", min_value=1000, max_value=50000, value=5000, step=1000, key="ra_mc_scenarios")
+        with mc_col2:
+            mc_horizon = st.number_input("Horizon (days)", min_value=30, max_value=756, value=252, step=30, key="ra_mc_horizon")
+        with mc_col3:
+            mc_conf = st.slider("Confidence Level", 90, 99, 95, key="ra_mc_conf")
+
+        mc_metrics = get_current_portfolio_metrics()
+        mc_initial_value = mc_metrics['equity'] if mc_metrics and mc_metrics.get('equity', 0) > 0 else 100000
+
+        if st.button("Run Monte Carlo", type="primary", key="ra_mc_run"):
+            with st.spinner("Running simulation..."):
+                simulations = run_monte_carlo_simulation(
+                    portfolio_returns,
+                    n_scenarios=int(mc_scenarios),
+                    time_horizon=int(mc_horizon),
+                    initial_value=mc_initial_value,
+                )
+            if simulations is not None:
+                st.session_state['_ra_mc_simulations'] = simulations
+                st.session_state['_ra_mc_initial'] = mc_initial_value
+                st.session_state['_ra_mc_conf'] = mc_conf
+            else:
+                st.warning("Insufficient return history for simulation (need 30+ observations).")
+
+        _cached_sims = st.session_state.get('_ra_mc_simulations')
+        if _cached_sims is not None:
+            _mc_iv = st.session_state.get('_ra_mc_initial', mc_initial_value)
+            _mc_cv = st.session_state.get('_ra_mc_conf', mc_conf)
+
+            monte_carlo_chart, mc_stats = create_monte_carlo_chart(_cached_sims, _mc_iv)
             if monte_carlo_chart:
-                st.plotly_chart(monte_carlo_chart, use_container_width=True)
+                st.plotly_chart(monte_carlo_chart, use_container_width=True, key="ra_mc_chart")
 
             if mc_stats:
-                st.markdown("#### 📊 Simulation Results")
-                st.markdown(f"""
-                **Key Statistics:**
-                - Expected Value: ${mc_stats['mean']:,.2f}
-                - Median: ${mc_stats['median']:,.2f}
-                - Best Case (95th): ${mc_stats['percentile_95']:,.2f}
-                - Worst Case (5th): ${mc_stats['percentile_5']:,.2f}
-                - Prob of Profit: {mc_stats['prob_profit']:.1f}%
-                """)
+                st.markdown("#### Simulation Summary")
+                s_col1, s_col2, s_col3, s_col4 = st.columns(4)
+                s_col1.metric("Expected Value", f"${mc_stats['mean']:,.0f}")
+                s_col2.metric("Median", f"${mc_stats['median']:,.0f}")
+                s_col3.metric(f"Best (95th)", f"${mc_stats['percentile_95']:,.0f}")
+                s_col4.metric(f"Worst (5th)", f"${mc_stats['percentile_5']:,.0f}")
+
+                prob_col1, prob_col2, prob_col3 = st.columns(3)
+                prob_col1.metric("Prob of Profit", f"{mc_stats['prob_profit']:.1f}%")
+                prob_col2.metric("Prob of Loss >10%", f"{mc_stats['prob_loss_10']:.1f}%")
+                prob_col3.metric("Prob of Gain >20%", f"{mc_stats['prob_gain_20']:.1f}%")
+
+                # Returns distribution histogram
+                final_vals = _cached_sims[:, -1]
+                final_rets = (final_vals - _mc_iv) / _mc_iv
+                var_line = float(np.percentile(final_rets, 100 - _mc_cv))
+                cvar_val = float(final_rets[final_rets <= var_line].mean()) if (final_rets <= var_line).any() else var_line
+
+                dist_fig = go.Figure()
+                dist_fig.add_trace(go.Histogram(
+                    x=final_rets,
+                    nbinsx=60,
+                    name="Return Distribution",
+                    marker_color='rgba(99,102,241,0.7)',
+                    marker_line=dict(color='rgba(99,102,241,1)', width=0.5),
+                ))
+                dist_fig.add_vline(x=var_line, line_dash="dash", line_color=_RED,
+                                   annotation_text=f"VaR {_mc_cv}%: {var_line:.2%}",
+                                   annotation_font_color=_RED)
+                dist_fig.add_vline(x=cvar_val, line_dash="dot", line_color=_AMBER,
+                                   annotation_text=f"CVaR: {cvar_val:.2%}",
+                                   annotation_font_color=_AMBER)
+                dist_fig.update_layout(
+                    title="Distribution of Simulated Final Returns",
+                    xaxis_title="Return",
+                    yaxis_title="Frequency",
+                    height=380,
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    font=dict(color="#ffffff"),
+                )
+                apply_chart_theme(dist_fig)
+                st.plotly_chart(dist_fig, use_container_width=True, key="ra_mc_dist")
 
     with tab3:
         col1, col2 = st.columns(2)
