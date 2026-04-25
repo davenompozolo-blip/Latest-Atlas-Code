@@ -3,6 +3,32 @@ import { runFCFF, Tile, Slider, fN, fB } from './dcf-engine.js';
 
 const { useState, useRef } = React;
 
+var SCENARIOS = {
+    BEAR: { label: 'Bear', color: '#ef4444', wacc: 0.12, tg: 0.015, revG: -0.02, fcfM: 0.08, years: 5 },
+    BASE: { label: 'Base', color: '#f59e0b', wacc: null,  tg: 0.025, revG: null,  fcfM: null,  years: 5 },
+    BULL: { label: 'Bull', color: '#10b981', wacc: 0.07,  tg: 0.035, revG: null,  fcfM: null,  years: 7 },
+};
+
+function ScenarioBar(p) {
+    return React.createElement('div', { style: { display: 'flex', gap: 8, marginBottom: 16 } },
+        Object.entries(SCENARIOS).map(function(entry) {
+            var id = entry[0], s = entry[1];
+            var active = p.active === id;
+            return React.createElement('button', {
+                key: id,
+                onClick: function() { p.onSelect(id); },
+                style: {
+                    flex: 1, padding: '8px 0', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600,
+                    border: '1px solid ' + (active ? s.color : 'rgba(255,255,255,0.08)'),
+                    background: active ? s.color + '22' : 'rgba(255,255,255,0.03)',
+                    color: active ? s.color : 'rgba(255,255,255,0.5)',
+                    letterSpacing: 1, textTransform: 'uppercase', transition: 'all 0.15s ease',
+                }
+            }, s.label);
+        })
+    );
+}
+
 function FcfChart(p) {
     var ref = useRef(null);
     useChart(ref, function() {
@@ -41,6 +67,17 @@ export function FcffPanel(p) {
     var _r = useState(defaults.revGrowth), revG = _r[0], setRevG = _r[1];
     var _m = useState(defaults.fcfMargin), fcfM = _m[0], setFcfM = _m[1];
     var _y = useState(5), years = _y[0], setYears = _y[1];
+    var _sc = useState('BASE'), scenario = _sc[0], setScenario = _sc[1];
+
+    function applyScenario(id) {
+        var s = SCENARIOS[id];
+        setScenario(id);
+        setWacc(s.wacc != null ? s.wacc : defaults.wacc);
+        setTg(s.tg);
+        setRevG(s.revG != null ? s.revG : defaults.revGrowth);
+        setFcfM(s.fcfM != null ? s.fcfM : defaults.fcfMargin);
+        setYears(s.years);
+    }
 
     var sliderGrid = React.createElement('div', {
         style: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16, marginBottom: 16 }
@@ -55,6 +92,7 @@ export function FcffPanel(p) {
     var r = runFCFF(defaults, wacc, tg, revG, fcfM, years);
     if (!r) {
         return React.createElement('div', null,
+            React.createElement(ScenarioBar, { active: scenario, onSelect: applyScenario }),
             sliderGrid,
             React.createElement('div', { className: 'card', style: { color: 'var(--text-muted)', textAlign: 'center', padding: 24 } }, 'Insufficient data for FCFF DCF.')
         );
@@ -88,5 +126,7 @@ export function FcffPanel(p) {
         React.createElement(Row, { label: 'Per-Share Value', value: fmtCurrency(r.perShare), bold: true, topBorder: true, color: '#00d4ff' })
     );
 
-    return React.createElement('div', null, sliderGrid, tiles, chartCard, waterfall);
+    return React.createElement('div', null,
+        React.createElement(ScenarioBar, { active: scenario, onSelect: applyScenario }),
+        sliderGrid, tiles, chartCard, waterfall);
 }
