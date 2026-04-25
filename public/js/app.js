@@ -55,6 +55,24 @@ const NAV_STRUCTURE = [
 ];
 
 // ------------------------------------------------------------
+// Error boundary — surfaces render crashes as visible error card
+// ------------------------------------------------------------
+class ErrorBoundary extends React.Component {
+    constructor(props) { super(props); this.state = { error: null }; }
+    static getDerivedStateFromError(e) { return { error: e }; }
+    render() {
+        if (this.state.error) {
+            return React.createElement('div', { style: { padding: 40, color: '#ef4444', fontFamily: 'monospace', background: '#070814', minHeight: '100vh' } },
+                React.createElement('div', { style: { fontSize: 18, fontWeight: 700, marginBottom: 12 } }, '⚠ ATLAS — React Render Error'),
+                React.createElement('pre', { style: { fontSize: 11, whiteSpace: 'pre-wrap', color: '#fca5a5' } },
+                    String(this.state.error) + '\n\n' + (this.state.error.stack || ''))
+            );
+        }
+        return this.props.children;
+    }
+}
+
+// ------------------------------------------------------------
 // Root App shell
 // ------------------------------------------------------------
 function App() {
@@ -166,4 +184,4 @@ function App() {
 // Mount
 // ------------------------------------------------------------
 const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(React.createElement(App, null));
+root.render(React.createElement(ErrorBoundary, null, React.createElement(App, null)));
