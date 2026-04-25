@@ -18,6 +18,56 @@ import { returnStatus } from './utils.js';
 
 const { useState, useEffect, useRef } = React;
 
+// ---- Earnings Calendar card ----------------------------------------
+
+function EarningsCalendar({ data }) {
+    if (!data || !data.length) {
+        return React.createElement('div', { className: 'card' },
+            React.createElement('div', { className: 'card-title', style: { fontSize: 12, letterSpacing: 1.5, textTransform: 'uppercase' } }, 'UPCOMING EARNINGS'),
+            React.createElement('div', { style: { color: 'var(--text-muted)', fontSize: 12, textAlign: 'center', padding: '24px 0' } },
+                'No earnings data cached. Earnings dates populate as tickers are looked up in Equity Research.')
+        );
+    }
+
+    // Show all — those with dates first (already ordered by SQL)
+    var rows = data.slice(0, 20);
+
+    return React.createElement('div', { className: 'card' },
+        React.createElement('div', { className: 'card-title', style: { fontSize: 12, letterSpacing: 1.5, textTransform: 'uppercase' } }, 'EARNINGS CALENDAR'),
+        React.createElement('table', { className: 'data-table' },
+            React.createElement('thead', null,
+                React.createElement('tr', null,
+                    ['Ticker', 'Name', 'Wt%', 'Earnings Date', 'Days', 'Ex-Div', 'Target'].map(function(h) {
+                        return React.createElement('th', { key: h }, h);
+                    })
+                )
+            ),
+            React.createElement('tbody', null,
+                rows.map(function(r) {
+                    var days = r.days_to_earnings;
+                    var daysColor = days == null ? 'var(--text-muted)'
+                        : days <= 7 ? '#ef4444'
+                        : days <= 30 ? '#f59e0b' : 'var(--text)';
+                    var daysText = days == null ? '—' : days <= 0 ? 'Today / Past' : days + 'd';
+
+                    var target = r.analyst_target ? '$' + Number(r.analyst_target).toFixed(2) : '—';
+
+                    return React.createElement('tr', { key: r.symbol },
+                        React.createElement('td', { style: { fontWeight: 600, color: '#00d4ff' } }, r.symbol),
+                        React.createElement('td', { style: { color: 'rgba(255,255,255,0.6)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'DM Sans, sans-serif' } },
+                            r.name || '—'),
+                        React.createElement('td', null, r.weight_pct != null ? (r.weight_pct * 100).toFixed(1) + '%' : '—'),
+                        React.createElement('td', null, r.earnings_date || '—'),
+                        React.createElement('td', { style: { color: daysColor, fontWeight: days != null && days <= 30 ? 600 : 400 } }, daysText),
+                        React.createElement('td', { style: { color: 'var(--text-sec)' } }, r.ex_div_date || '—'),
+                        React.createElement('td', { style: { color: 'var(--text-sec)' } }, target)
+                    );
+                })
+            )
+        )
+    );
+}
+
 export function PortfolioHome() {
     var _p = useState(null), positions = _p[0], setPositions = _p[1];
     var _c = useState(null), command = _c[0], setCommand = _c[1];
@@ -25,6 +75,7 @@ export function PortfolioHome() {
     var _n = useState(null), navData = _n[0], setNavData = _n[1];
     var _vc = useState(getVisibleCols), visCols = _vc[0], setVisCols = _vc[1];
     var _cm = useState(false), showCols = _cm[0], setShowCols = _cm[1];
+    var _ec = useState(null), earningsData = _ec[0], setEarningsData = _ec[1];
     var donutRef = useRef(null);
     var donutInst = useRef(null);
     var benchRef = useRef(null);
@@ -38,11 +89,13 @@ export function PortfolioHome() {
         Promise.all([
             loadView('vw_portfolio_home', MOCK_POSITIONS),
             loadView('vw_command_centre', [MOCK_COMMAND]),
-            loadView('vw_portfolio_nav_daily', [])
+            loadView('vw_portfolio_nav_daily', []),
+            loadView('vw_earnings_calendar', []),
         ]).then(function(res) {
             setPositions(res[0]);
             setCommand(res[1][0] || MOCK_COMMAND);
             setNavData(res[2]);
+            setEarningsData(res[3]);
             setLoading(false);
         });
     }, []);
@@ -334,6 +387,8 @@ export function PortfolioHome() {
             React.createElement('div', { style: { height: 280 } },
                 React.createElement('canvas', { ref: sectorRef })
             )
-        )
+        ),
+        // Earnings Calendar
+        React.createElement(EarningsCalendar, { data: earningsData })
     );
 }
