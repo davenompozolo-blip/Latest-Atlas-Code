@@ -15,7 +15,7 @@ import {
 } from './utils.js';
 import { Loading } from './components.js';
 
-const { useState, useEffect, useRef } = React;
+const { useState, useEffect, useRef, useMemo } = React;
 
 export function PortfolioHome() {
     var _p = useState(null), positions = _p[0], setPositions = _p[1];
@@ -26,8 +26,8 @@ export function PortfolioHome() {
     var _cm = useState(false), showCols = _cm[0], setShowCols = _cm[1];
     var donutRef = useRef(null);
     var donutInst = useRef(null);
-    var benchRef = useRef(null);
-    var benchInst = useRef(null);
+    var navPlotRef = useRef(null);
+    var _nr = useState('ALL'), navRange = _nr[0], setNavRange = _nr[1];
     var pnlRef = useRef(null);
     var pnlInst = useRef(null);
     var sectorRef = useRef(null);
@@ -93,33 +93,39 @@ export function PortfolioHome() {
         return function() { if (donutInst.current) donutInst.current.destroy(); };
     }, [positions]);
 
-    // Benchmark line chart
+    // Plotly NAV chart
     useEffect(function() {
-        if (!navData || !navData.length || !benchRef.current) return;
-        if (benchInst.current) benchInst.current.destroy();
+        if (!navData || !navData.length || !navPlotRef.current) return;
         var sorted = navData.slice().sort(function(a, b) { return new Date(a.price_date) - new Date(b.price_date); });
-        var baseNav = sorted[0].nav;
-        benchInst.current = new Chart(benchRef.current, {
-            type: 'line',
-            data: {
-                labels: sorted.map(function(d) { return ''; }),
-                datasets: [{
-                    label: 'ATLAS',
-                    data: sorted.map(function(d) { return ((d.nav / baseNav) - 1) * 100; }),
-                    borderColor: '#00d4ff', backgroundColor: 'rgba(0,212,255,0.05)', borderWidth: 2, pointRadius: 0, fill: true, tension: 0.3
-                }]
-            },
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                scales: {
-                    x: { display: false },
-                    y: { display: true, grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: 'rgba(255,255,255,0.3)', font: { size: 10, family: 'JetBrains Mono' }, callback: function(v) { return v.toFixed(0) + '%'; } } }
-                },
-                plugins: { legend: { display: true, labels: { color: 'rgba(255,255,255,0.5)', font: { size: 10 }, boxWidth: 10, usePointStyle: true } } }
-            }
-        });
-        return function() { if (benchInst.current) benchInst.current.destroy(); };
-    }, [navData]);
+        var cutoff = null;
+        var now = new Date();
+        if (navRange === '1W') cutoff = new Date(now - 7 * 864e5);
+        else if (navRange === '1M') cutoff = new Date(now - 30 * 864e5);
+        else if (navRange === '3M') cutoff = new Date(now - 90 * 864e5);
+        var slice = cutoff ? sorted.filter(function(d) { return new Date(d.price_date) >= cutoff; }) : sorted;
+        if (!slice.length) slice = sorted;
+        var baseNav = slice[0].nav;
+        var xs = slice.map(function(d) { return d.price_date; });
+        var ys = slice.map(function(d) { return +((d.nav / baseNav - 1) * 100).toFixed(2); });
+        var lastY = ys[ys.length - 1];
+        var fillColor = lastY >= 0 ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)';
+        var lineColor = lastY >= 0 ? '#10b981' : '#ef4444';
+        Plotly.react(navPlotRef.current, [{
+            x: xs, y: ys,
+            type: 'scatter', mode: 'lines',
+            fill: 'tozeroy', fillcolor: fillColor,
+            line: { color: lineColor, width: 2, shape: 'spline' },
+            hovertemplate: '%{x}<br><b>%{y:.2f}%</b><extra></extra>',
+            name: 'ATLAS NAV',
+        }], {
+            paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+            margin: { l: 48, r: 12, t: 8, b: 32 },
+            xaxis: { showgrid: false, tickfont: { color: 'rgba(255,255,255,0.3)', size: 10, family: 'JetBrains Mono' }, tickformat: '%b %d', nticks: 6 },
+            yaxis: { gridcolor: 'rgba(255,255,255,0.05)', zeroline: true, zerolinecolor: 'rgba(255,255,255,0.1)', zerolinewidth: 1, tickfont: { color: 'rgba(255,255,255,0.3)', size: 10, family: 'JetBrains Mono' }, ticksuffix: '%' },
+            showlegend: false,
+            font: { family: 'DM Sans', color: 'rgba(255,255,255,0.5)' },
+        }, { responsive: true, displayModeBar: false });
+    }, [navData, navRange]);
 
     // P&L contributors chart
     useEffect(function() {
@@ -297,12 +303,21 @@ export function PortfolioHome() {
                         React.createElement('canvas', { ref: donutRef })
                     )
                 ),
-                // Portfolio vs Benchmark chart
+                // Portfolio NAV chart (Plotly)
                 React.createElement('div', { className: 'card' },
-                    React.createElement('div', { className: 'card-title', style: { fontSize: 12, letterSpacing: 1.5, textTransform: 'uppercase' } }, 'PORTFOLIO VS BENCHMARK (%)'),
-                    React.createElement('div', { style: { height: 200 } },
-                        React.createElement('canvas', { ref: benchRef })
-                    )
+                    React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 } },
+                        React.createElement('div', { className: 'card-title', style: { fontSize: 12, letterSpacing: 1.5, textTransform: 'uppercase', margin: 0 } }, 'PORTFOLIO NAV (%)'),
+                        React.createElement('div', { style: { display: 'flex', gap: 4 } },
+                            ['1W', '1M', '3M', 'ALL'].map(function(r) {
+                                var active = navRange === r;
+                                return React.createElement('button', {
+                                    key: r, onClick: function() { setNavRange(r); },
+                                    style: { background: active ? 'rgba(0,212,255,0.15)' : 'transparent', color: active ? '#00d4ff' : 'rgba(255,255,255,0.35)', border: '1px solid ' + (active ? 'rgba(0,212,255,0.3)' : 'rgba(255,255,255,0.08)'), borderRadius: 4, padding: '2px 8px', fontSize: 10, cursor: 'pointer', fontFamily: 'JetBrains Mono' }
+                                }, r);
+                            })
+                        )
+                    ),
+                    React.createElement('div', { ref: navPlotRef, style: { height: 200 } })
                 )
             )
         ),
