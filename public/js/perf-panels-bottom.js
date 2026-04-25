@@ -30,7 +30,7 @@ function Tile(p) {
 
 export function RiskPanel(p) {
     var m = useMemo(function() { return computePortfolioMetrics(p.navSeries); }, [p.navSeries]);
-    var rolling = useMemo(function() { return computeRollingMetrics(p.navSeries, 90); }, [p.navSeries]);
+    var rolling = useMemo(function() { return computeRollingMetrics(p.navSeries, 60); }, [p.navSeries]);
     var ddPeriods = useMemo(function() { return computeDrawdownPeriods(p.navSeries, 5); }, [p.navSeries]);
 
     if (!m) {
@@ -77,72 +77,49 @@ export function RiskPanel(p) {
         )
     );
 
-    // C. Rolling Sharpe & Volatility Dual-Axis Chart
+    // C. Rolling Sharpe & Volatility — lightweight-charts dual line
     var rollingRef = useRef(null);
-    useChart(rollingRef, function() {
-        if (!rolling.length) return null;
-        return {
-            type: 'line',
-            data: {
-                labels: rolling.map(function(d) { return d.date; }),
-                datasets: [
-                    {
-                        label: 'Rolling Sharpe (90d)',
-                        data: rolling.map(function(d) { return d.sharpe; }),
-                        borderColor: '#00d4ff',
-                        backgroundColor: 'rgba(0,212,255,0.08)',
-                        borderWidth: 1.5,
-                        pointRadius: 0,
-                        fill: true,
-                        tension: 0.3,
-                        yAxisID: 'y'
-                    },
-                    {
-                        label: 'Rolling Vol (90d)',
-                        data: rolling.map(function(d) { return d.vol; }),
-                        borderColor: '#8b5cf6',
-                        borderWidth: 1.5,
-                        pointRadius: 0,
-                        borderDash: [4, 2],
-                        tension: 0.3,
-                        yAxisID: 'y1'
-                    }
-                ]
-            },
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                interaction: { mode: 'index', intersect: false },
-                plugins: {
-                    legend: { labels: { color: 'rgba(255,255,255,0.6)', boxWidth: 12, font: { size: 11 } } }
-                },
-                scales: {
-                    x: {
-                        ticks: { color: 'rgba(255,255,255,0.5)', maxTicksLimit: 12, maxRotation: 0 },
-                        grid: { display: false }
-                    },
-                    y: {
-                        position: 'left',
-                        title: { display: true, text: 'Sharpe', color: 'rgba(255,255,255,0.4)', font: { size: 10 } },
-                        ticks: { color: 'rgba(255,255,255,0.6)' },
-                        grid: { color: 'rgba(255,255,255,0.05)' }
-                    },
-                    y1: {
-                        position: 'right',
-                        title: { display: true, text: 'Volatility', color: 'rgba(255,255,255,0.4)', font: { size: 10 } },
-                        ticks: {
-                            color: 'rgba(255,255,255,0.6)',
-                            callback: function(v) { return (v * 100).toFixed(0) + '%'; }
-                        },
-                        grid: { display: false }
-                    }
-                }
-            }
-        };
+    var rollingChartRef = useRef(null);
+    React.useEffect(function() {
+        if (!rolling.length || !rollingRef.current) return;
+        if (rollingChartRef.current) { rollingChartRef.current.remove(); rollingChartRef.current = null; }
+        var chart = LightweightCharts.createChart(rollingRef.current, {
+            width: rollingRef.current.clientWidth || 700, height: 260,
+            layout: { background: { type: 'solid', color: 'transparent' }, textColor: 'rgba(255,255,255,0.3)', fontFamily: 'JetBrains Mono', fontSize: 10 },
+            grid: { vertLines: { visible: false }, horzLines: { color: 'rgba(255,255,255,0.05)' } },
+            leftPriceScale: { visible: true, borderVisible: false, scaleMargins: { top: 0.1, bottom: 0.1 } },
+            rightPriceScale: { visible: true, borderVisible: false, scaleMargins: { top: 0.1, bottom: 0.1 } },
+            timeScale: { borderVisible: false, fixLeftEdge: true, fixRightEdge: true },
+            crosshair: { vertLine: { color: 'rgba(255,255,255,0.15)', width: 1, style: 3 }, horzLine: { color: 'rgba(255,255,255,0.15)', width: 1, style: 3 } },
+            handleScroll: false, handleScale: false,
+        });
+        rollingChartRef.current = chart;
+        var sharpeSeries = chart.addSeries(LightweightCharts.LineSeries, {
+            color: '#00d4ff', lineWidth: 2, priceScaleId: 'left',
+            priceFormat: { type: 'custom', formatter: function(v) { return v.toFixed(2); } },
+        });
+        var volSeries = chart.addSeries(LightweightCharts.LineSeries, {
+            color: '#8b5cf6', lineWidth: 1.5, lineStyle: 1, priceScaleId: 'right',
+            priceFormat: { type: 'custom', formatter: function(v) { return (v * 100).toFixed(1) + '%'; } },
+        });
+        sharpeSeries.setData(rolling.map(function(d) { return { time: d.date, value: d.sharpe }; }));
+        volSeries.setData(rolling.map(function(d) { return { time: d.date, value: d.vol }; }));
+        chart.timeScale().fitContent();
+        return function() { if (rollingChartRef.current) { rollingChartRef.current.remove(); rollingChartRef.current = null; } };
     }, [rolling]);
 
     var rollingCard = h('div', { className: 'card', style: { marginBottom: 16 } },
-        h('div', { className: 'card-title' }, 'Rolling 90-Day Sharpe & Volatility'),
-        h('div', { style: { height: 260 } }, h('canvas', { ref: rollingRef }))
+        h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 } },
+            h('div', { className: 'card-title', style: { margin: 0 } }, 'ROLLING 60-DAY SHARPE & VOLATILITY'),
+            h('div', { style: { display: 'flex', gap: 14, alignItems: 'center' } },
+                h('span', { style: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, color: '#00d4ff', fontFamily: 'JetBrains Mono' } },
+                    h('span', { style: { width: 16, height: 2, background: '#00d4ff', display: 'inline-block' } }), 'Sharpe (L)'),
+                h('span', { style: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, color: '#8b5cf6', fontFamily: 'JetBrains Mono' } },
+                    h('span', { style: { width: 16, height: 2, background: '#8b5cf6', display: 'inline-block', opacity: 0.7 } }), 'Volatility (R)')
+            )
+        ),
+        rolling.length ? h('div', { ref: rollingRef, style: { height: 260 } }) :
+            h('div', { style: { height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.3)', fontSize: 12 } }, 'Insufficient history for rolling metrics (need 30+ data points)')
     );
 
     // D. Drawdown Periods Table

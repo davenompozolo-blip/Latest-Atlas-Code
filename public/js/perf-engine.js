@@ -77,7 +77,7 @@ export function computeDrawdownSeries(navSeries) {
 
 export function computeRollingMetrics(navSeries, window) {
     window = window || 90;
-    if (!navSeries || navSeries.length < window + 1) return [];
+    if (!navSeries || navSeries.length < window + 1) { if (window > 30) return computeRollingMetrics(navSeries, 30); return []; }
     var returns = [];
     for (var i = 1; i < navSeries.length; i++) {
         var r = navSeries[i].daily_return;
