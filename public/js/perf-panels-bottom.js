@@ -4,7 +4,8 @@
 // React 18 UMD, no JSX. Chart.js for visualizations.
 // ============================================================
 
-import { fmt, fmtPct, fmtCurrency, cls, healthCls, useChart } from './utils.js';
+import { fmt, fmtPct, fmtCurrency, cls, healthCls, useChart, volStatus, ddStatus, sharpeStatus, calmarStatus } from './utils.js';
+import { HeroCard } from './components.js';
 import {
     computePortfolioMetrics, computeRollingMetrics,
     computeDrawdownPeriods
@@ -19,12 +20,9 @@ function retColor(v) {
 }
 
 function Tile(p) {
-    return h('div', { className: 'metric-card' },
-        h('div', { className: 'label' }, p.label),
-        h('div', { className: 'value', style: { color: p.color || 'rgba(255,255,255,0.85)' } }, p.value),
-        p.sub ? h('div', { className: 'sub' }, p.sub) : null
-    );
+    return h(HeroCard, { label: p.label, value: p.value, color: p.color, accent: p.accent || 'cyan', sub: p.sub, icon: p.icon, badge: p.badge });
 }
+
 
 // =============================================================
 // Export 1: RiskPanel
@@ -43,22 +41,16 @@ export function RiskPanel(p) {
 
     var cmd = p.cmdData || {};
 
-    // A. Risk Metrics Grid
-    var riskGrid = h('div', {
-        style: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }
-    },
-        h(Tile, { label: 'VaR (95% Daily)', value: fmtPct(m.var95), color: '#ef4444' }),
-        h(Tile, { label: 'CVaR (95% Daily)', value: fmtPct(m.cvar95), color: '#ef4444' }),
-        h(Tile, { label: 'Max Drawdown', value: fmtPct(m.maxDD), color: '#ef4444' }),
-        h(Tile, { label: 'Current Drawdown', value: fmtPct(m.currentDD), color: m.currentDD < -0.02 ? '#ef4444' : '#10b981' }),
-        h(Tile, { label: 'Ann. Volatility', value: fmtPct(m.annVol), color: m.annVol > 0.25 ? '#f59e0b' : 'rgba(255,255,255,0.85)' }),
-        h(Tile, { label: 'Calmar Ratio', value: fmt(m.calmar, 2), color: m.calmar != null && m.calmar > 1 ? '#10b981' : 'rgba(255,255,255,0.85)' }),
-        h(Tile, {
-            label: 'Dollar VaR (95%)',
-            value: cmd.dollar_var_95 != null ? fmtCurrency(cmd.dollar_var_95) : fmtCurrency(m.var95 * (m.endNav || 0)),
-            color: '#ef4444'
-        }),
-        h(Tile, { label: 'Downside Deviation', value: fmtPct(m.annVol * 0.707), color: 'rgba(255,255,255,0.85)', sub: 'Annualised' })
+    // A. Risk Metrics Grid — HeroCards with accent colours
+    var riskGrid = h('div', { className: 'hero-grid', style: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 } },
+        h(Tile, { icon: '⚡', label: 'VaR (95% Daily)', value: fmtPct(m.var95), color: '#ef4444', accent: 'red', badge: 'Tail Risk' }),
+        h(Tile, { icon: '⚠', label: 'CVaR (95% Daily)', value: fmtPct(m.cvar95), color: '#ef4444', accent: 'red', badge: 'Exp. Shortfall' }),
+        h(Tile, { icon: '▽', label: 'Max Drawdown', value: fmtPct(m.maxDD), color: '#ef4444', accent: 'red', badge: ddStatus(m.maxDD) }),
+        h(Tile, { icon: '≡', label: 'Current Drawdown', value: fmtPct(m.currentDD), color: m.currentDD < -0.02 ? '#ef4444' : '#10b981', accent: m.currentDD < -0.02 ? 'red' : 'green' }),
+        h(Tile, { icon: '≋', label: 'Ann. Volatility', value: fmtPct(m.annVol), color: m.annVol > 0.25 ? '#ef4444' : m.annVol > 0.15 ? '#f59e0b' : '#10b981', accent: m.annVol > 0.25 ? 'red' : 'amber', badge: volStatus(m.annVol) }),
+        h(Tile, { icon: '◆', label: 'Calmar Ratio', value: fmt(m.calmar, 2), color: m.calmar != null && m.calmar > 1 ? '#10b981' : 'rgba(255,255,255,0.85)', accent: 'indigo', badge: calmarStatus(m.calmar) }),
+        h(Tile, { icon: '$', label: 'Dollar VaR (95%)', value: cmd.dollar_var_95 != null ? fmtCurrency(cmd.dollar_var_95) : fmtCurrency(m.var95 * (m.endNav || 0)), color: '#ef4444', accent: 'red' }),
+        h(Tile, { icon: '▼', label: 'Downside Dev.', value: fmtPct(m.annVol * 0.707), color: '#f59e0b', accent: 'amber', sub: 'Annualised' })
     );
 
     // B. ATLAS Health Score
