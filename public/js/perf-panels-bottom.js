@@ -219,13 +219,11 @@ export function PositionsPanel(p) {
     var worst = perf.reduce(function(w, p) { return (Number(p.total_return_pct) || 0) < (Number(w.total_return_pct) || 0) ? p : w; }, perf[0]);
     var avgCagr = perf.reduce(function(s, p) { return s + (Number(p.annualised_return) || 0); }, 0) / perf.length;
 
-    var summaryGrid = h('div', {
-        style: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }
-    },
-        h(Tile, { label: 'Positions', value: perf.length, color: '#00d4ff' }),
-        h(Tile, { label: 'Avg CAGR', value: fmtPct(avgCagr), color: retColor(avgCagr) }),
-        h(Tile, { label: 'Best Performer', value: best.symbol, color: '#10b981', sub: fmtPct(best.total_return_pct) }),
-        h(Tile, { label: 'Cut Candidates', value: cuts.length, color: cuts.length > 0 ? '#ef4444' : '#10b981' })
+    var summaryGrid = h('div', { className: 'hero-grid', style: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 } },
+        h(Tile, { icon: '◈', label: 'Positions', value: String(perf.length), color: '#00d4ff', accent: 'cyan', badge: 'In Portfolio' }),
+        h(Tile, { icon: '◆', label: 'Avg CAGR', value: fmtPct(avgCagr), color: retColor(avgCagr), accent: avgCagr >= 0 ? 'green' : 'red' }),
+        h(Tile, { icon: '▲', label: 'Best Performer', value: best.symbol, color: '#10b981', accent: 'green', sub: fmtPct(best.total_return_pct) }),
+        h(Tile, { icon: '✂', label: 'Cut Candidates', value: String(cuts.length), color: cuts.length > 0 ? '#ef4444' : '#10b981', accent: cuts.length > 0 ? 'red' : 'green', badge: cuts.length > 0 ? 'Review' : 'All Clear' })
     );
 
     // B. Best & Worst Performers Bar Chart
@@ -305,7 +303,10 @@ export function PositionsPanel(p) {
                     )
                 ),
                 h('tbody', null, sorted.map(function(row) {
-                    return h('tr', { key: row.symbol },
+                    return h('tr', { key: row.symbol,
+                        onMouseEnter: function(e) { e.currentTarget.style.background = 'rgba(0,212,255,0.03)'; },
+                        onMouseLeave: function(e) { e.currentTarget.style.background = 'transparent'; },
+                    },
                         h('td', { style: Object.assign({}, tdBase, { fontWeight: 600, color: '#00d4ff' }) }, row.symbol),
                         h('td', { style: tdMono }, fmtCurrency(row.entry_price)),
                         h('td', { style: tdMono }, fmtCurrency(row.current_price)),
