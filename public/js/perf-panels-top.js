@@ -268,41 +268,41 @@ export function ReturnsPanel(p) {
         );
     }
 
-    // A. Period Returns Table
+    // A. Period Returns — visual bar grid
     var periodRows = [
-        { label: '1 Day', value: periods.ret1d },
-        { label: '1 Week', value: periods.ret1w },
-        { label: '1 Month', value: periods.ret1m },
-        { label: '3 Month', value: periods.ret3m },
-        { label: '6 Month', value: periods.ret6m },
-        { label: '1 Year', value: periods.ret1y },
-        { label: 'MTD', value: periods.mtd },
-        { label: 'YTD', value: periods.ytd },
-        { label: 'Inception', value: periods.inception }
+        { label: '1 Day',      value: periods.ret1d },
+        { label: '1 Week',     value: periods.ret1w },
+        { label: '1 Month',    value: periods.ret1m },
+        { label: '3 Month',    value: periods.ret3m },
+        { label: '6 Month',    value: periods.ret6m },
+        { label: '1 Year',     value: periods.ret1y },
+        { label: 'MTD',        value: periods.mtd },
+        { label: 'YTD',        value: periods.ytd },
+        { label: 'Inception',  value: periods.inception },
     ];
-
-    var thStyle = { textAlign: 'left', padding: '8px 0', color: 'rgba(255,255,255,0.5)', fontWeight: 500, fontSize: 12, borderBottom: '1px solid rgba(255,255,255,0.08)' };
-    var thStyleR = { textAlign: 'right', padding: '8px 0', color: 'rgba(255,255,255,0.5)', fontWeight: 500, fontSize: 12, borderBottom: '1px solid rgba(255,255,255,0.08)' };
+    var maxAbsPct = Math.max.apply(null, periodRows.map(function(r) { return r.value != null ? Math.abs(r.value * 100) : 0; }).concat([0.01]));
 
     var periodTable = h('div', { className: 'card', style: { marginBottom: 16 } },
-        h('div', { className: 'card-title' }, 'Period Returns'),
-        h('table', { style: { width: '100%', borderCollapse: 'collapse' } },
-            h('thead', null,
-                h('tr', null,
-                    h('th', { style: thStyle }, 'Period'),
-                    h('th', { style: thStyleR }, 'Return')
-                )
-            ),
-            h('tbody', null, periodRows.map(function(r, i) {
-                var val = r.value;
-                var text = val != null ? ((val >= 0 ? '+' : '') + (val * 100).toFixed(2) + '%') : '\u2014';
-                return h('tr', { key: i },
-                    h('td', { style: { padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.8)' } }, r.label),
-                    h('td', { style: { padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.04)', textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', fontWeight: 600, color: retColor(val) } }, text)
-                );
-            }))
-        )
+        h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 } },
+            h('div', { className: 'card-title', style: { margin: 0 } }, 'PERIOD RETURNS'),
+            h('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.28)', fontFamily: 'DM Sans' } }, 'Bar scaled to max absolute return')
+        ),
+        periodRows.map(function(r, i) {
+            var val = r.value, pctNum = val != null ? val * 100 : null;
+            var chipColor = val == null ? 'rgba(255,255,255,0.22)' : val >= 0 ? '#10b981' : '#ef4444';
+            var barPct = pctNum != null ? Math.min(Math.abs(pctNum) / maxAbsPct, 1) * 100 : 0;
+            var barColor = val != null && val >= 0 ? 'rgba(16,185,129,0.5)' : 'rgba(239,68,68,0.5)';
+            var text = pctNum != null ? (pctNum >= 0 ? '+' : '') + pctNum.toFixed(2) + '%' : '—';
+            return h('div', { key: i, style: { display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: i < periodRows.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none' } },
+                h('span', { style: { fontSize: 12, color: 'rgba(255,255,255,0.55)', fontFamily: 'DM Sans', minWidth: 90 } }, r.label),
+                h('div', { style: { flex: 1, height: 4, background: 'rgba(255,255,255,0.05)', borderRadius: 2, overflow: 'hidden' } },
+                    h('div', { style: { width: barPct + '%', height: '100%', background: barColor, borderRadius: 2 } })
+                ),
+                h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 12, fontWeight: 700, color: chipColor, minWidth: 72, textAlign: 'right' } }, text)
+            );
+        })
     );
+
 
     // B. Cumulative Returns Chart
     var cumRef = useRef(null);
