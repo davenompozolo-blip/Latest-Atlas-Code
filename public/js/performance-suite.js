@@ -192,7 +192,7 @@ export function PerformanceSuite() {
             panel = hasNav ? h(OverviewPanel, { navSeries: navSeries, cmdData: cmdData }) : h(EmptyState, null);
             break;
         case 'returns':
-            panel = hasNav ? h(ReturnsPanel, { navSeries: navSeries }) : h(EmptyState, null);
+            panel = hasNav ? h(ReturnsPanel, { navSeries: navSeries, perfData: perfData }) : h(EmptyState, null);
             break;
         case 'risk':
             panel = hasNav ? h(RiskPanel, { navSeries: navSeries, cmdData: cmdData }) : h(EmptyState, null);

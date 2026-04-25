@@ -8,7 +8,8 @@ import { fmt, fmtPct, fmtCurrency, cls, useChart, sharpeStatus, volStatus, retur
 import { HeroCard } from './components.js';
 import {
     computePortfolioMetrics, computeDrawdownSeries, computeReturnsBins,
-    computeMonthlyReturns, computeCumulativeReturns, computePeriodReturns
+    computeMonthlyReturns, computeCumulativeReturns, computePeriodReturns,
+    computePositionContributions
 } from './perf-engine.js';
 
 var useRef = React.useRef, useEffect = React.useEffect, useMemo = React.useMemo;
@@ -257,7 +258,8 @@ export function OverviewPanel(p) {
 // =============================================================
 
 export function ReturnsPanel(p) {
-    var periods = useMemo(function() { return computePeriodReturns(p.navSeries); }, [p.navSeries]);
+    var periods  = useMemo(function() { return computePeriodReturns(p.navSeries); }, [p.navSeries]);
+    var contribs = useMemo(function() { return computePositionContributions(p.perfData || []); }, [p.perfData]);
     var cumReturns = useMemo(function() { return computeCumulativeReturns(p.navSeries); }, [p.navSeries]);
     var bins = useMemo(function() { return computeReturnsBins(p.navSeries, 40); }, [p.navSeries]);
     var monthly = useMemo(function() { return computeMonthlyReturns(p.navSeries); }, [p.navSeries]);
@@ -442,5 +444,49 @@ export function ReturnsPanel(p) {
         heatmapContent
     );
 
-    return h('div', null, periodTable, cumCard, histCard, heatmapCard);
+    // A0. Position return contribution dashboard
+    var topContrib = contribs.slice(0, 8);
+    var botContrib = contribs.slice(-5).reverse();
+    var maxAbsContrib = Math.max.apply(null, contribs.map(function(c) { return Math.abs(c.contribution); }).concat([0.001]));
+    var totalPortRet  = contribs.reduce(function(s, c) { return s + c.contribution; }, 0);
+
+    function contribRow(c, i) {
+        var barW  = Math.min(Math.abs(c.contribution) / maxAbsContrib, 1) * 100;
+        var col   = c.contribution >= 0 ? '#10b981' : '#ef4444';
+        var barcol= c.contribution >= 0 ? 'rgba(16,185,129,0.5)' : 'rgba(239,68,68,0.5)';
+        var retTxt= (c.ret >= 0 ? '+' : '') + (c.ret * 100).toFixed(1) + '%';
+        var cTxt  = (c.contribution >= 0 ? '+' : '') + (c.contribution * 100).toFixed(2) + '%';
+        return h('div', { key: c.symbol + i, style: { display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' } },
+            h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 700, color: '#00d4ff', minWidth: 52 } }, c.symbol),
+            h('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.4)', fontFamily: 'DM Sans', minWidth: 30, textAlign: 'right' } }, (c.weight * 100).toFixed(1) + '%'),
+            h('div', { style: { flex: 1, height: 4, background: 'rgba(255,255,255,0.05)', borderRadius: 2, overflow: 'hidden' } },
+                h('div', { style: { width: barW + '%', height: '100%', background: barcol, borderRadius: 2 } })
+            ),
+            h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 10, color: 'rgba(255,255,255,0.5)', minWidth: 52, textAlign: 'right' } }, retTxt),
+            h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 700, color: col, minWidth: 64, textAlign: 'right' } }, cTxt)
+        );
+    }
+
+    var contribCard = contribs.length ? h('div', { className: 'card', style: { marginBottom: 16 } },
+        h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 } },
+            h('div', { className: 'card-title', style: { margin: 0 } }, 'RETURN ATTRIBUTION BY POSITION'),
+            h('div', { style: { display: 'flex', gap: 20, alignItems: 'center' } },
+                h('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'DM Sans' } }, 'Wt%  ·  Bar = contribution magnitude'),
+                h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 700, color: totalPortRet >= 0 ? '#10b981' : '#ef4444' } },
+                    'Total: ' + (totalPortRet >= 0 ? '+' : '') + (totalPortRet * 100).toFixed(2) + '%')
+            )
+        ),
+        h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 28px' } },
+            h('div', null,
+                h('div', { style: { fontSize: 9, letterSpacing: 1.5, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 6, fontFamily: 'DM Sans' } }, '▲ Top Contributors'),
+                topContrib.map(contribRow)
+            ),
+            h('div', null,
+                h('div', { style: { fontSize: 9, letterSpacing: 1.5, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 6, fontFamily: 'DM Sans' } }, '▼ Top Detractors'),
+                botContrib.map(function(c, i) { return contribRow(c, i + 100); })
+            )
+        )
+    ) : null;
+
+    return h('div', null, contribCard, periodTable, cumCard, histCard, heatmapCard);
 }

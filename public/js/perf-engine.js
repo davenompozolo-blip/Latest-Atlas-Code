@@ -77,7 +77,7 @@ export function computeDrawdownSeries(navSeries) {
 
 export function computeRollingMetrics(navSeries, window) {
     window = window || 90;
-    if (!navSeries || navSeries.length < window + 1) return [];
+    if (!navSeries || navSeries.length < window + 1) { if (window > 30) return computeRollingMetrics(navSeries, 30); return []; }
     var returns = [];
     for (var i = 1; i < navSeries.length; i++) {
         var r = navSeries[i].daily_return;
@@ -190,5 +190,137 @@ export function computePeriodReturns(navSeries) {
         ret3m: retBack(63), ret6m: retBack(126), ret1y: retBack(252),
         mtd: retFrom(mtdStart), ytd: retFrom(ytdStart),
         inception: (last - navSeries[0].nav) / navSeries[0].nav,
+    };
+}
+
+// ----------------------------------------------------------------
+// computePositionContributions
+// Returns each position's contribution to portfolio return,
+// sorted descending by absolute contribution.
+// ----------------------------------------------------------------
+export function computePositionContributions(positions) {
+    if (!positions || !positions.length) return [];
+    var totalMv = positions.reduce(function(s, p) { return s + Math.abs(Number(p.market_value) || 0); }, 0);
+    if (!totalMv) return [];
+    var out = positions.map(function(p) {
+        var mv  = Math.abs(Number(p.market_value) || 0);
+        var ret = Number(p.total_return_pct || p.unrealised_return_pct || 0);
+        var wt  = mv / totalMv;
+        var contrib = wt * ret;
+        return {
+            symbol: p.symbol,
+            name: p.asset_name || p.name || p.symbol,
+            sector: p.sector || 'Other',
+            weight: wt,
+            ret: ret,
+            contribution: contrib,
+            marketValue: mv,
+        };
+    });
+    out.sort(function(a, b) { return b.contribution - a.contribution; });
+    return out;
+}
+
+// ----------------------------------------------------------------
+// computeBrinsonAttribution
+// Brinson-Fachler model using the portfolio itself as reference.
+//   Benchmark weights = equal weight across sectors (1/N_sectors)
+//   Benchmark sector return = equal-weight avg return within sector
+//   Allocation  = (wp - wb) × (rb_sector - Rb_total)
+//   Selection   = wb × (rp_sector - rb_sector)
+//   Interaction = (wp - wb) × (rp_sector - rb_sector)
+// ----------------------------------------------------------------
+export function computeBrinsonAttribution(positions) {
+    if (!positions || !positions.length) return null;
+    var totalMv = positions.reduce(function(s, p) { return s + Math.abs(Number(p.market_value) || 0); }, 0);
+    if (!totalMv) return null;
+
+    // Group by sector
+    var bySector = {};
+    positions.forEach(function(p) {
+        var sec = p.sector || 'Other';
+        var mv  = Math.abs(Number(p.market_value) || 0);
+        var ret = Number(p.total_return_pct || p.unrealised_return_pct || 0);
+        if (!bySector[sec]) bySector[sec] = { mv: 0, sumRet: 0, count: 0, positions: [] };
+        bySector[sec].mv    += mv;
+        bySector[sec].sumRet += ret;
+        bySector[sec].count += 1;
+        bySector[sec].positions.push(p);
+    });
+
+    var sectors = Object.keys(bySector);
+    var N = sectors.length;
+    var benchWeight = 1 / N;    // equal weight benchmark
+
+    // Compute portfolio weight + portfolio sector return (value-weighted)
+    // and benchmark sector return (equal-weight avg within sector)
+    sectors.forEach(function(sec) {
+        var s = bySector[sec];
+        s.portfolioWeight = s.mv / totalMv;
+        // Portfolio sector return = value-weighted avg return of positions in sector
+        var sumWR = 0;
+        s.positions.forEach(function(p) {
+            var mv  = Math.abs(Number(p.market_value) || 0);
+            var ret = Number(p.total_return_pct || p.unrealised_return_pct || 0);
+            sumWR += (mv / s.mv) * ret;
+        });
+        s.portfolioSectorReturn = sumWR;
+        // Benchmark sector return = simple average return within sector
+        s.benchmarkSectorReturn = s.sumRet / s.count;
+    });
+
+    // Total portfolio return (value-weighted across all positions)
+    var portfolioReturn = sectors.reduce(function(sum, sec) {
+        var s = bySector[sec];
+        return sum + s.portfolioWeight * s.portfolioSectorReturn;
+    }, 0);
+
+    // Total benchmark return (equal-weight of benchmark sector returns)
+    var benchmarkReturn = sectors.reduce(function(sum, sec) {
+        return sum + benchWeight * bySector[sec].benchmarkSectorReturn;
+    }, 0);
+
+    // Brinson-Fachler decomposition
+    var attribution = sectors.map(function(sec) {
+        var s   = bySector[sec];
+        var wp  = s.portfolioWeight;
+        var wb  = benchWeight;
+        var rp  = s.portfolioSectorReturn;
+        var rb  = s.benchmarkSectorReturn;
+        var Rb  = benchmarkReturn;
+        var alloc    = (wp - wb) * (rb - Rb);
+        var select   = wb * (rp - rb);
+        var interact = (wp - wb) * (rp - rb);
+        return {
+            sector:            sec,
+            portfolioWeight:   wp,
+            benchmarkWeight:   wb,
+            activeWeight:      wp - wb,
+            portfolioReturn:   rp,
+            benchmarkReturn:   rb,
+            allocationEffect:  alloc,
+            selectionEffect:   select,
+            interactionEffect: interact,
+            totalEffect:       alloc + select + interact,
+            positionCount:     s.count,
+        };
+    });
+
+    attribution.sort(function(a, b) { return Math.abs(b.totalEffect) - Math.abs(a.totalEffect); });
+
+    var totals = attribution.reduce(function(acc, a) {
+        acc.allocation  += a.allocationEffect;
+        acc.selection   += a.selectionEffect;
+        acc.interaction += a.interactionEffect;
+        acc.total       += a.totalEffect;
+        return acc;
+    }, { allocation: 0, selection: 0, interaction: 0, total: 0 });
+
+    return {
+        sectors:         attribution,
+        totals:          totals,
+        portfolioReturn: portfolioReturn,
+        benchmarkReturn: benchmarkReturn,
+        activeReturn:    portfolioReturn - benchmarkReturn,
     };
 }
