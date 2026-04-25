@@ -467,40 +467,6 @@ export function RiskAnalysis() {
 
     var ddVal = c.drawdown_pct != null ? c.drawdown_pct / 100 : null;
 
-    return React.createElement('div', null,
-        React.createElement('div', { className: 'page-title' }, 'Risk Analysis'),
-        // Primary risk KPIs
-        React.createElement('div', { className: 'hero-grid', style: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 16 } },
-            React.createElement(HeroCard, {
-                icon: '✦',
-                label: 'SHARPE RATIO',
-                value: fmt(c.sharpe_ratio),
-                color: c.sharpe_ratio > 1 ? 'var(--green)' : c.sharpe_ratio > 0 ? 'var(--amber)' : 'var(--red)',
-                accent: 'cyan',
-                badge: sharpeStatus(c.sharpe_ratio)
-            }),
-            React.createElement(HeroCard, {
-                icon: '◈',
-                label: 'SORTINO RATIO',
-                value: fmt(c.sortino_ratio),
-                color: c.sortino_ratio > 1 ? 'var(--green)' : c.sortino_ratio > 0 ? 'var(--amber)' : 'var(--red)',
-                accent: 'violet',
-                badge: sharpeStatus(c.sortino_ratio)
-            }),
-            React.createElement(HeroCard, {
-                icon: '▽',
-                label: 'MAX DRAWDOWN',
-                value: c.drawdown_pct != null ? fmt(c.drawdown_pct, 2) + '%' : '—',
-                color: 'var(--red)',
-                accent: 'red',
-                badge: ddStatus(ddVal)
-            }),
-            React.createElement(HeroCard, {
-                icon: '⚠',
-                label: 'PORTFOLIO VAR (95%)',
-                value: fmtCurrency(c.dollar_var_95),
-                accent: 'amber'
-            })
     const TABS = [
         { id: 'breakdown', label: 'Risk Breakdown' },
         { id: 'corerisk', label: 'Core Risk' },
