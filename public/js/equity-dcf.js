@@ -7,7 +7,6 @@ import { MultiStagePanel, TrapBanner } from './equity-dcf-multistage.js';
 
 var useState = React.useState;
 var h = React.createElement;
-function fmtPct(n) { return n != null && isFinite(n) ? (n >= 0 ? '+' : '') + (n * 100).toFixed(1) + '%' : '—'; }
 
 // ---- Consensus Valuation panel ----------------------------------------
 // Runs all available models with default assumptions and shows them side by
