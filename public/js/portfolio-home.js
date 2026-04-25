@@ -199,6 +199,7 @@ export function PortfolioHome() {
     var donutRef = useRef(null);
     var donutInst = useRef(null);
     var navPlotRef = useRef(null);
+    var navChartRef = useRef(null);
     var _nr = useState('ALL'), navRange = _nr[0], setNavRange = _nr[1];
     var pnlRef = useRef(null);
     var pnlInst = useRef(null);
@@ -270,87 +271,84 @@ export function PortfolioHome() {
         return function() { if (donutInst.current) donutInst.current.destroy(); };
     }, [positions]);
 
-    // Plotly NAV chart
+    // lightweight-charts NAV chart
     useEffect(function() {
         if (!navData || !navData.length || !navPlotRef.current) return;
+        if (navChartRef.current) { navChartRef.current.remove(); navChartRef.current = null; }
         var sorted = navData.slice().sort(function(a, b) { return new Date(a.price_date) - new Date(b.price_date); });
-        var cutoff = null;
-        var now = new Date();
+        var cutoff = null, now = new Date();
         if (navRange === '1W') cutoff = new Date(now - 7 * 864e5);
         else if (navRange === '1M') cutoff = new Date(now - 30 * 864e5);
         else if (navRange === '3M') cutoff = new Date(now - 90 * 864e5);
         var slice = cutoff ? sorted.filter(function(d) { return new Date(d.price_date) >= cutoff; }) : sorted;
         if (!slice.length) slice = sorted;
         var baseNav = slice[0].nav;
-        var xs = slice.map(function(d) { return d.price_date; });
-        var ys = slice.map(function(d) { return +((d.nav / baseNav - 1) * 100).toFixed(2); });
-        var lastY = ys[ys.length - 1];
-        var fillColor = lastY >= 0 ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)';
+        var lastY = (slice[slice.length - 1].nav / baseNav - 1) * 100;
         var lineColor = lastY >= 0 ? '#10b981' : '#ef4444';
-        // Build entry-point scatter trace from transactions
-        var traces = [{
-            x: xs, y: ys,
-            type: 'scatter', mode: 'lines',
-            fill: 'tozeroy', fillcolor: fillColor,
-            line: { color: lineColor, width: 2, shape: 'spline' },
-            hovertemplate: '%{x}<br><b>%{y:.2f}%</b><extra></extra>',
-            name: 'ATLAS NAV',
-        }];
+        var topFill   = lastY >= 0 ? 'rgba(16,185,129,0.22)' : 'rgba(239,68,68,0.22)';
+        var chart = LightweightCharts.createChart(navPlotRef.current, {
+            width:  navPlotRef.current.clientWidth || 600,
+            height: 260,
+            layout: {
+                background: { type: 'solid', color: 'transparent' },
+                textColor: 'rgba(255,255,255,0.3)',
+                fontFamily: 'JetBrains Mono',
+                fontSize: 10,
+            },
+            grid: { vertLines: { visible: false }, horzLines: { color: 'rgba(255,255,255,0.05)' } },
+            rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.1, bottom: 0.1 } },
+            timeScale: { borderVisible: false, fixLeftEdge: true, fixRightEdge: true },
+            crosshair: {
+                vertLine: { color: 'rgba(255,255,255,0.15)', width: 1, style: 3 },
+                horzLine: { color: 'rgba(255,255,255,0.15)', width: 1, style: 3 },
+            },
+            handleScroll: false,
+            handleScale: false,
+        });
+        navChartRef.current = chart;
+        var areaSeries = chart.addSeries(LightweightCharts.AreaSeries, {
+            lineColor: lineColor,
+            topColor: topFill,
+            bottomColor: 'rgba(0,0,0,0)',
+            lineWidth: 2,
+            lineStyle: 0,
+            crosshairMarkerVisible: true,
+            priceFormat: { type: 'custom', formatter: function(v) { return (v >= 0 ? '+' : '') + v.toFixed(2) + '%'; } },
+        });
+        areaSeries.setData(slice.map(function(d) {
+            return { time: d.price_date, value: +((d.nav / baseNav - 1) * 100).toFixed(3) };
+        }));
         if (txData && txData.length) {
-            // Map NAV by date for Y lookup
             var navByDate = {};
-            slice.forEach(function(d) { navByDate[d.price_date] = ((d.nav / baseNav - 1) * 100); });
-            var sliceStart = slice[0].price_date;
-            var sliceEnd = slice[slice.length - 1].price_date;
-            // Group buys: profitable vs underwater using positions current P&L
+            slice.forEach(function(d) { navByDate[d.price_date] = (d.nav / baseNav - 1) * 100; });
+            var sliceStart = slice[0].price_date, sliceEnd = slice[slice.length - 1].price_date;
             var posMap = {};
             if (positions) positions.forEach(function(p) { posMap[p.symbol] = p; });
-            var txInRange = txData.filter(function(t) {
+            var markers = [];
+            txData.forEach(function(t) {
                 var d = t.transaction_date || t.date || t.trade_date;
-                return d && d >= sliceStart && d <= sliceEnd && (t.side || t.transaction_type || '').toUpperCase().indexOf('BUY') >= 0;
-            });
-            var txGood = [], txBad = [], txLabels = [];
-            txInRange.forEach(function(t) {
-                var d = t.transaction_date || t.date || t.trade_date;
+                if (!d || d < sliceStart || d > sliceEnd) return;
+                if ((t.side || t.transaction_type || '').toUpperCase().indexOf('BUY') < 0) return;
                 var sym = t.symbol || t.ticker;
                 var pos = posMap[sym];
                 var ret = pos && pos.unrealised_return_pct != null ? Number(pos.unrealised_return_pct) : null;
-                // Find nearest nav Y for this date
-                var navY = navByDate[d];
-                if (navY == null) {
-                    // Find closest date in navByDate
-                    var dates = Object.keys(navByDate);
-                    var closest = dates.reduce(function(a, b) { return Math.abs(new Date(b) - new Date(d)) < Math.abs(new Date(a) - new Date(d)) ? b : a; });
-                    navY = navByDate[closest];
-                }
-                if (ret === null || ret >= 0) { txGood.push({ x: d, y: navY, sym: sym, ret: ret }); }
-                else { txBad.push({ x: d, y: navY, sym: sym, ret: ret }); }
+                var good = ret === null || ret >= 0;
+                markers.push({
+                    time: d,
+                    position: 'belowBar',
+                    color: good ? '#10b981' : '#ef4444',
+                    shape: good ? 'arrowUp' : 'arrowDown',
+                    text: sym + (ret != null ? (ret >= 0 ? ' +' : ' ') + (ret * 100).toFixed(1) + '%' : ''),
+                    size: 1,
+                });
             });
-            if (txGood.length) traces.push({
-                x: txGood.map(function(t) { return t.x; }),
-                y: txGood.map(function(t) { return t.y; }),
-                text: txGood.map(function(t) { return t.sym + (t.ret != null ? ' +' + (t.ret * 100).toFixed(1) + '%' : ''); }),
-                type: 'scatter', mode: 'markers', name: 'Entry (profitable)',
-                marker: { color: '#10b981', size: 8, symbol: 'triangle-up', line: { color: 'rgba(16,185,129,0.6)', width: 1 } },
-                hovertemplate: '<b>%{text}</b><br>%{x}<extra>Entry</extra>',
-            });
-            if (txBad.length) traces.push({
-                x: txBad.map(function(t) { return t.x; }),
-                y: txBad.map(function(t) { return t.y; }),
-                text: txBad.map(function(t) { return t.sym + (t.ret != null ? ' ' + (t.ret * 100).toFixed(1) + '%' : ''); }),
-                type: 'scatter', mode: 'markers', name: 'Entry (underwater)',
-                marker: { color: '#ef4444', size: 8, symbol: 'triangle-down', line: { color: 'rgba(239,68,68,0.6)', width: 1 } },
-                hovertemplate: '<b>%{text}</b><br>%{x}<extra>Entry</extra>',
-            });
+            if (markers.length) {
+                markers.sort(function(a, b) { return a.time < b.time ? -1 : a.time > b.time ? 1 : 0; });
+                LightweightCharts.createSeriesMarkers(areaSeries, markers);
+            }
         }
-        Plotly.react(navPlotRef.current, traces, {
-            paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
-            margin: { l: 48, r: 12, t: 8, b: 32 },
-            xaxis: { showgrid: false, tickfont: { color: 'rgba(255,255,255,0.3)', size: 10, family: 'JetBrains Mono' }, tickformat: '%b %d', nticks: 6 },
-            yaxis: { gridcolor: 'rgba(255,255,255,0.05)', zeroline: true, zerolinecolor: 'rgba(255,255,255,0.1)', zerolinewidth: 1, tickfont: { color: 'rgba(255,255,255,0.3)', size: 10, family: 'JetBrains Mono' }, ticksuffix: '%' },
-            showlegend: false,
-            font: { family: 'DM Sans', color: 'rgba(255,255,255,0.5)' },
-        }, { responsive: true, displayModeBar: false });
+        chart.timeScale().fitContent();
+        return function() { if (navChartRef.current) { navChartRef.current.remove(); navChartRef.current = null; } };
     }, [navData, navRange, txData, positions]);
 
     // P&L contributors chart
