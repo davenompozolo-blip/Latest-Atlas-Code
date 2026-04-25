@@ -1,11 +1,13 @@
-import { deriveDefaults, runFCFF, runGordonDDM, runResidualIncome, SubTab } from './dcf-engine.js';
+import { deriveDefaults, runFCFF, runGordonDDM, runResidualIncome, detectTraps, SubTab } from './dcf-engine.js';
 import { FcffPanel } from './equity-dcf-fcff.js';
 import { DdmPanel } from './equity-dcf-ddm.js';
 import { RiPanel } from './equity-dcf-ri.js';
 import { SimPanel } from './equity-dcf-sim.js';
+import { MultiStagePanel, TrapBanner } from './equity-dcf-multistage.js';
 
 var useState = React.useState;
 var h = React.createElement;
+function fmtPct(n) { return n != null && isFinite(n) ? (n >= 0 ? '+' : '') + (n * 100).toFixed(1) + '%' : '—'; }
 
 // ---- Consensus Valuation panel ----------------------------------------
 // Runs all available models with default assumptions and shows them side by
@@ -172,13 +174,105 @@ function ConsensusPanel(p) {
 }
 
 // -----------------------------------------------------------------------
+// Quality Checks panel — runs all institutional traps across BASE scenario
+// -----------------------------------------------------------------------
+
+function QualityChecksPanel(p) {
+    var defaults = p.defaults, price = p.price;
+    if (!defaults || !price) {
+        return h('div', { className: 'card', style: { padding: 32, color: 'var(--text-muted)', textAlign: 'center' } },
+            'Quality checks require price and fundamentals data.');
+    }
+
+    // Run base DCF to get a reference result for trap checking
+    var baseResult = runFCFF(defaults, defaults.wacc, 0.025, defaults.revGrowth, defaults.fcfMargin, 5);
+    var traps = detectTraps(defaults, defaults.wacc, 0.025, defaults.fcfMargin, baseResult);
+
+    var SEV_ORDER = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, INFO: 1 };
+    var SEV_COLOR = { CRITICAL: '#ef4444', HIGH: '#f97316', MEDIUM: '#f59e0b', INFO: '#6366f1' };
+    var SEV_BG    = { CRITICAL: 'rgba(239,68,68,0.08)', HIGH: 'rgba(249,115,22,0.08)', MEDIUM: 'rgba(245,158,11,0.08)', INFO: 'rgba(99,102,241,0.08)' };
+
+    // Header summary
+    var maxSev = traps.reduce(function(m, w) {
+        return (SEV_ORDER[w.severity] || 0) > (SEV_ORDER[m] || 0) ? w.severity : m;
+    }, 'INFO');
+    var countBySev = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, INFO: 0 };
+    traps.forEach(function(w) { countBySev[w.severity] = (countBySev[w.severity] || 0) + 1; });
+
+    var headerCard = h('div', { className: 'card', style: { marginBottom: 16 } },
+        h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 } },
+            ['CRITICAL', 'HIGH', 'MEDIUM', 'INFO'].map(function(sev) {
+                var n = countBySev[sev] || 0;
+                return h('div', { key: sev, className: 'metric-card', style: n > 0 ? { borderColor: SEV_COLOR[sev] + '44', background: SEV_BG[sev] } : {} },
+                    h('div', { className: 'label' }, sev),
+                    h('div', { className: 'value', style: { color: n > 0 ? SEV_COLOR[sev] : 'var(--text-muted)' } }, n),
+                    h('div', { className: 'sub' }, n > 0 ? 'flag' + (n > 1 ? 's' : '') : 'clear')
+                );
+            })
+        )
+    );
+
+    var assumptionsCard = h('div', { className: 'card', style: { marginBottom: 16 } },
+        h('div', { className: 'card-title' }, 'Assumptions Under Review (Base Scenario)'),
+        h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 } },
+            h('div', { className: 'metric-card' },
+                h('div', { className: 'label' }, 'WACC'),
+                h('div', { className: 'value' }, (defaults.wacc * 100).toFixed(1) + '%'),
+                h('div', { className: 'sub' }, 'Beta ' + fmtPct(defaults.beta * 100) + ' × CAPM')
+            ),
+            h('div', { className: 'metric-card' },
+                h('div', { className: 'label' }, 'Terminal Growth'),
+                h('div', { className: 'value' }, '2.5%'),
+                h('div', { className: 'sub' }, 'Base scenario')
+            ),
+            h('div', { className: 'metric-card' },
+                h('div', { className: 'label' }, 'FCF Margin'),
+                h('div', { className: 'value' }, (defaults.fcfMargin * 100).toFixed(1) + '%'),
+                h('div', { className: 'sub' }, defaults.sector || 'No sector data')
+            ),
+            h('div', { className: 'metric-card' },
+                h('div', { className: 'label' }, 'TV % of EV'),
+                h('div', { className: 'value', style: { color: baseResult && baseResult.tvPct > 0.75 ? '#f59e0b' : null } },
+                    baseResult ? (baseResult.tvPct * 100).toFixed(0) + '%' : '—'),
+                h('div', { className: 'sub' }, '>75% is elevated')
+            )
+        )
+    );
+
+    var flagCards = traps.length === 0
+        ? h('div', { className: 'card', style: { padding: 24, textAlign: 'center', color: '#10b981' } },
+            h('div', { style: { fontSize: 18, fontWeight: 600, marginBottom: 8 } }, '✓ No flags detected'),
+            h('div', { style: { fontSize: 12, color: 'var(--text-sec)' } }, 'Base scenario assumptions pass all 5 institutional quality checks.')
+          )
+        : h('div', null,
+            traps.sort(function(a, b) { return (SEV_ORDER[b.severity] || 0) - (SEV_ORDER[a.severity] || 0); }).map(function(w) {
+                return h('div', { key: w.id, className: 'card', style: { marginBottom: 12, borderColor: SEV_COLOR[w.severity] + '33', background: SEV_BG[w.severity] } },
+                    h('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 } },
+                        h('span', { style: { fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: SEV_COLOR[w.severity], background: SEV_COLOR[w.severity] + '22', padding: '2px 8px', borderRadius: 4 } }, w.severity),
+                        h('span', { style: { fontSize: 13, fontWeight: 600 } }, w.title),
+                        h('span', { style: { marginLeft: 'auto', fontSize: 13, fontFamily: "'JetBrains Mono',monospace", fontWeight: 700, color: SEV_COLOR[w.severity] } }, w.metric)
+                    ),
+                    h('div', { style: { fontSize: 12, color: 'rgba(255,255,255,0.7)', lineHeight: 1.6, marginBottom: 8 } }, w.description),
+                    h('div', { style: { fontSize: 11, color: 'rgba(255,255,255,0.45)', background: 'rgba(255,255,255,0.04)', borderRadius: 6, padding: '6px 10px', borderLeft: '2px solid ' + SEV_COLOR[w.severity] + '55' } },
+                        h('span', { style: { fontWeight: 600, marginRight: 6 } }, 'Recommendation:'), w.recommendation
+                    )
+                );
+            })
+          );
+
+    return h('div', null, headerCard, assumptionsCard, flagCards);
+}
+
+// -----------------------------------------------------------------------
 
 var TABS = [
     { id: 'consensus', label: 'Consensus' },
     { id: 'fcff', label: 'FCFF DCF' },
+    { id: 'multistage', label: 'Multi-Stage' },
     { id: 'ddm', label: 'Dividend Discount' },
     { id: 'ri', label: 'Residual Income' },
     { id: 'sim', label: 'Simulation' },
+    { id: 'traps', label: 'Quality Checks' },
 ];
 
 export function DCFEngine(p) {
@@ -203,9 +297,11 @@ export function DCFEngine(p) {
     var content = null;
     if (tab === 'consensus') content = h(ConsensusPanel, { defaults: defaults, price: price });
     else if (tab === 'fcff') content = h(FcffPanel, { defaults: defaults, price: price });
+    else if (tab === 'multistage') content = h(MultiStagePanel, { defaults: defaults, price: price });
     else if (tab === 'ddm') content = h(DdmPanel, { defaults: defaults, price: price });
     else if (tab === 'ri') content = h(RiPanel, { defaults: defaults, price: price });
     else if (tab === 'sim') content = h(SimPanel, { defaults: defaults, price: price });
+    else if (tab === 'traps') content = h(QualityChecksPanel, { defaults: defaults, price: price });
 
     return h('div', null,
         h(SubTab, { tabs: TABS, active: tab, onSelect: setTab }),

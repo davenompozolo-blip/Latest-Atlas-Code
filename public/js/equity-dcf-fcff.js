@@ -1,5 +1,6 @@
 import { fmt, fmtPct, fmtCurrency, useChart } from './utils.js';
 import { runFCFF, Tile, Slider, fN, fB } from './dcf-engine.js';
+import { TrapBanner } from './equity-dcf-multistage.js';
 
 const { useState, useRef } = React;
 
@@ -126,7 +127,9 @@ export function FcffPanel(p) {
         React.createElement(Row, { label: 'Per-Share Value', value: fmtCurrency(r.perShare), bold: true, topBorder: true, color: '#00d4ff' })
     );
 
+    var trapBanner = React.createElement(TrapBanner, { defaults: defaults, wacc: wacc, tg: tg, fcfMargin: fcfM, dcfResult: r });
+
     return React.createElement('div', null,
         React.createElement(ScenarioBar, { active: scenario, onSelect: applyScenario }),
-        sliderGrid, tiles, chartCard, waterfall);
+        sliderGrid, tiles, chartCard, waterfall, trapBanner);
 }
