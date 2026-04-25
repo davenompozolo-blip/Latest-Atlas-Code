@@ -1,23 +1,29 @@
 # ATLAS Terminal — Architecture Pulse Check
-**Date:** 2026-04-25
+**Date:** 2026-04-25 (corrected from earlier draft — see note at bottom)
 **Author:** Claude Code (session `01TmWUAqsZ9iFqgrQgJj66V7`)
 **Purpose:** Hand-off context for the next Claude instance. Read this before touching any module.
+
+> **CORRECTION NOTE:** An earlier draft of this doc (same session) incorrectly framed Streamlit as a living "reference layer" and recommended a FastAPI bridge. Both are wrong. The authoritative decisions from the previous session (`017DBKEHyajCGe7kYFBQ55pP`) override those suggestions. The correct architecture is documented below.
 
 ---
 
 ## 1. The Stack in One Sentence
 
-A **27-page Streamlit Python app** is being retrofitted into a **React SPA on Vercel**, with **Supabase Postgres** as the single source of truth for data, and **FastAPI** (`api/`) as the bridge for calculations too heavy for SQL.
+A React SPA deployed on **Vercel**, backed exclusively by **Supabase** (PostgreSQL views + Edge Functions), displaying live portfolio data from **Alpaca Markets** (~55–60 assets).
+
+**Streamlit is retired. Do not suggest or reintroduce it for any component.**
 
 ---
 
-## 2. Three Layers, One Rule Each
+## 2. Architecture Rules (Immutable — Do Not Reverse)
 
-| Layer | Entry point | Rule |
-|-------|-------------|------|
-| **Streamlit** | `atlas_app.py` → `ui/pages/*.py` | Reference implementation only. Do NOT break it. It is the calculation spec. |
-| **Supabase** | `supabase/` — tables, views, edge functions | Canonical data store. Views compute analytics at query time. |
-| **React SPA** | `public/index.html` (1 file, deployed on Vercel) | Production UI. Reads from Supabase views via PostgREST (anon key). |
+| Rule | Detail |
+|------|--------|
+| **React SPA only** | No Next.js, no SSR, no Streamlit, no Python in production |
+| **All data through Supabase views** | No direct Alpaca API calls from the frontend |
+| **No silent error fallbacks** | Errors must surface explicitly — no empty states masking failures |
+| **Supabase anon key via Vercel env** | Never hardcoded in source |
+| **No FastAPI bridge** | Computation-heavy features go through Supabase Edge Functions, not a Python layer |
 
 ---
 
@@ -25,175 +31,148 @@ A **27-page Streamlit Python app** is being retrofitted into a **React SPA on Ve
 
 ```
 Alpaca Markets (paper trading)
-        │ every 5 min via Supabase Edge Function
+        │ every 5 min via Supabase Edge Function (sync_alpaca_positions)
         ▼
 Supabase Postgres
   Tables: portfolios, positions, transactions, price_history,
           account_snapshots, sync_log
-  Views:  vw_portfolio_home, vw_quant_dashboard, vw_risk_analysis,
-          vw_performance_suite, vw_command_centre,
-          vw_portfolio_nav_daily, vw_portfolio_returns_daily
+  Views:  vw_portfolio_home       — holdings, weights, P&L
+          vw_quant_dashboard      — 5 analytical layers
+          vw_risk_analysis        — VaR, vol contribution, risk tiers
+          vw_performance_suite    — attribution, returns
+          vw_command_centre       — Sharpe/Sortino/VaR/DD + agent interface
+          vw_portfolio_nav_daily  — NAV time series
+          vw_portfolio_returns_daily — daily returns
         │
-        ├──► React SPA (Vercel) — reads views via PostgREST
-        │
-        └──► Streamlit app — reads via `services/supabase_views.py`
-                           fetch_view("vw_risk_analysis") etc.
+        └──► React SPA (Vercel) via PostgREST (anon key)
 ```
-
-The React SPA is currently in MOCK DATA mode because `SUPABASE_ANON_KEY` is not injected at Vercel build time. Setting that env var in Vercel project settings switches it to live data.
 
 ---
 
-## 4. Module Status Map
+## 4. Current Priority: Portfolio Home Retrofit (Step 0)
 
-### Fully Working in Streamlit, Partially in React
+**Spec:** `/docs/RETROFIT_SPEC.md` — read this fully before implementing anything.
 
-| Module | Streamlit file | Supabase view | React tab |
-|--------|---------------|---------------|-----------|
-| Portfolio Home | `ui/pages/portfolio_home.py` | `vw_portfolio_home` | ✅ Tab 1 |
-| Quant Dashboard | `ui/pages/quant_dashboard.py` | `vw_quant_dashboard` | ✅ Tab 2 |
-| Risk Analysis | `ui/pages/risk_analysis.py` | `vw_risk_analysis` | ✅ Tab 3 |
-| Performance Suite | `ui/pages/performance_suite.py` | `vw_performance_suite` | ✅ Tab 4 |
-| Command Centre | `ui/pages/market_regime.py` | `vw_command_centre` | ✅ Tab 5 |
+### Known gaps in Portfolio Home (`vw_portfolio_home` → React Tab 1)
 
-### Modules Without a React Home Yet (Streamlit-only)
+| Gap | Status |
+|-----|--------|
+| Missing asset names in holdings table | Open |
+| Sparse columns — several fields absent | Open |
+| No P&L waterfall chart | Open |
+| No earnings calendar | Open |
+| No daily / 5-day return data | Open |
 
-| Module | Streamlit file | Complexity | Recommended path |
-|--------|---------------|------------|-----------------|
-| **Valuation House** | `ui/pages/valuation_house.py` | Very High — 8 DCF methods, Monte Carlo | FastAPI endpoint → React |
-| Monte Carlo Engine | `ui/pages/monte_carlo.py` | Medium — GBM engine | FastAPI or inline in Risk tab |
-| Multi-Factor Analysis | `ui/pages/multi_factor_analysis.py` | High | FastAPI endpoint |
-| Portfolio Optimizer | `ui/pages/quant_optimizer.py` | High — MVO, Black-Litterman | FastAPI endpoint |
-| Equity Research | `ui/pages/equity_research.py` | Medium | REST + Supabase cache |
+### Acceptance criteria
+Portfolio Home must display: asset names, full column set, P&L waterfall, earnings calendar, daily + 5D return data — all sourced from `vw_portfolio_home`.
 
 ---
 
-## 5. The Valuation House: Architectural Decision
+## 5. React Tab Structure (5 live tabs)
 
-### What it is
-Eight institutional-grade valuation methods: FCFF DCF, FCFE DCF, Gordon Growth DDM, Multi-Stage DDM, Residual Income, Relative Valuation (peer multiples), SOTP, and Consensus (weighted aggregate). Plus regime-aware WACC adjustment, smart assumptions, DCF trap detection, and Monte Carlo on DCF outputs.
+| Tab | View consumed | Status |
+|-----|--------------|--------|
+| Portfolio Home | `vw_portfolio_home` | Live, needs Step 0 retrofit |
+| Quant Dashboard | `vw_quant_dashboard` | Live |
+| Risk Analysis | `vw_risk_analysis` | Live |
+| Performance Suite | `vw_performance_suite` | Live |
+| Command Centre | `vw_command_centre` | Live (500 errors without `ANTHROPIC_API_KEY`) |
 
-### Where the code lives
+Target state: **~15–20 tabs** once all Streamlit modules are expressed as Supabase views + React components.
+
+---
+
+## 6. The Valuation House Problem (Deferred — needs architectural decision)
+
+The Valuation House (8 DCF methods, Monte Carlo, regime-aware WACC, trap detection) exists in the legacy Python codebase but has **no React home yet**. This is the most complex module to retrofit.
+
+### The tension
+- Calculation logic is Python-heavy (`core/calculations.py`, `valuation/`, `analytics/`)
+- The architecture rule says: no FastAPI bridge, everything through Supabase
+- Complex DCF/Monte Carlo cannot be expressed in SQL views alone
+
+### Options (decision needed from Hlobo before implementing)
+
+| Option | Pros | Cons |
+|--------|------|------|
+| **A. Supabase Edge Functions (Deno/TS)** | Consistent with "all data through Supabase" rule | Requires porting Python math to TypeScript |
+| **B. Vercel serverless function** | Stays in JS ecosystem | Breaks "all data through Supabase" principle |
+| **C. Supabase Edge Function calls external Python API** | Keeps Python math | Adds infra complexity, latency |
+| **D. Client-side JS implementation** | Simple deployment | DCF math is complex; risk of drift from Python reference |
+
+**Do not implement the Valuation House React component until this decision is made.** Ask Hlobo.
+
+### Legacy code locations (Python — for reference only, not production)
 ```
-ui/pages/valuation_house.py           ← Streamlit page (2,326 lines)
+ui/pages/valuation_house.py           ← 2,326 lines (Streamlit — retired)
 valuation/atlas_dcf_engine.py         ← Core DCF class (222 lines)
 atlas_dcf_institutional.py            ← Institutional enhancements (567 lines)
 analytics/dcf_trap_detector.py        ← Value trap detection (889 lines)
-analytics/dcf_projections.py          ← Editable projection tables (373 lines)
 analytics/multistage_dcf.py           ← Multi-stage models (416 lines)
-dcf_regime_overlay.py                 ← Market regime adjustments (~200 lines)
-api/routers/valuation.py              ← FastAPI router (EXISTS, needs expansion)
+dcf_regime_overlay.py                 ← Regime adjustments (~200 lines)
 ```
 
-### The problem
-The calculation logic is tightly coupled to Streamlit session state and lazy imports inside `render_valuation_house()`. It cannot be called directly from React without going through an API layer.
-
-### Recommended architecture (do NOT deviate without discussion)
-
-```
-React SPA
-    │
-    │  POST /api/valuation/dcf  {ticker, method, scenario, overrides}
-    ▼
-FastAPI (api/routers/valuation.py)
-    │  — calls calculate_dcf_value(), calculate_wacc(), etc.
-    │  — all in core/calculations.py (pure functions, no Streamlit)
-    ▼
-Supabase
-    │  — cache result in valuation_results table (ticker, method, ts, json)
-    │  — React reads cached result on next load
-    ▼
-React renders result card
-```
-
-**Do NOT re-implement DCF math in JavaScript.** The Python layer in `core/calculations.py` is the single source of truth for all numbers. React is just a renderer.
-
-### What's missing before this works
-1. `api/routers/valuation.py` needs full endpoints (currently minimal)
-2. A `valuation_results` Supabase table for result caching
-3. React component for the Valuation House tab (not yet built)
-4. Segment extraction is a placeholder — `_extract_segment_revenues()` in `analytics/dcf_trap_detector.py` always returns `None`
+**Known placeholder:** `_extract_segment_revenues()` in `analytics/dcf_trap_detector.py:752` always returns `None`. SOTP segment analysis is manual-only until this is replaced.
 
 ---
 
-## 6. Risk Analysis: Current State (as of this session)
+## 7. Streamlit Codebase (Legacy — Do Not Develop)
 
-`ui/pages/risk_analysis.py` has **5 tabs**:
+The Python codebase exists in the repo purely as a calculation reference. The numbers it produces are the spec for what Supabase views and future Edge Functions must reproduce.
 
-| Tab | Name | Status |
-|-----|------|--------|
-| 1 | Core Risk | Working — VaR waterfall, distribution, efficient frontier, rolling VaR/CVaR |
-| 2 | Monte Carlo | **Just implemented** — GBM engine, path chart, summary metrics, VaR/CVaR histogram |
-| 3 | Advanced Analytics | Working — rolling metrics, underwater plot, sunburst, correlation network |
-| 4 | Stress Tests | Working — historical stress test (2008, COVID, etc.) vs SPY |
-| 5 | VaR/CVaR Optimization | Working — CVaR-minimizing portfolio optimizer |
+| File | What it contains | Use as |
+|------|-----------------|--------|
+| `atlas_app.py` | 23,600-line monolith | Reference only |
+| `core/calculations.py` | 2,660 lines, 39 analytics functions | Calculation spec |
+| `ui/pages/risk_analysis.py` | 5-tab risk page (Monte Carlo tab live as of PR #382) | Reference only |
+| `ui/pages/*.py` | All 27 page modules | Reference only |
 
-**PR #382** contains the Monte Carlo tab implementation. Branch: `claude/monte-carlo-tab-skeleton-1kEaH`.
-
-The Monte Carlo tab uses a GBM (`run_monte_carlo_simulation`) defined locally inside `render_risk_analysis()`. It feeds results into `create_monte_carlo_chart()` from `core/charts.py`. Simulation state is cached in `st.session_state['_ra_mc_simulations']` so reruns don't re-run the simulation.
+**Do not add features to Streamlit pages.** If you find yourself editing `atlas_app.py` or `ui/pages/`, stop and ask whether this belongs in a Supabase view instead.
 
 ---
 
-## 7. The Single Source of Truth: How to Think About It
+## 8. Infrastructure Resolutions (Already Fixed — Don't Revisit)
 
-The goal is that **every number shown in the React SPA must be traceable to either**:
-- A Supabase view (for portfolio/market data), **or**
-- A FastAPI endpoint that calls `core/calculations.py` (for analytics/valuation)
-
-**Never duplicate math.** If `calculate_var()` exists in `core/calculations.py`, the React SPA must call the API, not reimplement VaR in JavaScript.
-
-The Streamlit app enforces this implicitly — it imports everything from `core/`. The React retrofit must respect the same contract.
-
----
-
-## 8. Known Issues / Landmines
-
-| Issue | File | Notes |
-|-------|------|-------|
-| `_extract_segment_revenues()` always returns None | `analytics/dcf_trap_detector.py:752` | Placeholder. SOTP segment analysis is therefore manual-only |
-| Supabase anon key not in Vercel env | Vercel project settings | Switches React from MOCK to LIVE data |
-| `atlas_app.py` is 23,600+ lines | `atlas_app.py` | Do NOT edit this file directly. All changes go in `ui/pages/` modules |
-| `run_monte_carlo_simulation` was a stub | Fixed in PR #382 | Now a real GBM engine in `risk_analysis.py` |
-| Command Centre 500 error | Vercel | `ANTHROPIC_API_KEY` not set in Vercel env vars |
-| `StochasticEngine` in `monte_carlo.py` uses different interface | `analytics/stochastic.py` | Uses per-ticker returns + weights; risk_analysis.py tab uses the simpler GBM on aggregated portfolio returns. Both are valid, different granularity |
+| Issue | Resolution |
+|-------|-----------|
+| Python Lambda size error on Vercel | Resolved |
+| Supabase anon key injection mismatch | Resolved |
+| Vercel Connected Store conflict | Resolved |
+| `SQL_AVAILABLE` undefined variable (camelCase mismatch) | Resolved |
 
 ---
 
-## 9. Key Files Every Instance Should Know
+## 9. Known Open Issues
+
+| Issue | Where | Notes |
+|-------|-------|-------|
+| React in MOCK DATA mode | Vercel env | `SUPABASE_ANON_KEY` needs setting in Vercel dashboard |
+| Command Centre 500 error | Vercel env | `ANTHROPIC_API_KEY` not set in Vercel project env vars |
+| Portfolio Home gaps | React Tab 1 | See Step 0 list above — current active sprint |
+| Segment extraction placeholder | `dcf_trap_detector.py:752` | Python legacy; deferred |
+
+---
+
+## 10. Session Startup Checklist
+
+1. `git log --oneline -10` — confirm current state of main
+2. `git branch -a` — see active branches
+3. Read `/docs/RETROFIT_SPEC.md` for current Step 0 detail
+4. Confirm Supabase view schemas before writing any queries
+5. Ask Hlobo for session objective if not already stated
+
+---
+
+## 11. Key Files (React / Supabase work)
 
 ```
-atlas_app.py                    ← 23,600-line monolith. READ, don't edit.
-core/calculations.py            ← 2,660 lines, 39 functions. THE math layer.
-core/charts.py                  ← All Plotly chart factories.
-core/fetchers.py                ← yFinance + FRED + Alpha Vantage data fetching.
-navigation/registry.py          ← Page registry. Add new pages here.
-navigation/page_handlers.py     ← Dispatches to ui/pages/*.py render functions.
-ui/pages/risk_analysis.py       ← Risk Analysis (1,260 lines, 5 tabs).
-ui/pages/valuation_house.py     ← Valuation House (2,326 lines, needs API layer).
-ui/pages/monte_carlo.py         ← Standalone Monte Carlo page (253 lines).
-api/routers/valuation.py        ← FastAPI valuation endpoints (expand this).
-api/main.py                     ← FastAPI app mount point.
-public/index.html               ← React SPA (entire frontend, 1 file).
-supabase/migrations/            ← SQL migrations. Run in order.
-services/supabase_views.py      ← Streamlit helper: fetch_view("vw_xxx").
+public/index.html               ← Entire React SPA (1 file, all tabs)
+supabase/migrations/            ← SQL migrations — run in order
+supabase/functions/             ← Edge Functions (Deno/TS)
+docs/RETROFIT_SPEC.md           ← Step-by-step retrofit plan
 ```
 
 ---
 
-## 10. Where to Start Next
-
-**Short term (current sprint):**
-1. Expand `api/routers/valuation.py` — expose at minimum: `/dcf`, `/wacc`, `/peer-multiples`
-2. Create `valuation_results` table + migration in `supabase/migrations/`
-3. Wire Valuation House React component to those endpoints
-
-**Medium term:**
-4. Replace `_extract_segment_revenues()` placeholder with SEC EDGAR XBRL parsing
-5. Set `ANTHROPIC_API_KEY` + `SUPABASE_ANON_KEY` in Vercel → kills mock data mode
-6. Commit the live Supabase Edge Function under `supabase/functions/`
-
-**Principle:** When in doubt, check what `core/calculations.py` already computes before building anything new.
-
----
-
-*Written by Claude Code on 2026-04-25 to bridge context between sessions.*
+*Corrected by Claude Code on 2026-04-25 after reviewing session `017DBKEHyajCGe7kYFBQ55pP` context.*
+*Previous draft errors: incorrectly kept Streamlit alive as "reference layer" and recommended FastAPI bridge — both contradict the project's architectural decisions.*
