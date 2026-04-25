@@ -14,6 +14,31 @@ import {
 var useState = React.useState, useRef = React.useRef, useMemo = React.useMemo;
 var h = React.createElement;
 
+// GICS sector weights for Brinson benchmark swap.
+// Approximate weights as of Q1 2026; sector names match assets.sector mapping.
+var BENCHMARKS = {
+    equal: { label: 'Equal Wt', desc: 'Equal weight across portfolio sectors', weights: null },
+    spy: {
+        label: 'S&P 500', desc: 'S&P 500 GICS sector weights (approx.)',
+        weights: {
+            'Technology': 0.295, 'Financials': 0.135, 'Healthcare': 0.115,
+            'Consumer Discretionary': 0.105, 'Communication': 0.090,
+            'Industrials': 0.085, 'Consumer Staples': 0.060,
+            'Energy': 0.035, 'Real Estate': 0.025, 'Materials': 0.025, 'Utilities': 0.025,
+        }
+    },
+    qqq: {
+        label: 'NASDAQ-100', desc: 'NASDAQ-100 GICS sector weights (approx.)',
+        weights: {
+            'Technology': 0.520, 'Communication': 0.170,
+            'Consumer Discretionary': 0.130, 'Healthcare': 0.060,
+            'Industrials': 0.040, 'Consumer Staples': 0.030,
+            'Financials': 0.025, 'Materials': 0.010,
+            'Energy': 0.005, 'Real Estate': 0.005, 'Utilities': 0.005,
+        }
+    },
+};
+
 function retColor(v) {
     if (v == null) return 'rgba(255,255,255,0.5)';
     return v >= 0 ? '#10b981' : '#ef4444';
@@ -172,9 +197,13 @@ export function PositionsPanel(p) {
     var sortKey = _s[0], setSortKey = _s[1];
     var _d = React.useState(true);
     var desc = _d[0], setDesc = _d[1];
+    var _b = React.useState('equal');
+    var benchKey = _b[0], setBenchKey = _b[1];
 
     var perf    = p.perfData || [];
-    var brinson = useMemo(function() { return computeBrinsonAttribution(perf); }, [perf]);
+    var brinson = useMemo(function() {
+        return computeBrinsonAttribution(perf, BENCHMARKS[benchKey].weights);
+    }, [perf, benchKey]);
     var contribs = useMemo(function() { return computePositionContributions(perf); }, [perf]);
 
     if (!perf.length) {
@@ -251,7 +280,27 @@ export function PositionsPanel(p) {
     );
 
     // ---- BRINSON ANALYSIS -------------------------------------
+    var benchSelector = h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 } },
+        h('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.35)', fontFamily: 'DM Sans', marginRight: 4 } }, 'BENCHMARK'),
+        Object.keys(BENCHMARKS).map(function(key) {
+            var active = benchKey === key;
+            return h('button', {
+                key: key,
+                onClick: function() { setBenchKey(key); },
+                title: BENCHMARKS[key].desc,
+                style: {
+                    padding: '4px 12px', border: '1px solid ' + (active ? 'rgba(0,212,255,0.4)' : 'rgba(255,255,255,0.1)'),
+                    borderRadius: 3, background: active ? 'rgba(0,212,255,0.12)' : 'transparent',
+                    color: active ? '#00d4ff' : 'rgba(255,255,255,0.45)',
+                    fontSize: 10, fontWeight: 700, fontFamily: 'JetBrains Mono', cursor: 'pointer',
+                    transition: 'all 0.12s',
+                }
+            }, BENCHMARKS[key].label);
+        })
+    );
+
     var brinsonView = h('div', null,
+        benchSelector,
         brinson ? h('div', null,
             // Active return decomposition — 3 hero numbers
             h('div', { className: 'hero-grid', style: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 } },
