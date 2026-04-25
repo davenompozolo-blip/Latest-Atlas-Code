@@ -1,6 +1,6 @@
 import { fmt, fmtPct, cls, useChart } from './utils.js';
 
-const { useState, useRef, useEffect } = React;
+const { useState, useRef, useEffect, useMemo } = React;
 
 // ---- Stats helpers ----
 
@@ -134,6 +134,223 @@ function computeRisk(stockSeries, benchSeries) {
         sr: sr, br: br, dates: dates,
         rc: rc, rv30: rv30, rv90: rv90, rb: rb, bins: bins,
     };
+}
+
+// ---- Monte Carlo GBM engine ----
+
+function normalRandom() {
+    var u1 = Math.random(), u2 = Math.random();
+    while (u1 === 0) u1 = Math.random();
+    return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+}
+
+function runGBM(dailyReturns, nPaths, horizon, price) {
+    var n = dailyReturns.length;
+    if (n < 30 || price <= 0) return null;
+    var mu = mean(dailyReturns), sigma = std(dailyReturns);
+    if (sigma <= 0) return null;
+    var drift = mu - 0.5 * sigma * sigma;
+    var paths = [];
+    for (var i = 0; i < nPaths; i++) {
+        var path = [price];
+        for (var t = 0; t < horizon; t++) {
+            path.push(path[path.length - 1] * Math.exp(drift + sigma * normalRandom()));
+        }
+        paths.push(path);
+    }
+    var pctLevels = [5, 25, 50, 75, 95];
+    var bands = pctLevels.map(function() { return []; });
+    for (var t2 = 0; t2 <= horizon; t2++) {
+        var col = paths.map(function(p) { return p[t2]; }).sort(function(a, b) { return a - b; });
+        pctLevels.forEach(function(pv, pi) {
+            bands[pi].push(col[Math.max(0, Math.round(pv / 100 * (col.length - 1)))]);
+        });
+    }
+    var finals = paths.map(function(p) { return p[horizon]; }).sort(function(a, b) { return a - b; });
+    var finalRets = finals.map(function(v) { return (v - price) / price; });
+    return {
+        bands: bands,
+        pcts: pctLevels,
+        finalRets: finalRets,
+        stats: {
+            mean: mean(finals),
+            median: finals[Math.floor(finals.length / 2)],
+            p5: finals[Math.floor(0.05 * finals.length)],
+            p95: finals[Math.floor(0.95 * finals.length)],
+            probProfit: finals.filter(function(v) { return v > price; }).length / finals.length * 100,
+            probLoss10: finals.filter(function(v) { return v < price * 0.9; }).length / finals.length * 100,
+            probGain20: finals.filter(function(v) { return v > price * 1.2; }).length / finals.length * 100,
+        },
+    };
+}
+
+// ---- Monte Carlo chart components ----
+
+function McPathsChart(p) {
+    var ref = useRef(null);
+    useChart(ref, function() {
+        if (!p.bands || !p.bands.length) return null;
+        var horizon = p.bands[0].length - 1;
+        var labels = [];
+        for (var i = 0; i <= horizon; i++) labels.push(i % 20 === 0 ? 'Day ' + i : '');
+        var colors = ['#ef4444', '#f59e0b', '#00d4ff', '#10b981', '#a78bfa'];
+        var pctLabels = ['P5 Bear', 'P25', 'P50 Median', 'P75', 'P95 Bull'];
+        var datasets = p.bands.map(function(band, i) {
+            return {
+                label: pctLabels[i],
+                data: band,
+                borderColor: colors[i],
+                borderWidth: i === 2 ? 2.5 : 1.5,
+                borderDash: i < 2 ? [4, 3] : i > 2 ? [2, 2] : [],
+                fill: false,
+                pointRadius: 0,
+                tension: 0.2,
+            };
+        });
+        return {
+            type: 'line',
+            data: { labels: labels, datasets: datasets },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { position: 'top', labels: { color: 'rgba(255,255,255,0.55)', boxWidth: 18, font: { size: 10 } } } },
+                scales: {
+                    x: { ticks: { color: 'rgba(255,255,255,0.3)', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.03)' } },
+                    y: {
+                        ticks: {
+                            color: 'rgba(255,255,255,0.4)', font: { size: 9 },
+                            callback: function(v) { return '$' + (v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v.toFixed(0)); }
+                        },
+                        grid: { color: 'rgba(255,255,255,0.05)' }
+                    }
+                }
+            }
+        };
+    }, [p.bands]);
+    return React.createElement('div', { style: { height: 280 } }, React.createElement('canvas', { ref: ref }));
+}
+
+function McDistChart(p) {
+    var ref = useRef(null);
+    useChart(ref, function() {
+        if (!p.rets || !p.rets.length) return null;
+        var sorted = p.rets.slice().sort(function(a, b) { return a - b; });
+        var minR = sorted[0], maxR = sorted[sorted.length - 1];
+        var nBins = 40, bw = (maxR - minR) / nBins || 0.001;
+        var bins = [];
+        for (var b = 0; b < nBins; b++) {
+            var lo = minR + b * bw, hi = lo + bw, ct = 0;
+            for (var i = 0; i < sorted.length; i++) {
+                if (sorted[i] >= lo && (b === nBins - 1 ? sorted[i] <= hi : sorted[i] < hi)) ct++;
+            }
+            bins.push({ mid: (lo + hi) / 2, count: ct });
+        }
+        var varIdx = Math.max(0, Math.floor((1 - p.conf / 100) * sorted.length));
+        var varLine = sorted[varIdx];
+        return {
+            type: 'bar',
+            data: {
+                labels: bins.map(function(b) { return (b.mid * 100).toFixed(1) + '%'; }),
+                datasets: [{
+                    label: 'Frequency',
+                    data: bins.map(function(b) { return b.count; }),
+                    backgroundColor: bins.map(function(b) { return b.mid < varLine ? 'rgba(239,68,68,0.65)' : 'rgba(99,102,241,0.6)'; }),
+                    borderWidth: 0,
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { ticks: { color: 'rgba(255,255,255,0.3)', font: { size: 9 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 10 }, grid: { display: false } },
+                    y: { ticks: { color: 'rgba(255,255,255,0.4)', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.04)' } }
+                }
+            }
+        };
+    }, [p.rets, p.conf]);
+    return React.createElement('div', { style: { height: 200 } }, React.createElement('canvas', { ref: ref }));
+}
+
+// ---- Sub-tab 5: Monte Carlo ----
+
+var MC_PATH_OPTIONS = [100, 250, 500, 1000, 2000];
+var MC_HORIZON_OPTIONS = [[30, '1 Month'], [63, '3 Months'], [126, '6 Months'], [252, '1 Year'], [504, '2 Years']];
+var MC_CONF_OPTIONS = [90, 95, 99];
+
+var selStyle = { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: 4, padding: '5px 8px', width: '100%', cursor: 'pointer' };
+var ctrlLabelStyle = { fontSize: 10, color: 'var(--text-sec)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 };
+
+function McPanel(p) {
+    var r = p.risk, price = p.price;
+    var _s = useState(500), nPaths = _s[0], setNPaths = _s[1];
+    var _h = useState(252), horizon = _h[0], setHorizon = _h[1];
+    var _c = useState(95), conf = _c[0], setConf = _c[1];
+
+    var mc = useMemo(function() {
+        if (!r || !r.sr || r.sr.length < 30 || !price) return null;
+        return runGBM(r.sr, nPaths, horizon, price);
+    }, [r, nPaths, horizon, price]);
+
+    if (!r || !r.sr || r.sr.length < 30) {
+        return React.createElement('div', { className: 'card', style: { color: 'var(--text-muted)', textAlign: 'center', padding: 24 } },
+            'Insufficient price history for simulation (need 30+ days).');
+    }
+
+    var varIdx = mc ? Math.max(0, Math.floor((1 - conf / 100) * mc.finalRets.length)) : 0;
+    var varVal = mc ? mc.finalRets[varIdx] : null;
+    var cvarRets = mc ? mc.finalRets.filter(function(x) { return x <= varVal; }) : [];
+    var cvarVal = cvarRets.length ? mean(cvarRets) : varVal;
+
+    return React.createElement('div', null,
+        React.createElement('div', { className: 'card', style: { marginBottom: 16 } },
+            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: mc ? 16 : 0 } },
+                React.createElement('div', null,
+                    React.createElement('div', { style: ctrlLabelStyle }, 'Simulations'),
+                    React.createElement('select', { value: nPaths, onChange: function(e) { setNPaths(+e.target.value); }, style: selStyle },
+                        MC_PATH_OPTIONS.map(function(v) { return React.createElement('option', { key: v, value: v }, v + ' paths'); })
+                    )
+                ),
+                React.createElement('div', null,
+                    React.createElement('div', { style: ctrlLabelStyle }, 'Horizon'),
+                    React.createElement('select', { value: horizon, onChange: function(e) { setHorizon(+e.target.value); }, style: selStyle },
+                        MC_HORIZON_OPTIONS.map(function(v) { return React.createElement('option', { key: v[0], value: v[0] }, v[1]); })
+                    )
+                ),
+                React.createElement('div', null,
+                    React.createElement('div', { style: ctrlLabelStyle }, 'Confidence Level'),
+                    React.createElement('select', { value: conf, onChange: function(e) { setConf(+e.target.value); }, style: selStyle },
+                        MC_CONF_OPTIONS.map(function(v) { return React.createElement('option', { key: v, value: v }, v + '%'); })
+                    )
+                )
+            ),
+            mc ? React.createElement('div', null,
+                React.createElement('div', { className: 'card-title' }, 'Simulated Price Paths — ' + nPaths + ' paths · ' + horizon + ' trading days'),
+                React.createElement(McPathsChart, { bands: mc.bands })
+            ) : null
+        ),
+        mc ? React.createElement('div', null,
+            React.createElement('div', { className: 'metrics-row', style: { gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: 16 } },
+                React.createElement(Tile, { label: 'Expected Price', value: '$' + mc.stats.mean.toFixed(2) }),
+                React.createElement(Tile, { label: 'Median (P50)', value: '$' + mc.stats.median.toFixed(2) }),
+                React.createElement(Tile, { label: 'P5 Bear Case', value: '$' + mc.stats.p5.toFixed(2), color: '#ef4444' }),
+                React.createElement(Tile, { label: 'P95 Bull Case', value: '$' + mc.stats.p95.toFixed(2), color: '#10b981' })
+            ),
+            React.createElement('div', { className: 'metrics-row', style: { gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: 16 } },
+                React.createElement(Tile, { label: 'Prob of Profit', value: mc.stats.probProfit.toFixed(1) + '%', color: mc.stats.probProfit > 50 ? '#10b981' : '#ef4444' }),
+                React.createElement(Tile, { label: 'Prob Loss >10%', value: mc.stats.probLoss10.toFixed(1) + '%', color: '#ef4444' }),
+                React.createElement(Tile, { label: 'Prob Gain >20%', value: mc.stats.probGain20.toFixed(1) + '%', color: '#10b981' })
+            ),
+            React.createElement('div', { className: 'card' },
+                React.createElement('div', { className: 'card-title' }, 'Final Return Distribution'),
+                React.createElement('div', { className: 'metrics-row', style: { gridTemplateColumns: 'repeat(2, 1fr)', marginBottom: 12 } },
+                    React.createElement(Tile, { label: 'VaR (' + conf + '%)', value: fP(varVal), color: '#ef4444' }),
+                    React.createElement(Tile, { label: 'CVaR (' + conf + '%)', value: fP(cvarVal), color: '#f59e0b' })
+                ),
+                React.createElement(McDistChart, { rets: mc.finalRets, conf: conf }),
+                React.createElement('div', { style: { fontSize: 10, color: 'var(--text-sec)', textAlign: 'center', marginTop: 6 } },
+                    'Red = below VaR threshold · GBM log-normal assumption · Based on historical return distribution')
+            )
+        ) : null
+    );
 }
 
 // ---- Shared UI atoms ----
@@ -367,6 +584,7 @@ var TABS = [
     { id: 'beta', label: 'Beta & Correlation' },
     { id: 'vol', label: 'Volatility' },
     { id: 'dist', label: 'Distribution' },
+    { id: 'mc', label: 'Monte Carlo' },
 ];
 
 export function RiskAnalysis(p) {
@@ -399,6 +617,7 @@ export function RiskAnalysis(p) {
     }
 
     var risk = bench && bench.length > 30 ? computeRisk(p.series, bench) : null;
+    var price = p.series[p.series.length - 1].close;
 
     if (!risk) {
         return React.createElement('div', { className: 'card', style: { padding: 32, color: 'var(--text-muted)' } },
@@ -412,6 +631,7 @@ export function RiskAnalysis(p) {
     if (tab === 'beta') content = React.createElement(BetaPanel, { risk: risk, symbol: p.symbol });
     if (tab === 'vol') content = React.createElement(VolPanel, { risk: risk });
     if (tab === 'dist') content = React.createElement(DistPanel, { risk: risk });
+    if (tab === 'mc') content = React.createElement(McPanel, { risk: risk, price: price });
 
     return React.createElement('div', null,
         React.createElement(SubTab, { tabs: TABS, active: tab, onSelect: setTab }),
