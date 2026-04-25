@@ -203,6 +203,8 @@ export function PortfolioHome() {
     var pnlRef = useRef(null);
     var pnlInst = useRef(null);
     var sectorRef = useRef(null);
+    var heatRef = useRef(null);
+    var _hm = useState('day'), heatMode = _hm[0], setHeatMode = _hm[1];
 
     useEffect(function() {
         Promise.all([
@@ -435,6 +437,57 @@ export function PortfolioHome() {
         }, { responsive: true, displayModeBar: false });
     }, [positions]);
 
+
+    // Portfolio heatmap (treemap)
+    useEffect(function() {
+        if (!positions || !positions.length || !heatRef.current) return;
+        var colorKey = heatMode === 'day' ? 'daily_change_pct' : 'unrealised_return_pct';
+        var labels = [], values = [], colors = [], texts = [], hovers = [];
+        positions.forEach(function(p) {
+            var mv = Math.abs(Number(p.market_value) || 0);
+            if (!mv) return;
+            var chg = p[colorKey] != null ? Number(p[colorKey]) : 0;
+            var chgPct = (chg * 100).toFixed(2);
+            labels.push(p.symbol);
+            values.push(mv);
+            colors.push(chg);
+            texts.push(p.symbol + '<br>' + (chg >= 0 ? '+' : '') + chgPct + '%');
+            hovers.push('<b>' + p.symbol + '</b><br>' + getName(p.symbol, p) +
+                '<br>' + (heatMode === 'day' ? 'Day' : 'Total') + ': ' + (chg >= 0 ? '+' : '') + chgPct + '%' +
+                '<br>Mkt Value: $' + Number(mv).toLocaleString('en-US', { maximumFractionDigits: 0 }) +
+                '<extra></extra>');
+        });
+        Plotly.react(heatRef.current, [{
+            type: 'treemap',
+            labels: labels,
+            parents: labels.map(function() { return ''; }),
+            values: values,
+            text: texts,
+            customdata: hovers,
+            textinfo: 'text',
+            hovertemplate: '%{customdata}',
+            textfont: { family: 'JetBrains Mono', size: 11, color: 'rgba(255,255,255,0.92)' },
+            marker: {
+                colors: colors,
+                colorscale: [
+                    [0,    'rgba(185,28,28,0.92)'],
+                    [0.35, 'rgba(127,29,29,0.7)'],
+                    [0.48, 'rgba(15,23,42,0.85)'],
+                    [0.52, 'rgba(15,23,42,0.85)'],
+                    [0.65, 'rgba(6,78,59,0.7)'],
+                    [1,    'rgba(5,150,105,0.92)'],
+                ],
+                cmid: 0,
+                showscale: false,
+                line: { width: 1.5, color: 'rgba(0,0,0,0.6)' },
+            },
+            tiling: { pad: 2 },
+        }], {
+            paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+            margin: { l: 0, r: 0, t: 0, b: 0 },
+        }, { responsive: true, displayModeBar: false });
+    }, [positions, heatMode]);
+
     var filtPosns = useMemo(function() {
         if (!positions) return [];
         var q = srch.toLowerCase();
@@ -537,6 +590,30 @@ export function PortfolioHome() {
                 React.createElement('div', { className: 'card-title' }, 'SECTOR P&L ATTRIBUTION'),
                 React.createElement('div', { ref: sectorRef, style: { height: 300 } })
             )
+        ),
+        // Portfolio Heatmap
+        React.createElement('div', { className: 'card', style: { padding: '16px 20px', marginBottom: 16 } },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 } },
+                React.createElement('div', { className: 'card-title', style: { margin: 0 } }, 'PORTFOLIO HEATMAP'),
+                React.createElement('div', { style: { display: 'flex', gap: 4, alignItems: 'center' } },
+                    React.createElement('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'DM Sans', marginRight: 6 } }, 'Sized by NAV weight · Coloured by'),
+                    ['day', 'total'].map(function(m) {
+                        var a = heatMode === m;
+                        return React.createElement('button', { key: m, onClick: function() { setHeatMode(m); }, style: {
+                            background: a ? 'rgba(0,212,255,0.12)' : 'transparent',
+                            color: a ? '#00d4ff' : 'rgba(255,255,255,0.3)',
+                            border: '1px solid ' + (a ? 'rgba(0,212,255,0.3)' : 'rgba(255,255,255,0.06)'),
+                            borderRadius: 4, padding: '3px 9px', fontSize: 10, fontFamily: 'JetBrains Mono',
+                            fontWeight: a ? 700 : 400, cursor: 'pointer', letterSpacing: 0.5
+                        }}, m === 'day' ? 'Day %' : 'Total Return');
+                    }),
+                    React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 4, marginLeft: 10 } },
+                        React.createElement('div', { style: { width: 32, height: 8, background: 'linear-gradient(to right, rgba(185,28,28,0.9), rgba(15,23,42,0.8), rgba(5,150,105,0.9))', borderRadius: 2 } }),
+                        React.createElement('span', { style: { fontSize: 9, color: 'rgba(255,255,255,0.25)', fontFamily: 'JetBrains Mono' } }, '− / +')
+                    )
+                )
+            ),
+            React.createElement('div', { ref: heatRef, style: { height: 280 } })
         ),
         // Portfolio Intelligence Row
         React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 } },
