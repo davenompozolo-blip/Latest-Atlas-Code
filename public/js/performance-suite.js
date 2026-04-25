@@ -1,23 +1,25 @@
 // ============================================================
 // ATLAS Terminal — Performance Suite (Main Wrapper)
 // ------------------------------------------------------------
-// Loads Supabase views, routes to 4 sub-tabs:
-//   Overview · Returns · Risk · Positions
+// Owns the KPI pulse bar, tab bar, and panel routing.
+// Sub-panels: Overview · Returns · Risk · Positions
 // ============================================================
 
 import { loadView, MOCK_COMMAND } from './config.js';
+import { fmtPct, fmt, fmtCurrency } from './utils.js';
 import { Loading, EmptyState } from './components.js';
+import { computePortfolioMetrics, computePeriodReturns } from './perf-engine.js';
 import { OverviewPanel, ReturnsPanel } from './perf-panels-top.js';
 import { RiskPanel, PositionsPanel } from './perf-panels-bottom.js';
 
-var useState = React.useState, useEffect = React.useEffect;
+var useState = React.useState, useEffect = React.useEffect, useMemo = React.useMemo;
 var h = React.createElement;
 
 var SUB_TABS = [
-    { id: 'overview', label: 'OVERVIEW' },
-    { id: 'returns',  label: 'RETURNS' },
-    { id: 'risk',     label: 'RISK' },
-    { id: 'positions', label: 'POSITIONS' },
+    { id: 'overview',  label: 'OVERVIEW',  sub: 'Metrics & Curve' },
+    { id: 'returns',   label: 'RETURNS',   sub: 'Period Analysis' },
+    { id: 'risk',      label: 'RISK',      sub: 'Drawdown & VaR' },
+    { id: 'positions', label: 'POSITIONS', sub: 'Attribution' },
 ];
 
 export function PerformanceSuite() {
@@ -52,36 +54,138 @@ export function PerformanceSuite() {
         });
     }, []);
 
+    var metrics = useMemo(function() {
+        return navSeries && navSeries.length > 1 ? computePortfolioMetrics(navSeries) : null;
+    }, [navSeries]);
+
+    var periods = useMemo(function() {
+        return navSeries && navSeries.length > 1 ? computePeriodReturns(navSeries) : null;
+    }, [navSeries]);
+
     if (loading) return h(Loading, null);
 
-    var hasNav = navSeries && navSeries.length > 1;
-    var hasPerf = perfData && perfData.length > 0;
+    var hasNav  = navSeries && navSeries.length > 1;
+    var hasPerf = perfData  && perfData.length  > 0;
 
     if (!hasNav && !hasPerf) return h(EmptyState, null);
 
-    // Sub-tab bar
-    var tabBar = h('div', {
-        style: {
-            display: 'flex', gap: 2, marginBottom: 20, background: 'rgba(255,255,255,0.03)',
-            borderRadius: 6, padding: 3, width: 'fit-content'
-        }
-    }, SUB_TABS.map(function(tab) {
-        var isActive = activeTab === tab.id;
-        return h('button', {
-            key: tab.id,
-            onClick: function() { setActiveTab(tab.id); },
-            style: {
-                padding: '8px 20px', border: 'none', borderRadius: 4, cursor: 'pointer',
-                fontSize: 11, fontWeight: 600, letterSpacing: '0.05em',
-                fontFamily: 'JetBrains Mono, monospace',
-                background: isActive ? 'rgba(0,212,255,0.12)' : 'transparent',
-                color: isActive ? '#00d4ff' : 'rgba(255,255,255,0.45)',
-                transition: 'all 0.15s ease'
-            }
-        }, tab.label);
-    }));
+    var cmd = cmdData || MOCK_COMMAND;
+    var m   = metrics;
 
-    // Route to panel
+    var sharpe   = cmd.sharpe_ratio  != null ? cmd.sharpe_ratio  : (m ? m.sharpe   : null);
+    var maxDD    = cmd.drawdown_pct  != null ? cmd.drawdown_pct  : (m ? m.maxDD    : null);
+    var totalRet = m ? m.totalReturn : null;
+    var annRet   = m ? m.annReturn   : null;
+    var annVol   = m ? m.annVol      : null;
+    var winRate  = m ? m.winRate     : null;
+    var ytd      = periods ? periods.ytd : null;
+
+    // ---- Colour helpers ----------------------------------------
+    function rc(v)   { return v == null ? 'rgba(255,255,255,0.5)' : v >= 0 ? '#10b981' : '#ef4444'; }
+    function ddC(v)  { return v == null ? 'rgba(255,255,255,0.5)' : v < -0.10 ? '#ef4444' : v < -0.03 ? '#f59e0b' : '#10b981'; }
+    function volC(v) { return v == null ? 'rgba(255,255,255,0.5)' : v > 0.30 ? '#ef4444' : v > 0.18 ? '#f59e0b' : '#10b981'; }
+    function shC(v)  { return v == null ? 'rgba(255,255,255,0.5)' : v > 1.5 ? '#10b981' : v > 0.5 ? '#f59e0b' : '#ef4444'; }
+
+    function pct(v, decimals) {
+        if (v == null || !isFinite(v)) return '—';
+        return (v >= 0 ? '+' : '') + (v * 100).toFixed(decimals != null ? decimals : 2) + '%';
+    }
+
+    // Status label
+    var statusLabel, statusBg, statusBorder, statusColor;
+    if (totalRet != null && totalRet >= 0.15) {
+        statusLabel = '● OUTPERFORMING'; statusBg = 'rgba(16,185,129,0.1)'; statusBorder = 'rgba(16,185,129,0.28)'; statusColor = '#10b981';
+    } else if (totalRet != null && totalRet >= 0) {
+        statusLabel = '○ POSITIVE'; statusBg = 'rgba(245,158,11,0.1)'; statusBorder = 'rgba(245,158,11,0.28)'; statusColor = '#f59e0b';
+    } else {
+        statusLabel = '▽ NEGATIVE'; statusBg = 'rgba(239,68,68,0.1)'; statusBorder = 'rgba(239,68,68,0.28)'; statusColor = '#ef4444';
+    }
+
+    var hl  = { fontSize: 9, letterSpacing: 1.8, textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', marginBottom: 4, fontFamily: 'DM Sans' };
+    var hb  = { display: 'flex', flexDirection: 'column', justifyContent: 'center' };
+    var div = { width: 1, background: 'rgba(255,255,255,0.06)', margin: '0 20px', flexShrink: 0 };
+
+    // ---- KPI Pulse Bar ----------------------------------------
+    var kpiBar = h('div', {
+        style: {
+            background: 'linear-gradient(135deg,rgba(99,102,241,0.05),rgba(0,212,255,0.04))',
+            border: '1px solid rgba(99,102,241,0.15)',
+            borderRadius: 10, padding: '14px 22px', marginBottom: 16,
+            display: 'flex', alignItems: 'center',
+        }
+    },
+        h('div', { style: hb },
+            h('div', { style: hl }, 'Total Return'),
+            h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 22, fontWeight: 700, color: rc(totalRet) } }, pct(totalRet)),
+            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'JetBrains Mono' } }, 'Since inception')
+        ),
+        h('div', { style: div }),
+        h('div', { style: hb },
+            h('div', { style: hl }, 'YTD Return'),
+            h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 18, fontWeight: 700, color: rc(ytd) } }, pct(ytd)),
+            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'JetBrains Mono' } }, new Date().getFullYear() + ' year-to-date')
+        ),
+        h('div', { style: div }),
+        h('div', { style: hb },
+            h('div', { style: hl }, 'Ann. Return'),
+            h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 18, fontWeight: 700, color: rc(annRet) } }, pct(annRet, 1)),
+            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'JetBrains Mono' } }, 'CAGR p.a.')
+        ),
+        h('div', { style: div }),
+        h('div', { style: hb },
+            h('div', { style: hl }, 'Sharpe Ratio'),
+            h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 18, fontWeight: 700, color: shC(sharpe) } }, sharpe != null ? sharpe.toFixed(2) : '—'),
+            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'JetBrains Mono' } },
+                sharpe != null && sharpe > 1.5 ? 'Excellent risk-adj.' : sharpe != null && sharpe > 0.5 ? 'Good risk-adj.' : 'Monitor')
+        ),
+        h('div', { style: div }),
+        h('div', { style: hb },
+            h('div', { style: hl }, 'Max Drawdown'),
+            h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 18, fontWeight: 700, color: ddC(maxDD) } }, maxDD != null ? (maxDD * 100).toFixed(2) + '%' : '—'),
+            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'JetBrains Mono' } }, 'Peak-to-trough')
+        ),
+        h('div', { style: div }),
+        h('div', { style: hb },
+            h('div', { style: hl }, 'Ann. Volatility'),
+            h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 18, fontWeight: 700, color: volC(annVol) } }, pct(annVol, 1)),
+            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'JetBrains Mono' } },
+                annVol != null && annVol > 0.25 ? 'High vol' : annVol != null && annVol > 0.15 ? 'Moderate vol' : 'Low vol')
+        ),
+        h('div', { style: div }),
+        h('div', { style: hb },
+            h('div', { style: hl }, 'Win Rate'),
+            h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 18, fontWeight: 700, color: winRate != null && winRate > 0.55 ? '#10b981' : 'rgba(255,255,255,0.75)' } },
+                winRate != null ? (winRate * 100).toFixed(1) + '%' : '—'),
+            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'JetBrains Mono' } }, 'Positive days')
+        ),
+        h('div', { style: { marginLeft: 'auto' } },
+            h('div', { style: { padding: '6px 16px', borderRadius: 20, background: statusBg, border: '1px solid ' + statusBorder, color: statusColor, fontSize: 11, fontWeight: 700, fontFamily: 'JetBrains Mono', letterSpacing: 0.8, whiteSpace: 'nowrap' } },
+                statusLabel)
+        )
+    );
+
+    // ---- Tab Bar ----------------------------------------------
+    var tabBar = h('div', { style: { display: 'flex', gap: 0, marginBottom: 20, borderBottom: '1px solid rgba(255,255,255,0.07)' } },
+        SUB_TABS.map(function(tab) {
+            var isActive = activeTab === tab.id;
+            return h('button', {
+                key: tab.id,
+                onClick: function() { setActiveTab(tab.id); },
+                style: {
+                    padding: '10px 24px 12px', border: 'none',
+                    borderBottom: '2px solid ' + (isActive ? '#00d4ff' : 'transparent'),
+                    background: 'transparent', cursor: 'pointer',
+                    display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2,
+                    transition: 'all 0.15s ease', marginBottom: -1,
+                }
+            },
+                h('span', { style: { fontSize: 11, fontWeight: 700, letterSpacing: 1.2, fontFamily: 'JetBrains Mono', color: isActive ? '#00d4ff' : 'rgba(255,255,255,0.42)', transition: 'color 0.15s' } }, tab.label),
+                h('span', { style: { fontSize: 9.5, color: isActive ? 'rgba(0,212,255,0.55)' : 'rgba(255,255,255,0.2)', fontFamily: 'DM Sans', transition: 'color 0.15s' } }, tab.sub)
+            );
+        })
+    );
+
+    // ---- Panel routing ----------------------------------------
     var panel = null;
     switch (activeTab) {
         case 'overview':
@@ -98,9 +202,5 @@ export function PerformanceSuite() {
             break;
     }
 
-    return h('div', null,
-        h('div', { className: 'page-title' }, 'Performance Suite'),
-        tabBar,
-        panel
-    );
+    return h('div', null, kpiBar, tabBar, panel);
 }

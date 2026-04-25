@@ -11,7 +11,7 @@ import {
     computeMonthlyReturns, computeCumulativeReturns, computePeriodReturns
 } from './perf-engine.js';
 
-var useRef = React.useRef, useMemo = React.useMemo;
+var useRef = React.useRef, useEffect = React.useEffect, useMemo = React.useMemo;
 var h = React.createElement;
 
 // --- Helpers -------------------------------------------------
@@ -128,47 +128,76 @@ export function OverviewPanel(p) {
         })
     );
 
-    // B. Equity Curve Chart
+    // B. Narrative insight strip
+    var cmd = p.cmdData || {};
+    var sharpe = cmd.sharpe_ratio != null ? cmd.sharpe_ratio : m.sharpe;
+    var maxDD  = cmd.drawdown_pct  != null ? cmd.drawdown_pct  : m.maxDD;
+    var insights = [];
+    if (m.totalReturn > 0.15) {
+        insights.push({ icon: '▲', text: 'Strong performance since inception — up ' + (m.totalReturn * 100).toFixed(2) + '%, annualising at ' + (m.annReturn * 100).toFixed(1) + '% p.a.' });
+    } else if (m.totalReturn >= 0) {
+        insights.push({ icon: '◆', text: 'Positive since inception — up ' + (m.totalReturn * 100).toFixed(2) + '% total, annualised return ' + (m.annReturn * 100).toFixed(1) + '% p.a.' });
+    } else {
+        insights.push({ icon: '▽', text: 'Below inception level — down ' + Math.abs(m.totalReturn * 100).toFixed(2) + '%. Review positioning.' });
+    }
+    if (sharpe != null) {
+        if (sharpe > 2) insights.push({ icon: '✦', text: 'Exceptional risk-adjusted returns — Sharpe ' + sharpe.toFixed(2) + ', Sortino ' + (m.sortino || 0).toFixed(2) + '. Win rate ' + (m.winRate * 100).toFixed(0) + '% of trading days.' });
+        else if (sharpe > 1) insights.push({ icon: '≋', text: 'Good risk-adjusted profile — Sharpe ' + sharpe.toFixed(2) + ', vol ' + (m.annVol * 100).toFixed(1) + '% annualised. Best day: ' + (m.bestDay.value * 100).toFixed(2) + '% on ' + m.bestDay.date + '.' });
+        else insights.push({ icon: '⚡', text: 'Below-target Sharpe of ' + sharpe.toFixed(2) + ' — vol at ' + (m.annVol * 100).toFixed(1) + '% annualised. Consider risk reduction.' });
+    }
+    if (Math.abs(m.currentDD) > 0.03) {
+        insights.push({ icon: '▽', text: 'Currently in a ' + (m.currentDD * 100).toFixed(2) + '% drawdown from peak. Max historical: ' + (maxDD * 100).toFixed(2) + '%.' });
+    } else {
+        insights.push({ icon: '◉', text: 'Near all-time highs — drawdown only ' + (m.currentDD * 100).toFixed(2) + '%. Max historical drawdown: ' + (maxDD * 100).toFixed(2) + '%.' });
+    }
+    var narrativeStrip = h('div', { className: 'narrative-strip', style: { marginBottom: 16 } },
+        insights.map(function(ins, i) {
+            return h('div', { key: i, className: 'narrative-line' },
+                h('span', { className: 'narrative-icon' }, ins.icon),
+                h('span', { className: 'narrative-text' }, ins.text)
+            );
+        })
+    );
+
+    // B2. Equity Curve — lightweight-charts
     var eqRef = useRef(null);
-    useChart(eqRef, function() {
-        if (!p.navSeries || !p.navSeries.length) return null;
-        return {
-            type: 'line',
-            data: {
-                labels: p.navSeries.map(function(d) { return d.price_date; }),
-                datasets: [{
-                    data: p.navSeries.map(function(d) { return d.nav; }),
-                    borderColor: '#00d4ff',
-                    backgroundColor: 'rgba(0,212,255,0.08)',
-                    borderWidth: 1.5,
-                    pointRadius: 0,
-                    fill: true,
-                    tension: 0.3
-                }]
-            },
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
-                scales: {
-                    x: {
-                        ticks: { color: 'rgba(255,255,255,0.5)', maxTicksLimit: 12, maxRotation: 0 },
-                        grid: { display: false }
-                    },
-                    y: {
-                        ticks: {
-                            color: 'rgba(255,255,255,0.6)',
-                            callback: function(v) { return '$' + (v / 1000).toFixed(0) + 'k'; }
-                        },
-                        grid: { color: 'rgba(255,255,255,0.05)' }
-                    }
-                }
-            }
-        };
+    var eqChartRef = useRef(null);
+    useEffect(function() {
+        if (!p.navSeries || !p.navSeries.length || !eqRef.current) return;
+        if (eqChartRef.current) { eqChartRef.current.remove(); eqChartRef.current = null; }
+        var series = p.navSeries;
+        var first = series[0].nav;
+        var lastRet = (series[series.length - 1].nav / first - 1) * 100;
+        var lineColor = lastRet >= 0 ? '#10b981' : '#ef4444';
+        var topFill   = lastRet >= 0 ? 'rgba(16,185,129,0.22)' : 'rgba(239,68,68,0.22)';
+        var chart = LightweightCharts.createChart(eqRef.current, {
+            width: eqRef.current.clientWidth || 700, height: 300,
+            layout: { background: { type: 'solid', color: 'transparent' }, textColor: 'rgba(255,255,255,0.3)', fontFamily: 'JetBrains Mono', fontSize: 10 },
+            grid: { vertLines: { visible: false }, horzLines: { color: 'rgba(255,255,255,0.05)' } },
+            rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.1, bottom: 0.1 } },
+            timeScale: { borderVisible: false, fixLeftEdge: true, fixRightEdge: true },
+            crosshair: { vertLine: { color: 'rgba(255,255,255,0.15)', width: 1, style: 3 }, horzLine: { color: 'rgba(255,255,255,0.15)', width: 1, style: 3 } },
+            handleScroll: false, handleScale: false,
+        });
+        eqChartRef.current = chart;
+        var areaSeries = chart.addSeries(LightweightCharts.AreaSeries, {
+            lineColor: lineColor, topColor: topFill, bottomColor: 'rgba(0,0,0,0)',
+            lineWidth: 2, crosshairMarkerVisible: true,
+            priceFormat: { type: 'custom', formatter: function(v) { return (v >= 0 ? '+' : '') + v.toFixed(2) + '%'; } },
+        });
+        areaSeries.setData(series.map(function(d) {
+            return { time: d.price_date, value: +((d.nav / first - 1) * 100).toFixed(3) };
+        }));
+        chart.timeScale().fitContent();
+        return function() { if (eqChartRef.current) { eqChartRef.current.remove(); eqChartRef.current = null; } };
     }, [p.navSeries]);
 
     var equityCard = h('div', { className: 'card', style: { marginBottom: 16 } },
-        h('div', { className: 'card-title' }, 'Portfolio Equity Curve'),
-        h('div', { style: { height: 280 } }, h('canvas', { ref: eqRef }))
+        h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 } },
+            h('div', { className: 'card-title', style: { margin: 0 } }, 'PORTFOLIO EQUITY CURVE'),
+            h('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.25)', fontFamily: 'JetBrains Mono' } }, 'Normalised to % return from inception')
+        ),
+        h('div', { ref: eqRef, style: { height: 300 } })
     );
 
     // C. Underwater Chart
@@ -220,7 +249,7 @@ export function OverviewPanel(p) {
         h(HeroCard, { icon: '▽', label: 'Worst Day', value: fmtPct(m.worstDay.value), color: '#ef4444', accent: 'red', sub: m.worstDay.date })
     );
 
-    return h('div', null, heroGrid, equityCard, underwaterCard, bestWorst);
+    return h('div', null, heroGrid, narrativeStrip, equityCard, underwaterCard, bestWorst);
 }
 
 // =============================================================
