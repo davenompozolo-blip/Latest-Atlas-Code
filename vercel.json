@@ -5,7 +5,8 @@
   "buildCommand": "node inject-env.js",
   "rewrites": [
     { "source": "/command-centre", "destination": "/command-centre/index.html" },
-    { "source": "/", "destination": "/index.html" }
+    { "source": "/status",         "destination": "/status/index.html" },
+    { "source": "/",               "destination": "/index.html" }
   ],
   "headers": [
     {
