@@ -260,129 +260,113 @@ export function PortfolioHome() {
     if (loading) return React.createElement(Loading, null);
     var c = command || MOCK_COMMAND;
     var activeCols = ALL_COLS.filter(function(col) { return visCols.indexOf(col.key) >= 0; });
+    var wqSum = 0, wqMv = 0;
+    positions.forEach(function(p) { var mv = Math.abs(Number(p.market_value) || 0); wqSum += (Number(p.quality_score) || 0) * mv; wqMv += mv; });
+    var avgQuality = wqMv > 0 ? Math.round(wqSum / wqMv) : null;
+    var qualColor = avgQuality == null ? 'rgba(255,255,255,0.4)' : avgQuality >= 60 ? '#10b981' : avgQuality >= 40 ? '#f59e0b' : '#ef4444';
+    var retPct = Number(c.unrealised_return_pct);
+    var retColor = retPct >= 0 ? '#10b981' : '#ef4444';
+    var div = { width: 1, background: 'rgba(255,255,255,0.06)', margin: '0 20px', flexShrink: 0 };
+    var hb = { display: 'flex', flexDirection: 'column', justifyContent: 'center' };
+    var hl = { fontSize: 9, letterSpacing: 1.8, textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', marginBottom: 4, fontFamily: 'DM Sans' };
 
     return React.createElement('div', null,
-        // Metrics Row
-        React.createElement('div', { className: 'metrics-row', style: { gridTemplateColumns: 'repeat(4, 1fr)' } },
-            React.createElement('div', { className: 'metric-card' },
-                React.createElement('div', { className: 'label' }, 'PORTFOLIO NAV'),
-                React.createElement('div', { className: 'value' }, fmtCurrency(c.portfolio_nav)),
-                React.createElement('div', { className: 'sub' }, (c.position_count || positions.length) + ' positions')
+        // Hero Pulse Bar
+        React.createElement('div', { style: { background: 'linear-gradient(135deg,rgba(0,212,255,0.04),rgba(99,102,241,0.04))', border: '1px solid rgba(0,212,255,0.12)', borderRadius: 10, padding: '16px 20px', marginBottom: 16, display: 'flex', alignItems: 'center' } },
+            React.createElement('div', { style: hb },
+                React.createElement('div', { style: hl }, 'Portfolio NAV'),
+                React.createElement('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 22, fontWeight: 700, color: 'rgba(255,255,255,0.95)' } }, fmtCurrency(c.portfolio_nav)),
+                React.createElement('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 3, fontFamily: 'JetBrains Mono' } }, (c.position_count || positions.length) + ' positions')
             ),
-            React.createElement('div', { className: 'metric-card' },
-                React.createElement('div', { className: 'label' }, 'INITIAL EQUITY'),
-                React.createElement('div', { className: 'value' }, fmtCurrency(c.initial_equity || 100000)),
-                React.createElement('div', { className: 'sub' }, 'Cost basis: ' + fmtCurrency(c.total_invested))
+            React.createElement('div', { style: div }),
+            React.createElement('div', { style: hb },
+                React.createElement('div', { style: hl }, 'Unrealised P&L'),
+                React.createElement('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 18, fontWeight: 700, color: Number(c.unrealised_pnl) >= 0 ? '#10b981' : '#ef4444' } }, fmtCurrency(c.unrealised_pnl)),
+                React.createElement('div', { style: { fontSize: 10, color: retColor, marginTop: 3, fontFamily: 'JetBrains Mono' } }, (retPct >= 0 ? '+' : '') + (retPct * 100).toFixed(2) + '% total return')
             ),
-            React.createElement('div', { className: 'metric-card' },
-                React.createElement('div', { className: 'label' }, 'UNREALISED P&L'),
-                React.createElement('div', { className: 'value ' + cls(c.unrealised_pnl) }, fmtCurrency(c.unrealised_pnl)),
-                React.createElement('div', { className: 'sub ' + cls(c.unrealised_return_pct) }, fmtPct(c.unrealised_return_pct))
+            React.createElement('div', { style: div }),
+            React.createElement('div', { style: hb },
+                React.createElement('div', { style: hl }, 'Cash Balance'),
+                React.createElement('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 18, fontWeight: 700, color: Number(c.cash_balance) < 0 ? '#ef4444' : 'rgba(255,255,255,0.85)' } }, fmtCurrency(c.cash_balance)),
+                React.createElement('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 3, fontFamily: 'JetBrains Mono' } }, c.gross_leverage != null ? 'Leverage ' + Number(c.gross_leverage).toFixed(2) + '\u00d7' : 'No leverage')
             ),
-            React.createElement('div', { className: 'metric-card' },
-                React.createElement('div', { className: 'label' }, 'CASH'),
-                React.createElement('div', { className: 'value ' + cls(c.cash_balance) }, fmtCurrency(c.cash_balance)),
-                React.createElement('div', { className: 'sub' },
-                    c.gross_leverage != null ? 'Leverage: ' + Number(c.gross_leverage).toFixed(2) + 'x' : '\u2014')
+            React.createElement('div', { style: div }),
+            React.createElement('div', { style: hb },
+                React.createElement('div', { style: hl }, 'Cost Basis'),
+                React.createElement('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 18, fontWeight: 700, color: 'rgba(255,255,255,0.85)' } }, fmtCurrency(c.total_invested)),
+                React.createElement('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 3, fontFamily: 'JetBrains Mono' } }, 'Initial equity ' + fmtCurrency(c.initial_equity || 100000))
+            ),
+            React.createElement('div', { style: div }),
+            React.createElement('div', { style: hb },
+                React.createElement('div', { style: hl }, 'Wtd. Quality'),
+                React.createElement('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 28, fontWeight: 700, color: qualColor } }, avgQuality != null ? String(avgQuality) : '\u2014'),
+                React.createElement('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 3, fontFamily: 'JetBrains Mono' } }, '/ 100 \u00b7 wt. avg')
+            ),
+            React.createElement('div', { style: { marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 } },
+                React.createElement('span', { style: { width: 7, height: 7, borderRadius: '50%', background: '#10b981', boxShadow: '0 0 6px #10b981', display: 'inline-block' } }),
+                React.createElement('span', { style: { fontSize: 9, letterSpacing: 1.5, color: '#10b981', fontFamily: 'DM Sans', textTransform: 'uppercase' } }, 'Live')
             )
         ),
-        // Content with right sidebar
-        React.createElement('div', { className: 'content-with-sidebar' },
-            // Left: Positions table
-            React.createElement('div', { className: 'content-primary' },
-                React.createElement('div', { className: 'card', style: { padding: '16px 20px' } },
-                    // Title row with column manager toggle
-                    React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 } },
-                        React.createElement('div', { className: 'card-title', style: { fontSize: 16, fontFamily: 'Syne', fontWeight: 700, letterSpacing: 1, margin: 0 } }, 'POSITIONS'),
-                        React.createElement('button', {
-                            onClick: function() { setShowCols(!showCols); },
-                            style: { background: showCols ? 'rgba(0,212,255,0.1)' : 'rgba(255,255,255,0.04)', border: '1px solid ' + (showCols ? 'rgba(0,212,255,0.3)' : 'rgba(255,255,255,0.08)'), color: showCols ? '#00d4ff' : 'rgba(255,255,255,0.5)', borderRadius: 6, padding: '4px 12px', fontSize: 11, fontWeight: 500, cursor: 'pointer', fontFamily: 'DM Sans' }
-                        }, '\u2699 Columns')
-                    ),
-                    // Column manager panel
-                    showCols ? React.createElement('div', { className: 'col-manager-panel' },
-                        ALL_COLS.map(function(col) {
-                            var isActive = visCols.indexOf(col.key) >= 0;
-                            return React.createElement('button', {
-                                key: col.key,
-                                className: 'col-toggle' + (isActive ? ' active' : ''),
-                                onClick: function() { toggleCol(col.key); }
-                            }, col.label);
-                        }),
-                        React.createElement('button', {
-                            className: 'col-toggle',
-                            onClick: resetCols,
-                            style: { borderColor: 'rgba(245,158,11,0.3)', color: '#f59e0b' }
-                        }, '\u21BA Reset')
-                    ) : null,
-                    // Table
-                    React.createElement('div', { style: { overflowX: 'auto' } },
-                        React.createElement('table', { className: 'data-table' },
-                            React.createElement('thead', null,
-                                React.createElement('tr', null,
-                                    activeCols.map(function(col) {
-                                        return React.createElement('th', { key: col.key }, col.label);
-                                    })
-                                )
-                            ),
-                            React.createElement('tbody', null,
-                                positions.map(function(p) {
-                                    return React.createElement('tr', { key: p.symbol },
-                                        activeCols.map(function(col) {
-                                            var val = col.key === 'quality_score' ? qualityPill(p.quality_score) : cellValue(p, col.key);
-                                            return React.createElement('td', {
-                                                key: col.key,
-                                                className: cellClass(p, col.key),
-                                                style: cellStyle(col.key)
-                                            }, val);
-                                        })
-                                    );
-                                })
-                            )
-                        )
-                    )
-                )
-            ),
-            // Right sidebar: charts
-            React.createElement('div', { className: 'content-sidebar' },
-                // Top holdings donut
-                React.createElement('div', { className: 'card' },
-                    React.createElement('div', { className: 'card-title', style: { fontSize: 12, letterSpacing: 1.5, textTransform: 'uppercase' } }, 'TOP HOLDINGS'),
-                    React.createElement('div', { style: { height: 260 } },
-                        React.createElement('canvas', { ref: donutRef })
+        // Charts Row (3fr 2fr) — NAV chart dominant, donut alongside
+        React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 16, marginBottom: 16 } },
+            React.createElement('div', { className: 'card' },
+                React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 } },
+                    React.createElement('div', { className: 'card-title', style: { margin: 0 } }, 'PORTFOLIO NAV HISTORY'),
+                    React.createElement('div', { style: { display: 'flex', gap: 4 } },
+                        ['1W', '1M', '3M', 'ALL'].map(function(r) {
+                            var a = navRange === r;
+                            return React.createElement('button', { key: r, onClick: function() { setNavRange(r); }, style: { background: a ? 'rgba(0,212,255,0.15)' : 'transparent', color: a ? '#00d4ff' : 'rgba(255,255,255,0.3)', border: '1px solid ' + (a ? 'rgba(0,212,255,0.3)' : 'rgba(255,255,255,0.07)'), borderRadius: 4, padding: '2px 8px', fontSize: 10, cursor: 'pointer', fontFamily: 'JetBrains Mono' } }, r);
+                        })
                     )
                 ),
-                // Portfolio NAV chart (Plotly)
-                React.createElement('div', { className: 'card' },
-                    React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 } },
-                        React.createElement('div', { className: 'card-title', style: { fontSize: 12, letterSpacing: 1.5, textTransform: 'uppercase', margin: 0 } }, 'PORTFOLIO NAV (%)'),
-                        React.createElement('div', { style: { display: 'flex', gap: 4 } },
-                            ['1W', '1M', '3M', 'ALL'].map(function(r) {
-                                var active = navRange === r;
-                                return React.createElement('button', {
-                                    key: r, onClick: function() { setNavRange(r); },
-                                    style: { background: active ? 'rgba(0,212,255,0.15)' : 'transparent', color: active ? '#00d4ff' : 'rgba(255,255,255,0.35)', border: '1px solid ' + (active ? 'rgba(0,212,255,0.3)' : 'rgba(255,255,255,0.08)'), borderRadius: 4, padding: '2px 8px', fontSize: 10, cursor: 'pointer', fontFamily: 'JetBrains Mono' }
-                                }, r);
-                            })
-                        )
-                    ),
-                    React.createElement('div', { ref: navPlotRef, style: { height: 200 } })
-                )
+                React.createElement('div', { ref: navPlotRef, style: { height: 260 } })
+            ),
+            React.createElement('div', { className: 'card' },
+                React.createElement('div', { className: 'card-title' }, 'TOP HOLDINGS'),
+                React.createElement('div', { style: { height: 260 } }, React.createElement('canvas', { ref: donutRef }))
             )
         ),
         // Today's Movers
         React.createElement(TodayMovers, { positions: positions }),
-        // P&L Contributors & Detractors chart
-        React.createElement('div', { className: 'card' },
-            React.createElement('div', { className: 'card-title', style: { fontSize: 12, letterSpacing: 1.5, textTransform: 'uppercase' } }, 'TOP P&L CONTRIBUTORS & DETRACTORS'),
-            React.createElement('div', { style: { height: 320 } },
-                React.createElement('canvas', { ref: pnlRef })
+        // Attribution Row
+        React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 } },
+            React.createElement('div', { className: 'card' },
+                React.createElement('div', { className: 'card-title' }, 'P&L CONTRIBUTORS & DETRACTORS'),
+                React.createElement('div', { style: { height: 300 } }, React.createElement('canvas', { ref: pnlRef }))
+            ),
+            React.createElement('div', { className: 'card' },
+                React.createElement('div', { className: 'card-title' }, 'SECTOR P&L ATTRIBUTION'),
+                React.createElement('div', { ref: sectorRef, style: { height: 300 } })
             )
         ),
-        // Sector P&L Waterfall (Plotly)
-        React.createElement('div', { className: 'card' },
-            React.createElement('div', { className: 'card-title', style: { fontSize: 12, letterSpacing: 1.5, textTransform: 'uppercase' } }, 'SECTOR P&L ATTRIBUTION'),
-            React.createElement('div', { ref: sectorRef, style: { height: 300 } })
+        // Positions Table
+        React.createElement('div', { className: 'card', style: { padding: '16px 20px' } },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 } },
+                React.createElement('div', { className: 'card-title', style: { fontSize: 14, fontFamily: 'Syne', fontWeight: 700, letterSpacing: 1, margin: 0 } }, 'POSITIONS (' + (c.position_count || positions.length) + ')'),
+                React.createElement('button', { onClick: function() { setShowCols(!showCols); }, style: { background: showCols ? 'rgba(0,212,255,0.1)' : 'rgba(255,255,255,0.04)', border: '1px solid ' + (showCols ? 'rgba(0,212,255,0.3)' : 'rgba(255,255,255,0.08)'), color: showCols ? '#00d4ff' : 'rgba(255,255,255,0.5)', borderRadius: 6, padding: '4px 12px', fontSize: 11, fontWeight: 500, cursor: 'pointer', fontFamily: 'DM Sans' } }, '\u2699 Columns')
+            ),
+            showCols ? React.createElement('div', { className: 'col-manager-panel' },
+                ALL_COLS.map(function(col) {
+                    var isActive = visCols.indexOf(col.key) >= 0;
+                    return React.createElement('button', { key: col.key, className: 'col-toggle' + (isActive ? ' active' : ''), onClick: function() { toggleCol(col.key); } }, col.label);
+                }),
+                React.createElement('button', { className: 'col-toggle', onClick: resetCols, style: { borderColor: 'rgba(245,158,11,0.3)', color: '#f59e0b' } }, '\u21BA Reset')
+            ) : null,
+            React.createElement('div', { style: { overflowX: 'auto' } },
+                React.createElement('table', { className: 'data-table' },
+                    React.createElement('thead', null, React.createElement('tr', null, activeCols.map(function(col) { return React.createElement('th', { key: col.key }, col.label); }))),
+                    React.createElement('tbody', null,
+                        positions.map(function(p) {
+                            return React.createElement('tr', { key: p.symbol },
+                                activeCols.map(function(col) {
+                                    var val = col.key === 'quality_score' ? qualityPill(p.quality_score) : cellValue(p, col.key);
+                                    return React.createElement('td', { key: col.key, className: cellClass(p, col.key), style: cellStyle(col.key) }, val);
+                                })
+                            );
+                        })
+                    )
+                )
+            )
         )
     );
 }
