@@ -20,6 +20,74 @@ const { useState, useEffect, useRef, useMemo } = React;
 
 var MOVER_COLORS = { gain: '#10b981', loss: '#ef4444', neutral: 'rgba(255,255,255,0.4)' };
 
+var TICKER_NAMES = {
+    'AAPL':'Apple Inc.','MSFT':'Microsoft Corp.','GOOGL':'Alphabet Inc.','GOOG':'Alphabet Inc.',
+    'AMZN':'Amazon.com Inc.','META':'Meta Platforms','NVDA':'NVIDIA Corp.','TSLA':'Tesla Inc.',
+    'AMD':'Advanced Micro Devices','INTC':'Intel Corp.','QCOM':'Qualcomm Inc.','AVGO':'Broadcom Inc.',
+    'ORCL':'Oracle Corp.','CRM':'Salesforce Inc.','ADBE':'Adobe Inc.','NOW':'ServiceNow Inc.',
+    'JPM':'JPMorgan Chase','GS':'Goldman Sachs','MS':'Morgan Stanley','BAC':'Bank of America',
+    'C':'Citigroup Inc.','WFC':'Wells Fargo','BLK':'BlackRock Inc.','SCHW':'Charles Schwab',
+    'JNJ':'Johnson & Johnson','UNH':'UnitedHealth Group','PFE':'Pfizer Inc.','ABBV':'AbbVie Inc.',
+    'MRK':'Merck & Co.','LLY':'Eli Lilly & Co.','BIIB':'Biogen Inc.','GILD':'Gilead Sciences',
+    'AMGN':'Amgen Inc.','REGN':'Regeneron Pharma','VRTX':'Vertex Pharma',
+    'XOM':'Exxon Mobil Corp.','CVX':'Chevron Corp.','HAL':'Halliburton Co.',
+    'OXY':'Occidental Petroleum','COP':'ConocoPhillips','SLB':'Schlumberger Ltd.',
+    'PBR':'Petrobras ADR','BP':'BP p.l.c.','SHEL':'Shell p.l.c.',
+    'BA':'Boeing Co.','CAT':'Caterpillar Inc.','GE':'GE Aerospace','LMT':'Lockheed Martin',
+    'RTX':'RTX Corp.','HON':'Honeywell Intl.','TGT':'Target Corp.','WMT':'Walmart Inc.',
+    'COST':'Costco Wholesale','HD':'Home Depot','NKE':'Nike Inc.','SBUX':'Starbucks Corp.',
+    'MCD':'McDonald\'s Corp.','TSM':'Taiwan Semiconductor','ASML':'ASML Holding',
+    'MU':'Micron Technology','AMAT':'Applied Materials',
+    'GLD':'SPDR Gold Trust','SLV':'iShares Silver Trust',
+    'GDX':'VanEck Gold Miners ETF','GDXJ':'VanEck Jr Gold Miners',
+    'RGLD':'Royal Gold Inc.','WPM':'Wheaton Precious Metals',
+    'NEM':'Newmont Corp.','AEM':'Agnico Eagle Mines','HMY':'Harmony Gold Mining','AU':'AngloGold Ashanti',
+    'SPY':'SPDR S&P 500 ETF','QQQ':'Invesco QQQ Trust','IWM':'iShares Russell 2000',
+    'VTI':'Vanguard Total Market','VOO':'Vanguard S&P 500',
+    'EWY':'iShares MSCI S.Korea','EEM':'iShares Emerging Markets','FXI':'iShares China Large-Cap',
+    'EFA':'iShares MSCI EAFE','AVEE':'Avantis EM Small-Cap Value','AVDV':'Avantis Intl Small-Cap',
+    'IAU':'iShares Gold Trust','TLT':'iShares 20Y+ Treasury','HYG':'iShares HY Bond',
+    'LQD':'iShares IG Corp Bond','AMT':'American Tower REIT','PLD':'Prologis REIT',
+    'EQIX':'Equinix REIT','SPG':'Simon Property REIT','PSA':'Public Storage REIT',
+    'VNQ':'Vanguard Real Estate ETF',
+};
+
+var TICKER_TYPES = {
+    'SPY':'ETF','QQQ':'ETF','IWM':'ETF','VTI':'ETF','VOO':'ETF','DIA':'ETF',
+    'GLD':'ETF','SLV':'ETF','IAU':'ETF','GDX':'ETF','GDXJ':'ETF',
+    'EWY':'ETF','EEM':'ETF','FXI':'ETF','EFA':'ETF','AVEE':'ETF','AVDV':'ETF',
+    'TLT':'ETF','HYG':'ETF','LQD':'ETF','VNQ':'ETF','BITO':'ETF',
+    'RGLD':'MINE','WPM':'MINE','NEM':'MINE','AEM':'MINE','HMY':'MINE','AU':'MINE',
+    'AMT':'REIT','PLD':'REIT','EQIX':'REIT','SPG':'REIT','PSA':'REIT',
+};
+
+var TYPE_STYLE = {
+    'EQ':   { bg:'rgba(0,212,255,0.08)',   color:'#00d4ff',  border:'rgba(0,212,255,0.22)' },
+    'ETF':  { bg:'rgba(99,102,241,0.10)',  color:'#a5b4fc',  border:'rgba(99,102,241,0.28)' },
+    'REIT': { bg:'rgba(245,158,11,0.10)',  color:'#fbbf24',  border:'rgba(245,158,11,0.28)' },
+    'MINE': { bg:'rgba(251,191,36,0.10)',  color:'#fcd34d',  border:'rgba(251,191,36,0.28)' },
+    'FI':   { bg:'rgba(52,211,153,0.10)',  color:'#34d399',  border:'rgba(52,211,153,0.28)' },
+};
+
+function getName(symbol, pos) {
+    var n = pos.asset_name || pos.name;
+    if (n && n !== symbol) return n;
+    return TICKER_NAMES[symbol] || symbol;
+}
+function getType(symbol, pos) {
+    if (pos.asset_type) return String(pos.asset_type).toUpperCase().slice(0,4);
+    if (pos.instrument_type) return String(pos.instrument_type).toUpperCase().slice(0,4);
+    return TICKER_TYPES[symbol] || 'EQ';
+}
+function TypeBadge(p) {
+    var s = TYPE_STYLE[p.type] || TYPE_STYLE['EQ'];
+    return React.createElement('span', { style: {
+        background: s.bg, color: s.color, border: '1px solid ' + s.border,
+        borderRadius: 3, padding: '1px 5px', fontSize: 9, fontWeight: 700,
+        fontFamily: 'JetBrains Mono', letterSpacing: 0.5,
+    }}, p.type);
+}
+
 function MoverRow(p) {
     var chg = Number(p.pos.daily_change_pct) || 0;
     var chgDollar = Number(p.pos.daily_change_dollar) || 0;
@@ -29,7 +97,7 @@ function MoverRow(p) {
         style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }
     },
         React.createElement('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 12, color: '#00d4ff', minWidth: 52 } }, p.pos.symbol),
-        React.createElement('span', { style: { fontSize: 11, color: 'rgba(255,255,255,0.5)', flex: 1, paddingLeft: 8 } }, p.pos.asset_name || p.pos.name || ''),
+        React.createElement('span', { style: { fontSize: 11, color: 'rgba(255,255,255,0.5)', flex: 1, paddingLeft: 8 } }, getName(p.pos.symbol, p.pos)),
         React.createElement('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, color: 'rgba(255,255,255,0.6)', minWidth: 64, textAlign: 'right' } },
             p.pos.current_price ? '$' + Number(p.pos.current_price).toFixed(2) : '—'),
         React.createElement('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 12, color: color, minWidth: 72, textAlign: 'right', fontWeight: 600 } },
@@ -123,6 +191,11 @@ export function PortfolioHome() {
     var _vc = useState(getVisibleCols), visCols = _vc[0], setVisCols = _vc[1];
     var _cm = useState(false), showCols = _cm[0], setShowCols = _cm[1];
     var _ec = useState(null), earningsData = _ec[0], setEarningsData = _ec[1];
+    var _tx = useState([]), txData = _tx[0], setTxData = _tx[1];
+    var _sq = useState(''), srch = _sq[0], setSrch = _sq[1];
+    var _tf = useState('ALL'), tFilt = _tf[0], setTFilt = _tf[1];
+    var _sk = useState('market_value'), sortK = _sk[0], setSortK = _sk[1];
+    var _sd = useState('desc'), sortD = _sd[0], setSortD = _sd[1];
     var donutRef = useRef(null);
     var donutInst = useRef(null);
     var navPlotRef = useRef(null);
@@ -137,11 +210,13 @@ export function PortfolioHome() {
             loadView('vw_command_centre', [MOCK_COMMAND]),
             loadView('vw_portfolio_nav_daily', []),
             loadView('vw_earnings_calendar', []),
+            loadView('vw_transactions', []),
         ]).then(function(res) {
             setPositions(res[0]);
             setCommand(res[1][0] || MOCK_COMMAND);
             setNavData(res[2]);
             setEarningsData(res[3]);
+            setTxData(res[4] || []);
             setLoading(false);
         });
     }, []);
@@ -210,14 +285,63 @@ export function PortfolioHome() {
         var lastY = ys[ys.length - 1];
         var fillColor = lastY >= 0 ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)';
         var lineColor = lastY >= 0 ? '#10b981' : '#ef4444';
-        Plotly.react(navPlotRef.current, [{
+        // Build entry-point scatter trace from transactions
+        var traces = [{
             x: xs, y: ys,
             type: 'scatter', mode: 'lines',
             fill: 'tozeroy', fillcolor: fillColor,
             line: { color: lineColor, width: 2, shape: 'spline' },
             hovertemplate: '%{x}<br><b>%{y:.2f}%</b><extra></extra>',
             name: 'ATLAS NAV',
-        }], {
+        }];
+        if (txData && txData.length) {
+            // Map NAV by date for Y lookup
+            var navByDate = {};
+            slice.forEach(function(d) { navByDate[d.price_date] = ((d.nav / baseNav - 1) * 100); });
+            var sliceStart = slice[0].price_date;
+            var sliceEnd = slice[slice.length - 1].price_date;
+            // Group buys: profitable vs underwater using positions current P&L
+            var posMap = {};
+            if (positions) positions.forEach(function(p) { posMap[p.symbol] = p; });
+            var txInRange = txData.filter(function(t) {
+                var d = t.transaction_date || t.date || t.trade_date;
+                return d && d >= sliceStart && d <= sliceEnd && (t.side || t.transaction_type || '').toUpperCase().indexOf('BUY') >= 0;
+            });
+            var txGood = [], txBad = [], txLabels = [];
+            txInRange.forEach(function(t) {
+                var d = t.transaction_date || t.date || t.trade_date;
+                var sym = t.symbol || t.ticker;
+                var pos = posMap[sym];
+                var ret = pos && pos.unrealised_return_pct != null ? Number(pos.unrealised_return_pct) : null;
+                // Find nearest nav Y for this date
+                var navY = navByDate[d];
+                if (navY == null) {
+                    // Find closest date in navByDate
+                    var dates = Object.keys(navByDate);
+                    var closest = dates.reduce(function(a, b) { return Math.abs(new Date(b) - new Date(d)) < Math.abs(new Date(a) - new Date(d)) ? b : a; });
+                    navY = navByDate[closest];
+                }
+                if (ret === null || ret >= 0) { txGood.push({ x: d, y: navY, sym: sym, ret: ret }); }
+                else { txBad.push({ x: d, y: navY, sym: sym, ret: ret }); }
+            });
+            if (txGood.length) traces.push({
+                x: txGood.map(function(t) { return t.x; }),
+                y: txGood.map(function(t) { return t.y; }),
+                text: txGood.map(function(t) { return t.sym + (t.ret != null ? ' +' + (t.ret * 100).toFixed(1) + '%' : ''); }),
+                type: 'scatter', mode: 'markers', name: 'Entry (profitable)',
+                marker: { color: '#10b981', size: 8, symbol: 'triangle-up', line: { color: 'rgba(16,185,129,0.6)', width: 1 } },
+                hovertemplate: '<b>%{text}</b><br>%{x}<extra>Entry</extra>',
+            });
+            if (txBad.length) traces.push({
+                x: txBad.map(function(t) { return t.x; }),
+                y: txBad.map(function(t) { return t.y; }),
+                text: txBad.map(function(t) { return t.sym + (t.ret != null ? ' ' + (t.ret * 100).toFixed(1) + '%' : ''); }),
+                type: 'scatter', mode: 'markers', name: 'Entry (underwater)',
+                marker: { color: '#ef4444', size: 8, symbol: 'triangle-down', line: { color: 'rgba(239,68,68,0.6)', width: 1 } },
+                hovertemplate: '<b>%{text}</b><br>%{x}<extra>Entry</extra>',
+            });
+        }
+        Plotly.react(navPlotRef.current, traces, {
             paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
             margin: { l: 48, r: 12, t: 8, b: 32 },
             xaxis: { showgrid: false, tickfont: { color: 'rgba(255,255,255,0.3)', size: 10, family: 'JetBrains Mono' }, tickformat: '%b %d', nticks: 6 },
@@ -225,7 +349,7 @@ export function PortfolioHome() {
             showlegend: false,
             font: { family: 'DM Sans', color: 'rgba(255,255,255,0.5)' },
         }, { responsive: true, displayModeBar: false });
-    }, [navData, navRange]);
+    }, [navData, navRange, txData, positions]);
 
     // P&L contributors chart
     useEffect(function() {
@@ -310,6 +434,24 @@ export function PortfolioHome() {
             showlegend: false,
         }, { responsive: true, displayModeBar: false });
     }, [positions]);
+
+    var filtPosns = useMemo(function() {
+        if (!positions) return [];
+        var q = srch.toLowerCase();
+        var out = positions.filter(function(p) {
+            var matchQ = !q || p.symbol.toLowerCase().indexOf(q) >= 0 ||
+                getName(p.symbol, p).toLowerCase().indexOf(q) >= 0 ||
+                (p.sector || '').toLowerCase().indexOf(q) >= 0;
+            var matchT = tFilt === 'ALL' || getType(p.symbol, p) === tFilt;
+            return matchQ && matchT;
+        });
+        out.sort(function(a, b) {
+            var av = a[sortK] != null ? Number(a[sortK]) : (sortD === 'desc' ? -1e15 : 1e15);
+            var bv = b[sortK] != null ? Number(b[sortK]) : (sortD === 'desc' ? -1e15 : 1e15);
+            return sortD === 'desc' ? bv - av : av - bv;
+        });
+        return out;
+    }, [positions, srch, tFilt, sortK, sortD]);
 
     if (loading) return React.createElement(Loading, null);
     var c = command || MOCK_COMMAND;
@@ -396,29 +538,101 @@ export function PortfolioHome() {
                 React.createElement('div', { ref: sectorRef, style: { height: 300 } })
             )
         ),
-        // Positions Table
+        // Interactive Holdings Table
         React.createElement('div', { className: 'card', style: { padding: '16px 20px' } },
-            React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 } },
-                React.createElement('div', { className: 'card-title', style: { fontSize: 14, fontFamily: 'Syne', fontWeight: 700, letterSpacing: 1, margin: 0 } }, 'POSITIONS (' + (c.position_count || positions.length) + ')'),
-                React.createElement('button', { onClick: function() { setShowCols(!showCols); }, style: { background: showCols ? 'rgba(0,212,255,0.1)' : 'rgba(255,255,255,0.04)', border: '1px solid ' + (showCols ? 'rgba(0,212,255,0.3)' : 'rgba(255,255,255,0.08)'), color: showCols ? '#00d4ff' : 'rgba(255,255,255,0.5)', borderRadius: 6, padding: '4px 12px', fontSize: 11, fontWeight: 500, cursor: 'pointer', fontFamily: 'DM Sans' } }, '\u2699 Columns')
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' } },
+                React.createElement('div', { className: 'card-title', style: { fontSize: 14, fontFamily: 'Syne', fontWeight: 700, letterSpacing: 1, margin: 0, flex: 'none' } },
+                    'HOLDINGS ' + (filtPosns.length !== positions.length ? '(' + filtPosns.length + '/' + positions.length + ')' : '(' + positions.length + ')')),
+                React.createElement('input', { value: srch, onChange: function(e) { setSrch(e.target.value); },
+                    placeholder: '\u{1F50D}  symbol, name, sector…',
+                    style: { flex: 1, minWidth: 160, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 6, padding: '5px 10px', color: 'rgba(255,255,255,0.8)', fontSize: 11, fontFamily: 'DM Sans', outline: 'none' } }),
+                React.createElement('div', { style: { display: 'flex', gap: 4 } },
+                    ['ALL','EQ','ETF','MINE','REIT'].map(function(t) {
+                        var a = tFilt === t;
+                        return React.createElement('button', { key: t, onClick: function() { setTFilt(t); }, style: {
+                            background: a ? 'rgba(0,212,255,0.12)' : 'transparent',
+                            color: a ? '#00d4ff' : 'rgba(255,255,255,0.3)',
+                            border: '1px solid ' + (a ? 'rgba(0,212,255,0.3)' : 'rgba(255,255,255,0.06)'),
+                            borderRadius: 4, padding: '3px 9px', fontSize: 10, fontFamily: 'JetBrains Mono',
+                            fontWeight: a ? 700 : 400, cursor: 'pointer', letterSpacing: 0.5
+                        }}, t);
+                    })
+                )
             ),
-            showCols ? React.createElement('div', { className: 'col-manager-panel' },
-                ALL_COLS.map(function(col) {
-                    var isActive = visCols.indexOf(col.key) >= 0;
-                    return React.createElement('button', { key: col.key, className: 'col-toggle' + (isActive ? ' active' : ''), onClick: function() { toggleCol(col.key); } }, col.label);
-                }),
-                React.createElement('button', { className: 'col-toggle', onClick: resetCols, style: { borderColor: 'rgba(245,158,11,0.3)', color: '#f59e0b' } }, '\u21BA Reset')
-            ) : null,
-            React.createElement('div', { style: { overflowX: 'auto' } },
-                React.createElement('table', { className: 'data-table' },
-                    React.createElement('thead', null, React.createElement('tr', null, activeCols.map(function(col) { return React.createElement('th', { key: col.key }, col.label); }))),
+            React.createElement('div', { style: { overflowY: 'auto', maxHeight: 420, overflowX: 'auto', borderRadius: 6, border: '1px solid rgba(255,255,255,0.05)' } },
+                React.createElement('table', { style: { borderCollapse: 'collapse', width: '100%', minWidth: 700 } },
+                    React.createElement('thead', null,
+                        React.createElement('tr', null,
+                            [
+                                { key: 'symbol', label: 'Ticker', col: null, align: 'left' },
+                                { key: 'name', label: 'Name / Type', col: null, align: 'left' },
+                                { key: 'current_price', label: 'Price', col: 'current_price', align: 'right' },
+                                { key: 'daily_change_pct', label: 'Day %', col: 'daily_change_pct', align: 'right' },
+                                { key: 'market_value', label: 'Mkt Value', col: 'market_value', align: 'right' },
+                                { key: 'wt', label: 'Weight', col: 'weight_equity_pct', align: 'right' },
+                                { key: 'unrealised_return_pct', label: 'Return', col: 'unrealised_return_pct', align: 'right' },
+                                { key: 'quality_score', label: 'Quality', col: 'quality_score', align: 'right' },
+                            ].map(function(h) {
+                                var isSorted = h.col !== null && h.col === sortK;
+                                return React.createElement('th', { key: h.key,
+                                    onClick: h.col ? (function(col, sorted) { return function() {
+                                        if (sorted) setSortD(function(d) { return d === 'desc' ? 'asc' : 'desc'; });
+                                        else { setSortK(col); setSortD('desc'); }
+                                    }; })(h.col, isSorted) : undefined,
+                                    style: { position: 'sticky', top: 0, zIndex: 1, background: '#0b0f1a',
+                                        padding: '9px 10px', fontSize: 10, whiteSpace: 'nowrap',
+                                        color: isSorted ? '#00d4ff' : 'rgba(255,255,255,0.38)',
+                                        borderBottom: '1px solid rgba(255,255,255,0.07)',
+                                        cursor: h.col ? 'pointer' : 'default', userSelect: 'none',
+                                        textTransform: 'uppercase', letterSpacing: 0.8,
+                                        textAlign: h.align, fontFamily: 'DM Sans'
+                                    }
+                                }, h.label, isSorted ? (sortD === 'desc' ? ' ↓' : ' ↑') : null);
+                            })
+                        )
+                    ),
                     React.createElement('tbody', null,
-                        positions.map(function(p) {
-                            return React.createElement('tr', { key: p.symbol },
-                                activeCols.map(function(col) {
-                                    var val = col.key === 'quality_score' ? qualityPill(p.quality_score) : cellValue(p, col.key);
-                                    return React.createElement('td', { key: col.key, className: cellClass(p, col.key), style: cellStyle(col.key) }, val);
-                                })
+                        filtPosns.map(function(p) {
+                            var type = getType(p.symbol, p);
+                            var dayChg = p.daily_change_pct != null ? Number(p.daily_change_pct) : null;
+                            var ret = p.unrealised_return_pct != null ? Number(p.unrealised_return_pct) : null;
+                            var wt = Number(p.weight_equity_pct || p.portfolio_weight || 0);
+                            var q = p.quality_score != null ? Number(p.quality_score) : null;
+                            var qCol = q == null ? 'rgba(255,255,255,0.3)' : q >= 60 ? '#10b981' : q >= 40 ? '#f59e0b' : '#ef4444';
+                            return React.createElement('tr', { key: p.symbol,
+                                style: { borderBottom: '1px solid rgba(255,255,255,0.03)', transition: 'background 0.12s' },
+                                onMouseEnter: function(e) { e.currentTarget.style.background = 'rgba(0,212,255,0.03)'; },
+                                onMouseLeave: function(e) { e.currentTarget.style.background = 'transparent'; }
+                            },
+                                React.createElement('td', { style: { padding: '7px 10px', fontFamily: 'JetBrains Mono', fontSize: 12, fontWeight: 700, color: '#00d4ff', whiteSpace: 'nowrap' } }, p.symbol),
+                                React.createElement('td', { style: { padding: '7px 10px', maxWidth: 220 } },
+                                    React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 } },
+                                        React.createElement('span', { style: { fontSize: 11, color: 'rgba(255,255,255,0.65)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'DM Sans' } }, getName(p.symbol, p)),
+                                        React.createElement(TypeBadge, { type: type })
+                                    )
+                                ),
+                                React.createElement('td', { style: { padding: '7px 10px', textAlign: 'right', fontFamily: 'JetBrains Mono', fontSize: 11, color: 'rgba(255,255,255,0.78)' } },
+                                    p.current_price ? '$' + Number(p.current_price).toFixed(2) : '—'),
+                                React.createElement('td', { style: { padding: '7px 10px', textAlign: 'right', fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 600,
+                                    color: dayChg == null ? 'rgba(255,255,255,0.25)' : dayChg > 0 ? '#10b981' : dayChg < 0 ? '#ef4444' : 'rgba(255,255,255,0.4)' } },
+                                    dayChg == null ? '—' : (dayChg > 0 ? '▲ ' : dayChg < 0 ? '▼ ' : '') + (Math.abs(dayChg) * 100).toFixed(2) + '%'),
+                                React.createElement('td', { style: { padding: '7px 10px', textAlign: 'right', fontFamily: 'JetBrains Mono', fontSize: 11, color: 'rgba(255,255,255,0.82)' } }, fmtCurrency(p.market_value)),
+                                React.createElement('td', { style: { padding: '7px 10px', textAlign: 'right' } },
+                                    React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 7 } },
+                                        React.createElement('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, color: 'rgba(255,255,255,0.65)' } }, wt > 0 ? (wt * 100).toFixed(1) + '%' : '—'),
+                                        React.createElement('div', { style: { width: 36, height: 3, background: 'rgba(255,255,255,0.06)', borderRadius: 2, overflow: 'hidden', flexShrink: 0 } },
+                                            React.createElement('div', { style: { width: Math.min(wt * 8, 1) * 100 + '%', height: '100%', background: '#00d4ff', borderRadius: 2 } })
+                                        )
+                                    )
+                                ),
+                                React.createElement('td', { style: { padding: '7px 10px', textAlign: 'right', fontFamily: 'JetBrains Mono', fontSize: 11,
+                                    color: ret == null ? 'rgba(255,255,255,0.25)' : ret >= 0 ? '#10b981' : '#ef4444' } },
+                                    ret == null ? '—' : (ret >= 0 ? '+' : '') + (ret * 100).toFixed(1) + '%'),
+                                React.createElement('td', { style: { padding: '7px 10px', textAlign: 'right' } },
+                                    q != null
+                                        ? React.createElement('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 700, color: qCol } }, String(q))
+                                        : React.createElement('span', { style: { color: 'rgba(255,255,255,0.2)' } }, '—')
+                                )
                             );
                         })
                     )
