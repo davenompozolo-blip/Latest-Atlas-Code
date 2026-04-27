@@ -24,7 +24,8 @@ export function heroBadgeCls(s) {
     if (!s) return '';
     const l = s.toLowerCase();
     if (['excellent','strong','low','low vol'].includes(l)) return 'b-excellent';
-    if (['good','positive'].includes(l)) return 'b-good';
+    if (['positive'].includes(l)) return 'b-positive';
+    if (['good'].includes(l)) return 'b-good';
     if (['fair','moderate','elevated','weak'].includes(l)) return 'b-fair';
     if (['poor','negative','severe','high','high vol'].includes(l)) return 'b-poor';
     return 'b-good';

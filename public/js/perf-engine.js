@@ -223,17 +223,21 @@ export function computePositionContributions(positions) {
 
 // ----------------------------------------------------------------
 // computeBrinsonAttribution
-// Brinson-Fachler model using the portfolio itself as reference.
-//   Benchmark weights = equal weight across sectors (1/N_sectors)
+// Brinson-Fachler model with swappable benchmark.
+//   benchmarkWeights: optional { sectorName: weight } map (sum ≤ 1).
+//     null  → equal weight across portfolio sectors (default)
+//     object → use provided weights (normalised to portfolio sectors)
 //   Benchmark sector return = equal-weight avg return within sector
 //   Allocation  = (wp - wb) × (rb_sector - Rb_total)
 //   Selection   = wb × (rp_sector - rb_sector)
 //   Interaction = (wp - wb) × (rp_sector - rb_sector)
 // ----------------------------------------------------------------
-export function computeBrinsonAttribution(positions) {
+export function computeBrinsonAttribution(positions, benchmarkWeights) {
     if (!positions || !positions.length) return null;
     var totalMv = positions.reduce(function(s, p) { return s + Math.abs(Number(p.market_value) || 0); }, 0);
     if (!totalMv) return null;
+
+    var useEqualWeight = !benchmarkWeights;
 
     // Group by sector
     var bySector = {};
@@ -242,22 +246,25 @@ export function computeBrinsonAttribution(positions) {
         var mv  = Math.abs(Number(p.market_value) || 0);
         var ret = Number(p.total_return_pct || p.unrealised_return_pct || 0);
         if (!bySector[sec]) bySector[sec] = { mv: 0, sumRet: 0, count: 0, positions: [] };
-        bySector[sec].mv    += mv;
+        bySector[sec].mv     += mv;
         bySector[sec].sumRet += ret;
-        bySector[sec].count += 1;
+        bySector[sec].count  += 1;
         bySector[sec].positions.push(p);
     });
 
     var sectors = Object.keys(bySector);
     var N = sectors.length;
-    var benchWeight = 1 / N;    // equal weight benchmark
 
-    // Compute portfolio weight + portfolio sector return (value-weighted)
-    // and benchmark sector return (equal-weight avg within sector)
+    // Normalise benchmark weights to the sectors that appear in the portfolio
+    var rawBenchTotal = useEqualWeight ? 1 :
+        sectors.reduce(function(s, sec) { return s + (benchmarkWeights[sec] || 0); }, 0);
+    var normFactor = rawBenchTotal > 0 ? rawBenchTotal : 1;
+
     sectors.forEach(function(sec) {
         var s = bySector[sec];
         s.portfolioWeight = s.mv / totalMv;
-        // Portfolio sector return = value-weighted avg return of positions in sector
+        s.benchmarkWeight = useEqualWeight ? (1 / N) : (benchmarkWeights[sec] || 0) / normFactor;
+        // Portfolio sector return = value-weighted avg return
         var sumWR = 0;
         s.positions.forEach(function(p) {
             var mv  = Math.abs(Number(p.market_value) || 0);
@@ -265,26 +272,25 @@ export function computeBrinsonAttribution(positions) {
             sumWR += (mv / s.mv) * ret;
         });
         s.portfolioSectorReturn = sumWR;
-        // Benchmark sector return = simple average return within sector
+        // Benchmark sector return = simple avg return within sector
         s.benchmarkSectorReturn = s.sumRet / s.count;
     });
 
-    // Total portfolio return (value-weighted across all positions)
     var portfolioReturn = sectors.reduce(function(sum, sec) {
         var s = bySector[sec];
         return sum + s.portfolioWeight * s.portfolioSectorReturn;
     }, 0);
 
-    // Total benchmark return (equal-weight of benchmark sector returns)
     var benchmarkReturn = sectors.reduce(function(sum, sec) {
-        return sum + benchWeight * bySector[sec].benchmarkSectorReturn;
+        var s = bySector[sec];
+        return sum + s.benchmarkWeight * s.benchmarkSectorReturn;
     }, 0);
 
     // Brinson-Fachler decomposition
     var attribution = sectors.map(function(sec) {
         var s   = bySector[sec];
         var wp  = s.portfolioWeight;
-        var wb  = benchWeight;
+        var wb  = s.benchmarkWeight;
         var rp  = s.portfolioSectorReturn;
         var rb  = s.benchmarkSectorReturn;
         var Rb  = benchmarkReturn;
