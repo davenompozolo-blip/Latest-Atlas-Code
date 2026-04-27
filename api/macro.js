@@ -194,11 +194,31 @@ module.exports = async function handler(req, res) {
         };
 
         // Fetch Finnhub market quotes in parallel
-        var etfs = ['SPY', 'QQQ', 'IWM', 'EFA', 'EEM', 'TLT', 'HYG', 'LQD', 'GLD', 'USO', 'UUP'];
+        var etfs = [
+            // Core cross-asset
+            'SPY', 'QQQ', 'IWM', 'EFA', 'EEM', 'TLT', 'HYG', 'LQD', 'GLD', 'USO', 'UUP',
+            // Global ETF proxies
+            'EWJ', 'EWG', 'EWU', 'EWY', 'EWH',
+            // US SPDR Sector ETFs
+            'XLK', 'XLF', 'XLV', 'XLY', 'XLC', 'XLI', 'XLP', 'XLE', 'XLU', 'XLRE', 'XLB',
+        ];
         var quoteResults = await Promise.allSettled(etfs.map(function(s) { return finnhubQuote(s); }));
-        var marketQuotes = quoteResults
+        var allQuotes = quoteResults
             .map(function(r) { return r.status === 'fulfilled' ? r.value : null; })
             .filter(Boolean);
+
+        var SECTOR_NAMES = {
+            XLK:'Technology', XLF:'Financials', XLV:'Health Care', XLY:'Cons. Discretionary',
+            XLC:'Comm. Services', XLI:'Industrials', XLP:'Cons. Staples', XLE:'Energy',
+            XLU:'Utilities', XLRE:'Real Estate', XLB:'Materials',
+        };
+        var SECTOR_SYMS = Object.keys(SECTOR_NAMES);
+
+        var marketQuotes = allQuotes.filter(function(q) { return !SECTOR_NAMES[q.symbol]; });
+        var sectorQuotes = allQuotes
+            .filter(function(q) { return !!SECTOR_NAMES[q.symbol]; })
+            .map(function(q) { return Object.assign({}, q, { name: SECTOR_NAMES[q.symbol] }); })
+            .sort(function(a, b) { return (b.changePct || 0) - (a.changePct || 0); });
 
         // Assemble payload
         var payload = {
@@ -230,6 +250,7 @@ module.exports = async function handler(req, res) {
                 nfci: nfci,
             },
             market: marketQuotes,
+            sectors: sectorQuotes,
             regime: classifyRegime({ growth: { unrate: unrate }, inflation: { cpi: cpi } }),
             _ts: Date.now(),
             _v: 1,

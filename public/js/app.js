@@ -20,6 +20,7 @@ import { PerformanceSuite } from './performance-suite.js';
 import { EquityResearch } from './equity-research.js';
 import { MacroDashboard } from './macro-dashboard.js';
 import { FundsDashboard } from './funds-dashboard.js';
+import { MarketWatch } from './market-watch.js';
 
 const { useState, useEffect } = React;
 
@@ -35,6 +36,7 @@ const TABS = [
     { id: 'equity', label: 'EQUITY', sub: 'Ticker Research', icon: '\u25A1', component: EquityResearch },
     { id: 'macro', label: 'MACRO', sub: 'Economic Intelligence', icon: '\u25C9', component: MacroDashboard },
     { id: 'funds', label: 'FUNDS', sub: 'Fund & ETF Research', icon: '\u25A0', component: FundsDashboard },
+    { id: 'markets', label: 'MARKETS', sub: 'Global Market Watch', icon: '\u25CE', component: MarketWatch },
 ];
 
 const NAV_STRUCTURE = [
@@ -51,7 +53,7 @@ const NAV_STRUCTURE = [
     { type: 'tab', id: 'macro' },
     { type: 'tab', id: 'funds' },
     { type: 'header', label: 'MARKETS' },
-    { type: 'placeholder', label: 'MARKET', sub: 'Coming Soon' },
+    { type: 'tab', id: 'markets' },
 ];
 
 // ------------------------------------------------------------
