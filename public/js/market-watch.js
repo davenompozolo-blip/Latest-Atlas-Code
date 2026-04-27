@@ -334,6 +334,203 @@ function SectorsPanel(p) {
 }
 
 // ============================================================
+// 5. News Panel
+// ============================================================
+function NewsPanel() {
+    var _d = useState(null), newsData = _d[0], setNewsData = _d[1];
+    var _s = useState('loading'), status = _s[0], setStatus = _s[1];
+    var _f = useState('ALL'), srcFilter = _f[0], setSrcFilter = _f[1];
+
+    var SOURCE_COLORS = { MarketWatch: '#10b981', CNBC: '#00a0dd', Reuters: '#f59e0b', 'Yahoo Finance': '#8b5cf6' };
+
+    function load(nocache) {
+        setStatus('loading');
+        fetch('/api/news' + (nocache ? '?nocache=1' : '')).then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function(d) {
+            setNewsData(d);
+            setStatus('ready');
+        }).catch(function() { setStatus('error'); });
+    }
+
+    useEffect(function() { load(false); }, []);
+
+    if (status === 'loading') return h(Loading, null);
+    if (status === 'error') return h('div', { className: 'card', style: { padding: 32, textAlign: 'center' } },
+        h('div', { style: { color: '#ef4444', marginBottom: 10 } }, 'News unavailable'),
+        h('button', { onClick: function() { load(true); }, style: { background: 'rgba(0,212,255,0.12)', color: '#00d4ff', border: '1px solid rgba(0,212,255,0.3)', borderRadius: 6, padding: '7px 18px', cursor: 'pointer', fontSize: 12 } }, 'Retry')
+    );
+
+    var items = (newsData && newsData.items) || [];
+    var sources = (newsData && newsData.sources) || [];
+    var filtered = srcFilter === 'ALL' ? items : items.filter(function(i) { return i.source === srcFilter; });
+
+    // Source filter bar
+    var filterBar = h('div', { style: { display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' } },
+        h('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'DM Sans', marginRight: 4 } }, 'SOURCE:'),
+        [{ name: 'ALL', color: '#00d4ff', count: items.length }].concat(sources).map(function(src) {
+            var a = srcFilter === src.name;
+            var col = src.color || '#00d4ff';
+            return h('button', {
+                key: src.name, onClick: function() { setSrcFilter(src.name); },
+                style: { background: a ? col + '22' : 'rgba(255,255,255,0.04)', color: a ? col : 'rgba(255,255,255,0.45)', border: '1px solid ' + (a ? col + '55' : 'rgba(255,255,255,0.07)'), borderRadius: 6, padding: '4px 10px', fontSize: 10, fontWeight: a ? 700 : 400, cursor: 'pointer', fontFamily: 'DM Sans' }
+            }, src.name + ' (' + (src.count != null ? src.count : items.length) + ')');
+        }),
+        h('div', { style: { marginLeft: 'auto', display: 'flex', gap: 6 } },
+            h('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.25)', fontFamily: 'JetBrains Mono' } },
+                newsData && newsData._ts ? 'Updated ' + new Date(newsData._ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''),
+            h('button', { onClick: function() { load(true); }, style: { background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 6, padding: '4px 10px', fontSize: 10, cursor: 'pointer' } }, '↻ Refresh')
+        )
+    );
+
+    if (!filtered.length) return h('div', null, filterBar, h('div', { className: 'card', style: { padding: 32, textAlign: 'center', color: 'rgba(255,255,255,0.35)' } }, 'No headlines found.'));
+
+    // 2-column news grid
+    var cardGrid = h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))', gap: 12 } },
+        filtered.map(function(item, idx) {
+            var col = SOURCE_COLORS[item.source] || item.color || '#6366f1';
+            return h('a', {
+                key: idx,
+                href: item.link,
+                target: '_blank',
+                rel: 'noopener noreferrer',
+                style: { textDecoration: 'none', display: 'block' }
+            },
+                h('div', {
+                    style: {
+                        background: 'linear-gradient(135deg, rgba(99,102,241,0.07), rgba(15,23,42,0.97))',
+                        border: '1px solid rgba(99,102,241,0.18)',
+                        borderRadius: 12, padding: '14px 16px',
+                        position: 'relative', overflow: 'hidden',
+                        transition: 'border-color 0.15s',
+                    }
+                },
+                    h('div', { style: { position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'linear-gradient(90deg,' + col + ',#6366f1)', opacity: 0.85 } }),
+                    h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 } },
+                        h('span', { style: { background: col, color: '#0f172a', padding: '2px 8px', borderRadius: 6, fontSize: 9.5, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase' } }, item.source),
+                        h('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.35)', fontFamily: 'JetBrains Mono' } }, item.timeAgo)
+                    ),
+                    h('div', { style: { fontSize: 13, fontWeight: 600, color: '#f1f5f9', lineHeight: 1.45, marginBottom: 7, fontFamily: 'DM Sans' } }, item.title),
+                    item.summary ? h('div', { style: { fontSize: 11, color: 'rgba(255,255,255,0.45)', lineHeight: 1.55, marginBottom: 8, fontFamily: 'DM Sans' } }, item.summary) : null,
+                    h('span', { style: { fontSize: 10.5, color: col, fontWeight: 500, fontFamily: 'DM Sans' } }, 'Read More →')
+                )
+            );
+        })
+    );
+
+    return h('div', null, filterBar, cardGrid);
+}
+
+// ============================================================
+// 6. Calendar Panel
+// ============================================================
+function CalendarPanel() {
+    var _d = useState(null), calData = _d[0], setCalData = _d[1];
+    var _s = useState('loading'), status = _s[0], setStatus = _s[1];
+    var _imp = useState({ High: true, Medium: true, Low: false }), imp = _imp[0], setImp = _imp[1];
+
+    function load(nocache) {
+        setStatus('loading');
+        fetch('/api/calendar' + (nocache ? '?nocache=1' : '')).then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function(d) {
+            setCalData(d);
+            setStatus('ready');
+        }).catch(function() { setStatus('error'); });
+    }
+
+    useEffect(function() { load(false); }, []);
+
+    if (status === 'loading') return h(Loading, null);
+    if (status === 'error') return h('div', { className: 'card', style: { padding: 32, textAlign: 'center' } },
+        h('div', { style: { color: '#ef4444', marginBottom: 10 } }, 'Calendar unavailable'),
+        h('button', { onClick: function() { load(true); }, style: { background: 'rgba(0,212,255,0.12)', color: '#00d4ff', border: '1px solid rgba(0,212,255,0.3)', borderRadius: 6, padding: '7px 18px', cursor: 'pointer', fontSize: 12 } }, 'Retry')
+    );
+
+    var events = (calData && calData.events) || [];
+    var filtered = events.filter(function(e) { return imp[e.importance]; });
+    var upcoming = filtered.filter(function(e) { return e.daysUntil >= 0; });
+    var highCount = upcoming.filter(function(e) { return e.importance === 'High'; }).length;
+    var next3 = filtered.filter(function(e) { return e.daysUntil >= 0; }).slice(0, 3);
+
+    // Import classification colours
+    function impCol(i) { return i === 'High' ? '#ef4444' : i === 'Medium' ? '#f59e0b' : '#10b981'; }
+    function impBg(i)  { return i === 'High' ? 'rgba(239,68,68,0.12)' : i === 'Medium' ? 'rgba(245,158,11,0.10)' : 'rgba(16,185,129,0.08)'; }
+    function impBrd(i) { return i === 'High' ? 'rgba(239,68,68,0.28)' : i === 'Medium' ? 'rgba(245,158,11,0.25)' : 'rgba(16,185,129,0.2)'; }
+
+    // Top upcoming alert cards
+    var alertRow = next3.length ? h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10, marginBottom: 16 } },
+        next3.map(function(e, i) {
+            var col = impCol(e.importance);
+            return h('div', { key: i, style: { background: impBg(e.importance), border: '1px solid ' + impBrd(e.importance), borderRadius: 12, padding: '14px 16px', position: 'relative', overflow: 'hidden' } },
+                h('div', { style: { position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'linear-gradient(90deg,' + col + ',transparent)' } }),
+                h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.4)', fontFamily: 'JetBrains Mono', marginBottom: 4 } },
+                    e.date + (e.time ? '  ·  ' + e.time : '')),
+                h('div', { style: { fontSize: 13, fontWeight: 700, color: '#f1f5f9', marginBottom: 4, fontFamily: 'DM Sans', lineHeight: 1.3 } }, e.event),
+                h('div', { style: { fontSize: 11, color: col, fontWeight: 600, fontFamily: 'JetBrains Mono' } },
+                    e.daysUntil === 0 ? 'Today' : e.daysUntil === 1 ? 'Tomorrow' : 'In ' + e.daysUntil + ' days')
+            );
+        })
+    ) : null;
+
+    // KPI row
+    var kpiRow = h('div', { style: { display: 'flex', gap: 12, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' } },
+        h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'DM Sans' } },
+            'Showing ' + filtered.length + ' events over next ' + ((calData && calData.window) ? '60 days' : '—')),
+        h('div', { style: { marginLeft: 'auto', display: 'flex', gap: 8 } },
+            ['High', 'Medium', 'Low'].map(function(level) {
+                var on = imp[level];
+                var col = impCol(level);
+                return h('button', {
+                    key: level,
+                    onClick: function() { setImp(Object.assign({}, imp, { [level]: !on })); },
+                    style: { background: on ? col + '18' : 'rgba(255,255,255,0.04)', color: on ? col : 'rgba(255,255,255,0.3)', border: '1px solid ' + (on ? col + '44' : 'rgba(255,255,255,0.07)'), borderRadius: 6, padding: '4px 10px', fontSize: 10, fontWeight: on ? 700 : 400, cursor: 'pointer', fontFamily: 'DM Sans' }
+                }, level + ' Impact');
+            })
+        )
+    );
+
+    // Events table
+    var table = h('div', { className: 'card' },
+        h('div', { className: 'card-title' }, 'Upcoming Economic Events'),
+        h('div', { style: { overflowX: 'auto' } },
+            h('table', { className: 'data-table' },
+                h('thead', null,
+                    h('tr', null,
+                        ['Date', 'Time', 'Event', 'Category', 'Days', 'Impact'].map(function(col) {
+                            return h('th', { key: col }, col);
+                        })
+                    )
+                ),
+                h('tbody', null,
+                    filtered.slice(0, 80).map(function(e, idx) {
+                        var col = impCol(e.importance);
+                        var isPast = e.daysUntil < 0;
+                        var isToday = e.daysUntil === 0;
+                        var rowOpacity = isPast ? 0.45 : 1;
+                        return h('tr', { key: idx, style: { opacity: rowOpacity } },
+                            h('td', { style: { fontFamily: 'JetBrains Mono', color: isToday ? '#00d4ff' : 'rgba(255,255,255,0.75)', fontWeight: isToday ? 700 : 400 } }, e.date),
+                            h('td', { style: { fontFamily: 'JetBrains Mono', fontSize: 10, color: 'rgba(255,255,255,0.4)' } }, e.time || '—'),
+                            h('td', { style: { fontWeight: 600, color: '#f1f5f9' } }, e.event),
+                            h('td', { style: { color: 'rgba(255,255,255,0.5)', fontSize: 11 } }, e.category),
+                            h('td', { style: { fontFamily: 'JetBrains Mono', color: e.daysUntil === 0 ? '#00d4ff' : e.daysUntil > 0 ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.25)', fontWeight: e.daysUntil === 0 ? 700 : 400 } },
+                                isPast ? 'Past' : isToday ? 'TODAY' : e.daysUntil + 'd'),
+                            h('td', null,
+                                h('span', { style: { background: col + '18', color: col, border: '1px solid ' + col + '44', borderRadius: 4, padding: '2px 7px', fontSize: 9.5, fontWeight: 700, letterSpacing: 0.5, fontFamily: 'JetBrains Mono' } }, e.importance)
+                            )
+                        );
+                    })
+                )
+            )
+        )
+    );
+
+    return h('div', null, alertRow, kpiRow, table);
+}
+
+// ============================================================
 // Main export
 // ============================================================
 export function MarketWatch() {
@@ -349,27 +546,28 @@ export function MarketWatch() {
             if (!r.ok) throw new Error('API ' + r.status);
             return r.json();
         }).then(function(d) {
-            // Merge market + global ETFs into _allQuotes for the asset grid
             d._allQuotes = d.market || [];
             setData(d);
             setStatus('ready');
-        }).catch(function(e) {
+        }).catch(function() {
             setStatus('error');
         });
     }, []);
 
-    if (status === 'loading') return h(Loading, null);
-    if (status === 'error') return h('div', { className: 'card', style: { padding: 32, textAlign: 'center', color: '#ef4444' } },
-        'Market data unavailable. Check /api/macro or FRED/Finnhub API keys.');
+    // Macro data required for overview/sectors/regime/crossasset tabs
+    var macroReady = status === 'ready';
+    var macroLoading = status === 'loading';
 
     var TABS = [
         { id: 'overview',    label: 'OVERVIEW',    sub: 'Market Snapshot' },
         { id: 'sectors',     label: 'SECTORS',     sub: 'GICS Performance' },
+        { id: 'news',        label: 'NEWS',         sub: 'Market Headlines' },
+        { id: 'calendar',    label: 'CALENDAR',    sub: 'Economic Events' },
         { id: 'regime',      label: 'REGIME',      sub: 'Macro Quadrant' },
         { id: 'crossasset',  label: 'CROSS-ASSET', sub: 'Heatmap & Credit' },
     ];
 
-    var tabBar = h('div', { style: { display: 'flex', gap: 0, marginBottom: 20, borderBottom: '1px solid rgba(255,255,255,0.07)' } },
+    var tabBar = h('div', { style: { display: 'flex', gap: 0, marginBottom: 20, borderBottom: '1px solid rgba(255,255,255,0.07)', flexWrap: 'wrap' } },
         TABS.map(function(t) {
             var a = t.id === tab;
             return h('button', {
@@ -381,6 +579,16 @@ export function MarketWatch() {
             );
         })
     );
+
+    // NEWS and CALENDAR don't need macro data; render them independently
+    if (tab === 'news')     return h('div', null, h('div', { className: 'page-title' }, 'Market Watch'), tabBar, h(NewsPanel, null));
+    if (tab === 'calendar') return h('div', null, h('div', { className: 'page-title' }, 'Market Watch'), tabBar, h(CalendarPanel, null));
+
+    // Macro-dependent tabs need macro data
+    if (macroLoading) return h('div', null, h('div', { className: 'page-title' }, 'Market Watch'), tabBar, h(Loading, null));
+    if (status === 'error') return h('div', null, h('div', { className: 'page-title' }, 'Market Watch'), tabBar,
+        h('div', { className: 'card', style: { padding: 32, textAlign: 'center', color: '#ef4444' } },
+            'Market data unavailable. Check /api/macro or FRED/Finnhub API keys.'));
 
     var panel;
     switch (tab) {
