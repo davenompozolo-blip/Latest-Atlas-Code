@@ -124,28 +124,24 @@ export function QuantDashboard() {
             })
         ),
 
-        // === Panel tabs ===
-        React.createElement('div', { className: 'view-tabs' },
-            React.createElement('div', {
-                className: 'view-tab' + (activePanel === 'signals' ? ' active' : ''),
-                onClick: () => setActivePanel('signals')
-            }, 'Position Signals',
-                React.createElement('span', { className: 'count-pill' }, sig.length)),
-            React.createElement('div', {
-                className: 'view-tab' + (activePanel === 'rolling' ? ' active' : ''),
-                onClick: () => setActivePanel('rolling')
-            }, 'Rolling Returns',
-                React.createElement('span', { className: 'count-pill' }, roll.length)),
-            React.createElement('div', {
-                className: 'view-tab' + (activePanel === 'correlation' ? ' active' : ''),
-                onClick: () => setActivePanel('correlation')
-            }, 'Correlation Matrix',
-                React.createElement('span', { className: 'count-pill' }, corr.length)),
-            React.createElement('div', {
-                className: 'view-tab' + (activePanel === 'drawdown' ? ' active' : ''),
-                onClick: () => setActivePanel('drawdown')
-            }, 'Drawdown Map',
-                React.createElement('span', { className: 'count-pill' }, dd.length))
+        // === Panel tabs (Performance Suite style) ===
+        React.createElement('div', { style: { display: 'flex', gap: 0, marginBottom: 20, borderBottom: '1px solid rgba(255,255,255,0.07)' } },
+            ...[
+                { id: 'signals',     label: 'SIGNALS',     sub: 'Regime Breakdown',  n: sig.length },
+                { id: 'rolling',     label: 'ROLLING',     sub: 'Period Analysis',   n: roll.length },
+                { id: 'correlation', label: 'CORRELATION', sub: 'Pairwise ρ Matrix', n: corr.length },
+                { id: 'drawdown',    label: 'DRAWDOWN',    sub: 'Recovery Map',      n: dd.length },
+            ].map(function(t) {
+                var a = activePanel === t.id;
+                return React.createElement('button', {
+                    key: t.id, onClick: () => setActivePanel(t.id),
+                    style: { padding: '10px 24px 12px', border: 'none', borderBottom: '2px solid ' + (a ? '#00d4ff' : 'transparent'), background: 'transparent', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2, transition: 'all 0.15s ease', marginBottom: -1 }
+                },
+                    React.createElement('span', { style: { fontSize: 11, fontWeight: 700, letterSpacing: 1.2, fontFamily: 'JetBrains Mono', color: a ? '#00d4ff' : 'rgba(255,255,255,0.42)' } },
+                        t.label + '  ' + (t.n > 0 ? '(' + t.n + ')' : '')),
+                    React.createElement('span', { style: { fontSize: 9.5, color: a ? 'rgba(0,212,255,0.55)' : 'rgba(255,255,255,0.2)', fontFamily: 'DM Sans' } }, t.sub)
+                );
+            })
         ),
 
         // === Active panel content ===
