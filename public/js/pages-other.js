@@ -491,6 +491,135 @@ function VaRContribBar(p) {
     return React.createElement('div', { style: { height: 180 } }, React.createElement('canvas', { ref: ref }));
 }
 
+// ---- Plotly bubble scatter: Ann. Vol vs Daily VaR, sized by MV ----------
+
+function RiskScatter({ rows }) {
+    const ref = useRef(null);
+    useEffect(function() {
+        if (!rows || !rows.length || !ref.current) return;
+        const tierColors = { 'High Risk': '#ef4444', 'Moderate Risk': '#f59e0b', 'Low Risk': '#10b981' };
+        const groups = {};
+        rows.forEach(function(r) {
+            const tier = r.risk_tier || 'Low Risk';
+            if (!groups[tier]) groups[tier] = { x: [], y: [], size: [], text: [] };
+            const vol = Number(r.annual_vol) * 100;
+            const var$ = Math.abs(Number(r.dollar_var_95_daily) || 0);
+            const mv   = Math.abs(Number(r.market_value) || 0);
+            if (!isNaN(vol) && vol > 0 && var$ > 0) {
+                groups[tier].x.push(vol);
+                groups[tier].y.push(var$);
+                groups[tier].size.push(mv);
+                groups[tier].text.push(r.symbol);
+            }
+        });
+
+        const allSizes = Object.values(groups).reduce(function(acc, g) { return acc.concat(g.size); }, []);
+        const maxSize  = allSizes.length ? Math.max.apply(null, allSizes) : 1;
+
+        const traces = Object.keys(groups).map(function(tier) {
+            const g = groups[tier];
+            return {
+                type: 'scatter', mode: 'markers+text', name: tier,
+                x: g.x, y: g.y, text: g.text,
+                textposition: 'top center',
+                textfont: { size: 8, color: 'rgba(255,255,255,0.62)', family: 'JetBrains Mono' },
+                marker: {
+                    size: g.size.map(function(s) { return 10 + (s / maxSize) * 26; }),
+                    color: tierColors[tier] || '#6366f1',
+                    opacity: 0.72,
+                    line: { width: 1, color: 'rgba(255,255,255,0.12)' },
+                },
+                hovertemplate: '<b>%{text}</b><br>Ann. Vol: %{x:.1f}%<br>Daily VaR: $%{y:,.0f}<extra></extra>',
+            };
+        });
+
+        Plotly.react(ref.current, traces, {
+            paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+            font: { color: 'rgba(255,255,255,0.45)', family: 'JetBrains Mono', size: 10 },
+            showlegend: true,
+            legend: { bgcolor: 'rgba(0,0,0,0)', font: { size: 10, color: 'rgba(255,255,255,0.55)' }, x: 1.01, y: 1 },
+            margin: { l: 58, r: 100, t: 14, b: 50 },
+            xaxis: {
+                title: { text: 'Annual Volatility (%)', font: { size: 11 } },
+                gridcolor: 'rgba(255,255,255,0.05)', zeroline: false,
+                tickfont: { size: 10 }, ticksuffix: '%',
+            },
+            yaxis: {
+                title: { text: 'Daily VaR 95% ($)', font: { size: 11 } },
+                gridcolor: 'rgba(255,255,255,0.05)', zeroline: false,
+                tickfont: { size: 10 }, tickprefix: '$',
+            },
+            shapes: [
+                { type: 'line', x0: 25, x1: 25, y0: 0, y1: 1, yref: 'paper', line: { color: 'rgba(245,158,11,0.22)', width: 1, dash: 'dot' } },
+                { type: 'line', x0: 40, x1: 40, y0: 0, y1: 1, yref: 'paper', line: { color: 'rgba(239,68,68,0.22)',   width: 1, dash: 'dot' } },
+            ],
+            annotations: [
+                { x: 25, y: 1.08, yref: 'paper', text: '25% threshold', font: { size: 8, color: 'rgba(245,158,11,0.45)' }, showarrow: false },
+                { x: 40, y: 1.08, yref: 'paper', text: '40% high-vol', font: { size: 8, color: 'rgba(239,68,68,0.45)' },   showarrow: false },
+            ],
+        }, { responsive: true, displayModeBar: false });
+    }, [rows]);
+    return React.createElement('div', { ref: ref, style: { height: 290 } });
+}
+
+// ---- Per-position risk card ------------------------------------------
+
+function RiskCard({ row: r, maxVar }) {
+    const h = React.createElement;
+    const tierColor = r.risk_tier === 'High Risk' ? '#ef4444' : r.risk_tier === 'Moderate Risk' ? '#f59e0b' : '#10b981';
+    const volColor  = r.annual_vol > 0.4 ? '#ef4444' : r.annual_vol > 0.25 ? '#f59e0b' : '#10b981';
+    const varPct    = maxVar > 0 ? Math.abs(r.dollar_var_95_daily || 0) / maxVar : 0;
+    const volPct    = Math.min(1, (r.annual_vol || 0) / 0.6);
+
+    return h('div', {
+        style: {
+            background: 'linear-gradient(135deg,rgba(15,18,40,0.9),rgba(21,25,50,0.95))',
+            border: '1px solid rgba(255,255,255,0.07)',
+            borderRadius: 12, padding: '14px 16px',
+            position: 'relative', overflow: 'hidden',
+        }
+    },
+        h('div', { style: { position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: tierColor, borderRadius: '12px 12px 0 0', opacity: 0.85 } }),
+        // Symbol + tier badge
+        h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: 4, marginBottom: 10 } },
+            h('span', { style: { fontFamily: 'JetBrains Mono', fontWeight: 700, fontSize: 15, color: '#00d4ff' } }, r.symbol),
+            h('span', { style: { fontSize: 8, fontWeight: 700, letterSpacing: 0.8, padding: '2px 6px', borderRadius: 4, background: tierColor + '22', color: tierColor, border: '1px solid ' + tierColor + '44', textTransform: 'uppercase', fontFamily: 'DM Sans' } },
+                r.risk_tier ? r.risk_tier.replace(' Risk', '') : 'Low')
+        ),
+        // MV + Weight
+        h('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 10 } },
+            h('div', null,
+                h('div', { style: { fontSize: 8, color: 'rgba(255,255,255,0.28)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 2, fontFamily: 'DM Sans' } }, 'Market Value'),
+                h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.75)' } }, fmtCurrency(r.market_value))
+            ),
+            h('div', { style: { textAlign: 'right' } },
+                h('div', { style: { fontSize: 8, color: 'rgba(255,255,255,0.28)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 2, fontFamily: 'DM Sans' } }, 'Weight'),
+                h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.75)' } }, fmtPct(r.weight))
+            )
+        ),
+        // Daily VaR bar
+        h('div', { style: { marginBottom: 8 } },
+            h('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 3 } },
+                h('span', { style: { fontSize: 8, color: 'rgba(255,255,255,0.28)', textTransform: 'uppercase', letterSpacing: 1, fontFamily: 'DM Sans' } }, 'Daily VaR 95%'),
+                h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 10, color: '#ef4444', fontWeight: 600 } }, fmtCurrency(r.dollar_var_95_daily))
+            ),
+            h('div', { style: { height: 5, background: 'rgba(255,255,255,0.06)', borderRadius: 3, overflow: 'hidden' } },
+                h('div', { style: { height: '100%', width: (varPct * 100).toFixed(1) + '%', background: 'linear-gradient(90deg,' + tierColor + '88,' + tierColor + ')', borderRadius: 3, transition: 'width 0.4s ease' } })
+            )
+        ),
+        // Ann Vol bar
+        h('div', null,
+            h('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 3 } },
+                h('span', { style: { fontSize: 8, color: 'rgba(255,255,255,0.28)', textTransform: 'uppercase', letterSpacing: 1, fontFamily: 'DM Sans' } }, 'Ann. Volatility'),
+                h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 10, color: volColor, fontWeight: 600 } }, r.annual_vol != null ? (r.annual_vol * 100).toFixed(1) + '%' : '—')
+            ),
+            h('div', { style: { height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 3, overflow: 'hidden' } },
+                h('div', { style: { height: '100%', width: (volPct * 100).toFixed(1) + '%', background: 'linear-gradient(90deg,' + volColor + '66,' + volColor + ')', borderRadius: 3, transition: 'width 0.4s ease' } })
+            )
+        )
+    );
+}
+
 // ============================================================
 // RISK ANALYSIS
 // ============================================================
@@ -501,6 +630,8 @@ export function RiskAnalysis() {
     const [navData, setNavData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [tab, setTab] = useState('breakdown');
+    const [riskSortKey, setRiskSortKey] = useState('dollar_var_95_daily');
+    const [riskSortDir, setRiskSortDir] = useState('desc');
 
     useEffect(() => {
         Promise.all([
@@ -608,59 +739,77 @@ export function RiskAnalysis() {
         )
     );
 
-    // ---- Two-column chart area -----------------------------------------
-    var charts = React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 } },
+    // ---- Chart area: donut (1fr) + Risk scatter (2fr) --------------------
+    var charts = React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 14, marginBottom: 14 } },
         React.createElement('div', { className: 'card' },
             React.createElement('div', { className: 'card-title' }, 'Risk Tier Distribution'),
-            React.createElement(RiskTierDonut, { high: highRisk, mod: modRisk, low: lowRisk })
+            React.createElement(RiskTierDonut, { high: highRisk, mod: modRisk, low: lowRisk }),
+            React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12 } },
+                [['High Risk', '#ef4444', highRisk], ['Moderate Risk', '#f59e0b', modRisk], ['Low Risk', '#10b981', lowRisk]].map(function(t) {
+                    return React.createElement('div', { key: t[0], style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+                        React.createElement('span', { style: { fontSize: 10, color: t[1], fontFamily: 'DM Sans' } }, t[0]),
+                        React.createElement('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 700, color: t[1] } }, t[2])
+                    );
+                })
+            )
         ),
         React.createElement('div', { className: 'card' },
-            React.createElement('div', { className: 'card-title' }, 'Top VaR Contributors'),
-            React.createElement('div', { style: { fontSize: 11, color: 'rgba(255,255,255,0.3)', marginBottom: 8 } }, 'Daily 95% VaR by position — colour = risk tier'),
-            React.createElement(VaRContribBar, { rows: risk })
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 } },
+                React.createElement('div', { className: 'card-title', style: { margin: 0 } }, 'Volatility vs VaR  ·  Risk Bubble Map'),
+                React.createElement('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.22)', fontFamily: 'DM Sans' } }, 'Bubble size = market value')
+            ),
+            React.createElement(RiskScatter, { rows: risk })
         )
     );
 
-    // ---- Position table ------------------------------------------------
+    // ---- Position card grid --------------------------------------------
     var maxVar = Math.max.apply(null, risk.map(function(r) { return Math.abs(r.dollar_var_95_daily || 0); }));
-    var table = React.createElement('div', { className: 'card' },
-        React.createElement('div', { className: 'card-title' }, 'Position Risk Breakdown  ·  ' + risk.length + ' positions'),
-        React.createElement('div', { style: { overflowX: 'auto' } },
-            React.createElement('table', { className: 'data-table' },
-                React.createElement('thead', null,
-                    React.createElement('tr', null,
-                        ['Symbol', 'Market Value', 'Weight', 'Ann. Vol', 'Vol Contrib.', 'VaR Bar', 'Daily VaR $', 'Tier'].map(function(h) {
-                            return React.createElement('th', { key: h }, h);
-                        })
-                    )
-                ),
-                React.createElement('tbody', null,
-                    risk.slice().sort(function(a, b) { return Math.abs(b.dollar_var_95_daily || 0) - Math.abs(a.dollar_var_95_daily || 0); }).map(function(r) {
-                        var varPct = maxVar > 0 ? Math.abs(r.dollar_var_95_daily || 0) / maxVar : 0;
-                        var tierColor = r.risk_tier === 'High Risk' ? '#ef4444' : r.risk_tier === 'Moderate Risk' ? '#f59e0b' : '#10b981';
-                        return React.createElement('tr', { key: r.symbol },
-                            React.createElement('td', { style: { fontWeight: 700, color: '#00d4ff', fontFamily: 'JetBrains Mono' } }, r.symbol),
-                            React.createElement('td', null, fmtCurrency(r.market_value)),
-                            React.createElement('td', null, fmtPct(r.weight)),
-                            React.createElement('td', { style: { color: r.annual_vol > 0.4 ? '#ef4444' : r.annual_vol > 0.25 ? '#f59e0b' : 'rgba(255,255,255,0.75)' } }, fmtPct(r.annual_vol)),
-                            React.createElement('td', null, fmtPct(r.marginal_vol_contribution)),
-                            React.createElement('td', { style: { minWidth: 80 } },
-                                React.createElement('div', { style: { height: 6, background: 'rgba(255,255,255,0.06)', borderRadius: 3, overflow: 'hidden' } },
-                                    React.createElement('div', { style: { height: '100%', width: (varPct * 100).toFixed(1) + '%', background: tierColor, borderRadius: 3 } })
-                                )
-                            ),
-                            React.createElement('td', { style: { color: '#ef4444', fontFamily: 'JetBrains Mono', fontWeight: 600 } }, fmtCurrency(r.dollar_var_95_daily)),
-                            React.createElement('td', null, React.createElement('span', { className: 'badge ' + badgeCls(r.risk_tier) }, r.risk_tier))
-                        );
-                    })
-                )
+
+    var RISK_SORT_OPTS = [
+        { key: 'dollar_var_95_daily', label: 'VaR $' },
+        { key: 'annual_vol',          label: 'Volatility' },
+        { key: 'market_value',        label: 'Mkt Value' },
+        { key: 'weight',              label: 'Weight' },
+        { key: 'symbol',              label: 'Symbol' },
+    ];
+
+    var riskSorted = risk.slice().sort(function(a, b) {
+        var av = a[riskSortKey], bv = b[riskSortKey];
+        if (av == null && bv == null) return 0;
+        if (av == null) return 1; if (bv == null) return -1;
+        var cmp = (!isNaN(Number(av)) && !isNaN(Number(bv)))
+            ? Number(av) - Number(bv) : String(av).localeCompare(String(bv));
+        return riskSortDir === 'asc' ? cmp : -cmp;
+    });
+
+    var cards = React.createElement('div', { className: 'card' },
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 } },
+            React.createElement('div', { className: 'card-title', style: { margin: 0 } }, 'Position Risk Breakdown  ·  ' + risk.length + ' positions'),
+            React.createElement('div', { style: { display: 'flex', gap: 6, alignItems: 'center' } },
+                React.createElement('span', { style: { fontSize: 9.5, color: 'rgba(255,255,255,0.28)', fontFamily: 'DM Sans', marginRight: 2 } }, 'Sort:'),
+                RISK_SORT_OPTS.map(function(opt) {
+                    var active = riskSortKey === opt.key;
+                    return React.createElement('button', {
+                        key: opt.key,
+                        onClick: function() {
+                            if (riskSortKey === opt.key) setRiskSortDir(function(d) { return d === 'asc' ? 'desc' : 'asc'; });
+                            else { setRiskSortKey(opt.key); setRiskSortDir('desc'); }
+                        },
+                        style: { background: active ? 'rgba(0,212,255,0.13)' : 'rgba(255,255,255,0.04)', color: active ? '#00d4ff' : 'rgba(255,255,255,0.38)', border: '1px solid ' + (active ? 'rgba(0,212,255,0.3)' : 'rgba(255,255,255,0.06)'), borderRadius: 5, padding: '3px 9px', fontSize: 9.5, fontWeight: active ? 700 : 400, cursor: 'pointer', fontFamily: 'DM Sans' }
+                    }, opt.label + (active ? (riskSortDir === 'desc' ? ' ↓' : ' ↑') : ''));
+                })
             )
+        ),
+        React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 10 } },
+            riskSorted.map(function(r) {
+                return React.createElement(RiskCard, { key: r.symbol, row: r, maxVar: maxVar });
+            })
         )
     );
 
     return React.createElement('div', null,
         React.createElement('div', { className: 'page-title' }, 'Risk Analysis'),
-        tabBar, riskBar, charts, table
+        tabBar, riskBar, charts, cards
     );
 }
 
