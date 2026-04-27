@@ -31,6 +31,8 @@ export function PerformanceSuite() {
     var perfData = _p[0], setPerfData = _p[1];
     var _c = useState(null);
     var cmdData = _c[0], setCmdData = _c[1];
+    var _h = useState(null);
+    var homeData = _h[0], setHomeData = _h[1];
     var _l = useState(true);
     var loading = _l[0], setLoading = _l[1];
 
@@ -38,7 +40,8 @@ export function PerformanceSuite() {
         Promise.all([
             loadView('vw_portfolio_nav_daily', []),
             loadView('vw_performance_suite', []),
-            loadView('vw_command_centre', [MOCK_COMMAND])
+            loadView('vw_command_centre', [MOCK_COMMAND]),
+            loadView('vw_portfolio_home', []),
         ]).then(function(res) {
             var nav = res[0];
             if (Array.isArray(nav) && nav.length) {
@@ -50,6 +53,7 @@ export function PerformanceSuite() {
             setPerfData(res[1]);
             var cmd = Array.isArray(res[2]) ? res[2][0] : res[2];
             setCmdData(cmd || MOCK_COMMAND);
+            setHomeData(res[3] || []);
             setLoading(false);
         });
     }, []);
@@ -198,7 +202,7 @@ export function PerformanceSuite() {
             panel = hasNav ? h(RiskPanel, { navSeries: navSeries, cmdData: cmdData }) : h(EmptyState, null);
             break;
         case 'positions':
-            panel = hasPerf ? h(PositionsPanel, { perfData: perfData, cmdData: cmdData }) : h(EmptyState, null);
+            panel = hasPerf ? h(PositionsPanel, { perfData: perfData, cmdData: cmdData, homeData: homeData || [] }) : h(EmptyState, null);
             break;
     }
 

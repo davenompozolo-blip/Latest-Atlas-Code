@@ -200,7 +200,25 @@ export function PositionsPanel(p) {
     var _b = React.useState('equal');
     var benchKey = _b[0], setBenchKey = _b[1];
 
-    var perf    = p.perfData || [];
+    var rawPerf = p.perfData || [];
+
+    // Enrich perfData with market_value + sector from vw_portfolio_home.
+    // vw_performance_suite tracks entry/return data; vw_portfolio_home
+    // has live market_value and GICS sector. Merging by symbol gives
+    // computeBrinsonAttribution everything it needs without a DB migration.
+    var perf = useMemo(function() {
+        if (!p.homeData || !p.homeData.length) return rawPerf;
+        var bySymbol = {};
+        p.homeData.forEach(function(row) { bySymbol[row.symbol] = row; });
+        return rawPerf.map(function(pos) {
+            var h = bySymbol[pos.symbol] || {};
+            return Object.assign({}, pos, {
+                market_value: pos.market_value != null ? pos.market_value : (h.market_value != null ? h.market_value : null),
+                sector: pos.sector || h.sector || 'Other',
+            });
+        });
+    }, [rawPerf, p.homeData]);
+
     var brinson = useMemo(function() {
         return computeBrinsonAttribution(perf, BENCHMARKS[benchKey].weights);
     }, [perf, benchKey]);
