@@ -6,7 +6,7 @@
 // ============================================================
 
 import { loadView } from './config.js';
-import { Loading, EmptyState, HeroCard } from './components.js';
+import { Loading, EmptyState, HeroCard, NarrativeStrip } from './components.js';
 import { SignalsPanel } from './quant-signals.js';
 import { RollingPanel } from './quant-rolling.js';
 import { CorrelationPanel } from './quant-correlation.js';
@@ -123,6 +123,36 @@ export function QuantDashboard() {
                 color: ddColor, accent: ddAccent
             })
         ),
+
+        // === Quant insight strip ===
+        React.createElement(NarrativeStrip, { items: (function() {
+            var items = [];
+            var total = sig.length || 1;
+            items.push({
+                icon: '◆',
+                text: '<strong>' + uptrend + '/' + total + ' uptrend</strong>, ' + downtrend + ' downtrend, ' + sideways + ' sideways — ' +
+                    (uptrend > downtrend ? '<span style="color:#10b981">bullish breadth</span>' : downtrend > uptrend ? '<span style="color:#ef4444">bearish breadth</span>' : '<span style="color:#f59e0b">mixed regime</span>')
+            });
+            if (rsiOver > 0 || rsiUnder > 0) items.push({
+                icon: '✦',
+                text: (rsiOver > 0 ? '<strong style="color:#ef4444">' + rsiOver + ' overbought (RSI≥70)</strong>' : '') +
+                    (rsiOver > 0 && rsiUnder > 0 ? ' · ' : '') +
+                    (rsiUnder > 0 ? '<strong style="color:#10b981">' + rsiUnder + ' oversold (RSI≤30)</strong>' : '')
+            });
+            if (avgCorr != null) items.push({
+                icon: '≈',
+                text: 'Avg pairwise ρ <strong>' + avgCorr.toFixed(2) + '</strong>' +
+                    (avgCorr > 0.6 ? ' — <span style="color:#ef4444">high concentration risk, diversification reduced</span>' : avgCorr > 0.4 ? ' — moderate overlap' : ' — <span style="color:#10b981">well-diversified portfolio</span>') +
+                    (highCorrPairs > 0 ? ', <strong>' + highCorrPairs.toFixed(0) + ' pair(s)</strong> ρ≥0.80' : '')
+            });
+            if (inDD20 > 0 || inDD10 > 0) items.push({
+                icon: '▽',
+                text: (inDD20 > 0 ? '<strong style="color:#ef4444">' + inDD20 + ' position(s) in deep drawdown (≥20%)</strong>' : '') +
+                    (inDD20 > 0 && inDD10 > inDD20 ? ' · ' : '') +
+                    (inDD10 > inDD20 ? (inDD10 - inDD20) + ' more in moderate drawdown (10-20%)' : '')
+            });
+            return items;
+        })() }),
 
         // === Panel tabs (Performance Suite style) ===
         React.createElement('div', { style: { display: 'flex', gap: 0, marginBottom: 20, borderBottom: '1px solid rgba(255,255,255,0.07)' } },
