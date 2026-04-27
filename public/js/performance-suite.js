@@ -84,6 +84,15 @@ export function PerformanceSuite() {
     var winRate  = m ? m.winRate     : null;
     var ytd      = periods ? periods.ytd : null;
 
+    // Account Equity = latest equity value from portfolio_equity_curve (via navSeries)
+    var accountEquity = hasNav ? navSeries[navSeries.length - 1].nav : null;
+    // Portfolio Value = sum of long position market values (from homeData)
+    var portfolioValue = homeData && homeData.length
+        ? homeData.reduce(function(s, r) { return s + (r.market_value != null ? Number(r.market_value) : 0); }, 0)
+        : null;
+    // Cash & Margin = difference (positive = net cash, negative = margin leverage)
+    var cashMargin = accountEquity != null && portfolioValue != null ? accountEquity - portfolioValue : null;
+
     // ---- Colour helpers ----------------------------------------
     function rc(v)   { return v == null ? 'rgba(255,255,255,0.5)' : v >= 0 ? '#10b981' : '#ef4444'; }
     function ddC(v)  { return v == null ? 'rgba(255,255,255,0.5)' : v < -0.10 ? '#ef4444' : v < -0.03 ? '#f59e0b' : '#10b981'; }
@@ -93,6 +102,10 @@ export function PerformanceSuite() {
     function pct(v, decimals) {
         if (v == null || !isFinite(v)) return '—';
         return (v >= 0 ? '+' : '') + (v * 100).toFixed(decimals != null ? decimals : 2) + '%';
+    }
+    function money(v) {
+        if (v == null || !isFinite(v)) return '—';
+        return '$' + Number(v).toLocaleString('en-US', { maximumFractionDigits: 0 });
     }
 
     // Status label
@@ -118,6 +131,19 @@ export function PerformanceSuite() {
             display: 'flex', alignItems: 'center',
         }
     },
+        h('div', { style: hb },
+            h('div', { style: hl }, 'Account Equity'),
+            h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 22, fontWeight: 700, color: '#00d4ff' } }, money(accountEquity)),
+            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'JetBrains Mono' } }, 'Cash + positions − margin')
+        ),
+        h('div', { style: div }),
+        h('div', { style: hb },
+            h('div', { style: hl }, 'Portfolio Value'),
+            h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 18, fontWeight: 700, color: 'rgba(255,255,255,0.85)' } }, money(portfolioValue)),
+            h('div', { style: { fontSize: 10, color: cashMargin != null ? (cashMargin >= 0 ? '#10b981' : '#ef4444') : 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'JetBrains Mono' } },
+                cashMargin != null ? (cashMargin >= 0 ? '+' : '') + money(cashMargin) + ' cash/margin' : 'Long positions MV')
+        ),
+        h('div', { style: div }),
         h('div', { style: hb },
             h('div', { style: hl }, 'Total Return'),
             h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 22, fontWeight: 700, color: rc(totalRet) } }, pct(totalRet)),
