@@ -669,14 +669,36 @@ export function RiskAnalysis() {
 // ============================================================
 export function CommandCentre() {
     const [command, setCommand] = useState(null);
+    const [navData, setNavData] = useState(null);
+    const [homeData, setHomeData] = useState(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        loadView('vw_command_centre', [MOCK_COMMAND]).then(d => { setCommand(d[0] || MOCK_COMMAND); setLoading(false); });
+        Promise.all([
+            loadView('vw_command_centre', [MOCK_COMMAND]),
+            loadView('vw_portfolio_nav_daily', []),
+            loadView('vw_portfolio_home', []),
+        ]).then(function(res) {
+            setCommand((Array.isArray(res[0]) ? res[0][0] : res[0]) || MOCK_COMMAND);
+            setNavData(res[1]);
+            setHomeData(res[2]);
+            setLoading(false);
+        });
     }, []);
 
     if (loading) return React.createElement(Loading, null);
     const c = command || MOCK_COMMAND;
+
+    // Compute equity + cash balance from loaded data
+    var _cNavSorted = navData ? navData.slice().sort(function(a,b){ return new Date(a.price_date) - new Date(b.price_date); }) : [];
+    var cmdEquity = _cNavSorted.length ? _cNavSorted[_cNavSorted.length - 1].nav : null;
+    var cmdPortMV = homeData && homeData.length ? homeData.reduce(function(s, r) { return s + (Number(r.market_value) || 0); }, 0) : null;
+    var cmdCash = cmdEquity != null && cmdPortMV != null ? cmdEquity - cmdPortMV : null;
+    var cmdLeverage = cmdEquity && cmdEquity > 0 && cmdPortMV != null ? cmdPortMV / cmdEquity : null;
+    var cmdCashLabel = cmdCash == null ? '—' : (cmdCash >= 0 ? '+' : '') + fmtCurrency(cmdCash);
+    var cmdCashBadge = cmdCash == null ? 'N/A' : cmdCash >= 0 ? 'Cash on Hand' : cmdLeverage != null ? cmdLeverage.toFixed(2) + '× Leveraged' : 'Margined';
+    var cmdCashColor = cmdCash == null ? undefined : cmdCash >= 0 ? 'var(--green)' : 'var(--red)';
+    var cmdCashAccent = cmdCash == null ? 'indigo' : cmdCash >= 0 ? 'green' : 'red';
 
     return React.createElement('div', null,
         React.createElement('div', { className: 'page-title' }, 'Command Centre'),
@@ -690,7 +712,21 @@ export function CommandCentre() {
         // Metrics Grid — Hero Cards
         React.createElement('div', { className: 'hero-grid', style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 20 } },
             React.createElement(HeroCard, {
-                icon: '◊', label: 'PORTFOLIO NAV', value: fmtCurrency(c.portfolio_nav), accent: 'cyan'
+                icon: '◈', label: 'ACCOUNT EQUITY',
+                value: cmdEquity != null ? fmtCurrency(cmdEquity) : fmtCurrency(c.portfolio_nav),
+                accent: 'cyan',
+                badge: 'Cash + Longs − Margin'
+            }),
+            React.createElement(HeroCard, {
+                icon: '◊', label: 'PORTFOLIO NAV', value: fmtCurrency(cmdPortMV || c.portfolio_nav), accent: 'cyan'
+            }),
+            React.createElement(HeroCard, {
+                icon: cmdCash != null && cmdCash < 0 ? '▽' : '◉',
+                label: 'CASH / MARGIN',
+                value: cmdCashLabel,
+                color: cmdCashColor,
+                accent: cmdCashAccent,
+                badge: cmdCashBadge
             }),
             React.createElement(HeroCard, {
                 icon: '◇', label: 'TOTAL INVESTED', value: fmtCurrency(c.total_invested), accent: 'indigo'

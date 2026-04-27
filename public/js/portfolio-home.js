@@ -517,28 +517,43 @@ export function PortfolioHome() {
     var hb = { display: 'flex', flexDirection: 'column', justifyContent: 'center' };
     var hl = { fontSize: 9, letterSpacing: 1.8, textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', marginBottom: 4, fontFamily: 'DM Sans' };
 
-    var pnlPositive = (c.unrealised_pnl || 0) >= 0;
-    var leverageSub = c.gross_leverage != null ? 'Leverage: ' + Number(c.gross_leverage).toFixed(2) + 'x' : '\u2014';
+    // Derive Account Equity, Portfolio NAV, and Cash/Margin from loaded data
+    var _navSorted = navData ? navData.slice().sort(function(a,b){ return new Date(a.price_date) - new Date(b.price_date); }) : [];
+    var accountEquity = _navSorted.length ? _navSorted[_navSorted.length - 1].nav : null;
+    var portfolioLongMV = positions.reduce(function(s, p) { return s + (Number(p.market_value) || 0); }, 0);
+    var cashBalance = accountEquity != null ? accountEquity - portfolioLongMV
+        : (c.cash_balance != null ? Number(c.cash_balance) : null);
+    var leverageRatio = accountEquity && accountEquity > 0 ? portfolioLongMV / accountEquity : null;
+    var cashColor = cashBalance == null ? 'rgba(255,255,255,0.5)' : cashBalance >= 0 ? '#10b981' : '#ef4444';
+    var cashSub = cashBalance == null ? 'Unavailable'
+        : cashBalance >= 0 ? 'Cash on hand'
+        : 'Margin \u00b7 ' + (leverageRatio != null ? leverageRatio.toFixed(2) + '\u00d7 leverage' : 'leveraged');
 
     return React.createElement('div', null,
         // Hero Pulse Bar
-        React.createElement('div', { style: { background: 'linear-gradient(135deg,rgba(0,212,255,0.04),rgba(99,102,241,0.04))', border: '1px solid rgba(0,212,255,0.12)', borderRadius: 10, padding: '16px 20px', marginBottom: 16, display: 'flex', alignItems: 'center' } },
+        React.createElement('div', { style: { background: 'linear-gradient(135deg,rgba(0,212,255,0.04),rgba(99,102,241,0.04))', border: '1px solid rgba(0,212,255,0.12)', borderRadius: 10, padding: '16px 20px', marginBottom: 16, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px 0' } },
+            React.createElement('div', { style: hb },
+                React.createElement('div', { style: hl }, 'Account Equity'),
+                React.createElement('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 22, fontWeight: 700, color: '#00d4ff' } }, accountEquity != null ? fmtCurrency(accountEquity) : fmtCurrency(c.portfolio_nav)),
+                React.createElement('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 3, fontFamily: 'JetBrains Mono' } }, 'Cash + longs \u2212 margin')
+            ),
+            React.createElement('div', { style: div }),
             React.createElement('div', { style: hb },
                 React.createElement('div', { style: hl }, 'Portfolio NAV'),
-                React.createElement('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 22, fontWeight: 700, color: 'rgba(255,255,255,0.95)' } }, fmtCurrency(c.portfolio_nav)),
-                React.createElement('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 3, fontFamily: 'JetBrains Mono' } }, (c.position_count || positions.length) + ' positions')
+                React.createElement('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 18, fontWeight: 700, color: 'rgba(255,255,255,0.88)' } }, fmtCurrency(portfolioLongMV || c.portfolio_nav)),
+                React.createElement('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 3, fontFamily: 'JetBrains Mono' } }, (c.position_count || positions.length) + ' long positions')
+            ),
+            React.createElement('div', { style: div }),
+            React.createElement('div', { style: hb },
+                React.createElement('div', { style: hl }, 'Cash / Margin'),
+                React.createElement('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 18, fontWeight: 700, color: cashColor } }, cashBalance != null ? fmtCurrency(cashBalance) : '\u2014'),
+                React.createElement('div', { style: { fontSize: 10, color: cashColor, marginTop: 3, fontFamily: 'JetBrains Mono', opacity: 0.8 } }, cashSub)
             ),
             React.createElement('div', { style: div }),
             React.createElement('div', { style: hb },
                 React.createElement('div', { style: hl }, 'Unrealised P&L'),
                 React.createElement('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 18, fontWeight: 700, color: Number(c.unrealised_pnl) >= 0 ? '#10b981' : '#ef4444' } }, fmtCurrency(c.unrealised_pnl)),
                 React.createElement('div', { style: { fontSize: 10, color: retColor, marginTop: 3, fontFamily: 'JetBrains Mono' } }, (retPct >= 0 ? '+' : '') + (retPct * 100).toFixed(2) + '% total return')
-            ),
-            React.createElement('div', { style: div }),
-            React.createElement('div', { style: hb },
-                React.createElement('div', { style: hl }, 'Cash Balance'),
-                React.createElement('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 18, fontWeight: 700, color: Number(c.cash_balance) < 0 ? '#ef4444' : 'rgba(255,255,255,0.85)' } }, fmtCurrency(c.cash_balance)),
-                React.createElement('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 3, fontFamily: 'JetBrains Mono' } }, c.gross_leverage != null ? 'Leverage ' + Number(c.gross_leverage).toFixed(2) + '\u00d7' : 'No leverage')
             ),
             React.createElement('div', { style: div }),
             React.createElement('div', { style: hb },
