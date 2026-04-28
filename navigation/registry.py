@@ -336,8 +336,7 @@ TIER_REQUIREMENTS = {
     "market_regime": "professional",
     # Valuation — Professional
     "valuation_house": "professional",
-    # Trading — Professional
-    "command_centre": "professional",
+    # Trading — free (Command Centre is open to all tiers)
     # Strategy — Professional
     "saa_tool": "professional",
     "commentary_generator": "professional",
