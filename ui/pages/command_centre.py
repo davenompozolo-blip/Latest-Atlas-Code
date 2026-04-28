@@ -471,3 +471,94 @@ def render_header() -> None:
             )
         else:
             st.caption("Alpaca not connected")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Chunk 4 — Security info panel (left column)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def render_security_info(symbol: str) -> None:
+    snap = get_snapshot(symbol)
+    fund = get_fundamentals(symbol)
+
+    name   = fund.get("company_name", symbol)
+    exch   = fund.get("exchange", "")
+    sector = fund.get("sector", "")
+
+    # ── Name / exchange strip ─────────────────────────────────────────────
+    st.markdown(
+        f"<div style='margin-bottom:2px;'>"
+        f"<span style='font-size:1.45rem;font-weight:700;color:#e6edf3;'>{symbol}</span>"
+        f"<span style='color:#8b949e;margin-left:8px;font-size:0.88rem;'>{name}</span>"
+        f"</div>"
+        f"<div style='color:#8b949e;font-size:0.76rem;margin-bottom:10px;'>"
+        f"{exch}{'  ·  ' + sector if sector else ''}"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+    # ── Price hero ────────────────────────────────────────────────────────
+    last  = snap.get("last_price", 0.0)
+    chg   = snap.get("change", 0.0)
+    chgp  = snap.get("change_pct", 0.0)
+    col   = _color(chg)
+    arrow = "▲" if chg >= 0 else "▼"
+
+    st.markdown(
+        f"<div class='price-hero'>${last:,.2f}</div>"
+        f"<div style='color:{col};font-size:0.95rem;font-weight:600;margin-bottom:14px;'>"
+        f"{arrow} {chg:+.2f} ({chgp:+.2f}%)"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+    # ── OHLCV stats grid ──────────────────────────────────────────────────
+    st.markdown('<div class="sec-header">Market Data</div>', unsafe_allow_html=True)
+
+    stats = [
+        ("Open",      _fmt_price(snap.get("open"))),
+        ("High",      _fmt_price(snap.get("high"))),
+        ("Low",       _fmt_price(snap.get("low"))),
+        ("Prev Close",_fmt_price(snap.get("prev_close"))),
+        ("Volume",    _fmt_vol(snap.get("volume"))),
+        ("VWAP",      _fmt_price(snap.get("vwap")) if snap.get("vwap") else "—"),
+        ("52W High",  _fmt_price(fund.get("week52_high"))),
+        ("52W Low",   _fmt_price(fund.get("week52_low"))),
+        ("Avg Vol",   _fmt_vol(fund.get("avg_volume"))),
+        ("Beta",      f"{fund['beta']:.2f}" if fund.get("beta") else "—"),
+        ("Mkt Cap",   _fmt_large(fund.get("market_cap"))),
+        ("EPS (TTM)", _fmt_price(fund.get("eps_ttm"))),
+    ]
+
+    c1, c2 = st.columns(2)
+    for i, (lbl, val) in enumerate(stats):
+        with (c1 if i % 2 == 0 else c2):
+            st.markdown(
+                f"<div style='margin-bottom:5px;'>"
+                f"<span class='stat-label'>{lbl}</span><br>"
+                f"<span class='stat-value'>{val}</span>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+    # ── Alpaca asset attributes ───────────────────────────────────────────
+    attrs = [a for a, k in [
+        ("Fractional", "fractionable"),
+        ("Shortable",  "shortable"),
+        ("Marginable", "marginable"),
+        ("ETB",        "easy_to_borrow"),
+    ] if fund.get(k)]
+    if attrs:
+        pills = " ".join(
+            f"<span style='background:#21262d;border:1px solid #30363d;"
+            f"border-radius:3px;padding:1px 6px;font-size:0.72rem;color:#8b949e;'>{a}</span>"
+            for a in attrs
+        )
+        st.markdown(pills + "<br>", unsafe_allow_html=True)
+
+    # ── Description ───────────────────────────────────────────────────────
+    desc = fund.get("description", "")
+    if desc:
+        st.markdown('<div class="sec-header">About</div>', unsafe_allow_html=True)
+        with st.expander("Read more", expanded=False):
+            st.caption(desc[:600] + ("…" if len(desc) > 600 else ""))
