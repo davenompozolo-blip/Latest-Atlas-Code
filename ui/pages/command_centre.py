@@ -390,3 +390,84 @@ def _fmt_vol(v) -> str:
 def _color(val) -> str:
     try:    return "#3fb950" if float(val) >= 0 else "#f85149"
     except: return "#8b949e"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Chunk 3 — Header: search bar + account badge
+# ─────────────────────────────────────────────────────────────────────────────
+
+def render_header() -> None:
+    col_search, col_acct = st.columns([3, 1])
+
+    with col_search:
+        query = st.text_input(
+            label="symbol_search",
+            value=st.session_state.get("search_query", st.session_state.symbol),
+            placeholder="Search symbol or company — AAPL, NVDA, SPY, TSLA…",
+            label_visibility="collapsed",
+            key="cc_search_input",
+        )
+
+        if query:
+            q_clean = query.strip().upper()
+            # Only search if it differs from current symbol
+            if q_clean != st.session_state.symbol:
+                results = search_symbols(query)
+                if results:
+                    btn_cols = st.columns(min(len(results), 5))
+                    for i, r in enumerate(results[:5]):
+                        with btn_cols[i]:
+                            label = r["symbol"]
+                            sub   = (r.get("name") or "")[:16]
+                            if st.button(
+                                f"**{label}**\n{sub}",
+                                key=f"cc_sug_{label}",
+                                use_container_width=True,
+                            ):
+                                st.session_state.symbol       = label
+                                st.session_state.search_query = label
+                                st.session_state.confirm_pending = False
+                                get_snapshot.clear()
+                                get_bars_df.clear()
+                                get_fundamentals.clear()
+                                get_option_chain.clear()
+                                st.rerun()
+
+                # Allow Enter / Load button to confirm a manually typed symbol
+                if q_clean.isalpha() and len(q_clean) <= 5:
+                    if st.button(f"Load {q_clean}", key="cc_load_typed", type="primary"):
+                        st.session_state.symbol       = q_clean
+                        st.session_state.search_query = q_clean
+                        st.session_state.confirm_pending = False
+                        get_snapshot.clear()
+                        get_bars_df.clear()
+                        get_fundamentals.clear()
+                        get_option_chain.clear()
+                        st.rerun()
+
+    with col_acct:
+        acct = get_account_info()
+        if acct:
+            mode    = acct.get("mode", "PAPER")
+            equity  = acct.get("equity", 0.0)
+            cash    = acct.get("cash", 0.0)
+            day_chg = equity - acct.get("last_equity", equity)
+            chg_col = _color(day_chg)
+            badge   = (
+                '<span class="badge-live">⚠ LIVE</span>'
+                if mode == "LIVE" else
+                '<span class="badge-paper">PAPER</span>'
+            )
+            st.markdown(
+                f"{badge}<br>"
+                f'<span class="stat-label">Equity </span>'
+                f'<span class="stat-value">${equity:,.0f}</span><br>'
+                f'<span class="stat-label">Cash </span>'
+                f'<span class="stat-value">${cash:,.0f}</span><br>'
+                f'<span class="stat-label">Day P&L </span>'
+                f'<span style="color:{chg_col};font-weight:600;">'
+                f'{day_chg:+,.0f}</span>',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.caption("Alpaca not connected")
