@@ -562,3 +562,95 @@ def render_security_info(symbol: str) -> None:
         st.markdown('<div class="sec-header">About</div>', unsafe_allow_html=True)
         with st.expander("Read more", expanded=False):
             st.caption(desc[:600] + ("…" if len(desc) > 600 else ""))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Chunk 5 — Price chart (right column)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def render_chart(symbol: str, timeframe: str) -> None:
+    # ── Timeframe pill selector ───────────────────────────────────────────
+    tf_list = list(TF_MAP.keys())
+    tf_cols = st.columns(len(tf_list))
+    for i, tf in enumerate(tf_list):
+        with tf_cols[i]:
+            is_active = tf == timeframe
+            if st.button(
+                tf,
+                key=f"cc_tf_{tf}",
+                use_container_width=True,
+                type="primary" if is_active else "secondary",
+            ):
+                st.session_state.timeframe = tf
+                get_bars_df.clear()
+                st.rerun()
+
+    # ── Fetch bars ────────────────────────────────────────────────────────
+    df = get_bars_df(symbol, timeframe)
+
+    if df is None or df.empty:
+        st.info(f"No chart data for {symbol}.")
+        return
+
+    # ── TradingView chart (preferred) ─────────────────────────────────────
+    if TRADINGVIEW_AVAILABLE:
+        render_candlestick_chart(
+            df=df,
+            key=f"cc_chart_{symbol}_{timeframe}",
+            height=440,
+            show_volume=True,
+            watermark=symbol,
+            dark_mode=True,
+        )
+        return
+
+    # ── Plotly fallback ───────────────────────────────────────────────────
+    try:
+        import plotly.graph_objects as go
+        from plotly.subplots import make_subplots
+
+        df2 = df.copy()
+        if isinstance(df2.index, pd.DatetimeIndex):
+            df2 = df2.reset_index()
+        df2.columns = [c.lower() for c in df2.columns]
+        date_col = df2.columns[0]
+
+        fig = make_subplots(
+            rows=2, cols=1, shared_xaxes=True,
+            row_heights=[0.76, 0.24], vertical_spacing=0.02,
+        )
+        fig.add_trace(go.Candlestick(
+            x=df2[date_col],
+            open=df2["open"], high=df2["high"],
+            low=df2["low"],   close=df2["close"],
+            increasing_line_color="#3fb950",
+            decreasing_line_color="#f85149",
+            name=symbol,
+        ), row=1, col=1)
+
+        vol_col = next((c for c in df2.columns if "vol" in c), None)
+        if vol_col:
+            colors = [
+                "#3fb950" if c >= o else "#f85149"
+                for c, o in zip(df2["close"], df2["open"])
+            ]
+            fig.add_trace(go.Bar(
+                x=df2[date_col], y=df2[vol_col],
+                marker_color=colors, opacity=0.6, name="Volume",
+            ), row=2, col=1)
+
+        fig.update_layout(
+            height=440,
+            paper_bgcolor="#0d1117", plot_bgcolor="#0d1117",
+            xaxis_rangeslider_visible=False,
+            showlegend=False,
+            margin=dict(l=0, r=0, t=4, b=0),
+            font=dict(color="#8b949e"),
+        )
+        for axis in ["xaxis", "xaxis2", "yaxis", "yaxis2"]:
+            fig.update_layout(**{axis: dict(gridcolor="#21262d", zeroline=False)})
+
+        st.plotly_chart(fig, use_container_width=True)
+
+    except Exception as e:
+        st.warning(f"Chart unavailable: {e}")
