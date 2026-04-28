@@ -947,3 +947,73 @@ def render_order_ticket(symbol: str, current_price: float) -> None:
                         st.rerun()
     except Exception:
         pass
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Chunk 8 — Fundamentals panel (middle column)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def render_fundamentals(symbol: str) -> None:
+    fund = get_fundamentals(symbol)
+
+    def _row(label: str, val: str) -> None:
+        st.markdown(
+            f"<div style='display:flex;justify-content:space-between;"
+            f"padding:3px 0;border-bottom:1px solid #21262d;'>"
+            f"<span class='stat-label'>{label}</span>"
+            f"<span class='stat-value'>{val}</span></div>",
+            unsafe_allow_html=True,
+        )
+
+    # ── Valuation ─────────────────────────────────────────────────────────
+    st.markdown('<div class="sec-header">Valuation</div>', unsafe_allow_html=True)
+    _row("P/E (TTM)",    f"{fund['pe_ratio']:.1f}x"        if fund.get("pe_ratio")      else "—")
+    _row("Forward P/E",  f"{fund['forward_pe']:.1f}x"      if fund.get("forward_pe")    else "—")
+    _row("PEG",          f"{fund['peg_ratio']:.2f}"         if fund.get("peg_ratio")     else "—")
+    _row("P/S",          f"{fund['price_to_sales']:.2f}x"  if fund.get("price_to_sales") else "—")
+    _row("P/B",          f"{fund['price_to_book']:.2f}x"   if fund.get("price_to_book") else "—")
+    _row("EV/EBITDA",    f"{fund['ev_ebitda']:.1f}x"       if fund.get("ev_ebitda")     else "—")
+    _row("Market Cap",   _fmt_large(fund.get("market_cap")))
+    _row("EPS (TTM)",    _fmt_price(fund.get("eps_ttm")))
+    _row("EPS (Fwd)",    _fmt_price(fund.get("eps_forward")))
+
+    # ── Growth ────────────────────────────────────────────────────────────
+    st.markdown('<div class="sec-header">Growth</div>', unsafe_allow_html=True)
+    _row("Revenue YoY",  _fmt_pct(fund.get("revenue_growth"))  if fund.get("revenue_growth")  else "—")
+    _row("Earnings YoY", _fmt_pct(fund.get("earnings_growth")) if fund.get("earnings_growth") else "—")
+
+    # ── Quality ───────────────────────────────────────────────────────────
+    st.markdown('<div class="sec-header">Quality</div>', unsafe_allow_html=True)
+    _row("Gross Margin",  _fmt_pct(fund.get("gross_margin")) if fund.get("gross_margin") else "—")
+    _row("Op Margin",     _fmt_pct(fund.get("op_margin"))    if fund.get("op_margin")    else "—")
+    _row("Net Margin",    _fmt_pct(fund.get("net_margin"))   if fund.get("net_margin")   else "—")
+    _row("ROE",           _fmt_pct(fund.get("roe"))          if fund.get("roe")          else "—")
+    _row("ROA",           _fmt_pct(fund.get("roa"))          if fund.get("roa")          else "—")
+
+    # ── Balance sheet ─────────────────────────────────────────────────────
+    st.markdown('<div class="sec-header">Balance Sheet</div>', unsafe_allow_html=True)
+    _row("Cash",          _fmt_large(fund.get("total_cash")))
+    _row("Debt",          _fmt_large(fund.get("total_debt")))
+    _row("D/E Ratio",     f"{fund['debt_equity']:.2f}"   if fund.get("debt_equity")  else "—")
+    _row("Current Ratio", f"{fund['current_ratio']:.2f}" if fund.get("current_ratio") else "—")
+
+    # ── Dividends (conditional) ───────────────────────────────────────────
+    if fund.get("dividend_yield"):
+        st.markdown('<div class="sec-header">Dividends</div>', unsafe_allow_html=True)
+        _row("Yield",        _fmt_pct(fund.get("dividend_yield")))
+        _row("Payout Ratio", _fmt_pct(fund.get("payout_ratio")) if fund.get("payout_ratio") else "—")
+        ex = fund.get("ex_div_date")
+        if ex:
+            try:
+                ex_str = datetime.fromtimestamp(int(ex)).strftime("%b %d, %Y")
+            except Exception:
+                ex_str = str(ex)
+            _row("Ex-Div Date", ex_str)
+
+    # ── Valuation House link ──────────────────────────────────────────────
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("Open in Valuation House →", key="cc_goto_vh",
+                 use_container_width=True, type="secondary"):
+        st.session_state["vh_prefill_ticker"] = symbol
+        st.session_state["nav_page"] = "valuation_house"
+        st.rerun()
