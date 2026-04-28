@@ -21,6 +21,7 @@ import { EquityResearch } from './equity-research.js';
 import { MacroDashboard } from './macro-dashboard.js';
 import { FundsDashboard } from './funds-dashboard.js';
 import { MarketWatch } from './market-watch.js';
+import { TradingDashboard } from './trading.js';
 
 const { useState, useEffect } = React;
 
@@ -28,20 +29,22 @@ const { useState, useEffect } = React;
 // Tab registry & sidebar navigation structure
 // ------------------------------------------------------------
 const TABS = [
-    { id: 'portfolio', label: 'PORTFOLIO', sub: 'Positions & NAV', icon: '\u25CB', component: PortfolioHome },
-    { id: 'quant', label: 'QUANT', sub: 'Quantitative Signals', icon: '\u25C7', component: QuantDashboard },
-    { id: 'risk', label: 'RISK', sub: 'Metrics & Drawdown', icon: '\u25B3', component: RiskAnalysis },
+    { id: 'portfolio', label: 'PORTFOLIO', sub: 'Positions & NAV',        icon: '\u25CB', component: PortfolioHome },
+    { id: 'trading',   label: 'TRADING',   sub: 'Order Desk & Research',   icon: '\u25B6', component: TradingDashboard },
+    { id: 'quant',     label: 'QUANT',     sub: 'Quantitative Signals',    icon: '\u25C7', component: QuantDashboard },
+    { id: 'risk',      label: 'RISK',      sub: 'Metrics & Drawdown',      icon: '\u25B3', component: RiskAnalysis },
     { id: 'performance', label: 'PERFORMANCE', sub: 'Returns & Attribution', icon: '\u25C6', component: PerformanceSuite },
-    { id: 'command', label: 'COMMAND', sub: 'System Overview', icon: '\u2726', component: CommandCentre },
-    { id: 'equity', label: 'EQUITY', sub: 'Ticker Research', icon: '\u25A1', component: EquityResearch },
-    { id: 'macro', label: 'MACRO', sub: 'Economic Intelligence', icon: '\u25C9', component: MacroDashboard },
-    { id: 'funds', label: 'FUNDS', sub: 'Fund & ETF Research', icon: '\u25A0', component: FundsDashboard },
-    { id: 'markets', label: 'MARKETS', sub: 'Global Market Watch', icon: '\u25CE', component: MarketWatch },
+    { id: 'command',   label: 'COMMAND',   sub: 'System Overview',         icon: '\u2726', component: CommandCentre },
+    { id: 'equity',    label: 'EQUITY',    sub: 'Ticker Research',         icon: '\u25A1', component: EquityResearch },
+    { id: 'macro',     label: 'MACRO',     sub: 'Economic Intelligence',   icon: '\u25C9', component: MacroDashboard },
+    { id: 'funds',     label: 'FUNDS',     sub: 'Fund & ETF Research',     icon: '\u25A0', component: FundsDashboard },
+    { id: 'markets',   label: 'MARKETS',   sub: 'Global Market Watch',     icon: '\u25CE', component: MarketWatch },
 ];
 
 const NAV_STRUCTURE = [
     { type: 'header', label: 'CORE' },
     { type: 'tab', id: 'portfolio' },
+    { type: 'tab', id: 'trading' },
     { type: 'header', label: 'ANALYSIS' },
     { type: 'tab', id: 'performance' },
     { type: 'tab', id: 'quant' },
