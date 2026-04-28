@@ -252,3 +252,121 @@ function QuoteStrip(p) {
         cell('VOL', q.volume != null ? fN(q.volume / 1e6, 2) + 'M' : '—')
     );
 }
+
+// ── Chunk 3: CandleChart (TradingView LightweightCharts v5) ──
+
+var TF_LABELS = ['1D', '5D', '1M', '3M', '6M', '1Y', '5Y'];
+
+function CandleChart(p) {
+    var containerRef = useRef(null);
+    var chartRef     = useRef(null);
+    var candleRef    = useRef(null);
+    var volRef       = useRef(null);
+    var _l = useState(false); var loading = _l[0]; var setLoading = _l[1];
+    var _e = useState(null);  var error   = _e[0]; var setError   = _e[1];
+
+    // Create chart once on mount
+    useEffect(function () {
+        if (!containerRef.current || !window.LightweightCharts) return;
+        var LC = window.LightweightCharts;
+        var chart = LC.createChart(containerRef.current, {
+            layout: {
+                background: { color: '#0d0f1a' },
+                textColor: 'rgba(255,255,255,0.45)',
+            },
+            grid: {
+                vertLines: { color: 'rgba(255,255,255,0.04)' },
+                horzLines: { color: 'rgba(255,255,255,0.04)' },
+            },
+            crosshair: { mode: LC.CrosshairMode ? LC.CrosshairMode.Normal : 1 },
+            timeScale: { timeVisible: true, borderColor: 'rgba(255,255,255,0.08)' },
+            rightPriceScale: { borderColor: 'rgba(255,255,255,0.08)' },
+            width:  containerRef.current.clientWidth || 600,
+            height: 340,
+        });
+
+        // v5 API: addSeries with type constant; fall back to v4 if needed
+        var candles, vol;
+        if (LC.CandlestickSeries) {
+            candles = chart.addSeries(LC.CandlestickSeries, {
+                upColor: '#10b981', downColor: '#ef4444',
+                borderVisible: false,
+                wickUpColor: '#10b981', wickDownColor: '#ef4444',
+            });
+            vol = chart.addSeries(LC.HistogramSeries, {
+                priceFormat: { type: 'volume' },
+                priceScaleId: 'vol',
+            });
+        } else {
+            candles = chart.addCandlestickSeries({
+                upColor: '#10b981', downColor: '#ef4444',
+                borderVisible: false,
+                wickUpColor: '#10b981', wickDownColor: '#ef4444',
+            });
+            vol = chart.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: 'vol' });
+        }
+        chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
+
+        chartRef.current   = chart;
+        candleRef.current  = candles;
+        volRef.current     = vol;
+
+        var ro = new ResizeObserver(function () {
+            if (containerRef.current && chartRef.current) {
+                chartRef.current.applyOptions({ width: containerRef.current.clientWidth });
+            }
+        });
+        ro.observe(containerRef.current);
+        return function () { ro.disconnect(); chart.remove(); };
+    }, []);
+
+    // Fetch data whenever symbol or timeframe changes
+    useEffect(function () {
+        if (!p.symbol || !candleRef.current) return;
+        setLoading(true); setError(null);
+        apiFetch('/api/trading?action=chart&symbol=' + encodeURIComponent(p.symbol) + '&range=' + p.range)
+            .then(function (j) {
+                if (j.error) { setError(j.error); setLoading(false); return; }
+                var bars = j.bars || [];
+                var cData = bars.map(function (b) {
+                    return { time: b.time, open: b.open, high: b.high, low: b.low, close: b.close };
+                });
+                var vData = bars.map(function (b) {
+                    return {
+                        time: b.time, value: b.volume,
+                        color: b.close >= b.open ? 'rgba(16,185,129,0.35)' : 'rgba(239,68,68,0.35)',
+                    };
+                });
+                if (candleRef.current) candleRef.current.setData(cData);
+                if (volRef.current)    volRef.current.setData(vData);
+                if (chartRef.current)  chartRef.current.timeScale().fitContent();
+                setLoading(false);
+            })
+            .catch(function (e) { setError(e.message); setLoading(false); });
+    }, [p.symbol, p.range]);
+
+    return h('div', { style: { background: '#0d0f1a', borderRadius: 8, border: '1px solid ' + C.border, padding: '12px 14px' } },
+        // Timeframe pills
+        h('div', { style: { display: 'flex', gap: 6, marginBottom: 10 } },
+            TF_LABELS.map(function (tf) {
+                var active = tf === p.range;
+                return h('button', {
+                    key: tf,
+                    onClick: function () { p.onRange(tf); },
+                    style: {
+                        padding: '3px 11px', borderRadius: 4, fontSize: 11, fontWeight: 600,
+                        fontFamily: 'JetBrains Mono', cursor: 'pointer',
+                        background: active ? C.cyan + '22' : 'transparent',
+                        border: '1px solid ' + (active ? C.cyan + '66' : 'rgba(255,255,255,0.08)'),
+                        color: active ? C.cyan : C.muted,
+                    },
+                }, tf);
+            })
+        ),
+        loading && h('div', {
+            style: { textAlign: 'center', padding: '20px 0', fontSize: 12, color: C.muted }
+        }, 'Loading chart…'),
+        error && h('div', { style: { color: C.red, fontSize: 12, padding: '8px 0' } }, 'Chart: ' + error),
+        h('div', { ref: containerRef, style: { width: '100%' } })
+    );
+}
