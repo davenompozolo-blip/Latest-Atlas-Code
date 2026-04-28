@@ -654,3 +654,88 @@ def render_chart(symbol: str, timeframe: str) -> None:
 
     except Exception as e:
         st.warning(f"Chart unavailable: {e}")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Chunk 6 — Bid/Ask quote strip (full-width)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def render_quote_strip(symbol: str) -> None:
+    snap = get_snapshot(symbol)
+
+    bid       = snap.get("bid", 0.0)
+    ask       = snap.get("ask", 0.0)
+    bid_sz    = snap.get("bid_size", 0)
+    ask_sz    = snap.get("ask_size", 0)
+    spread    = snap.get("spread", 0.0)
+    spread_pct= snap.get("spread_pct", 0.0)
+    last      = snap.get("last_price", 0.0)
+    chg       = snap.get("change", 0.0)
+    chgp      = snap.get("change_pct", 0.0)
+    hi        = snap.get("high", 0.0)
+    lo        = snap.get("low", 0.0)
+    vol       = snap.get("volume", 0)
+    vwap      = snap.get("vwap", 0.0)
+    source    = snap.get("source", "")
+    chg_col   = _color(chg)
+    arrow     = "▲" if chg >= 0 else "▼"
+
+    c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([1.8, 1.8, 1.6, 1.6, 1.6, 1.6, 1.6, 0.8])
+
+    with c1:
+        st.markdown(
+            f'<span class="stat-label">BID</span><br>'
+            f'<span class="tag-green" style="font-size:1.05rem;">'
+            f'${bid:.4f}</span>'
+            f'<span class="stat-label"> ×{bid_sz}</span>',
+            unsafe_allow_html=True,
+        )
+    with c2:
+        st.markdown(
+            f'<span class="stat-label">ASK</span><br>'
+            f'<span class="tag-red" style="font-size:1.05rem;">'
+            f'${ask:.4f}</span>'
+            f'<span class="stat-label"> ×{ask_sz}</span>',
+            unsafe_allow_html=True,
+        )
+    with c3:
+        st.markdown(
+            f'<span class="stat-label">SPREAD</span><br>'
+            f'<span class="tag-gold">${spread:.4f} ({spread_pct:.3f}%)</span>',
+            unsafe_allow_html=True,
+        )
+    with c4:
+        st.markdown(
+            f'<span class="stat-label">LAST</span><br>'
+            f'<span class="stat-value" style="font-size:1.05rem;">${last:.2f}</span>',
+            unsafe_allow_html=True,
+        )
+    with c5:
+        st.markdown(
+            f'<span class="stat-label">CHANGE</span><br>'
+            f'<span style="color:{chg_col};font-weight:600;">'
+            f'{arrow} {chg:+.2f} ({chgp:+.2f}%)</span>',
+            unsafe_allow_html=True,
+        )
+    with c6:
+        st.markdown(
+            f'<span class="stat-label">HI / LO</span><br>'
+            f'<span class="tag-green">${hi:.2f}</span>'
+            f'<span class="stat-label"> / </span>'
+            f'<span class="tag-red">${lo:.2f}</span>',
+            unsafe_allow_html=True,
+        )
+    with c7:
+        st.markdown(
+            f'<span class="stat-label">VOL / VWAP</span><br>'
+            f'<span class="stat-value">{_fmt_vol(vol)}'
+            + (f' / ${vwap:.2f}' if vwap else '') +
+            f'</span>',
+            unsafe_allow_html=True,
+        )
+    with c8:
+        if st.button("↻", key="cc_refresh_quote", help="Refresh quote"):
+            get_snapshot.clear()
+            st.rerun()
+        if source:
+            st.caption(source)
