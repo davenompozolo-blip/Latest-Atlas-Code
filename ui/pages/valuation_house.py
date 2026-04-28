@@ -2960,6 +2960,52 @@ def render_valuation_house():
                     st.markdown(render_generic_table(_ig_sens_df, columns=_ig_cols), unsafe_allow_html=True)
 
 
+            # ================================================================
+            # VALUATION-TO-ORDER BRIDGE — send DCF target to Command Centre
+            # ================================================================
+            st.markdown("---")
+            _bridge_symbol = company.get('ticker', '') if company else ''
+            _bridge_price  = intrinsic_value if 'intrinsic_value' in dir() else 0
+            if _bridge_symbol and _bridge_price and _bridge_price > 0:
+                from services.trading_service import ALPACA_AVAILABLE as _ALPACA_OK
+                if _ALPACA_OK:
+                    st.markdown("#### Execute Trade from Valuation")
+                    _brid_c1, _brid_c2, _brid_c3 = st.columns([2, 2, 2])
+                    with _brid_c1:
+                        _bridge_side = st.radio(
+                            "Side",
+                            ["Buy", "Sell"],
+                            horizontal=True,
+                            key="vh_bridge_side",
+                        ).lower()
+                    with _brid_c2:
+                        _bridge_limit = st.number_input(
+                            "Limit Price ($)",
+                            min_value=0.01,
+                            value=round(float(_bridge_price), 2),
+                            step=0.01,
+                            format="%.2f",
+                            key="vh_bridge_limit",
+                        )
+                    with _brid_c3:
+                        _current_px = company.get('current_price', _bridge_limit)
+                        _upside_str = f"{((_bridge_limit / _current_px) - 1)*100:+.1f}% vs current" if _current_px else ""
+                        st.markdown(f"**DCF Target:** `${_bridge_price:.2f}`")
+                        st.caption(_upside_str)
+
+                    if st.button(
+                        f"Send {_bridge_side.upper()} {_bridge_symbol} @ ${_bridge_limit:.2f} to Command Centre",
+                        type="primary",
+                        key="vh_send_to_cc",
+                    ):
+                        st.session_state["cc_prefill_symbol"] = _bridge_symbol
+                        st.session_state["cc_prefill_limit_price"] = _bridge_limit
+                        st.session_state["cc_prefill_side"] = _bridge_side
+                        st.session_state["cc_confirm_pending"] = False
+                        st.success(
+                            f"Order pre-filled in Command Centre — navigate there to submit."
+                        )
+
             # Export Options
             st.markdown("---")
             col1, col2, col3 = st.columns(3)

@@ -490,6 +490,58 @@ def render_portfolio_home():
     else:
         st.warning("Please select at least one column to display")
 
+    # ── Quick Position Actions (Alpaca only) ──────────────
+    try:
+        from services.trading_service import TradingService, ALPACA_AVAILABLE
+        if ALPACA_AVAILABLE and st.session_state.get("alpaca_configured"):
+            with st.expander("Quick Position Actions", expanded=False):
+                st.caption(
+                    "One-click close/reduce — submits a market order via Alpaca. "
+                    "Confirm in Command Centre before the market executes."
+                )
+                _ph_svc = TradingService.from_session_state()
+                if _ph_svc:
+                    _ticker_col = next(
+                        (c for c in display_df.columns if c in ("Ticker", "Display Ticker", "Symbol")),
+                        None,
+                    )
+                    if _ticker_col:
+                        for _, _row in display_df.iterrows():
+                            _sym = str(_row[_ticker_col]).strip()
+                            if not _sym:
+                                continue
+                            _c1, _c2, _c3 = st.columns([3, 1, 1])
+                            with _c1:
+                                st.markdown(f"**{_sym}**")
+                            with _c2:
+                                if st.button(
+                                    "Close 100%",
+                                    key=f"ph_close_{_sym}",
+                                    use_container_width=True,
+                                    type="secondary",
+                                ):
+                                    _r = _ph_svc.close_position(_sym)
+                                    if _r.success:
+                                        st.success(f"{_sym}: {_r.message}")
+                                    else:
+                                        st.error(f"{_sym}: {_r.message}")
+                            with _c3:
+                                if st.button(
+                                    "Reduce 50%",
+                                    key=f"ph_reduce_{_sym}",
+                                    use_container_width=True,
+                                    type="secondary",
+                                ):
+                                    _r = _ph_svc.close_position(_sym, percentage=50)
+                                    if _r.success:
+                                        st.success(f"{_sym}: {_r.message}")
+                                    else:
+                                        st.error(f"{_sym}: {_r.message}")
+                    else:
+                        st.caption("Ticker column not found in holdings table.")
+    except Exception:
+        pass
+
     st.markdown("---")
 
     # ══════════════════════════════════════════════════════
