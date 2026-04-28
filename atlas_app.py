@@ -678,6 +678,7 @@ def main():
         "🌍 Market Watch": "market_watch",
         "📈 Risk Analysis": "risk_analysis",
         "💎 Performance Suite": "performance_suite",
+        "⬡ Quant Dashboard": "quant_dashboard",
         "🔬 Portfolio Deep Dive": "portfolio_deep_dive",
         "📊 Multi-Factor Analysis": "multi_factor_analysis",
         "💰 Valuation House": "valuation_house",
