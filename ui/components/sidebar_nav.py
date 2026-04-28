@@ -26,6 +26,7 @@ _FEATURE_FLAGS = {
 
 # Sidebar key → registry key (for tier lookups)
 _NAV_TO_REGISTRY = {
+    "⚡ Command Centre": "command_centre",
     "🔥 Phoenix Parser": "phoenix_parser",
     "🏠 Portfolio Home": "portfolio_home",
     "📊 R Analytics": "r_analytics",
@@ -65,6 +66,7 @@ def render_sidebar_navigation(default_page: str = "Portfolio Home") -> str:
 
     NAV_SECTIONS = {
         "Core": [
+            {"key": "⚡ Command Centre", "label": "Command Centre"},
             {"key": "🔥 Phoenix Parser", "label": "Phoenix Parser"},
             {"key": "🏠 Portfolio Home", "label": "Portfolio Home"},
             {"key": "📊 R Analytics", "label": "R Analytics"},

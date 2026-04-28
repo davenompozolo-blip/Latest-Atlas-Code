@@ -670,6 +670,7 @@ def main():
     # ========================================================================
     # Map option_menu titles to registry keys
     PAGE_TITLE_TO_KEY = {
+        "⚡ Command Centre": "command_centre",
         "🔥 Phoenix Parser": "phoenix_parser",
         "🏠 Portfolio Home": "portfolio_home",
         "📊 R Analytics": "r_analytics",
