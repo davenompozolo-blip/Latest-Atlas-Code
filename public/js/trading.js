@@ -572,3 +572,100 @@ function OrderTicket(p) {
         )
     );
 }
+
+// ── Chunk 5: FundamentalsPanel + TradingDashboard ────────────
+
+function FundamentalsPanel(p) {
+    var fd = p.data;
+    if (!fd) return h('div', { style: { color: C.muted, fontSize: 12, padding: 12 } }, p.loading ? 'Loading fundamentals…' : 'No data');
+    var ov = fd.overview || {};
+    var fin = fd.financials && fd.financials.snapshot ? fd.financials.snapshot : {};
+
+    function row(label, val, color) {
+        if (val == null || val === '—') return null;
+        return h('div', {
+            key: label,
+            style: {
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.04)',
+            }
+        },
+            h('span', { style: { fontSize: 11, color: C.sec } }, label),
+            h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 12, fontWeight: 600, color: color || C.text } }, val)
+        );
+    }
+
+    function pct(v) { return v != null ? fN(v * 100, 1) + '%' : null; }
+    function mul(v) { return v != null ? fN(v, 2) + '×' : null; }
+
+    return h('div', {
+        style: { background: C.card, borderRadius: 8, border: '1px solid ' + C.border, padding: '14px 16px' }
+    },
+        h('div', { style: { fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 10 } }, 'Fundamentals'),
+        ov.Name && h('div', { style: { fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 2 } }, ov.Name),
+        (ov.Sector || ov.Industry) && h('div', { style: { fontSize: 11, color: C.sec, marginBottom: 8 } },
+            [ov.Sector, ov.Industry].filter(Boolean).join(' · ')),
+        row('Market Cap', ov.MarketCapitalization ? fLarge(parseFloat(ov.MarketCapitalization)) : null),
+        row('P/E (TTM)', ov.PERatio ? fN(parseFloat(ov.PERatio), 1) + '×' : null),
+        row('P/E (Fwd)', fin.forwardPE ? mul(fin.forwardPE) : null),
+        row('PEG', ov.PEGRatio ? fN(parseFloat(ov.PEGRatio), 2) + '×' : null),
+        row('EV/EBITDA', fin.evToEbitda ? mul(fin.evToEbitda) : null),
+        row('EPS', ov.EPS ? '$' + fN(parseFloat(ov.EPS), 2) : null),
+        row('Beta', ov.Beta ? fN(parseFloat(ov.Beta), 2) : null),
+        row('Gross Margin', pct(fin.grossMargins)),
+        row('Op Margin', pct(fin.operatingMargins)),
+        row('Net Margin', pct(fin.profitMargins)),
+        row('ROE', pct(fin.returnOnEquity), fin.returnOnEquity > 0 ? C.green : C.red),
+        row('D/E Ratio', fin.debtToEquity ? fN(fin.debtToEquity, 2) : null),
+        ov.DividendYield && parseFloat(ov.DividendYield) > 0
+            ? row('Div Yield', fN(parseFloat(ov.DividendYield) * 100, 2) + '%', C.cyan)
+            : null,
+        ov.AnalystTargetPrice && h('div', {
+            style: { marginTop: 10, padding: '8px 10px', borderRadius: 6, background: C.indigo + '18', border: '1px solid ' + C.indigo + '33' }
+        },
+            h('div', { style: { fontSize: 10, color: C.muted, marginBottom: 2 } }, 'Analyst Target'),
+            h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 14, fontWeight: 700, color: C.indigo } },
+                '$' + fN(parseFloat(ov.AnalystTargetPrice), 2))
+        )
+    );
+}
+
+export function TradingDashboard() {
+    var _sym  = useState('AAPL'); var symbol  = _sym[0];  var setSymbol  = _sym[1];
+    var _live = useState(null);   var liveSym = _live[0]; var setLiveSym = _live[1];
+    var _rng  = useState('1Y');   var range   = _rng[0];  var setRange   = _rng[1];
+
+    var acct = useAccount();
+    var _q   = useQuote(liveSym);
+    var quote = _q.quote; var qLoad = _q.loading; var qErr = _q.error;
+    var _f   = useFundamentals(liveSym);
+
+    function handleLoad(sym) { setSymbol(sym); setLiveSym(sym); }
+
+    useEffect(function () { setLiveSym('AAPL'); }, []);
+
+    return h('div', { style: { padding: '20px 24px', maxWidth: 1400, margin: '0 auto' } },
+        h('div', { style: { display: 'flex', gap: 16, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' } },
+            h(SymbolSearch, { symbol: symbol, onLoad: handleLoad }),
+            h(AccountBadge, { acct: acct })
+        ),
+        liveSym && h('div', {
+            style: { background: C.card, borderRadius: 8, border: '1px solid ' + C.border, padding: '14px 18px', marginBottom: 14 }
+        },
+            qLoad && h('div', { style: { color: C.muted, fontSize: 12 } }, 'Fetching quote…'),
+            qErr  && h('div', { style: { color: C.red,  fontSize: 12 } }, 'Quote error: ' + qErr),
+            !qLoad && quote && h('div', null,
+                h('div', { style: { fontSize: 10, color: C.muted, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 6 } }, liveSym),
+                h(PriceHero,   { quote: quote }),
+                h(QuoteStrip,  { quote: quote })
+            )
+        ),
+        liveSym && h('div', { style: { marginBottom: 14 } },
+            h(CandleChart, { symbol: liveSym, range: range, onRange: setRange })
+        ),
+        liveSym && h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1.6fr', gap: 14 } },
+            h(OrderTicket,      { symbol: liveSym, quote: quote }),
+            h(FundamentalsPanel, { data: _f.data, loading: _f.loading })
+        )
+    );
+}
