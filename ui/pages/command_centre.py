@@ -1017,3 +1017,126 @@ def render_fundamentals(symbol: str) -> None:
         st.session_state["vh_prefill_ticker"] = symbol
         st.session_state["nav_page"] = "valuation_house"
         st.rerun()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Chunk 9 — Option chain (right column)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def render_options_chain(symbol: str) -> None:
+    st.markdown('<div class="sec-header">Option Chain</div>', unsafe_allow_html=True)
+
+    chain = get_option_chain(symbol, st.session_state.get("cc_opt_expiry"))
+
+    # ── Unavailable state ─────────────────────────────────────────────────
+    if not chain.get("available", True):
+        st.markdown(
+            f'<div class="metric-card" style="text-align:center;color:#8b949e;padding:24px;">'
+            f'<div style="font-size:1.8rem;margin-bottom:8px;">⛓</div>'
+            f'<div><b>Options unavailable</b></div>'
+            f'<div style="font-size:0.78rem;margin-top:6px;">'
+            f'{chain.get("reason","No listed options for this security")}'
+            f'</div></div>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    # ── Expiry selector ───────────────────────────────────────────────────
+    expirations = chain.get("expirations", [])
+    selected    = chain.get("selected", "")
+
+    new_exp = st.selectbox(
+        "Expiry", expirations,
+        index=expirations.index(selected) if selected in expirations else 0,
+        key="cc_opt_exp_select",
+    )
+    if new_exp != st.session_state.get("cc_opt_expiry"):
+        st.session_state["cc_opt_expiry"] = new_exp
+        get_option_chain.clear()
+        st.rerun()
+
+    snap  = get_snapshot(symbol)
+    spot  = snap.get("last_price", 0.0)
+
+    calls = chain.get("calls", pd.DataFrame())
+    puts  = chain.get("puts",  pd.DataFrame())
+
+    view  = st.radio("View", ["Both", "Calls", "Puts"], horizontal=True, key="cc_opt_view")
+
+    # ── Column prep helper ────────────────────────────────────────────────
+    _wanted = ["strike", "bid", "ask", "lastPrice", "impliedVolatility",
+               "volume", "openInterest", "inTheMoney"]
+
+    def _prep(df: pd.DataFrame) -> pd.DataFrame:
+        if df is None or df.empty:
+            return pd.DataFrame()
+        cols = [c for c in _wanted if c in df.columns]
+        out  = df[cols].copy()
+        out  = out.rename(columns={
+            "strike": "Strike", "bid": "Bid", "ask": "Ask",
+            "lastPrice": "Last", "impliedVolatility": "IV",
+            "volume": "Vol", "openInterest": "OI", "inTheMoney": "ITM",
+        })
+        if "IV" in out.columns:
+            out["IV"] = out["IV"].apply(
+                lambda x: f"{x*100:.1f}%" if pd.notna(x) else "—"
+            )
+        for col in ["Bid", "Ask", "Last", "Strike"]:
+            if col in out.columns:
+                out[col] = out[col].apply(
+                    lambda x: f"${x:.2f}" if pd.notna(x) else "—"
+                )
+        for col in ["Vol", "OI"]:
+            if col in out.columns:
+                out[col] = out[col].apply(
+                    lambda x: f"{int(x):,}" if pd.notna(x) and x > 0 else "—"
+                )
+        if "ITM" in out.columns:
+            out = out.drop(columns=["ITM"])
+        return out.reset_index(drop=True)
+
+    # ── Render ────────────────────────────────────────────────────────────
+    if view == "Both":
+        cc, cp = st.columns(2)
+        with cc:
+            st.markdown('<span class="tag-green" style="font-size:0.8rem;font-weight:700;">CALLS</span>',
+                        unsafe_allow_html=True)
+            df_c = _prep(calls)
+            st.dataframe(df_c, use_container_width=True, hide_index=True,
+                         height=320) if not df_c.empty else st.caption("No calls.")
+        with cp:
+            st.markdown('<span class="tag-red" style="font-size:0.8rem;font-weight:700;">PUTS</span>',
+                        unsafe_allow_html=True)
+            df_p = _prep(puts)
+            st.dataframe(df_p, use_container_width=True, hide_index=True,
+                         height=320) if not df_p.empty else st.caption("No puts.")
+    else:
+        df_show = calls if view == "Calls" else puts
+        df_prep = _prep(df_show)
+        if not df_prep.empty:
+            st.dataframe(df_prep, use_container_width=True, hide_index=True, height=360)
+        else:
+            st.caption(f"No {view.lower()} data.")
+
+    # ── My position in this underlying ────────────────────────────────────
+    try:
+        svc = TradingService.from_session_state()
+        if svc:
+            pos = svc.get_position(symbol)
+            if pos:
+                unreal     = pos.get("unrealized_pl", 0.0)
+                unreal_pct = float(pos.get("unrealized_plpc", 0.0)) * 100
+                pos_col    = _color(unreal)
+                st.markdown(
+                    f'<div class="metric-card" style="margin-top:12px;">'
+                    f'<span class="stat-label">MY POSITION</span><br>'
+                    f'<b>{symbol}</b> {pos["qty"]:g} sh'
+                    f' · avg ${pos["avg_entry_price"]:.2f}'
+                    f' · curr ${pos["current_price"]:.2f}<br>'
+                    f'<span style="color:{pos_col};font-weight:600;">'
+                    f'P&L ${unreal:+,.2f} ({unreal_pct:+.2f}%)</span>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+    except Exception:
+        pass
