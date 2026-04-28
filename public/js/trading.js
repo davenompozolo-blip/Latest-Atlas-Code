@@ -370,3 +370,205 @@ function CandleChart(p) {
         h('div', { ref: containerRef, style: { width: '100%' } })
     );
 }
+
+// ── Chunk 4: OrderTicket ──────────────────────────────────────
+
+function OrderTicket(p) {
+    var quote = p.quote;
+    var price = quote ? quote.last : null;
+
+    var _side  = useState('buy');    var side  = _side[0];  var setSide  = _side[1];
+    var _type  = useState('market'); var type  = _type[0];  var setType  = _type[1];
+    var _qty   = useState('1');      var qty   = _qty[0];   var setQty   = _qty[1];
+    var _lp    = useState('');       var lp    = _lp[0];    var setLp    = _lp[1];
+    var _sp    = useState('');       var sp    = _sp[0];    var setSp    = _sp[1];
+    var _note  = useState('market'); var mode  = _note[0];  var setMode  = _note[1]; // 'qty'|'notional'
+    var _conf  = useState(false);    var conf  = _conf[0];  var setConf  = _conf[1];
+    var _res   = useState(null);     var result = _res[0];  var setResult = _res[1];
+    var _busy  = useState(false);    var busy  = _busy[0];  var setBusy  = _busy[1];
+
+    var estCost = (price && parseFloat(qty) > 0) ? price * parseFloat(qty) : null;
+
+    function inputStyle(w) {
+        return {
+            width: w || '100%', padding: '7px 10px', fontSize: 12,
+            background: 'rgba(255,255,255,0.05)',
+            border: '1px solid rgba(255,255,255,0.12)', borderRadius: 5,
+            color: C.text, fontFamily: 'JetBrains Mono', outline: 'none',
+            boxSizing: 'border-box',
+        };
+    }
+
+    function labelStyle() {
+        return { fontSize: 10, color: C.muted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4, display: 'block' };
+    }
+
+    function submitOrder() {
+        setBusy(true); setResult(null);
+        var body = {
+            symbol:  p.symbol,
+            side:    side,
+            type:    type,
+            tif:     'day',
+        };
+        if (mode === 'notional') {
+            body.notional = parseFloat(qty) || 100;
+        } else {
+            body.qty = parseFloat(qty) || 1;
+        }
+        if ((type === 'limit' || type === 'stop_limit') && lp) body.limitPrice = parseFloat(lp);
+        if ((type === 'stop'  || type === 'stop_limit') && sp) body.stopPrice  = parseFloat(sp);
+
+        fetch('/api/trading?action=order', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (j) {
+                setResult(j); setBusy(false); setConf(false);
+            })
+            .catch(function (e) {
+                setResult({ success: false, error: e.message }); setBusy(false); setConf(false);
+            });
+    }
+
+    var sideColors = { buy: C.green, sell: C.red };
+    var activeSide = sideColors[side];
+
+    return h('div', {
+        style: {
+            background: C.card, borderRadius: 8, border: '1px solid ' + C.border,
+            padding: '16px', display: 'flex', flexDirection: 'column', gap: 12,
+        }
+    },
+        // Title
+        h('div', { style: { fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: 2, textTransform: 'uppercase' } },
+            'Order Ticket · ' + (p.symbol || '—')),
+
+        // Buy / Sell toggle
+        h('div', { style: { display: 'flex', gap: 6 } },
+            ['buy', 'sell'].map(function (s) {
+                var active = side === s;
+                var col = s === 'buy' ? C.green : C.red;
+                return h('button', {
+                    key: s,
+                    onClick: function () { setSide(s); setResult(null); setConf(false); },
+                    style: {
+                        flex: 1, padding: '7px 0', borderRadius: 6, fontSize: 12, fontWeight: 700,
+                        cursor: 'pointer', textTransform: 'uppercase', letterSpacing: 1,
+                        background: active ? col + '22' : 'transparent',
+                        border: '1px solid ' + (active ? col + '66' : 'rgba(255,255,255,0.08)'),
+                        color: active ? col : C.sec,
+                    },
+                }, s);
+            })
+        ),
+
+        // Order type
+        h('div', null,
+            h('label', { style: labelStyle() }, 'Order Type'),
+            h('select', {
+                value: type,
+                onChange: function (e) { setType(e.target.value); },
+                style: Object.assign({}, inputStyle(), { cursor: 'pointer' }),
+            },
+                h('option', { value: 'market' }, 'Market'),
+                h('option', { value: 'limit' }, 'Limit'),
+                h('option', { value: 'stop' }, 'Stop'),
+                h('option', { value: 'stop_limit' }, 'Stop-Limit')
+            )
+        ),
+
+        // Qty / Notional toggle + input
+        h('div', null,
+            h('div', { style: { display: 'flex', gap: 6, marginBottom: 6 } },
+                ['qty', 'notional'].map(function (m) {
+                    return h('button', {
+                        key: m,
+                        onClick: function () { setMode(m); },
+                        style: {
+                            padding: '3px 10px', borderRadius: 4, fontSize: 10, cursor: 'pointer',
+                            fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5,
+                            background: mode === m ? C.indigo + '33' : 'transparent',
+                            border: '1px solid ' + (mode === m ? C.indigo + '66' : 'rgba(255,255,255,0.08)'),
+                            color: mode === m ? C.indigo : C.muted,
+                        },
+                    }, m === 'qty' ? 'Shares' : 'Notional $');
+                })
+            ),
+            h('input', {
+                type: 'number', value: qty, min: 0,
+                onChange: function (e) { setQty(e.target.value); },
+                placeholder: mode === 'qty' ? 'Shares' : 'Dollar amount',
+                style: inputStyle(),
+            }),
+            estCost != null && mode === 'qty' && h('div', {
+                style: { fontSize: 10, color: C.muted, marginTop: 4 }
+            }, 'Est. ' + (side === 'buy' ? 'cost' : 'proceeds') + ': ' + fLarge(estCost))
+        ),
+
+        // Conditional price fields
+        (type === 'limit' || type === 'stop_limit') && h('div', null,
+            h('label', { style: labelStyle() }, 'Limit Price'),
+            h('input', {
+                type: 'number', value: lp, placeholder: price ? '$' + fN(price, 2) : '$0.00',
+                onChange: function (e) { setLp(e.target.value); },
+                style: inputStyle(),
+            })
+        ),
+        (type === 'stop' || type === 'stop_limit') && h('div', null,
+            h('label', { style: labelStyle() }, 'Stop Price'),
+            h('input', {
+                type: 'number', value: sp, placeholder: '$0.00',
+                onChange: function (e) { setSp(e.target.value); },
+                style: inputStyle(),
+            })
+        ),
+
+        // Confirm / Submit
+        !conf
+            ? h('button', {
+                onClick: function () { setConf(true); setResult(null); },
+                disabled: busy || !p.symbol,
+                style: {
+                    padding: '9px 0', borderRadius: 6, fontSize: 13, fontWeight: 700,
+                    cursor: 'pointer', textTransform: 'uppercase', letterSpacing: 1,
+                    background: activeSide + '22',
+                    border: '1px solid ' + activeSide + '66',
+                    color: activeSide,
+                },
+            }, side.toUpperCase() + ' ' + (p.symbol || '—'))
+            : h('div', { style: { display: 'flex', gap: 8 } },
+                h('button', {
+                    onClick: submitOrder, disabled: busy,
+                    style: {
+                        flex: 1, padding: '9px 0', borderRadius: 6, fontSize: 12, fontWeight: 700,
+                        cursor: 'pointer', background: activeSide + '33',
+                        border: '1px solid ' + activeSide, color: activeSide,
+                    },
+                }, busy ? 'Sending…' : '✓ Confirm'),
+                h('button', {
+                    onClick: function () { setConf(false); },
+                    style: {
+                        flex: 1, padding: '9px 0', borderRadius: 6, fontSize: 12,
+                        cursor: 'pointer', background: 'transparent',
+                        border: '1px solid rgba(255,255,255,0.12)', color: C.sec,
+                    },
+                }, 'Cancel')
+            ),
+
+        // Result banner
+        result && h('div', {
+            style: {
+                padding: '8px 12px', borderRadius: 6, fontSize: 12,
+                background: result.success ? C.green + '18' : C.red + '18',
+                border: '1px solid ' + (result.success ? C.green + '44' : C.red + '44'),
+                color: result.success ? C.green : C.red,
+            }
+        }, result.success
+            ? '✓ Order submitted · ' + (result.order && result.order.id ? result.order.id.slice(0, 8) + '…' : '')
+            : '✗ ' + (result.error || (result.order && result.order.error) || 'Error')
+        )
+    );
+}
