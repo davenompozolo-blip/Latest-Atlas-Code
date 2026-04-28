@@ -1,695 +1,1194 @@
 """
-ATLAS Command Centre — Alpaca trading execution hub.
+ATLAS Command Centre — Institutional Buy-Side Trading Terminal
+==============================================================
+Buy-side trading desk × equity research × options chain.
 
-Tabs
-----
-1. Order Ticket     — Market / Limit / Stop / Bracket order entry
-2. Position Sizer   — Kelly / Fixed-Fractional / Volatility sizing engine
-3. Open Orders      — Live order book with cancel controls
-4. Executions       — Recent fill history
-5. Watchlists       — Create and manage Alpaca watchlists
+Layout:
+  Row 1 : Security search bar + account badge
+  Row 2 : Security info (33%) | TradingView chart (67%)
+  Row 3 : Live bid/ask quote strip (full width)
+  Row 4 : Order ticket (27%) | Fundamentals (38%) | Option chain (35%)
 """
-
 from __future__ import annotations
 
-import streamlit as st
+import logging
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+
 import pandas as pd
-from typing import Optional
+import streamlit as st
 
-from services.trading_service import TradingService, ALPACA_AVAILABLE
+from services.trading_service import TradingService, ALPACA_AVAILABLE, TradeResult
+
+logger = logging.getLogger(__name__)
+
+# ── Optional chart library ────────────────────────────────────────────────────
+try:
+    from core.tradingview_charts import render_candlestick_chart, TRADINGVIEW_AVAILABLE
+except ImportError:
+    TRADINGVIEW_AVAILABLE = False
+    def render_candlestick_chart(*a, **kw):
+        pass
+
+# ── yfinance helpers ──────────────────────────────────────────────────────────
+try:
+    from services.yf_session import get_history, get_info
+    YF_AVAILABLE = True
+except ImportError:
+    YF_AVAILABLE = False
+    def get_history(*a, **kw): return pd.DataFrame()  # type: ignore
+    def get_info(*a, **kw):    return {}               # type: ignore
+
+# ── Position sizer ────────────────────────────────────────────────────────────
+try:
+    from analytics.position_sizer import (
+        kelly_fraction, fixed_fractional, volatility_based, annual_vol_to_daily,
+    )
+    SIZER_AVAILABLE = True
+except ImportError:
+    SIZER_AVAILABLE = False
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CSS — dark terminal palette
+# ─────────────────────────────────────────────────────────────────────────────
+TERMINAL_CSS = """
+<style>
+:root {
+  --bg-card:     #161b22;
+  --bg-elevated: #21262d;
+  --border:      #30363d;
+  --text-pri:    #e6edf3;
+  --text-sec:    #8b949e;
+  --green:       #3fb950;
+  --red:         #f85149;
+  --blue:        #58a6ff;
+  --gold:        #d29922;
+}
+.metric-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-bottom: 8px;
+}
+.price-hero {
+  font-size: 2.1rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  color: var(--text-pri);
+}
+.sec-header {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-sec);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 4px;
+  margin: 12px 0 8px 0;
+}
+.stat-label { color: var(--text-sec); font-size: 0.73rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.stat-value { color: var(--text-pri); font-size: 0.88rem; font-weight: 600; }
+.tag-green  { color: var(--green); font-weight: 600; }
+.tag-red    { color: var(--red);   font-weight: 600; }
+.tag-blue   { color: var(--blue);  font-weight: 600; }
+.tag-gold   { color: var(--gold);  font-weight: 600; }
+.badge-paper { background:#21262d; color:#8b949e; border-radius:3px; padding:2px 8px; font-size:0.73rem; }
+.badge-live  { background:#f85149; color:#fff;    border-radius:3px; padding:2px 8px; font-size:0.73rem; font-weight:700; }
+</style>
+"""
+
+# ── Timeframe → (yfinance period, interval) ───────────────────────────────────
+TF_MAP: Dict[str, tuple] = {
+    "1m":  ("1d",  "1m"),
+    "5m":  ("5d",  "5m"),
+    "15m": ("5d",  "15m"),
+    "1H":  ("1mo", "60m"),
+    "4H":  ("3mo", "60m"),
+    "1D":  ("2y",  "1d"),
+    "1W":  ("5y",  "1wk"),
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Session state defaults
+# ─────────────────────────────────────────────────────────────────────────────
+def init_session_state() -> None:
+    defaults: Dict[str, Any] = {
+        "symbol":              "AAPL",
+        "timeframe":           "1D",
+        "order_side":          "buy",
+        "order_type_display":  "Market",
+        "order_qty":           1.0,
+        "order_price":         0.0,
+        "order_stop":          0.0,
+        "order_notional":      1000.0,
+        "order_notional_mode": False,
+        "confirm_pending":     False,
+        "search_query":        "",
+        "cc_opt_expiry":       None,
+    }
+    for k, v in defaults.items():
+        if k not in st.session_state:
+            st.session_state[k] = v
 
 
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
+# ─────────────────────────────────────────────────────────────────────────────
+# Chunk 2 — Data helpers
+# ─────────────────────────────────────────────────────────────────────────────
 
-def render_command_centre():
-    st.markdown("## Command Centre")
+def _get_secret(key: str, default: str = "") -> str:
+    try:
+        from services.secrets_helper import get_secret
+        return get_secret(key, default)
+    except Exception:
+        import os
+        return os.environ.get(key, default)
 
-    if not ALPACA_AVAILABLE:
-        st.error(
-            "**alpaca-py not installed.** "
-            "Run `pip install alpaca-py` then restart the app."
+
+def _alpaca_creds() -> tuple:
+    api_key = st.session_state.get("alpaca_api_key") or _get_secret("ALPACA_API_KEY")
+    secret  = st.session_state.get("alpaca_secret_key") or _get_secret("ALPACA_API_SECRET")
+    return api_key, secret
+
+
+@st.cache_data(ttl=30)
+def get_account_info() -> Dict:
+    try:
+        svc = TradingService.from_session_state()
+        return svc.get_account() if svc else {}
+    except Exception:
+        return {}
+
+
+@st.cache_data(ttl=30)
+def get_snapshot(symbol: str) -> Dict:
+    """Latest quote snapshot — tries Alpaca first, falls back to yfinance."""
+    # Alpaca path
+    if ALPACA_AVAILABLE:
+        try:
+            from alpaca.data.historical import StockHistoricalDataClient
+            from alpaca.data.requests import StockSnapshotRequest
+            api_key, secret = _alpaca_creds()
+            if api_key and secret:
+                client = StockHistoricalDataClient(api_key, secret)
+                snaps  = client.get_stock_snapshot(
+                    StockSnapshotRequest(symbol_or_symbols=[symbol])
+                )
+                snap = snaps.get(symbol)
+                if snap:
+                    lq   = snap.latest_quote
+                    lt   = snap.latest_trade
+                    db   = snap.daily_bar
+                    pb   = snap.prev_daily_bar
+                    bid  = float(lq.bid_price or 0)
+                    ask  = float(lq.ask_price or 0)
+                    last = float(lt.price or 0) if lt else 0.0
+                    prev = float(pb.close or 0) if pb else 0.0
+                    sprd = ask - bid
+                    chg  = last - prev
+                    return {
+                        "bid": bid, "ask": ask,
+                        "bid_size": int(lq.bid_size or 0),
+                        "ask_size": int(lq.ask_size or 0),
+                        "spread": sprd,
+                        "spread_pct": (sprd / last * 100) if last else 0.0,
+                        "last_price": last, "prev_close": prev,
+                        "change": chg,
+                        "change_pct": (chg / prev * 100) if prev else 0.0,
+                        "open":   float(db.open   or 0) if db else 0.0,
+                        "high":   float(db.high   or 0) if db else 0.0,
+                        "low":    float(db.low    or 0) if db else 0.0,
+                        "volume": int(db.volume   or 0) if db else 0,
+                        "vwap":   float(db.vwap   or 0) if db else 0.0,
+                        "source": "alpaca",
+                    }
+        except Exception:
+            pass
+
+    # yfinance fallback
+    if YF_AVAILABLE:
+        try:
+            import yfinance as yf
+            tk   = yf.Ticker(symbol)
+            fi   = tk.fast_info
+            info = {}
+            try:
+                info = tk.info or {}
+            except Exception:
+                pass
+            last = float(getattr(fi, "last_price", 0) or info.get("currentPrice", 0) or 0)
+            prev = float(getattr(fi, "previous_close", 0) or info.get("regularMarketPreviousClose", 0) or 0)
+            bid  = float(info.get("bid", 0) or (last - 0.01 if last else 0))
+            ask  = float(info.get("ask", 0) or (last + 0.01 if last else 0))
+            sprd = ask - bid
+            chg  = last - prev
+            return {
+                "bid": bid, "ask": ask,
+                "bid_size": info.get("bidSize", 0),
+                "ask_size": info.get("askSize", 0),
+                "spread": sprd,
+                "spread_pct": (sprd / last * 100) if last else 0.0,
+                "last_price": last, "prev_close": prev,
+                "change": chg,
+                "change_pct": (chg / prev * 100) if prev else 0.0,
+                "open":   float(getattr(fi, "open", 0) or info.get("regularMarketOpen", 0) or 0),
+                "high":   float(getattr(fi, "day_high", 0) or info.get("dayHigh", 0) or 0),
+                "low":    float(getattr(fi, "day_low", 0)  or info.get("dayLow",  0) or 0),
+                "volume": int(getattr(fi, "last_volume", 0) or info.get("volume", 0) or 0),
+                "vwap":   0.0,
+                "source": "yfinance",
+            }
+        except Exception:
+            pass
+
+    return {}
+
+
+@st.cache_data(ttl=60)
+def get_bars_df(symbol: str, timeframe: str = "1D") -> pd.DataFrame:
+    period, interval = TF_MAP.get(timeframe, ("2y", "1d"))
+    if not YF_AVAILABLE:
+        return pd.DataFrame()
+    return get_history(symbol, period=period, interval=interval)
+
+
+@st.cache_data(ttl=300)
+def get_fundamentals(symbol: str) -> Dict:
+    out: Dict[str, Any] = {}
+    if YF_AVAILABLE:
+        try:
+            info = get_info(symbol)
+            out = {
+                "company_name":     info.get("longName") or info.get("shortName", symbol),
+                "sector":           info.get("sector", ""),
+                "industry":         info.get("industry", ""),
+                "exchange":         info.get("exchange", ""),
+                "description":      info.get("longBusinessSummary", ""),
+                "market_cap":       info.get("marketCap"),
+                "pe_ratio":         info.get("trailingPE"),
+                "forward_pe":       info.get("forwardPE"),
+                "peg_ratio":        info.get("pegRatio"),
+                "price_to_sales":   info.get("priceToSalesTrailing12Months"),
+                "price_to_book":    info.get("priceToBook"),
+                "ev_ebitda":        info.get("enterpriseToEbitda"),
+                "eps_ttm":          info.get("trailingEps"),
+                "eps_forward":      info.get("forwardEps"),
+                "revenue_growth":   info.get("revenueGrowth"),
+                "earnings_growth":  info.get("earningsGrowth"),
+                "gross_margin":     info.get("grossMargins"),
+                "op_margin":        info.get("operatingMargins"),
+                "net_margin":       info.get("profitMargins"),
+                "roe":              info.get("returnOnEquity"),
+                "roa":              info.get("returnOnAssets"),
+                "debt_equity":      info.get("debtToEquity"),
+                "current_ratio":    info.get("currentRatio"),
+                "total_cash":       info.get("totalCash"),
+                "total_debt":       info.get("totalDebt"),
+                "dividend_yield":   info.get("dividendYield"),
+                "payout_ratio":     info.get("payoutRatio"),
+                "ex_div_date":      info.get("exDividendDate"),
+                "week52_high":      info.get("fiftyTwoWeekHigh"),
+                "week52_low":       info.get("fiftyTwoWeekLow"),
+                "avg_volume":       info.get("averageVolume"),
+                "beta":             info.get("beta"),
+                "shares_out":       info.get("sharesOutstanding"),
+            }
+        except Exception:
+            pass
+
+    # Alpaca asset metadata overlay
+    if ALPACA_AVAILABLE:
+        try:
+            svc = TradingService.from_session_state()
+            if svc:
+                asset = svc._client.get_asset(symbol.upper())
+                out["fractionable"]   = getattr(asset, "fractionable",   False)
+                out["shortable"]      = getattr(asset, "shortable",      False)
+                out["marginable"]     = getattr(asset, "marginable",     False)
+                out["easy_to_borrow"] = getattr(asset, "easy_to_borrow", False)
+                if not out.get("exchange"):
+                    out["exchange"] = str(getattr(asset, "exchange", ""))
+        except Exception:
+            pass
+
+    return out
+
+
+@st.cache_data(ttl=120)
+def get_option_chain(symbol: str, expiry: Optional[str] = None) -> Dict:
+    if not YF_AVAILABLE:
+        return {"available": False, "reason": "yfinance not installed"}
+    try:
+        import yfinance as yf
+        tk = yf.Ticker(symbol)
+        expirations = list(tk.options or [])
+        if not expirations:
+            return {"available": False, "reason": "No listed options for this security"}
+        selected = expiry if expiry in expirations else expirations[0]
+        chain    = tk.option_chain(selected)
+        return {
+            "available":   True,
+            "expirations": expirations,
+            "selected":    selected,
+            "calls":       chain.calls,
+            "puts":        chain.puts,
+        }
+    except Exception as e:
+        return {"available": False, "reason": str(e)[:120]}
+
+
+def search_symbols(query: str) -> List[Dict]:
+    if not query:
+        return []
+    if ALPACA_AVAILABLE:
+        try:
+            from alpaca.trading.requests import GetAssetsRequest
+            from alpaca.trading.enums import AssetClass, AssetStatus
+            svc = TradingService.from_session_state()
+            if svc:
+                req    = GetAssetsRequest(asset_class=AssetClass.US_EQUITY, status=AssetStatus.ACTIVE)
+                assets = svc._client.get_all_assets(req)
+                q      = query.upper()
+                return [
+                    {"symbol": a.symbol, "name": a.name or "", "exchange": str(a.exchange)}
+                    for a in assets
+                    if q in a.symbol.upper() or q in (a.name or "").upper()
+                ][:10]
+        except Exception:
+            pass
+    return [{"symbol": query.upper(), "name": "", "exchange": ""}]
+
+
+# ── Formatting helpers ────────────────────────────────────────────────────────
+
+def _fmt_price(v) -> str:
+    try:    return f"${float(v):,.2f}"
+    except: return "—"
+
+def _fmt_pct(v) -> str:
+    try:    return f"{float(v)*100:.2f}%"
+    except: return "—"
+
+def _fmt_large(v) -> str:
+    try:
+        v = float(v)
+        if v >= 1e12: return f"${v/1e12:.2f}T"
+        if v >= 1e9:  return f"${v/1e9:.2f}B"
+        if v >= 1e6:  return f"${v/1e6:.2f}M"
+        return f"${v:,.0f}"
+    except: return "—"
+
+def _fmt_vol(v) -> str:
+    try:
+        v = float(v)
+        if v >= 1e9: return f"{v/1e9:.2f}B"
+        if v >= 1e6: return f"{v/1e6:.1f}M"
+        if v >= 1e3: return f"{v/1e3:.1f}K"
+        return str(int(v))
+    except: return "—"
+
+def _color(val) -> str:
+    try:    return "#3fb950" if float(val) >= 0 else "#f85149"
+    except: return "#8b949e"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Chunk 3 — Header: search bar + account badge
+# ─────────────────────────────────────────────────────────────────────────────
+
+def render_header() -> None:
+    col_search, col_acct = st.columns([3, 1])
+
+    with col_search:
+        query = st.text_input(
+            label="symbol_search",
+            value=st.session_state.get("search_query", st.session_state.symbol),
+            placeholder="Search symbol or company — AAPL, NVDA, SPY, TSLA…",
+            label_visibility="collapsed",
+            key="cc_search_input",
+        )
+
+        if query:
+            q_clean = query.strip().upper()
+            # Only search if it differs from current symbol
+            if q_clean != st.session_state.symbol:
+                results = search_symbols(query)
+                if results:
+                    btn_cols = st.columns(min(len(results), 5))
+                    for i, r in enumerate(results[:5]):
+                        with btn_cols[i]:
+                            label = r["symbol"]
+                            sub   = (r.get("name") or "")[:16]
+                            if st.button(
+                                f"**{label}**\n{sub}",
+                                key=f"cc_sug_{label}",
+                                use_container_width=True,
+                            ):
+                                st.session_state.symbol       = label
+                                st.session_state.search_query = label
+                                st.session_state.confirm_pending = False
+                                get_snapshot.clear()
+                                get_bars_df.clear()
+                                get_fundamentals.clear()
+                                get_option_chain.clear()
+                                st.rerun()
+
+                # Allow Enter / Load button to confirm a manually typed symbol
+                if q_clean.isalpha() and len(q_clean) <= 5:
+                    if st.button(f"Load {q_clean}", key="cc_load_typed", type="primary"):
+                        st.session_state.symbol       = q_clean
+                        st.session_state.search_query = q_clean
+                        st.session_state.confirm_pending = False
+                        get_snapshot.clear()
+                        get_bars_df.clear()
+                        get_fundamentals.clear()
+                        get_option_chain.clear()
+                        st.rerun()
+
+    with col_acct:
+        acct = get_account_info()
+        if acct:
+            mode    = acct.get("mode", "PAPER")
+            equity  = acct.get("equity", 0.0)
+            cash    = acct.get("cash", 0.0)
+            day_chg = equity - acct.get("last_equity", equity)
+            chg_col = _color(day_chg)
+            badge   = (
+                '<span class="badge-live">⚠ LIVE</span>'
+                if mode == "LIVE" else
+                '<span class="badge-paper">PAPER</span>'
+            )
+            st.markdown(
+                f"{badge}<br>"
+                f'<span class="stat-label">Equity </span>'
+                f'<span class="stat-value">${equity:,.0f}</span><br>'
+                f'<span class="stat-label">Cash </span>'
+                f'<span class="stat-value">${cash:,.0f}</span><br>'
+                f'<span class="stat-label">Day P&L </span>'
+                f'<span style="color:{chg_col};font-weight:600;">'
+                f'{day_chg:+,.0f}</span>',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.caption("Alpaca not connected")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Chunk 4 — Security info panel (left column)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def render_security_info(symbol: str) -> None:
+    snap = get_snapshot(symbol)
+    fund = get_fundamentals(symbol)
+
+    name   = fund.get("company_name", symbol)
+    exch   = fund.get("exchange", "")
+    sector = fund.get("sector", "")
+
+    # ── Name / exchange strip ─────────────────────────────────────────────
+    st.markdown(
+        f"<div style='margin-bottom:2px;'>"
+        f"<span style='font-size:1.45rem;font-weight:700;color:#e6edf3;'>{symbol}</span>"
+        f"<span style='color:#8b949e;margin-left:8px;font-size:0.88rem;'>{name}</span>"
+        f"</div>"
+        f"<div style='color:#8b949e;font-size:0.76rem;margin-bottom:10px;'>"
+        f"{exch}{'  ·  ' + sector if sector else ''}"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+    # ── Price hero ────────────────────────────────────────────────────────
+    last  = snap.get("last_price", 0.0)
+    chg   = snap.get("change", 0.0)
+    chgp  = snap.get("change_pct", 0.0)
+    col   = _color(chg)
+    arrow = "▲" if chg >= 0 else "▼"
+
+    st.markdown(
+        f"<div class='price-hero'>${last:,.2f}</div>"
+        f"<div style='color:{col};font-size:0.95rem;font-weight:600;margin-bottom:14px;'>"
+        f"{arrow} {chg:+.2f} ({chgp:+.2f}%)"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+    # ── OHLCV stats grid ──────────────────────────────────────────────────
+    st.markdown('<div class="sec-header">Market Data</div>', unsafe_allow_html=True)
+
+    stats = [
+        ("Open",      _fmt_price(snap.get("open"))),
+        ("High",      _fmt_price(snap.get("high"))),
+        ("Low",       _fmt_price(snap.get("low"))),
+        ("Prev Close",_fmt_price(snap.get("prev_close"))),
+        ("Volume",    _fmt_vol(snap.get("volume"))),
+        ("VWAP",      _fmt_price(snap.get("vwap")) if snap.get("vwap") else "—"),
+        ("52W High",  _fmt_price(fund.get("week52_high"))),
+        ("52W Low",   _fmt_price(fund.get("week52_low"))),
+        ("Avg Vol",   _fmt_vol(fund.get("avg_volume"))),
+        ("Beta",      f"{fund['beta']:.2f}" if fund.get("beta") else "—"),
+        ("Mkt Cap",   _fmt_large(fund.get("market_cap"))),
+        ("EPS (TTM)", _fmt_price(fund.get("eps_ttm"))),
+    ]
+
+    c1, c2 = st.columns(2)
+    for i, (lbl, val) in enumerate(stats):
+        with (c1 if i % 2 == 0 else c2):
+            st.markdown(
+                f"<div style='margin-bottom:5px;'>"
+                f"<span class='stat-label'>{lbl}</span><br>"
+                f"<span class='stat-value'>{val}</span>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+    # ── Alpaca asset attributes ───────────────────────────────────────────
+    attrs = [a for a, k in [
+        ("Fractional", "fractionable"),
+        ("Shortable",  "shortable"),
+        ("Marginable", "marginable"),
+        ("ETB",        "easy_to_borrow"),
+    ] if fund.get(k)]
+    if attrs:
+        pills = " ".join(
+            f"<span style='background:#21262d;border:1px solid #30363d;"
+            f"border-radius:3px;padding:1px 6px;font-size:0.72rem;color:#8b949e;'>{a}</span>"
+            for a in attrs
+        )
+        st.markdown(pills + "<br>", unsafe_allow_html=True)
+
+    # ── Description ───────────────────────────────────────────────────────
+    desc = fund.get("description", "")
+    if desc:
+        st.markdown('<div class="sec-header">About</div>', unsafe_allow_html=True)
+        with st.expander("Read more", expanded=False):
+            st.caption(desc[:600] + ("…" if len(desc) > 600 else ""))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Chunk 5 — Price chart (right column)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def render_chart(symbol: str, timeframe: str) -> None:
+    # ── Timeframe pill selector ───────────────────────────────────────────
+    tf_list = list(TF_MAP.keys())
+    tf_cols = st.columns(len(tf_list))
+    for i, tf in enumerate(tf_list):
+        with tf_cols[i]:
+            is_active = tf == timeframe
+            if st.button(
+                tf,
+                key=f"cc_tf_{tf}",
+                use_container_width=True,
+                type="primary" if is_active else "secondary",
+            ):
+                st.session_state.timeframe = tf
+                get_bars_df.clear()
+                st.rerun()
+
+    # ── Fetch bars ────────────────────────────────────────────────────────
+    df = get_bars_df(symbol, timeframe)
+
+    if df is None or df.empty:
+        st.info(f"No chart data for {symbol}.")
+        return
+
+    # ── TradingView chart (preferred) ─────────────────────────────────────
+    if TRADINGVIEW_AVAILABLE:
+        render_candlestick_chart(
+            df=df,
+            key=f"cc_chart_{symbol}_{timeframe}",
+            height=440,
+            show_volume=True,
+            watermark=symbol,
+            dark_mode=True,
         )
         return
 
-    # Check connection
+    # ── Plotly fallback ───────────────────────────────────────────────────
+    try:
+        import plotly.graph_objects as go
+        from plotly.subplots import make_subplots
+
+        df2 = df.copy()
+        if isinstance(df2.index, pd.DatetimeIndex):
+            df2 = df2.reset_index()
+        df2.columns = [c.lower() for c in df2.columns]
+        date_col = df2.columns[0]
+
+        fig = make_subplots(
+            rows=2, cols=1, shared_xaxes=True,
+            row_heights=[0.76, 0.24], vertical_spacing=0.02,
+        )
+        fig.add_trace(go.Candlestick(
+            x=df2[date_col],
+            open=df2["open"], high=df2["high"],
+            low=df2["low"],   close=df2["close"],
+            increasing_line_color="#3fb950",
+            decreasing_line_color="#f85149",
+            name=symbol,
+        ), row=1, col=1)
+
+        vol_col = next((c for c in df2.columns if "vol" in c), None)
+        if vol_col:
+            colors = [
+                "#3fb950" if c >= o else "#f85149"
+                for c, o in zip(df2["close"], df2["open"])
+            ]
+            fig.add_trace(go.Bar(
+                x=df2[date_col], y=df2[vol_col],
+                marker_color=colors, opacity=0.6, name="Volume",
+            ), row=2, col=1)
+
+        fig.update_layout(
+            height=440,
+            paper_bgcolor="#0d1117", plot_bgcolor="#0d1117",
+            xaxis_rangeslider_visible=False,
+            showlegend=False,
+            margin=dict(l=0, r=0, t=4, b=0),
+            font=dict(color="#8b949e"),
+        )
+        for axis in ["xaxis", "xaxis2", "yaxis", "yaxis2"]:
+            fig.update_layout(**{axis: dict(gridcolor="#21262d", zeroline=False)})
+
+        st.plotly_chart(fig, use_container_width=True)
+
+    except Exception as e:
+        st.warning(f"Chart unavailable: {e}")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Chunk 6 — Bid/Ask quote strip (full-width)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def render_quote_strip(symbol: str) -> None:
+    snap = get_snapshot(symbol)
+
+    bid       = snap.get("bid", 0.0)
+    ask       = snap.get("ask", 0.0)
+    bid_sz    = snap.get("bid_size", 0)
+    ask_sz    = snap.get("ask_size", 0)
+    spread    = snap.get("spread", 0.0)
+    spread_pct= snap.get("spread_pct", 0.0)
+    last      = snap.get("last_price", 0.0)
+    chg       = snap.get("change", 0.0)
+    chgp      = snap.get("change_pct", 0.0)
+    hi        = snap.get("high", 0.0)
+    lo        = snap.get("low", 0.0)
+    vol       = snap.get("volume", 0)
+    vwap      = snap.get("vwap", 0.0)
+    source    = snap.get("source", "")
+    chg_col   = _color(chg)
+    arrow     = "▲" if chg >= 0 else "▼"
+
+    c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([1.8, 1.8, 1.6, 1.6, 1.6, 1.6, 1.6, 0.8])
+
+    with c1:
+        st.markdown(
+            f'<span class="stat-label">BID</span><br>'
+            f'<span class="tag-green" style="font-size:1.05rem;">'
+            f'${bid:.4f}</span>'
+            f'<span class="stat-label"> ×{bid_sz}</span>',
+            unsafe_allow_html=True,
+        )
+    with c2:
+        st.markdown(
+            f'<span class="stat-label">ASK</span><br>'
+            f'<span class="tag-red" style="font-size:1.05rem;">'
+            f'${ask:.4f}</span>'
+            f'<span class="stat-label"> ×{ask_sz}</span>',
+            unsafe_allow_html=True,
+        )
+    with c3:
+        st.markdown(
+            f'<span class="stat-label">SPREAD</span><br>'
+            f'<span class="tag-gold">${spread:.4f} ({spread_pct:.3f}%)</span>',
+            unsafe_allow_html=True,
+        )
+    with c4:
+        st.markdown(
+            f'<span class="stat-label">LAST</span><br>'
+            f'<span class="stat-value" style="font-size:1.05rem;">${last:.2f}</span>',
+            unsafe_allow_html=True,
+        )
+    with c5:
+        st.markdown(
+            f'<span class="stat-label">CHANGE</span><br>'
+            f'<span style="color:{chg_col};font-weight:600;">'
+            f'{arrow} {chg:+.2f} ({chgp:+.2f}%)</span>',
+            unsafe_allow_html=True,
+        )
+    with c6:
+        st.markdown(
+            f'<span class="stat-label">HI / LO</span><br>'
+            f'<span class="tag-green">${hi:.2f}</span>'
+            f'<span class="stat-label"> / </span>'
+            f'<span class="tag-red">${lo:.2f}</span>',
+            unsafe_allow_html=True,
+        )
+    with c7:
+        st.markdown(
+            f'<span class="stat-label">VOL / VWAP</span><br>'
+            f'<span class="stat-value">{_fmt_vol(vol)}'
+            + (f' / ${vwap:.2f}' if vwap else '') +
+            f'</span>',
+            unsafe_allow_html=True,
+        )
+    with c8:
+        if st.button("↻", key="cc_refresh_quote", help="Refresh quote"):
+            get_snapshot.clear()
+            st.rerun()
+        if source:
+            st.caption(source)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Chunk 7 — Order ticket (left column of bottom row)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _dispatch_order(svc, symbol, side, ot, qty, notional,
+                    limit_price, stop_price, tp_price, sl_price, tif) -> "TradeResult":
+    try:
+        if ot == "Market":
+            return (svc.submit_dollar_order(symbol, notional, side, tif)
+                    if notional else svc.submit_market_order(symbol, qty, side, tif))
+        elif ot == "Limit":
+            shares = qty or ((notional / limit_price) if limit_price else 1)
+            return svc.submit_limit_order(symbol, shares, side, limit_price, tif)
+        elif ot == "Stop":
+            return svc.submit_stop_order(symbol, qty or 1, side, stop_price, tif)
+        elif ot == "Stop-Limit":
+            return svc.submit_stop_limit_order(symbol, qty or 1, side, stop_price, limit_price, tif)
+        elif ot == "Bracket":
+            shares = qty or ((notional / limit_price) if limit_price else 1)
+            return svc.submit_bracket_order(symbol, shares, side, limit_price, tp_price, sl_price, tif)
+    except Exception as e:
+        return TradeResult(success=False, message=str(e))
+    return TradeResult(success=False, message="Unknown order configuration.")
+
+
+def render_order_ticket(symbol: str, current_price: float) -> None:
+    st.markdown('<div class="sec-header">Order Ticket</div>', unsafe_allow_html=True)
+
     svc = TradingService.from_session_state()
     if svc is None:
-        _render_connect_prompt()
+        st.info("Connect Alpaca to trade.")
+        if st.button("Connect", key="cc_go_connect"):
+            st.session_state["nav_page"] = "portfolio_home"
+            st.rerun()
         return
 
-    # Account strip
-    _render_account_strip(svc)
+    # ── Side ──────────────────────────────────────────────────────────────
+    side = st.radio(
+        "Side", ["Buy", "Sell"], horizontal=True,
+        index=0 if st.session_state.order_side == "buy" else 1,
+        key="cc_ot_side",
+    ).lower()
+    st.session_state.order_side = side
+    side_col = "#3fb950" if side == "buy" else "#f85149"
 
-    st.markdown("---")
-
-    tab_order, tab_sizer, tab_openorders, tab_fills, tab_watchlist = st.tabs([
-        "Order Ticket",
-        "Position Sizer",
-        "Open Orders",
-        "Executions",
-        "Watchlists",
-    ])
-
-    with tab_order:
-        _render_order_ticket(svc)
-
-    with tab_sizer:
-        _render_position_sizer(svc)
-
-    with tab_openorders:
-        _render_open_orders(svc)
-
-    with tab_fills:
-        _render_executions(svc)
-
-    with tab_watchlist:
-        _render_watchlists(svc)
-
-
-# ---------------------------------------------------------------------------
-# Connection prompt
-# ---------------------------------------------------------------------------
-
-def _render_connect_prompt():
-    st.info(
-        "Connect your Alpaca account first — go to **Portfolio Home** "
-        "and use the Alpaca setup widget, then return here."
+    # ── Order type ────────────────────────────────────────────────────────
+    ot_options = ["Market", "Limit", "Stop", "Stop-Limit", "Bracket"]
+    ot = st.selectbox(
+        "Type", ot_options,
+        index=ot_options.index(st.session_state.get("order_type_display", "Market")),
+        key="cc_ot_type",
     )
-    with st.expander("Quick credentials entry"):
-        api_key = st.text_input("API Key", type="password")
-        secret_key = st.text_input("Secret Key", type="password")
-        paper = st.checkbox("Paper trading", value=True)
-        if st.button("Connect", type="primary"):
-            if api_key and secret_key:
-                try:
-                    svc = TradingService(api_key, secret_key, paper=paper)
-                    acct = svc.get_account()
-                    if acct:
-                        st.session_state["alpaca_configured"] = True
-                        st.session_state["alpaca_api_key"] = api_key
-                        st.session_state["alpaca_secret_key"] = secret_key
-                        st.session_state["alpaca_paper"] = paper
-                        st.success("Connected!")
-                        st.rerun()
-                    else:
-                        st.error("Credentials rejected or account inactive.")
-                except Exception as e:
-                    st.error(f"Connection failed: {e}")
-            else:
-                st.warning("Enter both API Key and Secret Key.")
+    st.session_state["order_type_display"] = ot
 
-
-# ---------------------------------------------------------------------------
-# Account overview strip
-# ---------------------------------------------------------------------------
-
-def _render_account_strip(svc: TradingService):
-    acct = svc.get_account()
-    if not acct:
-        st.warning("Could not fetch account data.")
-        return
-
-    mode_color = "#FF6B6B" if not svc.is_paper() else "#4ECDC4"
-    mode_label = acct.get("mode", "PAPER")
-
-    st.markdown(
-        f'<span style="background:{mode_color};color:#000;padding:3px 10px;'
-        f'border-radius:4px;font-weight:700;font-size:0.8rem;">'
-        f'{mode_label}</span>',
-        unsafe_allow_html=True,
+    # ── Size ──────────────────────────────────────────────────────────────
+    notional_mode = st.toggle(
+        "Dollar amount ($)", value=st.session_state.order_notional_mode,
+        key="cc_notional_toggle",
     )
-    st.markdown("")
+    st.session_state.order_notional_mode = notional_mode
 
-    c1, c2, c3, c4, c5 = st.columns(5)
-    equity = acct.get("equity", 0)
-    last_equity = acct.get("last_equity", equity)
-    day_chg = equity - last_equity
-    day_chg_pct = (day_chg / last_equity * 100) if last_equity else 0
-
-    c1.metric("Portfolio Equity", f"${equity:,.2f}", f"{day_chg:+,.2f} ({day_chg_pct:+.2f}%)")
-    c2.metric("Cash", f"${acct.get('cash', 0):,.2f}")
-    c3.metric("Buying Power", f"${acct.get('buying_power', 0):,.2f}")
-    c4.metric("Long Exposure", f"${acct.get('long_market_value', 0):,.2f}")
-    c5.metric("Day Trades (PDT)", str(acct.get("daytrade_count", 0)))
-
-
-# ---------------------------------------------------------------------------
-# Tab 1 — Order Ticket
-# ---------------------------------------------------------------------------
-
-def _render_order_ticket(svc: TradingService):
-    # Pre-fill ticker from Valuation House bridge if set
-    prefill_symbol = st.session_state.pop("cc_prefill_symbol", "")
-    prefill_price = st.session_state.pop("cc_prefill_limit_price", None)
-    prefill_side = st.session_state.pop("cc_prefill_side", "buy")
-
-    st.markdown("### Order Ticket")
-
-    col_sym, col_side = st.columns([3, 1])
-    with col_sym:
-        symbol = st.text_input(
-            "Ticker",
-            value=prefill_symbol,
-            placeholder="e.g. AAPL",
-            key="cc_symbol",
-        ).upper().strip()
-
-    with col_side:
-        side = st.radio(
-            "Side",
-            ["Buy", "Sell"],
-            index=0 if prefill_side.lower() == "buy" else 1,
-            horizontal=True,
-            key="cc_side",
-        ).lower()
-
-    order_type = st.radio(
-        "Order Type",
-        ["Market", "Limit", "Stop", "Stop-Limit", "Bracket"],
-        horizontal=True,
-        key="cc_order_type",
-    )
-
-    st.markdown("")
-
-    # Sizing mode
-    sizing_mode = st.radio(
-        "Size by",
-        ["Shares", "Notional ($)"],
-        horizontal=True,
-        key="cc_sizing_mode",
-    )
-
-    col_qty, col_tif = st.columns(2)
-    with col_qty:
-        if sizing_mode == "Shares":
-            qty = st.number_input(
-                "Shares",
-                min_value=0.0001,
-                value=1.0,
-                step=1.0,
-                format="%.4f",
-                key="cc_qty",
-            )
-            notional = None
-        else:
-            notional = st.number_input(
-                "Dollar Amount ($)",
-                min_value=1.0,
-                value=1000.0,
-                step=100.0,
-                format="%.2f",
-                key="cc_notional",
-            )
-            qty = None
-
-    with col_tif:
-        tif_options = ["day", "gtc", "ioc", "fok"]
-        tif = st.selectbox(
-            "Time in Force",
-            tif_options,
-            format_func=lambda x: x.upper(),
-            key="cc_tif",
+    qty = notional = None
+    if notional_mode:
+        notional = st.number_input(
+            "Amount ($)", min_value=1.0,
+            value=float(st.session_state.order_notional),
+            step=100.0, format="%.2f", key="cc_ot_notional",
         )
+        st.session_state.order_notional = notional
+        if current_price:
+            st.caption(f"≈ {notional/current_price:.4f} shares @ ${current_price:.2f}")
+    else:
+        qty = st.number_input(
+            "Shares", min_value=0.0001,
+            value=float(st.session_state.order_qty),
+            step=1.0, format="%.4f", key="cc_ot_qty",
+        )
+        st.session_state.order_qty = qty
+        if current_price:
+            st.caption(f"Est. ${qty * current_price:,.2f}")
 
-    # Order-type specific fields
-    limit_price = stop_price = stop_limit_price = tp_price = sl_price = None
+    # ── Price fields ──────────────────────────────────────────────────────
+    limit_price = stop_price = tp_price = sl_price = None
 
-    if order_type in ("Limit", "Stop-Limit", "Bracket"):
+    if ot in ("Limit", "Stop-Limit", "Bracket"):
         limit_price = st.number_input(
-            "Limit Price ($)",
-            min_value=0.01,
-            value=float(prefill_price) if prefill_price else 100.00,
-            step=0.01,
-            format="%.2f",
-            key="cc_limit_price",
+            "Limit Price ($)", min_value=0.01,
+            value=float(st.session_state.get("order_price") or current_price or 100.0),
+            step=0.01, format="%.2f", key="cc_ot_limit",
         )
-
-    if order_type in ("Stop", "Stop-Limit"):
+    if ot in ("Stop", "Stop-Limit"):
         stop_price = st.number_input(
-            "Stop Price ($)",
-            min_value=0.01,
-            value=95.00,
-            step=0.01,
-            format="%.2f",
-            key="cc_stop_price",
+            "Stop Price ($)", min_value=0.01,
+            value=float(st.session_state.get("order_stop") or current_price * 0.97 or 97.0),
+            step=0.01, format="%.2f", key="cc_ot_stop",
         )
+    if ot == "Bracket":
+        c_tp, c_sl = st.columns(2)
+        with c_tp:
+            tp_pct = st.number_input("TP %", min_value=0.1, value=5.0, step=0.5,
+                                     format="%.1f", key="cc_ot_tp")
+        with c_sl:
+            sl_pct = st.number_input("SL %", min_value=0.1, value=3.0, step=0.5,
+                                     format="%.1f", key="cc_ot_sl")
+        if limit_price:
+            tp_price = limit_price * (1 + tp_pct / 100)
+            sl_price = limit_price * (1 - sl_pct / 100)
 
-    if order_type == "Bracket":
-        col_tp, col_sl = st.columns(2)
-        with col_tp:
-            tp_price = st.number_input(
-                "Take Profit ($)",
-                min_value=0.01,
-                value=(float(prefill_price) * 1.10) if prefill_price else 110.00,
-                step=0.01,
-                format="%.2f",
-                key="cc_tp_price",
-            )
-        with col_sl:
-            sl_price = st.number_input(
-                "Stop Loss ($)",
-                min_value=0.01,
-                value=(float(prefill_price) * 0.95) if prefill_price else 95.00,
-                step=0.01,
-                format="%.2f",
-                key="cc_sl_price",
-            )
+    tif = st.selectbox("TIF", ["day", "gtc", "ioc", "fok"],
+                       format_func=str.upper, key="cc_ot_tif")
 
-    extended_hours = st.checkbox(
-        "Extended hours (pre/after market)",
-        value=False,
-        key="cc_extended",
-        help="Only valid for limit orders during extended hours sessions.",
-    )
-
-    # Order summary preview
-    if symbol:
-        _render_order_preview(
-            symbol=symbol,
-            side=side,
-            order_type=order_type,
-            qty=qty,
-            notional=notional,
-            limit_price=limit_price,
-            stop_price=stop_price,
-            tp_price=tp_price,
-            sl_price=sl_price,
-            tif=tif,
-        )
-
-    st.markdown("")
-
-    # Confirmation flow
-    if "cc_confirm_pending" not in st.session_state:
-        st.session_state["cc_confirm_pending"] = False
-
-    if not st.session_state["cc_confirm_pending"]:
-        if st.button(
-            f"Review Order",
-            type="primary",
-            use_container_width=True,
-            key="cc_review_btn",
-        ):
-            if not symbol:
-                st.error("Enter a ticker symbol.")
-            elif sizing_mode == "Shares" and (qty is None or qty <= 0):
-                st.error("Quantity must be > 0.")
-            elif sizing_mode == "Notional ($)" and (notional is None or notional <= 0):
-                st.error("Dollar amount must be > 0.")
+    # ── Position Sizer (collapsed) ────────────────────────────────────────
+    if SIZER_AVAILABLE and current_price:
+        with st.expander("Position Sizer", expanded=False):
+            acct   = get_account_info()
+            equity = acct.get("equity", 100_000.0)
+            method = st.radio("Method", ["Kelly", "Fixed %", "Vol-Based"],
+                              horizontal=True, key="cc_ps_method")
+            if method == "Kelly":
+                wr  = st.slider("Win Rate", 30, 70, 55, key="cc_ps_wr") / 100
+                aw  = st.slider("Avg Win %", 1, 25, 8, key="cc_ps_aw") / 100
+                al  = st.slider("Avg Loss %", 1, 15, 4, key="cc_ps_al") / 100
+                res = kelly_fraction(wr, aw, al, equity, current_price)
+            elif method == "Fixed %":
+                rp  = st.slider("Risk %", 1, 10, 2, key="cc_ps_rp") / 100
+                res = fixed_fractional(rp, equity, current_price)
             else:
-                st.session_state["cc_confirm_pending"] = True
+                av  = st.slider("Ann. Vol %", 5, 80, 25, key="cc_ps_av") / 100
+                dv  = annual_vol_to_daily(av)
+                res = volatility_based(dv, equity, current_price)
+            st.metric("Suggested Shares", f"{res.shares:,.2f}")
+            st.metric("Notional",         f"${res.notional:,.0f}")
+            st.caption(res.notes)
+            if st.button("Use this size", key="cc_ps_use"):
+                st.session_state.order_qty = res.shares
+                st.session_state.order_notional_mode = False
                 st.rerun()
+
+    st.markdown("<hr style='border-color:#30363d;margin:10px 0;'>", unsafe_allow_html=True)
+
+    # ── Two-step confirm ──────────────────────────────────────────────────
+    if not st.session_state.confirm_pending:
+        lbl = f"{'BUY' if side == 'buy' else 'SELL'} {symbol}"
+        if st.button(lbl, type="primary", use_container_width=True, key="cc_review"):
+            st.session_state.confirm_pending = True
+            st.rerun()
     else:
-        _render_confirmation_modal(
-            svc=svc,
-            symbol=symbol,
-            side=side,
-            order_type=order_type,
-            qty=qty,
-            notional=notional,
-            limit_price=limit_price,
-            stop_price=stop_price,
-            stop_limit_price=stop_limit_price,
-            tp_price=tp_price,
-            sl_price=sl_price,
-            tif=tif,
-            extended_hours=extended_hours,
+        size_str = f"${notional:,.2f}" if notional_mode else f"{qty:,.4f} sh"
+        warn = "" if svc.is_paper() else "⚠️ **LIVE ACCOUNT**"
+        detail = (
+            (f"<br>Limit ${limit_price:.2f}" if limit_price else "") +
+            (f"  Stop ${stop_price:.2f}" if stop_price else "") +
+            (f"<br>TP ${tp_price:.2f}  SL ${sl_price:.2f}" if tp_price else "") +
+            (f"<br><span style='color:#f85149;'>{warn}</span>" if warn else "")
         )
-
-
-def _render_order_preview(
-    symbol, side, order_type, qty, notional,
-    limit_price, stop_price, tp_price, sl_price, tif
-):
-    side_color = "#4ECDC4" if side == "buy" else "#FF6B6B"
-    side_label = side.upper()
-    size_str = f"{qty:,.4f} shares" if qty else f"${notional:,.2f}"
-
-    lines = [f"**{side_label}** {size_str} **{symbol}** — {order_type}"]
-    if limit_price:
-        lines.append(f"Limit: **${limit_price:,.2f}**")
-    if stop_price:
-        lines.append(f"Stop: **${stop_price:,.2f}**")
-    if tp_price:
-        lines.append(f"Take Profit: **${tp_price:,.2f}**")
-    if sl_price:
-        lines.append(f"Stop Loss: **${sl_price:,.2f}**")
-    lines.append(f"TIF: **{tif.upper()}**")
-
-    st.markdown(
-        f'<div style="background:#1E2D3D;border-left:3px solid {side_color};'
-        f'padding:12px 16px;border-radius:6px;margin-top:8px;">'
-        + " &nbsp;|&nbsp; ".join(lines)
-        + "</div>",
-        unsafe_allow_html=True,
-    )
-
-
-def _render_confirmation_modal(
-    svc, symbol, side, order_type, qty, notional,
-    limit_price, stop_price, stop_limit_price, tp_price, sl_price, tif, extended_hours
-):
-    mode_warning = (
-        ":red[**LIVE ACCOUNT — this will use real money.**]"
-        if not svc.is_paper()
-        else ":blue[Paper trading account — no real money at risk.]"
-    )
-
-    st.warning(
-        f"Confirm order submission\n\n{mode_warning}"
-    )
-
-    col_confirm, col_cancel = st.columns(2)
-
-    with col_confirm:
-        if st.button("Confirm & Submit", type="primary", use_container_width=True, key="cc_submit"):
-            result = _dispatch_order(
-                svc=svc,
-                symbol=symbol,
-                side=side,
-                order_type=order_type,
-                qty=qty,
-                notional=notional,
-                limit_price=limit_price,
-                stop_price=stop_price,
-                tp_price=tp_price,
-                sl_price=sl_price,
-                tif=tif,
-                extended_hours=extended_hours,
-            )
-            st.session_state["cc_confirm_pending"] = False
-            if result.success:
-                st.success(f"Order submitted! {result.message}")
-                if result.order_id:
-                    st.caption(f"Order ID: `{result.order_id}`")
-            else:
-                st.error(f"Submission failed: {result.message}")
-            st.rerun()
-
-    with col_cancel:
-        if st.button("Cancel", use_container_width=True, key="cc_cancel"):
-            st.session_state["cc_confirm_pending"] = False
-            st.rerun()
-
-
-def _dispatch_order(
-    svc, symbol, side, order_type, qty, notional,
-    limit_price, stop_price, tp_price, sl_price, tif, extended_hours
-):
-    if order_type == "Market":
-        if notional:
-            return svc.submit_dollar_order(symbol, notional, side, tif)
-        return svc.submit_market_order(symbol, qty, side, tif, extended_hours)
-
-    elif order_type == "Limit":
-        if notional:
-            # Approximate shares from notional/limit_price for limit orders
-            approx_qty = notional / limit_price if limit_price else notional
-            return svc.submit_limit_order(symbol, approx_qty, side, limit_price, tif, extended_hours)
-        return svc.submit_limit_order(symbol, qty, side, limit_price, tif, extended_hours)
-
-    elif order_type == "Stop":
-        shares = qty or (notional / stop_price if stop_price else 1)
-        return svc.submit_stop_order(symbol, shares, side, stop_price, tif)
-
-    elif order_type == "Stop-Limit":
-        shares = qty or 1
-        return svc.submit_stop_limit_order(symbol, shares, side, stop_price, limit_price, tif)
-
-    elif order_type == "Bracket":
-        shares = qty or (notional / limit_price if limit_price else 1)
-        return svc.submit_bracket_order(
-            symbol, shares, side, limit_price, tp_price, sl_price, tif
+        st.markdown(
+            f'<div class="metric-card" style="border-color:{side_col};">'
+            f'<b style="color:{side_col};">{side.upper()}</b> {size_str} '
+            f'<b>{symbol}</b> · {ot} · {tif.upper()}'
+            f'{detail}</div>',
+            unsafe_allow_html=True,
         )
-
-    from services.trading_service import TradeResult
-    return TradeResult(success=False, message=f"Unknown order type: {order_type}")
-
-
-# ---------------------------------------------------------------------------
-# Tab 2 — Position Sizer
-# ---------------------------------------------------------------------------
-
-def _render_position_sizer(svc: TradingService):
-    from analytics.position_sizer import (
-        kelly_fraction,
-        fixed_fractional,
-        volatility_based,
-        annual_vol_to_daily,
-        PositionSize,
-    )
-
-    st.markdown("### Position Sizer")
-
-    acct = svc.get_account()
-    portfolio_equity = acct.get("equity", 100_000)
-
-    st.caption(f"Portfolio equity: **${portfolio_equity:,.2f}**")
-
-    col_sym, col_price = st.columns(2)
-    with col_sym:
-        ps_symbol = st.text_input("Ticker", placeholder="AAPL", key="ps_symbol").upper().strip()
-    with col_price:
-        ps_price = st.number_input(
-            "Current Price ($)", min_value=0.01, value=150.00, step=0.01, format="%.2f", key="ps_price"
-        )
-
-    method = st.radio(
-        "Sizing Method",
-        ["Kelly Criterion", "Fixed Fractional", "Volatility-Based"],
-        horizontal=True,
-        key="ps_method",
-    )
-
-    result: Optional[PositionSize] = None
-
-    if method == "Kelly Criterion":
-        st.markdown("**Trade Statistics**")
-        col_wr, col_aw, col_al = st.columns(3)
-        with col_wr:
-            win_rate = st.slider("Win Rate", 0.10, 0.90, 0.55, 0.01, format="%.0f%%", key="ps_wr") / 100
-        with col_aw:
-            avg_win = st.slider("Avg Win", 1, 30, 8, 1, format="%d%%", key="ps_aw") / 100
-        with col_al:
-            avg_loss = st.slider("Avg Loss", 1, 20, 4, 1, format="%d%%", key="ps_al") / 100
-        kelly_mult = st.select_slider(
-            "Kelly Multiplier",
-            options=[0.25, 0.33, 0.50, 0.75, 1.0],
-            value=0.5,
-            format_func=lambda x: f"{x:.0%}",
-            key="ps_kelly_mult",
-        )
-        max_pos = st.slider("Max Position Size", 5, 50, 20, 5, format="%d%%", key="ps_max_pos") / 100
-        result = kelly_fraction(win_rate, avg_win, avg_loss, portfolio_equity, ps_price, kelly_mult, max_pos)
-
-    elif method == "Fixed Fractional":
-        risk_pct = st.slider("Risk per Trade", 0.5, 10.0, 2.0, 0.5, format="%.1f%%", key="ps_risk_pct") / 100
-        use_stop = st.checkbox("Use stop-loss for precise risk sizing", key="ps_use_stop")
-        stop = None
-        if use_stop:
-            stop = st.number_input(
-                "Stop-Loss Price ($)", min_value=0.01, value=ps_price * 0.95, step=0.01, format="%.2f", key="ps_stop"
-            )
-        result = fixed_fractional(risk_pct, portfolio_equity, ps_price, stop)
-
-    elif method == "Volatility-Based":
-        ann_vol = st.slider("Annualised Volatility", 5, 80, 25, 1, format="%d%%", key="ps_ann_vol") / 100
-        daily_vol = annual_vol_to_daily(ann_vol)
-        target_risk = st.slider("Daily Risk Target", 0.25, 3.0, 1.0, 0.25, format="%.2f%%", key="ps_target_risk") / 100
-        max_pos_v = st.slider("Max Position Size", 5, 50, 20, 5, format="%d%%", key="ps_max_pos_v") / 100
-        st.caption(f"Daily vol: {daily_vol:.2%} of price = ${ps_price * daily_vol:.2f}/share")
-        result = volatility_based(daily_vol, portfolio_equity, ps_price, target_risk, max_pos_v)
-
-    if result:
-        st.markdown("---")
-        st.markdown(f"#### {result.method} — Recommendation")
-
-        col_s, col_n, col_p = st.columns(3)
-        col_s.metric("Shares", f"{result.shares:,.2f}")
-        col_n.metric("Notional", f"${result.notional:,.2f}")
-        col_p.metric("% of Portfolio", f"{result.pct_of_portfolio:.2f}%")
-
-        st.caption(result.notes)
-
-        # Send to order ticket
-        if ps_symbol and st.button(
-            f"Send to Order Ticket — BUY {result.shares:,.2f} {ps_symbol}",
-            type="primary",
-            key="ps_send_to_ticket",
-        ):
-            st.session_state["cc_prefill_symbol"] = ps_symbol
-            st.session_state["cc_prefill_side"] = "buy"
-            st.session_state["cc_confirm_pending"] = False
-            st.rerun()
-
-
-# ---------------------------------------------------------------------------
-# Tab 3 — Open Orders
-# ---------------------------------------------------------------------------
-
-def _render_open_orders(svc: TradingService):
-    st.markdown("### Open Orders")
-
-    col_refresh, col_cancel_all = st.columns([4, 1])
-    with col_refresh:
-        if st.button("Refresh", key="oo_refresh"):
-            st.rerun()
-    with col_cancel_all:
-        if st.button("Cancel All", type="secondary", key="oo_cancel_all"):
-            r = svc.cancel_all_orders()
-            if r.success:
-                st.success(r.message)
+        col_ok, col_cx = st.columns(2)
+        with col_ok:
+            if st.button("✓ Confirm", type="primary", use_container_width=True, key="cc_confirm"):
+                result = _dispatch_order(svc, symbol, side, ot, qty, notional,
+                                         limit_price, stop_price, tp_price, sl_price, tif)
+                st.session_state.confirm_pending = False
+                if result.success:
+                    st.success(result.message)
+                    if result.order_id:
+                        st.caption(f"ID: `{result.order_id}`")
+                else:
+                    st.error(result.message)
+        with col_cx:
+            if st.button("Cancel", use_container_width=True, key="cc_cancel"):
+                st.session_state.confirm_pending = False
                 st.rerun()
-            else:
-                st.error(r.message)
 
-    orders = svc.get_open_orders()
-    if not orders:
-        st.info("No open orders.")
-        return
-
-    for order in orders:
-        with st.container():
-            col_info, col_action = st.columns([6, 1])
-            with col_info:
-                side_color = "#4ECDC4" if "buy" in str(order["side"]).lower() else "#FF6B6B"
-                limit_str = f" @ ${order['limit_price']:.2f}" if order.get("limit_price") else ""
-                stop_str = f" stop ${order['stop_price']:.2f}" if order.get("stop_price") else ""
-                st.markdown(
-                    f'<span style="color:{side_color};font-weight:700;">'
-                    f'{str(order["side"]).upper()}</span> &nbsp; '
-                    f'**{order["symbol"]}** &nbsp; '
-                    f'{order["qty"]:,.4f} shares{limit_str}{stop_str} &nbsp; '
-                    f'<span style="color:#888;">{str(order["order_type"]).upper()} · '
-                    f'{str(order["time_in_force"]).upper()} · '
-                    f'{str(order["status"]).upper()}</span>',
-                    unsafe_allow_html=True,
-                )
-                if order.get("submitted_at"):
-                    st.caption(f"Submitted: {order['submitted_at']}")
-            with col_action:
-                if st.button("Cancel", key=f"cancel_{order['id']}", use_container_width=True):
-                    r = svc.cancel_order(order["id"])
-                    if r.success:
-                        st.success("Cancelled")
+    # ── Open orders for this symbol ───────────────────────────────────────
+    try:
+        open_orders = [o for o in svc.get_open_orders()
+                       if o.get("symbol") == symbol.upper()]
+        if open_orders:
+            st.markdown(
+                f'<div class="sec-header">Open Orders ({len(open_orders)})</div>',
+                unsafe_allow_html=True,
+            )
+            for o in open_orders:
+                oc  = "#3fb950" if "buy" in str(o["side"]).lower() else "#f85149"
+                lp  = f" @ ${o['limit_price']:.2f}" if o.get("limit_price") else ""
+                c_i, c_x = st.columns([5, 1])
+                with c_i:
+                    st.markdown(
+                        f'<span style="color:{oc};font-weight:600;">'
+                        f'{str(o["side"]).upper()}</span> '
+                        f'{o["qty"]:g} {o["symbol"]}{lp} '
+                        f'<span class="stat-label">{str(o["order_type"]).upper()}</span>',
+                        unsafe_allow_html=True,
+                    )
+                with c_x:
+                    if st.button("×", key=f"cc_cxl_{o['id']}", help="Cancel order"):
+                        svc.cancel_order(o["id"])
                         st.rerun()
-                    else:
-                        st.error(r.message)
-            st.markdown('<hr style="margin:6px 0;border-color:#2A3A4A;">', unsafe_allow_html=True)
+    except Exception:
+        pass
 
 
-# ---------------------------------------------------------------------------
-# Tab 4 — Recent Executions
-# ---------------------------------------------------------------------------
+# ─────────────────────────────────────────────────────────────────────────────
+# Chunk 8 — Fundamentals panel (middle column)
+# ─────────────────────────────────────────────────────────────────────────────
 
-def _render_executions(svc: TradingService):
-    st.markdown("### Recent Executions")
+def render_fundamentals(symbol: str) -> None:
+    fund = get_fundamentals(symbol)
 
-    limit = st.number_input("Show last N orders", min_value=10, max_value=200, value=50, step=10, key="exec_limit")
+    def _row(label: str, val: str) -> None:
+        st.markdown(
+            f"<div style='display:flex;justify-content:space-between;"
+            f"padding:3px 0;border-bottom:1px solid #21262d;'>"
+            f"<span class='stat-label'>{label}</span>"
+            f"<span class='stat-value'>{val}</span></div>",
+            unsafe_allow_html=True,
+        )
 
-    if st.button("Load", key="exec_load"):
-        orders = svc.get_recent_orders(limit=int(limit))
-        if not orders:
-            st.info("No order history found.")
-            return
+    # ── Valuation ─────────────────────────────────────────────────────────
+    st.markdown('<div class="sec-header">Valuation</div>', unsafe_allow_html=True)
+    _row("P/E (TTM)",    f"{fund['pe_ratio']:.1f}x"        if fund.get("pe_ratio")      else "—")
+    _row("Forward P/E",  f"{fund['forward_pe']:.1f}x"      if fund.get("forward_pe")    else "—")
+    _row("PEG",          f"{fund['peg_ratio']:.2f}"         if fund.get("peg_ratio")     else "—")
+    _row("P/S",          f"{fund['price_to_sales']:.2f}x"  if fund.get("price_to_sales") else "—")
+    _row("P/B",          f"{fund['price_to_book']:.2f}x"   if fund.get("price_to_book") else "—")
+    _row("EV/EBITDA",    f"{fund['ev_ebitda']:.1f}x"       if fund.get("ev_ebitda")     else "—")
+    _row("Market Cap",   _fmt_large(fund.get("market_cap")))
+    _row("EPS (TTM)",    _fmt_price(fund.get("eps_ttm")))
+    _row("EPS (Fwd)",    _fmt_price(fund.get("eps_forward")))
 
-        rows = []
-        for o in orders:
-            rows.append({
-                "Symbol": o["symbol"],
-                "Side": str(o["side"]).upper(),
-                "Type": str(o["order_type"]).upper(),
-                "Qty": o["qty"],
-                "Filled Qty": o["filled_qty"],
-                "Fill Price": f"${o['filled_avg_price']:.4f}" if o.get("filled_avg_price") else "-",
-                "Status": str(o["status"]).upper(),
-                "Submitted": str(o["submitted_at"])[:16] if o.get("submitted_at") else "-",
-                "Filled": str(o["filled_at"])[:16] if o.get("filled_at") else "-",
-            })
+    # ── Growth ────────────────────────────────────────────────────────────
+    st.markdown('<div class="sec-header">Growth</div>', unsafe_allow_html=True)
+    _row("Revenue YoY",  _fmt_pct(fund.get("revenue_growth"))  if fund.get("revenue_growth")  else "—")
+    _row("Earnings YoY", _fmt_pct(fund.get("earnings_growth")) if fund.get("earnings_growth") else "—")
 
-        df = pd.DataFrame(rows)
-        st.dataframe(df, use_container_width=True, hide_index=True)
+    # ── Quality ───────────────────────────────────────────────────────────
+    st.markdown('<div class="sec-header">Quality</div>', unsafe_allow_html=True)
+    _row("Gross Margin",  _fmt_pct(fund.get("gross_margin")) if fund.get("gross_margin") else "—")
+    _row("Op Margin",     _fmt_pct(fund.get("op_margin"))    if fund.get("op_margin")    else "—")
+    _row("Net Margin",    _fmt_pct(fund.get("net_margin"))   if fund.get("net_margin")   else "—")
+    _row("ROE",           _fmt_pct(fund.get("roe"))          if fund.get("roe")          else "—")
+    _row("ROA",           _fmt_pct(fund.get("roa"))          if fund.get("roa")          else "—")
 
-        filled = df[df["Status"] == "FILLED"]
-        col1, col2 = st.columns(2)
-        col1.metric("Total Orders", len(df))
-        col2.metric("Filled", len(filled))
-    else:
-        st.caption("Click Load to fetch order history.")
+    # ── Balance sheet ─────────────────────────────────────────────────────
+    st.markdown('<div class="sec-header">Balance Sheet</div>', unsafe_allow_html=True)
+    _row("Cash",          _fmt_large(fund.get("total_cash")))
+    _row("Debt",          _fmt_large(fund.get("total_debt")))
+    _row("D/E Ratio",     f"{fund['debt_equity']:.2f}"   if fund.get("debt_equity")  else "—")
+    _row("Current Ratio", f"{fund['current_ratio']:.2f}" if fund.get("current_ratio") else "—")
 
+    # ── Dividends (conditional) ───────────────────────────────────────────
+    if fund.get("dividend_yield"):
+        st.markdown('<div class="sec-header">Dividends</div>', unsafe_allow_html=True)
+        _row("Yield",        _fmt_pct(fund.get("dividend_yield")))
+        _row("Payout Ratio", _fmt_pct(fund.get("payout_ratio")) if fund.get("payout_ratio") else "—")
+        ex = fund.get("ex_div_date")
+        if ex:
+            try:
+                ex_str = datetime.fromtimestamp(int(ex)).strftime("%b %d, %Y")
+            except Exception:
+                ex_str = str(ex)
+            _row("Ex-Div Date", ex_str)
 
-# ---------------------------------------------------------------------------
-# Tab 5 — Watchlists
-# ---------------------------------------------------------------------------
-
-def _render_watchlists(svc: TradingService):
-    st.markdown("### Watchlists")
-
-    if st.button("Refresh Watchlists", key="wl_refresh"):
+    # ── Valuation House link ──────────────────────────────────────────────
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("Open in Valuation House →", key="cc_goto_vh",
+                 use_container_width=True, type="secondary"):
+        st.session_state["vh_prefill_ticker"] = symbol
+        st.session_state["nav_page"] = "valuation_house"
         st.rerun()
 
-    watchlists = svc.get_watchlists()
 
-    if not watchlists:
-        st.info("No watchlists found.")
-    else:
-        for wl in watchlists:
-            with st.expander(f"**{wl['name']}** ({len(wl['assets'])} symbols)"):
-                assets = wl.get("assets", [])
-                if assets:
-                    cols = st.columns(min(6, len(assets)))
-                    for i, sym in enumerate(assets):
-                        with cols[i % 6]:
-                            st.code(sym)
-                            if st.button("Remove", key=f"wl_rm_{wl['id']}_{sym}"):
-                                r = svc.remove_from_watchlist(wl["id"], sym)
-                                if r.success:
-                                    st.success(f"Removed {sym}")
-                                    st.rerun()
-                                else:
-                                    st.error(r.message)
-                else:
-                    st.caption("Empty watchlist.")
+# ─────────────────────────────────────────────────────────────────────────────
+# Chunk 9 — Option chain (right column)
+# ─────────────────────────────────────────────────────────────────────────────
 
-                # Add symbol to this watchlist
-                new_sym = st.text_input(
-                    "Add symbol", placeholder="TSLA", key=f"wl_add_sym_{wl['id']}"
-                ).upper().strip()
-                if st.button("Add", key=f"wl_add_btn_{wl['id']}"):
-                    if new_sym:
-                        r = svc.add_to_watchlist(wl["id"], new_sym)
-                        if r.success:
-                            st.success(r.message)
-                            st.rerun()
-                        else:
-                            st.error(r.message)
+def render_options_chain(symbol: str) -> None:
+    st.markdown('<div class="sec-header">Option Chain</div>', unsafe_allow_html=True)
 
-                # Delete watchlist
-                if st.button("Delete Watchlist", key=f"wl_del_{wl['id']}", type="secondary"):
-                    r = svc.delete_watchlist(wl["id"])
-                    if r.success:
-                        st.success("Deleted")
-                        st.rerun()
-                    else:
-                        st.error(r.message)
+    chain = get_option_chain(symbol, st.session_state.get("cc_opt_expiry"))
 
-    st.markdown("---")
-    st.markdown("#### Create New Watchlist")
-    new_name = st.text_input("Name", placeholder="My Watchlist", key="wl_new_name")
-    new_syms_raw = st.text_input(
-        "Symbols (comma-separated)", placeholder="AAPL, MSFT, GOOGL", key="wl_new_syms"
+    # ── Unavailable state ─────────────────────────────────────────────────
+    if not chain.get("available", True):
+        st.markdown(
+            f'<div class="metric-card" style="text-align:center;color:#8b949e;padding:24px;">'
+            f'<div style="font-size:1.8rem;margin-bottom:8px;">⛓</div>'
+            f'<div><b>Options unavailable</b></div>'
+            f'<div style="font-size:0.78rem;margin-top:6px;">'
+            f'{chain.get("reason","No listed options for this security")}'
+            f'</div></div>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    # ── Expiry selector ───────────────────────────────────────────────────
+    expirations = chain.get("expirations", [])
+    selected    = chain.get("selected", "")
+
+    new_exp = st.selectbox(
+        "Expiry", expirations,
+        index=expirations.index(selected) if selected in expirations else 0,
+        key="cc_opt_exp_select",
     )
-    if st.button("Create Watchlist", type="primary", key="wl_create"):
-        if not new_name:
-            st.error("Enter a watchlist name.")
+    if new_exp != st.session_state.get("cc_opt_expiry"):
+        st.session_state["cc_opt_expiry"] = new_exp
+        get_option_chain.clear()
+        st.rerun()
+
+    snap  = get_snapshot(symbol)
+    spot  = snap.get("last_price", 0.0)
+
+    calls = chain.get("calls", pd.DataFrame())
+    puts  = chain.get("puts",  pd.DataFrame())
+
+    view  = st.radio("View", ["Both", "Calls", "Puts"], horizontal=True, key="cc_opt_view")
+
+    # ── Column prep helper ────────────────────────────────────────────────
+    _wanted = ["strike", "bid", "ask", "lastPrice", "impliedVolatility",
+               "volume", "openInterest", "inTheMoney"]
+
+    def _prep(df: pd.DataFrame) -> pd.DataFrame:
+        if df is None or df.empty:
+            return pd.DataFrame()
+        cols = [c for c in _wanted if c in df.columns]
+        out  = df[cols].copy()
+        out  = out.rename(columns={
+            "strike": "Strike", "bid": "Bid", "ask": "Ask",
+            "lastPrice": "Last", "impliedVolatility": "IV",
+            "volume": "Vol", "openInterest": "OI", "inTheMoney": "ITM",
+        })
+        if "IV" in out.columns:
+            out["IV"] = out["IV"].apply(
+                lambda x: f"{x*100:.1f}%" if pd.notna(x) else "—"
+            )
+        for col in ["Bid", "Ask", "Last", "Strike"]:
+            if col in out.columns:
+                out[col] = out[col].apply(
+                    lambda x: f"${x:.2f}" if pd.notna(x) else "—"
+                )
+        for col in ["Vol", "OI"]:
+            if col in out.columns:
+                out[col] = out[col].apply(
+                    lambda x: f"{int(x):,}" if pd.notna(x) and x > 0 else "—"
+                )
+        if "ITM" in out.columns:
+            out = out.drop(columns=["ITM"])
+        return out.reset_index(drop=True)
+
+    # ── Render ────────────────────────────────────────────────────────────
+    if view == "Both":
+        cc, cp = st.columns(2)
+        with cc:
+            st.markdown('<span class="tag-green" style="font-size:0.8rem;font-weight:700;">CALLS</span>',
+                        unsafe_allow_html=True)
+            df_c = _prep(calls)
+            st.dataframe(df_c, use_container_width=True, hide_index=True,
+                         height=320) if not df_c.empty else st.caption("No calls.")
+        with cp:
+            st.markdown('<span class="tag-red" style="font-size:0.8rem;font-weight:700;">PUTS</span>',
+                        unsafe_allow_html=True)
+            df_p = _prep(puts)
+            st.dataframe(df_p, use_container_width=True, hide_index=True,
+                         height=320) if not df_p.empty else st.caption("No puts.")
+    else:
+        df_show = calls if view == "Calls" else puts
+        df_prep = _prep(df_show)
+        if not df_prep.empty:
+            st.dataframe(df_prep, use_container_width=True, hide_index=True, height=360)
         else:
-            syms = [s.strip().upper() for s in new_syms_raw.split(",") if s.strip()]
-            r = svc.create_watchlist(new_name, syms)
-            if r.success:
-                st.success(r.message)
-                st.rerun()
-            else:
-                st.error(r.message)
+            st.caption(f"No {view.lower()} data.")
+
+    # ── My position in this underlying ────────────────────────────────────
+    try:
+        svc = TradingService.from_session_state()
+        if svc:
+            pos = svc.get_position(symbol)
+            if pos:
+                unreal     = pos.get("unrealized_pl", 0.0)
+                unreal_pct = float(pos.get("unrealized_plpc", 0.0)) * 100
+                pos_col    = _color(unreal)
+                st.markdown(
+                    f'<div class="metric-card" style="margin-top:12px;">'
+                    f'<span class="stat-label">MY POSITION</span><br>'
+                    f'<b>{symbol}</b> {pos["qty"]:g} sh'
+                    f' · avg ${pos["avg_entry_price"]:.2f}'
+                    f' · curr ${pos["current_price"]:.2f}<br>'
+                    f'<span style="color:{pos_col};font-weight:600;">'
+                    f'P&L ${unreal:+,.2f} ({unreal_pct:+.2f}%)</span>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+    except Exception:
+        pass
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Chunk 10 — Entry point (called by navigation/registry.py)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def render_command_centre() -> None:
+    init_session_state()
+    st.markdown(TERMINAL_CSS, unsafe_allow_html=True)
+
+    # Resolve Valuation House bridge pre-fills
+    for key, dest in [
+        ("cc_prefill_symbol",      "symbol"),
+        ("cc_prefill_limit_price", "order_price"),
+        ("cc_prefill_side",        "order_side"),
+    ]:
+        if key in st.session_state:
+            st.session_state[dest] = st.session_state.pop(key)
+
+    symbol = st.session_state.symbol.upper()
+    tf     = st.session_state.timeframe
+
+    # ── Row 1: Search + account badge ─────────────────────────────────────
+    render_header()
+    st.markdown("<hr style='border-color:#30363d;margin:6px 0 10px 0;'>",
+                unsafe_allow_html=True)
+
+    # ── Row 2: Security info | Chart ──────────────────────────────────────
+    col_info, col_chart = st.columns([0.33, 0.67])
+    with col_info:
+        render_security_info(symbol)
+    with col_chart:
+        render_chart(symbol, tf)
+
+    # ── Row 3: Quote strip ────────────────────────────────────────────────
+    st.markdown("<hr style='border-color:#30363d;margin:10px 0 6px 0;'>",
+                unsafe_allow_html=True)
+    render_quote_strip(symbol)
+    st.markdown("<hr style='border-color:#30363d;margin:6px 0 10px 0;'>",
+                unsafe_allow_html=True)
+
+    # ── Row 4: Order ticket | Fundamentals | Option chain ─────────────────
+    snap  = get_snapshot(symbol)
+    price = snap.get("last_price", 0.0)
+
+    col_order, col_fund, col_opts = st.columns([0.27, 0.38, 0.35])
+    with col_order:
+        render_order_ticket(symbol, price)
+    with col_fund:
+        render_fundamentals(symbol)
+    with col_opts:
+        render_options_chain(symbol)
