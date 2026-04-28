@@ -739,3 +739,211 @@ def render_quote_strip(symbol: str) -> None:
             st.rerun()
         if source:
             st.caption(source)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Chunk 7 — Order ticket (left column of bottom row)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _dispatch_order(svc, symbol, side, ot, qty, notional,
+                    limit_price, stop_price, tp_price, sl_price, tif) -> "TradeResult":
+    try:
+        if ot == "Market":
+            return (svc.submit_dollar_order(symbol, notional, side, tif)
+                    if notional else svc.submit_market_order(symbol, qty, side, tif))
+        elif ot == "Limit":
+            shares = qty or ((notional / limit_price) if limit_price else 1)
+            return svc.submit_limit_order(symbol, shares, side, limit_price, tif)
+        elif ot == "Stop":
+            return svc.submit_stop_order(symbol, qty or 1, side, stop_price, tif)
+        elif ot == "Stop-Limit":
+            return svc.submit_stop_limit_order(symbol, qty or 1, side, stop_price, limit_price, tif)
+        elif ot == "Bracket":
+            shares = qty or ((notional / limit_price) if limit_price else 1)
+            return svc.submit_bracket_order(symbol, shares, side, limit_price, tp_price, sl_price, tif)
+    except Exception as e:
+        return TradeResult(success=False, message=str(e))
+    return TradeResult(success=False, message="Unknown order configuration.")
+
+
+def render_order_ticket(symbol: str, current_price: float) -> None:
+    st.markdown('<div class="sec-header">Order Ticket</div>', unsafe_allow_html=True)
+
+    svc = TradingService.from_session_state()
+    if svc is None:
+        st.info("Connect Alpaca to trade.")
+        if st.button("Connect", key="cc_go_connect"):
+            st.session_state["nav_page"] = "portfolio_home"
+            st.rerun()
+        return
+
+    # ── Side ──────────────────────────────────────────────────────────────
+    side = st.radio(
+        "Side", ["Buy", "Sell"], horizontal=True,
+        index=0 if st.session_state.order_side == "buy" else 1,
+        key="cc_ot_side",
+    ).lower()
+    st.session_state.order_side = side
+    side_col = "#3fb950" if side == "buy" else "#f85149"
+
+    # ── Order type ────────────────────────────────────────────────────────
+    ot_options = ["Market", "Limit", "Stop", "Stop-Limit", "Bracket"]
+    ot = st.selectbox(
+        "Type", ot_options,
+        index=ot_options.index(st.session_state.get("order_type_display", "Market")),
+        key="cc_ot_type",
+    )
+    st.session_state["order_type_display"] = ot
+
+    # ── Size ──────────────────────────────────────────────────────────────
+    notional_mode = st.toggle(
+        "Dollar amount ($)", value=st.session_state.order_notional_mode,
+        key="cc_notional_toggle",
+    )
+    st.session_state.order_notional_mode = notional_mode
+
+    qty = notional = None
+    if notional_mode:
+        notional = st.number_input(
+            "Amount ($)", min_value=1.0,
+            value=float(st.session_state.order_notional),
+            step=100.0, format="%.2f", key="cc_ot_notional",
+        )
+        st.session_state.order_notional = notional
+        if current_price:
+            st.caption(f"≈ {notional/current_price:.4f} shares @ ${current_price:.2f}")
+    else:
+        qty = st.number_input(
+            "Shares", min_value=0.0001,
+            value=float(st.session_state.order_qty),
+            step=1.0, format="%.4f", key="cc_ot_qty",
+        )
+        st.session_state.order_qty = qty
+        if current_price:
+            st.caption(f"Est. ${qty * current_price:,.2f}")
+
+    # ── Price fields ──────────────────────────────────────────────────────
+    limit_price = stop_price = tp_price = sl_price = None
+
+    if ot in ("Limit", "Stop-Limit", "Bracket"):
+        limit_price = st.number_input(
+            "Limit Price ($)", min_value=0.01,
+            value=float(st.session_state.get("order_price") or current_price or 100.0),
+            step=0.01, format="%.2f", key="cc_ot_limit",
+        )
+    if ot in ("Stop", "Stop-Limit"):
+        stop_price = st.number_input(
+            "Stop Price ($)", min_value=0.01,
+            value=float(st.session_state.get("order_stop") or current_price * 0.97 or 97.0),
+            step=0.01, format="%.2f", key="cc_ot_stop",
+        )
+    if ot == "Bracket":
+        c_tp, c_sl = st.columns(2)
+        with c_tp:
+            tp_pct = st.number_input("TP %", min_value=0.1, value=5.0, step=0.5,
+                                     format="%.1f", key="cc_ot_tp")
+        with c_sl:
+            sl_pct = st.number_input("SL %", min_value=0.1, value=3.0, step=0.5,
+                                     format="%.1f", key="cc_ot_sl")
+        if limit_price:
+            tp_price = limit_price * (1 + tp_pct / 100)
+            sl_price = limit_price * (1 - sl_pct / 100)
+
+    tif = st.selectbox("TIF", ["day", "gtc", "ioc", "fok"],
+                       format_func=str.upper, key="cc_ot_tif")
+
+    # ── Position Sizer (collapsed) ────────────────────────────────────────
+    if SIZER_AVAILABLE and current_price:
+        with st.expander("Position Sizer", expanded=False):
+            acct   = get_account_info()
+            equity = acct.get("equity", 100_000.0)
+            method = st.radio("Method", ["Kelly", "Fixed %", "Vol-Based"],
+                              horizontal=True, key="cc_ps_method")
+            if method == "Kelly":
+                wr  = st.slider("Win Rate", 30, 70, 55, key="cc_ps_wr") / 100
+                aw  = st.slider("Avg Win %", 1, 25, 8, key="cc_ps_aw") / 100
+                al  = st.slider("Avg Loss %", 1, 15, 4, key="cc_ps_al") / 100
+                res = kelly_fraction(wr, aw, al, equity, current_price)
+            elif method == "Fixed %":
+                rp  = st.slider("Risk %", 1, 10, 2, key="cc_ps_rp") / 100
+                res = fixed_fractional(rp, equity, current_price)
+            else:
+                av  = st.slider("Ann. Vol %", 5, 80, 25, key="cc_ps_av") / 100
+                dv  = annual_vol_to_daily(av)
+                res = volatility_based(dv, equity, current_price)
+            st.metric("Suggested Shares", f"{res.shares:,.2f}")
+            st.metric("Notional",         f"${res.notional:,.0f}")
+            st.caption(res.notes)
+            if st.button("Use this size", key="cc_ps_use"):
+                st.session_state.order_qty = res.shares
+                st.session_state.order_notional_mode = False
+                st.rerun()
+
+    st.markdown("<hr style='border-color:#30363d;margin:10px 0;'>", unsafe_allow_html=True)
+
+    # ── Two-step confirm ──────────────────────────────────────────────────
+    if not st.session_state.confirm_pending:
+        lbl = f"{'BUY' if side == 'buy' else 'SELL'} {symbol}"
+        if st.button(lbl, type="primary", use_container_width=True, key="cc_review"):
+            st.session_state.confirm_pending = True
+            st.rerun()
+    else:
+        size_str = f"${notional:,.2f}" if notional_mode else f"{qty:,.4f} sh"
+        warn = "" if svc.is_paper() else "⚠️ **LIVE ACCOUNT**"
+        detail = (
+            (f"<br>Limit ${limit_price:.2f}" if limit_price else "") +
+            (f"  Stop ${stop_price:.2f}" if stop_price else "") +
+            (f"<br>TP ${tp_price:.2f}  SL ${sl_price:.2f}" if tp_price else "") +
+            (f"<br><span style='color:#f85149;'>{warn}</span>" if warn else "")
+        )
+        st.markdown(
+            f'<div class="metric-card" style="border-color:{side_col};">'
+            f'<b style="color:{side_col};">{side.upper()}</b> {size_str} '
+            f'<b>{symbol}</b> · {ot} · {tif.upper()}'
+            f'{detail}</div>',
+            unsafe_allow_html=True,
+        )
+        col_ok, col_cx = st.columns(2)
+        with col_ok:
+            if st.button("✓ Confirm", type="primary", use_container_width=True, key="cc_confirm"):
+                result = _dispatch_order(svc, symbol, side, ot, qty, notional,
+                                         limit_price, stop_price, tp_price, sl_price, tif)
+                st.session_state.confirm_pending = False
+                if result.success:
+                    st.success(result.message)
+                    if result.order_id:
+                        st.caption(f"ID: `{result.order_id}`")
+                else:
+                    st.error(result.message)
+        with col_cx:
+            if st.button("Cancel", use_container_width=True, key="cc_cancel"):
+                st.session_state.confirm_pending = False
+                st.rerun()
+
+    # ── Open orders for this symbol ───────────────────────────────────────
+    try:
+        open_orders = [o for o in svc.get_open_orders()
+                       if o.get("symbol") == symbol.upper()]
+        if open_orders:
+            st.markdown(
+                f'<div class="sec-header">Open Orders ({len(open_orders)})</div>',
+                unsafe_allow_html=True,
+            )
+            for o in open_orders:
+                oc  = "#3fb950" if "buy" in str(o["side"]).lower() else "#f85149"
+                lp  = f" @ ${o['limit_price']:.2f}" if o.get("limit_price") else ""
+                c_i, c_x = st.columns([5, 1])
+                with c_i:
+                    st.markdown(
+                        f'<span style="color:{oc};font-weight:600;">'
+                        f'{str(o["side"]).upper()}</span> '
+                        f'{o["qty"]:g} {o["symbol"]}{lp} '
+                        f'<span class="stat-label">{str(o["order_type"]).upper()}</span>',
+                        unsafe_allow_html=True,
+                    )
+                with c_x:
+                    if st.button("×", key=f"cc_cxl_{o['id']}", help="Cancel order"):
+                        svc.cancel_order(o["id"])
+                        st.rerun()
+    except Exception:
+        pass
