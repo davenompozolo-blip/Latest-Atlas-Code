@@ -1140,3 +1140,55 @@ def render_options_chain(symbol: str) -> None:
                 )
     except Exception:
         pass
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Chunk 10 — Entry point (called by navigation/registry.py)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def render_command_centre() -> None:
+    init_session_state()
+    st.markdown(TERMINAL_CSS, unsafe_allow_html=True)
+
+    # Resolve Valuation House bridge pre-fills
+    for key, dest in [
+        ("cc_prefill_symbol",      "symbol"),
+        ("cc_prefill_limit_price", "order_price"),
+        ("cc_prefill_side",        "order_side"),
+    ]:
+        if key in st.session_state:
+            st.session_state[dest] = st.session_state.pop(key)
+
+    symbol = st.session_state.symbol.upper()
+    tf     = st.session_state.timeframe
+
+    # ── Row 1: Search + account badge ─────────────────────────────────────
+    render_header()
+    st.markdown("<hr style='border-color:#30363d;margin:6px 0 10px 0;'>",
+                unsafe_allow_html=True)
+
+    # ── Row 2: Security info | Chart ──────────────────────────────────────
+    col_info, col_chart = st.columns([0.33, 0.67])
+    with col_info:
+        render_security_info(symbol)
+    with col_chart:
+        render_chart(symbol, tf)
+
+    # ── Row 3: Quote strip ────────────────────────────────────────────────
+    st.markdown("<hr style='border-color:#30363d;margin:10px 0 6px 0;'>",
+                unsafe_allow_html=True)
+    render_quote_strip(symbol)
+    st.markdown("<hr style='border-color:#30363d;margin:6px 0 10px 0;'>",
+                unsafe_allow_html=True)
+
+    # ── Row 4: Order ticket | Fundamentals | Option chain ─────────────────
+    snap  = get_snapshot(symbol)
+    price = snap.get("last_price", 0.0)
+
+    col_order, col_fund, col_opts = st.columns([0.27, 0.38, 0.35])
+    with col_order:
+        render_order_ticket(symbol, price)
+    with col_fund:
+        render_fundamentals(symbol)
+    with col_opts:
+        render_options_chain(symbol)
