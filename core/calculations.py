@@ -2658,3 +2658,337 @@ def validate_brinson_calculations(attribution_df, portfolio_weights, benchmark_w
         'actual_excess': actual_excess * 100,
         'validation_output': '\n'.join(validation_output)
     }
+
+
+# =============================================================================
+# ADVANCED DCF VALUATION ENGINE  (Enhanced Valuation House)
+# =============================================================================
+
+def calculate_credit_spread(interest_coverage_ratio: float) -> tuple:
+    """
+    Map interest coverage ratio to credit spread + implied rating
+    using Damodaran's synthetic rating table.
+    Returns (spread, rating_label)
+    """
+    if interest_coverage_ratio <= 0:
+        return 0.1500, 'D (Distressed)'
+    table = [
+        (12.50, 0.0050, 'Aaa/AAA'),
+        (9.50,  0.0065, 'Aa2/AA'),
+        (7.50,  0.0085, 'A1/A+'),
+        (6.00,  0.0100, 'A2/A'),
+        (4.50,  0.0115, 'A3/A-'),
+        (3.50,  0.0160, 'Baa2/BBB'),
+        (3.00,  0.0200, 'Ba1/BB+'),
+        (2.50,  0.0250, 'Ba2/BB'),
+        (2.00,  0.0300, 'B1/B+'),
+        (1.50,  0.0400, 'B2/B'),
+        (1.25,  0.0500, 'B3/B-'),
+        (0.80,  0.0600, 'Caa/CCC'),
+        (0.50,  0.0800, 'Ca/CC'),
+        (0.20,  0.1000, 'C'),
+    ]
+    for min_icr, spread, rating in table:
+        if interest_coverage_ratio >= min_icr:
+            return spread, rating
+    return 0.1500, 'D (Distressed)'
+
+
+def calculate_wacc_detailed(risk_free_rate: float, beta: float, equity_risk_premium: float,
+                             size_premium: float, pre_tax_cost_debt: float, tax_rate: float,
+                             market_value_equity: float, market_value_debt: float) -> dict:
+    """
+    Full WACC decomposition with all components returned for display.
+    """
+    cost_of_equity = risk_free_rate + beta * equity_risk_premium + size_premium
+    after_tax_cost_debt = pre_tax_cost_debt * (1.0 - tax_rate)
+    total_capital = market_value_equity + market_value_debt
+    if total_capital <= 0:
+        equity_weight, debt_weight = 1.0, 0.0
+    else:
+        equity_weight = market_value_equity / total_capital
+        debt_weight = market_value_debt / total_capital
+    wacc = equity_weight * cost_of_equity + debt_weight * after_tax_cost_debt
+    return {
+        'wacc': wacc,
+        'cost_of_equity': cost_of_equity,
+        'pre_tax_cost_debt': pre_tax_cost_debt,
+        'after_tax_cost_debt': after_tax_cost_debt,
+        'equity_weight': equity_weight,
+        'debt_weight': debt_weight,
+        'market_value_equity': market_value_equity,
+        'market_value_debt': market_value_debt,
+        # CAPM components
+        'risk_free_rate': risk_free_rate,
+        'beta': beta,
+        'equity_risk_premium': equity_risk_premium,
+        'size_premium': size_premium,
+        'capm_base': risk_free_rate + beta * equity_risk_premium,
+        # Tax shield contribution
+        'tax_shield_contribution': debt_weight * pre_tax_cost_debt * tax_rate,
+    }
+
+
+def _resolve_year_growth(year: int, revenue_growth_start: float, revenue_growth_end: float,
+                          forecast_years: int, multistage_config=None) -> float:
+    """Determine per-year revenue growth considering stage config or linear glide."""
+    if multistage_config:
+        if isinstance(multistage_config, dict):
+            enabled = multistage_config.get('enabled', False)
+        else:
+            enabled = getattr(multistage_config, 'enabled', False)
+
+        if enabled:
+            if isinstance(multistage_config, dict):
+                s1y = multistage_config.get('stage1_years', 0)
+                s2y = multistage_config.get('stage2_years', 0)
+                g1  = multistage_config.get('stage1_growth', revenue_growth_start)
+                g2  = multistage_config.get('stage2_growth', revenue_growth_start)
+                g3  = multistage_config.get('stage3_growth', revenue_growth_end)
+            else:
+                s1y = getattr(multistage_config, 'stage1_years', 0)
+                s2y = getattr(multistage_config, 'stage2_years', 0)
+                g1  = getattr(multistage_config, 'stage1_growth', revenue_growth_start)
+                g2  = getattr(multistage_config, 'stage2_growth', revenue_growth_start)
+                g3  = getattr(multistage_config, 'stage3_growth', revenue_growth_end)
+            if year <= s1y:
+                return g1
+            elif year <= s1y + s2y:
+                return g2
+            else:
+                return g3
+
+    # Linear glide from start to end growth rate
+    if forecast_years <= 1:
+        return revenue_growth_start
+    t = (year - 1) / (forecast_years - 1)
+    return revenue_growth_start + t * (revenue_growth_end - revenue_growth_start)
+
+
+def _resolve_year_margin(year: int, margin_start: float, margin_target: float,
+                          convergence_years: int) -> float:
+    """Linear margin convergence over convergence_years, then hold at target."""
+    if convergence_years <= 1 or margin_start == margin_target:
+        return margin_target if year >= convergence_years else margin_start
+    if year >= convergence_years:
+        return margin_target
+    t = (year - 1) / (convergence_years - 1)
+    return margin_start + t * (margin_target - margin_start)
+
+
+def project_fcff_advanced(base_revenue: float, ebit_margin_start: float,
+                           ebit_margin_target: float, margin_convergence_years: int,
+                           revenue_growth_start: float, revenue_growth_end: float,
+                           tax_rate: float, depreciation_pct: float, capex_pct: float,
+                           wc_intensity_pct: float, sbc_pct: float,
+                           forecast_years: int, multistage_config=None) -> list:
+    """
+    Advanced FCFF projection engine.
+    - Margin convergence: EBIT margin glides from start→target over convergence_years
+    - Revenue growth glide: growth_start→growth_end (or stage-based via multistage_config)
+    - Working Capital: ΔWC = wc_intensity_pct × ΔRevenue (correct scaling)
+    - SBC treated as cash expense deducted from FCFF
+    """
+    projections = []
+    current_revenue = base_revenue
+    prev_revenue = base_revenue
+
+    for year in range(1, forecast_years + 1):
+        g = _resolve_year_growth(year, revenue_growth_start, revenue_growth_end,
+                                  forecast_years, multistage_config)
+        current_revenue = current_revenue * (1.0 + g)
+
+        ebit_margin = _resolve_year_margin(year, ebit_margin_start, ebit_margin_target,
+                                            margin_convergence_years)
+
+        ebit = current_revenue * ebit_margin
+        nopat = ebit * (1.0 - tax_rate)
+        depreciation = current_revenue * depreciation_pct
+        capex = current_revenue * capex_pct
+        sbc = current_revenue * sbc_pct
+        delta_rev = current_revenue - prev_revenue
+        change_wc = wc_intensity_pct * delta_rev
+        ebitda = ebit + depreciation
+
+        fcff = nopat + depreciation - capex - change_wc - sbc
+        reinvestment = capex - depreciation + change_wc
+        nopat_safe = nopat if nopat != 0 else 1
+        reinvestment_rate = reinvestment / nopat_safe
+
+        projections.append({
+            'year': year,
+            'revenue': current_revenue,
+            'revenue_growth': g,
+            'ebit_margin': ebit_margin,
+            'ebit': ebit,
+            'ebitda': ebitda,
+            'nopat': nopat,
+            'depreciation': depreciation,
+            'capex': capex,
+            'change_wc': change_wc,
+            'sbc': sbc,
+            'reinvestment': reinvestment,
+            'reinvestment_rate': reinvestment_rate,
+            'fcff': fcff,
+            # keep fcfe alias for downstream compat
+            'fcfe': fcff,
+        })
+        prev_revenue = current_revenue
+
+    return projections
+
+
+def project_fcfe_advanced(base_revenue: float, ni_margin_start: float,
+                           ni_margin_target: float, margin_convergence_years: int,
+                           revenue_growth_start: float, revenue_growth_end: float,
+                           tax_rate: float, depreciation_pct: float, capex_pct: float,
+                           wc_intensity_pct: float, sbc_pct: float,
+                           cost_of_debt: float, net_debt_initial: float,
+                           target_debt_ratio: float,
+                           forecast_years: int, multistage_config=None) -> list:
+    """
+    Advanced FCFE projection engine.
+    - Margin convergence on Net Income margin
+    - WC as % of ΔRevenue
+    - SBC as cash expense
+    - Endogenous net borrowing: maintain target_debt_ratio × EBITDA leverage
+    """
+    projections = []
+    current_revenue = base_revenue
+    prev_revenue = base_revenue
+    current_net_debt = net_debt_initial
+
+    for year in range(1, forecast_years + 1):
+        g = _resolve_year_growth(year, revenue_growth_start, revenue_growth_end,
+                                  forecast_years, multistage_config)
+        current_revenue = current_revenue * (1.0 + g)
+
+        ni_margin = _resolve_year_margin(year, ni_margin_start, ni_margin_target,
+                                          margin_convergence_years)
+
+        net_income = current_revenue * ni_margin
+        depreciation = current_revenue * depreciation_pct
+        capex = current_revenue * capex_pct
+        sbc = current_revenue * sbc_pct
+        delta_rev = current_revenue - prev_revenue
+        change_wc = wc_intensity_pct * delta_rev
+        ebitda = net_income / (1.0 - tax_rate) * (1.0 - tax_rate) + depreciation  # approx
+
+        # Endogenous net borrowing to maintain target leverage
+        target_net_debt = target_debt_ratio * ebitda
+        net_borrowing = target_net_debt - current_net_debt
+        current_net_debt = target_net_debt
+
+        fcfe = net_income + depreciation - capex - change_wc - sbc + net_borrowing
+
+        projections.append({
+            'year': year,
+            'revenue': current_revenue,
+            'revenue_growth': g,
+            'ni_margin': ni_margin,
+            'net_income': net_income,
+            'depreciation': depreciation,
+            'capex': capex,
+            'change_wc': change_wc,
+            'sbc': sbc,
+            'net_borrowing': net_borrowing,
+            'fcfe': fcfe,
+            'fcff': fcfe,  # alias
+        })
+        prev_revenue = current_revenue
+
+    return projections
+
+
+def calculate_terminal_value_exit_multiple(final_year_ebitda: float, exit_multiple: float,
+                                            discount_rate: float, periods: int) -> dict:
+    """EV/EBITDA exit multiple terminal value method."""
+    terminal_ev = final_year_ebitda * exit_multiple
+    pv_terminal = terminal_ev / ((1.0 + discount_rate) ** periods) if discount_rate > -1 else terminal_ev
+    return {
+        'method': 'Exit Multiple',
+        'terminal_ev': terminal_ev,
+        'pv_terminal': pv_terminal,
+        'exit_multiple': exit_multiple,
+        'final_ebitda': final_year_ebitda,
+    }
+
+
+def calculate_blended_terminal_value(gordon_tv_pv: float, exit_tv_pv: float,
+                                      gordon_weight: float = 0.5) -> dict:
+    """Blend Gordon Growth and Exit Multiple terminal values."""
+    exit_weight = 1.0 - gordon_weight
+    blended_pv = gordon_weight * gordon_tv_pv + exit_weight * exit_tv_pv
+    return {
+        'gordon_pv': gordon_tv_pv,
+        'exit_pv': exit_tv_pv,
+        'gordon_weight': gordon_weight,
+        'exit_weight': exit_weight,
+        'blended_pv': blended_pv,
+    }
+
+
+def calculate_roic_metrics(ebit: float, tax_rate: float,
+                            total_equity: float, total_debt: float,
+                            cash: float = 0.0) -> dict:
+    """ROIC = NOPAT / Invested Capital. Invested Capital = Equity + Debt − Cash."""
+    nopat = ebit * (1.0 - tax_rate)
+    invested_capital = total_equity + total_debt - cash
+    roic = nopat / invested_capital if invested_capital > 0 else 0.0
+    return {
+        'nopat': nopat,
+        'invested_capital': invested_capital,
+        'roic': roic,
+    }
+
+
+def calculate_implied_growth_rate(current_price: float, base_revenue: float,
+                                   ebit_margin: float, tax_rate: float,
+                                   depreciation_pct: float, capex_pct: float,
+                                   wc_intensity_pct: float, sbc_pct: float,
+                                   discount_rate: float, terminal_growth: float,
+                                   shares_outstanding: float, net_debt: float,
+                                   forecast_years: int = 5) -> tuple:
+    """
+    Reverse DCF: binary-search for the constant revenue growth rate that,
+    given all other assumptions, produces an intrinsic value equal to current_price.
+    Returns (implied_growth_rate, status)  status ∈ {'found', 'below_range', 'above_range', 'error'}
+    """
+    def _value_at(g):
+        try:
+            projs = project_fcff_advanced(
+                base_revenue=base_revenue,
+                ebit_margin_start=ebit_margin, ebit_margin_target=ebit_margin,
+                margin_convergence_years=forecast_years,
+                revenue_growth_start=g, revenue_growth_end=g,
+                tax_rate=tax_rate, depreciation_pct=depreciation_pct,
+                capex_pct=capex_pct, wc_intensity_pct=wc_intensity_pct,
+                sbc_pct=sbc_pct, forecast_years=forecast_years,
+            )
+            final_fcf = projs[-1]['fcff']
+            tv = calculate_terminal_value(final_fcf, discount_rate, terminal_growth)
+            res = calculate_dcf_value(projs, discount_rate, tv, shares_outstanding, net_debt, 'FCFF')
+            return res['intrinsic_value_per_share']
+        except Exception:
+            return 0.0
+
+    lo, hi = -0.25, 1.00
+    val_lo = _value_at(lo)
+    val_hi = _value_at(hi)
+
+    if current_price <= val_lo:
+        return lo, 'below_range'
+    if current_price >= val_hi:
+        return hi, 'above_range'
+
+    for _ in range(80):
+        mid = (lo + hi) / 2.0
+        val = _value_at(mid)
+        if abs(val - current_price) < 0.05:
+            return mid, 'found'
+        if val < current_price:
+            lo = mid
+        else:
+            hi = mid
+
+    return (lo + hi) / 2.0, 'found'

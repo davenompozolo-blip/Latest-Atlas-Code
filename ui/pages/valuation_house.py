@@ -78,6 +78,15 @@ def render_valuation_house():
         calculate_smart_assumptions,
         calculate_consensus_valuation,
         apply_relative_valuation,
+        # Advanced DCF Engine (Enhanced Valuation House)
+        calculate_credit_spread,
+        calculate_wacc_detailed,
+        project_fcff_advanced,
+        project_fcfe_advanced,
+        calculate_terminal_value_exit_multiple,
+        calculate_blended_terminal_value,
+        calculate_roic_metrics,
+        calculate_implied_growth_rate,
     )
     from ui.components import ATLAS_TEMPLATE
     from ui.atlas_css import metric_card
@@ -1138,28 +1147,105 @@ def render_valuation_house():
                                 step=0.5
                             ) / 100
 
-                        wc_change = st.number_input(
-                            "Working Capital Change ($M)",
-                            min_value=-1000.0,
-                            max_value=1000.0,
-                            value=float(smart_params['wc_change']) if use_smart_assumptions else 0.0,  # FIX: Ensure float
-                            step=10.0
-                        ) * 1e6
-
-                with tab2:
-                    st.markdown("##### Cost of Capital Assumptions")
-
-                    col1, col2 = st.columns(2)
-
-                    with col1:
-                        risk_free = st.slider(
-                            "Risk-Free Rate (%)",
-                            min_value=0.0,
-                            max_value=10.0,
-                            value=4.5,
-                            step=0.1
+                        wc_intensity_pct = st.slider(
+                            "Working Capital Intensity (% of ΔRevenue)",
+                            min_value=-5.0, max_value=25.0,
+                            value=float(smart_params.get('wc_change', 0) / max(financials.get('revenue', 1), 1) * 100) if use_smart_assumptions else 5.0,
+                            step=0.5,
+                            help="ΔWC = this% × ΔRevenue each year. Positive = more cash tied up in WC as you grow (typical for product companies). Negative = working capital releases cash (SaaS-style)."
                         ) / 100
 
+                    # ── Margin Convergence (NEW) ───────────────────────
+                    st.markdown('---')
+                    st.markdown('##### 📈 Margin Evolution')
+                    use_margin_convergence = st.checkbox(
+                        "Enable Margin Convergence (start → target over N years)",
+                        value=False, key='enable_margin_conv',
+                        help='Model margin expansion or contraction toward a target. Great for profitability ramp-ups.'
+                    )
+
+                    if use_margin_convergence:
+                        mc_col1, mc_col2, mc_col3 = st.columns(3)
+                        with mc_col1:
+                            ebit_margin_start = st.slider(
+                                "Starting EBIT Margin (%)",
+                                min_value=-20.0, max_value=60.0,
+                                value=round(ebit_margin * 100, 1),
+                                step=0.5, key='margin_start'
+                            ) / 100
+                        with mc_col2:
+                            ebit_margin_target = st.slider(
+                                "Target EBIT Margin (%)",
+                                min_value=-20.0, max_value=60.0,
+                                value=round(ebit_margin * 100 + 5.0, 1),
+                                step=0.5, key='margin_target'
+                            ) / 100
+                        with mc_col3:
+                            margin_convergence_years = st.slider(
+                                "Convergence Over (Years)",
+                                min_value=1, max_value=10, value=5, step=1, key='margin_conv_years'
+                            )
+                        _delta_m = ebit_margin_target - ebit_margin_start
+                        _dir = 'expanding' if _delta_m > 0 else 'contracting'
+                        st.success(f"✅ Margin {_dir}: {ebit_margin_start*100:.1f}% → {ebit_margin_target*100:.1f}% over {margin_convergence_years} years")
+                    else:
+                        ebit_margin_start = ebit_margin
+                        ebit_margin_target = ebit_margin
+                        margin_convergence_years = forecast_years
+
+                    # ── Revenue Growth Glide (NEW) ────────────────────
+                    use_growth_glide = st.checkbox(
+                        "Enable Revenue Growth Glide (start → end rate)",
+                        value=False, key='enable_growth_glide',
+                        help='Linearly decelerates/accelerates growth over the forecast period.'
+                    )
+                    if use_growth_glide:
+                        gg_col1, gg_col2 = st.columns(2)
+                        with gg_col1:
+                            revenue_growth_start = st.slider(
+                                "Starting Growth Rate (%)",
+                                min_value=-10.0, max_value=50.0, value=revenue_growth * 100 + 5.0, step=0.5, key='rg_start'
+                            ) / 100
+                        with gg_col2:
+                            revenue_growth_end = st.slider(
+                                "Ending Growth Rate (%)",
+                                min_value=-10.0, max_value=30.0, value=revenue_growth * 100, step=0.5, key='rg_end'
+                            ) / 100
+                    else:
+                        revenue_growth_start = revenue_growth
+                        revenue_growth_end = revenue_growth
+
+                    # ── SBC (NEW) ──────────────────────────────
+                    st.markdown('---')
+                    st.markdown('##### 💰 Share-Based Compensation (SBC)')
+                    sbc_col1, sbc_col2 = st.columns([2, 1])
+                    with sbc_col1:
+                        sbc_pct = st.slider(
+                            "SBC as % of Revenue",
+                            min_value=0.0, max_value=20.0, value=0.0, step=0.25,
+                            help='SBC is a real economic cost that dilutes shareholders. Treat as cash expense deducted from FCFF.'
+                        ) / 100
+                    with sbc_col2:
+                        if sbc_pct > 0:
+                            _sbc_dollar = financials.get('revenue', 0) * sbc_pct
+                            _sbc_color = _metric_color(sbc_pct, green_below=0.03, amber_below=0.07)
+                            st.markdown(metric_card('💸', 'SBC COST', f'${_sbc_dollar/1e6:.0f}M/yr', _sbc_color, f'{sbc_pct*100:.1f}% of rev', accent='amber'), unsafe_allow_html=True)
+                            if sbc_pct > 0.07:
+                                st.warning('⚠️ High SBC (>7% rev) causes material valuation drag.')
+
+                with tab2:
+                    st.markdown("##### \ud83d\udcb9 Cost of Capital Workshop")
+
+                    # \u2500\u2500 Cost of Equity \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+                    st.markdown("**Cost of Equity \u2014 CAPM**")
+                    coe_col1, coe_col2, coe_col3 = st.columns(3)
+
+                    with coe_col1:
+                        risk_free = st.slider(
+                            "Risk-Free Rate Rf (%)",
+                            min_value=0.0, max_value=10.0, value=4.5, step=0.1,
+                            help="Typically the 10-year Treasury yield"
+                        ) / 100
                         # Cross-module hint from Macro Intelligence
                         _regime = st.session_state.get('macro_regime')
                         if _regime:
@@ -1168,87 +1254,189 @@ def render_valuation_house():
                             _fresh = isinstance(_ts, _dt) and (_dt.now() - _ts) < _td(minutes=30)
                             _rfr_range = _regime.get('risk_free_rate_range') if _fresh else None
                             if _rfr_range:
-                                st.caption(
-                                    f"Macro Intelligence: current 10Y range "
-                                    f"{_rfr_range[0]:.1%}\u2013{_rfr_range[1]:.1%}"
-                                )
+                                st.caption(f"Macro: 10Y range {_rfr_range[0]:.1%}\u2013{_rfr_range[1]:.1%}")
 
-                        market_risk_premium = st.slider(
-                            "Market Risk Premium (%)",
-                            min_value=3.0,
-                            max_value=10.0,
-                            value=6.0,
-                            step=0.5
-                        ) / 100
-
+                    with coe_col2:
                         beta_value = float(company['beta']) if company['beta'] else 1.0
                         beta = st.number_input(
-                            "Beta",
-                            min_value=-1.0,
-                            max_value=3.0,
-                            value=max(-1.0, min(3.0, beta_value)),
-                            step=0.1
+                            "Beta (\u03b2)",
+                            min_value=-1.0, max_value=3.0,
+                            value=max(-1.0, min(3.0, beta_value)), step=0.1,
+                            help="Market-fetched beta. Levered beta relative to market."
                         )
 
-                    with col2:
-                        if method_key == 'FCFF':
-                            cost_debt = st.slider(
-                                "Cost of Debt (%)",
-                                min_value=0.0,
-                                max_value=15.0,
-                                value=5.0,
-                                step=0.5
-                            ) / 100
+                    with coe_col3:
+                        market_risk_premium = st.slider(
+                            "Equity Risk Premium ERP (%)",
+                            min_value=3.0, max_value=10.0, value=6.0, step=0.25,
+                            help="Damodaran estimates ~4.5\u20135.5% for US equity"
+                        ) / 100
 
+                    size_premium = st.slider(
+                        "Size / Liquidity Premium (%)",
+                        min_value=0.0, max_value=4.0, value=0.0, step=0.25,
+                        help="Additional premium for small-cap or illiquid companies (Ibbotson SBBI)"
+                    ) / 100
+
+                    _ke = risk_free + beta * market_risk_premium + size_premium
+                    st.markdown(
+                        f"**Ke = {risk_free*100:.2f}% + {beta:.2f}\u00d7{market_risk_premium*100:.2f}%"
+                        f" + {size_premium*100:.2f}% = <span style='color:{_GREEN};font-size:1.05rem'>"
+                        f"**{_ke*100:.2f}%**</span>**",
+                        unsafe_allow_html=True
+                    )
+
+                    st.markdown("---")
+                    # \u2500\u2500 Cost of Debt \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+                    st.markdown("**Cost of Debt**")
+                    debt_mode = st.radio(
+                        "Input method",
+                        ["Manual", "Credit Spread Model (ICR-based)"],
+                        horizontal=True, key="debt_mode_radio"
+                    )
+
+                    if debt_mode == "Manual":
+                        cost_debt = st.slider(
+                            "Pre-tax Cost of Debt (%)",
+                            min_value=0.0, max_value=20.0, value=5.0, step=0.25,
+                            help="Yield-to-maturity on company's outstanding debt"
+                        ) / 100
+                        _icr_display = None
+                    else:
+                        _ebit_fin = financials.get('ebit', 0)
+                        _int_exp  = abs(financials.get('interest_expense', 0))
+                        if _int_exp > 0 and _ebit_fin:
+                            _auto_icr = round(_ebit_fin / _int_exp, 2)
+                        else:
+                            _auto_icr = 3.0
+                        _icr_display = st.number_input(
+                            "Interest Coverage Ratio (EBIT / Interest)",
+                            min_value=0.0, max_value=50.0, value=float(_auto_icr), step=0.25,
+                            help="Auto-filled from financials. Adjust if needed."
+                        )
+                        _spread, _rating = calculate_credit_spread(_icr_display)
+                        cost_debt = risk_free + _spread
+                        _kd_col1, _kd_col2, _kd_col3 = st.columns(3)
+                        with _kd_col1:
+                            st.metric("Implied Rating", _rating)
+                        with _kd_col2:
+                            st.metric("Credit Spread", f"{_spread*100:.2f}%")
+                        with _kd_col3:
+                            st.metric("Pre-tax Kd", f"{cost_debt*100:.2f}%")
+
+                    with coe_col1 if False else st.container():  # inline placeholder
+                        pass
+
+                    if method_key == 'FCFF':
                         if use_smart_assumptions:
                             tax_rate = smart_params['tax_rate']
-                            tax_color = _metric_color(tax_rate, green_below=0.21, amber_below=0.28)
-                            tax_status = 'Low Tax' if tax_rate < 0.21 else ('Average Tax' if tax_rate < 0.28 else 'High Tax')
-                            st.markdown(metric_card('📋', 'TAX RATE', f'{tax_rate*100:.1f}%', tax_color, f'{tax_status} \u2022 AI Generated', accent='red'), unsafe_allow_html=True)
                         else:
                             tax_rate = st.slider(
                                 "Tax Rate (%)",
-                                min_value=0.0,
-                                max_value=40.0,
-                                value=float(financials.get('tax_rate', 0.21) * 100),
-                                step=1.0
+                                min_value=0.0, max_value=40.0,
+                                value=float(financials.get('tax_rate', 0.21) * 100), step=1.0
                             ) / 100
 
-                        if method_key == 'FCFE':
-                            net_borrowing = st.number_input(
-                                "Net Borrowing ($M)",
-                                min_value=-1000.0,
-                                max_value=1000.0,
-                                value=0.0,
-                                step=10.0
-                            ) * 1e6
+                    st.markdown("---")
+                    # \u2500\u2500 Capital Structure & WACC Bridge \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+                    if method_key == 'FCFF':
+                        _mve = company['market_cap']
+                        _mvd = financials.get('total_debt', 0)
+                        _wacc_detail = calculate_wacc_detailed(
+                            risk_free, beta, market_risk_premium, size_premium,
+                            cost_debt, tax_rate if 'tax_rate' in dir() else 0.21,
+                            _mve, _mvd
+                        )
+                        _wacc_live = _wacc_detail['wacc']
+
+                        st.markdown("**WACC Bridge**")
+                        bridge_c1, bridge_c2, bridge_c3, bridge_c4, bridge_c5 = st.columns(5)
+                        with bridge_c1:
+                            st.metric("Equity Weight", f"{_wacc_detail['equity_weight']*100:.1f}%")
+                            st.caption(f"${_mve/1e9:.1f}B market cap")
+                        with bridge_c2:
+                            st.metric("\u00d7 Cost of Equity", f"{_wacc_detail['cost_of_equity']*100:.2f}%")
+                        with bridge_c3:
+                            st.metric("Debt Weight", f"{_wacc_detail['debt_weight']*100:.1f}%")
+                            st.caption(f"${_mvd/1e9:.1f}B debt")
+                        with bridge_c4:
+                            st.metric("\u00d7 After-tax Kd", f"{_wacc_detail['after_tax_cost_debt']*100:.2f}%")
+                        with bridge_c5:
+                            _wacc_col = _metric_color(_wacc_live, green_below=0.08, amber_below=0.12)
+                            st.markdown(
+                                metric_card('\ud83d\udcb9', 'WACC', f"{_wacc_live*100:.2f}%", _wacc_col,
+                                            'Blended Cost of Capital', accent='purple'),
+                                unsafe_allow_html=True
+                            )
+                        st.caption(
+                            f"Tax shield contribution: {_wacc_detail['tax_shield_contribution']*100:.2f}% "
+                            f"(debt \u00d7 pre-tax Kd \u00d7 tax rate)"
+                        )
+                        # Store for downstream use
+                        st.session_state['_live_wacc_detail'] = _wacc_detail
+
+                    # \u2500\u2500 FCFE: just Cost of Equity matters \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+                    if method_key == 'FCFE':
+                        if use_smart_assumptions:
+                            tax_rate = smart_params['tax_rate']
+                        else:
+                            tax_rate = st.slider(
+                                "Tax Rate (%)",
+                                min_value=0.0, max_value=40.0,
+                                value=float(financials.get('tax_rate', 0.21) * 100), step=1.0,
+                                key="fcfe_tax_rate"
+                            ) / 100
+
+                    if method_key == 'FCFE':
+                        net_borrowing = st.number_input(
+                            "Net Borrowing ($M) \u2014 fixed annual (or use Advanced FCFE)",
+                            min_value=-1000.0, max_value=1000.0, value=0.0, step=10.0
+                        ) * 1e6
 
                 with tab3:
-                    st.markdown("##### Terminal Value Assumptions")
+                    st.markdown("##### 🎯 Terminal Value")
 
-                    col1, col2 = st.columns(2)
+                    tv_method = st.radio(
+                        "Terminal Value Method",
+                        ["Gordon Growth (Perpetuity)", "EV/EBITDA Exit Multiple", "Blend (50/50)"],
+                        horizontal=True, key="tv_method_radio",
+                        help="Gordon Growth is theoretically rigorous; Exit Multiple is market-based"
+                    )
 
-                    with col1:
+                    tv_col1, tv_col2 = st.columns(2)
+
+                    with tv_col1:
                         if use_smart_assumptions:
                             terminal_growth = smart_params['terminal_growth']
                             term_gr_color = _metric_color(terminal_growth, green_below=0.03, amber_below=0.05)
                             term_gr_status = 'Conservative' if terminal_growth <= 0.03 else ('Moderate' if terminal_growth <= 0.05 else 'Aggressive')
-                            st.markdown(metric_card('🎯', 'PERPETUAL GROWTH RATE', f'{terminal_growth*100:.1f}%', term_gr_color, f'{term_gr_status} \u2022 AI Generated', accent='green'), unsafe_allow_html=True)
+                            st.markdown(metric_card('🎯', 'PERPETUAL GROWTH RATE', f'{terminal_growth*100:.1f}%', term_gr_color, f'{term_gr_status} · AI', accent='green'), unsafe_allow_html=True)
                         else:
                             terminal_growth = st.slider(
                                 "Perpetual Growth Rate (%)",
-                                min_value=0.0,
-                                max_value=5.0,
-                                value=2.5,
-                                step=0.1
+                                min_value=0.0, max_value=5.0, value=2.5, step=0.1,
+                                help="Long-run GDP growth anchor (typically 2–3%)"
                             ) / 100
 
-                    with col2:
-                        st.info(f"""
-                        **Terminal Value Method:** Gordon Growth Model
+                    with tv_col2:
+                        if tv_method in ["EV/EBITDA Exit Multiple", "Blend (50/50)"]:
+                            exit_multiple = st.number_input(
+                                "EV/EBITDA Exit Multiple (×)",
+                                min_value=1.0, max_value=60.0, value=12.0, step=0.5,
+                                help="Use sector comp median as anchor"
+                            )
+                        else:
+                            exit_multiple = 12.0
 
-                        TV = FCFₙ₊₁ / (r - g)
-                        """)
+                    if tv_method != "Gordon Growth (Perpetuity)":
+                        st.caption(
+                            "**Exit Multiple Note:** TV = Final Year EBITDA × Multiple. "
+                            "Blend averages both PV(TV) estimates with equal weight."
+                        )
+
+                    # Store TV method for calculation block
+                    st.session_state['_tv_method'] = tv_method
+                    st.session_state['_exit_multiple'] = exit_multiple
 
         # =================================================================
         # DIVIDEND DISCOUNT MODELS (GORDON & MULTI-STAGE)
@@ -1698,66 +1886,95 @@ def render_valuation_house():
                         # =========================================================
                         # Resolve defaults for any sliders that weren't rendered
                         _locals = {}
-                        for _name in ('risk_free', 'beta', 'market_risk_premium', 'cost_debt',
+                        for _name in ('risk_free', 'beta', 'market_risk_premium', 'cost_debt', 'size_premium',
                                       'tax_rate', 'revenue_growth', 'ebit_margin', 'forecast_years',
-                                      'depreciation_pct', 'capex_pct', 'wc_change', 'net_borrowing'):
+                                      'depreciation_pct', 'capex_pct', 'wc_intensity_pct', 'net_borrowing',
+                                      'sbc_pct', 'ebit_margin_start', 'ebit_margin_target',
+                                      'margin_convergence_years', 'revenue_growth_start', 'revenue_growth_end'):
                             try:
-                                _locals[_name] = eval(_name)  # noqa: S307 – safe; names are string literals
+                                _locals[_name] = eval(_name)  # noqa: S307
                             except (NameError, UnboundLocalError):
                                 pass
                         _defaults = resolve_dcf_defaults(_locals)
-                        # Override tax_rate default with financial data if available
                         if 'tax_rate' not in _locals:
                             _defaults['tax_rate'] = financials.get('tax_rate', 0.21)
-                        risk_free = _defaults['risk_free']
-                        beta = _defaults['beta']
-                        market_risk_premium = _defaults['market_risk_premium']
-                        cost_debt = _defaults['cost_debt']
-                        tax_rate = _defaults['tax_rate']
-                        revenue_growth = _defaults['revenue_growth']
-                        ebit_margin = _defaults['ebit_margin']
-                        forecast_years = int(_defaults['forecast_years'])
-                        depreciation_pct = _defaults['depreciation_pct']
-                        capex_pct = _defaults['capex_pct']
-                        wc_change = _defaults['wc_change']
-                        net_borrowing = _defaults['net_borrowing']
+                        risk_free          = _locals.get('risk_free', _defaults['risk_free'])
+                        beta               = _locals.get('beta', _defaults['beta'])
+                        market_risk_premium= _locals.get('market_risk_premium', _defaults['market_risk_premium'])
+                        cost_debt          = _locals.get('cost_debt', _defaults['cost_debt'])
+                        size_premium       = _locals.get('size_premium', 0.0)
+                        tax_rate           = _locals.get('tax_rate', _defaults['tax_rate'])
+                        revenue_growth     = _locals.get('revenue_growth', _defaults['revenue_growth'])
+                        ebit_margin        = _locals.get('ebit_margin', _defaults['ebit_margin'])
+                        forecast_years     = int(_locals.get('forecast_years', _defaults['forecast_years']))
+                        depreciation_pct   = _locals.get('depreciation_pct', _defaults['depreciation_pct'])
+                        capex_pct          = _locals.get('capex_pct', _defaults['capex_pct'])
+                        wc_intensity_pct   = _locals.get('wc_intensity_pct', 0.05)
+                        sbc_pct            = _locals.get('sbc_pct', 0.0)
+                        ebit_margin_start  = _locals.get('ebit_margin_start', ebit_margin)
+                        ebit_margin_target = _locals.get('ebit_margin_target', ebit_margin)
+                        margin_conv_years  = int(_locals.get('margin_convergence_years', forecast_years))
+                        rev_growth_start   = _locals.get('revenue_growth_start', revenue_growth)
+                        rev_growth_end     = _locals.get('revenue_growth_end', revenue_growth)
+                        net_borrowing      = _locals.get('net_borrowing', 0.0)
 
-                        # Calculate cost of equity and discount rate
+                        # WACC: use detailed workshop calc for FCFF, plain CAPM for FCFE
                         if method_key == 'FCFF':
-                            total_debt = financials.get('total_debt', 0)
-                            total_equity = company['market_cap']
-                            cost_equity, discount_rate = derive_wacc(
-                                risk_free, beta, market_risk_premium,
-                                cost_debt, tax_rate, total_debt, total_equity,
-                                calculate_cost_of_equity_fn=calculate_cost_of_equity,
-                                calculate_wacc_fn=calculate_wacc,
+                            _mve = company['market_cap']
+                            _mvd = financials.get('total_debt', 0)
+                            _wd = calculate_wacc_detailed(
+                                risk_free, beta, market_risk_premium, size_premium,
+                                cost_debt, tax_rate, _mve, _mvd
                             )
+                            discount_rate = _wd['wacc']
+                            st.session_state['_live_wacc_detail'] = _wd
                         else:
-                            discount_rate = calculate_cost_of_equity(risk_free, beta, market_risk_premium)
+                            discount_rate = risk_free + beta * market_risk_premium + size_premium
 
-                        # Get base financials
-                        base_revenue = financials.get('revenue', 0)
-                        base_ebit = financials.get('ebit', 0)
+                        base_revenue    = financials.get('revenue', 0)
                         base_net_income = financials.get('net_income', 0)
-
-                        # ENHANCED: Project cash flows with scaling D&A and CapEx
-                        # Get multi-stage config if enabled
                         multistage_config = st.session_state.get('multistage_config', {'enabled': False})
 
                         if method_key == 'FCFF':
-                            projections = project_fcff_enhanced(
-                                base_revenue, base_ebit, revenue_growth, ebit_margin, tax_rate,
-                                depreciation_pct, capex_pct, wc_change, forecast_years, multistage_config
+                            projections = project_fcff_advanced(
+                                base_revenue=base_revenue,
+                                ebit_margin_start=ebit_margin_start,
+                                ebit_margin_target=ebit_margin_target,
+                                margin_convergence_years=margin_conv_years,
+                                revenue_growth_start=rev_growth_start,
+                                revenue_growth_end=rev_growth_end,
+                                tax_rate=tax_rate,
+                                depreciation_pct=depreciation_pct,
+                                capex_pct=capex_pct,
+                                wc_intensity_pct=wc_intensity_pct,
+                                sbc_pct=sbc_pct,
+                                forecast_years=forecast_years,
+                                multistage_config=multistage_config,
                             )
-                            final_fcf = projections[-1]['fcff']
                         else:
-                            projections = project_fcfe_enhanced(
-                                base_revenue, base_net_income, revenue_growth, tax_rate,
-                                depreciation_pct, capex_pct, wc_change, net_borrowing, forecast_years, multistage_config
+                            _ni_margin = base_net_income / base_revenue if base_revenue else 0.05
+                            _ni_margin_target = ebit_margin_target * (1 - tax_rate)
+                            _net_debt_init = financials.get('total_debt', 0) - financials.get('cash', 0)
+                            projections = project_fcfe_advanced(
+                                base_revenue=base_revenue,
+                                ni_margin_start=_ni_margin,
+                                ni_margin_target=_ni_margin_target,
+                                margin_convergence_years=margin_conv_years,
+                                revenue_growth_start=rev_growth_start,
+                                revenue_growth_end=rev_growth_end,
+                                tax_rate=tax_rate,
+                                depreciation_pct=depreciation_pct,
+                                capex_pct=capex_pct,
+                                wc_intensity_pct=wc_intensity_pct,
+                                sbc_pct=sbc_pct,
+                                cost_of_debt=cost_debt,
+                                net_debt_initial=_net_debt_init,
+                                target_debt_ratio=0.0,
+                                forecast_years=forecast_years,
+                                multistage_config=multistage_config,
                             )
-                            final_fcf = projections[-1]['fcfe']
 
-                        # Use shares from company data
+                        final_fcf = projections[-1]['fcff'] if method_key == 'FCFF' else projections[-1]['fcfe']
                         shares = company['shares_outstanding']
 
                     # =================================================================
@@ -1810,7 +2027,8 @@ def render_valuation_house():
                         # Collect assumptions for validation
                         assumptions_for_validation = assemble_validation_assumptions(
                             revenue_growth, ebit_margin, terminal_growth,
-                            discount_rate, tax_rate, capex_pct, wc_change,
+                            discount_rate, tax_rate, capex_pct,
+                            wc_intensity_pct * financials.get('revenue', 0) if not dashboard_active else 0,
                             dashboard_active, projections, financials,
                         )
 
@@ -1831,8 +2049,32 @@ def render_valuation_house():
 
                         st.markdown("---")
 
-                    # Calculate terminal value (both modes)
-                    terminal_value = calculate_terminal_value(final_fcf, discount_rate, terminal_growth)
+                    # ── Terminal Value: Gordon / Exit Multiple / Blend ──────────
+                    _tv_method_active = st.session_state.get('_tv_method', 'Gordon Growth (Perpetuity)')
+                    _exit_mult = st.session_state.get('_exit_multiple', 12.0)
+                    _final_ebitda = projections[-1].get('ebitda', final_fcf * 1.3)
+                    _n_periods = len(projections)
+
+                    gordon_tv   = calculate_terminal_value(final_fcf, discount_rate, terminal_growth)
+                    gordon_pv   = gordon_tv / ((1 + discount_rate) ** _n_periods)
+
+                    if _tv_method_active == 'EV/EBITDA Exit Multiple':
+                        _em = calculate_terminal_value_exit_multiple(_final_ebitda, _exit_mult, discount_rate, _n_periods)
+                        terminal_value = _em['terminal_ev']
+                        pv_terminal_override = _em['pv_terminal']
+                    elif _tv_method_active == 'Blend (50/50)':
+                        _em = calculate_terminal_value_exit_multiple(_final_ebitda, _exit_mult, discount_rate, _n_periods)
+                        _blend = calculate_blended_terminal_value(gordon_pv, _em['pv_terminal'], gordon_weight=0.5)
+                        pv_terminal_override = _blend['blended_pv']
+                        terminal_value = pv_terminal_override * ((1 + discount_rate) ** _n_periods)
+                    else:
+                        terminal_value = gordon_tv
+                        pv_terminal_override = None
+
+                    st.session_state['_gordon_tv'] = gordon_tv
+                    st.session_state['_tv_method_used'] = _tv_method_active
+                    st.session_state['_exit_mult_used'] = _exit_mult
+                    st.session_state['_final_ebitda'] = _final_ebitda
 
                     # Calculate DCF value (both modes)
                     net_debt = calc_net_debt(financials.get('total_debt', 0), financials.get('cash', 0))
@@ -1842,7 +2084,20 @@ def render_valuation_house():
                         net_debt if method_key == 'FCFF' else 0, method_key
                     )
 
+                    # Override pv_terminal if using exit multiple / blend
+                    if pv_terminal_override is not None:
+                        _pv_cfs = dcf_results['total_pv_cash_flows']
+                        _eq_val = _pv_cfs + pv_terminal_override - (net_debt if method_key == 'FCFF' else 0)
+                        dcf_results['pv_terminal'] = pv_terminal_override
+                        dcf_results['enterprise_value'] = _pv_cfs + pv_terminal_override
+                        dcf_results['equity_value'] = _eq_val
+                        dcf_results['intrinsic_value_per_share'] = _eq_val / shares if shares > 0 else 0
+
                     dcf_results['net_debt'] = net_debt
+                    dcf_results['discount_rate'] = discount_rate
+                    dcf_results['terminal_growth'] = terminal_growth
+                    dcf_results['sbc_pct'] = sbc_pct if not dashboard_active else 0
+                    dcf_results['wc_intensity_pct'] = wc_intensity_pct if not dashboard_active else 0
 
                     # Store results
                     st.session_state['valuation_results'] = dcf_results
@@ -2109,7 +2364,7 @@ def render_valuation_house():
                             robust_engine.assumptions.set('wacc', discount_rate)
                             robust_engine.assumptions.set('tax_rate', tax_rate if not dashboard_active else financials.get('tax_rate', 0.21))
                             robust_engine.assumptions.set('capex_pct', capex_pct if not dashboard_active else 0.05)
-                            robust_engine.assumptions.set('nwc_change', wc_change if not dashboard_active else 0)
+                            robust_engine.assumptions.set('nwc_change', (wc_intensity_pct * financials.get('revenue', 0) * 0.05) if not dashboard_active else 0)
 
                             # Run Monte Carlo
                             mc = MonteCarloDCF()
@@ -2273,6 +2528,437 @@ def render_valuation_house():
             st.markdown(render_generic_table(proj_display, columns=col_defs_tv), unsafe_allow_html=True)
 
             st.info("💡 **Technical Note:** D&A and CapEx scale with revenue growth (as they should!)")
+
+            # ================================================================
+            # MODEL WORKINGS — transparent audit trail of every assumption
+            # ================================================================
+            if method in ['FCFF', 'FCFE'] and projections:
+                st.markdown("---")
+                with st.expander("📐 Model Workings — Full Assumption Audit Trail", expanded=False):
+                    _wd = st.session_state.get('_live_wacc_detail', {})
+                    _tv_mth = st.session_state.get('_tv_method_used', 'Gordon Growth (Perpetuity)')
+                    _exit_m = st.session_state.get('_exit_mult_used', 12.0)
+                    _net_debt_display = results.get('net_debt', 0)
+
+                    # ── WACC Decomposition ───────────────────────────────────
+                    st.markdown("#### 💹 Cost of Capital Decomposition")
+                    if _wd:
+                        wk_c1, wk_c2, wk_c3 = st.columns(3)
+                        with wk_c1:
+                            st.markdown(f"""
+                            **Cost of Equity (Ke)**
+                            - Risk-Free Rate (Rf): **{_wd.get('risk_free_rate', 0)*100:.2f}%**
+                            - Beta (β): **{_wd.get('beta', 0):.2f}**
+                            - Equity Risk Premium: **{_wd.get('equity_risk_premium', 0)*100:.2f}%**
+                            - Size Premium: **{_wd.get('size_premium', 0)*100:.2f}%**
+                            - **Ke = {_wd.get('cost_of_equity', 0)*100:.2f}%**
+                            """)
+                        with wk_c2:
+                            st.markdown(f"""
+                            **Cost of Debt (Kd)**
+                            - Pre-tax Kd: **{_wd.get('pre_tax_cost_debt', 0)*100:.2f}%**
+                            - Tax Rate: **{tax_rate*100 if not dashboard_active else results.get('tax_rate', 21):.1f}%**
+                            - Tax Shield: **{_wd.get('tax_shield_contribution', 0)*100:.2f}%**
+                            - **After-tax Kd = {_wd.get('after_tax_cost_debt', 0)*100:.2f}%**
+                            """)
+                        with wk_c3:
+                            st.markdown(f"""
+                            **Capital Structure**
+                            - Equity Weight: **{_wd.get('equity_weight', 1)*100:.1f}%**
+                            - Debt Weight: **{_wd.get('debt_weight', 0)*100:.1f}%**
+                            - **WACC = {_wd.get('wacc', discount_rate)*100:.2f}%**
+                            """)
+                    else:
+                        st.markdown(f"**Discount Rate used:** {discount_rate*100:.2f}%")
+
+                    # ── Terminal Value Workings ───────────────────────────────
+                    st.markdown("---")
+                    st.markdown("#### 🎯 Terminal Value Workings")
+                    tv_wk_c1, tv_wk_c2 = st.columns(2)
+                    with tv_wk_c1:
+                        _gordon_tv = st.session_state.get('_gordon_tv', results.get('terminal_value', 0))
+                        st.markdown(f"""
+                        **Gordon Growth**
+                        - FCF(Year {len(projections)}): **${projections[-1].get('fcff', 0)/1e9:.2f}B**
+                        - Terminal Growth (g): **{terminal_growth*100:.2f}%**
+                        - Discount Rate (r): **{discount_rate*100:.2f}%**
+                        - TV = FCF × (1+g) / (r-g) = **${_gordon_tv/1e9:.2f}B**
+                        - PV(TV) = **${results.get('pv_terminal', 0)/1e9:.2f}B**
+                        """)
+                    with tv_wk_c2:
+                        _final_ebitda = st.session_state.get('_final_ebitda', 0)
+                        if _final_ebitda:
+                            st.markdown(f"""
+                            **Exit Multiple**
+                            - EBITDA(Year {len(projections)}): **${_final_ebitda/1e9:.2f}B**
+                            - EV/EBITDA Multiple: **{_exit_m:.1f}×**
+                            - Terminal EV = **${_final_ebitda * _exit_m/1e9:.2f}B**
+                            - Method Used: **{_tv_mth}**
+                            """)
+
+                    # ── Value Build-up ────────────────────────────────────────
+                    st.markdown("---")
+                    st.markdown("#### 🏗️ Intrinsic Value Build-up")
+                    _pv_cfs  = results.get('total_pv_cash_flows', 0)
+                    _pv_tv   = results.get('pv_terminal', 0)
+                    _ev      = results.get('enterprise_value', 0)
+                    _eq_val  = results.get('equity_value', 0)
+                    _shares_used = shares
+                    _iv      = results.get('intrinsic_value_per_share', 0)
+                    _tv_pct  = _pv_tv / _ev * 100 if _ev else 0
+                    _cf_pct  = _pv_cfs / _ev * 100 if _ev else 0
+
+                    st.markdown(f"""
+                    | Component | Value | % of Enterprise Value |
+                    |---|---|---|
+                    | PV of Forecast Cash Flows | **${_pv_cfs/1e9:.2f}B** | {_cf_pct:.1f}% |
+                    | PV of Terminal Value | **${_pv_tv/1e9:.2f}B** | {_tv_pct:.1f}% |
+                    | **Enterprise Value** | **${_ev/1e9:.2f}B** | 100% |
+                    | Less: Net Debt | (${_net_debt_display/1e9:.2f}B) | — |
+                    | **Equity Value** | **${_eq_val/1e9:.2f}B** | — |
+                    | Shares Outstanding | {_shares_used/1e9:.3f}B | — |
+                    | **Intrinsic Value / Share** | **${_iv:.2f}** | — |
+                    """)
+
+                    if _tv_pct > 80:
+                        st.warning(f"⚠️ Terminal value represents {_tv_pct:.0f}% of enterprise value — result is highly sensitive to perpetuity assumptions.")
+
+                    # ── Year-by-Year Projection Details ──────────────────────
+                    st.markdown("---")
+                    st.markdown("#### 📊 Year-by-Year Cash Flow Architecture")
+                    _proj_detail = []
+                    _cum_pv = 0
+                    for _yr_proj in projections:
+                        _yr = _yr_proj['year']
+                        _cf_key = 'fcff' if method == 'FCFF' else 'fcfe'
+                        _cf = _yr_proj.get(_cf_key, 0)
+                        _pv_yr = _cf / ((1 + discount_rate) ** _yr)
+                        _cum_pv += _pv_yr
+                        _row = {
+                            'Year': _yr,
+                            'Revenue': f"${_yr_proj.get('revenue', 0)/1e9:.2f}B",
+                            'Rev Growth': f"{_yr_proj.get('revenue_growth', 0)*100:.1f}%",
+                            'EBIT Margin': f"{_yr_proj.get('ebit_margin', _yr_proj.get('ni_margin', 0))*100:.1f}%",
+                            'NOPAT/NI': f"${_yr_proj.get('nopat', _yr_proj.get('net_income', 0))/1e6:.0f}M",
+                            'D&A': f"${_yr_proj.get('depreciation', 0)/1e6:.0f}M",
+                            'CapEx': f"(${_yr_proj.get('capex', 0)/1e6:.0f}M)",
+                            'ΔWC': f"(${_yr_proj.get('change_wc', 0)/1e6:.0f}M)",
+                            'SBC': f"(${_yr_proj.get('sbc', 0)/1e6:.0f}M)" if _yr_proj.get('sbc', 0) else '—',
+                            'FCF': f"${_cf/1e6:.0f}M",
+                            'PV Factor': f"{1/(1+discount_rate)**_yr:.4f}",
+                            'PV(FCF)': f"${_pv_yr/1e6:.0f}M",
+                        }
+                        _proj_detail.append(_row)
+                    _proj_detail_df = pd.DataFrame(_proj_detail)
+                    from core.atlas_table_formatting import render_generic_table
+                    _detail_cols = [{'key': k, 'label': k, 'type': 'text'} for k in _proj_detail_df.columns]
+                    st.markdown(render_generic_table(_proj_detail_df, columns=_detail_cols), unsafe_allow_html=True)
+
+            # ================================================================
+            # ROIC / WACC SPREAD — Value creation indicator
+            # ================================================================
+            if method in ['FCFF', 'FCFE']:
+                st.markdown("---")
+                st.markdown("#### 🔬 ROIC vs WACC — Value Creation Analysis")
+                _ebit_r  = financials.get('ebit', 0)
+                _taxr    = financials.get('tax_rate', 0.21)
+                _teq     = financials.get('total_equity', company.get('market_cap', 0))
+                _tdebt   = financials.get('total_debt', 0)
+                _cash_r  = financials.get('cash', 0)
+                try:
+                    _roic_m = calculate_roic_metrics(_ebit_r, _taxr, _teq, _tdebt, _cash_r)
+                    _roic   = _roic_m['roic']
+                    _ic     = _roic_m['invested_capital']
+                    _nopat  = _roic_m['nopat']
+                    _spread = _roic - discount_rate
+
+                    rc1, rc2, rc3, rc4 = st.columns(4)
+                    with rc1:
+                        st.markdown(metric_card('🏭', 'INVESTED CAPITAL', format_large_number(_ic), _CYAN, 'Equity + Debt − Cash', accent='cyan'), unsafe_allow_html=True)
+                    with rc2:
+                        st.markdown(metric_card('💎', 'NOPAT', format_large_number(_nopat), _VIOLET, 'EBIT × (1−T)', accent='purple'), unsafe_allow_html=True)
+                    with rc3:
+                        _roic_col = _metric_color(_roic, green_above=discount_rate, amber_above=discount_rate * 0.8)
+                        _roic_label = 'Value Creating' if _spread > 0 else 'Value Destroying'
+                        st.markdown(metric_card('📈', 'ROIC', f'{_roic*100:.1f}%', _roic_col, _roic_label, accent='green'), unsafe_allow_html=True)
+                    with rc4:
+                        _spread_col = _GREEN if _spread > 0 else _RED
+                        _spread_label = f'{_spread*100:+.1f}% vs WACC'
+                        st.markdown(metric_card('⚡', 'ROIC − WACC Spread', f'{_spread*100:+.1f}%', _spread_col, _spread_label, accent='amber'), unsafe_allow_html=True)
+
+                    if _spread > 0:
+                        st.success(f"✅ ROIC ({_roic*100:.1f}%) > WACC ({discount_rate*100:.1f}%) — company is generating economic value.")
+                    else:
+                        st.warning(f"⚠️ ROIC ({_roic*100:.1f}%) < WACC ({discount_rate*100:.1f}%) — capital allocation is destroying value.")
+                except (ValueError, ZeroDivisionError, TypeError):
+                    st.info("ROIC analysis requires EBIT and balance sheet data.")
+
+            # ================================================================
+            # FCFF ↔ FCFE BRIDGE — explicit reconciliation
+            # ================================================================
+            if method in ['FCFF', 'FCFE'] and projections:
+                st.markdown("---")
+                with st.expander("🔗 FCFF ↔ FCFE Bridge — Explicit Reconciliation", expanded=False):
+                    st.markdown("""
+                    **FCFE = FCFF − Interest × (1 − Tax Rate) + Net Borrowing**
+
+                    This table reconciles both cash flow definitions year-by-year.
+                    """)
+                    _bridge_rows = []
+                    _kd_used = st.session_state.get('_live_wacc_detail', {}).get('pre_tax_cost_debt', 0.05)
+                    _td_curr = financials.get('total_debt', 0)
+                    _taxr_b  = financials.get('tax_rate', 0.21)
+                    for _bp in projections:
+                        _fcff_b = _bp.get('fcff', 0)
+                        _int_exp = _td_curr * _kd_used
+                        _ati     = _int_exp * (1 - _taxr_b)
+                        _nb_b    = _bp.get('net_borrowing', 0)
+                        _fcfe_b  = _fcff_b - _ati + _nb_b
+                        _bridge_rows.append({
+                            'Year': _bp['year'],
+                            'FCFF': f"${_fcff_b/1e6:.0f}M",
+                            '− Interest×(1−T)': f"(${_ati/1e6:.0f}M)",
+                            '+ Net Borrowing': f"${_nb_b/1e6:.0f}M",
+                            '= FCFE': f"${_fcfe_b/1e6:.0f}M",
+                        })
+                    _bridge_df = pd.DataFrame(_bridge_rows)
+                    from core.atlas_table_formatting import render_generic_table
+                    _b_cols = [{'key': k, 'label': k, 'type': 'text'} for k in _bridge_df.columns]
+                    st.markdown(render_generic_table(_bridge_df, columns=_b_cols), unsafe_allow_html=True)
+
+            # ================================================================
+            # ENHANCED SENSITIVITY — Revenue Growth × EBIT Margin 2D Table
+            # ================================================================
+            if method in ['FCFF', 'FCFE'] and projections:
+                st.markdown("---")
+                st.markdown("#### 🗺️ Revenue Growth × EBIT Margin Sensitivity")
+                _base_rev_s = financials.get('revenue', 0)
+                _base_tg    = terminal_growth
+                _base_dr    = discount_rate
+                _base_depr  = depreciation_pct if not dashboard_active else 0.03
+                _base_capex = capex_pct if not dashboard_active else 0.05
+                _base_sbc   = sbc_pct if not dashboard_active else 0.0
+                _base_wci   = wc_intensity_pct if not dashboard_active else 0.05
+                _base_tax   = tax_rate if not dashboard_active else financials.get('tax_rate', 0.21)
+                _base_shrs  = shares
+                _base_nd    = results.get('net_debt', 0)
+                _base_fy    = len(projections)
+
+                _rev_growths = [revenue_growth - 0.04, revenue_growth - 0.02, revenue_growth,
+                                revenue_growth + 0.02, revenue_growth + 0.04]
+                _margins     = [ebit_margin - 0.04, ebit_margin - 0.02, ebit_margin,
+                                ebit_margin + 0.02, ebit_margin + 0.04]
+
+                _sens_table = []
+                for _rg in _rev_growths:
+                    _row_sens = {'Rev Growth': f"{_rg*100:.1f}%"}
+                    for _em in _margins:
+                        try:
+                            _p = project_fcff_advanced(
+                                base_revenue=_base_rev_s,
+                                ebit_margin_start=_em, ebit_margin_target=_em,
+                                margin_convergence_years=_base_fy,
+                                revenue_growth_start=_rg, revenue_growth_end=_rg,
+                                tax_rate=_base_tax, depreciation_pct=_base_depr,
+                                capex_pct=_base_capex, wc_intensity_pct=_base_wci,
+                                sbc_pct=_base_sbc, forecast_years=_base_fy,
+                            )
+                            _f = _p[-1]['fcff']
+                            _tv_s = calculate_terminal_value(_f, _base_dr, _base_tg)
+                            _r = calculate_dcf_value(_p, _base_dr, _tv_s, _base_shrs, _base_nd, 'FCFF')
+                            _iv_s = _r['intrinsic_value_per_share']
+                        except Exception:
+                            _iv_s = 0
+                        _row_sens[f"Margin {_em*100:.1f}%"] = f"${_iv_s:.0f}"
+                    _sens_table.append(_row_sens)
+
+                _sens_df = pd.DataFrame(_sens_table)
+                from core.atlas_table_formatting import render_generic_table
+                _s_cols = [{'key': k, 'label': k, 'type': 'text'} for k in _sens_df.columns]
+                st.markdown(render_generic_table(_sens_df, columns=_s_cols), unsafe_allow_html=True)
+                st.caption("Intrinsic value per share at each Revenue Growth × EBIT Margin combination. All other assumptions held constant.")
+
+            # ================================================================
+            # ASSUMPTION BUILDER — Live interactive recalculation
+            # ================================================================
+            if method in ['FCFF', 'FCFE'] and projections:
+                st.markdown("---")
+                with st.expander("🔧 Assumption Builder — Interactive Recalculation", expanded=False):
+                    st.markdown("""
+                    Adjust key levers below and click **Recalculate** to see instant impact on intrinsic value.
+                    All other assumptions stay fixed from your main model run.
+                    """)
+                    ab_c1, ab_c2, ab_c3, ab_c4 = st.columns(4)
+                    with ab_c1:
+                        _ab_wacc = st.slider("WACC Override (%)", 4.0, 20.0,
+                                             float(f"{discount_rate*100:.1f}"), 0.25, key='ab_wacc') / 100
+                    with ab_c2:
+                        _ab_tgr = st.slider("Terminal Growth Override (%)", 0.0, 5.0,
+                                             float(f"{terminal_growth*100:.1f}"), 0.1, key='ab_tgr') / 100
+                    with ab_c3:
+                        _ab_rg  = st.slider("Revenue Growth Override (%)", -10.0, 30.0,
+                                             float(f"{revenue_growth*100:.1f}"), 0.5, key='ab_rg') / 100
+                    with ab_c4:
+                        _ab_em  = st.slider("EBIT Margin Override (%)", -10.0, 50.0,
+                                             float(f"{ebit_margin*100:.1f}"), 0.5, key='ab_em') / 100
+
+                    if st.button("🔄 Recalculate with Overrides", type="secondary", use_container_width=True, key='ab_recalc'):
+                        try:
+                            _ab_base = financials.get('revenue', 0)
+                            _ab_fy   = len(projections)
+                            _ab_sbc  = sbc_pct if not dashboard_active else 0
+                            _ab_wci  = wc_intensity_pct if not dashboard_active else 0.05
+                            _ab_tax  = tax_rate if not dashboard_active else financials.get('tax_rate', 0.21)
+                            _ab_depr = depreciation_pct if not dashboard_active else 0.03
+                            _ab_cap  = capex_pct if not dashboard_active else 0.05
+                            _ab_nd   = results.get('net_debt', 0)
+                            _ab_sh   = shares
+
+                            _ab_proj = project_fcff_advanced(
+                                base_revenue=_ab_base,
+                                ebit_margin_start=_ab_em, ebit_margin_target=_ab_em,
+                                margin_convergence_years=_ab_fy,
+                                revenue_growth_start=_ab_rg, revenue_growth_end=_ab_rg,
+                                tax_rate=_ab_tax, depreciation_pct=_ab_depr,
+                                capex_pct=_ab_cap, wc_intensity_pct=_ab_wci,
+                                sbc_pct=_ab_sbc, forecast_years=_ab_fy,
+                            )
+                            _ab_fcf  = _ab_proj[-1]['fcff']
+                            _ab_tv   = calculate_terminal_value(_ab_fcf, _ab_wacc, _ab_tgr)
+                            _ab_res  = calculate_dcf_value(_ab_proj, _ab_wacc, _ab_tv, _ab_sh, _ab_nd, 'FCFF')
+                            _ab_iv   = _ab_res['intrinsic_value_per_share']
+                            _ab_delta = _ab_iv - intrinsic_value
+                            _ab_pct   = (_ab_delta / intrinsic_value * 100) if intrinsic_value else 0
+
+                            ab_r1, ab_r2, ab_r3 = st.columns(3)
+                            with ab_r1:
+                                st.metric("Original Intrinsic Value", f"${intrinsic_value:.2f}")
+                            with ab_r2:
+                                _ab_col = _GREEN if _ab_delta > 0 else _RED
+                                st.metric("New Intrinsic Value", f"${_ab_iv:.2f}",
+                                         delta=f"{_ab_delta:+.2f} ({_ab_pct:+.1f}%)")
+                            with ab_r3:
+                                _ab_up2 = calc_upside_downside(_ab_iv, current_price)
+                                st.metric("New Upside/Downside", f"{_ab_up2:+.1f}%")
+
+                        except Exception as _ab_e:
+                            st.error(f"Recalculation error: {_ab_e}")
+
+            # ================================================================
+            # MARKET-IMPLIED GROWTH RATE — Reverse DCF
+            # ================================================================
+            if method in ['FCFF', 'FCFE']:
+                st.markdown("---")
+                st.markdown("#### 🔭 Market-Implied Growth Analysis (Reverse DCF)")
+                st.markdown("""
+                *"What revenue growth rate does the current stock price imply, given your assumptions?"*
+
+                The market is always setting a price — this tool backs out the growth expectation
+                embedded in that price, so you can judge whether it's achievable.
+                """)
+
+                if st.button("🔭 Compute Market-Implied Growth Rate", type="secondary", use_container_width=True, key='implied_growth_btn'):
+                    with st.spinner("Solving reverse DCF..."):
+                        try:
+                            _ig_base   = financials.get('revenue', 0)
+                            _ig_em     = ebit_margin if not dashboard_active else 0.20
+                            _ig_tax    = tax_rate if not dashboard_active else financials.get('tax_rate', 0.21)
+                            _ig_depr   = depreciation_pct if not dashboard_active else 0.03
+                            _ig_cap    = capex_pct if not dashboard_active else 0.05
+                            _ig_wci    = wc_intensity_pct if not dashboard_active else 0.05
+                            _ig_sbc    = sbc_pct if not dashboard_active else 0.0
+                            _ig_dr     = discount_rate
+                            _ig_tgr    = terminal_growth
+                            _ig_sh     = shares
+                            _ig_nd     = results.get('net_debt', 0)
+                            _ig_fy     = len(projections)
+
+                            _impl_g, _impl_status = calculate_implied_growth_rate(
+                                current_price=current_price,
+                                base_revenue=_ig_base,
+                                ebit_margin=_ig_em,
+                                tax_rate=_ig_tax,
+                                depreciation_pct=_ig_depr,
+                                capex_pct=_ig_cap,
+                                wc_intensity_pct=_ig_wci,
+                                sbc_pct=_ig_sbc,
+                                discount_rate=_ig_dr,
+                                terminal_growth=_ig_tgr,
+                                shares_outstanding=_ig_sh,
+                                net_debt=_ig_nd,
+                                forecast_years=_ig_fy,
+                            )
+
+                            st.session_state['_implied_growth'] = _impl_g
+                            st.session_state['_implied_status'] = _impl_status
+
+                        except Exception as _ig_err:
+                            st.error(f"Reverse DCF failed: {_ig_err}")
+
+                if '_implied_growth' in st.session_state:
+                    _impl_g      = st.session_state['_implied_growth']
+                    _impl_status = st.session_state.get('_implied_status', 'found')
+                    _your_growth = revenue_growth if not dashboard_active else 0.05
+
+                    ig_c1, ig_c2, ig_c3 = st.columns(3)
+                    with ig_c1:
+                        _ig_col = _metric_color(_impl_g, green_below=_your_growth, amber_below=_your_growth + 0.05)
+                        st.markdown(metric_card('🔭', 'IMPLIED GROWTH RATE', f'{_impl_g*100:.1f}%/yr',
+                                                _ig_col, 'Market-embedded expectation', accent='cyan'), unsafe_allow_html=True)
+                    with ig_c2:
+                        st.markdown(metric_card('📊', 'YOUR MODEL GROWTH', f'{_your_growth*100:.1f}%/yr',
+                                                _VIOLET, 'Your DCF assumption', accent='purple'), unsafe_allow_html=True)
+                    with ig_c3:
+                        _growth_gap = _impl_g - _your_growth
+                        _gap_col = _GREEN if _growth_gap < 0 else _RED
+                        _gap_label = 'Market over-expects vs your model' if _growth_gap > 0 else 'Market under-expects vs your model'
+                        st.markdown(metric_card('⚡', 'GAP', f'{_growth_gap*100:+.1f}%',
+                                                _gap_col, _gap_label, accent='amber'), unsafe_allow_html=True)
+
+                    if _impl_status == 'below_range':
+                        st.error("⚠️ Market price implies growth BELOW −25% — likely distress pricing or significant non-operating issues.")
+                    elif _impl_status == 'above_range':
+                        st.warning("⚠️ Market price implies growth ABOVE 100% — extraordinary expectations. Verify with qualitative thesis.")
+                    else:
+                        if _growth_gap > 0.05:
+                            st.warning(f"⚠️ The market is pricing in **{_impl_g*100:.1f}%** annual growth — **{_growth_gap*100:.1f}% higher than your model.** Overvalued relative to your assumptions.")
+                        elif _growth_gap < -0.05:
+                            st.success(f"✅ The market is pricing in only **{_impl_g*100:.1f}%** growth — **{abs(_growth_gap)*100:.1f}% below your model.** Margin of safety present.")
+                        else:
+                            st.info(f"📊 Market-implied growth ({_impl_g*100:.1f}%) is broadly in line with your model ({_your_growth*100:.1f}%). Stock appears fairly priced.")
+
+                    # WACC sensitivity for implied growth
+                    st.markdown("**Implied Growth Sensitivity to WACC:**")
+                    _wacc_range = [_ig_dr - 0.02, _ig_dr - 0.01, _ig_dr, _ig_dr + 0.01, _ig_dr + 0.02]
+                    _ig_sens_rows = []
+                    for _wr in _wacc_range:
+                        try:
+                            _g_at_wr, _ = calculate_implied_growth_rate(
+                                current_price=current_price,
+                                base_revenue=_ig_base if '_ig_base' in dir() else financials.get('revenue', 0),
+                                ebit_margin=_ig_em if '_ig_em' in dir() else ebit_margin,
+                                tax_rate=_ig_tax if '_ig_tax' in dir() else tax_rate,
+                                depreciation_pct=_ig_depr if '_ig_depr' in dir() else depreciation_pct,
+                                capex_pct=_ig_cap if '_ig_cap' in dir() else capex_pct,
+                                wc_intensity_pct=_ig_wci if '_ig_wci' in dir() else 0.05,
+                                sbc_pct=_ig_sbc if '_ig_sbc' in dir() else 0.0,
+                                discount_rate=_wr,
+                                terminal_growth=_ig_tgr if '_ig_tgr' in dir() else terminal_growth,
+                                shares_outstanding=_ig_sh if '_ig_sh' in dir() else shares,
+                                net_debt=_ig_nd if '_ig_nd' in dir() else results.get('net_debt', 0),
+                                forecast_years=_ig_fy if '_ig_fy' in dir() else 5,
+                            )
+                        except Exception:
+                            _g_at_wr = None
+                        _ig_sens_rows.append({
+                            'WACC': f"{_wr*100:.1f}%",
+                            'Implied Growth': f"{_g_at_wr*100:.1f}%" if _g_at_wr is not None else "N/A",
+                        })
+                    _ig_sens_df = pd.DataFrame(_ig_sens_rows)
+                    from core.atlas_table_formatting import render_generic_table
+                    _ig_cols = [{'key': k, 'label': k, 'type': 'text'} for k in _ig_sens_df.columns]
+                    st.markdown(render_generic_table(_ig_sens_df, columns=_ig_cols), unsafe_allow_html=True)
+
 
             # Export Options
             st.markdown("---")
