@@ -186,6 +186,14 @@ PAGE_REGISTRY = [
         category="valuation",
     ),
 
+    PageDefinition(
+        key="command_centre",
+        title="Command Centre",
+        icon="⚡",
+        handler=_load_handler("ui.pages.command_centre", "render_command_centre", "Command Centre", "⚡"),
+        category="core",
+    ),
+
     # --- Optimization & Simulation ---
     PageDefinition(
         key="monte_carlo_engine",
@@ -328,6 +336,8 @@ TIER_REQUIREMENTS = {
     "market_regime": "professional",
     # Valuation — Professional
     "valuation_house": "professional",
+    # Trading — Professional
+    "command_centre": "professional",
     # Strategy — Professional
     "saa_tool": "professional",
     "commentary_generator": "professional",
