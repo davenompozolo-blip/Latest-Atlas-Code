@@ -233,6 +233,269 @@ function EarningsCalendar({ data }) {
     );
 }
 
+// ── QuickTradePanel — slide-in order ticket from the holdings table ──────────
+
+function fN2(v, d) {
+    if (v == null || !isFinite(Number(v))) return '—';
+    return Number(v).toFixed(d != null ? d : 2);
+}
+function fLargeP(v) {
+    if (v == null || !isFinite(v)) return '—';
+    var abs = Math.abs(v);
+    if (abs >= 1e9) return '$' + (v / 1e9).toFixed(2) + 'B';
+    if (abs >= 1e6) return '$' + (v / 1e6).toFixed(2) + 'M';
+    if (abs >= 1e3) return '$' + (v / 1e3).toFixed(1) + 'k';
+    return '$' + v.toFixed(2);
+}
+
+function QuickTradePanel(p) {
+    var pos = p.pos;
+    var _side = useState('sell'); var side = _side[0]; var setSide = _side[1];
+    var _mode = useState('pct');  var mode = _mode[0]; var setMode = _mode[1];
+    var _qty  = useState('25');   var qty  = _qty[0];  var setQty  = _qty[1];
+    var _otype = useState('market'); var otype = _otype[0]; var setOtype = _otype[1];
+    var _lp   = useState('');     var lp   = _lp[0];   var setLp   = _lp[1];
+    var _conf = useState(false);  var conf = _conf[0]; var setConf = _conf[1];
+    var _res  = useState(null);   var result = _res[0]; var setResult = _res[1];
+    var _busy = useState(false);  var busy = _busy[0]; var setBusy = _busy[1];
+
+    // Reset on new position
+    useEffect(function () {
+        setSide('sell'); setMode('pct'); setQty('25'); setOtype('market');
+        setLp(''); setConf(false); setResult(null);
+    }, [pos && pos.symbol]);
+
+    if (!pos) return null;
+
+    var price  = Number(pos.current_price) || 0;
+    var shares = Number(pos.quantity || pos.qty || pos.shares || 0);
+    var mv     = Number(pos.market_value || 0);
+    var ret    = pos.unrealised_return_pct != null ? Number(pos.unrealised_return_pct) : null;
+    var dayChg = pos.daily_change_pct != null ? Number(pos.daily_change_pct) : null;
+
+    function computeShares() {
+        var v = parseFloat(qty) || 0;
+        if (mode === 'shares')   return v;
+        if (mode === 'notional') return price > 0 ? v / price : 0;
+        if (mode === 'pct')      return shares * (v / 100);
+        return 0;
+    }
+
+    var estShares = computeShares();
+    var estCost   = price > 0 && estShares > 0 ? estShares * price : null;
+    var sideCol   = side === 'buy' ? '#10b981' : '#ef4444';
+
+    function inputS() {
+        return { width: '100%', padding: '7px 10px', fontSize: 12, boxSizing: 'border-box',
+            background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)',
+            borderRadius: 5, color: 'rgba(255,255,255,0.92)', fontFamily: 'JetBrains Mono', outline: 'none' };
+    }
+    function labelS() {
+        return { fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase',
+            letterSpacing: 1, marginBottom: 4, display: 'block' };
+    }
+    function pillBtn(active, col) {
+        return { flex: 1, padding: '5px 0', borderRadius: 5, fontSize: 11, fontWeight: 700,
+            textTransform: 'uppercase', letterSpacing: 0.5, cursor: 'pointer',
+            background: active ? col + '22' : 'transparent',
+            border: '1px solid ' + (active ? col + '55' : 'rgba(255,255,255,0.08)'),
+            color: active ? col : 'rgba(255,255,255,0.4)' };
+    }
+
+    function submit() {
+        if (!estShares || estShares <= 0) { setResult({ success: false, error: 'Quantity must be > 0' }); return; }
+        setBusy(true); setResult(null);
+        var body = { symbol: pos.symbol, side: side, type: otype, tif: 'day' };
+        if (mode === 'notional') {
+            body.notional = parseFloat(qty);
+        } else {
+            body.qty = Math.round(estShares * 10000) / 10000;
+        }
+        if (otype === 'limit' && lp) body.limitPrice = parseFloat(lp);
+        fetch('/api/trading?action=order', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (j) { setResult(j); setBusy(false); setConf(false); })
+            .catch(function (e) { setResult({ success: false, error: e.message }); setBusy(false); setConf(false); });
+    }
+
+    // Pct shortcut buttons
+    var PCT_QUICK = [10, 25, 50, 100];
+
+    return React.createElement('div', {
+        style: {
+            position: 'fixed', top: 0, right: 0, bottom: 0, zIndex: 500,
+            display: 'flex', pointerEvents: 'none',
+        }
+    },
+        // Backdrop
+        React.createElement('div', {
+            onClick: p.onClose,
+            style: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', pointerEvents: 'auto' }
+        }),
+        // Panel
+        React.createElement('div', {
+            style: {
+                position: 'relative', width: 320, height: '100%',
+                background: '#080b15', borderLeft: '1px solid rgba(255,255,255,0.09)',
+                overflowY: 'auto', pointerEvents: 'auto',
+                display: 'flex', flexDirection: 'column', gap: 14, padding: 20,
+                boxShadow: '-12px 0 40px rgba(0,0,0,0.5)',
+            }
+        },
+            // Header
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' } },
+                React.createElement('div', null,
+                    React.createElement('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.35)', letterSpacing: 2, textTransform: 'uppercase', marginBottom: 2 } }, 'Quick Trade'),
+                    React.createElement('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 20, fontWeight: 800, color: '#00d4ff' } }, pos.symbol),
+                    price > 0 && React.createElement('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 13, color: 'rgba(255,255,255,0.65)', marginTop: 2 } },
+                        '$' + fN2(price, 2),
+                        dayChg != null && React.createElement('span', {
+                            style: { marginLeft: 8, fontSize: 11, color: dayChg >= 0 ? '#10b981' : '#ef4444' }
+                        }, (dayChg >= 0 ? '▲ +' : '▼ ') + (Math.abs(dayChg) * 100).toFixed(2) + '%')
+                    )
+                ),
+                React.createElement('button', {
+                    onClick: p.onClose,
+                    style: { background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: 18, cursor: 'pointer', padding: '0 4px', lineHeight: 1 }
+                }, '×')
+            ),
+
+            // Position strip
+            React.createElement('div', {
+                style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, padding: '10px 12px',
+                    background: 'rgba(255,255,255,0.03)', borderRadius: 7, border: '1px solid rgba(255,255,255,0.06)' }
+            },
+                React.createElement('div', null,
+                    React.createElement('div', { style: { fontSize: 9, color: 'rgba(255,255,255,0.3)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 3 } }, 'Shares Held'),
+                    React.createElement('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 13, fontWeight: 700, color: 'rgba(255,255,255,0.88)' } },
+                        shares > 0 ? fN2(shares, shares % 1 === 0 ? 0 : 4) : '—')
+                ),
+                React.createElement('div', null,
+                    React.createElement('div', { style: { fontSize: 9, color: 'rgba(255,255,255,0.3)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 3 } }, 'Mkt Value'),
+                    React.createElement('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 13, fontWeight: 700, color: 'rgba(255,255,255,0.88)' } }, fLargeP(mv))
+                ),
+                React.createElement('div', null,
+                    React.createElement('div', { style: { fontSize: 9, color: 'rgba(255,255,255,0.3)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 3 } }, 'Unrealised P&L'),
+                    React.createElement('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 12, fontWeight: 600, color: ret == null ? 'rgba(255,255,255,0.4)' : ret >= 0 ? '#10b981' : '#ef4444' } },
+                        ret == null ? '—' : (ret >= 0 ? '+' : '') + (ret * 100).toFixed(2) + '%')
+                ),
+                React.createElement('div', null,
+                    React.createElement('div', { style: { fontSize: 9, color: 'rgba(255,255,255,0.3)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 3 } }, 'Cost Basis'),
+                    React.createElement('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 12, color: 'rgba(255,255,255,0.65)' } },
+                        pos.cost_basis ? '$' + fN2(Number(pos.cost_basis), 2) : '—')
+                )
+            ),
+
+            // Buy / Sell
+            React.createElement('div', { style: { display: 'flex', gap: 6 } },
+                React.createElement('button', { onClick: function () { setSide('buy'); setConf(false); setResult(null); }, style: pillBtn(side === 'buy', '#10b981') }, 'Buy'),
+                React.createElement('button', { onClick: function () { setSide('sell'); setConf(false); setResult(null); }, style: pillBtn(side === 'sell', '#ef4444') }, 'Sell')
+            ),
+
+            // Qty mode
+            React.createElement('div', null,
+                React.createElement('label', { style: labelS() }, 'Quantity Mode'),
+                React.createElement('div', { style: { display: 'flex', gap: 5, marginBottom: 8 } },
+                    [['shares', 'Shares'], ['notional', '$ Amount'], ['pct', '% Position']].map(function (pair) {
+                        var active = mode === pair[0];
+                        return React.createElement('button', {
+                            key: pair[0],
+                            onClick: function () { setMode(pair[0]); setQty(''); },
+                            style: { flex: 1, padding: '4px 0', borderRadius: 4, fontSize: 10, fontWeight: 600,
+                                cursor: 'pointer', background: active ? '#6366f133' : 'transparent',
+                                border: '1px solid ' + (active ? '#6366f166' : 'rgba(255,255,255,0.08)'),
+                                color: active ? '#a5b4fc' : 'rgba(255,255,255,0.38)' }
+                        }, pair[1]);
+                    })
+                ),
+                // Pct quick-picks
+                mode === 'pct' && React.createElement('div', { style: { display: 'flex', gap: 4, marginBottom: 6 } },
+                    PCT_QUICK.map(function (v) {
+                        return React.createElement('button', {
+                            key: v,
+                            onClick: function () { setQty(String(v)); },
+                            style: { flex: 1, padding: '3px 0', borderRadius: 3, fontSize: 10, cursor: 'pointer',
+                                fontFamily: 'JetBrains Mono', fontWeight: 600,
+                                background: qty === String(v) ? sideCol + '22' : 'rgba(255,255,255,0.04)',
+                                border: '1px solid ' + (qty === String(v) ? sideCol + '44' : 'rgba(255,255,255,0.06)'),
+                                color: qty === String(v) ? sideCol : 'rgba(255,255,255,0.4)' }
+                        }, v + '%');
+                    })
+                ),
+                React.createElement('input', {
+                    type: 'number', value: qty, min: 0,
+                    step: mode === 'pct' ? 1 : mode === 'notional' ? 100 : 1,
+                    onChange: function (e) { setQty(e.target.value); },
+                    placeholder: mode === 'shares' ? 'Shares' : mode === 'notional' ? 'Dollar amount' : '% of position (0–100)',
+                    style: inputS(),
+                }),
+                // Preview
+                estShares > 0 && React.createElement('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.38)', marginTop: 4, fontFamily: 'JetBrains Mono' } },
+                    mode !== 'shares' ? '≈ ' + fN2(estShares, estShares >= 1 ? 2 : 4) + ' shares' : '',
+                    estCost != null ? (mode !== 'shares' ? ' · ' : '') + 'Est. ' + (side === 'buy' ? 'cost' : 'proceeds') + ': ' + fLargeP(estCost) : ''
+                )
+            ),
+
+            // Order type
+            React.createElement('div', null,
+                React.createElement('label', { style: labelS() }, 'Order Type'),
+                React.createElement('select', {
+                    value: otype, onChange: function (e) { setOtype(e.target.value); },
+                    style: Object.assign({}, inputS(), { cursor: 'pointer' }),
+                },
+                    React.createElement('option', { value: 'market' }, 'Market'),
+                    React.createElement('option', { value: 'limit'  }, 'Limit')
+                )
+            ),
+            otype === 'limit' && React.createElement('div', null,
+                React.createElement('label', { style: labelS() }, 'Limit Price'),
+                React.createElement('input', {
+                    type: 'number', value: lp, step: '0.01',
+                    placeholder: price > 0 ? '$' + fN2(price, 2) : '0.00',
+                    onChange: function (e) { setLp(e.target.value); },
+                    style: inputS(),
+                })
+            ),
+
+            // Submit
+            React.createElement('div', { style: { marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 8 } },
+                !conf
+                    ? React.createElement('button', {
+                        onClick: function () { setConf(true); setResult(null); },
+                        disabled: busy || !estShares || estShares <= 0,
+                        style: { padding: '11px 0', borderRadius: 6, fontSize: 13, fontWeight: 700,
+                            textTransform: 'uppercase', letterSpacing: 1, cursor: 'pointer',
+                            background: sideCol + '22', border: '1px solid ' + sideCol + '66', color: sideCol,
+                            opacity: (!estShares || estShares <= 0) ? 0.4 : 1 },
+                    }, side.toUpperCase() + ' ' + pos.symbol + (estShares > 0 ? ' · ' + fN2(estShares, 2) + ' sh' : ''))
+                    : React.createElement('div', { style: { display: 'flex', gap: 8 } },
+                        React.createElement('button', {
+                            onClick: submit, disabled: busy,
+                            style: { flex: 1, padding: '10px 0', borderRadius: 6, fontSize: 12, fontWeight: 700,
+                                cursor: 'pointer', background: sideCol + '33', border: '1px solid ' + sideCol, color: sideCol },
+                        }, busy ? 'Sending…' : '✓ Confirm'),
+                        React.createElement('button', {
+                            onClick: function () { setConf(false); },
+                            style: { flex: 1, padding: '10px 0', borderRadius: 6, fontSize: 12, cursor: 'pointer',
+                                background: 'transparent', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.5)' },
+                        }, 'Cancel')
+                    ),
+                result && React.createElement('div', {
+                    style: { padding: '8px 10px', borderRadius: 6, fontSize: 11,
+                        background: result.success ? '#10b98118' : '#ef444418',
+                        border: '1px solid ' + (result.success ? '#10b98144' : '#ef444444'),
+                        color: result.success ? '#10b981' : '#ef4444' }
+                }, result.success
+                    ? '✓ Order submitted · ' + (result.order && result.order.id ? result.order.id.slice(0, 8) + '…' : '')
+                    : '✗ ' + (result.error || 'Error'))
+            )
+        )
+    );
+}
+
 export function PortfolioHome() {
     var _p = useState(null), positions = _p[0], setPositions = _p[1];
     var _c = useState(null), command = _c[0], setCommand = _c[1];
@@ -256,6 +519,7 @@ export function PortfolioHome() {
     var sectorRef = useRef(null);
     var heatRef = useRef(null);
     var _hm = useState('day'), heatMode = _hm[0], setHeatMode = _hm[1];
+    var _qtp = useState(null), qtPos = _qtp[0], setQtPos = _qtp[1];
 
     useEffect(function() {
         Promise.all([
@@ -840,9 +1104,11 @@ export function PortfolioHome() {
                             var q = p.quality_score != null ? Number(p.quality_score) : null;
                             var qCol = q == null ? 'rgba(255,255,255,0.3)' : q >= 60 ? '#10b981' : q >= 40 ? '#f59e0b' : '#ef4444';
                             return React.createElement('tr', { key: p.symbol,
-                                style: { borderBottom: '1px solid rgba(255,255,255,0.03)', transition: 'background 0.12s' },
-                                onMouseEnter: function(e) { e.currentTarget.style.background = 'rgba(0,212,255,0.03)'; },
-                                onMouseLeave: function(e) { e.currentTarget.style.background = 'transparent'; }
+                                style: { borderBottom: '1px solid rgba(255,255,255,0.03)', transition: 'background 0.12s', cursor: 'pointer' },
+                                onClick: (function(pos) { return function() { setQtPos(pos); }; })(p),
+                                onMouseEnter: function(e) { e.currentTarget.style.background = 'rgba(0,212,255,0.05)'; },
+                                onMouseLeave: function(e) { e.currentTarget.style.background = 'transparent'; },
+                                title: 'Click to trade ' + p.symbol,
                             },
                                 React.createElement('td', { style: { padding: '7px 10px', fontFamily: 'JetBrains Mono', fontSize: 12, fontWeight: 700, color: '#00d4ff', whiteSpace: 'nowrap' } }, p.symbol),
                                 React.createElement('td', { style: { padding: '7px 10px', maxWidth: 220 } },
@@ -882,6 +1148,11 @@ export function PortfolioHome() {
             )
         ),
         // Earnings Calendar
-        React.createElement(EarningsCalendar, { data: earningsData })
+        React.createElement(EarningsCalendar, { data: earningsData }),
+        // Quick Trade Panel (slides in from right on row click)
+        qtPos && React.createElement(QuickTradePanel, {
+            pos: qtPos,
+            onClose: function() { setQtPos(null); }
+        })
     );
 }
