@@ -183,6 +183,106 @@ async function submitOrder(body) {
 
 // ── Handler ───────────────────────────────────────────────────────────────────
 
+// ── Order history ─────────────────────────────────────────────────────────────
+
+async function getOrders(status, limit) {
+    var url = brokerBase() + '/orders?status=' + (status || 'all')
+        + '&limit=' + (limit || 50) + '&direction=desc';
+    var r = await fetchT(url, { headers: alpacaHdrs() }, 8000);
+    if (!r.ok) throw new Error('Alpaca orders HTTP ' + r.status);
+    var orders = await r.json();
+    return (Array.isArray(orders) ? orders : []).map(function (o) {
+        return {
+            id:         o.id,
+            symbol:     o.symbol,
+            side:       o.side,
+            type:       o.order_type || o.type,
+            qty:        o.qty,
+            filledQty:  o.filled_qty,
+            limitPrice: o.limit_price,
+            stopPrice:  o.stop_price,
+            filledAvg:  o.filled_avg_price,
+            status:     o.status,
+            tif:        o.time_in_force,
+            createdAt:  o.created_at,
+            updatedAt:  o.updated_at,
+        };
+    });
+}
+
+// ── Options chain ─────────────────────────────────────────────────────────────
+
+var OPTS_DATA = 'https://data.alpaca.markets/v1beta1';
+
+// Parse OCC symbol → { expiry, type, strike }
+function parseOCC(sym, underlying) {
+    var rest = sym.slice(underlying.length);            // e.g. 260501C00087000
+    if (rest.length < 15) return null;
+    var yy = rest.slice(0, 2), mm = rest.slice(2, 4), dd = rest.slice(4, 6);
+    var type   = rest[6];                              // C or P
+    var strike = parseInt(rest.slice(7), 10) / 1000;  // 00087000 → 87.00
+    return { expiry: '20' + yy + '-' + mm + '-' + dd, type: type, strike: strike };
+}
+
+async function getOptionExpiries(underlying) {
+    var today = new Date().toISOString().slice(0, 10);
+    var url = OPTS_DATA + '/options/contracts?underlying_symbols=' + encodeURIComponent(underlying)
+        + '&status=active&expiration_date_gte=' + today + '&limit=200';
+    var r = await fetchT(url, { headers: alpacaHdrs() }, 10000);
+    if (!r.ok) throw new Error('Alpaca option contracts HTTP ' + r.status);
+    var j = await r.json();
+    var contracts = (j && j.option_contracts) || [];
+    var expiries = {};
+    contracts.forEach(function (c) {
+        if (c.expiration_date) expiries[c.expiration_date] = true;
+    });
+    return Object.keys(expiries).sort().slice(0, 12);
+}
+
+async function getOptionsChain(underlying, expiry) {
+    var url = OPTS_DATA + '/options/snapshots/' + encodeURIComponent(underlying)
+        + '?feed=indicative&expiration_date=' + expiry + '&limit=250';
+    var r = await fetchT(url, { headers: alpacaHdrs() }, 12000);
+    if (!r.ok) throw new Error('Alpaca options snapshots HTTP ' + r.status);
+    var j = await r.json();
+    var snaps = (j && j.snapshots) || {};
+    var calls = [], puts = [];
+    Object.keys(snaps).forEach(function (sym) {
+        var parsed = parseOCC(sym, underlying);
+        if (!parsed) return;
+        var s = snaps[sym];
+        var lq = s.latestQuote || {};
+        var lt = s.latestTrade || {};
+        var db = s.dailyBar   || {};
+        var pb = s.prevDailyBar || {};
+        var last  = lt.p || db.c || null;
+        var prev  = pb.c || null;
+        var chg   = (last != null && prev != null) ? last - prev : null;
+        var row = {
+            symbol:  sym,
+            strike:  parsed.strike,
+            type:    parsed.type,
+            bid:     lq.bp || null,
+            ask:     lq.ap || null,
+            last:    last,
+            chg:     chg,
+            volume:  db.v  || 0,
+            oi:      s.openInterest || null,
+            iv:      s.impliedVolatility || null,
+            delta:   s.greeks ? s.greeks.delta : null,
+            gamma:   s.greeks ? s.greeks.gamma : null,
+            theta:   s.greeks ? s.greeks.theta : null,
+        };
+        if (parsed.type === 'C') calls.push(row);
+        else puts.push(row);
+    });
+    calls.sort(function (a, b) { return a.strike - b.strike; });
+    puts.sort(function (a, b) { return a.strike - b.strike; });
+    return { calls: calls, puts: puts, expiry: expiry };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 module.exports = async function handler(req, res) {
     if (req.method === 'OPTIONS') { cors(res); return res.status(204).end(); }
     cors(res);
@@ -212,7 +312,24 @@ module.exports = async function handler(req, res) {
                 if (!q) return res.status(200).json([]);
                 return res.status(200).json(await searchAssets(q));
             }
-            return res.status(400).json({ error: 'Unknown action. Use: quote|chart|account|search' });
+            if (action === 'orders') {
+                var status = req.query.status || 'all';
+                var limit  = parseInt(req.query.limit) || 50;
+                return res.status(200).json(await getOrders(status, limit));
+            }
+            if (action === 'option_expiries') {
+                var sym = ((req.query.symbol) || '').toUpperCase().trim();
+                if (!sym || !SYMBOL_RE.test(sym)) return res.status(400).json({ error: 'Bad symbol' });
+                return res.status(200).json(await getOptionExpiries(sym));
+            }
+            if (action === 'options_chain') {
+                var sym    = ((req.query.symbol) || '').toUpperCase().trim();
+                var expiry = (req.query.expiry || '').trim();
+                if (!sym || !SYMBOL_RE.test(sym)) return res.status(400).json({ error: 'Bad symbol' });
+                if (!expiry) return res.status(400).json({ error: 'expiry required (YYYY-MM-DD)' });
+                return res.status(200).json(await getOptionsChain(sym, expiry));
+            }
+            return res.status(400).json({ error: 'Unknown action. Use: quote|chart|account|search|orders|option_expiries|options_chain' });
         }
 
         // ── POST ─────────────────────────────────────────────────────────────
