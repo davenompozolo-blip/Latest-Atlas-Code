@@ -52,6 +52,52 @@ var TICKER_NAMES = {
     'VNQ':'Vanguard Real Estate ETF',
 };
 
+var TICKER_SECTORS = {
+    // Technology
+    'AAPL':'Technology','MSFT':'Technology','GOOGL':'Technology','GOOG':'Technology',
+    'AMZN':'Technology','META':'Technology','NVDA':'Technology','AMD':'Technology',
+    'INTC':'Technology','QCOM':'Technology','AVGO':'Technology','ORCL':'Technology',
+    'CRM':'Technology','ADBE':'Technology','NOW':'Technology','TSM':'Technology',
+    'ASML':'Technology','MU':'Technology','AMAT':'Technology',
+    // Financials
+    'JPM':'Financials','GS':'Financials','MS':'Financials','BAC':'Financials',
+    'C':'Financials','WFC':'Financials','BLK':'Financials','SCHW':'Financials',
+    // Healthcare
+    'JNJ':'Healthcare','UNH':'Healthcare','PFE':'Healthcare','ABBV':'Healthcare',
+    'MRK':'Healthcare','LLY':'Healthcare','BIIB':'Healthcare','GILD':'Healthcare',
+    'AMGN':'Healthcare','REGN':'Healthcare','VRTX':'Healthcare',
+    // Energy
+    'XOM':'Energy','CVX':'Energy','HAL':'Energy','OXY':'Energy',
+    'COP':'Energy','SLB':'Energy','PBR':'Energy','BP':'Energy','SHEL':'Energy',
+    // Industrials
+    'BA':'Industrials','CAT':'Industrials','GE':'Industrials','LMT':'Industrials',
+    'RTX':'Industrials','HON':'Industrials',
+    // Consumer Discretionary
+    'TSLA':'Consumer Disc.','TGT':'Consumer Disc.','HD':'Consumer Disc.',
+    'NKE':'Consumer Disc.','SBUX':'Consumer Disc.','MCD':'Consumer Disc.',
+    // Consumer Staples
+    'WMT':'Consumer Staples','COST':'Consumer Staples','PG':'Consumer Staples',
+    'KO':'Consumer Staples','PEP':'Consumer Staples',
+    // Precious Metals & Mining
+    'NEM':'Precious Metals','AEM':'Precious Metals','HMY':'Precious Metals',
+    'AU':'Precious Metals','WPM':'Precious Metals','RGLD':'Precious Metals',
+    'GLD':'Precious Metals ETF','SLV':'Precious Metals ETF','IAU':'Precious Metals ETF',
+    'GDX':'Precious Metals ETF','GDXJ':'Precious Metals ETF',
+    // Real Estate
+    'AMT':'Real Estate','PLD':'Real Estate','EQIX':'Real Estate',
+    'SPG':'Real Estate','PSA':'Real Estate','VNQ':'Real Estate ETF',
+    // Broad Market ETFs
+    'SPY':'Broad Market ETF','QQQ':'Broad Market ETF','IWM':'Broad Market ETF',
+    'VTI':'Broad Market ETF','VOO':'Broad Market ETF','DIA':'Broad Market ETF',
+    // International ETFs
+    'EWY':'Intl Equity ETF','EEM':'Intl Equity ETF','FXI':'Intl Equity ETF',
+    'EFA':'Intl Equity ETF','AVEE':'Intl Equity ETF','AVDV':'Intl Equity ETF',
+    // Fixed Income ETFs
+    'TLT':'Fixed Income ETF','HYG':'Fixed Income ETF','LQD':'Fixed Income ETF',
+    // Other
+    'BITO':'Crypto ETF',
+};
+
 var TICKER_TYPES = {
     'SPY':'ETF','QQQ':'ETF','IWM':'ETF','VTI':'ETF','VOO':'ETF','DIA':'ETF',
     'GLD':'ETF','SLV':'ETF','IAU':'ETF','GDX':'ETF','GDXJ':'ETF',
@@ -78,6 +124,10 @@ function getType(symbol, pos) {
     if (pos.asset_type) return String(pos.asset_type).toUpperCase().slice(0,4);
     if (pos.instrument_type) return String(pos.instrument_type).toUpperCase().slice(0,4);
     return TICKER_TYPES[symbol] || 'EQ';
+}
+function getSector(symbol, pos) {
+    if (pos.sector && pos.sector !== 'Other' && pos.sector !== 'other' && pos.sector !== 'N/A') return pos.sector;
+    return TICKER_SECTORS[symbol] || (pos.sector && pos.sector !== 'Other' ? pos.sector : 'Other');
 }
 function TypeBadge(p) {
     var s = TYPE_STYLE[p.type] || TYPE_STYLE['EQ'];
@@ -399,7 +449,7 @@ export function PortfolioHome() {
         if (!positions || !positions.length || !sectorRef.current) return;
         var bySector = {};
         positions.forEach(function(p) {
-            var sec = p.sector || 'Other';
+            var sec = getSector(p.symbol, p);
             var pnl = p.total_gain_loss_dollar != null ? Number(p.total_gain_loss_dollar) :
                 (Number(p.current_price || 0) - Number(p.cost_basis || 0)) * Number(p.quantity || 0);
             if (!isFinite(pnl)) return;
@@ -680,7 +730,7 @@ export function PortfolioHome() {
                 // By sector
                 var bySector = {};
                 positions.forEach(function(p) {
-                    var sec = p.sector || 'Other';
+                    var sec = getSector(p.symbol, p);
                     bySector[sec] = (bySector[sec] || 0) + Math.abs(Number(p.market_value)||0);
                 });
                 var sectors = Object.keys(bySector).sort(function(a, b) { return bySector[b] - bySector[a]; }).slice(0, 8);
@@ -708,7 +758,7 @@ export function PortfolioHome() {
                         var wtPct = (wt * 100).toFixed(1);
                         var color = SECTOR_COLORS[i % SECTOR_COLORS.length];
                         // Count positions in sector
-                        var count = positions.filter(function(p) { return (p.sector || 'Other') === sec; }).length;
+                        var count = positions.filter(function(p) { return getSector(p.symbol, p) === sec; }).length;
                         return React.createElement('div', { key: sec, style: { marginBottom: 8 } },
                             React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 } },
                                 React.createElement('span', { style: { fontSize: 11, color: 'rgba(255,255,255,0.7)', fontFamily: 'DM Sans', display: 'flex', alignItems: 'center', gap: 6 } },
@@ -749,12 +799,13 @@ export function PortfolioHome() {
                 )
             ),
             React.createElement('div', { style: { overflowY: 'auto', maxHeight: 420, overflowX: 'auto', borderRadius: 6, border: '1px solid rgba(255,255,255,0.05)' } },
-                React.createElement('table', { style: { borderCollapse: 'collapse', width: '100%', minWidth: 700 } },
+                React.createElement('table', { style: { borderCollapse: 'separate', borderSpacing: 0, width: '100%', minWidth: 800 } },
                     React.createElement('thead', null,
                         React.createElement('tr', null,
                             [
                                 { key: 'symbol', label: 'Ticker', col: null, align: 'left' },
                                 { key: 'name', label: 'Name / Type', col: null, align: 'left' },
+                                { key: 'sector', label: 'Sector', col: null, align: 'left' },
                                 { key: 'current_price', label: 'Price', col: 'current_price', align: 'right' },
                                 { key: 'daily_change_pct', label: 'Day %', col: 'daily_change_pct', align: 'right' },
                                 { key: 'market_value', label: 'Mkt Value', col: 'market_value', align: 'right' },
@@ -768,10 +819,10 @@ export function PortfolioHome() {
                                         if (sorted) setSortD(function(d) { return d === 'desc' ? 'asc' : 'desc'; });
                                         else { setSortK(col); setSortD('desc'); }
                                     }; })(h.col, isSorted) : undefined,
-                                    style: { position: 'sticky', top: 0, zIndex: 1, background: '#0b0f1a',
+                                    style: { position: 'sticky', top: 0, zIndex: 2, background: '#0b0f1a',
                                         padding: '9px 10px', fontSize: 10, whiteSpace: 'nowrap',
                                         color: isSorted ? '#00d4ff' : 'rgba(255,255,255,0.38)',
-                                        borderBottom: '1px solid rgba(255,255,255,0.07)',
+                                        boxShadow: '0 1px 0 rgba(255,255,255,0.07)',
                                         cursor: h.col ? 'pointer' : 'default', userSelect: 'none',
                                         textTransform: 'uppercase', letterSpacing: 0.8,
                                         textAlign: h.align, fontFamily: 'DM Sans'
@@ -800,6 +851,8 @@ export function PortfolioHome() {
                                         React.createElement(TypeBadge, { type: type })
                                     )
                                 ),
+                                React.createElement('td', { style: { padding: '7px 10px', maxWidth: 140, fontSize: 10, color: 'rgba(255,255,255,0.45)', fontFamily: 'DM Sans', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } },
+                                    getSector(p.symbol, p)),
                                 React.createElement('td', { style: { padding: '7px 10px', textAlign: 'right', fontFamily: 'JetBrains Mono', fontSize: 11, color: 'rgba(255,255,255,0.78)' } },
                                     p.current_price ? '$' + Number(p.current_price).toFixed(2) : '—'),
                                 React.createElement('td', { style: { padding: '7px 10px', textAlign: 'right', fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 600,

@@ -405,13 +405,13 @@ export function PositionsPanel(p) {
         { key: 'entry_efficiency_score', label: 'Efficiency', align: 'right' },
     ];
 
-    var thS = { position: 'sticky', top: 0, background: '#0b0f1a', padding: '8px 8px', fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: 0.8, borderBottom: '1px solid rgba(255,255,255,0.07)', cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap', fontFamily: 'DM Sans' };
+    var thS = { position: 'sticky', top: 0, zIndex: 2, background: '#0b0f1a', padding: '8px 8px', fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: 0.8, boxShadow: '0 1px 0 rgba(255,255,255,0.07)', cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap', fontFamily: 'DM Sans' };
 
     var tableView = h('div', null,
         h('div', { className: 'card' },
             h('div', { className: 'card-title', style: { marginBottom: 12 } }, 'POSITION PERFORMANCE (' + perf.length + ')'),
             h('div', { style: { overflowX: 'auto', overflowY: 'auto', maxHeight: 480, borderRadius: 6, border: '1px solid rgba(255,255,255,0.05)' } },
-                h('table', { style: { width: '100%', borderCollapse: 'collapse', minWidth: 620 } },
+                h('table', { style: { width: '100%', borderCollapse: 'separate', borderSpacing: 0, minWidth: 620 } },
                     h('thead', null,
                         h('tr', null,
                             COLS.map(function(c) {

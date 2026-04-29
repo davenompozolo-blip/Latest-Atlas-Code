@@ -681,7 +681,7 @@ function OrderHistory() {
     }
 
     var filterBtns = ['all', 'open', 'closed'];
-    var thStyle = { fontSize: 10, color: C.muted, textTransform: 'uppercase', letterSpacing: 1, padding: '6px 10px', textAlign: 'left', borderBottom: '1px solid rgba(255,255,255,0.06)', fontWeight: 600 };
+    var thStyle = { fontSize: 10, color: C.muted, textTransform: 'uppercase', letterSpacing: 1, padding: '6px 10px', textAlign: 'left', fontWeight: 600, position: 'sticky', top: 0, zIndex: 1, background: C.card, boxShadow: '0 1px 0 rgba(255,255,255,0.06)' };
     var tdStyle = { fontSize: 12, padding: '7px 10px', borderBottom: '1px solid rgba(255,255,255,0.04)', fontFamily: 'JetBrains Mono' };
 
     return h('div', { style: { background: C.card, borderRadius: 8, border: '1px solid ' + C.border, padding: '14px 16px' } },
@@ -710,8 +710,8 @@ function OrderHistory() {
         loading && h('div', { style: { color: C.muted, fontSize: 12, padding: '12px 0' } }, 'Loading orders…'),
         err     && h('div', { style: { color: C.red, fontSize: 12, padding: '8px 0' } }, 'Error: ' + err),
         !loading && !err && orders.length === 0 && h('div', { style: { color: C.muted, fontSize: 12, padding: '12px 0', textAlign: 'center' } }, 'No orders found'),
-        !loading && orders.length > 0 && h('div', { style: { overflowX: 'auto' } },
-            h('table', { style: { width: '100%', borderCollapse: 'collapse', fontSize: 12 } },
+        !loading && orders.length > 0 && h('div', { style: { overflowX: 'auto', overflowY: 'auto', maxHeight: 480 } },
+            h('table', { style: { width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 12 } },
                 h('thead', null,
                     h('tr', null,
                         h('th', { style: thStyle }, 'Symbol'),
@@ -758,6 +758,232 @@ function OrderHistory() {
     );
 }
 
+// ── Chunk 7b: OptionOrderPanel ────────────────────────────────
+
+function OptionOrderPanel(p) {
+    var contract = p.contract; // { symbol, strike, type, expiry, bid, ask, iv, delta }
+    var acct = p.acct;
+
+    var _side   = useState(p.defaultSide || 'buy');
+    var side    = _side[0]; var setSide = _side[1];
+    var _qty    = useState('1');
+    var qty     = _qty[0];  var setQty  = _qty[1];
+    var _otype  = useState('limit');
+    var otype   = _otype[0]; var setOtype = _otype[1];
+    var _lp     = useState('');
+    var lp      = _lp[0];  var setLp = _lp[1];
+    var _tif    = useState('day');
+    var tif     = _tif[0]; var setTif = _tif[1];
+    var _conf   = useState(false);
+    var conf    = _conf[0]; var setConf = _conf[1];
+    var _res    = useState(null);
+    var result  = _res[0];  var setResult = _res[1];
+    var _busy   = useState(false);
+    var busy    = _busy[0]; var setBusy = _busy[1];
+
+    // Auto-set limit price from bid/ask when side or contract changes
+    useEffect(function () {
+        if (!contract) return;
+        var defaultLp = side === 'buy'
+            ? (contract.ask != null ? fN(contract.ask, 2) : '')
+            : (contract.bid != null ? fN(contract.bid, 2) : '');
+        setLp(defaultLp);
+        setConf(false); setResult(null);
+    }, [contract, side]);
+
+    if (!contract) return null;
+
+    var isCall  = contract.type === 'C';
+    var optType = isCall ? 'Call' : 'Put';
+    var sideCol = side === 'buy' ? C.green : C.red;
+    var estCost = (otype === 'limit' && lp && parseFloat(qty))
+        ? parseFloat(lp) * parseFloat(qty) * 100   // options are 100-share lots
+        : (contract.ask && parseFloat(qty) ? contract.ask * parseFloat(qty) * 100 : null);
+
+    function inputS() {
+        return { width: '100%', padding: '7px 10px', fontSize: 12, boxSizing: 'border-box',
+            background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)',
+            borderRadius: 5, color: C.text, fontFamily: 'JetBrains Mono', outline: 'none' };
+    }
+    function labelS() {
+        return { fontSize: 10, color: C.muted, textTransform: 'uppercase', letterSpacing: 1,
+            marginBottom: 4, display: 'block' };
+    }
+
+    function submit() {
+        setBusy(true); setResult(null);
+        var body = { symbol: contract.symbol, side: side, type: otype, tif: tif, qty: parseFloat(qty) || 1 };
+        if (otype === 'limit' && lp) body.limitPrice = parseFloat(lp);
+        fetch('/api/trading?action=order', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (j) { setResult(j); setBusy(false); setConf(false); })
+            .catch(function (e) { setResult({ success: false, error: e.message }); setBusy(false); setConf(false); });
+    }
+
+    return h('div', {
+        style: {
+            width: 280, flexShrink: 0,
+            background: '#0a0c17',
+            border: '1px solid ' + C.border,
+            borderRadius: 8, padding: '16px',
+            display: 'flex', flexDirection: 'column', gap: 12,
+            position: 'sticky', top: 0,
+        }
+    },
+        // Header
+        h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' } },
+            h('div', null,
+                h('div', { style: { fontSize: 10, color: C.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 2 } },
+                    contract.expiry + ' · ' + optType),
+                h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 15, fontWeight: 800, color: isCall ? C.green : C.red } },
+                    '$' + fN(contract.strike, 2) + ' ' + optType.toUpperCase())
+            ),
+            h('button', {
+                onClick: function () { p.onClose && p.onClose(); },
+                style: { background: 'transparent', border: 'none', color: C.muted, fontSize: 16, cursor: 'pointer', padding: '0 4px' }
+            }, '×')
+        ),
+
+        // Bid / Ask strip
+        h('div', { style: { display: 'flex', gap: 8 } },
+            h('div', { style: { flex: 1, padding: '8px 10px', borderRadius: 6, background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', textAlign: 'center' } },
+                h('div', { style: { fontSize: 9, color: C.muted, letterSpacing: 1, marginBottom: 3 } }, 'BID'),
+                h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 14, fontWeight: 700, color: C.green } },
+                    contract.bid != null ? fN(contract.bid, 2) : '—')
+            ),
+            h('div', { style: { flex: 1, padding: '8px 10px', borderRadius: 6, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', textAlign: 'center' } },
+                h('div', { style: { fontSize: 9, color: C.muted, letterSpacing: 1, marginBottom: 3 } }, 'ASK'),
+                h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 14, fontWeight: 700, color: C.red } },
+                    contract.ask != null ? fN(contract.ask, 2) : '—')
+            )
+        ),
+
+        // Greeks summary
+        (contract.iv != null || contract.delta != null) && h('div', { style: { display: 'flex', gap: 12, fontSize: 11, color: C.sec } },
+            contract.iv    != null && h('span', null, 'IV ', h('b', { style: { color: C.text, fontFamily: 'JetBrains Mono' } }, fN(contract.iv * 100, 1) + '%')),
+            contract.delta != null && h('span', null, 'Δ ', h('b', { style: { color: C.text, fontFamily: 'JetBrains Mono' } }, fN(contract.delta, 4)))
+        ),
+
+        // Buy / Sell
+        h('div', { style: { display: 'flex', gap: 6 } },
+            ['buy', 'sell'].map(function (s) {
+                var active = side === s;
+                var col = s === 'buy' ? C.green : C.red;
+                return h('button', {
+                    key: s,
+                    onClick: function () { setSide(s); setConf(false); setResult(null); },
+                    style: {
+                        flex: 1, padding: '7px 0', borderRadius: 6, fontSize: 12, fontWeight: 700,
+                        textTransform: 'uppercase', letterSpacing: 1, cursor: 'pointer',
+                        background: active ? col + '22' : 'transparent',
+                        border: '1px solid ' + (active ? col + '66' : 'rgba(255,255,255,0.08)'),
+                        color: active ? col : C.sec,
+                    },
+                }, s);
+            })
+        ),
+
+        // Order type
+        h('div', null,
+            h('label', { style: labelS() }, 'Order Type'),
+            h('select', {
+                value: otype,
+                onChange: function (e) { setOtype(e.target.value); },
+                style: Object.assign({}, inputS(), { cursor: 'pointer' }),
+            },
+                h('option', { value: 'market' }, 'Market'),
+                h('option', { value: 'limit'  }, 'Limit')
+            )
+        ),
+
+        // Qty
+        h('div', null,
+            h('label', { style: labelS() }, 'Contracts'),
+            h('input', {
+                type: 'number', value: qty, min: 1, step: 1,
+                onChange: function (e) { setQty(e.target.value); },
+                style: inputS(),
+            }),
+            h('div', { style: { fontSize: 10, color: C.muted, marginTop: 3 } }, '1 contract = 100 shares')
+        ),
+
+        // Limit price
+        otype === 'limit' && h('div', null,
+            h('label', { style: labelS() }, 'Limit Price'),
+            h('input', {
+                type: 'number', value: lp, step: '0.01',
+                onChange: function (e) { setLp(e.target.value); },
+                placeholder: '0.00',
+                style: inputS(),
+            })
+        ),
+
+        // TIF
+        h('div', null,
+            h('label', { style: labelS() }, 'Time in Force'),
+            h('select', {
+                value: tif, onChange: function (e) { setTif(e.target.value); },
+                style: Object.assign({}, inputS(), { cursor: 'pointer' }),
+            },
+                h('option', { value: 'day' }, 'Day'),
+                h('option', { value: 'gtc' }, 'GTC')
+            )
+        ),
+
+        // Est cost + buying power
+        h('div', { style: { fontSize: 11, color: C.sec, display: 'flex', justifyContent: 'space-between' } },
+            h('span', null, 'Est. ' + (side === 'buy' ? 'Cost' : 'Proceeds')),
+            h('span', { style: { fontFamily: 'JetBrains Mono', color: C.text } },
+                estCost != null ? '$' + fN(estCost, 2) : '—')
+        ),
+        acct && h('div', { style: { fontSize: 11, color: C.sec, display: 'flex', justifyContent: 'space-between' } },
+            h('span', null, 'Buying Power'),
+            h('span', { style: { fontFamily: 'JetBrains Mono', color: C.text } }, fLarge(acct.buyingPower))
+        ),
+
+        // Submit
+        !conf
+            ? h('button', {
+                onClick: function () { setConf(true); setResult(null); },
+                disabled: busy,
+                style: {
+                    padding: '10px 0', borderRadius: 6, fontSize: 13, fontWeight: 700,
+                    textTransform: 'uppercase', letterSpacing: 1, cursor: 'pointer',
+                    background: sideCol + '22', border: '1px solid ' + sideCol + '66', color: sideCol,
+                },
+            }, side.toUpperCase() + ' ' + (parseFloat(qty) || 1) + ' ' + optType)
+            : h('div', { style: { display: 'flex', gap: 8 } },
+                h('button', {
+                    onClick: submit, disabled: busy,
+                    style: { flex: 1, padding: '9px 0', borderRadius: 6, fontSize: 12, fontWeight: 700,
+                        cursor: 'pointer', background: sideCol + '33', border: '1px solid ' + sideCol, color: sideCol },
+                }, busy ? 'Sending…' : '✓ Confirm'),
+                h('button', {
+                    onClick: function () { setConf(false); },
+                    style: { flex: 1, padding: '9px 0', borderRadius: 6, fontSize: 12, cursor: 'pointer',
+                        background: 'transparent', border: '1px solid rgba(255,255,255,0.12)', color: C.sec },
+                }, 'Cancel')
+            ),
+
+        // Result
+        result && h('div', {
+            style: {
+                padding: '8px 10px', borderRadius: 6, fontSize: 11,
+                background: result.success ? C.green + '18' : C.red + '18',
+                border: '1px solid ' + (result.success ? C.green + '44' : C.red + '44'),
+                color: result.success ? C.green : C.red,
+            }
+        }, result.success
+            ? '✓ Submitted · ' + (result.order && result.order.id ? result.order.id.slice(0, 8) + '…' : '')
+            : '✗ ' + (result.error || 'Error')
+        )
+    );
+}
+
 // ── Chunk 7: OptionsChain ─────────────────────────────────────
 
 function OptionsChain(p) {
@@ -768,11 +994,12 @@ function OptionsChain(p) {
     var _view     = useState('both'); var view   = _view[0];   var setView     = _view[1];
     var _loading  = useState(false);
     var _err      = useState(null);
+    var _sel      = useState(null); var selected = _sel[0]; var setSelected = _sel[1];
 
     // Fetch expiry dates when symbol changes
     useEffect(function () {
         if (!sym) return;
-        setExpiries([]); setExpiry(null); setChain(null); _err[1](null);
+        setExpiries([]); setExpiry(null); setChain(null); _err[1](null); setSelected(null);
         apiFetch('/api/trading?action=option_expiries&symbol=' + encodeURIComponent(sym))
             .then(function (j) {
                 if (j && j.error) { _err[1](j.error); return; }
@@ -787,7 +1014,7 @@ function OptionsChain(p) {
     // Fetch chain when expiry selected
     useEffect(function () {
         if (!sym || !expiry) return;
-        _loading[1](true); _err[1](null);
+        setSelected(null); _loading[1](true); _err[1](null);
         apiFetch('/api/trading?action=options_chain&symbol=' + encodeURIComponent(sym) + '&expiry=' + encodeURIComponent(expiry))
             .then(function (j) {
                 if (j.error) { _err[1](j.error); _loading[1](false); return; }
@@ -805,11 +1032,12 @@ function OptionsChain(p) {
 
     var thS = {
         fontSize: 9, color: C.muted, textTransform: 'uppercase', letterSpacing: 1,
-        padding: '5px 6px', textAlign: 'right', borderBottom: '1px solid rgba(255,255,255,0.06)',
-        fontWeight: 600, whiteSpace: 'nowrap',
+        padding: '5px 6px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap',
+        position: 'sticky', top: 0, zIndex: 1, background: '#0d0f1a',
+        boxShadow: '0 1px 0 rgba(255,255,255,0.06)',
     };
     var thSL = Object.assign({}, thS, { textAlign: 'left' });
-    var thCenter = Object.assign({}, thS, { textAlign: 'center', background: 'rgba(255,255,255,0.04)' });
+    var thCenter = Object.assign({}, thS, { textAlign: 'center', background: 'rgba(13,15,26,0.96)' });
 
     function cellN(v, color) {
         return h('td', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, padding: '5px 6px', textAlign: 'right', color: color || C.text, borderBottom: '1px solid rgba(255,255,255,0.03)' } }, v);
@@ -836,7 +1064,8 @@ function OptionsChain(p) {
     var callByStrike = {}; calls.forEach(function (c) { callByStrike[c.strike] = c; });
     var putByStrike  = {};  puts.forEach(function (p) { putByStrike[p.strike]  = p; });
 
-    return h('div', { style: { background: C.card, borderRadius: 8, border: '1px solid ' + C.border, padding: '14px 16px' } },
+    return h('div', { style: { display: 'flex', gap: 14, alignItems: 'flex-start' } },
+    h('div', { style: { flex: 1, minWidth: 0, background: C.card, borderRadius: 8, border: '1px solid ' + C.border, padding: '14px 16px' } },
         // Header row
         h('div', { style: { display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' } },
             h('span', { style: { fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: 2, textTransform: 'uppercase' } }, 'Options Chain · ' + sym),
@@ -872,7 +1101,7 @@ function OptionsChain(p) {
         err     && h('div', { style: { color: C.red,  fontSize: 12, padding: 8  } }, 'Error: ' + err),
 
         !loading && chain && strikes.length > 0 && h('div', { style: { overflowX: 'auto', overflowY: 'auto', maxHeight: 440 } },
-            h('table', { style: { width: '100%', borderCollapse: 'collapse', fontSize: 11 } },
+            h('table', { style: { width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 11 } },
                 h('thead', null,
                     h('tr', null,
                         // Calls header (left)
@@ -912,11 +1141,11 @@ function OptionsChain(p) {
                             view !== 'puts'  && cellN(fDelta(c.delta), c.delta > 0.5 ? C.green : C.text),
                             view !== 'puts'  && cellN(fIV(c.iv)),
                             view !== 'puts'  && cellN(c.chg != null ? (c.chg >= 0 ? '+' : '') + fOpt(c.chg) : '—', c.chg >= 0 ? C.green : C.red),
-                            view !== 'puts'  && h('td', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, padding: '5px 6px', textAlign: 'right', color: C.green, fontWeight: 700, background: 'rgba(16,185,129,0.08)', borderBottom: '1px solid rgba(255,255,255,0.03)' } }, c.bid != null ? fOpt(c.bid) : '—'),
-                            view !== 'puts'  && h('td', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, padding: '5px 6px', textAlign: 'right', color: C.green, fontWeight: 700, background: 'rgba(16,185,129,0.08)', borderBottom: '1px solid rgba(255,255,255,0.03)' } }, c.ask != null ? fOpt(c.ask) : '—'),
+                            view !== 'puts'  && h('td', { onClick: c.bid != null ? (function(cc, sk) { return function() { setSelected({ symbol: cc.symbol, strike: sk, type: 'C', expiry: expiry, bid: cc.bid, ask: cc.ask, iv: cc.iv, delta: cc.delta, defaultSide: 'sell' }); }; }(c, strike)) : null, style: { fontFamily: 'JetBrains Mono', fontSize: 11, padding: '5px 6px', textAlign: 'right', color: C.green, fontWeight: 700, background: 'rgba(16,185,129,0.08)', borderBottom: '1px solid rgba(255,255,255,0.03)', cursor: c.bid != null ? 'pointer' : 'default' } }, c.bid != null ? fOpt(c.bid) : '—'),
+                            view !== 'puts'  && h('td', { onClick: c.ask != null ? (function(cc, sk) { return function() { setSelected({ symbol: cc.symbol, strike: sk, type: 'C', expiry: expiry, bid: cc.bid, ask: cc.ask, iv: cc.iv, delta: cc.delta, defaultSide: 'buy'  }); }; }(c, strike)) : null, style: { fontFamily: 'JetBrains Mono', fontSize: 11, padding: '5px 6px', textAlign: 'right', color: C.green, fontWeight: 700, background: 'rgba(16,185,129,0.08)', borderBottom: '1px solid rgba(255,255,255,0.03)', cursor: c.ask != null ? 'pointer' : 'default' } }, c.ask != null ? fOpt(c.ask) : '—'),
                             cellStrike(strike, atm),
-                            view !== 'calls' && h('td', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, padding: '5px 6px', textAlign: 'right', color: C.red, fontWeight: 700, background: 'rgba(239,68,68,0.08)', borderBottom: '1px solid rgba(255,255,255,0.03)' } }, pu.bid != null ? fOpt(pu.bid) : '—'),
-                            view !== 'calls' && h('td', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, padding: '5px 6px', textAlign: 'right', color: C.red, fontWeight: 700, background: 'rgba(239,68,68,0.08)', borderBottom: '1px solid rgba(255,255,255,0.03)' } }, pu.ask != null ? fOpt(pu.ask) : '—'),
+                            view !== 'calls' && h('td', { onClick: pu.bid != null ? (function(pp, sk) { return function() { setSelected({ symbol: pp.symbol, strike: sk, type: 'P', expiry: expiry, bid: pp.bid, ask: pp.ask, iv: pp.iv, delta: pp.delta, defaultSide: 'sell' }); }; }(pu, strike)) : null, style: { fontFamily: 'JetBrains Mono', fontSize: 11, padding: '5px 6px', textAlign: 'right', color: C.red, fontWeight: 700, background: 'rgba(239,68,68,0.08)', borderBottom: '1px solid rgba(255,255,255,0.03)', cursor: pu.bid != null ? 'pointer' : 'default' } }, pu.bid != null ? fOpt(pu.bid) : '—'),
+                            view !== 'calls' && h('td', { onClick: pu.ask != null ? (function(pp, sk) { return function() { setSelected({ symbol: pp.symbol, strike: sk, type: 'P', expiry: expiry, bid: pp.bid, ask: pp.ask, iv: pp.iv, delta: pp.delta, defaultSide: 'buy'  }); }; }(pu, strike)) : null, style: { fontFamily: 'JetBrains Mono', fontSize: 11, padding: '5px 6px', textAlign: 'right', color: C.red, fontWeight: 700, background: 'rgba(239,68,68,0.08)', borderBottom: '1px solid rgba(255,255,255,0.03)', cursor: pu.ask != null ? 'pointer' : 'default' } }, pu.ask != null ? fOpt(pu.ask) : '—'),
                             view !== 'calls' && cellN(pu.chg != null ? (pu.chg >= 0 ? '+' : '') + fOpt(pu.chg) : '—', pu.chg >= 0 ? C.green : C.red),
                             view !== 'calls' && cellN(fIV(pu.iv)),
                             view !== 'calls' && cellN(fDelta(pu.delta), pu.delta < -0.5 ? C.red : C.text),
@@ -927,6 +1156,12 @@ function OptionsChain(p) {
                 )
             )
         )
+    ),
+    selected && h(OptionOrderPanel, {
+        contract: selected,
+        acct: p.acct,
+        onClose: function() { setSelected(null); },
+    })
     );
 }
 
@@ -999,7 +1234,7 @@ export function TradingDashboard() {
             h(OrderTicket,      { symbol: liveSym, quote: quote }),
             h(FundamentalsPanel, { data: _f.data, loading: _f.loading })
         ),
-        tab === 'options' && h(OptionsChain, { symbol: liveSym, lastPrice: quote ? quote.last : null }),
+        tab === 'options' && h(OptionsChain, { symbol: liveSym, lastPrice: quote ? quote.last : null, acct: acct }),
         tab === 'orders'  && h(OrderHistory, null)
     );
 }
