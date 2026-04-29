@@ -772,14 +772,16 @@ function OptionsChain(p) {
     // Fetch expiry dates when symbol changes
     useEffect(function () {
         if (!sym) return;
-        setExpiries([]); setExpiry(null); setChain(null);
+        setExpiries([]); setExpiry(null); setChain(null); _err[1](null);
         apiFetch('/api/trading?action=option_expiries&symbol=' + encodeURIComponent(sym))
             .then(function (j) {
+                if (j && j.error) { _err[1](j.error); return; }
                 var list = Array.isArray(j) ? j : [];
                 setExpiries(list);
                 if (list.length) setExpiry(list[0]);
+                else _err[1]('No listed options found for ' + sym);
             })
-            .catch(function () {});
+            .catch(function (e) { _err[1](e.message || 'Failed to fetch option expiries'); });
     }, [sym]);
 
     // Fetch chain when expiry selected
@@ -817,7 +819,11 @@ function OptionsChain(p) {
     }
 
     if (!sym) return h('div', { style: { color: C.muted, fontSize: 12, padding: 16 } }, 'Load a symbol to see options.');
-    if (expiries.length === 0 && !loading) return h('div', { style: { color: C.muted, fontSize: 12, padding: 16 } }, 'No options data for ' + sym + '.');
+    if (expiries.length === 0 && !loading && !err) return h('div', { style: { color: C.muted, fontSize: 12, padding: 16 } }, 'Loading options for ' + sym + '…');
+    if (expiries.length === 0 && !loading && err) return h('div', { style: { background: C.card, borderRadius: 8, border: '1px solid ' + C.border, padding: 20 } },
+        h('div', { style: { fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 10 } }, 'Options Chain · ' + sym),
+        h('div', { style: { color: C.amber, fontSize: 12, lineHeight: 1.6 } }, '⚠ ' + err)
+    );
 
     var calls = chain ? chain.calls : [];
     var puts  = chain ? chain.puts  : [];

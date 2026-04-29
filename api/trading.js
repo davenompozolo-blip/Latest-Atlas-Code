@@ -226,59 +226,104 @@ function parseOCC(sym, underlying) {
 
 async function getOptionExpiries(underlying) {
     var today = new Date().toISOString().slice(0, 10);
-    var url = OPTS_DATA + '/options/contracts?underlying_symbols=' + encodeURIComponent(underlying)
-        + '&status=active&expiration_date_gte=' + today + '&limit=200';
-    var r = await fetchT(url, { headers: alpacaHdrs() }, 10000);
-    if (!r.ok) throw new Error('Alpaca option contracts HTTP ' + r.status);
+
+    // Try broker API first (paper-api or api) — contract metadata lives here
+    var brokerUrl = brokerBase() + '/options/contracts?underlying_symbols='
+        + encodeURIComponent(underlying)
+        + '&expiration_date_gte=' + today
+        + '&status=active&limit=500';
+    var r = await fetchT(brokerUrl, { headers: alpacaHdrs() }, 10000);
+
+    // Fall back to data API if broker returns 404/403
+    if (!r.ok && (r.status === 404 || r.status === 422)) {
+        var dataUrl = OPTS_DATA + '/options/contracts?underlying_symbols='
+            + encodeURIComponent(underlying)
+            + '&expiration_date_gte=' + today + '&status=active&limit=500';
+        r = await fetchT(dataUrl, { headers: alpacaHdrs() }, 10000);
+    }
+
+    if (!r.ok) {
+        var errBody = {};
+        try { errBody = await r.json(); } catch (_) {}
+        throw new Error(
+            'Options contracts HTTP ' + r.status +
+            (errBody.message ? ': ' + errBody.message : '') +
+            ' — options data may require options trading to be enabled on your Alpaca account'
+        );
+    }
+
     var j = await r.json();
-    var contracts = (j && j.option_contracts) || [];
+    var contracts = (j && j.option_contracts) || (Array.isArray(j) ? j : []);
+    if (!contracts.length) {
+        throw new Error('No active options contracts found for ' + underlying + '. The symbol may not have listed options, or options trading may not be enabled on your account.');
+    }
     var expiries = {};
     contracts.forEach(function (c) {
-        if (c.expiration_date) expiries[c.expiration_date] = true;
+        var d = c.expiration_date;
+        if (d) expiries[d] = true;
     });
-    return Object.keys(expiries).sort().slice(0, 12);
+    var sorted = Object.keys(expiries).sort();
+    if (!sorted.length) throw new Error('Options contracts returned but no expiry dates found for ' + underlying);
+    return sorted.slice(0, 20);
 }
 
 async function getOptionsChain(underlying, expiry) {
-    var url = OPTS_DATA + '/options/snapshots/' + encodeURIComponent(underlying)
-        + '?feed=indicative&expiration_date=' + expiry + '&limit=250';
-    var r = await fetchT(url, { headers: alpacaHdrs() }, 12000);
-    if (!r.ok) throw new Error('Alpaca options snapshots HTTP ' + r.status);
-    var j = await r.json();
-    var snaps = (j && j.snapshots) || {};
-    var calls = [], puts = [];
-    Object.keys(snaps).forEach(function (sym) {
-        var parsed = parseOCC(sym, underlying);
-        if (!parsed) return;
-        var s = snaps[sym];
-        var lq = s.latestQuote || {};
-        var lt = s.latestTrade || {};
-        var db = s.dailyBar   || {};
-        var pb = s.prevDailyBar || {};
-        var last  = lt.p || db.c || null;
-        var prev  = pb.c || null;
-        var chg   = (last != null && prev != null) ? last - prev : null;
-        var row = {
-            symbol:  sym,
-            strike:  parsed.strike,
-            type:    parsed.type,
-            bid:     lq.bp || null,
-            ask:     lq.ap || null,
-            last:    last,
-            chg:     chg,
-            volume:  db.v  || 0,
-            oi:      s.openInterest || null,
-            iv:      s.impliedVolatility || null,
-            delta:   s.greeks ? s.greeks.delta : null,
-            gamma:   s.greeks ? s.greeks.gamma : null,
-            theta:   s.greeks ? s.greeks.theta : null,
-        };
-        if (parsed.type === 'C') calls.push(row);
-        else puts.push(row);
-    });
-    calls.sort(function (a, b) { return a.strike - b.strike; });
-    puts.sort(function (a, b) { return a.strike - b.strike; });
-    return { calls: calls, puts: puts, expiry: expiry };
+    // Try indicative feed first; if that returns no data try without feed param
+    var feeds = ['indicative', ''];
+    var lastErr = null;
+
+    for (var fi = 0; fi < feeds.length; fi++) {
+        var feedParam = feeds[fi] ? '&feed=' + feeds[fi] : '';
+        var url = OPTS_DATA + '/options/snapshots/' + encodeURIComponent(underlying)
+            + '?expiration_date=' + encodeURIComponent(expiry) + feedParam + '&limit=500';
+        var r;
+        try { r = await fetchT(url, { headers: alpacaHdrs() }, 12000); }
+        catch (e) { lastErr = e; continue; }
+
+        if (!r.ok) {
+            var eb = {};
+            try { eb = await r.json(); } catch (_) {}
+            lastErr = new Error('Options snapshots HTTP ' + r.status + (eb.message ? ': ' + eb.message : ''));
+            continue;
+        }
+
+        var j = await r.json();
+        var snaps = (j && j.snapshots) || {};
+        var keys = Object.keys(snaps);
+        if (!keys.length) { lastErr = new Error('No snapshot data returned for ' + underlying + ' expiry ' + expiry); continue; }
+
+        var calls = [], puts = [];
+        keys.forEach(function (sym) {
+            var parsed = parseOCC(sym, underlying);
+            if (!parsed) return;
+            var s = snaps[sym];
+            var lq = s.latestQuote   || {};
+            var lt = s.latestTrade   || {};
+            var db = s.dailyBar      || {};
+            var pb = s.prevDailyBar  || {};
+            var last = lt.p != null ? lt.p : db.c;
+            var prev = pb.c;
+            var chg  = (last != null && prev != null) ? last - prev : null;
+            var row = {
+                symbol: sym, strike: parsed.strike, type: parsed.type,
+                bid:    lq.bp != null ? lq.bp : null,
+                ask:    lq.ap != null ? lq.ap : null,
+                last:   last, chg: chg,
+                volume: db.v  || lt.s || 0,
+                oi:     s.openInterest  || null,
+                iv:     s.impliedVolatility || null,
+                delta:  s.greeks ? s.greeks.delta : null,
+                gamma:  s.greeks ? s.greeks.gamma : null,
+                theta:  s.greeks ? s.greeks.theta : null,
+            };
+            if (parsed.type === 'C') calls.push(row);
+            else puts.push(row);
+        });
+        calls.sort(function (a, b) { return a.strike - b.strike; });
+        puts.sort(function (a, b)  { return a.strike - b.strike;  });
+        return { calls: calls, puts: puts, expiry: expiry };
+    }
+    throw lastErr || new Error('Options chain unavailable for ' + underlying + ' ' + expiry);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
