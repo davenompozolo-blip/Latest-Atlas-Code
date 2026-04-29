@@ -315,6 +315,8 @@ async function getOptionsChain(underlying, expiry) {
                 delta:  s.greeks ? s.greeks.delta : null,
                 gamma:  s.greeks ? s.greeks.gamma : null,
                 theta:  s.greeks ? s.greeks.theta : null,
+                vega:   s.greeks ? s.greeks.vega  : null,
+                rho:    s.greeks ? s.greeks.rho   : null,
             };
             if (parsed.type === 'C') calls.push(row);
             else puts.push(row);
@@ -324,6 +326,54 @@ async function getOptionsChain(underlying, expiry) {
         return { calls: calls, puts: puts, expiry: expiry };
     }
     throw lastErr || new Error('Options chain unavailable for ' + underlying + ' ' + expiry);
+}
+
+// ── IV Surface ────────────────────────────────────────────────────────────────
+
+async function getIVSurface(underlying) {
+    var sym = underlying.toUpperCase();
+    var today = new Date().toISOString().slice(0, 10);
+    var feeds = ['indicative', ''];
+    var lastErr = null;
+    for (var fi = 0; fi < feeds.length; fi++) {
+        var feedParam = feeds[fi] ? '&feed=' + feeds[fi] : '';
+        var url = OPTS_DATA + '/options/snapshots/' + encodeURIComponent(sym) + '?limit=2000' + feedParam;
+        var r;
+        try { r = await fetchT(url, { headers: alpacaHdrs() }, 20000); }
+        catch (e) { lastErr = e; continue; }
+        if (!r.ok) {
+            var eb = {};
+            try { eb = await r.json(); } catch (_) {}
+            lastErr = new Error('IV surface HTTP ' + r.status + (eb.message ? ': ' + eb.message : ''));
+            continue;
+        }
+        var j = await r.json();
+        var snaps = (j && j.snapshots) || {};
+        var keys = Object.keys(snaps);
+        if (!keys.length) { lastErr = new Error('No snapshot data for ' + sym); continue; }
+        var expiries = {};
+        var strikes = {};
+        var ivData = {};
+        keys.forEach(function (occSym) {
+            var parsed = parseOCC(occSym, sym);
+            if (!parsed || parsed.expiry < today) return;
+            var s = snaps[occSym];
+            var iv = s.impliedVolatility;
+            if (!iv || !isFinite(iv) || iv <= 0 || iv > 5) return;
+            expiries[parsed.expiry] = true;
+            strikes[parsed.strike] = true;
+            var key = parsed.expiry + '|' + parsed.strike;
+            if (!ivData[key]) ivData[key] = {};
+            if (parsed.type === 'C') ivData[key].call = iv;
+            else ivData[key].put = iv;
+        });
+        return {
+            expiries: Object.keys(expiries).sort(),
+            strikes:  Object.keys(strikes).map(Number).sort(function (a, b) { return a - b; }),
+            ivData:   ivData,
+        };
+    }
+    throw lastErr || new Error('IV surface unavailable for ' + sym);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -374,7 +424,12 @@ module.exports = async function handler(req, res) {
                 if (!expiry) return res.status(400).json({ error: 'expiry required (YYYY-MM-DD)' });
                 return res.status(200).json(await getOptionsChain(sym, expiry));
             }
-            return res.status(400).json({ error: 'Unknown action. Use: quote|chart|account|search|orders|option_expiries|options_chain' });
+            if (action === 'iv_surface') {
+                var sym = ((req.query.symbol) || '').toUpperCase().trim();
+                if (!sym || !SYMBOL_RE.test(sym)) return res.status(400).json({ error: 'Bad symbol' });
+                return res.status(200).json(await getIVSurface(sym));
+            }
+            return res.status(400).json({ error: 'Unknown action. Use: quote|chart|account|search|orders|option_expiries|options_chain|iv_surface' });
         }
 
         // ── POST ─────────────────────────────────────────────────────────────
