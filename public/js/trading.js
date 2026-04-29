@@ -681,7 +681,7 @@ function OrderHistory() {
     }
 
     var filterBtns = ['all', 'open', 'closed'];
-    var thStyle = { fontSize: 10, color: C.muted, textTransform: 'uppercase', letterSpacing: 1, padding: '6px 10px', textAlign: 'left', borderBottom: '1px solid rgba(255,255,255,0.06)', fontWeight: 600 };
+    var thStyle = { fontSize: 10, color: C.muted, textTransform: 'uppercase', letterSpacing: 1, padding: '6px 10px', textAlign: 'left', fontWeight: 600, position: 'sticky', top: 0, zIndex: 1, background: C.card, boxShadow: '0 1px 0 rgba(255,255,255,0.06)' };
     var tdStyle = { fontSize: 12, padding: '7px 10px', borderBottom: '1px solid rgba(255,255,255,0.04)', fontFamily: 'JetBrains Mono' };
 
     return h('div', { style: { background: C.card, borderRadius: 8, border: '1px solid ' + C.border, padding: '14px 16px' } },
@@ -710,8 +710,8 @@ function OrderHistory() {
         loading && h('div', { style: { color: C.muted, fontSize: 12, padding: '12px 0' } }, 'Loading orders…'),
         err     && h('div', { style: { color: C.red, fontSize: 12, padding: '8px 0' } }, 'Error: ' + err),
         !loading && !err && orders.length === 0 && h('div', { style: { color: C.muted, fontSize: 12, padding: '12px 0', textAlign: 'center' } }, 'No orders found'),
-        !loading && orders.length > 0 && h('div', { style: { overflowX: 'auto' } },
-            h('table', { style: { width: '100%', borderCollapse: 'collapse', fontSize: 12 } },
+        !loading && orders.length > 0 && h('div', { style: { overflowX: 'auto', overflowY: 'auto', maxHeight: 480 } },
+            h('table', { style: { width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 12 } },
                 h('thead', null,
                     h('tr', null,
                         h('th', { style: thStyle }, 'Symbol'),
@@ -1032,11 +1032,12 @@ function OptionsChain(p) {
 
     var thS = {
         fontSize: 9, color: C.muted, textTransform: 'uppercase', letterSpacing: 1,
-        padding: '5px 6px', textAlign: 'right', borderBottom: '1px solid rgba(255,255,255,0.06)',
-        fontWeight: 600, whiteSpace: 'nowrap',
+        padding: '5px 6px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap',
+        position: 'sticky', top: 0, zIndex: 1, background: '#0d0f1a',
+        boxShadow: '0 1px 0 rgba(255,255,255,0.06)',
     };
     var thSL = Object.assign({}, thS, { textAlign: 'left' });
-    var thCenter = Object.assign({}, thS, { textAlign: 'center', background: 'rgba(255,255,255,0.04)' });
+    var thCenter = Object.assign({}, thS, { textAlign: 'center', background: 'rgba(13,15,26,0.96)' });
 
     function cellN(v, color) {
         return h('td', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, padding: '5px 6px', textAlign: 'right', color: color || C.text, borderBottom: '1px solid rgba(255,255,255,0.03)' } }, v);
@@ -1100,7 +1101,7 @@ function OptionsChain(p) {
         err     && h('div', { style: { color: C.red,  fontSize: 12, padding: 8  } }, 'Error: ' + err),
 
         !loading && chain && strikes.length > 0 && h('div', { style: { overflowX: 'auto', overflowY: 'auto', maxHeight: 440 } },
-            h('table', { style: { width: '100%', borderCollapse: 'collapse', fontSize: 11 } },
+            h('table', { style: { width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 11 } },
                 h('thead', null,
                     h('tr', null,
                         // Calls header (left)
