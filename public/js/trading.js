@@ -994,11 +994,12 @@ function OptionsChain(p) {
     var _view     = useState('both'); var view   = _view[0];   var setView     = _view[1];
     var _loading  = useState(false);
     var _err      = useState(null);
+    var _sel      = useState(null); var selected = _sel[0]; var setSelected = _sel[1];
 
     // Fetch expiry dates when symbol changes
     useEffect(function () {
         if (!sym) return;
-        setExpiries([]); setExpiry(null); setChain(null); _err[1](null);
+        setExpiries([]); setExpiry(null); setChain(null); _err[1](null); setSelected(null);
         apiFetch('/api/trading?action=option_expiries&symbol=' + encodeURIComponent(sym))
             .then(function (j) {
                 if (j && j.error) { _err[1](j.error); return; }
@@ -1013,7 +1014,7 @@ function OptionsChain(p) {
     // Fetch chain when expiry selected
     useEffect(function () {
         if (!sym || !expiry) return;
-        _loading[1](true); _err[1](null);
+        setSelected(null); _loading[1](true); _err[1](null);
         apiFetch('/api/trading?action=options_chain&symbol=' + encodeURIComponent(sym) + '&expiry=' + encodeURIComponent(expiry))
             .then(function (j) {
                 if (j.error) { _err[1](j.error); _loading[1](false); return; }
@@ -1062,7 +1063,8 @@ function OptionsChain(p) {
     var callByStrike = {}; calls.forEach(function (c) { callByStrike[c.strike] = c; });
     var putByStrike  = {};  puts.forEach(function (p) { putByStrike[p.strike]  = p; });
 
-    return h('div', { style: { background: C.card, borderRadius: 8, border: '1px solid ' + C.border, padding: '14px 16px' } },
+    return h('div', { style: { display: 'flex', gap: 14, alignItems: 'flex-start' } },
+    h('div', { style: { flex: 1, minWidth: 0, background: C.card, borderRadius: 8, border: '1px solid ' + C.border, padding: '14px 16px' } },
         // Header row
         h('div', { style: { display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' } },
             h('span', { style: { fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: 2, textTransform: 'uppercase' } }, 'Options Chain · ' + sym),
@@ -1138,11 +1140,11 @@ function OptionsChain(p) {
                             view !== 'puts'  && cellN(fDelta(c.delta), c.delta > 0.5 ? C.green : C.text),
                             view !== 'puts'  && cellN(fIV(c.iv)),
                             view !== 'puts'  && cellN(c.chg != null ? (c.chg >= 0 ? '+' : '') + fOpt(c.chg) : '—', c.chg >= 0 ? C.green : C.red),
-                            view !== 'puts'  && h('td', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, padding: '5px 6px', textAlign: 'right', color: C.green, fontWeight: 700, background: 'rgba(16,185,129,0.08)', borderBottom: '1px solid rgba(255,255,255,0.03)' } }, c.bid != null ? fOpt(c.bid) : '—'),
-                            view !== 'puts'  && h('td', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, padding: '5px 6px', textAlign: 'right', color: C.green, fontWeight: 700, background: 'rgba(16,185,129,0.08)', borderBottom: '1px solid rgba(255,255,255,0.03)' } }, c.ask != null ? fOpt(c.ask) : '—'),
+                            view !== 'puts'  && h('td', { onClick: c.bid != null ? (function(cc, sk) { return function() { setSelected({ symbol: cc.symbol, strike: sk, type: 'C', expiry: expiry, bid: cc.bid, ask: cc.ask, iv: cc.iv, delta: cc.delta, defaultSide: 'sell' }); }; }(c, strike)) : null, style: { fontFamily: 'JetBrains Mono', fontSize: 11, padding: '5px 6px', textAlign: 'right', color: C.green, fontWeight: 700, background: 'rgba(16,185,129,0.08)', borderBottom: '1px solid rgba(255,255,255,0.03)', cursor: c.bid != null ? 'pointer' : 'default' } }, c.bid != null ? fOpt(c.bid) : '—'),
+                            view !== 'puts'  && h('td', { onClick: c.ask != null ? (function(cc, sk) { return function() { setSelected({ symbol: cc.symbol, strike: sk, type: 'C', expiry: expiry, bid: cc.bid, ask: cc.ask, iv: cc.iv, delta: cc.delta, defaultSide: 'buy'  }); }; }(c, strike)) : null, style: { fontFamily: 'JetBrains Mono', fontSize: 11, padding: '5px 6px', textAlign: 'right', color: C.green, fontWeight: 700, background: 'rgba(16,185,129,0.08)', borderBottom: '1px solid rgba(255,255,255,0.03)', cursor: c.ask != null ? 'pointer' : 'default' } }, c.ask != null ? fOpt(c.ask) : '—'),
                             cellStrike(strike, atm),
-                            view !== 'calls' && h('td', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, padding: '5px 6px', textAlign: 'right', color: C.red, fontWeight: 700, background: 'rgba(239,68,68,0.08)', borderBottom: '1px solid rgba(255,255,255,0.03)' } }, pu.bid != null ? fOpt(pu.bid) : '—'),
-                            view !== 'calls' && h('td', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, padding: '5px 6px', textAlign: 'right', color: C.red, fontWeight: 700, background: 'rgba(239,68,68,0.08)', borderBottom: '1px solid rgba(255,255,255,0.03)' } }, pu.ask != null ? fOpt(pu.ask) : '—'),
+                            view !== 'calls' && h('td', { onClick: pu.bid != null ? (function(pp, sk) { return function() { setSelected({ symbol: pp.symbol, strike: sk, type: 'P', expiry: expiry, bid: pp.bid, ask: pp.ask, iv: pp.iv, delta: pp.delta, defaultSide: 'sell' }); }; }(pu, strike)) : null, style: { fontFamily: 'JetBrains Mono', fontSize: 11, padding: '5px 6px', textAlign: 'right', color: C.red, fontWeight: 700, background: 'rgba(239,68,68,0.08)', borderBottom: '1px solid rgba(255,255,255,0.03)', cursor: pu.bid != null ? 'pointer' : 'default' } }, pu.bid != null ? fOpt(pu.bid) : '—'),
+                            view !== 'calls' && h('td', { onClick: pu.ask != null ? (function(pp, sk) { return function() { setSelected({ symbol: pp.symbol, strike: sk, type: 'P', expiry: expiry, bid: pp.bid, ask: pp.ask, iv: pp.iv, delta: pp.delta, defaultSide: 'buy'  }); }; }(pu, strike)) : null, style: { fontFamily: 'JetBrains Mono', fontSize: 11, padding: '5px 6px', textAlign: 'right', color: C.red, fontWeight: 700, background: 'rgba(239,68,68,0.08)', borderBottom: '1px solid rgba(255,255,255,0.03)', cursor: pu.ask != null ? 'pointer' : 'default' } }, pu.ask != null ? fOpt(pu.ask) : '—'),
                             view !== 'calls' && cellN(pu.chg != null ? (pu.chg >= 0 ? '+' : '') + fOpt(pu.chg) : '—', pu.chg >= 0 ? C.green : C.red),
                             view !== 'calls' && cellN(fIV(pu.iv)),
                             view !== 'calls' && cellN(fDelta(pu.delta), pu.delta < -0.5 ? C.red : C.text),
@@ -1153,6 +1155,12 @@ function OptionsChain(p) {
                 )
             )
         )
+    ),
+    selected && h(OptionOrderPanel, {
+        contract: selected,
+        acct: p.acct,
+        onClose: function() { setSelected(null); },
+    })
     );
 }
 
@@ -1225,7 +1233,7 @@ export function TradingDashboard() {
             h(OrderTicket,      { symbol: liveSym, quote: quote }),
             h(FundamentalsPanel, { data: _f.data, loading: _f.loading })
         ),
-        tab === 'options' && h(OptionsChain, { symbol: liveSym, lastPrice: quote ? quote.last : null }),
+        tab === 'options' && h(OptionsChain, { symbol: liveSym, lastPrice: quote ? quote.last : null, acct: acct }),
         tab === 'orders'  && h(OrderHistory, null)
     );
 }
