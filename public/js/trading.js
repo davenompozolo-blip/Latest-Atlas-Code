@@ -758,6 +758,232 @@ function OrderHistory() {
     );
 }
 
+// ── Chunk 7b: OptionOrderPanel ────────────────────────────────
+
+function OptionOrderPanel(p) {
+    var contract = p.contract; // { symbol, strike, type, expiry, bid, ask, iv, delta }
+    var acct = p.acct;
+
+    var _side   = useState(p.defaultSide || 'buy');
+    var side    = _side[0]; var setSide = _side[1];
+    var _qty    = useState('1');
+    var qty     = _qty[0];  var setQty  = _qty[1];
+    var _otype  = useState('limit');
+    var otype   = _otype[0]; var setOtype = _otype[1];
+    var _lp     = useState('');
+    var lp      = _lp[0];  var setLp = _lp[1];
+    var _tif    = useState('day');
+    var tif     = _tif[0]; var setTif = _tif[1];
+    var _conf   = useState(false);
+    var conf    = _conf[0]; var setConf = _conf[1];
+    var _res    = useState(null);
+    var result  = _res[0];  var setResult = _res[1];
+    var _busy   = useState(false);
+    var busy    = _busy[0]; var setBusy = _busy[1];
+
+    // Auto-set limit price from bid/ask when side or contract changes
+    useEffect(function () {
+        if (!contract) return;
+        var defaultLp = side === 'buy'
+            ? (contract.ask != null ? fN(contract.ask, 2) : '')
+            : (contract.bid != null ? fN(contract.bid, 2) : '');
+        setLp(defaultLp);
+        setConf(false); setResult(null);
+    }, [contract, side]);
+
+    if (!contract) return null;
+
+    var isCall  = contract.type === 'C';
+    var optType = isCall ? 'Call' : 'Put';
+    var sideCol = side === 'buy' ? C.green : C.red;
+    var estCost = (otype === 'limit' && lp && parseFloat(qty))
+        ? parseFloat(lp) * parseFloat(qty) * 100   // options are 100-share lots
+        : (contract.ask && parseFloat(qty) ? contract.ask * parseFloat(qty) * 100 : null);
+
+    function inputS() {
+        return { width: '100%', padding: '7px 10px', fontSize: 12, boxSizing: 'border-box',
+            background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)',
+            borderRadius: 5, color: C.text, fontFamily: 'JetBrains Mono', outline: 'none' };
+    }
+    function labelS() {
+        return { fontSize: 10, color: C.muted, textTransform: 'uppercase', letterSpacing: 1,
+            marginBottom: 4, display: 'block' };
+    }
+
+    function submit() {
+        setBusy(true); setResult(null);
+        var body = { symbol: contract.symbol, side: side, type: otype, tif: tif, qty: parseFloat(qty) || 1 };
+        if (otype === 'limit' && lp) body.limitPrice = parseFloat(lp);
+        fetch('/api/trading?action=order', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (j) { setResult(j); setBusy(false); setConf(false); })
+            .catch(function (e) { setResult({ success: false, error: e.message }); setBusy(false); setConf(false); });
+    }
+
+    return h('div', {
+        style: {
+            width: 280, flexShrink: 0,
+            background: '#0a0c17',
+            border: '1px solid ' + C.border,
+            borderRadius: 8, padding: '16px',
+            display: 'flex', flexDirection: 'column', gap: 12,
+            position: 'sticky', top: 0,
+        }
+    },
+        // Header
+        h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' } },
+            h('div', null,
+                h('div', { style: { fontSize: 10, color: C.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 2 } },
+                    contract.expiry + ' · ' + optType),
+                h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 15, fontWeight: 800, color: isCall ? C.green : C.red } },
+                    '$' + fN(contract.strike, 2) + ' ' + optType.toUpperCase())
+            ),
+            h('button', {
+                onClick: function () { p.onClose && p.onClose(); },
+                style: { background: 'transparent', border: 'none', color: C.muted, fontSize: 16, cursor: 'pointer', padding: '0 4px' }
+            }, '×')
+        ),
+
+        // Bid / Ask strip
+        h('div', { style: { display: 'flex', gap: 8 } },
+            h('div', { style: { flex: 1, padding: '8px 10px', borderRadius: 6, background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', textAlign: 'center' } },
+                h('div', { style: { fontSize: 9, color: C.muted, letterSpacing: 1, marginBottom: 3 } }, 'BID'),
+                h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 14, fontWeight: 700, color: C.green } },
+                    contract.bid != null ? fN(contract.bid, 2) : '—')
+            ),
+            h('div', { style: { flex: 1, padding: '8px 10px', borderRadius: 6, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', textAlign: 'center' } },
+                h('div', { style: { fontSize: 9, color: C.muted, letterSpacing: 1, marginBottom: 3 } }, 'ASK'),
+                h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 14, fontWeight: 700, color: C.red } },
+                    contract.ask != null ? fN(contract.ask, 2) : '—')
+            )
+        ),
+
+        // Greeks summary
+        (contract.iv != null || contract.delta != null) && h('div', { style: { display: 'flex', gap: 12, fontSize: 11, color: C.sec } },
+            contract.iv    != null && h('span', null, 'IV ', h('b', { style: { color: C.text, fontFamily: 'JetBrains Mono' } }, fN(contract.iv * 100, 1) + '%')),
+            contract.delta != null && h('span', null, 'Δ ', h('b', { style: { color: C.text, fontFamily: 'JetBrains Mono' } }, fN(contract.delta, 4)))
+        ),
+
+        // Buy / Sell
+        h('div', { style: { display: 'flex', gap: 6 } },
+            ['buy', 'sell'].map(function (s) {
+                var active = side === s;
+                var col = s === 'buy' ? C.green : C.red;
+                return h('button', {
+                    key: s,
+                    onClick: function () { setSide(s); setConf(false); setResult(null); },
+                    style: {
+                        flex: 1, padding: '7px 0', borderRadius: 6, fontSize: 12, fontWeight: 700,
+                        textTransform: 'uppercase', letterSpacing: 1, cursor: 'pointer',
+                        background: active ? col + '22' : 'transparent',
+                        border: '1px solid ' + (active ? col + '66' : 'rgba(255,255,255,0.08)'),
+                        color: active ? col : C.sec,
+                    },
+                }, s);
+            })
+        ),
+
+        // Order type
+        h('div', null,
+            h('label', { style: labelS() }, 'Order Type'),
+            h('select', {
+                value: otype,
+                onChange: function (e) { setOtype(e.target.value); },
+                style: Object.assign({}, inputS(), { cursor: 'pointer' }),
+            },
+                h('option', { value: 'market' }, 'Market'),
+                h('option', { value: 'limit'  }, 'Limit')
+            )
+        ),
+
+        // Qty
+        h('div', null,
+            h('label', { style: labelS() }, 'Contracts'),
+            h('input', {
+                type: 'number', value: qty, min: 1, step: 1,
+                onChange: function (e) { setQty(e.target.value); },
+                style: inputS(),
+            }),
+            h('div', { style: { fontSize: 10, color: C.muted, marginTop: 3 } }, '1 contract = 100 shares')
+        ),
+
+        // Limit price
+        otype === 'limit' && h('div', null,
+            h('label', { style: labelS() }, 'Limit Price'),
+            h('input', {
+                type: 'number', value: lp, step: '0.01',
+                onChange: function (e) { setLp(e.target.value); },
+                placeholder: '0.00',
+                style: inputS(),
+            })
+        ),
+
+        // TIF
+        h('div', null,
+            h('label', { style: labelS() }, 'Time in Force'),
+            h('select', {
+                value: tif, onChange: function (e) { setTif(e.target.value); },
+                style: Object.assign({}, inputS(), { cursor: 'pointer' }),
+            },
+                h('option', { value: 'day' }, 'Day'),
+                h('option', { value: 'gtc' }, 'GTC')
+            )
+        ),
+
+        // Est cost + buying power
+        h('div', { style: { fontSize: 11, color: C.sec, display: 'flex', justifyContent: 'space-between' } },
+            h('span', null, 'Est. ' + (side === 'buy' ? 'Cost' : 'Proceeds')),
+            h('span', { style: { fontFamily: 'JetBrains Mono', color: C.text } },
+                estCost != null ? '$' + fN(estCost, 2) : '—')
+        ),
+        acct && h('div', { style: { fontSize: 11, color: C.sec, display: 'flex', justifyContent: 'space-between' } },
+            h('span', null, 'Buying Power'),
+            h('span', { style: { fontFamily: 'JetBrains Mono', color: C.text } }, fLarge(acct.buyingPower))
+        ),
+
+        // Submit
+        !conf
+            ? h('button', {
+                onClick: function () { setConf(true); setResult(null); },
+                disabled: busy,
+                style: {
+                    padding: '10px 0', borderRadius: 6, fontSize: 13, fontWeight: 700,
+                    textTransform: 'uppercase', letterSpacing: 1, cursor: 'pointer',
+                    background: sideCol + '22', border: '1px solid ' + sideCol + '66', color: sideCol,
+                },
+            }, side.toUpperCase() + ' ' + (parseFloat(qty) || 1) + ' ' + optType)
+            : h('div', { style: { display: 'flex', gap: 8 } },
+                h('button', {
+                    onClick: submit, disabled: busy,
+                    style: { flex: 1, padding: '9px 0', borderRadius: 6, fontSize: 12, fontWeight: 700,
+                        cursor: 'pointer', background: sideCol + '33', border: '1px solid ' + sideCol, color: sideCol },
+                }, busy ? 'Sending…' : '✓ Confirm'),
+                h('button', {
+                    onClick: function () { setConf(false); },
+                    style: { flex: 1, padding: '9px 0', borderRadius: 6, fontSize: 12, cursor: 'pointer',
+                        background: 'transparent', border: '1px solid rgba(255,255,255,0.12)', color: C.sec },
+                }, 'Cancel')
+            ),
+
+        // Result
+        result && h('div', {
+            style: {
+                padding: '8px 10px', borderRadius: 6, fontSize: 11,
+                background: result.success ? C.green + '18' : C.red + '18',
+                border: '1px solid ' + (result.success ? C.green + '44' : C.red + '44'),
+                color: result.success ? C.green : C.red,
+            }
+        }, result.success
+            ? '✓ Submitted · ' + (result.order && result.order.id ? result.order.id.slice(0, 8) + '…' : '')
+            : '✗ ' + (result.error || 'Error')
+        )
+    );
+}
+
 // ── Chunk 7: OptionsChain ─────────────────────────────────────
 
 function OptionsChain(p) {
