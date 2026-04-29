@@ -758,6 +758,172 @@ function OrderHistory() {
     );
 }
 
+// ── Chunk 7: OptionsChain ─────────────────────────────────────
+
+function OptionsChain(p) {
+    var sym = p.symbol;
+    var _expiries = useState([]); var expiries = _expiries[0]; var setExpiries = _expiries[1];
+    var _expiry   = useState(null); var expiry   = _expiry[0]; var setExpiry   = _expiry[1];
+    var _chain    = useState(null); var chain    = _chain[0];  var setChain    = _chain[1];
+    var _view     = useState('both'); var view   = _view[0];   var setView     = _view[1];
+    var _loading  = useState(false);
+    var _err      = useState(null);
+
+    // Fetch expiry dates when symbol changes
+    useEffect(function () {
+        if (!sym) return;
+        setExpiries([]); setExpiry(null); setChain(null);
+        apiFetch('/api/trading?action=option_expiries&symbol=' + encodeURIComponent(sym))
+            .then(function (j) {
+                var list = Array.isArray(j) ? j : [];
+                setExpiries(list);
+                if (list.length) setExpiry(list[0]);
+            })
+            .catch(function () {});
+    }, [sym]);
+
+    // Fetch chain when expiry selected
+    useEffect(function () {
+        if (!sym || !expiry) return;
+        _loading[1](true); _err[1](null);
+        apiFetch('/api/trading?action=options_chain&symbol=' + encodeURIComponent(sym) + '&expiry=' + encodeURIComponent(expiry))
+            .then(function (j) {
+                if (j.error) { _err[1](j.error); _loading[1](false); return; }
+                setChain(j); _loading[1](false);
+            })
+            .catch(function (e) { _err[1](e.message); _loading[1](false); });
+    }, [sym, expiry]);
+
+    var loading = _loading[0];
+    var err     = _err[0];
+
+    function fOpt(v, d) { return v != null ? fN(v, d != null ? d : 2) : '—'; }
+    function fIV(v)  { return v != null ? fN(v * 100, 1) + '%' : '—'; }
+    function fDelta(v) { return v != null ? fN(v, 4) : '—'; }
+
+    var thS = {
+        fontSize: 9, color: C.muted, textTransform: 'uppercase', letterSpacing: 1,
+        padding: '5px 6px', textAlign: 'right', borderBottom: '1px solid rgba(255,255,255,0.06)',
+        fontWeight: 600, whiteSpace: 'nowrap',
+    };
+    var thSL = Object.assign({}, thS, { textAlign: 'left' });
+    var thCenter = Object.assign({}, thS, { textAlign: 'center', background: 'rgba(255,255,255,0.04)' });
+
+    function cellN(v, color) {
+        return h('td', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, padding: '5px 6px', textAlign: 'right', color: color || C.text, borderBottom: '1px solid rgba(255,255,255,0.03)' } }, v);
+    }
+    function cellStrike(v, atm) {
+        return h('td', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 700, padding: '5px 8px', textAlign: 'center', color: C.amber, background: atm ? 'rgba(245,158,11,0.12)' : 'rgba(255,255,255,0.04)', borderBottom: '1px solid rgba(255,255,255,0.06)', whiteSpace: 'nowrap' } }, '$' + fN(v, 2));
+    }
+
+    if (!sym) return h('div', { style: { color: C.muted, fontSize: 12, padding: 16 } }, 'Load a symbol to see options.');
+    if (expiries.length === 0 && !loading) return h('div', { style: { color: C.muted, fontSize: 12, padding: 16 } }, 'No options data for ' + sym + '.');
+
+    var calls = chain ? chain.calls : [];
+    var puts  = chain ? chain.puts  : [];
+    var lastPrice = p.lastPrice;
+    // Build strike-aligned rows
+    var strikeSet = {};
+    calls.forEach(function (c) { strikeSet[c.strike] = true; });
+    puts.forEach(function (p) { strikeSet[p.strike] = true; });
+    var strikes = Object.keys(strikeSet).map(Number).sort(function (a, b) { return a - b; });
+    var callByStrike = {}; calls.forEach(function (c) { callByStrike[c.strike] = c; });
+    var putByStrike  = {};  puts.forEach(function (p) { putByStrike[p.strike]  = p; });
+
+    return h('div', { style: { background: C.card, borderRadius: 8, border: '1px solid ' + C.border, padding: '14px 16px' } },
+        // Header row
+        h('div', { style: { display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' } },
+            h('span', { style: { fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: 2, textTransform: 'uppercase' } }, 'Options Chain · ' + sym),
+
+            // Expiry selector
+            expiries.length > 0 && h('select', {
+                value: expiry || '',
+                onChange: function (e) { setExpiry(e.target.value); },
+                style: { padding: '3px 8px', background: '#111827', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 4, color: C.text, fontSize: 11, cursor: 'pointer' },
+            },
+                expiries.map(function (e) { return h('option', { key: e, value: e }, e); })
+            ),
+
+            // Calls / Puts / Both
+            h('div', { style: { display: 'flex', gap: 4, marginLeft: 'auto' } },
+                ['both', 'calls', 'puts'].map(function (v) {
+                    return h('button', {
+                        key: v,
+                        onClick: function () { setView(v); },
+                        style: {
+                            padding: '3px 10px', borderRadius: 4, fontSize: 10, fontWeight: 600,
+                            textTransform: 'uppercase', letterSpacing: 0.5, cursor: 'pointer',
+                            background: view === v ? C.cyan + '22' : 'transparent',
+                            border: '1px solid ' + (view === v ? C.cyan + '55' : 'rgba(255,255,255,0.08)'),
+                            color: view === v ? C.cyan : C.muted,
+                        },
+                    }, v);
+                })
+            )
+        ),
+
+        loading && h('div', { style: { color: C.muted, fontSize: 12, padding: 12 } }, 'Loading chain…'),
+        err     && h('div', { style: { color: C.red,  fontSize: 12, padding: 8  } }, 'Error: ' + err),
+
+        !loading && chain && strikes.length > 0 && h('div', { style: { overflowX: 'auto', overflowY: 'auto', maxHeight: 440 } },
+            h('table', { style: { width: '100%', borderCollapse: 'collapse', fontSize: 11 } },
+                h('thead', null,
+                    h('tr', null,
+                        // Calls header (left)
+                        view !== 'puts' && h('th', { colSpan: 7, style: Object.assign({}, thS, { textAlign: 'center', color: C.green, letterSpacing: 2 }) }, '— CALLS —'),
+                        // Strike header (center)
+                        h('th', { style: thCenter }, 'STRIKE'),
+                        // Puts header (right)
+                        view !== 'calls' && h('th', { colSpan: 7, style: Object.assign({}, thS, { textAlign: 'center', color: C.red, letterSpacing: 2 }) }, '— PUTS —')
+                    ),
+                    h('tr', null,
+                        view !== 'puts'  && h('th', { style: thSL }, 'OI'),
+                        view !== 'puts'  && h('th', { style: thS }, 'Vol'),
+                        view !== 'puts'  && h('th', { style: thS }, 'Delta'),
+                        view !== 'puts'  && h('th', { style: thS }, 'IV'),
+                        view !== 'puts'  && h('th', { style: thS }, 'Chg'),
+                        view !== 'puts'  && h('th', { style: Object.assign({}, thS, { color: C.green }) }, 'Bid'),
+                        view !== 'puts'  && h('th', { style: Object.assign({}, thS, { color: C.green }) }, 'Ask'),
+                        h('th', { style: thCenter }, ''),
+                        view !== 'calls' && h('th', { style: Object.assign({}, thS, { color: C.red }) }, 'Bid'),
+                        view !== 'calls' && h('th', { style: Object.assign({}, thS, { color: C.red }) }, 'Ask'),
+                        view !== 'calls' && h('th', { style: thS }, 'Chg'),
+                        view !== 'calls' && h('th', { style: thS }, 'IV'),
+                        view !== 'calls' && h('th', { style: thS }, 'Delta'),
+                        view !== 'calls' && h('th', { style: thS }, 'Vol'),
+                        view !== 'calls' && h('th', { style: thS }, 'OI')
+                    )
+                ),
+                h('tbody', null,
+                    strikes.map(function (strike) {
+                        var c = callByStrike[strike] || {};
+                        var pu = putByStrike[strike] || {};
+                        var atm = lastPrice && Math.abs(strike - lastPrice) / lastPrice < 0.005;
+                        var rowBg = atm ? 'rgba(245,158,11,0.06)' : 'transparent';
+                        return h('tr', { key: strike, style: { background: rowBg } },
+                            view !== 'puts'  && cellN(c.oi    != null ? c.oi.toLocaleString()       : '—', C.sec),
+                            view !== 'puts'  && cellN(c.volume != null ? c.volume.toLocaleString()  : '—'),
+                            view !== 'puts'  && cellN(fDelta(c.delta), c.delta > 0.5 ? C.green : C.text),
+                            view !== 'puts'  && cellN(fIV(c.iv)),
+                            view !== 'puts'  && cellN(c.chg != null ? (c.chg >= 0 ? '+' : '') + fOpt(c.chg) : '—', c.chg >= 0 ? C.green : C.red),
+                            view !== 'puts'  && h('td', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, padding: '5px 6px', textAlign: 'right', color: C.green, fontWeight: 700, background: 'rgba(16,185,129,0.08)', borderBottom: '1px solid rgba(255,255,255,0.03)' } }, c.bid != null ? fOpt(c.bid) : '—'),
+                            view !== 'puts'  && h('td', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, padding: '5px 6px', textAlign: 'right', color: C.green, fontWeight: 700, background: 'rgba(16,185,129,0.08)', borderBottom: '1px solid rgba(255,255,255,0.03)' } }, c.ask != null ? fOpt(c.ask) : '—'),
+                            cellStrike(strike, atm),
+                            view !== 'calls' && h('td', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, padding: '5px 6px', textAlign: 'right', color: C.red, fontWeight: 700, background: 'rgba(239,68,68,0.08)', borderBottom: '1px solid rgba(255,255,255,0.03)' } }, pu.bid != null ? fOpt(pu.bid) : '—'),
+                            view !== 'calls' && h('td', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, padding: '5px 6px', textAlign: 'right', color: C.red, fontWeight: 700, background: 'rgba(239,68,68,0.08)', borderBottom: '1px solid rgba(255,255,255,0.03)' } }, pu.ask != null ? fOpt(pu.ask) : '—'),
+                            view !== 'calls' && cellN(pu.chg != null ? (pu.chg >= 0 ? '+' : '') + fOpt(pu.chg) : '—', pu.chg >= 0 ? C.green : C.red),
+                            view !== 'calls' && cellN(fIV(pu.iv)),
+                            view !== 'calls' && cellN(fDelta(pu.delta), pu.delta < -0.5 ? C.red : C.text),
+                            view !== 'calls' && cellN(pu.volume != null ? pu.volume.toLocaleString() : '—'),
+                            view !== 'calls' && cellN(pu.oi    != null ? pu.oi.toLocaleString()     : '—', C.sec)
+                        );
+                    })
+                )
+            )
+        )
+    );
+}
+
 export function TradingDashboard() {
     var _sym  = useState('AAPL'); var symbol  = _sym[0];  var setSymbol  = _sym[1];
     var _live = useState(null);   var liveSym = _live[0]; var setLiveSym = _live[1];
