@@ -96,6 +96,17 @@ function useFundamentals(symbol) {
     return { data: data, loading: loading };
 }
 
+// ── Dropdown / select fix — force white text in dark inputs ──
+var SELECT_STYLE_INJECTED = false;
+function injectSelectStyle() {
+    if (SELECT_STYLE_INJECTED || typeof document === 'undefined') return;
+    SELECT_STYLE_INJECTED = true;
+    var s = document.createElement('style');
+    s.textContent = 'select option { background:#111827; color:#e2e8f0; }';
+    document.head.appendChild(s);
+}
+injectSelectStyle();
+
 // ── Chunk 2: AccountBadge + SymbolSearch + PriceHero ─────────
 
 function AccountBadge(p) {
@@ -626,6 +637,123 @@ function FundamentalsPanel(p) {
             h('div', { style: { fontSize: 10, color: C.muted, marginBottom: 2 } }, 'Analyst Target'),
             h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 14, fontWeight: 700, color: C.indigo } },
                 '$' + fN(parseFloat(ov.AnalystTargetPrice), 2))
+        )
+    );
+}
+
+// ── Chunk 6: OrderHistory ─────────────────────────────────────
+
+var ORDER_STATUS_COLOR = {
+    filled:            '#10b981',
+    partially_filled:  '#f59e0b',
+    pending_new:       '#6366f1',
+    new:               '#6366f1',
+    accepted:          '#6366f1',
+    canceled:          'rgba(255,255,255,0.3)',
+    cancelled:         'rgba(255,255,255,0.3)',
+    expired:           'rgba(255,255,255,0.3)',
+    rejected:          '#ef4444',
+    held:              '#f59e0b',
+};
+
+function OrderHistory() {
+    var _orders  = useState([]); var orders  = _orders[0]; var setOrders  = _orders[1];
+    var _loading = useState(false); var loading = _loading[0]; var setLoading = _loading[1];
+    var _err     = useState(null);  var err     = _err[0];    var setErr     = _err[1];
+    var _filter  = useState('all'); var filter  = _filter[0]; var setFilter  = _filter[1];
+
+    function load() {
+        setLoading(true); setErr(null);
+        apiFetch('/api/trading?action=orders&status=' + filter + '&limit=50')
+            .then(function (j) {
+                if (j.error) { setErr(j.error); setLoading(false); return; }
+                setOrders(Array.isArray(j) ? j : []); setLoading(false);
+            })
+            .catch(function (e) { setErr(e.message); setLoading(false); });
+    }
+
+    useEffect(function () { load(); }, [filter]);
+
+    function fDate(s) {
+        if (!s) return '—';
+        try { return new Date(s).toLocaleString('en-US', { month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' }); }
+        catch (_) { return s; }
+    }
+
+    var filterBtns = ['all', 'open', 'closed'];
+    var thStyle = { fontSize: 10, color: C.muted, textTransform: 'uppercase', letterSpacing: 1, padding: '6px 10px', textAlign: 'left', borderBottom: '1px solid rgba(255,255,255,0.06)', fontWeight: 600 };
+    var tdStyle = { fontSize: 12, padding: '7px 10px', borderBottom: '1px solid rgba(255,255,255,0.04)', fontFamily: 'JetBrains Mono' };
+
+    return h('div', { style: { background: C.card, borderRadius: 8, border: '1px solid ' + C.border, padding: '14px 16px' } },
+        h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 } },
+            h('span', { style: { fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: 2, textTransform: 'uppercase' } }, 'Order History'),
+            h('div', { style: { display: 'flex', gap: 6 } },
+                filterBtns.map(function (f) {
+                    return h('button', {
+                        key: f,
+                        onClick: function () { setFilter(f); },
+                        style: {
+                            padding: '3px 10px', borderRadius: 4, fontSize: 10, fontWeight: 600,
+                            textTransform: 'uppercase', letterSpacing: 0.5, cursor: 'pointer',
+                            background: filter === f ? C.cyan + '22' : 'transparent',
+                            border: '1px solid ' + (filter === f ? C.cyan + '55' : 'rgba(255,255,255,0.08)'),
+                            color: filter === f ? C.cyan : C.muted,
+                        },
+                    }, f);
+                }),
+                h('button', {
+                    onClick: load,
+                    style: { padding: '3px 10px', borderRadius: 4, fontSize: 10, cursor: 'pointer', background: 'transparent', border: '1px solid rgba(255,255,255,0.08)', color: C.muted },
+                }, '↻ Refresh')
+            )
+        ),
+        loading && h('div', { style: { color: C.muted, fontSize: 12, padding: '12px 0' } }, 'Loading orders…'),
+        err     && h('div', { style: { color: C.red, fontSize: 12, padding: '8px 0' } }, 'Error: ' + err),
+        !loading && !err && orders.length === 0 && h('div', { style: { color: C.muted, fontSize: 12, padding: '12px 0', textAlign: 'center' } }, 'No orders found'),
+        !loading && orders.length > 0 && h('div', { style: { overflowX: 'auto' } },
+            h('table', { style: { width: '100%', borderCollapse: 'collapse', fontSize: 12 } },
+                h('thead', null,
+                    h('tr', null,
+                        h('th', { style: thStyle }, 'Symbol'),
+                        h('th', { style: thStyle }, 'Side'),
+                        h('th', { style: thStyle }, 'Type'),
+                        h('th', { style: thStyle }, 'Qty'),
+                        h('th', { style: thStyle }, 'Filled'),
+                        h('th', { style: thStyle }, 'Avg Fill'),
+                        h('th', { style: thStyle }, 'Limit'),
+                        h('th', { style: thStyle }, 'Status'),
+                        h('th', { style: thStyle }, 'Time')
+                    )
+                ),
+                h('tbody', null,
+                    orders.map(function (o) {
+                        var sCol = o.side === 'buy' ? C.green : C.red;
+                        var stCol = ORDER_STATUS_COLOR[o.status] || C.sec;
+                        return h('tr', {
+                            key: o.id,
+                            style: { background: 'transparent' },
+                        },
+                            h('td', { style: Object.assign({}, tdStyle, { color: C.cyan, fontWeight: 700 }) }, o.symbol),
+                            h('td', { style: Object.assign({}, tdStyle, { color: sCol, fontWeight: 700, textTransform: 'uppercase' }) }, o.side),
+                            h('td', { style: Object.assign({}, tdStyle, { color: C.sec }) }, o.type || '—'),
+                            h('td', { style: tdStyle }, o.qty || '—'),
+                            h('td', { style: Object.assign({}, tdStyle, { color: o.filledQty > 0 ? C.green : C.muted }) }, o.filledQty || '0'),
+                            h('td', { style: tdStyle }, o.filledAvg ? '$' + fN(o.filledAvg, 2) : '—'),
+                            h('td', { style: Object.assign({}, tdStyle, { color: C.sec }) }, o.limitPrice ? '$' + fN(o.limitPrice, 2) : '—'),
+                            h('td', null,
+                                h('span', {
+                                    style: {
+                                        display: 'inline-block', padding: '2px 7px', borderRadius: 4,
+                                        fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+                                        background: stCol + '22', color: stCol,
+                                    }
+                                }, o.status)
+                            ),
+                            h('td', { style: Object.assign({}, tdStyle, { color: C.muted, fontSize: 10 }) }, fDate(o.createdAt))
+                        );
+                    })
+                )
+            )
         )
     );
 }
