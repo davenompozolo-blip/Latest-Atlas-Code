@@ -928,6 +928,7 @@ export function TradingDashboard() {
     var _sym  = useState('AAPL'); var symbol  = _sym[0];  var setSymbol  = _sym[1];
     var _live = useState(null);   var liveSym = _live[0]; var setLiveSym = _live[1];
     var _rng  = useState('1Y');   var range   = _rng[0];  var setRange   = _rng[1];
+    var _tab  = useState('trade'); var tab    = _tab[0];   var setTab    = _tab[1];
 
     var acct = useAccount();
     var _q   = useQuote(liveSym);
@@ -935,14 +936,23 @@ export function TradingDashboard() {
     var _f   = useFundamentals(liveSym);
 
     function handleLoad(sym) { setSymbol(sym); setLiveSym(sym); }
-
     useEffect(function () { setLiveSym('AAPL'); }, []);
 
+    var TABS = [
+        { id: 'trade',   label: 'Trade' },
+        { id: 'options', label: 'Options Chain' },
+        { id: 'orders',  label: 'Order History' },
+    ];
+
     return h('div', { style: { padding: '20px 24px', maxWidth: 1400, margin: '0 auto' } },
+
+        // Row 1: Search + account
         h('div', { style: { display: 'flex', gap: 16, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' } },
             h(SymbolSearch, { symbol: symbol, onLoad: handleLoad }),
             h(AccountBadge, { acct: acct })
         ),
+
+        // Row 2: Price hero + quote strip
         liveSym && h('div', {
             style: { background: C.card, borderRadius: 8, border: '1px solid ' + C.border, padding: '14px 18px', marginBottom: 14 }
         },
@@ -950,16 +960,40 @@ export function TradingDashboard() {
             qErr  && h('div', { style: { color: C.red,  fontSize: 12 } }, 'Quote error: ' + qErr),
             !qLoad && quote && h('div', null,
                 h('div', { style: { fontSize: 10, color: C.muted, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 6 } }, liveSym),
-                h(PriceHero,   { quote: quote }),
-                h(QuoteStrip,  { quote: quote })
+                h(PriceHero,  { quote: quote }),
+                h(QuoteStrip, { quote: quote })
             )
         ),
+
+        // Row 3: Chart
         liveSym && h('div', { style: { marginBottom: 14 } },
             h(CandleChart, { symbol: liveSym, range: range, onRange: setRange })
         ),
-        liveSym && h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1.6fr', gap: 14 } },
+
+        // Row 4: Tab bar
+        h('div', { style: { display: 'flex', gap: 4, marginBottom: 14, borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: 0 } },
+            TABS.map(function (t) {
+                var active = tab === t.id;
+                return h('button', {
+                    key: t.id,
+                    onClick: function () { setTab(t.id); },
+                    style: {
+                        padding: '8px 18px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                        background: 'transparent', border: 'none',
+                        borderBottom: active ? '2px solid ' + C.cyan : '2px solid transparent',
+                        color: active ? C.cyan : C.sec,
+                        marginBottom: -1,
+                    },
+                }, t.label);
+            })
+        ),
+
+        // Tab content
+        tab === 'trade' && h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1.6fr', gap: 14 } },
             h(OrderTicket,      { symbol: liveSym, quote: quote }),
             h(FundamentalsPanel, { data: _f.data, loading: _f.loading })
-        )
+        ),
+        tab === 'options' && h(OptionsChain, { symbol: liveSym, lastPrice: quote ? quote.last : null }),
+        tab === 'orders'  && h(OrderHistory, null)
     );
 }
