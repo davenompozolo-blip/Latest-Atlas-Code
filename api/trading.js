@@ -332,48 +332,57 @@ async function getOptionsChain(underlying, expiry) {
 
 async function getIVSurface(underlying) {
     var sym = underlying.toUpperCase();
-    var today = new Date().toISOString().slice(0, 10);
-    var feeds = ['indicative', ''];
-    var lastErr = null;
-    for (var fi = 0; fi < feeds.length; fi++) {
-        var feedParam = feeds[fi] ? '&feed=' + feeds[fi] : '';
-        var url = OPTS_DATA + '/options/snapshots/' + encodeURIComponent(sym) + '?limit=2000' + feedParam;
-        var r;
-        try { r = await fetchT(url, { headers: alpacaHdrs() }, 20000); }
-        catch (e) { lastErr = e; continue; }
-        if (!r.ok) {
-            var eb = {};
-            try { eb = await r.json(); } catch (_) {}
-            lastErr = new Error('IV surface HTTP ' + r.status + (eb.message ? ': ' + eb.message : ''));
-            continue;
+
+    // Get the list of available expiries first (reuse existing function)
+    var expiries = await getExpiries(sym);
+    // Limit to 10 nearest expiries to keep parallel fetch fast
+    expiries = expiries.slice(0, 10);
+
+    // Fetch each expiry in parallel using the same snapshot path that works for the chain
+    async function fetchExpiry(expiry) {
+        var feeds = ['indicative', ''];
+        for (var fi = 0; fi < feeds.length; fi++) {
+            var feedParam = feeds[fi] ? '&feed=' + feeds[fi] : '';
+            var url = OPTS_DATA + '/options/snapshots/' + encodeURIComponent(sym)
+                + '?expiration_date=' + encodeURIComponent(expiry) + feedParam + '&limit=500';
+            var r;
+            try { r = await fetchT(url, { headers: alpacaHdrs() }, 15000); }
+            catch (e) { continue; }
+            if (!r.ok) continue;
+            var j = await r.json();
+            return (j && j.snapshots) || {};
         }
-        var j = await r.json();
-        var snaps = (j && j.snapshots) || {};
-        var keys = Object.keys(snaps);
-        if (!keys.length) { lastErr = new Error('No snapshot data for ' + sym); continue; }
-        var expiries = {};
-        var strikes = {};
-        var ivData = {};
-        keys.forEach(function (occSym) {
+        return {};
+    }
+
+    var results = await Promise.all(expiries.map(fetchExpiry));
+
+    var strikesSet = {};
+    var ivData = {};
+
+    expiries.forEach(function (expiry, i) {
+        var snaps = results[i];
+        Object.keys(snaps).forEach(function (occSym) {
             var parsed = parseOCC(occSym, sym);
-            if (!parsed || parsed.expiry < today) return;
+            if (!parsed) return;
             var s = snaps[occSym];
             var iv = s.impliedVolatility;
-            if (!iv || !isFinite(iv) || iv <= 0 || iv > 5) return;
-            expiries[parsed.expiry] = true;
-            strikes[parsed.strike] = true;
-            var key = parsed.expiry + '|' + parsed.strike;
+            if (!iv || !isFinite(iv) || iv <= 0 || iv > 20) return;
+            strikesSet[parsed.strike] = true;
+            var key = expiry + '|' + parsed.strike;
             if (!ivData[key]) ivData[key] = {};
             if (parsed.type === 'C') ivData[key].call = iv;
             else ivData[key].put = iv;
         });
-        return {
-            expiries: Object.keys(expiries).sort(),
-            strikes:  Object.keys(strikes).map(Number).sort(function (a, b) { return a - b; }),
-            ivData:   ivData,
-        };
-    }
-    throw lastErr || new Error('IV surface unavailable for ' + sym);
+    });
+
+    if (!Object.keys(ivData).length) throw new Error('No IV data available for ' + sym);
+
+    return {
+        expiries: expiries,
+        strikes:  Object.keys(strikesSet).map(Number).sort(function (a, b) { return a - b; }),
+        ivData:   ivData,
+    };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
