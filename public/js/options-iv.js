@@ -14,10 +14,10 @@ function IVHeatmap(p) {
     var plotRef = useRef(null);
 
     useEffect(function () {
-        if (!p.data || !plotRef.current) return;
+        if (!p.data || !p.data.ivData || !plotRef.current) return;
         var d = p.data;
-        var expiries = d.expiries;
-        var strikes  = d.strikes;
+        var expiries = d.expiries || [];
+        var strikes  = d.strikes  || [];
         var mode     = p.mode; // 'call' | 'put' | 'mid'
 
         // Build z matrix: rows = expiries, cols = strikes
@@ -88,7 +88,7 @@ function IVHeatmap(p) {
 
 // ── Stats panel ───────────────────────────────────────────────
 function IVStats(p) {
-    if (!p.data) return null;
+    if (!p.data || !p.data.ivData) return null;
     var d    = p.data;
     var mode = p.mode;
 
@@ -136,7 +136,7 @@ function IVSmile(p) {
     var plotRef = useRef(null);
 
     useEffect(function () {
-        if (!p.data || !p.expiry || !plotRef.current) return;
+        if (!p.data || !p.data.ivData || !p.expiry || !plotRef.current) return;
         var d      = p.data;
         var mode   = p.mode;
         var strikes = d.strikes;
