@@ -10,7 +10,7 @@ import argparse
 import logging
 import os
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from services.secrets_helper import get_secret
 from typing import Any, Dict, List
 
@@ -270,6 +270,25 @@ def write_to_supabase(normalized_data: Dict[str, Any]) -> Dict[str, int]:
     positions = supabase.upsert_positions(normalized_data["positions"], asset_id_by_symbol)
     print(f"[AlpacaSync]   Supabase returned {len(positions)} positions after upsert", flush=True)
     _log_to_file(f"positions: sent={len(normalized_data['positions'])}, returned={len(positions)}")
+
+    # Write tombstone rows for positions that existed in Supabase but are no longer
+    # held in the live Alpaca snapshot. This ensures the view's `distinct on` picks
+    # the qty=0 tombstone as the latest row, immediately hiding closed positions.
+    try:
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        lookback = (datetime.now(timezone.utc) - timedelta(days=14)).strftime("%Y-%m-%d")
+        recent_asset_ids = set(supabase.get_recent_active_asset_ids(portfolio_id, lookback))
+        live_asset_ids   = set(asset_id_by_symbol[p["asset_symbol"]] for p in normalized_data["positions"] if p["asset_symbol"] in asset_id_by_symbol)
+        closed_asset_ids = list(recent_asset_ids - live_asset_ids)
+        if closed_asset_ids:
+            n_tombstones = supabase.write_position_tombstones(portfolio_id, closed_asset_ids, today)
+            print(f"[AlpacaSync]   Tombstoned {n_tombstones} closed positions: {closed_asset_ids}", flush=True)
+            _log_to_file(f"tombstones: {n_tombstones} closed positions written")
+        else:
+            print("[AlpacaSync]   No closed positions detected — no tombstones needed", flush=True)
+    except Exception as tomb_err:
+        print(f"[AlpacaSync][WARN] Tombstone step failed (non-fatal): {tomb_err}", flush=True)
+        _log_to_file(f"tombstone error (non-fatal): {tomb_err}")
 
     print(f"[AlpacaSync]   Upserting {len(normalized_data['transactions'])} transactions...", flush=True)
     transactions = supabase.upsert_transactions(normalized_data["transactions"], asset_id_by_symbol)

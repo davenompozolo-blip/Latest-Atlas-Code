@@ -209,6 +209,59 @@ class SupabaseSyncClient:
 
 
     # ------------------------------------------------------------------
+    # Phantom position helpers
+    # ------------------------------------------------------------------
+
+    def get_recent_active_asset_ids(self, portfolio_id: str, since_date: str) -> List[str]:
+        """Return asset_ids of non-zero positions for this portfolio since since_date.
+
+        Used by the sync to detect closed positions that need tombstone rows.
+        """
+        rows = self._request(
+            "GET",
+            "positions",
+            query={
+                "portfolio_id": f"eq.{portfolio_id}",
+                "as_of_date": f"gte.{since_date}",
+                "quantity": "neq.0",
+                "select": "asset_id",
+            },
+        )
+        return [r["asset_id"] for r in rows if r.get("asset_id")]
+
+    def write_position_tombstones(
+        self,
+        portfolio_id: str,
+        asset_ids: List[str],
+        as_of_date: str,
+    ) -> int:
+        """Write zero-quantity tombstone rows for closed positions.
+
+        These rows let the view's `distinct on` pick quantity=0 as the
+        latest snapshot, ensuring closed positions are not shown.
+        """
+        if not asset_ids:
+            return 0
+        rows = [
+            {
+                "portfolio_id": portfolio_id,
+                "asset_id": aid,
+                "quantity": 0,
+                "market_value": 0,
+                "as_of_date": as_of_date,
+            }
+            for aid in asset_ids
+        ]
+        self._request(
+            "POST",
+            "positions",
+            query={"on_conflict": "portfolio_id,asset_id,as_of_date"},
+            json_payload=rows,
+            prefer="resolution=merge-duplicates,return=minimal",
+        )
+        return len(rows)
+
+    # ------------------------------------------------------------------
     # Sync job tracking
     # ------------------------------------------------------------------
 
