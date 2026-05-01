@@ -496,6 +496,536 @@ function QuickTradePanel(p) {
     );
 }
 
+// ── Shared mini helpers ───────────────────────────────────────
+
+var C = {
+    green: '#10b981', red: '#ef4444', blue: '#00d4ff',
+    amber: '#f59e0b', purple: '#8b5cf6', muted: 'rgba(255,255,255,0.3)',
+    sec: 'rgba(255,255,255,0.55)', text: 'rgba(255,255,255,0.88)',
+    border: 'rgba(255,255,255,0.07)', card: '#0d1117',
+};
+
+function SnapCard(p) {
+    return React.createElement('div', {
+        style: Object.assign({ background: C.card, borderRadius: 10, border: '1px solid ' + C.border,
+            padding: '16px 18px' }, p.style || {})
+    }, p.children);
+}
+
+function SnapLabel(p) {
+    return React.createElement('div', { style: { fontSize: 9, letterSpacing: 1.8, textTransform: 'uppercase',
+        color: C.muted, marginBottom: p.mb != null ? p.mb : 10, fontFamily: 'DM Sans' } }, p.children);
+}
+
+function MiniStat(p) {
+    return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, flex: 1 } },
+        React.createElement('div', { style: { fontSize: 9, color: C.muted, letterSpacing: 1.2, textTransform: 'uppercase', fontFamily: 'DM Sans', textAlign: 'center' } }, p.label),
+        React.createElement('div', { style: { fontFamily: 'JetBrains Mono', fontSize: p.size || 20, fontWeight: 800, color: p.color || C.text, lineHeight: 1.1 } }, p.value),
+        p.sub && React.createElement('div', { style: { fontSize: 9, color: C.muted, fontFamily: 'DM Sans' } }, p.sub)
+    );
+}
+
+function GaugeDial(p) {
+    // SVG arc gauge: value 0-100, colour by value
+    var pct = Math.max(0, Math.min(100, p.value || 0));
+    var r = 48, cx = 60, cy = 60, strokeW = 9;
+    var arcLen = Math.PI * r; // half circle
+    var filled = (pct / 100) * arcLen;
+    var dasharray = filled + ' ' + arcLen;
+    var col = pct >= 65 ? C.green : pct >= 40 ? C.amber : C.red;
+    return React.createElement('svg', { width: 120, height: 68, viewBox: '0 0 120 70' },
+        React.createElement('path', { d: 'M 12 60 A 48 48 0 0 1 108 60',
+            fill: 'none', stroke: 'rgba(255,255,255,0.07)', strokeWidth: strokeW, strokeLinecap: 'round' }),
+        React.createElement('path', { d: 'M 12 60 A 48 48 0 0 1 108 60',
+            fill: 'none', stroke: col, strokeWidth: strokeW, strokeLinecap: 'round',
+            strokeDasharray: dasharray, strokeDashoffset: 0 }),
+        React.createElement('text', { x: 60, y: 52, textAnchor: 'middle', fontFamily: 'JetBrains Mono',
+            fontSize: 18, fontWeight: 800, fill: col }, Math.round(pct)),
+        React.createElement('text', { x: 60, y: 63, textAnchor: 'middle', fontFamily: 'DM Sans',
+            fontSize: 8, fill: C.muted }, p.label || 'score')
+    );
+}
+
+// ── Performance Snapshot ──────────────────────────────────────
+
+function PerformanceSnapshot(p) {
+    var positions = p.positions || [];
+    var navData   = p.navData   || [];
+
+    // Win rate
+    var withRet = positions.filter(function(pos) { return pos.unrealised_return_pct != null && isFinite(Number(pos.unrealised_return_pct)); });
+    var winners = withRet.filter(function(pos) { return Number(pos.unrealised_return_pct) > 0; });
+    var winRate = withRet.length > 0 ? (winners.length / withRet.length) * 100 : 0;
+
+    // Return distribution buckets
+    var buckets = { '< -20%': 0, '-20 to -10%': 0, '-10 to 0%': 0, '0 to +10%': 0, '+10 to +20%': 0, '> +20%': 0 };
+    var bucketColors = ['#dc2626','#ef4444','#f87171','#4ade80','#16a34a','#15803d'];
+    withRet.forEach(function(pos) {
+        var r = Number(pos.unrealised_return_pct) * 100;
+        if (r < -20) buckets['< -20%']++;
+        else if (r < -10) buckets['-20 to -10%']++;
+        else if (r < 0)   buckets['-10 to 0%']++;
+        else if (r < 10)  buckets['0 to +10%']++;
+        else if (r < 20)  buckets['+10 to +20%']++;
+        else              buckets['> +20%']++;
+    });
+    var bucketKeys = Object.keys(buckets);
+    var bucketMax = Math.max.apply(null, bucketKeys.map(function(k) { return buckets[k]; })) || 1;
+
+    // Portfolio median return
+    var sortedRets = withRet.map(function(pos) { return Number(pos.unrealised_return_pct) * 100; }).sort(function(a,b){return a-b;});
+    var medianRet = sortedRets.length ? sortedRets[Math.floor(sortedRets.length / 2)] : 0;
+
+    // Top alpha captures (return above portfolio median, weighted by mktval)
+    var totalMv = positions.reduce(function(s, pos) { return s + Math.abs(Number(pos.market_value) || 0); }, 0);
+    var alphaPositions = withRet.map(function(pos) {
+        var ret = Number(pos.unrealised_return_pct) * 100;
+        var wt  = totalMv > 0 ? Math.abs(Number(pos.market_value) || 0) / totalMv : 0;
+        return { symbol: pos.symbol, ret: ret, excess: ret - medianRet, wt: wt,
+            wtdContrib: (ret - medianRet) * wt };
+    }).sort(function(a, b) { return b.wtdContrib - a.wtdContrib; });
+    var topAlpha = alphaPositions.slice(0, 5);
+    var botAlpha = alphaPositions.slice(-5).reverse();
+
+    // Momentum: positions where day% direction matches overall return direction
+    var withMom = positions.filter(function(pos) {
+        return pos.daily_change_pct != null && pos.unrealised_return_pct != null;
+    });
+    var aligned = withMom.filter(function(pos) {
+        var d = Number(pos.daily_change_pct), r = Number(pos.unrealised_return_pct);
+        return (d >= 0 && r >= 0) || (d < 0 && r < 0);
+    });
+    var momPct = withMom.length > 0 ? (aligned.length / withMom.length) * 100 : 0;
+
+    // NAV-based performance
+    var navSorted = navData.slice().sort(function(a,b){return new Date(a.price_date)-new Date(b.price_date);});
+    var nav30ago = navSorted.length > 22 ? navSorted[navSorted.length - 22] : navSorted[0];
+    var navNow   = navSorted.length ? navSorted[navSorted.length - 1] : null;
+    var ret30d   = nav30ago && navNow && nav30ago.nav > 0 ? ((navNow.nav - nav30ago.nav) / nav30ago.nav) * 100 : null;
+
+    var h = React.createElement;
+
+    return h('div', { style: { display: 'flex', flexDirection: 'column', gap: 14 } },
+
+        // Row 1: KPI strip
+        h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 } },
+            h(SnapCard, { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 } },
+                h(GaugeDial, { value: winRate, label: 'win rate' }),
+                h('div', { style: { fontSize: 10, color: C.muted, textAlign: 'center', fontFamily: 'DM Sans' } },
+                    winners.length + ' of ' + withRet.length + ' positions profitable')
+            ),
+            h(SnapCard, { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 } },
+                h(SnapLabel, { mb: 6 }, 'Momentum Alignment'),
+                h(GaugeDial, { value: momPct, label: 'aligned' }),
+                h('div', { style: { fontSize: 10, color: C.muted, textAlign: 'center', fontFamily: 'DM Sans' } },
+                    'Day direction = total return direction')
+            ),
+            h(SnapCard, { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 } },
+                h(SnapLabel, { mb: 4 }, 'Median Position Return'),
+                h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 32, fontWeight: 800,
+                    color: medianRet >= 0 ? C.green : C.red } },
+                    (medianRet >= 0 ? '+' : '') + medianRet.toFixed(1) + '%'),
+                h('div', { style: { fontSize: 10, color: C.muted, fontFamily: 'DM Sans' } }, 'Mid-point of all positions')
+            ),
+            h(SnapCard, { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 } },
+                h(SnapLabel, { mb: 4 }, '30-Day Portfolio Return'),
+                h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 32, fontWeight: 800,
+                    color: ret30d == null ? C.muted : ret30d >= 0 ? C.green : C.red } },
+                    ret30d == null ? '—' : (ret30d >= 0 ? '+' : '') + ret30d.toFixed(2) + '%'),
+                h('div', { style: { fontSize: 10, color: C.muted, fontFamily: 'DM Sans' } }, 'vs 22 trading days ago')
+            )
+        ),
+
+        // Row 2: Return distribution + alpha capture
+        h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 } },
+            h(SnapCard, null,
+                h(SnapLabel, null, 'Return Distribution'),
+                h('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+                    bucketKeys.map(function(key, i) {
+                        var count = buckets[key];
+                        var barW = (count / bucketMax) * 100;
+                        var col = bucketColors[i];
+                        return h('div', { key: key, style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                            h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 9, color: C.muted, minWidth: 84, textAlign: 'right' } }, key),
+                            h('div', { style: { flex: 1, height: 18, background: 'rgba(255,255,255,0.04)', borderRadius: 3, overflow: 'hidden', position: 'relative' } },
+                                h('div', { style: { width: barW + '%', height: '100%', background: col, borderRadius: 3, opacity: 0.75 } }),
+                                count > 0 && h('span', { style: { position: 'absolute', left: 6, top: '50%', transform: 'translateY(-50%)',
+                                    fontFamily: 'JetBrains Mono', fontSize: 9, color: 'rgba(255,255,255,0.8)', fontWeight: 700 } }, count)
+                            )
+                        );
+                    })
+                )
+            ),
+            h(SnapCard, null,
+                h(SnapLabel, null, 'Excess Return vs Portfolio Median (weighted)'),
+                h('div', { style: { display: 'flex', flexDirection: 'column', gap: 0 } },
+                    h('div', { style: { display: 'flex', gap: 8, marginBottom: 8 } },
+                        h('div', { style: { flex: 1 } },
+                            h('div', { style: { fontSize: 9, color: C.green, letterSpacing: 1, textTransform: 'uppercase', fontFamily: 'DM Sans', marginBottom: 4 } }, '▲ Top alpha'),
+                            topAlpha.map(function(pos) {
+                                return h('div', { key: pos.symbol, style: { display: 'flex', justifyContent: 'space-between',
+                                    padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.03)', alignItems: 'center' } },
+                                    h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, color: C.blue } }, pos.symbol),
+                                    h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 10, color: C.green } },
+                                        '+' + pos.excess.toFixed(1) + '%')
+                                );
+                            })
+                        ),
+                        h('div', { style: { width: 1, background: 'rgba(255,255,255,0.05)' } }),
+                        h('div', { style: { flex: 1 } },
+                            h('div', { style: { fontSize: 9, color: C.red, letterSpacing: 1, textTransform: 'uppercase', fontFamily: 'DM Sans', marginBottom: 4, paddingLeft: 8 } }, '▼ Laggards'),
+                            botAlpha.map(function(pos) {
+                                return h('div', { key: pos.symbol, style: { display: 'flex', justifyContent: 'space-between',
+                                    padding: '4px 0 4px 8px', borderBottom: '1px solid rgba(255,255,255,0.03)', alignItems: 'center' } },
+                                    h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, color: C.blue } }, pos.symbol),
+                                    h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 10, color: C.red } },
+                                        pos.excess.toFixed(1) + '%')
+                                );
+                            })
+                        )
+                    )
+                )
+            )
+        ),
+
+        // Row 3: full return ladder
+        h(SnapCard, null,
+            h(SnapLabel, null, 'Position Return Ladder — sorted by total return'),
+            h('div', { style: { display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 320, overflowY: 'auto' } },
+                withRet.slice().sort(function(a,b){return Number(b.unrealised_return_pct)-Number(a.unrealised_return_pct);})
+                .map(function(pos) {
+                    var ret = Number(pos.unrealised_return_pct) * 100;
+                    var wt  = totalMv > 0 ? Math.abs(Number(pos.market_value)||0) / totalMv * 100 : 0;
+                    var col = ret > 0 ? C.green : C.red;
+                    var barW = Math.min(Math.abs(ret) / 50, 1) * 100;
+                    return h('div', { key: pos.symbol, style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                        h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 10, color: C.blue, minWidth: 48 } }, pos.symbol),
+                        h('span', { style: { fontSize: 9, color: C.muted, minWidth: 34, textAlign: 'right', fontFamily: 'JetBrains Mono' } }, wt.toFixed(1) + '%'),
+                        h('div', { style: { flex: 1, height: 14, background: 'rgba(255,255,255,0.03)', borderRadius: 2, overflow: 'hidden', position: 'relative' } },
+                            h('div', { style: { position: 'absolute',
+                                left: ret >= 0 ? '50%' : (50 - barW/2) + '%',
+                                width: barW/2 + '%', height: '100%', background: col, opacity: 0.65, borderRadius: 2 } }),
+                            h('div', { style: { position: 'absolute', left: '50%', top: 0, bottom: 0, width: 1, background: 'rgba(255,255,255,0.12)' } })
+                        ),
+                        h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 10, color: col, minWidth: 56, textAlign: 'right', fontWeight: 600 } },
+                            (ret >= 0 ? '+' : '') + ret.toFixed(1) + '%')
+                    );
+                })
+            )
+        )
+    );
+}
+
+// ── Risk Snapshot ─────────────────────────────────────────────
+
+function RiskSnapshot(p) {
+    var positions = p.positions || [];
+    var h = React.createElement;
+
+    var totalMv = positions.reduce(function(s, pos) { return s + Math.abs(Number(pos.market_value)||0); }, 0);
+
+    // Stress temperature: composite score from concentration, leverage signal, drawdown exposure
+    var sorted = positions.slice().sort(function(a,b){return Math.abs(Number(b.market_value)||0)-Math.abs(Number(a.market_value)||0);});
+    var top5wt  = sorted.slice(0,5).reduce(function(s,pos){return s + Math.abs(Number(pos.market_value)||0);},0) / (totalMv||1);
+    var hhi = positions.reduce(function(s,pos){var w=totalMv?Math.abs(Number(pos.market_value)||0)/totalMv:0; return s+w*w;},0);
+    var pctUnderwater = positions.filter(function(pos){return pos.unrealised_return_pct!=null&&Number(pos.unrealised_return_pct)<0;}).length / (positions.length||1);
+    var stressScore = Math.min(100, Math.round(
+        top5wt * 35 +       // concentration up to 35pts
+        hhi * 25 * 100 +    // HHI signal
+        pctUnderwater * 40  // underwater positions
+    ));
+    var stressCol = stressScore > 65 ? C.red : stressScore > 40 ? C.amber : C.green;
+    var stressLabel = stressScore > 65 ? 'Elevated' : stressScore > 40 ? 'Moderate' : 'Low';
+
+    // Drawdown exposure: positions most at risk (negative ret × weight)
+    var drawdownPositions = positions.map(function(pos) {
+        var ret = pos.unrealised_return_pct != null ? Number(pos.unrealised_return_pct) : 0;
+        var mv  = Math.abs(Number(pos.market_value)||0);
+        var wt  = totalMv > 0 ? mv / totalMv : 0;
+        var exposure = ret < 0 ? Math.abs(ret) * wt * 100 : 0;
+        return { symbol: pos.symbol, ret: ret * 100, wt: wt * 100, exposure: exposure, mv: mv };
+    }).filter(function(pos) { return pos.ret < 0; })
+      .sort(function(a,b) { return b.exposure - a.exposure; }).slice(0, 8);
+
+    // Sector risk budget (simple: warn any sector > 30% of portfolio)
+    var bySector = {};
+    positions.forEach(function(pos) {
+        var sec = getSector(pos.symbol, pos);
+        bySector[sec] = (bySector[sec] || 0) + Math.abs(Number(pos.market_value)||0);
+    });
+    var sectorRisk = Object.keys(bySector).map(function(sec) {
+        var wt = totalMv > 0 ? bySector[sec] / totalMv * 100 : 0;
+        return { sec: sec, wt: wt, breach: wt > 30 };
+    }).sort(function(a,b){return b.wt-a.wt;});
+
+    // Volatility proxy: positions with highest absolute day change
+    var volPositions = positions.filter(function(pos){return pos.daily_change_pct!=null;})
+        .map(function(pos){ return { symbol: pos.symbol, absDayChg: Math.abs(Number(pos.daily_change_pct))*100,
+            dayChg: Number(pos.daily_change_pct)*100, wt: totalMv>0?Math.abs(Number(pos.market_value)||0)/totalMv*100:0 }; })
+        .sort(function(a,b){return b.absDayChg-a.absDayChg;}).slice(0,6);
+
+    return h('div', { style: { display: 'flex', flexDirection: 'column', gap: 14 } },
+
+        // Row 1: stress gauge + tail metrics
+        h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12 } },
+            h(SnapCard, { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, gridColumn: 'span 1' } },
+                h(SnapLabel, { mb: 4 }, 'Portfolio Stress'),
+                h(GaugeDial, { value: stressScore, label: stressLabel }),
+                h('div', { style: { fontSize: 10, textAlign: 'center', color: stressCol, fontFamily: 'DM Sans', fontWeight: 600 } }, stressLabel + ' risk profile')
+            ),
+            h(SnapCard, { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 } },
+                h(SnapLabel, { mb: 4 }, 'Underwater Positions'),
+                h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 32, fontWeight: 800,
+                    color: pctUnderwater > 0.5 ? C.red : pctUnderwater > 0.3 ? C.amber : C.green } },
+                    Math.round(pctUnderwater * 100) + '%'),
+                h('div', { style: { fontSize: 10, color: C.muted, fontFamily: 'DM Sans', textAlign: 'center' } },
+                    positions.filter(function(pos){return Number(pos.unrealised_return_pct||0)<0;}).length + ' of ' + positions.length + ' positions')
+            ),
+            h(SnapCard, { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 } },
+                h(SnapLabel, { mb: 4 }, 'Top-5 Concentration'),
+                h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 32, fontWeight: 800,
+                    color: top5wt > 0.6 ? C.red : top5wt > 0.45 ? C.amber : C.green } },
+                    (top5wt * 100).toFixed(0) + '%'),
+                h('div', { style: { fontSize: 10, color: C.muted, fontFamily: 'DM Sans', textAlign: 'center' } }, 'of portfolio in top 5')
+            ),
+            h(SnapCard, { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 } },
+                h(SnapLabel, { mb: 4 }, 'HHI Concentration'),
+                h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 32, fontWeight: 800,
+                    color: hhi > 0.25 ? C.red : hhi > 0.15 ? C.amber : C.green } },
+                    Math.round(hhi * 10000)),
+                h('div', { style: { fontSize: 10, color: C.muted, fontFamily: 'DM Sans', textAlign: 'center' } }, '< 1500 diversified · > 2500 concentrated')
+            )
+        ),
+
+        // Row 2: sector risk budget + volatility leaders
+        h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 } },
+            h(SnapCard, null,
+                h(SnapLabel, null, 'Sector Risk Budget (30% threshold)'),
+                h('div', { style: { display: 'flex', flexDirection: 'column', gap: 7 } },
+                    sectorRisk.map(function(s) {
+                        var col = s.breach ? C.red : s.wt > 20 ? C.amber : C.green;
+                        return h('div', { key: s.sec },
+                            h('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 3 } },
+                                h('span', { style: { fontSize: 11, color: s.breach ? C.red : C.sec, fontFamily: 'DM Sans',
+                                    display: 'flex', alignItems: 'center', gap: 5 } },
+                                    s.breach && h('span', { style: { color: C.red, fontSize: 10 } }, '⚠ '),
+                                    s.sec),
+                                h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 10, color: col, fontWeight: 700 } },
+                                    s.wt.toFixed(1) + '%')
+                            ),
+                            h('div', { style: { height: 4, background: 'rgba(255,255,255,0.04)', borderRadius: 2, overflow: 'hidden', position: 'relative' } },
+                                h('div', { style: { width: Math.min(s.wt, 100) + '%', height: '100%', background: col, borderRadius: 2, opacity: 0.75 } }),
+                                h('div', { style: { position: 'absolute', left: '30%', top: 0, bottom: 0, width: 1, background: 'rgba(255,255,255,0.2)' } })
+                            )
+                        );
+                    })
+                )
+            ),
+            h(SnapCard, null,
+                h(SnapLabel, null, 'Today\'s Highest-Volatility Positions'),
+                h('div', { style: { display: 'flex', flexDirection: 'column', gap: 0 } },
+                    volPositions.map(function(pos) {
+                        var col = pos.dayChg >= 0 ? C.green : C.red;
+                        return h('div', { key: pos.symbol,
+                            style: { display: 'flex', alignItems: 'center', gap: 8, padding: '7px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' } },
+                            h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 12, color: C.blue, minWidth: 52 } }, pos.symbol),
+                            h('span', { style: { fontSize: 10, color: C.muted, flex: 1, fontFamily: 'DM Sans' } }, pos.wt.toFixed(1) + '% of portfolio'),
+                            h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 12, color: col, fontWeight: 700, minWidth: 60, textAlign: 'right' } },
+                                (pos.dayChg >= 0 ? '▲ +' : '▼ ') + pos.absDayChg.toFixed(2) + '%')
+                        );
+                    })
+                )
+            )
+        ),
+
+        // Row 3: drawdown exposure table
+        drawdownPositions.length > 0 && h(SnapCard, null,
+            h(SnapLabel, null, 'Weighted Drawdown Exposure — underwater positions ranked by portfolio impact'),
+            h('div', { style: { display: 'flex', flexDirection: 'column', gap: 4 } },
+                drawdownPositions.map(function(pos) {
+                    var barW = Math.min(pos.exposure / (drawdownPositions[0].exposure || 1), 1) * 100;
+                    return h('div', { key: pos.symbol, style: { display: 'flex', alignItems: 'center', gap: 10 } },
+                        h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 10, color: C.blue, minWidth: 48 } }, pos.symbol),
+                        h('span', { style: { fontSize: 9, color: C.muted, minWidth: 34, textAlign: 'right', fontFamily: 'JetBrains Mono' } }, pos.wt.toFixed(1) + '%'),
+                        h('div', { style: { flex: 1, height: 14, background: 'rgba(255,255,255,0.03)', borderRadius: 2, overflow: 'hidden' } },
+                            h('div', { style: { width: barW + '%', height: '100%', background: C.red, opacity: 0.55, borderRadius: 2 } })
+                        ),
+                        h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 10, color: C.red, minWidth: 56, textAlign: 'right' } },
+                            pos.ret.toFixed(1) + '%'),
+                        h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 9, color: 'rgba(239,68,68,0.5)', minWidth: 40, textAlign: 'right' } },
+                            pos.exposure.toFixed(2) + 'pp')
+                    );
+                })
+            )
+        )
+    );
+}
+
+// ── Portfolio Management Snapshot ─────────────────────────────
+
+function calcHHI(pList, mv) {
+    return pList.reduce(function(s,pos){var w=mv?Math.abs(Number(pos.market_value)||0)/mv:0; return s+w*w;},0);
+}
+
+function PortfolioMgmtSnapshot(p) {
+    var positions = p.positions || [];
+    var txData    = p.txData    || [];
+    var h = React.createElement;
+
+    var totalMv = positions.reduce(function(s, pos) { return s + Math.abs(Number(pos.market_value)||0); }, 0);
+    var totalCost = positions.reduce(function(s, pos) { return s + Math.abs(Number(pos.cost_basis||0) * Number(pos.quantity||0)); }, 0);
+
+    // Position aging: map buys from txData to first seen date
+    var firstBuy = {};
+    var today = new Date();
+    txData.forEach(function(t) {
+        var sym = t.symbol || t.ticker;
+        var d   = t.transaction_date || t.date || t.trade_date;
+        var side = (t.side || t.transaction_type || '').toUpperCase();
+        if (!sym || !d || side.indexOf('BUY') < 0) return;
+        if (!firstBuy[sym] || d < firstBuy[sym]) firstBuy[sym] = d;
+    });
+
+    var positionsWithAge = positions.map(function(pos) {
+        var entryDate = firstBuy[pos.symbol];
+        var ageDays = entryDate ? Math.round((today - new Date(entryDate)) / 864e5) : null;
+        var mv  = Math.abs(Number(pos.market_value)||0);
+        var cb  = Number(pos.cost_basis||0) * Number(pos.quantity||0);
+        var pnl = mv - (cb || mv);
+        var ret = pos.unrealised_return_pct != null ? Number(pos.unrealised_return_pct)*100 : null;
+        var wt  = totalMv > 0 ? mv / totalMv * 100 : 0;
+        return { symbol: pos.symbol, mv: mv, cb: cb, pnl: pnl, ret: ret, wt: wt, ageDays: ageDays };
+    });
+
+    // Rebalancing drift: positions where weight deviates strongly from equal-weight target
+    var eqTarget = positions.length > 0 ? 100 / positions.length : 0;
+    var driftPositions = positionsWithAge.map(function(pos) {
+        return Object.assign({}, pos, { drift: pos.wt - eqTarget });
+    }).sort(function(a,b){return Math.abs(b.drift)-Math.abs(a.drift);}).slice(0,10);
+
+    // Cost efficiency: P&L per $ invested, sorted
+    var efficiencyPositions = positionsWithAge.filter(function(pos){return pos.cb > 0;})
+        .sort(function(a,b){return (b.pnl/b.cb)-(a.pnl/a.cb);});
+
+    // Portfolio construction score (simple heuristic)
+    var nPositions = positions.length;
+    var divScore = Math.min(100, nPositions * 3.5);   // more positions = more diversified (cap 100)
+    var hhiScore = Math.max(0, 100 - calcHHI(positions, totalMv) * 500); // lower HHI = better
+    var qualScores = positions.filter(function(pos){return pos.quality_score!=null;}).map(function(pos){return Number(pos.quality_score);});
+    var avgQual = qualScores.length ? qualScores.reduce(function(s,v){return s+v;},0)/qualScores.length : 50;
+    var constructionScore = Math.round((divScore * 0.3 + hhiScore * 0.4 + avgQual * 0.3));
+
+    // Aged positions (> 365 days) — review candidates
+    var longHeld = positionsWithAge.filter(function(pos){return pos.ageDays!=null && pos.ageDays > 365;})
+        .sort(function(a,b){return b.ageDays-a.ageDays;});
+
+    return h('div', { style: { display: 'flex', flexDirection: 'column', gap: 14 } },
+
+        // Row 1: construction score + summary KPIs
+        h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12 } },
+            h(SnapCard, { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 } },
+                h(SnapLabel, { mb: 4 }, 'Construction Score'),
+                h(GaugeDial, { value: constructionScore, label: 'score' }),
+                h('div', { style: { fontSize: 9, color: C.muted, textAlign: 'center', fontFamily: 'DM Sans' } },
+                    'Diversity + concentration + quality')
+            ),
+            h(SnapCard, { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 } },
+                h(SnapLabel, { mb: 4 }, 'Unrealised P&L'),
+                h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 28, fontWeight: 800,
+                    color: (totalMv - totalCost) >= 0 ? C.green : C.red } },
+                    ((totalMv - totalCost) >= 0 ? '+' : '') +
+                    (Math.abs(totalMv - totalCost) >= 1e6
+                        ? '$' + ((totalMv-totalCost)/1e6).toFixed(2) + 'M'
+                        : '$' + ((totalMv-totalCost)/1e3).toFixed(1) + 'k')
+                ),
+                h('div', { style: { fontSize: 10, color: C.muted, fontFamily: 'DM Sans', textAlign: 'center' } }, 'across ' + positions.length + ' positions')
+            ),
+            h(SnapCard, { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 } },
+                h(SnapLabel, { mb: 4 }, 'Positions With Age Data'),
+                h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 28, fontWeight: 800, color: C.blue } },
+                    positionsWithAge.filter(function(pos){return pos.ageDays!=null;}).length),
+                h('div', { style: { fontSize: 10, color: C.muted, fontFamily: 'DM Sans', textAlign: 'center' } },
+                    longHeld.length + ' held > 1 year')
+            ),
+            h(SnapCard, { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 } },
+                h(SnapLabel, { mb: 4 }, 'Equal-Weight Deviation'),
+                h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 28, fontWeight: 800, color: C.amber } },
+                    driftPositions.length > 0 ? Math.abs(driftPositions[0].drift).toFixed(1) + '%' : '—'),
+                h('div', { style: { fontSize: 10, color: C.muted, fontFamily: 'DM Sans', textAlign: 'center' } }, 'max drift from ' + eqTarget.toFixed(1) + '% eq. target')
+            )
+        ),
+
+        // Row 2: rebalancing drift + cost efficiency
+        h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 } },
+            h(SnapCard, null,
+                h(SnapLabel, null, 'Weight Drift vs Equal-Weight Target'),
+                h('div', { style: { display: 'flex', flexDirection: 'column', gap: 5 } },
+                    driftPositions.map(function(pos) {
+                        var col = pos.drift > 0 ? C.blue : C.amber;
+                        var barW = Math.min(Math.abs(pos.drift) / (Math.abs(driftPositions[0].drift)||1), 1) * 45;
+                        return h('div', { key: pos.symbol, style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                            h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 10, color: C.blue, minWidth: 48 } }, pos.symbol),
+                            h('div', { style: { flex: 1, height: 14, position: 'relative', background: 'rgba(255,255,255,0.02)', borderRadius: 2 } },
+                                h('div', { style: { position: 'absolute',
+                                    left: pos.drift >= 0 ? '50%' : (50 - barW) + '%',
+                                    width: barW + '%', height: '100%', background: col, opacity: 0.65, borderRadius: 2 } }),
+                                h('div', { style: { position: 'absolute', left: '50%', top: 0, bottom: 0, width: 1, background: 'rgba(255,255,255,0.15)' } })
+                            ),
+                            h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 10, color: col, minWidth: 52, textAlign: 'right' } },
+                                (pos.drift >= 0 ? '+' : '') + pos.drift.toFixed(1) + '%')
+                        );
+                    })
+                )
+            ),
+            h(SnapCard, null,
+                h(SnapLabel, null, 'Capital Efficiency — return per $ invested'),
+                h('div', { style: { display: 'flex', flexDirection: 'column', gap: 0 } },
+                    efficiencyPositions.slice(0, 10).map(function(pos) {
+                        var eff = pos.cb > 0 ? (pos.pnl / pos.cb) * 100 : 0;
+                        var col = eff >= 0 ? C.green : C.red;
+                        return h('div', { key: pos.symbol,
+                            style: { display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' } },
+                            h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 10, color: C.blue, minWidth: 48 } }, pos.symbol),
+                            h('div', { style: { flex: 1, height: 10, background: 'rgba(255,255,255,0.03)', borderRadius: 2, overflow: 'hidden' } },
+                                h('div', { style: { width: Math.min(Math.abs(eff), 100) + '%', height: '100%', background: col, opacity: 0.6, borderRadius: 2 } })
+                            ),
+                            h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 10, color: col, minWidth: 52, textAlign: 'right', fontWeight: 600 } },
+                                (eff >= 0 ? '+' : '') + eff.toFixed(1) + '%')
+                        );
+                    })
+                )
+            )
+        ),
+
+        // Row 3: Position aging (when data available)
+        positionsWithAge.some(function(pos){return pos.ageDays!=null;}) && h(SnapCard, null,
+            h(SnapLabel, null, 'Position Age & Unrealised Return — oldest to newest (from transaction history)'),
+            h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 6 } },
+                positionsWithAge.filter(function(pos){return pos.ageDays!=null;})
+                    .sort(function(a,b){return b.ageDays-a.ageDays;})
+                    .map(function(pos) {
+                        var ageYrs = pos.ageDays / 365;
+                        var intensity = Math.min(ageYrs / 3, 1);
+                        var retCol = pos.ret == null ? C.muted : pos.ret >= 0 ? C.green : C.red;
+                        return h('div', { key: pos.symbol, style: {
+                            background: 'rgba(0,212,255,' + (0.04 + intensity * 0.12) + ')',
+                            border: '1px solid rgba(0,212,255,' + (0.1 + intensity * 0.2) + ')',
+                            borderRadius: 6, padding: '8px 10px', minWidth: 90,
+                        } },
+                            h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 700, color: C.blue } }, pos.symbol),
+                            h('div', { style: { fontSize: 9, color: C.muted, fontFamily: 'DM Sans', marginTop: 2 } },
+                                pos.ageDays >= 365
+                                    ? (ageYrs).toFixed(1) + ' yrs'
+                                    : pos.ageDays + 'd'),
+                            pos.ret != null && h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 10, color: retCol, marginTop: 2, fontWeight: 600 } },
+                                (pos.ret >= 0 ? '+' : '') + pos.ret.toFixed(1) + '%')
+                        );
+                    })
+            )
+        )
+    );
+}
+
 export function PortfolioHome() {
     var _p = useState(null), positions = _p[0], setPositions = _p[1];
     var _c = useState(null), command = _c[0], setCommand = _c[1];
@@ -520,6 +1050,8 @@ export function PortfolioHome() {
     var heatRef = useRef(null);
     var _hm = useState('day'), heatMode = _hm[0], setHeatMode = _hm[1];
     var _qtp = useState(null), qtPos = _qtp[0], setQtPos = _qtp[1];
+    var _am = useState('dollar'), attrMode = _am[0], setAttrMode = _am[1];
+    var _sv = useState('overview'), subView = _sv[0], setSubView = _sv[1];
 
     useEffect(function() {
         Promise.all([
@@ -669,10 +1201,12 @@ export function PortfolioHome() {
     useEffect(function() {
         if (!positions || !positions.length || !pnlRef.current) return;
         if (pnlInst.current) pnlInst.current.destroy();
+        var totalPortMv2 = positions.reduce(function(s, p) { return s + Math.abs(Number(p.market_value) || 0); }, 0);
         var withPnl = positions.map(function(p) {
             var pnl = p.total_gain_loss_dollar != null ? Number(p.total_gain_loss_dollar) :
                 (Number(p.current_price || 0) - Number(p.cost_basis || 0)) * Number(p.quantity || 0);
-            return { symbol: p.symbol, pnl: pnl };
+            var pct = attrMode === 'pct' && totalPortMv2 > 0 ? (pnl / totalPortMv2) * 100 : pnl;
+            return { symbol: p.symbol, pnl: pnl, val: pct };
         }).filter(function(p) { return isFinite(p.pnl); });
         withPnl.sort(function(a, b) { return b.pnl - a.pnl; });
         var top5 = withPnl.slice(0, 5);
@@ -684,12 +1218,13 @@ export function PortfolioHome() {
             seen[item.symbol] = true;
             return true;
         });
+        var isPct = attrMode === 'pct';
         pnlInst.current = new Chart(pnlRef.current, {
             type: 'bar',
             data: {
                 labels: chartItems.map(function(p) { return p.symbol; }),
                 datasets: [{
-                    data: chartItems.map(function(p) { return p.pnl; }),
+                    data: chartItems.map(function(p) { return p.val; }),
                     backgroundColor: chartItems.map(function(p) { return p.pnl >= 0 ? 'rgba(16,185,129,0.7)' : 'rgba(239,68,68,0.7)'; }),
                     borderWidth: 0,
                     borderRadius: 3
@@ -699,18 +1234,21 @@ export function PortfolioHome() {
                 indexAxis: 'y',
                 responsive: true, maintainAspectRatio: false,
                 scales: {
-                    x: { ticks: { color: 'rgba(255,255,255,0.3)', font: { size: 10, family: 'JetBrains Mono' }, callback: function(v) { return '$' + (v / 1000).toFixed(1) + 'k'; } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+                    x: { ticks: { color: 'rgba(255,255,255,0.3)', font: { size: 10, family: 'JetBrains Mono' },
+                        callback: function(v) { return isPct ? v.toFixed(1) + '%' : '$' + (v / 1000).toFixed(1) + 'k'; } },
+                        grid: { color: 'rgba(255,255,255,0.04)' } },
                     y: { ticks: { color: 'rgba(255,255,255,0.7)', font: { size: 11, family: 'JetBrains Mono' } }, grid: { display: false } }
                 },
                 plugins: { legend: { display: false } }
             }
         });
         return function() { if (pnlInst.current) pnlInst.current.destroy(); };
-    }, [positions]);
+    }, [positions, attrMode]);
 
     // Sector P&L waterfall (Plotly)
     useEffect(function() {
         if (!positions || !positions.length || !sectorRef.current) return;
+        var totalPortMv = positions.reduce(function(s, p) { return s + Math.abs(Number(p.market_value) || 0); }, 0);
         var bySector = {};
         positions.forEach(function(p) {
             var sec = getSector(p.symbol, p);
@@ -724,8 +1262,14 @@ export function PortfolioHome() {
         var total = sectorPnl.reduce(function(s, v) { return s + v; }, 0);
         var labels = sectors.concat(['Total']);
         var measures = sectors.map(function() { return 'relative'; }).concat(['total']);
-        var values = sectorPnl.concat([total]);
-        var textValues = values.map(function(v) { return (v >= 0 ? '+' : '') + '$' + (v / 1000).toFixed(1) + 'k'; });
+        var isPct = attrMode === 'pct';
+        var scale = isPct && totalPortMv > 0 ? 100 / totalPortMv : 1;
+        var values = sectorPnl.concat([total]).map(function(v) { return v * scale; });
+        var textValues = values.map(function(v) {
+            return isPct
+                ? (v >= 0 ? '+' : '') + v.toFixed(2) + '%'
+                : (v >= 0 ? '+' : '') + '$' + (v / 1000).toFixed(1) + 'k';
+        });
         Plotly.react(sectorRef.current, [{
             type: 'waterfall',
             orientation: 'v',
@@ -733,21 +1277,23 @@ export function PortfolioHome() {
             x: labels,
             y: values,
             text: textValues,
-            textposition: 'outside',
-            textfont: { color: 'rgba(255,255,255,0.7)', size: 10, family: 'JetBrains Mono' },
+            textposition: 'inside',
+            textfont: { color: 'rgba(255,255,255,0.85)', size: 10, family: 'JetBrains Mono' },
             connector: { line: { color: 'rgba(255,255,255,0.1)', width: 1 } },
             increasing: { marker: { color: 'rgba(16,185,129,0.75)' } },
             decreasing: { marker: { color: 'rgba(239,68,68,0.75)' } },
             totals: { marker: { color: 'rgba(0,212,255,0.75)' } },
-            hovertemplate: '<b>%{x}</b><br>P&L: %{y:$,.0f}<extra></extra>',
+            hovertemplate: isPct ? '<b>%{x}</b><br>Attribution: %{y:.2f}%<extra></extra>' : '<b>%{x}</b><br>P&L: %{y:$,.0f}<extra></extra>',
         }], {
             paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
-            margin: { l: 48, r: 12, t: 8, b: 60 },
+            margin: { l: 52, r: 12, t: 12, b: 64 },
             xaxis: { tickfont: { color: 'rgba(255,255,255,0.5)', size: 10, family: 'DM Sans' }, tickangle: -30, showgrid: false },
-            yaxis: { gridcolor: 'rgba(255,255,255,0.05)', zeroline: true, zerolinecolor: 'rgba(255,255,255,0.15)', tickfont: { color: 'rgba(255,255,255,0.3)', size: 10, family: 'JetBrains Mono' }, tickprefix: '$', tickformat: ',.0f' },
+            yaxis: { gridcolor: 'rgba(255,255,255,0.05)', zeroline: true, zerolinecolor: 'rgba(255,255,255,0.15)',
+                tickfont: { color: 'rgba(255,255,255,0.3)', size: 10, family: 'JetBrains Mono' },
+                tickprefix: isPct ? '' : '$', ticksuffix: isPct ? '%' : '', tickformat: isPct ? '.1f' : ',.0f' },
             showlegend: false,
         }, { responsive: true, displayModeBar: false });
-    }, [positions]);
+    }, [positions, attrMode]);
 
 
     // Portfolio heatmap (treemap)
@@ -886,6 +1432,26 @@ export function PortfolioHome() {
                 React.createElement('span', { style: { fontSize: 9, letterSpacing: 1.5, color: '#10b981', fontFamily: 'DM Sans', textTransform: 'uppercase' } }, 'Live')
             )
         ),
+        // Sub-view tab bar
+        React.createElement('div', { style: { display: 'flex', gap: 4, marginBottom: 16, borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: 0 } },
+            [
+                { id: 'overview',    label: 'Overview',    icon: '◎' },
+                { id: 'performance', label: 'Performance', icon: '▲' },
+                { id: 'risk',        label: 'Risk',        icon: '△' },
+                { id: 'portfolio',   label: 'Portfolio Mgmt', icon: '◈' },
+            ].map(function(tab) {
+                var a = subView === tab.id;
+                return React.createElement('button', { key: tab.id, onClick: function() { setSubView(tab.id); },
+                    style: { padding: '8px 18px', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                        background: 'transparent', border: 'none', letterSpacing: 0.8,
+                        borderBottom: '2px solid ' + (a ? '#00d4ff' : 'transparent'),
+                        color: a ? '#00d4ff' : 'rgba(255,255,255,0.35)',
+                        transition: 'color 0.15s', marginBottom: -1, fontFamily: 'DM Sans',
+                        textTransform: 'uppercase' } },
+                    tab.icon + ' ' + tab.label);
+            })
+        ),
+        subView === 'overview' && React.createElement(React.Fragment, null,
         // Charts Row (3fr 2fr) — NAV chart dominant, donut alongside
         React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 16, marginBottom: 16 } },
             React.createElement('div', { className: 'card' },
@@ -910,12 +1476,36 @@ export function PortfolioHome() {
         // Attribution Row
         React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 } },
             React.createElement('div', { className: 'card' },
-                React.createElement('div', { className: 'card-title' }, 'P&L CONTRIBUTORS & DETRACTORS'),
-                React.createElement('div', { style: { height: 300 } }, React.createElement('canvas', { ref: pnlRef }))
+                React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 } },
+                    React.createElement('div', { className: 'card-title', style: { margin: 0 } }, 'P&L CONTRIBUTORS'),
+                    React.createElement('div', { style: { display: 'flex', gap: 3 } },
+                        [['dollar', '$'], ['pct', '%']].map(function(pair) {
+                            var a = attrMode === pair[0];
+                            return React.createElement('button', { key: pair[0], onClick: function() { setAttrMode(pair[0]); },
+                                style: { padding: '2px 8px', borderRadius: 3, fontSize: 10, fontFamily: 'JetBrains Mono', fontWeight: 700,
+                                    cursor: 'pointer', background: a ? 'rgba(0,212,255,0.12)' : 'transparent',
+                                    border: '1px solid ' + (a ? 'rgba(0,212,255,0.3)' : 'rgba(255,255,255,0.06)'),
+                                    color: a ? '#00d4ff' : 'rgba(255,255,255,0.3)' } }, pair[1]);
+                        })
+                    )
+                ),
+                React.createElement('div', { style: { height: 320 } }, React.createElement('canvas', { ref: pnlRef }))
             ),
             React.createElement('div', { className: 'card' },
-                React.createElement('div', { className: 'card-title' }, 'SECTOR P&L ATTRIBUTION'),
-                React.createElement('div', { ref: sectorRef, style: { height: 300 } })
+                React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 } },
+                    React.createElement('div', { className: 'card-title', style: { margin: 0 } }, 'SECTOR P&L ATTRIBUTION'),
+                    React.createElement('div', { style: { display: 'flex', gap: 3 } },
+                        [['dollar', '$'], ['pct', '%']].map(function(pair) {
+                            var a = attrMode === pair[0];
+                            return React.createElement('button', { key: pair[0], onClick: function() { setAttrMode(pair[0]); },
+                                style: { padding: '2px 8px', borderRadius: 3, fontSize: 10, fontFamily: 'JetBrains Mono', fontWeight: 700,
+                                    cursor: 'pointer', background: a ? 'rgba(0,212,255,0.12)' : 'transparent',
+                                    border: '1px solid ' + (a ? 'rgba(0,212,255,0.3)' : 'rgba(255,255,255,0.06)'),
+                                    color: a ? '#00d4ff' : 'rgba(255,255,255,0.3)' } }, pair[1]);
+                        })
+                    )
+                ),
+                React.createElement('div', { ref: sectorRef, style: { height: 320 } })
             )
         ),
         // Portfolio Heatmap
@@ -1148,7 +1738,11 @@ export function PortfolioHome() {
             )
         ),
         // Earnings Calendar
-        React.createElement(EarningsCalendar, { data: earningsData }),
+        React.createElement(EarningsCalendar, { data: earningsData })
+        ), // end overview Fragment
+        subView === 'performance' && React.createElement(PerformanceSnapshot, { positions: positions, navData: navData }),
+        subView === 'risk'        && React.createElement(RiskSnapshot,        { positions: positions, navData: navData }),
+        subView === 'portfolio'   && React.createElement(PortfolioMgmtSnapshot, { positions: positions, txData: txData }),
         // Quick Trade Panel (slides in from right on row click)
         qtPos && React.createElement(QuickTradePanel, {
             pos: qtPos,
