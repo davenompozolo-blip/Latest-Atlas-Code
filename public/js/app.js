@@ -23,6 +23,7 @@ import { FundsDashboard } from './funds-dashboard.js';
 import { MarketWatch } from './market-watch.js';
 import { TradingDashboard } from './trading.js';
 import { OptionsAnalysis } from './options-analysis.js';
+import { ValuationHouse } from './valuation-house.js';
 
 const { useState, useEffect } = React;
 
@@ -40,7 +41,8 @@ const TABS = [
     { id: 'macro',     label: 'MACRO',     sub: 'Economic Intelligence',   icon: '\u25C9', component: MacroDashboard },
     { id: 'funds',     label: 'FUNDS',     sub: 'Fund & ETF Research',     icon: '\u25A0', component: FundsDashboard },
     { id: 'markets',   label: 'MARKETS',   sub: 'Global Market Watch',     icon: '\u25CE', component: MarketWatch },
-    { id: 'options',   label: 'OPTIONS',   sub: 'Derivatives Analysis',    icon: '\u03A9', component: OptionsAnalysis },
+    { id: 'options',    label: 'OPTIONS',    sub: 'Derivatives Analysis',    icon: '\u03A9', component: OptionsAnalysis },
+    { id: 'valuation',  label: 'VALUATION',  sub: 'Equity Valuation Suite',  icon: '\u25C8', component: ValuationHouse },
 ];
 
 const NAV_STRUCTURE = [
@@ -60,6 +62,8 @@ const NAV_STRUCTURE = [
     { type: 'tab', id: 'funds' },
     { type: 'header', label: 'MARKETS' },
     { type: 'tab', id: 'markets' },
+    { type: 'header', label: 'VALUATION' },
+    { type: 'tab', id: 'valuation' },
 ];
 
 // ------------------------------------------------------------
