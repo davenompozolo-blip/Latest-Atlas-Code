@@ -215,6 +215,84 @@ var INNER_TABS = [
     { k: 'sens',  l: '🔥 Sensitivity' },
 ];
 
+// ─── Sector name mapper (Alpha Vantage → our SECTORS keys) ───────────────────
+function avSectorToKey(sector) {
+    if (!sector) return null;
+    var s = sector.toLowerCase();
+    if (s.includes('tech') || s.includes('software') || s.includes('semiconductor')) return 'technology';
+    if (s.includes('financ') || s.includes('bank') || s.includes('insurance'))       return 'financials';
+    if (s.includes('health') || s.includes('pharma') || s.includes('biotech'))        return 'healthcare';
+    if (s.includes('energy') || s.includes('oil') || s.includes('gas'))               return 'energy';
+    if (s.includes('utilit'))                                                          return 'utilities';
+    if (s.includes('real estate') || s.includes('reit'))                               return 'realestate';
+    if (s.includes('industr') || s.includes('aerospace') || s.includes('defense'))    return 'industrials';
+    if (s.includes('consumer') || s.includes('retail') || s.includes('food'))         return 'consumer';
+    return null;
+}
+
+// ─── Map /api/equity payload → ValuationHouse state ──────────────────────────
+function mapPayload(payload, series) {
+    var o   = payload.overview   || {};
+    var fin = payload.financials || {};
+    var num = function(k, obj) { var v = Number((obj || o)[k]); return isFinite(v) && v !== 0 ? v : null; };
+
+    var price = series && series.length ? series[series.length - 1].close : 45;
+
+    var beta    = num('Beta')    || 1.0;
+    var mktCap  = num('MarketCapitalization') || null;
+    var shares  = mktCap && price ? (mktCap / price) / 1e6 : 500;    // millions
+    var eps     = fin.trailingEps || num('EPS') || 0;
+    var bvps    = fin.bookValue   || num('BookValue') || 18.50;
+    var divYld  = num('DividendYield') || 0;
+    var D0      = +(divYld * price).toFixed(2);
+    var roe     = fin.returnOnEquity != null ? fin.returnOnEquity : 0.145;
+    var revG    = fin.revenueGrowth  != null ? fin.revenueGrowth  : 0.08;
+    var gS      = Math.max(0.01, Math.min(0.35, revG));
+    var gL      = 0.025;
+
+    // Debt / equity → wd
+    var de  = fin.debtToEquity != null ? fin.debtToEquity / 100 : 0.30;
+    var wd  = Math.max(0.05, Math.min(0.70, de / (1 + de)));
+
+    // FCF figures already in dollars — convert to $M
+    var debt   = fin.totalDebt       ? +(fin.totalDebt       / 1e6).toFixed(0) : 5000;
+    var cash   = fin.totalCash       ? +(fin.totalCash       / 1e6).toFixed(0) : 2000;
+    var ebitda = fin.ebitda          ? +(fin.ebitda          / 1e6).toFixed(0) : 2800;
+    var rev    = fin.totalRevenue    ? +(fin.totalRevenue    / 1e6).toFixed(0) : 12000;
+    var fcff0  = fin.freeCashflow    ? +(fin.freeCashflow    / 1e6).toFixed(0) : 500;
+    var fcfe0  = fcff0 > 0 ? Math.max(50, Math.round(fcff0 * 0.75)) : 400;
+
+    // Five-year growth vector: linear step-down from gS → gL
+    var gr = [];
+    for (var i = 0; i < 5; i++) {
+        gr.push(+(gS + (gL - gS) * (i / 4)).toFixed(3));
+    }
+
+    // Dividend retention ratio b
+    var b = eps > 0 && D0 > 0 ? Math.max(0, Math.min(0.99, +(1 - D0 / eps).toFixed(2))) : 0.40;
+
+    var netDebt  = Math.max(0, debt - cash);
+    var secKey   = avSectorToKey(o.Sector) || 'technology';
+    var pePeer   = num('PERatio') || 22;
+    var pbPeer   = bvps > 0 ? +(price / bvps).toFixed(1) : 3.5;
+
+    return {
+        co:   { name: o.Name || o.Symbol || 'Unknown', ticker: o.Symbol || '', price: price, sector: secKey },
+        coc:  { rf: 0.044, beta: beta, erp: 0.055, rd: 0.048, wd: wd, tax: 0.21 },
+        ddm:  { D0: Math.max(0, D0), gS: +gS.toFixed(3), gL: gL, n: 5, H: 4, model: D0 > 0 ? '2stage' : 'gordon' },
+        fcf:  { fcff0: fcff0 > 0 ? fcff0 : 500, fcfe0: fcfe0, gr: gr, gL: gL,
+                debt: debt, cash: cash, shs: Math.round(Math.max(1, shares)), mode: 'fcff' },
+        mult: { eps: eps > 0 ? +eps.toFixed(2) : 3.20, bvps: bvps > 0 ? +bvps.toFixed(2) : 18.50,
+                ebitda: ebitda > 0 ? ebitda : 2800, rev: rev > 0 ? rev : 12000, b: b,
+                mktCap: mktCap ? +(mktCap / 1e6).toFixed(0) : 22500, netDebt: netDebt,
+                pPE: pePeer, pPB: pbPeer, pEV: 14, pPS: 2.2 },
+        ri:   { B0: bvps > 0 ? +bvps.toFixed(2) : 18.50, ROE: roe > 0 ? +roe.toFixed(3) : 0.145,
+                g: gL, n: 5, mth: 'gordon', omega: 0.60 },
+        priv: INIT.priv,
+        wts:  INIT.wts,
+    };
+}
+
 // ─── Component ───────────────────────────────────────────────────────────────
 export function ValuationHouse() {
     var h = React.createElement;
@@ -222,6 +300,18 @@ export function ValuationHouse() {
     var s = _s[0], setS = _s[1];
     var _it = useState('dash');
     var innerTab = _it[0], setInnerTab = _it[1];
+
+    // ── Ticker search state ────────────────────────────────────────────────
+    var _qi = useState('');
+    var searchInput = _qi[0], setSearchInput = _qi[1];
+    var _qs = useState('idle');   // 'idle' | 'loading' | 'ready' | 'error'
+    var searchStatus = _qs[0], setSearchStatus = _qs[1];
+    var _qe = useState(null);
+    var searchError = _qe[0], setSearchError = _qe[1];
+    var _ql = useState(null);
+    var loadedTicker = _ql[0], setLoadedTicker = _ql[1];
+    var _sym = useState(null);    // committed ticker that triggers fetch
+    var pendingSymbol = _sym[0], setPendingSymbol = _sym[1];
 
     var upd = useCallback(function(path, val) {
         setS(function(prev) {
@@ -247,6 +337,61 @@ export function ValuationHouse() {
             };
         });
     }, []);
+
+    // ── Ticker search: commit on Enter or button click ─────────────────────
+    var handleSearch = useCallback(function(raw) {
+        var sym = (raw || '').trim().toUpperCase();
+        if (!sym) return;
+        if (!/^[A-Z0-9.\-]{1,12}$/.test(sym)) {
+            setSearchError('Invalid ticker. Use A–Z, 0–9, . or - (max 12 chars).');
+            setSearchStatus('error');
+            return;
+        }
+        setSearchError(null);
+        setPendingSymbol(sym);
+    }, []);
+
+    // ── Fetch on pendingSymbol change ──────────────────────────────────────
+    useEffect(function() {
+        if (!pendingSymbol) return;
+        var cancelled = false;
+        setSearchStatus('loading');
+        setSearchError(null);
+        fetch('/api/equity?symbol=' + encodeURIComponent(pendingSymbol))
+            .then(function(r) {
+                return r.json().then(function(j) { return { ok: r.ok, status: r.status, body: j }; });
+            })
+            .then(function(res) {
+                if (cancelled) return;
+                if (!res.ok) {
+                    setSearchError((res.body && res.body.error) || 'Request failed (HTTP ' + res.status + ')');
+                    setSearchStatus('error');
+                    return;
+                }
+                // Parse price series the same way equity-research.js does
+                var raw = res.body;
+                var series = [];
+                var ts = raw.daily && raw.daily['Time Series (Daily)'];
+                if (ts) {
+                    for (var date in ts) {
+                        var close = Number(ts[date]['4. close']);
+                        if (!isNaN(close)) series.push({ date: date, close: close });
+                    }
+                    series.sort(function(a, b) { return a.date < b.date ? -1 : 1; });
+                }
+                var mapped = mapPayload(raw, series);
+                setS(mapped);
+                setLoadedTicker(pendingSymbol);
+                setSearchStatus('ready');
+                setInnerTab('dash');
+            })
+            .catch(function(e) {
+                if (cancelled) return;
+                setSearchError((e && e.message) || 'Network error');
+                setSearchStatus('error');
+            });
+        return function() { cancelled = true; };
+    }, [pendingSymbol]);
 
     var c = useMemo(function() {
         var coc = s.coc, ddm = s.ddm, fcf = s.fcf, mult = s.mult, ri = s.ri, priv = s.priv, wts = s.wts;
@@ -1029,8 +1174,66 @@ export function ValuationHouse() {
         sens:  renderSensitivity,
     };
 
+    // ── Search bar (top band) ──────────────────────────────────────────────────
+    var searchBar = h('div', { style: {
+        background: 'rgba(0,0,0,0.25)',
+        borderBottom: '1px solid var(--card-border)',
+        padding: '10px 18px',
+        display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+    }},
+        h('div', { style: { fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', flexShrink: 0 } },
+            '◈ Screen Public Co.'),
+        h('input', {
+            type: 'text',
+            value: searchInput,
+            placeholder: 'Ticker (e.g. AAPL, MSFT, BRK.B)',
+            spellCheck: false,
+            onChange: function(e) { setSearchInput(e.target.value); },
+            onKeyDown: function(e) { if (e.key === 'Enter') handleSearch(searchInput); },
+            style: {
+                flex: 1, minWidth: 180, maxWidth: 340,
+                background: 'rgba(0,0,0,0.35)',
+                border: '1px solid var(--card-border)',
+                borderRadius: 7, padding: '7px 12px',
+                color: 'var(--text)', fontFamily: 'JetBrains Mono, monospace',
+                fontSize: 13, textTransform: 'uppercase', letterSpacing: 1, outline: 'none',
+            },
+        }),
+        h('button', {
+            onClick: function() { handleSearch(searchInput); },
+            disabled: searchStatus === 'loading',
+            style: {
+                background: searchStatus === 'loading'
+                    ? 'rgba(0,212,255,0.15)'
+                    : 'linear-gradient(135deg, #00d4ff, #6366f1)',
+                color: searchStatus === 'loading' ? 'var(--cyan)' : '#fff',
+                border: 'none', borderRadius: 7, padding: '7px 18px',
+                fontWeight: 600, cursor: searchStatus === 'loading' ? 'not-allowed' : 'pointer',
+                fontSize: 12, letterSpacing: 1, textTransform: 'uppercase',
+                opacity: searchStatus === 'loading' ? 0.7 : 1,
+            },
+        }, searchStatus === 'loading' ? 'Loading…' : 'Load'),
+        // Status badge
+        loadedTicker && searchStatus !== 'loading' && h('div', { style: {
+            display: 'flex', alignItems: 'center', gap: 6,
+            background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.25)',
+            borderRadius: 6, padding: '4px 10px',
+            fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'var(--green)',
+        }},
+            h('span', { style: { width: 6, height: 6, borderRadius: '50%', background: 'var(--green)', display: 'inline-block' } }),
+            loadedTicker + ' loaded'
+        ),
+        searchStatus === 'error' && h('div', { style: {
+            fontSize: 11, color: 'var(--red)', maxWidth: 300,
+        }}, searchError || 'Error fetching data'),
+        h('div', { style: { fontSize: 10, color: 'var(--text-muted)', marginLeft: 'auto' } },
+            'Prices & fundamentals via /api/equity · data auto-fills all models')
+    );
+
     return h('div', { style: { background: 'var(--bg)', minHeight: '100%', display: 'flex', flexDirection: 'column' } },
-        // Header bar
+        // Ticker search band
+        searchBar,
+        // Sub-tab header bar
         h('div', { style: {
             background: 'var(--card)',
             borderBottom: '1px solid var(--card-border)',
@@ -1038,8 +1241,10 @@ export function ValuationHouse() {
             display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
         }},
             h('div', null,
-                h('div', { style: { fontSize: 13, fontWeight: 700, color: 'var(--cyan)', letterSpacing: '0.06em', fontFamily: 'Syne, sans-serif' } }, 'VALUATION HOUSE'),
-                h('div', { style: { fontSize: 9, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em' } }, 'CFA Level II Equity Research Suite')
+                h('div', { style: { fontSize: 13, fontWeight: 700, color: 'var(--cyan)', letterSpacing: '0.06em', fontFamily: 'Syne, sans-serif' } },
+                    s.co.ticker ? s.co.ticker + ' — VALUATION HOUSE' : 'VALUATION HOUSE'),
+                h('div', { style: { fontSize: 9, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em' } },
+                    s.co.name && s.co.ticker ? s.co.name + ' · CFA Level II Suite' : 'CFA Level II Equity Research Suite')
             ),
             h('div', { style: { flex: 1, display: 'flex', gap: 6, flexWrap: 'wrap' } },
                 INNER_TABS.map(function(t) {
@@ -1061,6 +1266,20 @@ export function ValuationHouse() {
                 h('div', { style: { fontSize: 9, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' } }, 'Consensus'),
                 c.cons != null && h('div', { style: { marginTop: 2 } }, Sig(c.cons, price))
             )
+        ),
+        // Loading overlay
+        searchStatus === 'loading' && h('div', { style: {
+            padding: '18px 18px 0',
+            display: 'flex', alignItems: 'center', gap: 10,
+            fontSize: 12, color: 'var(--cyan)',
+            fontFamily: 'JetBrains Mono, monospace',
+        }},
+            h('span', { style: {
+                display: 'inline-block', width: 14, height: 14, borderRadius: '50%',
+                border: '2px solid rgba(0,212,255,0.2)', borderTopColor: 'var(--cyan)',
+                animation: 'spin 0.7s linear infinite',
+            }}),
+            'Fetching ' + (pendingSymbol || '') + ' fundamentals…'
         ),
         // Body
         h('div', { style: { flex: 1, padding: 18, overflowY: 'auto' } },
