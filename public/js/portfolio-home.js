@@ -107,6 +107,87 @@ var TICKER_TYPES = {
     'AMT':'REIT','PLD':'REIT','EQIX':'REIT','SPG':'REIT','PSA':'REIT',
 };
 
+// Region classification — defaults to 'US' for unlisted symbols
+var TICKER_REGIONS = {
+    // Emerging Markets
+    'EEM':'EM','FXI':'EM','EWY':'EM','AVEE':'EM','VWO':'EM',
+    'PBR':'EM','BABA':'EM','JD':'EM','HMY':'EM','AU':'EM',
+    // International Developed
+    'TSM':'INTL','ASML':'INTL','EFA':'INTL','AVDV':'INTL',
+    'BP':'INTL','SHEL':'INTL','AEM':'INTL','WPM':'INTL','VALE':'INTL',
+};
+function getRegion(symbol) { return TICKER_REGIONS[symbol] || 'US'; }
+
+// Filter groups — each entry has id (used in state), label (displayed), and a match fn
+var FILTER_GROUPS = [
+    {
+        label: 'REGION',
+        color: '#00d4ff',
+        filters: [
+            { id: 'R:US',   label: 'US'   },
+            { id: 'R:INTL', label: 'Intl' },
+            { id: 'R:EM',   label: 'EM'   },
+        ],
+    },
+    {
+        label: 'SECTOR',
+        color: '#8b5cf6',
+        filters: [
+            { id: 'S:Technology',        label: 'Tech'    },
+            { id: 'S:Financials',        label: 'Fin'     },
+            { id: 'S:Healthcare',        label: 'Health'  },
+            { id: 'S:Energy',            label: 'Energy'  },
+            { id: 'S:Precious Metals',   label: 'Metals'  },
+            { id: 'S:Consumer Disc.',    label: 'Cons'    },
+            { id: 'S:Industrials',       label: 'Indust'  },
+        ],
+    },
+    {
+        label: 'TYPE',
+        color: '#10b981',
+        filters: [
+            { id: 'T:EQ',   label: 'EQ'   },
+            { id: 'T:ETF',  label: 'ETF'  },
+            { id: 'T:REIT', label: 'REIT' },
+            { id: 'T:MINE', label: 'Mine' },
+        ],
+    },
+    {
+        label: 'LENS',
+        color: '#f59e0b',
+        filters: [
+            { id: 'L:WIN',  label: '+ Gains'    },
+            { id: 'L:LOSS', label: '- Losses'   },
+            { id: 'L:HQ',   label: '★ Hi-Q'      },
+            { id: 'L:MOM',  label: '▲ Momentum'  },
+            { id: 'L:TOP',  label: 'Top 10'     },
+            { id: 'L:RISK', label: '⚠ At Risk'   },
+        ],
+    },
+];
+
+function matchFilter(p, filtId, allPositions) {
+    if (!filtId || filtId === 'ALL') return true;
+    if (filtId.startsWith('R:')) return getRegion(p.symbol) === filtId.slice(2);
+    if (filtId.startsWith('S:')) {
+        var sec = getSector(p.symbol, p);
+        return sec === filtId.slice(2) || sec.startsWith(filtId.slice(2));
+    }
+    if (filtId.startsWith('T:')) return getType(p.symbol, p) === filtId.slice(2);
+    if (filtId === 'L:WIN')  return Number(p.unrealised_return_pct) > 0;
+    if (filtId === 'L:LOSS') return Number(p.unrealised_return_pct) < 0;
+    if (filtId === 'L:HQ')   return Number(p.quality_score || 0) >= 60;
+    if (filtId === 'L:MOM')  return Number(p.daily_change_pct) > 0 && Number(p.unrealised_return_pct) > 0;
+    if (filtId === 'L:RISK') return Number(p.unrealised_return_pct) < -0.10;
+    if (filtId === 'L:TOP') {
+        var sorted = allPositions.slice().sort(function(a, b) {
+            return Math.abs(Number(b.market_value) || 0) - Math.abs(Number(a.market_value) || 0);
+        });
+        return sorted.slice(0, 10).some(function(x) { return x.symbol === p.symbol; });
+    }
+    return true;
+}
+
 var TYPE_STYLE = {
     'EQ':   { bg:'rgba(0,212,255,0.08)',   color:'#00d4ff',  border:'rgba(0,212,255,0.22)' },
     'ETF':  { bg:'rgba(99,102,241,0.10)',  color:'#a5b4fc',  border:'rgba(99,102,241,0.28)' },
@@ -1352,8 +1433,9 @@ export function PortfolioHome() {
         var out = positions.filter(function(p) {
             var matchQ = !q || p.symbol.toLowerCase().indexOf(q) >= 0 ||
                 getName(p.symbol, p).toLowerCase().indexOf(q) >= 0 ||
-                (p.sector || '').toLowerCase().indexOf(q) >= 0;
-            var matchT = tFilt === 'ALL' || getType(p.symbol, p) === tFilt;
+                (p.sector || '').toLowerCase().indexOf(q) >= 0 ||
+                getRegion(p.symbol).toLowerCase().indexOf(q) >= 0;
+            var matchT = matchFilter(p, tFilt, positions);
             return matchQ && matchT;
         });
         out.sort(function(a, b) {
@@ -1638,24 +1720,53 @@ export function PortfolioHome() {
         ),
         // Interactive Holdings Table
         React.createElement('div', { className: 'card', style: { padding: '16px 20px' } },
-            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' } },
+            // Title + search row
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 } },
                 React.createElement('div', { className: 'card-title', style: { fontSize: 14, fontFamily: 'Syne', fontWeight: 700, letterSpacing: 1, margin: 0, flex: 'none' } },
                     'HOLDINGS ' + (filtPosns.length !== positions.length ? '(' + filtPosns.length + '/' + positions.length + ')' : '(' + positions.length + ')')),
                 React.createElement('input', { value: srch, onChange: function(e) { setSrch(e.target.value); },
-                    placeholder: '\u{1F50D}  symbol, name, sector…',
+                    placeholder: '🔍  symbol, name, sector…',
                     style: { flex: 1, minWidth: 160, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 6, padding: '5px 10px', color: 'rgba(255,255,255,0.8)', fontSize: 11, fontFamily: 'DM Sans', outline: 'none' } }),
-                React.createElement('div', { style: { display: 'flex', gap: 4 } },
-                    ['ALL','EQ','ETF','MINE','REIT'].map(function(t) {
-                        var a = tFilt === t;
-                        return React.createElement('button', { key: t, onClick: function() { setTFilt(t); }, style: {
-                            background: a ? 'rgba(0,212,255,0.12)' : 'transparent',
-                            color: a ? '#00d4ff' : 'rgba(255,255,255,0.3)',
-                            border: '1px solid ' + (a ? 'rgba(0,212,255,0.3)' : 'rgba(255,255,255,0.06)'),
-                            borderRadius: 4, padding: '3px 9px', fontSize: 10, fontFamily: 'JetBrains Mono',
-                            fontWeight: a ? 700 : 400, cursor: 'pointer', letterSpacing: 0.5
-                        }}, t);
-                    })
-                )
+                // ALL reset pill
+                React.createElement('button', {
+                    onClick: function() { setTFilt('ALL'); },
+                    style: {
+                        background: tFilt === 'ALL' ? 'rgba(255,255,255,0.10)' : 'transparent',
+                        color: tFilt === 'ALL' ? '#fff' : 'rgba(255,255,255,0.28)',
+                        border: '1px solid ' + (tFilt === 'ALL' ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.06)'),
+                        borderRadius: 4, padding: '3px 10px', fontSize: 10, fontFamily: 'JetBrains Mono',
+                        fontWeight: tFilt === 'ALL' ? 700 : 400, cursor: 'pointer', letterSpacing: 0.8, flexShrink: 0,
+                    }
+                }, 'ALL')
+            ),
+            // Multi-group filter strip
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 0, marginBottom: 12, flexWrap: 'wrap', rowGap: 6 } },
+                FILTER_GROUPS.map(function(group, gi) {
+                    return React.createElement('div', { key: group.label, style: { display: 'flex', alignItems: 'center', gap: 3, paddingRight: 10, marginRight: 6, borderRight: gi < FILTER_GROUPS.length - 1 ? '1px solid rgba(255,255,255,0.07)' : 'none' } },
+                        React.createElement('span', { style: { fontSize: 8, letterSpacing: 1.6, color: 'rgba(255,255,255,0.2)', fontFamily: 'DM Sans', textTransform: 'uppercase', marginRight: 4, flexShrink: 0 } }, group.label),
+                        group.filters.map(function(f) {
+                            var active = tFilt === f.id;
+                            // Count matching positions for badge
+                            var count = positions.filter(function(p) { return matchFilter(p, f.id, positions); }).length;
+                            return React.createElement('button', {
+                                key: f.id,
+                                onClick: function() { setTFilt(active ? 'ALL' : f.id); },
+                                title: count + ' positions',
+                                style: {
+                                    background: active ? 'rgba(' + (group.color === '#00d4ff' ? '0,212,255' : group.color === '#8b5cf6' ? '139,92,246' : group.color === '#10b981' ? '16,185,129' : '245,158,11') + ',0.14)' : 'transparent',
+                                    color: active ? group.color : 'rgba(255,255,255,0.3)',
+                                    border: '1px solid ' + (active ? group.color.replace(')', ',0.35)').replace('rgb', 'rgba') : 'rgba(255,255,255,0.06)'),
+                                    borderRadius: 4, padding: '3px 8px', fontSize: 10, fontFamily: 'JetBrains Mono',
+                                    fontWeight: active ? 700 : 400, cursor: 'pointer', letterSpacing: 0.4,
+                                    display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
+                                }
+                            },
+                                f.label,
+                                React.createElement('span', { style: { fontSize: 8, opacity: active ? 0.8 : 0.4, fontWeight: 400 } }, count)
+                            );
+                        })
+                    );
+                })
             ),
             React.createElement('div', { style: { overflowY: 'auto', maxHeight: 420, overflowX: 'auto', borderRadius: 6, border: '1px solid rgba(255,255,255,0.05)' } },
                 React.createElement('table', { style: { borderCollapse: 'separate', borderSpacing: 0, width: '100%', minWidth: 800 } },
