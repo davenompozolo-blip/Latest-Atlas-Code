@@ -1399,8 +1399,8 @@ export function PortfolioHome() {
             ),
             React.createElement('div', { style: div }),
             React.createElement('div', { style: hb },
-                React.createElement('div', { style: hl }, 'Portfolio NAV'),
-                React.createElement('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 18, fontWeight: 700, color: 'rgba(255,255,255,0.88)' } }, fmtCurrency(portfolioLongMV || c.portfolio_nav)),
+                React.createElement('div', { style: hl }, 'Long Exposure'),
+                React.createElement('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 18, fontWeight: 700, color: 'rgba(255,255,255,0.88)' } }, fmtCurrency(portfolioLongMV || c.long_market_value)),
                 React.createElement('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 3, fontFamily: 'JetBrains Mono' } }, (c.position_count || positions.length) + ' long positions')
             ),
             React.createElement('div', { style: div }),
