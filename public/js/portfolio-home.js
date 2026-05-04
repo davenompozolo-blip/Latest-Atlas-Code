@@ -1377,12 +1377,17 @@ export function PortfolioHome() {
     var hb = { display: 'flex', flexDirection: 'column', justifyContent: 'center' };
     var hl = { fontSize: 9, letterSpacing: 1.8, textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', marginBottom: 4, fontFamily: 'DM Sans' };
 
-    // Derive Account Equity, Portfolio NAV, and Cash/Margin from loaded data
+    // Derive Account Equity, Portfolio NAV, and Cash/Margin from loaded data.
+    // Priority for displayed equity:
+    //   1. c.portfolio_nav from vw_command_centre — sourced from account_snapshots.equity
+    //      (written by sync_alpaca_positions, so as current as the last position sync).
+    //   2. Latest value from vw_portfolio_nav_daily — nightly equity history fallback.
     var _navSorted = navData ? navData.slice().sort(function(a,b){ return new Date(a.price_date) - new Date(b.price_date); }) : [];
-    var accountEquity = _navSorted.length ? _navSorted[_navSorted.length - 1].nav : null;
+    var navHistoryEquity = _navSorted.length ? _navSorted[_navSorted.length - 1].nav : null;
+    var accountEquity = (c.portfolio_nav != null && c.portfolio_nav > 0) ? c.portfolio_nav : navHistoryEquity;
     var portfolioLongMV = positions.reduce(function(s, p) { return s + (Number(p.market_value) || 0); }, 0);
-    var cashBalance = accountEquity != null ? accountEquity - portfolioLongMV
-        : (c.cash_balance != null ? Number(c.cash_balance) : null);
+    var cashBalance = c.cash_balance != null ? Number(c.cash_balance)
+        : (accountEquity != null ? accountEquity - portfolioLongMV : null);
     var leverageRatio = accountEquity && accountEquity > 0 ? portfolioLongMV / accountEquity : null;
     var cashColor = cashBalance == null ? 'rgba(255,255,255,0.5)' : cashBalance >= 0 ? '#10b981' : '#ef4444';
     var cashSub = cashBalance == null ? 'Unavailable'
@@ -1394,13 +1399,13 @@ export function PortfolioHome() {
         React.createElement('div', { style: { background: 'linear-gradient(135deg,rgba(0,212,255,0.04),rgba(99,102,241,0.04))', border: '1px solid rgba(0,212,255,0.12)', borderRadius: 10, padding: '16px 20px', marginBottom: 16, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px 0' } },
             React.createElement('div', { style: hb },
                 React.createElement('div', { style: hl }, 'Account Equity'),
-                React.createElement('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 22, fontWeight: 700, color: '#00d4ff' } }, accountEquity != null ? fmtCurrency(accountEquity) : fmtCurrency(c.portfolio_nav)),
+                React.createElement('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 22, fontWeight: 700, color: '#00d4ff' } }, accountEquity != null ? fmtCurrency(accountEquity) : '\u2014'),
                 React.createElement('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 3, fontFamily: 'JetBrains Mono' } }, 'Cash + longs \u2212 margin')
             ),
             React.createElement('div', { style: div }),
             React.createElement('div', { style: hb },
-                React.createElement('div', { style: hl }, 'Portfolio NAV'),
-                React.createElement('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 18, fontWeight: 700, color: 'rgba(255,255,255,0.88)' } }, fmtCurrency(portfolioLongMV || c.portfolio_nav)),
+                React.createElement('div', { style: hl }, 'Long Exposure'),
+                React.createElement('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 18, fontWeight: 700, color: 'rgba(255,255,255,0.88)' } }, fmtCurrency(portfolioLongMV || c.long_market_value)),
                 React.createElement('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 3, fontFamily: 'JetBrains Mono' } }, (c.position_count || positions.length) + ' long positions')
             ),
             React.createElement('div', { style: div }),

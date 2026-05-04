@@ -129,7 +129,10 @@ function App() {
                 React.createElement('div', { className: 'logo' }, 'ATLAS'),
                 React.createElement('div', { className: 'logo-sub' }, 'TERMINAL')
             ),
-            React.createElement('div', { className: 'nav-summary' }, fmtCurrency(c.portfolio_nav)),
+            React.createElement('div', { style: { display: 'flex', flexDirection: 'column', lineHeight: 1.2 } },
+                React.createElement('div', { style: { fontSize: 9, letterSpacing: 1.8, color: 'rgba(255,255,255,0.35)', fontFamily: 'DM Sans', textTransform: 'uppercase', marginBottom: 2 } }, 'Net Equity'),
+                React.createElement('div', { className: 'nav-summary' }, fmtCurrency(c.portfolio_nav))
+            ),
             React.createElement('div', { className: 'nav-pnl ' + cls(pnl) }, pnlStr),
             React.createElement(TopBarSparkline, { nav: topNav }),
             React.createElement('div', { className: 'spacer' }),
