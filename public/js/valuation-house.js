@@ -13,7 +13,12 @@ const { useState, useEffect, useRef, useMemo, useCallback } = React;
 const fp  = (v, d = 2) => v == null || isNaN(v) ? '—' : Number(v).toFixed(d);
 const fpp = (v)        => v == null ? '—' : (v * 100).toFixed(2) + '%';
 const fd  = (v, d = 2) => v == null || isNaN(v) ? '—' : '$' + fp(v, d);
-const fM  = (v)        => v == null ? '—' : '$' + (Math.abs(v) / 1e6).toFixed(1) + 'M';
+const fM  = (v) => {
+    if (v == null || isNaN(v)) return '—';
+    var sign = v < 0 ? '-' : '';
+    var abs = Math.abs(v);
+    return abs >= 1000 ? sign + '$' + (abs / 1000).toFixed(2) + 'B' : sign + '$' + abs.toFixed(1) + 'M';
+};
 const pct = (v)        => v == null ? '—' : (v * 100).toFixed(2) + '%';
 
 // ─── Signal helpers ───────────────────────────────────────────────────────────
