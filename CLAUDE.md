@@ -81,3 +81,32 @@ When operating Atlas via remote control, use these session roles:
 - **Modify calculations**: Edit `core/calculations.py`, update tests
 - **Update chart theme**: Edit `core/charts.py`, check `ui/branding/atlas_complete_ui.css`
 - **Add scheduled report**: Create job in `scheduler/jobs/`, register in `scheduler/main.py`
+
+## Data Trust Layer
+
+### Sync System
+- Alpaca sync runs via GitHub Actions (4:30 PM ET weekdays + 8:00 AM ET pre-market)
+- All syncs logged to `atlas_sync_log` with metrics and validation results
+- Current sync health in `atlas_sync_status` (single-row table, always ID=1)
+- Failed syncs auto-write to `atlas_memory` with category='bug', priority=2
+
+### Validation Checks (run post-sync)
+1. `position_count` — positions exist and match transaction history
+2. `nav_reconciliation` — calculated NAV vs broker equity (tolerance: 0.5% warn, 2% fail)
+3. `snapshot_continuity` — no gaps > 3 days in account_snapshots
+4. `data_freshness` — last successful sync within 24 hours
+
+### Key Tables
+- `atlas_sync_log` — full sync history with metrics
+- `atlas_sync_status` — single-row current state (query with `.eq('id', 1)`)
+- `atlas_validation_log` — all validation check results
+
+### Sync Status UI
+- `src/components/SyncStatus.jsx` — React component for terminal header
+- Shows live health indicator (green/yellow/red) with expandable detail panel
+- Auto-refreshes every 5 minutes
+
+### Streamlit
+Retired. React terminal on Vercel is the single source of truth for all portfolio analytics.
+Archive branch: `legacy/streamlit-archive`
+Retirement script: `scripts/retire-streamlit.sh` (run after confirming full view parity)
