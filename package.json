@@ -2,7 +2,6 @@
   "name": "atlas-terminal",
   "version": "10.0.0",
   "description": "ATLAS Terminal — institutional-grade portfolio analytics platform",
-  "type": "module",
   "scripts": {
     "sync": "node scripts/sync-wrapper.mjs"
   },
