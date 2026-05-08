@@ -24,6 +24,7 @@ import { MarketWatch } from './market-watch.js';
 import { TradingDashboard } from './trading.js';
 import { OptionsAnalysis } from './options-analysis.js';
 import { ValuationHouse } from './valuation-house.js';
+import { SqlTerminal } from './sql-terminal.js';
 
 const { useState, useEffect } = React;
 
@@ -43,6 +44,7 @@ const TABS = [
     { id: 'markets',   label: 'MARKETS',   sub: 'Global Market Watch',     icon: '\u25CE', component: MarketWatch },
     { id: 'options',    label: 'OPTIONS',    sub: 'Derivatives Analysis',    icon: '\u03A9', component: OptionsAnalysis },
     { id: 'valuation',  label: 'VALUATION',  sub: 'Equity Valuation Suite',  icon: '\u25C8', component: ValuationHouse },
+    { id: 'sql',        label: 'SQL',        sub: 'Query Terminal',           icon: '\u25A3', component: SqlTerminal },
 ];
 
 const NAV_STRUCTURE = [
@@ -56,6 +58,7 @@ const NAV_STRUCTURE = [
     { type: 'header', label: 'SYSTEM' },
     { type: 'tab', id: 'risk' },
     { type: 'tab', id: 'command' },
+    { type: 'tab', id: 'sql' },
     { type: 'header', label: 'RESEARCH' },
     { type: 'tab', id: 'equity' },
     { type: 'tab', id: 'macro' },
