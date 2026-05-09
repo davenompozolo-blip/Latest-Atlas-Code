@@ -1,0 +1,11 @@
+{
+  "name": "atlas-terminal",
+  "version": "10.0.0",
+  "description": "ATLAS Terminal — institutional-grade portfolio analytics platform",
+  "scripts": {
+    "sync": "node scripts/sync-wrapper.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.4"
+  }
+}

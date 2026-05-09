@@ -1,95 +1,57 @@
-name: ATLAS Phoenix Sync
+name: ATLAS Sync
 
 on:
   schedule:
-    - cron: '*/15 * * * *'   # every 15 minutes
-  workflow_dispatch:           # manual trigger from GitHub UI
+    # Market days: 30 min after close (4:30 PM ET = 21:30 UTC)
+    - cron: '30 21 * * 1-5'
+    # Morning pre-market check (8:00 AM ET = 13:00 UTC)
+    - cron: '0 13 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      sync_type:
+        description: 'Sync type to run'
+        required: false
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - positions
+          - account_snapshot
+          - transactions
+          - validation_only
 
 jobs:
   sync:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          python-version: '3.11'
+          node-version: '20'
 
-      - name: Install sync dependencies
-        run: pip install -r sync/requirements.txt
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Run Phoenix Parser
+      - name: Run ATLAS Sync
         env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-        run: python sync/run_sync.py
+          ALPACA_API_URL: ${{ secrets.ALPACA_API_URL }}
+        run: node scripts/sync-wrapper.mjs
 
-      - name: Refresh materialized insights
+      - name: Write sync result to memory on failure
+        if: failure()
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          python - <<'EOF'
-          import os, json, urllib.request
-
-          url  = os.environ["SUPABASE_URL"].rstrip("/")
-          key  = os.environ["SUPABASE_SERVICE_KEY"]
-          headers = {
-              "apikey": key,
-              "Authorization": f"Bearer {key}",
-              "Content-Type": "application/json",
-          }
-
-          # Fetch insights scheduled for on_sync refresh
-          req = urllib.request.Request(
-              f"{url}/rest/v1/materialized_insights"
-              "?refresh_schedule=eq.on_sync&select=id,table_name,source_query_id",
-              headers=headers,
-          )
-          with urllib.request.urlopen(req) as r:
-              insights = json.loads(r.read())
-
-          if not insights:
-              print("[refresh-insights] No on_sync insights to refresh.")
-          else:
-              print(f"[refresh-insights] Refreshing {len(insights)} insight(s)...")
-
-          for ins in insights:
-              # Fetch the source SQL from saved_queries
-              if not ins.get("source_query_id"):
-                  print(f"  skip {ins['table_name']} — no source_query_id")
-                  continue
-              req2 = urllib.request.Request(
-                  f"{url}/rest/v1/saved_queries"
-                  f"?id=eq.{ins['source_query_id']}&select=sql_text",
-                  headers=headers,
-              )
-              with urllib.request.urlopen(req2) as r2:
-                  rows = json.loads(r2.read())
-              if not rows:
-                  print(f"  skip {ins['table_name']} — saved query not found")
-                  continue
-              sql_text = rows[0]["sql_text"]
-
-              # Call materialize_insight RPC to refresh the table
-              payload = json.dumps({
-                  "p_table_name": ins["table_name"].removeprefix("insight_"),
-                  "p_sql_text": sql_text,
-                  "p_source_query_id": ins["source_query_id"],
-                  "p_refresh_schedule": "on_sync",
-              }).encode()
-              rpc_req = urllib.request.Request(
-                  f"{url}/rest/v1/rpc/materialize_insight",
-                  data=payload,
-                  headers=headers,
-                  method="POST",
-              )
-              try:
-                  with urllib.request.urlopen(rpc_req) as rr:
-                      result = json.loads(rr.read())
-                  print(f"  ✓ {result.get('table_name')} — {result.get('row_count')} rows")
-              except Exception as e:
-                  print(f"  ✗ {ins['table_name']} failed: {e}")
-          EOF
+          node scripts/memory.mjs write bug "github-actions-sync-failure" \
+            "GitHub Actions sync workflow failed at $(date -u +%Y-%m-%dT%H:%M:%SZ). Check Actions logs. Run ID: ${{ github.run_id }}" \
+            --tags=sync,github-actions,failure,critical --priority=2
