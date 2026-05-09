@@ -1077,11 +1077,11 @@
             display: flex; flex-direction: column;
             width: 100%; height: 100%; overflow: hidden;
             background: #05081a;
-            --ac-bg0: #05081a; --ac-bg1: #08102a; --ac-bg2: #0d1835; --ac-bg3: #11203f;
-            --ac-teal: #00d4aa; --ac-teal-dim: rgba(0,212,170,0.13); --ac-teal-glow: rgba(0,212,170,0.22);
-            --ac-border: rgba(0,212,170,0.10); --ac-border-hi: rgba(0,212,170,0.28);
-            --ac-text: #e2e8f0; --ac-text2: #94a3b8; --ac-text3: #3d5280;
-            --ac-red: #ef4444; --ac-green: #10b981; --ac-mono: 'SF Mono','Fira Code','Cascadia Code','Consolas',monospace;
+            --ac-bg0: #070814; --ac-bg1: #0d0f1a; --ac-bg2: rgba(255,255,255,0.03); --ac-bg3: rgba(255,255,255,0.06);
+            --ac-teal: #00d4ff; --ac-teal-dim: rgba(0,212,255,0.08); --ac-teal-glow: rgba(0,212,255,0.15);
+            --ac-border: rgba(255,255,255,0.06); --ac-border-hi: rgba(0,212,255,0.20);
+            --ac-text: rgba(255,255,255,0.92); --ac-text2: rgba(255,255,255,0.52); --ac-text3: rgba(255,255,255,0.32);
+            --ac-red: #ef4444; --ac-green: #10b981; --ac-mono: 'JetBrains Mono', monospace;
         }
         /* Topbar */
         .ac-topbar {
@@ -1105,7 +1105,7 @@
         /* Toggle */
         .ac-tog-wrap { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; flex-shrink: 0; }
         .ac-tog-track { width: 28px; height: 15px; border-radius: 8px; background: var(--ac-bg3); border: 1px solid var(--ac-border); position: relative; transition: all 0.2s; flex-shrink: 0; }
-        .ac-tog-track.on { background: rgba(0,212,170,0.2); border-color: var(--ac-teal); }
+        .ac-tog-track.on { background: rgba(0,212,255,0.12); border-color: var(--ac-teal); }
         .ac-tog-thumb { position: absolute; width: 9px; height: 9px; border-radius: 50%; background: var(--ac-text3); top: 2px; left: 2px; transition: all 0.2s; }
         .ac-tog-track.on .ac-tog-thumb { background: var(--ac-teal); left: 15px; }
         .ac-tog-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; color: var(--ac-text3); white-space: nowrap; }

@@ -19,7 +19,7 @@ var useMemo        = React.useMemo;
 // ── Design constants ──────────────────────────────────────────────────────────
 
 var SERIES_PALETTE = [
-    '#00d4aa', // teal      — always first / primary
+    '#00d4ff', // cyan      — always first / primary (matches terminal brand)
     '#f59e0b', // gold
     '#8b5cf6', // violet
     '#06b6d4', // cyan
@@ -272,7 +272,7 @@ function computeStats(sliced) {
 var AXIS_BASE = {
     gridcolor:     'rgba(255,255,255,0.04)',
     linecolor:     'rgba(255,255,255,0.06)',
-    tickfont:      { color: '#3d5280', size: 10, family: "'SF Mono','Fira Code',monospace" },
+    tickfont:      { color: 'rgba(255,255,255,0.28)', size: 10, family: "'JetBrains Mono',monospace" },
     zerolinecolor: 'rgba(255,255,255,0.08)',
     showgrid:      true,
     zeroline:      false,
@@ -324,7 +324,7 @@ function buildPlotlyConfig(opts) {
                 high:  disp.map(function(d) { return d.high;  }),
                 low:   disp.map(function(d) { return d.low;   }),
                 close: closes,
-                increasing: { line: { color: '#00d4aa', width: 1 }, fillcolor: 'rgba(0,212,170,0.45)' },
+                increasing: { line: { color: '#00d4ff', width: 1 }, fillcolor: 'rgba(0,212,255,0.45)' },
                 decreasing: { line: { color: '#ef4444', width: 1 }, fillcolor: 'rgba(239,68,68,0.45)'  },
                 yaxis: 'y', xaxis: 'x',
             });
@@ -370,7 +370,7 @@ function buildPlotlyConfig(opts) {
             x: vSliced.map(function(d) { return d.date; }),
             y: vSliced.map(function(d) { return d.volume; }),
             marker: { color: vCloses.map(function(c, i) {
-                return i === 0 || c >= vCloses[i - 1] ? 'rgba(0,212,170,0.38)' : 'rgba(239,68,68,0.38)';
+                return i === 0 || c >= vCloses[i - 1] ? 'rgba(0,212,255,0.38)' : 'rgba(239,68,68,0.38)';
             }) },
             yaxis: 'y2', xaxis: 'x',
         });
@@ -392,11 +392,11 @@ function buildPlotlyConfig(opts) {
         });
         yaxes['yaxis3'] = Object.assign({}, AXIS_BASE, {
             domain: spDomains.rsi || [0, 0.15], range: [0, 100],
-            title: { text: 'RSI', font: { color: '#3d5280', size: 9 } },
+            title: { text: 'RSI', font: { color: 'rgba(255,255,255,0.28)', size: 9 } },
         });
         shapes.push(
             { type:'line', xref:'paper', yref:'y3', x0:0, x1:1, y0:70, y1:70, line:{ color:'rgba(239,68,68,0.4)',  width:1, dash:'dash' } },
-            { type:'line', xref:'paper', yref:'y3', x0:0, x1:1, y0:30, y1:30, line:{ color:'rgba(0,212,170,0.4)', width:1, dash:'dash' } }
+            { type:'line', xref:'paper', yref:'y3', x0:0, x1:1, y0:30, y1:30, line:{ color:'rgba(0,212,255,0.4)', width:1, dash:'dash' } }
         );
     }
 
@@ -409,27 +409,45 @@ function buildPlotlyConfig(opts) {
         var mCalc   = macd(mCloses);
         traces.push(
             { type:'bar',     name:'MACD Hist', x:mDates, y:mCalc.histogram,
-              marker:{ color: mCalc.histogram.map(function(v) { return (v||0) >= 0 ? 'rgba(0,212,170,0.5)' : 'rgba(239,68,68,0.5)'; }) },
+              marker:{ color: mCalc.histogram.map(function(v) { return (v||0) >= 0 ? 'rgba(0,212,255,0.5)' : 'rgba(239,68,68,0.5)'; }) },
               yaxis:'y4', xaxis:'x' },
-            { type:'scatter', mode:'lines', name:'MACD',   x:mDates, y:mCalc.macdLine,   line:{ color:'#00d4aa', width:1.3 }, yaxis:'y4', xaxis:'x' },
+            { type:'scatter', mode:'lines', name:'MACD',   x:mDates, y:mCalc.macdLine,   line:{ color:'#00d4ff', width:1.3 }, yaxis:'y4', xaxis:'x' },
             { type:'scatter', mode:'lines', name:'Signal', x:mDates, y:mCalc.signalLine, line:{ color:'#f59e0b', width:1.3 }, yaxis:'y4', xaxis:'x' }
         );
         yaxes['yaxis4'] = Object.assign({}, AXIS_BASE, {
             domain: spDomains.macd || [0, 0.18],
-            title: { text: 'MACD', font: { color: '#3d5280', size: 9 } },
+            title: { text: 'MACD', font: { color: 'rgba(255,255,255,0.28)', size: 9 } },
         });
+    }
+
+    // Anchor area chart to data range — prevents fill drawing all the way to absolute zero
+    if (chartType === 'area' && series.length > 0) {
+        var allCloses = [];
+        series.forEach(function(s) {
+            var raw = allData[s.id];
+            if (!raw) return;
+            var sl = normalise ? normaliseData(sliceByTimeframe(raw, timeframe)) : sliceByTimeframe(raw, timeframe);
+            sl.forEach(function(d) { allCloses.push(d.close); });
+        });
+        if (allCloses.length > 0) {
+            var minC = Math.min.apply(null, allCloses);
+            var maxC = Math.max.apply(null, allCloses);
+            var pad  = (maxC - minC) * 0.06;
+            yaxes['yaxis'].range     = [minC - pad, maxC + pad];
+            yaxes['yaxis'].autorange = false;
+        }
     }
 
     var layout = Object.assign({
         paper_bgcolor: 'transparent',
         plot_bgcolor:  'rgba(255,255,255,0.012)',
         margin:        { l: 8, r: 68, t: 8, b: 30 },
-        font:          { color: '#94a3b8', size: 10, family: "'SF Mono','Fira Code',monospace" },
-        hoverlabel:    { bgcolor: '#0d1835', bordercolor: 'rgba(0,212,170,0.28)', font: { color: '#e2e8f0', size: 11, family: "'SF Mono',monospace" } },
-        legend:        { bgcolor: 'transparent', font: { color: '#64748b', size: 10 }, orientation: 'h', y: -0.09, x: 0 },
-        xaxis:         Object.assign({}, AXIS_BASE, { showspikes: true, spikecolor: 'rgba(0,212,170,0.3)', spikethickness: 1, domain: [0, 1] }),
+        font:          { color: 'rgba(255,255,255,0.42)', size: 10, family: "'JetBrains Mono',monospace" },
+        hoverlabel:    { bgcolor: '#0d0f1a', bordercolor: 'rgba(0,212,255,0.28)', font: { color: 'rgba(255,255,255,0.92)', size: 11, family: "'JetBrains Mono',monospace" } },
+        legend:        { bgcolor: 'transparent', font: { color: 'rgba(255,255,255,0.42)', size: 10 }, orientation: 'h', y: -0.09, x: 0 },
+        xaxis:         Object.assign({}, AXIS_BASE, { showspikes: true, spikecolor: 'rgba(0,212,255,0.3)', spikethickness: 1, domain: [0, 1] }),
         annotations:   [{ text: 'ATLAS', xref: 'paper', yref: 'paper', x: 0.5, y: 0.5, showarrow: false,
-                          font: { color: 'rgba(0,212,170,0.05)', size: 52, family: 'monospace' } }],
+                          font: { color: 'rgba(0,212,255,0.04)', size: 52, family: "'JetBrains Mono',monospace" } }],
         shapes: shapes,
     }, yaxes);
 
