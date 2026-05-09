@@ -7,6 +7,8 @@
 // Residual Income, Private Co., Sensitivity.
 // ============================================================
 
+import { ScrapbookSaveBar } from './scrapbook.js';
+
 const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
 // ─── Formatting helpers ───────────────────────────────────────────────────────
@@ -1352,6 +1354,120 @@ export function ValuationHouse() {
         // Body
         h('div', { style: { flex: 1, padding: 18, overflowY: 'auto' } },
             (RENDER[innerTab] || renderDash)()
-        )
+        ),
+        // ── Scrapbook SaveBar — visible for valuation method tabs ─────────────
+        (function() {
+            var SAVE_TABS = { fcf: true, ddm: true, mult: true, ri: true };
+            if (!SAVE_TABS[innerTab] || !s.co.ticker) return null;
+
+            var sbMethod, sbLabel, sbImplied, sbInputs, sbAssumptions, sbTV, sbEV;
+
+            if (innerTab === 'ddm') {
+                sbMethod = 'DDM';
+                sbLabel  = s.ddm.model === 'gordon' ? 'Gordon Growth DDM' : s.ddm.model === 'h' ? 'H-Model DDM' : '2-Stage DDM';
+                sbImplied = c.ddmV;
+                sbInputs = {
+                    D0_trailing_dps: s.ddm.D0,
+                    gS_pct: +(s.ddm.gS * 100).toFixed(1),
+                    gL_pct: +(s.ddm.gL * 100).toFixed(1),
+                    cost_of_equity_pct: +(c.re * 100).toFixed(2),
+                    n_years: s.ddm.n,
+                };
+                sbAssumptions = {
+                    model_variant: sbLabel,
+                    beta: s.coc.beta,
+                    erp_pct: +(s.coc.erp * 100).toFixed(1),
+                    rf_pct: +(s.coc.rf * 100).toFixed(1),
+                };
+            } else if (innerTab === 'fcf') {
+                var isFF = s.fcf.mode === 'fcff';
+                sbMethod = 'DCF';
+                sbLabel  = isFF ? '5-Year FCFF DCF' : '5-Year FCFE DCF';
+                sbImplied = isFF ? (c.ffR ? c.ffR.eqPS : null) : (c.feR ? c.feR.eqPS : null);
+                sbTV = isFF ? (c.ffR ? c.ffR.tv : null) : (c.feR ? c.feR.tv : null);
+                sbEV = isFF && c.ffR ? c.ffR.ev : null;
+                sbInputs = {
+                    wacc_pct: +(c.wc * 100).toFixed(2),
+                    terminal_growth_rate_pct: +(s.fcf.gL * 100).toFixed(2),
+                    forecast_horizon_years: 5,
+                    base_fcf_m: isFF ? s.fcf.fcff0 : s.fcf.fcfe0,
+                    growth_yr1_pct: +(s.fcf.gr[0] * 100).toFixed(1),
+                    growth_yr5_pct: +(s.fcf.gr[4] * 100).toFixed(1),
+                    net_debt_m: Math.max(0, s.fcf.debt - s.fcf.cash),
+                    shares_m: s.fcf.shs,
+                };
+                sbAssumptions = {
+                    mode: isFF ? 'FCFF' : 'FCFE',
+                    cost_of_equity_pct: +(c.re * 100).toFixed(2),
+                    cost_of_debt_pct: +(s.coc.rd * 100).toFixed(2),
+                    tax_rate_pct: +(s.coc.tax * 100).toFixed(1),
+                    debt_weight: s.coc.wd,
+                };
+            } else if (innerTab === 'mult') {
+                sbMethod = 'EV_EBITDA';
+                sbLabel  = 'Comparable Company Multiples';
+                sbImplied = c.multAvg;
+                sbEV = s.fcf.shs > 0 ? s.mult.pEV * s.mult.ebitda : null;
+                sbInputs = {
+                    peer_pe: s.mult.pPE,
+                    peer_pb: s.mult.pPB,
+                    peer_ev_ebitda: s.mult.pEV,
+                    peer_ps: s.mult.pPS,
+                    eps: s.mult.eps,
+                    bvps: s.mult.bvps,
+                    ebitda_m: s.mult.ebitda,
+                    revenue_m: s.mult.rev,
+                    net_debt_m: s.mult.netDebt,
+                    shares_m: s.fcf.shs,
+                };
+                sbAssumptions = {
+                    blended_methods: 'P/E, P/B, EV/EBITDA, P/S (simple average)',
+                };
+            } else if (innerTab === 'ri') {
+                sbMethod = 'Residual_Income';
+                sbLabel  = 'Residual Income (RI) Model';
+                sbImplied = c.riR ? c.riR.v : null;
+                sbInputs = {
+                    book_value_per_share: s.ri.B0,
+                    roe_pct: +(s.ri.ROE * 100).toFixed(1),
+                    cost_of_equity_pct: +(c.re * 100).toFixed(2),
+                    forecast_horizon_years: s.ri.n,
+                    growth_rate_pct: +(s.ri.g * 100).toFixed(2),
+                    fade_method: s.ri.mth,
+                    omega: s.ri.omega,
+                };
+                sbAssumptions = {
+                    eva_spread_pct: +((s.ri.ROE - c.re) * 100).toFixed(2),
+                    sustainable_growth_pct: +(s.ri.g * 100).toFixed(2),
+                };
+            }
+
+            if (!sbImplied) return null;
+
+            return h('div', { style: { padding: '0 18px 14px' } },
+                h(ScrapbookSaveBar, {
+                    method: sbMethod,
+                    methodLabel: sbLabel,
+                    ticker: s.co.ticker,
+                    companyName: s.co.name,
+                    exchange: null,
+                    sector: s.co.sector,
+                    currency: 'USD',
+                    currentPrice: price,
+                    impliedPrice: sbImplied,
+                    inputs: sbInputs,
+                    assumptions: sbAssumptions,
+                    terminalValue: sbTV || null,
+                    impliedEV: sbEV || null,
+                    onSaved: function(result) {
+                        if (result.navigate) {
+                            window.dispatchEvent(new CustomEvent('atlas:open-scrapbook', {
+                                detail: { ticker: s.co.ticker }
+                            }));
+                        }
+                    },
+                })
+            );
+        })()
     );
 }
