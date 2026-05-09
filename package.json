@@ -6,7 +6,6 @@
     "sync": "node scripts/sync-wrapper.mjs"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.49.4",
-    "plotly.js-dist-min": "^2.35.3"
+    "@supabase/supabase-js": "^2.49.4"
   }
 }
