@@ -85,7 +85,12 @@ export function PerformanceSuite() {
     var ytd      = periods ? periods.ytd : null;
 
     // Account Equity = latest equity value from portfolio_equity_curve (via navSeries)
-    var accountEquity = hasNav ? navSeries[navSeries.length - 1].nav : null;
+    // Mirror Portfolio Home priority: account_snapshots.equity (via vw_command_centre) first,
+    // fall back to nightly NAV history only if the live snapshot is absent.
+    var navHistoryEquity = hasNav ? navSeries[navSeries.length - 1].nav : null;
+    var accountEquity = (cmd.portfolio_nav != null && cmd.portfolio_nav > 0)
+        ? cmd.portfolio_nav
+        : navHistoryEquity;
     // Portfolio Value = sum of long position market values (from homeData)
     var portfolioValue = homeData && homeData.length
         ? homeData.reduce(function(s, r) { return s + (r.market_value != null ? Number(r.market_value) : 0); }, 0)
