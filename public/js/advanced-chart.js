@@ -444,54 +444,44 @@ function StatCard(props) {
     );
 }
 
-function AddPanel(props) {
-    var _s = useState('');
-    var search = _s[0], setSearch = _s[1];
+function InlineSearchResults(props) {
     var activeIds = {};
     props.activeSeries.forEach(function(s) { activeIds[s.id] = true; });
-    var term = search.toLowerCase();
+    var term = (props.query || '').toLowerCase().trim();
 
-    if (props.loading) {
-        return h('div', { className: 'ac-add-panel' },
-            h('div', { style: { padding: 12, fontSize: 11, color: 'rgba(255,255,255,0.32)', textAlign: 'center' } }, 'Loading assets…')
-        );
-    }
+    var sections = [];
+    Object.keys(props.catalog).forEach(function(cat) {
+        var items = props.catalog[cat].filter(function(i) {
+            if (activeIds[i.id]) return false;
+            if (!term) return true;
+            return i.label.toLowerCase().indexOf(term) !== -1;
+        });
+        if (items.length) sections.push({ cat: cat, items: items.slice(0, 20) });
+    });
 
-    var hasCatalog = Object.keys(props.catalog).length > 0;
-    if (!hasCatalog) {
+    if (!sections.length) {
         return h('div', { className: 'ac-add-panel' },
-            h('div', { style: { padding: 12, fontSize: 11, color: 'rgba(255,255,255,0.32)', textAlign: 'center' } }, 'No assets available')
+            h('div', { style: { padding: '8px 10px', fontSize: 11, color: 'rgba(255,255,255,0.3)' } },
+                term ? 'No matches for "' + term + '"' : 'No assets available')
         );
     }
 
     return h('div', { className: 'ac-add-panel' },
-        h('div', { className: 'ac-sb-sec', style: { borderBottom: 'none', paddingBottom: 6 } },
-            h('input', {
-                className: 'ac-srch-inp',
-                placeholder: 'Search assets…',
-                value: search,
-                onChange: function(e) { setSearch(e.target.value); },
-                autoFocus: true,
-            })
-        ),
-        h('div', { className: 'ac-add-panel-list' },
-            Object.keys(props.catalog).map(function(cat) {
-                var items = props.catalog[cat].filter(function(i) {
-                    return !activeIds[i.id] && i.label.toLowerCase().indexOf(term) !== -1;
-                });
-                if (!items.length) return null;
-                return h('div', { key: cat, className: 'ac-sb-sec', style: { paddingBottom: 4 } },
-                    h('div', { className: 'ac-sb-title', style: { marginBottom: 4 } }, cat),
-                    items.map(function(item) {
-                        return h('div', {
-                            key: item.id,
-                            className: 'ac-catalog-item',
-                            onClick: function() { props.onAdd(item); props.onClose(); },
-                        }, item.label);
-                    })
-                );
-            })
-        )
+        sections.map(function(sec) {
+            return h('div', { key: sec.cat },
+                h('div', { className: 'ac-sb-title', style: { padding: '6px 10px 2px', fontSize: 9, letterSpacing: 1.2 } }, sec.cat),
+                sec.items.map(function(item) {
+                    return h('div', {
+                        key: item.id,
+                        className: 'ac-catalog-item',
+                        onMouseDown: function(e) {
+                            e.preventDefault(); // keep input focus until click fires
+                            props.onAdd(item);
+                        },
+                    }, item.label);
+                })
+            );
+        })
     );
 }
 
@@ -527,6 +517,9 @@ export function AdvancedChart(props) {
     var _sa = useState(false);
     var showAdd = _sa[0], setShowAdd = _sa[1];
 
+    var _srch = useState('');
+    var searchQuery = _srch[0], setSearchQuery = _srch[1];
+
     // dataVersion bumps after async fetches complete to trigger a redraw
     var _dv = useState(0);
     var dataVersion = _dv[0], setDataVersion = _dv[1];
@@ -550,18 +543,18 @@ export function AdvancedChart(props) {
         if (sb) {
             Promise.all([
                 sb.from('assets').select('id, symbol, name, asset_class'),
-                sb.from('positions').select('symbol'),
+                sb.from('positions').select('asset_id'),
             ]).then(function(results) {
                 var assets  = results[0].data || [];
                 var posSet  = {};
-                (results[1].data || []).forEach(function(p) { posSet[p.symbol] = true; });
+                (results[1].data || []).forEach(function(p) { if (p.asset_id) posSet[p.asset_id] = true; });
 
                 var holdings = [], others = [];
                 assets.forEach(function(a) {
                     if (!a.symbol) return;
                     var label = a.symbol + (a.name && a.name !== a.symbol ? '  –  ' + a.name : '');
                     var item  = { id: a.symbol, label: label, assetId: a.id };
-                    if (posSet[a.symbol]) holdings.push(item);
+                    if (posSet[a.id]) holdings.push(item);
                     else others.push(item);
                 });
 
@@ -611,18 +604,31 @@ export function AdvancedChart(props) {
             return prev.concat([{ id: item.id, label: item.label, locked: false, assetId: item.assetId }]);
         });
 
-        // Fetch price history from Supabase if not already cached
+        // Fetch price history from Supabase if not already cached.
+        // Fetch 6 years descending (most recent first) to avoid the 1000-row
+        // default cap silently truncating to stale data, then reverse on client.
         if (!allDataRef.current[item.id] && item.assetId && sb) {
+            var sixYearsAgo = new Date();
+            sixYearsAgo.setFullYear(sixYearsAgo.getFullYear() - 6);
+            var cutoffDate = sixYearsAgo.toISOString().slice(0, 10);
             sb.from('price_history')
               .select('price_date, open, high, low, close, adjusted_close, volume')
               .eq('asset_id', item.assetId)
-              .order('price_date', { ascending: true })
+              .gte('price_date', cutoffDate)
+              .order('price_date', { ascending: false })
+              .limit(1600)
               .then(function(res) {
+                  if (res.error) {
+                      console.warn('[ATLAS chart] price_history fetch error:', res.error.message);
+                      return;
+                  }
                   if (res.data && res.data.length) {
-                      allDataRef.current[item.id] = res.data.map(priceRowToOHLC);
+                      // Reverse to restore chronological order
+                      allDataRef.current[item.id] = res.data.slice().reverse().map(priceRowToOHLC);
                       setDataVersion(function(v) { return v + 1; });
                   }
-              });
+              })
+              .catch(function(err) { console.warn('[ATLAS chart] price_history:', err); });
         }
     }
 
@@ -685,24 +691,40 @@ export function AdvancedChart(props) {
             // Sidebar
             h('div', { className: 'ac-sidebar' },
 
-                // Series
+                // Series + inline search
                 h('div', { className: 'ac-sb-sec' },
                     h('div', { className: 'ac-sb-header' },
                         h('span', { className: 'ac-sb-title' }, 'Series'),
-                        series.length < MAX_SERIES
-                            ? h('button', { className: 'ac-add-btn', onClick: function() { setShowAdd(function(v) { return !v; }); } }, showAdd ? 'Close' : '+ Add')
+                        series.length >= MAX_SERIES
+                            ? h('span', { style: { fontSize: 9, color: 'rgba(255,255,255,0.28)', fontFamily: "'JetBrains Mono',monospace" } }, 'MAX')
                             : null
                     ),
-                    showAdd ? h(AddPanel, {
-                        catalog:       catalog,
-                        loading:       catalogLoading,
-                        activeSeries:  series,
-                        onAdd:         addSeries,
-                        onClose:       function() { setShowAdd(false); },
-                    }) : null,
+                    // Active series list
                     series.map(function(s, idx) {
                         return h(SeriesItem, { key: s.id, item: s, idx: idx, onRemove: removeSeries });
-                    })
+                    }),
+                    // Inline search — always visible if room for more series
+                    series.length < MAX_SERIES ? h('div', { style: { marginTop: 8, position: 'relative' } },
+                        h('input', {
+                            className: 'ac-srch-inp',
+                            placeholder: catalogLoading ? 'Loading assets…' : 'Search assets & benchmarks…',
+                            value: searchQuery,
+                            disabled: catalogLoading,
+                            onChange: function(e) { setSearchQuery(e.target.value); setShowAdd(true); },
+                            onFocus: function() { setShowAdd(true); },
+                            onBlur: function() { setTimeout(function() { setShowAdd(false); }, 150); },
+                        }),
+                        showAdd && !catalogLoading ? h(InlineSearchResults, {
+                            catalog:      catalog,
+                            query:        searchQuery,
+                            activeSeries: series,
+                            onAdd:        function(item) {
+                                addSeries(item);
+                                setSearchQuery('');
+                                setShowAdd(false);
+                            },
+                        }) : null
+                    ) : null
                 ),
 
                 // Overlays
