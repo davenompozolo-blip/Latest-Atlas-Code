@@ -7,6 +7,8 @@
 // Residual Income, Private Co., Sensitivity.
 // ============================================================
 
+import { ScrapbookSaveBar } from './scrapbook.js';
+
 const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
 // ─── Formatting helpers ───────────────────────────────────────────────────────
@@ -237,37 +239,93 @@ function avSectorToKey(sector) {
 
 // ─── Map /api/equity payload → ValuationHouse state ──────────────────────────
 function mapPayload(payload, series) {
-    var o   = payload.overview   || {};
-    var fin = payload.financials || {};
-    var num = function(k, obj) { var v = Number((obj || o)[k]); return isFinite(v) && v !== 0 ? v : null; };
+    var o      = payload.overview   || {};
+    var rawFin = payload.financials || {};
+    // API returns financials = { snapshot: {...}, yearly: [...], quarterly: [...] }
+    var fin    = (rawFin && rawFin.snapshot) ? rawFin.snapshot : rawFin;
+    var num    = function(k, obj) { var v = Number((obj || o)[k]); return isFinite(v) && v !== 0 ? v : null; };
 
-    var price = series && series.length ? series[series.length - 1].close : 45;
+    var price   = series && series.length ? series[series.length - 1].close : 45;
+    var beta    = num('Beta') || 1.0;
+    var mktCap  = num('MarketCapitalization') || null;   // raw dollars
+    var mktCapM = mktCap ? mktCap / 1e6 : null;
 
-    var beta    = num('Beta')    || 1.0;
-    var mktCap  = num('MarketCapitalization') || null;
-    var shares  = mktCap && price ? (mktCap / price) / 1e6 : 500;    // millions
-    var eps     = fin.trailingEps || num('EPS') || 0;
-    var bvps    = fin.bookValue   || num('BookValue') || 18.50;
-    var divYld  = num('DividendYield') || 0;
-    var D0      = +(divYld * price).toFixed(2);
-    var roe     = fin.returnOnEquity != null ? fin.returnOnEquity : 0.145;
-    var revG    = fin.revenueGrowth  != null ? fin.revenueGrowth  : 0.08;
-    var gS      = Math.max(0.01, Math.min(0.35, revG));
-    var gL      = 0.025;
+    // Shares: prefer netIncome/EPS derivation (more stable); fallback mktCap/price
+    var trailingEps = fin.trailingEps || num('EPS') || null;
+    var netIncomeM  = fin.netIncome ? fin.netIncome / 1e6 : null;
+    var sharesM;
+    if (netIncomeM && trailingEps && Math.abs(trailingEps) > 0.01) {
+        sharesM = Math.abs(netIncomeM / trailingEps);
+    } else if (mktCap && price) {
+        sharesM = (mktCap / price) / 1e6;
+    } else {
+        sharesM = 500;
+    }
 
-    // Debt / equity → wd
-    var de  = fin.debtToEquity != null ? fin.debtToEquity / 100 : 0.30;
-    var wd  = Math.max(0.05, Math.min(0.70, de / (1 + de)));
+    var eps    = trailingEps || 0;
+    var bvps   = fin.bookValue || num('BookValue') || 18.50;
+    var divYld = num('DividendYield') || 0;
+    var D0     = +(divYld * price).toFixed(2);
+    var roe    = fin.returnOnEquity != null ? fin.returnOnEquity : 0.145;
 
-    // FCF figures already in dollars — convert to $M
-    var debt   = fin.totalDebt       ? +(fin.totalDebt       / 1e6).toFixed(0) : 5000;
-    var cash   = fin.totalCash       ? +(fin.totalCash       / 1e6).toFixed(0) : 2000;
-    var ebitda = fin.ebitda          ? +(fin.ebitda          / 1e6).toFixed(0) : 2800;
-    var rev    = fin.totalRevenue    ? +(fin.totalRevenue    / 1e6).toFixed(0) : 12000;
-    var fcff0  = fin.freeCashflow    ? +(fin.freeCashflow    / 1e6).toFixed(0) : 500;
-    var fcfe0  = fcff0 > 0 ? Math.max(50, Math.round(fcff0 * 0.75)) : 400;
+    // Balance sheet / income statement ($M)
+    var debt   = fin.totalDebt    ? +(fin.totalDebt    / 1e6).toFixed(0) : 5000;
+    var cash   = fin.totalCash    ? +(fin.totalCash    / 1e6).toFixed(0) : 2000;
+    var ebitda = fin.ebitda       ? +(fin.ebitda       / 1e6).toFixed(0) : 2800;
+    var rev    = fin.totalRevenue ? +(fin.totalRevenue / 1e6).toFixed(0) : 12000;
 
-    // Five-year growth vector: linear step-down from gS → gL
+    // Tax rate derived from margin spread: 1 − (netMargin / opMargin), capped 15-40%
+    var profitM = fin.profitMargins   != null ? fin.profitMargins   : null;
+    var opM     = fin.operatingMargins != null ? fin.operatingMargins : null;
+    var tax;
+    if (profitM != null && opM != null && opM > 0.01) {
+        tax = Math.max(0.15, Math.min(0.40, 1 - profitM / opM));
+    } else {
+        tax = 0.21;
+    }
+
+    // Cost of debt via Damodaran credit spread from Debt/EBITDA leverage ratio
+    var rf         = 0.044;
+    var debtEbitda = (ebitda > 0) ? debt / ebitda : 2.0;
+    var creditSpread;
+    if      (debtEbitda < 1.0) creditSpread = 0.008;
+    else if (debtEbitda < 2.0) creditSpread = 0.012;
+    else if (debtEbitda < 3.0) creditSpread = 0.018;
+    else if (debtEbitda < 4.5) creditSpread = 0.025;
+    else                       creditSpread = 0.040;
+    var rd = +(rf + creditSpread).toFixed(4);
+
+    // FCF: Yahoo/Finnhub freeCashflow = operatingCF − capex = FCFE (post-interest)
+    // FCFF = FCFE + Debt × rd × (1 − tax)  [add back after-tax interest shield]
+    var fcfe0raw    = fin.freeCashflow ? fin.freeCashflow / 1e6 : null;
+    var interestAdj = debt * rd * (1 - tax);
+    var fcfe0 = fcfe0raw != null ? +fcfe0raw.toFixed(0)              : 400;
+    var fcff0 = fcfe0raw != null ? +(fcfe0raw + interestAdj).toFixed(0) : 500;
+
+    // WACC weights: prefer market-value (debt / (debt + mktCap)); fallback book D/E
+    var wd;
+    if (mktCapM && debt > 0) {
+        wd = Math.max(0.05, Math.min(0.70, debt / (debt + mktCapM)));
+    } else {
+        var de = fin.debtToEquity != null ? fin.debtToEquity / 100 : 0.30;
+        wd = Math.max(0.05, Math.min(0.70, de / (1 + de)));
+    }
+
+    // Sector defaults
+    var secKey = avSectorToKey(o.Sector) || 'technology';
+    var sec    = SECTORS[secKey];
+    var gL     = sec.gL;   // sector-specific long-run growth
+
+    // Short-run growth priority: earningsGrowth → PEG-implied → revenueGrowth → sector default
+    var earningsG  = fin.earningsGrowth != null ? fin.earningsGrowth : null;
+    var revenueG   = fin.revenueGrowth  != null ? fin.revenueGrowth  : null;
+    var pegImplied = null;
+    if (fin.pegRatio && fin.pegRatio > 0 && fin.forwardPE && fin.forwardPE > 0) {
+        pegImplied = fin.forwardPE / fin.pegRatio / 100;
+    }
+    var gS = Math.max(0.01, Math.min(0.35, earningsG || pegImplied || revenueG || sec.gS));
+
+    // Five-year growth vector: convex step-down gS → gL
     var gr = [];
     for (var i = 0; i < 5; i++) {
         gr.push(+(gS + (gL - gS) * (i / 4)).toFixed(3));
@@ -276,23 +334,30 @@ function mapPayload(payload, series) {
     // Dividend retention ratio b
     var b = eps > 0 && D0 > 0 ? Math.max(0, Math.min(0.99, +(1 - D0 / eps).toFixed(2))) : 0.40;
 
-    var netDebt  = Math.max(0, debt - cash);
-    var secKey   = avSectorToKey(o.Sector) || 'technology';
-    var pePeer   = num('PERatio') || 22;
-    var pbPeer   = bvps > 0 ? +(price / bvps).toFixed(1) : 3.5;
+    // Sustainable growth for RI model: g = ROE × b
+    var riG = Math.max(gL, Math.min(0.15, +(roe * b).toFixed(3)));
+
+    var netDebt = Math.max(0, debt - cash);
+    var pePeer  = num('PERatio') || fin.forwardPE || 22;
+
+    // Multiples from live fundamentals rather than hardcoded placeholders
+    var pbPeer = fin.priceToBook  ? +fin.priceToBook.toFixed(1)  : (bvps > 0 ? +(price / bvps).toFixed(1) : 3.5);
+    var pEV    = fin.evToEbitda   ? +fin.evToEbitda.toFixed(1)   : 14;
+    var pPS    = fin.evToRevenue  ? +fin.evToRevenue.toFixed(1)  : 2.2;
 
     return {
         co:   { name: o.Name || o.Symbol || 'Unknown', ticker: o.Symbol || '', price: price, sector: secKey },
-        coc:  { rf: 0.044, beta: beta, erp: 0.055, rd: 0.048, wd: wd, tax: 0.21 },
+        coc:  { rf: rf, beta: beta, erp: 0.055, rd: rd, wd: +wd.toFixed(3), tax: +tax.toFixed(3) },
         ddm:  { D0: Math.max(0, D0), gS: +gS.toFixed(3), gL: gL, n: 5, H: 4, model: D0 > 0 ? '2stage' : 'gordon' },
-        fcf:  { fcff0: fcff0 > 0 ? fcff0 : 500, fcfe0: fcfe0, gr: gr, gL: gL,
-                debt: debt, cash: cash, shs: Math.round(Math.max(1, shares)), mode: 'fcff' },
+        fcf:  { fcff0: fcff0 > 0 ? fcff0 : 500, fcfe0: fcfe0 > 0 ? fcfe0 : 400,
+                gr: gr, gL: gL, debt: debt, cash: cash,
+                shs: Math.round(Math.max(1, sharesM)), mode: 'fcff' },
         mult: { eps: eps > 0 ? +eps.toFixed(2) : 3.20, bvps: bvps > 0 ? +bvps.toFixed(2) : 18.50,
                 ebitda: ebitda > 0 ? ebitda : 2800, rev: rev > 0 ? rev : 12000, b: b,
-                mktCap: mktCap ? +(mktCap / 1e6).toFixed(0) : 22500, netDebt: netDebt,
-                pPE: pePeer, pPB: pbPeer, pEV: 14, pPS: 2.2 },
+                mktCap: mktCapM ? +mktCapM.toFixed(0) : 22500, netDebt: netDebt,
+                pPE: pePeer, pPB: pbPeer, pEV: pEV, pPS: pPS },
         ri:   { B0: bvps > 0 ? +bvps.toFixed(2) : 18.50, ROE: roe > 0 ? +roe.toFixed(3) : 0.145,
-                g: gL, n: 5, mth: 'gordon', omega: 0.60 },
+                g: riG, n: 5, mth: 'gordon', omega: 0.60 },
         priv: INIT.priv,
         wts:  INIT.wts,
     };
@@ -1289,6 +1354,120 @@ export function ValuationHouse() {
         // Body
         h('div', { style: { flex: 1, padding: 18, overflowY: 'auto' } },
             (RENDER[innerTab] || renderDash)()
-        )
+        ),
+        // ── Scrapbook SaveBar — visible for valuation method tabs ─────────────
+        (function() {
+            var SAVE_TABS = { fcf: true, ddm: true, mult: true, ri: true };
+            if (!SAVE_TABS[innerTab] || !s.co.ticker) return null;
+
+            var sbMethod, sbLabel, sbImplied, sbInputs, sbAssumptions, sbTV, sbEV;
+
+            if (innerTab === 'ddm') {
+                sbMethod = 'DDM';
+                sbLabel  = s.ddm.model === 'gordon' ? 'Gordon Growth DDM' : s.ddm.model === 'h' ? 'H-Model DDM' : '2-Stage DDM';
+                sbImplied = c.ddmV;
+                sbInputs = {
+                    D0_trailing_dps: s.ddm.D0,
+                    gS_pct: +(s.ddm.gS * 100).toFixed(1),
+                    gL_pct: +(s.ddm.gL * 100).toFixed(1),
+                    cost_of_equity_pct: +(c.re * 100).toFixed(2),
+                    n_years: s.ddm.n,
+                };
+                sbAssumptions = {
+                    model_variant: sbLabel,
+                    beta: s.coc.beta,
+                    erp_pct: +(s.coc.erp * 100).toFixed(1),
+                    rf_pct: +(s.coc.rf * 100).toFixed(1),
+                };
+            } else if (innerTab === 'fcf') {
+                var isFF = s.fcf.mode === 'fcff';
+                sbMethod = 'DCF';
+                sbLabel  = isFF ? '5-Year FCFF DCF' : '5-Year FCFE DCF';
+                sbImplied = isFF ? (c.ffR ? c.ffR.eqPS : null) : (c.feR ? c.feR.eqPS : null);
+                sbTV = isFF ? (c.ffR ? c.ffR.tv : null) : (c.feR ? c.feR.tv : null);
+                sbEV = isFF && c.ffR ? c.ffR.ev : null;
+                sbInputs = {
+                    wacc_pct: +(c.wc * 100).toFixed(2),
+                    terminal_growth_rate_pct: +(s.fcf.gL * 100).toFixed(2),
+                    forecast_horizon_years: 5,
+                    base_fcf_m: isFF ? s.fcf.fcff0 : s.fcf.fcfe0,
+                    growth_yr1_pct: +(s.fcf.gr[0] * 100).toFixed(1),
+                    growth_yr5_pct: +(s.fcf.gr[4] * 100).toFixed(1),
+                    net_debt_m: Math.max(0, s.fcf.debt - s.fcf.cash),
+                    shares_m: s.fcf.shs,
+                };
+                sbAssumptions = {
+                    mode: isFF ? 'FCFF' : 'FCFE',
+                    cost_of_equity_pct: +(c.re * 100).toFixed(2),
+                    cost_of_debt_pct: +(s.coc.rd * 100).toFixed(2),
+                    tax_rate_pct: +(s.coc.tax * 100).toFixed(1),
+                    debt_weight: s.coc.wd,
+                };
+            } else if (innerTab === 'mult') {
+                sbMethod = 'EV_EBITDA';
+                sbLabel  = 'Comparable Company Multiples';
+                sbImplied = c.multAvg;
+                sbEV = s.fcf.shs > 0 ? s.mult.pEV * s.mult.ebitda : null;
+                sbInputs = {
+                    peer_pe: s.mult.pPE,
+                    peer_pb: s.mult.pPB,
+                    peer_ev_ebitda: s.mult.pEV,
+                    peer_ps: s.mult.pPS,
+                    eps: s.mult.eps,
+                    bvps: s.mult.bvps,
+                    ebitda_m: s.mult.ebitda,
+                    revenue_m: s.mult.rev,
+                    net_debt_m: s.mult.netDebt,
+                    shares_m: s.fcf.shs,
+                };
+                sbAssumptions = {
+                    blended_methods: 'P/E, P/B, EV/EBITDA, P/S (simple average)',
+                };
+            } else if (innerTab === 'ri') {
+                sbMethod = 'Residual_Income';
+                sbLabel  = 'Residual Income (RI) Model';
+                sbImplied = c.riR ? c.riR.v : null;
+                sbInputs = {
+                    book_value_per_share: s.ri.B0,
+                    roe_pct: +(s.ri.ROE * 100).toFixed(1),
+                    cost_of_equity_pct: +(c.re * 100).toFixed(2),
+                    forecast_horizon_years: s.ri.n,
+                    growth_rate_pct: +(s.ri.g * 100).toFixed(2),
+                    fade_method: s.ri.mth,
+                    omega: s.ri.omega,
+                };
+                sbAssumptions = {
+                    eva_spread_pct: +((s.ri.ROE - c.re) * 100).toFixed(2),
+                    sustainable_growth_pct: +(s.ri.g * 100).toFixed(2),
+                };
+            }
+
+            if (!sbImplied) return null;
+
+            return h('div', { style: { padding: '0 18px 14px' } },
+                h(ScrapbookSaveBar, {
+                    method: sbMethod,
+                    methodLabel: sbLabel,
+                    ticker: s.co.ticker,
+                    companyName: s.co.name,
+                    exchange: null,
+                    sector: s.co.sector,
+                    currency: 'USD',
+                    currentPrice: price,
+                    impliedPrice: sbImplied,
+                    inputs: sbInputs,
+                    assumptions: sbAssumptions,
+                    terminalValue: sbTV || null,
+                    impliedEV: sbEV || null,
+                    onSaved: function(result) {
+                        if (result.navigate) {
+                            window.dispatchEvent(new CustomEvent('atlas:open-scrapbook', {
+                                detail: { ticker: s.co.ticker }
+                            }));
+                        }
+                    },
+                })
+            );
+        })()
     );
 }

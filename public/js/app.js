@@ -24,7 +24,7 @@ import { MarketWatch } from './market-watch.js';
 import { TradingDashboard } from './trading.js';
 import { OptionsAnalysis } from './options-analysis.js';
 import { ValuationHouse } from './valuation-house.js';
-import { SqlTerminal } from './sql-terminal.js';
+import { Scrapbook } from './scrapbook.js';
 
 const { useState, useEffect } = React;
 
@@ -44,7 +44,7 @@ const TABS = [
     { id: 'markets',   label: 'MARKETS',   sub: 'Global Market Watch',     icon: '\u25CE', component: MarketWatch },
     { id: 'options',    label: 'OPTIONS',    sub: 'Derivatives Analysis',    icon: '\u03A9', component: OptionsAnalysis },
     { id: 'valuation',  label: 'VALUATION',  sub: 'Equity Valuation Suite',  icon: '\u25C8', component: ValuationHouse },
-    { id: 'sql',        label: 'SQL',        sub: 'Query Terminal',           icon: '\u25A3', component: SqlTerminal },
+    { id: 'scrapbook',  label: 'SCRAPBOOK',  sub: 'Research & Thesis Notes', icon: '\u{1F4D2}', component: Scrapbook },
 ];
 
 const NAV_STRUCTURE = [
@@ -67,6 +67,7 @@ const NAV_STRUCTURE = [
     { type: 'tab', id: 'markets' },
     { type: 'header', label: 'VALUATION' },
     { type: 'tab', id: 'valuation' },
+    { type: 'tab', id: 'scrapbook' },
 ];
 
 // ------------------------------------------------------------
@@ -103,6 +104,11 @@ function App() {
     var _dm = useState(sb ? 'pending' : 'mock');
     var dataMode = _dm[0];
     var setDataMode = _dm[1];
+    // Scrapbook deep-link ticker — set when ValuationHouse triggers Save & Analyse
+    var _st = useState(null);
+    var scrapbookTicker = _st[0];
+    var setScrapbookTicker = _st[1];
+
     var ActiveComponent = TABS.find(function(t) { return t.id === activeTab; }).component;
 
     // Load summary data for top bar
@@ -117,6 +123,16 @@ function App() {
             // Promote flag from window global (set by loadView) into React state
             setDataMode(window.__ATLAS_DATA_MODE__ || 'mock');
         });
+    }, []);
+
+    // Listen for Scrapbook navigation events dispatched by ScrapbookSaveBar
+    useEffect(function() {
+        function onOpenScrapbook(e) {
+            setScrapbookTicker((e.detail && e.detail.ticker) || null);
+            setActiveTab('scrapbook');
+        }
+        window.addEventListener('atlas:open-scrapbook', onOpenScrapbook);
+        return function() { window.removeEventListener('atlas:open-scrapbook', onOpenScrapbook); };
     }, []);
 
     var c = topCmd || MOCK_COMMAND;
@@ -192,7 +208,7 @@ function App() {
             // Main Content
             React.createElement('div', { className: 'main-content' },
                 !sb ? React.createElement(ConfigPrompt, null) : null,
-                React.createElement(ActiveComponent, null)
+                React.createElement(ActiveComponent, activeTab === 'scrapbook' ? { initialTicker: scrapbookTicker } : null)
             )
         )
     );
