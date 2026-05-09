@@ -238,7 +238,7 @@ export function PerformanceSuite() {
             panel = hasPerf ? h(PositionsPanel, { perfData: perfData, cmdData: cmdData, homeData: homeData || [] }) : h(EmptyState, null);
             break;
         case 'charts':
-            panel = h('div', { style: { height: 'calc(100vh - 220px)', minHeight: 480 } }, h(AdvancedChart, null));
+            panel = h('div', { style: { height: 'calc(100vh - 220px)', minHeight: 480 } }, h(AdvancedChart, { navSeries: navSeries }));
             break;
     }
 
