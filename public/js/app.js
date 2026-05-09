@@ -58,6 +58,7 @@ const NAV_STRUCTURE = [
     { type: 'header', label: 'SYSTEM' },
     { type: 'tab', id: 'risk' },
     { type: 'tab', id: 'command' },
+    { type: 'tab', id: 'sql' },
     { type: 'header', label: 'RESEARCH' },
     { type: 'tab', id: 'equity' },
     { type: 'tab', id: 'macro' },

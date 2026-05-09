@@ -1,27 +1,57 @@
-name: ATLAS Phoenix Sync
+name: ATLAS Sync
 
 on:
   schedule:
-    - cron: '*/15 * * * *'   # every 15 minutes
-  workflow_dispatch:           # manual trigger from GitHub UI
+    # Market days: 30 min after close (4:30 PM ET = 21:30 UTC)
+    - cron: '30 21 * * 1-5'
+    # Morning pre-market check (8:00 AM ET = 13:00 UTC)
+    - cron: '0 13 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      sync_type:
+        description: 'Sync type to run'
+        required: false
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - positions
+          - account_snapshot
+          - transactions
+          - validation_only
 
 jobs:
   sync:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          python-version: '3.11'
+          node-version: '20'
 
-      - name: Install sync dependencies
-        run: pip install -r sync/requirements.txt
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Run Phoenix Parser
+      - name: Run ATLAS Sync
         env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          ALPACA_API_URL: ${{ secrets.ALPACA_API_URL }}
+        run: node scripts/sync-wrapper.mjs
+
+      - name: Write sync result to memory on failure
+        if: failure()
+        env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-        run: python sync/run_sync.py
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          node scripts/memory.mjs write bug "github-actions-sync-failure" \
+            "GitHub Actions sync workflow failed at $(date -u +%Y-%m-%dT%H:%M:%SZ). Check Actions logs. Run ID: ${{ github.run_id }}" \
+            --tags=sync,github-actions,failure,critical --priority=2

@@ -11,6 +11,7 @@ import { Loading, EmptyState } from './components.js';
 import { computePortfolioMetrics, computePeriodReturns } from './perf-engine.js';
 import { OverviewPanel, ReturnsPanel } from './perf-panels-top.js';
 import { RiskPanel, PositionsPanel } from './perf-panels-bottom.js';
+import { AdvancedChart } from './advanced-chart.js';
 
 var useState = React.useState, useEffect = React.useEffect, useMemo = React.useMemo;
 var h = React.createElement;
@@ -20,6 +21,7 @@ var SUB_TABS = [
     { id: 'returns',   label: 'RETURNS',   sub: 'Period Analysis' },
     { id: 'risk',      label: 'RISK',      sub: 'Drawdown & VaR' },
     { id: 'positions', label: 'POSITIONS', sub: 'Attribution' },
+    { id: 'charts',    label: 'CHARTS',    sub: 'Advanced Analysis' },
 ];
 
 export function PerformanceSuite() {
@@ -85,7 +87,12 @@ export function PerformanceSuite() {
     var ytd      = periods ? periods.ytd : null;
 
     // Account Equity = latest equity value from portfolio_equity_curve (via navSeries)
-    var accountEquity = hasNav ? navSeries[navSeries.length - 1].nav : null;
+    // Mirror Portfolio Home priority: account_snapshots.equity (via vw_command_centre) first,
+    // fall back to nightly NAV history only if the live snapshot is absent.
+    var navHistoryEquity = hasNav ? navSeries[navSeries.length - 1].nav : null;
+    var accountEquity = (cmd.portfolio_nav != null && cmd.portfolio_nav > 0)
+        ? cmd.portfolio_nav
+        : navHistoryEquity;
     // Portfolio Value = sum of long position market values (from homeData)
     var portfolioValue = homeData && homeData.length
         ? homeData.reduce(function(s, r) { return s + (r.market_value != null ? Number(r.market_value) : 0); }, 0)
@@ -229,6 +236,9 @@ export function PerformanceSuite() {
             break;
         case 'positions':
             panel = hasPerf ? h(PositionsPanel, { perfData: perfData, cmdData: cmdData, homeData: homeData || [] }) : h(EmptyState, null);
+            break;
+        case 'charts':
+            panel = h('div', { style: { height: 'calc(100vh - 220px)', minHeight: 480 } }, h(AdvancedChart, null));
             break;
     }
 

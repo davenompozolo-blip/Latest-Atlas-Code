@@ -98,6 +98,14 @@ PAGE_REGISTRY = [
 
     # --- System ---
     PageDefinition(
+        key="sql_terminal",
+        title="SQL Terminal",
+        icon="🛢",
+        handler=_load_handler("ui.pages.sql_terminal", "render_sql_terminal", "SQL Terminal", "🛢"),
+        category="system",
+    ),
+
+    PageDefinition(
         key="database",
         title="Database",
         icon="💾",
