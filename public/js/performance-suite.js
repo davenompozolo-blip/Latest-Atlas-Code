@@ -11,6 +11,7 @@ import { Loading, EmptyState } from './components.js';
 import { computePortfolioMetrics, computePeriodReturns } from './perf-engine.js';
 import { OverviewPanel, ReturnsPanel } from './perf-panels-top.js';
 import { RiskPanel, PositionsPanel } from './perf-panels-bottom.js';
+import { AdvancedChart } from './advanced-chart.js';
 
 var useState = React.useState, useEffect = React.useEffect, useMemo = React.useMemo;
 var h = React.createElement;
@@ -20,6 +21,7 @@ var SUB_TABS = [
     { id: 'returns',   label: 'RETURNS',   sub: 'Period Analysis' },
     { id: 'risk',      label: 'RISK',      sub: 'Drawdown & VaR' },
     { id: 'positions', label: 'POSITIONS', sub: 'Attribution' },
+    { id: 'charts',    label: 'CHARTS',    sub: 'Advanced Analysis' },
 ];
 
 export function PerformanceSuite() {
@@ -234,6 +236,9 @@ export function PerformanceSuite() {
             break;
         case 'positions':
             panel = hasPerf ? h(PositionsPanel, { perfData: perfData, cmdData: cmdData, homeData: homeData || [] }) : h(EmptyState, null);
+            break;
+        case 'charts':
+            panel = h('div', { style: { height: 'calc(100vh - 220px)', minHeight: 480 } }, h(AdvancedChart, null));
             break;
     }
 
