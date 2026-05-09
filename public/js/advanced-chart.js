@@ -1,28 +1,29 @@
 // ============================================================
 // ATLAS Terminal — Advanced Charting Module
 // ------------------------------------------------------------
-// Full-featured multi-asset comparison chart with technical
-// overlays and stacked subplots.
+// Portfolio equity curve vs real comparison assets.
 //
-// Follows the ATLAS Terminal UI Design Specification Rev 1.0.
+// Data sources:
+//   Portfolio  — vw_portfolio_nav_daily (real, passed as prop)
+//   All others — price_history via Supabase (fetched on-demand)
 //
-// Depends on: Plotly (CDN global), React (CDN global)
+// Depends on: Plotly (CDN global), React (CDN global), sb (config)
 // ============================================================
 
-var h              = React.createElement;
-var useState       = React.useState;
-var useEffect      = React.useEffect;
-var useRef         = React.useRef;
-var useCallback    = React.useCallback;
-var useMemo        = React.useMemo;
+import { sb } from './config.js';
 
-// ── Design constants ──────────────────────────────────────────────────────────
+var h           = React.createElement;
+var useState    = React.useState;
+var useEffect   = React.useEffect;
+var useRef      = React.useRef;
+
+// ── Constants ─────────────────────────────────────────────────────────────────
 
 var SERIES_PALETTE = [
-    '#00d4ff', // cyan      — always first / primary (matches terminal brand)
+    '#00d4ff', // cyan      — portfolio / primary
     '#f59e0b', // gold
     '#8b5cf6', // violet
-    '#06b6d4', // cyan
+    '#06b6d4', // teal
     '#f43f5e', // rose
     '#10b981', // emerald
     '#fb923c', // orange
@@ -34,91 +35,28 @@ var SERIES_PALETTE = [
 var TIMEFRAMES = ['1M', '3M', '6M', 'YTD', '1Y', '3Y', '5Y'];
 var MAX_SERIES  = 8;
 
-var ASSET_CATALOG = {
-    'Portfolio':      [{ id: 'portfolio',   label: 'ATLAS Portfolio', locked: true }],
-    'Benchmarks':     [
-        { id: 'msci-world', label: 'MSCI World'   },
-        { id: 'sp500',      label: 'S&P 500'      },
-        { id: 'alsi40',     label: 'ALSI 40'      },
-        { id: 'nasdaq100',  label: 'Nasdaq 100'   },
-        { id: 'msci-em',    label: 'MSCI EM'      },
-    ],
-    'Commodities':    [{ id: 'xauusd',    label: 'Gold (XAU/USD)'      }],
-    'Crypto':         [{ id: 'btcusd',    label: 'Bitcoin (BTC/USD)'   }],
-    'Equities':       [
-        { id: 'nvda', label: 'NVDA'            },
-        { id: 'aapl', label: 'AAPL'            },
-        { id: 'msft', label: 'MSFT'            },
-        { id: 'npn',  label: 'Naspers (NPN)'   },
-        { id: 'ang',  label: 'AngloGold (ANG)' },
-        { id: 'sol',  label: 'Sasol (SOL)'     },
-    ],
-    'FX':             [{ id: 'usdzar', label: 'USD/ZAR'      }],
-    'Fixed Income':   [{ id: 'usagg',  label: 'US Agg Bond'  }],
-    'Funds': [
-        { id: 'satrix40', label: 'Satrix 40 ETF'        },
-        { id: 'coro20',   label: 'Coronation Top 20'    },
-        { id: 'inv-sa',   label: 'Ninety One SA Equity' },
-        { id: 'psg-bal',  label: 'PSG Balanced'         },
-    ],
-};
+// ── Data helpers ──────────────────────────────────────────────────────────────
 
-// Per-asset mock data seeds and start prices
-var MOCK_META = {
-    'portfolio':   { seed: 42,  start: 100    },
-    'msci-world':  { seed: 7,   start: 95     },
-    'sp500':       { seed: 13,  start: 110    },
-    'alsi40':      { seed: 99,  start: 80     },
-    'nasdaq100':   { seed: 55,  start: 130    },
-    'msci-em':     { seed: 31,  start: 70     },
-    'xauusd':      { seed: 77,  start: 1800   },
-    'btcusd':      { seed: 11,  start: 28000  },
-    'nvda':        { seed: 22,  start: 220    },
-    'aapl':        { seed: 33,  start: 150    },
-    'msft':        { seed: 44,  start: 280    },
-    'npn':         { seed: 66,  start: 3200   },
-    'ang':         { seed: 88,  start: 320    },
-    'sol':         { seed: 19,  start: 185    },
-    'usdzar':      { seed: 3,   start: 18     },
-    'usagg':       { seed: 5,   start: 90     },
-    'satrix40':    { seed: 14,  start: 76     },
-    'coro20':      { seed: 28,  start: 42     },
-    'inv-sa':      { seed: 37,  start: 65     },
-    'psg-bal':     { seed: 51,  start: 58     },
-};
-
-// ── Mock OHLC generator ───────────────────────────────────────────────────────
-
-function genOHLC(days, startPrice, seed) {
-    var data  = [];
-    var price = startPrice;
-    var rng   = seed;
-    function rand() {
-        rng = (rng * 1664525 + 1013904223) & 0xffffffff;
-        return (rng >>> 0) / 0xffffffff;
-    }
-    var now = new Date();
-    for (var i = days; i >= 0; i--) {
-        var d = new Date(now);
-        d.setDate(d.getDate() - i);
-        if (d.getDay() === 0 || d.getDay() === 6) continue;
-        var chg    = (rand() - 0.48) * 0.022;
-        var open   = price;
-        var close  = price * (1 + chg);
-        var high   = Math.max(open, close) * (1 + rand() * 0.01);
-        var low    = Math.min(open, close) * (1 - rand() * 0.01);
-        var volume = Math.floor(500000 + rand() * 2000000);
-        data.push({
-            date:   d.toISOString().slice(0, 10),
-            open:   +open.toFixed(4),
-            high:   +high.toFixed(4),
-            low:    +low.toFixed(4),
-            close:  +close.toFixed(4),
-            volume: volume,
+function navToOHLC(navSeries) {
+    // Portfolio NAV has no intraday data — close = nav for all OHLC fields
+    return navSeries
+        .slice()
+        .sort(function(a, b) { return new Date(a.price_date) - new Date(b.price_date); })
+        .map(function(d) {
+            var v = parseFloat(d.nav);
+            return { date: d.price_date, open: v, high: v, low: v, close: v, volume: 0 };
         });
-        price = close;
-    }
-    return data;
+}
+
+function priceRowToOHLC(d) {
+    return {
+        date:   d.price_date,
+        open:   parseFloat(d.open)                        || 0,
+        high:   parseFloat(d.high)                        || 0,
+        low:    parseFloat(d.low)                         || 0,
+        close:  parseFloat(d.close || d.adjusted_close)   || 0,
+        volume: parseInt(d.volume)                        || 0,
+    };
 }
 
 function sliceByTimeframe(data, tf) {
@@ -138,13 +76,14 @@ function sliceByTimeframe(data, tf) {
 function normaliseData(sliced) {
     if (!sliced.length) return sliced;
     var base = sliced[0].close;
+    if (!base) return sliced;
     return sliced.map(function(d) {
         return {
-            date:   d.date,
-            open:   +(d.open  / base * 100).toFixed(4),
-            high:   +(d.high  / base * 100).toFixed(4),
-            low:    +(d.low   / base * 100).toFixed(4),
-            close:  +(d.close / base * 100).toFixed(4),
+            date: d.date,
+            open:   +(d.open   / base * 100).toFixed(4),
+            high:   +(d.high   / base * 100).toFixed(4),
+            low:    +(d.low    / base * 100).toFixed(4),
+            close:  +(d.close  / base * 100).toFixed(4),
             volume: d.volume,
         };
     });
@@ -181,8 +120,7 @@ function ema(prices, period) {
 }
 
 function bollingerBands(prices, period, mult) {
-    period = period || 20;
-    mult   = mult   || 2;
+    period = period || 20; mult = mult || 2;
     var mid = sma(prices, period);
     return prices.map(function(_, i) {
         if (mid[i] === null) return { upper: null, mid: null, lower: null };
@@ -190,8 +128,7 @@ function bollingerBands(prices, period, mult) {
         var avg   = mid[i];
         var variance = 0;
         slice.forEach(function(v) { variance += (v - avg) * (v - avg); });
-        variance /= slice.length;
-        var std = Math.sqrt(variance);
+        var std = Math.sqrt(variance / slice.length);
         return { upper: avg + mult * std, mid: avg, lower: avg - mult * std };
     });
 }
@@ -201,12 +138,12 @@ function rsi(closes, period) {
     var gains = [], losses = [];
     for (var i = 1; i < closes.length; i++) {
         var diff = closes[i] - closes[i - 1];
-        gains.push(diff  > 0 ?  diff : 0);
+        gains.push(diff > 0 ? diff : 0);
         losses.push(diff < 0 ? -diff : 0);
     }
-    var result  = [null];
+    var result = [null];
     var avgGain = 0, avgLoss = 0;
-    for (var j = 0; j < period; j++) { avgGain += gains[j]; avgLoss += losses[j]; }
+    for (var j = 0; j < period && j < gains.length; j++) { avgGain += gains[j]; avgLoss += losses[j]; }
     avgGain /= period; avgLoss /= period;
     for (var k = 0; k < gains.length; k++) {
         if (k < period) { result.push(null); continue; }
@@ -218,9 +155,7 @@ function rsi(closes, period) {
 }
 
 function macd(closes, fast, slow, signal) {
-    fast   = fast   || 12;
-    slow   = slow   || 26;
-    signal = signal || 9;
+    fast = fast || 12; slow = slow || 26; signal = signal || 9;
     var emaFast  = ema(closes, fast);
     var emaSlow  = ema(closes, slow);
     var macdLine = closes.map(function(_, i) {
@@ -238,32 +173,24 @@ function macd(closes, fast, slow, signal) {
 function computeStats(sliced) {
     if (!sliced || sliced.length < 2) return null;
     var closes = sliced.map(function(d) { return d.close; });
-    var first  = closes[0];
-    var last   = closes[closes.length - 1];
-    var days   = sliced.length;
-
+    var first  = closes[0], last = closes[closes.length - 1], days = sliced.length;
     var totalReturn = last / first - 1;
     var annReturn   = Math.pow(1 + totalReturn, 252 / days) - 1;
-
-    var logReturns = [], mean = 0;
+    var logReturns  = [], mean = 0;
     for (var i = 1; i < closes.length; i++) {
         var lr = Math.log(closes[i] / closes[i - 1]);
-        logReturns.push(lr);
-        mean += lr;
+        logReturns.push(lr); mean += lr;
     }
     mean /= logReturns.length;
     var variance = 0;
     logReturns.forEach(function(v) { variance += (v - mean) * (v - mean); });
-    variance /= logReturns.length;
-    var volatility = Math.sqrt(variance * 252);
-
+    var volatility = Math.sqrt(variance / logReturns.length * 252);
     var peak = closes[0], maxDD = 0;
     closes.forEach(function(c) {
         if (c > peak) peak = c;
         var dd = (c - peak) / peak;
         if (dd < maxDD) maxDD = dd;
     });
-
     return { totalReturn: totalReturn, annReturn: annReturn, volatility: volatility, maxDD: maxDD };
 }
 
@@ -279,39 +206,33 @@ var AXIS_BASE = {
 };
 
 function buildPlotlyConfig(opts) {
-    var series    = opts.series;
-    var allData   = opts.allData;
-    var overlays  = opts.overlays;
-    var subplots  = opts.subplots;
-    var timeframe = opts.timeframe;
-    var normalise = opts.normalise;
+    var series    = opts.series,   allData   = opts.allData;
+    var overlays  = opts.overlays, subplots  = opts.subplots;
+    var timeframe = opts.timeframe, normalise = opts.normalise;
     var chartType = opts.chartType;
-
-    var traces = [], shapes = [];
+    var traces    = [], shapes    = [];
 
     // Subplot domain allocation
     var spDefs = [];
     if (subplots.volume) spDefs.push({ key: 'volume', frac: 0.12, yKey: 'yaxis2' });
     if (subplots.rsi)    spDefs.push({ key: 'rsi',    frac: 0.15, yKey: 'yaxis3' });
     if (subplots.macd)   spDefs.push({ key: 'macd',   frac: 0.18, yKey: 'yaxis4' });
-
     var GAP = 0.015;
-    var totalFrac = spDefs.reduce(function(s, sp) { return s + sp.frac + GAP; }, 0);
+    var totalFrac  = spDefs.reduce(function(s, sp) { return s + sp.frac + GAP; }, 0);
     var mainDomain = [totalFrac, 1.0];
-
     var currentBottom = 0, spDomains = {};
     spDefs.forEach(function(sp) {
         spDomains[sp.key] = [currentBottom, currentBottom + sp.frac - GAP];
         currentBottom += sp.frac;
     });
-
     var yaxes = { yaxis: Object.assign({}, AXIS_BASE, { domain: mainDomain }) };
 
     // Primary series + overlays
     series.forEach(function(s, idx) {
         var raw = allData[s.id];
-        if (!raw) return;
+        if (!raw || !raw.length) return;
         var sliced = sliceByTimeframe(raw, timeframe);
+        if (!sliced.length) return;
         var disp   = normalise ? normaliseData(sliced) : sliced;
         var colour = SERIES_PALETTE[idx % SERIES_PALETTE.length];
         var dates  = disp.map(function(d) { return d.date; });
@@ -347,14 +268,11 @@ function buildPlotlyConfig(opts) {
             if (overlays.ema12) traces.push({ type:'scatter', mode:'lines', name:'EMA 12', x:dates, y:ema(prices,12),  line:{color:'#34d399',width:1.3},             yaxis:'y',xaxis:'x' });
             if (overlays.ema26) traces.push({ type:'scatter', mode:'lines', name:'EMA 26', x:dates, y:ema(prices,26),  line:{color:'#60a5fa',width:1.3},             yaxis:'y',xaxis:'x' });
             if (overlays.bb) {
-                var bb    = bollingerBands(prices, 20, 2);
-                var upper = bb.map(function(b) { return b.upper; });
-                var bbMid = bb.map(function(b) { return b.mid;   });
-                var lower = bb.map(function(b) { return b.lower; });
+                var bb = bollingerBands(prices, 20, 2);
                 traces.push(
-                    { type:'scatter',mode:'lines',name:'BB Upper',x:dates,y:upper,line:{color:'rgba(148,163,184,0.35)',width:1,dash:'dot'},fill:'none',yaxis:'y',xaxis:'x' },
-                    { type:'scatter',mode:'lines',name:'BB Mid',  x:dates,y:bbMid,line:{color:'rgba(100,116,139,0.6)', width:1},           fill:'none',yaxis:'y',xaxis:'x' },
-                    { type:'scatter',mode:'lines',name:'BB Lower',x:dates,y:lower,line:{color:'rgba(148,163,184,0.35)',width:1,dash:'dot'},fill:'tonexty',fillcolor:'rgba(148,163,184,0.07)',yaxis:'y',xaxis:'x' }
+                    { type:'scatter',mode:'lines',name:'BB Upper',x:dates,y:bb.map(function(b){return b.upper;}),line:{color:'rgba(148,163,184,0.35)',width:1,dash:'dot'},fill:'none',yaxis:'y',xaxis:'x' },
+                    { type:'scatter',mode:'lines',name:'BB Mid',  x:dates,y:bb.map(function(b){return b.mid;  }),line:{color:'rgba(100,116,139,0.6)', width:1         },fill:'none',yaxis:'y',xaxis:'x' },
+                    { type:'scatter',mode:'lines',name:'BB Lower',x:dates,y:bb.map(function(b){return b.lower;}),line:{color:'rgba(148,163,184,0.35)',width:1,dash:'dot'},fill:'tonexty',fillcolor:'rgba(148,163,184,0.07)',yaxis:'y',xaxis:'x' }
                 );
             }
         }
@@ -370,7 +288,7 @@ function buildPlotlyConfig(opts) {
             x: vSliced.map(function(d) { return d.date; }),
             y: vSliced.map(function(d) { return d.volume; }),
             marker: { color: vCloses.map(function(c, i) {
-                return i === 0 || c >= vCloses[i - 1] ? 'rgba(0,212,255,0.38)' : 'rgba(239,68,68,0.38)';
+                return i === 0 || c >= vCloses[i-1] ? 'rgba(0,212,255,0.38)' : 'rgba(239,68,68,0.38)';
             }) },
             yaxis: 'y2', xaxis: 'x',
         });
@@ -382,13 +300,10 @@ function buildPlotlyConfig(opts) {
         var rRaw    = allData[series[0].id];
         var rSliced = sliceByTimeframe(rRaw || [], timeframe);
         var rCloses = rSliced.map(function(d) { return d.close; });
-        var rDates  = rSliced.map(function(d) { return d.date;  });
-        var rVals   = rsi(rCloses);
         traces.push({
             type:'scatter', mode:'lines', name:'RSI',
-            x: rDates, y: rVals,
-            line: { color: '#8b5cf6', width: 1.5 },
-            yaxis: 'y3', xaxis: 'x',
+            x: rSliced.map(function(d) { return d.date; }), y: rsi(rCloses),
+            line: { color: '#8b5cf6', width: 1.5 }, yaxis: 'y3', xaxis: 'x',
         });
         yaxes['yaxis3'] = Object.assign({}, AXIS_BASE, {
             domain: spDomains.rsi || [0, 0.15], range: [0, 100],
@@ -409,7 +324,7 @@ function buildPlotlyConfig(opts) {
         var mCalc   = macd(mCloses);
         traces.push(
             { type:'bar',     name:'MACD Hist', x:mDates, y:mCalc.histogram,
-              marker:{ color: mCalc.histogram.map(function(v) { return (v||0) >= 0 ? 'rgba(0,212,255,0.5)' : 'rgba(239,68,68,0.5)'; }) },
+              marker:{ color: mCalc.histogram.map(function(v) { return (v||0)>=0 ? 'rgba(0,212,255,0.5)' : 'rgba(239,68,68,0.5)'; }) },
               yaxis:'y4', xaxis:'x' },
             { type:'scatter', mode:'lines', name:'MACD',   x:mDates, y:mCalc.macdLine,   line:{ color:'#00d4ff', width:1.3 }, yaxis:'y4', xaxis:'x' },
             { type:'scatter', mode:'lines', name:'Signal', x:mDates, y:mCalc.signalLine, line:{ color:'#f59e0b', width:1.3 }, yaxis:'y4', xaxis:'x' }
@@ -420,7 +335,7 @@ function buildPlotlyConfig(opts) {
         });
     }
 
-    // Anchor area chart to data range — prevents fill drawing all the way to absolute zero
+    // Anchor area chart to data range (prevents fill drawing to absolute zero)
     if (chartType === 'area' && series.length > 0) {
         var allCloses = [];
         series.forEach(function(s) {
@@ -536,6 +451,19 @@ function AddPanel(props) {
     props.activeSeries.forEach(function(s) { activeIds[s.id] = true; });
     var term = search.toLowerCase();
 
+    if (props.loading) {
+        return h('div', { className: 'ac-add-panel' },
+            h('div', { style: { padding: 12, fontSize: 11, color: 'rgba(255,255,255,0.32)', textAlign: 'center' } }, 'Loading assets…')
+        );
+    }
+
+    var hasCatalog = Object.keys(props.catalog).length > 0;
+    if (!hasCatalog) {
+        return h('div', { className: 'ac-add-panel' },
+            h('div', { style: { padding: 12, fontSize: 11, color: 'rgba(255,255,255,0.32)', textAlign: 'center' } }, 'No assets available')
+        );
+    }
+
     return h('div', { className: 'ac-add-panel' },
         h('div', { className: 'ac-sb-sec', style: { borderBottom: 'none', paddingBottom: 6 } },
             h('input', {
@@ -569,12 +497,13 @@ function AddPanel(props) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function AdvancedChart() {
-    var chartRef  = useRef(null);
+export function AdvancedChart(props) {
+    var navSeries  = props.navSeries || [];
+    var chartRef   = useRef(null);
     var allDataRef = useRef({});
     var ready      = useRef(false);
 
-    var _m = useState('portfolio-vs-benchmark');
+    var _m  = useState('portfolio-vs-benchmark');
     var mode = _m[0], setMode = _m[1];
 
     var _ct = useState('area');
@@ -583,7 +512,7 @@ export function AdvancedChart() {
     var _tf = useState('1Y');
     var timeframe = _tf[0], setTimeframe = _tf[1];
 
-    var _n = useState(false);
+    var _n = useState(true);
     var normalise = _n[0], setNormalise = _n[1];
 
     var _s = useState([{ id: 'portfolio', label: 'ATLAS Portfolio', locked: true }]);
@@ -598,15 +527,65 @@ export function AdvancedChart() {
     var _sa = useState(false);
     var showAdd = _sa[0], setShowAdd = _sa[1];
 
-    // Generate all mock data once
+    // dataVersion bumps after async fetches complete to trigger a redraw
+    var _dv = useState(0);
+    var dataVersion = _dv[0], setDataVersion = _dv[1];
+
+    // Catalog built from DB
+    var _cat = useState({});
+    var catalog = _cat[0], setCatalog = _cat[1];
+
+    var _cl = useState(true);
+    var catalogLoading = _cl[0], setCatalogLoading = _cl[1];
+
+    // On mount: load portfolio nav + fetch asset catalog from DB
     useEffect(function() {
-        Object.keys(MOCK_META).forEach(function(id) {
-            var m = MOCK_META[id];
-            allDataRef.current[id] = genOHLC(365 * 5, m.start, m.seed);
-        });
+        // 1. Convert real nav series to pseudo-OHLC
+        if (navSeries && navSeries.length) {
+            allDataRef.current['portfolio'] = navToOHLC(navSeries);
+        }
         ready.current = true;
+
+        // 2. Build asset catalog from Supabase
+        if (sb) {
+            Promise.all([
+                sb.from('assets').select('id, symbol, name, asset_class'),
+                sb.from('positions').select('symbol'),
+            ]).then(function(results) {
+                var assets  = results[0].data || [];
+                var posSet  = {};
+                (results[1].data || []).forEach(function(p) { posSet[p.symbol] = true; });
+
+                var holdings = [], others = [];
+                assets.forEach(function(a) {
+                    if (!a.symbol) return;
+                    var label = a.symbol + (a.name && a.name !== a.symbol ? '  –  ' + a.name : '');
+                    var item  = { id: a.symbol, label: label, assetId: a.id };
+                    if (posSet[a.symbol]) holdings.push(item);
+                    else others.push(item);
+                });
+
+                // Sort alphabetically within each group
+                function byLabel(a, b) { return a.id < b.id ? -1 : 1; }
+                holdings.sort(byLabel);
+                others.sort(byLabel);
+
+                var built = {};
+                if (holdings.length) built['My Holdings'] = holdings;
+                if (others.length)   built['All Assets']  = others;
+                setCatalog(built);
+                setCatalogLoading(false);
+            }).catch(function() { setCatalogLoading(false); });
+        } else {
+            setCatalogLoading(false);
+        }
+
         draw();
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Redraw whenever series/options or newly-fetched data changes
+    useEffect(function() { draw(); },
+        [series, overlays, subplots, timeframe, normalise, chartType, dataVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
     function draw() {
         if (!chartRef.current || !ready.current) return;
@@ -617,8 +596,6 @@ export function AdvancedChart() {
         });
         Plotly.react(chartRef.current, cfg.traces, cfg.layout, { responsive: true, displayModeBar: false });
     }
-
-    useEffect(function() { draw(); }, [series, overlays, subplots, timeframe, normalise, chartType]); // eslint-disable-line react-hooks/exhaustive-deps
 
     function handleModeChange(newMode) {
         setMode(newMode);
@@ -631,8 +608,22 @@ export function AdvancedChart() {
         setSeries(function(prev) {
             if (prev.length >= MAX_SERIES) return prev;
             if (prev.find(function(s) { return s.id === item.id; })) return prev;
-            return prev.concat([{ id: item.id, label: item.label, locked: false }]);
+            return prev.concat([{ id: item.id, label: item.label, locked: false, assetId: item.assetId }]);
         });
+
+        // Fetch price history from Supabase if not already cached
+        if (!allDataRef.current[item.id] && item.assetId && sb) {
+            sb.from('price_history')
+              .select('price_date, open, high, low, close, adjusted_close, volume')
+              .eq('asset_id', item.assetId)
+              .order('price_date', { ascending: true })
+              .then(function(res) {
+                  if (res.data && res.data.length) {
+                      allDataRef.current[item.id] = res.data.map(priceRowToOHLC);
+                      setDataVersion(function(v) { return v + 1; });
+                  }
+              });
+        }
     }
 
     function removeSeries(id) {
@@ -647,30 +638,23 @@ export function AdvancedChart() {
         setSubplots(function(prev) { var n = Object.assign({}, prev); n[key] = !n[key]; return n; });
     }
 
-    // Per-series stats
+    // Per-series stats over the selected timeframe
     var stats = series.map(function(s) {
         var raw = allDataRef.current[s.id];
-        if (!raw) return null;
+        if (!raw || !raw.length) return null;
         var st = computeStats(sliceByTimeframe(raw, timeframe));
         return st ? Object.assign({ id: s.id, label: s.label }, st) : null;
     }).filter(Boolean);
 
-    var addCatalog = mode === 'portfolio-vs-benchmark'
-        ? { 'Benchmarks': ASSET_CATALOG['Benchmarks'], 'Commodities': ASSET_CATALOG['Commodities'],
-            'Crypto': ASSET_CATALOG['Crypto'], 'Fixed Income': ASSET_CATALOG['Fixed Income'],
-            'Funds': ASSET_CATALOG['Funds'] }
-        : ASSET_CATALOG;
-
     var modeOptions      = [{ value:'portfolio-vs-benchmark', label:'Portfolio vs Benchmark' }, { value:'asset-vs-asset', label:'Asset vs Asset' }];
     var chartTypeOptions = [{ value:'area', label:'Area' }, { value:'line', label:'Line' }, { value:'candlestick', label:'Candle' }];
-
-    var overlayConfig = [
-        { key:'ma20',  label:'MA 20',           colour:'#fbbf24'                  },
-        { key:'ma50',  label:'MA 50',            colour:'#a78bfa'                  },
-        { key:'ma200', label:'MA 200',           colour:'#fb923c'                  },
-        { key:'ema12', label:'EMA 12',           colour:'#34d399'                  },
-        { key:'ema26', label:'EMA 26',           colour:'#60a5fa'                  },
-        { key:'bb',    label:'Bollinger (20,2)', colour:'rgba(148,163,184,0.6)'   },
+    var overlayConfig    = [
+        { key:'ma20',  label:'MA 20',           colour:'#fbbf24'                 },
+        { key:'ma50',  label:'MA 50',            colour:'#a78bfa'                 },
+        { key:'ma200', label:'MA 200',           colour:'#fb923c'                 },
+        { key:'ema12', label:'EMA 12',           colour:'#34d399'                 },
+        { key:'ema26', label:'EMA 26',           colour:'#60a5fa'                 },
+        { key:'bb',    label:'Bollinger (20,2)', colour:'rgba(148,163,184,0.6)'  },
     ];
     var subplotConfig = [
         { key:'volume', label:'Volume'         },
@@ -709,8 +693,16 @@ export function AdvancedChart() {
                             ? h('button', { className: 'ac-add-btn', onClick: function() { setShowAdd(function(v) { return !v; }); } }, showAdd ? 'Close' : '+ Add')
                             : null
                     ),
-                    showAdd ? h(AddPanel, { catalog: addCatalog, activeSeries: series, onAdd: addSeries, onClose: function() { setShowAdd(false); } }) : null,
-                    series.map(function(s, idx) { return h(SeriesItem, { key: s.id, item: s, idx: idx, onRemove: removeSeries }); })
+                    showAdd ? h(AddPanel, {
+                        catalog:       catalog,
+                        loading:       catalogLoading,
+                        activeSeries:  series,
+                        onAdd:         addSeries,
+                        onClose:       function() { setShowAdd(false); },
+                    }) : null,
+                    series.map(function(s, idx) {
+                        return h(SeriesItem, { key: s.id, item: s, idx: idx, onRemove: removeSeries });
+                    })
                 ),
 
                 // Overlays
@@ -729,10 +721,12 @@ export function AdvancedChart() {
                     })
                 ),
 
-                // Stats
+                // Performance stats
                 h('div', { className: 'ac-sb-sec', style: { borderBottom: 'none' } },
                     h('div', { className: 'ac-sb-title', style: { marginBottom: 8 } }, 'Performance'),
-                    stats.map(function(st) { return h(StatCard, Object.assign({ key: st.id }, st)); })
+                    stats.length
+                        ? stats.map(function(st) { return h(StatCard, Object.assign({ key: st.id }, st)); })
+                        : h('div', { style: { fontSize: 11, color: 'rgba(255,255,255,0.28)', paddingTop: 4 } }, 'Add a series to see stats')
                 )
             ),
 
