@@ -209,6 +209,9 @@ var SECTORS = {
     consumer:    { beta: 0.80, D0: 1.50, gS: 0.07, gL: 0.025, rd: 0.040, wd: 0.20, label: 'Consumer' },
     industrials: { beta: 1.05, D0: 1.20, gS: 0.07, gL: 0.025, rd: 0.042, wd: 0.25, label: 'Industrials' },
     realestate:  { beta: 0.70, D0: 3.50, gS: 0.05, gL: 0.025, rd: 0.045, wd: 0.50, label: 'Real Estate' },
+    materials:   { beta: 1.05, D0: 1.50, gS: 0.06, gL: 0.022, rd: 0.043, wd: 0.28, label: 'Materials' },
+    comms:       { beta: 0.90, D0: 1.20, gS: 0.08, gL: 0.025, rd: 0.042, wd: 0.30, label: 'Comm. Services' },
+    general:     { beta: 1.00, D0: 1.00, gS: 0.07, gL: 0.025, rd: 0.044, wd: 0.25, label: 'General' },
 };
 
 var INNER_TABS = [
@@ -222,20 +225,109 @@ var INNER_TABS = [
     { k: 'sens',  l: '🔥 Sensitivity' },
 ];
 
-// ─── Sector name mapper (Alpha Vantage → our SECTORS keys) ───────────────────
-function avSectorToKey(sector) {
-    if (!sector) return null;
-    var s = sector.toLowerCase();
-    if (s.includes('tech') || s.includes('software') || s.includes('semiconductor')) return 'technology';
-    if (s.includes('financ') || s.includes('bank') || s.includes('insurance'))       return 'financials';
-    if (s.includes('health') || s.includes('pharma') || s.includes('biotech'))        return 'healthcare';
-    if (s.includes('energy') || s.includes('oil') || s.includes('gas'))               return 'energy';
-    if (s.includes('utilit'))                                                          return 'utilities';
-    if (s.includes('real estate') || s.includes('reit'))                               return 'realestate';
-    if (s.includes('industr') || s.includes('aerospace') || s.includes('defense'))    return 'industrials';
-    if (s.includes('consumer') || s.includes('retail') || s.includes('food'))         return 'consumer';
+// ─── Sector classifier — covers Yahoo Finance sectors, Finnhub GICS industries,
+//     and Alpha Vantage sector strings. Pass both sector AND industry fields for
+//     best coverage (Finnhub only returns an industry string, not a broad sector).
+function sectorToKey(sector, industry) {
+    // Build a list of strings to test, most authoritative first
+    var candidates = [];
+    if (sector)   candidates.push(sector.toLowerCase());
+    if (industry && industry !== sector) candidates.push(industry.toLowerCase());
+
+    for (var ci = 0; ci < candidates.length; ci++) {
+        var s = candidates[ci];
+
+        // ── Real Estate (check before industrials to avoid 'construction' clash)
+        if (s.includes('real estate') || s.includes('reit') || s.includes('realty') ||
+            s.includes('property trust'))
+            return 'realestate';
+
+        // ── Utilities
+        if (s.includes('utilit') || s.includes('water utility') || s.includes('gas utility') ||
+            s.includes('regulated gas') || s.includes('regulated electric') ||
+            s.includes('regulated water') || s.includes('independent power'))
+            return 'utilities';
+
+        // ── Energy (check before industrials: pipelines, refiners)
+        if (s.includes('energy') || s.includes('oil') || s.includes('gas e&p') ||
+            s.includes('petroleum') || s.includes('coal') || s.includes('uranium') ||
+            s.includes('pipeline') || s.includes('refin') || s.includes('midstream') ||
+            s.includes('integrated oil') || s.includes('oil & gas') || s.includes('fossil'))
+            return 'energy';
+
+        // ── Healthcare (check before technology: med-tech overlap)
+        if (s.includes('health') || s.includes('pharma') || s.includes('biotech') ||
+            s.includes('medical') || s.includes('drug') || s.includes('hospital') ||
+            s.includes('diagnostics') || s.includes('managed care') || s.includes('life science') ||
+            s.includes('therapeut') || s.includes('clinical') || s.includes('genomic') ||
+            s.includes('radiolog') || s.includes('dental') || s.includes('optometri') ||
+            s.includes('medtech'))
+            return 'healthcare';
+
+        // ── Financials
+        if (s.includes('financ') || s.includes('bank') || s.includes('insurance') ||
+            s.includes('invest') || s.includes('asset management') || s.includes('credit') ||
+            s.includes('mortgage') || s.includes('brokerage') || s.includes('capital market') ||
+            s.includes('exchange') || s.includes('wealth') || s.includes('private equity') ||
+            s.includes('financial service') || s.includes('diversified financial'))
+            return 'financials';
+
+        // ── Communication Services (before technology: internet, media)
+        if (s.includes('communication service') || s.includes('telecom') || s.includes('wireless') ||
+            s.includes('broadcasting') || s.includes('publishing') || s.includes('advertising') ||
+            s.includes('interactive media') || s.includes('entertainment') ||
+            s.includes('gaming & multimedia') || s.includes('electronic gaming') ||
+            s.includes('social media') || s.includes('media'))
+            return 'comms';
+
+        // ── Technology
+        if (s.includes('tech') || s.includes('software') || s.includes('semiconductor') ||
+            s.includes('hardware') || s.includes('computer') || s.includes('internet content') ||
+            s.includes('data center') || s.includes('cloud') || s.includes('cybersecur') ||
+            s.includes('artificial intel') || s.includes('information tech') ||
+            s.includes('electronic components') || s.includes('it service'))
+            return 'technology';
+
+        // ── Materials (before industrials: mining, chemicals overlap)
+        if (s.includes('basic material') || s.includes('mining') || s.includes('gold') ||
+            s.includes('silver') || s.includes('copper') || s.includes('steel') ||
+            s.includes('aluminum') || s.includes('metal') || s.includes('chemical') ||
+            s.includes('specialty chemical') || s.includes('agricultural input') ||
+            s.includes('fertilizer') || s.includes('paper') || s.includes('forestry') ||
+            s.includes('lumber') || s.includes('packaging') || s.includes('platinum') ||
+            s.includes('precious metal') || s.includes('commodity'))
+            return 'materials';
+
+        // ── Industrials
+        if (s.includes('industr') || s.includes('aerospace') || s.includes('defense') ||
+            s.includes('airlin') || s.includes('railroad') || s.includes('transport') ||
+            s.includes('logistics') || s.includes('machinery') || s.includes('construction') ||
+            s.includes('engineering') || s.includes('farm & heavy') || s.includes('conglomerate') ||
+            s.includes('waste') || s.includes('staffing') || s.includes('consulting') ||
+            s.includes('commercial service') || s.includes('business service') ||
+            s.includes('professional service') || s.includes('marine') || s.includes('trucking'))
+            return 'industrials';
+
+        // ── Consumer (cyclical + defensive: apparel, food, auto, travel, luxury)
+        if (s.includes('consumer') || s.includes('retail') || s.includes('apparel') ||
+            s.includes('footwear') || s.includes('textile') || s.includes('luxury') ||
+            s.includes('food') || s.includes('beverage') || s.includes('restaurant') ||
+            s.includes('hotel') || s.includes('lodging') || s.includes('travel') ||
+            s.includes('gambling') || s.includes('casino') || s.includes('leisure') ||
+            s.includes('sporting') || s.includes('auto') || s.includes('automobile') ||
+            s.includes('vehicle') || s.includes('tobacco') || s.includes('household') ||
+            s.includes('personal product') || s.includes('packaged food') ||
+            s.includes('grocery') || s.includes('discount') || s.includes('specialty store') ||
+            s.includes('home furnishing') || s.includes('home improvement') ||
+            s.includes('department store') || s.includes('e-commerce'))
+            return 'consumer';
+    }
+
     return null;
 }
+
+// Legacy alias kept for any external callers
+function avSectorToKey(sector) { return sectorToKey(sector, null); }
 
 // ─── Map /api/equity payload → ValuationHouse state ──────────────────────────
 function mapPayload(payload, series) {
@@ -311,9 +403,10 @@ function mapPayload(payload, series) {
         wd = Math.max(0.05, Math.min(0.70, de / (1 + de)));
     }
 
-    // Sector defaults
-    var secKey = avSectorToKey(o.Sector) || 'technology';
-    var sec    = SECTORS[secKey];
+    // Sector defaults — use both Sector and Industry fields so Finnhub's granular
+    // industry strings (e.g. "Apparel—Footwear & Accessories") resolve correctly
+    var secKey = sectorToKey(o.Sector, o.Industry) || 'general';
+    var sec    = SECTORS[secKey] || SECTORS['general'];
     var gL     = sec.gL;   // sector-specific long-run growth
 
     // Short-run growth priority: earningsGrowth → PEG-implied → revenueGrowth → sector default
