@@ -457,7 +457,7 @@ function mapPayload(payload, series) {
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
-export function ValuationHouse() {
+export function ValuationHouse(props) {
     var h = React.createElement;
     var _s = useState(INIT);
     var s = _s[0], setS = _s[1];
@@ -513,6 +513,15 @@ export function ValuationHouse() {
         setSearchError(null);
         setPendingSymbol(sym);
     }, []);
+
+    // ── Auto-load when initialTicker prop is set (from Screener navigation) ──
+    useEffect(function() {
+        var t = props && props.initialTicker;
+        if (!t) return;
+        var sym = t.trim().toUpperCase();
+        setSearchInput(sym);
+        setPendingSymbol(sym);
+    }, [props && props.initialTicker]);
 
     // ── Fetch on pendingSymbol change ──────────────────────────────────────
     useEffect(function() {
