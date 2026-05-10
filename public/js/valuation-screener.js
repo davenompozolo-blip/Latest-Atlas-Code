@@ -179,7 +179,7 @@ function ScreenerRow({ s, onNavigate }) {
             transition: 'background 0.1s',
         }
     },
-        // Ticker + Full Name (side by side)
+        // Ticker + Full Name (side by side; suppress name when it equals symbol)
         h('td', { style: { padding: '8px 10px', minWidth: 200 } },
             h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 8 } },
                 h('span', {
@@ -188,12 +188,12 @@ function ScreenerRow({ s, onNavigate }) {
                         color: '#fff', letterSpacing: 0.5, flexShrink: 0,
                     }
                 }, s.symbol),
-                h('span', {
+                (s.name && s.name !== s.symbol) && h('span', {
                     style: {
                         fontSize: 11, color: 'rgba(255,255,255,0.55)', fontFamily: 'Inter, sans-serif',
                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 180,
                     }
-                }, s.name || '')
+                }, s.name)
             )
         ),
         // Sector
@@ -307,15 +307,18 @@ export function ValuationScreener({ onNavigate }) {
     const [loading, setLoading]     = useState(true);
     const [error, setError]         = useState(null);
     const [marketMeta, setMarketMeta] = useState(null);
+    const [enrichProg, setEnrichProg] = useState(null); // { done, total } or null
     const [search, setSearch]       = useState('');
     const [activeStyle, setStyle]   = useState('All');
     const [filters, setFilters]     = useState({ sector: 'All', geo: 'All', div: 'All', regime: 'All', mcap: 'All' });
     const [sort, setSort]           = useState({ col: 'return_3m_pct', asc: false });
 
+    // ── Initial data load ──────────────────────────────────────────────────────
     useEffect(function() {
         setData([]);
         setError(null);
         setLoading(true);
+        setEnrichProg(null);
 
         if (universe === 'portfolio') {
             if (!sb) { setLoading(false); return; }
@@ -339,6 +342,112 @@ export function ValuationScreener({ onNavigate }) {
                 });
         }
     }, [universe]);
+
+    // ── Portfolio enrichment: fetch real names + fundamentals via /api/equity ──
+    // Triggered after portfolio data loads; enriches rows where name === symbol.
+    const { useRef } = React;
+    const portfolioEnrichCancelRef = useRef(false);
+    useEffect(function() {
+        if (universe !== 'portfolio' || data.length === 0) return;
+
+        const needsEnrich = data.filter(function(s) { return !s.name || s.name === s.symbol; });
+        if (!needsEnrich.length) return;
+
+        portfolioEnrichCancelRef.current = false;
+        var idx = 0;
+        setEnrichProg({ done: 0, total: needsEnrich.length });
+
+        function enrichNext() {
+            if (portfolioEnrichCancelRef.current || idx >= needsEnrich.length) {
+                setEnrichProg(null);
+                return;
+            }
+            var sym = needsEnrich[idx].symbol;
+            idx++;
+            fetch('/api/equity?symbol=' + encodeURIComponent(sym) + '&endpoint=overview')
+                .then(function(r) { return r.ok ? r.json() : null; })
+                .then(function(j) {
+                    if (portfolioEnrichCancelRef.current) return;
+                    var ov = j && (j.overview || j);
+                    if (ov && ov.Name && ov.Name !== sym) {
+                        setData(function(prev) {
+                            return prev.map(function(s) {
+                                if (s.symbol !== sym) return s;
+                                return Object.assign({}, s, {
+                                    name:               ov.Name,
+                                    sector:             ov.Sector || s.sector,
+                                    pe_ratio:           parseFloat(ov.PERatio) || s.pe_ratio,
+                                    ev_ebitda:          parseFloat(ov.EVToEBITDA) || s.ev_ebitda,
+                                    pb_ratio:           parseFloat(ov.PriceToBookRatio) || s.pb_ratio,
+                                    div_yield_pct:      ov.DividendYield ? parseFloat(ov.DividendYield) * 100 : s.div_yield_pct,
+                                    roe_pct:            ov.ReturnOnEquityTTM ? parseFloat(ov.ReturnOnEquityTTM) * 100 : s.roe_pct,
+                                    revenue_growth_pct: ov.RevenueGrowthYOY ? parseFloat(ov.RevenueGrowthYOY) * 100 : s.revenue_growth_pct,
+                                    analyst_target:     parseFloat(ov.AnalystTargetPrice) || s.analyst_target,
+                                });
+                            });
+                        });
+                    }
+                    setEnrichProg(function(p) { return p ? { done: p.done + 1, total: p.total } : null; });
+                    setTimeout(enrichNext, 800);
+                })
+                .catch(function() {
+                    setEnrichProg(function(p) { return p ? { done: p.done + 1, total: p.total } : null; });
+                    setTimeout(enrichNext, 800);
+                });
+        }
+        enrichNext();
+
+        return function() { portfolioEnrichCancelRef.current = true; };
+    }, [universe, data.length > 0 && data[0] && data[0].symbol]);
+
+    // ── Market enrichment: progressive per-symbol AV calls ────────────────────
+    // After the curated list loads, we enrich one stock at a time via AV.
+    const marketEnrichCancelRef = useRef(false);
+    useEffect(function() {
+        if (universe !== 'market' || data.length === 0) return;
+
+        // Only enrich stocks without AV data (no price or no PE)
+        var needsEnrich = data.filter(function(s) { return !s._avEnriched && s.current_price == null; });
+        if (!needsEnrich.length) return;
+
+        marketEnrichCancelRef.current = false;
+        var idx = 0;
+        setEnrichProg({ done: 0, total: needsEnrich.length });
+
+        function enrichNext() {
+            if (marketEnrichCancelRef.current || idx >= needsEnrich.length) {
+                setEnrichProg(null);
+                return;
+            }
+            var sym = needsEnrich[idx].symbol;
+            idx++;
+            fetch('/api/screener-market?symbol=' + encodeURIComponent(sym))
+                .then(function(r) { return r.ok ? r.json() : null; })
+                .then(function(j) {
+                    if (marketEnrichCancelRef.current) return;
+                    if (j && j.stock) {
+                        var enriched = Object.assign({}, j.stock, { _avEnriched: true });
+                        setData(function(prev) {
+                            return prev.map(function(s) { return s.symbol === sym ? enriched : s; });
+                        });
+                        setMarketMeta(function(m) {
+                            return m ? Object.assign({}, m, { enriched: (m.enriched || 0) + (j.enriched ? 1 : 0) }) : m;
+                        });
+                    }
+                    setEnrichProg(function(p) { return p ? { done: p.done + 1, total: p.total } : null; });
+                    // AV free tier: max 5 calls/min → 1 per 12s; paid: ~75/min.
+                    // 2.5s delay keeps us safe on free tier while not being too slow on paid.
+                    setTimeout(enrichNext, 2500);
+                })
+                .catch(function() {
+                    setEnrichProg(function(p) { return p ? { done: p.done + 1, total: p.total } : null; });
+                    setTimeout(enrichNext, 2500);
+                });
+        }
+        enrichNext();
+
+        return function() { marketEnrichCancelRef.current = true; };
+    }, [universe, data.length > 0 && data[0] && data[0].symbol]);
 
     // Derived filter options
     const sectors = useMemo(function() { return ['All', ...new Set(data.map(s => s.sector).filter(Boolean))].sort(); }, [data]);
@@ -429,8 +538,12 @@ export function ValuationScreener({ onNavigate }) {
             // Universe toggle
             h(UniverseToggle, { universe, onChange: function(u) { setUniverse(u); resetFilters(); } }),
             h('div', { style: { flex: 1 } }),
+            // Enrichment progress banner (both modes)
+            enrichProg && h('div', {
+                style: { fontSize: 10, color: '#00d4ff', fontFamily: 'DM Mono, monospace', textAlign: 'right', opacity: 0.7 }
+            }, 'Enriching ' + enrichProg.done + ' / ' + enrichProg.total + '…'),
             // Market mode info banner
-            universe === 'market' && marketMeta && h('div', {
+            universe === 'market' && !enrichProg && marketMeta && h('div', {
                 style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'DM Mono, monospace', textAlign: 'right' }
             },
                 (marketMeta.enriched || 0) + ' / ' + (marketMeta.total || 0) + ' enriched from Alpha Vantage'

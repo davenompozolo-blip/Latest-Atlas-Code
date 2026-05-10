@@ -352,48 +352,51 @@ module.exports = async function handler(req, res) {
   const apiKey = (process.env.ALPHA_VANTAGE_API_KEY || '').trim();
   const cfg    = supaCfg();
 
-  // 1. Exclude current portfolio holdings (best-effort; empty set on failure)
+  // ── Per-symbol enrichment mode (?symbol=X) ──────────────────────────────────
+  // Called by the frontend one stock at a time to avoid Vercel timeout.
+  const sym = ((req.query && req.query.symbol) || '').toUpperCase().trim();
+  if (sym) {
+    const candidate = UNIVERSE.find(c => c.s === sym);
+    if (!candidate) return res.status(404).json({ error: 'Symbol not in universe: ' + sym });
+
+    // Check cache first
+    const [ovCache, qtCache] = await Promise.all([
+      batchCacheGet(cfg, [sym], 'mkt_overview'),
+      batchCacheGet(cfg, [sym], 'mkt_quote'),
+    ]);
+
+    let ov = ovCache[sym] || null;
+    let qt = qtCache[sym] || null;
+
+    if (apiKey) {
+      if (!ov) {
+        ov = await avOverview(sym, apiKey);
+        if (ov) cacheSet(cfg, sym, 'mkt_overview', ov, OVERVIEW_TTL);
+      }
+      if (!qt) {
+        qt = await avGlobalQuote(sym, apiKey);
+        if (qt) cacheSet(cfg, sym, 'mkt_quote', qt, QUOTE_TTL);
+      }
+    }
+
+    return res.status(200).json({
+      stock:    formatRow(candidate, ov, qt),
+      enriched: !!ov,
+      has_av_key: !!apiKey,
+    });
+  }
+
+  // ── Main handler: serve curated list + cached data instantly ────────────────
+  // No live AV calls here — frontend handles progressive enrichment per-symbol.
   const portfolioSymbols = await getPortfolioSymbols(cfg);
   const candidates = UNIVERSE.filter(c => !portfolioSymbols.has(c.s));
   const symbols    = candidates.map(c => c.s);
 
-  // 2. Batch-read cache (no-ops gracefully if Supabase not configured)
   const [ovCache, qtCache] = await Promise.all([
     batchCacheGet(cfg, symbols, 'mkt_overview'),
     batchCacheGet(cfg, symbols, 'mkt_quote'),
   ]);
 
-  // 3. Fetch from AV for uncached stocks (up to MAX_AV_CALLS per request)
-  //    Overview first, then quote for stocks that got overview this request
-  if (apiKey) {
-    const needOv = candidates.filter(c => !ovCache[c.s]);
-    let avCalls = 0;
-
-    for (const c of needOv) {
-      if (avCalls >= MAX_AV_CALLS) break;
-      const data = await avOverview(c.s, apiKey);
-      avCalls++;
-      if (data) {
-        ovCache[c.s] = data;
-        // Fire-and-forget cache write (don't await — reduces latency)
-        cacheSet(cfg, c.s, 'mkt_overview', data, OVERVIEW_TTL);
-      }
-    }
-
-    const needQt = candidates.filter(c => ovCache[c.s] && !qtCache[c.s]);
-    for (const c of needQt) {
-      if (avCalls >= MAX_AV_CALLS) break;
-      const qt = await avGlobalQuote(c.s, apiKey);
-      avCalls++;
-      if (qt) {
-        qtCache[c.s] = qt;
-        cacheSet(cfg, c.s, 'mkt_quote', qt, QUOTE_TTL);
-      }
-    }
-  }
-
-  // 4. Return ALL candidates — enriched where cache/AV data exists,
-  //    falling back to curated-list metadata (name, sector, mc bucket) for the rest.
   const enriched = candidates.filter(c => ovCache[c.s]).length;
   const stocks   = candidates.map(c => formatRow(c, ovCache[c.s] || null, qtCache[c.s] || null));
 
