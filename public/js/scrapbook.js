@@ -840,30 +840,422 @@ export function ScrapbookSaveBar({ method, methodLabel, ticker, companyName, exc
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Main Scrapbook export — handles routing between Log and Profile
+// SectorPlaybook — groups saved companies by sector, generates sector notes
+// ─────────────────────────────────────────────────────────────────────────────
+const SECTOR_ICONS = {
+    'Technology': '⎌', 'Healthcare': '⚕', 'Financials': '◉',
+    'Energy': '⚡', 'Consumer Staples': '◈', 'Consumer Cyclical': '◐',
+    'Consumer Disc.': '◐', 'Industrials': '⚙', 'Real Estate': '◼',
+    'Materials': '⬡', 'Utilities': '⚡', 'Comm. Services': '◎',
+    'Communication Services': '◎', 'General': '◇', 'Uncategorised': '◇',
+};
+
+function convColor2(r) {
+    if (r === 'Strong Buy') return '#10b981';
+    if (r === 'Buy')        return '#34d399';
+    if (r === 'Hold')       return '#f59e0b';
+    if (r === 'Avoid')      return '#ef4444';
+    return '#6b7280';
+}
+
+function sectorConvictionLabel(companies) {
+    if (!companies.length) return { label: 'No data', color: '#6b7280' };
+    const buys = companies.filter(c => c.conviction_rating === 'Buy' || c.conviction_rating === 'Strong Buy').length;
+    const ratio = buys / companies.length;
+    if (ratio >= 0.75) return { label: 'Bullish',  color: '#10b981' };
+    if (ratio >= 0.5)  return { label: 'Mixed',    color: '#f59e0b' };
+    if (ratio >= 0.25) return { label: 'Cautious', color: '#BA7517' };
+    return { label: 'Bearish', color: '#ef4444' };
+}
+
+function ConvBar({ companies }) {
+    const total = companies.length || 1;
+    const sb2  = companies.filter(c => c.conviction_rating === 'Strong Buy').length;
+    const b    = companies.filter(c => c.conviction_rating === 'Buy').length;
+    const hold = companies.filter(c => c.conviction_rating === 'Hold').length;
+    const av   = companies.filter(c => c.conviction_rating === 'Avoid').length;
+    return h('div', { style: { display: 'flex', height: 5, borderRadius: 3, overflow: 'hidden', width: '100%', gap: 1 } },
+        sb2  > 0 && h('div', { style: { flex: sb2,  background: '#10b981' } }),
+        b    > 0 && h('div', { style: { flex: b,    background: '#34d399' } }),
+        hold > 0 && h('div', { style: { flex: hold, background: '#f59e0b' } }),
+        av   > 0 && h('div', { style: { flex: av,   background: '#ef4444' } })
+    );
+}
+
+function SectorCard({ sector, companies, latestNote, isExpanded, onToggle, onNavigate }) {
+    const cl = sectorConvictionLabel(companies);
+    const icon = SECTOR_ICONS[sector] || '◇';
+    const avgUpside = companies.reduce((a, c) => {
+        if (c.avg_fair_value && c.current_price && c.current_price > 0) {
+            return a + [(c.avg_fair_value - c.current_price) / c.current_price];
+        }
+        return a;
+    }, []);
+    const upside = avgUpside.length ? avgUpside.reduce((a, b) => a + b, 0) / avgUpside.length : null;
+
+    return h('div', {
+        style: {
+            background: 'rgba(255,255,255,0.03)',
+            border: '1px solid ' + (isExpanded ? 'rgba(0,212,255,0.3)' : 'rgba(255,255,255,0.08)'),
+            borderRadius: 10,
+            overflow: 'hidden',
+            transition: 'border-color 0.2s',
+        }
+    },
+        // Card header (always visible)
+        h('div', {
+            onClick: onToggle,
+            style: {
+                padding: '16px 20px',
+                cursor: 'pointer',
+                background: isExpanded ? 'rgba(0,212,255,0.04)' : 'transparent',
+                transition: 'background 0.15s',
+            }
+        },
+            h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 } },
+                h('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+                    h('span', { style: { fontSize: 18, opacity: 0.6 } }, icon),
+                    h('div', null,
+                        h('div', { style: { fontSize: 14, fontWeight: 700, color: '#fff', fontFamily: 'DM Mono, monospace' } }, sector),
+                        h('div', { style: { fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 2 } },
+                            companies.length + ' compan' + (companies.length === 1 ? 'y' : 'ies') + ' analysed')
+                    )
+                ),
+                h('div', { style: { textAlign: 'right' } },
+                    h('div', { style: { fontSize: 12, fontWeight: 700, color: cl.color, fontFamily: 'DM Mono, monospace' } }, cl.label),
+                    latestNote && h('div', { style: { fontSize: 9, color: 'rgba(255,255,255,0.3)', marginTop: 2 } },
+                        'Note: ' + new Date(latestNote.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }))
+                )
+            ),
+            h(ConvBar, { companies }),
+            upside != null && h('div', { style: { marginTop: 8, fontSize: 11, color: upside >= 0 ? '#10b981' : '#ef4444', fontFamily: 'DM Mono, monospace' } },
+                'Avg implied upside: ' + (upside >= 0 ? '+' : '') + (upside * 100).toFixed(1) + '%')
+        ),
+
+        // Expanded detail panel
+        isExpanded && h('div', { style: { borderTop: '1px solid rgba(255,255,255,0.06)' } },
+            h(SectorExpandedPanel, { sector, companies, latestNote, onNavigate })
+        )
+    );
+}
+
+function SectorExpandedPanel({ sector, companies, latestNote, onNavigate }) {
+    const [generatingNote, setGeneratingNote] = useState(false);
+    const [noteData, setNoteData]             = useState(latestNote || null);
+    const [noteError, setNoteError]           = useState(null);
+
+    async function handleGenerate() {
+        if (!sb) return;
+        setGeneratingNote(true);
+        setNoteError(null);
+        try {
+            // Fetch latest narratives for companies in this sector
+            const companyIds = companies.map(c => c.id);
+            const { data: narratives } = await sb
+                .from('scrapbook_narratives')
+                .select('*')
+                .in('company_id', companyIds)
+                .order('created_at', { ascending: false });
+
+            // Latest narrative per company
+            const latestByCompany = {};
+            (narratives || []).forEach(n => {
+                if (!latestByCompany[n.company_id]) latestByCompany[n.company_id] = n;
+            });
+            const orderedNarr = companies.map(c => latestByCompany[c.id] || null);
+
+            const resp = await fetch('/api/claude-sector', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sector, companies, narratives: orderedNarr }),
+            });
+            const result = await resp.json();
+            if (!resp.ok || result.error) throw new Error(result.error || 'Sector note generation failed');
+
+            if (result.parse_error) {
+                await sb.from('scrapbook_sector_notes').insert({
+                    sector,
+                    company_ids: companies.map(c => c.id),
+                    company_tickers: companies.map(c => c.ticker),
+                    company_count: companies.length,
+                    sector_thesis: result.raw_text || null,
+                    sector_conviction: 'Under Review',
+                });
+                setNoteData({ sector_thesis: result.raw_text, sector_conviction: 'Under Review', created_at: new Date().toISOString() });
+                return;
+            }
+
+            const { data: inserted } = await sb.from('scrapbook_sector_notes').insert({
+                sector,
+                company_ids: companies.map(c => c.id),
+                company_tickers: companies.map(c => c.ticker),
+                company_count: companies.length,
+                sector_thesis: result.sector_thesis || null,
+                sector_tailwinds: result.sector_tailwinds || null,
+                sector_headwinds: result.sector_headwinds || null,
+                relative_value: result.relative_value || null,
+                sector_verdict: result.sector_verdict || null,
+                sector_conviction: result.sector_conviction || 'Under Review',
+                shared_assumptions: result.shared_assumptions || null,
+                divergence_points: result.divergence_points || null,
+            }).select().single();
+            setNoteData(inserted || { ...result, created_at: new Date().toISOString() });
+        } catch (e) {
+            console.error('Sector note error:', e);
+            setNoteError(e.message);
+        } finally {
+            setGeneratingNote(false);
+        }
+    }
+
+    const convictionColor = { Overweight: '#10b981', Neutral: '#f59e0b', Underweight: '#ef4444', 'Under Review': '#6b7280' };
+
+    return h('div', { style: { padding: '20px' } },
+        // Company mini-cards grid
+        h('div', { style: { marginBottom: 20 } },
+            h('div', { style: { fontSize: 10, letterSpacing: 1.5, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', fontFamily: 'DM Mono, monospace', marginBottom: 10 } }, 'Companies in this sector'),
+            h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8 } },
+                companies.map(c =>
+                    h('div', {
+                        key: c.id,
+                        onClick: () => onNavigate && onNavigate(c.ticker),
+                        style: {
+                            background: 'rgba(255,255,255,0.04)',
+                            border: '1px solid rgba(255,255,255,0.08)',
+                            borderRadius: 6,
+                            padding: '10px 14px',
+                            cursor: onNavigate ? 'pointer' : 'default',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                        }
+                    },
+                        h('div', null,
+                            h('div', { style: { fontSize: 13, fontWeight: 700, fontFamily: 'DM Mono, monospace', color: '#fff' } }, c.ticker),
+                            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.4)', maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, c.company_name || ''),
+                            h('div', { style: { fontSize: 9, color: 'rgba(255,255,255,0.25)', marginTop: 2 } }, c.run_count + ' method' + (c.run_count !== 1 ? 's' : ''))
+                        ),
+                        c.conviction_rating && h('span', {
+                            style: {
+                                fontSize: 10, fontWeight: 700, color: convColor2(c.conviction_rating),
+                                background: convColor2(c.conviction_rating) + '22',
+                                border: '1px solid ' + convColor2(c.conviction_rating) + '44',
+                                borderRadius: 4, padding: '2px 7px', fontFamily: 'DM Mono, monospace',
+                            }
+                        }, c.conviction_rating)
+                    )
+                )
+            )
+        ),
+
+        // Sector analysis section
+        h('div', { style: { borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 16 } },
+            h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 } },
+                h('div', { style: { fontSize: 11, fontWeight: 700, letterSpacing: 1.5, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', fontFamily: 'DM Mono, monospace' } }, 'Sector Analysis'),
+                h('button', {
+                    onClick: handleGenerate,
+                    disabled: generatingNote,
+                    style: {
+                        background: generatingNote ? 'rgba(139,92,246,0.1)' : 'rgba(139,92,246,0.2)',
+                        border: '1px solid rgba(139,92,246,0.5)',
+                        color: '#a78bfa',
+                        borderRadius: 6,
+                        padding: '6px 14px',
+                        fontSize: 11,
+                        fontWeight: 700,
+                        cursor: generatingNote ? 'default' : 'pointer',
+                        fontFamily: 'DM Mono, monospace',
+                        opacity: generatingNote ? 0.7 : 1,
+                    }
+                }, generatingNote ? '⟳ Generating…' : (noteData ? '↺ Regenerate ✦' : 'Generate sector note ✦'))
+            ),
+
+            noteError && h('div', { style: { color: '#ef4444', fontSize: 12, marginBottom: 12, padding: '8px 12px', background: 'rgba(239,68,68,0.08)', borderRadius: 6, border: '1px solid rgba(239,68,68,0.2)' } },
+                'Sector note generation failed. Your company theses are intact. Error: ' + noteError),
+
+            noteData
+                ? h('div', null,
+                    // Conviction + verdict
+                    noteData.sector_conviction && h('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 } },
+                        h('span', {
+                            style: {
+                                fontSize: 12, fontWeight: 700,
+                                color: convictionColor[noteData.sector_conviction] || '#6b7280',
+                                background: (convictionColor[noteData.sector_conviction] || '#6b7280') + '22',
+                                border: '1px solid ' + (convictionColor[noteData.sector_conviction] || '#6b7280') + '44',
+                                borderRadius: 5, padding: '3px 12px', fontFamily: 'DM Mono, monospace',
+                            }
+                        }, noteData.sector_conviction),
+                        noteData.sector_verdict && h('span', { style: { fontSize: 12, color: 'rgba(255,255,255,0.6)', fontStyle: 'italic' } }, noteData.sector_verdict)
+                    ),
+
+                    // Thesis
+                    noteData.sector_thesis && h('div', { style: { fontSize: 13, lineHeight: 1.7, color: 'rgba(255,255,255,0.75)', marginBottom: 18, whiteSpace: 'pre-wrap' } }, noteData.sector_thesis),
+
+                    // Tailwinds + headwinds grid
+                    (noteData.sector_tailwinds || noteData.sector_headwinds) && h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 18 } },
+                        noteData.sector_tailwinds && h('div', null,
+                            h('div', { style: { fontSize: 10, fontWeight: 700, letterSpacing: 1.2, color: '#10b981', textTransform: 'uppercase', fontFamily: 'DM Mono, monospace', marginBottom: 8 } }, 'Sector Tailwinds'),
+                            (Array.isArray(noteData.sector_tailwinds) ? noteData.sector_tailwinds : []).map((tw, i) =>
+                                h('div', { key: i, style: { marginBottom: 8 } },
+                                    h('div', { style: { fontSize: 12, fontWeight: 600, color: '#34d399', marginBottom: 2 } }, '● ' + tw.theme),
+                                    tw.evidence && h('div', { style: { fontSize: 11, color: 'rgba(255,255,255,0.45)', paddingLeft: 12 } }, tw.evidence)
+                                )
+                            )
+                        ),
+                        noteData.sector_headwinds && h('div', null,
+                            h('div', { style: { fontSize: 10, fontWeight: 700, letterSpacing: 1.2, color: '#ef4444', textTransform: 'uppercase', fontFamily: 'DM Mono, monospace', marginBottom: 8 } }, 'Sector Headwinds'),
+                            (Array.isArray(noteData.sector_headwinds) ? noteData.sector_headwinds : []).map((hw, i) =>
+                                h('div', { key: i, style: { marginBottom: 8 } },
+                                    h('div', { style: { fontSize: 12, fontWeight: 600, color: '#f87171', marginBottom: 2 } }, '● ' + hw.risk),
+                                    hw.exposure && h('div', { style: { fontSize: 11, color: 'rgba(255,255,255,0.45)', paddingLeft: 12 } }, hw.exposure)
+                                )
+                            )
+                        )
+                    ),
+
+                    // Shared assumptions + divergence
+                    (noteData.shared_assumptions || noteData.divergence_points) && h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 } },
+                        noteData.shared_assumptions && h('div', { style: { background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.2)', borderRadius: 6, padding: 14 } },
+                            h('div', { style: { fontSize: 10, fontWeight: 700, letterSpacing: 1.2, color: '#a78bfa', textTransform: 'uppercase', fontFamily: 'DM Mono, monospace', marginBottom: 6 } }, 'Shared Assumptions'),
+                            h('div', { style: { fontSize: 12, color: 'rgba(255,255,255,0.65)', lineHeight: 1.6 } }, noteData.shared_assumptions)
+                        ),
+                        noteData.divergence_points && h('div', { style: { background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 6, padding: 14 } },
+                            h('div', { style: { fontSize: 10, fontWeight: 700, letterSpacing: 1.2, color: '#f59e0b', textTransform: 'uppercase', fontFamily: 'DM Mono, monospace', marginBottom: 6 } }, 'Divergence Points'),
+                            h('div', { style: { fontSize: 12, color: 'rgba(255,255,255,0.65)', lineHeight: 1.6 } }, noteData.divergence_points)
+                        )
+                    ),
+
+                    // Relative value
+                    noteData.relative_value && h('div', { style: { background: 'rgba(0,212,255,0.06)', border: '1px solid rgba(0,212,255,0.2)', borderRadius: 6, padding: 14 } },
+                        h('div', { style: { fontSize: 10, fontWeight: 700, letterSpacing: 1.2, color: '#00d4ff', textTransform: 'uppercase', fontFamily: 'DM Mono, monospace', marginBottom: 6 } }, 'Relative Value'),
+                        h('div', { style: { fontSize: 12, color: 'rgba(255,255,255,0.65)', lineHeight: 1.6 } }, noteData.relative_value)
+                    )
+                )
+                : h('div', { style: { padding: '24px 0', textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: 13 } },
+                    'No sector note yet. Click "Generate sector note" to synthesise all company theses into a sector view.'
+                )
+        )
+    );
+}
+
+function SectorPlaybook({ onNavigateToCompany }) {
+    const [companies, setCompanies]     = useState([]);
+    const [sectorNotes, setSectorNotes] = useState({});
+    const [loading, setLoading]         = useState(true);
+    const [expanded, setExpanded]       = useState(null);
+
+    useEffect(() => {
+        if (!sb) { setLoading(false); return; }
+        Promise.all([
+            sb.from('scrapbook_companies').select('*').order('last_run_at', { ascending: false }),
+            sb.from('scrapbook_sector_notes').select('*').order('created_at', { ascending: false }),
+        ]).then(([{ data: cos }, { data: notes }]) => {
+            setCompanies(cos || []);
+            const latestBySector = {};
+            (notes || []).forEach(n => { if (!latestBySector[n.sector]) latestBySector[n.sector] = n; });
+            setSectorNotes(latestBySector);
+            setLoading(false);
+        });
+    }, []);
+
+    // Group by sector
+    const bySector = {};
+    companies.forEach(c => {
+        const s = c.sector || 'Uncategorised';
+        if (!bySector[s]) bySector[s] = [];
+        bySector[s].push(c);
+    });
+    const sectors = Object.keys(bySector).sort();
+
+    if (loading) return h('div', { style: { padding: 40, color: 'rgba(255,255,255,0.4)', fontSize: 13 } }, 'Loading sector playbook…');
+    if (!sb) return h('div', { style: { padding: 40, color: 'rgba(255,255,255,0.4)', fontSize: 13 } }, 'Connect Supabase to view sector playbook.');
+    if (companies.length === 0) {
+        return h('div', { style: { padding: 60, textAlign: 'center' } },
+            h('div', { style: { fontSize: 28, marginBottom: 14, opacity: 0.3 } }, '⬡'),
+            h('div', { style: { fontSize: 14, color: 'rgba(255,255,255,0.5)', marginBottom: 6 } }, 'No companies in Scrapbook yet'),
+            h('div', { style: { fontSize: 12, color: 'rgba(255,255,255,0.3)' } }, 'Save valuation runs to build your sector library.')
+        );
+    }
+
+    return h('div', { style: { padding: 24 } },
+        h('div', { style: { marginBottom: 20 } },
+            h('div', { style: { fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 4 } },
+                sectors.length + ' sector' + (sectors.length !== 1 ? 's' : '') + ' · ' + companies.length + ' companies analysed'),
+            h('div', { style: { fontSize: 11, color: 'rgba(255,255,255,0.25)' } },
+                'Click a sector to expand and generate an institutional sector note.')
+        ),
+        h('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
+            sectors.map(sector =>
+                h(SectorCard, {
+                    key: sector,
+                    sector,
+                    companies: bySector[sector],
+                    latestNote: sectorNotes[sector] || null,
+                    isExpanded: expanded === sector,
+                    onToggle: () => setExpanded(expanded === sector ? null : sector),
+                    onNavigate: onNavigateToCompany,
+                })
+            )
+        )
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main Scrapbook export — handles routing between Log, Profile, and Sectors
 // ─────────────────────────────────────────────────────────────────────────────
 export function Scrapbook({ initialTicker }) {
     const [view, setView] = useState(initialTicker ? { mode: 'profile', ticker: initialTicker } : { mode: 'log' });
+
+    const mainMode = view.mode === 'profile' ? 'log' : view.mode;
+
+    function tabBtn(label, targetMode) {
+        const active = mainMode === targetMode;
+        return h('button', {
+            onClick: () => setView({ mode: targetMode }),
+            style: {
+                background: active ? 'rgba(0,212,255,0.12)' : 'transparent',
+                border: '1px solid ' + (active ? 'rgba(0,212,255,0.4)' : 'rgba(255,255,255,0.12)'),
+                color: active ? '#00d4ff' : 'rgba(255,255,255,0.5)',
+                borderRadius: 5,
+                padding: '5px 14px',
+                fontSize: 11,
+                fontWeight: active ? 700 : 400,
+                cursor: 'pointer',
+                fontFamily: 'DM Mono, monospace',
+                letterSpacing: 0.5,
+                transition: 'all 0.15s',
+            }
+        }, label);
+    }
 
     return h('div', { style: { minHeight: '100%', display: 'flex', flexDirection: 'column' } },
         // Header bar
         h('div', {
             style: {
                 borderBottom: '1px solid rgba(255,255,255,0.06)',
-                padding: '14px 24px',
+                padding: '12px 24px',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 12,
                 background: 'rgba(0,0,0,0.2)',
+                flexWrap: 'wrap',
             }
         },
             h('div', { style: { fontSize: 13, fontWeight: 700, color: 'var(--cyan, #00d4ff)', letterSpacing: 2, fontFamily: 'DM Mono, monospace' } }, '📒 VALUATION SCRAPBOOK'),
-            h('div', { style: { fontSize: 11, color: 'rgba(255,255,255,0.4)' } }, '— persistent research layer'),
-            view.mode === 'profile' && h('span', { style: { marginLeft: 8, fontSize: 12, color: 'rgba(255,255,255,0.5)', fontFamily: 'DM Mono, monospace' } }, '/ ' + view.ticker)
+            view.mode === 'profile' && h('span', { style: { fontSize: 12, color: 'rgba(255,255,255,0.5)', fontFamily: 'DM Mono, monospace' } }, '/ ' + view.ticker),
+            h('div', { style: { flex: 1 } }),
+            // Tab toggle (only when not in profile)
+            view.mode !== 'profile' && h('div', { style: { display: 'flex', gap: 6 } },
+                tabBtn('All companies', 'log'),
+                tabBtn('Sector playbook', 'sectors')
+            )
         ),
         h('div', { style: { flex: 1, overflowY: 'auto' } },
             view.mode === 'log'
                 ? h(ScrapbookLog, { onSelect: ticker => setView({ mode: 'profile', ticker }) })
+                : view.mode === 'sectors'
+                ? h(SectorPlaybook, { onNavigateToCompany: ticker => setView({ mode: 'profile', ticker }) })
                 : h(ScrapbookProfile, { ticker: view.ticker, onBack: () => setView({ mode: 'log' }) })
         )
     );
