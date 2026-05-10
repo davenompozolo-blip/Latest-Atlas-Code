@@ -1,8 +1,8 @@
 // ============================================================
 // ATLAS Terminal — Valuation House Screener
 // Landing page that helps surface which companies to value.
-// Reads from vw_screener (Supabase view) — one row per
-// portfolio holding with fundamentals + technicals joined.
+// Portfolio mode: reads from vw_screener (Supabase view).
+// Market mode: reads from /api/screener-market (Alpha Vantage).
 // Props: onNavigate(symbol) — called when user clicks "Value →"
 // ============================================================
 
@@ -28,8 +28,6 @@ const REGIME_COLORS = {
     Downtrend: { bg: 'rgba(239,68,68,0.15)',   text: '#f87171',  border: 'rgba(239,68,68,0.3)' },
     Sideways:  { bg: 'rgba(245,158,11,0.15)',  text: '#f59e0b',  border: 'rgba(245,158,11,0.3)' },
 };
-
-const CONVICTION_COLOR = { Overweight: '#10b981', Neutral: '#f59e0b', Underweight: '#ef4444' };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function fmtN(v, dec, sfx) {
@@ -110,7 +108,6 @@ function RSIBar({ rsi }) {
 
 // ── BucketStrip ───────────────────────────────────────────────────────────────
 function BucketStrip({ data, filters, activeStyle, onStyleClick }) {
-    // Counts from data filtered by everything except style
     const baseFiltered = useMemo(function() {
         return data.filter(function(s) {
             if (filters.sector !== 'All' && s.sector !== filters.sector) return false;
@@ -141,11 +138,8 @@ function BucketStrip({ data, filters, activeStyle, onStyleClick }) {
                 style: {
                     background: active ? c.bg : 'rgba(255,255,255,0.03)',
                     border: '1px solid ' + (active ? c.border : 'rgba(255,255,255,0.08)'),
-                    borderRadius: 8,
-                    padding: '10px 12px',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    transition: 'all 0.15s',
+                    borderRadius: 8, padding: '10px 12px',
+                    cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s',
                 }
             },
                 h('div', { style: { fontSize: 16, marginBottom: 4, color: active ? c.text : 'rgba(255,255,255,0.4)' } }, b.icon),
@@ -163,16 +157,10 @@ function SortableHeader({ label, col, sort, onSort, align }) {
     return h('th', {
         onClick: function() { onSort(col); },
         style: {
-            padding: '8px 10px',
-            fontSize: 9,
-            fontWeight: 700,
-            letterSpacing: 1.5,
+            padding: '8px 10px', fontSize: 9, fontWeight: 700, letterSpacing: 1.5,
             color: active ? '#00d4ff' : 'rgba(255,255,255,0.35)',
-            textTransform: 'uppercase',
-            cursor: 'pointer',
-            userSelect: 'none',
-            whiteSpace: 'nowrap',
-            textAlign: align || 'right',
+            textTransform: 'uppercase', cursor: 'pointer', userSelect: 'none',
+            whiteSpace: 'nowrap', textAlign: align || 'right',
             borderBottom: '1px solid rgba(255,255,255,0.08)',
             fontFamily: 'DM Mono, monospace',
         }
@@ -191,19 +179,39 @@ function ScreenerRow({ s, onNavigate }) {
             transition: 'background 0.1s',
         }
     },
-        // Ticker + Name + Sector
-        h('td', { style: { padding: '8px 10px', minWidth: 160 } },
-            h('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-                h('div', null,
-                    h('div', { style: { fontSize: 13, fontWeight: 700, fontFamily: 'DM Mono, monospace', color: '#fff', letterSpacing: 0.5 } }, s.symbol),
-                    h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.45)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, s.name || ''),
-                    h('div', { style: { fontSize: 9, color: 'rgba(255,255,255,0.25)', marginTop: 1 } }, s.sector || '')
-                )
+        // Ticker + Full Name (side by side)
+        h('td', { style: { padding: '8px 10px', minWidth: 200 } },
+            h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 8 } },
+                h('span', {
+                    style: {
+                        fontSize: 12, fontWeight: 700, fontFamily: 'DM Mono, monospace',
+                        color: '#fff', letterSpacing: 0.5, flexShrink: 0,
+                    }
+                }, s.symbol),
+                h('span', {
+                    style: {
+                        fontSize: 11, color: 'rgba(255,255,255,0.55)', fontFamily: 'Inter, sans-serif',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 180,
+                    }
+                }, s.name || '')
             )
+        ),
+        // Sector
+        h('td', { style: { padding: '8px 10px', minWidth: 120 } },
+            h('span', {
+                style: {
+                    fontSize: 10, color: 'rgba(255,255,255,0.45)',
+                    fontFamily: 'DM Mono, monospace',
+                    background: 'rgba(255,255,255,0.05)',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    borderRadius: 3, padding: '2px 6px',
+                    whiteSpace: 'nowrap',
+                }
+            }, s.sector || '—')
         ),
         // Price
         h('td', { style: { padding: '8px 10px', textAlign: 'right', fontFamily: 'DM Mono, monospace', fontSize: 12, color: '#00d4ff', fontWeight: 600 } },
-            s.current_price != null ? '$' + s.current_price.toFixed(2) : '—'
+            s.current_price != null ? '$' + Number(s.current_price).toFixed(2) : '—'
         ),
         // P/E
         h('td', { style: { padding: '8px 10px', textAlign: 'right', fontFamily: 'DM Mono, monospace', fontSize: 12, color: peColor(s.pe_ratio) } },
@@ -219,7 +227,7 @@ function ScreenerRow({ s, onNavigate }) {
         ),
         // RSI
         h('td', { style: { padding: '8px 10px', textAlign: 'right' } },
-            h(RSIBar, { rsi: s.rsi_14 })
+            h(RSIBar, { rsi: s.rsi_14 != null ? Number(s.rsi_14) : null })
         ),
         // 1M
         h('td', { style: { padding: '8px 10px', textAlign: 'right', fontFamily: 'DM Mono, monospace', fontSize: 12, color: retColor(s.return_1m_pct), fontWeight: 600 } },
@@ -250,44 +258,92 @@ function ScreenerRow({ s, onNavigate }) {
                 style: {
                     background: 'rgba(0,212,255,0.1)',
                     border: '1px solid rgba(0,212,255,0.35)',
-                    color: '#00d4ff',
-                    borderRadius: 5,
-                    padding: '5px 12px',
-                    fontSize: 11,
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    fontFamily: 'DM Mono, monospace',
-                    whiteSpace: 'nowrap',
-                    letterSpacing: 0.5,
+                    color: '#00d4ff', borderRadius: 5,
+                    padding: '5px 12px', fontSize: 11, fontWeight: 700,
+                    cursor: 'pointer', fontFamily: 'DM Mono, monospace',
+                    whiteSpace: 'nowrap', letterSpacing: 0.5,
                 }
             }, 'Value →')
         )
     );
 }
 
+// ── UniverseToggle ────────────────────────────────────────────────────────────
+function UniverseToggle({ universe, onChange }) {
+    const btn = function(id, label, icon) {
+        const active = universe === id;
+        return h('button', {
+            key: id,
+            onClick: function() { onChange(id); },
+            style: {
+                background: active ? 'rgba(0,212,255,0.15)' : 'rgba(255,255,255,0.04)',
+                border: '1px solid ' + (active ? 'rgba(0,212,255,0.45)' : 'rgba(255,255,255,0.1)'),
+                color: active ? '#00d4ff' : 'rgba(255,255,255,0.45)',
+                borderRadius: 6, padding: '5px 14px',
+                fontSize: 11, fontWeight: active ? 700 : 400,
+                cursor: 'pointer', fontFamily: 'DM Mono, monospace',
+                letterSpacing: 0.5, transition: 'all 0.15s',
+                display: 'flex', alignItems: 'center', gap: 5,
+            }
+        }, icon, label);
+    };
+    return h('div', {
+        style: {
+            display: 'flex', gap: 4,
+            background: 'rgba(255,255,255,0.04)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: 8, padding: 3,
+        }
+    },
+        btn('portfolio', 'Portfolio', '◈ '),
+        btn('market',    'Market',    '⊕ ')
+    );
+}
+
 // ── Main ValuationScreener ────────────────────────────────────────────────────
 export function ValuationScreener({ onNavigate }) {
-    const [data, setData]       = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError]     = useState(null);
-    const [search, setSearch]   = useState('');
-    const [activeStyle, setStyle] = useState('All');
-    const [filters, setFilters] = useState({ sector: 'All', geo: 'All', div: 'All', regime: 'All', mcap: 'All' });
-    const [sort, setSort]       = useState({ col: 'return_3m_pct', asc: false });
+    const [universe, setUniverse]   = useState('portfolio');
+    const [data, setData]           = useState([]);
+    const [loading, setLoading]     = useState(true);
+    const [error, setError]         = useState(null);
+    const [marketMeta, setMarketMeta] = useState(null);
+    const [search, setSearch]       = useState('');
+    const [activeStyle, setStyle]   = useState('All');
+    const [filters, setFilters]     = useState({ sector: 'All', geo: 'All', div: 'All', regime: 'All', mcap: 'All' });
+    const [sort, setSort]           = useState({ col: 'return_3m_pct', asc: false });
 
     useEffect(function() {
-        if (!sb) { setLoading(false); return; }
-        sb.from('vw_screener').select('*').then(function(res) {
-            setLoading(false);
-            if (res.error) { setError(res.error.message); return; }
-            setData(res.data || []);
-        });
-    }, []);
+        setData([]);
+        setError(null);
+        setLoading(true);
 
-    // Derived filter options from data
-    const sectors  = useMemo(function() { return ['All', ...new Set(data.map(s => s.sector).filter(Boolean))].sort(); }, [data]);
-    const geos     = useMemo(function() { return ['All', ...new Set(data.map(s => s.country).filter(Boolean))].sort(); }, [data]);
-    const regimes  = useMemo(function() { return ['All', ...new Set(data.map(s => s.price_regime).filter(Boolean))].sort(); }, [data]);
+        if (universe === 'portfolio') {
+            if (!sb) { setLoading(false); return; }
+            sb.from('vw_screener').select('*').then(function(res) {
+                setLoading(false);
+                if (res.error) { setError(res.error.message); return; }
+                setData(res.data || []);
+            });
+        } else {
+            fetch('/api/screener-market')
+                .then(function(r) { return r.json(); })
+                .then(function(json) {
+                    setLoading(false);
+                    if (json.error) { setError(json.error); return; }
+                    setData(json.stocks || []);
+                    setMarketMeta({ total: json.total_universe, cached: json.cached, avCalls: json.av_calls, hasKey: json.has_av_key });
+                })
+                .catch(function(err) {
+                    setLoading(false);
+                    setError(err.message);
+                });
+        }
+    }, [universe]);
+
+    // Derived filter options
+    const sectors = useMemo(function() { return ['All', ...new Set(data.map(s => s.sector).filter(Boolean))].sort(); }, [data]);
+    const geos    = useMemo(function() { return ['All', ...new Set(data.map(s => s.country).filter(Boolean))].sort(); }, [data]);
+    const regimes = useMemo(function() { return ['All', ...new Set(data.map(s => s.price_regime).filter(Boolean))].sort(); }, [data]);
 
     const filtered = useMemo(function() {
         return data
@@ -313,13 +369,11 @@ export function ValuationScreener({ onNavigate }) {
     }, [data, search, activeStyle, filters, sort]);
 
     function handleSort(col) {
-        setSort(function(prev) { return { col: col, asc: prev.col === col ? !prev.asc : false }; });
+        setSort(function(prev) { return { col, asc: prev.col === col ? !prev.asc : false }; });
     }
-
     function setFilter(key, val) {
         setFilters(function(prev) { return Object.assign({}, prev, { [key]: val }); });
     }
-
     function resetFilters() {
         setSearch('');
         setStyle('All');
@@ -329,34 +383,42 @@ export function ValuationScreener({ onNavigate }) {
     const selStyle = {
         background: 'rgba(255,255,255,0.05)',
         border: '1px solid rgba(255,255,255,0.12)',
-        borderRadius: 5,
-        color: 'rgba(255,255,255,0.8)',
-        padding: '5px 10px',
-        fontSize: 11,
-        fontFamily: 'DM Mono, monospace',
-        cursor: 'pointer',
-        outline: 'none',
+        borderRadius: 5, color: 'rgba(255,255,255,0.8)',
+        padding: '5px 10px', fontSize: 11,
+        fontFamily: 'DM Mono, monospace', cursor: 'pointer', outline: 'none',
     };
 
-    // ── Loading / error / no-sb states ────────────────────────────────────────
+    // ── Loading / error states ────────────────────────────────────────────────
     if (loading) {
-        return h('div', { style: { padding: 60, textAlign: 'center', color: 'rgba(255,255,255,0.4)', fontSize: 13, fontFamily: 'DM Mono, monospace' } }, 'Loading screener data…');
+        return h('div', { style: { padding: 60, textAlign: 'center', color: 'rgba(255,255,255,0.4)', fontSize: 13, fontFamily: 'DM Mono, monospace' } },
+            universe === 'market' ? 'Fetching market data from Alpha Vantage…' : 'Loading screener data…'
+        );
     }
-    if (!sb) {
+    if (!sb && universe === 'portfolio') {
         return h('div', { style: { padding: 60, textAlign: 'center' } },
             h('div', { style: { fontSize: 24, marginBottom: 12, opacity: 0.3 } }, '◈'),
-            h('div', { style: { fontSize: 14, color: 'rgba(255,255,255,0.5)', marginBottom: 6 } }, 'Connect Supabase to load screener data'),
-            h('div', { style: { fontSize: 12, color: 'rgba(255,255,255,0.3)' } }, 'Add your Supabase URL and anon key in the config prompt above.')
+            h('div', { style: { fontSize: 14, color: 'rgba(255,255,255,0.5)', marginBottom: 6 } }, 'Connect Supabase to load screener data')
         );
     }
     if (error) {
         return h('div', { style: { padding: 40, color: '#ef4444', fontSize: 13, fontFamily: 'DM Mono, monospace' } }, 'Error loading screener: ' + error);
     }
-    if (data.length === 0) {
+    if (data.length === 0 && universe === 'portfolio') {
         return h('div', { style: { padding: 60, textAlign: 'center' } },
             h('div', { style: { fontSize: 24, marginBottom: 12, opacity: 0.3 } }, '◈'),
             h('div', { style: { fontSize: 14, color: 'rgba(255,255,255,0.5)', marginBottom: 6 } }, 'No positions in your portfolio yet'),
             h('div', { style: { fontSize: 12, color: 'rgba(255,255,255,0.3)' } }, 'Add holdings via the portfolio sync function.')
+        );
+    }
+    if (data.length === 0 && universe === 'market') {
+        return h('div', { style: { padding: 60, textAlign: 'center' } },
+            h('div', { style: { fontSize: 24, marginBottom: 12, opacity: 0.3 } }, '⊕'),
+            h('div', { style: { fontSize: 14, color: 'rgba(255,255,255,0.5)', marginBottom: 6 } }, 'Market data is populating…'),
+            h('div', { style: { fontSize: 12, color: 'rgba(255,255,255,0.3)', maxWidth: 360, margin: '0 auto' } },
+                marketMeta && !marketMeta.hasKey
+                    ? 'Add ALPHA_VANTAGE_API_KEY to Vercel environment variables to enable market data.'
+                    : 'Alpha Vantage data is fetched in batches (4 stocks per request). Refresh in a moment to see more stocks.'
+            )
         );
     }
 
@@ -368,37 +430,35 @@ export function ValuationScreener({ onNavigate }) {
                 padding: '14px 20px 12px',
                 borderBottom: '1px solid rgba(255,255,255,0.06)',
                 background: 'rgba(0,0,0,0.2)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 16,
-                flexWrap: 'wrap',
+                display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
             }
         },
             h('div', null,
                 h('div', { style: { fontSize: 13, fontWeight: 700, color: '#00d4ff', letterSpacing: 2, fontFamily: 'DM Mono, monospace' } }, '◈ VALUATION SCREENER'),
                 h('div', { style: { fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 1 } }, 'Discover which companies to value next')
             ),
+            // Universe toggle
+            h(UniverseToggle, { universe, onChange: function(u) { setUniverse(u); resetFilters(); } }),
             h('div', { style: { flex: 1 } }),
-            // Search input
-            h('div', { style: { position: 'relative' } },
-                h('input', {
-                    type: 'text',
-                    value: search,
-                    onChange: function(e) { setSearch(e.target.value); },
-                    placeholder: 'Search ticker or name…',
-                    style: {
-                        background: 'rgba(255,255,255,0.06)',
-                        border: '1px solid rgba(255,255,255,0.12)',
-                        borderRadius: 6,
-                        color: '#fff',
-                        padding: '7px 32px 7px 12px',
-                        fontSize: 12,
-                        width: 200,
-                        outline: 'none',
-                        fontFamily: 'DM Mono, monospace',
-                    }
-                })
+            // Market mode info banner
+            universe === 'market' && marketMeta && h('div', {
+                style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'DM Mono, monospace', textAlign: 'right' }
+            },
+                marketMeta.cached + ' / ' + marketMeta.total + ' cached · fundamentals from Alpha Vantage · price & technicals available for portfolio holdings'
             ),
+            // Search
+            h('input', {
+                type: 'text', value: search,
+                onChange: function(e) { setSearch(e.target.value); },
+                placeholder: 'Search ticker or name…',
+                style: {
+                    background: 'rgba(255,255,255,0.06)',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    borderRadius: 6, color: '#fff',
+                    padding: '7px 12px', fontSize: 12, width: 200,
+                    outline: 'none', fontFamily: 'DM Mono, monospace',
+                }
+            }),
             h('div', { style: { fontSize: 11, color: 'rgba(255,255,255,0.35)', fontFamily: 'DM Mono, monospace', whiteSpace: 'nowrap' } },
                 filtered.length + ' / ' + data.length + ' stocks'
             )
@@ -410,20 +470,14 @@ export function ValuationScreener({ onNavigate }) {
                 const active = activeStyle === style;
                 const c = STYLE_COLORS[style];
                 return h('button', {
-                    key: style,
-                    onClick: function() { setStyle(style); },
+                    key: style, onClick: function() { setStyle(style); },
                     style: {
                         background: active ? (c ? c.bg : 'rgba(0,212,255,0.15)') : 'rgba(255,255,255,0.04)',
                         border: '1px solid ' + (active ? (c ? c.border : 'rgba(0,212,255,0.4)') : 'rgba(255,255,255,0.1)'),
                         color: active ? (c ? c.text : '#00d4ff') : 'rgba(255,255,255,0.5)',
-                        borderRadius: 20,
-                        padding: '5px 14px',
-                        fontSize: 11,
-                        fontWeight: active ? 700 : 400,
-                        cursor: 'pointer',
-                        fontFamily: 'DM Mono, monospace',
-                        letterSpacing: 0.5,
-                        transition: 'all 0.15s',
+                        borderRadius: 20, padding: '5px 14px', fontSize: 11,
+                        fontWeight: active ? 700 : 400, cursor: 'pointer',
+                        fontFamily: 'DM Mono, monospace', letterSpacing: 0.5, transition: 'all 0.15s',
                     }
                 }, style);
             })
@@ -432,25 +486,20 @@ export function ValuationScreener({ onNavigate }) {
         // ── Filter row ────────────────────────────────────────────────────────
         h('div', { style: { padding: '8px 20px', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.04)' } },
             h('span', { style: { fontSize: 9, letterSpacing: 1.5, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', fontFamily: 'DM Mono, monospace' } }, 'Filter:'),
-            // Sector
             h('select', { value: filters.sector, onChange: function(e) { setFilter('sector', e.target.value); }, style: selStyle },
-                sectors.map(function(s) { return h('option', { key: s, value: s }, s); })
+                sectors.map(function(s) { return h('option', { key: s, value: s }, s === 'All' ? 'All sectors' : s); })
             ),
-            // Geography
             h('select', { value: filters.geo, onChange: function(e) { setFilter('geo', e.target.value); }, style: selStyle },
                 geos.map(function(g) { return h('option', { key: g, value: g }, g === 'All' ? 'All countries' : g); })
             ),
-            // Dividend
             h('select', { value: filters.div, onChange: function(e) { setFilter('div', e.target.value); }, style: selStyle },
                 h('option', { value: 'All' }, 'All dividends'),
                 h('option', { value: 'Yes' }, 'Dividend payers'),
                 h('option', { value: 'No' }, 'No dividend')
             ),
-            // Regime
             h('select', { value: filters.regime, onChange: function(e) { setFilter('regime', e.target.value); }, style: selStyle },
                 regimes.map(function(r) { return h('option', { key: r, value: r }, r === 'All' ? 'All regimes' : r); })
             ),
-            // Market cap
             h('select', { value: filters.mcap, onChange: function(e) { setFilter('mcap', e.target.value); }, style: selStyle },
                 h('option', { value: 'All' }, 'All caps'),
                 h('option', { value: 'Mega' }, 'Mega cap'),
@@ -466,7 +515,7 @@ export function ValuationScreener({ onNavigate }) {
 
         // ── Bucket strip ──────────────────────────────────────────────────────
         h('div', { style: { padding: '12px 20px 0' } },
-            h(BucketStrip, { data: data, filters: filters, activeStyle: activeStyle, onStyleClick: setStyle })
+            h(BucketStrip, { data, filters, activeStyle, onStyleClick: setStyle })
         ),
 
         // ── Table ─────────────────────────────────────────────────────────────
@@ -478,36 +527,32 @@ export function ValuationScreener({ onNavigate }) {
                     h('button', {
                         onClick: resetFilters,
                         style: {
-                            background: 'rgba(0,212,255,0.1)',
-                            border: '1px solid rgba(0,212,255,0.3)',
-                            color: '#00d4ff',
-                            borderRadius: 5,
-                            padding: '7px 20px',
-                            fontSize: 12,
-                            cursor: 'pointer',
-                            fontFamily: 'DM Mono, monospace',
+                            background: 'rgba(0,212,255,0.1)', border: '1px solid rgba(0,212,255,0.3)',
+                            color: '#00d4ff', borderRadius: 5, padding: '7px 20px',
+                            fontSize: 12, cursor: 'pointer', fontFamily: 'DM Mono, monospace',
                         }
                     }, 'Reset filters')
                 )
-                : h('table', { style: { width: '100%', borderCollapse: 'collapse', minWidth: 960 } },
+                : h('table', { style: { width: '100%', borderCollapse: 'collapse', minWidth: 1060 } },
                     h('thead', null,
                         h('tr', { style: { borderBottom: '1px solid rgba(255,255,255,0.08)' } },
-                            h('th', { style: { padding: '8px 10px', fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', textAlign: 'left', fontFamily: 'DM Mono, monospace' } }, 'Company'),
-                            h(SortableHeader, { label: 'Price', col: 'current_price', sort: sort, onSort: handleSort }),
-                            h(SortableHeader, { label: 'P/E', col: 'pe_ratio', sort: sort, onSort: handleSort }),
-                            h(SortableHeader, { label: 'EV/EBITDA', col: 'ev_ebitda', sort: sort, onSort: handleSort }),
-                            h(SortableHeader, { label: 'Div %', col: 'div_yield_pct', sort: sort, onSort: handleSort }),
+                            h('th', { style: { padding: '8px 10px', fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', textAlign: 'left', borderBottom: '1px solid rgba(255,255,255,0.08)', fontFamily: 'DM Mono, monospace' } }, 'Company'),
+                            h(SortableHeader, { label: 'Sector', col: 'sector', sort, onSort: handleSort, align: 'left' }),
+                            h(SortableHeader, { label: 'Price', col: 'current_price', sort, onSort: handleSort }),
+                            h(SortableHeader, { label: 'P/E', col: 'pe_ratio', sort, onSort: handleSort }),
+                            h(SortableHeader, { label: 'EV/EBITDA', col: 'ev_ebitda', sort, onSort: handleSort }),
+                            h(SortableHeader, { label: 'Div %', col: 'div_yield_pct', sort, onSort: handleSort }),
                             h('th', { style: { padding: '8px 10px', fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', textAlign: 'right', borderBottom: '1px solid rgba(255,255,255,0.08)', fontFamily: 'DM Mono, monospace' } }, 'RSI'),
-                            h(SortableHeader, { label: '1M', col: 'return_1m_pct', sort: sort, onSort: handleSort }),
-                            h(SortableHeader, { label: '3M', col: 'return_3m_pct', sort: sort, onSort: handleSort }),
-                            h(SortableHeader, { label: 'YTD', col: 'return_ytd_pct', sort: sort, onSort: handleSort }),
+                            h(SortableHeader, { label: '1M', col: 'return_1m_pct', sort, onSort: handleSort }),
+                            h(SortableHeader, { label: '3M', col: 'return_3m_pct', sort, onSort: handleSort }),
+                            h(SortableHeader, { label: 'YTD', col: 'return_ytd_pct', sort, onSort: handleSort }),
                             h('th', { style: { padding: '8px 10px', fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', textAlign: 'left', borderBottom: '1px solid rgba(255,255,255,0.08)', fontFamily: 'DM Mono, monospace' } }, 'Regime'),
                             h('th', { style: { padding: '8px 10px', fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', textAlign: 'left', borderBottom: '1px solid rgba(255,255,255,0.08)', fontFamily: 'DM Mono, monospace' } }, 'Style'),
                             h('th', { style: { padding: '8px 10px', fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', textAlign: 'right', borderBottom: '1px solid rgba(255,255,255,0.08)', fontFamily: 'DM Mono, monospace' } }, 'Action')
                         )
                     ),
                     h('tbody', null,
-                        filtered.map(function(s) { return h(ScreenerRow, { key: s.symbol, s: s, onNavigate: onNavigate }); })
+                        filtered.map(function(s) { return h(ScreenerRow, { key: s.symbol, s, onNavigate }); })
                     )
                 )
         )

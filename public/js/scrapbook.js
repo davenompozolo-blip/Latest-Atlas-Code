@@ -887,7 +887,7 @@ function SectorCard({ sector, companies, latestNote, isExpanded, onToggle, onNav
     const icon = SECTOR_ICONS[sector] || '◇';
     const avgUpside = companies.reduce((a, c) => {
         if (c.avg_fair_value && c.current_price && c.current_price > 0) {
-            return a + [(c.avg_fair_value - c.current_price) / c.current_price];
+            return [...a, (c.avg_fair_value - c.current_price) / c.current_price];
         }
         return a;
     }, []);
