@@ -400,14 +400,14 @@ export function ValuationScreener({ onNavigate }) {
         return function() { portfolioEnrichCancelRef.current = true; };
     }, [universe, data.length > 0 && data[0] && data[0].symbol]);
 
-    // ── Market enrichment: progressive per-symbol AV calls ────────────────────
-    // After the curated list loads, we enrich one stock at a time via AV.
+    // ── Market enrichment: progressive per-symbol calls via Finnhub ──────────
+    // Uses /api/equity?endpoint=overview (Finnhub, 60 req/min, no daily cap)
+    // instead of AV (25 req/day) so all 97 stocks get fundamentals.
     const marketEnrichCancelRef = useRef(false);
     useEffect(function() {
         if (universe !== 'market' || data.length === 0) return;
 
-        // Only enrich stocks without AV data (no price or no PE)
-        var needsEnrich = data.filter(function(s) { return !s._avEnriched && s.current_price == null; });
+        var needsEnrich = data.filter(function(s) { return !s._avEnriched && s.pe_ratio == null; });
         if (!needsEnrich.length) return;
 
         marketEnrichCancelRef.current = false;
@@ -421,27 +421,80 @@ export function ValuationScreener({ onNavigate }) {
             }
             var sym = needsEnrich[idx].symbol;
             idx++;
-            fetch('/api/screener-market?symbol=' + encodeURIComponent(sym))
+            fetch('/api/equity?symbol=' + encodeURIComponent(sym) + '&endpoint=overview')
                 .then(function(r) { return r.ok ? r.json() : null; })
                 .then(function(j) {
                     if (marketEnrichCancelRef.current) return;
-                    if (j && j.stock) {
-                        var enriched = Object.assign({}, j.stock, { _avEnriched: true });
+                    var ov = j && (j.overview || j);
+                    if (ov && ov.Symbol) {
+                        var pe        = parseFloat(ov.PERatio)            || null;
+                        var evEbitda  = parseFloat(ov.EVToEBITDA)         || null;
+                        var pb        = parseFloat(ov.PriceToBookRatio)   || null;
+                        var divYield  = ov.DividendYield  ? parseFloat(ov.DividendYield)  * 100 : null;
+                        var roe       = ov.ReturnOnEquityTTM ? parseFloat(ov.ReturnOnEquityTTM) * 100 : null;
+                        var revGrowth = ov.RevenueGrowthYOY ? parseFloat(ov.RevenueGrowthYOY) * 100 : null;
+                        var mktCap    = parseFloat(ov.MarketCapitalization) || null;
+                        var high52    = parseFloat(ov['52WeekHigh'])       || null;
+                        var low52     = parseFloat(ov['52WeekLow'])        || null;
+                        var ma50      = parseFloat(ov['50DayMovingAverage']) || null;
+                        var ma200     = parseFloat(ov['200DayMovingAverage']) || null;
+                        var analystT  = parseFloat(ov.AnalystTargetPrice)  || null;
+
+                        // Recompute style tags with enriched data
+                        var tags = [];
+                        if ((pe != null && pe < 16) || (evEbitda != null && evEbitda < 9) || (pb != null && pb < 1.5)) tags.push('Value');
+                        if (revGrowth != null && revGrowth > 10) tags.push('Growth');
+                        if (roe != null && roe > 15) tags.push('Quality');
+                        if (divYield != null && divYield > 1.5) tags.push('Dividend');
+
+                        var mcapBucket = null;
+                        if (mktCap != null) {
+                            if      (mktCap >= 1e12) mcapBucket = 'Mega';
+                            else if (mktCap >= 1e11) mcapBucket = 'Large';
+                            else if (mktCap >= 1e10) mcapBucket = 'Mid';
+                            else                      mcapBucket = 'Small';
+                        }
+
                         setData(function(prev) {
-                            return prev.map(function(s) { return s.symbol === sym ? enriched : s; });
+                            return prev.map(function(s) {
+                                if (s.symbol !== sym) return s;
+                                return Object.assign({}, s, {
+                                    _avEnriched:        true,
+                                    name:               (ov.Name && ov.Name !== sym) ? ov.Name : s.name,
+                                    sector:             ov.Sector || s.sector,
+                                    industry:           ov.Industry || s.industry,
+                                    country:            ov.Country || s.country,
+                                    pe_ratio:           pe,
+                                    ev_ebitda:          evEbitda,
+                                    pb_ratio:           pb,
+                                    div_yield_pct:      divYield != null ? divYield : s.div_yield_pct,
+                                    roe_pct:            roe,
+                                    revenue_growth_pct: revGrowth,
+                                    market_cap_raw:     mktCap,
+                                    market_cap_bucket:  mcapBucket || s.market_cap_bucket,
+                                    high_52w:           high52,
+                                    low_52w:            low52,
+                                    ma_50:              ma50,
+                                    ma_200:             ma200,
+                                    analyst_target:     analystT,
+                                    style_tags:         tags.length ? tags : s.style_tags,
+                                    analyst_upside_pct: (analystT && s.current_price && s.current_price > 0)
+                                                          ? Math.round((analystT - s.current_price) / s.current_price * 1000) / 10
+                                                          : s.analyst_upside_pct,
+                                });
+                            });
                         });
                         setMarketMeta(function(m) {
-                            return m ? Object.assign({}, m, { enriched: (m.enriched || 0) + (j.enriched ? 1 : 0) }) : m;
+                            return m ? Object.assign({}, m, { enriched: (m.enriched || 0) + 1 }) : m;
                         });
                     }
                     setEnrichProg(function(p) { return p ? { done: p.done + 1, total: p.total } : null; });
-                    // AV free tier: max 5 calls/min → 1 per 12s; paid: ~75/min.
-                    // 2.5s delay keeps us safe on free tier while not being too slow on paid.
-                    setTimeout(enrichNext, 2500);
+                    // Finnhub free tier: 60 req/min → safe at 1s intervals
+                    setTimeout(enrichNext, 1000);
                 })
                 .catch(function() {
                     setEnrichProg(function(p) { return p ? { done: p.done + 1, total: p.total } : null; });
-                    setTimeout(enrichNext, 2500);
+                    setTimeout(enrichNext, 1000);
                 });
         }
         enrichNext();
