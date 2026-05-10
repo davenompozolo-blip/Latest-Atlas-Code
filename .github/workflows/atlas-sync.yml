@@ -18,12 +18,14 @@ on:
           - positions
           - account_snapshot
           - transactions
+          - price_history
+          - equity_curve
           - validation_only
 
 jobs:
   sync:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
@@ -33,9 +35,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        # npm ci requires a lockfile; use install with --prefer-offline if cache hit
+        run: npm install --prefer-offline
 
       - name: Run ATLAS Sync
         env:
@@ -44,14 +48,25 @@ jobs:
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
           ALPACA_API_URL: ${{ secrets.ALPACA_API_URL }}
+          SYNC_TYPE: ${{ inputs.sync_type || 'full' }}
         run: node scripts/sync-wrapper.mjs
 
-      - name: Write sync result to memory on failure
+      - name: Log failure to Supabase on error
         if: failure()
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          node scripts/memory.mjs write bug "github-actions-sync-failure" \
-            "GitHub Actions sync workflow failed at $(date -u +%Y-%m-%dT%H:%M:%SZ). Check Actions logs. Run ID: ${{ github.run_id }}" \
-            --tags=sync,github-actions,failure,critical --priority=2
+          curl -s -X POST "${SUPABASE_URL}/rest/v1/atlas_memory" \
+            -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "Content-Type: application/json" \
+            -H "Prefer: resolution=merge-duplicates" \
+            -d "{
+              \"category\": \"bug\",
+              \"key\": \"github-actions-sync-failure\",
+              \"content\": \"GitHub Actions sync #${{ github.run_id }} failed at $(date -u +%Y-%m-%dT%H:%M:%SZ). Branch: ${{ github.ref_name }}. Check Actions logs.\",
+              \"tags\": [\"sync\", \"github-actions\", \"failure\", \"critical\"],
+              \"priority\": 2,
+              \"source\": \"auto-sync\"
+            }" || true
