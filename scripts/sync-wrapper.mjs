@@ -16,11 +16,15 @@ const supabase = createClient(
 );
 
 const ALPACA_BASE = process.env.ALPACA_API_URL || 'https://paper-api.alpaca.markets';
+const ALPACA_DATA_URL = 'https://data.alpaca.markets';
 const ALPACA_HEADERS = {
   'APCA-API-KEY-ID': process.env.ALPACA_API_KEY,
   'APCA-API-SECRET-KEY': process.env.ALPACA_SECRET_KEY,
   'Content-Type': 'application/json'
 };
+
+const PORTFOLIO_ID = 'e11b0e63-8edf-48b4-a57f-583f24c0a1c8';
+const PORTFOLIO_BASE_VALUE = 100000;
 
 // ── Retry Logic ──────────────────────────────────────────
 
@@ -158,7 +162,9 @@ async function clearFailureFromMemory(syncType) {
 async function writeSyncContextToMemory(stats) {
   const content = `Last successful sync: ${new Date().toISOString()}. ` +
     `Positions: ${stats.positions}, Transactions: ${stats.transactions}, ` +
-    `Snapshots: ${stats.snapshots}. All validations ${stats.allPassed ? 'passed' : 'had warnings'}.`;
+    `Snapshots: ${stats.snapshots}, Equity curve rows: ${stats.equityCurve || 0}, ` +
+    `Price history bars: ${stats.priceHistory || 0}. ` +
+    `All validations ${stats.allPassed ? 'passed' : 'had warnings'}.`;
 
   await supabase
     .from('atlas_memory')
@@ -203,26 +209,25 @@ async function syncPositions() {
 
   try {
     const positions = await withRetry(() => fetchAlpacaPositions(), 'positions');
+    const today = new Date().toISOString().slice(0, 10);
 
     const records = positions.map(p => ({
-      symbol: p.symbol,
-      qty: parseFloat(p.qty),
+      portfolio_id: PORTFOLIO_ID,
+      asset_id: p.asset_id,           // UUID from Alpaca — matches assets.id
+      quantity: parseFloat(p.qty),
       side: p.side,
       market_value: parseFloat(p.market_value),
-      cost_basis: parseFloat(p.cost_basis),
-      unrealized_pl: parseFloat(p.unrealized_pl),
-      unrealized_plpc: parseFloat(p.unrealized_plpc),
-      current_price: parseFloat(p.current_price),
-      lastday_price: parseFloat(p.lastday_price),
-      avg_entry_price: parseFloat(p.avg_entry_price),
-      asset_class: p.asset_class,
-      asset_id: p.asset_id,
-      exchange: p.exchange,
+      average_cost: parseFloat(p.avg_entry_price),
+      as_of_date: today,
       updated_at: new Date().toISOString()
     }));
 
-    // Clear existing positions and replace (Alpaca gives full snapshot)
-    const { error: deleteError } = await supabase.from('positions').delete().neq('symbol', '');
+    // Clear today's positions and replace with fresh Alpaca snapshot
+    const { error: deleteError } = await supabase
+      .from('positions')
+      .delete()
+      .eq('portfolio_id', PORTFOLIO_ID)
+      .eq('as_of_date', today);
     if (deleteError) throw new Error(`Delete positions failed: ${deleteError.message}`);
 
     let upserted = 0;
@@ -258,24 +263,19 @@ async function syncAccountSnapshot() {
     const account = await withRetry(() => fetchAlpacaAccount(), 'account');
 
     const snapshot = {
+      portfolio_id: PORTFOLIO_ID,
       equity: parseFloat(account.equity),
       cash: parseFloat(account.cash),
       buying_power: parseFloat(account.buying_power),
       portfolio_value: parseFloat(account.portfolio_value),
       long_market_value: parseFloat(account.long_market_value),
       short_market_value: parseFloat(account.short_market_value),
-      initial_margin: parseFloat(account.initial_margin),
-      maintenance_margin: parseFloat(account.maintenance_margin),
-      last_equity: parseFloat(account.last_equity),
-      status: account.status,
-      pattern_day_trader: account.pattern_day_trader,
-      snapshot_date: new Date().toISOString().split('T')[0],
-      captured_at: new Date().toISOString()
+      as_of: new Date().toISOString(),
     };
 
     const { error } = await supabase
       .from('account_snapshots')
-      .upsert(snapshot, { onConflict: 'snapshot_date' });
+      .insert(snapshot);
 
     if (error) throw new Error(`Upsert snapshot failed: ${error.message}`);
 
@@ -360,6 +360,229 @@ async function syncTransactions() {
 
   } catch (err) {
     await failSyncLog(logEntry?.id, err, startTime, 3);
+    throw err;
+  }
+}
+
+// ── Equity Curve Sync ────────────────────────────────────
+// Translates daily account_snapshots into portfolio_equity_curve rows.
+// Takes the last equity value per calendar day, fills any gap since the
+// last existing curve row.
+
+async function syncEquityCurve() {
+  const syncType = 'equity_curve';
+  const startTime = Date.now();
+  const logEntry = await createSyncLog(syncType);
+
+  try {
+    // Latest date already in the curve
+    const { data: latest } = await supabase
+      .from('portfolio_equity_curve')
+      .select('ts')
+      .eq('portfolio_id', PORTFOLIO_ID)
+      .eq('timeframe', '1D')
+      .order('ts', { ascending: false })
+      .limit(1)
+      .single();
+
+    const afterTs = latest ? latest.ts : '2000-01-01T00:00:00Z';
+
+    // Grab all snapshots after that timestamp
+    const { data: snapshots, error: snapErr } = await supabase
+      .from('account_snapshots')
+      .select('as_of, equity')
+      .gt('as_of', afterTs)
+      .order('as_of', { ascending: true });
+
+    if (snapErr) throw new Error('account_snapshots: ' + snapErr.message);
+
+    if (!snapshots || snapshots.length === 0) {
+      console.log('  — Equity curve up to date');
+      await completeSyncLog(logEntry?.id, { records_fetched: 0, records_upserted: 0, records_skipped: 0, startTime, validationPassed: true, validationErrors: [] });
+      return { upserted: 0 };
+    }
+
+    // Group by calendar date, last snapshot per day wins
+    const byDate = {};
+    snapshots.forEach(s => {
+      const d = s.as_of.slice(0, 10);
+      byDate[d] = parseFloat(s.equity);
+    });
+
+    // Only write days that are fully closed (not today, since today's equity
+    // changes during the session — next run will capture it)
+    const today = new Date().toISOString().slice(0, 10);
+    const rows = Object.entries(byDate)
+      .filter(([date]) => date < today)
+      .map(([date, equity]) => ({
+        portfolio_id: PORTFOLIO_ID,
+        ts: date + 'T21:00:00+00:00', // 4 PM ET close
+        equity,
+        profit_loss: equity - PORTFOLIO_BASE_VALUE,
+        profit_loss_pct: (equity - PORTFOLIO_BASE_VALUE) / PORTFOLIO_BASE_VALUE,
+        base_value: PORTFOLIO_BASE_VALUE,
+        timeframe: '1D',
+      }));
+
+    if (rows.length === 0) {
+      console.log('  — No completed days to add');
+      await completeSyncLog(logEntry?.id, { records_fetched: snapshots.length, records_upserted: 0, records_skipped: 0, startTime, validationPassed: true, validationErrors: [] });
+      return { upserted: 0 };
+    }
+
+    // Delete any existing rows for these dates then insert fresh
+    for (const row of rows) {
+      const dateStart = row.ts.slice(0, 10) + 'T00:00:00+00:00';
+      const dateEnd   = row.ts.slice(0, 10) + 'T23:59:59+00:00';
+      await supabase
+        .from('portfolio_equity_curve')
+        .delete()
+        .eq('portfolio_id', PORTFOLIO_ID)
+        .eq('timeframe', '1D')
+        .gte('ts', dateStart)
+        .lte('ts', dateEnd);
+    }
+
+    const { error: insertErr } = await supabase
+      .from('portfolio_equity_curve')
+      .insert(rows);
+    if (insertErr) throw new Error('equity_curve insert: ' + insertErr.message);
+
+    await completeSyncLog(logEntry?.id, { records_fetched: snapshots.length, records_upserted: rows.length, records_skipped: 0, startTime, validationPassed: true, validationErrors: [] });
+    return { upserted: rows.length };
+
+  } catch (err) {
+    await failSyncLog(logEntry?.id, err, startTime, 0);
+    throw err;
+  }
+}
+
+// ── Price History Sync ───────────────────────────────────
+// Fetches daily OHLCV bars from Alpaca for all assets in the DB
+// since the last recorded date, upserts into price_history.
+
+async function fetchAlpacaBars(symbols, startDate, endDate) {
+  let allBars = {};
+  let pageToken = null;
+
+  do {
+    let url = `${ALPACA_DATA_URL}/v2/stocks/bars?symbols=${symbols.join(',')}&timeframe=1Day&start=${startDate}&end=${endDate}&limit=1000&adjustment=all&feed=iex`;
+    if (pageToken) url += `&page_token=${encodeURIComponent(pageToken)}`;
+
+    const res = await fetch(url, { headers: ALPACA_HEADERS });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Alpaca bars ${res.status}: ${body}`);
+    }
+    const json = await res.json();
+
+    for (const [sym, bars] of Object.entries(json.bars || {})) {
+      if (!allBars[sym]) allBars[sym] = [];
+      allBars[sym].push(...bars);
+    }
+    pageToken = json.next_page_token || null;
+  } while (pageToken);
+
+  return allBars;
+}
+
+async function syncPriceHistory() {
+  const syncType = 'price_history';
+  const startTime = Date.now();
+  const logEntry = await createSyncLog(syncType);
+
+  try {
+    const { data: assets, error: assetErr } = await supabase
+      .from('assets')
+      .select('id, symbol');
+    if (assetErr) throw new Error('assets: ' + assetErr.message);
+    if (!assets || assets.length === 0) {
+      console.log('  — No assets in DB');
+      await completeSyncLog(logEntry?.id, { records_fetched: 0, records_upserted: 0, records_skipped: 0, startTime, validationPassed: true, validationErrors: [] });
+      return { upserted: 0 };
+    }
+
+    // Fetch from day after last known row to yesterday (last closed session)
+    const { data: latestRow } = await supabase
+      .from('price_history')
+      .select('price_date')
+      .order('price_date', { ascending: false })
+      .limit(1)
+      .single();
+
+    const lastKnown = latestRow?.price_date || '2021-01-01';
+    const startDt = new Date(lastKnown);
+    startDt.setDate(startDt.getDate() + 1);
+    const startStr = startDt.toISOString().slice(0, 10);
+
+    const endDt = new Date();
+    endDt.setDate(endDt.getDate() - 1); // yesterday — last fully closed session
+    const endStr = endDt.toISOString().slice(0, 10);
+
+    if (startStr > endStr) {
+      console.log(`  — Price history current (${lastKnown})`);
+      await completeSyncLog(logEntry?.id, { records_fetched: 0, records_upserted: 0, records_skipped: 0, startTime, validationPassed: true, validationErrors: [] });
+      return { upserted: 0 };
+    }
+
+    const symbolToId = Object.fromEntries(assets.map(a => [a.symbol, a.id]));
+    const symbols    = assets.map(a => a.symbol);
+
+    let totalFetched = 0, totalUpserted = 0;
+    const BATCH = 50; // Alpaca multi-symbol limit
+
+    for (let i = 0; i < symbols.length; i += BATCH) {
+      const batch = symbols.slice(i, i + BATCH);
+      console.log(`  Fetching bars [${i + 1}–${i + batch.length}/${symbols.length}] ${startStr}→${endStr}`);
+
+      let bars;
+      try {
+        bars = await withRetry(() => fetchAlpacaBars(batch, startStr, endStr), `bars-${i}`);
+      } catch (err) {
+        console.warn(`  ⚠ Bars fetch failed (batch ${i}): ${err.message}`);
+        continue;
+      }
+
+      const rows = [];
+      for (const [symbol, barList] of Object.entries(bars)) {
+        const assetId = symbolToId[symbol];
+        if (!assetId) continue;
+        for (const bar of barList) {
+          rows.push({
+            asset_id:       assetId,
+            price_date:     bar.t.slice(0, 10),
+            open:           parseFloat(bar.o),
+            high:           parseFloat(bar.h),
+            low:            parseFloat(bar.l),
+            close:          parseFloat(bar.c),
+            adjusted_close: parseFloat(bar.c), // Alpaca returns split/div-adjusted
+            volume:         parseInt(bar.v) || 0,
+            interval:       '1d',
+            source:         'alpaca',
+          });
+        }
+      }
+
+      totalFetched += rows.length;
+      if (rows.length === 0) continue;
+
+      // Unique constraint: (asset_id, source, interval, price_date)
+      const { error: upsertErr } = await supabase
+        .from('price_history')
+        .upsert(rows, { onConflict: 'asset_id,source,interval,price_date' });
+
+      if (upsertErr) {
+        console.warn(`  ⚠ Upsert error: ${upsertErr.message}`);
+      } else {
+        totalUpserted += rows.length;
+      }
+    }
+
+    await completeSyncLog(logEntry?.id, { records_fetched: totalFetched, records_upserted: totalUpserted, records_skipped: 0, startTime, validationPassed: true, validationErrors: [] });
+    return { upserted: totalUpserted };
+
+  } catch (err) {
+    await failSyncLog(logEntry?.id, err, startTime, 0);
     throw err;
   }
 }
@@ -602,12 +825,12 @@ async function runFullSync() {
   console.log('  ATLAS SYNC — Starting full sync');
   console.log('═══════════════════════════════════════════');
 
-  const stats = { positions: 0, transactions: 0, snapshots: 0, allPassed: true };
+  const stats = { positions: 0, transactions: 0, snapshots: 0, equityCurve: 0, priceHistory: 0, allPassed: true };
   let hasFailure = false;
 
   // 1. Sync Positions
   try {
-    console.log('\n[1/3] Syncing positions...');
+    console.log('\n[1/5] Syncing positions...');
     const result = await syncPositions();
     stats.positions = result.upserted;
     console.log(`  ✓ ${result.fetched} fetched, ${result.upserted} upserted`);
@@ -618,7 +841,7 @@ async function runFullSync() {
 
   // 2. Sync Account Snapshot
   try {
-    console.log('\n[2/3] Syncing account snapshot...');
+    console.log('\n[2/5] Syncing account snapshot...');
     const result = await syncAccountSnapshot();
     stats.snapshots = 1;
     console.log(`  ✓ Equity: $${result.equity}, Cash: $${result.cash}`);
@@ -629,7 +852,7 @@ async function runFullSync() {
 
   // 3. Sync Transactions
   try {
-    console.log('\n[3/3] Syncing transactions...');
+    console.log('\n[3/5] Syncing transactions...');
     const result = await syncTransactions();
     stats.transactions = result.upserted;
     console.log(`  ✓ ${result.fetched} fetched, ${result.upserted} new`);
@@ -638,7 +861,29 @@ async function runFullSync() {
     console.error(`  ✗ Transactions failed: ${err.message}`);
   }
 
-  // 4. Run Validation
+  // 4. Sync Equity Curve (account_snapshots → portfolio_equity_curve daily rows)
+  try {
+    console.log('\n[4/5] Syncing equity curve...');
+    const result = await syncEquityCurve();
+    stats.equityCurve = result.upserted;
+    console.log(`  ✓ ${result.upserted} new daily rows added`);
+  } catch (err) {
+    hasFailure = true;
+    console.error(`  ✗ Equity curve failed: ${err.message}`);
+  }
+
+  // 5. Sync Price History (Alpaca bars for all tracked assets)
+  try {
+    console.log('\n[5/5] Syncing price history...');
+    const result = await syncPriceHistory();
+    stats.priceHistory = result.upserted;
+    console.log(`  ✓ ${result.upserted} bars upserted`);
+  } catch (err) {
+    hasFailure = true;
+    console.error(`  ✗ Price history failed: ${err.message}`);
+  }
+
+  // 6. Run Validation
   console.log('\n[VALIDATION] Running post-sync checks...');
   const validationResults = await runValidation(fullLog?.id);
 
