@@ -12,12 +12,15 @@
 //      IP-banning. Yahoo kept as secondary for when Finnhub is unavailable.
 //      Both cached durably in Supabase so steady-state traffic rarely
 //      hits any provider.
+//   5. Added Yahoo v8/chart as price fallback when Alpaca 404s (international
+//      tickers and OTC ADRs not in Alpaca's universe, e.g. ADS.DE, ADDYY).
+//      Added Finnhub exchange-suffix mapping so ADS.DE→ADS.F etc.
 //
 // Response shape is unchanged — frontend (public/js/equity-research.js)
 // keeps consuming Alpha-Vantage-keyed fields.
 //
 // Environment variables:
-//   ALPACA_API_KEY, ALPACA_API_SECRET   — required for price path
+//   ALPACA_API_KEY, ALPACA_API_SECRET   — required for price path (US equities)
 //   SUPABASE_URL                        — required for durable cache
 //   SUPABASE_SERVICE_ROLE_KEY           — required for durable cache
 //   FINNHUB_API_KEY                     — primary fundamentals (finnhub.io free tier)
@@ -165,6 +168,53 @@ function mapAlpacaDaily(bars) {
     return { 'Time Series (Daily)': series };
 }
 
+// ------------------------------------------------------------
+// Upstream A2: Yahoo v8/chart — price fallback for non-Alpaca symbols
+// ------------------------------------------------------------
+// Used when Alpaca returns 404 (international exchanges, unlisted OTC).
+// No crumb/cookie needed for the chart endpoint.
+
+async function yahooChart(symbol) {
+    // Yahoo uses hyphens instead of dots: BRK.B → BRK-B, ADS.DE → ADS.DE (stays)
+    const yfSym = yfSymbol(symbol);
+    const url = YF + '/v8/finance/chart/' + encodeURIComponent(yfSym)
+        + '?interval=1d&range=2y&includePrePost=false&events=div,split';
+    const r = await fetchWithTimeout(url, {
+        headers: { 'User-Agent': UA, accept: 'application/json' },
+    }, 12000);
+    if (!r.ok) throw new Error('Yahoo chart HTTP ' + r.status + ' for ' + yfSym);
+    const j = await r.json();
+    const result = j && j.chart && j.chart.result && j.chart.result[0];
+    if (!result) {
+        const err = j && j.chart && j.chart.error;
+        throw new Error('Yahoo chart: ' + ((err && err.description) || 'no result for ' + yfSym));
+    }
+    return result;
+}
+
+function mapYahooChart(result) {
+    const timestamps = result.timestamp || [];
+    const quote = (result.indicators && result.indicators.quote && result.indicators.quote[0]) || {};
+    const adjClose = result.indicators && result.indicators.adjclose && result.indicators.adjclose[0];
+    const series = {};
+    for (let i = 0; i < timestamps.length; i++) {
+        const close = (adjClose && adjClose.adjclose && adjClose.adjclose[i] != null)
+            ? adjClose.adjclose[i]
+            : (quote.close && quote.close[i]);
+        if (close == null || !isFinite(close)) continue;
+        const date = new Date(timestamps[i] * 1000).toISOString().slice(0, 10);
+        series[date] = {
+            '1. open':   String(quote.open?.[i]   ?? close),
+            '2. high':   String(quote.high?.[i]   ?? close),
+            '3. low':    String(quote.low?.[i]    ?? close),
+            '4. close':  String(close),
+            '5. volume': String(quote.volume?.[i] ?? 0),
+        };
+    }
+    return { 'Time Series (Daily)': series };
+}
+
+// ------------------------------------------------------------
 // Alpaca asset info — fallback for company name when Yahoo is blocked
 async function alpacaAssetInfo(symbol) {
     const key = process.env.ALPACA_API_KEY;
@@ -357,29 +407,77 @@ async function finnhubGet(path) {
     return r.json();
 }
 
-async function finnhubFundamentals(symbol) {
-    var sym = encodeURIComponent(symbol);
-    var results = await Promise.allSettled([
-        finnhubGet('/stock/profile2?symbol=' + sym),
-        finnhubGet('/stock/metric?symbol=' + sym + '&metric=all'),
-        finnhubGet('/stock/recommendation?symbol=' + sym),
-        finnhubGet('/stock/earnings?symbol=' + sym),
-        finnhubGet('/stock/peers?symbol=' + sym),
-    ]);
-    var profile = results[0].status === 'fulfilled' ? results[0].value : {};
-    if (!profile || !profile.ticker) {
-        var reason = results[0].status === 'rejected' ? results[0].reason.message : 'empty profile';
-        throw new Error('Finnhub profile failed for ' + symbol + ': ' + reason);
-    }
-    var rawPeers = results[4].status === 'fulfilled' ? results[4].value : [];
-    var peers = Array.isArray(rawPeers) ? rawPeers.filter(function(p) { return p && p !== symbol; }).slice(0, 8) : [];
-    return {
-        profile: profile,
-        metrics: results[1].status === 'fulfilled' ? results[1].value : {},
-        recs:    results[2].status === 'fulfilled' ? results[2].value : [],
-        earnings: results[3].status === 'fulfilled' ? results[3].value : [],
-        peers: peers,
+// Map Yahoo/common exchange suffixes → Finnhub's exchange codes.
+// Finnhub uses its own exchange suffix scheme (e.g. .F for Xetra, not .DE).
+// Returns an array of symbols to try in order.
+function finnhubSymbolCandidates(symbol) {
+    const candidates = [symbol];
+    // Exchange suffix map: Yahoo format → Finnhub format
+    const SUFFIX_MAP = {
+        '.DE': '.F',    // Deutsche Börse / Xetra (Frankfurt)
+        '.F':  '.F',    // already Finnhub format
+        '.L':  '.L',    // London Stock Exchange
+        '.PA': '.PA',   // Euronext Paris
+        '.AS': '.AS',   // Euronext Amsterdam
+        '.MI': '.MI',   // Borsa Italiana (Milan)
+        '.MC': '.MC',   // Bolsa de Madrid
+        '.HK': '.HK',   // Hong Kong
+        '.T':  '.T',    // Tokyo
+        '.AX': '.AX',   // ASX (Australia)
+        '.TO': '.TO',   // TSX (Toronto)
+        '.SZ': '.SZ',   // Shenzhen
+        '.SS': '.SS',   // Shanghai
     };
+    for (const [from, to] of Object.entries(SUFFIX_MAP)) {
+        if (symbol.toUpperCase().endsWith(from.toUpperCase()) && from !== to) {
+            const base = symbol.slice(0, symbol.length - from.length);
+            candidates.push(base + to);
+        }
+    }
+    // For .DE specifically also try the bare symbol (e.g. ADS) on Finnhub
+    if (symbol.toUpperCase().endsWith('.DE')) {
+        candidates.push(symbol.slice(0, symbol.length - 3));
+    }
+    return [...new Set(candidates)];
+}
+
+async function finnhubFundamentals(symbol) {
+    // Try symbol candidates in order — stop at first one with a valid profile
+    var candidates = finnhubSymbolCandidates(symbol);
+    var lastErr = null;
+    var profile, metrics, recs, earnings, rawPeers;
+
+    for (var ci = 0; ci < candidates.length; ci++) {
+        var sym = encodeURIComponent(candidates[ci]);
+        try {
+            var results = await Promise.allSettled([
+                finnhubGet('/stock/profile2?symbol=' + sym),
+                finnhubGet('/stock/metric?symbol=' + sym + '&metric=all'),
+                finnhubGet('/stock/recommendation?symbol=' + sym),
+                finnhubGet('/stock/earnings?symbol=' + sym),
+                finnhubGet('/stock/peers?symbol=' + sym),
+            ]);
+            var p = results[0].status === 'fulfilled' ? results[0].value : {};
+            if (p && p.ticker) {
+                profile  = p;
+                metrics  = results[1].status === 'fulfilled' ? results[1].value : {};
+                recs     = results[2].status === 'fulfilled' ? results[2].value : [];
+                earnings = results[3].status === 'fulfilled' ? results[3].value : [];
+                rawPeers = results[4].status === 'fulfilled' ? results[4].value : [];
+                break;
+            }
+            lastErr = new Error('empty profile for ' + candidates[ci]);
+        } catch (e) {
+            lastErr = e;
+        }
+    }
+
+    if (!profile) {
+        throw new Error('Finnhub profile failed for ' + symbol + ' (tried: ' + candidates.join(', ') + '): ' + (lastErr && lastErr.message));
+    }
+
+    var peers = Array.isArray(rawPeers) ? rawPeers.filter(function(p) { return p && p !== symbol; }).slice(0, 8) : [];
+    return { profile: profile, metrics: metrics, recs: recs, earnings: earnings, peers: peers };
 }
 
 function mapFinnhubOverview(data, symbol) {
@@ -630,11 +728,32 @@ async function getDaily(symbol) {
     const mem = memGet(key); if (mem) return { data: mem, cache: 'mem' };
     const db = await dbCacheGet(key);
     if (db) { memSet(key, db); return { data: db, cache: 'db' }; }
-    const bars = await alpacaBars(symbol);
-    if (!bars.length) throw new Error('No bars returned for ' + symbol);
-    const data = mapAlpacaDaily(bars);
+
+    let data;
+
+    // Primary: Alpaca (US-listed equities, low latency)
+    try {
+        const bars = await alpacaBars(symbol);
+        if (!bars.length) throw new Error('No bars returned for ' + symbol);
+        data = mapAlpacaDaily(bars);
+    } catch (alpacaErr) {
+        // Alpaca doesn't cover international exchanges or all OTC ADRs.
+        // Fall back to Yahoo v8/chart which supports global symbols (ADS.DE, ADDYY, etc.)
+        try {
+            const result = await yahooChart(symbol);
+            data = mapYahooChart(result);
+            const dateCount = Object.keys(data['Time Series (Daily)']).length;
+            if (dateCount === 0) throw new Error('Yahoo chart returned zero valid bars for ' + symbol);
+        } catch (yahooErr) {
+            throw new Error(
+                'Price data unavailable for ' + symbol + '. ' +
+                'Alpaca: ' + alpacaErr.message + '. Yahoo: ' + yahooErr.message
+            );
+        }
+    }
+
     memSet(key, data);
-    dbCacheSet(key, symbol, 'daily', data, TTL_DAILY_MS);  // fire-and-forget
+    dbCacheSet(key, symbol, 'daily', data, TTL_DAILY_MS);
     return { data: data, cache: 'miss' };
 }
 
