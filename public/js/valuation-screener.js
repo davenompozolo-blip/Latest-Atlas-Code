@@ -331,7 +331,7 @@ export function ValuationScreener({ onNavigate }) {
                     setLoading(false);
                     if (json.error) { setError(json.error); return; }
                     setData(json.stocks || []);
-                    setMarketMeta({ total: json.total_universe, cached: json.cached, avCalls: json.av_calls, hasKey: json.has_av_key });
+                    setMarketMeta({ total: json.total_universe, enriched: json.enriched, hasKey: json.has_av_key });
                 })
                 .catch(function(err) {
                     setLoading(false);
@@ -410,17 +410,6 @@ export function ValuationScreener({ onNavigate }) {
             h('div', { style: { fontSize: 12, color: 'rgba(255,255,255,0.3)' } }, 'Add holdings via the portfolio sync function.')
         );
     }
-    if (data.length === 0 && universe === 'market') {
-        return h('div', { style: { padding: 60, textAlign: 'center' } },
-            h('div', { style: { fontSize: 24, marginBottom: 12, opacity: 0.3 } }, '⊕'),
-            h('div', { style: { fontSize: 14, color: 'rgba(255,255,255,0.5)', marginBottom: 6 } }, 'Market data is populating…'),
-            h('div', { style: { fontSize: 12, color: 'rgba(255,255,255,0.3)', maxWidth: 360, margin: '0 auto' } },
-                marketMeta && !marketMeta.hasKey
-                    ? 'Add ALPHA_VANTAGE_API_KEY to Vercel environment variables to enable market data.'
-                    : 'Alpha Vantage data is fetched in batches (4 stocks per request). Refresh in a moment to see more stocks.'
-            )
-        );
-    }
 
     return h('div', { style: { display: 'flex', flexDirection: 'column', height: '100%' } },
 
@@ -444,7 +433,8 @@ export function ValuationScreener({ onNavigate }) {
             universe === 'market' && marketMeta && h('div', {
                 style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'DM Mono, monospace', textAlign: 'right' }
             },
-                marketMeta.cached + ' / ' + marketMeta.total + ' cached · fundamentals from Alpha Vantage · price & technicals available for portfolio holdings'
+                (marketMeta.enriched || 0) + ' / ' + (marketMeta.total || 0) + ' enriched from Alpha Vantage'
+                + (!marketMeta.hasKey ? ' · add ALPHA_VANTAGE_API_KEY to Vercel to load fundamentals' : '')
             ),
             // Search
             h('input', {
