@@ -135,7 +135,11 @@ Always respond with valid JSON only. No preamble. No markdown fences. No text ou
 
     const data = await response.json();
     const raw = data.content?.[0]?.text || '';
-    const clean = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+    // Strip markdown fences and any leading/trailing non-JSON text before the first {
+    const stripped = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+    const jsonStart = stripped.indexOf('{');
+    const jsonEnd   = stripped.lastIndexOf('}');
+    const clean = jsonStart !== -1 && jsonEnd !== -1 ? stripped.slice(jsonStart, jsonEnd + 1) : stripped;
     let parsed;
     try {
       parsed = JSON.parse(clean);

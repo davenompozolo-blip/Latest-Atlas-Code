@@ -1010,6 +1010,21 @@ function SectorExpandedPanel({ sector, companies, latestNote, onNavigate }) {
 
     const convictionColor = { Overweight: '#10b981', Neutral: '#f59e0b', Underweight: '#ef4444', 'Under Review': '#6b7280' };
 
+    // Recover notes that were stored as raw JSON in sector_thesis (parse_error fallback)
+    const effectiveNote = (() => {
+        if (!noteData) return null;
+        const t = noteData.sector_thesis;
+        if (typeof t === 'string' && t.trimStart().startsWith('{')) {
+            try {
+                const parsed = JSON.parse(t);
+                if (parsed && parsed.sector_thesis) {
+                    return { ...noteData, ...parsed };
+                }
+            } catch (_) { /* not JSON — use as-is */ }
+        }
+        return noteData;
+    })();
+
     return h('div', { style: { padding: '20px' } },
         // Company mini-cards grid
         h('div', { style: { marginBottom: 20 } },
@@ -1073,39 +1088,39 @@ function SectorExpandedPanel({ sector, companies, latestNote, onNavigate }) {
             noteError && h('div', { style: { color: '#ef4444', fontSize: 12, marginBottom: 12, padding: '8px 12px', background: 'rgba(239,68,68,0.08)', borderRadius: 6, border: '1px solid rgba(239,68,68,0.2)' } },
                 'Sector note generation failed. Your company theses are intact. Error: ' + noteError),
 
-            noteData
+            effectiveNote
                 ? h('div', null,
                     // Conviction + verdict
-                    noteData.sector_conviction && h('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 } },
+                    effectiveNote.sector_conviction && h('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 } },
                         h('span', {
                             style: {
                                 fontSize: 12, fontWeight: 700,
-                                color: convictionColor[noteData.sector_conviction] || '#6b7280',
-                                background: (convictionColor[noteData.sector_conviction] || '#6b7280') + '22',
-                                border: '1px solid ' + (convictionColor[noteData.sector_conviction] || '#6b7280') + '44',
+                                color: convictionColor[effectiveNote.sector_conviction] || '#6b7280',
+                                background: (convictionColor[effectiveNote.sector_conviction] || '#6b7280') + '22',
+                                border: '1px solid ' + (convictionColor[effectiveNote.sector_conviction] || '#6b7280') + '44',
                                 borderRadius: 5, padding: '3px 12px', fontFamily: 'DM Mono, monospace',
                             }
-                        }, noteData.sector_conviction),
-                        noteData.sector_verdict && h('span', { style: { fontSize: 12, color: 'rgba(255,255,255,0.6)', fontStyle: 'italic' } }, noteData.sector_verdict)
+                        }, effectiveNote.sector_conviction),
+                        effectiveNote.sector_verdict && h('span', { style: { fontSize: 12, color: 'rgba(255,255,255,0.6)', fontStyle: 'italic' } }, effectiveNote.sector_verdict)
                     ),
 
                     // Thesis
-                    noteData.sector_thesis && h('div', { style: { fontSize: 13, lineHeight: 1.7, color: 'rgba(255,255,255,0.75)', marginBottom: 18, whiteSpace: 'pre-wrap' } }, noteData.sector_thesis),
+                    effectiveNote.sector_thesis && h('div', { style: { fontSize: 13, lineHeight: 1.7, color: 'rgba(255,255,255,0.75)', marginBottom: 18, whiteSpace: 'pre-wrap' } }, effectiveNote.sector_thesis),
 
                     // Tailwinds + headwinds grid
-                    (noteData.sector_tailwinds || noteData.sector_headwinds) && h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 18 } },
-                        noteData.sector_tailwinds && h('div', null,
+                    (effectiveNote.sector_tailwinds || effectiveNote.sector_headwinds) && h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 18 } },
+                        effectiveNote.sector_tailwinds && h('div', null,
                             h('div', { style: { fontSize: 10, fontWeight: 700, letterSpacing: 1.2, color: '#10b981', textTransform: 'uppercase', fontFamily: 'DM Mono, monospace', marginBottom: 8 } }, 'Sector Tailwinds'),
-                            (Array.isArray(noteData.sector_tailwinds) ? noteData.sector_tailwinds : []).map((tw, i) =>
+                            (Array.isArray(effectiveNote.sector_tailwinds) ? effectiveNote.sector_tailwinds : []).map((tw, i) =>
                                 h('div', { key: i, style: { marginBottom: 8 } },
                                     h('div', { style: { fontSize: 12, fontWeight: 600, color: '#34d399', marginBottom: 2 } }, '● ' + tw.theme),
                                     tw.evidence && h('div', { style: { fontSize: 11, color: 'rgba(255,255,255,0.45)', paddingLeft: 12 } }, tw.evidence)
                                 )
                             )
                         ),
-                        noteData.sector_headwinds && h('div', null,
+                        effectiveNote.sector_headwinds && h('div', null,
                             h('div', { style: { fontSize: 10, fontWeight: 700, letterSpacing: 1.2, color: '#ef4444', textTransform: 'uppercase', fontFamily: 'DM Mono, monospace', marginBottom: 8 } }, 'Sector Headwinds'),
-                            (Array.isArray(noteData.sector_headwinds) ? noteData.sector_headwinds : []).map((hw, i) =>
+                            (Array.isArray(effectiveNote.sector_headwinds) ? effectiveNote.sector_headwinds : []).map((hw, i) =>
                                 h('div', { key: i, style: { marginBottom: 8 } },
                                     h('div', { style: { fontSize: 12, fontWeight: 600, color: '#f87171', marginBottom: 2 } }, '● ' + hw.risk),
                                     hw.exposure && h('div', { style: { fontSize: 11, color: 'rgba(255,255,255,0.45)', paddingLeft: 12 } }, hw.exposure)
@@ -1115,21 +1130,21 @@ function SectorExpandedPanel({ sector, companies, latestNote, onNavigate }) {
                     ),
 
                     // Shared assumptions + divergence
-                    (noteData.shared_assumptions || noteData.divergence_points) && h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 } },
-                        noteData.shared_assumptions && h('div', { style: { background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.2)', borderRadius: 6, padding: 14 } },
+                    (effectiveNote.shared_assumptions || effectiveNote.divergence_points) && h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 } },
+                        effectiveNote.shared_assumptions && h('div', { style: { background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.2)', borderRadius: 6, padding: 14 } },
                             h('div', { style: { fontSize: 10, fontWeight: 700, letterSpacing: 1.2, color: '#a78bfa', textTransform: 'uppercase', fontFamily: 'DM Mono, monospace', marginBottom: 6 } }, 'Shared Assumptions'),
-                            h('div', { style: { fontSize: 12, color: 'rgba(255,255,255,0.65)', lineHeight: 1.6 } }, noteData.shared_assumptions)
+                            h('div', { style: { fontSize: 12, color: 'rgba(255,255,255,0.65)', lineHeight: 1.6 } }, effectiveNote.shared_assumptions)
                         ),
-                        noteData.divergence_points && h('div', { style: { background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 6, padding: 14 } },
+                        effectiveNote.divergence_points && h('div', { style: { background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 6, padding: 14 } },
                             h('div', { style: { fontSize: 10, fontWeight: 700, letterSpacing: 1.2, color: '#f59e0b', textTransform: 'uppercase', fontFamily: 'DM Mono, monospace', marginBottom: 6 } }, 'Divergence Points'),
-                            h('div', { style: { fontSize: 12, color: 'rgba(255,255,255,0.65)', lineHeight: 1.6 } }, noteData.divergence_points)
+                            h('div', { style: { fontSize: 12, color: 'rgba(255,255,255,0.65)', lineHeight: 1.6 } }, effectiveNote.divergence_points)
                         )
                     ),
 
                     // Relative value
-                    noteData.relative_value && h('div', { style: { background: 'rgba(0,212,255,0.06)', border: '1px solid rgba(0,212,255,0.2)', borderRadius: 6, padding: 14 } },
+                    effectiveNote.relative_value && h('div', { style: { background: 'rgba(0,212,255,0.06)', border: '1px solid rgba(0,212,255,0.2)', borderRadius: 6, padding: 14 } },
                         h('div', { style: { fontSize: 10, fontWeight: 700, letterSpacing: 1.2, color: '#00d4ff', textTransform: 'uppercase', fontFamily: 'DM Mono, monospace', marginBottom: 6 } }, 'Relative Value'),
-                        h('div', { style: { fontSize: 12, color: 'rgba(255,255,255,0.65)', lineHeight: 1.6 } }, noteData.relative_value)
+                        h('div', { style: { fontSize: 12, color: 'rgba(255,255,255,0.65)', lineHeight: 1.6 } }, effectiveNote.relative_value)
                     )
                 )
                 : h('div', { style: { padding: '24px 0', textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: 13 } },
