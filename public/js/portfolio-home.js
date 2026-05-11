@@ -13,7 +13,7 @@ import {
     DEFAULT_COLS, ALL_COLS, getVisibleCols,
     cellValue, cellClass, cellStyle, qualityPill
 } from './utils.js';
-import { Loading, HeroCard } from './components.js';
+import { Loading, HeroCard, NarrativeStrip } from './components.js';
 import { returnStatus } from './utils.js';
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -1173,7 +1173,9 @@ export function PortfolioHome() {
     useEffect(function() {
         if (!positions || !donutRef.current) return;
         if (donutInst.current) donutInst.current.destroy();
-        var top10 = positions.slice(0, 10);
+        var top10 = positions.slice().sort(function(a, b) {
+            return Math.abs(Number(b.market_value) || 0) - Math.abs(Number(a.market_value) || 0);
+        }).slice(0, 10);
         donutInst.current = new Chart(donutRef.current, {
             type: 'doughnut',
             data: {
@@ -1544,6 +1546,106 @@ export function PortfolioHome() {
             })
         ),
         subView === 'overview' && React.createElement(React.Fragment, null,
+
+        // === Portfolio Intelligence — Hero Cards ===
+        (function() {
+            var totalMv = positions.reduce(function(s, p) { return s + Math.abs(Number(p.market_value)||0); }, 0);
+            var withRet = positions.filter(function(p) { return p.unrealised_return_pct != null && isFinite(Number(p.unrealised_return_pct)); });
+            var winners = withRet.filter(function(p) { return Number(p.unrealised_return_pct) > 0; });
+            var losers  = withRet.filter(function(p) { return Number(p.unrealised_return_pct) < 0; });
+            var today   = positions.filter(function(p) { return p.daily_change_pct != null && isFinite(Number(p.daily_change_pct)); });
+            var todayUp = today.filter(function(p) { return Number(p.daily_change_pct) > 0; }).length;
+            var todayDn = today.filter(function(p) { return Number(p.daily_change_pct) < 0; }).length;
+            var sortedByMv = positions.slice().sort(function(a,b){ return Math.abs(Number(b.market_value)||0)-Math.abs(Number(a.market_value)||0); });
+            var top1 = sortedByMv[0];
+            var maxWt = top1 && totalMv > 0 ? (Math.abs(Number(top1.market_value)||0) / totalMv) * 100 : 0;
+            var sortedByRet = withRet.slice().sort(function(a,b){ return Number(b.unrealised_return_pct)-Number(a.unrealised_return_pct); });
+            var bestPos = sortedByRet[0];
+            var worstPos = sortedByRet[sortedByRet.length-1];
+            var inDeepDD = positions.filter(function(p){ return p.unrealised_return_pct != null && Number(p.unrealised_return_pct) < -0.10; }).length;
+            var winRatePct = withRet.length > 0 ? Math.round(winners.length / withRet.length * 100) : 0;
+            var winAccent = winRatePct >= 60 ? 'green' : winRatePct >= 45 ? 'amber' : 'red';
+            var todayAccent = todayUp > todayDn ? 'green' : todayDn > todayUp ? 'red' : 'amber';
+            var concAccent = maxWt > 25 ? 'red' : maxWt > 15 ? 'amber' : 'green';
+            var riskAccent = inDeepDD > 3 ? 'red' : inDeepDD > 0 ? 'amber' : 'green';
+            return React.createElement('div', { className: 'hero-grid', style: { display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 10, marginBottom: 16 } },
+                React.createElement(HeroCard, { icon: '◉', label: 'POSITIONS', accent: 'cyan',
+                    value: String(positions.length),
+                    sub: winners.length + ' winners · ' + losers.length + ' losers' }),
+                React.createElement(HeroCard, { icon: '▲', label: 'TODAY  UP / DOWN', accent: todayAccent,
+                    value: todayUp + ' / ' + todayDn,
+                    color: todayUp > todayDn ? 'var(--green)' : todayDn > todayUp ? 'var(--red)' : 'var(--amber)' }),
+                React.createElement(HeroCard, { icon: '✦', label: 'WIN RATE', accent: winAccent,
+                    value: winRatePct + '%',
+                    color: winRatePct >= 60 ? 'var(--green)' : winRatePct >= 45 ? 'var(--amber)' : 'var(--red)',
+                    sub: winners.length + ' of ' + withRet.length + ' profitable' }),
+                React.createElement(HeroCard, { icon: '◆', label: 'TOP CONCENTRATION', accent: concAccent,
+                    value: top1 ? top1.symbol : '—',
+                    color: concAccent === 'red' ? 'var(--red)' : concAccent === 'amber' ? 'var(--amber)' : 'var(--green)',
+                    sub: maxWt.toFixed(1) + '% of portfolio' }),
+                React.createElement(HeroCard, { icon: '▽', label: 'AT RISK  (>10% DD)', accent: riskAccent,
+                    value: String(inDeepDD),
+                    color: inDeepDD > 3 ? 'var(--red)' : inDeepDD > 0 ? 'var(--amber)' : 'var(--green)',
+                    sub: inDeepDD > 0 ? 'positions down >10%' : 'No deep drawdowns' }),
+                React.createElement(HeroCard, { icon: '★', label: 'BEST / WORST', accent: 'indigo',
+                    value: bestPos ? bestPos.symbol : '—',
+                    sub: bestPos ? (Number(bestPos.unrealised_return_pct)*100).toFixed(1) + '% · Worst: ' + (worstPos ? worstPos.symbol + ' ' + (Number(worstPos.unrealised_return_pct)*100).toFixed(1) + '%' : '—') : '—' })
+            );
+        })(),
+
+        // === Portfolio Narrative Strip ===
+        React.createElement(NarrativeStrip, { items: (function() {
+            var items = [];
+            var totalMv = positions.reduce(function(s, p) { return s + Math.abs(Number(p.market_value)||0); }, 0);
+            var withRet = positions.filter(function(p) { return p.unrealised_return_pct != null && isFinite(Number(p.unrealised_return_pct)); });
+            var winners = withRet.filter(function(p) { return Number(p.unrealised_return_pct) > 0; });
+            var losers  = withRet.filter(function(p) { return Number(p.unrealised_return_pct) < 0; });
+            var winPct  = withRet.length > 0 ? Math.round(winners.length / withRet.length * 100) : 0;
+            // 1. Overall health line
+            var sortedByRet = withRet.slice().sort(function(a,b){ return Number(b.unrealised_return_pct)-Number(a.unrealised_return_pct); });
+            var best  = sortedByRet[0];
+            var worst = sortedByRet[sortedByRet.length-1];
+            items.push({ icon: '◆',
+                text: '<strong>' + winners.length + '/' + withRet.length + ' positions</strong> profitable (' + winPct + '% win rate)' +
+                    (best  ? ' · Best: <strong style="color:#10b981">' + best.symbol  + ' +' + (Number(best.unrealised_return_pct)*100).toFixed(1)  + '%</strong>' : '') +
+                    (worst ? ' · Worst: <strong style="color:#ef4444">' + worst.symbol + ' ' + (Number(worst.unrealised_return_pct)*100).toFixed(1) + '%</strong>' : '')
+            });
+            // 2. Today's movers
+            var withDay = positions.filter(function(p){ return p.daily_change_pct != null && isFinite(Number(p.daily_change_pct)); });
+            if (withDay.length) {
+                var dayUp = withDay.filter(function(p){ return Number(p.daily_change_pct) > 0; });
+                var dayDn = withDay.filter(function(p){ return Number(p.daily_change_pct) < 0; });
+                var sortedDay = withDay.slice().sort(function(a,b){ return Number(b.daily_change_pct)-Number(a.daily_change_pct); });
+                var topMover = sortedDay[0];
+                var botMover = sortedDay[sortedDay.length-1];
+                items.push({ icon: '▲',
+                    text: 'Today: <strong style="color:#10b981">' + dayUp.length + ' up</strong> · <strong style="color:#ef4444">' + dayDn.length + ' down</strong>' +
+                        (topMover ? ' · Leader: <strong style="color:#10b981">' + topMover.symbol + ' +' + (Number(topMover.daily_change_pct)*100).toFixed(2) + '%</strong>' : '') +
+                        (botMover && Number(botMover.daily_change_pct) < 0 ? ' · Laggard: <strong style="color:#ef4444">' + botMover.symbol + ' ' + (Number(botMover.daily_change_pct)*100).toFixed(2) + '%</strong>' : '')
+                });
+            }
+            // 3. Concentration
+            var sorted = positions.slice().sort(function(a,b){ return Math.abs(Number(b.market_value)||0)-Math.abs(Number(a.market_value)||0); });
+            var top5wt = sorted.slice(0,5).reduce(function(s,p){ return s + Math.abs(Number(p.market_value)||0); }, 0) / (totalMv||1) * 100;
+            var top1 = sorted[0];
+            var top1wt = totalMv > 0 && top1 ? Math.abs(Number(top1.market_value)||0) / totalMv * 100 : 0;
+            items.push({ icon: '◉',
+                text: 'Top 5 holdings = <strong>' + top5wt.toFixed(1) + '%</strong> of portfolio' +
+                    (top1wt > 20 ? ' — <span style="color:#ef4444">⚠ ' + top1.symbol + ' at ' + top1wt.toFixed(1) + '% is a concentrated position</span>' :
+                    top1wt > 12 ? ' — <span style="color:#f59e0b">' + top1.symbol + ' at ' + top1wt.toFixed(1) + '% · monitor</span>' :
+                    ' — <span style="color:#10b981">well-diversified across top holdings</span>')
+            });
+            // 4. Deep drawdown alert
+            var inDeepDD = withRet.filter(function(p){ return Number(p.unrealised_return_pct) < -0.10; });
+            if (inDeepDD.length > 0) {
+                items.push({ icon: '▽',
+                    text: '<strong style="color:#ef4444">' + inDeepDD.length + ' position' + (inDeepDD.length > 1 ? 's' : '') + ' in deep drawdown (>10%):</strong> ' +
+                        inDeepDD.slice(0,5).map(function(p){ return '<span style="color:#fca5a5">' + p.symbol + ' ' + (Number(p.unrealised_return_pct)*100).toFixed(1) + '%</span>'; }).join(' · ')
+                });
+            }
+            return items;
+        })() }),
+
         // Charts Row (3fr 2fr) — NAV chart dominant, donut alongside
         React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 16, marginBottom: 16 } },
             React.createElement('div', { className: 'card' },
