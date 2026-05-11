@@ -634,16 +634,21 @@ export function RiskAnalysis() {
     const [riskSortDir, setRiskSortDir] = useState('desc');
 
     useEffect(() => {
-        Promise.all([
-            loadView('vw_risk_analysis', []),
-            loadView('vw_command_centre', [MOCK_COMMAND]),
-            loadView('vw_portfolio_nav_daily', []),
-        ]).then(([r, c, n]) => {
-            setRisk(r);
-            setCommand(c[0] || MOCK_COMMAND);
-            setNavData(n);
-            setLoading(false);
-        });
+        function load() {
+            Promise.all([
+                loadView('vw_risk_analysis', []),
+                loadView('vw_command_centre', [MOCK_COMMAND]),
+                loadView('vw_portfolio_nav_daily', []),
+            ]).then(([r, c, n]) => {
+                setRisk(r);
+                setCommand(c[0] || MOCK_COMMAND);
+                setNavData(n);
+                setLoading(false);
+            });
+        }
+        load();
+        window.addEventListener('atlas:refresh', load);
+        return () => window.removeEventListener('atlas:refresh', load);
     }, []);
 
     if (loading) return React.createElement(Loading, null);
@@ -823,16 +828,21 @@ export function CommandCentre() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        Promise.all([
-            loadView('vw_command_centre', [MOCK_COMMAND]),
-            loadView('vw_portfolio_nav_daily', []),
-            loadView('vw_portfolio_home', []),
-        ]).then(function(res) {
-            setCommand((Array.isArray(res[0]) ? res[0][0] : res[0]) || MOCK_COMMAND);
-            setNavData(res[1]);
-            setHomeData(res[2]);
-            setLoading(false);
-        });
+        function load() {
+            Promise.all([
+                loadView('vw_command_centre', [MOCK_COMMAND]),
+                loadView('vw_portfolio_nav_daily', []),
+                loadView('vw_portfolio_home', []),
+            ]).then(function(res) {
+                setCommand((Array.isArray(res[0]) ? res[0][0] : res[0]) || MOCK_COMMAND);
+                setNavData(res[1]);
+                setHomeData(res[2]);
+                setLoading(false);
+            });
+        }
+        load();
+        window.addEventListener('atlas:refresh', load);
+        return () => window.removeEventListener('atlas:refresh', load);
     }, []);
 
     if (loading) return React.createElement(Loading, null);

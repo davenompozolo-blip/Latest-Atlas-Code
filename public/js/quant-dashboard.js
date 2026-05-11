@@ -23,18 +23,23 @@ export function QuantDashboard() {
     const [activePanel, setActivePanel] = useState('signals');
 
     useEffect(() => {
-        Promise.all([
-            loadView('vw_quant_dashboard', []),
-            loadView('vw_quant_rolling_returns', []),
-            loadView('vw_quant_correlation', []),
-            loadView('vw_quant_drawdown', []),
-        ]).then(([s, r, c, d]) => {
-            setSignals(s || []);
-            setRolling(r || []);
-            setCorrelation(c || []);
-            setDrawdown(d || []);
-            setLoading(false);
-        });
+        function load() {
+            Promise.all([
+                loadView('vw_quant_dashboard', []),
+                loadView('vw_quant_rolling_returns', []),
+                loadView('vw_quant_correlation', []),
+                loadView('vw_quant_drawdown', []),
+            ]).then(([s, r, c, d]) => {
+                setSignals(s || []);
+                setRolling(r || []);
+                setCorrelation(c || []);
+                setDrawdown(d || []);
+                setLoading(false);
+            });
+        }
+        load();
+        window.addEventListener('atlas:refresh', load);
+        return () => window.removeEventListener('atlas:refresh', load);
     }, []);
 
     if (loading) return React.createElement(Loading, null);

@@ -39,25 +39,30 @@ export function PerformanceSuite() {
     var loading = _l[0], setLoading = _l[1];
 
     useEffect(function() {
-        Promise.all([
-            loadView('vw_portfolio_nav_daily', []),
-            loadView('vw_performance_suite', []),
-            loadView('vw_command_centre', [MOCK_COMMAND]),
-            loadView('vw_portfolio_home', []),
-        ]).then(function(res) {
-            var nav = res[0];
-            if (Array.isArray(nav) && nav.length) {
-                nav = nav.slice().sort(function(a, b) {
-                    return new Date(a.price_date) - new Date(b.price_date);
-                });
-            }
-            setNavSeries(nav);
-            setPerfData(res[1]);
-            var cmd = Array.isArray(res[2]) ? res[2][0] : res[2];
-            setCmdData(cmd || MOCK_COMMAND);
-            setHomeData(res[3] || []);
-            setLoading(false);
-        });
+        function load() {
+            Promise.all([
+                loadView('vw_portfolio_nav_daily', []),
+                loadView('vw_performance_suite', []),
+                loadView('vw_command_centre', [MOCK_COMMAND]),
+                loadView('vw_portfolio_home', []),
+            ]).then(function(res) {
+                var nav = res[0];
+                if (Array.isArray(nav) && nav.length) {
+                    nav = nav.slice().sort(function(a, b) {
+                        return new Date(a.price_date) - new Date(b.price_date);
+                    });
+                }
+                setNavSeries(nav);
+                setPerfData(res[1]);
+                var cmd = Array.isArray(res[2]) ? res[2][0] : res[2];
+                setCmdData(cmd || MOCK_COMMAND);
+                setHomeData(res[3] || []);
+                setLoading(false);
+            });
+        }
+        load();
+        window.addEventListener('atlas:refresh', load);
+        return function() { window.removeEventListener('atlas:refresh', load); };
     }, []);
 
     var metrics = useMemo(function() {

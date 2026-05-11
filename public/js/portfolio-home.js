@@ -1135,20 +1135,25 @@ export function PortfolioHome() {
     var _sv = useState('overview'), subView = _sv[0], setSubView = _sv[1];
 
     useEffect(function() {
-        Promise.all([
-            loadView('vw_portfolio_home', MOCK_POSITIONS),
-            loadView('vw_command_centre', [MOCK_COMMAND]),
-            loadView('vw_portfolio_nav_daily', []),
-            loadView('vw_earnings_calendar', []),
-            loadView('vw_transactions', []),
-        ]).then(function(res) {
-            setPositions(res[0]);
-            setCommand(res[1][0] || MOCK_COMMAND);
-            setNavData(res[2]);
-            setEarningsData(res[3]);
-            setTxData(res[4] || []);
-            setLoading(false);
-        });
+        function load() {
+            Promise.all([
+                loadView('vw_portfolio_home', MOCK_POSITIONS),
+                loadView('vw_command_centre', [MOCK_COMMAND]),
+                loadView('vw_portfolio_nav_daily', []),
+                loadView('vw_earnings_calendar', []),
+                loadView('vw_transactions', []),
+            ]).then(function(res) {
+                setPositions(res[0]);
+                setCommand(res[1][0] || MOCK_COMMAND);
+                setNavData(res[2]);
+                setEarningsData(res[3]);
+                setTxData(res[4] || []);
+                setLoading(false);
+            });
+        }
+        load();
+        window.addEventListener('atlas:refresh', load);
+        return function() { window.removeEventListener('atlas:refresh', load); };
     }, []);
 
     // Column toggle handler

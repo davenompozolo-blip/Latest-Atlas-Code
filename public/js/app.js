@@ -12,7 +12,7 @@
 
 import { sb, loadView, MOCK_COMMAND } from './config.js';
 import { fmtPct, fmtCurrency, cls } from './utils.js';
-import { ConfigPrompt, TopBarSparkline, SyncStatusPill } from './components.js';
+import { ConfigPrompt, TopBarSparkline, SyncStatusPill, RefreshButton } from './components.js';
 import { PortfolioHome } from './portfolio-home.js';
 import { QuantDashboard } from './quant-dashboard.js';
 import { RiskAnalysis, CommandCentre } from './pages-other.js';
@@ -113,18 +113,22 @@ function App() {
 
     var ActiveComponent = TABS.find(function(t) { return t.id === activeTab; }).component;
 
-    // Load summary data for top bar
+    // Load summary data for top bar — also re-runs on atlas:refresh
     useEffect(function() {
-        Promise.all([
-            loadView('vw_portfolio_nav_daily', []),
-            loadView('vw_command_centre', MOCK_COMMAND)
-        ]).then(function(res) {
-            setTopNav(res[0]);
-            var cmd = Array.isArray(res[1]) ? res[1][0] : res[1];
-            setTopCmd(cmd || MOCK_COMMAND);
-            // Promote flag from window global (set by loadView) into React state
-            setDataMode(window.__ATLAS_DATA_MODE__ || 'mock');
-        });
+        function load() {
+            Promise.all([
+                loadView('vw_portfolio_nav_daily', []),
+                loadView('vw_command_centre', MOCK_COMMAND)
+            ]).then(function(res) {
+                setTopNav(res[0]);
+                var cmd = Array.isArray(res[1]) ? res[1][0] : res[1];
+                setTopCmd(cmd || MOCK_COMMAND);
+                setDataMode(window.__ATLAS_DATA_MODE__ || 'mock');
+            });
+        }
+        load();
+        window.addEventListener('atlas:refresh', load);
+        return function() { window.removeEventListener('atlas:refresh', load); };
     }, []);
 
     // Listen for Scrapbook navigation events dispatched by ScrapbookSaveBar
@@ -166,6 +170,7 @@ function App() {
                 dataMode === 'live' ? '\u25CF LIVE DATA' : '\u25CB MOCK DATA'
             ),
             React.createElement(SyncStatusPill, null),
+            React.createElement(RefreshButton, null),
             React.createElement('div', { className: 'date' },
                 new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })
             )
