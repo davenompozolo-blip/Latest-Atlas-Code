@@ -24,6 +24,14 @@ export const sb = SUPABASE_KEY
 // rows under the anon key. Otherwise 'mock' (fallback/demo).
 window.__ATLAS_DATA_MODE__ = sb ? 'pending' : 'mock';
 
+// ── Global refresh bus ────────────────────────────────────────────────────────
+// Components subscribe via window.addEventListener('atlas:refresh', fn).
+// Callers dispatch via triggerRefresh(). The SyncStatusPill fires this
+// automatically when it detects a new Alpaca sync timestamp.
+export function triggerRefresh() {
+    window.dispatchEvent(new CustomEvent('atlas:refresh'));
+}
+
 export async function loadView(viewName, fallback = []) {
     if (!sb) return fallback;
     try {

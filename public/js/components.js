@@ -6,7 +6,7 @@
 // SyncStatusPill) that reuse the shared data layer.
 // ============================================================
 
-import { sb, loadView } from './config.js';
+import { sb, loadView, triggerRefresh } from './config.js';
 import { heroBadgeCls } from './utils.js';
 
 const { useState, useEffect, useRef } = React;
@@ -85,6 +85,7 @@ export function TopBarSparkline({ nav }) {
 }
 
 // --- Sync status pill — reads vw_sync_status (latest row from sync_log) ---
+// Fires atlas:refresh whenever last_synced_at advances (new Alpaca sync landed).
 export function SyncStatusPill() {
     var _s = useState(null);
     var sync = _s[0];
@@ -92,13 +93,20 @@ export function SyncStatusPill() {
 
     useEffect(function() {
         if (!sb) return;
+        var prevSyncedAt = null;
         function load() {
             loadView('vw_sync_status', []).then(function(rows) {
-                setSync(rows && rows.length ? rows[0] : null);
+                var row = rows && rows.length ? rows[0] : null;
+                setSync(row);
+                // Fire global refresh when a new sync is detected
+                if (row && row.last_synced_at && row.last_synced_at !== prevSyncedAt) {
+                    if (prevSyncedAt !== null) triggerRefresh();
+                    prevSyncedAt = row.last_synced_at;
+                }
             });
         }
         load();
-        var t = setInterval(load, 60000); // refresh every minute
+        var t = setInterval(load, 60000); // check every minute
         return function() { clearInterval(t); };
     }, []);
 
@@ -132,5 +140,47 @@ export function SyncStatusPill() {
     return React.createElement('div', { className: 'sync-pill ' + tier, title: title },
         React.createElement('span', { className: 'dot' }),
         'SYNC ' + rel + ' AGO'
+    );
+}
+
+// --- Manual refresh button — fires atlas:refresh across all live components ---
+export function RefreshButton() {
+    var _s = useState(false);
+    var spinning = _s[0];
+    var setSpinning = _s[1];
+
+    function handleClick() {
+        setSpinning(true);
+        triggerRefresh();
+        setTimeout(function() { setSpinning(false); }, 1200);
+    }
+
+    return React.createElement('button', {
+        onClick: handleClick,
+        title: 'Refresh all portfolio data',
+        style: {
+            background: 'transparent',
+            border: '1px solid rgba(255,255,255,0.15)',
+            borderRadius: 5,
+            color: 'rgba(255,255,255,0.5)',
+            cursor: 'pointer',
+            fontSize: 12,
+            padding: '3px 8px',
+            fontFamily: 'DM Mono, monospace',
+            letterSpacing: 0.5,
+            transition: 'all 0.15s',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+        }
+    },
+        React.createElement('span', {
+            style: {
+                display: 'inline-block',
+                transition: 'transform 0.6s',
+                transform: spinning ? 'rotate(360deg)' : 'rotate(0deg)',
+            }
+        }, '↺'),
+        'REFRESH'
     );
 }
