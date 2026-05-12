@@ -973,15 +973,17 @@ function SectorExpandedPanel({ sector, companies, latestNote, onNavigate }) {
             if (!resp.ok || result.error) throw new Error(result.error || 'Sector note generation failed');
 
             if (result.parse_error) {
+                // Store the raw text; effectiveNote will extract JSON from it on render
+                const rawText = result.raw_text || null;
                 await sb.from('scrapbook_sector_notes').insert({
                     sector,
                     company_ids: companies.map(c => c.id),
                     company_tickers: companies.map(c => c.ticker),
                     company_count: companies.length,
-                    sector_thesis: result.raw_text || null,
+                    sector_thesis: rawText,
                     sector_conviction: 'Under Review',
                 });
-                setNoteData({ sector_thesis: result.raw_text, sector_conviction: 'Under Review', created_at: new Date().toISOString() });
+                setNoteData({ sector_thesis: rawText, sector_conviction: 'Under Review', created_at: new Date().toISOString() });
                 return;
             }
 
@@ -1010,18 +1012,23 @@ function SectorExpandedPanel({ sector, companies, latestNote, onNavigate }) {
 
     const convictionColor = { Overweight: '#10b981', Neutral: '#f59e0b', Underweight: '#ef4444', 'Under Review': '#6b7280' };
 
-    // Recover notes that were stored as raw JSON in sector_thesis (parse_error fallback)
+    // Recover notes that were stored as raw JSON string in sector_thesis (parse_error fallback).
+    // Handles both plain JSON and markdown-fenced ```json ... ``` variants.
     const effectiveNote = (() => {
         if (!noteData) return null;
         const t = noteData.sector_thesis;
-        if (typeof t === 'string' && t.trimStart().startsWith('{')) {
-            try {
-                const parsed = JSON.parse(t);
-                if (parsed && parsed.sector_thesis) {
-                    return { ...noteData, ...parsed };
-                }
-            } catch (_) { /* not JSON — use as-is */ }
-        }
+        if (typeof t !== 'string') return noteData;
+        // Strip markdown code fences, then locate the outermost JSON object
+        const stripped = t.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+        const jsonStart = stripped.indexOf('{');
+        const jsonEnd   = stripped.lastIndexOf('}');
+        if (jsonStart === -1 || jsonEnd === -1 || jsonEnd <= jsonStart) return noteData;
+        try {
+            const parsed = JSON.parse(stripped.slice(jsonStart, jsonEnd + 1));
+            if (parsed && typeof parsed.sector_thesis === 'string') {
+                return { ...noteData, ...parsed };
+            }
+        } catch (_) { /* genuine prose — render as-is */ }
         return noteData;
     })();
 
