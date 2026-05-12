@@ -525,8 +525,13 @@ async function syncPriceHistory() {
       return { upserted: 0 };
     }
 
-    const symbolToId = Object.fromEntries(assets.map(a => [a.symbol, a.id]));
-    const symbols    = assets.map(a => a.symbol);
+    // Filter out OCC options symbols (e.g. GDX280121P00070000) — Alpaca stock bars
+    // endpoint rejects them and they would corrupt the batch fetch for valid tickers.
+    const OCC_PATTERN = /^[A-Z.]{1,6}\d{6}[CP]\d{8}$/;
+    const equityAssets = assets.filter(a => !OCC_PATTERN.test(a.symbol));
+
+    const symbolToId = Object.fromEntries(equityAssets.map(a => [a.symbol, a.id]));
+    const symbols    = equityAssets.map(a => a.symbol);
 
     let totalFetched = 0, totalUpserted = 0;
     const BATCH = 50; // Alpaca multi-symbol limit
@@ -566,10 +571,10 @@ async function syncPriceHistory() {
       totalFetched += rows.length;
       if (rows.length === 0) continue;
 
-      // Unique constraint: (asset_id, source, interval, price_date)
+      // Unique constraint: (asset_id, price_date, interval) — matches migration index
       const { error: upsertErr } = await supabase
         .from('price_history')
-        .upsert(rows, { onConflict: 'asset_id,source,interval,price_date' });
+        .upsert(rows, { onConflict: 'asset_id,price_date,interval' });
 
       if (upsertErr) {
         console.warn(`  ⚠ Upsert error: ${upsertErr.message}`);
