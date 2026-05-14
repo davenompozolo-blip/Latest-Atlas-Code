@@ -18,7 +18,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { company, snapshots, portfolioContext } = req.body || {};
+  const { company, snapshots, portfolioContext, stream: wantStream } = req.body || {};
 
   if (!company?.ticker || !Array.isArray(snapshots) || snapshots.length === 0) {
     return res.status(400).json({ error: 'company.ticker and snapshots[] required' });
@@ -32,7 +32,7 @@ export default async function handler(req, res) {
   const prompt = buildSynthesisPrompt(company, snapshots, portfolioContext);
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -42,31 +42,124 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
         max_tokens: 2400,
+        stream: true,
         system: buildSystemPrompt(),
         messages: [{ role: 'user', content: prompt }],
       }),
     });
 
-    if (!response.ok) {
-      const err = await response.text();
-      console.error('Anthropic API error:', response.status, err.slice(0, 400));
+    if (!anthropicRes.ok) {
+      const err = await anthropicRes.text();
+      console.error('Anthropic API error:', anthropicRes.status, err.slice(0, 400));
       return res.status(502).json({ error: 'Anthropic API error', detail: err.slice(0, 400) });
     }
 
-    const data = await response.json();
-    const raw = data.content?.[0]?.text || '';
-    const inputTokens = data.usage?.input_tokens || null;
+    // ── Streaming mode: pipe SSE to client, send parsed JSON as final event ──
+    if (wantStream) {
+      res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-cache, no-transform');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('X-Accel-Buffering', 'no'); // disable nginx buffering on Vercel
 
-    // Strip markdown fences then parse JSON
-    const clean = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+      const reader = anthropicRes.body.getReader();
+      const decoder = new TextDecoder();
+      let accumulated = '';
+      let lineBuffer = '';
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value, { stream: true });
+          lineBuffer += chunk;
+
+          // Process complete SSE lines, hold back partial last line
+          const lines = lineBuffer.split('\n');
+          lineBuffer = lines.pop();
+
+          for (const line of lines) {
+            // Forward the raw SSE line to the client so it can track progress
+            if (line.trim()) res.write(line + '\n');
+
+            if (!line.startsWith('data: ')) continue;
+            const payload = line.slice(6);
+            if (payload === '[DONE]') continue;
+            try {
+              const ev = JSON.parse(payload);
+              if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta') {
+                accumulated += ev.delta.text;
+              }
+            } catch { /* partial JSON line — ignore */ }
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+
+      // Parse the accumulated JSON and send as a single final atlas_result event
+      const stripped = accumulated.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+      const jsonStart = stripped.indexOf('{');
+      const jsonEnd = stripped.lastIndexOf('}');
+      const clean = jsonStart !== -1 && jsonEnd !== -1 ? stripped.slice(jsonStart, jsonEnd + 1) : stripped;
+
+      let finalPayload;
+      try {
+        const parsed = JSON.parse(clean);
+        finalPayload = JSON.stringify(parsed);
+      } catch {
+        finalPayload = JSON.stringify({ raw_text: accumulated, parse_error: true });
+      }
+
+      res.write('\n');
+      res.write('event: atlas_result\n');
+      res.write('data: ' + finalPayload + '\n\n');
+      res.end();
+      return;
+    }
+
+    // ── Non-streaming fallback: accumulate then return JSON ──────────────────
+    const reader = anthropicRes.body.getReader();
+    const decoder = new TextDecoder();
+    let accumulated = '';
+    let lineBuffer = '';
+    let inputTokens = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      lineBuffer += decoder.decode(value, { stream: true });
+      const lines = lineBuffer.split('\n');
+      lineBuffer = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const payload = line.slice(6);
+        if (payload === '[DONE]') continue;
+        try {
+          const ev = JSON.parse(payload);
+          if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta') {
+            accumulated += ev.delta.text;
+          }
+          if (ev.type === 'message_delta' && ev.usage?.output_tokens) {
+            inputTokens = ev.usage.output_tokens;
+          }
+        } catch { /* ignore */ }
+      }
+    }
+
+    const stripped = accumulated.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+    const jsonStart = stripped.indexOf('{');
+    const jsonEnd = stripped.lastIndexOf('}');
+    const clean = jsonStart !== -1 && jsonEnd !== -1 ? stripped.slice(jsonStart, jsonEnd + 1) : stripped;
+
     let parsed;
     try {
       parsed = JSON.parse(clean);
     } catch {
-      return res.status(200).json({ raw_text: raw, parse_error: true, input_token_est: inputTokens });
+      return res.status(200).json({ raw_text: accumulated, parse_error: true, input_token_est: inputTokens });
     }
-
     return res.status(200).json({ ...parsed, input_token_est: inputTokens });
+
   } catch (err) {
     console.error('claude-analyse error:', err);
     return res.status(500).json({ error: 'Internal error', detail: err.message });
