@@ -825,18 +825,24 @@ export function CommandCentre() {
     const [command, setCommand] = useState(null);
     const [navData, setNavData] = useState(null);
     const [homeData, setHomeData] = useState(null);
+    const [freshness, setFreshness] = useState(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         function load() {
+            const freshnessPromise = sb
+                ? sb.rpc('data_freshness').then(function(r) { return r.data || []; })
+                : Promise.resolve([]);
             Promise.all([
                 loadView('vw_command_centre', [MOCK_COMMAND]),
                 loadView('vw_portfolio_nav_daily', []),
                 loadView('vw_portfolio_home', []),
+                freshnessPromise,
             ]).then(function(res) {
                 setCommand((Array.isArray(res[0]) ? res[0][0] : res[0]) || MOCK_COMMAND);
                 setNavData(res[1]);
                 setHomeData(res[2]);
+                setFreshness(res[3]);
                 setLoading(false);
             });
         }
@@ -943,6 +949,53 @@ export function CommandCentre() {
                         React.createElement('td', null, 'FIFO Transaction-Based Reconstruction'))
                 )
             )
+        ),
+        // Data Freshness tile
+        React.createElement('div', { className: 'card', style: { marginTop: 16 } },
+            React.createElement('div', { className: 'card-title' }, 'Data Freshness'),
+            freshness && freshness.length > 0
+                ? React.createElement('table', { className: 'data-table' },
+                    React.createElement('thead', null,
+                        React.createElement('tr', null,
+                            React.createElement('th', null, 'Stream'),
+                            React.createElement('th', null, 'Last Update'),
+                            React.createElement('th', null, 'Age'),
+                            React.createElement('th', null, 'Status')
+                        )
+                    ),
+                    React.createElement('tbody', null,
+                        freshness.map(function(row) {
+                            // v2 RPC returns status field directly; fall back to age calc for v1
+                            var s = row.status || (
+                                !row.last_update ? 'dead' :
+                                Number(row.age_hours) > 96 ? 'dead' :
+                                Number(row.age_hours) > 36 ? 'stale' : 'fresh'
+                            );
+                            var statusLabel = s === 'fresh' ? 'LIVE' : s === 'stale' ? 'STALE' : 'DEAD';
+                            var statusCls   = s === 'fresh' ? 'green' : s === 'stale' ? 'amber' : 'red';
+                            var hours = Number(row.age_hours) || 0;
+                            var ageLabel = !row.last_update ? '—' : hours < 1 ? '<1h' : hours < 24 ? Math.round(hours) + 'h' : (hours / 24).toFixed(1) + 'd';
+                            var lastStr  = row.last_update ? new Date(row.last_update).toLocaleString() : '—';
+                            var streamNames = {
+                                price_history:         'Price History',
+                                positions:             'Positions',
+                                account_snapshots:     'Account Snapshots',
+                                sync_alpaca_positions: 'Position Sync',
+                                sync_alpaca_prices:    'Price Sync',
+                                last_sync:             'Last Sync',
+                            };
+                            return React.createElement('tr', { key: row.stream },
+                                React.createElement('td', { style: { fontFamily: 'DM Sans', color: 'rgba(255,255,255,0.7)' } }, streamNames[row.stream] || row.stream),
+                                React.createElement('td', null, lastStr),
+                                React.createElement('td', { style: { fontWeight: 600, color: s === 'fresh' ? 'var(--green)' : s === 'stale' ? 'var(--amber)' : 'var(--red)' } }, ageLabel),
+                                React.createElement('td', null, React.createElement('span', { className: 'badge ' + statusCls }, statusLabel))
+                            );
+                        })
+                    )
+                )
+                : React.createElement('div', { style: { color: 'rgba(255,255,255,0.4)', fontSize: 13, padding: '12px 0' } },
+                    sb ? 'Freshness data unavailable' : 'Live in demo mode — connect Supabase to see data freshness'
+                )
         )
     );
 }
