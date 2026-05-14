@@ -965,16 +965,29 @@ export function CommandCentre() {
                     ),
                     React.createElement('tbody', null,
                         freshness.map(function(row) {
+                            // v2 RPC returns status field directly; fall back to age calc for v1
+                            var s = row.status || (
+                                !row.last_update ? 'dead' :
+                                Number(row.age_hours) > 96 ? 'dead' :
+                                Number(row.age_hours) > 36 ? 'stale' : 'fresh'
+                            );
+                            var statusLabel = s === 'fresh' ? 'LIVE' : s === 'stale' ? 'STALE' : 'DEAD';
+                            var statusCls   = s === 'fresh' ? 'green' : s === 'stale' ? 'amber' : 'red';
                             var hours = Number(row.age_hours) || 0;
-                            var statusLabel = hours < 30 ? 'Fresh' : hours < 72 ? 'Stale' : 'FROZEN';
-                            var statusCls   = hours < 30 ? 'green' : hours < 72 ? 'amber' : 'red';
-                            var ageLabel    = hours < 1 ? '<1h' : hours < 24 ? Math.round(hours) + 'h' : (hours / 24).toFixed(1) + 'd';
-                            var lastStr     = row.last_update ? new Date(row.last_update).toLocaleString() : '—';
-                            var streamNames = { price_history: 'Price History', positions: 'Positions', account_snapshots: 'Account Snapshots', last_sync: 'Last Sync' };
+                            var ageLabel = !row.last_update ? '—' : hours < 1 ? '<1h' : hours < 24 ? Math.round(hours) + 'h' : (hours / 24).toFixed(1) + 'd';
+                            var lastStr  = row.last_update ? new Date(row.last_update).toLocaleString() : '—';
+                            var streamNames = {
+                                price_history:         'Price History',
+                                positions:             'Positions',
+                                account_snapshots:     'Account Snapshots',
+                                sync_alpaca_positions: 'Position Sync',
+                                sync_alpaca_prices:    'Price Sync',
+                                last_sync:             'Last Sync',
+                            };
                             return React.createElement('tr', { key: row.stream },
                                 React.createElement('td', { style: { fontFamily: 'DM Sans', color: 'rgba(255,255,255,0.7)' } }, streamNames[row.stream] || row.stream),
                                 React.createElement('td', null, lastStr),
-                                React.createElement('td', { style: { fontWeight: 600, color: hours < 30 ? 'var(--green)' : hours < 72 ? 'var(--amber)' : 'var(--red)' } }, ageLabel),
+                                React.createElement('td', { style: { fontWeight: 600, color: s === 'fresh' ? 'var(--green)' : s === 'stale' ? 'var(--amber)' : 'var(--red)' } }, ageLabel),
                                 React.createElement('td', null, React.createElement('span', { className: 'badge ' + statusCls }, statusLabel))
                             );
                         })
