@@ -205,14 +205,15 @@ function ScrapbookLog({ onSelect }) {
 // ScrapbookProfile — full research note for one company
 // ─────────────────────────────────────────────────────────────────────────────
 function ScrapbookProfile({ ticker, onBack }) {
-    const [company, setCompany]     = useState(null);
-    const [snapshots, setSnapshots] = useState([]);
-    const [narrative, setNarrative] = useState(null);
-    const [loading, setLoading]     = useState(true);
-    const [analysing, setAnalysing] = useState(false);
-    const [error, setError]         = useState(null);
-    const [toast, setToast]         = useState(null);
-    const [expanded, setExpanded]   = useState({});
+    const [company, setCompany]         = useState(null);
+    const [snapshots, setSnapshots]     = useState([]);
+    const [narrative, setNarrative]     = useState(null);
+    const [loading, setLoading]         = useState(true);
+    const [analysing, setAnalysing]     = useState(false);
+    const [analyseProgress, setAnalyseProgress] = useState(0);
+    const [error, setError]             = useState(null);
+    const [toast, setToast]             = useState(null);
+    const [expanded, setExpanded]       = useState({});
 
     const showToast = useCallback((msg, type = 'info') => {
         setToast({ msg, type });
@@ -258,6 +259,17 @@ function ScrapbookProfile({ ticker, onBack }) {
     const handleRegenerate = useCallback(async () => {
         if (!company || snapshots.length === 0) return;
         setAnalysing(true);
+        setAnalyseProgress(0);
+
+        // Animate progress 0→95% over ~22s (Sonnet-4-6 typically 15-25s for 2400 tokens)
+        const TOTAL_MS = 22000;
+        const TICK_MS  = 250;
+        let fakePct = 0;
+        const timer = setInterval(() => {
+            fakePct = Math.min(fakePct + (TICK_MS / TOTAL_MS) * 95, 95);
+            setAnalyseProgress(Math.round(fakePct));
+        }, TICK_MS);
+
         try {
             // Optionally enrich with portfolio context
             const [{ data: quant }, { data: rolling }, { data: earnings }] = await Promise.all([
@@ -288,6 +300,8 @@ function ScrapbookProfile({ ticker, onBack }) {
             });
             const result = await resp.json();
             if (!resp.ok || result.error) throw new Error(result.error || 'Analysis failed');
+            if (result.parse_error) throw new Error('Claude response could not be parsed — please try again');
+            if (!result.thesis) throw new Error('No thesis in response — please try again');
 
             const methods = [...new Set(snapshots.map(s => s.method))];
             const { data: newNarr, error: ne } = await sb
@@ -325,6 +339,8 @@ function ScrapbookProfile({ ticker, onBack }) {
                 updated_at: new Date().toISOString(),
             }).eq('id', company.id);
 
+            clearInterval(timer);
+            setAnalyseProgress(100);
             setNarrative(newNarr);
             setCompany(prev => ({
                 ...prev,
@@ -333,10 +349,12 @@ function ScrapbookProfile({ ticker, onBack }) {
             }));
             showToast('Thesis regenerated', 'success');
         } catch (e) {
+            clearInterval(timer);
             console.error('Regenerate error:', e);
             showToast('Analysis failed — ' + e.message, 'error');
         } finally {
             setAnalysing(false);
+            setTimeout(() => setAnalyseProgress(0), 600);
         }
     }, [company, snapshots, ticker, showToast]);
 
@@ -431,27 +449,49 @@ function ScrapbookProfile({ ticker, onBack }) {
             h(SectionHeader, {
                 label: 'Investment Thesis',
                 sub: narrative ? 'Revised ' + new Date(narrative.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : null,
-                action: h('button', {
-                    onClick: handleRegenerate,
-                    disabled: analysing || snapshots.length === 0,
-                    style: {
-                        background: analysing ? 'rgba(0,212,255,0.1)' : 'rgba(0,212,255,0.15)',
-                        border: '1px solid rgba(0,212,255,0.4)',
-                        color: '#00d4ff',
-                        borderRadius: 6,
-                        padding: '6px 14px',
-                        fontSize: 12,
-                        fontWeight: 600,
-                        cursor: analysing ? 'default' : 'pointer',
-                        fontFamily: 'DM Mono, monospace',
-                        opacity: snapshots.length === 0 ? 0.4 : 1,
-                    },
-                    title: snapshots.length === 0 ? 'Save a valuation run first.' : '',
-                }, analysing ? '⟳ Analysing…' : 'Regenerate ✦')
+                action: h('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 } },
+                    h('button', {
+                        onClick: handleRegenerate,
+                        disabled: analysing || snapshots.length === 0,
+                        style: {
+                            background: analysing ? 'rgba(0,212,255,0.1)' : 'rgba(0,212,255,0.15)',
+                            border: '1px solid rgba(0,212,255,0.4)',
+                            color: '#00d4ff',
+                            borderRadius: 6,
+                            padding: '6px 14px',
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: analysing ? 'default' : 'pointer',
+                            fontFamily: 'DM Mono, monospace',
+                            opacity: snapshots.length === 0 ? 0.4 : 1,
+                        },
+                        title: snapshots.length === 0 ? 'Save a valuation run first.' : '',
+                    }, analysing ? '⟳ Analysing…' : 'Regenerate ✦'),
+                    analysing && h('div', { style: { width: 160 } },
+                        h('div', { style: { height: 3, background: 'rgba(0,212,255,0.12)', borderRadius: 2, overflow: 'hidden' } },
+                            h('div', {
+                                style: {
+                                    height: '100%',
+                                    width: analyseProgress + '%',
+                                    background: 'linear-gradient(90deg, #00d4ff, #a78bfa)',
+                                    borderRadius: 2,
+                                    transition: 'width 0.4s ease',
+                                }
+                            })
+                        ),
+                        h('div', { style: { fontSize: 10, color: 'rgba(0,212,255,0.5)', marginTop: 3, textAlign: 'right', fontFamily: 'DM Mono, monospace' } },
+                            analyseProgress < 20 ? 'Reading models…'
+                            : analyseProgress < 45 ? 'Synthesising thesis…'
+                            : analyseProgress < 70 ? 'Assessing risk…'
+                            : analyseProgress < 90 ? 'Computing conviction…'
+                            : 'Finalising…'
+                        )
+                    )
+                )
             }),
             narrative && !narrative.parse_error
                 ? h('div', { style: { fontSize: 13, lineHeight: 1.8, color: 'rgba(255,255,255,0.8)', whiteSpace: 'pre-line' } },
-                    analysing ? h(TypewriterText, { text: narrative.thesis || '' }) : (narrative.thesis || 'No thesis generated.')
+                    narrative.thesis || 'No thesis generated.'
                   )
                 : h('div', { style: { fontSize: 13, color: 'rgba(255,255,255,0.4)', fontStyle: 'italic' } },
                     narrative?.parse_error
@@ -1013,19 +1053,20 @@ function SectorExpandedPanel({ sector, companies, latestNote, onNavigate }) {
     const convictionColor = { Overweight: '#10b981', Neutral: '#f59e0b', Underweight: '#ef4444', 'Under Review': '#6b7280' };
 
     // Recover notes that were stored as raw JSON string in sector_thesis (parse_error fallback).
-    // Handles both plain JSON and markdown-fenced ```json ... ``` variants.
+    // Handles markdown-fenced, plain JSON, and partially-stripped variants.
     const effectiveNote = (() => {
         if (!noteData) return null;
         const t = noteData.sector_thesis;
         if (typeof t !== 'string') return noteData;
-        // Strip markdown code fences, then locate the outermost JSON object
-        const stripped = t.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-        const jsonStart = stripped.indexOf('{');
-        const jsonEnd   = stripped.lastIndexOf('}');
+
+        // Find the first '{' and last '}' in the raw text — works regardless of fence format
+        const jsonStart = t.indexOf('{');
+        const jsonEnd   = t.lastIndexOf('}');
         if (jsonStart === -1 || jsonEnd === -1 || jsonEnd <= jsonStart) return noteData;
         try {
-            const parsed = JSON.parse(stripped.slice(jsonStart, jsonEnd + 1));
-            if (parsed && typeof parsed.sector_thesis === 'string') {
+            const parsed = JSON.parse(t.slice(jsonStart, jsonEnd + 1));
+            // Merge only if the parsed object looks like a sector note
+            if (parsed && (typeof parsed.sector_thesis === 'string' || Array.isArray(parsed.sector_tailwinds))) {
                 return { ...noteData, ...parsed };
             }
         } catch (_) { /* genuine prose — render as-is */ }
