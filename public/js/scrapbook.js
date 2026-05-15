@@ -205,15 +205,15 @@ function ScrapbookLog({ onSelect }) {
 // ScrapbookProfile — full research note for one company
 // ─────────────────────────────────────────────────────────────────────────────
 function ScrapbookProfile({ ticker, onBack }) {
-    const [company, setCompany]     = useState(null);
-    const [snapshots, setSnapshots] = useState([]);
-    const [narrative, setNarrative] = useState(null);
-    const [loading, setLoading]     = useState(true);
-    const [analysing, setAnalysing] = useState(false);
-    const [streamProgress, setStreamProgress] = useState(0);
-    const [error, setError]         = useState(null);
-    const [toast, setToast]         = useState(null);
-    const [expanded, setExpanded]   = useState({});
+    const [company, setCompany]         = useState(null);
+    const [snapshots, setSnapshots]     = useState([]);
+    const [narrative, setNarrative]     = useState(null);
+    const [loading, setLoading]         = useState(true);
+    const [analysing, setAnalysing]     = useState(false);
+    const [analyseProgress, setAnalyseProgress] = useState(0);
+    const [error, setError]             = useState(null);
+    const [toast, setToast]             = useState(null);
+    const [expanded, setExpanded]       = useState({});
 
     const showToast = useCallback((msg, type = 'info') => {
         setToast({ msg, type });
@@ -259,7 +259,17 @@ function ScrapbookProfile({ ticker, onBack }) {
     const handleRegenerate = useCallback(async () => {
         if (!company || snapshots.length === 0) return;
         setAnalysing(true);
-        setStreamProgress(0);
+        setAnalyseProgress(0);
+
+        // Animate progress 0→95% over ~22s (Sonnet-4-6 typically 15-25s for 2400 tokens)
+        const TOTAL_MS = 22000;
+        const TICK_MS  = 250;
+        let fakePct = 0;
+        const timer = setInterval(() => {
+            fakePct = Math.min(fakePct + (TICK_MS / TOTAL_MS) * 95, 95);
+            setAnalyseProgress(Math.round(fakePct));
+        }, TICK_MS);
+
         try {
             // Optionally enrich with portfolio context
             const [{ data: quant }, { data: rolling }, { data: earnings }] = await Promise.all([
@@ -286,60 +296,12 @@ function ScrapbookProfile({ ticker, onBack }) {
                     company: { ticker: company.ticker, company_name: company.company_name, exchange: company.exchange, sector: company.sector, currency: company.currency, current_price: company.current_price },
                     snapshots,
                     portfolioContext,
-                    stream: true,
                 }),
             });
-
-            if (!resp.ok) {
-                const errText = await resp.text();
-                throw new Error('Analysis failed: ' + errText.slice(0, 200));
-            }
-
-            // ── Stream SSE and track progress ──────────────────────────────
-            const reader = resp.body.getReader();
-            const decoder = new TextDecoder();
-            let lineBuffer = '';
-            let deltaCount = 0;
-            const ESTIMATED_DELTAS = 480; // approx delta events for max_tokens=2400
-            let lastEventType = '';
-            let result = null;
-
-            outer: while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                lineBuffer += decoder.decode(value, { stream: true });
-                const lines = lineBuffer.split('\n');
-                lineBuffer = lines.pop();
-                for (const line of lines) {
-                    const trimmed = line.trim();
-                    if (!trimmed) { lastEventType = ''; continue; }
-                    if (trimmed.startsWith('event: ')) {
-                        lastEventType = trimmed.slice(7);
-                        continue;
-                    }
-                    if (trimmed.startsWith('data: ')) {
-                        const payload = trimmed.slice(6);
-                        if (lastEventType === 'atlas_result') {
-                            try { result = JSON.parse(payload); } catch { result = { parse_error: true }; }
-                            setStreamProgress(100);
-                            break outer;
-                        }
-                        // Count content deltas to drive progress bar
-                        try {
-                            const ev = JSON.parse(payload);
-                            if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta') {
-                                deltaCount++;
-                                const pct = Math.min(Math.round((deltaCount / ESTIMATED_DELTAS) * 95), 95);
-                                setStreamProgress(pct);
-                            }
-                        } catch { /* partial — ignore */ }
-                    }
-                }
-            }
-            reader.releaseLock();
-
-            if (!result) throw new Error('Stream ended without result');
-            if (result.error) throw new Error(result.error);
+            const result = await resp.json();
+            if (!resp.ok || result.error) throw new Error(result.error || 'Analysis failed');
+            if (result.parse_error) throw new Error('Claude response could not be parsed — please try again');
+            if (!result.thesis) throw new Error('No thesis in response — please try again');
 
             const methods = [...new Set(snapshots.map(s => s.method))];
             const { data: newNarr, error: ne } = await sb
@@ -377,6 +339,8 @@ function ScrapbookProfile({ ticker, onBack }) {
                 updated_at: new Date().toISOString(),
             }).eq('id', company.id);
 
+            clearInterval(timer);
+            setAnalyseProgress(100);
             setNarrative(newNarr);
             setCompany(prev => ({
                 ...prev,
@@ -385,11 +349,12 @@ function ScrapbookProfile({ ticker, onBack }) {
             }));
             showToast('Thesis regenerated', 'success');
         } catch (e) {
+            clearInterval(timer);
             console.error('Regenerate error:', e);
             showToast('Analysis failed — ' + e.message, 'error');
         } finally {
             setAnalysing(false);
-            setTimeout(() => setStreamProgress(0), 600);
+            setTimeout(() => setAnalyseProgress(0), 600);
         }
     }, [company, snapshots, ticker, showToast]);
 
@@ -489,7 +454,7 @@ function ScrapbookProfile({ ticker, onBack }) {
                         onClick: handleRegenerate,
                         disabled: analysing || snapshots.length === 0,
                         style: {
-                            background: analysing ? 'rgba(0,212,255,0.08)' : 'rgba(0,212,255,0.15)',
+                            background: analysing ? 'rgba(0,212,255,0.1)' : 'rgba(0,212,255,0.15)',
                             border: '1px solid rgba(0,212,255,0.4)',
                             color: '#00d4ff',
                             borderRadius: 6,
@@ -507,18 +472,18 @@ function ScrapbookProfile({ ticker, onBack }) {
                             h('div', {
                                 style: {
                                     height: '100%',
-                                    width: streamProgress + '%',
+                                    width: analyseProgress + '%',
                                     background: 'linear-gradient(90deg, #00d4ff, #a78bfa)',
                                     borderRadius: 2,
-                                    transition: 'width 0.3s ease',
+                                    transition: 'width 0.4s ease',
                                 }
                             })
                         ),
                         h('div', { style: { fontSize: 10, color: 'rgba(0,212,255,0.5)', marginTop: 3, textAlign: 'right', fontFamily: 'DM Mono, monospace' } },
-                            streamProgress < 20 ? 'Reading models…'
-                            : streamProgress < 45 ? 'Synthesising thesis…'
-                            : streamProgress < 70 ? 'Assessing risk…'
-                            : streamProgress < 90 ? 'Computing conviction…'
+                            analyseProgress < 20 ? 'Reading models…'
+                            : analyseProgress < 45 ? 'Synthesising thesis…'
+                            : analyseProgress < 70 ? 'Assessing risk…'
+                            : analyseProgress < 90 ? 'Computing conviction…'
                             : 'Finalising…'
                         )
                     )
@@ -526,7 +491,7 @@ function ScrapbookProfile({ ticker, onBack }) {
             }),
             narrative && !narrative.parse_error
                 ? h('div', { style: { fontSize: 13, lineHeight: 1.8, color: 'rgba(255,255,255,0.8)', whiteSpace: 'pre-line' } },
-                    analysing ? h(TypewriterText, { text: narrative.thesis || '' }) : (narrative.thesis || 'No thesis generated.')
+                    narrative.thesis || 'No thesis generated.'
                   )
                 : h('div', { style: { fontSize: 13, color: 'rgba(255,255,255,0.4)', fontStyle: 'italic' } },
                     narrative?.parse_error
@@ -676,7 +641,6 @@ export function ScrapbookSaveBar({ method, methodLabel, ticker, companyName, exc
     const [note, setNote]         = useState('');
     const [saving, setSaving]     = useState(false);
     const [analysing, setAnalysing] = useState(false);
-    const [streamProgress, setStreamProgress] = useState(0);
     const [toast, setToast]       = useState(null);
 
     const showToast = (msg, type = 'info') => {
@@ -761,8 +725,7 @@ export function ScrapbookSaveBar({ method, methodLabel, ticker, companyName, exc
                 analyst_target: earnings?.analyst_target,
             } : null;
 
-            // 6. Call Claude (streaming)
-            setStreamProgress(0);
+            // 6. Call Claude
             const resp = await fetch('/api/claude-analyse', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -770,48 +733,10 @@ export function ScrapbookSaveBar({ method, methodLabel, ticker, companyName, exc
                     company: { ticker: co.ticker, company_name: co.company_name, exchange: co.exchange, sector: co.sector, currency: co.currency, current_price: co.current_price },
                     snapshots: allSnaps || [snap],
                     portfolioContext,
-                    stream: true,
                 }),
             });
-            if (!resp.ok) throw new Error('Analysis failed: ' + (await resp.text()).slice(0, 200));
-
-            const reader2 = resp.body.getReader();
-            const decoder2 = new TextDecoder();
-            let lineBuffer2 = '';
-            let deltaCount2 = 0;
-            const ESTIMATED_DELTAS2 = 480;
-            let lastEvent2 = '';
-            let result = null;
-            outer2: while (true) {
-                const { done, value } = await reader2.read();
-                if (done) break;
-                lineBuffer2 += decoder2.decode(value, { stream: true });
-                const lines = lineBuffer2.split('\n');
-                lineBuffer2 = lines.pop();
-                for (const line of lines) {
-                    const t = line.trim();
-                    if (!t) { lastEvent2 = ''; continue; }
-                    if (t.startsWith('event: ')) { lastEvent2 = t.slice(7); continue; }
-                    if (t.startsWith('data: ')) {
-                        const payload = t.slice(6);
-                        if (lastEvent2 === 'atlas_result') {
-                            try { result = JSON.parse(payload); } catch { result = { parse_error: true }; }
-                            setStreamProgress(100);
-                            break outer2;
-                        }
-                        try {
-                            const ev = JSON.parse(payload);
-                            if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta') {
-                                deltaCount2++;
-                                setStreamProgress(Math.min(Math.round((deltaCount2 / ESTIMATED_DELTAS2) * 95), 95));
-                            }
-                        } catch { /* ignore */ }
-                    }
-                }
-            }
-            reader2.releaseLock();
-            if (!result) throw new Error('Stream ended without result');
-            if (result.error) throw new Error(result.error);
+            const result = await resp.json();
+            if (!resp.ok || result.error) throw new Error(result.error || 'Analysis failed');
 
             // 7. Insert narrative
             const methods = [...new Set((allSnaps || [snap]).map(s => s.method))];
@@ -862,7 +787,6 @@ export function ScrapbookSaveBar({ method, methodLabel, ticker, companyName, exc
         } finally {
             setSaving(false);
             setAnalysing(false);
-            setTimeout(() => setStreamProgress(0), 600);
         }
     }, [sb, ticker, impliedPrice, currentPrice, method, methodLabel, inputs, assumptions, terminalValue, impliedEV, companyName, exchange, sector, currency, note, onSaved]);
 
@@ -935,44 +859,22 @@ export function ScrapbookSaveBar({ method, methodLabel, ticker, companyName, exc
                     opacity: busy ? 0.5 : 1,
                 }
             }, saving ? '…saving' : 'Save run'),
-            h('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5 } },
-                h('button', {
-                    onClick: () => doSave(true),
-                    disabled: busy,
-                    style: {
-                        background: busy ? 'rgba(0,212,255,0.08)' : 'rgba(0,212,255,0.2)',
-                        border: '1px solid rgba(0,212,255,0.5)',
-                        color: '#00d4ff',
-                        borderRadius: 6,
-                        padding: '7px 16px',
-                        fontSize: 12,
-                        fontWeight: 700,
-                        cursor: busy ? 'default' : 'pointer',
-                        fontFamily: 'DM Mono, monospace',
-                        opacity: busy ? 0.7 : 1,
-                    }
-                }, analysing ? '⟳ Analysing…' : 'Save & Analyse ✦'),
-                analysing && h('div', { style: { width: 180 } },
-                    h('div', { style: { height: 3, background: 'rgba(0,212,255,0.12)', borderRadius: 2, overflow: 'hidden' } },
-                        h('div', {
-                            style: {
-                                height: '100%',
-                                width: streamProgress + '%',
-                                background: 'linear-gradient(90deg, #00d4ff, #a78bfa)',
-                                borderRadius: 2,
-                                transition: 'width 0.3s ease',
-                            }
-                        })
-                    ),
-                    h('div', { style: { fontSize: 10, color: 'rgba(0,212,255,0.5)', marginTop: 3, textAlign: 'right', fontFamily: 'DM Mono, monospace' } },
-                        streamProgress < 20 ? 'Reading models…'
-                        : streamProgress < 45 ? 'Synthesising thesis…'
-                        : streamProgress < 70 ? 'Assessing risk…'
-                        : streamProgress < 90 ? 'Computing conviction…'
-                        : 'Finalising…'
-                    )
-                )
-            )
+            h('button', {
+                onClick: () => doSave(true),
+                disabled: busy,
+                style: {
+                    background: busy ? 'rgba(0,212,255,0.1)' : 'rgba(0,212,255,0.2)',
+                    border: '1px solid rgba(0,212,255,0.5)',
+                    color: '#00d4ff',
+                    borderRadius: 6,
+                    padding: '7px 16px',
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: busy ? 'default' : 'pointer',
+                    fontFamily: 'DM Mono, monospace',
+                    opacity: busy ? 0.7 : 1,
+                }
+            }, analysing ? '⟳ Analysing…' : 'Save & Analyse ✦')
         )
     );
 }
@@ -1151,19 +1053,20 @@ function SectorExpandedPanel({ sector, companies, latestNote, onNavigate }) {
     const convictionColor = { Overweight: '#10b981', Neutral: '#f59e0b', Underweight: '#ef4444', 'Under Review': '#6b7280' };
 
     // Recover notes that were stored as raw JSON string in sector_thesis (parse_error fallback).
-    // Handles both plain JSON and markdown-fenced ```json ... ``` variants.
+    // Handles markdown-fenced, plain JSON, and partially-stripped variants.
     const effectiveNote = (() => {
         if (!noteData) return null;
         const t = noteData.sector_thesis;
         if (typeof t !== 'string') return noteData;
-        // Strip markdown code fences, then locate the outermost JSON object
-        const stripped = t.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-        const jsonStart = stripped.indexOf('{');
-        const jsonEnd   = stripped.lastIndexOf('}');
+
+        // Find the first '{' and last '}' in the raw text — works regardless of fence format
+        const jsonStart = t.indexOf('{');
+        const jsonEnd   = t.lastIndexOf('}');
         if (jsonStart === -1 || jsonEnd === -1 || jsonEnd <= jsonStart) return noteData;
         try {
-            const parsed = JSON.parse(stripped.slice(jsonStart, jsonEnd + 1));
-            if (parsed && typeof parsed.sector_thesis === 'string') {
+            const parsed = JSON.parse(t.slice(jsonStart, jsonEnd + 1));
+            // Merge only if the parsed object looks like a sector note
+            if (parsed && (typeof parsed.sector_thesis === 'string' || Array.isArray(parsed.sector_tailwinds))) {
                 return { ...noteData, ...parsed };
             }
         } catch (_) { /* genuine prose — render as-is */ }
