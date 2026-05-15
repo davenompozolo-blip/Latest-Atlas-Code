@@ -54,3 +54,4 @@ Thumbs.db
 auth/users.yaml
 atlas_errors.log
 atlas_usage.csv
+node_modules/
