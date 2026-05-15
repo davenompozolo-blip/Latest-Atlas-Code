@@ -210,7 +210,7 @@ function ScrapbookProfile({ ticker, onBack }) {
     const [narrative, setNarrative] = useState(null);
     const [loading, setLoading]     = useState(true);
     const [analysing, setAnalysing] = useState(false);
-    const [streamProgress, setStreamProgress] = useState(0);
+    const [analyseProgress, setAnalyseProgress] = useState(0);
     const [error, setError]         = useState(null);
     const [toast, setToast]         = useState(null);
     const [expanded, setExpanded]   = useState({});
@@ -259,9 +259,16 @@ function ScrapbookProfile({ ticker, onBack }) {
     const handleRegenerate = useCallback(async () => {
         if (!company || snapshots.length === 0) return;
         setAnalysing(true);
-        setStreamProgress(0);
+        setAnalyseProgress(0);
+
+        // Animate progress 0→95% over ~22s (Sonnet typically 15-25s for 2400 tokens)
+        let fakePct = 0;
+        const timer = setInterval(() => {
+            fakePct = Math.min(fakePct + (250 / 22000) * 95, 95);
+            setAnalyseProgress(Math.round(fakePct));
+        }, 250);
+
         try {
-            // Optionally enrich with portfolio context
             const [{ data: quant }, { data: rolling }, { data: earnings }] = await Promise.all([
                 sb.from('vw_quant_dashboard').select('*').eq('symbol', ticker).maybeSingle(),
                 sb.from('vw_quant_rolling_returns').select('*').eq('symbol', ticker).maybeSingle(),
@@ -286,60 +293,12 @@ function ScrapbookProfile({ ticker, onBack }) {
                     company: { ticker: company.ticker, company_name: company.company_name, exchange: company.exchange, sector: company.sector, currency: company.currency, current_price: company.current_price },
                     snapshots,
                     portfolioContext,
-                    stream: true,
                 }),
             });
-
-            if (!resp.ok) {
-                const errText = await resp.text();
-                throw new Error('Analysis failed: ' + errText.slice(0, 200));
-            }
-
-            // ── Stream SSE and track progress ──────────────────────────────
-            const reader = resp.body.getReader();
-            const decoder = new TextDecoder();
-            let lineBuffer = '';
-            let deltaCount = 0;
-            const ESTIMATED_DELTAS = 480; // approx delta events for max_tokens=2400
-            let lastEventType = '';
-            let result = null;
-
-            outer: while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                lineBuffer += decoder.decode(value, { stream: true });
-                const lines = lineBuffer.split('\n');
-                lineBuffer = lines.pop();
-                for (const line of lines) {
-                    const trimmed = line.trim();
-                    if (!trimmed) { lastEventType = ''; continue; }
-                    if (trimmed.startsWith('event: ')) {
-                        lastEventType = trimmed.slice(7);
-                        continue;
-                    }
-                    if (trimmed.startsWith('data: ')) {
-                        const payload = trimmed.slice(6);
-                        if (lastEventType === 'atlas_result') {
-                            try { result = JSON.parse(payload); } catch { result = { parse_error: true }; }
-                            setStreamProgress(100);
-                            break outer;
-                        }
-                        // Count content deltas to drive progress bar
-                        try {
-                            const ev = JSON.parse(payload);
-                            if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta') {
-                                deltaCount++;
-                                const pct = Math.min(Math.round((deltaCount / ESTIMATED_DELTAS) * 95), 95);
-                                setStreamProgress(pct);
-                            }
-                        } catch { /* partial — ignore */ }
-                    }
-                }
-            }
-            reader.releaseLock();
-
-            if (!result) throw new Error('Stream ended without result');
-            if (result.error) throw new Error(result.error);
+            const result = await resp.json();
+            if (!resp.ok || result.error) throw new Error(result.error || 'Analysis failed');
+            if (result.parse_error) throw new Error('Claude response could not be parsed — please try again');
+            if (!result.thesis) throw new Error('No thesis in response — please try again');
 
             const methods = [...new Set(snapshots.map(s => s.method))];
             const { data: newNarr, error: ne } = await sb
@@ -393,7 +352,6 @@ function ScrapbookProfile({ ticker, onBack }) {
         } finally {
             setAnalysing(false);
             setTimeout(() => setAnalyseProgress(0), 600);
-            setTimeout(() => setStreamProgress(0), 600);
         }
     }, [company, snapshots, ticker, showToast]);
 
@@ -516,10 +474,6 @@ function ScrapbookProfile({ ticker, onBack }) {
                                     background: 'linear-gradient(90deg, #00d4ff, #a78bfa)',
                                     borderRadius: 2,
                                     transition: 'width 0.4s ease',
-                                    width: streamProgress + '%',
-                                    background: 'linear-gradient(90deg, #00d4ff, #a78bfa)',
-                                    borderRadius: 2,
-                                    transition: 'width 0.3s ease',
                                 }
                             })
                         ),
@@ -528,10 +482,6 @@ function ScrapbookProfile({ ticker, onBack }) {
                             : analyseProgress < 45 ? 'Synthesising thesis…'
                             : analyseProgress < 70 ? 'Assessing risk…'
                             : analyseProgress < 90 ? 'Computing conviction…'
-                            streamProgress < 20 ? 'Reading models…'
-                            : streamProgress < 45 ? 'Synthesising thesis…'
-                            : streamProgress < 70 ? 'Assessing risk…'
-                            : streamProgress < 90 ? 'Computing conviction…'
                             : 'Finalising…'
                         )
                     )
@@ -689,7 +639,7 @@ export function ScrapbookSaveBar({ method, methodLabel, ticker, companyName, exc
     const [note, setNote]         = useState('');
     const [saving, setSaving]     = useState(false);
     const [analysing, setAnalysing] = useState(false);
-    const [streamProgress, setStreamProgress] = useState(0);
+    const [saveProgress, setSaveProgress] = useState(0);
     const [toast, setToast]       = useState(null);
 
     const showToast = (msg, type = 'info') => {
@@ -774,57 +724,32 @@ export function ScrapbookSaveBar({ method, methodLabel, ticker, companyName, exc
                 analyst_target: earnings?.analyst_target,
             } : null;
 
-            // 6. Call Claude (streaming)
-            setStreamProgress(0);
-            const resp = await fetch('/api/claude-analyse', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    company: { ticker: co.ticker, company_name: co.company_name, exchange: co.exchange, sector: co.sector, currency: co.currency, current_price: co.current_price },
-                    snapshots: allSnaps || [snap],
-                    portfolioContext,
-                    stream: true,
-                }),
-            });
-            if (!resp.ok) throw new Error('Analysis failed: ' + (await resp.text()).slice(0, 200));
-
-            const reader2 = resp.body.getReader();
-            const decoder2 = new TextDecoder();
-            let lineBuffer2 = '';
-            let deltaCount2 = 0;
-            const ESTIMATED_DELTAS2 = 480;
-            let lastEvent2 = '';
-            let result = null;
-            outer2: while (true) {
-                const { done, value } = await reader2.read();
-                if (done) break;
-                lineBuffer2 += decoder2.decode(value, { stream: true });
-                const lines = lineBuffer2.split('\n');
-                lineBuffer2 = lines.pop();
-                for (const line of lines) {
-                    const t = line.trim();
-                    if (!t) { lastEvent2 = ''; continue; }
-                    if (t.startsWith('event: ')) { lastEvent2 = t.slice(7); continue; }
-                    if (t.startsWith('data: ')) {
-                        const payload = t.slice(6);
-                        if (lastEvent2 === 'atlas_result') {
-                            try { result = JSON.parse(payload); } catch { result = { parse_error: true }; }
-                            setStreamProgress(100);
-                            break outer2;
-                        }
-                        try {
-                            const ev = JSON.parse(payload);
-                            if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta') {
-                                deltaCount2++;
-                                setStreamProgress(Math.min(Math.round((deltaCount2 / ESTIMATED_DELTAS2) * 95), 95));
-                            }
-                        } catch { /* ignore */ }
-                    }
-                }
+            // 6. Call Claude
+            setSaveProgress(0);
+            let fakePct2 = 0;
+            const saveTimer = setInterval(() => {
+                fakePct2 = Math.min(fakePct2 + (250 / 22000) * 95, 95);
+                setSaveProgress(Math.round(fakePct2));
+            }, 250);
+            let result;
+            try {
+                const resp = await fetch('/api/claude-analyse', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        company: { ticker: co.ticker, company_name: co.company_name, exchange: co.exchange, sector: co.sector, currency: co.currency, current_price: co.current_price },
+                        snapshots: allSnaps || [snap],
+                        portfolioContext,
+                    }),
+                });
+                result = await resp.json();
+                if (!resp.ok || result.error) throw new Error(result.error || 'Analysis failed');
+                if (result.parse_error) throw new Error('Claude response could not be parsed — please try again');
+                if (!result.thesis) throw new Error('No thesis in response — please try again');
+            } finally {
+                clearInterval(saveTimer);
+                setSaveProgress(100);
             }
-            reader2.releaseLock();
-            if (!result) throw new Error('Stream ended without result');
-            if (result.error) throw new Error(result.error);
 
             // 7. Insert narrative
             const methods = [...new Set((allSnaps || [snap]).map(s => s.method))];
@@ -875,7 +800,7 @@ export function ScrapbookSaveBar({ method, methodLabel, ticker, companyName, exc
         } finally {
             setSaving(false);
             setAnalysing(false);
-            setTimeout(() => setStreamProgress(0), 600);
+            setTimeout(() => setSaveProgress(0), 600);
         }
     }, [sb, ticker, impliedPrice, currentPrice, method, methodLabel, inputs, assumptions, terminalValue, impliedEV, companyName, exchange, sector, currency, note, onSaved]);
 
@@ -970,7 +895,7 @@ export function ScrapbookSaveBar({ method, methodLabel, ticker, companyName, exc
                         h('div', {
                             style: {
                                 height: '100%',
-                                width: streamProgress + '%',
+                                width: saveProgress + '%',
                                 background: 'linear-gradient(90deg, #00d4ff, #a78bfa)',
                                 borderRadius: 2,
                                 transition: 'width 0.3s ease',
@@ -978,10 +903,10 @@ export function ScrapbookSaveBar({ method, methodLabel, ticker, companyName, exc
                         })
                     ),
                     h('div', { style: { fontSize: 10, color: 'rgba(0,212,255,0.5)', marginTop: 3, textAlign: 'right', fontFamily: 'DM Mono, monospace' } },
-                        streamProgress < 20 ? 'Reading models…'
-                        : streamProgress < 45 ? 'Synthesising thesis…'
-                        : streamProgress < 70 ? 'Assessing risk…'
-                        : streamProgress < 90 ? 'Computing conviction…'
+                        saveProgress < 20 ? 'Reading models…'
+                        : saveProgress < 45 ? 'Synthesising thesis…'
+                        : saveProgress < 70 ? 'Assessing risk…'
+                        : saveProgress < 90 ? 'Computing conviction…'
                         : 'Finalising…'
                     )
                 )
