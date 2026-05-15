@@ -11,9 +11,9 @@ Deno.serve(async () => {
   if (!ALPHA_KEY) return new Response(JSON.stringify({ error: 'ALPHA_VANTAGE_API_KEY not set' }), { status: 500 });
   if (!SB_URL || !SB_KEY) return new Response(JSON.stringify({ error: 'Supabase env vars not set' }), { status: 500 });
 
-  const sb = createClient(SB_URL, SB_KEY);
+  const sb  = createClient(SB_URL, SB_KEY);
+  const now = new Date().toISOString();
 
-  // Fetch active listing CSV from Alpha Vantage
   const avRes = await fetch(
     `https://www.alphavantage.co/query?function=LISTING_STATUS&state=active&apikey=${ALPHA_KEY}`
   );
@@ -24,27 +24,24 @@ Deno.serve(async () => {
   const csv   = await avRes.text();
   const lines = csv.trim().split('\n').slice(1); // skip header row
 
-  const now = new Date().toISOString();
-
   const rows = lines
     .map(line => {
-      const [symbol, name, exchange, assetType, ipoDate] = line.split(',');
+      const [symbol, name, exchange, assetType] = line.split(',');
       return {
         symbol:         symbol?.trim(),
-        name:           name?.trim(),
-        exchange:       exchange?.trim(),
-        asset_type:     assetType?.trim(),
-        ipo_date:       ipoDate && ipoDate.trim() !== 'null' ? ipoDate.trim() : null,
-        listing_status: 'active' as const,
-        last_synced:    now,
+        name:           name?.trim() || null,
+        exchange:       exchange?.trim() || null,
+        asset_class:    assetType?.trim() || null, // assets table uses asset_class not asset_type
+        listing_status: 'active',
+        updated_at:     now,
       };
     })
     .filter(r =>
       r.symbol &&
       !r.symbol.includes('-') &&         // exclude preferreds, units, warrants (e.g. BRK-A)
       !r.symbol.includes('.') &&         // exclude class shares with dots (e.g. BRK.B)
-      ALLOWED_EXCHANGES.has(r.exchange) &&
-      r.asset_type === 'Stock'
+      ALLOWED_EXCHANGES.has(r.exchange ?? '') &&
+      r.asset_class === 'Stock'
     );
 
   const activeSymbols = new Set(rows.map(r => r.symbol));
@@ -57,7 +54,7 @@ Deno.serve(async () => {
 
   const newlyDelisted = (existing || [])
     .filter(r => !activeSymbols.has(r.symbol))
-    .map(r => ({ symbol: r.symbol, listing_status: 'delisted', last_synced: now }));
+    .map(r => ({ symbol: r.symbol, listing_status: 'delisted', updated_at: now }));
 
   // Upsert in 500-row chunks (Supabase payload cap)
   const CHUNK = 500;
