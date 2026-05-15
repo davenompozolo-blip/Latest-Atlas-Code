@@ -205,15 +205,15 @@ function ScrapbookLog({ onSelect }) {
 // ScrapbookProfile — full research note for one company
 // ─────────────────────────────────────────────────────────────────────────────
 function ScrapbookProfile({ ticker, onBack }) {
-    const [company, setCompany]         = useState(null);
-    const [snapshots, setSnapshots]     = useState([]);
-    const [narrative, setNarrative]     = useState(null);
-    const [loading, setLoading]         = useState(true);
-    const [analysing, setAnalysing]     = useState(false);
+    const [company, setCompany]     = useState(null);
+    const [snapshots, setSnapshots] = useState([]);
+    const [narrative, setNarrative] = useState(null);
+    const [loading, setLoading]     = useState(true);
+    const [analysing, setAnalysing] = useState(false);
     const [analyseProgress, setAnalyseProgress] = useState(0);
-    const [error, setError]             = useState(null);
-    const [toast, setToast]             = useState(null);
-    const [expanded, setExpanded]       = useState({});
+    const [error, setError]         = useState(null);
+    const [toast, setToast]         = useState(null);
+    const [expanded, setExpanded]   = useState({});
 
     const showToast = useCallback((msg, type = 'info') => {
         setToast({ msg, type });
@@ -261,17 +261,14 @@ function ScrapbookProfile({ ticker, onBack }) {
         setAnalysing(true);
         setAnalyseProgress(0);
 
-        // Animate progress 0→95% over ~22s (Sonnet-4-6 typically 15-25s for 2400 tokens)
-        const TOTAL_MS = 22000;
-        const TICK_MS  = 250;
+        // Animate progress 0→95% over ~22s (Sonnet typically 15-25s for 2400 tokens)
         let fakePct = 0;
         const timer = setInterval(() => {
-            fakePct = Math.min(fakePct + (TICK_MS / TOTAL_MS) * 95, 95);
+            fakePct = Math.min(fakePct + (250 / 22000) * 95, 95);
             setAnalyseProgress(Math.round(fakePct));
-        }, TICK_MS);
+        }, 250);
 
         try {
-            // Optionally enrich with portfolio context
             const [{ data: quant }, { data: rolling }, { data: earnings }] = await Promise.all([
                 sb.from('vw_quant_dashboard').select('*').eq('symbol', ticker).maybeSingle(),
                 sb.from('vw_quant_rolling_returns').select('*').eq('symbol', ticker).maybeSingle(),
@@ -355,7 +352,6 @@ function ScrapbookProfile({ ticker, onBack }) {
         } finally {
             setAnalysing(false);
             setTimeout(() => setAnalyseProgress(0), 600);
-            setTimeout(() => setStreamProgress(0), 600);
         }
     }, [company, snapshots, ticker, showToast]);
 
@@ -478,10 +474,6 @@ function ScrapbookProfile({ ticker, onBack }) {
                                     background: 'linear-gradient(90deg, #00d4ff, #a78bfa)',
                                     borderRadius: 2,
                                     transition: 'width 0.4s ease',
-                                    width: streamProgress + '%',
-                                    background: 'linear-gradient(90deg, #00d4ff, #a78bfa)',
-                                    borderRadius: 2,
-                                    transition: 'width 0.4s ease',
                                 }
                             })
                         ),
@@ -490,10 +482,6 @@ function ScrapbookProfile({ ticker, onBack }) {
                             : analyseProgress < 45 ? 'Synthesising thesis…'
                             : analyseProgress < 70 ? 'Assessing risk…'
                             : analyseProgress < 90 ? 'Computing conviction…'
-                            streamProgress < 20 ? 'Reading models…'
-                            : streamProgress < 45 ? 'Synthesising thesis…'
-                            : streamProgress < 70 ? 'Assessing risk…'
-                            : streamProgress < 90 ? 'Computing conviction…'
                             : 'Finalising…'
                         )
                     )
@@ -651,6 +639,7 @@ export function ScrapbookSaveBar({ method, methodLabel, ticker, companyName, exc
     const [note, setNote]         = useState('');
     const [saving, setSaving]     = useState(false);
     const [analysing, setAnalysing] = useState(false);
+    const [saveProgress, setSaveProgress] = useState(0);
     const [toast, setToast]       = useState(null);
 
     const showToast = (msg, type = 'info') => {
@@ -736,17 +725,31 @@ export function ScrapbookSaveBar({ method, methodLabel, ticker, companyName, exc
             } : null;
 
             // 6. Call Claude
-            const resp = await fetch('/api/claude-analyse', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    company: { ticker: co.ticker, company_name: co.company_name, exchange: co.exchange, sector: co.sector, currency: co.currency, current_price: co.current_price },
-                    snapshots: allSnaps || [snap],
-                    portfolioContext,
-                }),
-            });
-            const result = await resp.json();
-            if (!resp.ok || result.error) throw new Error(result.error || 'Analysis failed');
+            setSaveProgress(0);
+            let fakePct2 = 0;
+            const saveTimer = setInterval(() => {
+                fakePct2 = Math.min(fakePct2 + (250 / 22000) * 95, 95);
+                setSaveProgress(Math.round(fakePct2));
+            }, 250);
+            let result;
+            try {
+                const resp = await fetch('/api/claude-analyse', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        company: { ticker: co.ticker, company_name: co.company_name, exchange: co.exchange, sector: co.sector, currency: co.currency, current_price: co.current_price },
+                        snapshots: allSnaps || [snap],
+                        portfolioContext,
+                    }),
+                });
+                result = await resp.json();
+                if (!resp.ok || result.error) throw new Error(result.error || 'Analysis failed');
+                if (result.parse_error) throw new Error('Claude response could not be parsed — please try again');
+                if (!result.thesis) throw new Error('No thesis in response — please try again');
+            } finally {
+                clearInterval(saveTimer);
+                setSaveProgress(100);
+            }
 
             // 7. Insert narrative
             const methods = [...new Set((allSnaps || [snap]).map(s => s.method))];
@@ -797,6 +800,7 @@ export function ScrapbookSaveBar({ method, methodLabel, ticker, companyName, exc
         } finally {
             setSaving(false);
             setAnalysing(false);
+            setTimeout(() => setSaveProgress(0), 600);
         }
     }, [sb, ticker, impliedPrice, currentPrice, method, methodLabel, inputs, assumptions, terminalValue, impliedEV, companyName, exchange, sector, currency, note, onSaved]);
 
@@ -869,22 +873,44 @@ export function ScrapbookSaveBar({ method, methodLabel, ticker, companyName, exc
                     opacity: busy ? 0.5 : 1,
                 }
             }, saving ? '…saving' : 'Save run'),
-            h('button', {
-                onClick: () => doSave(true),
-                disabled: busy,
-                style: {
-                    background: busy ? 'rgba(0,212,255,0.1)' : 'rgba(0,212,255,0.2)',
-                    border: '1px solid rgba(0,212,255,0.5)',
-                    color: '#00d4ff',
-                    borderRadius: 6,
-                    padding: '7px 16px',
-                    fontSize: 12,
-                    fontWeight: 700,
-                    cursor: busy ? 'default' : 'pointer',
-                    fontFamily: 'DM Mono, monospace',
-                    opacity: busy ? 0.7 : 1,
-                }
-            }, analysing ? '⟳ Analysing…' : 'Save & Analyse ✦')
+            h('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5 } },
+                h('button', {
+                    onClick: () => doSave(true),
+                    disabled: busy,
+                    style: {
+                        background: busy ? 'rgba(0,212,255,0.08)' : 'rgba(0,212,255,0.2)',
+                        border: '1px solid rgba(0,212,255,0.5)',
+                        color: '#00d4ff',
+                        borderRadius: 6,
+                        padding: '7px 16px',
+                        fontSize: 12,
+                        fontWeight: 700,
+                        cursor: busy ? 'default' : 'pointer',
+                        fontFamily: 'DM Mono, monospace',
+                        opacity: busy ? 0.7 : 1,
+                    }
+                }, analysing ? '⟳ Analysing…' : 'Save & Analyse ✦'),
+                analysing && h('div', { style: { width: 180 } },
+                    h('div', { style: { height: 3, background: 'rgba(0,212,255,0.12)', borderRadius: 2, overflow: 'hidden' } },
+                        h('div', {
+                            style: {
+                                height: '100%',
+                                width: saveProgress + '%',
+                                background: 'linear-gradient(90deg, #00d4ff, #a78bfa)',
+                                borderRadius: 2,
+                                transition: 'width 0.3s ease',
+                            }
+                        })
+                    ),
+                    h('div', { style: { fontSize: 10, color: 'rgba(0,212,255,0.5)', marginTop: 3, textAlign: 'right', fontFamily: 'DM Mono, monospace' } },
+                        saveProgress < 20 ? 'Reading models…'
+                        : saveProgress < 45 ? 'Synthesising thesis…'
+                        : saveProgress < 70 ? 'Assessing risk…'
+                        : saveProgress < 90 ? 'Computing conviction…'
+                        : 'Finalising…'
+                    )
+                )
+            )
         )
     );
 }
