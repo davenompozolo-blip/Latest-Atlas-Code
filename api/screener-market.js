@@ -129,8 +129,21 @@ const UNIVERSE = [
   { s:'ROKU',  n:'Roku Inc',                  sec:'Communication Services', mc:'Mid'   },
 ];
 
+// ─── In-memory caches (module-level, survive across warm invocations) ─────────
+// Universe: refreshes every 24h — assets table only changes on weekly sync
+// Portfolio symbols: refreshes every 5min — positions change intraday
+const _cache = {
+  universe: null, universeAt: 0,
+  portfolio: null, portfolioAt: 0,
+};
+const UNIVERSE_TTL  = 24 * 60 * 60 * 1000;
+const PORTFOLIO_TTL =  5 * 60 * 1000;
+
 // ─── Dynamic universe from assets table (falls back to UNIVERSE) ─────────────
 async function getUniverse(cfg) {
+  const now = Date.now();
+  if (_cache.universe && (now - _cache.universeAt) < UNIVERSE_TTL) return _cache.universe;
+
   if (!cfg) return UNIVERSE;
   try {
     const r = await ft(
@@ -144,10 +157,15 @@ async function getUniverse(cfg) {
     );
     if (!r.ok) throw new Error('assets query failed: ' + r.status);
     const rows = await r.json();
-    if (!Array.isArray(rows) || rows.length < 50) throw new Error('assets table too small (' + (rows?.length || 0) + ' rows) — using hardcoded fallback');
-    return rows.map(r => ({ s: r.symbol, n: r.name || r.symbol, x: r.exchange || '' }));
+    if (!Array.isArray(rows) || rows.length < 50) throw new Error('assets table too small (' + (rows?.length || 0) + ' rows)');
+    const universe = rows.map(r => ({ s: r.symbol, n: r.name || r.symbol, x: r.exchange || '' }));
+    _cache.universe = universe;
+    _cache.universeAt = now;
+    return universe;
   } catch (e) {
     console.warn('[screener-market] assets universe fetch failed, falling back to hardcoded:', e.message);
+    _cache.universe = UNIVERSE;
+    _cache.universeAt = now;
     return UNIVERSE;
   }
 }
@@ -209,6 +227,9 @@ async function cacheSet(cfg, symbol, endpoint, payload, ttlMs) {
 }
 
 async function getPortfolioSymbols(cfg) {
+  const now = Date.now();
+  if (_cache.portfolio && (now - _cache.portfolioAt) < PORTFOLIO_TTL) return _cache.portfolio;
+
   if (!cfg) return new Set();
   try {
     const r = await ft(
@@ -218,7 +239,10 @@ async function getPortfolioSymbols(cfg) {
     );
     if (!r.ok) return new Set();
     const rows = await r.json();
-    return new Set((Array.isArray(rows) ? rows : []).map(r => r.symbol));
+    const syms = new Set((Array.isArray(rows) ? rows : []).map(r => r.symbol));
+    _cache.portfolio = syms;
+    _cache.portfolioAt = now;
+    return syms;
   } catch (_) { return new Set(); }
 }
 
@@ -424,13 +448,23 @@ module.exports = async function handler(req, res) {
     batchCacheGet(cfg, symbols, 'mkt_quote'),
   ]);
 
-  const enriched = candidates.filter(c => ovCache[c.s]).length;
-  const stocks   = candidates.map(c => formatRow(c, ovCache[c.s] || null, qtCache[c.s] || null));
+  // Cap response at 500 rows — browser can't render 7k rows without virtualisation.
+  // Prioritise enriched stocks (have cached AV data) so the table has real values,
+  // then fill remaining slots with unenriched candidates alphabetically.
+  const MAX_ROWS = 500;
+  const enrichedCandidates   = candidates.filter(c =>  ovCache[c.s]);
+  const unenrichedCandidates = candidates.filter(c => !ovCache[c.s]);
+  const capped = [
+    ...enrichedCandidates,
+    ...unenrichedCandidates.slice(0, Math.max(0, MAX_ROWS - enrichedCandidates.length)),
+  ].slice(0, MAX_ROWS);
+
+  const stocks = capped.map(c => formatRow(c, ovCache[c.s] || null, qtCache[c.s] || null));
 
   return res.status(200).json({
     stocks,
     total_universe: candidates.length,
-    enriched,
+    enriched: enrichedCandidates.length,
     has_av_key: !!apiKey,
   });
 };

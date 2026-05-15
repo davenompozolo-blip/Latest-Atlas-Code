@@ -10,7 +10,7 @@
 import { sb } from './config.js';
 import { fmtCurrency, fmtPct } from './utils.js';
 
-const { useState, useEffect, useCallback, useRef } = React;
+const { useState, useEffect, useCallback, useRef, useMemo } = React;
 const h = React.createElement;
 
 // ── Conviction badge colours ──────────────────────────────────────────────────
