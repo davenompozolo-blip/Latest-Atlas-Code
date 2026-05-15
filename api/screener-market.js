@@ -140,19 +140,26 @@ const UNIVERSE_TTL  = 24 * 60 * 60 * 1000;
 const PORTFOLIO_TTL =  5 * 60 * 1000;
 
 // ─── Dynamic universe from assets table (falls back to UNIVERSE) ─────────────
+// assets table has assets_read_anon RLS policy — anon key is sufficient and
+// more reliable than service role key (which shows "Needs Attention" in Vercel).
 async function getUniverse(cfg) {
   const now = Date.now();
   if (_cache.universe && (now - _cache.universeAt) < UNIVERSE_TTL) return _cache.universe;
 
-  if (!cfg) return UNIVERSE;
+  // Prefer anon key for this public read — avoids stale service-role key failures
+  const anonKey = process.env.SUPABASE_ANON_KEY || process.env.ATLAS_SUPABASE_KEY;
+  const url = (cfg && cfg.url) || 'https://vdmojjszvvcithuxwexx.supabase.co';
+  const key = anonKey || (cfg && cfg.key);
+  if (!key) return UNIVERSE;
+
   try {
     const r = await ft(
-      cfg.url + '/rest/v1/assets'
+      url + '/rest/v1/assets'
         + '?listing_status=eq.active'
         + '&select=symbol,name,exchange'
         + '&order=symbol.asc'
         + '&limit=10000',
-      { headers: { apikey: cfg.key, Authorization: 'Bearer ' + cfg.key, accept: 'application/json' } },
+      { headers: { apikey: key, Authorization: 'Bearer ' + key, accept: 'application/json' } },
       10000
     );
     if (!r.ok) throw new Error('assets query failed: ' + r.status);
@@ -164,17 +171,22 @@ async function getUniverse(cfg) {
     return universe;
   } catch (e) {
     console.warn('[screener-market] assets universe fetch failed, falling back to hardcoded:', e.message);
-    _cache.universe = UNIVERSE;
-    _cache.universeAt = now;
+    // Do not cache the fallback — retry on next request rather than serving stale 97 stocks for 24h
     return UNIVERSE;
   }
 }
 
 // ─── Supabase helpers (optional — caching degrades gracefully if unavailable) ─
 function supaCfg() {
-  const url = process.env.SUPABASE_URL || process.env.ATLAS_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) return null;
+  // URL: try env vars first, fall back to hardcoded project URL (also in config.js)
+  const url = process.env.SUPABASE_URL
+              || process.env.ATLAS_SUPABASE_URL
+              || 'https://vdmojjszvvcithuxwexx.supabase.co';
+  // Key: service role bypasses RLS; anon key also works (assets table has anon read policy)
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+              || process.env.ATLAS_SUPABASE_KEY
+              || process.env.SUPABASE_ANON_KEY;
+  if (!key) return null;
   return { url: url.replace(/\/$/, ''), key };
 }
 
