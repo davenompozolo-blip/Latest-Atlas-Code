@@ -140,19 +140,26 @@ const UNIVERSE_TTL  = 24 * 60 * 60 * 1000;
 const PORTFOLIO_TTL =  5 * 60 * 1000;
 
 // ─── Dynamic universe from assets table (falls back to UNIVERSE) ─────────────
+// assets table has assets_read_anon RLS policy — anon key is sufficient and
+// more reliable than service role key (which shows "Needs Attention" in Vercel).
 async function getUniverse(cfg) {
   const now = Date.now();
   if (_cache.universe && (now - _cache.universeAt) < UNIVERSE_TTL) return _cache.universe;
 
-  if (!cfg) return UNIVERSE;
+  // Prefer anon key for this public read — avoids stale service-role key failures
+  const anonKey = process.env.SUPABASE_ANON_KEY || process.env.ATLAS_SUPABASE_KEY;
+  const url = (cfg && cfg.url) || 'https://vdmojjszvvcithuxwexx.supabase.co';
+  const key = anonKey || (cfg && cfg.key);
+  if (!key) return UNIVERSE;
+
   try {
     const r = await ft(
-      cfg.url + '/rest/v1/assets'
+      url + '/rest/v1/assets'
         + '?listing_status=eq.active'
         + '&select=symbol,name,exchange'
         + '&order=symbol.asc'
         + '&limit=10000',
-      { headers: { apikey: cfg.key, Authorization: 'Bearer ' + cfg.key, accept: 'application/json' } },
+      { headers: { apikey: key, Authorization: 'Bearer ' + key, accept: 'application/json' } },
       10000
     );
     if (!r.ok) throw new Error('assets query failed: ' + r.status);
