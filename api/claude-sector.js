@@ -2,6 +2,17 @@
 // Generates a sector-level synthesis note from all company theses in a sector.
 // Called when the user clicks "Generate sector note" in the Sector Playbook.
 
+function extractJSON(text) {
+  if (!text) return null;
+  try { return JSON.parse(text); } catch {}
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+  if (fenced?.[1]) { try { return JSON.parse(fenced[1].trim()); } catch {} }
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start !== -1 && end > start) { try { return JSON.parse(text.slice(start, end + 1)); } catch {} }
+  return null;
+}
+
 export default async function handler(req, res) {
   const origin = req.headers.origin || '';
   const allowed = process.env.ATLAS_ALLOWED_ORIGIN || '';
@@ -135,18 +146,15 @@ Always respond with valid JSON only. No preamble. No markdown fences. No text ou
 
     const data = await response.json();
     const raw = data.content?.[0]?.text || '';
-    // Strip markdown fences and any leading/trailing non-JSON text before the first {
-    const stripped = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-    const jsonStart = stripped.indexOf('{');
-    const jsonEnd   = stripped.lastIndexOf('}');
-    const clean = jsonStart !== -1 && jsonEnd !== -1 ? stripped.slice(jsonStart, jsonEnd + 1) : stripped;
-    let parsed;
-    try {
-      parsed = JSON.parse(clean);
-    } catch {
-      return res.status(200).json({ raw_text: raw, parse_error: true, sector_conviction: 'Under Review' });
+    const parsed = extractJSON(raw);
+    if (parsed && (parsed.sector_thesis || parsed.sector_conviction)) {
+      return res.status(200).json(parsed);
     }
-    return res.status(200).json(parsed);
+    return res.status(200).json({
+      error: parsed ? 'Missing sector_thesis in Claude response' : 'Could not parse JSON from Claude response',
+      parse_error: true,
+      sector_conviction: 'Under Review',
+    });
   } catch (err) {
     console.error('claude-sector error:', err);
     return res.status(500).json({ error: 'Internal error', detail: err.message });

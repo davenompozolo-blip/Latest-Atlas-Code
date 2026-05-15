@@ -3,6 +3,17 @@
 // Follows the same pattern as api/equity.js (API key stays server-side only).
 // Called by: ScrapbookSaveBar component (POST with company + all snapshots).
 
+function extractJSON(text) {
+  if (!text) return null;
+  try { return JSON.parse(text); } catch {}
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+  if (fenced?.[1]) { try { return JSON.parse(fenced[1].trim()); } catch {} }
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start !== -1 && end > start) { try { return JSON.parse(text.slice(start, end + 1)); } catch {} }
+  return null;
+}
+
 export default async function handler(req, res) {
   // CORS
   const origin = req.headers.origin || '';
@@ -41,7 +52,7 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 2400,
+        max_tokens: 1800,
         stream: true,
         system: buildSystemPrompt(),
         messages: [{ role: 'user', content: prompt }],
@@ -147,18 +158,16 @@ export default async function handler(req, res) {
       }
     }
 
-    const stripped = accumulated.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-    const jsonStart = stripped.indexOf('{');
-    const jsonEnd = stripped.lastIndexOf('}');
-    const clean = jsonStart !== -1 && jsonEnd !== -1 ? stripped.slice(jsonStart, jsonEnd + 1) : stripped;
-
-    let parsed;
-    try {
-      parsed = JSON.parse(clean);
-    } catch {
-      return res.status(200).json({ raw_text: accumulated, parse_error: true, input_token_est: inputTokens });
+    const parsed = extractJSON(accumulated);
+    if (parsed && parsed.thesis) {
+      return res.status(200).json({ ...parsed, input_token_est: inputTokens });
     }
-    return res.status(200).json({ ...parsed, input_token_est: inputTokens });
+    return res.status(200).json({
+      raw_text: accumulated,
+      parse_error: true,
+      error: parsed ? 'Missing thesis field in Claude response' : 'Could not parse JSON from Claude response',
+      input_token_est: inputTokens,
+    });
 
   } catch (err) {
     console.error('claude-analyse error:', err);
