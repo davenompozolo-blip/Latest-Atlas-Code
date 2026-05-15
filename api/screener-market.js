@@ -164,17 +164,22 @@ async function getUniverse(cfg) {
     return universe;
   } catch (e) {
     console.warn('[screener-market] assets universe fetch failed, falling back to hardcoded:', e.message);
-    _cache.universe = UNIVERSE;
-    _cache.universeAt = now;
+    // Do not cache the fallback — retry on next request rather than serving stale 97 stocks for 24h
     return UNIVERSE;
   }
 }
 
 // ─── Supabase helpers (optional — caching degrades gracefully if unavailable) ─
 function supaCfg() {
-  const url = process.env.SUPABASE_URL || process.env.ATLAS_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) return null;
+  // URL: try env vars first, fall back to hardcoded project URL (also in config.js)
+  const url = process.env.SUPABASE_URL
+              || process.env.ATLAS_SUPABASE_URL
+              || 'https://vdmojjszvvcithuxwexx.supabase.co';
+  // Key: service role bypasses RLS; anon key also works (assets table has anon read policy)
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+              || process.env.ATLAS_SUPABASE_KEY
+              || process.env.SUPABASE_ANON_KEY;
+  if (!key) return null;
   return { url: url.replace(/\/$/, ''), key };
 }
 

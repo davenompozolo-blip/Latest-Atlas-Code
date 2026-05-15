@@ -49,7 +49,7 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 2000,
+        max_tokens: 4096,
         system: `You are a senior buy-side sector specialist embedded within ATLAS, a professional portfolio management platform. Your role is to synthesise individual company investment theses across a sector into a rigorous, institutional-grade sector note.
 
 ---
