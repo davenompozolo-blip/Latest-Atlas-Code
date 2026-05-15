@@ -53,7 +53,7 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
         max_tokens: 1800,
-        stream: true,
+        stream: wantStream,
         system: buildSystemPrompt(),
         messages: [{ role: 'user', content: prompt }],
       }),
@@ -129,41 +129,17 @@ export default async function handler(req, res) {
       return;
     }
 
-    // ── Non-streaming fallback: accumulate then return JSON ──────────────────
-    const reader = anthropicRes.body.getReader();
-    const decoder = new TextDecoder();
-    let accumulated = '';
-    let lineBuffer = '';
-    let inputTokens = null;
+    // ── Non-streaming: Anthropic returns a single JSON response ─────────────
+    const data = await anthropicRes.json();
+    const raw  = data.content?.[0]?.text || '';
+    const inputTokens = data.usage?.input_tokens || null;
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      lineBuffer += decoder.decode(value, { stream: true });
-      const lines = lineBuffer.split('\n');
-      lineBuffer = lines.pop();
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        const payload = line.slice(6);
-        if (payload === '[DONE]') continue;
-        try {
-          const ev = JSON.parse(payload);
-          if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta') {
-            accumulated += ev.delta.text;
-          }
-          if (ev.type === 'message_delta' && ev.usage?.output_tokens) {
-            inputTokens = ev.usage.output_tokens;
-          }
-        } catch { /* ignore */ }
-      }
-    }
-
-    const parsed = extractJSON(accumulated);
+    const parsed = extractJSON(raw);
     if (parsed && parsed.thesis) {
       return res.status(200).json({ ...parsed, input_token_est: inputTokens });
     }
     return res.status(200).json({
-      raw_text: accumulated,
+      raw_text: raw,
       parse_error: true,
       error: parsed ? 'Missing thesis field in Claude response' : 'Could not parse JSON from Claude response',
       input_token_est: inputTokens,
