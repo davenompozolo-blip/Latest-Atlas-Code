@@ -424,13 +424,23 @@ module.exports = async function handler(req, res) {
     batchCacheGet(cfg, symbols, 'mkt_quote'),
   ]);
 
-  const enriched = candidates.filter(c => ovCache[c.s]).length;
-  const stocks   = candidates.map(c => formatRow(c, ovCache[c.s] || null, qtCache[c.s] || null));
+  // Cap response at 500 rows — browser can't render 7k rows without virtualisation.
+  // Prioritise enriched stocks (have cached AV data) so the table has real values,
+  // then fill remaining slots with unenriched candidates alphabetically.
+  const MAX_ROWS = 500;
+  const enrichedCandidates   = candidates.filter(c =>  ovCache[c.s]);
+  const unenrichedCandidates = candidates.filter(c => !ovCache[c.s]);
+  const capped = [
+    ...enrichedCandidates,
+    ...unenrichedCandidates.slice(0, Math.max(0, MAX_ROWS - enrichedCandidates.length)),
+  ].slice(0, MAX_ROWS);
+
+  const stocks = capped.map(c => formatRow(c, ovCache[c.s] || null, qtCache[c.s] || null));
 
   return res.status(200).json({
     stocks,
     total_universe: candidates.length,
-    enriched,
+    enriched: enrichedCandidates.length,
     has_av_key: !!apiKey,
   });
 };
