@@ -355,6 +355,7 @@ function ScrapbookProfile({ ticker, onBack }) {
         } finally {
             setAnalysing(false);
             setTimeout(() => setAnalyseProgress(0), 600);
+            setTimeout(() => setStreamProgress(0), 600);
         }
     }, [company, snapshots, ticker, showToast]);
 
@@ -455,6 +456,7 @@ function ScrapbookProfile({ ticker, onBack }) {
                         disabled: analysing || snapshots.length === 0,
                         style: {
                             background: analysing ? 'rgba(0,212,255,0.1)' : 'rgba(0,212,255,0.15)',
+                            background: analysing ? 'rgba(0,212,255,0.08)' : 'rgba(0,212,255,0.15)',
                             border: '1px solid rgba(0,212,255,0.4)',
                             color: '#00d4ff',
                             borderRadius: 6,
@@ -476,6 +478,10 @@ function ScrapbookProfile({ ticker, onBack }) {
                                     background: 'linear-gradient(90deg, #00d4ff, #a78bfa)',
                                     borderRadius: 2,
                                     transition: 'width 0.4s ease',
+                                    width: streamProgress + '%',
+                                    background: 'linear-gradient(90deg, #00d4ff, #a78bfa)',
+                                    borderRadius: 2,
+                                    transition: 'width 0.4s ease',
                                 }
                             })
                         ),
@@ -484,6 +490,10 @@ function ScrapbookProfile({ ticker, onBack }) {
                             : analyseProgress < 45 ? 'Synthesising thesis…'
                             : analyseProgress < 70 ? 'Assessing risk…'
                             : analyseProgress < 90 ? 'Computing conviction…'
+                            streamProgress < 20 ? 'Reading models…'
+                            : streamProgress < 45 ? 'Synthesising thesis…'
+                            : streamProgress < 70 ? 'Assessing risk…'
+                            : streamProgress < 90 ? 'Computing conviction…'
                             : 'Finalising…'
                         )
                     )

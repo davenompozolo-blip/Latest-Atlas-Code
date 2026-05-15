@@ -1916,14 +1916,33 @@ export function PortfolioHome() {
                             var wt = Number(p.weight_equity_pct || p.portfolio_weight || 0);
                             var q = p.quality_score != null ? Number(p.quality_score) : null;
                             var qCol = q == null ? 'rgba(255,255,255,0.3)' : q >= 60 ? '#10b981' : q >= 40 ? '#f59e0b' : '#ef4444';
+                            // Stale price: >4 days old (covers Fri→Tue with Mon holiday).
+                            // Matches the 96h dead threshold in data_freshness() — consistent semantics.
+                            var priceDate = p.price_date ? new Date(p.price_date) : null;
+                            var isStale = priceDate ? (Date.now() - priceDate) / 86_400_000 > 4 : false;
+                            var staleTooltip = isStale
+                                ? 'Price data from ' + (p.price_date || 'unknown') + ' — Alpaca’s IEX feed doesn’t cover this ticker'
+                                : null;
                             return React.createElement('tr', { key: p.symbol,
-                                style: { borderBottom: '1px solid rgba(255,255,255,0.03)', transition: 'background 0.12s', cursor: 'pointer' },
+                                style: {
+                                    borderBottom: '1px solid rgba(255,255,255,0.03)',
+                                    transition: 'background 0.12s', cursor: 'pointer',
+                                    opacity: isStale ? 0.6 : 1,
+                                },
                                 onClick: (function(pos) { return function() { setQtPos(pos); }; })(p),
                                 onMouseEnter: function(e) { e.currentTarget.style.background = 'rgba(0,212,255,0.05)'; },
                                 onMouseLeave: function(e) { e.currentTarget.style.background = 'transparent'; },
-                                title: 'Click to trade ' + p.symbol,
+                                title: staleTooltip || ('Click to trade ' + p.symbol),
                             },
-                                React.createElement('td', { style: { padding: '7px 10px', fontFamily: 'JetBrains Mono', fontSize: 12, fontWeight: 700, color: '#00d4ff', whiteSpace: 'nowrap' } }, p.symbol),
+                                React.createElement('td', { style: { padding: '7px 10px', fontFamily: 'JetBrains Mono', fontSize: 12, fontWeight: 700, color: '#00d4ff', whiteSpace: 'nowrap' } },
+                                    React.createElement('span', null, p.symbol),
+                                    isStale
+                                        ? React.createElement('span', {
+                                            title: staleTooltip,
+                                            style: { marginLeft: 5, fontSize: 10, color: '#f59e0b', cursor: 'help', verticalAlign: 'middle' }
+                                          }, '⚠')
+                                        : null
+                                ),
                                 React.createElement('td', { style: { padding: '7px 10px', maxWidth: 220 } },
                                     React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 } },
                                         React.createElement('span', { style: { fontSize: 11, color: 'rgba(255,255,255,0.65)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'DM Sans' } }, getName(p.symbol, p)),
@@ -1935,8 +1954,8 @@ export function PortfolioHome() {
                                 React.createElement('td', { style: { padding: '7px 10px', textAlign: 'right', fontFamily: 'JetBrains Mono', fontSize: 11, color: 'rgba(255,255,255,0.78)' } },
                                     p.current_price ? '$' + Number(p.current_price).toFixed(2) : '—'),
                                 React.createElement('td', { style: { padding: '7px 10px', textAlign: 'right', fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 600,
-                                    color: dayChg == null ? 'rgba(255,255,255,0.25)' : dayChg > 0 ? '#10b981' : dayChg < 0 ? '#ef4444' : 'rgba(255,255,255,0.4)' } },
-                                    dayChg == null ? '—' : (dayChg > 0 ? '▲ ' : dayChg < 0 ? '▼ ' : '') + (Math.abs(dayChg) * 100).toFixed(2) + '%'),
+                                    color: isStale || dayChg == null ? 'rgba(255,255,255,0.25)' : dayChg > 0 ? '#10b981' : dayChg < 0 ? '#ef4444' : 'rgba(255,255,255,0.4)' } },
+                                    isStale ? '—' : dayChg == null ? '—' : (dayChg > 0 ? '▲ ' : dayChg < 0 ? '▼ ' : '') + (Math.abs(dayChg) * 100).toFixed(2) + '%'),
                                 React.createElement('td', { style: { padding: '7px 10px', textAlign: 'right', fontFamily: 'JetBrains Mono', fontSize: 11, color: 'rgba(255,255,255,0.82)' } }, fmtCurrency(p.market_value)),
                                 React.createElement('td', { style: { padding: '7px 10px', textAlign: 'right' } },
                                     React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 7 } },
