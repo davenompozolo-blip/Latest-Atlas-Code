@@ -129,6 +129,29 @@ const UNIVERSE = [
   { s:'ROKU',  n:'Roku Inc',                  sec:'Communication Services', mc:'Mid'   },
 ];
 
+// ─── Dynamic universe from assets table (falls back to UNIVERSE) ─────────────
+async function getUniverse(cfg) {
+  if (!cfg) return UNIVERSE;
+  try {
+    const r = await ft(
+      cfg.url + '/rest/v1/assets'
+        + '?listing_status=eq.active'
+        + '&select=symbol,name,exchange'
+        + '&order=symbol.asc'
+        + '&limit=10000',
+      { headers: { apikey: cfg.key, Authorization: 'Bearer ' + cfg.key, accept: 'application/json' } },
+      10000
+    );
+    if (!r.ok) throw new Error('assets query failed: ' + r.status);
+    const rows = await r.json();
+    if (!Array.isArray(rows) || rows.length < 50) throw new Error('assets table too small (' + (rows?.length || 0) + ' rows) — using hardcoded fallback');
+    return rows.map(r => ({ s: r.symbol, n: r.name || r.symbol, x: r.exchange || '' }));
+  } catch (e) {
+    console.warn('[screener-market] assets universe fetch failed, falling back to hardcoded:', e.message);
+    return UNIVERSE;
+  }
+}
+
 // ─── Supabase helpers (optional — caching degrades gracefully if unavailable) ─
 function supaCfg() {
   const url = process.env.SUPABASE_URL || process.env.ATLAS_SUPABASE_URL;
@@ -356,7 +379,8 @@ module.exports = async function handler(req, res) {
   // Called by the frontend one stock at a time to avoid Vercel timeout.
   const sym = ((req.query && req.query.symbol) || '').toUpperCase().trim();
   if (sym) {
-    const candidate = UNIVERSE.find(c => c.s === sym);
+    const universe = await getUniverse(cfg);
+    const candidate = universe.find(c => c.s === sym) || UNIVERSE.find(c => c.s === sym);
     if (!candidate) return res.status(404).json({ error: 'Symbol not in universe: ' + sym });
 
     // Check cache first
@@ -386,10 +410,13 @@ module.exports = async function handler(req, res) {
     });
   }
 
-  // ── Main handler: serve curated list + cached data instantly ────────────────
+  // ── Main handler: serve universe list + cached data instantly ───────────────
   // No live AV calls here — frontend handles progressive enrichment per-symbol.
-  const portfolioSymbols = await getPortfolioSymbols(cfg);
-  const candidates = UNIVERSE.filter(c => !portfolioSymbols.has(c.s));
+  const [portfolioSymbols, universe] = await Promise.all([
+    getPortfolioSymbols(cfg),
+    getUniverse(cfg),
+  ]);
+  const candidates = universe.filter(c => !portfolioSymbols.has(c.s));
   const symbols    = candidates.map(c => c.s);
 
   const [ovCache, qtCache] = await Promise.all([

@@ -295,9 +295,10 @@ function ScrapbookProfile({ ticker, onBack }) {
                     portfolioContext,
                 }),
             });
-            const result = await resp.json();
-            if (!resp.ok || result.error) throw new Error(result.error || 'Analysis failed');
-            if (result.parse_error) throw new Error('Claude response could not be parsed — please try again');
+            const result = await resp.json().catch(() => ({ error: 'Empty or malformed response from server' }));
+            console.log('[claude-analyse]', { status: resp.status, ok: resp.ok, hasThesis: !!result.thesis, parseError: !!result.parse_error, error: result.error });
+            if (!resp.ok) throw new Error(result.error || `HTTP ${resp.status}`);
+            if (result.parse_error) throw new Error(result.error || 'Claude response could not be parsed — please try again');
             if (!result.thesis) throw new Error('No thesis in response — please try again');
 
             const methods = [...new Set(snapshots.map(s => s.method))];
@@ -1045,23 +1046,10 @@ function SectorExpandedPanel({ sector, companies, latestNote, onNavigate }) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ sector, companies, narratives: orderedNarr }),
             });
-            const result = await resp.json();
-            if (!resp.ok || result.error) throw new Error(result.error || 'Sector note generation failed');
-
-            if (result.parse_error) {
-                // Store the raw text; effectiveNote will extract JSON from it on render
-                const rawText = result.raw_text || null;
-                await sb.from('scrapbook_sector_notes').insert({
-                    sector,
-                    company_ids: companies.map(c => c.id),
-                    company_tickers: companies.map(c => c.ticker),
-                    company_count: companies.length,
-                    sector_thesis: rawText,
-                    sector_conviction: 'Under Review',
-                });
-                setNoteData({ sector_thesis: rawText, sector_conviction: 'Under Review', created_at: new Date().toISOString() });
-                return;
-            }
+            const result = await resp.json().catch(() => ({ error: 'Empty or malformed response from server' }));
+            console.log('[claude-sector]', { status: resp.status, ok: resp.ok, parseError: !!result.parse_error, error: result.error });
+            if (!resp.ok) throw new Error(result.error || `HTTP ${resp.status}`);
+            if (result.parse_error) throw new Error(result.error || 'Claude could not generate sector note — please try again');
 
             const { data: inserted } = await sb.from('scrapbook_sector_notes').insert({
                 sector,
@@ -1088,26 +1076,29 @@ function SectorExpandedPanel({ sector, companies, latestNote, onNavigate }) {
 
     const convictionColor = { Overweight: '#10b981', Neutral: '#f59e0b', Underweight: '#ef4444', 'Under Review': '#6b7280' };
 
-    // Recover notes that were stored as raw JSON string in sector_thesis (parse_error fallback).
-    // Handles markdown-fenced, plain JSON, and partially-stripped variants.
-    const effectiveNote = (() => {
+    // Recover notes stored as raw JSON string in sector_thesis (parse_error fallback).
+    const effectiveNote = useMemo(() => {
         if (!noteData) return null;
         const t = noteData.sector_thesis;
         if (typeof t !== 'string') return noteData;
+        if (!t.includes('{') || !t.includes('}')) return noteData;
 
-        // Find the first '{' and last '}' in the raw text — works regardless of fence format
-        const jsonStart = t.indexOf('{');
-        const jsonEnd   = t.lastIndexOf('}');
-        if (jsonStart === -1 || jsonEnd === -1 || jsonEnd <= jsonStart) return noteData;
-        try {
-            const parsed = JSON.parse(t.slice(jsonStart, jsonEnd + 1));
-            // Merge only if the parsed object looks like a sector note
-            if (parsed && (typeof parsed.sector_thesis === 'string' || Array.isArray(parsed.sector_tailwinds))) {
-                return { ...noteData, ...parsed };
-            }
-        } catch (_) { /* genuine prose — render as-is */ }
+        const tryParse = s => { try { return JSON.parse(s); } catch { return null; } };
+        let parsed = tryParse(t);
+        if (!parsed) {
+            const fenced = t.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+            if (fenced?.[1]) parsed = tryParse(fenced[1].trim());
+        }
+        if (!parsed) {
+            const start = t.indexOf('{');
+            const end = t.lastIndexOf('}');
+            if (start !== -1 && end > start) parsed = tryParse(t.slice(start, end + 1));
+        }
+        if (parsed && (typeof parsed.sector_thesis === 'string' || Array.isArray(parsed.sector_tailwinds))) {
+            return { ...noteData, ...parsed };
+        }
         return noteData;
-    })();
+    }, [noteData]);
 
     return h('div', { style: { padding: '20px' } },
         // Company mini-cards grid

@@ -3,6 +3,10 @@
   "installCommand": "echo 'skip install'",
   "outputDirectory": "public",
   "buildCommand": "node inject-env.js",
+  "functions": {
+    "api/claude-analyse.js": { "maxDuration": 60 },
+    "api/claude-sector.js":  { "maxDuration": 60 }
+  },
   "rewrites": [
     { "source": "/command-centre", "destination": "/command-centre/index.html" },
     { "source": "/status",         "destination": "/status/index.html" },
