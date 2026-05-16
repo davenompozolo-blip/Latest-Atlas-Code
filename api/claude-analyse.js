@@ -29,15 +29,51 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { company, snapshots, portfolioContext, stream: wantStream } = req.body || {};
-
-  if (!company?.ticker || !Array.isArray(snapshots) || snapshots.length === 0) {
-    return res.status(400).json({ error: 'company.ticker and snapshots[] required' });
-  }
+  const { company, snapshots, portfolioContext, stream: wantStream, mode, context } = req.body || {};
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured on server' });
+  }
+
+  // ── PCM report mode ────────────────────────────────────────────────────────
+  if (mode === 'pcm_report') {
+    if (!context) return res.status(400).json({ error: 'context required for pcm_report mode' });
+    try {
+      const pcmRes = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 2048,
+          system: `You are ATLAS Intelligence, the decision engine of the ATLAS Terminal.
+You are given structured output from 6 layers of portfolio analysis.
+Synthesise this into a Portfolio Construction Report in the style of an investment committee memo.
+Respond ONLY with valid JSON — no preamble, no markdown fences:
+{
+  "executive_summary": "string",
+  "allocation_verdict": { "assessment": "string", "recommended_action": "string", "confidence": "HIGH|MODERATE|LOW" },
+  "risk_commentary": { "key_risks": ["string"], "mitigants": ["string"] },
+  "factor_narrative": "string",
+  "trade_recommendations": [{ "ticker": "string", "action": "BUY|SELL|HOLD", "priority": "HIGH|MEDIUM|LOW", "rationale": "string" }],
+  "forward_looking": "string"
+}`,
+          messages: [{ role: 'user', content: JSON.stringify(context) }],
+        }),
+      });
+      const pcmData = await pcmRes.json();
+      const raw = pcmData.content?.[0]?.text || '';
+      const parsed = extractJSON(raw);
+      return res.status(200).json(parsed || { executive_summary: raw });
+    } catch (err) {
+      console.error('claude-analyse pcm_report error:', err);
+      return res.status(500).json({ error: 'PCM report generation failed', detail: err.message });
+    }
+  }
+
+  // ── Standard scrapbook synthesis mode ─────────────────────────────────────
+  if (!company?.ticker || !Array.isArray(snapshots) || snapshots.length === 0) {
+    return res.status(400).json({ error: 'company.ticker and snapshots[] required' });
   }
 
   const prompt = buildSynthesisPrompt(company, snapshots, portfolioContext);

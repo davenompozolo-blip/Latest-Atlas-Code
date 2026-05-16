@@ -57,3 +57,40 @@ export const MOCK_POSITIONS = [
     { symbol: 'GOOGL', name: 'Alphabet Inc.', quantity: 40, cost_basis: 140.00, current_price: 162.30, market_value: 6492, unrealised_return_pct: 0.1593, portfolio_weight: 0.054, annualised_vol: 0.30, sharpe_approx: 0.9, is_concentrated: false },
 ];
 export const MOCK_COMMAND = { portfolio_nav: 119500, total_invested: 98000, total_return_pct: 0.2194, sharpe_ratio: 1.35, sortino_ratio: 1.82, drawdown_pct: -8.4, dollar_var_95: 2850, atlas_health_score: 72, portfolio_health_status: 'Moderate', position_count: 55, days_of_history: 420, computed_at: new Date().toISOString() };
+
+// --- PCM Mock Data ---
+export var MOCK_PCM_IPS = {
+    risk_tolerance: 7, risk_label: 'Aggressive', return_target: 12.5,
+    time_horizon: '10 Years', benchmark: 'SPY', concentration_limit: 20,
+    liquidity_need: 'Medium', sector_restrictions: ['Tobacco', 'Weapons'], esg_screen: false,
+};
+export var MOCK_PCM_ALLOCATION = [
+    { asset_class: 'EQUITY',       current_weight: 82.1, saa_floor: 70, saa_ceil: 85, taa_target: 75 },
+    { asset_class: 'FIXED_INCOME', current_weight:  4.8, saa_floor:  0, saa_ceil: 10, taa_target:  8 },
+    { asset_class: 'ALTERNATIVE',  current_weight:  8.2, saa_floor: 10, saa_ceil: 20, taa_target: 12 },
+    { asset_class: 'CASH',         current_weight:  4.9, saa_floor:  2, saa_ceil:  5, taa_target:  5 },
+];
+export var MOCK_PCM_FACTORS = [
+    { factor: 'Momentum',      score:  0.82, direction: 'Overweight'  },
+    { factor: 'Quality',       score:  0.61, direction: 'Overweight'  },
+    { factor: 'Growth',        score:  0.54, direction: 'Moderate'    },
+    { factor: 'Value',         score: -0.12, direction: 'Neutral'     },
+    { factor: 'Low Vol',       score: -0.48, direction: 'Underweight' },
+    { factor: 'Profitability', score:  0.44, direction: 'Moderate'    },
+    { factor: 'Size',          score:  0.08, direction: 'Neutral'     },
+];
+export var MOCK_PCM_RISK = [
+    { ticker: 'NVDA',  weight: 14.2, vol_90d: 42.1, mrc: 0.041, prc: 22.3 },
+    { ticker: 'AAPL',  weight: 11.8, vol_90d: 24.3, mrc: 0.019, prc: 10.3 },
+    { ticker: 'MSFT',  weight: 10.4, vol_90d: 26.7, mrc: 0.026, prc: 14.1 },
+    { ticker: 'META',  weight:  8.1, vol_90d: 38.4, mrc: 0.022, prc: 11.9 },
+    { ticker: 'GOOGL', weight:  7.3, vol_90d: 27.2, mrc: 0.014, prc:  7.6 },
+];
+export var MOCK_PCM_DRIFT = {
+    aggregate_drift: 7.2, trigger_fired: true,
+    trades: [
+        { ticker: 'NVDA', action: 'SELL', delta_shares: -12, est_value: 7240, rationale: 'Overweight vs SAA target' },
+        { ticker: 'BND',  action: 'BUY',  delta_shares:  48, est_value: 4560, rationale: 'Fixed income underweight' },
+        { ticker: 'IEFA', action: 'BUY',  delta_shares:  22, est_value: 1980, rationale: 'Alternatives underweight' },
+    ],
+};
