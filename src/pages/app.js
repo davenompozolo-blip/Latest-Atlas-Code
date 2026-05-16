@@ -1,19 +1,11 @@
 import React from 'react';
 // ============================================================
 // ATLAS Terminal — Application Shell & Entry Point
-// ------------------------------------------------------------
-// Owns:
-//   • TAB registry + NAV_STRUCTURE sidebar config
-//   • Root <App/> component (top bar, sidebar, content router)
-//   • ReactDOM root mount
-//
-// This is the module entry point loaded by index.html as
-// <script type="module" src="js/app.js"></script>.
 // ============================================================
 
 import { sb, loadView, MOCK_COMMAND } from './config.js';
 import { fmtPct, fmtCurrency, cls } from './utils.js';
-import { ConfigPrompt, TopBarSparkline, SyncStatusPill, RefreshButton } from './components.js';
+import { ConfigPrompt, SyncStatusPill, RefreshButton } from './components.js';
 import { PortfolioHome } from './portfolio-home.js';
 import { QuantDashboard } from './quant-dashboard.js';
 import { RiskAnalysis, CommandCentre } from './pages-other.js';
@@ -35,21 +27,21 @@ const { useState, useEffect } = React;
 // Tab registry & sidebar navigation structure
 // ------------------------------------------------------------
 const TABS = [
-    { id: 'portfolio', label: 'PORTFOLIO', sub: 'Positions & NAV',        icon: '\u25CB', component: PortfolioHome },
-    { id: 'trading',   label: 'TRADING',   sub: 'Order Desk & Research',   icon: '\u25B6', component: TradingDashboard },
-    { id: 'quant',     label: 'QUANT',     sub: 'Quantitative Signals',    icon: '\u25C7', component: QuantDashboard },
-    { id: 'risk',      label: 'RISK',      sub: 'Metrics & Drawdown',      icon: '\u25B3', component: RiskAnalysis },
-    { id: 'performance', label: 'PERFORMANCE', sub: 'Returns & Attribution', icon: '\u25C6', component: PerformanceSuite },
-    { id: 'command',   label: 'COMMAND',   sub: 'System Overview',         icon: '\u2726', component: CommandCentre },
-    { id: 'equity',    label: 'EQUITY',    sub: 'Ticker Research',         icon: '\u25A1', component: EquityResearch },
-    { id: 'macro',     label: 'MACRO',     sub: 'Economic Intelligence',   icon: '\u25C9', component: MacroDashboard },
-    { id: 'funds',     label: 'FUNDS',     sub: 'Fund & ETF Research',     icon: '\u25A0', component: FundsDashboard },
-    { id: 'markets',   label: 'MARKETS',   sub: 'Global Market Watch',     icon: '\u25CE', component: MarketWatch },
-    { id: 'options',    label: 'OPTIONS',    sub: 'Derivatives Analysis',    icon: '\u03A9', component: OptionsAnalysis },
-    { id: 'valuation',  label: 'VALUATION',  sub: 'Equity Valuation Suite',  icon: '\u25C8', component: ValuationHub },
-    { id: 'sql',        label: 'SQL',        sub: 'Query Terminal',           icon: '\u25A3', component: SqlTerminal },
-    { id: 'scrapbook',  label: 'SCRAPBOOK',  sub: 'Research & Thesis Notes', icon: '\u{1F4D2}', component: Scrapbook },
-    { id: 'pcm',        label: 'PCM',        sub: 'Portfolio Construction',   icon: '⧆',    component: PortfolioConstruction },
+    { id: 'portfolio', label: 'PORTFOLIO',    sub: 'Positions & NAV',          icon: '○', component: PortfolioHome },
+    { id: 'trading',   label: 'TRADING',      sub: 'Order Desk & Research',     icon: '▶', component: TradingDashboard },
+    { id: 'quant',     label: 'QUANT',        sub: 'Quantitative Signals',      icon: '◇', component: QuantDashboard },
+    { id: 'risk',      label: 'RISK',         sub: 'Metrics & Drawdown',        icon: '△', component: RiskAnalysis },
+    { id: 'performance', label: 'PERFORMANCE', sub: 'Returns & Attribution',    icon: '◆', component: PerformanceSuite },
+    { id: 'command',   label: 'COMMAND',      sub: 'System Overview',           icon: '✦', component: CommandCentre },
+    { id: 'equity',    label: 'EQUITY',       sub: 'Ticker Research',           icon: '□', component: EquityResearch },
+    { id: 'macro',     label: 'MACRO',        sub: 'Economic Intelligence',     icon: '◉', component: MacroDashboard },
+    { id: 'funds',     label: 'FUNDS',        sub: 'Fund & ETF Research',       icon: '■', component: FundsDashboard },
+    { id: 'markets',   label: 'MARKETS',      sub: 'Global Market Watch',       icon: '◎', component: MarketWatch },
+    { id: 'options',   label: 'OPTIONS',      sub: 'Derivatives Analysis',      icon: 'Ω', component: OptionsAnalysis },
+    { id: 'valuation', label: 'VALUATION',    sub: 'Equity Valuation Suite',    icon: '◈', component: ValuationHub },
+    { id: 'sql',       label: 'SQL',          sub: 'Query Terminal',            icon: '▣', component: SqlTerminal },
+    { id: 'scrapbook', label: 'SCRAPBOOK',    sub: 'Research & Thesis Notes',   icon: '\u{1F4D2}', component: Scrapbook },
+    { id: 'pcm',       label: 'PCM',          sub: 'Portfolio Construction',    icon: '⧆', component: PortfolioConstruction },
 ];
 
 const NAV_STRUCTURE = [
@@ -78,7 +70,7 @@ const NAV_STRUCTURE = [
 ];
 
 // ------------------------------------------------------------
-// Error boundary — surfaces render crashes as visible error card
+// Error boundary
 // ------------------------------------------------------------
 class ErrorBoundary extends React.Component {
     constructor(props) { super(props); this.state = { error: null }; }
@@ -111,14 +103,12 @@ function App() {
     var _dm = useState(sb ? 'pending' : 'mock');
     var dataMode = _dm[0];
     var setDataMode = _dm[1];
-    // Scrapbook deep-link ticker — set when ValuationHouse triggers Save & Analyse
     var _st = useState(null);
     var scrapbookTicker = _st[0];
     var setScrapbookTicker = _st[1];
 
     var ActiveComponent = TABS.find(function(t) { return t.id === activeTab; }).component;
 
-    // Load summary data for top bar — also re-runs on atlas:refresh
     useEffect(function() {
         function load() {
             Promise.all([
@@ -136,7 +126,6 @@ function App() {
         return function() { window.removeEventListener('atlas:refresh', load); };
     }, []);
 
-    // Listen for Scrapbook navigation events dispatched by ScrapbookSaveBar
     useEffect(function() {
         function onOpenScrapbook(e) {
             setScrapbookTicker((e.detail && e.detail.ticker) || null);
@@ -148,36 +137,68 @@ function App() {
 
     var c = topCmd || MOCK_COMMAND;
     var pnl = c.total_return_pct;
-    var pnlStr = pnl != null ? (pnl >= 0 ? '+' : '') + fmtCurrency(c.portfolio_nav - c.total_invested) + ' (' + fmtPct(pnl) + ')' : '';
+    var mtd = c.mtd_return_pct;
+    var activeTabObj = TABS.find(function(t) { return t.id === activeTab; });
+    var activeLabel  = activeTabObj ? activeTabObj.label : 'DASHBOARD';
 
     return React.createElement('div', { className: 'app-container' },
-        // Top Bar
+
+        // ── Top Bar ──────────────────────────────────────────────────────────
         React.createElement('div', { className: 'top-bar' },
-            React.createElement('div', null,
-                React.createElement('div', { className: 'logo' }, 'ATLAS'),
-                React.createElement('div', { className: 'logo-sub' }, 'TERMINAL')
+
+            // Left: Logo + breadcrumb
+            React.createElement('div', { className: 'topbar-left' },
+                React.createElement('div', { className: 'logo-group' },
+                    React.createElement('span', { className: 'logo' }, 'ATLAS'),
+                    React.createElement('span', { className: 'logo-word' }, 'TERMINAL')
+                ),
+                React.createElement('div', { className: 'topbar-breadcrumb' },
+                    React.createElement('span', { className: 'bc-dim' }, 'Dashboard'),
+                    React.createElement('span', { className: 'bc-sep' }, '›'),
+                    React.createElement('span', { className: 'bc-active' }, activeLabel)
+                )
             ),
-            React.createElement('div', { style: { display: 'flex', flexDirection: 'column', lineHeight: 1.2 } },
-                React.createElement('div', { style: { fontSize: 8, letterSpacing: 2, color: 'rgba(255,255,255,0.3)', fontFamily: 'JetBrains Mono', textTransform: 'uppercase', marginBottom: 3 } }, 'Net Equity'),
-                React.createElement('div', { className: 'nav-summary' }, fmtCurrency(c.portfolio_nav))
-            ),
-            React.createElement('div', { className: 'nav-pnl ' + cls(pnl) }, pnlStr),
-            React.createElement(TopBarSparkline, { nav: topNav }),
+
+            // Spacer
             React.createElement('div', { className: 'spacer' }),
-            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
-                React.createElement('div', {
-                    className: 'status-badge ' + (dataMode === 'live' ? 'live' : 'demo'),
-                    title: dataMode === 'live' ? 'Live data from Supabase' : 'Demo mode — set VITE_SUPABASE_ANON_KEY',
-                }, dataMode === 'live' ? '\u25CF LIVE DATA' : '\u25CB DEMO'),
-                React.createElement(SyncStatusPill, null),
-                React.createElement(RefreshButton, null),
-                React.createElement('div', { className: 'date' },
-                    new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })
+
+            // Right: 3 compact metrics + controls
+            React.createElement('div', { className: 'topbar-right' },
+                React.createElement('div', { className: 'tb-metric' },
+                    React.createElement('div', { className: 'tb-metric-value' }, fmtCurrency(c.portfolio_nav)),
+                    React.createElement('div', { className: 'tb-metric-label' }, 'Portfolio NAV')
+                ),
+                React.createElement('div', { className: 'tb-divider' }),
+                React.createElement('div', { className: 'tb-metric' },
+                    React.createElement('div', {
+                        className: 'tb-metric-value',
+                        style: { color: mtd > 0 ? 'var(--green)' : mtd < 0 ? 'var(--red)' : 'var(--text-2)' }
+                    }, mtd != null ? (mtd >= 0 ? '+' : '') + fmtPct(mtd) : '—'),
+                    React.createElement('div', { className: 'tb-metric-label' }, 'MTD Return')
+                ),
+                React.createElement('div', { className: 'tb-divider' }),
+                React.createElement('div', { className: 'tb-metric' },
+                    React.createElement('div', {
+                        className: 'tb-metric-value',
+                        style: { color: pnl > 0 ? 'var(--green)' : pnl < 0 ? 'var(--red)' : 'var(--gold)' }
+                    }, pnl != null ? (pnl >= 0 ? '+' : '') + fmtPct(pnl) : '—'),
+                    React.createElement('div', { className: 'tb-metric-label' }, 'Total Return')
+                ),
+                React.createElement('div', { className: 'tb-divider' }),
+                React.createElement('div', { className: 'topbar-controls' },
+                    React.createElement('div', {
+                        className: 'status-badge ' + (dataMode === 'live' ? 'live' : 'demo'),
+                        title: dataMode === 'live' ? 'Live data' : 'Demo — set VITE_SUPABASE_ANON_KEY',
+                    }, dataMode === 'live' ? '● LIVE' : '○ DEMO'),
+                    React.createElement(SyncStatusPill, null),
+                    React.createElement(RefreshButton, null)
                 )
             )
         ),
-        // Body layout (sidebar + content)
+
+        // ── Body layout ───────────────────────────────────────────────────────
         React.createElement('div', { className: 'body-layout' },
+
             // Left Sidebar
             React.createElement('div', { className: 'sidebar' },
                 NAV_STRUCTURE.map(function(item, idx) {
@@ -186,33 +207,32 @@ function App() {
                     }
                     if (item.type === 'placeholder') {
                         return React.createElement('div', { key: 'p' + idx, className: 'nav-item disabled' },
-                            React.createElement('span', { className: 'nav-icon' }, '\u25CB'),
-                            React.createElement('div', null,
-                                React.createElement('div', { className: 'nav-label' }, item.label),
-                                React.createElement('div', { className: 'nav-sublabel' }, item.sub)
-                            )
+                            React.createElement('span', { className: 'nav-dash' }, '—'),
+                            React.createElement('div', { className: 'nav-label' }, item.label)
                         );
                     }
                     var tab = TABS.find(function(t) { return t.id === item.id; });
                     if (!tab) return null;
+                    var isActive = activeTab === tab.id;
                     return React.createElement('button', {
                         key: tab.id,
-                        className: 'nav-item' + (activeTab === tab.id ? ' active' : ''),
+                        className: 'nav-item' + (isActive ? ' active' : ''),
                         onClick: function() { setActiveTab(tab.id); }
                     },
-                        React.createElement('span', { className: 'nav-icon' }, tab.icon),
-                        React.createElement('div', null,
-                            React.createElement('div', { className: 'nav-label' }, tab.label),
-                            React.createElement('div', { className: 'nav-sublabel' }, tab.sub)
-                        )
+                        React.createElement('span', { className: 'nav-dash' }, isActive ? '▶' : '—'),
+                        React.createElement('div', { className: 'nav-label' }, tab.label),
+                        isActive
+                            ? React.createElement('span', { className: 'nav-active-badge' }, 'ACTIVE')
+                            : null
                     );
                 }),
                 React.createElement('div', { className: 'sidebar-footer' },
                     'ATLAS TERMINAL v2.0',
                     React.createElement('br'),
-                    '\u00A9 2026 ATLAS'
+                    '© 2026 ATLAS'
                 )
             ),
+
             // Main Content
             React.createElement('div', { className: 'main-content', style: { display: 'flex', flexDirection: 'column' } },
                 !sb ? React.createElement(ConfigPrompt, null) : null,

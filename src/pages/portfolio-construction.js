@@ -57,13 +57,17 @@ function statusBadge(status) {
 function metricTile(label, value, color, sub) {
   return h('div', {
     style: {
-      background: NAVY2, border: `1px solid ${BORDER}`, borderRadius: 8,
-      padding: '20px 24px', flex: 1, minWidth: 0,
+      background: 'rgba(255,255,255,0.022)',
+      border: `1px solid ${BORDER}`,
+      borderRadius: 8,
+      padding: '22px 24px',
+      flex: 1,
+      minWidth: 0,
     }
   },
-    h('div', { style: { fontSize: 10, fontFamily: 'JetBrains Mono', letterSpacing: 1.5, color: T3, textTransform: 'uppercase', marginBottom: 10 } }, label),
-    h('div', { style: { fontSize: 32, fontWeight: 700, fontFamily: 'Syne', color: color || T1, lineHeight: 1, marginBottom: 6 } }, value),
-    sub && h('div', { style: { fontSize: 10, color: T3, fontFamily: 'JetBrains Mono' } }, sub)
+    h('div', { style: { fontSize: 9, fontFamily: 'JetBrains Mono', letterSpacing: 2, color: T3, textTransform: 'uppercase', marginBottom: 14, fontWeight: 600 } }, label),
+    h('div', { style: { fontSize: 40, fontWeight: 800, fontFamily: 'Syne', color: color || T1, lineHeight: 1, letterSpacing: '-1.5px' } }, value),
+    sub && h('div', { style: { fontSize: 9, color: T3, fontFamily: 'JetBrains Mono', marginTop: 10, lineHeight: 1.4 } }, sub)
   );
 }
 
@@ -195,28 +199,43 @@ function LayerStrip({ activeLayer, completedLayers, onSelect }) {
     style: {
       display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)',
       background: NAVY1, border: `1px solid ${BORDER}`,
-      borderRadius: 10, marginBottom: 20, overflow: 'hidden',
+      borderRadius: 8, marginBottom: 20, overflow: 'hidden',
     }
   },
     LAYERS.map((l, i) => {
       const done   = completedLayers.includes(l.id);
       const active = l.id === activeLayer;
       const locked = !done && l.id > activeLayer;
+      const codeColor = done ? GREEN : active ? TEAL : T3;
+      const abbr = l.name.split(' ').map(w => w.slice(0, 3).toUpperCase()).join('/').slice(0, 10);
       return h('button', {
         key: l.id,
         onClick: () => !locked && onSelect(l.id),
         style: {
-          padding: '14px 8px', background: active ? 'rgba(0,200,224,0.10)' : 'none',
-          border: 'none', borderRight: i < 6 ? `1px solid ${BORDER}` : 'none',
-          cursor: locked ? 'default' : 'pointer',
-          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+          padding: '12px 6px 10px',
+          background: active ? 'rgba(0,200,224,0.13)' : done ? 'rgba(16,185,129,0.04)' : 'transparent',
+          border: 'none',
+          borderRight: i < 6 ? `1px solid ${BORDER}` : 'none',
           borderBottom: active ? `2px solid ${TEAL}` : '2px solid transparent',
-          opacity: locked ? 0.45 : 1, transition: 'background 0.15s',
+          cursor: locked ? 'default' : 'pointer',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
+          opacity: locked ? 0.4 : 1, transition: 'background 0.15s',
+          position: 'relative',
         }
       },
-        h('div', { style: { fontSize: 9, fontFamily: 'JetBrains Mono', color: done ? GREEN : active ? TEAL : T3, fontWeight: 700, letterSpacing: 1 } }, l.code),
-        h('div', { style: { fontSize: 10, fontFamily: 'JetBrains Mono', fontWeight: 600, color: active ? T1 : T2, textTransform: 'uppercase', letterSpacing: 0.8 } }, l.name.split(' ')[0]),
-        h('div', { style: { width: 6, height: 6, borderRadius: '50%', background: done ? GREEN : active ? TEAL : T3 } })
+        h('div', { style: { fontSize: 9, fontFamily: 'JetBrains Mono', color: codeColor, fontWeight: 800, letterSpacing: 1 } }, l.code),
+        h('div', { style: {
+          fontSize: 9, fontFamily: 'JetBrains Mono', fontWeight: 600,
+          color: active ? T1 : done ? T2 : T3,
+          textTransform: 'uppercase', letterSpacing: 0.5,
+          whiteSpace: 'nowrap', overflow: 'hidden',
+        } }, l.name.split(' ')[0].toUpperCase()),
+        h('div', { style: {
+          width: 5, height: 5, borderRadius: '50%',
+          background: done ? GREEN : active ? TEAL : T3,
+          boxShadow: active ? `0 0 6px ${TEAL}` : done ? `0 0 4px ${GREEN}` : 'none',
+          marginTop: 1,
+        } })
       );
     })
   );
