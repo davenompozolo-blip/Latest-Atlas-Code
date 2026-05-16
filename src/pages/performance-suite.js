@@ -6,7 +6,7 @@ import React from 'react';
 // Sub-panels: Overview · Returns · Risk · Positions
 // ============================================================
 
-import { loadView, MOCK_COMMAND } from './config.js';
+import { loadView, MOCK_COMMAND, MOCK_NAV } from './config.js';
 import { fmtPct, fmt, fmtCurrency } from './utils.js';
 import { Loading, EmptyState } from './components.js';
 import { computePortfolioMetrics, computePeriodReturns } from './perf-engine.js';
@@ -66,20 +66,21 @@ export function PerformanceSuite() {
         return function() { window.removeEventListener('atlas:refresh', load); };
     }, []);
 
+    // Use MOCK_NAV as fallback so the suite renders in demo mode (no live data)
+    var effectiveNav = (navSeries && navSeries.length > 1) ? navSeries : MOCK_NAV;
+
     var metrics = useMemo(function() {
-        return navSeries && navSeries.length > 1 ? computePortfolioMetrics(navSeries) : null;
-    }, [navSeries]);
+        return effectiveNav && effectiveNav.length > 1 ? computePortfolioMetrics(effectiveNav) : null;
+    }, [effectiveNav]);
 
     var periods = useMemo(function() {
-        return navSeries && navSeries.length > 1 ? computePeriodReturns(navSeries) : null;
-    }, [navSeries]);
+        return effectiveNav && effectiveNav.length > 1 ? computePeriodReturns(effectiveNav) : null;
+    }, [effectiveNav]);
 
     if (loading) return h(Loading, null);
 
-    var hasNav  = navSeries && navSeries.length > 1;
+    var hasNav  = effectiveNav && effectiveNav.length > 1;
     var hasPerf = perfData  && perfData.length  > 0;
-
-    if (!hasNav && !hasPerf) return h(EmptyState, null);
 
     var cmd = cmdData || MOCK_COMMAND;
     var m   = metrics;
@@ -95,7 +96,7 @@ export function PerformanceSuite() {
     // Account Equity = latest equity value from portfolio_equity_curve (via navSeries)
     // Mirror Portfolio Home priority: account_snapshots.equity (via vw_command_centre) first,
     // fall back to nightly NAV history only if the live snapshot is absent.
-    var navHistoryEquity = hasNav ? navSeries[navSeries.length - 1].nav : null;
+    var navHistoryEquity = hasNav ? effectiveNav[effectiveNav.length - 1].nav : null;
     var accountEquity = (cmd.portfolio_nav != null && cmd.portfolio_nav > 0)
         ? cmd.portfolio_nav
         : navHistoryEquity;
@@ -146,63 +147,63 @@ export function PerformanceSuite() {
     },
         h('div', { style: hb },
             h('div', { style: hl }, 'Account Equity'),
-            h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 22, fontWeight: 700, color: '#00d4ff' } }, money(accountEquity)),
-            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'JetBrains Mono' } }, 'Cash + positions − margin')
+            h('div', { style: { fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 800, color: '#00d4ff' } }, money(accountEquity)),
+            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'var(--font-mono)' } }, 'Cash + positions − margin')
         ),
         h('div', { style: div }),
         h('div', { style: hb },
             h('div', { style: hl }, 'Portfolio Value'),
-            h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 18, fontWeight: 700, color: 'rgba(255,255,255,0.85)' } }, money(portfolioValue)),
-            h('div', { style: { fontSize: 10, color: cashMargin != null ? (cashMargin >= 0 ? '#10b981' : '#ef4444') : 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'JetBrains Mono' } },
+            h('div', { style: { fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 800, color: 'rgba(255,255,255,0.85)' } }, money(portfolioValue)),
+            h('div', { style: { fontSize: 10, color: cashMargin != null ? (cashMargin >= 0 ? '#10b981' : '#ef4444') : 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'var(--font-mono)' } },
                 cashMargin != null ? (cashMargin >= 0 ? '+' : '') + money(cashMargin) + ' cash/margin' : 'Long positions MV')
         ),
         h('div', { style: div }),
         h('div', { style: hb },
             h('div', { style: hl }, 'Total Return'),
-            h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 22, fontWeight: 700, color: rc(totalRet) } }, pct(totalRet)),
-            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'JetBrains Mono' } }, 'Since inception')
+            h('div', { style: { fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 800, color: rc(totalRet) } }, pct(totalRet)),
+            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'var(--font-mono)' } }, 'Since inception')
         ),
         h('div', { style: div }),
         h('div', { style: hb },
             h('div', { style: hl }, 'YTD Return'),
-            h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 18, fontWeight: 700, color: rc(ytd) } }, pct(ytd)),
-            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'JetBrains Mono' } }, new Date().getFullYear() + ' year-to-date')
+            h('div', { style: { fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 800, color: rc(ytd) } }, pct(ytd)),
+            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'var(--font-mono)' } }, new Date().getFullYear() + ' year-to-date')
         ),
         h('div', { style: div }),
         h('div', { style: hb },
             h('div', { style: hl }, 'Ann. Return'),
-            h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 18, fontWeight: 700, color: rc(annRet) } }, pct(annRet, 1)),
-            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'JetBrains Mono' } }, 'CAGR p.a.')
+            h('div', { style: { fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 800, color: rc(annRet) } }, pct(annRet, 1)),
+            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'var(--font-mono)' } }, 'CAGR p.a.')
         ),
         h('div', { style: div }),
         h('div', { style: hb },
             h('div', { style: hl }, 'Sharpe Ratio'),
-            h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 18, fontWeight: 700, color: shC(sharpe) } }, sharpe != null ? sharpe.toFixed(2) : '—'),
-            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'JetBrains Mono' } },
+            h('div', { style: { fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 800, color: shC(sharpe) } }, sharpe != null ? sharpe.toFixed(2) : '—'),
+            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'var(--font-mono)' } },
                 sharpe != null && sharpe > 1.5 ? 'Excellent risk-adj.' : sharpe != null && sharpe > 0.5 ? 'Good risk-adj.' : 'Monitor')
         ),
         h('div', { style: div }),
         h('div', { style: hb },
             h('div', { style: hl }, 'Max Drawdown'),
-            h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 18, fontWeight: 700, color: ddC(maxDD) } }, maxDD != null ? (maxDD * 100).toFixed(2) + '%' : '—'),
-            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'JetBrains Mono' } }, 'Peak-to-trough')
+            h('div', { style: { fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 800, color: ddC(maxDD) } }, maxDD != null ? (maxDD * 100).toFixed(2) + '%' : '—'),
+            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'var(--font-mono)' } }, 'Peak-to-trough')
         ),
         h('div', { style: div }),
         h('div', { style: hb },
             h('div', { style: hl }, 'Ann. Volatility'),
-            h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 18, fontWeight: 700, color: volC(annVol) } }, pct(annVol, 1)),
-            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'JetBrains Mono' } },
+            h('div', { style: { fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 800, color: volC(annVol) } }, pct(annVol, 1)),
+            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'var(--font-mono)' } },
                 annVol != null && annVol > 0.25 ? 'High vol' : annVol != null && annVol > 0.15 ? 'Moderate vol' : 'Low vol')
         ),
         h('div', { style: div }),
         h('div', { style: hb },
             h('div', { style: hl }, 'Win Rate'),
-            h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 18, fontWeight: 700, color: winRate != null && winRate > 0.55 ? '#10b981' : 'rgba(255,255,255,0.75)' } },
+            h('div', { style: { fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 800, color: winRate != null && winRate > 0.55 ? '#10b981' : 'rgba(255,255,255,0.75)' } },
                 winRate != null ? (winRate * 100).toFixed(1) + '%' : '—'),
-            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'JetBrains Mono' } }, 'Positive days')
+            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'var(--font-mono)' } }, 'Positive days')
         ),
         h('div', { style: { marginLeft: 'auto' } },
-            h('div', { style: { padding: '6px 16px', borderRadius: 20, background: statusBg, border: '1px solid ' + statusBorder, color: statusColor, fontSize: 11, fontWeight: 700, fontFamily: 'JetBrains Mono', letterSpacing: 0.8, whiteSpace: 'nowrap' } },
+            h('div', { style: { padding: '6px 16px', borderRadius: 20, background: statusBg, border: '1px solid ' + statusBorder, color: statusColor, fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-mono)', letterSpacing: 0.8, whiteSpace: 'nowrap' } },
                 statusLabel)
         )
     );
@@ -232,19 +233,19 @@ export function PerformanceSuite() {
     var panel = null;
     switch (activeTab) {
         case 'overview':
-            panel = hasNav ? h(OverviewPanel, { navSeries: navSeries, cmdData: cmdData }) : h(EmptyState, null);
+            panel = h(OverviewPanel, { navSeries: effectiveNav, cmdData: cmdData });
             break;
         case 'returns':
-            panel = hasNav ? h(ReturnsPanel, { navSeries: navSeries, perfData: perfData }) : h(EmptyState, null);
+            panel = h(ReturnsPanel, { navSeries: effectiveNav, perfData: perfData });
             break;
         case 'risk':
-            panel = hasNav ? h(RiskPanel, { navSeries: navSeries, cmdData: cmdData }) : h(EmptyState, null);
+            panel = h(RiskPanel, { navSeries: effectiveNav, cmdData: cmdData });
             break;
         case 'positions':
             panel = hasPerf ? h(PositionsPanel, { perfData: perfData, cmdData: cmdData, homeData: homeData || [] }) : h(EmptyState, null);
             break;
         case 'charts':
-            panel = h('div', { style: { height: 'calc(100vh - 220px)', minHeight: 480 } }, h(AdvancedChart, { navSeries: navSeries }));
+            panel = h('div', { style: { height: 'calc(100vh - 220px)', minHeight: 480 } }, h(AdvancedChart, { navSeries: effectiveNav }));
             break;
     }
 

@@ -8,7 +8,7 @@ import React from 'react';
 // CommandCentre.
 // ============================================================
 
-import { sb, loadView, MOCK_COMMAND } from './config.js';
+import { sb, loadView, MOCK_COMMAND, MOCK_NAV } from './config.js';
 import { fmt, fmtPct, fmtCurrency, cls, badgeCls, healthCls, useChart, returnStatus, sharpeStatus, ddStatus } from './utils.js';
 import { Loading, EmptyState, HeroCard } from './components.js';
 
@@ -655,12 +655,14 @@ export function RiskAnalysis() {
     }, []);
 
     if (loading) return React.createElement(Loading, null);
-    if (!risk || !risk.length) return React.createElement(EmptyState, null);
 
     const c = command || MOCK_COMMAND;
-    const highRisk = risk.filter(r => r.risk_tier === 'High Risk').length;
-    const modRisk  = risk.filter(r => r.risk_tier === 'Moderate Risk').length;
-    const lowRisk  = risk.filter(r => r.risk_tier === 'Low Risk').length;
+    // Fall back to MOCK_NAV so Core Risk / Monte Carlo panels render in demo mode
+    var effectiveNavData = (navData && navData.length > 1) ? navData : MOCK_NAV;
+    var riskRows = risk || [];
+    const highRisk = riskRows.filter(r => r.risk_tier === 'High Risk').length;
+    const modRisk  = riskRows.filter(r => r.risk_tier === 'Moderate Risk').length;
+    const lowRisk  = riskRows.filter(r => r.risk_tier === 'Low Risk').length;
 
     // ---- Shared tab bar (Performance Suite style) ----------------------
     const TABS = [
@@ -684,13 +686,13 @@ export function RiskAnalysis() {
     if (tab === 'corerisk') {
         return React.createElement('div', null,
             React.createElement('div', { className: 'page-title' }, 'Risk Analysis'),
-            tabBar, React.createElement(CoreRiskTab, { navData: navData, command: c })
+            tabBar, React.createElement(CoreRiskTab, { navData: effectiveNavData, command: c })
         );
     }
     if (tab === 'montecarlo') {
         return React.createElement('div', null,
             React.createElement('div', { className: 'page-title' }, 'Risk Analysis'),
-            tabBar, React.createElement(MonteCarloTab, { navData: navData, command: c })
+            tabBar, React.createElement(MonteCarloTab, { navData: effectiveNavData, command: c })
         );
     }
 
@@ -737,7 +739,7 @@ export function RiskAnalysis() {
         React.createElement('div', { style: hb },
             React.createElement('div', { style: hl }, 'High Risk Positions'),
             React.createElement('div', { style: mono(null, 18, hrCol) }, String(highRisk)),
-            sub(highRisk + ' of ' + risk.length + ' flagged')
+            sub(highRisk + ' of ' + riskRows.length + ' flagged')
         ),
         React.createElement('div', { style: sep }),
         React.createElement('div', { style: hb },
@@ -766,12 +768,12 @@ export function RiskAnalysis() {
                 React.createElement('div', { className: 'card-title', style: { margin: 0 } }, 'Volatility vs VaR  ·  Risk Bubble Map'),
                 React.createElement('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.22)', fontFamily: 'DM Sans' } }, 'Bubble size = market value')
             ),
-            React.createElement(RiskScatter, { rows: risk })
+            React.createElement(RiskScatter, { rows: riskRows })
         )
     );
 
     // ---- Position card grid --------------------------------------------
-    var maxVar = Math.max.apply(null, risk.map(function(r) { return Math.abs(r.dollar_var_95_daily || 0); }));
+    var maxVar = riskRows.length ? Math.max.apply(null, riskRows.map(function(r) { return Math.abs(r.dollar_var_95_daily || 0); })) : 0;
 
     var RISK_SORT_OPTS = [
         { key: 'dollar_var_95_daily', label: 'VaR $' },
@@ -781,7 +783,7 @@ export function RiskAnalysis() {
         { key: 'symbol',              label: 'Symbol' },
     ];
 
-    var riskSorted = risk.slice().sort(function(a, b) {
+    var riskSorted = riskRows.slice().sort(function(a, b) {
         var av = a[riskSortKey], bv = b[riskSortKey];
         if (av == null && bv == null) return 0;
         if (av == null) return 1; if (bv == null) return -1;
@@ -792,7 +794,7 @@ export function RiskAnalysis() {
 
     var cards = React.createElement('div', { className: 'card' },
         React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 } },
-            React.createElement('div', { className: 'card-title', style: { margin: 0 } }, 'Position Risk Breakdown  ·  ' + risk.length + ' positions'),
+            React.createElement('div', { className: 'card-title', style: { margin: 0 } }, 'Position Risk Breakdown  ·  ' + riskRows.length + ' positions'),
             React.createElement('div', { style: { display: 'flex', gap: 6, alignItems: 'center' } },
                 React.createElement('span', { style: { fontSize: 9.5, color: 'rgba(255,255,255,0.28)', fontFamily: 'DM Sans', marginRight: 2 } }, 'Sort:'),
                 RISK_SORT_OPTS.map(function(opt) {

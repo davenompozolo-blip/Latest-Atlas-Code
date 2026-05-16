@@ -609,7 +609,10 @@ input[type=range]::-webkit-slider-thumb {
 
 /* ─── PAGE SECTION HEADER ─────────────────────────────────────────────── */
 .atlas-page-header { margin-bottom: 20px; }
-.atlas-module-tag {
+
+/* .page-module-tag — micro teal eyebrow above the page title */
+.atlas-module-tag,
+.page-module-tag {
   font-family: var(--font-mono);
   font-size: 9px;
   text-transform: uppercase;
@@ -620,19 +623,28 @@ input[type=range]::-webkit-slider-thumb {
   gap: 8px;
   margin-bottom: 6px;
 }
-.atlas-module-tag::before {
+.atlas-module-tag::before,
+.page-module-tag::before {
   content: '';
   width: 20px;
   height: 1px;
   background: var(--teal);
 }
-.atlas-page-title {
-  font-family: var(--font-display);
+
+/* .page-title — Syne 800 headline used in every page module */
+.atlas-page-title,
+.page-title {
+  font-family: var(--font-display) !important;
   font-size: 22px;
   font-weight: 800;
   color: var(--text-1);
+  letter-spacing: -0.3px;
+  margin-bottom: 20px;
 }
-.atlas-page-subtitle {
+
+/* .page-sub — Figtree body subtitle beneath the page title */
+.atlas-page-subtitle,
+.page-sub {
   font-family: var(--font-body);
   font-size: 12px;
   color: var(--text-2);
@@ -728,10 +740,10 @@ input[type=range]::-webkit-slider-thumb {
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
-  /* Subtle radial glow from top-left for depth — keeps the whole shell feeling like one cohesive surface */
   background:
-    radial-gradient(1200px 600px at 12% -10%, rgba(0,200,224,0.045) 0%, transparent 60%),
-    radial-gradient(900px 600px at 100% 100%, rgba(123,47,190,0.04) 0%, transparent 55%),
+    radial-gradient(1400px 700px at 10% -5%, rgba(0,200,224,0.07) 0%, transparent 55%),
+    radial-gradient(1000px 700px at 95% 105%, rgba(123,47,190,0.06) 0%, transparent 50%),
+    radial-gradient(600px 400px at 50% 50%, rgba(0,200,224,0.015) 0%, transparent 70%),
     #0a1224;
 }
 
@@ -741,7 +753,7 @@ input[type=range]::-webkit-slider-thumb {
   align-items: center;
   height: 54px;
   min-height: 54px;
-  padding: 0 22px;
+  padding: 0 24px;
   background: transparent;
   border-bottom: 1px solid rgba(255,255,255,0.05);
   z-index: 100;
@@ -938,8 +950,8 @@ input[type=range]::-webkit-slider-thumb {
   min-width: 180px;
   height: 100%;
   /* Transparent so the app radial glow shows through — same surface as content */
-  background: rgba(0,0,0,0.18);
-  border-right: 1px solid rgba(255,255,255,0.05);
+  background: rgba(8,14,28,0.82);
+  border-right: 1px solid rgba(255,255,255,0.08);
   overflow-y: auto;
   overflow-x: hidden;
   padding: 14px 0 24px;
@@ -1086,14 +1098,15 @@ input[type=range]::-webkit-slider-thumb {
  * Markets, and PCM. They use a left-border accent (Bloomberg-style) to indicate the
  * data category/status. The icon floats top-right as a dim watermark.
  */
+/* ─── CSS variable for hero card accent colour ─── */
+:root { --hc-accent: var(--teal); }
+
 .hero-card {
   position: relative;
-  /* Subtle elevation over the shell — translucent so the bg gradient bleeds through */
-  background: rgba(255,255,255,0.022);
-  border: 1px solid rgba(255,255,255,0.06);
-  border-left: 3px solid var(--teal);
-  border-radius: 0 6px 6px 0;
-  padding: 14px 16px 13px;
+  background: rgba(255,255,255,0.035);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 8px;
+  padding: 16px 18px 14px;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -1101,27 +1114,39 @@ input[type=range]::-webkit-slider-thumb {
   overflow: hidden;
   transition: background 0.15s, border-color 0.15s;
 }
-.hero-card:hover { background: rgba(255,255,255,0.035); border-color: rgba(255,255,255,0.1); }
+.hero-card:hover { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.12); }
 
-/* Subtle inner highlight */
+/* 2px top-strip accent (replaces left-border for cleaner Bloomberg look) */
+.hero-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--hc-accent);
+  border-radius: 8px 8px 0 0;
+  pointer-events: none;
+}
+
+/* Subtle inner highlight below top strip */
 .hero-card::after {
   content: '';
   position: absolute;
-  top: 0; left: 3px; right: 0;
+  top: 2px; left: 0; right: 0;
   height: 1px;
   background: linear-gradient(90deg, rgba(255,255,255,0.08), transparent 60%);
   pointer-events: none;
 }
 
-/* Accent colour per category */
+/* Accent colour per category — sets --hc-accent and the ::before strip */
 .hero-card.accent-cyan,
-.hero-card.accent-teal    { border-left-color: var(--teal);   }
-.hero-card.accent-green   { border-left-color: var(--green);  }
-.hero-card.accent-red     { border-left-color: var(--red);    }
+.hero-card.accent-teal    { --hc-accent: var(--teal);   }
+.hero-card.accent-green   { --hc-accent: var(--green);  }
+.hero-card.accent-red     { --hc-accent: var(--red);    }
 .hero-card.accent-gold,
-.hero-card.accent-amber   { border-left-color: var(--gold);   }
+.hero-card.accent-amber   { --hc-accent: var(--gold);   }
 .hero-card.accent-indigo,
-.hero-card.accent-purple  { border-left-color: var(--purple); }
+.hero-card.accent-violet,
+.hero-card.accent-purple  { --hc-accent: var(--purple); }
 
 /* Dim watermark icon top-right */
 .hc-icon {
