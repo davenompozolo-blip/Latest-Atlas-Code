@@ -229,15 +229,15 @@ function MoverRow(p) {
     var color = chg > 0 ? MOVER_COLORS.gain : chg < 0 ? MOVER_COLORS.loss : MOVER_COLORS.neutral;
     var arrow = chg > 0 ? '▲' : chg < 0 ? '▼' : '—';
     return React.createElement('div', {
-        style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }
+        style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }
     },
-        React.createElement('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 12, color: '#00d4ff', minWidth: 52 } }, p.pos.symbol),
-        React.createElement('span', { style: { fontSize: 11, color: 'rgba(255,255,255,0.5)', flex: 1, paddingLeft: 8 } }, getName(p.pos.symbol, p.pos)),
-        React.createElement('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, color: 'rgba(255,255,255,0.6)', minWidth: 64, textAlign: 'right' } },
+        React.createElement('span', { style: { fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: '#00d4ff', minWidth: 56, letterSpacing: 0.4 } }, p.pos.symbol),
+        React.createElement('span', { style: { fontFamily: 'var(--font-body)', fontSize: 12, color: 'rgba(255,255,255,0.6)', flex: 1, paddingLeft: 10, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, getName(p.pos.symbol, p.pos)),
+        React.createElement('span', { style: { fontFamily: 'var(--font-mono)', fontSize: 12, color: 'rgba(255,255,255,0.7)', minWidth: 68, textAlign: 'right', fontVariantNumeric: 'tabular-nums' } },
             p.pos.current_price ? '$' + Number(p.pos.current_price).toFixed(2) : '—'),
-        React.createElement('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 12, color: color, minWidth: 72, textAlign: 'right', fontWeight: 600 } },
+        React.createElement('span', { style: { fontFamily: 'var(--font-mono)', fontSize: 12, color: color, minWidth: 76, textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums' } },
             arrow + ' ' + (Math.abs(chg) * 100).toFixed(2) + '%'),
-        React.createElement('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, color: color, minWidth: 72, textAlign: 'right', opacity: 0.8 } },
+        React.createElement('span', { style: { fontFamily: 'var(--font-mono)', fontSize: 11, color: color, minWidth: 76, textAlign: 'right', opacity: 0.85, fontVariantNumeric: 'tabular-nums' } },
             chgDollar !== 0 ? (chgDollar > 0 ? '+' : '') + fmtCurrency(chgDollar) : '')
     );
 }
