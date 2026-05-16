@@ -69,6 +69,18 @@ body {
   overflow-x: hidden;
 }
 
+/* ─── GLOBAL FONT INHERITANCE — fixes Times New Roman regression ─────────── */
+/* HTML defaults to serif for table cells, inputs, buttons. Force inherit. */
+button, input, select, textarea, table, th, td, tr, optgroup, option,
+fieldset, legend, label, code, pre, samp, kbd, var {
+  font-family: inherit;
+  color: inherit;
+}
+/* Tabular numbers everywhere they make sense */
+table, .mono, [class*="mono"], [class*="-val"], [class*="-value"], [class*="kpi"] {
+  font-variant-numeric: tabular-nums;
+}
+
 /* Global noise texture */
 body::before {
   content: '';
@@ -716,18 +728,22 @@ input[type=range]::-webkit-slider-thumb {
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
-  background: #080d18;
+  /* Subtle radial glow from top-left for depth — keeps the whole shell feeling like one cohesive surface */
+  background:
+    radial-gradient(1200px 600px at 12% -10%, rgba(0,200,224,0.045) 0%, transparent 60%),
+    radial-gradient(900px 600px at 100% 100%, rgba(123,47,190,0.04) 0%, transparent 55%),
+    #0a1224;
 }
 
 /* ── Top bar ─────────────────────────────────────────────────────────────────── */
 .top-bar {
   display: flex;
   align-items: center;
-  height: 52px;
-  min-height: 52px;
-  padding: 0 20px;
-  background: #070c16;
-  border-bottom: 1px solid rgba(0,200,224,0.08);
+  height: 54px;
+  min-height: 54px;
+  padding: 0 22px;
+  background: transparent;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
   z-index: 100;
   flex-shrink: 0;
   position: relative;
@@ -821,11 +837,12 @@ input[type=range]::-webkit-slider-thumb {
 }
 .tb-metric-value {
   font-family: var(--font-display);
-  font-size: 14px;
+  font-size: 18px;
   font-weight: 700;
   color: var(--text-1);
   line-height: 1;
   letter-spacing: 0.3px;
+  font-variant-numeric: tabular-nums;
 }
 .tb-metric-label {
   font-family: var(--font-mono);
@@ -917,14 +934,15 @@ input[type=range]::-webkit-slider-thumb {
 .sidebar {
   position: relative !important;
   top: auto !important;
-  width: 176px;
-  min-width: 176px;
+  width: 180px;
+  min-width: 180px;
   height: 100%;
-  background: #060b14;
+  /* Transparent so the app radial glow shows through — same surface as content */
+  background: rgba(0,0,0,0.18);
   border-right: 1px solid rgba(255,255,255,0.05);
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 8px 0 24px;
+  padding: 14px 0 24px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -1040,8 +1058,13 @@ input[type=range]::-webkit-slider-thumb {
   overflow: auto;
   padding: 0;
   margin: 0 !important;
-  background: #080d18;
+  background: transparent;
   min-width: 0;
+}
+
+/* Page padding wrapper — every page gets consistent breathing room */
+.main-content > div > * {
+  /* fallback only; pages with their own padding override */
 }
 
 .main-content::-webkit-scrollbar { width: 4px; }
@@ -1065,19 +1088,20 @@ input[type=range]::-webkit-slider-thumb {
  */
 .hero-card {
   position: relative;
-  background: var(--navy-2);
-  border: 1px solid rgba(255,255,255,0.07);
+  /* Subtle elevation over the shell — translucent so the bg gradient bleeds through */
+  background: rgba(255,255,255,0.022);
+  border: 1px solid rgba(255,255,255,0.06);
   border-left: 3px solid var(--teal);
-  border-radius: 0 8px 8px 0;
-  padding: 16px 18px 14px;
+  border-radius: 0 6px 6px 0;
+  padding: 14px 16px 13px;
   display: flex;
   flex-direction: column;
   min-width: 0;
   flex: 1;
   overflow: hidden;
-  transition: background 0.15s, border-left-color 0.15s;
+  transition: background 0.15s, border-color 0.15s;
 }
-.hero-card:hover { background: var(--navy-3); }
+.hero-card:hover { background: rgba(255,255,255,0.035); border-color: rgba(255,255,255,0.1); }
 
 /* Subtle inner highlight */
 .hero-card::after {
@@ -1126,14 +1150,15 @@ input[type=range]::-webkit-slider-thumb {
   text-overflow: ellipsis;
 }
 
-/* Primary metric value */
+/* Primary metric value — exact same font stack & weight as the topbar metrics */
 .hc-value {
   font-family: var(--font-display);
-  font-size: 26px;
-  font-weight: 800;
+  font-size: 22px;
+  font-weight: 700;
   line-height: 1;
-  letter-spacing: -0.5px;
+  letter-spacing: 0.3px;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Status badge below value */
@@ -1320,5 +1345,382 @@ input[type=range]::-webkit-slider-thumb {
   color: rgba(255,255,255,0.3);
   margin-top: 7px;
   line-height: 1.3;
+}
+
+/* ─── ADVANCED CHART (`.ac-*`) ───────────────────────────────────────────────── */
+/* TradingView-style chart panel — top control bar + left tools sidebar + canvas. */
+
+.ac-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 600px;
+  background: rgba(0,0,0,0.15);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* ── Top control bar ────────────────────────────────────────────────────────── */
+.ac-topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: rgba(255,255,255,0.018);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.ac-topbar-div {
+  width: 1px;
+  height: 22px;
+  background: rgba(255,255,255,0.07);
+  flex-shrink: 0;
+}
+
+/* Pill segmented control (Portfolio vs Bench / Asset vs Asset / Area Line Candle) */
+.ac-pill-group {
+  display: inline-flex;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 5px;
+  padding: 2px;
+  gap: 2px;
+}
+.ac-pill {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  padding: 5px 11px;
+  background: transparent;
+  border: none;
+  color: rgba(255,255,255,0.45);
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.12s ease;
+  white-space: nowrap;
+}
+.ac-pill:hover { color: rgba(255,255,255,0.85); background: rgba(255,255,255,0.04); }
+.ac-pill.on {
+  color: var(--teal);
+  background: rgba(0,200,224,0.1);
+  box-shadow: inset 0 0 0 1px rgba(0,200,224,0.2);
+}
+
+/* Timeframe button row */
+.ac-tf-row {
+  display: inline-flex;
+  gap: 3px;
+}
+.ac-tf-btn {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  padding: 5px 10px;
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.45);
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.12s ease;
+  min-width: 34px;
+}
+.ac-tf-btn:hover { color: rgba(255,255,255,0.85); border-color: rgba(255,255,255,0.15); }
+.ac-tf-btn.on {
+  color: var(--teal);
+  background: rgba(0,200,224,0.08);
+  border-color: rgba(0,200,224,0.3);
+}
+
+/* Toggle switch (Normalise) */
+.ac-tog-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+.ac-tog-track {
+  position: relative;
+  width: 28px;
+  height: 14px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 8px;
+  transition: background 0.15s;
+}
+.ac-tog-track.on { background: rgba(0,200,224,0.4); }
+.ac-tog-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  background: rgba(255,255,255,0.7);
+  border-radius: 50%;
+  transition: transform 0.15s, background 0.15s;
+}
+.ac-tog-track.on .ac-tog-thumb {
+  transform: translateX(14px);
+  background: var(--teal);
+}
+.ac-tog-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  color: rgba(255,255,255,0.55);
+  text-transform: uppercase;
+}
+
+/* ── Body layout (left tools + canvas) ──────────────────────────────────────── */
+.ac-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.ac-sidebar {
+  width: 220px;
+  min-width: 220px;
+  flex-shrink: 0;
+  background: rgba(0,0,0,0.18);
+  border-right: 1px solid rgba(255,255,255,0.06);
+  overflow-y: auto;
+  padding: 12px 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.ac-sidebar::-webkit-scrollbar { width: 3px; }
+.ac-sidebar::-webkit-scrollbar-thumb { background: rgba(0,200,224,0.15); border-radius: 1px; }
+
+.ac-sb-sec {
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.ac-sb-sec:last-child { border-bottom: none; }
+.ac-sb-sec:first-child { padding-top: 0; }
+
+.ac-sb-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.ac-sb-title {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.6px;
+  color: rgba(255,255,255,0.35);
+  text-transform: uppercase;
+}
+
+/* Series row (ATLAS Portfolio LOCKED, asset items, etc.) */
+.ac-ser-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: rgba(255,255,255,0.018);
+  border: 1px solid rgba(255,255,255,0.04);
+  border-radius: 4px;
+  margin-bottom: 4px;
+}
+.ac-ser-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 6px currentColor;
+}
+.ac-ser-name {
+  flex: 1;
+  font-family: var(--font-body);
+  font-size: 11px;
+  color: rgba(255,255,255,0.85);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ac-ser-locked {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: rgba(255,255,255,0.3);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
+  padding: 2px 5px;
+  border-radius: 2px;
+}
+.ac-ser-remove {
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.4);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+}
+.ac-ser-remove:hover { color: var(--red); border-color: rgba(230,57,70,0.4); background: rgba(230,57,70,0.08); }
+
+/* Search input */
+.ac-srch-inp {
+  width: 100%;
+  padding: 7px 10px;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 4px;
+  color: var(--text-1);
+  font-family: var(--font-body);
+  font-size: 11px;
+  outline: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+.ac-srch-inp:focus { border-color: rgba(0,200,224,0.4); background: rgba(0,0,0,0.4); }
+.ac-srch-inp::placeholder { color: rgba(255,255,255,0.3); }
+
+/* Search results dropdown */
+.ac-add-panel {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 4px;
+  background: #0d1426;
+  border: 1px solid rgba(0,200,224,0.18);
+  border-radius: 5px;
+  max-height: 320px;
+  overflow-y: auto;
+  z-index: 50;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+.ac-catalog-item {
+  padding: 7px 10px;
+  font-family: var(--font-body);
+  font-size: 11px;
+  color: rgba(255,255,255,0.75);
+  cursor: pointer;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  transition: background 0.1s;
+}
+.ac-catalog-item:hover { background: rgba(0,200,224,0.06); color: var(--teal); }
+.ac-catalog-item:last-child { border-bottom: none; }
+
+/* Overlay / Subplot indicator rows */
+.ac-ind-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  cursor: pointer;
+  user-select: none;
+}
+.ac-ind-box {
+  width: 13px;
+  height: 13px;
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 3px;
+  background: rgba(0,0,0,0.3);
+  flex-shrink: 0;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.12s;
+}
+.ac-ind-box.on {
+  background: var(--teal);
+  border-color: var(--teal);
+}
+.ac-ind-box.on::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 0px;
+  width: 4px;
+  height: 8px;
+  border: solid var(--navy);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.ac-ind-swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.ac-ind-label {
+  font-family: var(--font-body);
+  font-size: 11px;
+  color: rgba(255,255,255,0.7);
+  flex: 1;
+}
+.ac-ind-row:hover .ac-ind-label { color: var(--text-1); }
+
+/* Performance stat card (per series) */
+.ac-stat-card {
+  background: rgba(255,255,255,0.022);
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 5px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+}
+.ac-stat-card-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: rgba(255,255,255,0.55);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+.ac-stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 10px;
+}
+.ac-stat-cell { display: flex; flex-direction: column; gap: 1px; }
+.ac-stat-val {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.ac-stat-val.pos { color: var(--green); }
+.ac-stat-val.neg { color: var(--red); }
+.ac-stat-val.neu { color: var(--text-1); }
+.ac-stat-key {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.8px;
+  color: rgba(255,255,255,0.35);
+  text-transform: uppercase;
+}
+
+/* Chart canvas (Plotly mounts here) */
+.ac-canvas {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  background: transparent;
+}
+
+/* ─── PAGE-LEVEL PADDING WRAPPER ────────────────────────────────────────────── */
+/* Every page should respect proper margins from the topbar and sidebar edges.
+   This default helps pages that don't manage their own padding. */
+.main-content > div:not(.atlas-banner) > [class*="page"],
+.main-content > div > div:first-child:not([style*="padding"]) {
+  /* Pages with inline padding override this */
 }
 
