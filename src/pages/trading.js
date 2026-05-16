@@ -1,4 +1,5 @@
 import Chart from 'chart.js/auto';
+import * as LightweightCharts from 'lightweight-charts';
 import React from 'react';
 // ============================================================
 // ATLAS Terminal — Trading Dashboard  (Chunk 1 of 5)
@@ -280,8 +281,8 @@ function CandleChart(p) {
 
     // Create chart once on mount
     useEffect(function () {
-        if (!containerRef.current || !window.LightweightCharts) return;
-        var LC = window.LightweightCharts;
+        if (!containerRef.current) return;
+        var LC = LightweightCharts;
         var chart = LC.createChart(containerRef.current, {
             layout: {
                 background: { color: '#0d0f1a' },

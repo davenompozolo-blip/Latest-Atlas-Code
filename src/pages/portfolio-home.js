@@ -1,5 +1,6 @@
 import Plotly from 'plotly.js-dist-min';
 import Chart from 'chart.js/auto';
+import * as LightweightCharts from 'lightweight-charts';
 import React from 'react';
 // ============================================================
 // ATLAS Terminal — Portfolio Home Page
