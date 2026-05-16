@@ -19,7 +19,10 @@ export async function loadView(viewName, fallback = []) {
   try {
     const { data, error } = await supabase.from(viewName).select('*')
     if (error) throw error
-    if (data && data.length) return data
+    if (data && data.length) {
+      window.__ATLAS_DATA_MODE__ = 'live'
+      return data
+    }
     console.warn(`[ATLAS] ${viewName}: empty result — using fallback`)
     return fallback
   } catch (e) {
