@@ -872,12 +872,12 @@ export function CommandCentre() {
 
     return React.createElement('div', null,
         React.createElement('div', { className: 'page-title' }, 'Command Centre'),
-        // Health Score Hero
-        React.createElement('div', { style: { textAlign: 'center', marginBottom: 32 } },
-            React.createElement('div', { className: 'health-score ' + healthCls(c.atlas_health_score), style: { width: 120, height: 120, fontSize: 42, margin: '0 auto 12px' } },
+        // Health Score Hero — wrapped in atlas-card so the "72" doesn't float in empty space
+        React.createElement('div', { className: 'atlas-card', style: { textAlign: 'center', padding: '28px 20px', marginBottom: 24 } },
+            React.createElement('div', { className: 'health-score ' + healthCls(c.atlas_health_score), style: { width: 120, height: 120, fontSize: 42, margin: '0 auto 14px', fontFamily: 'var(--font-display)', fontWeight: 800 } },
                 Math.round(c.atlas_health_score || 0)),
-            React.createElement('div', { style: { fontSize: 18, fontWeight: 600 } }, 'ATLAS Health Score'),
-            React.createElement('div', null, React.createElement('span', { className: 'badge ' + badgeCls(c.portfolio_health_status), style: { marginTop: 8, fontSize: 13, padding: '5px 16px' } }, c.portfolio_health_status))
+            React.createElement('div', { style: { fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-2)' } }, 'ATLAS Health Score'),
+            React.createElement('div', { style: { marginTop: 10 } }, React.createElement('span', { className: 'badge ' + badgeCls(c.portfolio_health_status), style: { fontSize: 11, padding: '5px 16px' } }, c.portfolio_health_status))
         ),
         // Metrics Grid — Hero Cards
         React.createElement('div', { className: 'hero-grid', style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 20 } },

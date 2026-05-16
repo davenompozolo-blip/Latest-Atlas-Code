@@ -298,30 +298,95 @@ p  { color: var(--text-2); font-size: 13px; line-height: 1.6; }
   margin: 10px 16px;
 }
 
-/* ─── CARDS ───────────────────────────────────────────────────────────── */
+/* ─── CARDS — Scrapbook Convergence ─────────────────────────────────────
+ * Canonical reference: src/pages/scrapbook.js Card() and the grid items.
+ * Clean all-around border, no accent strip. Source of truth.
+ */
 .atlas-card {
-  background: var(--glass);
-  border: 1px solid var(--border-2);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.10);
   border-radius: 8px;
-  padding: 16px 18px;
+  padding: 18px 20px;
   margin-bottom: 12px;
-  backdrop-filter: blur(8px);
-  animation: fadeUp 0.4s ease both;
   position: relative;
-  overflow: hidden;
+  animation: fadeUp 0.4s ease both;
 }
-.atlas-card::before {
-  content: '';
-  display: block;
-  height: 2px;
-  margin: -16px -18px 14px;
-  border-radius: 8px 8px 0 0;
+.atlas-card:hover {
+  border-color: rgba(0, 200, 224, 0.28);
+  background: rgba(0, 200, 224, 0.025);
+}
+/* Legacy colour variants no longer paint a top strip — colour is now
+   expressed through the page-header icon or hero-card accent only.       */
+.atlas-card.gold,
+.atlas-card.purple,
+.atlas-card.red,
+.atlas-card.green { /* intentionally inert */ }
+
+/* ─── METRIC TILE — NKE-detail style (clean all-around, no accent) ─── */
+.metric-tile {
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 14px 18px;
+}
+.metric-tile-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-3);
+  margin-bottom: 8px;
+}
+.metric-tile-value {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-1);
+}
+.metric-tile-sub {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-3);
+  margin-top: 6px;
+}
+
+/* ─── PAGE HEADER — ■ VALUATION SCRAPBOOK pattern ─── */
+.page-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+.page-header-icon {
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+  flex-shrink: 0;
   background: var(--teal);
 }
-.atlas-card.gold::before   { background: var(--gold); }
-.atlas-card.purple::before { background: var(--purple); }
-.atlas-card.red::before    { background: var(--red); }
-.atlas-card.green::before  { background: var(--green); }
+.page-header-icon.gold   { background: var(--gold);   }
+.page-header-icon.teal   { background: var(--teal);   }
+.page-header-icon.purple { background: var(--purple); }
+.page-header-icon.red    { background: var(--red);    }
+.page-header-icon.green  { background: var(--green);  }
+.page-header-title {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-1);
+}
+.page-header-crumb {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-3);
+  letter-spacing: 0.06em;
+}
 
 .atlas-sidebar-card {
   background: var(--navy-2);
@@ -410,12 +475,45 @@ p  { color: var(--text-2); font-size: 13px; line-height: 1.6; }
   margin-top: 2px;
 }
 
-/* Legacy metric-card */
+/* Legacy metric-card — aligned to metric-tile (Scrapbook convergence) */
+.metrics-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+}
 .metric-card {
-  background: var(--navy-2);
-  border: 1px solid var(--border-2);
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 6px;
-  padding: 10px 12px;
+  padding: 14px 18px;
+}
+.metric-card .label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-3);
+  margin-bottom: 8px;
+}
+.metric-card .value {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+.metric-card .value.positive { color: var(--green); }
+.metric-card .value.negative { color: var(--red);   }
+.metric-card .value.neutral  { color: var(--gold);  }
+.metric-card .sub {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-3);
+  margin-top: 6px;
 }
 
 /* ─── TABLES ──────────────────────────────────────────────────────────── */
@@ -631,16 +729,37 @@ input[type=range]::-webkit-slider-thumb {
   background: var(--teal);
 }
 
-/* .page-title — Syne 800 headline used in every page module */
+/* .page-title — Scrapbook-style ■ MODULE TITLE pattern
+ * Every page using className="page-title" gets the canonical header
+ * automatically: ■ icon + mono uppercase title, no JS changes needed.
+ */
 .atlas-page-title,
 .page-title {
-  font-family: var(--font-display) !important;
-  font-size: 22px;
-  font-weight: 800;
+  font-family: var(--font-mono) !important;
+  font-size: 13px;
+  font-weight: 600;
   color: var(--text-1);
-  letter-spacing: -0.3px;
-  margin-bottom: 20px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
+.page-title::before,
+.atlas-page-title::before {
+  content: '';
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--teal);
+  flex-shrink: 0;
+}
+/* Section-specific icon tint via parent class on body or container */
+.page-title.gold::before,   .atlas-page-title.gold::before   { background: var(--gold);   }
+.page-title.purple::before, .atlas-page-title.purple::before { background: var(--purple); }
+.page-title.red::before,    .atlas-page-title.red::before    { background: var(--red);    }
+.page-title.green::before,  .atlas-page-title.green::before  { background: var(--green);  }
 
 /* .page-sub — Figtree body subtitle beneath the page title */
 .atlas-page-subtitle,
@@ -1295,12 +1414,24 @@ input[type=range]::-webkit-slider-thumb {
 
 /* Standard page padding wrapper used inside .main-content */
 .page-wrap {
-  padding: 20px 24px;
+  padding: 24px 28px;
+  max-width: 1600px;
   display: flex;
   flex-direction: column;
   gap: 16px;
   min-height: 100%;
 }
+
+/* Vertical rhythm between sections within a page */
+.page-section { margin-bottom: 28px; }
+
+/* Metric tile grid helpers */
+.metric-grid { display: grid; gap: 14px; }
+.metric-grid-2 { grid-template-columns: repeat(2, 1fr); }
+.metric-grid-3 { grid-template-columns: repeat(3, 1fr); }
+.metric-grid-4 { grid-template-columns: repeat(4, 1fr); }
+.metric-grid-5 { grid-template-columns: repeat(5, 1fr); }
+.metric-grid-6 { grid-template-columns: repeat(6, 1fr); }
 
 /* Section divider label  — SECTION NAME  */
 .section-label {

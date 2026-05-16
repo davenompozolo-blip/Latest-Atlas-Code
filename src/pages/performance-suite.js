@@ -134,73 +134,47 @@ export function PerformanceSuite() {
 
     var hl  = { fontSize: 9, letterSpacing: 1.8, textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', marginBottom: 4, fontFamily: 'DM Sans' };
     var hb  = { display: 'flex', flexDirection: 'column', justifyContent: 'center' };
-    var div = { width: 1, background: 'rgba(255,255,255,0.06)', margin: '0 20px', flexShrink: 0 };
+    var div = { width: 1, background: 'rgba(255,255,255,0.06)', margin: '0 24px', flexShrink: 0, alignSelf: 'stretch' };
+    var cell = Object.assign({ minWidth: 140 }, hb);
 
-    // ---- KPI Pulse Bar ----------------------------------------
+    // ---- KPI Pulse Bar (5 metrics — pared down per spec) -----
     var kpiBar = h('div', {
         style: {
             background: 'linear-gradient(135deg,rgba(99,102,241,0.05),rgba(0,212,255,0.04))',
             border: '1px solid rgba(99,102,241,0.15)',
-            borderRadius: 10, padding: '14px 22px', marginBottom: 16,
+            borderRadius: 10, padding: '16px 24px', marginBottom: 20,
             display: 'flex', alignItems: 'center',
         }
     },
-        h('div', { style: hb },
+        h('div', { style: cell },
             h('div', { style: hl }, 'Account Equity'),
-            h('div', { style: { fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 800, color: '#00d4ff' } }, money(accountEquity)),
-            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'var(--font-mono)' } }, 'Cash + positions − margin')
+            h('div', { style: { fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 800, color: '#00d4ff', letterSpacing: '-0.02em' } }, money(accountEquity)),
+            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 4, fontFamily: 'var(--font-mono)' } }, 'Cash + positions − margin')
         ),
         h('div', { style: div }),
-        h('div', { style: hb },
-            h('div', { style: hl }, 'Portfolio Value'),
-            h('div', { style: { fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 800, color: 'rgba(255,255,255,0.85)' } }, money(portfolioValue)),
-            h('div', { style: { fontSize: 10, color: cashMargin != null ? (cashMargin >= 0 ? '#10b981' : '#ef4444') : 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'var(--font-mono)' } },
-                cashMargin != null ? (cashMargin >= 0 ? '+' : '') + money(cashMargin) + ' cash/margin' : 'Long positions MV')
-        ),
-        h('div', { style: div }),
-        h('div', { style: hb },
+        h('div', { style: cell },
             h('div', { style: hl }, 'Total Return'),
-            h('div', { style: { fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 800, color: rc(totalRet) } }, pct(totalRet)),
-            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'var(--font-mono)' } }, 'Since inception')
+            h('div', { style: { fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 800, color: rc(totalRet), letterSpacing: '-0.02em' } }, pct(totalRet)),
+            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 4, fontFamily: 'var(--font-mono)' } }, 'Since inception')
         ),
         h('div', { style: div }),
-        h('div', { style: hb },
+        h('div', { style: cell },
             h('div', { style: hl }, 'YTD Return'),
-            h('div', { style: { fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 800, color: rc(ytd) } }, pct(ytd)),
-            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'var(--font-mono)' } }, new Date().getFullYear() + ' year-to-date')
+            h('div', { style: { fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 800, color: rc(ytd), letterSpacing: '-0.02em' } }, pct(ytd)),
+            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 4, fontFamily: 'var(--font-mono)' } }, new Date().getFullYear() + ' year-to-date')
         ),
         h('div', { style: div }),
-        h('div', { style: hb },
-            h('div', { style: hl }, 'Ann. Return'),
-            h('div', { style: { fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 800, color: rc(annRet) } }, pct(annRet, 1)),
-            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'var(--font-mono)' } }, 'CAGR p.a.')
-        ),
-        h('div', { style: div }),
-        h('div', { style: hb },
+        h('div', { style: cell },
             h('div', { style: hl }, 'Sharpe Ratio'),
-            h('div', { style: { fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 800, color: shC(sharpe) } }, sharpe != null ? sharpe.toFixed(2) : '—'),
-            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'var(--font-mono)' } },
+            h('div', { style: { fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 800, color: shC(sharpe), letterSpacing: '-0.02em' } }, sharpe != null ? sharpe.toFixed(2) : '—'),
+            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 4, fontFamily: 'var(--font-mono)' } },
                 sharpe != null && sharpe > 1.5 ? 'Excellent risk-adj.' : sharpe != null && sharpe > 0.5 ? 'Good risk-adj.' : 'Monitor')
         ),
         h('div', { style: div }),
-        h('div', { style: hb },
+        h('div', { style: cell },
             h('div', { style: hl }, 'Max Drawdown'),
-            h('div', { style: { fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 800, color: ddC(maxDD) } }, maxDD != null ? (maxDD * 100).toFixed(2) + '%' : '—'),
-            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'var(--font-mono)' } }, 'Peak-to-trough')
-        ),
-        h('div', { style: div }),
-        h('div', { style: hb },
-            h('div', { style: hl }, 'Ann. Volatility'),
-            h('div', { style: { fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 800, color: volC(annVol) } }, pct(annVol, 1)),
-            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'var(--font-mono)' } },
-                annVol != null && annVol > 0.25 ? 'High vol' : annVol != null && annVol > 0.15 ? 'Moderate vol' : 'Low vol')
-        ),
-        h('div', { style: div }),
-        h('div', { style: hb },
-            h('div', { style: hl }, 'Win Rate'),
-            h('div', { style: { fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 800, color: winRate != null && winRate > 0.55 ? '#10b981' : 'rgba(255,255,255,0.75)' } },
-                winRate != null ? (winRate * 100).toFixed(1) + '%' : '—'),
-            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'var(--font-mono)' } }, 'Positive days')
+            h('div', { style: { fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 800, color: ddC(maxDD), letterSpacing: '-0.02em' } }, maxDD != null ? (maxDD * 100).toFixed(2) + '%' : '—'),
+            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 4, fontFamily: 'var(--font-mono)' } }, 'Peak-to-trough')
         ),
         h('div', { style: { marginLeft: 'auto' } },
             h('div', { style: { padding: '6px 16px', borderRadius: 20, background: statusBg, border: '1px solid ' + statusBorder, color: statusColor, fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-mono)', letterSpacing: 0.8, whiteSpace: 'nowrap' } },
