@@ -151,8 +151,6 @@ function App() {
     var pnlStr = pnl != null ? (pnl >= 0 ? '+' : '') + fmtCurrency(c.portfolio_nav - c.total_invested) + ' (' + fmtPct(pnl) + ')' : '';
 
     return React.createElement('div', { className: 'app-container' },
-        // Gradient top line
-        React.createElement('div', { style: { height: 2, background: 'linear-gradient(90deg, transparent, #00d4ff, #8b5cf6, transparent)', backgroundSize: '200% 100%', animation: 'shimmer 4s linear infinite' } }),
         // Top Bar
         React.createElement('div', { className: 'top-bar' },
             React.createElement('div', null,
@@ -160,24 +158,22 @@ function App() {
                 React.createElement('div', { className: 'logo-sub' }, 'TERMINAL')
             ),
             React.createElement('div', { style: { display: 'flex', flexDirection: 'column', lineHeight: 1.2 } },
-                React.createElement('div', { style: { fontSize: 9, letterSpacing: 1.8, color: 'rgba(255,255,255,0.35)', fontFamily: 'DM Sans', textTransform: 'uppercase', marginBottom: 2 } }, 'Net Equity'),
+                React.createElement('div', { style: { fontSize: 8, letterSpacing: 2, color: 'rgba(255,255,255,0.3)', fontFamily: 'JetBrains Mono', textTransform: 'uppercase', marginBottom: 3 } }, 'Net Equity'),
                 React.createElement('div', { className: 'nav-summary' }, fmtCurrency(c.portfolio_nav))
             ),
             React.createElement('div', { className: 'nav-pnl ' + cls(pnl) }, pnlStr),
             React.createElement(TopBarSparkline, { nav: topNav }),
             React.createElement('div', { className: 'spacer' }),
-            React.createElement('div', {
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+                React.createElement('div', {
                     className: 'status-badge ' + (dataMode === 'live' ? 'live' : 'demo'),
-                    title: dataMode === 'live'
-                        ? 'Supabase views returned rows under anon key'
-                        : 'Anon key not returning rows — open DevTools console for [ATLAS] warnings'
-                },
-                dataMode === 'live' ? '\u25CF LIVE DATA' : '\u25CB MOCK DATA'
-            ),
-            React.createElement(SyncStatusPill, null),
-            React.createElement(RefreshButton, null),
-            React.createElement('div', { className: 'date' },
-                new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })
+                    title: dataMode === 'live' ? 'Live data from Supabase' : 'Demo mode — set VITE_SUPABASE_ANON_KEY',
+                }, dataMode === 'live' ? '\u25CF LIVE DATA' : '\u25CB DEMO'),
+                React.createElement(SyncStatusPill, null),
+                React.createElement(RefreshButton, null),
+                React.createElement('div', { className: 'date' },
+                    new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })
+                )
             )
         ),
         // Body layout (sidebar + content)
