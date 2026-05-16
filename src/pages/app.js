@@ -214,9 +214,11 @@ function App() {
                 )
             ),
             // Main Content
-            React.createElement('div', { className: 'main-content' },
+            React.createElement('div', { className: 'main-content', style: { display: 'flex', flexDirection: 'column' } },
                 !sb ? React.createElement(ConfigPrompt, null) : null,
-                React.createElement(ActiveComponent, activeTab === 'scrapbook' ? { initialTicker: scrapbookTicker } : null)
+                React.createElement('div', { style: { flex: 1, overflow: 'auto' } },
+                    React.createElement(ActiveComponent, activeTab === 'scrapbook' ? { initialTicker: scrapbookTicker } : null)
+                )
             )
         )
     );
