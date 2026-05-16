@@ -27,6 +27,7 @@ import { OptionsAnalysis } from './options-analysis.js';
 import { ValuationHub } from './valuation-hub.js';
 import { SqlTerminal } from './sql-terminal.js';
 import { Scrapbook } from './scrapbook.js';
+import { PortfolioConstruction } from './pcm.js';
 
 const { useState, useEffect } = React;
 
@@ -48,6 +49,7 @@ const TABS = [
     { id: 'valuation',  label: 'VALUATION',  sub: 'Equity Valuation Suite',  icon: '\u25C8', component: ValuationHub },
     { id: 'sql',        label: 'SQL',        sub: 'Query Terminal',           icon: '\u25A3', component: SqlTerminal },
     { id: 'scrapbook',  label: 'SCRAPBOOK',  sub: 'Research & Thesis Notes', icon: '\u{1F4D2}', component: Scrapbook },
+    { id: 'pcm',        label: 'PCM',        sub: 'Portfolio Construction',  icon: '⬢',   component: PortfolioConstruction },
 ];
 
 const NAV_STRUCTURE = [
@@ -71,6 +73,8 @@ const NAV_STRUCTURE = [
     { type: 'header', label: 'VALUATION' },
     { type: 'tab', id: 'valuation' },
     { type: 'tab', id: 'scrapbook' },
+    { type: 'header', label: 'CONSTRUCT' },
+    { type: 'tab', id: 'pcm' },
 ];
 
 // ------------------------------------------------------------
