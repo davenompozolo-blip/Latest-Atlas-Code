@@ -25,15 +25,34 @@ export function EmptyState({ message }) {
     );
 }
 
-// --- Config Prompt (shown when no Supabase key) ---
+// --- Demo Mode Banner (non-blocking — shown when no Supabase key) ---
 export function ConfigPrompt() {
-    return React.createElement('div', { style: { textAlign: 'center', padding: '80px 24px' } },
-        React.createElement('div', { style: { fontFamily: 'Syne', fontSize: 32, fontWeight: 800, color: '#00d4ff', marginBottom: 16 } }, 'ATLAS TERMINAL'),
-        React.createElement('div', { style: { color: 'rgba(255,255,255,0.52)', marginBottom: 32, maxWidth: 480, margin: '0 auto 32px' } },
-            'Running in demo mode. To connect to live Supabase data, set your anon key:'),
-        React.createElement('pre', { style: { background: '#0d0f1a', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, padding: 20, textAlign: 'left', maxWidth: 600, margin: '0 auto', fontSize: 13, fontFamily: 'JetBrains Mono', color: 'rgba(255,255,255,0.7)', overflowX: 'auto' } },
-            '\x3Cscript\x3E\nwindow.ATLAS_CONFIG = {\n  supabaseKey: "your-anon-key-here"\n};\n\x3C/script\x3E'),
-        React.createElement('div', { style: { color: 'rgba(255,255,255,0.28)', marginTop: 20, fontSize: 12 } }, 'Add the script block above BEFORE the terminal script tag, or deploy with environment injection.')
+    var _d = useState(false);
+    var dismissed = _d[0];
+    var setDismissed = _d[1];
+    if (dismissed) return null;
+    return React.createElement('div', {
+        style: {
+            background: 'rgba(0,200,224,0.08)',
+            borderBottom: '1px solid rgba(0,200,224,0.2)',
+            padding: '10px 20px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            fontSize: 12,
+            fontFamily: 'JetBrains Mono',
+            color: 'rgba(255,255,255,0.6)',
+            flexShrink: 0,
+        }
+    },
+        React.createElement('span', { style: { color: '#00c8e0', fontWeight: 600 } }, '○ DEMO MODE'),
+        React.createElement('span', null, 'Set '),
+        React.createElement('code', { style: { background: 'rgba(0,0,0,0.3)', padding: '1px 6px', borderRadius: 3, color: '#f4a261' } }, 'VITE_SUPABASE_ANON_KEY'),
+        React.createElement('span', null, ' in Vercel → Environment Variables → All Environments to enable live data.'),
+        React.createElement('button', {
+            onClick: function() { setDismissed(true); },
+            style: { marginLeft: 'auto', background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '0 4px' }
+        }, '×')
     );
 }
 
