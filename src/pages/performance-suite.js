@@ -143,7 +143,6 @@ export function PerformanceSuite() {
             borderTop: '3px solid #6366f1',
             borderRadius: 10, padding: '14px 22px', marginBottom: 16,
             display: 'flex', alignItems: 'center', flexWrap: 'wrap', rowGap: 12,
-            overflow: 'hidden',
         }
     },
         h('div', { style: hb },
