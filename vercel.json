@@ -4,8 +4,8 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "functions": {
-    "api/claude-analyse.cjs": { "maxDuration": 60 },
-    "api/claude-sector.cjs":  { "maxDuration": 60 }
+    "api/claude-analyse.js": { "maxDuration": 60 },
+    "api/claude-sector.js":  { "maxDuration": 60 }
   },
   "rewrites": [
     { "source": "/((?!api/).*)", "destination": "/index.html" }

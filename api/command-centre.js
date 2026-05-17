@@ -30,7 +30,7 @@ const AGENT_SYSTEM_PROMPTS = {
   strategist:'You are the ATLAS Strategist. You evaluate macro regime, positioning, and thesis integrity. Challenge assumptions and surface second-order effects.',
 };
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     applyCors(res);
     return res.status(204).end();

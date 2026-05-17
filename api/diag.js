@@ -21,7 +21,7 @@ const KEYS = [
     'VERCEL_TOKEN'
 ];
 
-module.exports = function handler(req, res) {
+export default function handler(req, res) {
     var presence = {};
     KEYS.forEach(function (k) {
         var v = process.env[k];

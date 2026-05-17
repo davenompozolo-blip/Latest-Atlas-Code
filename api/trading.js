@@ -387,7 +387,7 @@ async function getIVSurface(underlying) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
     if (req.method === 'OPTIONS') { cors(res); return res.status(204).end(); }
     cors(res);
 
