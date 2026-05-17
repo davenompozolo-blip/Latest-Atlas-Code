@@ -458,8 +458,19 @@ function AIReport({ ips, allocation, factors, risk, drift }) {
                            top_risk: risk.slice(0, 5), drift: drift },
             }),
         })
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
+        .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, status: r.status, body: j }; }); })
+        .then(function(resp) {
+            var data = resp.body || {};
+            if (!resp.ok || data.error) {
+                var msg = data.error || ('HTTP ' + resp.status);
+                if (data.detail) msg += ' — ' + data.detail;
+                if (data.stop_reason) msg += ' (stop_reason: ' + data.stop_reason + ')';
+                setError(msg); setLoading(false); return;
+            }
+            if (data.parse_error) {
+                setError(data.error || 'Claude returned malformed JSON — please try again');
+                setLoading(false); return;
+            }
             var result = data.result || data;
             if (typeof result === 'string') {
                 try { result = JSON.parse(result.replace(/```json|```/g, '').trim()); }

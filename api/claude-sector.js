@@ -48,8 +48,8 @@ export default async function handler(req, res) {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 4096,
+        model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6',
+        max_tokens: 8192,
         system: `You are a senior buy-side sector specialist embedded within ATLAS, a professional portfolio management platform. Your role is to synthesise individual company investment theses across a sector into a rigorous, institutional-grade sector note.
 
 ---
@@ -145,14 +145,23 @@ Always respond with valid JSON only. No preamble. No markdown fences. No text ou
     }
 
     const data = await response.json();
+    if (data.error) {
+      console.error('Anthropic returned error envelope:', data.error);
+      return res.status(502).json({ error: 'Anthropic API error', detail: data.error.message || JSON.stringify(data.error) });
+    }
     const raw = data.content?.[0]?.text || '';
+    const stopReason = data.stop_reason;
     const parsed = extractJSON(raw);
     if (parsed && (parsed.sector_thesis || parsed.sector_conviction)) {
       return res.status(200).json(parsed);
     }
     return res.status(200).json({
-      error: parsed ? 'Missing sector_thesis in Claude response' : 'Could not parse JSON from Claude response',
+      error: stopReason === 'max_tokens'
+        ? 'Response was truncated (hit max_tokens). Try again with fewer companies or raise the limit.'
+        : parsed ? 'Missing sector_thesis in Claude response' : 'Could not parse JSON from Claude response',
       parse_error: true,
+      stop_reason: stopReason,
+      raw_text: raw,
       sector_conviction: 'Under Review',
     });
   } catch (err) {
