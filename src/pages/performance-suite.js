@@ -140,8 +140,10 @@ export function PerformanceSuite() {
         style: {
             background: 'linear-gradient(135deg,rgba(99,102,241,0.05),rgba(0,212,255,0.04))',
             border: '1px solid rgba(99,102,241,0.15)',
+            borderTop: '3px solid #6366f1',
             borderRadius: 10, padding: '14px 22px', marginBottom: 16,
-            display: 'flex', alignItems: 'center',
+            display: 'flex', alignItems: 'center', flexWrap: 'wrap', rowGap: 12,
+            overflow: 'hidden',
         }
     },
         h('div', { style: hb },

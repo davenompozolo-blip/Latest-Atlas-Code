@@ -15,6 +15,14 @@ const { useState, useEffect, useCallback, useRef, useMemo } = React;
 const h = React.createElement;
 
 // ── Conviction badge colours ──────────────────────────────────────────────────
+function titleCaseSector(s) {
+    if (!s) return '—';
+    return String(s).replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim()
+        .split(' ')
+        .map(function(w) { return w.length > 2 ? (w[0].toUpperCase() + w.slice(1).toLowerCase()) : w.toUpperCase(); })
+        .join(' ');
+}
+
 function convColor(rating) {
     if (!rating) return '#6b7280';
     if (rating === 'Strong Buy') return '#10b981';
@@ -994,7 +1002,7 @@ function SectorCard({ sector, companies, latestNote, isExpanded, onToggle, onNav
                 h('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
                     h('span', { style: { fontSize: 18, opacity: 0.6 } }, icon),
                     h('div', null,
-                        h('div', { style: { fontSize: 14, fontWeight: 700, color: '#fff', fontFamily: 'DM Mono, monospace' } }, sector),
+                        h('div', { style: { fontSize: 14, fontWeight: 700, color: '#fff', fontFamily: 'JetBrains Mono, monospace' } }, titleCaseSector(sector)),
                         h('div', { style: { fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 2 } },
                             companies.length + ' compan' + (companies.length === 1 ? 'y' : 'ies') + ' analysed')
                     )

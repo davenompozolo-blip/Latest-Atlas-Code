@@ -1489,7 +1489,7 @@ export function PortfolioHome() {
 
     return React.createElement('div', null,
         // Hero Pulse Bar
-        React.createElement('div', { style: { background: 'linear-gradient(135deg,rgba(0,212,255,0.04),rgba(99,102,241,0.04))', border: '1px solid rgba(0,212,255,0.12)', borderRadius: 10, padding: '16px 20px', marginBottom: 16, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px 0' } },
+        React.createElement('div', { style: { position: 'relative', background: 'linear-gradient(135deg,rgba(0,212,255,0.04),rgba(99,102,241,0.04))', border: '1px solid rgba(0,212,255,0.12)', borderTop: '3px solid #00d4ff', borderRadius: 10, padding: '16px 20px', marginBottom: 16, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px 0', overflow: 'hidden' } },
             React.createElement('div', { style: hb },
                 React.createElement('div', { style: hl }, 'Account Equity'),
                 React.createElement('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 22, fontWeight: 700, color: '#00d4ff' } }, accountEquity != null ? fmtCurrency(accountEquity) : '\u2014'),
