@@ -1,7 +1,7 @@
 // Vercel serverless function — proxies GitHub REST API calls.
 // GITHUB_TOKEN is optional but raises the rate limit from 60 to 5000 req/hr.
 // Uses only built-in Node.js modules (no npm install required).
-const https = require('https');
+import https from 'https';
 
 function fetchJSON(url, headers) {
   return new Promise((resolve, reject) => {
@@ -18,7 +18,7 @@ function fetchJSON(url, headers) {
   });
 }
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Content-Type', 'application/json');
 

@@ -403,7 +403,7 @@ function cors(res) {
 }
 
 // ─── Handler ──────────────────────────────────────────────────────────────────
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   if (req.method === 'OPTIONS') { cors(res); return res.status(204).end(); }
   if (req.method !== 'GET')    { cors(res); return res.status(405).json({ error: 'GET only' }); }
   cors(res);

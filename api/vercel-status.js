@@ -1,6 +1,6 @@
 // Vercel serverless function — proxies Vercel REST API to protect VERCEL_TOKEN.
 // Uses only built-in Node.js modules (no npm install required).
-const https = require('https');
+import https from 'https';
 
 function fetchJSON(url, headers) {
   return new Promise((resolve, reject) => {
@@ -17,7 +17,7 @@ function fetchJSON(url, headers) {
   });
 }
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Content-Type', 'application/json');
 

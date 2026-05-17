@@ -799,7 +799,7 @@ async function getOverview(symbol, skipCache) {
 // Handler
 // ------------------------------------------------------------
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
     if (req.method === 'OPTIONS') { applyCors(res); return res.status(204).end(); }
     if (req.method !== 'GET')     { applyCors(res); return res.status(405).json({ error: 'GET only' }); }
 
