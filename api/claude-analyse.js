@@ -44,8 +44,8 @@ export default async function handler(req, res) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 2048,
+          model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6',
+          max_tokens: 4096,
           system: `You are ATLAS Intelligence, the decision engine of the ATLAS Terminal.
 You are given structured output from 6 layers of portfolio analysis.
 Synthesise this into a Portfolio Construction Report in the style of an investment committee memo.
@@ -62,9 +62,24 @@ Respond ONLY with valid JSON — no preamble, no markdown fences:
         }),
       });
       const pcmData = await pcmRes.json();
+      if (!pcmRes.ok || pcmData.error) {
+        const detail = pcmData.error?.message || pcmData.error || `HTTP ${pcmRes.status}`;
+        console.error('Anthropic PCM error:', pcmRes.status, detail);
+        return res.status(502).json({ error: 'Anthropic API error', detail, upstream_status: pcmRes.status });
+      }
       const raw = pcmData.content?.[0]?.text || '';
+      const stopReason = pcmData.stop_reason;
       const parsed = extractJSON(raw);
-      return res.status(200).json(parsed || { executive_summary: raw });
+      if (parsed) return res.status(200).json(parsed);
+      return res.status(200).json({
+        error: stopReason === 'max_tokens'
+          ? 'Response was truncated (hit max_tokens). Raise the limit or reduce context size.'
+          : 'Could not parse JSON from Claude response',
+        parse_error: true,
+        stop_reason: stopReason,
+        raw_text: raw,
+        executive_summary: raw,
+      });
     } catch (err) {
       console.error('claude-analyse pcm_report error:', err);
       return res.status(500).json({ error: 'PCM report generation failed', detail: err.message });
@@ -87,7 +102,7 @@ Respond ONLY with valid JSON — no preamble, no markdown fences:
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
+        model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6',
         max_tokens: 4096,
         stream: wantStream,
         system: buildSystemPrompt(),
@@ -167,8 +182,13 @@ Respond ONLY with valid JSON — no preamble, no markdown fences:
 
     // ── Non-streaming: Anthropic returns a single JSON response ─────────────
     const data = await anthropicRes.json();
+    if (data.error) {
+      console.error('Anthropic returned error envelope:', data.error);
+      return res.status(502).json({ error: 'Anthropic API error', detail: data.error.message || JSON.stringify(data.error) });
+    }
     const raw  = data.content?.[0]?.text || '';
     const inputTokens = data.usage?.input_tokens || null;
+    const stopReason = data.stop_reason;
 
     const parsed = extractJSON(raw);
     if (parsed && parsed.thesis) {
@@ -177,7 +197,10 @@ Respond ONLY with valid JSON — no preamble, no markdown fences:
     return res.status(200).json({
       raw_text: raw,
       parse_error: true,
-      error: parsed ? 'Missing thesis field in Claude response' : 'Could not parse JSON from Claude response',
+      stop_reason: stopReason,
+      error: stopReason === 'max_tokens'
+        ? 'Response was truncated (hit max_tokens). Try again or reduce context.'
+        : parsed ? 'Missing thesis field in Claude response' : 'Could not parse JSON from Claude response',
       input_token_est: inputTokens,
     });
 
