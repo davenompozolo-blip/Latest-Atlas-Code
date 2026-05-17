@@ -535,12 +535,16 @@ export function AdvancedChart(props) {
     var _cl = useState(true);
     var catalogLoading = _cl[0], setCatalogLoading = _cl[1];
 
-    // On mount: load portfolio nav + fetch asset catalog from DB
+    // Sync navSeries into allDataRef whenever it changes (handles late-loading data)
     useEffect(function() {
-        // 1. Convert real nav series to pseudo-OHLC
         if (navSeries && navSeries.length) {
             allDataRef.current['portfolio'] = navToOHLC(navSeries);
+            if (ready.current) draw();
         }
+    }, [navSeries]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // On mount: build asset catalog and trigger first draw once layout is painted
+    useEffect(function() {
         ready.current = true;
 
         // 2. Build asset catalog from Supabase
@@ -577,7 +581,8 @@ export function AdvancedChart(props) {
             setCatalogLoading(false);
         }
 
-        draw();
+        // rAF ensures the canvas has been laid out before Plotly measures its dimensions
+        requestAnimationFrame(function() { draw(); });
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Redraw whenever series/options or newly-fetched data changes

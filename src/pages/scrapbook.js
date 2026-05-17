@@ -185,7 +185,7 @@ function ScrapbookLog({ onSelect }) {
                     ),
                     h('div', { style: { display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' } },
                         co.exchange && h('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.06)', borderRadius: 3, padding: '2px 7px' } }, co.exchange),
-                        co.sector   && h('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.06)', borderRadius: 3, padding: '2px 7px' } }, co.sector)
+                        co.sector   && h('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.06)', borderRadius: 3, padding: '2px 7px' } }, titleCaseSector(co.sector))
                     ),
                     h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 } },
                         h('div', null,
@@ -413,7 +413,7 @@ function ScrapbookProfile({ ticker, onBack }) {
                 ),
                 h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
                     company.exchange && h('span', { style: { fontSize: 11, color: 'rgba(255,255,255,0.45)', background: 'rgba(255,255,255,0.07)', borderRadius: 3, padding: '2px 8px' } }, company.exchange),
-                    company.sector   && h('span', { style: { fontSize: 11, color: 'rgba(255,255,255,0.45)', background: 'rgba(255,255,255,0.07)', borderRadius: 3, padding: '2px 8px' } }, company.sector),
+                    company.sector   && h('span', { style: { fontSize: 11, color: 'rgba(255,255,255,0.45)', background: 'rgba(255,255,255,0.07)', borderRadius: 3, padding: '2px 8px' } }, titleCaseSector(company.sector)),
                     company.currency && h('span', { style: { fontSize: 11, color: 'rgba(255,255,255,0.45)', background: 'rgba(255,255,255,0.07)', borderRadius: 3, padding: '2px 8px' } }, company.currency)
                 )
             ),
