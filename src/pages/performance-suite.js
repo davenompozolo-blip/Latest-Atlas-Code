@@ -131,7 +131,7 @@ export function PerformanceSuite() {
         statusLabel = '▽ NEGATIVE'; statusBg = 'rgba(239,68,68,0.1)'; statusBorder = 'rgba(239,68,68,0.28)'; statusColor = '#ef4444';
     }
 
-    var hl  = { fontSize: 9, letterSpacing: 1.8, textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', marginBottom: 4, fontFamily: 'DM Sans' };
+    var hl  = { fontSize: 9, letterSpacing: 1.8, textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', marginBottom: 4, fontFamily: 'Figtree' };
     var hb  = { display: 'flex', flexDirection: 'column', justifyContent: 'center' };
     var div = { width: 1, background: 'rgba(255,255,255,0.06)', margin: '0 20px', flexShrink: 0 };
 
@@ -225,7 +225,7 @@ export function PerformanceSuite() {
                 }
             },
                 h('span', { style: { fontSize: 11, fontWeight: 700, letterSpacing: 1.2, fontFamily: 'JetBrains Mono', color: isActive ? '#00d4ff' : 'rgba(255,255,255,0.42)', transition: 'color 0.15s' } }, tab.label),
-                h('span', { style: { fontSize: 9.5, color: isActive ? 'rgba(0,212,255,0.55)' : 'rgba(255,255,255,0.2)', fontFamily: 'DM Sans', transition: 'color 0.15s' } }, tab.sub)
+                h('span', { style: { fontSize: 9.5, color: isActive ? 'rgba(0,212,255,0.55)' : 'rgba(255,255,255,0.2)', fontFamily: 'Figtree', transition: 'color 0.15s' } }, tab.sub)
             );
         })
     );

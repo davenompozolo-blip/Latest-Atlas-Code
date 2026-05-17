@@ -69,7 +69,7 @@ function AssetTile(p) {
         }
     },
         h('div', { style: { fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.85)', marginBottom: 2, fontFamily: 'JetBrains Mono' } }, q.symbol),
-        h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.38)', marginBottom: 6, fontFamily: 'DM Sans' } }, p.name || q.symbol),
+        h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.38)', marginBottom: 6, fontFamily: 'Figtree' } }, p.name || q.symbol),
         h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 15, fontWeight: 700, color: '#fff', marginBottom: 2 } },
             q.price != null ? '$' + fN(q.price) : '—'
         ),
@@ -131,7 +131,7 @@ function OverviewPanel(p) {
     var dgs10val   = latestVal(yields.dgs10);
     var spy        = findQ(market, 'SPY');
 
-    var hl  = { fontSize: 9, letterSpacing: 1.8, textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', marginBottom: 4, fontFamily: 'DM Sans' };
+    var hl  = { fontSize: 9, letterSpacing: 1.8, textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', marginBottom: 4, fontFamily: 'Figtree' };
     var hb  = { display: 'flex', flexDirection: 'column', justifyContent: 'center' };
     var sep = { width: 1, background: 'rgba(255,255,255,0.06)', margin: '0 20px', flexShrink: 0 };
 
@@ -369,13 +369,13 @@ function NewsPanel() {
 
     // Source filter bar
     var filterBar = h('div', { style: { display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' } },
-        h('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'DM Sans', marginRight: 4 } }, 'SOURCE:'),
+        h('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'Figtree', marginRight: 4 } }, 'SOURCE:'),
         [{ name: 'ALL', color: '#00d4ff', count: items.length }].concat(sources).map(function(src) {
             var a = srcFilter === src.name;
             var col = src.color || '#00d4ff';
             return h('button', {
                 key: src.name, onClick: function() { setSrcFilter(src.name); },
-                style: { background: a ? col + '22' : 'rgba(255,255,255,0.04)', color: a ? col : 'rgba(255,255,255,0.45)', border: '1px solid ' + (a ? col + '55' : 'rgba(255,255,255,0.07)'), borderRadius: 6, padding: '4px 10px', fontSize: 10, fontWeight: a ? 700 : 400, cursor: 'pointer', fontFamily: 'DM Sans' }
+                style: { background: a ? col + '22' : 'rgba(255,255,255,0.04)', color: a ? col : 'rgba(255,255,255,0.45)', border: '1px solid ' + (a ? col + '55' : 'rgba(255,255,255,0.07)'), borderRadius: 6, padding: '4px 10px', fontSize: 10, fontWeight: a ? 700 : 400, cursor: 'pointer', fontFamily: 'Figtree' }
             }, src.name + ' (' + (src.count != null ? src.count : items.length) + ')');
         }),
         h('div', { style: { marginLeft: 'auto', display: 'flex', gap: 6 } },
@@ -412,9 +412,9 @@ function NewsPanel() {
                         h('span', { style: { background: col, color: '#0f172a', padding: '2px 8px', borderRadius: 6, fontSize: 9.5, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase' } }, item.source),
                         h('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.35)', fontFamily: 'JetBrains Mono' } }, item.timeAgo)
                     ),
-                    h('div', { style: { fontSize: 13, fontWeight: 600, color: '#f1f5f9', lineHeight: 1.45, marginBottom: 7, fontFamily: 'DM Sans' } }, item.title),
-                    item.summary ? h('div', { style: { fontSize: 11, color: 'rgba(255,255,255,0.45)', lineHeight: 1.55, marginBottom: 8, fontFamily: 'DM Sans' } }, item.summary) : null,
-                    h('span', { style: { fontSize: 10.5, color: col, fontWeight: 500, fontFamily: 'DM Sans' } }, 'Read More →')
+                    h('div', { style: { fontSize: 13, fontWeight: 600, color: '#f1f5f9', lineHeight: 1.45, marginBottom: 7, fontFamily: 'Figtree' } }, item.title),
+                    item.summary ? h('div', { style: { fontSize: 11, color: 'rgba(255,255,255,0.45)', lineHeight: 1.55, marginBottom: 8, fontFamily: 'Figtree' } }, item.summary) : null,
+                    h('span', { style: { fontSize: 10.5, color: col, fontWeight: 500, fontFamily: 'Figtree' } }, 'Read More →')
                 )
             );
         })
@@ -469,7 +469,7 @@ function CalendarPanel() {
                 h('div', { style: { position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'linear-gradient(90deg,' + col + ',transparent)' } }),
                 h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.4)', fontFamily: 'JetBrains Mono', marginBottom: 4 } },
                     e.date + (e.time ? '  ·  ' + e.time : '')),
-                h('div', { style: { fontSize: 13, fontWeight: 700, color: '#f1f5f9', marginBottom: 4, fontFamily: 'DM Sans', lineHeight: 1.3 } }, e.event),
+                h('div', { style: { fontSize: 13, fontWeight: 700, color: '#f1f5f9', marginBottom: 4, fontFamily: 'Figtree', lineHeight: 1.3 } }, e.event),
                 h('div', { style: { fontSize: 11, color: col, fontWeight: 600, fontFamily: 'JetBrains Mono' } },
                     e.daysUntil === 0 ? 'Today' : e.daysUntil === 1 ? 'Tomorrow' : 'In ' + e.daysUntil + ' days')
             );
@@ -478,7 +478,7 @@ function CalendarPanel() {
 
     // KPI row
     var kpiRow = h('div', { style: { display: 'flex', gap: 12, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' } },
-        h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'DM Sans' } },
+        h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'Figtree' } },
             'Showing ' + filtered.length + ' events over next ' + ((calData && calData.window) ? '60 days' : '—')),
         h('div', { style: { marginLeft: 'auto', display: 'flex', gap: 8 } },
             ['High', 'Medium', 'Low'].map(function(level) {
@@ -487,7 +487,7 @@ function CalendarPanel() {
                 return h('button', {
                     key: level,
                     onClick: function() { setImp(Object.assign({}, imp, { [level]: !on })); },
-                    style: { background: on ? col + '18' : 'rgba(255,255,255,0.04)', color: on ? col : 'rgba(255,255,255,0.3)', border: '1px solid ' + (on ? col + '44' : 'rgba(255,255,255,0.07)'), borderRadius: 6, padding: '4px 10px', fontSize: 10, fontWeight: on ? 700 : 400, cursor: 'pointer', fontFamily: 'DM Sans' }
+                    style: { background: on ? col + '18' : 'rgba(255,255,255,0.04)', color: on ? col : 'rgba(255,255,255,0.3)', border: '1px solid ' + (on ? col + '44' : 'rgba(255,255,255,0.07)'), borderRadius: 6, padding: '4px 10px', fontSize: 10, fontWeight: on ? 700 : 400, cursor: 'pointer', fontFamily: 'Figtree' }
                 }, level + ' Impact');
             })
         )
@@ -576,7 +576,7 @@ export function MarketWatch() {
                 style: { padding: '10px 24px 12px', border: 'none', borderBottom: '2px solid ' + (a ? '#00d4ff' : 'transparent'), background: 'transparent', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2, transition: 'all 0.15s ease', marginBottom: -1 }
             },
                 h('span', { style: { fontSize: 11, fontWeight: 700, letterSpacing: 1.2, fontFamily: 'JetBrains Mono', color: a ? '#00d4ff' : 'rgba(255,255,255,0.42)' } }, t.label),
-                h('span', { style: { fontSize: 9.5, color: a ? 'rgba(0,212,255,0.55)' : 'rgba(255,255,255,0.2)', fontFamily: 'DM Sans' } }, t.sub)
+                h('span', { style: { fontSize: 9.5, color: a ? 'rgba(0,212,255,0.55)' : 'rgba(255,255,255,0.2)', fontFamily: 'Figtree' } }, t.sub)
             );
         })
     );

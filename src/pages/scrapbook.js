@@ -44,7 +44,7 @@ function ConvictionBadge({ rating }) {
             fontSize: 11,
             fontWeight: 700,
             letterSpacing: 0.8,
-            fontFamily: 'DM Mono, monospace',
+            fontFamily: 'JetBrains Mono, monospace',
         }
     }, rating.toUpperCase());
 }
@@ -61,7 +61,7 @@ function UpsidePill({ pct }) {
             padding: '1px 8px',
             fontSize: 11,
             fontWeight: 700,
-            fontFamily: 'DM Mono, monospace',
+            fontFamily: 'JetBrains Mono, monospace',
         }
     }, (pos ? '+' : '') + (pct * 100).toFixed(1) + '%');
 }
@@ -78,7 +78,7 @@ function MethodBadge({ method }) {
             border: '1px solid ' + c + '55',
             borderRadius: 3, padding: '1px 7px',
             fontSize: 10, fontWeight: 700,
-            letterSpacing: 0.5, fontFamily: 'DM Mono, monospace',
+            letterSpacing: 0.5, fontFamily: 'JetBrains Mono, monospace',
         }
     }, method.replace('_', ' '));
 }
@@ -98,7 +98,7 @@ function Card({ children, style }) {
 function SectionHeader({ label, sub, action }) {
     return h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 } },
         h('div', null,
-            h('div', { style: { fontSize: 11, letterSpacing: 2, color: 'rgba(255,255,255,0.4)', fontFamily: 'DM Mono, monospace', textTransform: 'uppercase' } }, label),
+            h('div', { style: { fontSize: 11, letterSpacing: 2, color: 'rgba(255,255,255,0.4)', fontFamily: 'JetBrains Mono, monospace', textTransform: 'uppercase' } }, label),
             sub && h('div', { style: { fontSize: 12, color: 'rgba(255,255,255,0.5)', marginTop: 2 } }, sub)
         ),
         action || null
@@ -178,7 +178,7 @@ function ScrapbookLog({ onSelect }) {
                 },
                     h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 } },
                         h('div', null,
-                            h('div', { style: { fontSize: 18, fontWeight: 700, color: '#fff', fontFamily: 'DM Mono, monospace', letterSpacing: 1 } }, co.ticker),
+                            h('div', { style: { fontSize: 18, fontWeight: 700, color: '#fff', fontFamily: 'JetBrains Mono, monospace', letterSpacing: 1 } }, co.ticker),
                             h('div', { style: { fontSize: 12, color: 'rgba(255,255,255,0.5)', marginTop: 2 } }, co.company_name || '—')
                         ),
                         h(ConvictionBadge, { rating: co.conviction_rating })
@@ -190,7 +190,7 @@ function ScrapbookLog({ onSelect }) {
                     h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 } },
                         h('div', null,
                             h('div', { style: { fontSize: 9, color: 'rgba(255,255,255,0.35)', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 3 } }, 'Avg Fair Value'),
-                            h('div', { style: { fontSize: 16, fontWeight: 700, fontFamily: 'DM Mono, monospace', color: '#00d4ff' } },
+                            h('div', { style: { fontSize: 16, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', color: '#00d4ff' } },
                                 co.avg_fair_value ? fmtCurrency(co.avg_fair_value) : '—')
                         ),
                         h('div', null,
@@ -388,7 +388,7 @@ function ScrapbookProfile({ ticker, onBack }) {
         // Back button
         h('button', {
             onClick: onBack,
-            style: { background: 'none', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 6, color: 'rgba(255,255,255,0.6)', padding: '6px 14px', fontSize: 12, cursor: 'pointer', marginBottom: 20, fontFamily: 'DM Mono, monospace' },
+            style: { background: 'none', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 6, color: 'rgba(255,255,255,0.6)', padding: '6px 14px', fontSize: 12, cursor: 'pointer', marginBottom: 20, fontFamily: 'JetBrains Mono, monospace' },
         }, '← Back to Scrapbook'),
 
         // ── Company header ────────────────────────────────────────────────────
@@ -408,7 +408,7 @@ function ScrapbookProfile({ ticker, onBack }) {
         },
             h('div', null,
                 h('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 } },
-                    h('span', { style: { fontSize: 28, fontWeight: 800, fontFamily: 'DM Mono, monospace', color: '#00d4ff', letterSpacing: 2 } }, company.ticker),
+                    h('span', { style: { fontSize: 28, fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', color: '#00d4ff', letterSpacing: 2 } }, company.ticker),
                     h('span', { style: { fontSize: 16, color: 'rgba(255,255,255,0.6)', fontWeight: 500 } }, company.company_name || '')
                 ),
                 h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
@@ -420,7 +420,7 @@ function ScrapbookProfile({ ticker, onBack }) {
             h('div', { style: { textAlign: 'right' } },
                 h(ConvictionBadge, { rating: company.conviction_rating }),
                 company.fair_value_low && company.fair_value_high && h('div', {
-                    style: { marginTop: 10, fontSize: 20, fontWeight: 700, fontFamily: 'DM Mono, monospace', color: '#fff' }
+                    style: { marginTop: 10, fontSize: 20, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', color: '#fff' }
                 }, fmtCurrency(company.fair_value_low) + ' – ' + fmtCurrency(company.fair_value_high)),
                 h('div', { style: { fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 3 } }, 'Fair value range across all methods')
             )
@@ -430,23 +430,23 @@ function ScrapbookProfile({ ticker, onBack }) {
         h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 20 } },
             h(Card, { style: { padding: 16 } },
                 h('div', { style: { fontSize: 9, color: 'rgba(255,255,255,0.35)', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 8 } }, 'Current Price'),
-                h('div', { style: { fontSize: 20, fontWeight: 700, fontFamily: 'DM Mono, monospace' } }, company.current_price ? fmtCurrency(company.current_price) : '—')
+                h('div', { style: { fontSize: 20, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' } }, company.current_price ? fmtCurrency(company.current_price) : '—')
             ),
             h(Card, { style: { padding: 16 } },
                 h('div', { style: { fontSize: 9, color: 'rgba(255,255,255,0.35)', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 8 } }, 'Avg Fair Value'),
-                h('div', { style: { fontSize: 20, fontWeight: 700, fontFamily: 'DM Mono, monospace', color: '#00d4ff' } }, company.avg_fair_value ? fmtCurrency(company.avg_fair_value) : '—'),
+                h('div', { style: { fontSize: 20, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', color: '#00d4ff' } }, company.avg_fair_value ? fmtCurrency(company.avg_fair_value) : '—'),
                 upside != null && h('div', { style: { marginTop: 4 } }, h(UpsidePill, { pct: upside }))
             ),
             h(Card, { style: { padding: 16 } },
                 h('div', { style: { fontSize: 9, color: 'rgba(255,255,255,0.35)', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 8 } }, 'Methods Saved'),
-                h('div', { style: { fontSize: 20, fontWeight: 700, fontFamily: 'DM Mono, monospace' } }, company.run_count || 0),
+                h('div', { style: { fontSize: 20, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' } }, company.run_count || 0),
                 h('div', { style: { display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' } },
                     [...new Set(snapshots.map(s => s.method))].map(m => h(MethodBadge, { key: m, method: m }))
                 )
             ),
             h(Card, { style: { padding: 16 } },
                 h('div', { style: { fontSize: 9, color: 'rgba(255,255,255,0.35)', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 8 } }, 'Last Updated'),
-                h('div', { style: { fontSize: 13, fontWeight: 600, fontFamily: 'DM Mono, monospace' } },
+                h('div', { style: { fontSize: 13, fontWeight: 600, fontFamily: 'JetBrains Mono, monospace' } },
                     company.last_run_at ? new Date(company.last_run_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—')
             )
         ),
@@ -470,7 +470,7 @@ function ScrapbookProfile({ ticker, onBack }) {
                             fontSize: 12,
                             fontWeight: 600,
                             cursor: analysing ? 'default' : 'pointer',
-                            fontFamily: 'DM Mono, monospace',
+                            fontFamily: 'JetBrains Mono, monospace',
                             opacity: snapshots.length === 0 ? 0.4 : 1,
                         },
                         title: snapshots.length === 0 ? 'Save a valuation run first.' : '',
@@ -487,7 +487,7 @@ function ScrapbookProfile({ ticker, onBack }) {
                                 }
                             })
                         ),
-                        h('div', { style: { fontSize: 10, color: 'rgba(0,212,255,0.5)', marginTop: 3, textAlign: 'right', fontFamily: 'DM Mono, monospace' } },
+                        h('div', { style: { fontSize: 10, color: 'rgba(0,212,255,0.5)', marginTop: 3, textAlign: 'right', fontFamily: 'JetBrains Mono, monospace' } },
                             analyseProgress < 20 ? 'Reading models…'
                             : analyseProgress < 45 ? 'Synthesising thesis…'
                             : analyseProgress < 70 ? 'Assessing risk…'
@@ -545,8 +545,8 @@ function ScrapbookProfile({ ticker, onBack }) {
                                 style: { borderBottom: '1px solid rgba(255,255,255,0.05)', background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)' }
                             },
                                 h('td', { style: { padding: '10px 12px' } }, h(MethodBadge, { method: snap.method })),
-                                h('td', { style: { padding: '10px 12px', color: 'rgba(255,255,255,0.5)', fontFamily: 'DM Mono, monospace', fontSize: 11 } }, snap.run_date),
-                                h('td', { style: { padding: '10px 12px', fontFamily: 'DM Mono, monospace', fontWeight: 700, color: '#fff' } }, fmtCurrency(snap.implied_price)),
+                                h('td', { style: { padding: '10px 12px', color: 'rgba(255,255,255,0.5)', fontFamily: 'JetBrains Mono, monospace', fontSize: 11 } }, snap.run_date),
+                                h('td', { style: { padding: '10px 12px', fontFamily: 'JetBrains Mono, monospace', fontWeight: 700, color: '#fff' } }, fmtCurrency(snap.implied_price)),
                                 h('td', { style: { padding: '10px 12px' } }, h(UpsidePill, { pct: snap.upside_pct })),
                                 h('td', { style: { padding: '10px 12px', color: 'rgba(255,255,255,0.55)', fontSize: 11, maxWidth: 220, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, String(keyAssump).slice(0, 80)),
                                 h('td', { style: { padding: '10px 12px', color: 'rgba(255,255,255,0.45)', fontSize: 11, fontStyle: snap.analyst_note ? 'normal' : 'italic' } }, snap.analyst_note || '—')
@@ -620,7 +620,7 @@ function ScrapbookProfile({ ticker, onBack }) {
                     },
                         h(MethodBadge, { method: snap.method }),
                         h('span', { style: { fontSize: 12, color: 'rgba(255,255,255,0.7)', flex: 1 } }, snap.method_label || snap.method),
-                        h('span', { style: { fontSize: 11, color: 'rgba(255,255,255,0.4)', fontFamily: 'DM Mono, monospace' } }, snap.run_date),
+                        h('span', { style: { fontSize: 11, color: 'rgba(255,255,255,0.4)', fontFamily: 'JetBrains Mono, monospace' } }, snap.run_date),
                         h('span', { style: { marginLeft: 8 } }, h(UpsidePill, { pct: snap.upside_pct })),
                         h('span', { style: { marginLeft: 8, color: 'rgba(255,255,255,0.3)', fontSize: 12 } }, expanded[snap.id] ? '▲' : '▼')
                     ),
@@ -629,7 +629,7 @@ function ScrapbookProfile({ ticker, onBack }) {
                             Object.entries(snap.inputs || {}).map(([k, v]) =>
                                 h('div', { key: k },
                                     h('div', { style: { fontSize: 9, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 2 } }, k.replace(/_/g, ' ')),
-                                    h('div', { style: { fontSize: 12, fontFamily: 'DM Mono, monospace', color: 'rgba(255,255,255,0.8)' } }, String(v))
+                                    h('div', { style: { fontSize: 12, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(255,255,255,0.8)' } }, String(v))
                                 )
                             )
                         ),
@@ -845,8 +845,8 @@ export function ScrapbookSaveBar({ method, methodLabel, ticker, companyName, exc
             h('div', { style: { flex: 1, minWidth: 200 } },
                 h('div', { style: { fontSize: 10, color: 'rgba(0,212,255,0.7)', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 3 } }, 'Active Run · ' + (methodLabel || method)),
                 h('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
-                    h('span', { style: { fontSize: 14, fontWeight: 700, fontFamily: 'DM Mono, monospace' } }, ticker),
-                    h('span', { style: { fontSize: 13, fontFamily: 'DM Mono, monospace', color: '#00d4ff', fontWeight: 600 } }, fmtCurrency(impliedPrice)),
+                    h('span', { style: { fontSize: 14, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' } }, ticker),
+                    h('span', { style: { fontSize: 13, fontFamily: 'JetBrains Mono, monospace', color: '#00d4ff', fontWeight: 600 } }, fmtCurrency(impliedPrice)),
                     upside != null && h(UpsidePill, { pct: upside })
                 )
             ),
@@ -864,7 +864,7 @@ export function ScrapbookSaveBar({ method, methodLabel, ticker, companyName, exc
                     fontSize: 12,
                     width: 220,
                     outline: 'none',
-                    fontFamily: 'DM Sans, sans-serif',
+                    fontFamily: 'Figtree, sans-serif',
                 }
             }),
             h('button', {
@@ -879,7 +879,7 @@ export function ScrapbookSaveBar({ method, methodLabel, ticker, companyName, exc
                     fontSize: 12,
                     fontWeight: 600,
                     cursor: busy ? 'default' : 'pointer',
-                    fontFamily: 'DM Mono, monospace',
+                    fontFamily: 'JetBrains Mono, monospace',
                     opacity: busy ? 0.5 : 1,
                 }
             }, saving ? '…saving' : 'Save run'),
@@ -896,7 +896,7 @@ export function ScrapbookSaveBar({ method, methodLabel, ticker, companyName, exc
                         fontSize: 12,
                         fontWeight: 700,
                         cursor: busy ? 'default' : 'pointer',
-                        fontFamily: 'DM Mono, monospace',
+                        fontFamily: 'JetBrains Mono, monospace',
                         opacity: busy ? 0.7 : 1,
                     }
                 }, analysing ? '⟳ Analysing…' : 'Save & Analyse ✦'),
@@ -912,7 +912,7 @@ export function ScrapbookSaveBar({ method, methodLabel, ticker, companyName, exc
                             }
                         })
                     ),
-                    h('div', { style: { fontSize: 10, color: 'rgba(0,212,255,0.5)', marginTop: 3, textAlign: 'right', fontFamily: 'DM Mono, monospace' } },
+                    h('div', { style: { fontSize: 10, color: 'rgba(0,212,255,0.5)', marginTop: 3, textAlign: 'right', fontFamily: 'JetBrains Mono, monospace' } },
                         saveProgress < 20 ? 'Reading models…'
                         : saveProgress < 45 ? 'Synthesising thesis…'
                         : saveProgress < 70 ? 'Assessing risk…'
@@ -1008,13 +1008,13 @@ function SectorCard({ sector, companies, latestNote, isExpanded, onToggle, onNav
                     )
                 ),
                 h('div', { style: { textAlign: 'right' } },
-                    h('div', { style: { fontSize: 12, fontWeight: 700, color: cl.color, fontFamily: 'DM Mono, monospace' } }, cl.label),
+                    h('div', { style: { fontSize: 12, fontWeight: 700, color: cl.color, fontFamily: 'JetBrains Mono, monospace' } }, cl.label),
                     latestNote && h('div', { style: { fontSize: 9, color: 'rgba(255,255,255,0.3)', marginTop: 2 } },
                         'Note: ' + new Date(latestNote.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }))
                 )
             ),
             h(ConvBar, { companies }),
-            upside != null && h('div', { style: { marginTop: 8, fontSize: 11, color: upside >= 0 ? '#10b981' : '#ef4444', fontFamily: 'DM Mono, monospace' } },
+            upside != null && h('div', { style: { marginTop: 8, fontSize: 11, color: upside >= 0 ? '#10b981' : '#ef4444', fontFamily: 'JetBrains Mono, monospace' } },
                 'Avg implied upside: ' + (upside >= 0 ? '+' : '') + (upside * 100).toFixed(1) + '%')
         ),
 
@@ -1112,7 +1112,7 @@ function SectorExpandedPanel({ sector, companies, latestNote, onNavigate }) {
     return h('div', { style: { padding: '20px' } },
         // Company mini-cards grid
         h('div', { style: { marginBottom: 20 } },
-            h('div', { style: { fontSize: 10, letterSpacing: 1.5, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', fontFamily: 'DM Mono, monospace', marginBottom: 10 } }, 'Companies in this sector'),
+            h('div', { style: { fontSize: 10, letterSpacing: 1.5, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', fontFamily: 'JetBrains Mono, monospace', marginBottom: 10 } }, 'Companies in this sector'),
             h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8 } },
                 companies.map(c =>
                     h('div', {
@@ -1130,7 +1130,7 @@ function SectorExpandedPanel({ sector, companies, latestNote, onNavigate }) {
                         }
                     },
                         h('div', null,
-                            h('div', { style: { fontSize: 13, fontWeight: 700, fontFamily: 'DM Mono, monospace', color: '#fff' } }, c.ticker),
+                            h('div', { style: { fontSize: 13, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', color: '#fff' } }, c.ticker),
                             h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.4)', maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, c.company_name || ''),
                             h('div', { style: { fontSize: 9, color: 'rgba(255,255,255,0.25)', marginTop: 2 } }, c.run_count + ' method' + (c.run_count !== 1 ? 's' : ''))
                         ),
@@ -1139,7 +1139,7 @@ function SectorExpandedPanel({ sector, companies, latestNote, onNavigate }) {
                                 fontSize: 10, fontWeight: 700, color: convColor2(c.conviction_rating),
                                 background: convColor2(c.conviction_rating) + '22',
                                 border: '1px solid ' + convColor2(c.conviction_rating) + '44',
-                                borderRadius: 4, padding: '2px 7px', fontFamily: 'DM Mono, monospace',
+                                borderRadius: 4, padding: '2px 7px', fontFamily: 'JetBrains Mono, monospace',
                             }
                         }, c.conviction_rating)
                     )
@@ -1150,7 +1150,7 @@ function SectorExpandedPanel({ sector, companies, latestNote, onNavigate }) {
         // Sector analysis section
         h('div', { style: { borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 16 } },
             h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 } },
-                h('div', { style: { fontSize: 11, fontWeight: 700, letterSpacing: 1.5, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', fontFamily: 'DM Mono, monospace' } }, 'Sector Analysis'),
+                h('div', { style: { fontSize: 11, fontWeight: 700, letterSpacing: 1.5, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', fontFamily: 'JetBrains Mono, monospace' } }, 'Sector Analysis'),
                 h('button', {
                     onClick: handleGenerate,
                     disabled: generatingNote,
@@ -1163,7 +1163,7 @@ function SectorExpandedPanel({ sector, companies, latestNote, onNavigate }) {
                         fontSize: 11,
                         fontWeight: 700,
                         cursor: generatingNote ? 'default' : 'pointer',
-                        fontFamily: 'DM Mono, monospace',
+                        fontFamily: 'JetBrains Mono, monospace',
                         opacity: generatingNote ? 0.7 : 1,
                     }
                 }, generatingNote ? '⟳ Generating…' : (noteData ? '↺ Regenerate ✦' : 'Generate sector note ✦'))
@@ -1182,7 +1182,7 @@ function SectorExpandedPanel({ sector, companies, latestNote, onNavigate }) {
                                 color: convictionColor[effectiveNote.sector_conviction] || '#6b7280',
                                 background: (convictionColor[effectiveNote.sector_conviction] || '#6b7280') + '22',
                                 border: '1px solid ' + (convictionColor[effectiveNote.sector_conviction] || '#6b7280') + '44',
-                                borderRadius: 5, padding: '3px 12px', fontFamily: 'DM Mono, monospace',
+                                borderRadius: 5, padding: '3px 12px', fontFamily: 'JetBrains Mono, monospace',
                             }
                         }, effectiveNote.sector_conviction),
                         effectiveNote.sector_verdict && h('span', { style: { fontSize: 12, color: 'rgba(255,255,255,0.6)', fontStyle: 'italic' } }, effectiveNote.sector_verdict)
@@ -1194,7 +1194,7 @@ function SectorExpandedPanel({ sector, companies, latestNote, onNavigate }) {
                     // Tailwinds + headwinds grid
                     (effectiveNote.sector_tailwinds || effectiveNote.sector_headwinds) && h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 18 } },
                         effectiveNote.sector_tailwinds && h('div', null,
-                            h('div', { style: { fontSize: 10, fontWeight: 700, letterSpacing: 1.2, color: '#10b981', textTransform: 'uppercase', fontFamily: 'DM Mono, monospace', marginBottom: 8 } }, 'Sector Tailwinds'),
+                            h('div', { style: { fontSize: 10, fontWeight: 700, letterSpacing: 1.2, color: '#10b981', textTransform: 'uppercase', fontFamily: 'JetBrains Mono, monospace', marginBottom: 8 } }, 'Sector Tailwinds'),
                             (Array.isArray(effectiveNote.sector_tailwinds) ? effectiveNote.sector_tailwinds : []).map((tw, i) =>
                                 h('div', { key: i, style: { marginBottom: 8 } },
                                     h('div', { style: { fontSize: 12, fontWeight: 600, color: '#34d399', marginBottom: 2 } }, '● ' + tw.theme),
@@ -1203,7 +1203,7 @@ function SectorExpandedPanel({ sector, companies, latestNote, onNavigate }) {
                             )
                         ),
                         effectiveNote.sector_headwinds && h('div', null,
-                            h('div', { style: { fontSize: 10, fontWeight: 700, letterSpacing: 1.2, color: '#ef4444', textTransform: 'uppercase', fontFamily: 'DM Mono, monospace', marginBottom: 8 } }, 'Sector Headwinds'),
+                            h('div', { style: { fontSize: 10, fontWeight: 700, letterSpacing: 1.2, color: '#ef4444', textTransform: 'uppercase', fontFamily: 'JetBrains Mono, monospace', marginBottom: 8 } }, 'Sector Headwinds'),
                             (Array.isArray(effectiveNote.sector_headwinds) ? effectiveNote.sector_headwinds : []).map((hw, i) =>
                                 h('div', { key: i, style: { marginBottom: 8 } },
                                     h('div', { style: { fontSize: 12, fontWeight: 600, color: '#f87171', marginBottom: 2 } }, '● ' + hw.risk),
@@ -1216,18 +1216,18 @@ function SectorExpandedPanel({ sector, companies, latestNote, onNavigate }) {
                     // Shared assumptions + divergence
                     (effectiveNote.shared_assumptions || effectiveNote.divergence_points) && h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 } },
                         effectiveNote.shared_assumptions && h('div', { style: { background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.2)', borderRadius: 6, padding: 14 } },
-                            h('div', { style: { fontSize: 10, fontWeight: 700, letterSpacing: 1.2, color: '#a78bfa', textTransform: 'uppercase', fontFamily: 'DM Mono, monospace', marginBottom: 6 } }, 'Shared Assumptions'),
+                            h('div', { style: { fontSize: 10, fontWeight: 700, letterSpacing: 1.2, color: '#a78bfa', textTransform: 'uppercase', fontFamily: 'JetBrains Mono, monospace', marginBottom: 6 } }, 'Shared Assumptions'),
                             h('div', { style: { fontSize: 12, color: 'rgba(255,255,255,0.65)', lineHeight: 1.6 } }, effectiveNote.shared_assumptions)
                         ),
                         effectiveNote.divergence_points && h('div', { style: { background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 6, padding: 14 } },
-                            h('div', { style: { fontSize: 10, fontWeight: 700, letterSpacing: 1.2, color: '#f59e0b', textTransform: 'uppercase', fontFamily: 'DM Mono, monospace', marginBottom: 6 } }, 'Divergence Points'),
+                            h('div', { style: { fontSize: 10, fontWeight: 700, letterSpacing: 1.2, color: '#f59e0b', textTransform: 'uppercase', fontFamily: 'JetBrains Mono, monospace', marginBottom: 6 } }, 'Divergence Points'),
                             h('div', { style: { fontSize: 12, color: 'rgba(255,255,255,0.65)', lineHeight: 1.6 } }, effectiveNote.divergence_points)
                         )
                     ),
 
                     // Relative value
                     effectiveNote.relative_value && h('div', { style: { background: 'rgba(0,212,255,0.06)', border: '1px solid rgba(0,212,255,0.2)', borderRadius: 6, padding: 14 } },
-                        h('div', { style: { fontSize: 10, fontWeight: 700, letterSpacing: 1.2, color: '#00d4ff', textTransform: 'uppercase', fontFamily: 'DM Mono, monospace', marginBottom: 6 } }, 'Relative Value'),
+                        h('div', { style: { fontSize: 10, fontWeight: 700, letterSpacing: 1.2, color: '#00d4ff', textTransform: 'uppercase', fontFamily: 'JetBrains Mono, monospace', marginBottom: 6 } }, 'Relative Value'),
                         h('div', { style: { fontSize: 12, color: 'rgba(255,255,255,0.65)', lineHeight: 1.6 } }, effectiveNote.relative_value)
                     )
                 )
@@ -1321,7 +1321,7 @@ export function Scrapbook({ initialTicker }) {
                 fontSize: 11,
                 fontWeight: active ? 700 : 400,
                 cursor: 'pointer',
-                fontFamily: 'DM Mono, monospace',
+                fontFamily: 'JetBrains Mono, monospace',
                 letterSpacing: 0.5,
                 transition: 'all 0.15s',
             }
@@ -1341,8 +1341,8 @@ export function Scrapbook({ initialTicker }) {
                 flexWrap: 'wrap',
             }
         },
-            h('div', { style: { fontSize: 13, fontWeight: 700, color: 'var(--cyan, #00d4ff)', letterSpacing: 2, fontFamily: 'DM Mono, monospace' } }, '📒 VALUATION SCRAPBOOK'),
-            view.mode === 'profile' && h('span', { style: { fontSize: 12, color: 'rgba(255,255,255,0.5)', fontFamily: 'DM Mono, monospace' } }, '/ ' + view.ticker),
+            h('div', { style: { fontSize: 13, fontWeight: 700, color: 'var(--cyan, #00d4ff)', letterSpacing: 2, fontFamily: 'JetBrains Mono, monospace' } }, '📒 VALUATION SCRAPBOOK'),
+            view.mode === 'profile' && h('span', { style: { fontSize: 12, color: 'rgba(255,255,255,0.5)', fontFamily: 'JetBrains Mono, monospace' } }, '/ ' + view.ticker),
             h('div', { style: { flex: 1 } }),
             // Tab toggle (only when not in profile)
             view.mode !== 'profile' && h('div', { style: { display: 'flex', gap: 6 } },

@@ -78,7 +78,7 @@ function OSymbolSearch(p) {
                 placeholder: 'Symbol — AAPL, SPY, TSLA…',
                 style: { flex: 1, padding: '8px 12px', borderRadius: 6, fontSize: 13,
                     background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)',
-                    color: OC.text, fontFamily: 'DM Sans', outline: 'none' }
+                    color: OC.text, fontFamily: 'Figtree', outline: 'none' }
             }),
             h('button', {
                 onClick: function () { commit(q); },

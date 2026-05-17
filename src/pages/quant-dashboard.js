@@ -175,7 +175,7 @@ export function QuantDashboard() {
                 },
                     React.createElement('span', { style: { fontSize: 11, fontWeight: 700, letterSpacing: 1.2, fontFamily: 'JetBrains Mono', color: a ? '#00d4ff' : 'rgba(255,255,255,0.42)' } },
                         t.label + '  ' + (t.n > 0 ? '(' + t.n + ')' : '')),
-                    React.createElement('span', { style: { fontSize: 9.5, color: a ? 'rgba(0,212,255,0.55)' : 'rgba(255,255,255,0.2)', fontFamily: 'DM Sans' } }, t.sub)
+                    React.createElement('span', { style: { fontSize: 9.5, color: a ? 'rgba(0,212,255,0.55)' : 'rgba(255,255,255,0.2)', fontFamily: 'Figtree' } }, t.sub)
                 );
             })
         ),

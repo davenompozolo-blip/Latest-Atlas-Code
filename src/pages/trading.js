@@ -179,7 +179,7 @@ function SymbolSearch(p) {
                     flex: 1, background: 'rgba(255,255,255,0.05)',
                     border: '1px solid rgba(255,255,255,0.12)', borderRadius: 6,
                     color: C.text, padding: '8px 12px', fontSize: 13,
-                    fontFamily: 'DM Sans', outline: 'none',
+                    fontFamily: 'Figtree', outline: 'none',
                 },
             }),
             h('button', {

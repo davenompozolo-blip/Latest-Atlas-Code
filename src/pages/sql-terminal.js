@@ -126,9 +126,9 @@ function typeInfo(dt) {
 
 // ── Shared inline style helpers ───────────────────────────────────────────────
 const card  = (extra) => ({ background: 'var(--card)', border: '1px solid var(--card-border)', borderRadius: 10, ...extra });
-const label = { fontSize: 9, letterSpacing: 1.6, textTransform: 'uppercase', color: 'rgba(255,255,255,0.28)', fontFamily: 'DM Sans' };
-const btnPrimary = (accent, extra) => ({ padding: '7px 16px', border: `1px solid ${accent}55`, borderRadius: 6, background: `${accent}18`, color: accent, cursor: 'pointer', fontSize: 11, fontWeight: 700, fontFamily: 'DM Sans', letterSpacing: 0.4, transition: 'all 0.15s', ...extra });
-const btnGhost   = (extra) => ({ padding: '5px 12px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 5, background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: 10, fontFamily: 'DM Sans', transition: 'all 0.12s', ...extra });
+const label = { fontSize: 9, letterSpacing: 1.6, textTransform: 'uppercase', color: 'rgba(255,255,255,0.28)', fontFamily: 'Figtree' };
+const btnPrimary = (accent, extra) => ({ padding: '7px 16px', border: `1px solid ${accent}55`, borderRadius: 6, background: `${accent}18`, color: accent, cursor: 'pointer', fontSize: 11, fontWeight: 700, fontFamily: 'Figtree', letterSpacing: 0.4, transition: 'all 0.15s', ...extra });
+const btnGhost   = (extra) => ({ padding: '5px 12px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 5, background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: 10, fontFamily: 'Figtree', transition: 'all 0.12s', ...extra });
 
 // ── CSS injection ─────────────────────────────────────────────────────────────
 const STYLES = `
@@ -198,7 +198,7 @@ const STYLES = `
 .atl-tbl th {
   padding: 8px 12px; text-align: left; position: sticky; top: 0;
   background: rgba(0,212,255,0.06); border-bottom: 1px solid rgba(0,212,255,0.12);
-  font: 9px 'DM Sans', sans-serif; font-weight: 700; letter-spacing: 1.4;
+  font: 9px 'Figtree', sans-serif; font-weight: 700; letter-spacing: 1.4;
   text-transform: uppercase; color: rgba(0,212,255,0.6);
   cursor: pointer; user-select: none; white-space: nowrap;
   transition: color 0.12s;
@@ -218,14 +218,14 @@ const STYLES = `
   align-self: flex-end; max-width: 88%;
   background: rgba(99,102,241,0.16); border: 1px solid rgba(99,102,241,0.28);
   border-radius: 12px 12px 3px 12px;
-  padding: 9px 13px; font: 12px 'DM Sans', sans-serif;
+  padding: 9px 13px; font: 12px 'Figtree', sans-serif;
   color: rgba(255,255,255,0.85); line-height: 1.5;
 }
 .atl-ai-asst {
   align-self: flex-start; max-width: 95%;
   background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.2);
   border-radius: 3px 12px 12px 12px;
-  padding: 9px 13px; font: 12px 'DM Sans', sans-serif;
+  padding: 9px 13px; font: 12px 'Figtree', sans-serif;
   color: rgba(255,255,255,0.82); line-height: 1.6;
   white-space: pre-wrap;
 }
@@ -237,7 +237,7 @@ const STYLES = `
 .atl-ai-code-header {
   display: flex; align-items: center; justify-content: space-between;
   padding: 5px 10px; background: rgba(0,212,255,0.07);
-  font: 9px 'DM Sans'; font-weight: 700; letter-spacing: 1.2;
+  font: 9px 'Figtree'; font-weight: 700; letter-spacing: 1.2;
   text-transform: uppercase; color: rgba(0,212,255,0.5);
 }
 .atl-ai-code pre {
@@ -357,7 +357,7 @@ function SchemaPanel({ schema, onInsert }) {
         return all.filter(t => t.includes(f) || schema[t].some(c => c.name.includes(f)));
     }, [schema, filter]);
 
-    if (!Object.keys(schema).length) return h('div', { style: { padding: 16, color: 'rgba(255,255,255,0.25)', fontSize: 11, fontFamily: 'DM Sans' } }, 'Loading schema…');
+    if (!Object.keys(schema).length) return h('div', { style: { padding: 16, color: 'rgba(255,255,255,0.25)', fontSize: 11, fontFamily: 'Figtree' } }, 'Loading schema…');
 
     return h('div', { style: { display: 'flex', flexDirection: 'column', height: '100%' } },
         // Header
@@ -442,7 +442,7 @@ function ResultsTable({ rows, columns, sortCol, sortDir, onSort }) {
                     )
                 ),
                 rows.length > 500 && h('tr', null,
-                    h('td', { colSpan: columns.length, style: { textAlign: 'center', padding: '8px 12px', color: 'rgba(255,255,255,0.25)', fontSize: 10, fontFamily: 'DM Sans' } },
+                    h('td', { colSpan: columns.length, style: { textAlign: 'center', padding: '8px 12px', color: 'rgba(255,255,255,0.25)', fontSize: 10, fontFamily: 'Figtree' } },
                         `Showing 500 of ${rows.length.toLocaleString()} rows — export CSV for full dataset`
                     )
                 )
@@ -526,8 +526,8 @@ function AiPanel({ schema, onInsertSql }) {
         h('div', { style: { padding: '12px 14px 10px', borderBottom: '1px solid rgba(139,92,246,0.12)', flexShrink: 0 } },
             h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 } },
                 h('div', { style: { width: 22, height: 22, borderRadius: 6, background: 'linear-gradient(135deg,#8b5cf6,#6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11 } }, '◈'),
-                h('span', { style: { fontFamily: 'DM Sans', fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.82)', letterSpacing: 0.3 } }, 'ATLAS AI'),
-                h('span', { style: { marginLeft: 'auto', padding: '2px 7px', borderRadius: 4, background: 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.2)', fontSize: 9, color: 'rgba(167,139,250,0.8)', fontFamily: 'DM Sans' } }, 'Claude Sonnet'),
+                h('span', { style: { fontFamily: 'Figtree', fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.82)', letterSpacing: 0.3 } }, 'ATLAS AI'),
+                h('span', { style: { marginLeft: 'auto', padding: '2px 7px', borderRadius: 4, background: 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.2)', fontSize: 9, color: 'rgba(167,139,250,0.8)', fontFamily: 'Figtree' } }, 'Claude Sonnet'),
                 messages.length > 0 && h('button', {
                     onClick: () => setMsgs([]),
                     style: btnGhost({ padding: '2px 7px', fontSize: 9 }),
@@ -543,7 +543,7 @@ function AiPanel({ schema, onInsertSql }) {
                             flex: 1, padding: '5px 0', border: 'none', borderRadius: 4, cursor: 'pointer',
                             background: mode === m ? 'rgba(139,92,246,0.25)' : 'transparent',
                             color: mode === m ? '#c084fc' : 'rgba(255,255,255,0.35)',
-                            fontFamily: 'DM Sans', fontSize: 10.5, fontWeight: mode === m ? 700 : 400,
+                            fontFamily: 'Figtree', fontSize: 10.5, fontWeight: mode === m ? 700 : 400,
                             transition: 'all 0.15s',
                         },
                     }, lbl)
@@ -558,7 +558,7 @@ function AiPanel({ schema, onInsertSql }) {
             style: { flex: 1, overflowY: 'auto', padding: '12px 12px 4px', display: 'flex', flexDirection: 'column', gap: 10 },
         },
             messages.length === 0 && h('div', { style: { display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 } },
-                h('div', { style: { fontSize: 10.5, color: 'rgba(255,255,255,0.28)', fontFamily: 'DM Sans', marginBottom: 6 } },
+                h('div', { style: { fontSize: 10.5, color: 'rgba(255,255,255,0.28)', fontFamily: 'Figtree', marginBottom: 6 } },
                     mode === 'sql' ? 'Describe the data you want — I\'ll write the SQL.' : 'Ask me what analytics to build with your portfolio data.'),
                 SUGGESTED.map((s, i) =>
                     h('button', {
@@ -566,7 +566,7 @@ function AiPanel({ schema, onInsertSql }) {
                         style: {
                             textAlign: 'left', padding: '7px 10px', borderRadius: 6,
                             background: 'rgba(139,92,246,0.07)', border: '1px solid rgba(139,92,246,0.14)',
-                            color: 'rgba(255,255,255,0.5)', fontSize: 10.5, fontFamily: 'DM Sans', cursor: 'pointer',
+                            color: 'rgba(255,255,255,0.5)', fontSize: 10.5, fontFamily: 'Figtree', cursor: 'pointer',
                             transition: 'all 0.12s',
                         },
                         onMouseEnter: e => { e.currentTarget.style.background = 'rgba(139,92,246,0.15)'; e.currentTarget.style.color = 'rgba(255,255,255,0.75)'; },
@@ -580,7 +580,7 @@ function AiPanel({ schema, onInsertSql }) {
                     h('span'), h('span'), h('span')
                 )
             ),
-            err && h('div', { style: { color: '#f87171', fontSize: 10.5, fontFamily: 'DM Sans', padding: '6px 10px', background: 'rgba(239,68,68,0.08)', borderRadius: 6, border: '1px solid rgba(239,68,68,0.18)' } }, err)
+            err && h('div', { style: { color: '#f87171', fontSize: 10.5, fontFamily: 'Figtree', padding: '6px 10px', background: 'rgba(239,68,68,0.08)', borderRadius: 6, border: '1px solid rgba(239,68,68,0.18)' } }, err)
         ),
 
         // Input
@@ -596,7 +596,7 @@ function AiPanel({ schema, onInsertSql }) {
                     style: {
                         flex: 1, padding: '7px 10px', background: 'rgba(0,0,0,0.4)',
                         border: '1px solid rgba(139,92,246,0.2)', borderRadius: 6, resize: 'none',
-                        color: 'rgba(255,255,255,0.85)', fontSize: 11.5, fontFamily: 'DM Sans',
+                        color: 'rgba(255,255,255,0.85)', fontSize: 11.5, fontFamily: 'Figtree',
                         outline: 'none', lineHeight: 1.5,
                     },
                 }),
@@ -609,7 +609,7 @@ function AiPanel({ schema, onInsertSql }) {
                     },
                 }, thinking ? '…' : '↑')
             ),
-            h('div', { style: { fontSize: 9, color: 'rgba(255,255,255,0.2)', fontFamily: 'DM Sans', marginTop: 4 } }, 'Enter to send · Shift+Enter for new line')
+            h('div', { style: { fontSize: 9, color: 'rgba(255,255,255,0.2)', fontFamily: 'Figtree', marginTop: 4 } }, 'Enter to send · Shift+Enter for new line')
         )
     );
 }
@@ -617,14 +617,14 @@ function AiPanel({ schema, onInsertSql }) {
 // ── Saved / History / Insights tabs ──────────────────────────────────────────
 function SavedTab({ queries, onLoad, onRefresh }) {
     const [busy, setBusy] = useState(null);
-    if (!queries.length) return h('div', { style: { padding: 24, textAlign: 'center', color: 'rgba(255,255,255,0.28)', fontSize: 12, fontFamily: 'DM Sans' } }, 'No saved queries yet.');
+    if (!queries.length) return h('div', { style: { padding: 24, textAlign: 'center', color: 'rgba(255,255,255,0.28)', fontSize: 12, fontFamily: 'Figtree' } }, 'No saved queries yet.');
     return h('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
         queries.map(q =>
             h('div', { key: q.id, style: { ...card({ padding: '12px 16px' }) } },
                 h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 } },
                     h('span', { style: { color: q.is_pinned ? '#f59e0b' : 'rgba(255,255,255,0.18)', fontSize: 13 } }, '★'),
-                    h('span', { style: { fontFamily: 'DM Sans', fontWeight: 600, fontSize: 13, color: 'rgba(255,255,255,0.88)', flex: 1 } }, q.name),
-                    (q.tags || []).map(t => h('span', { key: t, style: { padding: '2px 7px', borderRadius: 4, background: 'rgba(99,102,241,0.14)', color: '#818cf8', fontSize: 9.5, fontFamily: 'DM Sans' } }, t)),
+                    h('span', { style: { fontFamily: 'Figtree', fontWeight: 600, fontSize: 13, color: 'rgba(255,255,255,0.88)', flex: 1 } }, q.name),
+                    (q.tags || []).map(t => h('span', { key: t, style: { padding: '2px 7px', borderRadius: 4, background: 'rgba(99,102,241,0.14)', color: '#818cf8', fontSize: 9.5, fontFamily: 'Figtree' } }, t)),
                     h('div', { style: { display: 'flex', gap: 5, marginLeft: 4 } },
                         h('button', { onClick: () => onLoad(q.sql_text), style: btnPrimary('#00d4ff', { padding: '4px 10px', fontSize: 10 }) }, '▶ Load'),
                         h('button', {
@@ -639,7 +639,7 @@ function SavedTab({ queries, onLoad, onRefresh }) {
                         }, 'Delete')
                     )
                 ),
-                q.description && h('div', { style: { fontSize: 11, color: 'rgba(255,255,255,0.32)', fontFamily: 'DM Sans', marginBottom: 6 } }, q.description),
+                q.description && h('div', { style: { fontSize: 11, color: 'rgba(255,255,255,0.32)', fontFamily: 'Figtree', marginBottom: 6 } }, q.description),
                 h('pre', { style: { margin: 0, padding: '8px 12px', background: 'rgba(0,0,0,0.4)', borderRadius: 6, fontSize: 10.5, fontFamily: 'JetBrains Mono', color: 'rgba(0,212,255,0.6)', overflow: 'hidden', maxHeight: 72, whiteSpace: 'pre-wrap', wordBreak: 'break-all' } },
                     q.sql_text.slice(0, 250) + (q.sql_text.length > 250 ? '…' : ''))
             )
@@ -648,7 +648,7 @@ function SavedTab({ queries, onLoad, onRefresh }) {
 }
 
 function HistoryTab({ history, onLoad }) {
-    if (!history.length) return h('div', { style: { padding: 24, textAlign: 'center', color: 'rgba(255,255,255,0.28)', fontSize: 12, fontFamily: 'DM Sans' } }, 'No queries run this session.');
+    if (!history.length) return h('div', { style: { padding: 24, textAlign: 'center', color: 'rgba(255,255,255,0.28)', fontSize: 12, fontFamily: 'Figtree' } }, 'No queries run this session.');
     return h('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
         history.map((sql, i) =>
             h('div', { key: i, style: { ...card({ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10 }) } },
@@ -663,7 +663,7 @@ function HistoryTab({ history, onLoad }) {
 
 function InsightsTab({ insights, onQuery, onRefresh }) {
     const schedBadge = { manual: ['rgba(148,163,184,0.12)', '#94a3b8', '● Manual'], on_sync: ['rgba(52,211,153,0.12)', '#34d399', '↻ On Sync'], daily: ['rgba(96,165,250,0.12)', '#60a5fa', '◷ Daily'] };
-    if (!insights.length) return h('div', { style: { padding: 24, textAlign: 'center', color: 'rgba(255,255,255,0.28)', fontSize: 12, fontFamily: 'DM Sans' } }, 'No materialized tables yet. Run a query → Route to Supabase.');
+    if (!insights.length) return h('div', { style: { padding: 24, textAlign: 'center', color: 'rgba(255,255,255,0.28)', fontSize: 12, fontFamily: 'Figtree' } }, 'No materialized tables yet. Run a query → Route to Supabase.');
     return h('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
         insights.map(ins => {
             const [bg, col, lbl] = schedBadge[ins.refresh_schedule] || schedBadge.manual;
@@ -671,8 +671,8 @@ function InsightsTab({ insights, onQuery, onRefresh }) {
                 h('div', { style: { flex: 1 } },
                     h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 12, fontWeight: 700, color: '#c084fc', marginBottom: 4 } }, ins.table_name),
                     h('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
-                        h('span', { style: { padding: '2px 8px', borderRadius: 4, background: bg, color: col, fontSize: 9.5, fontFamily: 'DM Sans' } }, lbl),
-                        h('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.28)', fontFamily: 'DM Sans' } },
+                        h('span', { style: { padding: '2px 8px', borderRadius: 4, background: bg, color: col, fontSize: 9.5, fontFamily: 'Figtree' } }, lbl),
+                        h('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.28)', fontFamily: 'Figtree' } },
                             (ins.row_count || 0).toLocaleString() + ' rows · refreshed ' + (ins.last_refreshed_at ? ins.last_refreshed_at.slice(0, 10) : '—'))
                     )
                 ),
@@ -699,17 +699,17 @@ function SaveModal({ sql, onClose, onSaved }) {
         } catch (e) { setErr(String(e)); setBusy(false); }
     }
 
-    const inp = { width: '100%', boxSizing: 'border-box', padding: '8px 12px', background: 'rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 6, color: 'rgba(255,255,255,0.85)', fontSize: 12, fontFamily: 'DM Sans', outline: 'none' };
+    const inp = { width: '100%', boxSizing: 'border-box', padding: '8px 12px', background: 'rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 6, color: 'rgba(255,255,255,0.85)', fontSize: 12, fontFamily: 'Figtree', outline: 'none' };
     return h('div', { style: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 } },
         h('div', { style: { background: '#0b0d17', border: '1px solid rgba(99,102,241,0.3)', borderRadius: 12, padding: 28, width: 420, maxWidth: '90vw' } },
-            h('div', { style: { fontFamily: 'DM Sans', fontSize: 15, fontWeight: 700, color: 'rgba(255,255,255,0.9)', marginBottom: 20 } }, '💾 Save Query'),
+            h('div', { style: { fontFamily: 'Figtree', fontSize: 15, fontWeight: 700, color: 'rgba(255,255,255,0.9)', marginBottom: 20 } }, '💾 Save Query'),
             ['Name *', 'Description', 'Tags (comma-separated)'].map((lbl, i) =>
                 h('div', { key: i, style: { marginBottom: 12 } },
                     h('div', { style: { ...label, marginBottom: 5 } }, lbl),
                     h('input', { style: inp, value: [name, desc, tags][i], onChange: e => [setName, setDesc, setTags][i](e.target.value), placeholder: ['e.g. Top Winners', 'Optional', 'e.g. positions, risk'][i] })
                 )
             ),
-            err && h('div', { style: { color: '#f87171', fontSize: 11, marginBottom: 12, fontFamily: 'DM Sans' } }, err),
+            err && h('div', { style: { color: '#f87171', fontSize: 11, marginBottom: 12, fontFamily: 'Figtree' } }, err),
             h('div', { style: { display: 'flex', gap: 10 } },
                 h('button', { onClick: go, disabled: busy, style: { ...btnPrimary('#6366f1'), flex: 1, textAlign: 'center' } }, busy ? 'Saving…' : '✓ Save'),
                 h('button', { onClick: onClose, style: { ...btnGhost(), flex: 1, textAlign: 'center', padding: '7px 14px' } }, 'Cancel')
@@ -739,8 +739,8 @@ function MatModal({ sql, onClose, onDone }) {
 
     return h('div', { style: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 } },
         h('div', { style: { background: '#0b0d17', border: '1px solid rgba(16,185,129,0.28)', borderRadius: 12, padding: 28, width: 440, maxWidth: '90vw' } },
-            h('div', { style: { fontFamily: 'DM Sans', fontSize: 15, fontWeight: 700, color: 'rgba(255,255,255,0.9)', marginBottom: 6 } }, '🚀 Route to Supabase'),
-            h('div', { style: { fontSize: 11, color: 'rgba(255,255,255,0.32)', fontFamily: 'DM Sans', marginBottom: 18 } }, 'Materialise this query result as a persistent table prefixed with insight_.'),
+            h('div', { style: { fontFamily: 'Figtree', fontSize: 15, fontWeight: 700, color: 'rgba(255,255,255,0.9)', marginBottom: 6 } }, '🚀 Route to Supabase'),
+            h('div', { style: { fontSize: 11, color: 'rgba(255,255,255,0.32)', fontFamily: 'Figtree', marginBottom: 18 } }, 'Materialise this query result as a persistent table prefixed with insight_.'),
             h('div', { style: { marginBottom: 14 } },
                 h('div', { style: { ...label, marginBottom: 5 } }, 'TABLE NAME SUFFIX *'),
                 h('div', { style: { display: 'flex' } },
@@ -756,7 +756,7 @@ function MatModal({ sql, onClose, onDone }) {
                     )
                 )
             ),
-            err && h('div', { style: { color: '#f87171', fontSize: 11, marginBottom: 12, fontFamily: 'DM Sans' } }, err),
+            err && h('div', { style: { color: '#f87171', fontSize: 11, marginBottom: 12, fontFamily: 'Figtree' } }, err),
             h('div', { style: { display: 'flex', gap: 10 } },
                 h('button', { onClick: go, disabled: busy, style: { ...btnPrimary('#10b981'), flex: 1, textAlign: 'center' } }, busy ? 'Materialising…' : '✓ Materialise'),
                 h('button', { onClick: onClose, style: { ...btnGhost(), flex: 1, textAlign: 'center', padding: '7px 14px' } }, 'Cancel')
@@ -900,7 +900,7 @@ export function SqlTerminal() {
     return h('div', { style: { paddingBottom: 48 } },
 
         // Toast
-        toast && h('div', { style: { position: 'fixed', top: 18, right: 22, zIndex: 10000, background: '#0d0f1c', border: '1px solid rgba(239,68,68,0.35)', borderRadius: 8, padding: '9px 18px', color: '#fca5a5', fontSize: 12, fontFamily: 'DM Sans', boxShadow: '0 4px 32px rgba(0,0,0,0.6)', animation: 'fadeInUp 0.2s ease-out' } }, toast),
+        toast && h('div', { style: { position: 'fixed', top: 18, right: 22, zIndex: 10000, background: '#0d0f1c', border: '1px solid rgba(239,68,68,0.35)', borderRadius: 8, padding: '9px 18px', color: '#fca5a5', fontSize: 12, fontFamily: 'Figtree', boxShadow: '0 4px 32px rgba(0,0,0,0.6)', animation: 'fadeInUp 0.2s ease-out' } }, toast),
 
         // Modals
         showSave && h(SaveModal, { sql, onClose: () => setShowSave(false), onSaved: () => { refreshSaved(); showT('✓ Query saved'); } }),
@@ -916,14 +916,14 @@ export function SqlTerminal() {
             h('div', { style: { padding: '20px 24px 18px', display: 'flex', alignItems: 'center', gap: 18 } },
                 h('div', { style: { width: 44, height: 44, borderRadius: 10, background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0, boxShadow: '0 0 20px rgba(99,102,241,0.35)' } }, '▣'),
                 h('div', null,
-                    h('div', { style: { fontSize: 8, letterSpacing: 2.5, color: 'rgba(99,102,241,0.7)', fontFamily: 'DM Sans', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 } }, 'ATLAS · SYSTEM'),
+                    h('div', { style: { fontSize: 8, letterSpacing: 2.5, color: 'rgba(99,102,241,0.7)', fontFamily: 'Figtree', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 } }, 'ATLAS · SYSTEM'),
                     h('h2', { style: { fontFamily: 'JetBrains Mono', fontSize: 22, fontWeight: 800, color: 'rgba(255,255,255,0.94)', margin: '0 0 3px', letterSpacing: -0.3 } }, 'SQL Terminal'),
-                    h('div', { style: { fontSize: 11.5, color: 'rgba(255,255,255,0.32)', fontFamily: 'DM Sans' } }, 'Query your portfolio universe · Read-only · Supabase PostgreSQL · 10k row cap')
+                    h('div', { style: { fontSize: 11.5, color: 'rgba(255,255,255,0.32)', fontFamily: 'Figtree' } }, 'Query your portfolio universe · Read-only · Supabase PostgreSQL · 10k row cap')
                 ),
                 h('div', { style: { marginLeft: 'auto', display: 'flex', gap: 10, alignItems: 'center' } },
                     sb && h('div', { style: { display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 20, background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)' } },
                         h('div', { style: { width: 6, height: 6, borderRadius: '50%', background: '#10b981', boxShadow: '0 0 6px #10b981', animation: 'glowPulse 2s ease-in-out infinite' } }),
-                        h('span', { style: { fontSize: 10, fontFamily: 'DM Sans', fontWeight: 600, color: '#10b981', letterSpacing: 0.5 } }, 'LIVE')
+                        h('span', { style: { fontSize: 10, fontFamily: 'Figtree', fontWeight: 600, color: '#10b981', letterSpacing: 0.5 } }, 'LIVE')
                     ),
                     h('button', {
                         onClick: () => setShowAi(v => !v),
@@ -949,7 +949,7 @@ export function SqlTerminal() {
                 h('div', { style: { borderRadius: 10, overflow: 'hidden', border: '1px solid rgba(99,102,241,0.18)' } },
                     // Toolbar
                     h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'linear-gradient(135deg, rgba(99,102,241,0.08), rgba(0,0,0,0.3))', borderBottom: '1px solid rgba(99,102,241,0.1)' } },
-                        h('span', { style: { fontSize: 9, letterSpacing: 1.8, textTransform: 'uppercase', color: 'rgba(255,255,255,0.22)', fontFamily: 'DM Sans' } }, 'SQL EDITOR'),
+                        h('span', { style: { fontSize: 9, letterSpacing: 1.8, textTransform: 'uppercase', color: 'rgba(255,255,255,0.22)', fontFamily: 'Figtree' } }, 'SQL EDITOR'),
                         h('div', { style: { marginLeft: 'auto', display: 'flex', gap: 7, alignItems: 'center' } },
                             h('button', {
                                 onClick: runQuery, disabled: running,
@@ -973,18 +973,18 @@ export function SqlTerminal() {
                 // Metadata bar
                 result && h('div', { style: { display: 'flex', alignItems: 'center', gap: 12, padding: '7px 14px', background: 'rgba(0,0,0,0.22)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 8, flexWrap: 'wrap', gap: 10 } },
                     result.err
-                        ? h('span', { style: { color: '#f87171', fontFamily: 'DM Sans', fontSize: 11.5 } }, '✗ ' + result.err)
+                        ? h('span', { style: { color: '#f87171', fontFamily: 'Figtree', fontSize: 11.5 } }, '✗ ' + result.err)
                         : [
                             h('span', { key: 'ok', style: { color: '#10b981', fontSize: 12 } }, '✓'),
                             h('span', { key: 'rows', style: { fontFamily: 'JetBrains Mono', fontSize: 12, color: '#a5b4fc' } }, `${result.rows.length.toLocaleString()} rows`),
-                            h('span', { key: 'ms', style: { color: 'rgba(255,255,255,0.25)', fontSize: 10.5, fontFamily: 'DM Sans' } }, `· ${result.ms}ms`),
-                            result.columns.length > 0 && h('span', { key: 'cols', style: { color: 'rgba(0,212,255,0.45)', fontSize: 10, fontFamily: 'DM Sans' } }, `· ${result.columns.length} columns`),
+                            h('span', { key: 'ms', style: { color: 'rgba(255,255,255,0.25)', fontSize: 10.5, fontFamily: 'Figtree' } }, `· ${result.ms}ms`),
+                            result.columns.length > 0 && h('span', { key: 'cols', style: { color: 'rgba(0,212,255,0.45)', fontSize: 10, fontFamily: 'Figtree' } }, `· ${result.columns.length} columns`),
                         ]
                 ),
 
                 // Results
                 result && !result.err && result.rows.length > 0 && h(ResultsTable, { rows: sortedRows, columns: result.columns, sortCol, sortDir, onSort }),
-                result && !result.err && result.rows.length === 0 && h('div', { style: { color: 'rgba(255,255,255,0.28)', fontFamily: 'DM Sans', fontSize: 12, padding: '10px 0' } }, 'Query returned 0 rows.'),
+                result && !result.err && result.rows.length === 0 && h('div', { style: { color: 'rgba(255,255,255,0.28)', fontFamily: 'Figtree', fontSize: 12, padding: '10px 0' } }, 'Query returned 0 rows.'),
             ),
 
             // CENTRE: AI panel (when open)
@@ -1010,7 +1010,7 @@ export function SqlTerminal() {
                             padding: '11px 18px 13px', border: 'none', cursor: 'pointer',
                             borderBottom: '2px solid ' + (active ? '#00d4ff' : 'transparent'),
                             background: 'transparent', color: active ? '#00d4ff' : 'rgba(255,255,255,0.35)',
-                            fontSize: 11.5, fontFamily: 'DM Sans', fontWeight: active ? 700 : 400,
+                            fontSize: 11.5, fontFamily: 'Figtree', fontWeight: active ? 700 : 400,
                             transition: 'all 0.14s', marginBottom: -1,
                             display: 'flex', alignItems: 'center', gap: 7,
                         },

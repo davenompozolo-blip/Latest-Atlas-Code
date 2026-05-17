@@ -286,15 +286,15 @@ export function PositionsPanel(p) {
         h('div', { className: 'card', style: { marginBottom: 16 } },
             h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 } },
                 h('div', { className: 'card-title', style: { margin: 0 } }, 'POSITION RETURN ATTRIBUTION'),
-                h('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.28)', fontFamily: 'DM Sans' } }, 'Weight% · Bar = contribution · Pos Return · Contribution to portfolio')
+                h('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.28)', fontFamily: 'Figtree' } }, 'Weight% · Bar = contribution · Pos Return · Contribution to portfolio')
             ),
             h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 32px' } },
                 h('div', null,
-                    h('div', { style: { fontSize: 9, letterSpacing: 1.5, color: 'rgba(16,185,129,0.7)', textTransform: 'uppercase', marginBottom: 6, fontFamily: 'DM Sans' } }, '▲ Top Contributors'),
+                    h('div', { style: { fontSize: 9, letterSpacing: 1.5, color: 'rgba(16,185,129,0.7)', textTransform: 'uppercase', marginBottom: 6, fontFamily: 'Figtree' } }, '▲ Top Contributors'),
                     contribs.slice(0, 8).map(mkContribRow)
                 ),
                 h('div', null,
-                    h('div', { style: { fontSize: 9, letterSpacing: 1.5, color: 'rgba(239,68,68,0.7)', textTransform: 'uppercase', marginBottom: 6, fontFamily: 'DM Sans' } }, '▼ Top Detractors'),
+                    h('div', { style: { fontSize: 9, letterSpacing: 1.5, color: 'rgba(239,68,68,0.7)', textTransform: 'uppercase', marginBottom: 6, fontFamily: 'Figtree' } }, '▼ Top Detractors'),
                     contribs.slice(-6).reverse().map(function(c, i) { return mkContribRow(c, i + 50); })
                 )
             )
@@ -303,7 +303,7 @@ export function PositionsPanel(p) {
 
     // ---- BRINSON ANALYSIS -------------------------------------
     var benchSelector = h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 } },
-        h('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.35)', fontFamily: 'DM Sans', marginRight: 4 } }, 'BENCHMARK'),
+        h('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.35)', fontFamily: 'Figtree', marginRight: 4 } }, 'BENCHMARK'),
         Object.keys(BENCHMARKS).map(function(key) {
             var active = benchKey === key;
             return h('button', {
@@ -348,7 +348,7 @@ export function PositionsPanel(p) {
                         h('thead', null,
                             h('tr', null,
                                 ['Sector', 'Pos', 'Port Wt', 'Bench Wt', 'Active Wt', 'Port Ret', 'Bench Ret', 'Allocation', 'Selection', 'Total'].map(function(col) {
-                                    return h('th', { key: col, style: { position: 'sticky', top: 0, background: '#0b0f1a', padding: '8px 8px', fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: 0.8, borderBottom: '1px solid rgba(255,255,255,0.07)', textAlign: col === 'Sector' || col === 'Pos' ? 'left' : 'right', fontFamily: 'DM Sans', whiteSpace: 'nowrap' } }, col);
+                                    return h('th', { key: col, style: { position: 'sticky', top: 0, background: '#0b0f1a', padding: '8px 8px', fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: 0.8, borderBottom: '1px solid rgba(255,255,255,0.07)', textAlign: col === 'Sector' || col === 'Pos' ? 'left' : 'right', fontFamily: 'Figtree', whiteSpace: 'nowrap' } }, col);
                                 })
                             )
                         ),
@@ -409,7 +409,7 @@ export function PositionsPanel(p) {
         { key: 'entry_efficiency_score', label: 'Efficiency', align: 'right' },
     ];
 
-    var thS = { position: 'sticky', top: 0, zIndex: 2, background: '#0b0f1a', padding: '8px 8px', fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: 0.8, boxShadow: '0 1px 0 rgba(255,255,255,0.07)', cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap', fontFamily: 'DM Sans' };
+    var thS = { position: 'sticky', top: 0, zIndex: 2, background: '#0b0f1a', padding: '8px 8px', fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: 0.8, boxShadow: '0 1px 0 rgba(255,255,255,0.07)', cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap', fontFamily: 'Figtree' };
 
     var tableView = h('div', null,
         h('div', { className: 'card' },

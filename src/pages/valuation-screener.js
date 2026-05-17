@@ -77,7 +77,7 @@ function StyleBadge({ style }) {
             border: '1px solid ' + c.border,
             borderRadius: 3, padding: '1px 6px',
             fontSize: 9, fontWeight: 700,
-            letterSpacing: 0.8, fontFamily: 'DM Mono, monospace',
+            letterSpacing: 0.8, fontFamily: 'JetBrains Mono, monospace',
         }
     }, STYLE_ABBR[style] || style);
 }
@@ -90,7 +90,7 @@ function RegimeBadge({ regime }) {
             border: '1px solid ' + c.border,
             borderRadius: 3, padding: '2px 7px',
             fontSize: 10, fontWeight: 600,
-            fontFamily: 'DM Mono, monospace',
+            fontFamily: 'JetBrains Mono, monospace',
         }
     }, regime || '—');
 }
@@ -103,7 +103,7 @@ function RSIBar({ rsi }) {
         h('div', { style: { width: 44, height: 5, background: 'rgba(255,255,255,0.08)', borderRadius: 3, overflow: 'hidden', flexShrink: 0 } },
             h('div', { style: { width: pct + '%', height: '100%', background: col, borderRadius: 3 } })
         ),
-        h('span', { style: { fontSize: 11, color: col, fontFamily: 'DM Mono, monospace', fontWeight: 600 } }, rsi.toFixed(0))
+        h('span', { style: { fontSize: 11, color: col, fontFamily: 'JetBrains Mono, monospace', fontWeight: 600 } }, rsi.toFixed(0))
     );
 }
 
@@ -144,7 +144,7 @@ function BucketStrip({ data, filters, activeStyle, onStyleClick }) {
                 }
             },
                 h('div', { style: { fontSize: 16, marginBottom: 4, color: active ? c.text : 'rgba(255,255,255,0.4)' } }, b.icon),
-                h('div', { style: { fontSize: 18, fontWeight: 700, fontFamily: 'DM Mono, monospace', color: active ? c.text : '#fff', lineHeight: 1.1 } }, count),
+                h('div', { style: { fontSize: 18, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', color: active ? c.text : '#fff', lineHeight: 1.1 } }, count),
                 h('div', { style: { fontSize: 10, color: active ? c.text : 'rgba(255,255,255,0.5)', marginTop: 2, fontWeight: active ? 700 : 400, letterSpacing: 0.5 } }, b.style),
                 h('div', { style: { fontSize: 9, color: 'rgba(255,255,255,0.25)', marginTop: 1 } }, b.desc)
             );
@@ -163,7 +163,7 @@ function SortableHeader({ label, col, sort, onSort, align }) {
             textTransform: 'uppercase', cursor: 'pointer', userSelect: 'none',
             whiteSpace: 'nowrap', textAlign: align || 'right',
             borderBottom: '1px solid rgba(255,255,255,0.08)',
-            fontFamily: 'DM Mono, monospace',
+            fontFamily: 'JetBrains Mono, monospace',
         }
     }, label + (active ? (sort.asc ? ' ↑' : ' ↓') : ''));
 }
@@ -185,7 +185,7 @@ function ScreenerRow({ s, onNavigate }) {
             h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 8 } },
                 h('span', {
                     style: {
-                        fontSize: 12, fontWeight: 700, fontFamily: 'DM Mono, monospace',
+                        fontSize: 12, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace',
                         color: '#fff', letterSpacing: 0.5, flexShrink: 0,
                     }
                 }, s.symbol),
@@ -202,7 +202,7 @@ function ScreenerRow({ s, onNavigate }) {
             h('span', {
                 style: {
                     fontSize: 10, color: 'rgba(255,255,255,0.45)',
-                    fontFamily: 'DM Mono, monospace',
+                    fontFamily: 'JetBrains Mono, monospace',
                     background: 'rgba(255,255,255,0.05)',
                     border: '1px solid rgba(255,255,255,0.08)',
                     borderRadius: 3, padding: '2px 6px',
@@ -211,19 +211,19 @@ function ScreenerRow({ s, onNavigate }) {
             }, s.sector || '—')
         ),
         // Price
-        h('td', { style: { padding: '8px 10px', textAlign: 'right', fontFamily: 'DM Mono, monospace', fontSize: 12, color: '#00d4ff', fontWeight: 600 } },
+        h('td', { style: { padding: '8px 10px', textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: '#00d4ff', fontWeight: 600 } },
             s.current_price != null ? '$' + Number(s.current_price).toFixed(2) : '—'
         ),
         // P/E
-        h('td', { style: { padding: '8px 10px', textAlign: 'right', fontFamily: 'DM Mono, monospace', fontSize: 12, color: peColor(s.pe_ratio) } },
+        h('td', { style: { padding: '8px 10px', textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: peColor(s.pe_ratio) } },
             s.pe_ratio != null ? fmtN(s.pe_ratio, 1, 'x') : '—'
         ),
         // EV/EBITDA
-        h('td', { style: { padding: '8px 10px', textAlign: 'right', fontFamily: 'DM Mono, monospace', fontSize: 12, color: 'rgba(255,255,255,0.7)' } },
+        h('td', { style: { padding: '8px 10px', textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: 'rgba(255,255,255,0.7)' } },
             s.ev_ebitda != null ? fmtN(s.ev_ebitda, 1, 'x') : '—'
         ),
         // Div %
-        h('td', { style: { padding: '8px 10px', textAlign: 'right', fontFamily: 'DM Mono, monospace', fontSize: 12, color: (s.div_yield_pct || 0) > 0 ? '#1D9E75' : 'rgba(255,255,255,0.25)' } },
+        h('td', { style: { padding: '8px 10px', textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: (s.div_yield_pct || 0) > 0 ? '#1D9E75' : 'rgba(255,255,255,0.25)' } },
             (s.div_yield_pct || 0) > 0 ? fmtN(s.div_yield_pct, 2, '%') : '—'
         ),
         // RSI
@@ -231,15 +231,15 @@ function ScreenerRow({ s, onNavigate }) {
             h(RSIBar, { rsi: s.rsi_14 != null ? Number(s.rsi_14) : null })
         ),
         // 1M
-        h('td', { style: { padding: '8px 10px', textAlign: 'right', fontFamily: 'DM Mono, monospace', fontSize: 12, color: retColor(s.return_1m_pct), fontWeight: 600 } },
+        h('td', { style: { padding: '8px 10px', textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: retColor(s.return_1m_pct), fontWeight: 600 } },
             retStr(s.return_1m_pct)
         ),
         // 3M
-        h('td', { style: { padding: '8px 10px', textAlign: 'right', fontFamily: 'DM Mono, monospace', fontSize: 12, color: retColor(s.return_3m_pct), fontWeight: 600 } },
+        h('td', { style: { padding: '8px 10px', textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: retColor(s.return_3m_pct), fontWeight: 600 } },
             retStr(s.return_3m_pct)
         ),
         // YTD
-        h('td', { style: { padding: '8px 10px', textAlign: 'right', fontFamily: 'DM Mono, monospace', fontSize: 12, color: retColor(s.return_ytd_pct), fontWeight: 600 } },
+        h('td', { style: { padding: '8px 10px', textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: retColor(s.return_ytd_pct), fontWeight: 600 } },
             retStr(s.return_ytd_pct)
         ),
         // Regime
@@ -261,7 +261,7 @@ function ScreenerRow({ s, onNavigate }) {
                     border: '1px solid rgba(0,212,255,0.35)',
                     color: '#00d4ff', borderRadius: 5,
                     padding: '5px 12px', fontSize: 11, fontWeight: 700,
-                    cursor: 'pointer', fontFamily: 'DM Mono, monospace',
+                    cursor: 'pointer', fontFamily: 'JetBrains Mono, monospace',
                     whiteSpace: 'nowrap', letterSpacing: 0.5,
                 }
             }, 'Value →')
@@ -282,7 +282,7 @@ function UniverseToggle({ universe, onChange }) {
                 color: active ? '#00d4ff' : 'rgba(255,255,255,0.45)',
                 borderRadius: 6, padding: '5px 14px',
                 fontSize: 11, fontWeight: active ? 700 : 400,
-                cursor: 'pointer', fontFamily: 'DM Mono, monospace',
+                cursor: 'pointer', fontFamily: 'JetBrains Mono, monospace',
                 letterSpacing: 0.5, transition: 'all 0.15s',
                 display: 'flex', alignItems: 'center', gap: 5,
             }
@@ -548,12 +548,12 @@ export function ValuationScreener({ onNavigate }) {
         border: '1px solid rgba(255,255,255,0.12)',
         borderRadius: 5, color: 'rgba(255,255,255,0.8)',
         padding: '5px 10px', fontSize: 11,
-        fontFamily: 'DM Mono, monospace', cursor: 'pointer', outline: 'none',
+        fontFamily: 'JetBrains Mono, monospace', cursor: 'pointer', outline: 'none',
     };
 
     // ── Loading / error states ────────────────────────────────────────────────
     if (loading) {
-        return h('div', { style: { padding: 60, textAlign: 'center', color: 'rgba(255,255,255,0.4)', fontSize: 13, fontFamily: 'DM Mono, monospace' } },
+        return h('div', { style: { padding: 60, textAlign: 'center', color: 'rgba(255,255,255,0.4)', fontSize: 13, fontFamily: 'JetBrains Mono, monospace' } },
             universe === 'market' ? 'Fetching market data from Alpha Vantage…' : 'Loading screener data…'
         );
     }
@@ -564,7 +564,7 @@ export function ValuationScreener({ onNavigate }) {
         );
     }
     if (error) {
-        return h('div', { style: { padding: 40, color: '#ef4444', fontSize: 13, fontFamily: 'DM Mono, monospace' } }, 'Error loading screener: ' + error);
+        return h('div', { style: { padding: 40, color: '#ef4444', fontSize: 13, fontFamily: 'JetBrains Mono, monospace' } }, 'Error loading screener: ' + error);
     }
     if (data.length === 0 && universe === 'portfolio') {
         return h('div', { style: { padding: 60, textAlign: 'center' } },
@@ -586,7 +586,7 @@ export function ValuationScreener({ onNavigate }) {
             }
         },
             h('div', null,
-                h('div', { style: { fontSize: 13, fontWeight: 700, color: '#00d4ff', letterSpacing: 2, fontFamily: 'DM Mono, monospace' } }, '◈ VALUATION SCREENER'),
+                h('div', { style: { fontSize: 13, fontWeight: 700, color: '#00d4ff', letterSpacing: 2, fontFamily: 'JetBrains Mono, monospace' } }, '◈ VALUATION SCREENER'),
                 h('div', { style: { fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 1 } }, 'Discover which companies to value next')
             ),
             // Universe toggle
@@ -594,11 +594,11 @@ export function ValuationScreener({ onNavigate }) {
             h('div', { style: { flex: 1 } }),
             // Enrichment progress banner (both modes)
             enrichProg && h('div', {
-                style: { fontSize: 10, color: '#00d4ff', fontFamily: 'DM Mono, monospace', textAlign: 'right', opacity: 0.7 }
+                style: { fontSize: 10, color: '#00d4ff', fontFamily: 'JetBrains Mono, monospace', textAlign: 'right', opacity: 0.7 }
             }, 'Enriching ' + enrichProg.done + ' / ' + enrichProg.total + '…'),
             // Market mode info banner
             universe === 'market' && !enrichProg && marketMeta && h('div', {
-                style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'DM Mono, monospace', textAlign: 'right' }
+                style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'JetBrains Mono, monospace', textAlign: 'right' }
             },
                 (marketMeta.enriched || 0) + ' / ' + (marketMeta.total || 0) + ' enriched from Alpha Vantage'
                 + (!marketMeta.hasKey ? ' · add ALPHA_VANTAGE_API_KEY to Vercel to load fundamentals' : '')
@@ -613,10 +613,10 @@ export function ValuationScreener({ onNavigate }) {
                     border: '1px solid rgba(255,255,255,0.12)',
                     borderRadius: 6, color: '#fff',
                     padding: '7px 12px', fontSize: 12, width: 200,
-                    outline: 'none', fontFamily: 'DM Mono, monospace',
+                    outline: 'none', fontFamily: 'JetBrains Mono, monospace',
                 }
             }),
-            h('div', { style: { fontSize: 11, color: 'rgba(255,255,255,0.35)', fontFamily: 'DM Mono, monospace', whiteSpace: 'nowrap' } },
+            h('div', { style: { fontSize: 11, color: 'rgba(255,255,255,0.35)', fontFamily: 'JetBrains Mono, monospace', whiteSpace: 'nowrap' } },
                 filtered.length + ' / ' + data.length + ' stocks'
             )
         ),
@@ -634,7 +634,7 @@ export function ValuationScreener({ onNavigate }) {
                         color: active ? (c ? c.text : '#00d4ff') : 'rgba(255,255,255,0.5)',
                         borderRadius: 20, padding: '5px 14px', fontSize: 11,
                         fontWeight: active ? 700 : 400, cursor: 'pointer',
-                        fontFamily: 'DM Mono, monospace', letterSpacing: 0.5, transition: 'all 0.15s',
+                        fontFamily: 'JetBrains Mono, monospace', letterSpacing: 0.5, transition: 'all 0.15s',
                     }
                 }, style);
             })
@@ -642,7 +642,7 @@ export function ValuationScreener({ onNavigate }) {
 
         // ── Filter row ────────────────────────────────────────────────────────
         h('div', { style: { padding: '8px 20px', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.04)' } },
-            h('span', { style: { fontSize: 9, letterSpacing: 1.5, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', fontFamily: 'DM Mono, monospace' } }, 'Filter:'),
+            h('span', { style: { fontSize: 9, letterSpacing: 1.5, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', fontFamily: 'JetBrains Mono, monospace' } }, 'Filter:'),
             h('select', { value: filters.sector, onChange: function(e) { setFilter('sector', e.target.value); }, style: selStyle },
                 sectors.map(function(s) { return h('option', { key: s, value: s }, s === 'All' ? 'All sectors' : s); })
             ),
@@ -686,26 +686,26 @@ export function ValuationScreener({ onNavigate }) {
                         style: {
                             background: 'rgba(0,212,255,0.1)', border: '1px solid rgba(0,212,255,0.3)',
                             color: '#00d4ff', borderRadius: 5, padding: '7px 20px',
-                            fontSize: 12, cursor: 'pointer', fontFamily: 'DM Mono, monospace',
+                            fontSize: 12, cursor: 'pointer', fontFamily: 'JetBrains Mono, monospace',
                         }
                     }, 'Reset filters')
                 )
                 : h('table', { style: { width: '100%', borderCollapse: 'collapse', minWidth: 1060 } },
                     h('thead', null,
                         h('tr', { style: { borderBottom: '1px solid rgba(255,255,255,0.08)' } },
-                            h('th', { style: { padding: '8px 10px', fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', textAlign: 'left', borderBottom: '1px solid rgba(255,255,255,0.08)', fontFamily: 'DM Mono, monospace' } }, 'Company'),
+                            h('th', { style: { padding: '8px 10px', fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', textAlign: 'left', borderBottom: '1px solid rgba(255,255,255,0.08)', fontFamily: 'JetBrains Mono, monospace' } }, 'Company'),
                             h(SortableHeader, { label: 'Sector', col: 'sector', sort, onSort: handleSort, align: 'left' }),
                             h(SortableHeader, { label: 'Price', col: 'current_price', sort, onSort: handleSort }),
                             h(SortableHeader, { label: 'P/E', col: 'pe_ratio', sort, onSort: handleSort }),
                             h(SortableHeader, { label: 'EV/EBITDA', col: 'ev_ebitda', sort, onSort: handleSort }),
                             h(SortableHeader, { label: 'Div %', col: 'div_yield_pct', sort, onSort: handleSort }),
-                            h('th', { style: { padding: '8px 10px', fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', textAlign: 'right', borderBottom: '1px solid rgba(255,255,255,0.08)', fontFamily: 'DM Mono, monospace' } }, 'RSI'),
+                            h('th', { style: { padding: '8px 10px', fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', textAlign: 'right', borderBottom: '1px solid rgba(255,255,255,0.08)', fontFamily: 'JetBrains Mono, monospace' } }, 'RSI'),
                             h(SortableHeader, { label: '1M', col: 'return_1m_pct', sort, onSort: handleSort }),
                             h(SortableHeader, { label: '3M', col: 'return_3m_pct', sort, onSort: handleSort }),
                             h(SortableHeader, { label: 'YTD', col: 'return_ytd_pct', sort, onSort: handleSort }),
-                            h('th', { style: { padding: '8px 10px', fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', textAlign: 'left', borderBottom: '1px solid rgba(255,255,255,0.08)', fontFamily: 'DM Mono, monospace' } }, 'Regime'),
-                            h('th', { style: { padding: '8px 10px', fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', textAlign: 'left', borderBottom: '1px solid rgba(255,255,255,0.08)', fontFamily: 'DM Mono, monospace' } }, 'Style'),
-                            h('th', { style: { padding: '8px 10px', fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', textAlign: 'right', borderBottom: '1px solid rgba(255,255,255,0.08)', fontFamily: 'DM Mono, monospace' } }, 'Action')
+                            h('th', { style: { padding: '8px 10px', fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', textAlign: 'left', borderBottom: '1px solid rgba(255,255,255,0.08)', fontFamily: 'JetBrains Mono, monospace' } }, 'Regime'),
+                            h('th', { style: { padding: '8px 10px', fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', textAlign: 'left', borderBottom: '1px solid rgba(255,255,255,0.08)', fontFamily: 'JetBrains Mono, monospace' } }, 'Style'),
+                            h('th', { style: { padding: '8px 10px', fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', textAlign: 'right', borderBottom: '1px solid rgba(255,255,255,0.08)', fontFamily: 'JetBrains Mono, monospace' } }, 'Action')
                         )
                     ),
                     h('tbody', null,

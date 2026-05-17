@@ -634,7 +634,7 @@ export function ValuationHouse(props) {
         letterSpacing: '0.08em',
         marginBottom: 3,
         display: 'block',
-        fontFamily: 'DM Sans, sans-serif',
+        fontFamily: 'Figtree, sans-serif',
     };
 
     // ── UI Primitives ─────────────────────────────────────────────────────────

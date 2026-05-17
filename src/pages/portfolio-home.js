@@ -251,7 +251,7 @@ function TodayMovers(p) {
     var gainers = withChg.slice(0, 4);
     var losers = withChg.slice(-4).reverse();
     var colStyle = { flex: 1, minWidth: 0 };
-    var titleStyle = { fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)', marginBottom: 4, fontFamily: 'DM Sans' };
+    var titleStyle = { fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)', marginBottom: 4, fontFamily: 'Figtree' };
     return React.createElement('div', { className: 'card', style: { marginBottom: 16 } },
         React.createElement('div', { className: 'card-title', style: { fontSize: 12, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 12 } }, "TODAY'S MOVERS"),
         React.createElement('div', { style: { display: 'flex', gap: 24 } },
@@ -304,7 +304,7 @@ function EarningsCalendar({ data }) {
 
                     return React.createElement('tr', { key: r.symbol },
                         React.createElement('td', { style: { fontWeight: 600, color: '#00d4ff' } }, r.symbol),
-                        React.createElement('td', { style: { color: 'rgba(255,255,255,0.6)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'DM Sans, sans-serif' } },
+                        React.createElement('td', { style: { color: 'rgba(255,255,255,0.6)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'Figtree, sans-serif' } },
                             r.name || '—'),
                         React.createElement('td', null, r.weight_pct != null ? (r.weight_pct * 100).toFixed(1) + '%' : '—'),
                         React.createElement('td', null, r.earnings_date || '—'),
@@ -599,14 +599,14 @@ function SnapCard(p) {
 
 function SnapLabel(p) {
     return React.createElement('div', { style: { fontSize: 9, letterSpacing: 1.8, textTransform: 'uppercase',
-        color: C.muted, marginBottom: p.mb != null ? p.mb : 10, fontFamily: 'DM Sans' } }, p.children);
+        color: C.muted, marginBottom: p.mb != null ? p.mb : 10, fontFamily: 'Figtree' } }, p.children);
 }
 
 function MiniStat(p) {
     return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, flex: 1 } },
-        React.createElement('div', { style: { fontSize: 9, color: C.muted, letterSpacing: 1.2, textTransform: 'uppercase', fontFamily: 'DM Sans', textAlign: 'center' } }, p.label),
+        React.createElement('div', { style: { fontSize: 9, color: C.muted, letterSpacing: 1.2, textTransform: 'uppercase', fontFamily: 'Figtree', textAlign: 'center' } }, p.label),
         React.createElement('div', { style: { fontFamily: 'JetBrains Mono', fontSize: p.size || 20, fontWeight: 800, color: p.color || C.text, lineHeight: 1.1 } }, p.value),
-        p.sub && React.createElement('div', { style: { fontSize: 9, color: C.muted, fontFamily: 'DM Sans' } }, p.sub)
+        p.sub && React.createElement('div', { style: { fontSize: 9, color: C.muted, fontFamily: 'Figtree' } }, p.sub)
     );
 }
 
@@ -626,7 +626,7 @@ function GaugeDial(p) {
             strokeDasharray: dasharray, strokeDashoffset: 0 }),
         React.createElement('text', { x: 60, y: 52, textAnchor: 'middle', fontFamily: 'JetBrains Mono',
             fontSize: 18, fontWeight: 800, fill: col }, Math.round(pct)),
-        React.createElement('text', { x: 60, y: 63, textAnchor: 'middle', fontFamily: 'DM Sans',
+        React.createElement('text', { x: 60, y: 63, textAnchor: 'middle', fontFamily: 'Figtree',
             fontSize: 8, fill: C.muted }, p.label || 'score')
     );
 }
@@ -696,13 +696,13 @@ function PerformanceSnapshot(p) {
         h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 } },
             h(SnapCard, { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 } },
                 h(GaugeDial, { value: winRate, label: 'win rate' }),
-                h('div', { style: { fontSize: 10, color: C.muted, textAlign: 'center', fontFamily: 'DM Sans' } },
+                h('div', { style: { fontSize: 10, color: C.muted, textAlign: 'center', fontFamily: 'Figtree' } },
                     winners.length + ' of ' + withRet.length + ' positions profitable')
             ),
             h(SnapCard, { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 } },
                 h(SnapLabel, { mb: 6 }, 'Momentum Alignment'),
                 h(GaugeDial, { value: momPct, label: 'aligned' }),
-                h('div', { style: { fontSize: 10, color: C.muted, textAlign: 'center', fontFamily: 'DM Sans' } },
+                h('div', { style: { fontSize: 10, color: C.muted, textAlign: 'center', fontFamily: 'Figtree' } },
                     'Day direction = total return direction')
             ),
             h(SnapCard, { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 } },
@@ -710,14 +710,14 @@ function PerformanceSnapshot(p) {
                 h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 32, fontWeight: 800,
                     color: medianRet >= 0 ? C.green : C.red } },
                     (medianRet >= 0 ? '+' : '') + medianRet.toFixed(1) + '%'),
-                h('div', { style: { fontSize: 10, color: C.muted, fontFamily: 'DM Sans' } }, 'Mid-point of all positions')
+                h('div', { style: { fontSize: 10, color: C.muted, fontFamily: 'Figtree' } }, 'Mid-point of all positions')
             ),
             h(SnapCard, { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 } },
                 h(SnapLabel, { mb: 4 }, '30-Day Portfolio Return'),
                 h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 32, fontWeight: 800,
                     color: ret30d == null ? C.muted : ret30d >= 0 ? C.green : C.red } },
                     ret30d == null ? '—' : (ret30d >= 0 ? '+' : '') + ret30d.toFixed(2) + '%'),
-                h('div', { style: { fontSize: 10, color: C.muted, fontFamily: 'DM Sans' } }, 'vs 22 trading days ago')
+                h('div', { style: { fontSize: 10, color: C.muted, fontFamily: 'Figtree' } }, 'vs 22 trading days ago')
             )
         ),
 
@@ -746,7 +746,7 @@ function PerformanceSnapshot(p) {
                 h('div', { style: { display: 'flex', flexDirection: 'column', gap: 0 } },
                     h('div', { style: { display: 'flex', gap: 8, marginBottom: 8 } },
                         h('div', { style: { flex: 1 } },
-                            h('div', { style: { fontSize: 9, color: C.green, letterSpacing: 1, textTransform: 'uppercase', fontFamily: 'DM Sans', marginBottom: 4 } }, '▲ Top alpha'),
+                            h('div', { style: { fontSize: 9, color: C.green, letterSpacing: 1, textTransform: 'uppercase', fontFamily: 'Figtree', marginBottom: 4 } }, '▲ Top alpha'),
                             topAlpha.map(function(pos) {
                                 return h('div', { key: pos.symbol, style: { display: 'flex', justifyContent: 'space-between',
                                     padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.03)', alignItems: 'center' } },
@@ -758,7 +758,7 @@ function PerformanceSnapshot(p) {
                         ),
                         h('div', { style: { width: 1, background: 'rgba(255,255,255,0.05)' } }),
                         h('div', { style: { flex: 1 } },
-                            h('div', { style: { fontSize: 9, color: C.red, letterSpacing: 1, textTransform: 'uppercase', fontFamily: 'DM Sans', marginBottom: 4, paddingLeft: 8 } }, '▼ Laggards'),
+                            h('div', { style: { fontSize: 9, color: C.red, letterSpacing: 1, textTransform: 'uppercase', fontFamily: 'Figtree', marginBottom: 4, paddingLeft: 8 } }, '▼ Laggards'),
                             botAlpha.map(function(pos) {
                                 return h('div', { key: pos.symbol, style: { display: 'flex', justifyContent: 'space-between',
                                     padding: '4px 0 4px 8px', borderBottom: '1px solid rgba(255,255,255,0.03)', alignItems: 'center' } },
@@ -856,14 +856,14 @@ function RiskSnapshot(p) {
             h(SnapCard, { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, gridColumn: 'span 1' } },
                 h(SnapLabel, { mb: 4 }, 'Portfolio Stress'),
                 h(GaugeDial, { value: stressScore, label: stressLabel }),
-                h('div', { style: { fontSize: 10, textAlign: 'center', color: stressCol, fontFamily: 'DM Sans', fontWeight: 600 } }, stressLabel + ' risk profile')
+                h('div', { style: { fontSize: 10, textAlign: 'center', color: stressCol, fontFamily: 'Figtree', fontWeight: 600 } }, stressLabel + ' risk profile')
             ),
             h(SnapCard, { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 } },
                 h(SnapLabel, { mb: 4 }, 'Underwater Positions'),
                 h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 32, fontWeight: 800,
                     color: pctUnderwater > 0.5 ? C.red : pctUnderwater > 0.3 ? C.amber : C.green } },
                     Math.round(pctUnderwater * 100) + '%'),
-                h('div', { style: { fontSize: 10, color: C.muted, fontFamily: 'DM Sans', textAlign: 'center' } },
+                h('div', { style: { fontSize: 10, color: C.muted, fontFamily: 'Figtree', textAlign: 'center' } },
                     positions.filter(function(pos){return Number(pos.unrealised_return_pct||0)<0;}).length + ' of ' + positions.length + ' positions')
             ),
             h(SnapCard, { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 } },
@@ -871,14 +871,14 @@ function RiskSnapshot(p) {
                 h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 32, fontWeight: 800,
                     color: top5wt > 0.6 ? C.red : top5wt > 0.45 ? C.amber : C.green } },
                     (top5wt * 100).toFixed(0) + '%'),
-                h('div', { style: { fontSize: 10, color: C.muted, fontFamily: 'DM Sans', textAlign: 'center' } }, 'of portfolio in top 5')
+                h('div', { style: { fontSize: 10, color: C.muted, fontFamily: 'Figtree', textAlign: 'center' } }, 'of portfolio in top 5')
             ),
             h(SnapCard, { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 } },
                 h(SnapLabel, { mb: 4 }, 'HHI Concentration'),
                 h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 32, fontWeight: 800,
                     color: hhi > 0.25 ? C.red : hhi > 0.15 ? C.amber : C.green } },
                     Math.round(hhi * 10000)),
-                h('div', { style: { fontSize: 10, color: C.muted, fontFamily: 'DM Sans', textAlign: 'center' } }, '< 1500 diversified · > 2500 concentrated')
+                h('div', { style: { fontSize: 10, color: C.muted, fontFamily: 'Figtree', textAlign: 'center' } }, '< 1500 diversified · > 2500 concentrated')
             )
         ),
 
@@ -891,7 +891,7 @@ function RiskSnapshot(p) {
                         var col = s.breach ? C.red : s.wt > 20 ? C.amber : C.green;
                         return h('div', { key: s.sec },
                             h('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 3 } },
-                                h('span', { style: { fontSize: 11, color: s.breach ? C.red : C.sec, fontFamily: 'DM Sans',
+                                h('span', { style: { fontSize: 11, color: s.breach ? C.red : C.sec, fontFamily: 'Figtree',
                                     display: 'flex', alignItems: 'center', gap: 5 } },
                                     s.breach && h('span', { style: { color: C.red, fontSize: 10 } }, '⚠ '),
                                     s.sec),
@@ -914,7 +914,7 @@ function RiskSnapshot(p) {
                         return h('div', { key: pos.symbol,
                             style: { display: 'flex', alignItems: 'center', gap: 8, padding: '7px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' } },
                             h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 12, color: C.blue, minWidth: 52 } }, pos.symbol),
-                            h('span', { style: { fontSize: 10, color: C.muted, flex: 1, fontFamily: 'DM Sans' } }, pos.wt.toFixed(1) + '% of portfolio'),
+                            h('span', { style: { fontSize: 10, color: C.muted, flex: 1, fontFamily: 'Figtree' } }, pos.wt.toFixed(1) + '% of portfolio'),
                             h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 12, color: col, fontWeight: 700, minWidth: 60, textAlign: 'right' } },
                                 (pos.dayChg >= 0 ? '▲ +' : '▼ ') + pos.absDayChg.toFixed(2) + '%')
                         );
@@ -1011,7 +1011,7 @@ function PortfolioMgmtSnapshot(p) {
             h(SnapCard, { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 } },
                 h(SnapLabel, { mb: 4 }, 'Construction Score'),
                 h(GaugeDial, { value: constructionScore, label: 'score' }),
-                h('div', { style: { fontSize: 9, color: C.muted, textAlign: 'center', fontFamily: 'DM Sans' } },
+                h('div', { style: { fontSize: 9, color: C.muted, textAlign: 'center', fontFamily: 'Figtree' } },
                     'Diversity + concentration + quality')
             ),
             h(SnapCard, { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 } },
@@ -1023,20 +1023,20 @@ function PortfolioMgmtSnapshot(p) {
                         ? '$' + ((totalMv-totalCost)/1e6).toFixed(2) + 'M'
                         : '$' + ((totalMv-totalCost)/1e3).toFixed(1) + 'k')
                 ),
-                h('div', { style: { fontSize: 10, color: C.muted, fontFamily: 'DM Sans', textAlign: 'center' } }, 'across ' + positions.length + ' positions')
+                h('div', { style: { fontSize: 10, color: C.muted, fontFamily: 'Figtree', textAlign: 'center' } }, 'across ' + positions.length + ' positions')
             ),
             h(SnapCard, { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 } },
                 h(SnapLabel, { mb: 4 }, 'Positions With Age Data'),
                 h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 28, fontWeight: 800, color: C.blue } },
                     positionsWithAge.filter(function(pos){return pos.ageDays!=null;}).length),
-                h('div', { style: { fontSize: 10, color: C.muted, fontFamily: 'DM Sans', textAlign: 'center' } },
+                h('div', { style: { fontSize: 10, color: C.muted, fontFamily: 'Figtree', textAlign: 'center' } },
                     longHeld.length + ' held > 1 year')
             ),
             h(SnapCard, { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 } },
                 h(SnapLabel, { mb: 4 }, 'Equal-Weight Deviation'),
                 h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 28, fontWeight: 800, color: C.amber } },
                     driftPositions.length > 0 ? Math.abs(driftPositions[0].drift).toFixed(1) + '%' : '—'),
-                h('div', { style: { fontSize: 10, color: C.muted, fontFamily: 'DM Sans', textAlign: 'center' } }, 'max drift from ' + eqTarget.toFixed(1) + '% eq. target')
+                h('div', { style: { fontSize: 10, color: C.muted, fontFamily: 'Figtree', textAlign: 'center' } }, 'max drift from ' + eqTarget.toFixed(1) + '% eq. target')
             )
         ),
 
@@ -1098,7 +1098,7 @@ function PortfolioMgmtSnapshot(p) {
                             borderRadius: 6, padding: '8px 10px', minWidth: 90,
                         } },
                             h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 700, color: C.blue } }, pos.symbol),
-                            h('div', { style: { fontSize: 9, color: C.muted, fontFamily: 'DM Sans', marginTop: 2 } },
+                            h('div', { style: { fontSize: 9, color: C.muted, fontFamily: 'Figtree', marginTop: 2 } },
                                 pos.ageDays >= 365
                                     ? (ageYrs).toFixed(1) + ' yrs'
                                     : pos.ageDays + 'd'),
@@ -1191,7 +1191,7 @@ export function PortfolioHome() {
             options: {
                 responsive: true, maintainAspectRatio: false, cutout: '65%',
                 plugins: {
-                    legend: { position: 'bottom', labels: { color: 'rgba(255,255,255,0.55)', font: { size: 10, family: 'DM Sans' }, padding: 6, boxWidth: 10, usePointStyle: true } }
+                    legend: { position: 'bottom', labels: { color: 'rgba(255,255,255,0.55)', font: { size: 10, family: 'Figtree' }, padding: 6, boxWidth: 10, usePointStyle: true } }
                 }
             },
             plugins: [{ id: 'centerText', beforeDraw: function(chart) {
@@ -1379,7 +1379,7 @@ export function PortfolioHome() {
         }], {
             paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
             margin: { l: 52, r: 12, t: 12, b: 64 },
-            xaxis: { tickfont: { color: 'rgba(255,255,255,0.5)', size: 10, family: 'DM Sans' }, tickangle: -30, showgrid: false },
+            xaxis: { tickfont: { color: 'rgba(255,255,255,0.5)', size: 10, family: 'Figtree' }, tickangle: -30, showgrid: false },
             yaxis: { gridcolor: 'rgba(255,255,255,0.05)', zeroline: true, zerolinecolor: 'rgba(255,255,255,0.15)',
                 tickfont: { color: 'rgba(255,255,255,0.3)', size: 10, family: 'JetBrains Mono' },
                 tickprefix: isPct ? '' : '$', ticksuffix: isPct ? '%' : '', tickformat: isPct ? '.1f' : ',.0f' },
@@ -1468,7 +1468,7 @@ export function PortfolioHome() {
     var retColor = retPct >= 0 ? '#10b981' : '#ef4444';
     var div = { width: 1, background: 'rgba(255,255,255,0.06)', margin: '0 20px', flexShrink: 0 };
     var hb = { display: 'flex', flexDirection: 'column', justifyContent: 'center' };
-    var hl = { fontSize: 9, letterSpacing: 1.8, textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', marginBottom: 4, fontFamily: 'DM Sans' };
+    var hl = { fontSize: 9, letterSpacing: 1.8, textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', marginBottom: 4, fontFamily: 'Figtree' };
 
     // Derive Account Equity, Portfolio NAV, and Cash/Margin from loaded data.
     // Priority for displayed equity:
@@ -1527,7 +1527,7 @@ export function PortfolioHome() {
             ),
             React.createElement('div', { style: { marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 } },
                 React.createElement('span', { style: { width: 7, height: 7, borderRadius: '50%', background: '#10b981', boxShadow: '0 0 6px #10b981', display: 'inline-block' } }),
-                React.createElement('span', { style: { fontSize: 9, letterSpacing: 1.5, color: '#10b981', fontFamily: 'DM Sans', textTransform: 'uppercase' } }, 'Live')
+                React.createElement('span', { style: { fontSize: 9, letterSpacing: 1.5, color: '#10b981', fontFamily: 'Figtree', textTransform: 'uppercase' } }, 'Live')
             )
         ),
         // Sub-view tab bar
@@ -1544,7 +1544,7 @@ export function PortfolioHome() {
                         background: 'transparent', border: 'none', letterSpacing: 0.8,
                         borderBottom: '2px solid ' + (a ? '#00d4ff' : 'transparent'),
                         color: a ? '#00d4ff' : 'rgba(255,255,255,0.35)',
-                        transition: 'color 0.15s', marginBottom: -1, fontFamily: 'DM Sans',
+                        transition: 'color 0.15s', marginBottom: -1, fontFamily: 'Figtree',
                         textTransform: 'uppercase' } },
                     tab.icon + ' ' + tab.label);
             })
@@ -1711,7 +1711,7 @@ export function PortfolioHome() {
             React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 } },
                 React.createElement('div', { className: 'card-title', style: { margin: 0 } }, 'PORTFOLIO HEATMAP'),
                 React.createElement('div', { style: { display: 'flex', gap: 4, alignItems: 'center' } },
-                    React.createElement('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'DM Sans', marginRight: 6 } }, 'Sized by NAV weight · Coloured by'),
+                    React.createElement('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'Figtree', marginRight: 6 } }, 'Sized by NAV weight · Coloured by'),
                     ['day', 'total'].map(function(m) {
                         var a = heatMode === m;
                         return React.createElement('button', { key: m, onClick: function() { setHeatMode(m); }, style: {
@@ -1761,7 +1761,7 @@ export function PortfolioHome() {
                             React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 } },
                                 React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 7 } },
                                     React.createElement('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 700, color: '#00d4ff', minWidth: 48 } }, p.symbol),
-                                    React.createElement('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.45)', fontFamily: 'DM Sans' } }, getName(p.symbol, p))
+                                    React.createElement('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.45)', fontFamily: 'Figtree' } }, getName(p.symbol, p))
                                 ),
                                 React.createElement('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, color: 'rgba(255,255,255,0.7)', fontWeight: 600 } }, wtPct + '%')
                             ),
@@ -1771,7 +1771,7 @@ export function PortfolioHome() {
                         );
                     }),
                     React.createElement('div', { style: { marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between' } },
-                        React.createElement('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'DM Sans' } }, 'Top 5: ' + top10.slice(0,5).reduce(function(s,p) { return s + Math.abs(Number(p.market_value)||0); }, 0) / totalMv * 100 < 50 ? 'Diversified' : 'Concentrated'),
+                        React.createElement('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'Figtree' } }, 'Top 5: ' + top10.slice(0,5).reduce(function(s,p) { return s + Math.abs(Number(p.market_value)||0); }, 0) / totalMv * 100 < 50 ? 'Diversified' : 'Concentrated'),
                         React.createElement('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'JetBrains Mono' } }, 'Max: ' + (maxWt * 100).toFixed(1) + '% ' + (maxPos ? maxPos.symbol : ''))
                     )
                 );
@@ -1813,11 +1813,11 @@ export function PortfolioHome() {
                         var count = positions.filter(function(p) { return getSector(p.symbol, p) === sec; }).length;
                         return React.createElement('div', { key: sec, style: { marginBottom: 8 } },
                             React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 } },
-                                React.createElement('span', { style: { fontSize: 11, color: 'rgba(255,255,255,0.7)', fontFamily: 'DM Sans', display: 'flex', alignItems: 'center', gap: 6 } },
+                                React.createElement('span', { style: { fontSize: 11, color: 'rgba(255,255,255,0.7)', fontFamily: 'Figtree', display: 'flex', alignItems: 'center', gap: 6 } },
                                     React.createElement('span', { style: { width: 6, height: 6, borderRadius: '50%', background: color, display: 'inline-block', flexShrink: 0 } }),
                                     sec),
                                 React.createElement('div', { style: { display: 'flex', gap: 10, alignItems: 'center' } },
-                                    React.createElement('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'DM Sans' } }, count + (count === 1 ? ' pos' : ' pos')),
+                                    React.createElement('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'Figtree' } }, count + (count === 1 ? ' pos' : ' pos')),
                                     React.createElement('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.75)', minWidth: 36, textAlign: 'right' } }, wtPct + '%')
                                 )
                             ),
@@ -1837,7 +1837,7 @@ export function PortfolioHome() {
                     'HOLDINGS ' + (filtPosns.length !== positions.length ? '(' + filtPosns.length + '/' + positions.length + ')' : '(' + positions.length + ')')),
                 React.createElement('input', { value: srch, onChange: function(e) { setSrch(e.target.value); },
                     placeholder: '🔍  symbol, name, sector…',
-                    style: { flex: 1, minWidth: 160, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 6, padding: '5px 10px', color: 'rgba(255,255,255,0.8)', fontSize: 11, fontFamily: 'DM Sans', outline: 'none' } }),
+                    style: { flex: 1, minWidth: 160, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 6, padding: '5px 10px', color: 'rgba(255,255,255,0.8)', fontSize: 11, fontFamily: 'Figtree', outline: 'none' } }),
                 // ALL reset pill
                 React.createElement('button', {
                     onClick: function() { setTFilt('ALL'); },
@@ -1854,7 +1854,7 @@ export function PortfolioHome() {
             React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 0, marginBottom: 12, flexWrap: 'wrap', rowGap: 6 } },
                 FILTER_GROUPS.map(function(group, gi) {
                     return React.createElement('div', { key: group.label, style: { display: 'flex', alignItems: 'center', gap: 3, paddingRight: 10, marginRight: 6, borderRight: gi < FILTER_GROUPS.length - 1 ? '1px solid rgba(255,255,255,0.07)' : 'none' } },
-                        React.createElement('span', { style: { fontSize: 8, letterSpacing: 1.6, color: 'rgba(255,255,255,0.2)', fontFamily: 'DM Sans', textTransform: 'uppercase', marginRight: 4, flexShrink: 0 } }, group.label),
+                        React.createElement('span', { style: { fontSize: 8, letterSpacing: 1.6, color: 'rgba(255,255,255,0.2)', fontFamily: 'Figtree', textTransform: 'uppercase', marginRight: 4, flexShrink: 0 } }, group.label),
                         group.filters.map(function(f) {
                             var active = tFilt === f.id;
                             // Count matching positions for badge
@@ -1906,7 +1906,7 @@ export function PortfolioHome() {
                                         boxShadow: '0 1px 0 rgba(255,255,255,0.07)',
                                         cursor: h.col ? 'pointer' : 'default', userSelect: 'none',
                                         textTransform: 'uppercase', letterSpacing: 0.8,
-                                        textAlign: h.align, fontFamily: 'DM Sans'
+                                        textAlign: h.align, fontFamily: 'Figtree'
                                     }
                                 }, h.label, isSorted ? (sortD === 'desc' ? ' ↓' : ' ↑') : null);
                             })
@@ -1949,11 +1949,11 @@ export function PortfolioHome() {
                                 ),
                                 React.createElement('td', { style: { padding: '7px 10px', maxWidth: 220 } },
                                     React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 } },
-                                        React.createElement('span', { style: { fontSize: 11, color: 'rgba(255,255,255,0.65)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'DM Sans' } }, getName(p.symbol, p)),
+                                        React.createElement('span', { style: { fontSize: 11, color: 'rgba(255,255,255,0.65)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'Figtree' } }, getName(p.symbol, p)),
                                         React.createElement(TypeBadge, { type: type })
                                     )
                                 ),
-                                React.createElement('td', { style: { padding: '7px 10px', maxWidth: 140, fontSize: 10, color: 'rgba(255,255,255,0.45)', fontFamily: 'DM Sans', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } },
+                                React.createElement('td', { style: { padding: '7px 10px', maxWidth: 140, fontSize: 10, color: 'rgba(255,255,255,0.45)', fontFamily: 'Figtree', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } },
                                     getSector(p.symbol, p)),
                                 React.createElement('td', { style: { padding: '7px 10px', textAlign: 'right', fontFamily: 'JetBrains Mono', fontSize: 11, color: 'rgba(255,255,255,0.78)' } },
                                     p.current_price ? '$' + Number(p.current_price).toFixed(2) : '—'),

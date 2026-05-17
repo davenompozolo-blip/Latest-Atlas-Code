@@ -139,7 +139,7 @@ export function cellClass(p, key) {
 }
 export function cellStyle(key) {
     if (key === 'symbol') return { fontWeight: 600, color: '#00d4ff' };
-    if (key === 'name') return { fontFamily: 'DM Sans', color: 'rgba(255,255,255,0.6)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
+    if (key === 'name') return { fontFamily: 'Figtree', color: 'rgba(255,255,255,0.6)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
     return {};
 }
 export function qualityPill(score) {

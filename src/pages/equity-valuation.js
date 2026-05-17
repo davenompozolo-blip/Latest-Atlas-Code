@@ -175,7 +175,7 @@ function FairValuePanel(p) {
                     return React.createElement('tr', { key: m.name },
                         React.createElement('td', null,
                             React.createElement('div', { style: { fontWeight: 600, color: 'var(--text)' } }, m.name),
-                            React.createElement('div', { style: { fontSize: 10, color: 'var(--text-muted)', fontFamily: "'DM Sans', sans-serif" } }, m.desc)
+                            React.createElement('div', { style: { fontSize: 10, color: 'var(--text-muted)', fontFamily: "'Figtree', sans-serif" } }, m.desc)
                         ),
                         React.createElement('td', { style: { fontWeight: 600 } }, fmtCurrency(m.value)),
                         React.createElement('td', { style: { color: diff >= 0 ? '#10b981' : '#ef4444' } }, (diff >= 0 ? '+' : '') + (diff * 100).toFixed(1) + '%'),

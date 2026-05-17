@@ -296,7 +296,7 @@ export function SignalsPanel({ rows }) {
         React.createElement('div', { className: 'card', style: { marginBottom: 16 } },
             React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 } },
                 React.createElement('div', { className: 'card-title', style: { margin: 0 } }, 'RSI vs Z-Score  ·  Regime Quadrant Map'),
-                React.createElement('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.25)', fontFamily: 'DM Sans' } },
+                React.createElement('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.25)', fontFamily: 'Figtree' } },
                     'Top-right = overbought & stretched  ·  Bottom-left = oversold & depressed')
             ),
             React.createElement(SignalScatter, { rows: rows })
@@ -307,7 +307,7 @@ export function SignalsPanel({ rows }) {
             React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 } },
                 React.createElement('div', { className: 'card-title', style: { margin: 0 } }, 'Position Signals  ·  ' + rows.length + ' positions'),
                 React.createElement('div', { style: { display: 'flex', gap: 6, alignItems: 'center' } },
-                    React.createElement('span', { style: { fontSize: 9.5, color: 'rgba(255,255,255,0.28)', fontFamily: 'DM Sans', marginRight: 2 } }, 'Sort:'),
+                    React.createElement('span', { style: { fontSize: 9.5, color: 'rgba(255,255,255,0.28)', fontFamily: 'Figtree', marginRight: 2 } }, 'Sort:'),
                     SORT_OPTS.map(function(opt) {
                         const a = sortKey === opt.key;
                         return React.createElement('button', {
@@ -316,7 +316,7 @@ export function SignalsPanel({ rows }) {
                                 if (sortKey === opt.key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
                                 else { setSortKey(opt.key); setSortDir('desc'); }
                             },
-                            style: { background: a ? 'rgba(0,212,255,0.13)' : 'rgba(255,255,255,0.04)', color: a ? '#00d4ff' : 'rgba(255,255,255,0.38)', border: '1px solid ' + (a ? 'rgba(0,212,255,0.3)' : 'rgba(255,255,255,0.06)'), borderRadius: 5, padding: '3px 9px', fontSize: 9.5, fontWeight: a ? 700 : 400, cursor: 'pointer', fontFamily: 'DM Sans' }
+                            style: { background: a ? 'rgba(0,212,255,0.13)' : 'rgba(255,255,255,0.04)', color: a ? '#00d4ff' : 'rgba(255,255,255,0.38)', border: '1px solid ' + (a ? 'rgba(0,212,255,0.3)' : 'rgba(255,255,255,0.06)'), borderRadius: 5, padding: '3px 9px', fontSize: 9.5, fontWeight: a ? 700 : 400, cursor: 'pointer', fontFamily: 'Figtree' }
                         }, opt.label + (a ? (sortDir === 'desc' ? ' ↓' : ' ↑') : ''));
                     })
                 )

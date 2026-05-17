@@ -184,7 +184,7 @@ export function RefreshButton() {
             cursor: 'pointer',
             fontSize: 12,
             padding: '3px 8px',
-            fontFamily: 'DM Mono, monospace',
+            fontFamily: 'JetBrains Mono, monospace',
             letterSpacing: 0.5,
             transition: 'all 0.15s',
             display: 'inline-flex',

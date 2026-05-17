@@ -225,7 +225,7 @@ export function DrawdownPanel({ rows }) {
                             if (peakPriceKey) cells.push(
                                 React.createElement('td', { key: 'pp' }, fmtCurrency(r[peakPriceKey])));
                             if (peakDateKey) cells.push(
-                                React.createElement('td', { key: 'pd', style: { fontFamily: 'DM Sans' } },
+                                React.createElement('td', { key: 'pd', style: { fontFamily: 'Figtree' } },
                                     r[peakDateKey] ? new Date(r[peakDateKey]).toLocaleDateString() : '\u2014'));
                             cells.push(
                                 React.createElement('td', { key: 'cp' }, fmtCurrency(r.current_price)));

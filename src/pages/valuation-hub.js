@@ -52,7 +52,7 @@ export function ValuationHub() {
                         padding: '4px 12px',
                         fontSize: 11,
                         cursor: 'pointer',
-                        fontFamily: 'DM Mono, monospace',
+                        fontFamily: 'JetBrains Mono, monospace',
                         letterSpacing: 0.5,
                         transition: 'color 0.15s, border-color 0.15s',
                     },
@@ -65,7 +65,7 @@ export function ValuationHub() {
                         e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)';
                     }
                 }, '← Back to Screener'),
-                ticker && h('span', { style: { fontSize: 11, color: 'rgba(255,255,255,0.35)', fontFamily: 'DM Mono, monospace' } }, 'Valuing ' + ticker)
+                ticker && h('span', { style: { fontSize: 11, color: 'rgba(255,255,255,0.35)', fontFamily: 'JetBrains Mono, monospace' } }, 'Valuing ' + ticker)
             ),
             h('div', { style: { flex: 1, overflow: 'auto' } },
                 h(ValuationHouse, { initialTicker: ticker })

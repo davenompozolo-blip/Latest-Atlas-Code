@@ -586,24 +586,24 @@ function RiskCard({ row: r, maxVar }) {
         // Symbol + tier badge
         h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: 4, marginBottom: 10 } },
             h('span', { style: { fontFamily: 'JetBrains Mono', fontWeight: 700, fontSize: 15, color: '#00d4ff' } }, r.symbol),
-            h('span', { style: { fontSize: 8, fontWeight: 700, letterSpacing: 0.8, padding: '2px 6px', borderRadius: 4, background: tierColor + '22', color: tierColor, border: '1px solid ' + tierColor + '44', textTransform: 'uppercase', fontFamily: 'DM Sans' } },
+            h('span', { style: { fontSize: 8, fontWeight: 700, letterSpacing: 0.8, padding: '2px 6px', borderRadius: 4, background: tierColor + '22', color: tierColor, border: '1px solid ' + tierColor + '44', textTransform: 'uppercase', fontFamily: 'Figtree' } },
                 r.risk_tier ? r.risk_tier.replace(' Risk', '') : 'Low')
         ),
         // MV + Weight
         h('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 10 } },
             h('div', null,
-                h('div', { style: { fontSize: 8, color: 'rgba(255,255,255,0.28)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 2, fontFamily: 'DM Sans' } }, 'Market Value'),
+                h('div', { style: { fontSize: 8, color: 'rgba(255,255,255,0.28)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 2, fontFamily: 'Figtree' } }, 'Market Value'),
                 h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.75)' } }, fmtCurrency(r.market_value))
             ),
             h('div', { style: { textAlign: 'right' } },
-                h('div', { style: { fontSize: 8, color: 'rgba(255,255,255,0.28)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 2, fontFamily: 'DM Sans' } }, 'Weight'),
+                h('div', { style: { fontSize: 8, color: 'rgba(255,255,255,0.28)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 2, fontFamily: 'Figtree' } }, 'Weight'),
                 h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.75)' } }, fmtPct(r.weight))
             )
         ),
         // Daily VaR bar
         h('div', { style: { marginBottom: 8 } },
             h('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 3 } },
-                h('span', { style: { fontSize: 8, color: 'rgba(255,255,255,0.28)', textTransform: 'uppercase', letterSpacing: 1, fontFamily: 'DM Sans' } }, 'Daily VaR 95%'),
+                h('span', { style: { fontSize: 8, color: 'rgba(255,255,255,0.28)', textTransform: 'uppercase', letterSpacing: 1, fontFamily: 'Figtree' } }, 'Daily VaR 95%'),
                 h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 10, color: '#ef4444', fontWeight: 600 } }, fmtCurrency(r.dollar_var_95_daily))
             ),
             h('div', { style: { height: 5, background: 'rgba(255,255,255,0.06)', borderRadius: 3, overflow: 'hidden' } },
@@ -613,7 +613,7 @@ function RiskCard({ row: r, maxVar }) {
         // Ann Vol bar
         h('div', null,
             h('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 3 } },
-                h('span', { style: { fontSize: 8, color: 'rgba(255,255,255,0.28)', textTransform: 'uppercase', letterSpacing: 1, fontFamily: 'DM Sans' } }, 'Ann. Volatility'),
+                h('span', { style: { fontSize: 8, color: 'rgba(255,255,255,0.28)', textTransform: 'uppercase', letterSpacing: 1, fontFamily: 'Figtree' } }, 'Ann. Volatility'),
                 h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 10, color: volColor, fontWeight: 600 } }, r.annual_vol != null ? (r.annual_vol * 100).toFixed(1) + '%' : '—')
             ),
             h('div', { style: { height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 3, overflow: 'hidden' } },
@@ -676,7 +676,7 @@ export function RiskAnalysis() {
                 style: { padding: '10px 24px 12px', border: 'none', borderBottom: '2px solid ' + (a ? '#00d4ff' : 'transparent'), background: 'transparent', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2, transition: 'all 0.15s ease', marginBottom: -1 }
             },
                 React.createElement('span', { style: { fontSize: 11, fontWeight: 700, letterSpacing: 1.2, fontFamily: 'JetBrains Mono', color: a ? '#00d4ff' : 'rgba(255,255,255,0.42)' } }, t.label),
-                React.createElement('span', { style: { fontSize: 9.5, color: a ? 'rgba(0,212,255,0.55)' : 'rgba(255,255,255,0.2)', fontFamily: 'DM Sans' } }, t.sub)
+                React.createElement('span', { style: { fontSize: 9.5, color: a ? 'rgba(0,212,255,0.55)' : 'rgba(255,255,255,0.2)', fontFamily: 'Figtree' } }, t.sub)
             );
         })
     );
@@ -695,7 +695,7 @@ export function RiskAnalysis() {
     }
 
     // ---- Risk KPI pulse bar --------------------------------------------
-    var hl  = { fontSize: 9, letterSpacing: 1.8, textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', marginBottom: 4, fontFamily: 'DM Sans' };
+    var hl  = { fontSize: 9, letterSpacing: 1.8, textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', marginBottom: 4, fontFamily: 'Figtree' };
     var hb  = { display: 'flex', flexDirection: 'column', justifyContent: 'center' };
     var sep = { width: 1, background: 'rgba(255,255,255,0.06)', margin: '0 20px', flexShrink: 0 };
     var mono = function(v, sz, col) { return { fontFamily: 'JetBrains Mono', fontSize: sz || 18, fontWeight: 700, color: col || 'rgba(255,255,255,0.85)' }; };
@@ -755,7 +755,7 @@ export function RiskAnalysis() {
             React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12 } },
                 [['High Risk', '#ef4444', highRisk], ['Moderate Risk', '#f59e0b', modRisk], ['Low Risk', '#10b981', lowRisk]].map(function(t) {
                     return React.createElement('div', { key: t[0], style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
-                        React.createElement('span', { style: { fontSize: 10, color: t[1], fontFamily: 'DM Sans' } }, t[0]),
+                        React.createElement('span', { style: { fontSize: 10, color: t[1], fontFamily: 'Figtree' } }, t[0]),
                         React.createElement('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 700, color: t[1] } }, t[2])
                     );
                 })
@@ -764,7 +764,7 @@ export function RiskAnalysis() {
         React.createElement('div', { className: 'card' },
             React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 } },
                 React.createElement('div', { className: 'card-title', style: { margin: 0 } }, 'Volatility vs VaR  ·  Risk Bubble Map'),
-                React.createElement('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.22)', fontFamily: 'DM Sans' } }, 'Bubble size = market value')
+                React.createElement('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.22)', fontFamily: 'Figtree' } }, 'Bubble size = market value')
             ),
             React.createElement(RiskScatter, { rows: risk })
         )
@@ -794,7 +794,7 @@ export function RiskAnalysis() {
         React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 } },
             React.createElement('div', { className: 'card-title', style: { margin: 0 } }, 'Position Risk Breakdown  ·  ' + risk.length + ' positions'),
             React.createElement('div', { style: { display: 'flex', gap: 6, alignItems: 'center' } },
-                React.createElement('span', { style: { fontSize: 9.5, color: 'rgba(255,255,255,0.28)', fontFamily: 'DM Sans', marginRight: 2 } }, 'Sort:'),
+                React.createElement('span', { style: { fontSize: 9.5, color: 'rgba(255,255,255,0.28)', fontFamily: 'Figtree', marginRight: 2 } }, 'Sort:'),
                 RISK_SORT_OPTS.map(function(opt) {
                     var active = riskSortKey === opt.key;
                     return React.createElement('button', {
@@ -803,7 +803,7 @@ export function RiskAnalysis() {
                             if (riskSortKey === opt.key) setRiskSortDir(function(d) { return d === 'asc' ? 'desc' : 'asc'; });
                             else { setRiskSortKey(opt.key); setRiskSortDir('desc'); }
                         },
-                        style: { background: active ? 'rgba(0,212,255,0.13)' : 'rgba(255,255,255,0.04)', color: active ? '#00d4ff' : 'rgba(255,255,255,0.38)', border: '1px solid ' + (active ? 'rgba(0,212,255,0.3)' : 'rgba(255,255,255,0.06)'), borderRadius: 5, padding: '3px 9px', fontSize: 9.5, fontWeight: active ? 700 : 400, cursor: 'pointer', fontFamily: 'DM Sans' }
+                        style: { background: active ? 'rgba(0,212,255,0.13)' : 'rgba(255,255,255,0.04)', color: active ? '#00d4ff' : 'rgba(255,255,255,0.38)', border: '1px solid ' + (active ? 'rgba(0,212,255,0.3)' : 'rgba(255,255,255,0.06)'), borderRadius: 5, padding: '3px 9px', fontSize: 9.5, fontWeight: active ? 700 : 400, cursor: 'pointer', fontFamily: 'Figtree' }
                     }, opt.label + (active ? (riskSortDir === 'desc' ? ' ↓' : ' ↑') : ''));
                 })
             )
@@ -939,16 +939,16 @@ export function CommandCentre() {
             React.createElement('table', { className: 'data-table' },
                 React.createElement('tbody', null,
                     React.createElement('tr', null,
-                        React.createElement('td', { style: { fontFamily: 'DM Sans', color: 'rgba(255,255,255,0.5)' } }, 'Supabase Connection'),
+                        React.createElement('td', { style: { fontFamily: 'Figtree', color: 'rgba(255,255,255,0.5)' } }, 'Supabase Connection'),
                         React.createElement('td', null, sb ? React.createElement('span', { className: 'badge green' }, 'Connected') : React.createElement('span', { className: 'badge amber' }, 'Demo Mode'))),
                     React.createElement('tr', null,
-                        React.createElement('td', { style: { fontFamily: 'DM Sans', color: 'rgba(255,255,255,0.5)' } }, 'Last Computed'),
+                        React.createElement('td', { style: { fontFamily: 'Figtree', color: 'rgba(255,255,255,0.5)' } }, 'Last Computed'),
                         React.createElement('td', null, c.computed_at ? new Date(c.computed_at).toLocaleString() : '—')),
                     React.createElement('tr', null,
-                        React.createElement('td', { style: { fontFamily: 'DM Sans', color: 'rgba(255,255,255,0.5)' } }, 'Data Source'),
+                        React.createElement('td', { style: { fontFamily: 'Figtree', color: 'rgba(255,255,255,0.5)' } }, 'Data Source'),
                         React.createElement('td', null, 'Supabase PostgreSQL + Alpaca Markets API')),
                     React.createElement('tr', null,
-                        React.createElement('td', { style: { fontFamily: 'DM Sans', color: 'rgba(255,255,255,0.5)' } }, 'NAV Methodology'),
+                        React.createElement('td', { style: { fontFamily: 'Figtree', color: 'rgba(255,255,255,0.5)' } }, 'NAV Methodology'),
                         React.createElement('td', null, 'FIFO Transaction-Based Reconstruction'))
                 )
             )
@@ -988,7 +988,7 @@ export function CommandCentre() {
                                 last_sync:             'Last Sync',
                             };
                             return React.createElement('tr', { key: row.stream },
-                                React.createElement('td', { style: { fontFamily: 'DM Sans', color: 'rgba(255,255,255,0.7)' } }, streamNames[row.stream] || row.stream),
+                                React.createElement('td', { style: { fontFamily: 'Figtree', color: 'rgba(255,255,255,0.7)' } }, streamNames[row.stream] || row.stream),
                                 React.createElement('td', null, lastStr),
                                 React.createElement('td', { style: { fontWeight: 600, color: s === 'fresh' ? 'var(--green)' : s === 'stale' ? 'var(--amber)' : 'var(--red)' } }, ageLabel),
                                 React.createElement('td', null, React.createElement('span', { className: 'badge ' + statusCls }, statusLabel))

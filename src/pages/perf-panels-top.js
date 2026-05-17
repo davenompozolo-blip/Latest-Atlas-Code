@@ -290,7 +290,7 @@ export function ReturnsPanel(p) {
     var periodTable = h('div', { className: 'card', style: { marginBottom: 16 } },
         h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 } },
             h('div', { className: 'card-title', style: { margin: 0 } }, 'PERIOD RETURNS'),
-            h('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.28)', fontFamily: 'DM Sans' } }, 'Bar scaled to max absolute return')
+            h('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.28)', fontFamily: 'Figtree' } }, 'Bar scaled to max absolute return')
         ),
         periodRows.map(function(r, i) {
             var val = r.value, pctNum = val != null ? val * 100 : null;
@@ -299,7 +299,7 @@ export function ReturnsPanel(p) {
             var barColor = val != null && val >= 0 ? 'rgba(16,185,129,0.5)' : 'rgba(239,68,68,0.5)';
             var text = pctNum != null ? (pctNum >= 0 ? '+' : '') + pctNum.toFixed(2) + '%' : '—';
             return h('div', { key: i, style: { display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: i < periodRows.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none' } },
-                h('span', { style: { fontSize: 12, color: 'rgba(255,255,255,0.55)', fontFamily: 'DM Sans', minWidth: 90 } }, r.label),
+                h('span', { style: { fontSize: 12, color: 'rgba(255,255,255,0.55)', fontFamily: 'Figtree', minWidth: 90 } }, r.label),
                 h('div', { style: { flex: 1, height: 4, background: 'rgba(255,255,255,0.05)', borderRadius: 2, overflow: 'hidden' } },
                     h('div', { style: { width: barPct + '%', height: '100%', background: barColor, borderRadius: 2 } })
                 ),
@@ -461,7 +461,7 @@ export function ReturnsPanel(p) {
         var cTxt  = (c.contribution >= 0 ? '+' : '') + (c.contribution * 100).toFixed(2) + '%';
         return h('div', { key: c.symbol + i, style: { display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' } },
             h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 700, color: '#00d4ff', minWidth: 52 } }, c.symbol),
-            h('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.4)', fontFamily: 'DM Sans', minWidth: 30, textAlign: 'right' } }, (c.weight * 100).toFixed(1) + '%'),
+            h('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.4)', fontFamily: 'Figtree', minWidth: 30, textAlign: 'right' } }, (c.weight * 100).toFixed(1) + '%'),
             h('div', { style: { flex: 1, height: 4, background: 'rgba(255,255,255,0.05)', borderRadius: 2, overflow: 'hidden' } },
                 h('div', { style: { width: barW + '%', height: '100%', background: barcol, borderRadius: 2 } })
             ),
@@ -474,18 +474,18 @@ export function ReturnsPanel(p) {
         h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 } },
             h('div', { className: 'card-title', style: { margin: 0 } }, 'RETURN ATTRIBUTION BY POSITION'),
             h('div', { style: { display: 'flex', gap: 20, alignItems: 'center' } },
-                h('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'DM Sans' } }, 'Wt%  ·  Bar = contribution magnitude'),
+                h('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'Figtree' } }, 'Wt%  ·  Bar = contribution magnitude'),
                 h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 700, color: totalPortRet >= 0 ? '#10b981' : '#ef4444' } },
                     'Total: ' + (totalPortRet >= 0 ? '+' : '') + (totalPortRet * 100).toFixed(2) + '%')
             )
         ),
         h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 28px' } },
             h('div', null,
-                h('div', { style: { fontSize: 9, letterSpacing: 1.5, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 6, fontFamily: 'DM Sans' } }, '▲ Top Contributors'),
+                h('div', { style: { fontSize: 9, letterSpacing: 1.5, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 6, fontFamily: 'Figtree' } }, '▲ Top Contributors'),
                 topContrib.map(contribRow)
             ),
             h('div', null,
-                h('div', { style: { fontSize: 9, letterSpacing: 1.5, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 6, fontFamily: 'DM Sans' } }, '▼ Top Detractors'),
+                h('div', { style: { fontSize: 9, letterSpacing: 1.5, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 6, fontFamily: 'Figtree' } }, '▼ Top Detractors'),
                 botContrib.map(function(c, i) { return contribRow(c, i + 100); })
             )
         )
