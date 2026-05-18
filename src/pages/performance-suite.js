@@ -36,6 +36,8 @@ export function PerformanceSuite() {
     var cmdData = _c[0], setCmdData = _c[1];
     var _h = useState(null);
     var homeData = _h[0], setHomeData = _h[1];
+    var _tx = useState([]);
+    var txData = _tx[0], setTxData = _tx[1];
     var _l = useState(true);
     var loading = _l[0], setLoading = _l[1];
 
@@ -46,6 +48,7 @@ export function PerformanceSuite() {
                 loadView('vw_performance_suite', []),
                 loadView('vw_command_centre', [MOCK_COMMAND]),
                 loadView('vw_portfolio_home', []),
+                loadView('vw_transactions', []),
             ]).then(function(res) {
                 var nav = res[0];
                 if (Array.isArray(nav) && nav.length) {
@@ -58,6 +61,7 @@ export function PerformanceSuite() {
                 var cmd = Array.isArray(res[2]) ? res[2][0] : res[2];
                 setCmdData(cmd || MOCK_COMMAND);
                 setHomeData(res[3] || []);
+                setTxData(res[4] || []);
                 setLoading(false);
             });
         }
@@ -233,7 +237,7 @@ export function PerformanceSuite() {
     var panel = null;
     switch (activeTab) {
         case 'overview':
-            panel = hasNav ? h(OverviewPanel, { navSeries: navSeries, cmdData: cmdData }) : h(EmptyState, null);
+            panel = hasNav ? h(OverviewPanel, { navSeries: navSeries, cmdData: cmdData, txData: txData, positions: homeData || [] }) : h(EmptyState, null);
             break;
         case 'returns':
             panel = hasNav ? h(ReturnsPanel, { navSeries: navSeries, perfData: perfData }) : h(EmptyState, null);

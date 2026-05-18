@@ -15,8 +15,153 @@ import {
     computePositionContributions
 } from './perf-engine.js';
 
-var useRef = React.useRef, useEffect = React.useEffect, useMemo = React.useMemo;
+var useRef = React.useRef, useEffect = React.useEffect, useMemo = React.useMemo, useState = React.useState;
 var h = React.createElement;
+
+// ─── Position-entry helpers (used by the equity curve overlay) ───────────────
+// Normalises raw transaction rows from vw_transactions into a chart-ready
+// marker set + a decision-useful summary (winners, losers, hit rate).
+function normaliseTx(t) {
+    var sym  = t.symbol || t.ticker;
+    var date = t.transaction_date || t.date || t.trade_date || t.filled_at;
+    var side = (t.side || t.transaction_type || '').toString().toUpperCase();
+    var qty  = Math.abs(Number(t.quantity || t.qty || t.shares || 0));
+    var px   = Number(t.price || t.fill_price || t.avg_price || 0);
+    if (date && date.length > 10) date = date.slice(0, 10);
+    return { symbol: sym, date: date, side: side, qty: qty, price: px, notional: qty * px };
+}
+
+function buildEntryMarkers(navSeries, txData, positions, mode) {
+    var empty = { markers: [], summary: null, totalTrades: 0 };
+    if (!Array.isArray(navSeries) || navSeries.length < 2 || !Array.isArray(txData) || !txData.length) return empty;
+
+    var navDates = navSeries.map(function(d) { return (d.price_date || '').slice(0, 10); });
+    var navByDate = {};
+    navSeries.forEach(function(d, i) { navByDate[navDates[i]] = d.nav; });
+    var firstNav  = navSeries[0].nav;
+    var latestNav = navSeries[navSeries.length - 1].nav;
+
+    // Snap any trade date to the nearest NAV date on or after it (markets closed → next session)
+    function snapToNav(d) {
+        if (navByDate[d]) return d;
+        for (var i = 0; i < navDates.length; i++) if (navDates[i] >= d) return navDates[i];
+        return null;
+    }
+
+    var clean = txData.map(normaliseTx).filter(function(t) {
+        return t.symbol && t.date && (t.side.indexOf('BUY') >= 0 || t.side.indexOf('SELL') >= 0);
+    });
+
+    // First-entry mode: keep only the earliest BUY per symbol
+    if (mode === 'first-entry') {
+        var firstSeen = {};
+        clean = clean.filter(function(t) {
+            if (t.side.indexOf('BUY') < 0) return false;
+            if (firstSeen[t.symbol] && firstSeen[t.symbol] <= t.date) return false;
+            firstSeen[t.symbol] = t.date;
+            return true;
+        });
+    }
+
+    // Notable mode: keep only trades ≥ 0.5% of latest NAV
+    if (mode === 'notable' && latestNav > 0) {
+        var threshold = latestNav * 0.005;
+        clean = clean.filter(function(t) { return t.notional >= threshold; });
+    }
+
+    // Group by snapped NAV date, separate BUY vs SELL
+    var grouped = {};
+    clean.forEach(function(t) {
+        var snapped = snapToNav(t.date);
+        if (!snapped) return;
+        var key = snapped + '|' + (t.side.indexOf('BUY') >= 0 ? 'BUY' : 'SELL');
+        if (!grouped[key]) grouped[key] = { date: snapped, side: t.side.indexOf('BUY') >= 0 ? 'BUY' : 'SELL', items: [], notional: 0 };
+        grouped[key].items.push(t);
+        grouped[key].notional += t.notional;
+    });
+
+    var markers = Object.keys(grouped).map(function(k) {
+        var g = grouped[k];
+        var isBuy = g.side === 'BUY';
+        var topSyms = g.items.slice().sort(function(a, b) { return b.notional - a.notional; })
+            .slice(0, 2).map(function(t) { return t.symbol; });
+        var label = topSyms.join('/');
+        if (g.items.length > topSyms.length) label += '+' + (g.items.length - topSyms.length);
+        return {
+            time:     g.date,
+            position: isBuy ? 'belowBar' : 'aboveBar',
+            color:    isBuy ? '#10b981' : '#ef4444',
+            shape:    isBuy ? 'arrowUp' : 'arrowDown',
+            text:     label,
+        };
+    }).sort(function(a, b) { return a.time < b.time ? -1 : 1; });
+
+    // Decision-useful summary: P&L since entry for each grouped trade
+    var posMap = {};
+    (positions || []).forEach(function(p) { posMap[p.symbol] = p; });
+
+    var rows = Object.keys(grouped).map(function(k) {
+        var g = grouped[k];
+        var navAtEntry = navByDate[g.date] || firstNav;
+        var navReturn  = (latestNav - navAtEntry) / navAtEntry;
+        // Per-symbol return since entry (only for first-entry/notable buy aggregates)
+        var primarySym = g.items.slice().sort(function(a, b) { return b.notional - a.notional; })[0].symbol;
+        var pos = posMap[primarySym];
+        var posReturn = pos && pos.unrealised_return_pct != null ? Number(pos.unrealised_return_pct) : null;
+        return {
+            date: g.date, side: g.side, primarySym: primarySym, itemCount: g.items.length,
+            notional: g.notional, navReturnSince: navReturn, posReturn: posReturn,
+        };
+    });
+
+    var buyRows = rows.filter(function(r) { return r.side === 'BUY'; });
+    var winners = buyRows.filter(function(r) { return r.posReturn != null && r.posReturn > 0; });
+    var losers  = buyRows.filter(function(r) { return r.posReturn != null && r.posReturn < 0; });
+    var hitRate = (winners.length + losers.length) > 0 ? winners.length / (winners.length + losers.length) : null;
+    var avgReturn = buyRows.length ? buyRows.reduce(function(s, r) { return s + (r.posReturn || 0); }, 0) / buyRows.length : null;
+    var topWin  = winners.slice().sort(function(a, b) { return (b.posReturn || 0) - (a.posReturn || 0); })[0];
+    var topLoss = losers.slice().sort(function(a, b) { return (a.posReturn || 0) - (b.posReturn || 0); })[0];
+
+    return {
+        markers: markers,
+        totalTrades: txData.length,
+        summary: {
+            shown: markers.length, buys: buyRows.length, sells: rows.length - buyRows.length,
+            hitRate: hitRate, avgReturn: avgReturn,
+            topWin: topWin, topLoss: topLoss,
+        },
+    };
+}
+
+function EntryDecisionStrip(props) {
+    var s = props.summary;
+    if (!s) return null;
+    function stat(label, value, color) {
+        return h('div', { style: { display: 'flex', flexDirection: 'column', gap: 2 } },
+            h('div', { style: { fontSize: 9, color: 'rgba(255,255,255,0.35)', fontFamily: 'JetBrains Mono', letterSpacing: 0.8, textTransform: 'uppercase' } }, label),
+            h('div', { style: { fontSize: 13, fontWeight: 700, color: color || 'rgba(255,255,255,0.85)', fontFamily: 'JetBrains Mono' } }, value)
+        );
+    }
+    var hr = s.hitRate != null ? (s.hitRate * 100).toFixed(0) + '%' : '—';
+    var hrColor = s.hitRate == null ? null : s.hitRate >= 0.6 ? '#10b981' : s.hitRate >= 0.4 ? '#f59e0b' : '#ef4444';
+    var ar = s.avgReturn != null ? (s.avgReturn >= 0 ? '+' : '') + (s.avgReturn * 100).toFixed(1) + '%' : '—';
+    var arColor = s.avgReturn == null ? null : s.avgReturn >= 0 ? '#10b981' : '#ef4444';
+
+    return h('div', {
+        style: {
+            display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14,
+            marginTop: 12, padding: '12px 14px',
+            background: 'rgba(0,212,255,0.03)',
+            border: '1px solid rgba(255,255,255,0.05)', borderRadius: 6,
+        }
+    },
+        stat('Entries Shown', s.shown + ' (' + s.buys + ' buy · ' + s.sells + ' sell)'),
+        stat('Hit Rate', hr, hrColor),
+        stat('Avg Return Since Entry', ar, arColor),
+        stat('Top Win',  s.topWin  ? s.topWin.primarySym  + ' +' + ((s.topWin.posReturn  || 0) * 100).toFixed(1) + '%' : '—', '#10b981'),
+        stat('Top Loss', s.topLoss ? s.topLoss.primarySym + ' '  + ((s.topLoss.posReturn || 0) * 100).toFixed(1) + '%' : '—', '#ef4444')
+    );
+}
 
 // --- Helpers -------------------------------------------------
 
@@ -163,9 +308,22 @@ export function OverviewPanel(p) {
         })
     );
 
-    // B2. Equity Curve — lightweight-charts
+    // B2. Equity Curve — lightweight-charts with optional position-entry markers
+    var _se = useState(true);
+    var showEntries = _se[0], setShowEntries = _se[1];
+    var _ef = useState('notable');
+    var entryFilter = _ef[0], setEntryFilter = _ef[1];
+
+    // Build entry markers from raw transactions, aligned to the equity curve
+    var entryMarkers = useMemo(function() {
+        return buildEntryMarkers(p.navSeries, p.txData, p.positions, entryFilter);
+    }, [p.navSeries, p.txData, p.positions, entryFilter]);
+
     var eqRef = useRef(null);
     var eqChartRef = useRef(null);
+    var eqSeriesRef = useRef(null);
+    var markersRef = useRef(null);
+
     useEffect(function() {
         if (!p.navSeries || !p.navSeries.length || !eqRef.current) return;
         if (eqChartRef.current) { eqChartRef.current.remove(); eqChartRef.current = null; }
@@ -192,16 +350,59 @@ export function OverviewPanel(p) {
         areaSeries.setData(series.map(function(d) {
             return { time: d.price_date, value: +((d.nav / first - 1) * 100).toFixed(3) };
         }));
+        eqSeriesRef.current = areaSeries;
         chart.timeScale().fitContent();
-        return function() { if (eqChartRef.current) { eqChartRef.current.remove(); eqChartRef.current = null; } };
+        return function() {
+            markersRef.current = null;
+            eqSeriesRef.current = null;
+            if (eqChartRef.current) { eqChartRef.current.remove(); eqChartRef.current = null; }
+        };
     }, [p.navSeries]);
 
-    var equityCard = h('div', { className: 'card', style: { marginBottom: 16 } },
-        h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 } },
-            h('div', { className: 'card-title', style: { margin: 0 } }, 'PORTFOLIO EQUITY CURVE'),
-            h('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.25)', fontFamily: 'JetBrains Mono' } }, 'Normalised to % return from inception')
+    // Attach / refresh entry markers as toggle and filter change
+    useEffect(function() {
+        if (!eqSeriesRef.current || !LightweightCharts.createSeriesMarkers) return;
+        var markers = showEntries ? entryMarkers.markers : [];
+        if (markersRef.current) {
+            markersRef.current.setMarkers(markers);
+        } else {
+            markersRef.current = LightweightCharts.createSeriesMarkers(eqSeriesRef.current, markers);
+        }
+    }, [showEntries, entryMarkers]);
+
+    var headerControls = h('div', { style: { display: 'flex', alignItems: 'center', gap: 14 } },
+        h('label', {
+            style: { display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+                      fontSize: 10, fontFamily: 'JetBrains Mono', letterSpacing: 0.5,
+                      color: showEntries ? 'rgba(0,212,255,0.85)' : 'rgba(255,255,255,0.35)' }
+        },
+            h('input', { type: 'checkbox', checked: showEntries,
+                onChange: function(e) { setShowEntries(e.target.checked); },
+                style: { cursor: 'pointer', accentColor: '#00d4ff' } }),
+            'SHOW ENTRIES'
         ),
-        h('div', { ref: eqRef, style: { height: 300 } })
+        showEntries && h('select', {
+            value: entryFilter, onChange: function(e) { setEntryFilter(e.target.value); },
+            style: { background: 'rgba(0,0,0,0.4)', color: 'rgba(255,255,255,0.75)',
+                      border: '1px solid rgba(255,255,255,0.1)', borderRadius: 4,
+                      padding: '3px 8px', fontSize: 10, fontFamily: 'JetBrains Mono', cursor: 'pointer' }
+        },
+            h('option', { value: 'notable' },      'Notable trades (≥0.5% NAV)'),
+            h('option', { value: 'first-entry' },  'First entries only'),
+            h('option', { value: 'all' },          'All trades')
+        ),
+        showEntries && h('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'JetBrains Mono' } },
+            entryMarkers.markers.length + ' shown · ' + entryMarkers.totalTrades + ' total'
+        )
+    );
+
+    var equityCard = h('div', { className: 'card', style: { marginBottom: 16 } },
+        h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, gap: 16, flexWrap: 'wrap' } },
+            h('div', { className: 'card-title', style: { margin: 0 } }, 'PORTFOLIO EQUITY CURVE'),
+            headerControls
+        ),
+        h('div', { ref: eqRef, style: { height: 300 } }),
+        showEntries && entryMarkers.summary && h(EntryDecisionStrip, { summary: entryMarkers.summary })
     );
 
     // C. Underwater Chart
