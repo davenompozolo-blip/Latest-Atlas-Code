@@ -51,8 +51,18 @@ async function callClaude(messages, schema, mode) {
     const { data, error } = await sb.functions.invoke('claude_sql_assistant', {
         body: { messages, schema, mode },
     });
-    if (error) throw new Error(error.message);
-    if (data.error) throw new Error(data.error);
+    if (error) {
+        // supabase-js wraps the response in error.context — try to surface the function's actual JSON error
+        let detail = error.message || 'Edge function call failed';
+        try {
+            if (error.context && typeof error.context.json === 'function') {
+                const body = await error.context.json();
+                if (body && body.error) detail = body.error;
+            }
+        } catch (_) { /* ignore parse errors */ }
+        throw new Error(detail);
+    }
+    if (data && data.error) throw new Error(data.error);
     return data.content;
 }
 

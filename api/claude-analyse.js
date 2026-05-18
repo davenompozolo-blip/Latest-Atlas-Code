@@ -45,7 +45,7 @@ export default async function handler(req, res) {
         headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
         body: JSON.stringify({
           model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6',
-          max_tokens: 4096,
+          max_tokens: 8192,
           system: `You are ATLAS Intelligence, the decision engine of the ATLAS Terminal.
 You are given structured output from 6 layers of portfolio analysis.
 Synthesise this into a Portfolio Construction Report in the style of an investment committee memo.
@@ -103,7 +103,7 @@ Respond ONLY with valid JSON — no preamble, no markdown fences:
       },
       body: JSON.stringify({
         model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6',
-        max_tokens: 4096,
+        max_tokens: 8192,
         stream: wantStream,
         system: buildSystemPrompt(),
         messages: [{ role: 'user', content: prompt }],
