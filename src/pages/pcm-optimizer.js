@@ -386,3 +386,203 @@ export function runOptimizer(mode, inputs, concentrationLimit) {
         },
     };
 }
+
+// ── ATLAS Adaptive: macro-informed, turnover-penalized, entropy-regularized ───
+
+// Raw factor scores for a single position's price history
+function perSymbolFactors(hist) {
+    if (!hist || hist.length < 30) return null;
+    var prices = hist.map(function(d) { return d.close; });
+    var n = prices.length;
+    var pNow = prices[n - 1];
+    var p1m  = prices[Math.max(0, n - 22)];
+    var p3m  = prices[Math.max(0, n - 63)];
+    var p12m = prices[Math.max(0, n - 252)];
+    var ret12m = (pNow - p12m) / p12m;
+    var ret3m  = (pNow - p3m)  / p3m;
+    var ret1m  = (pNow - p1m)  / p1m;
+    var mom    = ret12m - ret1m; // skip-month momentum
+    var sumSq = 0, cnt = 0;
+    for (var i = 1; i <= Math.min(60, n - 1); i++) {
+        var r = Math.log(prices[n - i] / prices[n - i - 1]);
+        if (isFinite(r)) { sumSq += r * r; cnt++; }
+    }
+    var vol = cnt > 5 ? Math.sqrt(sumSq / cnt * 252) : 0.25;
+    var quality = vol > 0 ? ret12m / vol : 0;
+    return { mom: mom, growth: ret3m, quality: quality, lowvol: -vol, value: -ret12m };
+}
+
+// Map macro signals → factor tilt vector (values −1 to +1)
+function macroToFactorTilts(signals) {
+    if (!signals) return null;
+    var t = { mom: 0, quality: 0, lowvol: 0, value: 0, growth: 0 };
+
+    switch (signals.regime) {
+        case 'Goldilocks':   // Growth↑ Inflation↓ — classic risk-on
+            t.mom = 0.8; t.growth = 0.7; t.quality = 0.2; t.lowvol = -0.5; t.value = -0.2;
+            break;
+        case 'Reflation':    // Growth↑ Inflation↑ — pro-cyclical, value
+            t.mom = 0.5; t.value = 0.8; t.growth = 0.3; t.quality = 0.0; t.lowvol = -0.4;
+            break;
+        case 'Stagflation':  // Growth↓ Inflation↑ — defensive, quality
+            t.quality = 0.9; t.lowvol = 0.7; t.value = 0.5; t.mom = -0.5; t.growth = -0.7;
+            break;
+        case 'Deflation':    // Growth↓ Inflation↓ — risk-off, hide in quality
+            t.quality = 0.8; t.lowvol = 0.9; t.value = 0.2; t.mom = -0.6; t.growth = -0.8;
+            break;
+    }
+
+    // Yield-curve inversion overlay: +defensive
+    if (signals.spread2s10s != null && signals.spread2s10s < 0) {
+        t.quality += 0.3; t.lowvol += 0.3; t.mom -= 0.2;
+    }
+
+    // Elevated HY spreads (>400 bps): risk-off credit overlay
+    if (signals.hySpreads != null && signals.hySpreads > 400) {
+        t.quality += 0.2; t.lowvol += 0.2; t.mom -= 0.2;
+    }
+
+    // Clamp to [−1, +1]
+    Object.keys(t).forEach(function(k) { t[k] = Math.max(-1, Math.min(1, t[k])); });
+    return t;
+}
+
+// Async: pull latest macro signals from the existing /api/macro endpoint
+export async function fetchMacroSignals() {
+    try {
+        var resp = await fetch('/api/macro');
+        if (!resp.ok) return null;
+        var data = await resp.json();
+        var spread2s10s = null, hySpreads = null, cpiYoY = null, unrate = null;
+        if (data.yields && data.yields.curve) spread2s10s = data.yields.curve.spread2s10s;
+        if (data.credit && data.credit.hySpreads && data.credit.hySpreads.length)
+            hySpreads = data.credit.hySpreads[data.credit.hySpreads.length - 1].value;
+        if (data.regime) cpiYoY = data.regime.cpiYoY;
+        if (data.growth && data.growth.unrate && data.growth.unrate.length)
+            unrate = data.growth.unrate[data.growth.unrate.length - 1].value;
+        return {
+            regime:      data.regime ? data.regime.label : null,
+            regimeColor: data.regime ? data.regime.color : '#6b7280',
+            spread2s10s: spread2s10s,
+            hySpreads:   hySpreads,
+            cpiYoY:      cpiYoY,
+            unrate:      unrate,
+        };
+    } catch(e) {
+        console.warn('[PCM] fetchMacroSignals failed:', e);
+        return null;
+    }
+}
+
+// Gradient ascent on anchored, entropy-regularized Sharpe
+function anchoredEntropyOptimizer(means, cov, currentWeights, riskTolerance, maxW) {
+    var n = means.length;
+    var minW = Math.max(0.001, 0.3 / n);  // at least 0.3% or thin floor
+    maxW = maxW || 0.30;
+
+    // λ from IPS: conservative (rt=1) → λ=0.10; aggressive (rt=10) → λ=0.025
+    var rt = riskTolerance != null ? Math.max(1, Math.min(10, riskTolerance)) : 5;
+    var lambda = 0.025 + 0.075 * (10 - rt) / 9;
+
+    // γ: entropy weight — calibrated so entropy gradient ≈ Sharpe gradient magnitude
+    var gamma = 0.008;
+
+    // Warm-start from current weights (already sums to ~1)
+    var w = currentWeights.slice();
+    var sumW = w.reduce(function(s, wi) { return s + wi; }, 0);
+    if (sumW < 0.5) w = new Array(n).fill(1 / n);
+    w = clampWeights(w, minW, maxW);
+
+    var w0 = currentWeights.slice();
+    var lr = 0.012;
+
+    for (var iter = 0; iter < 800; iter++) {
+        var vol = portVol(w, cov);
+        if (vol < 1e-12) break;
+        var ret = w.reduce(function(s, wi, i) { return s + wi * means[i]; }, 0);
+        var sharpe = ret / vol;
+        var mrc = margRisk(w, cov);
+
+        var grad = means.map(function(mu, i) {
+            var gSharpe   = (mu - sharpe * mrc[i]) / vol;
+            var gTurnover = -2 * lambda * (w[i] - w0[i]);
+            var gEntropy  = -gamma * (Math.log(Math.max(w[i], 1e-12)) + 1);
+            return gSharpe + gTurnover + gEntropy;
+        });
+
+        var newW = clampWeights(w.map(function(wi, i) { return wi + lr * grad[i]; }), minW, maxW);
+        var change = w.reduce(function(s, wi, i) { return s + Math.abs(wi - newW[i]); }, 0);
+        w = newW;
+        if (change < 1e-10) break;
+    }
+    return w;
+}
+
+// Full ATLAS Adaptive run — call this instead of runOptimizer when mode==='atlas'
+export function runAtlasAdaptive(inputs, positions, histBySymbol, ips, macroSignals) {
+    var n = inputs.symbols.length;
+    var totalMv = positions.reduce(function(s, p) { return s + (p.market_value || 0); }, 0);
+
+    // Current weights for each optimizer symbol (warm start)
+    var currentWeights = inputs.symbols.map(function(sym) {
+        var pos = positions.find(function(p) { return p.symbol === sym; });
+        return pos && totalMv > 0 ? pos.market_value / totalMv : 1 / n;
+    });
+
+    // Macro tilts from regime + overlays
+    var tilts = macroToFactorTilts(macroSignals);
+    var ALPHA = 0.25; // 25% weight on macro views vs historical returns
+
+    // Per-symbol macro alignment → return adjustment
+    var macroAlignments = inputs.symbols.map(function(sym) {
+        if (!tilts) return 0;
+        var f = perSymbolFactors(histBySymbol[sym]);
+        if (!f) return 0;
+        // Weighted dot product (scaling each factor to bring into comparable units)
+        var score = tilts.mom     * Math.tanh(f.mom     * 5)
+                  + tilts.quality * Math.tanh(f.quality * 2)
+                  + tilts.lowvol  * Math.tanh(f.lowvol  * 5)
+                  + tilts.value   * Math.tanh(f.value   * 5)
+                  + tilts.growth  * Math.tanh(f.growth  * 8);
+        return Math.max(-1, Math.min(1, score / 5)); // normalise by factor count
+    });
+
+    // Macro-adjusted expected daily returns
+    var adjMeans = inputs.means.map(function(mu, i) {
+        return mu + ALPHA * macroAlignments[i] * inputs.vols[i];
+    });
+
+    var maxW = ips && ips.concentration_limit ? ips.concentration_limit / 100 : 0.30;
+    var rt   = ips ? ips.risk_tolerance : 5;
+    var weights = anchoredEntropyOptimizer(adjMeans, inputs.cov, currentWeights, rt, maxW);
+
+    var vol    = portVol(weights, inputs.cov) * Math.sqrt(252) * 100;
+    var ret    = weights.reduce(function(s, w, i) { return s + w * adjMeans[i]; }, 0) * 252 * 100;
+    var sharpe = vol > 0 ? ret / vol : 0;
+    var lambda = 0.025 + 0.075 * (10 - Math.max(1, Math.min(10, rt || 5))) / 9;
+
+    var alignedRanked = inputs.symbols.map(function(sym, i) {
+        return { sym: sym, a: macroAlignments[i] };
+    }).sort(function(a, b) { return b.a - a.a; });
+
+    return {
+        symbols: inputs.symbols,
+        weights: weights,
+        metrics: {
+            expectedReturn: ret.toFixed(2),
+            expectedVol:    vol.toFixed(2),
+            sharpe:         sharpe.toFixed(3),
+        },
+        macroContext: {
+            regime:      macroSignals ? macroSignals.regime      : null,
+            regimeColor: macroSignals ? macroSignals.regimeColor : '#6b7280',
+            spread2s10s: macroSignals ? macroSignals.spread2s10s : null,
+            hySpreads:   macroSignals ? macroSignals.hySpreads   : null,
+            cpiYoY:      macroSignals ? macroSignals.cpiYoY      : null,
+            tilts:       tilts,
+            lambda:      lambda,
+            topAligned:  alignedRanked.slice(0, 5),
+            botAligned:  alignedRanked.slice(-5).reverse(),
+        },
+    };
+}

@@ -14,6 +14,7 @@ import { Loading } from './components.js';
 import {
     computeFactorScores, computePortfolioMetrics,
     buildOptimizerInputs, runOptimizer,
+    fetchMacroSignals, runAtlasAdaptive,
 } from './pcm-optimizer.js';
 
 const { useState, useEffect, useRef } = React;
@@ -31,11 +32,12 @@ const LAYERS = [
 ];
 
 const OPTIMIZER_MODES = [
-    { id: 'mvo',    label: 'Max Sharpe (MVO)'         },
-    { id: 'erc',    label: 'Equal Risk (ERC)'          },
-    { id: 'minvar', label: 'Min Variance'              },
-    { id: 'maxdiv', label: 'Max Diversification'       },
-    { id: 'bench',  label: 'Benchmark-Constrained'     },
+    { id: 'atlas',  label: '⬡ ATLAS Adaptive',         description: 'Macro-informed · Turnover-penalized · Entropy-regularized' },
+    { id: 'mvo',    label: 'Max Sharpe (MVO)',          description: 'Classical mean-variance; can concentrate' },
+    { id: 'erc',    label: 'Equal Risk (ERC)',           description: 'Each position contributes equal risk' },
+    { id: 'minvar', label: 'Min Variance',              description: 'Lowest achievable portfolio volatility' },
+    { id: 'maxdiv', label: 'Max Diversification',       description: 'Maximise diversification ratio' },
+    { id: 'bench',  label: 'Benchmark-Constrained',     description: 'Max Sharpe within IPS concentration cap' },
 ];
 
 // ─── Layer tab bar ───────────────────────────────────────────────────────────
@@ -248,36 +250,123 @@ function RiskTable({ rows, positions }) {
     );
 }
 
+// ─── Macro Context Card (ATLAS Adaptive only) ────────────────────────────────
+function MacroContextCard({ ctx }) {
+    if (!ctx) return null;
+    const FACTOR_LABELS = { mom: 'Momentum', quality: 'Quality', lowvol: 'Low Vol', value: 'Value', growth: 'Growth' };
+    const tiltColor = function(v) {
+        return v > 0.3 ? 'var(--green)' : v < -0.3 ? 'var(--red)' : 'var(--text-3)';
+    };
+    return h('div', { className: 'atlas-card', style: { marginBottom: 16, borderColor: ctx.regimeColor || 'var(--border-2)' } },
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 } },
+            h('div', { style: { width: 10, height: 10, borderRadius: '50%', background: ctx.regimeColor || 'var(--teal)', flexShrink: 0 } }),
+            h('div', { style: { fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13, color: 'var(--text-1)' } },
+                'Macro Regime: ' + (ctx.regime || 'Unknown')),
+            ctx.spread2s10s != null && h('span', { className: 'chip ' + (ctx.spread2s10s < 0 ? 'chip-red' : 'chip-teal'),
+                style: { marginLeft: 'auto' } },
+                '2s10s ' + (ctx.spread2s10s >= 0 ? '+' : '') + ctx.spread2s10s.toFixed(2) + '%'
+            )
+        ),
+        h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
+            // Factor tilts
+            h('div', null,
+                h('div', { style: { fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--text-3)',
+                                     letterSpacing: '0.10em', textTransform: 'uppercase', marginBottom: 8 } },
+                    'Factor Tilts Applied'),
+                ctx.tilts ? Object.entries(ctx.tilts).map(function(entry) {
+                    var k = entry[0], v = entry[1];
+                    return h('div', { key: k, style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 } },
+                        h('span', { style: { fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-2)', minWidth: 72 } },
+                            FACTOR_LABELS[k] || k),
+                        h('div', { style: { flex: 1, height: 4, background: 'var(--navy-3)', borderRadius: 2, overflow: 'hidden', position: 'relative' } },
+                            h('div', { style: {
+                                position: 'absolute', height: '100%', borderRadius: 2,
+                                background: tiltColor(v),
+                                left:  v >= 0 ? '50%' : (50 + v * 50) + '%',
+                                width: Math.abs(v) * 50 + '%',
+                            }})
+                        ),
+                        h('span', { style: { fontSize: 10, fontFamily: 'var(--font-mono)', color: tiltColor(v), minWidth: 36, textAlign: 'right' } },
+                            (v >= 0 ? '+' : '') + v.toFixed(2))
+                    );
+                }) : h('span', { style: { color: 'var(--text-3)', fontSize: 11 } }, 'No macro signals')
+            ),
+            // Top/bottom aligned
+            h('div', null,
+                h('div', { style: { fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--text-3)',
+                                     letterSpacing: '0.10em', textTransform: 'uppercase', marginBottom: 8 } },
+                    'Macro Alignment'),
+                (ctx.topAligned || []).map(function(item) {
+                    return h('div', { key: item.sym, style: { display: 'flex', justifyContent: 'space-between',
+                                                               alignItems: 'center', marginBottom: 4 } },
+                        h('span', { className: 'cell-ticker', style: { fontSize: 11 } }, item.sym),
+                        h('span', { style: { fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--green)' } },
+                            '+' + item.a.toFixed(2))
+                    );
+                }),
+                ctx.botAligned && ctx.botAligned.length > 0 && h('div', { style: { marginTop: 6, paddingTop: 6, borderTop: '1px solid var(--border-2)' } },
+                    ctx.botAligned.map(function(item) {
+                        return h('div', { key: item.sym, style: { display: 'flex', justifyContent: 'space-between',
+                                                                    alignItems: 'center', marginBottom: 4 } },
+                            h('span', { className: 'cell-ticker', style: { fontSize: 11 } }, item.sym),
+                            h('span', { style: { fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--red)' } },
+                                item.a.toFixed(2))
+                        );
+                    })
+                )
+            )
+        ),
+        h('div', { style: { marginTop: 10, fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--text-3)' } },
+            'Turnover aversion λ=' + (ctx.lambda ? ctx.lambda.toFixed(3) : '—') +
+            (ctx.hySpreads != null ? '  ·  HY spreads ' + ctx.hySpreads.toFixed(0) + ' bps' : '') +
+            (ctx.cpiYoY    != null ? '  ·  CPI YoY '   + ctx.cpiYoY.toFixed(1)    + '%'    : '')
+        )
+    );
+}
+
 // ─── Layer 5: Optimizer ──────────────────────────────────────────────────────
 function OptimizerPanel({ positions, histBySymbol, ips, onResult, optimizerResult, dataReady }) {
-    const [mode, setMode]         = useState('mvo');
+    const [mode, setMode]         = useState('atlas');
     const [running, setRunning]   = useState(false);
     const [error, setError]       = useState(null);
 
     function run() {
         setRunning(true); setError(null);
-        setTimeout(function() {
-            try {
-                const inputs = buildOptimizerInputs(positions, histBySymbol);
-                if (!inputs || inputs.symbols.length < 2) {
-                    setError('Insufficient price history to optimize. Need at least 2 positions with 30+ days of data.');
-                    setRunning(false); return;
+
+        var doRun = function(macroSignals) {
+            setTimeout(function() {
+                try {
+                    const inputs = buildOptimizerInputs(positions, histBySymbol);
+                    if (!inputs || inputs.symbols.length < 2) {
+                        setError('Insufficient price history to optimize. Need at least 2 positions with 30+ days of data.');
+                        setRunning(false); return;
+                    }
+                    var result = mode === 'atlas'
+                        ? runAtlasAdaptive(inputs, positions, histBySymbol, ips, macroSignals)
+                        : runOptimizer(mode, inputs, ips ? ips.concentration_limit : null);
+                    onResult(result);
+                } catch (e) {
+                    setError('Optimizer error: ' + e.message);
                 }
-                const result = runOptimizer(mode, inputs, ips ? ips.concentration_limit : null);
-                onResult(result);
-            } catch (e) {
-                setError('Optimizer error: ' + e.message);
-            }
-            setRunning(false);
-        }, 50); // yield to browser before heavy compute
+                setRunning(false);
+            }, 50);
+        };
+
+        if (mode === 'atlas') {
+            fetchMacroSignals().then(doRun).catch(function() { doRun(null); });
+        } else {
+            doRun(null);
+        }
     }
 
     if (!dataReady) return h('div', { style: { textAlign: 'center', padding: '30px 0', color: 'var(--text-3)' } },
         h(Loading, { text: 'Loading price history for optimization…' })
     );
 
+    var currentMode = OPTIMIZER_MODES.find(function(m) { return m.id === mode; });
+
     return h('div', null,
-        h('div', { style: { display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' } },
+        h('div', { style: { display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' } },
             OPTIMIZER_MODES.map(function(m) {
                 return h('button', { key: m.id,
                     className: 'btn ' + (mode === m.id ? 'btn-primary' : 'btn-ghost'),
@@ -286,13 +375,16 @@ function OptimizerPanel({ positions, histBySymbol, ips, onResult, optimizerResul
                 }, m.label);
             })
         ),
+        currentMode && h('div', { style: { fontSize: 10, color: 'var(--text-3)', fontFamily: 'var(--font-mono)',
+                                            marginBottom: 16, paddingLeft: 2 } }, currentMode.description),
         error && h('div', { className: 'chip chip-red', style: { marginBottom: 12 } }, error),
+        optimizerResult && optimizerResult.macroContext && h(MacroContextCard, { ctx: optimizerResult.macroContext }),
         optimizerResult && h('div', null,
             h('div', { className: 'kpi-grid kpi-grid-3', style: { marginBottom: 16 } },
                 [
-                    { label: 'Expected Sharpe', value: optimizerResult.metrics.sharpe,           cls: 'positive' },
-                    { label: 'Expected Return', value: optimizerResult.metrics.expectedReturn + '%', cls: 'positive' },
-                    { label: 'Expected Vol',    value: optimizerResult.metrics.expectedVol + '%',    cls: 'warning'  },
+                    { label: 'Expected Sharpe', value: optimizerResult.metrics.sharpe,               cls: 'positive' },
+                    { label: 'Expected Return', value: optimizerResult.metrics.expectedReturn + '%',  cls: 'positive' },
+                    { label: 'Expected Vol',    value: optimizerResult.metrics.expectedVol + '%',     cls: 'warning'  },
                 ].map(function(k) {
                     return h('div', { key: k.label, className: 'kpi-cell' },
                         h('div', { className: 'kpi-label' }, k.label),
@@ -340,7 +432,8 @@ function OptimizerPanel({ positions, histBySymbol, ips, onResult, optimizerResul
         ),
         h('div', { style: { display: 'flex', gap: 10 } },
             h('button', { className: 'btn btn-primary', onClick: run, disabled: running },
-                running ? 'Running…' : (optimizerResult ? '↺ Re-run ' : '▶ Run ') + OPTIMIZER_MODES.find(function(m) { return m.id === mode; }).label
+                running ? (mode === 'atlas' ? 'Fetching macro signals…' : 'Running…')
+                        : (optimizerResult ? '↺ Re-run ' : '▶ Run ') + (currentMode ? currentMode.label : mode)
             )
         )
     );
