@@ -68,13 +68,40 @@ export function HeroCard({ icon, label, value, color, accent, badge, sub }) {
 }
 
 // --- Narrative builder (one-line insight strip per panel) ---
-export function NarrativeStrip({ items }) {
+export function NarrativeStrip({ items, title }) {
     if (!items || !items.length) return null;
-    return React.createElement('div', { className: 'narrative-strip' },
-        items.map((it, i) => React.createElement('div', { key: i, className: 'narrative-line' },
-            React.createElement('span', { className: 'narrative-icon' }, it.icon || '◇'),
-            React.createElement('span', { className: 'narrative-text', dangerouslySetInnerHTML: { __html: it.text } })
-        ))
+    return React.createElement('div', {
+        className: 'card',
+        style: {
+            marginBottom: 16,
+            padding: '12px 16px',
+            borderLeft: '2px solid rgba(0,212,255,0.45)',
+            background: 'linear-gradient(90deg, rgba(0,212,255,0.04), rgba(255,255,255,0.015) 40%, transparent)',
+        }
+    },
+        React.createElement('div', {
+            style: {
+                fontSize: 9, letterSpacing: 1.2, fontWeight: 700,
+                color: 'rgba(0,212,255,0.6)', fontFamily: 'JetBrains Mono',
+                marginBottom: 8, textTransform: 'uppercase',
+            }
+        }, title || 'Daily Readout'),
+        React.createElement('div', { className: 'narrative-strip', style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+            items.map((it, i) => React.createElement('div', {
+                key: i, className: 'narrative-line',
+                style: { display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 12, lineHeight: 1.55, color: 'rgba(255,255,255,0.78)' }
+            },
+                React.createElement('span', {
+                    className: 'narrative-icon',
+                    style: { color: 'rgba(0,212,255,0.7)', fontSize: 11, lineHeight: '20px', flexShrink: 0, width: 14, textAlign: 'center' }
+                }, it.icon || '◇'),
+                React.createElement('span', {
+                    className: 'narrative-text',
+                    style: { flex: 1 },
+                    dangerouslySetInnerHTML: { __html: it.text }
+                })
+            ))
+        )
     );
 }
 
