@@ -212,18 +212,24 @@ function FactorGrid({ factors, loading, activeShare }) {
 }
 
 // ─── Layer 4: Risk Table + KPIs ──────────────────────────────────────────────
-function RiskTable({ rows }) {
+function RiskTable({ rows, positions }) {
+    const posLookup = {};
+    (positions || []).forEach(function(p) { posLookup[p.symbol] = p; });
     return h('table', { className: 'atlas-table' },
         h('thead', null,
-            h('tr', null, ['Ticker', 'Weight', 'Vol 90d', 'MRC', '% Risk', 'Risk Bar'].map(function(th) {
+            h('tr', null, ['Ticker', 'Name', 'Sector', 'Weight', 'Vol 90d', 'MRC', '% Risk', 'Risk Bar'].map(function(th) {
                 return h('th', { key: th }, th);
             }))
         ),
         h('tbody', null,
             rows.map(function(r) {
                 const warn = r.prc > 15;
+                const meta = posLookup[r.ticker] || {};
                 return h('tr', { key: r.ticker },
                     h('td', { className: 'cell-ticker' }, r.ticker),
+                    h('td', { style: { maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } },
+                        meta.name || '—'),
+                    h('td', { style: { color: 'var(--text-3)', fontSize: 11 } }, meta.sector || '—'),
                     h('td', null, r.weight.toFixed(1) + '%'),
                     h('td', null, r.vol_90d != null ? r.vol_90d.toFixed(1) + '%' : '—'),
                     h('td', null, r.mrc     != null ? r.mrc.toFixed(3) : '—'),
@@ -298,30 +304,36 @@ function OptimizerPanel({ positions, histBySymbol, ips, onResult, optimizerResul
                 h('div', { className: 'card-title', style: { marginBottom: 10 } }, 'Optimal Weight Changes'),
                 h('table', { className: 'atlas-table' },
                     h('thead', null,
-                        h('tr', null, ['Ticker', 'Current', 'Optimal', 'Δ Weight', 'Action'].map(function(th) {
+                        h('tr', null, ['Ticker', 'Name', 'Sector', 'Current', 'Optimal', 'Δ Weight', 'Action'].map(function(th) {
                             return h('th', { key: th }, th);
                         }))
                     ),
                     h('tbody', null,
-                        optimizerResult.symbols.map(function(sym, i) {
-                            const pos = positions.find(function(p) { return p.symbol === sym; });
+                        (function() {
                             const totalMv = positions.reduce(function(s, p) { return s + (p.market_value || 0); }, 0);
-                            const curW = pos && totalMv > 0 ? (pos.market_value / totalMv * 100) : 0;
-                            const optW = optimizerResult.weights[i] * 100;
-                            const delta = optW - curW;
-                            return h('tr', { key: sym },
-                                h('td', { className: 'cell-ticker' }, sym),
-                                h('td', null, curW.toFixed(1) + '%'),
-                                h('td', null, optW.toFixed(1) + '%'),
-                                h('td', { className: delta > 0.5 ? 'pos' : delta < -0.5 ? 'neg' : '' },
-                                    (delta >= 0 ? '+' : '') + delta.toFixed(1) + '%'),
-                                h('td', null,
-                                    Math.abs(delta) < 0.5 ? h('span', { className: 'chip chip-muted' }, 'HOLD')
-                                    : h('span', { className: 'chip ' + (delta > 0 ? 'chip-green' : 'chip-red') },
-                                        delta > 0 ? 'ADD' : 'TRIM')
-                                )
-                            );
-                        })
+                            return optimizerResult.symbols.map(function(sym, i) {
+                                const pos  = positions.find(function(p) { return p.symbol === sym; });
+                                const curW = pos && totalMv > 0 ? (pos.market_value / totalMv * 100) : 0;
+                                const optW = optimizerResult.weights[i] * 100;
+                                const delta = optW - curW;
+                                return h('tr', { key: sym },
+                                    h('td', { className: 'cell-ticker' }, sym),
+                                    h('td', { style: { maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } },
+                                        pos ? (pos.name || '—') : '—'),
+                                    h('td', { style: { color: 'var(--text-3)', fontSize: 11 } },
+                                        pos ? (pos.sector || '—') : '—'),
+                                    h('td', null, curW.toFixed(1) + '%'),
+                                    h('td', null, optW.toFixed(1) + '%'),
+                                    h('td', { className: delta > 0.5 ? 'pos' : delta < -0.5 ? 'neg' : '' },
+                                        (delta >= 0 ? '+' : '') + delta.toFixed(1) + '%'),
+                                    h('td', null,
+                                        Math.abs(delta) < 0.5 ? h('span', { className: 'chip chip-muted' }, 'HOLD')
+                                        : h('span', { className: 'chip ' + (delta > 0 ? 'chip-green' : 'chip-red') },
+                                            delta > 0 ? 'ADD' : 'TRIM')
+                                    )
+                                );
+                            });
+                        }())
                     )
                 )
             )
@@ -335,18 +347,25 @@ function OptimizerPanel({ positions, histBySymbol, ips, onResult, optimizerResul
 }
 
 // ─── Layer 6: Rebalancing Engine ─────────────────────────────────────────────
-function TradeList({ trades, onExecute }) {
+function TradeList({ trades, positions, onExecute }) {
+    const posLookup = {};
+    (positions || []).forEach(function(p) { posLookup[p.symbol] = p; });
+    const hasShares = trades.some(function(t) { return t.delta_shares != null; });
     return h('table', { className: 'atlas-table' },
         h('thead', null,
             h('tr', null,
-                ['Ticker', 'Action', onExecute ? 'Δ Shares' : 'Δ Weight', 'Est. Value', 'Rationale', onExecute ? '' : null]
+                ['Ticker', 'Name', 'Sector', 'Action', hasShares ? 'Δ Shares' : 'Δ Weight', 'Est. Value', 'Rationale', onExecute ? '' : null]
                     .filter(Boolean).map(function(th) { return h('th', { key: th || 'x' }, th); })
             )
         ),
         h('tbody', null,
             trades.map(function(t, i) {
+                const meta = posLookup[t.ticker] || {};
                 return h('tr', { key: t.ticker + i },
                     h('td', { className: 'cell-ticker' }, t.ticker),
+                    h('td', { style: { maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } },
+                        meta.name || '—'),
+                    h('td', { style: { color: 'var(--text-3)', fontSize: 11 } }, meta.sector || '—'),
                     h('td', null, h('span', { className: 'chip ' + (t.action === 'BUY' ? 'chip-green' : 'chip-red') }, t.action)),
                     h('td', { className: t.action === 'BUY' ? 'pos' : 'neg' },
                         t.delta_shares != null ? (t.action === 'BUY' ? '+' : '') + t.delta_shares
@@ -399,7 +418,7 @@ function RebalancingPanel({ positions, drift, optimizerResult }) {
             h('div', { className: 'atlas-card' },
                 h('div', { className: 'card-title' }, 'Proposed Trades · Review Before Executing'),
                 trades.length > 0
-                    ? h(TradeList, { trades: trades, onExecute: function(t) { console.log('[PCM] Execute:', t); } })
+                    ? h(TradeList, { trades: trades, positions: positions, onExecute: function(t) { console.log('[PCM] Execute:', t); } })
                     : h('div', { style: { color: 'var(--text-3)', padding: '20px 0', textAlign: 'center' } },
                         'Portfolio is already close to optimal. No significant trades required.')
             )
@@ -426,7 +445,7 @@ function RebalancingPanel({ positions, drift, optimizerResult }) {
         h('div', { className: 'atlas-card' },
             h('div', { className: 'card-title' }, 'Asset-Class Drift · Run L5 Optimizer for Ticker-Level Trades'),
             drift && drift.trades && drift.trades.length > 0
-                ? h(TradeList, { trades: drift.trades.map(function(t) {
+                ? h(TradeList, { positions: positions, trades: drift.trades.map(function(t) {
                     return Object.assign({}, t, {
                         delta_pct: t.delta_pct || null,
                         est_value: null,
@@ -442,7 +461,7 @@ function RebalancingPanel({ positions, drift, optimizerResult }) {
 }
 
 // ─── Layer 7: AI Report ──────────────────────────────────────────────────────
-function AIReport({ ips, allocation, factors, risk, drift }) {
+function AIReport({ ips, allocation, factors, risk, drift, positions }) {
     const [report, setReport]   = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError]     = useState(null);
@@ -523,6 +542,7 @@ function AIReport({ ips, allocation, factors, risk, drift }) {
             h('div', { className: 'atlas-card' },
                 h('div', { className: 'card-title' }, 'Trade Recommendations'),
                 h(TradeList, {
+                    positions: positions,
                     trades: report.trade_recommendations.map(function(t) {
                         return { ticker: t.ticker, action: t.action, delta_shares: null,
                                  est_value: null, rationale: t.rationale };
@@ -665,21 +685,35 @@ export function PortfolioConstruction() {
         // 1. Get positions with asset info
         Promise.all([
             sb.from('positions').select('asset_id, quantity, market_value, average_cost'),
-            sb.from('assets').select('id, symbol, name'),
+            sb.from('assets').select('id, symbol, name, sector'),
         ]).then(function(results) {
             const positions = results[0].data || [];
             const assets    = results[1].data || [];
             const assetMap  = {};
             assets.forEach(function(a) { assetMap[a.id] = a; });
 
-            const posWithSymbol = positions
+            // Aggregate multiple lots of the same symbol into a single position
+            const posMap = {};
+            positions
                 .filter(function(p) { return p.market_value > 0 && assetMap[p.asset_id]; })
-                .map(function(p) {
+                .forEach(function(p) {
                     const a = assetMap[p.asset_id];
-                    return { symbol: a.symbol, asset_id: p.asset_id,
-                             market_value: p.market_value, quantity: p.quantity,
-                             average_cost: p.average_cost };
+                    if (posMap[a.symbol]) {
+                        posMap[a.symbol].market_value += p.market_value;
+                        posMap[a.symbol].quantity     += p.quantity || 0;
+                    } else {
+                        posMap[a.symbol] = {
+                            symbol:       a.symbol,
+                            name:         a.name  || a.symbol,
+                            sector:       a.sector || '—',
+                            asset_id:     p.asset_id,
+                            market_value: p.market_value,
+                            quantity:     p.quantity || 0,
+                            average_cost: p.average_cost,
+                        };
+                    }
                 });
+            const posWithSymbol = Object.values(posMap);
             posRef.current = posWithSymbol;
 
             if (!posWithSymbol.length) {
@@ -828,7 +862,7 @@ export function PortfolioConstruction() {
                 ),
                 h('div', { className: 'atlas-card' },
                     h('div', { className: 'card-title' }, 'Marginal Risk Contribution'),
-                    h(RiskTable, { rows: risk })
+                    h(RiskTable, { rows: risk, positions: posRef.current })
                 ),
                 nextBtn('L4')
             );
@@ -857,6 +891,7 @@ export function PortfolioConstruction() {
 
         if (activeLayer === 'L7') return h(AIReport, {
             ips: ips, allocation: alloc, factors: factors, risk: risk, drift: drift,
+            positions: posRef.current,
         });
 
         return null;
