@@ -312,6 +312,45 @@ export function computePortfolioMetrics(positions, histBySymbol, equitySnapshots
     };
 }
 
+// ── Per-position risk budget rows for L4 ─────────────────────────────────────
+// Returns rows matching RiskTable: { ticker, weight, vol_90d, mrc, prc }
+// Computed from live positions+history so no duplicates and Name/Sector available.
+
+export function computeRiskRows(positions, histBySymbol) {
+    var totalMv = positions.reduce(function(s, p) { return s + (p.market_value || 0); }, 0);
+    if (!totalMv) return [];
+
+    var rows = positions.map(function(pos) {
+        var w    = (pos.market_value || 0) / totalMv;
+        var hist = histBySymbol[pos.symbol];
+        var vol90d = null;
+        if (hist && hist.length >= 10) {
+            var prices = hist.map(function(d) { return d.close; });
+            var n = prices.length;
+            var sumSq = 0, cnt = 0;
+            for (var i = 1; i <= Math.min(90, n - 1); i++) {
+                var r = Math.log(prices[n - i] / prices[n - i - 1]);
+                if (isFinite(r)) { sumSq += r * r; cnt++; }
+            }
+            if (cnt > 5) vol90d = Math.sqrt(sumSq / cnt * 252) * 100;
+        }
+        return { ticker: pos.symbol, weight: w, vol90d: vol90d };
+    });
+
+    var totalRiskProxy = rows.reduce(function(s, r) { return s + r.weight * (r.vol90d || 0); }, 0);
+
+    return rows.map(function(r) {
+        var rc = r.weight * (r.vol90d || 0);
+        return {
+            ticker:  r.ticker,
+            weight:  r.weight * 100,
+            vol_90d: r.vol90d,
+            mrc:     r.vol90d != null ? r.weight * r.vol90d / 100 : null,
+            prc:     totalRiskProxy > 0 ? rc / totalRiskProxy * 100 : null,
+        };
+    }).sort(function(a, b) { return (b.prc || 0) - (a.prc || 0); });
+}
+
 // ── Build returns matrix from price history ───────────────────────────────────
 // positions: [{ symbol, asset_id, market_value }]
 // histBySymbol: { SYMBOL: [{ close }] }
@@ -475,20 +514,15 @@ export async function fetchMacroSignals() {
 }
 
 // Gradient ascent on anchored, entropy-regularized, sector-diversified Sharpe
-function anchoredEntropyOptimizer(means, cov, currentWeights, riskTolerance, maxW, sectorIdx, nSectors) {
+function anchoredEntropyOptimizer(means, cov, currentWeights, riskTolerance, maxW, sectorIdx, nSectors, lambdaOv, gammaOv, etaOv) {
     var n = means.length;
     var minW = Math.max(0.005, 0.7 / n);  // ≥0.5%, ≥0.7/n to guarantee real position size
     maxW = maxW || 0.30;
 
-    // λ from IPS: conservative (rt=1) → λ=0.10; aggressive (rt=10) → λ=0.025
     var rt = riskTolerance != null ? Math.max(1, Math.min(10, riskTolerance)) : 5;
-    var lambda = 0.025 + 0.075 * (10 - rt) / 9;
-
-    // γ: entropy weight — calibrated to make breadth meaningful
-    var gamma = 0.018;
-
-    // η: sector-Herfindahl penalty — kicks in hard above ~25% sector concentration
-    var eta = 0.18;
+    var lambda = lambdaOv != null ? lambdaOv : (0.025 + 0.075 * (10 - rt) / 9);
+    var gamma  = gammaOv  != null ? gammaOv  : 0.018;
+    var eta    = etaOv    != null ? etaOv    : 0.18;
 
     var hasSectors = sectorIdx && sectorIdx.length === n && nSectors > 0;
 
@@ -534,7 +568,7 @@ function anchoredEntropyOptimizer(means, cov, currentWeights, riskTolerance, max
 }
 
 // Full ATLAS Adaptive run — call this instead of runOptimizer when mode==='atlas'
-export function runAtlasAdaptive(inputs, positions, histBySymbol, ips, macroSignals) {
+export function runAtlasAdaptive(inputs, positions, histBySymbol, ips, macroSignals, overrides) {
     var n = inputs.symbols.length;
     var totalMv = positions.reduce(function(s, p) { return s + (p.market_value || 0); }, 0);
 
@@ -580,12 +614,16 @@ export function runAtlasAdaptive(inputs, positions, histBySymbol, ips, macroSign
     var maxW = ips && ips.concentration_limit ? ips.concentration_limit / 100 : 0.30;
     var rt   = ips ? ips.risk_tolerance : 5;
     var weights = anchoredEntropyOptimizer(adjMeans, inputs.cov, currentWeights, rt, maxW,
-                                            sectorIdx, sectorList.length);
+                                            sectorIdx, sectorList.length,
+                                            overrides ? overrides.lambda : null,
+                                            overrides ? overrides.gamma  : null,
+                                            overrides ? overrides.eta    : null);
 
     var vol    = portVol(weights, inputs.cov) * Math.sqrt(252) * 100;
     var ret    = weights.reduce(function(s, w, i) { return s + w * adjMeans[i]; }, 0) * 252 * 100;
     var sharpe = vol > 0 ? ret / vol : 0;
-    var lambda = 0.025 + 0.075 * (10 - Math.max(1, Math.min(10, rt || 5))) / 9;
+    var lambda = (overrides && overrides.lambda != null) ? overrides.lambda
+               : (0.025 + 0.075 * (10 - Math.max(1, Math.min(10, rt || 5))) / 9);
 
     // Breadth metrics — effective N positions, effective N sectors
     var hhi = weights.reduce(function(s, w) { return s + w * w; }, 0);
