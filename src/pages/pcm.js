@@ -316,6 +316,26 @@ function MacroContextCard({ ctx }) {
                 )
             )
         ),
+        ctx.sectorBreakdown && ctx.sectorBreakdown.length > 0 && h('div', { style: { marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border-2)' } },
+            h('div', { style: { fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--text-3)',
+                                 letterSpacing: '0.10em', textTransform: 'uppercase', marginBottom: 8 } },
+                'Sector Allocation in Optimal Portfolio'),
+            h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 6 } },
+                ctx.sectorBreakdown.map(function(s) {
+                    var pct = (s.weight * 100).toFixed(1);
+                    var heavy = s.weight > 0.25;
+                    return h('div', { key: s.sector,
+                        style: { display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px',
+                                  background: heavy ? 'rgba(239,68,68,0.10)' : 'var(--navy-3)',
+                                  border: '1px solid ' + (heavy ? 'var(--red-dim, rgba(239,68,68,0.35))' : 'var(--border-2)'),
+                                  borderRadius: 4 } },
+                        h('span', { style: { fontSize: 10, color: 'var(--text-2)', fontFamily: 'var(--font-mono)' } }, s.sector),
+                        h('span', { style: { fontSize: 10, color: heavy ? 'var(--red)' : 'var(--teal)',
+                                              fontFamily: 'var(--font-mono)', fontWeight: 600 } }, pct + '%')
+                    );
+                })
+            )
+        ),
         h('div', { style: { marginTop: 10, fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--text-3)' } },
             'Turnover aversion λ=' + (ctx.lambda ? ctx.lambda.toFixed(3) : '—') +
             (ctx.hySpreads != null ? '  ·  HY spreads ' + ctx.hySpreads.toFixed(0) + ' bps' : '') +
@@ -380,15 +400,30 @@ function OptimizerPanel({ positions, histBySymbol, ips, onResult, optimizerResul
         error && h('div', { className: 'chip chip-red', style: { marginBottom: 12 } }, error),
         optimizerResult && optimizerResult.macroContext && h(MacroContextCard, { ctx: optimizerResult.macroContext }),
         optimizerResult && h('div', null,
-            h('div', { className: 'kpi-grid kpi-grid-3', style: { marginBottom: 16 } },
+            h('div', { className: 'kpi-grid ' + (optimizerResult.metrics.effectiveN ? 'kpi-grid-5' : 'kpi-grid-3'),
+                       style: { marginBottom: 16 } },
                 [
                     { label: 'Expected Sharpe', value: optimizerResult.metrics.sharpe,               cls: 'positive' },
                     { label: 'Expected Return', value: optimizerResult.metrics.expectedReturn + '%',  cls: 'positive' },
                     { label: 'Expected Vol',    value: optimizerResult.metrics.expectedVol + '%',     cls: 'warning'  },
-                ].map(function(k) {
+                    optimizerResult.metrics.effectiveN && {
+                        label: 'Effective N Positions',
+                        value: optimizerResult.metrics.effectiveN + ' / ' + optimizerResult.metrics.totalPositions,
+                        cls:   parseFloat(optimizerResult.metrics.effectiveN) > optimizerResult.metrics.totalPositions * 0.4
+                                ? 'positive' : 'warning',
+                        sub:   '1/Σwᵢ² — higher is broader',
+                    },
+                    optimizerResult.metrics.effectiveSectors && {
+                        label: 'Effective Sectors',
+                        value: optimizerResult.metrics.effectiveSectors + ' / ' + optimizerResult.metrics.totalSectors,
+                        cls:   parseFloat(optimizerResult.metrics.effectiveSectors) > 4 ? 'positive' : 'warning',
+                        sub:   'Sector diversity',
+                    },
+                ].filter(Boolean).map(function(k) {
                     return h('div', { key: k.label, className: 'kpi-cell' },
                         h('div', { className: 'kpi-label' }, k.label),
-                        h('div', { className: 'kpi-value ' + k.cls }, k.value)
+                        h('div', { className: 'kpi-value ' + k.cls }, k.value),
+                        k.sub && h('div', { className: 'kpi-sub' }, k.sub)
                     );
                 })
             ),

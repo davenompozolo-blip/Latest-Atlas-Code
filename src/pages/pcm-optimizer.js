@@ -474,18 +474,23 @@ export async function fetchMacroSignals() {
     }
 }
 
-// Gradient ascent on anchored, entropy-regularized Sharpe
-function anchoredEntropyOptimizer(means, cov, currentWeights, riskTolerance, maxW) {
+// Gradient ascent on anchored, entropy-regularized, sector-diversified Sharpe
+function anchoredEntropyOptimizer(means, cov, currentWeights, riskTolerance, maxW, sectorIdx, nSectors) {
     var n = means.length;
-    var minW = Math.max(0.001, 0.3 / n);  // at least 0.3% or thin floor
+    var minW = Math.max(0.005, 0.7 / n);  // ≥0.5%, ≥0.7/n to guarantee real position size
     maxW = maxW || 0.30;
 
     // λ from IPS: conservative (rt=1) → λ=0.10; aggressive (rt=10) → λ=0.025
     var rt = riskTolerance != null ? Math.max(1, Math.min(10, riskTolerance)) : 5;
     var lambda = 0.025 + 0.075 * (10 - rt) / 9;
 
-    // γ: entropy weight — calibrated so entropy gradient ≈ Sharpe gradient magnitude
-    var gamma = 0.008;
+    // γ: entropy weight — calibrated to make breadth meaningful
+    var gamma = 0.018;
+
+    // η: sector-Herfindahl penalty — kicks in hard above ~25% sector concentration
+    var eta = 0.18;
+
+    var hasSectors = sectorIdx && sectorIdx.length === n && nSectors > 0;
 
     // Warm-start from current weights (already sums to ~1)
     var w = currentWeights.slice();
@@ -496,6 +501,9 @@ function anchoredEntropyOptimizer(means, cov, currentWeights, riskTolerance, max
     var w0 = currentWeights.slice();
     var lr = 0.012;
 
+    // Sector-weight accumulator (reused each iteration)
+    var sectorW = hasSectors ? new Array(nSectors).fill(0) : null;
+
     for (var iter = 0; iter < 800; iter++) {
         var vol = portVol(w, cov);
         if (vol < 1e-12) break;
@@ -503,11 +511,18 @@ function anchoredEntropyOptimizer(means, cov, currentWeights, riskTolerance, max
         var sharpe = ret / vol;
         var mrc = margRisk(w, cov);
 
+        // Aggregate sector weights
+        if (hasSectors) {
+            for (var s = 0; s < nSectors; s++) sectorW[s] = 0;
+            for (var i = 0; i < n; i++) sectorW[sectorIdx[i]] += w[i];
+        }
+
         var grad = means.map(function(mu, i) {
             var gSharpe   = (mu - sharpe * mrc[i]) / vol;
             var gTurnover = -2 * lambda * (w[i] - w0[i]);
             var gEntropy  = -gamma * (Math.log(Math.max(w[i], 1e-12)) + 1);
-            return gSharpe + gTurnover + gEntropy;
+            var gSector   = hasSectors ? -2 * eta * sectorW[sectorIdx[i]] : 0;
+            return gSharpe + gTurnover + gEntropy + gSector;
         });
 
         var newW = clampWeights(w.map(function(wi, i) { return wi + lr * grad[i]; }), minW, maxW);
@@ -552,14 +567,39 @@ export function runAtlasAdaptive(inputs, positions, histBySymbol, ips, macroSign
         return mu + ALPHA * macroAlignments[i] * inputs.vols[i];
     });
 
+    // Sector mapping for the breadth penalty
+    var sectorList = [];
+    var sectorIdx = inputs.symbols.map(function(sym) {
+        var pos = positions.find(function(p) { return p.symbol === sym; });
+        var sec = (pos && pos.sector) ? pos.sector : 'Unknown';
+        var idx = sectorList.indexOf(sec);
+        if (idx === -1) { sectorList.push(sec); idx = sectorList.length - 1; }
+        return idx;
+    });
+
     var maxW = ips && ips.concentration_limit ? ips.concentration_limit / 100 : 0.30;
     var rt   = ips ? ips.risk_tolerance : 5;
-    var weights = anchoredEntropyOptimizer(adjMeans, inputs.cov, currentWeights, rt, maxW);
+    var weights = anchoredEntropyOptimizer(adjMeans, inputs.cov, currentWeights, rt, maxW,
+                                            sectorIdx, sectorList.length);
 
     var vol    = portVol(weights, inputs.cov) * Math.sqrt(252) * 100;
     var ret    = weights.reduce(function(s, w, i) { return s + w * adjMeans[i]; }, 0) * 252 * 100;
     var sharpe = vol > 0 ? ret / vol : 0;
     var lambda = 0.025 + 0.075 * (10 - Math.max(1, Math.min(10, rt || 5))) / 9;
+
+    // Breadth metrics — effective N positions, effective N sectors
+    var hhi = weights.reduce(function(s, w) { return s + w * w; }, 0);
+    var effectiveN = hhi > 0 ? 1 / hhi : 0;
+    var sectorWeights = new Array(sectorList.length).fill(0);
+    weights.forEach(function(w, i) { sectorWeights[sectorIdx[i]] += w; });
+    var sectorHHI = sectorWeights.reduce(function(s, w) { return s + w * w; }, 0);
+    var effectiveSectors = sectorHHI > 0 ? 1 / sectorHHI : 0;
+
+    // Top sector breakdown (descending) for display
+    var sectorBreakdown = sectorList.map(function(name, i) {
+        return { sector: name, weight: sectorWeights[i] };
+    }).filter(function(s) { return s.weight > 0.005; })
+      .sort(function(a, b) { return b.weight - a.weight; });
 
     var alignedRanked = inputs.symbols.map(function(sym, i) {
         return { sym: sym, a: macroAlignments[i] };
@@ -572,6 +612,10 @@ export function runAtlasAdaptive(inputs, positions, histBySymbol, ips, macroSign
             expectedReturn: ret.toFixed(2),
             expectedVol:    vol.toFixed(2),
             sharpe:         sharpe.toFixed(3),
+            effectiveN:        effectiveN.toFixed(1),
+            effectiveSectors:  effectiveSectors.toFixed(1),
+            totalPositions:    inputs.symbols.length,
+            totalSectors:      sectorList.length,
         },
         macroContext: {
             regime:      macroSignals ? macroSignals.regime      : null,
@@ -583,6 +627,7 @@ export function runAtlasAdaptive(inputs, positions, histBySymbol, ips, macroSign
             lambda:      lambda,
             topAligned:  alignedRanked.slice(0, 5),
             botAligned:  alignedRanked.slice(-5).reverse(),
+            sectorBreakdown: sectorBreakdown,
         },
     };
 }
