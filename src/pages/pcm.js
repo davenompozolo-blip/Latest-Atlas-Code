@@ -12,7 +12,7 @@ import {
 import { fmtCurrency } from './utils.js';
 import { Loading } from './components.js';
 import {
-    computeFactorScores, computePortfolioMetrics,
+    computeFactorScores, computePortfolioMetrics, computeRiskRows,
     buildOptimizerInputs, runOptimizer,
     fetchMacroSignals, runAtlasAdaptive,
 } from './pcm-optimizer.js';
@@ -344,25 +344,155 @@ function MacroContextCard({ ctx }) {
     );
 }
 
+// ─── Position Selector (L5) ───────────────────────────────────────────────────
+function PositionSelector({ positions, histBySymbol, excluded, onToggle, onToggleAll }) {
+    const totalMv = positions.reduce(function(s, p) { return s + (p.market_value || 0); }, 0);
+    const selectedCount = positions.filter(function(p) { return !excluded[p.symbol]; }).length;
+    const [open, setOpen] = useState(true);
+
+    return h('div', { className: 'atlas-card', style: { marginBottom: 16 } },
+        h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                             marginBottom: open ? 12 : 0, cursor: 'pointer' },
+                    onClick: function() { setOpen(function(v) { return !v; }); } },
+            h('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+                h('div', { className: 'card-title', style: { margin: 0 } }, 'Optimizer Universe'),
+                h('span', { className: 'chip ' + (selectedCount === positions.length ? 'chip-green' : 'chip-teal') },
+                    selectedCount + ' / ' + positions.length + ' selected')
+            ),
+            h('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                h('button', { className: 'btn btn-ghost', style: { padding: '4px 10px', fontSize: 11 },
+                    onClick: function(e) { e.stopPropagation(); onToggleAll(true); } }, 'All'),
+                h('button', { className: 'btn btn-ghost', style: { padding: '4px 10px', fontSize: 11 },
+                    onClick: function(e) { e.stopPropagation(); onToggleAll(false); } }, 'None'),
+                h('span', { style: { color: 'var(--text-3)', fontSize: 12 } }, open ? '▲' : '▼')
+            )
+        ),
+        open && h('div', { style: { maxHeight: 280, overflowY: 'auto' } },
+            h('table', { className: 'atlas-table' },
+                h('thead', null,
+                    h('tr', null,
+                        h('th', { style: { width: 32 } }),
+                        h('th', null, 'Ticker'),
+                        h('th', null, 'Name'),
+                        h('th', null, 'Sector'),
+                        h('th', { style: { textAlign: 'right' } }, 'Weight'),
+                        h('th', { style: { textAlign: 'right' } }, 'History')
+                    )
+                ),
+                h('tbody', null,
+                    positions.map(function(pos) {
+                        var isIncluded = !excluded[pos.symbol];
+                        var hist = histBySymbol[pos.symbol];
+                        var days = hist ? hist.length : 0;
+                        var hasHistory = days >= 30;
+                        var wPct = totalMv > 0 ? (pos.market_value / totalMv * 100).toFixed(1) + '%' : '—';
+                        return h('tr', { key: pos.symbol, style: { opacity: isIncluded ? 1 : 0.45 } },
+                            h('td', null,
+                                h('input', { type: 'checkbox', checked: isIncluded,
+                                    onChange: function() { onToggle(pos.symbol); },
+                                    style: { cursor: 'pointer', accentColor: 'var(--teal)' } })
+                            ),
+                            h('td', { className: 'cell-ticker' }, pos.symbol),
+                            h('td', { style: { maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } },
+                                pos.name || '—'),
+                            h('td', { style: { color: 'var(--text-3)', fontSize: 11 } }, pos.sector || '—'),
+                            h('td', { style: { textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 11 } }, wPct),
+                            h('td', { style: { textAlign: 'right' } },
+                                days > 0
+                                    ? h('span', { className: 'chip ' + (hasHistory ? 'chip-green' : 'chip-gold'), style: { fontSize: 9 } },
+                                        days + 'd')
+                                    : h('span', { className: 'chip chip-muted', style: { fontSize: 9 } }, 'NO DATA')
+                            )
+                        );
+                    })
+                )
+            )
+        )
+    );
+}
+
+// ─── Atlas Parameter Sliders (L5 ATLAS mode only) ─────────────────────────────
+function AtlasSliders({ lambdaEff, lambdaAuto, gammaEff, etaEff, onLambda, onGamma, onEta }) {
+    const SLIDERS = [
+        { label: 'Turnover Aversion (λ)', val: lambdaEff, min: 0.010, max: 0.15, step: 0.005,
+          sub: 'Higher = resist large position changes. IPS-derived: ' + lambdaAuto.toFixed(3),
+          onChange: onLambda },
+        { label: 'Position Breadth (γ)', val: gammaEff, min: 0.005, max: 0.05, step: 0.005,
+          sub: 'Higher = entropy push spreads weight more evenly across positions',
+          onChange: onGamma },
+        { label: 'Sector Breadth (η)', val: etaEff, min: 0.05, max: 0.40, step: 0.01,
+          sub: 'Higher = heavier penalty on sector concentration',
+          onChange: onEta },
+    ];
+    return h('div', { className: 'atlas-card', style: { marginBottom: 16 } },
+        h('div', { className: 'card-title', style: { marginBottom: 14 } }, '⬡ Adaptive Parameters'),
+        SLIDERS.map(function(sl) {
+            return h('div', { key: sl.label, style: { marginBottom: 14 } },
+                h('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 4 } },
+                    h('span', { style: { fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-2)' } }, sl.label),
+                    h('span', { style: { fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--teal)', fontWeight: 700 } },
+                        sl.val.toFixed(3))
+                ),
+                h('input', { type: 'range', min: sl.min, max: sl.max, step: sl.step, value: sl.val,
+                              onChange: function(e) { sl.onChange(parseFloat(e.target.value)); },
+                              style: { width: '100%', accentColor: 'var(--teal)', cursor: 'pointer' } }),
+                h('div', { style: { fontSize: 9, color: 'var(--text-3)', fontFamily: 'var(--font-mono)', marginTop: 2 } }, sl.sub)
+            );
+        })
+    );
+}
+
 // ─── Layer 5: Optimizer ──────────────────────────────────────────────────────
 function OptimizerPanel({ positions, histBySymbol, ips, onResult, optimizerResult, dataReady }) {
     const [mode, setMode]         = useState('atlas');
     const [running, setRunning]   = useState(false);
     const [error, setError]       = useState(null);
+    const [excluded, setExcluded] = useState({});
+    const [lambdaOv, setLambdaOv] = useState(null);
+    const [gammaOv, setGammaOv]   = useState(null);
+    const [etaOv, setEtaOv]       = useState(null);
+
+    var rt          = ips ? (ips.risk_tolerance || 5) : 5;
+    var lambdaAuto  = 0.025 + 0.075 * (10 - Math.max(1, Math.min(10, rt))) / 9;
+    var lambdaEff   = lambdaOv  != null ? lambdaOv  : lambdaAuto;
+    var gammaEff    = gammaOv   != null ? gammaOv   : 0.018;
+    var etaEff      = etaOv     != null ? etaOv     : 0.18;
+
+    function toggleSymbol(sym) {
+        setExcluded(function(prev) {
+            var next = Object.assign({}, prev);
+            if (next[sym]) delete next[sym]; else next[sym] = true;
+            return next;
+        });
+    }
+    function toggleAll(include) {
+        if (include) { setExcluded({}); }
+        else {
+            var all = {};
+            positions.forEach(function(p) { all[p.symbol] = true; });
+            setExcluded(all);
+        }
+    }
 
     function run() {
         setRunning(true); setError(null);
+        var selectedPositions = positions.filter(function(p) { return !excluded[p.symbol]; });
 
         var doRun = function(macroSignals) {
             setTimeout(function() {
                 try {
-                    const inputs = buildOptimizerInputs(positions, histBySymbol);
+                    const inputs = buildOptimizerInputs(selectedPositions, histBySymbol);
                     if (!inputs || inputs.symbols.length < 2) {
-                        setError('Insufficient price history to optimize. Need at least 2 positions with 30+ days of data.');
+                        setError('Need at least 2 selected positions with 30+ days of price data. Check the Universe table above.');
                         setRunning(false); return;
                     }
+                    var overrides = mode === 'atlas' ? {
+                        lambda: lambdaOv,
+                        gamma:  gammaOv,
+                        eta:    etaOv,
+                    } : null;
                     var result = mode === 'atlas'
-                        ? runAtlasAdaptive(inputs, positions, histBySymbol, ips, macroSignals)
+                        ? runAtlasAdaptive(inputs, selectedPositions, histBySymbol, ips, macroSignals, overrides)
                         : runOptimizer(mode, inputs, ips ? ips.concentration_limit : null);
                     onResult(result);
                 } catch (e) {
@@ -384,6 +514,7 @@ function OptimizerPanel({ positions, histBySymbol, ips, onResult, optimizerResul
     );
 
     var currentMode = OPTIMIZER_MODES.find(function(m) { return m.id === mode; });
+    var selectedCount = positions.filter(function(p) { return !excluded[p.symbol]; }).length;
 
     return h('div', null,
         h('div', { style: { display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' } },
@@ -396,7 +527,16 @@ function OptimizerPanel({ positions, histBySymbol, ips, onResult, optimizerResul
             })
         ),
         currentMode && h('div', { style: { fontSize: 10, color: 'var(--text-3)', fontFamily: 'var(--font-mono)',
-                                            marginBottom: 16, paddingLeft: 2 } }, currentMode.description),
+                                            marginBottom: 14, paddingLeft: 2 } }, currentMode.description),
+        h(PositionSelector, { positions: positions, histBySymbol: histBySymbol,
+                               excluded: excluded, onToggle: toggleSymbol, onToggleAll: toggleAll }),
+        mode === 'atlas' && h(AtlasSliders, {
+            lambdaEff: lambdaEff, lambdaAuto: lambdaAuto,
+            gammaEff:  gammaEff,  etaEff:     etaEff,
+            onLambda:  setLambdaOv,
+            onGamma:   setGammaOv,
+            onEta:     setEtaOv,
+        }),
         error && h('div', { className: 'chip chip-red', style: { marginBottom: 12 } }, error),
         optimizerResult && optimizerResult.macroContext && h(MacroContextCard, { ctx: optimizerResult.macroContext }),
         optimizerResult && h('div', null,
@@ -465,11 +605,13 @@ function OptimizerPanel({ positions, histBySymbol, ips, onResult, optimizerResul
                 )
             )
         ),
-        h('div', { style: { display: 'flex', gap: 10 } },
-            h('button', { className: 'btn btn-primary', onClick: run, disabled: running },
+        h('div', { style: { display: 'flex', gap: 10, alignItems: 'center' } },
+            h('button', { className: 'btn btn-primary', onClick: run, disabled: running || selectedCount < 2 },
                 running ? (mode === 'atlas' ? 'Fetching macro signals…' : 'Running…')
                         : (optimizerResult ? '↺ Re-run ' : '▶ Run ') + (currentMode ? currentMode.label : mode)
-            )
+            ),
+            selectedCount < 2 && h('span', { style: { fontSize: 10, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' } },
+                'Select at least 2 positions above')
         )
     );
 }
@@ -754,6 +896,7 @@ export function PortfolioConstruction() {
     const [factors, setFactors]             = useState(MOCK_PCM_FACTORS);
     const [factorLoading, setFactorLoading] = useState(false);
     const [risk, setRisk]                   = useState(MOCK_PCM_RISK);
+    const [riskRows, setRiskRows]           = useState([]);
     const [drift, setDrift]                 = useState(MOCK_PCM_DRIFT);
     const [portfolioMetrics, setPortfolioMetrics] = useState(null);
     const [activeLayer, setActiveLayer]     = useState('L1');
@@ -873,6 +1016,7 @@ export function PortfolioConstruction() {
                     });
                     histRef.current = bySymbol;
                     setHistReady(true);
+                    setRiskRows(computeRiskRows(posWithSymbol, bySymbol));
 
                     // Compute factors
                     const fs = computeFactorScores(posWithSymbol, bySymbol);
@@ -989,8 +1133,13 @@ export function PortfolioConstruction() {
                     })
                 ),
                 h('div', { className: 'atlas-card' },
-                    h('div', { className: 'card-title' }, 'Marginal Risk Contribution'),
-                    h(RiskTable, { rows: risk, positions: posRef.current })
+                    h('div', { className: 'card-title' }, 'Marginal Risk Contribution · Full Portfolio'),
+                    !histReady
+                        ? h(Loading, { text: 'Computing risk attribution…' })
+                        : riskRows.length
+                            ? h(RiskTable, { rows: riskRows, positions: posRef.current })
+                            : h('div', { style: { color: 'var(--text-3)', padding: '20px 0', textAlign: 'center' } },
+                                'No position data available — ensure portfolio is synced.')
                 ),
                 nextBtn('L4')
             );
