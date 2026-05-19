@@ -221,6 +221,7 @@ function ScrapbookProfile({ ticker, onBack }) {
     const [analysing, setAnalysing] = useState(false);
     const [analyseProgress, setAnalyseProgress] = useState(0);
     const [error, setError]         = useState(null);
+    const [regenError, setRegenError] = useState(null);
     const [toast, setToast]         = useState(null);
     const [expanded, setExpanded]   = useState({});
 
@@ -269,6 +270,7 @@ function ScrapbookProfile({ ticker, onBack }) {
         if (!company || snapshots.length === 0) return;
         setAnalysing(true);
         setAnalyseProgress(0);
+        setRegenError(null);
 
         // Animate progress 0→95% over ~22s (Sonnet typically 15-25s for 2400 tokens)
         let fakePct = 0;
@@ -358,6 +360,7 @@ function ScrapbookProfile({ ticker, onBack }) {
         } catch (e) {
             clearInterval(timer);
             console.error('Regenerate error:', e);
+            setRegenError(e.message || 'Server timeout — try again shortly');
             showToast('Analysis failed — ' + e.message, 'error');
         } finally {
             setAnalysing(false);
@@ -494,7 +497,13 @@ function ScrapbookProfile({ ticker, onBack }) {
                             : analyseProgress < 90 ? 'Computing conviction…'
                             : 'Finalising…'
                         )
-                    )
+                    ),
+                    // Inline error — persists until next run (toast is ephemeral and easily missed)
+                    !analysing && regenError && h('div', {
+                        style: { marginTop: 6, fontSize: 11, color: '#ef4444', fontFamily: 'JetBrains Mono, monospace',
+                                 background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)',
+                                 borderRadius: 4, padding: '5px 10px', maxWidth: 260 }
+                    }, '⚠ ' + regenError)
                 )
             }),
             narrative && !narrative.parse_error

@@ -388,6 +388,7 @@ export function buildOptimizerInputs(positions, histBySymbol) {
     var means = Array.from({ length: symbols.length }, function(_, i) {
         return matrix.reduce(function(s, row) { return s + row[i]; }, 0) / minLen;
     });
+    means._lookbackDays = minLen;  // carry lookback for display
     var vols = Array.from({ length: symbols.length }, function(_, i) {
         return Math.sqrt(Math.max(cov[i][i], 0));
     });
@@ -516,12 +517,12 @@ export async function fetchMacroSignals() {
 // Gradient ascent on anchored, entropy-regularized, sector-diversified Sharpe
 function anchoredEntropyOptimizer(means, cov, currentWeights, riskTolerance, maxW, sectorIdx, nSectors, lambdaOv, gammaOv, etaOv) {
     var n = means.length;
-    var minW = Math.max(0.005, 0.7 / n);  // ≥0.5%, ≥0.7/n to guarantee real position size
+    var minW = 0.005;  // 0.5% hard floor — let the Sharpe gradient actually differentiate
     maxW = maxW || 0.30;
 
     var rt = riskTolerance != null ? Math.max(1, Math.min(10, riskTolerance)) : 5;
     var lambda = lambdaOv != null ? lambdaOv : (0.025 + 0.075 * (10 - rt) / 9);
-    var gamma  = gammaOv  != null ? gammaOv  : 0.018;
+    var gamma  = gammaOv  != null ? gammaOv  : 0.005;  // reduced from 0.018 — entropy was over-powering Sharpe gradient
     var eta    = etaOv    != null ? etaOv    : 0.18;
 
     var hasSectors = sectorIdx && sectorIdx.length === n && nSectors > 0;
@@ -643,6 +644,9 @@ export function runAtlasAdaptive(inputs, positions, histBySymbol, ips, macroSign
         return { sym: sym, a: macroAlignments[i] };
     }).sort(function(a, b) { return b.a - a.a; });
 
+    // Cap each alignment list to half the universe so they never overlap
+    var alignHalf = Math.max(1, Math.floor(n / 2));
+
     return {
         symbols: inputs.symbols,
         weights: weights,
@@ -654,6 +658,7 @@ export function runAtlasAdaptive(inputs, positions, histBySymbol, ips, macroSign
             effectiveSectors:  effectiveSectors.toFixed(1),
             totalPositions:    inputs.symbols.length,
             totalSectors:      sectorList.length,
+            lookbackDays:      inputs.means._lookbackDays || null,
         },
         macroContext: {
             regime:      macroSignals ? macroSignals.regime      : null,
@@ -663,8 +668,8 @@ export function runAtlasAdaptive(inputs, positions, histBySymbol, ips, macroSign
             cpiYoY:      macroSignals ? macroSignals.cpiYoY      : null,
             tilts:       tilts,
             lambda:      lambda,
-            topAligned:  alignedRanked.slice(0, 5),
-            botAligned:  alignedRanked.slice(-5).reverse(),
+            topAligned:  alignedRanked.slice(0, alignHalf),
+            botAligned:  alignedRanked.slice(n - alignHalf).reverse(),
             sectorBreakdown: sectorBreakdown,
         },
     };
