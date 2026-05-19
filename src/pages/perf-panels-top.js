@@ -80,11 +80,20 @@ function buildEntryMarkers(navSeries, txData, positions, mode) {
         grouped[key].notional += t.notional;
     });
 
+    // Abbreviate OCC options contract IDs (e.g. GDX260618C00095000 → GDX opt)
+    function cleanSym(s) {
+        if (!s) return s;
+        var m = s.match(/^([A-Z0-9]{1,6})\d{6}[CP]\d{8}$/);
+        if (m) return m[1] + ' opt';
+        if (s.length > 10 && /\d{6}/.test(s)) return s.slice(0, 5) + '…';
+        return s;
+    }
+
     var markers = Object.keys(grouped).map(function(k) {
         var g = grouped[k];
         var isBuy = g.side === 'BUY';
         var topSyms = g.items.slice().sort(function(a, b) { return b.notional - a.notional; })
-            .slice(0, 2).map(function(t) { return t.symbol; });
+            .slice(0, 2).map(function(t) { return cleanSym(t.symbol); });
         var label = topSyms.join('/');
         if (g.items.length > topSyms.length) label += '+' + (g.items.length - topSyms.length);
         return {

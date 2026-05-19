@@ -455,7 +455,7 @@ function OptimizerPanel({ positions, histBySymbol, ips, onResult, optimizerResul
     var rt          = ips ? (ips.risk_tolerance || 5) : 5;
     var lambdaAuto  = 0.025 + 0.075 * (10 - Math.max(1, Math.min(10, rt))) / 9;
     var lambdaEff   = lambdaOv  != null ? lambdaOv  : lambdaAuto;
-    var gammaEff    = gammaOv   != null ? gammaOv   : 0.018;
+    var gammaEff    = gammaOv   != null ? gammaOv   : 0.005;
     var etaEff      = etaOv     != null ? etaOv     : 0.18;
 
     function toggleSymbol(sym) {
@@ -544,7 +544,8 @@ function OptimizerPanel({ positions, histBySymbol, ips, onResult, optimizerResul
                        style: { marginBottom: 16 } },
                 [
                     { label: 'Expected Sharpe', value: optimizerResult.metrics.sharpe,               cls: 'positive' },
-                    { label: 'Expected Return', value: optimizerResult.metrics.expectedReturn + '%',  cls: 'positive' },
+                    { label: 'Expected Return', value: optimizerResult.metrics.expectedReturn + '%',  cls: 'positive',
+                      sub: optimizerResult.metrics.lookbackDays ? 'Ann. · ' + optimizerResult.metrics.lookbackDays + '-day lookback' : 'Annualised' },
                     { label: 'Expected Vol',    value: optimizerResult.metrics.expectedVol + '%',     cls: 'warning'  },
                     optimizerResult.metrics.effectiveN && {
                         label: 'Effective N Positions',
@@ -677,13 +678,12 @@ function RebalancingPanel({ positions, drift, optimizerResult }) {
             };
         }).filter(Boolean).sort(function(a, b) { return Math.abs(b.est_value) - Math.abs(a.est_value); });
 
-        const totalTrades = Math.abs(trades.reduce(function(s, t) {
-            return s + (t.action === 'SELL' ? -t.est_value : t.est_value);
-        }, 0));
+        // One-way gross turnover: sum of all absolute trade values / 2
+        const totalTurnover = trades.reduce(function(s, t) { return s + (t.est_value || 0); }, 0) / 2;
 
         return h('div', null,
             h('div', { className: 'chip chip-teal', style: { marginBottom: 14, display: 'inline-block' } },
-                '⬡ ATLAS Optimizer · ' + trades.length + ' trades · ~' + fmtCurrency(totalTrades / 2) + ' turnover'
+                '⬡ ATLAS Optimizer · ' + trades.length + ' trades · ~' + fmtCurrency(totalTurnover) + ' one-way turnover'
             ),
             h('div', { className: 'atlas-card' },
                 h('div', { className: 'card-title' }, 'Proposed Trades · Review Before Executing'),
@@ -732,9 +732,10 @@ function RebalancingPanel({ positions, drift, optimizerResult }) {
 
 // ─── Layer 7: AI Report ──────────────────────────────────────────────────────
 function AIReport({ ips, allocation, factors, risk, drift, positions }) {
-    const [report, setReport]   = useState(null);
-    const [loading, setLoading] = useState(false);
-    const [error, setError]     = useState(null);
+    const [report, setReport]       = useState(null);
+    const [loading, setLoading]     = useState(false);
+    const [error, setError]         = useState(null);
+    const [generatedAt, setGeneratedAt] = useState(null);
 
     function generate() {
         setLoading(true); setError(null);
@@ -765,7 +766,7 @@ function AIReport({ ips, allocation, factors, risk, drift, positions }) {
                 try { result = JSON.parse(result.replace(/```json|```/g, '').trim()); }
                 catch (e) { result = { executive_summary: result }; }
             }
-            setReport(result); setLoading(false);
+            setReport(result); setGeneratedAt(new Date()); setLoading(false);
         })
         .catch(function(e) { setError('Report generation failed: ' + e.message); setLoading(false); });
     }
@@ -785,7 +786,12 @@ function AIReport({ ips, allocation, factors, risk, drift, positions }) {
     return h('div', null,
         h('div', { style: { background: 'var(--teal-glow)', border: '1px solid var(--teal-dim)',
                              borderRadius: 8, padding: '18px 20px', marginBottom: 16 } },
-            h('div', { className: 'atlas-module-tag' }, 'ATLAS Intelligence · Construction Report'),
+            h('div', { style: { display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' } },
+                h('div', { className: 'atlas-module-tag' }, 'ATLAS Intelligence · Construction Report'),
+                generatedAt && h('div', { style: { fontSize: 9, fontFamily: 'var(--font-mono)',
+                    color: 'rgba(255,255,255,0.3)', letterSpacing: 0.5 } },
+                    'Generated ' + generatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))
+            ),
             h('div', { style: { fontSize: 13, color: 'var(--text-1)', lineHeight: 1.7,
                                  fontFamily: 'var(--font-body)' } }, report.executive_summary)
         ),
@@ -953,37 +959,45 @@ export function PortfolioConstruction() {
         if (!sb) { setHistReady(true); return; }
         setFactorLoading(true);
 
-        // 1. Get positions with asset info
+        // Load all portfolio positions from vw_portfolio_home (full 55+) in parallel
+        // with assets table for asset_id lookups needed for price_history joins.
         Promise.all([
-            sb.from('positions').select('asset_id, quantity, market_value, average_cost'),
+            loadView('vw_portfolio_home', []),
             sb.from('assets').select('id, symbol, name, sector'),
         ]).then(function(results) {
-            const positions = results[0].data || [];
-            const assets    = results[1].data || [];
-            const assetMap  = {};
-            assets.forEach(function(a) { assetMap[a.id] = a; });
+            const homeRows   = results[0] || [];
+            const assetRows  = results[1].data || [];
 
-            // Aggregate multiple lots of the same symbol into a single position
+            // symbol → asset metadata (id, name, sector)
+            const assetBySymbol = {};
+            assetRows.forEach(function(a) { assetBySymbol[a.symbol] = a; });
+
+            // Aggregate by symbol — vw_portfolio_home may return one row per lot
             const posMap = {};
-            positions
-                .filter(function(p) { return p.market_value > 0 && assetMap[p.asset_id]; })
-                .forEach(function(p) {
-                    const a = assetMap[p.asset_id];
-                    if (posMap[a.symbol]) {
-                        posMap[a.symbol].market_value += p.market_value;
-                        posMap[a.symbol].quantity     += p.quantity || 0;
+            homeRows
+                .filter(function(r) { return r.symbol && Number(r.market_value) > 0; })
+                .forEach(function(row) {
+                    const sym = row.symbol;
+                    const mv  = Number(row.market_value) || 0;
+                    const qty = Number(row.quantity || row.qty) || 0;
+                    if (posMap[sym]) {
+                        posMap[sym].market_value += mv;
+                        posMap[sym].quantity     += qty;
                     } else {
-                        posMap[a.symbol] = {
-                            symbol:       a.symbol,
-                            name:         a.name  || a.symbol,
-                            sector:       a.sector || '—',
-                            asset_id:     p.asset_id,
-                            market_value: p.market_value,
-                            quantity:     p.quantity || 0,
-                            average_cost: p.average_cost,
+                        const asset = assetBySymbol[sym] || {};
+                        posMap[sym] = {
+                            symbol:       sym,
+                            name:         row.name || row.company_name || asset.name || sym,
+                            sector:       row.sector || asset.sector || '—',
+                            asset_id:     asset.id || null,
+                            market_value: mv,
+                            quantity:     qty,
+                            average_cost: row.average_cost || row.cost_basis || null,
+                            unrealised_return_pct: row.unrealised_return_pct || null,
                         };
                     }
                 });
+
             const posWithSymbol = Object.values(posMap);
             posRef.current = posWithSymbol;
 
@@ -991,50 +1005,57 @@ export function PortfolioConstruction() {
                 setHistReady(true); setFactorLoading(false); return;
             }
 
-            const assetIds   = posWithSymbol.map(function(p) { return p.asset_id; });
+            // Fetch price history only for positions that have a known asset_id
+            const assetIds = posWithSymbol
+                .map(function(p) { return p.asset_id; })
+                .filter(function(id) { return id != null; });
+
             const cutoffDate = new Date();
             cutoffDate.setFullYear(cutoffDate.getFullYear() - 1);
             const cutoff = cutoffDate.toISOString().slice(0, 10);
 
-            // 2. Fetch price history for all positions in one query
-            return sb.from('price_history')
-                .select('asset_id, price_date, close')
-                .in('asset_id', assetIds)
-                .gte('price_date', cutoff)
-                .order('price_date', { ascending: true })
-                .limit(posWithSymbol.length * 260)
-                .then(function(ph) {
-                    // Group by asset_id → symbol
-                    const byAsset = {};
-                    (ph.data || []).forEach(function(row) {
-                        if (!byAsset[row.asset_id]) byAsset[row.asset_id] = [];
-                        byAsset[row.asset_id].push({ close: parseFloat(row.close) });
-                    });
-                    const bySymbol = {};
-                    posWithSymbol.forEach(function(p) {
-                        if (byAsset[p.asset_id]) bySymbol[p.symbol] = byAsset[p.asset_id];
-                    });
-                    histRef.current = bySymbol;
-                    setHistReady(true);
-                    setRiskRows(computeRiskRows(posWithSymbol, bySymbol));
-
-                    // Compute factors
-                    const fs = computeFactorScores(posWithSymbol, bySymbol);
-                    if (fs) setFactors(fs);
-                    setFactorLoading(false);
-
-                    // Compute portfolio metrics (needs equity snapshots too)
-                    return sb.from('account_snapshots')
-                        .select('as_of, equity')
-                        .order('as_of', { ascending: true })
-                        .limit(252)
-                        .then(function(snaps) {
-                            const metrics = computePortfolioMetrics(posWithSymbol, bySymbol, snaps.data || []);
-                            if (metrics) setPortfolioMetrics(metrics);
+            const histPromise = assetIds.length
+                ? sb.from('price_history')
+                    .select('asset_id, price_date, close')
+                    .in('asset_id', assetIds)
+                    .gte('price_date', cutoff)
+                    .order('price_date', { ascending: true })
+                    .limit(assetIds.length * 260)
+                    .then(function(ph) {
+                        const byAsset = {};
+                        (ph.data || []).forEach(function(row) {
+                            if (!byAsset[row.asset_id]) byAsset[row.asset_id] = [];
+                            byAsset[row.asset_id].push({ close: parseFloat(row.close) });
                         });
-                });
+                        const bySymbol = {};
+                        posWithSymbol.forEach(function(p) {
+                            if (p.asset_id && byAsset[p.asset_id]) bySymbol[p.symbol] = byAsset[p.asset_id];
+                        });
+                        return bySymbol;
+                    })
+                : Promise.resolve({});
+
+            return histPromise.then(function(bySymbol) {
+                histRef.current = bySymbol;
+                setHistReady(true);
+                // computeRiskRows includes ALL positions; vol/mrc/prc are null for those without history
+                setRiskRows(computeRiskRows(posWithSymbol, bySymbol));
+
+                const fs = computeFactorScores(posWithSymbol, bySymbol);
+                if (fs) setFactors(fs);
+                setFactorLoading(false);
+
+                return sb.from('account_snapshots')
+                    .select('as_of, equity')
+                    .order('as_of', { ascending: true })
+                    .limit(252)
+                    .then(function(snaps) {
+                        const metrics = computePortfolioMetrics(posWithSymbol, bySymbol, snaps.data || []);
+                        if (metrics) setPortfolioMetrics(metrics);
+                    });
+            });
         }).catch(function(err) {
-            console.warn('[PCM] price history load failed:', err);
+            console.warn('[PCM] position + history load failed:', err);
             setHistReady(true); setFactorLoading(false);
         });
     }, []);
@@ -1137,7 +1158,17 @@ export function PortfolioConstruction() {
                     !histReady
                         ? h(Loading, { text: 'Computing risk attribution…' })
                         : riskRows.length
-                            ? h(RiskTable, { rows: riskRows, positions: posRef.current })
+                            ? h('div', null,
+                                h(RiskTable, { rows: riskRows, positions: posRef.current }),
+                                (function() {
+                                    var withVol = riskRows.filter(function(r) { return r.vol_90d != null; }).length;
+                                    return withVol < riskRows.length
+                                        ? h('div', { style: { marginTop: 8, fontSize: 11, color: 'rgba(255,255,255,0.35)',
+                                                               fontFamily: 'var(--font-mono)', textAlign: 'center' } },
+                                            withVol + ' of ' + riskRows.length + ' positions have vol data · % Risk computed from those · remaining show weight only')
+                                        : null;
+                                })()
+                              )
                             : h('div', { style: { color: 'var(--text-3)', padding: '20px 0', textAlign: 'center' } },
                                 'No position data available — ensure portfolio is synced.')
                 ),
