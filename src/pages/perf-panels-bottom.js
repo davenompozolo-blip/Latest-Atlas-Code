@@ -83,22 +83,23 @@ export function RiskPanel(p) {
     );
 
     // B. ATLAS Health Score
-    var health = cmd.atlas_health_score || 0;
+    var health = cmd.atlas_health_score;
     var healthCard = h('div', { className: 'card', style: { marginBottom: 16, textAlign: 'center', padding: '24px 16px' } },
         h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 24 } },
             h('div', { className: 'health-score ' + healthCls(health), style: { width: 80, height: 80, fontSize: 32, flexShrink: 0 } },
-                Math.round(health)
+                health != null ? Math.round(health) : '—'
             ),
             h('div', { style: { textAlign: 'left' } },
                 h('div', { style: { fontSize: 16, fontWeight: 600, marginBottom: 4 } }, 'ATLAS Health Score'),
                 h('div', { style: { fontSize: 12, color: 'rgba(255,255,255,0.5)' } },
-                    health >= 75 ? 'Portfolio operating within healthy risk parameters'
+                    health == null ? 'Score not yet computed — check data sync'
+                    : health >= 75 ? 'Portfolio operating within healthy risk parameters'
                     : health >= 50 ? 'Portfolio showing moderate risk — monitor closely'
                     : 'Portfolio under stress — review positions'
                 ),
                 cmd.portfolio_health_status
                     ? h('span', {
-                        className: 'badge ' + (health >= 75 ? 'green' : health >= 50 ? 'amber' : 'red'),
+                        className: 'badge ' + (health == null ? 'indigo' : health >= 75 ? 'green' : health >= 50 ? 'amber' : 'red'),
                         style: { marginTop: 8, display: 'inline-block' }
                     }, cmd.portfolio_health_status)
                     : null

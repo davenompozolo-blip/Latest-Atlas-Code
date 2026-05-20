@@ -39,6 +39,36 @@ export function oFmt(v, d) {
 export function oFmtPct(v) { return v != null && isFinite(v) ? oFmt(v * 100, 1) + '%' : '—'; }
 export function oFmtD(v)   { return v != null && isFinite(v) ? oFmt(v, 4) : '—'; }
 
+// ── Black-Scholes client-side Greeks ─────────────────────────
+// Used as fallback when Alpaca doesn't return greeks
+function _normPDF(x) { return Math.exp(-0.5 * x * x) / Math.sqrt(2 * Math.PI); }
+function _normCDF(x) {
+    var t = 1 / (1 + 0.2316419 * Math.abs(x));
+    var d = 0.3989422820 * Math.exp(-0.5 * x * x);
+    var p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.7814779 + t * (-1.8212560 + t * 1.3302744))));
+    return x >= 0 ? 1 - p : p;
+}
+export function bsGreeks(S, K, T, r, iv, isCall) {
+    if (!S || !K || !T || !iv || T <= 0 || iv <= 0) return null;
+    var sqrtT = Math.sqrt(T);
+    var d1 = (Math.log(S / K) + (r + 0.5 * iv * iv) * T) / (iv * sqrtT);
+    var d2 = d1 - iv * sqrtT;
+    var Nd1 = _normCDF(isCall ? d1 : -d1);
+    var Nd2 = _normCDF(isCall ? d2 : -d2);
+    var nd1 = _normPDF(d1);
+    var df  = Math.exp(-r * T);
+    var delta = isCall ? _normCDF(d1) : _normCDF(d1) - 1;
+    var gamma = nd1 / (S * iv * sqrtT);
+    var vega  = S * nd1 * sqrtT * 0.01; // per 1% IV move
+    var theta = isCall
+        ? (-(S * nd1 * iv) / (2 * sqrtT) - r * K * df * _normCDF(d2)) / 365
+        : (-(S * nd1 * iv) / (2 * sqrtT) + r * K * df * _normCDF(-d2)) / 365;
+    var rho = isCall
+        ? K * T * df * _normCDF(d2) * 0.01
+        : -K * T * df * _normCDF(-d2) * 0.01;
+    return { delta, gamma, theta, vega, rho };
+}
+
 // ── Shared API helpers ────────────────────────────────────────
 export function apiFetch(url) {
     return fetch(url).then(function (r) { return r.json(); });
@@ -112,6 +142,25 @@ export function GreeksCard(p) {
     var c = p.contract;
     if (!c) return null;
     var isCall = c.type === 'C';
+
+    // Black-Scholes fallback when Alpaca doesn't supply Greeks
+    var hasLiveGreeks = c.delta != null || c.gamma != null;
+    var bsFallback = null;
+    if (!hasLiveGreeks && c.iv && p.underlyingPrice && c.strike) {
+        var daysStr = c.expiry ? c.expiry.replace(/-/g, '') : null;
+        var T = null;
+        if (daysStr && daysStr.length === 8) {
+            var exp = new Date(c.expiry);
+            T = (exp - Date.now()) / (365 * 24 * 60 * 60 * 1000);
+        } else if (c.dte != null) {
+            T = c.dte / 365;
+        }
+        if (T != null && T > 0) {
+            bsFallback = bsGreeks(p.underlyingPrice, c.strike, T, 0.045, c.iv, isCall);
+        }
+    }
+    var g = hasLiveGreeks ? c : (bsFallback || c);
+    var bsNote = !hasLiveGreeks && bsFallback ? ' (BS)' : '';
     var col    = isCall ? OC.green : OC.red;
 
     function gRow(label, val, color, note) {
@@ -128,17 +177,20 @@ export function GreeksCard(p) {
     }
 
     return h('div', { style: { background: OC.card, borderRadius: 8, border: '1px solid ' + OC.border, padding: '14px 16px' } },
-        h('div', { style: { fontSize: 10, fontWeight: 700, color: OC.muted, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 8 } }, 'Greeks'),
+        h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 } },
+            h('div', { style: { fontSize: 10, fontWeight: 700, color: OC.muted, letterSpacing: 2, textTransform: 'uppercase' } }, 'Greeks' + bsNote),
+            bsNote ? h('span', { style: { fontSize: 9, color: OC.amber, fontFamily: 'Figtree' } }, 'Black-Scholes est.') : null
+        ),
         h('div', { style: { display: 'flex', gap: 8, marginBottom: 10, padding: '6px 10px', borderRadius: 6, background: col + '18', border: '1px solid ' + col + '33' } },
             h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 14, fontWeight: 800, color: col } },
                 '$' + oFmt(c.strike, 2) + ' ' + (isCall ? 'CALL' : 'PUT')),
             h('span', { style: { fontSize: 11, color: OC.sec, marginLeft: 'auto', alignSelf: 'center' } }, c.expiry)
         ),
-        gRow('Δ Delta',  oFmtD(c.delta),                    c.delta != null && Math.abs(c.delta) > 0.5 ? col : OC.text, 'price sensitivity'),
-        gRow('Γ Gamma',  c.gamma  != null ? oFmt(c.gamma, 5)  : '—', OC.text, 'delta rate of change'),
-        gRow('Θ Theta',  c.theta  != null ? oFmt(c.theta, 4) + '/d' : '—', c.theta != null ? OC.red : OC.text, 'daily decay'),
-        gRow('V Vega',   c.vega   != null ? oFmt(c.vega,  4)  : '—', OC.text, 'per 1% IV move'),
-        gRow('ρ Rho',    c.rho    != null ? oFmt(c.rho,   5)  : '—', OC.text, 'rate sensitivity'),
+        gRow('Δ Delta',  oFmtD(g.delta),                    g.delta != null && Math.abs(g.delta) > 0.5 ? col : OC.text, 'price sensitivity'),
+        gRow('Γ Gamma',  g.gamma  != null ? oFmt(g.gamma, 5)  : '—', OC.text, 'delta rate of change'),
+        gRow('Θ Theta',  g.theta  != null ? oFmt(g.theta, 4) + '/d' : '—', g.theta != null ? OC.red : OC.text, 'daily decay'),
+        gRow('V Vega',   g.vega   != null ? oFmt(g.vega,  4)  : '—', OC.text, 'per 1% IV move'),
+        gRow('ρ Rho',    g.rho    != null ? oFmt(g.rho,   5)  : '—', OC.text, 'rate sensitivity'),
         gRow('IV',       oFmtPct(c.iv),                     OC.amber, 'implied volatility'),
         h('div', { style: { display: 'flex', gap: 8, marginTop: 10 } },
             h('div', { style: { flex: 1, textAlign: 'center', padding: '6px', borderRadius: 5, background: OC.green + '10', border: '1px solid ' + OC.green + '28' } },

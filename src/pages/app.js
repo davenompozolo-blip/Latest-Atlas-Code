@@ -115,6 +115,10 @@ function App() {
     var _st = useState(null);
     var scrapbookTicker = _st[0];
     var setScrapbookTicker = _st[1];
+    // Cross-module navigation: symbol passed when navigating to equity tab
+    var _ns = useState(null);
+    var navSymbol = _ns[0];
+    var setNavSymbol = _ns[1];
 
     var ActiveComponent = TABS.find(function(t) { return t.id === activeTab; }).component;
 
@@ -144,6 +148,17 @@ function App() {
         }
         window.addEventListener('atlas:open-scrapbook', onOpenScrapbook);
         return function() { window.removeEventListener('atlas:open-scrapbook', onOpenScrapbook); };
+    }, []);
+
+    // Cross-module navigation: atlas:navigate → { tab, symbol }
+    useEffect(function() {
+        function onNavigate(e) {
+            if (!e.detail) return;
+            if (e.detail.symbol) setNavSymbol(e.detail.symbol);
+            if (e.detail.tab) setActiveTab(e.detail.tab);
+        }
+        window.addEventListener('atlas:navigate', onNavigate);
+        return function() { window.removeEventListener('atlas:navigate', onNavigate); };
     }, []);
 
     var c = topCmd || MOCK_COMMAND;
@@ -221,7 +236,10 @@ function App() {
             React.createElement('div', { className: 'main-content', style: { display: 'flex', flexDirection: 'column' } },
                 !sb ? React.createElement(ConfigPrompt, null) : null,
                 React.createElement('div', { style: { flex: 1, overflow: 'auto' } },
-                    React.createElement(ActiveComponent, activeTab === 'scrapbook' ? { initialTicker: scrapbookTicker } : null)
+                    React.createElement(ActiveComponent,
+                        activeTab === 'scrapbook' ? { initialTicker: scrapbookTicker }
+                        : activeTab === 'equity' ? { initialSymbol: navSymbol }
+                        : null)
                 )
             )
         )
