@@ -1936,10 +1936,17 @@ export function PortfolioHome() {
                                 onClick: (function(pos) { return function() { setQtPos(pos); }; })(p),
                                 onMouseEnter: function(e) { e.currentTarget.style.background = 'rgba(0,212,255,0.05)'; },
                                 onMouseLeave: function(e) { e.currentTarget.style.background = 'transparent'; },
-                                title: staleTooltip || ('Click to trade ' + p.symbol),
+                                title: staleTooltip || ('Click row to trade · Click ticker to research ' + p.symbol),
                             },
                                 React.createElement('td', { style: { padding: '7px 10px', fontFamily: 'JetBrains Mono', fontSize: 12, fontWeight: 700, color: '#00d4ff', whiteSpace: 'nowrap' } },
-                                    React.createElement('span', null, p.symbol),
+                                    React.createElement('span', {
+                                        title: 'Open in Equity Research',
+                                        onClick: (function(sym) { return function(e) {
+                                            e.stopPropagation();
+                                            window.dispatchEvent(new CustomEvent('atlas:navigate', { detail: { tab: 'equity', symbol: sym } }));
+                                        }; })(p.symbol),
+                                        style: { cursor: 'pointer', borderBottom: '1px dotted rgba(0,212,255,0.4)', paddingBottom: 1 }
+                                    }, p.symbol),
                                     isStale
                                         ? React.createElement('span', {
                                             title: staleTooltip,

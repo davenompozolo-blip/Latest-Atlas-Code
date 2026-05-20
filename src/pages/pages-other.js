@@ -585,7 +585,14 @@ function RiskCard({ row: r, maxVar }) {
         h('div', { style: { position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: tierColor, borderRadius: '12px 12px 0 0', opacity: 0.85 } }),
         // Symbol + tier badge
         h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: 4, marginBottom: 10 } },
-            h('span', { style: { fontFamily: 'JetBrains Mono', fontWeight: 700, fontSize: 15, color: '#00d4ff' } }, r.symbol),
+            h('span', {
+                title: 'Open in Equity Research',
+                onClick: (function(sym) { return function() {
+                    window.dispatchEvent(new CustomEvent('atlas:navigate', { detail: { tab: 'equity', symbol: sym } }));
+                }; })(r.symbol),
+                style: { fontFamily: 'JetBrains Mono', fontWeight: 700, fontSize: 15, color: '#00d4ff',
+                         cursor: 'pointer', borderBottom: '1px dotted rgba(0,212,255,0.4)', paddingBottom: 1 }
+            }, r.symbol),
             h('span', { style: { fontSize: 8, fontWeight: 700, letterSpacing: 0.8, padding: '2px 6px', borderRadius: 4, background: tierColor + '22', color: tierColor, border: '1px solid ' + tierColor + '44', textTransform: 'uppercase', fontFamily: 'Figtree' } },
                 r.risk_tier ? r.risk_tier.replace(' Risk', '') : 'Low')
         ),
@@ -873,7 +880,7 @@ export function CommandCentre() {
         // Health Score Hero
         React.createElement('div', { style: { textAlign: 'center', marginBottom: 32 } },
             React.createElement('div', { className: 'health-score ' + healthCls(c.atlas_health_score), style: { width: 120, height: 120, fontSize: 42, margin: '0 auto 12px' } },
-                Math.round(c.atlas_health_score || 0)),
+                c.atlas_health_score != null ? Math.round(c.atlas_health_score) : '—'),
             React.createElement('div', { style: { fontSize: 18, fontWeight: 600 } }, 'ATLAS Health Score'),
             React.createElement('div', null, React.createElement('span', { className: 'badge ' + badgeCls(c.portfolio_health_status), style: { marginTop: 8, fontSize: 13, padding: '5px 16px' } }, c.portfolio_health_status))
         ),

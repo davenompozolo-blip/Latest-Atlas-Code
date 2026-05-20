@@ -585,7 +585,14 @@ function OptimizerPanel({ positions, histBySymbol, ips, onResult, optimizerResul
                                 const optW = optimizerResult.weights[i] * 100;
                                 const delta = optW - curW;
                                 return h('tr', { key: sym },
-                                    h('td', { className: 'cell-ticker' }, sym),
+                                    h('td', { className: 'cell-ticker' },
+                                        h('span', {
+                                            title: 'Open in Equity Research',
+                                            style: { cursor: 'pointer', borderBottom: '1px dotted rgba(0,212,255,0.4)' },
+                                            onClick: (function(s) { return function() {
+                                                window.dispatchEvent(new CustomEvent('atlas:navigate', { detail: { tab: 'equity', symbol: s } }));
+                                            }; })(sym)
+                                        }, sym)),
                                     h('td', { style: { maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } },
                                         pos ? (pos.name || '—') : '—'),
                                     h('td', { style: { color: 'var(--text-3)', fontSize: 11 } },

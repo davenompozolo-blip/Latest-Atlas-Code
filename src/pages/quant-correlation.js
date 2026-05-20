@@ -142,8 +142,16 @@ export function CorrelationPanel({ rows }) {
                                 React.createElement('th', { key: h }, h)))),
                     React.createElement('tbody', null,
                         topRedundant.map(p => React.createElement('tr', { key: p.a + '_' + p.b },
-                            React.createElement('td', { style: { fontWeight: 600, color: '#00d4ff' } }, p.a),
-                            React.createElement('td', { style: { fontWeight: 600, color: '#00d4ff' } }, p.b),
+                            React.createElement('td', { style: { fontWeight: 600, color: '#00d4ff' } },
+                                React.createElement('span', {
+                                    title: 'Open in Equity Research', style: { cursor: 'pointer', borderBottom: '1px dotted rgba(0,212,255,0.4)' },
+                                    onClick: function() { window.dispatchEvent(new CustomEvent('atlas:navigate', { detail: { tab: 'equity', symbol: p.a } })); }
+                                }, p.a)),
+                            React.createElement('td', { style: { fontWeight: 600, color: '#00d4ff' } },
+                                React.createElement('span', {
+                                    title: 'Open in Equity Research', style: { cursor: 'pointer', borderBottom: '1px dotted rgba(0,212,255,0.4)' },
+                                    onClick: function() { window.dispatchEvent(new CustomEvent('atlas:navigate', { detail: { tab: 'equity', symbol: p.b } })); }
+                                }, p.b)),
                             React.createElement('td', { style: { color: p.c >= 0.85 ? 'var(--red)' : p.c >= 0.7 ? 'var(--amber)' : 'var(--text)' } },
                                 p.c.toFixed(3)),
                             React.createElement('td', null,

@@ -297,7 +297,7 @@ function AnalysisPanel(p) {
 // Main component
 // ------------------------------------------------------------
 
-export function EquityResearch() {
+export function EquityResearch(props) {
     const [input, setInput] = useState('AAPL');
     const [symbol, setSymbol] = useState(null);    // committed symbol that triggers fetch
     const [status, setStatus] = useState('idle');   // idle | loading | ready | error
@@ -314,6 +314,14 @@ export function EquityResearch() {
         }
         setSymbol(s);
     }, []);
+
+    // Auto-trigger when navigated from another module (atlas:navigate)
+    useEffect(function() {
+        var sym = props && props.initialSymbol;
+        if (!sym) return;
+        setInput(sym);
+        analyse(sym);
+    }, [props && props.initialSymbol]);
 
     useEffect(function() {
         if (!symbol) return;
@@ -338,6 +346,11 @@ export function EquityResearch() {
             });
         return function() { cancelled = true; };
     }, [symbol]);
+
+    function saveToScrapbook() {
+        if (!symbol) return;
+        window.dispatchEvent(new CustomEvent('atlas:open-scrapbook', { detail: { ticker: symbol } }));
+    }
 
     // Header + search bar (rendered for every state)
     const header = React.createElement('div', null,
@@ -365,7 +378,19 @@ export function EquityResearch() {
                     cursor: status === 'loading' ? 'not-allowed' : 'pointer', opacity: status === 'loading' ? 0.6 : 1,
                     letterSpacing: 1, textTransform: 'uppercase', fontSize: 12
                 }
-            }, status === 'loading' ? 'Loading\u2026' : 'Analyse')
+            }, status === 'loading' ? 'Loading\u2026' : 'Analyse'),
+            status === 'ready' && symbol
+                ? React.createElement('button', {
+                    onClick: saveToScrapbook,
+                    title: 'Open ' + symbol + ' in Scrapbook for thesis notes',
+                    style: {
+                        background: 'rgba(139,92,246,0.15)', color: '#8b5cf6',
+                        border: '1px solid rgba(139,92,246,0.35)', borderRadius: 8, padding: '10px 16px',
+                        fontWeight: 600, cursor: 'pointer', letterSpacing: 0.8,
+                        textTransform: 'uppercase', fontSize: 11, whiteSpace: 'nowrap'
+                    }
+                }, '\ud83d\udcd2 Save to Scrapbook')
+                : null
         )
     );
 
