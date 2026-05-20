@@ -170,7 +170,24 @@ function ConsensusPanel(p) {
         )
     );
 
-    return h('div', null, headerTiles, rangeBar, table);
+    // High-growth caveat: DCF dramatically undervalues or overvalues high-growth firms
+    var highGrowthCaveat = defaults.revGrowth > 0.20
+        ? h('div', { style: {
+            marginBottom: 16, padding: '10px 14px', borderRadius: 6,
+            background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)',
+            display: 'flex', gap: 10, alignItems: 'flex-start'
+          } },
+            h('span', { style: { color: '#f59e0b', fontSize: 14, flexShrink: 0, marginTop: 1 } }, '⚠'),
+            h('div', { style: { fontSize: 11, color: 'rgba(255,255,255,0.6)', lineHeight: 1.5 } },
+                h('strong', { style: { color: '#f59e0b' } }, 'High-growth caveat: '),
+                'This company\'s revenue growth (' + (defaults.revGrowth * 100).toFixed(0) + '% p.a.) exceeds the typical DCF validity range. '
+                + 'Terminal value dominates the result and small changes to WACC or growth rate cause extreme valuation swings. '
+                + 'Use the Multi-Stage DCF or supplement with EV/Revenue comps for high-growth names.'
+            )
+          )
+        : null;
+
+    return h('div', null, highGrowthCaveat, headerTiles, rangeBar, table);
 }
 
 // -----------------------------------------------------------------------

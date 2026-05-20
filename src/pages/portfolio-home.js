@@ -274,8 +274,21 @@ function EarningsCalendar({ data }) {
     if (!data || !data.length) {
         return React.createElement('div', { className: 'card' },
             React.createElement('div', { className: 'card-title', style: { fontSize: 12, letterSpacing: 1.5, textTransform: 'uppercase' } }, 'UPCOMING EARNINGS'),
-            React.createElement('div', { style: { color: 'var(--text-muted)', fontSize: 12, textAlign: 'center', padding: '24px 0' } },
-                'No earnings data cached. Earnings dates populate as tickers are looked up in Equity Research.')
+            React.createElement('div', { style: { textAlign: 'center', padding: '28px 24px' } },
+                React.createElement('div', { style: { fontSize: 22, marginBottom: 8, opacity: 0.3 } }, '📅'),
+                React.createElement('div', { style: { color: 'var(--text-muted)', fontSize: 12, marginBottom: 10 } },
+                    'No earnings dates cached yet. Dates populate when tickers are looked up in Equity Research.'),
+                React.createElement('button', {
+                    onClick: function() {
+                        window.dispatchEvent(new CustomEvent('atlas:navigate', { detail: { tab: 'equity' } }));
+                    },
+                    style: {
+                        background: 'rgba(0,212,255,0.1)', color: '#00d4ff',
+                        border: '1px solid rgba(0,212,255,0.25)', borderRadius: 6,
+                        padding: '6px 16px', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit'
+                    }
+                }, 'Go to Equity Research →')
+            )
         );
     }
 
