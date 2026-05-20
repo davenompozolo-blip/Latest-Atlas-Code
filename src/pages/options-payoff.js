@@ -167,7 +167,7 @@ export function PayoffTab(p) {
         // Left column
         h('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
             h(ContractPicker, { symbol: p.symbol, onChange: p.onContract }),
-            p.contract && h(GreeksCard, { contract: p.contract }),
+            p.contract && h(GreeksCard, { contract: p.contract, underlyingPrice: price }),
             p.contract && h(TradeSummaryCard, { contract: p.contract, action: action })
         ),
         // Right column
