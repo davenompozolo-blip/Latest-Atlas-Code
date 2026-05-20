@@ -626,6 +626,21 @@ function RiskCard({ row: r, maxVar }) {
             h('div', { style: { height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 3, overflow: 'hidden' } },
                 h('div', { style: { height: '100%', width: (volPct * 100).toFixed(1) + '%', background: 'linear-gradient(90deg,' + volColor + '66,' + volColor + ')', borderRadius: 3, transition: 'width 0.4s ease' } })
             )
+        ),
+        // Action row — hedge button for elevated risk positions
+        (r.risk_tier === 'High Risk' || r.risk_tier === 'Moderate Risk') && h('div', {
+            style: { display: 'flex', gap: 6, marginTop: 10, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.05)' }
+        },
+            h('button', {
+                title: 'Analyse options hedge for ' + r.symbol,
+                onClick: (function(sym) { return function() { window.dispatchEvent(new CustomEvent('atlas:navigate', { detail: { tab: 'options', symbol: sym } })); }; })(r.symbol),
+                style: {
+                    flex: 1, background: 'rgba(239,68,68,0.1)', color: '#ef4444',
+                    border: '1px solid rgba(239,68,68,0.3)', borderRadius: 5,
+                    padding: '4px 8px', fontSize: 10, fontWeight: 700, cursor: 'pointer',
+                    letterSpacing: 0.5, fontFamily: 'Figtree', textTransform: 'uppercase',
+                }
+            }, 'Ω Hedge →')
         )
     );
 }

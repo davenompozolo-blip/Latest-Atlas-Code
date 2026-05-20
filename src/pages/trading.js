@@ -1168,7 +1168,7 @@ function OptionsChain(p) {
     );
 }
 
-export function TradingDashboard() {
+export function TradingDashboard(props) {
     var _sym  = useState('AAPL'); var symbol  = _sym[0];  var setSymbol  = _sym[1];
     var _live = useState(null);   var liveSym = _live[0]; var setLiveSym = _live[1];
     var _rng  = useState('1Y');   var range   = _rng[0];  var setRange   = _rng[1];
@@ -1181,6 +1181,13 @@ export function TradingDashboard() {
 
     function handleLoad(sym) { setSymbol(sym); setLiveSym(sym); }
     useEffect(function () { setLiveSym('AAPL'); }, []);
+
+    // Accept symbol from cross-module navigation
+    useEffect(function() {
+        var sym = props && props.initialSymbol;
+        if (!sym) return;
+        handleLoad(sym);
+    }, [props && props.initialSymbol]);
 
     var TABS = [
         { id: 'trade',   label: 'Trade' },

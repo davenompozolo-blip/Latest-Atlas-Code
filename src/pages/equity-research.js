@@ -351,6 +351,32 @@ export function EquityResearch(props) {
         if (!symbol) return;
         window.dispatchEvent(new CustomEvent('atlas:open-scrapbook', { detail: { ticker: symbol } }));
     }
+    function goTrade()    { if (!symbol) return; window.dispatchEvent(new CustomEvent('atlas:navigate', { detail: { tab: 'trading',   symbol } })); }
+    function goValue()    { if (!symbol) return; window.dispatchEvent(new CustomEvent('atlas:navigate', { detail: { tab: 'valuation', symbol } })); }
+    function goOptions()  { if (!symbol) return; window.dispatchEvent(new CustomEvent('atlas:navigate', { detail: { tab: 'options',   symbol } })); }
+
+    // Action bar — rendered only when research is ready
+    const actionBar = status === 'ready' && symbol
+        ? React.createElement('div', { style: {
+            display: 'flex', gap: 8, alignItems: 'center', padding: '10px 16px',
+            background: 'rgba(0,212,255,0.04)', border: '1px solid rgba(0,212,255,0.1)',
+            borderRadius: 8, marginTop: 10, flexWrap: 'wrap'
+          } },
+            React.createElement('span', { style: { fontSize: 9, color: 'rgba(255,255,255,0.3)', letterSpacing: 1.5, textTransform: 'uppercase', marginRight: 4, fontFamily: 'Figtree' } }, 'Next step:'),
+            React.createElement('button', { onClick: goTrade, title: 'Open order ticket for ' + symbol, style: actionBtnStyle('#10b981') }, '▶ Trade'),
+            React.createElement('button', { onClick: goValue, title: 'Run DCF / valuation models for ' + symbol, style: actionBtnStyle('#f59e0b') }, '◆ Value it'),
+            React.createElement('button', { onClick: goOptions, title: 'Analyse options chain for ' + symbol, style: actionBtnStyle('#6366f1') }, 'Ω Options'),
+            React.createElement('button', { onClick: saveToScrapbook, title: 'Save thesis notes for ' + symbol, style: actionBtnStyle('#8b5cf6') }, '📒 Scrapbook')
+          )
+        : null;
+
+    function actionBtnStyle(col) {
+        return {
+            background: col + '18', color: col, border: '1px solid ' + col + '44',
+            borderRadius: 6, padding: '5px 14px', fontSize: 11, fontWeight: 700,
+            cursor: 'pointer', letterSpacing: 0.6, textTransform: 'uppercase', fontFamily: 'Figtree'
+        };
+    }
 
     // Header + search bar (rendered for every state)
     const header = React.createElement('div', null,
@@ -429,7 +455,7 @@ export function EquityResearch(props) {
     const targetUpside = overview && overview.analystTarget && m.current
         ? (overview.analystTarget - m.current) / m.current : null;
 
-    return React.createElement('div', null, header,
+    return React.createElement('div', null, header, actionBar,
         React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'minmax(320px, 2fr) 3fr', gap: 16, marginTop: 16 } },
             // --- LEFT PANEL --------------------------------------------
             React.createElement('div', null,

@@ -303,13 +303,20 @@ export function ContractPicker(p) {
 }
 
 // ── Main shell ────────────────────────────────────────────────
-export function OptionsAnalysis() {
+export function OptionsAnalysis(props) {
     var _sym  = useState('AAPL'); var symbol  = _sym[0];  var setSymbol  = _sym[1];
     var _live = useState(null);   var liveSym = _live[0]; var setLiveSym = _live[1];
     var _tab  = useState('payoff'); var tab   = _tab[0];  var setTab     = _tab[1];
     var _con  = useState(null);   var contract = _con[0]; var setContract = _con[1];
 
     useEffect(function () { setLiveSym('AAPL'); }, []);
+
+    // Accept symbol from cross-module navigation
+    useEffect(function() {
+        var sym = props && props.initialSymbol;
+        if (!sym) return;
+        setSymbol(sym); setLiveSym(sym); setContract(null);
+    }, [props && props.initialSymbol]);
 
     var TABS_DEF = [
         { id: 'payoff',    label: '⟁ Payoff Diagram'   },

@@ -115,12 +115,21 @@ function SignalCard({ row: r }) {
         return h('span', { style: { fontSize: 9, padding: '1px 6px', borderRadius: 3, background: col + '28', color: col, fontWeight: 700, letterSpacing: 0.3 } }, txt);
     };
 
+    function nav(tab) {
+        window.dispatchEvent(new CustomEvent('atlas:navigate', { detail: { tab: tab, symbol: r.symbol } }));
+    }
+
     return h('div', { style: { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 10, padding: '12px 14px', position: 'relative', overflow: 'hidden' } },
         // Regime accent bar
         h('div', { style: { position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: regColor } }),
-        // Header
+        // Header — symbol is clickable → Equity Research
         h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 } },
-            h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 13, fontWeight: 700, color: '#00d4ff' } }, r.symbol),
+            h('span', {
+                title: 'Research ' + r.symbol,
+                onClick: function() { nav('equity'); },
+                style: { fontFamily: 'JetBrains Mono', fontSize: 13, fontWeight: 700, color: '#00d4ff',
+                         cursor: 'pointer', borderBottom: '1px dotted rgba(0,212,255,0.4)' }
+            }, r.symbol),
             h('div', { style: { display: 'flex', gap: 4 } },
                 pill((r.price_regime || '—').replace('trend', ''), regColor),
                 pill(r.vol_regime || '—', volColor)
@@ -153,12 +162,21 @@ function SignalCard({ row: r }) {
             )
         ),
         // Bottom: momentum + mean-reversion
-        h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+        h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 } },
             h('div', { style: { fontSize: 9 } },
                 h('span', { style: { color: 'rgba(255,255,255,0.28)', marginRight: 4 } }, 'MOM'),
                 h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 700, color: momColor } }, mom != null ? mom.toFixed(0) + '%' : '—')
             ),
             pill(r.mean_reversion_signal || 'Neutral', mrColor)
+        ),
+        // Action row
+        h('div', { style: { display: 'flex', gap: 5, borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: 8 } },
+            h('button', { onClick: function() { nav('trading'); }, title: 'Trade ' + r.symbol,
+                style: { flex: 1, background: 'rgba(16,185,129,0.1)', color: '#10b981', border: '1px solid rgba(16,185,129,0.25)',
+                         borderRadius: 4, padding: '3px 0', fontSize: 9, fontWeight: 700, cursor: 'pointer', letterSpacing: 0.5 } }, '▶ Trade'),
+            h('button', { onClick: function() { nav('valuation'); }, title: 'Value ' + r.symbol,
+                style: { flex: 1, background: 'rgba(245,158,11,0.1)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.25)',
+                         borderRadius: 4, padding: '3px 0', fontSize: 9, fontWeight: 700, cursor: 'pointer', letterSpacing: 0.5 } }, '◆ Value')
         )
     );
 }
