@@ -836,6 +836,8 @@ export function CommandCentre() {
     const [navData, setNavData] = useState(null);
     const [homeData, setHomeData] = useState(null);
     const [freshness, setFreshness] = useState(null);
+    const [validationLog, setValidationLog] = useState([]);
+    const [alerts, setAlerts] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -843,16 +845,26 @@ export function CommandCentre() {
             const freshnessPromise = sb
                 ? sb.rpc('data_freshness').then(function(r) { return r.data || []; })
                 : Promise.resolve([]);
+            const validationPromise = sb
+                ? sb.from('atlas_validation_log').select('*').order('checked_at', { ascending: false }).limit(20).then(function(r) { return r.data || []; })
+                : Promise.resolve([]);
+            const alertsPromise = sb
+                ? sb.from('atlas_memory').select('*').eq('category', 'bug').order('created_at', { ascending: false }).limit(10).then(function(r) { return r.data || []; })
+                : Promise.resolve([]);
             Promise.all([
                 loadView('vw_command_centre', [MOCK_COMMAND]),
                 loadView('vw_portfolio_nav_daily', []),
                 loadView('vw_portfolio_home', []),
                 freshnessPromise,
+                validationPromise,
+                alertsPromise,
             ]).then(function(res) {
                 setCommand((Array.isArray(res[0]) ? res[0][0] : res[0]) || MOCK_COMMAND);
                 setNavData(res[1]);
                 setHomeData(res[2]);
                 setFreshness(res[3]);
+                setValidationLog(res[4] || []);
+                setAlerts(res[5] || []);
                 setLoading(false);
             });
         }
@@ -1006,6 +1018,60 @@ export function CommandCentre() {
                 : React.createElement('div', { style: { color: 'rgba(255,255,255,0.4)', fontSize: 13, padding: '12px 0' } },
                     sb ? 'Freshness data unavailable' : 'Live in demo mode — connect Supabase to see data freshness'
                 )
-        )
+        ),
+        // Validation Log
+        React.createElement('div', { className: 'card', style: { marginTop: 16 } },
+            React.createElement('div', { className: 'card-title' }, 'Validation Log  ·  Last 20 checks'),
+            validationLog.length > 0
+                ? React.createElement('table', { className: 'data-table' },
+                    React.createElement('thead', null,
+                        React.createElement('tr', null,
+                            ['Check', 'Status', 'Message', 'When'].map(function(h) {
+                                return React.createElement('th', { key: h }, h);
+                            })
+                        )
+                    ),
+                    React.createElement('tbody', null,
+                        validationLog.map(function(row, i) {
+                            var ok = row.status === 'pass' || row.status === 'ok';
+                            var warn = row.status === 'warn';
+                            var cls = ok ? 'green' : warn ? 'amber' : 'red';
+                            var ts = row.checked_at ? new Date(row.checked_at).toLocaleString() : '—';
+                            return React.createElement('tr', { key: i },
+                                React.createElement('td', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, color: '#00d4ff' } }, row.check_name || row.check || '—'),
+                                React.createElement('td', null, React.createElement('span', { className: 'badge ' + cls }, (row.status || '—').toUpperCase())),
+                                React.createElement('td', { style: { fontSize: 11, color: 'rgba(255,255,255,0.55)', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, row.message || '—'),
+                                React.createElement('td', { style: { fontSize: 11, color: 'rgba(255,255,255,0.35)' } }, ts)
+                            );
+                        })
+                    )
+                )
+                : React.createElement('div', { style: { color: 'rgba(255,255,255,0.4)', fontSize: 13, padding: '12px 0' } },
+                    sb ? 'No validation checks found (atlas_validation_log is empty)' : 'Connect Supabase to see validation checks'
+                )
+        ),
+        // System Alerts (from atlas_memory bugs)
+        alerts.length > 0
+            ? React.createElement('div', { className: 'card', style: { marginTop: 16 } },
+                React.createElement('div', { className: 'card-title' }, 'System Alerts'),
+                React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
+                    alerts.map(function(a, i) {
+                        var ts = a.created_at ? new Date(a.created_at).toLocaleString() : '—';
+                        var priBg = a.priority <= 1 ? 'rgba(239,68,68,0.1)' : a.priority === 2 ? 'rgba(245,158,11,0.1)' : 'rgba(255,255,255,0.04)';
+                        var priBrd = a.priority <= 1 ? 'rgba(239,68,68,0.25)' : a.priority === 2 ? 'rgba(245,158,11,0.25)' : 'rgba(255,255,255,0.06)';
+                        return React.createElement('div', {
+                            key: i,
+                            style: { background: priBg, border: '1px solid ' + priBrd, borderRadius: 6, padding: '10px 14px' }
+                        },
+                            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 4 } },
+                                React.createElement('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 700, color: a.priority <= 1 ? '#ef4444' : a.priority === 2 ? '#f59e0b' : 'rgba(255,255,255,0.7)' } }, a.title || a.content && a.content.slice(0, 60) || 'Alert'),
+                                React.createElement('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)' } }, ts)
+                            ),
+                            a.content && React.createElement('div', { style: { fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 2 } }, a.content.slice(0, 200))
+                        );
+                    })
+                )
+            )
+            : null
     );
 }

@@ -422,11 +422,31 @@ export function ValuationScreener({ onNavigate }) {
             }
             var sym = needsEnrich[idx].symbol;
             idx++;
-            fetch('/api/equity?symbol=' + encodeURIComponent(sym) + '&endpoint=overview')
+            // Use screener-market per-symbol endpoint — returns both overview + live price (quote)
+            fetch('/api/screener-market?symbol=' + encodeURIComponent(sym))
                 .then(function(r) { return r.ok ? r.json() : null; })
                 .then(function(j) {
                     if (marketEnrichCancelRef.current) return;
-                    var ov = j && (j.overview || j);
+                    var stock = j && j.stock;
+                    var ov = stock ? {
+                        Symbol: stock.symbol, Name: stock.name, Sector: stock.sector, Industry: stock.industry,
+                        Country: stock.country,
+                        PERatio: stock.pe_ratio, EVToEBITDA: stock.ev_ebitda, PriceToBookRatio: stock.pb_ratio,
+                        DividendYield: stock.div_yield_pct != null ? stock.div_yield_pct / 100 : null,
+                        ReturnOnEquityTTM: stock.roe_pct != null ? stock.roe_pct / 100 : null,
+                        RevenueGrowthYOY: stock.revenue_growth_pct != null ? stock.revenue_growth_pct / 100 : null,
+                        MarketCapitalization: stock.market_cap_raw,
+                        AnalystTargetPrice: stock.analyst_target,
+                        '52WeekHigh': stock.high_52w, '52WeekLow': stock.low_52w,
+                        '50DayMovingAverage': stock.ma_50, '200DayMovingAverage': stock.ma_200,
+                    } : null;
+                    if (stock && stock.current_price != null) {
+                        setData(function(prev) {
+                            return prev.map(function(s) {
+                                return s.symbol === sym ? Object.assign({}, s, { current_price: stock.current_price }) : s;
+                            });
+                        });
+                    }
                     if (ov && ov.Symbol) {
                         var pe        = parseFloat(ov.PERatio)            || null;
                         var evEbitda  = parseFloat(ov.EVToEBITDA)         || null;
