@@ -265,7 +265,11 @@ export function PositionsPanel(p) {
         var bw  = Math.min(Math.abs(c.contribution) / maxAbsC, 1) * 100;
         var col = c.contribution >= 0 ? '#10b981' : '#ef4444';
         return h('div', { key: c.symbol + i, style: { display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' } },
-            h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 700, color: '#00d4ff', minWidth: 52 } }, c.symbol),
+            h('span', {
+                title: 'Research ' + c.symbol,
+                onClick: (function(sym) { return function() { window.dispatchEvent(new CustomEvent('atlas:navigate', { detail: { tab: 'equity', symbol: sym } })); }; })(c.symbol),
+                style: { fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 700, color: '#00d4ff', minWidth: 52, cursor: 'pointer', borderBottom: '1px dotted rgba(0,212,255,0.4)' }
+            }, c.symbol),
             h('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.38)', minWidth: 40, textAlign: 'right', fontFamily: 'JetBrains Mono' } }, (c.weight * 100).toFixed(1) + '%'),
             h('div', { style: { flex: 1, height: 4, background: 'rgba(255,255,255,0.05)', borderRadius: 2, overflow: 'hidden' } },
                 h('div', { style: { width: bw + '%', height: '100%', background: c.contribution >= 0 ? 'rgba(16,185,129,0.55)' : 'rgba(239,68,68,0.55)', borderRadius: 2 } })
@@ -430,7 +434,11 @@ export function PositionsPanel(p) {
                             onMouseEnter: function(e) { e.currentTarget.style.background = 'rgba(0,212,255,0.03)'; },
                             onMouseLeave: function(e) { e.currentTarget.style.background = 'transparent'; }
                         },
-                            h('td', { style: { padding: '8px 8px', fontWeight: 700, color: '#00d4ff', fontSize: 12, borderBottom: '1px solid rgba(255,255,255,0.04)' } }, row.symbol),
+                            h('td', {
+                                title: 'Research ' + row.symbol,
+                                onClick: (function(sym) { return function() { window.dispatchEvent(new CustomEvent('atlas:navigate', { detail: { tab: 'equity', symbol: sym } })); }; })(row.symbol),
+                                style: { padding: '8px 8px', fontWeight: 700, color: '#00d4ff', fontSize: 12, borderBottom: '1px solid rgba(255,255,255,0.04)', cursor: 'pointer', borderBottom: '1px solid rgba(255,255,255,0.04)' }
+                            }, row.symbol),
                             h('td', { style: { padding: '8px 8px', textAlign: 'right', fontFamily: 'JetBrains Mono', fontSize: 11, color: 'rgba(255,255,255,0.65)', borderBottom: '1px solid rgba(255,255,255,0.04)' } }, fmtCurrency(row.entry_price)),
                             h('td', { style: { padding: '8px 8px', textAlign: 'right', fontFamily: 'JetBrains Mono', fontSize: 11, color: 'rgba(255,255,255,0.75)', borderBottom: '1px solid rgba(255,255,255,0.04)' } }, fmtCurrency(row.current_price)),
                             h('td', { style: { padding: '8px 8px', textAlign: 'right', fontFamily: 'JetBrains Mono', fontSize: 11, color: 'rgba(255,255,255,0.55)', borderBottom: '1px solid rgba(255,255,255,0.04)' } }, row.days_held || '—'),

@@ -695,7 +695,7 @@ function RebalancingPanel({ positions, drift, optimizerResult }) {
             h('div', { className: 'atlas-card' },
                 h('div', { className: 'card-title' }, 'Proposed Trades · Review Before Executing'),
                 trades.length > 0
-                    ? h(TradeList, { trades: trades, positions: positions, onExecute: function(t) { console.log('[PCM] Execute:', t); } })
+                    ? h(TradeList, { trades: trades, positions: positions, onExecute: function(t) { window.dispatchEvent(new CustomEvent('atlas:navigate', { detail: { tab: 'trading', symbol: t.ticker } })); } })
                     : h('div', { style: { color: 'var(--text-3)', padding: '20px 0', textAlign: 'center' } },
                         'Portfolio is already close to optimal. No significant trades required.')
             )
@@ -830,7 +830,7 @@ function AIReport({ ips, allocation, factors, risk, drift, positions }) {
                         return { ticker: t.ticker, action: t.action, delta_shares: null,
                                  est_value: null, rationale: t.rationale };
                     }),
-                    onExecute: null,
+                    onExecute: function(t) { window.dispatchEvent(new CustomEvent('atlas:navigate', { detail: { tab: 'trading', symbol: t.ticker } })); },
                 })
             ),
         h('div', { style: { marginTop: 12 } },

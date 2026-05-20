@@ -252,19 +252,33 @@ function ScreenerRow({ s, onNavigate }) {
                 (s.style_tags || []).slice(0, 2).map(function(st) { return h(StyleBadge, { key: st, style: st }); })
             )
         ),
-        // Action
+        // Actions
         h('td', { style: { padding: '8px 10px', textAlign: 'right' } },
-            h('button', {
-                onClick: function() { onNavigate(s.symbol); },
-                style: {
-                    background: 'rgba(0,212,255,0.1)',
-                    border: '1px solid rgba(0,212,255,0.35)',
-                    color: '#00d4ff', borderRadius: 5,
-                    padding: '5px 12px', fontSize: 11, fontWeight: 700,
-                    cursor: 'pointer', fontFamily: 'JetBrains Mono, monospace',
-                    whiteSpace: 'nowrap', letterSpacing: 0.5,
-                }
-            }, 'Value →')
+            h('div', { style: { display: 'flex', gap: 5, justifyContent: 'flex-end' } },
+                h('button', {
+                    onClick: function() { window.dispatchEvent(new CustomEvent('atlas:navigate', { detail: { tab: 'trading', symbol: s.symbol } })); },
+                    title: 'Open order ticket for ' + s.symbol,
+                    style: {
+                        background: 'rgba(16,185,129,0.1)',
+                        border: '1px solid rgba(16,185,129,0.35)',
+                        color: '#10b981', borderRadius: 5,
+                        padding: '5px 10px', fontSize: 11, fontWeight: 700,
+                        cursor: 'pointer', fontFamily: 'JetBrains Mono, monospace',
+                        whiteSpace: 'nowrap', letterSpacing: 0.5,
+                    }
+                }, '▶ Trade'),
+                h('button', {
+                    onClick: function() { onNavigate(s.symbol); },
+                    style: {
+                        background: 'rgba(0,212,255,0.1)',
+                        border: '1px solid rgba(0,212,255,0.35)',
+                        color: '#00d4ff', borderRadius: 5,
+                        padding: '5px 10px', fontSize: 11, fontWeight: 700,
+                        cursor: 'pointer', fontFamily: 'JetBrains Mono, monospace',
+                        whiteSpace: 'nowrap', letterSpacing: 0.5,
+                    }
+                }, 'Value →')
+            )
         )
     );
 }

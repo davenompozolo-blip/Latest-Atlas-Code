@@ -233,7 +233,25 @@ export function FundsDashboard() {
                     ) : null,
                     expense != null ? h('div', { style: { fontSize: 12, color: 'rgba(255,255,255,0.52)', marginTop: 8 } },
                         'Expense Ratio: ', h('span', { style: { fontWeight: 600, color: 'rgba(255,255,255,0.85)' } }, (expense * 100).toFixed(2) + '%')
-                    ) : null
+                    ) : null,
+                    // Cross-module actions
+                    h('div', { style: { display: 'flex', gap: 6, marginTop: 12, flexWrap: 'wrap' } },
+                        h('button', {
+                            onClick: function() { window.dispatchEvent(new CustomEvent('atlas:navigate', { detail: { tab: 'equity', symbol: symbol } })); },
+                            title: 'Deep-dive equity research for ' + symbol,
+                            style: { background: 'rgba(0,212,255,0.1)', border: '1px solid rgba(0,212,255,0.3)', color: '#00d4ff', borderRadius: 5, padding: '5px 12px', fontSize: 11, fontWeight: 700, cursor: 'pointer', letterSpacing: 0.5, fontFamily: 'Figtree' }
+                        }, '◈ Research'),
+                        h('button', {
+                            onClick: function() { window.dispatchEvent(new CustomEvent('atlas:navigate', { detail: { tab: 'valuation', symbol: symbol } })); },
+                            title: 'Run valuation models for ' + symbol,
+                            style: { background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', color: '#f59e0b', borderRadius: 5, padding: '5px 12px', fontSize: 11, fontWeight: 700, cursor: 'pointer', letterSpacing: 0.5, fontFamily: 'Figtree' }
+                        }, '◆ Value'),
+                        h('button', {
+                            onClick: function() { window.dispatchEvent(new CustomEvent('atlas:navigate', { detail: { tab: 'trading', symbol: symbol } })); },
+                            title: 'Open order ticket for ' + symbol,
+                            style: { background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', color: '#10b981', borderRadius: 5, padding: '5px 12px', fontSize: 11, fontWeight: 700, cursor: 'pointer', letterSpacing: 0.5, fontFamily: 'Figtree' }
+                        }, '▶ Trade')
+                    )
                 ),
                 // Price tile
                 h('div', { className: 'metrics-row', style: { gridTemplateColumns: '1fr', marginTop: 12 } },

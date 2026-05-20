@@ -238,7 +238,10 @@ function App() {
                 React.createElement('div', { style: { flex: 1, overflow: 'auto' } },
                     React.createElement(ActiveComponent,
                         activeTab === 'scrapbook' ? { initialTicker: scrapbookTicker }
-                        : activeTab === 'equity' ? { initialSymbol: navSymbol }
+                        : activeTab === 'equity'   ? { initialSymbol: navSymbol }
+                        : activeTab === 'trading'  ? { initialSymbol: navSymbol }
+                        : activeTab === 'options'  ? { initialSymbol: navSymbol }
+                        : activeTab === 'valuation'? { initialSymbol: navSymbol }
                         : null)
                 )
             )

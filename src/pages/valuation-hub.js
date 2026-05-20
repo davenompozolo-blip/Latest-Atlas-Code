@@ -10,10 +10,10 @@ import React from 'react';
 import { ValuationHouse } from './valuation-house.js';
 import { ValuationScreener } from './valuation-screener.js';
 
-const { useState } = React;
+const { useState, useEffect } = React;
 const h = React.createElement;
 
-export function ValuationHub() {
+export function ValuationHub(props) {
     var _v = useState('screener');
     var view = _v[0], setView = _v[1];
     var _t = useState(null);
@@ -23,6 +23,13 @@ export function ValuationHub() {
         setTicker(symbol);
         setView('house');
     }
+
+    // Accept symbol from cross-module navigation → jump straight to house
+    useEffect(function() {
+        var sym = props && props.initialSymbol;
+        if (!sym) return;
+        handleNavigate(sym);
+    }, [props && props.initialSymbol]);
 
     function handleBack() {
         setView('screener');
