@@ -277,9 +277,18 @@ export function IVSurfaceTab(p) {
             )
         ),
 
-        data && !loading && h(IVStats, { data: data, mode: mode }),
+        data && !loading && (!data.expiries || !data.expiries.length) && h('div', {
+            style: { padding: '32px 24px', background: OC.card, borderRadius: 8, border: '1px solid ' + OC.border,
+                textAlign: 'center', color: OC.muted, fontSize: 12 }
+        },
+            h('div', { style: { fontSize: 22, marginBottom: 10 } }, 'Ω'),
+            h('div', { style: { fontWeight: 600, marginBottom: 6 } }, 'No options data returned for ' + (p.symbol || '')),
+            h('div', { style: { fontSize: 11 } }, 'Alpaca may not list options for this symbol, or the market is closed. Try a liquid equity like AAPL, SPY, or QQQ.')
+        ),
 
-        data && !loading && h('div', {
+        data && !loading && data.expiries && data.expiries.length > 0 && h(IVStats, { data: data, mode: mode }),
+
+        data && !loading && data.expiries && data.expiries.length > 0 && h('div', {
             style: { background: OC.card, borderRadius: 8, border: '1px solid ' + OC.border, padding: '16px' }
         },
             h('div', { style: { fontSize: 10, fontWeight: 700, color: OC.muted, letterSpacing: 2,

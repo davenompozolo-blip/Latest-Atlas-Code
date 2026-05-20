@@ -612,10 +612,18 @@ export function ValuationScreener({ onNavigate }) {
             // Universe toggle
             h(UniverseToggle, { universe, onChange: function(u) { setUniverse(u); resetFilters(); } }),
             h('div', { style: { flex: 1 } }),
-            // Enrichment progress banner (both modes)
-            enrichProg && h('div', {
-                style: { fontSize: 10, color: '#00d4ff', fontFamily: 'JetBrains Mono, monospace', textAlign: 'right', opacity: 0.7 }
-            }, 'Enriching ' + enrichProg.done + ' / ' + enrichProg.total + '…'),
+            // Enrichment progress bar (both modes)
+            enrichProg && h('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3, minWidth: 160 } },
+                h('div', { style: { fontSize: 10, color: '#00d4ff', fontFamily: 'JetBrains Mono, monospace', opacity: 0.8 } },
+                    'Enriching ' + enrichProg.done + ' / ' + enrichProg.total),
+                h('div', { style: { width: 160, height: 3, background: 'rgba(255,255,255,0.06)', borderRadius: 2, overflow: 'hidden' } },
+                    h('div', { style: {
+                        height: '100%', borderRadius: 2, background: '#00d4ff',
+                        width: enrichProg.total > 0 ? Math.round(enrichProg.done / enrichProg.total * 100) + '%' : '0%',
+                        transition: 'width 0.3s ease'
+                    } })
+                )
+            ),
             // Market mode info banner
             universe === 'market' && !enrichProg && marketMeta && h('div', {
                 style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'JetBrains Mono, monospace', textAlign: 'right' }
