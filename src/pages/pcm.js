@@ -14,7 +14,7 @@ import { Loading } from './components.js';
 import {
     computeFactorScores, computePortfolioMetrics, computeRiskRows,
     buildOptimizerInputs, runOptimizer,
-    fetchMacroSignals, runAtlasAdaptive,
+    fetchMacroSignals, runAtlasAdaptive, computeRegimeScores,
 } from './pcm-optimizer.js';
 
 const { useState, useEffect, useRef } = React;
@@ -442,21 +442,138 @@ function AtlasSliders({ lambdaEff, lambdaAuto, gammaEff, etaEff, onLambda, onGam
     );
 }
 
+// ─── Regime Intelligence Panel ───────────────────────────────────────────────
+var REGIME_CLASS_COLORS = { favorable: '#10b981', neutral: '#6b7280', counter: '#ef4444' };
+var REGIME_CLASS_LABELS = { favorable: '▲ Favorable', neutral: '— Neutral', counter: '▼ Counter' };
+
+function RegimeIntelligencePanel({ macro, scores, scanning, onOverride }) {
+    if (scanning) return h('div', { className: 'atlas-card', style: { marginBottom: 16, textAlign: 'center', padding: 24 } },
+        h(Loading, { text: 'Scanning macro regime…' })
+    );
+    if (!macro && !scores) return null;
+
+    var regime    = macro ? macro.regime      : null;
+    var color     = macro ? macro.regimeColor : '#6b7280';
+
+    // Summarise counts
+    var counts = { favorable: 0, neutral: 0, counter: 0 };
+    (scores || []).forEach(function(s) { counts[s.regimeClass] = (counts[s.regimeClass] || 0) + 1; });
+
+    return h('div', { className: 'atlas-card', style: { marginBottom: 16 } },
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 } },
+            h('div', { className: 'card-title', style: { margin: 0 } }, '⬡ ML Regime Intelligence'),
+            regime && h('span', { className: 'chip', style: { background: color + '22', color: color, border: '1px solid ' + color + '55', fontFamily: 'var(--font-mono)' } }, regime),
+            h('span', { style: { fontSize: 11, color: 'var(--text-3)', fontFamily: 'var(--font-mono)', marginLeft: 'auto' } },
+                counts.favorable + ' Fav · ' + counts.neutral + ' Neu · ' + counts.counter + ' Ctr'
+            )
+        ),
+        // Macro strip
+        macro && h('div', { style: { display: 'flex', gap: 16, marginBottom: 14, flexWrap: 'wrap' } },
+            [
+                macro.cpiYoY     != null && { label: 'CPI YoY',  val: macro.cpiYoY.toFixed(1) + '%' },
+                macro.spread2s10s != null && { label: '2s10s',    val: (macro.spread2s10s >= 0 ? '+' : '') + macro.spread2s10s.toFixed(0) + 'bp' },
+                macro.hySpreads  != null && { label: 'HY Spd',   val: macro.hySpreads.toFixed(0) + 'bp' },
+            ].filter(Boolean).map(function(item) {
+                return h('div', { key: item.label, style: { fontFamily: 'var(--font-mono)', fontSize: 11 } },
+                    h('span', { style: { color: 'var(--text-3)' } }, item.label + ' '),
+                    h('span', { style: { color: 'var(--teal)', fontWeight: 700 } }, item.val)
+                );
+            })
+        ),
+        // Per-position classification table
+        scores && scores.length > 0 && h('div', { style: { overflowX: 'auto' } },
+            h('table', { className: 'atlas-table', style: { fontSize: 11 } },
+                h('thead', null,
+                    h('tr', null,
+                        ['Symbol', 'Sector', 'Factor Score', 'Sector Score', 'Combined', 'Classification', 'Override'].map(function(th) {
+                            return h('th', { key: th }, th);
+                        })
+                    )
+                ),
+                h('tbody', null,
+                    scores.slice().sort(function(a, b) { return b.regimeScore - a.regimeScore; }).map(function(s) {
+                        var cls = s.regimeClass;
+                        var clr = REGIME_CLASS_COLORS[cls];
+                        return h('tr', { key: s.symbol },
+                            h('td', { className: 'cell-ticker' }, s.symbol),
+                            h('td', { style: { color: 'var(--text-3)' } }, s.sector || '—'),
+                            h('td', { style: { fontFamily: 'var(--font-mono)', textAlign: 'right' } },
+                                s.factorScore != null ? (s.factorScore >= 0 ? '+' : '') + s.factorScore.toFixed(3) : '—'
+                            ),
+                            h('td', { style: { fontFamily: 'var(--font-mono)', textAlign: 'right' } },
+                                s.sectorScore != null ? (s.sectorScore >= 0 ? '+' : '') + s.sectorScore.toFixed(3) : '—'
+                            ),
+                            h('td', { style: { fontFamily: 'var(--font-mono)', fontWeight: 700, textAlign: 'right', color: clr } },
+                                (s.regimeScore >= 0 ? '+' : '') + s.regimeScore.toFixed(3)
+                            ),
+                            h('td', null,
+                                h('span', { className: 'chip', style: { background: clr + '22', color: clr, border: '1px solid ' + clr + '55' } },
+                                    REGIME_CLASS_LABELS[cls] || cls
+                                )
+                            ),
+                            onOverride && h('td', null,
+                                h('div', { style: { display: 'flex', gap: 4 } },
+                                    ['favorable', 'neutral', 'counter'].filter(function(c) { return c !== cls; }).map(function(c) {
+                                        var cc = REGIME_CLASS_COLORS[c];
+                                        return h('button', {
+                                            key: c,
+                                            className: 'btn btn-ghost',
+                                            style: { padding: '2px 6px', fontSize: 9, color: cc, borderColor: cc + '55' },
+                                            onClick: function() { onOverride(s.symbol, c); },
+                                        }, c === 'favorable' ? '▲' : c === 'counter' ? '▼' : '—');
+                                    })
+                                )
+                            )
+                        );
+                    })
+                )
+            )
+        )
+    );
+}
+
 // ─── Layer 5: Optimizer ──────────────────────────────────────────────────────
 function OptimizerPanel({ positions, histBySymbol, ips, onResult, optimizerResult, dataReady }) {
-    const [mode, setMode]         = useState('atlas');
-    const [running, setRunning]   = useState(false);
-    const [error, setError]       = useState(null);
-    const [excluded, setExcluded] = useState({});
-    const [lambdaOv, setLambdaOv] = useState(null);
-    const [gammaOv, setGammaOv]   = useState(null);
-    const [etaOv, setEtaOv]       = useState(null);
+    const [mode, setMode]               = useState('atlas');
+    const [running, setRunning]         = useState(false);
+    const [error, setError]             = useState(null);
+    const [excluded, setExcluded]       = useState({});
+    const [lambdaOv, setLambdaOv]       = useState(null);
+    const [gammaOv, setGammaOv]         = useState(null);
+    const [etaOv, setEtaOv]             = useState(null);
+    const [regimeMacro, setRegimeMacro] = useState(null);
+    const [regimeScores, setRegimeScores] = useState(null);
+    const [regimeScan, setRegimeScan]   = useState(false);
 
     var rt          = ips ? (ips.risk_tolerance || 5) : 5;
     var lambdaAuto  = 0.025 + 0.075 * (10 - Math.max(1, Math.min(10, rt))) / 9;
     var lambdaEff   = lambdaOv  != null ? lambdaOv  : lambdaAuto;
     var gammaEff    = gammaOv   != null ? gammaOv   : 0.005;
     var etaEff      = etaOv     != null ? etaOv     : 0.18;
+
+    function scanRegime() {
+        setRegimeScan(true); setError(null);
+        fetchMacroSignals().then(function(macro) {
+            var scores = computeRegimeScores(positions, histBySymbol, macro);
+            setRegimeMacro(macro);
+            setRegimeScores(scores);
+            setRegimeScan(false);
+        }).catch(function() {
+            var scores = computeRegimeScores(positions, histBySymbol, null);
+            setRegimeMacro(null);
+            setRegimeScores(scores);
+            setRegimeScan(false);
+        });
+    }
+
+    function overrideRegimeClass(symbol, newClass) {
+        setRegimeScores(function(prev) {
+            if (!prev) return prev;
+            return prev.map(function(s) {
+                return s.symbol === symbol ? Object.assign({}, s, { regimeClass: newClass }) : s;
+            });
+        });
+    }
 
     function toggleSymbol(sym) {
         setExcluded(function(prev) {
@@ -477,6 +594,7 @@ function OptimizerPanel({ positions, histBySymbol, ips, onResult, optimizerResul
     function run() {
         setRunning(true); setError(null);
         var selectedPositions = positions.filter(function(p) { return !excluded[p.symbol]; });
+        var capturedRegimeScores = regimeScores;
 
         var doRun = function(macroSignals) {
             setTimeout(function() {
@@ -492,7 +610,7 @@ function OptimizerPanel({ positions, histBySymbol, ips, onResult, optimizerResul
                         eta:    etaOv,
                     } : null;
                     var result = mode === 'atlas'
-                        ? runAtlasAdaptive(inputs, selectedPositions, histBySymbol, ips, macroSignals, overrides)
+                        ? runAtlasAdaptive(inputs, selectedPositions, histBySymbol, ips, macroSignals, overrides, capturedRegimeScores)
                         : runOptimizer(mode, inputs, ips ? ips.concentration_limit : null);
                     onResult(result);
                 } catch (e) {
@@ -509,6 +627,15 @@ function OptimizerPanel({ positions, histBySymbol, ips, onResult, optimizerResul
         }
     }
 
+    function handleModeChange(newMode) {
+        setMode(newMode);
+        if (newMode !== 'atlas') {
+            setRegimeMacro(null);
+            setRegimeScores(null);
+            setRegimeScan(false);
+        }
+    }
+
     if (!dataReady) return h('div', { style: { textAlign: 'center', padding: '30px 0', color: 'var(--text-3)' } },
         h(Loading, { text: 'Loading price history for optimization…' })
     );
@@ -522,7 +649,7 @@ function OptimizerPanel({ positions, histBySymbol, ips, onResult, optimizerResul
                 return h('button', { key: m.id,
                     className: 'btn ' + (mode === m.id ? 'btn-primary' : 'btn-ghost'),
                     style: { padding: '7px 12px' },
-                    onClick: function() { setMode(m.id); },
+                    onClick: function() { handleModeChange(m.id); },
                 }, m.label);
             })
         ),
@@ -536,6 +663,12 @@ function OptimizerPanel({ positions, histBySymbol, ips, onResult, optimizerResul
             onLambda:  setLambdaOv,
             onGamma:   setGammaOv,
             onEta:     setEtaOv,
+        }),
+        mode === 'atlas' && h(RegimeIntelligencePanel, {
+            macro:    regimeMacro,
+            scores:   regimeScores,
+            scanning: regimeScan,
+            onOverride: overrideRegimeClass,
         }),
         error && h('div', { className: 'chip chip-red', style: { marginBottom: 12 } }, error),
         optimizerResult && optimizerResult.macroContext && h(MacroContextCard, { ctx: optimizerResult.macroContext }),
@@ -613,7 +746,17 @@ function OptimizerPanel({ positions, histBySymbol, ips, onResult, optimizerResul
                 )
             )
         ),
-        h('div', { style: { display: 'flex', gap: 10, alignItems: 'center' } },
+        h('div', { style: { display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' } },
+            mode === 'atlas' && h('button', {
+                className: 'btn btn-ghost',
+                style: { padding: '7px 14px', borderColor: 'rgba(0,212,255,0.35)', color: 'var(--teal)' },
+                onClick: scanRegime,
+                disabled: regimeScan || running,
+            }, regimeScan ? 'Scanning…' : (regimeScores ? '↺ Re-scan Regime' : '⬡ Scan Regime')),
+            mode === 'atlas' && regimeScores && h('span', {
+                style: { fontSize: 10, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' },
+            }, regimeScores.filter(function(s) { return s.regimeClass === 'favorable'; }).length + ' favorable · '
+             + regimeScores.filter(function(s) { return s.regimeClass === 'counter'; }).length + ' counter — bounds active'),
             h('button', { className: 'btn btn-primary', onClick: run, disabled: running || selectedCount < 2 },
                 running ? (mode === 'atlas' ? 'Fetching macro signals…' : 'Running…')
                         : (optimizerResult ? '↺ Re-run ' : '▶ Run ') + (currentMode ? currentMode.label : mode)

@@ -94,6 +94,18 @@ function clampWeights(w, minW, maxW) {
     return out.map(function(wi) { return wi / sum; });
 }
 
+// Per-position clamp — used when regime scores provide individual min/max bounds
+function clampWeightsArr(w, minWArr, maxWArr) {
+    var sum = 0;
+    var out = w.map(function(wi, i) {
+        var c = Math.max(minWArr[i], Math.min(maxWArr[i], wi));
+        sum += c;
+        return c;
+    });
+    if (sum <= 0) return w.slice();
+    return out.map(function(wi) { return wi / sum; });
+}
+
 // ── Optimization modes ────────────────────────────────────────────────────────
 
 // Min Variance: analytical w* = Σ⁻¹1 / 1'Σ⁻¹1
@@ -452,6 +464,72 @@ function perSymbolFactors(hist) {
     return { mom: mom, growth: ret3m, quality: quality, lowvol: -vol, value: -ret12m };
 }
 
+// ── Regime → sector alignment table ──────────────────────────────────────────
+// Scores reflect which sectors are structurally favoured in each macro regime.
+var REGIME_SECTOR_TILTS = {
+    'Goldilocks': {
+        Technology: 0.9, 'Consumer Discretionary': 0.7, Communications: 0.4,
+        Healthcare: 0.3, Financials: 0.2, Industrials: 0.2, International: 0.1,
+        'Real Estate': 0.0, Materials: -0.1, 'Consumer Staples': -0.1,
+        Energy: -0.2, Utilities: -0.3, 'Fixed Income': -0.5,
+    },
+    'Reflation': {
+        Energy: 1.0, Materials: 0.8, Financials: 0.6, Industrials: 0.5,
+        International: 0.3, 'Consumer Discretionary': 0.2, Technology: 0.1,
+        'Real Estate': 0.0, Healthcare: -0.1, 'Consumer Staples': -0.2,
+        Utilities: -0.3, 'Fixed Income': -0.6,
+    },
+    'Stagflation': {
+        Energy: 0.8, 'Consumer Staples': 0.7, Materials: 0.6, Healthcare: 0.5,
+        Utilities: 0.4, 'Real Estate': 0.1, International: 0.0,
+        'Fixed Income': 0.2, Financials: -0.2, Technology: -0.6,
+        'Consumer Discretionary': -0.7, Communications: -0.3,
+    },
+    'Deflation': {
+        'Fixed Income': 1.0, Healthcare: 0.6, 'Consumer Staples': 0.5,
+        Utilities: 0.4, Technology: 0.2, 'Real Estate': 0.0, International: -0.1,
+        Financials: -0.3, 'Consumer Discretionary': -0.4,
+        Materials: -0.5, Energy: -0.6,
+    },
+};
+
+// Classify every portfolio position against the current regime.
+// Returns [{ symbol, sector, regimeScore, factorScore, sectorScore, regimeClass, isOption, factors }]
+// regimeClass: 'favorable' (>0.25) | 'neutral' (-0.25..0.25) | 'counter' (<-0.25)
+export function computeRegimeScores(positions, histBySymbol, macroSignals) {
+    var tilts     = macroToFactorTilts(macroSignals);
+    var regime    = macroSignals ? macroSignals.regime : null;
+    var sectorMap = (regime && REGIME_SECTOR_TILTS[regime]) || {};
+
+    return positions.map(function(pos) {
+        var f = perSymbolFactors(histBySymbol[pos.symbol]);
+        var factorScore = 0;
+        if (f && tilts) {
+            var raw = tilts.mom     * Math.tanh(f.mom     * 5)
+                    + tilts.quality * Math.tanh(f.quality * 2)
+                    + tilts.lowvol  * Math.tanh(f.lowvol  * 5)
+                    + tilts.value   * Math.tanh(f.value   * 5)
+                    + tilts.growth  * Math.tanh(f.growth  * 8);
+            factorScore = Math.max(-1, Math.min(1, raw / 5));
+        }
+        var sector      = pos.sector || '';
+        var sectorScore = sectorMap[sector] != null ? sectorMap[sector] : 0;
+        // 55% quantitative factor behaviour + 45% qualitative macro sector thesis
+        var combined    = Math.max(-1, Math.min(1, factorScore * 0.55 + sectorScore * 0.45));
+        var regimeClass = combined > 0.25 ? 'favorable' : combined < -0.25 ? 'counter' : 'neutral';
+        return {
+            symbol:      pos.symbol,
+            sector:      sector,
+            regimeScore: combined,
+            factorScore: factorScore,
+            sectorScore: sectorScore,
+            regimeClass: regimeClass,
+            isOption:    !!(pos.asset_class && pos.asset_class.includes('option')),
+            factors:     f,
+        };
+    });
+}
+
 // Map macro signals → factor tilt vector (values −1 to +1)
 function macroToFactorTilts(signals) {
     if (!signals) return null;
@@ -515,10 +593,11 @@ export async function fetchMacroSignals() {
 }
 
 // Gradient ascent on anchored, entropy-regularized, sector-diversified Sharpe
-function anchoredEntropyOptimizer(means, cov, currentWeights, riskTolerance, maxW, sectorIdx, nSectors, lambdaOv, gammaOv, etaOv) {
+function anchoredEntropyOptimizer(means, cov, currentWeights, riskTolerance, maxW, sectorIdx, nSectors, lambdaOv, gammaOv, etaOv, minWArr, maxWArr) {
     var n = means.length;
     var minW = 0.005;  // 0.5% hard floor — let the Sharpe gradient actually differentiate
     maxW = maxW || 0.30;
+    var hasPerPos = !!(minWArr && maxWArr && minWArr.length === n);
 
     var rt = riskTolerance != null ? Math.max(1, Math.min(10, riskTolerance)) : 5;
     var lambda = lambdaOv != null ? lambdaOv : (0.025 + 0.075 * (10 - rt) / 9);
@@ -531,7 +610,7 @@ function anchoredEntropyOptimizer(means, cov, currentWeights, riskTolerance, max
     var w = currentWeights.slice();
     var sumW = w.reduce(function(s, wi) { return s + wi; }, 0);
     if (sumW < 0.5) w = new Array(n).fill(1 / n);
-    w = clampWeights(w, minW, maxW);
+    w = hasPerPos ? clampWeightsArr(w, minWArr, maxWArr) : clampWeights(w, minW, maxW);
 
     var w0 = currentWeights.slice();
     var lr = 0.012;
@@ -560,7 +639,8 @@ function anchoredEntropyOptimizer(means, cov, currentWeights, riskTolerance, max
             return gSharpe + gTurnover + gEntropy + gSector;
         });
 
-        var newW = clampWeights(w.map(function(wi, i) { return wi + lr * grad[i]; }), minW, maxW);
+        var stepped = w.map(function(wi, i) { return wi + lr * grad[i]; });
+        var newW = hasPerPos ? clampWeightsArr(stepped, minWArr, maxWArr) : clampWeights(stepped, minW, maxW);
         var change = w.reduce(function(s, wi, i) { return s + Math.abs(wi - newW[i]); }, 0);
         w = newW;
         if (change < 1e-10) break;
@@ -569,7 +649,8 @@ function anchoredEntropyOptimizer(means, cov, currentWeights, riskTolerance, max
 }
 
 // Full ATLAS Adaptive run — call this instead of runOptimizer when mode==='atlas'
-export function runAtlasAdaptive(inputs, positions, histBySymbol, ips, macroSignals, overrides) {
+// regimeScores: output of computeRegimeScores — drives per-position weight bounds
+export function runAtlasAdaptive(inputs, positions, histBySymbol, ips, macroSignals, overrides, regimeScores) {
     var n = inputs.symbols.length;
     var totalMv = positions.reduce(function(s, p) { return s + (p.market_value || 0); }, 0);
 
@@ -614,11 +695,34 @@ export function runAtlasAdaptive(inputs, positions, histBySymbol, ips, macroSign
 
     var maxW = ips && ips.concentration_limit ? ips.concentration_limit / 100 : 0.30;
     var rt   = ips ? ips.risk_tolerance : 5;
+
+    // Per-position weight bounds from ML regime classification
+    var minWArr = null, maxWArr = null;
+    if (regimeScores && regimeScores.length > 0) {
+        var regimeBySymbol = {};
+        regimeScores.forEach(function(rs) { regimeBySymbol[rs.symbol] = rs; });
+        minWArr = inputs.symbols.map(function(sym) {
+            var rs = regimeBySymbol[sym];
+            if (!rs) return 0.005;
+            if (rs.regimeClass === 'favorable') return 0.02;
+            if (rs.regimeClass === 'counter')   return 0.001;
+            return 0.005;
+        });
+        maxWArr = inputs.symbols.map(function(sym) {
+            var rs = regimeBySymbol[sym];
+            if (!rs) return maxW;
+            if (rs.regimeClass === 'favorable') return Math.min(0.45, maxW * 1.75);
+            if (rs.regimeClass === 'counter')   return Math.min(0.06, maxW * 0.35);
+            return maxW;
+        });
+    }
+
     var weights = anchoredEntropyOptimizer(adjMeans, inputs.cov, currentWeights, rt, maxW,
                                             sectorIdx, sectorList.length,
                                             overrides ? overrides.lambda : null,
                                             overrides ? overrides.gamma  : null,
-                                            overrides ? overrides.eta    : null);
+                                            overrides ? overrides.eta    : null,
+                                            minWArr, maxWArr);
 
     var vol    = portVol(weights, inputs.cov) * Math.sqrt(252) * 100;
     var ret    = weights.reduce(function(s, w, i) { return s + w * adjMeans[i]; }, 0) * 252 * 100;
@@ -671,6 +775,7 @@ export function runAtlasAdaptive(inputs, positions, histBySymbol, ips, macroSign
             topAligned:  alignedRanked.slice(0, alignHalf),
             botAligned:  alignedRanked.slice(n - alignHalf).reverse(),
             sectorBreakdown: sectorBreakdown,
+            regimeScores: regimeScores || null,
         },
     };
 }
