@@ -6,23 +6,27 @@ import React from 'react';
 // Sub-panels: Overview · Returns · Risk · Positions
 // ============================================================
 
-import { loadView, MOCK_COMMAND } from './config.js';
+import { sb, loadView, MOCK_COMMAND } from './config.js';
 import { fmtPct, fmt, fmtCurrency } from './utils.js';
 import { Loading, EmptyState } from './components.js';
 import { computePortfolioMetrics, computePeriodReturns } from './perf-engine.js';
 import { OverviewPanel, ReturnsPanel } from './perf-panels-top.js';
 import { RiskPanel, PositionsPanel } from './perf-panels-bottom.js';
+import { RollingAttributionPanel, FactorEnginePanel, RegimeSlicerPanel } from './perf-panels-analytics.js';
 import { AdvancedChart } from './advanced-chart.js';
 
 var useState = React.useState, useEffect = React.useEffect, useMemo = React.useMemo;
 var h = React.createElement;
 
 var SUB_TABS = [
-    { id: 'overview',  label: 'OVERVIEW',  sub: 'Metrics & Curve' },
-    { id: 'returns',   label: 'RETURNS',   sub: 'Period Analysis' },
-    { id: 'risk',      label: 'RISK',      sub: 'Drawdown & VaR' },
-    { id: 'positions', label: 'POSITIONS', sub: 'Attribution' },
-    { id: 'charts',    label: 'CHARTS',    sub: 'Advanced Analysis' },
+    { id: 'overview',     label: 'OVERVIEW',     sub: 'Metrics & Curve' },
+    { id: 'returns',      label: 'RETURNS',       sub: 'Period Analysis' },
+    { id: 'risk',         label: 'RISK',          sub: 'Drawdown & VaR' },
+    { id: 'positions',    label: 'POSITIONS',     sub: 'Attribution' },
+    { id: 'rolling',      label: 'CONTRIBUTION',  sub: 'Rolling P&L · NEW', isNew: true },
+    { id: 'factors',      label: 'FACTOR ENGINE', sub: 'Return Decomp · NEW', isNew: true },
+    { id: 'regime',       label: 'REGIME SLICER', sub: 'Macro Windows · NEW', isNew: true },
+    { id: 'charts',       label: 'CHARTS',        sub: 'Advanced Analysis' },
 ];
 
 export function PerformanceSuite() {
@@ -40,6 +44,10 @@ export function PerformanceSuite() {
     var txData = _tx[0], setTxData = _tx[1];
     var _l = useState(true);
     var loading = _l[0], setLoading = _l[1];
+    var _hist = useState({});
+    var histBySymbol = _hist[0], setHistBySymbol = _hist[1];
+    var _hr = useState(false);
+    var histReady = _hr[0], setHistReady = _hr[1];
 
     useEffect(function() {
         function load() {
@@ -60,9 +68,70 @@ export function PerformanceSuite() {
                 setPerfData(res[1]);
                 var cmd = Array.isArray(res[2]) ? res[2][0] : res[2];
                 setCmdData(cmd || MOCK_COMMAND);
-                setHomeData(res[3] || []);
+                var home = res[3] || [];
+                setHomeData(home);
                 setTxData(res[4] || []);
                 setLoading(false);
+
+                // ── Price history batch fetch for analytics tabs ─────────────
+                if (!sb || !home.length) { setHistReady(true); return; }
+                var portfolioSymbols = home
+                    .filter(function(r) { return r.symbol; })
+                    .map(function(r) { return r.symbol; });
+                var equitySymbols = home
+                    .filter(function(r) {
+                        var ac = (r.asset_class || '').toLowerCase();
+                        return r.symbol && !ac.includes('option');
+                    })
+                    .map(function(r) { return r.symbol; });
+
+                sb.from('assets').select('id, symbol, asset_class')
+                    .in('symbol', portfolioSymbols.length ? portfolioSymbols : ['__none__'])
+                    .then(function(assetResult) {
+                        var assetRows = assetResult.data || [];
+                        var assetBySymbol = {};
+                        assetRows.forEach(function(a) { assetBySymbol[a.symbol] = a; });
+
+                        var equityIds = equitySymbols
+                            .map(function(sym) { return assetBySymbol[sym] && assetBySymbol[sym].id; })
+                            .filter(function(id) { return id != null; });
+
+                        var cutoffDate = new Date();
+                        cutoffDate.setFullYear(cutoffDate.getFullYear() - 1);
+                        var cutoff = cutoffDate.toISOString().slice(0, 10);
+
+                        var BATCH = 15;
+                        var batches = [];
+                        for (var bi = 0; bi < equityIds.length; bi += BATCH) {
+                            batches.push(equityIds.slice(bi, bi + BATCH));
+                        }
+                        if (!batches.length) { setHistReady(true); return; }
+
+                        Promise.all(batches.map(function(batchIds) {
+                            return sb.from('price_history')
+                                .select('asset_id, price_date, close')
+                                .in('asset_id', batchIds)
+                                .gte('price_date', cutoff)
+                                .order('price_date', { ascending: true })
+                                .limit(batchIds.length * 260)
+                                .then(function(ph) { return ph.data || []; });
+                        })).then(function(results) {
+                            var allRows = results.reduce(function(acc, rows) { return acc.concat(rows); }, []);
+                            var byAsset = {};
+                            allRows.forEach(function(row) {
+                                if (!byAsset[row.asset_id]) byAsset[row.asset_id] = [];
+                                // Store both close and date for time-series analytics
+                                byAsset[row.asset_id].push({ close: parseFloat(row.close), date: row.price_date });
+                            });
+                            var bySymbol = {};
+                            equitySymbols.forEach(function(sym) {
+                                var asset = assetBySymbol[sym];
+                                if (asset && byAsset[asset.id]) bySymbol[sym] = byAsset[asset.id];
+                            });
+                            setHistBySymbol(bySymbol);
+                            setHistReady(true);
+                        }).catch(function() { setHistReady(true); });
+                    }).catch(function() { setHistReady(true); });
             });
         }
         load();
@@ -213,21 +282,24 @@ export function PerformanceSuite() {
     );
 
     // ---- Tab Bar ----------------------------------------------
-    var tabBar = h('div', { style: { display: 'flex', gap: 0, marginBottom: 20, borderBottom: '1px solid rgba(255,255,255,0.07)' } },
+    var tabBar = h('div', { style: { display: 'flex', gap: 0, marginBottom: 20, borderBottom: '1px solid rgba(255,255,255,0.07)', flexWrap: 'wrap' } },
         SUB_TABS.map(function(tab) {
             var isActive = activeTab === tab.id;
             return h('button', {
                 key: tab.id,
-                onClick: function() { setActiveTab(tab.id); },
+                onClick: (function(id) { return function() { setActiveTab(id); }; })(tab.id),
                 style: {
-                    padding: '10px 24px 12px', border: 'none',
+                    padding: '10px 20px 12px', border: 'none',
                     borderBottom: '2px solid ' + (isActive ? '#00d4ff' : 'transparent'),
                     background: 'transparent', cursor: 'pointer',
                     display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2,
                     transition: 'all 0.15s ease', marginBottom: -1,
                 }
             },
-                h('span', { style: { fontSize: 11, fontWeight: 700, letterSpacing: 1.2, fontFamily: 'JetBrains Mono', color: isActive ? '#00d4ff' : 'rgba(255,255,255,0.42)', transition: 'color 0.15s' } }, tab.label),
+                h('div', { style: { display: 'flex', alignItems: 'center', gap: 5 } },
+                    h('span', { style: { fontSize: 11, fontWeight: 700, letterSpacing: 1.2, fontFamily: 'JetBrains Mono', color: isActive ? '#00d4ff' : 'rgba(255,255,255,0.42)', transition: 'color 0.15s' } }, tab.label),
+                    tab.isNew && h('span', { style: { fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'rgba(0,212,185,0.15)', color: '#00d4b8', border: '1px solid rgba(0,212,185,0.3)', letterSpacing: 0.5 } }, 'NEW')
+                ),
                 h('span', { style: { fontSize: 9.5, color: isActive ? 'rgba(0,212,255,0.55)' : 'rgba(255,255,255,0.2)', fontFamily: 'Figtree', transition: 'color 0.15s' } }, tab.sub)
             );
         })
@@ -247,6 +319,15 @@ export function PerformanceSuite() {
             break;
         case 'positions':
             panel = hasPerf ? h(PositionsPanel, { perfData: perfData, cmdData: cmdData, homeData: homeData || [] }) : h(EmptyState, null);
+            break;
+        case 'rolling':
+            panel = h(RollingAttributionPanel, { positions: homeData || [], histBySymbol: histBySymbol, histReady: histReady, perfData: perfData || [] });
+            break;
+        case 'factors':
+            panel = h(FactorEnginePanel, { positions: homeData || [], histBySymbol: histBySymbol, histReady: histReady, perfData: perfData || [] });
+            break;
+        case 'regime':
+            panel = h(RegimeSlicerPanel, { positions: homeData || [], histBySymbol: histBySymbol, histReady: histReady, perfData: perfData || [] });
             break;
         case 'charts':
             panel = h('div', { style: { height: 'calc(100vh - 220px)', minHeight: 480 } }, h(AdvancedChart, { navSeries: navSeries }));

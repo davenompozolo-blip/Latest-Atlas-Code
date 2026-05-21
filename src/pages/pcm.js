@@ -1114,14 +1114,24 @@ export function PortfolioConstruction() {
         if (!sb) { setHistReady(true); return; }
         setFactorLoading(true);
 
-        // Load all portfolio positions from vw_portfolio_home (full 55+) in parallel
-        // with assets table for asset_id lookups needed for price_history joins.
-        Promise.all([
-            loadView('vw_portfolio_home', []),
-            sb.from('assets').select('id, symbol, name, sector, asset_class'),
-        ]).then(function(results) {
-            const homeRows   = results[0] || [];
-            const assetRows  = results[1].data || [];
+        // Load all portfolio positions from vw_portfolio_home (full 55+), then query
+        // assets only for those symbols so we never hit the PostgREST 1 000-row cap
+        // on a large assets table full of historical instruments.
+        loadView('vw_portfolio_home', []).then(function(homeRows) {
+            homeRows = homeRows || [];
+
+            // Collect distinct symbols so the assets query is scoped to the portfolio
+            const portfolioSymbols = homeRows
+                .filter(function(r) { return r.symbol; })
+                .map(function(r) { return r.symbol; });
+
+            const assetsQuery = portfolioSymbols.length
+                ? sb.from('assets').select('id, symbol, name, sector, asset_class')
+                    .in('symbol', portfolioSymbols)
+                : Promise.resolve({ data: [] });
+
+            return assetsQuery.then(function(assetResult) {
+                const assetRows = assetResult.data || [];
 
             // symbol → asset metadata (id, name, sector, asset_class)
             const assetBySymbol = {};
@@ -1227,6 +1237,7 @@ export function PortfolioConstruction() {
                         if (metrics) setPortfolioMetrics(metrics);
                     });
             });
+            }); // end assetsQuery.then
         }).catch(function(err) {
             console.warn('[PCM] position + history load failed:', err);
             setHistReady(true); setFactorLoading(false);

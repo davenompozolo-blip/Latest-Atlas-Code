@@ -442,7 +442,7 @@ export function runOptimizer(mode, inputs, concentrationLimit) {
 // ── ATLAS Adaptive: macro-informed, turnover-penalized, entropy-regularized ───
 
 // Raw factor scores for a single position's price history
-function perSymbolFactors(hist) {
+export function perSymbolFactors(hist) {
     if (!hist || hist.length < 30) return null;
     var prices = hist.map(function(d) { return d.close; });
     var n = prices.length;
@@ -662,7 +662,7 @@ export function runAtlasAdaptive(inputs, positions, histBySymbol, ips, macroSign
 
     // Macro tilts from regime + overlays
     var tilts = macroToFactorTilts(macroSignals);
-    var ALPHA = 0.25; // 25% weight on macro views vs historical returns
+    var ALPHA = 0.55; // 55% weight on macro views — regime scores must drive differentiated weights
 
     // Per-symbol macro alignment → return adjustment
     var macroAlignments = inputs.symbols.map(function(sym) {
