@@ -593,7 +593,12 @@ function OptimizerPanel({ positions, histBySymbol, ips, onResult, optimizerResul
 
     function run() {
         setRunning(true); setError(null);
-        var selectedPositions = positions.filter(function(p) { return !excluded[p.symbol]; });
+        // Options are excluded: non-linear payoffs corrupt MVO math and have no meaningful price history
+        var selectedPositions = positions.filter(function(p) {
+            if (excluded[p.symbol]) return false;
+            var ac = (p.asset_class || '').toLowerCase();
+            return !ac.includes('option');
+        });
         var capturedRegimeScores = regimeScores;
 
         var doRun = function(macroSignals) {
@@ -1113,12 +1118,12 @@ export function PortfolioConstruction() {
         // with assets table for asset_id lookups needed for price_history joins.
         Promise.all([
             loadView('vw_portfolio_home', []),
-            sb.from('assets').select('id, symbol, name, sector'),
+            sb.from('assets').select('id, symbol, name, sector, asset_class'),
         ]).then(function(results) {
             const homeRows   = results[0] || [];
             const assetRows  = results[1].data || [];
 
-            // symbol → asset metadata (id, name, sector)
+            // symbol → asset metadata (id, name, sector, asset_class)
             const assetBySymbol = {};
             assetRows.forEach(function(a) { assetBySymbol[a.symbol] = a; });
 
@@ -1139,6 +1144,7 @@ export function PortfolioConstruction() {
                             symbol:       sym,
                             name:         row.name || row.company_name || asset.name || sym,
                             sector:       row.sector || asset.sector || '—',
+                            asset_class:  row.asset_class || asset.asset_class || null,
                             asset_id:     asset.id || null,
                             market_value: mv,
                             quantity:     qty,
@@ -1155,8 +1161,16 @@ export function PortfolioConstruction() {
                 setHistReady(true); setFactorLoading(false); return;
             }
 
-            // Fetch price history only for positions that have a known asset_id
-            const assetIds = posWithSymbol
+            // Exclude options — non-linear payoffs corrupt MVO math and they burn the row budget.
+            // Options remain in posWithSymbol for risk/drift display; they just won't have price history.
+            const equityPositions = posWithSymbol.filter(function(p) {
+                var ac = (p.asset_class || '').toLowerCase();
+                return !ac.includes('option');
+            });
+
+            // Batch price history in groups of 15 to stay well under PostgREST's 1 000-row cap.
+            // Each batch: 15 symbols × ~260 trading days = ~3 900 rows — safely within limits.
+            const equityIds = equityPositions
                 .map(function(p) { return p.asset_id; })
                 .filter(function(id) { return id != null; });
 
@@ -1164,25 +1178,34 @@ export function PortfolioConstruction() {
             cutoffDate.setFullYear(cutoffDate.getFullYear() - 1);
             const cutoff = cutoffDate.toISOString().slice(0, 10);
 
-            const histPromise = assetIds.length
-                ? sb.from('price_history')
-                    .select('asset_id, price_date, close')
-                    .in('asset_id', assetIds)
-                    .gte('price_date', cutoff)
-                    .order('price_date', { ascending: true })
-                    .limit(assetIds.length * 260)
-                    .then(function(ph) {
-                        const byAsset = {};
-                        (ph.data || []).forEach(function(row) {
-                            if (!byAsset[row.asset_id]) byAsset[row.asset_id] = [];
-                            byAsset[row.asset_id].push({ close: parseFloat(row.close) });
-                        });
-                        const bySymbol = {};
-                        posWithSymbol.forEach(function(p) {
-                            if (p.asset_id && byAsset[p.asset_id]) bySymbol[p.symbol] = byAsset[p.asset_id];
-                        });
-                        return bySymbol;
-                    })
+            const BATCH = 15;
+            var idBatches = [];
+            for (var bi = 0; bi < equityIds.length; bi += BATCH) {
+                idBatches.push(equityIds.slice(bi, bi + BATCH));
+            }
+
+            const histPromise = idBatches.length
+                ? Promise.all(idBatches.map(function(batchIds) {
+                    return sb.from('price_history')
+                        .select('asset_id, price_date, close')
+                        .in('asset_id', batchIds)
+                        .gte('price_date', cutoff)
+                        .order('price_date', { ascending: true })
+                        .limit(batchIds.length * 260)
+                        .then(function(ph) { return ph.data || []; });
+                })).then(function(batches) {
+                    var allRows = batches.reduce(function(acc, rows) { return acc.concat(rows); }, []);
+                    const byAsset = {};
+                    allRows.forEach(function(row) {
+                        if (!byAsset[row.asset_id]) byAsset[row.asset_id] = [];
+                        byAsset[row.asset_id].push({ close: parseFloat(row.close) });
+                    });
+                    const bySymbol = {};
+                    posWithSymbol.forEach(function(p) {
+                        if (p.asset_id && byAsset[p.asset_id]) bySymbol[p.symbol] = byAsset[p.asset_id];
+                    });
+                    return bySymbol;
+                })
                 : Promise.resolve({});
 
             return histPromise.then(function(bySymbol) {
