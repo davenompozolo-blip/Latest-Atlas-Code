@@ -436,61 +436,65 @@ export function CommandCenterTab(props) {
 
     if (!kpis) return h('div', { style: card }, 'Insufficient return history (need 30+ days).');
 
-    var fmtDollar = function(v) {
-        if (!isFinite(v)) return '—';
-        var abs = Math.abs(v);
-        var s = abs >= 1000 ? '$' + (abs / 1000).toFixed(1) + 'k' : '$' + abs.toFixed(0);
-        return v < 0 ? '-' + s : s;
-    };
-
     // Legend for scatter
     var scatLegend = h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '6px 14px', marginTop: 8 } },
         Object.keys(T.sectors).map(function(sec) {
-            return h('div', { key: sec, style: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 9, color: T.t2, fontFamily: T.mono } },
-                h('span', { style: { width: 8, height: 8, background: sectorColor(sec), borderRadius: 8, display: 'inline-block', flexShrink: 0 } }),
+            return h('div', { key: sec, style: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 8.5, color: T.t2, fontFamily: T.mono } },
+                h('span', { style: { width: 8, height: 8, background: sectorColor(sec), borderRadius: 2, display: 'inline-block', flexShrink: 0 } }),
                 sec
             );
         })
     );
 
     return h('div', null,
-        // KPI strip
-        h('div', { style: { display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 } },
-            h(KpiPill, { label: 'Portfolio VaR 95% 1D', value: fmtDollar(kpis.var95), color: T.red, sub: (kpis.var95 / nav * 100).toFixed(2) + '% of NAV' }),
-            h(KpiPill, { label: 'CVaR 95% 1D',          value: fmtDollar(kpis.cvar95), color: T.red }),
-            h(KpiPill, { label: 'Ann. Volatility',       value: (kpis.annVol * 100).toFixed(1) + '%', color: T.amber }),
-            h(KpiPill, { label: 'Diversification Benefit', value: fmtDollar(kpis.benefit), color: T.green, sub: 'vs sum of individual VaRs' }),
-            h(KpiPill, { label: 'Vol Regime', value: kpis.regime, color: kpis.regimeColor, sub: '30D ' + (kpis.vol30 * 100).toFixed(1) + '% vs 90D ' + (kpis.vol90 * 100).toFixed(1) + '%' })
-        ),
+        h(ModuleLabel, { label: 'Module 1 · Portfolio Risk Command Center', color: T.teal }),
 
-        // Underwater chart
+        // Drawdown — full width
         h('div', { style: card },
-            h('div', { style: cardTitle }, 'UNDERWATER DRAWDOWN' + (drawdownSeries.maxDD ? ' — MAX ' + (drawdownSeries.maxDD * 100).toFixed(1) + '% (' + drawdownSeries.maxDDDate + ')' : '')),
-            h(ChartCanvas, { canvasRef: ddCanvasRef, height: 200 })
-        ),
-
-        // Rolling Sharpe
-        h('div', { style: card },
-            h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 } },
-                h('div', { style: cardTitle }, 'ROLLING SHARPE RATIO'),
-                h('div', { style: { display: 'flex', gap: 14 } },
-                    h('div', { style: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 9, color: T.teal, fontFamily: T.mono } },
-                        h('span', { style: { width: 18, height: 2, background: T.teal, display: 'inline-block' } }), '30D'),
-                    h('div', { style: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 9, color: T.gold, fontFamily: T.mono } },
-                        h('span', { style: { width: 18, height: 2, background: T.gold, borderTop: '2px dashed ' + T.gold, display: 'inline-block' } }), '90D')
+            h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 } },
+                h('div', { style: { fontSize: 11, fontWeight: 600, color: T.t1 } }, 'Underwater Drawdown — HWM Tracker'),
+                h('div', { style: { fontSize: 8.5, letterSpacing: 0.8, color: T.t3, fontFamily: T.mono } },
+                    drawdownSeries.maxDD ? 'Max: ' + (drawdownSeries.maxDD * 100).toFixed(1) + '% · ' + drawdownSeries.maxDDDate : ''
                 )
             ),
-            h(ChartCanvas, { canvasRef: sharpCanvasRef, height: 200 })
+            h('div', { style: { display: 'flex', gap: 14, marginBottom: 8, flexWrap: 'wrap' } },
+                h('div', { style: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 8.5, color: T.t2, fontFamily: T.mono } },
+                    h('span', { style: { width: 14, height: 2, background: T.red, display: 'inline-block' } }),
+                    'Drawdown from HWM'
+                ),
+                drawdownSeries.maxDD && h('span', { style: { fontSize: 8.5, color: T.red, fontFamily: T.mono } },
+                    'Max: ' + (drawdownSeries.maxDD * 100).toFixed(1) + '% (' + drawdownSeries.maxDDDate + ')'
+                ),
+                drawdownSeries.values.length && h('span', { style: { fontSize: 8.5, color: T.green, fontFamily: T.mono } },
+                    'Current: ' + (drawdownSeries.values[drawdownSeries.values.length - 1] * 100).toFixed(1) + '%'
+                )
+            ),
+            h(ChartCanvas, { canvasRef: ddCanvasRef, height: 150 })
         ),
 
-        // Risk/Return scatter
-        h('div', { style: card },
-            h('div', { style: cardTitle }, 'RISK vs RETURN — POSITION MAP'),
-            h('div', { style: { marginBottom: 6, fontSize: 9, color: T.t3, fontFamily: T.mono } },
-                'Point size = position size · X = annualised vol · Y = total return'
+        // 2-col: Rolling Sharpe | Risk/Return Scatter
+        h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 13, marginBottom: 16 } },
+            h('div', { style: Object.assign({}, card, { marginBottom: 0 }) },
+                h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 } },
+                    h('div', { style: { fontSize: 11, fontWeight: 600, color: T.t1 } }, 'Rolling Sharpe Ratio'),
+                    h('div', { style: { fontSize: 8.5, color: T.t3, fontFamily: T.mono } }, '30D / 90D')
+                ),
+                h('div', { style: { display: 'flex', gap: 14, marginBottom: 8 } },
+                    h('div', { style: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 8.5, color: T.teal, fontFamily: T.mono } },
+                        h('span', { style: { width: 14, height: 2, background: T.teal, display: 'inline-block' } }), '30D Sharpe'),
+                    h('div', { style: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 8.5, color: T.gold, fontFamily: T.mono } },
+                        h('span', { style: { width: 14, height: 2, borderTop: '2px dashed ' + T.gold, display: 'inline-block' } }), '90D Sharpe')
+                ),
+                h(ChartCanvas, { canvasRef: sharpCanvasRef, height: 140 })
             ),
-            h(ChartCanvas, { canvasRef: scatCanvasRef, height: 320 }),
-            scatLegend
+            h('div', { style: Object.assign({}, card, { marginBottom: 0 }) },
+                h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 } },
+                    h('div', { style: { fontSize: 11, fontWeight: 600, color: T.t1 } }, 'Risk vs Return — Position Map'),
+                    h('div', { style: { fontSize: 8.5, color: T.t3, fontFamily: T.mono } }, 'ANN. VOL (X) vs TOTAL RETURN (Y)')
+                ),
+                scatLegend,
+                h(ChartCanvas, { canvasRef: scatCanvasRef, height: 140 })
+            )
         )
     );
 }
@@ -609,26 +613,43 @@ export function CorrelationTab(props) {
         );
     }
 
+    // ── Contextual note generator for redundancy pairs ────────────────────────
+    var GOLD_MINERS = ['AU', 'GDX', 'SBSW', 'RGLD', 'HMY', 'AEM', 'NEM', 'GOLD'];
+    function pairNote(symA, symB, corr) {
+        var rA = riskMap[symA] || {}, rB = riskMap[symB] || {};
+        var secA = rA.sector || '', secB = rB.sector || '';
+        var aGold = GOLD_MINERS.indexOf(symA) >= 0, bGold = GOLD_MINERS.indexOf(symB) >= 0;
+        if (aGold && bGold) return 'Gold mining pair — near-identical factor loading';
+        if (secA === secB && secA) return 'Both in ' + secA + ' — correlated sector exposure';
+        if (secA === 'Energy' || secB === 'Energy') return 'Energy cycle plays — correlated macro exposure';
+        if ((secA === 'Technology' || secB === 'Technology') && corr > 0.70) return 'High-beta tech — correlated on risk-on/off moves';
+        return secA + ' / ' + secB + ' cross-sector pair';
+    }
+
     return h('div', null,
-        // Stats strip
-        corrStats && h('div', { style: { display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 } },
-            h(KpiPill, {
-                label: 'Avg Pairwise Correlation', value: corrStats.avgCorr.toFixed(3),
-                color: corrStats.avgCorr > 0.6 ? T.red : corrStats.avgCorr > 0.4 ? T.amber : T.green,
-                sub: corrStats.avgCorr > 0.6 ? 'Crowded — high systematic risk' : corrStats.avgCorr > 0.4 ? 'Moderate correlation' : 'Well diversified',
-            }),
-            h(KpiPill, {
-                label: 'Diversification Score', value: (corrStats.divScore * 100).toFixed(0) + ' / 100',
-                color: corrStats.divScore > 0.6 ? T.green : corrStats.divScore > 0.4 ? T.amber : T.red,
-                sub: '0 = perfectly correlated · 100 = uncorrelated',
-            }),
-            h(KpiPill, {
-                label: 'Redundant Pairs (>0.80)', value: corrStats.redundant.length.toString(),
-                color: corrStats.redundant.length > 5 ? T.red : corrStats.redundant.length > 2 ? T.amber : T.green,
-            }),
-            h(KpiPill, {
-                label: 'Tight Clusters (≥3)', value: corrStats.clusters.length.toString(),
-                color: corrStats.clusters.length > 0 ? T.amber : T.green,
+        h(ModuleLabel, { label: 'Module 2 · Correlation Intelligence', color: T.amber }),
+
+        // Stats strip — compact horizontal style
+        corrStats && h('div', {
+            style: {
+                display: 'flex', background: T.bg, border: '1px solid ' + T.border,
+                borderRadius: 8, overflow: 'hidden', marginBottom: 12,
+            }
+        },
+            [
+                { label: 'Avg Pairwise Corr.',       value: corrStats.avgCorr.toFixed(2), color: corrStats.avgCorr > 0.6 ? T.red : corrStats.avgCorr > 0.4 ? T.amber : T.green, sub: corrStats.avgCorr > 0.6 ? 'High concentration' : corrStats.avgCorr > 0.4 ? 'Moderate' : 'Well diversified' },
+                { label: 'Diversification Score',    value: (corrStats.divScore * 100).toFixed(0) + ' / 100', color: corrStats.divScore > 0.6 ? T.green : corrStats.divScore > 0.4 ? T.amber : T.red, sub: '0 = crowded · 1 = pure alpha' },
+                { label: 'Redundant Pairs (>0.80)',  value: corrStats.redundant.length + ' pairs', color: corrStats.redundant.length > 3 ? T.red : corrStats.redundant.length > 1 ? T.amber : T.green, sub: corrStats.redundant.length > 0 ? 'All in ' + ((riskMap[corrStats.redundant[0].symA] || {}).sector || 'same') + ' cluster' : 'No redundancy detected' },
+                { label: 'Auto-Detected Cluster',    value: corrStats.clusters.length > 0 ? '⚠ ' + corrStats.clusters[0].symbols.slice(0, 2).join('/') + '…' : 'None', color: corrStats.clusters.length > 0 ? T.red : T.green, sub: corrStats.clusters.length > 0 ? corrStats.clusters[0].symbols.length + ' pos · effectively one factor bet' : 'No clusters detected' },
+            ].map(function(item, idx) {
+                return h('div', {
+                    key: item.label,
+                    style: { flex: 1, padding: '10px 14px', borderRight: idx < 3 ? '1px solid rgba(255,255,255,0.06)' : 'none' }
+                },
+                    h('div', { style: { fontSize: 8.5, letterSpacing: 1.2, textTransform: 'uppercase', color: T.t3, marginBottom: 3, fontFamily: T.mono } }, item.label),
+                    h('div', { style: { fontSize: 13, fontWeight: 500, fontFamily: T.mono, color: item.color } }, item.value),
+                    h('div', { style: { fontSize: 8, color: T.t2, marginTop: 1, fontFamily: T.mono } }, item.sub)
+                );
             })
         ),
 
@@ -661,27 +682,96 @@ export function CorrelationTab(props) {
             })
         ),
 
-        // Redundancy list
-        corrStats && corrStats.redundant.length > 0 && h('div', { style: Object.assign({}, card, { marginBottom: 16 }) },
-            h('div', { style: cardTitle }, 'REDUNDANT PAIRS — CORRELATION > 0.80'),
-            h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 8 } },
-                corrStats.redundant.map(function(p, idx) {
-                    var intensity = p.corr >= 0.90 ? T.red : T.amber;
-                    return h('div', {
-                        key: idx,
-                        style: {
-                            padding: '6px 12px', borderRadius: 6, fontSize: 10, fontFamily: T.mono,
-                            border: '1px solid ' + intensity + '55', background: intensity + '12',
-                            color: T.t1,
-                        }
-                    }, p.symA + ' ↔ ' + p.symB + '  ' + (p.corr * 100).toFixed(0) + '%');
-                })
-            )
-        ),
+        // Redundancy pairs + matrix in 2-col layout matching mockup
+        corrStats && h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1.8fr', gap: 13, marginBottom: 16 } },
+            // Redundancy flags column
+            h('div', { style: Object.assign({}, card, { marginBottom: 0 }) },
+                h('div', { style: { fontSize: 11, fontWeight: 600, color: T.t1, marginBottom: 3 } }, 'Redundancy Alerts'),
+                h('div', { style: { fontSize: 8.5, letterSpacing: 0.8, color: T.t3, fontFamily: T.mono, marginBottom: 11 } }, 'PAIRS CORR > 0.70'),
+                corrStats.redundant.length === 0
+                    ? h('div', { style: { color: T.t3, fontSize: 11, fontFamily: T.mono } }, 'No redundant pairs detected.')
+                    : h('div', null,
+                        corrStats.redundant.map(function(p, idx) {
+                            var c = p.corr >= 0.80 ? T.red : T.amber;
+                            var note = pairNote(p.symA, p.symB, p.corr);
+                            return h('div', {
+                                key: idx,
+                                style: {
+                                    display: 'flex', alignItems: 'flex-start', gap: 8,
+                                    padding: '7px 9px', marginBottom: 6,
+                                    background: 'rgba(255,255,255,0.02)',
+                                    border: '1px solid ' + c + '44', borderRadius: 5,
+                                }
+                            },
+                                h('div', { style: { flexShrink: 0 } },
+                                    h('div', { style: { fontSize: 9.5, fontWeight: 700, color: c, fontFamily: T.mono } }, p.corr.toFixed(2))
+                                ),
+                                h('div', null,
+                                    h('div', { style: { fontSize: 9.5, fontWeight: 600, color: T.t1, marginBottom: 2, fontFamily: T.mono } }, p.symA + ' ↔ ' + p.symB),
+                                    h('div', { style: { fontSize: 8.5, color: T.t2, lineHeight: 1.4, fontFamily: T.mono } }, note)
+                                )
+                            );
+                        })
+                    )
+            ),
 
-        // Correlation matrix table
-        h('div', { style: card },
-            h('div', { style: cardTitle }, 'PAIRWISE CORRELATION MATRIX — TOP 20 BY POSITION SIZE'),
+            // Correlation matrix column
+            h('div', { style: Object.assign({}, card, { marginBottom: 0, overflow: 'hidden' }) },
+                h('div', { style: { fontSize: 11, fontWeight: 600, color: T.t1, marginBottom: 3 } }, 'Pairwise Correlation Matrix'),
+                h('div', { style: { fontSize: 8.5, letterSpacing: 0.8, color: T.t3, fontFamily: T.mono, marginBottom: 10 } }, 'TOP 12 BY MARKET VALUE · PEARSON 90D'),
+        h('div', { style: { overflowX: 'auto', overflowY: 'auto', maxHeight: 400 } },
+            h('table', { style: { borderCollapse: 'collapse', fontSize: 8, fontFamily: T.mono } },
+                h('thead', null,
+                    h('tr', null,
+                        h('th', { style: Object.assign({}, th, { width: 60, minWidth: 60, position: 'sticky', left: 0, background: '#07091a', zIndex: 2, fontSize: 7.5 }) }, ''),
+                        matrixSyms.map(function(sym) {
+                            return h('th', {
+                                key: sym,
+                                style: Object.assign({}, th, {
+                                    textAlign: 'center', minWidth: 30, width: 30, writingMode: 'vertical-lr',
+                                    transform: 'rotate(180deg)', height: 60, paddingBottom: 6, fontSize: 7.5,
+                                    color: sectorColor((riskMap[sym] || {}).sector),
+                                })
+                            }, sym);
+                        })
+                    )
+                ),
+                h('tbody', null,
+                    matrixSyms.map(function(symA, i) {
+                        return h('tr', { key: symA },
+                            h('td', { style: Object.assign({}, td, { fontWeight: 600, position: 'sticky', left: 0, background: '#07091a', zIndex: 1, minWidth: 60, fontSize: 7.5 }) },
+                                symLabel(symA)
+                            ),
+                            matrixSyms.map(function(symB, j) {
+                                var v = corrMatrix[i] ? corrMatrix[i][j] : 0;
+                                var isDiag = i === j;
+                                return h('td', {
+                                    key: symB,
+                                    style: {
+                                        background:   cellBg(v, isDiag),
+                                        textAlign:    'center',
+                                        padding:      '3px 1px',
+                                        fontSize:     7.5,
+                                        fontFamily:   T.mono,
+                                        color:        isDiag ? T.teal : v > 0.55 ? T.t1 : T.t2,
+                                        fontWeight:   v > 0.70 || isDiag ? 700 : 400,
+                                        borderBottom: '1px solid rgba(255,255,255,0.03)',
+                                        minWidth:     30,
+                                        border:       '1px solid rgba(255,255,255,0.03)',
+                                        borderRadius: 2,
+                                    }
+                                }, isDiag ? '—' : v.toFixed(2));
+                            })
+                        );
+                    })
+                )
+            )
+        )
+            ) // end matrix card
+        ), // end 2-col grid
+
+        // Standalone cluster alert (full width, below the 2-col)
+        h('div', { style: { marginBottom: 16 } },
             h('div', { style: { overflowX: 'auto', overflowY: 'auto', maxHeight: 560 } },
                 h('table', { style: { borderCollapse: 'collapse', fontSize: 9, fontFamily: T.mono } },
                     // Header row
@@ -1345,6 +1435,51 @@ export function GreeksTab(props) {
     );
 }
 
+// ── Module section label (coloured left bar + uppercase label) ─────────────────
+function ModuleLabel(props) {
+    return h('div', { style: { display: 'flex', alignItems: 'center', gap: 9, marginBottom: 12 } },
+        h('div', { style: { width: 3, height: 14, borderRadius: 2, background: props.color || T.teal, flexShrink: 0 } }),
+        h('div', { style: { fontSize: 10, fontWeight: 600, letterSpacing: 1.5, textTransform: 'uppercase', color: T.t2, fontFamily: T.mono } }, props.label)
+    );
+}
+
+// ── Compact horizontal KPI strip (always visible above tabs) ──────────────────
+function HeaderKpiStrip(props) {
+    var kpis = props.kpis;
+    if (!kpis) return null;
+    var fD = function(v) {
+        var abs = Math.abs(v);
+        return (v < 0 ? '−' : '+') + '$' + (abs >= 1000 ? (abs / 1000).toFixed(1) + 'k' : abs.toFixed(0));
+    };
+    var items = [
+        { label: 'Portfolio VaR 95% 1D',    value: fD(-kpis.var95),  color: T.red,   sub: 'Historical simulation' },
+        { label: 'CVaR 95% 1D',             value: fD(-kpis.cvar95), color: T.red,   sub: 'Expected shortfall' },
+        { label: 'Portfolio Vol',            value: (kpis.annVol * 100).toFixed(1) + '% ann.', color: T.amber, sub: 'Weighted blended' },
+        { label: 'Diversification Benefit',  value: '+$' + Math.abs(kpis.benefit).toFixed(0) + '/day', color: T.green, sub: '$' + kpis.sumIndivVaR.toFixed(0) + ' sum − $' + kpis.var95.toFixed(0) + ' port.' },
+        { label: 'Vol Regime',               value: kpis.regime, color: kpis.regimeColor, sub: '30D: ' + (kpis.vol30 * 100).toFixed(1) + '% · 90D: ' + (kpis.vol90 * 100).toFixed(1) + '%' },
+    ];
+    return h('div', {
+        style: {
+            display: 'flex', borderBottom: '1px solid ' + T.border,
+            background: 'rgba(5,7,15,0.6)', marginBottom: 0,
+        }
+    },
+        items.map(function(item, idx) {
+            return h('div', {
+                key: item.label,
+                style: {
+                    flex: 1, padding: '8px 14px 8px ' + (idx === 0 ? '20px' : '12px'),
+                    borderRight: idx < items.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none',
+                }
+            },
+                h('div', { style: { fontSize: 8.5, letterSpacing: 1.2, textTransform: 'uppercase', color: T.t3, marginBottom: 3, fontFamily: T.mono } }, item.label),
+                h('div', { style: { fontSize: 13, fontWeight: 500, fontFamily: T.mono, color: item.color } }, item.value),
+                h('div', { style: { fontSize: 8, color: T.t2, marginTop: 1, fontFamily: T.mono } }, item.sub)
+            );
+        })
+    );
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // ROOT — RiskAnalysisV2
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1374,16 +1509,38 @@ export function RiskAnalysisV2() {
         return function() { window.removeEventListener('atlas:refresh', load); };
     }, []);
 
+    // Compute header KPIs from loaded data (shown above all tabs)
+    var headerKpis = useMemo(function() {
+        if (!data || !data.portfolioReturns || !data.portfolioReturns.length) return null;
+        var pr  = data.portfolioReturns;
+        var nav = data.nav;
+        var rv  = data.riskView || [];
+        var var95  = histVaR(pr, nav, 0.95);
+        var cvar95 = histCVaR(pr, nav, 0.95);
+        var annVol = std(pr) * Math.sqrt(252);
+        var sumIndivVaR = rv.reduce(function(s, r) { return s + (Number(r.dollar_var_95_daily) || 0); }, 0);
+        var benefit = sumIndivVaR - var95;
+        var vol30   = std(pr.slice(-30))  * Math.sqrt(252);
+        var vol90   = std(pr.slice(-90))  * Math.sqrt(252);
+        var regime  = vol30 > vol90 * 1.2 ? 'ELEVATED' : vol30 < vol90 * 0.8 ? 'COMPRESSED' : 'NORMAL';
+        var regimeColor = regime === 'ELEVATED' ? T.red : regime === 'COMPRESSED' ? T.green : T.amber;
+        return { var95, cvar95, annVol, sumIndivVaR, benefit, regime, regimeColor, vol30, vol90 };
+    }, [data]);
+
     var TABS = [
-        { id: 'command',  label: 'COMMAND CENTER', sub: 'VaR · Drawdown · Scatter' },
-        { id: 'corr',     label: 'CORRELATION',    sub: 'Matrix · Clusters' },
-        { id: 'decomp',   label: 'DECOMPOSITION',  sub: 'Marginal VaR · Attribution' },
-        { id: 'stress',   label: 'STRESS ENGINE',  sub: 'Regime Replay · Shocks' },
-        { id: 'greeks',   label: 'GREEKS',         sub: 'Δ Γ Θ ν · Options' },
+        { id: 'command', label: 'COMMAND CENTER', sub: 'VaR · Drawdown · Scatter' },
+        { id: 'corr',    label: 'CORRELATION',    sub: 'Matrix · Clusters',         badge: 'NEW', badgeColor: T.teal },
+        { id: 'decomp',  label: 'DECOMPOSITION',  sub: 'Marginal VaR · Attribution', badge: 'NEW', badgeColor: T.teal },
+        { id: 'stress',  label: 'STRESS ENGINE',  sub: 'Regime Replay · Shocks',     badge: 'SIG', badgeColor: T.amber },
+        { id: 'greeks',  label: 'GREEKS',         sub: 'Δ Γ Θ ν · Options',          badge: 'SIG', badgeColor: T.purple },
     ];
 
     var tabBar = h('div', {
-        style: { display: 'flex', gap: 0, marginBottom: 20, borderBottom: '1px solid ' + T.border, overflowX: 'auto' }
+        style: {
+            display: 'flex', gap: 0, marginBottom: 20,
+            background: 'rgba(255,255,255,0.015)',
+            borderBottom: '1px solid ' + T.border, overflowX: 'auto',
+        }
     },
         TABS.map(function(t) {
             var active = t.id === tab;
@@ -1391,14 +1548,21 @@ export function RiskAnalysisV2() {
                 key: t.id,
                 onClick: function() { setTab(t.id); },
                 style: {
-                    padding: '10px 22px 12px', border: 'none', background: 'transparent', cursor: 'pointer',
+                    padding: '9px 15px', border: 'none', background: 'transparent', cursor: 'pointer',
                     borderBottom: '2px solid ' + (active ? T.teal : 'transparent'),
-                    display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2,
+                    display: 'flex', alignItems: 'center', gap: 5,
                     transition: 'all 0.12s', marginBottom: -1, flexShrink: 0,
                 },
             },
-                h('span', { style: { fontSize: 11, fontWeight: 700, letterSpacing: 1.2, fontFamily: T.mono, color: active ? T.teal : T.t2 } }, t.label),
-                h('span', { style: { fontSize: 9, color: active ? T.teal + 'aa' : T.t3, fontFamily: T.mono } }, t.sub)
+                h('span', {
+                    style: { fontSize: 9, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', fontFamily: T.mono, color: active ? T.teal : T.t2 }
+                }, t.label),
+                t.badge && h('span', {
+                    style: {
+                        fontSize: 7.5, padding: '1px 5px', borderRadius: 8, fontFamily: T.mono, fontWeight: 700,
+                        background: t.badgeColor + '28', color: t.badgeColor, letterSpacing: 0.5,
+                    }
+                }, t.badge)
             );
         })
     );
@@ -1420,11 +1584,17 @@ export function RiskAnalysisV2() {
     if (tab === 'greeks')  content = h(GreeksTab,         { data: data });
 
     return h('div', null,
-        h('div', { style: { fontSize: 14, fontWeight: 700, color: T.t1, fontFamily: T.mono, letterSpacing: 0.5, marginBottom: 16 } },
-            'RISK ANALYSIS  ',
-            h('span', { style: { fontSize: 9, color: T.teal, letterSpacing: 1.4, verticalAlign: 'middle' } }, 'v2.0')
+        // Title row
+        h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 10, padding: '16px 20px 0' } },
+            h('div', { style: { fontSize: 15, fontWeight: 700, color: T.t1, fontFamily: T.mono } }, 'Risk Analysis'),
+            h('div', { style: { fontSize: 9, letterSpacing: 1, textTransform: 'uppercase', color: T.t3, fontFamily: T.mono } }, 'v2.0 · Five-Module Architecture')
         ),
-        tabBar,
-        content
+        // Always-visible KPI strip
+        h(HeaderKpiStrip, { kpis: headerKpis }),
+        // Tab bar + content
+        h('div', { style: { padding: '0 20px' } },
+            h('div', { style: { marginTop: 0 } }, tabBar),
+            content
+        )
     );
 }
