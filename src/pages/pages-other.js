@@ -646,10 +646,13 @@ function RiskCard({ row: r, maxVar }) {
 }
 
 // ============================================================
-// RISK ANALYSIS
+// RISK ANALYSIS  — delegated to risk-v2.js
 // ============================================================
 
-export function RiskAnalysis() {
+import { RiskAnalysisV2 as _RiskAnalysisV2 } from './risk-v2.js';
+export function RiskAnalysis() { return React.createElement(_RiskAnalysisV2, null); }
+
+function _RiskAnalysisOld() {
     const [risk, setRisk] = useState(null);
     const [command, setCommand] = useState(null);
     const [navData, setNavData] = useState(null);
@@ -844,7 +847,7 @@ export function RiskAnalysis() {
 }
 
 // ============================================================
-// COMMAND CENTRE
+// COMMAND CENTRE (note: _RiskAnalysisOld above is intentionally dead — kept for reference)
 // ============================================================
 export function CommandCentre() {
     const [command, setCommand] = useState(null);
