@@ -110,6 +110,160 @@ function rollingWindow(arr, window, fn) {
     return out;
 }
 
+// ── Additional math utilities ──────────────────────────────────────────────────
+function ulcerIndex(drawdownSeries) {
+    var sumSq = 0;
+    for (var i = 0; i < drawdownSeries.length; i++) sumSq += drawdownSeries[i] * drawdownSeries[i];
+    return Math.sqrt(sumSq / drawdownSeries.length) * 100;
+}
+
+function calmarRatio(portfolioReturns, maxDrawdown) {
+    if (!portfolioReturns.length) return 0;
+    var totalReturn = portfolioReturns.reduce(function(acc, r) { return acc * (1 + r); }, 1) - 1;
+    var years = portfolioReturns.length / 252;
+    var annReturn = years > 0 ? Math.pow(1 + totalReturn, 1 / years) - 1 : 0;
+    return maxDrawdown !== 0 ? annReturn / Math.abs(maxDrawdown) : 0;
+}
+
+function skewness(arr) {
+    var m = mean(arr), s = std(arr);
+    if (s === 0) return 0;
+    var sum = 0;
+    for (var i = 0; i < arr.length; i++) sum += Math.pow((arr[i] - m) / s, 3);
+    return sum / arr.length;
+}
+
+function excessKurtosis(arr) {
+    var m = mean(arr), s = std(arr);
+    if (s === 0) return 0;
+    var sum = 0;
+    for (var i = 0; i < arr.length; i++) sum += Math.pow((arr[i] - m) / s, 4);
+    return (sum / arr.length) - 3;
+}
+
+function buildHistogram(returns, numBins) {
+    if (!returns.length) return { bins: [], binWidth: 0 };
+    var min = Math.min.apply(null, returns);
+    var max = Math.max.apply(null, returns);
+    var binWidth = (max - min) / numBins || 0.001;
+    var bins = [];
+    for (var b = 0; b < numBins; b++) {
+        bins.push({ lo: min + b * binWidth, hi: min + (b + 1) * binWidth, count: 0, mid: min + (b + 0.5) * binWidth });
+    }
+    returns.forEach(function(r) {
+        var idx = Math.min(numBins - 1, Math.floor((r - min) / binWidth));
+        if (idx >= 0) bins[idx].count++;
+    });
+    return { bins: bins, binWidth: binWidth };
+}
+
+function drawdownEvents(navData) {
+    var hwm = 0, inDD = false, events = [], current = null;
+    navData.forEach(function(row, i) {
+        var nav = parseFloat(row.nav);
+        if (nav > hwm) {
+            hwm = nav;
+            if (inDD && current) {
+                current.recovered = row.price_date;
+                current.duration = i - current.startIdx;
+                events.push(current);
+                current = null; inDD = false;
+            }
+        } else if (!inDD) {
+            inDD = true;
+            current = { start: row.price_date, startIdx: i, trough: nav, troughDate: row.price_date, depth: nav / hwm - 1 };
+        } else if (current && nav < current.trough) {
+            current.trough = nav; current.troughDate = row.price_date; current.depth = nav / hwm - 1;
+        }
+    });
+    if (inDD && current) { current.recovered = null; current.duration = navData.length - current.startIdx; events.push(current); }
+    return events;
+}
+
+function worstDayIndices(portfolioReturns, pct) {
+    var n = Math.max(1, Math.floor(portfolioReturns.length * pct));
+    var indexed = portfolioReturns.map(function(r, i) { return { r: r, i: i }; });
+    indexed.sort(function(a, b) { return a.r - b.r; });
+    var worst = {};
+    for (var k = 0; k < n; k++) worst[indexed[k].i] = true;
+    return worst;
+}
+
+function pearsonCorrSubset(a, b, indices) {
+    var sub_a = [], sub_b = [];
+    var keys = Object.keys(indices);
+    for (var k = 0; k < keys.length; k++) {
+        var i = parseInt(keys[k]);
+        if (i < a.length && i < b.length) { sub_a.push(a[i]); sub_b.push(b[i]); }
+    }
+    return pearsonCorr(sub_a, sub_b);
+}
+
+function computeConditionalCorr(returnsBySymbol, equitySyms, portfolioReturns) {
+    var worstIdx = worstDayIndices(portfolioReturns, 0.10);
+    var fullCorrs = [], stressCorrs = [];
+    for (var i = 0; i < equitySyms.length; i++) {
+        for (var j = i + 1; j < equitySyms.length; j++) {
+            var a = returnsBySymbol[equitySyms[i]] || [];
+            var b = returnsBySymbol[equitySyms[j]] || [];
+            if (a.length > 5 && b.length > 5) {
+                fullCorrs.push(pearsonCorr(a, b));
+                stressCorrs.push(pearsonCorrSubset(a, b, worstIdx));
+            }
+        }
+    }
+    if (!fullCorrs.length) return null;
+    var fp = mean(fullCorrs), sp = mean(stressCorrs);
+    return { fullPeriod: fp, stressDays: sp, surge: fp !== 0 ? (sp - fp) / Math.abs(fp) * 100 : 0, n: Math.max(1, Math.floor(portfolioReturns.length * 0.10)) };
+}
+
+function rollingAvgCorr(returnsBySymbol, equitySyms, windowSize) {
+    var firstSym = equitySyms[0];
+    var n = firstSym ? (returnsBySymbol[firstSym] || []).length : 0;
+    var result = new Array(n).fill(null);
+    for (var d = windowSize - 1; d < n; d++) {
+        var corrs = [];
+        for (var i = 0; i < equitySyms.length; i++) {
+            for (var j = i + 1; j < equitySyms.length; j++) {
+                var a = (returnsBySymbol[equitySyms[i]] || []).slice(d - windowSize + 1, d + 1);
+                var b = (returnsBySymbol[equitySyms[j]] || []).slice(d - windowSize + 1, d + 1);
+                if (a.length >= 5) corrs.push(pearsonCorr(a, b));
+            }
+        }
+        result[d] = corrs.length ? mean(corrs) : null;
+    }
+    return result;
+}
+
+function computeComponentVaR(equitySyms, returnsBySymbol, portfolioReturns, riskView, nav) {
+    var mvMap = {};
+    riskView.forEach(function(r) { mvMap[r.symbol] = parseFloat(r.market_value) || 0; });
+    var results = [];
+    equitySyms.forEach(function(sym) {
+        var posRets = returnsBySymbol[sym] || [];
+        var mv = mvMap[sym] || 0;
+        if (posRets.length < 5 || mv === 0) return;
+        var len = Math.min(posRets.length, portfolioReturns.length);
+        var posAligned  = posRets.slice(posRets.length - len);
+        var portAligned = portfolioReturns.slice(portfolioReturns.length - len);
+        var standaloneVaR    = histVaR(posAligned, mv, 0.95);
+        var corrWithPortfolio = pearsonCorr(posAligned, portAligned);
+        var componentVaR     = corrWithPortfolio * standaloneVaR;
+        results.push({ symbol: sym, mv: mv, standaloneVaR: standaloneVaR, corrWithPortfolio: corrWithPortfolio, componentVaR: componentVaR });
+    });
+    var portVaR = histVaR(portfolioReturns, nav, 0.95);
+    results.forEach(function(r) { r.riskContributionPct = portVaR > 0 ? (r.componentVaR / portVaR) * 100 : 0; });
+    results.sort(function(a, b) { return b.componentVaR - a.componentVaR; });
+    return { positions: results, portVaR: portVaR };
+}
+
+function effectiveN(componentVarPositions, portVaR) {
+    if (portVaR === 0) return 0;
+    var sumSq = 0;
+    componentVarPositions.forEach(function(r) { var rc = r.componentVaR / portVaR; sumSq += rc * rc; });
+    return sumSq > 0 ? 1 / sumSq : 0;
+}
+
 // ── Data loading ───────────────────────────────────────────────────────────────
 function loadRiskData(onDone, onErr) {
     if (!sb) { onErr('No Supabase connection'); return; }
@@ -224,6 +378,7 @@ export function CommandCenterTab(props) {
     var portfolioDates   = d.portfolioDates;
     var nav              = d.nav;
     var riskView         = d.riskView;
+    var navData          = d.navData || [];
 
     // ── KPIs ─────────────────────────────────────────────────────────────────
     var kpis = useMemo(function() {
@@ -279,6 +434,45 @@ export function CommandCenterTab(props) {
         return { dates: ddDates, s30: s30, s90: s90 };
     }, [portfolioReturns, portfolioDates]);
 
+    // ── Drawdown analytics ────────────────────────────────────────────────────
+    var ddAnalytics = useMemo(function() {
+        if (!drawdownSeries.values.length || !portfolioReturns.length) return null;
+        var ui     = ulcerIndex(drawdownSeries.values);
+        var calmar = calmarRatio(portfolioReturns, drawdownSeries.maxDD);
+        var sinceHWM = 0;
+        for (var i = drawdownSeries.values.length - 1; i >= 0; i--) {
+            if (drawdownSeries.values[i] < 0) sinceHWM++; else break;
+        }
+        var currentDepth = drawdownSeries.values[drawdownSeries.values.length - 1] * 100;
+        var events = navData.length ? drawdownEvents(navData) : [];
+        return { ulcer: ui, calmar: calmar, currentDepth: currentDepth, sinceHWM: sinceHWM, events: events };
+    }, [drawdownSeries, portfolioReturns, navData]);
+
+    // ── Rolling 60D VaR ───────────────────────────────────────────────────────
+    var rolling60VaRData = useMemo(function() {
+        if (portfolioReturns.length < 60) return { dates: [], values: [] };
+        var vals    = rollingWindow(portfolioReturns, 60, function(w) { return histVaR(w, nav, 0.95); });
+        var ddDates = portfolioDates.slice(portfolioDates.length - portfolioReturns.length);
+        return { dates: ddDates, values: vals };
+    }, [portfolioReturns, portfolioDates, nav]);
+
+    // ── Return distribution ───────────────────────────────────────────────────
+    var histData = useMemo(function() {
+        if (!portfolioReturns.length) return null;
+        var hist   = buildHistogram(portfolioReturns, 20);
+        var m = mean(portfolioReturns), s = std(portfolioReturns);
+        var normalCurve = hist.bins.map(function(bin) {
+            return s > 0 ? (1 / Math.sqrt(2 * Math.PI * s * s)) * Math.exp(-(bin.mid - m) * (bin.mid - m) / (2 * s * s)) * portfolioReturns.length * hist.binWidth : 0;
+        });
+        return {
+            bins: hist.bins, binWidth: hist.binWidth, normalCurve: normalCurve,
+            sk: skewness(portfolioReturns), ek: excessKurtosis(portfolioReturns),
+            n: portfolioReturns.length,
+            varReturn:  -histVaR(portfolioReturns, 1, 0.95),
+            cvarReturn: -histCVaR(portfolioReturns, 1, 0.95),
+        };
+    }, [portfolioReturns]);
+
     // ── Chart refs ────────────────────────────────────────────────────────────
     var ddCanvasRef    = useRef(null);
     var ddChartRef     = useRef(null);
@@ -286,6 +480,10 @@ export function CommandCenterTab(props) {
     var sharpChartRef  = useRef(null);
     var scatCanvasRef  = useRef(null);
     var scatChartRef   = useRef(null);
+    var varCanvasRef   = useRef(null);
+    var varChartRef    = useRef(null);
+    var histCanvasRef  = useRef(null);
+    var histChartRef   = useRef(null);
 
     // Drawdown chart
     useEffect(function() {
@@ -434,6 +632,116 @@ export function CommandCenterTab(props) {
         return function() { if (scatChartRef.current) { scatChartRef.current.destroy(); scatChartRef.current = null; } };
     }, [d]);
 
+    // Rolling 60D VaR chart
+    useEffect(function() {
+        if (!varCanvasRef.current || !rolling60VaRData.dates.length) return;
+        if (varChartRef.current) { varChartRef.current.destroy(); varChartRef.current = null; }
+        var portVaRNow = kpis ? kpis.var95 : 0;
+        varChartRef.current = new Chart(varCanvasRef.current, {
+            type: 'line',
+            data: {
+                labels: rolling60VaRData.dates,
+                datasets: [
+                    {
+                        label: '60D Rolling VaR ($)', data: rolling60VaRData.values,
+                        borderColor: T.red, borderWidth: 1.5, fill: true,
+                        backgroundColor: 'rgba(239,68,68,0.08)', tension: 0.3,
+                        pointRadius: 0, spanGaps: true,
+                    },
+                    {
+                        label: 'Current VaR', type: 'line',
+                        data: rolling60VaRData.dates.map(function() { return portVaRNow; }),
+                        borderColor: 'rgba(239,68,68,0.4)', borderWidth: 1,
+                        borderDash: [4, 4], pointRadius: 0, fill: false,
+                    },
+                ],
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false, animation: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: 'rgba(10,14,26,0.92)', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1,
+                        titleColor: T.t2, bodyColor: T.t1,
+                        titleFont: { family: T.mono, size: 10 }, bodyFont: { family: T.mono, size: 11 },
+                        callbacks: { label: function(ctx) { return ctx.datasetIndex === 0 ? ' Rolling VaR: $' + (ctx.parsed.y || 0).toFixed(0) : ' Current VaR: $' + portVaRNow.toFixed(0); } },
+                    },
+                },
+                scales: {
+                    x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: T.t3, font: { family: T.mono, size: 9 }, maxTicksLimit: 8 }, border: { display: false } },
+                    y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: T.t3, font: { family: T.mono, size: 9 }, callback: function(v) { return '$' + v.toFixed(0); } }, border: { display: false } },
+                },
+            },
+        });
+        return function() { if (varChartRef.current) { varChartRef.current.destroy(); varChartRef.current = null; } };
+    }, [rolling60VaRData, kpis]);
+
+    // Return distribution histogram
+    useEffect(function() {
+        if (!histCanvasRef.current || !histData || !histData.bins.length) return;
+        if (histChartRef.current) { histChartRef.current.destroy(); histChartRef.current = null; }
+        var varLinePlugin = {
+            id: 'varLines',
+            afterDraw: function(chart) {
+                var ctx = chart.ctx;
+                var xScale = chart.scales.x;
+                if (!xScale) return;
+                [[histData.varReturn, T.red, 'VaR 95%'], [histData.cvarReturn, '#ff6b6b', 'CVaR 95%']].forEach(function(item) {
+                    var xPx = xScale.getPixelForValue(item[0] * 100);
+                    if (isNaN(xPx)) return;
+                    ctx.save();
+                    ctx.strokeStyle = item[1];
+                    ctx.lineWidth = 1.5;
+                    ctx.setLineDash([4, 3]);
+                    ctx.beginPath();
+                    ctx.moveTo(xPx, chart.chartArea.top);
+                    ctx.lineTo(xPx, chart.chartArea.bottom);
+                    ctx.stroke();
+                    ctx.fillStyle = item[1];
+                    ctx.font = '9px ' + T.mono;
+                    ctx.fillText(item[2], xPx + 3, chart.chartArea.top + 12);
+                    ctx.restore();
+                });
+            },
+        };
+        histChartRef.current = new Chart(histCanvasRef.current, {
+            type: 'bar',
+            data: {
+                labels: histData.bins.map(function(b) { return (b.mid * 100).toFixed(1) + '%'; }),
+                datasets: [
+                    {
+                        type: 'bar', label: 'Daily Returns',
+                        data: histData.bins.map(function(b) { return b.count; }),
+                        backgroundColor: 'rgba(100,116,139,0.5)', borderColor: '#64748b', borderWidth: 1,
+                    },
+                    {
+                        type: 'line', label: 'Normal Dist.',
+                        data: histData.normalCurve, borderColor: T.amber,
+                        borderWidth: 1.5, pointRadius: 0, fill: false, tension: 0.4,
+                    },
+                ],
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false, animation: false,
+                plugins: {
+                    legend: { display: false },
+                    varLines: {},
+                    tooltip: {
+                        backgroundColor: 'rgba(10,14,26,0.92)', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1,
+                        titleColor: T.t2, bodyColor: T.t1,
+                        titleFont: { family: T.mono, size: 10 }, bodyFont: { family: T.mono, size: 11 },
+                    },
+                },
+                scales: {
+                    x: { grid: { display: false }, ticks: { color: T.t3, font: { family: T.mono, size: 8 }, maxTicksLimit: 10 }, border: { display: false } },
+                    y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: T.t3, font: { family: T.mono, size: 9 } }, border: { display: false } },
+                },
+            },
+            plugins: [varLinePlugin],
+        });
+        return function() { if (histChartRef.current) { histChartRef.current.destroy(); histChartRef.current = null; } };
+    }, [histData]);
+
     if (!kpis) return h('div', { style: card }, 'Insufficient return history (need 30+ days).');
 
     // Legend for scatter
@@ -495,6 +803,98 @@ export function CommandCenterTab(props) {
                 scatLegend,
                 h(ChartCanvas, { canvasRef: scatCanvasRef, height: 140 })
             )
+        ),
+
+        // Drawdown Analytics card
+        ddAnalytics && h('div', { style: card },
+            h('div', { style: cardTitle }, 'DRAWDOWN ANALYTICS'),
+            h('div', { style: { display: 'flex', gap: 0, marginBottom: 16 } },
+                [
+                    { label: 'Ulcer Index', value: ddAnalytics.ulcer.toFixed(1) + '%', color: T.amber, sub: 'RMS sustained pain' },
+                    { label: 'Calmar Ratio', value: ddAnalytics.calmar.toFixed(2), color: ddAnalytics.calmar > 1 ? T.green : ddAnalytics.calmar > 0.5 ? T.amber : T.red, sub: ddAnalytics.calmar > 1 ? 'Strong' : ddAnalytics.calmar > 0.5 ? 'Adequate' : 'Weak' },
+                    { label: 'Current Depth', value: ddAnalytics.currentDepth.toFixed(1) + '%', color: ddAnalytics.currentDepth < 0 ? T.red : T.green, sub: 'vs high water mark' },
+                    { label: 'Days Since HWM', value: ddAnalytics.sinceHWM + 'd', color: ddAnalytics.sinceHWM > 30 ? T.red : ddAnalytics.sinceHWM > 10 ? T.amber : T.green, sub: 'consecutive underwater' },
+                ].map(function(tile, idx) {
+                    return h('div', { key: tile.label, style: { flex: 1, padding: '12px 16px', borderRight: idx < 3 ? '1px solid ' + T.border : 'none' } },
+                        h('div', { style: { fontSize: 8.5, letterSpacing: 1.2, textTransform: 'uppercase', color: T.t3, fontFamily: T.mono, marginBottom: 5 } }, tile.label),
+                        h('div', { style: { fontSize: 20, fontWeight: 700, fontFamily: T.mono, color: tile.color } }, tile.value),
+                        h('div', { style: { fontSize: 8, color: T.t2, fontFamily: T.mono, marginTop: 3 } }, tile.sub)
+                    );
+                })
+            ),
+            ddAnalytics.events.length > 0 && h('div', { style: { overflowX: 'auto' } },
+                h('div', { style: { fontSize: 9, color: T.t3, fontFamily: T.mono, letterSpacing: 1, marginBottom: 8 } }, 'DRAWDOWN EVENTS'),
+                h('table', { style: { width: '100%', borderCollapse: 'collapse' } },
+                    h('thead', null,
+                        h('tr', null,
+                            ['#', 'Start', 'Trough', 'Depth', 'Duration', 'Recovered'].map(function(col, ci) {
+                                return h('th', { key: col, style: Object.assign({}, th, { textAlign: ci > 2 ? 'right' : 'left' }) }, col);
+                            })
+                        )
+                    ),
+                    h('tbody', null,
+                        ddAnalytics.events.map(function(ev, idx) {
+                            return h('tr', { key: idx },
+                                h('td', { style: Object.assign({}, td, { color: T.t3 }) }, idx + 1),
+                                h('td', { style: td }, ev.start),
+                                h('td', { style: td }, ev.troughDate),
+                                h('td', { style: Object.assign({}, td, { textAlign: 'right', color: T.red }) }, (ev.depth * 100).toFixed(1) + '%'),
+                                h('td', { style: Object.assign({}, td, { textAlign: 'right', color: T.t2 }) }, ev.duration + 'd'),
+                                h('td', { style: Object.assign({}, td, { textAlign: 'right' }) },
+                                    ev.recovered
+                                        ? h('span', { style: { color: T.green } }, '✓ ' + ev.recovered)
+                                        : h('span', { style: { color: T.amber } }, 'Ongoing')
+                                )
+                            );
+                        })
+                    )
+                )
+            )
+        ),
+
+        // Rolling 60D VaR chart
+        rolling60VaRData.dates.length > 0 && h('div', { style: card },
+            h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 } },
+                h('div', { style: { fontSize: 11, fontWeight: 600, color: T.t1 } }, 'Rolling 60D Portfolio VaR'),
+                h('div', { style: { display: 'flex', gap: 12, alignItems: 'center' } },
+                    h('div', { style: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 8.5, color: T.red, fontFamily: T.mono } },
+                        h('span', { style: { width: 14, height: 2, background: T.red, display: 'inline-block' } }), '60D Rolling'),
+                    h('div', { style: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 8.5, color: T.t3, fontFamily: T.mono } },
+                        h('span', { style: { width: 14, height: 2, borderTop: '2px dashed rgba(239,68,68,0.5)', display: 'inline-block' } }), 'Current'),
+                    h('div', { style: { fontSize: 8.5, color: T.t3, fontFamily: T.mono } }, '60-day window · 95% confidence')
+                )
+            ),
+            h(ChartCanvas, { canvasRef: varCanvasRef, height: 160 })
+        ),
+
+        // Return distribution histogram
+        histData && h('div', { style: card },
+            h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 } },
+                h('div', { style: { fontSize: 11, fontWeight: 600, color: T.t1 } }, 'Daily Return Distribution'),
+                h('div', { style: { display: 'flex', gap: 12, alignItems: 'center' } },
+                    h('div', { style: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 8.5, color: T.slate, fontFamily: T.mono } },
+                        h('span', { style: { width: 10, height: 10, background: 'rgba(100,116,139,0.5)', border: '1px solid #64748b', display: 'inline-block', borderRadius: 2 } }), 'Returns'),
+                    h('div', { style: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 8.5, color: T.amber, fontFamily: T.mono } },
+                        h('span', { style: { width: 14, height: 2, background: T.amber, display: 'inline-block' } }), 'Normal dist.')
+                )
+            ),
+            h(ChartCanvas, { canvasRef: histCanvasRef, height: 180 }),
+            histData.ek > 1.5 && h('div', { style: { marginTop: 8, padding: '6px 10px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 5, fontSize: 9, color: T.amber, fontFamily: T.mono } },
+                '⚠ Fat tails detected (excess kurtosis ' + histData.ek.toFixed(2) + ') — historical VaR may understate tail risk'
+            ),
+            h('div', { style: { display: 'flex', gap: 0, marginTop: 10 } },
+                [
+                    { label: 'Skewness', value: (histData.sk >= 0 ? '+' : '') + histData.sk.toFixed(2), color: histData.sk < -0.5 ? T.red : T.t1, sub: histData.sk < -0.5 ? 'Negative skew' : histData.sk > 0.5 ? 'Positive skew' : 'Near-symmetric' },
+                    { label: 'Excess Kurtosis', value: (histData.ek >= 0 ? '+' : '') + histData.ek.toFixed(2), color: histData.ek > 1.5 ? T.amber : T.t1, sub: histData.ek > 1.5 ? 'Fat tails' : 'Normal-ish tails' },
+                    { label: 'n', value: histData.n, color: T.t2, sub: 'trading days' },
+                ].map(function(tile, idx) {
+                    return h('div', { key: tile.label, style: { flex: 1, padding: '8px 14px', borderRight: idx < 2 ? '1px solid ' + T.border : 'none' } },
+                        h('div', { style: { fontSize: 8.5, letterSpacing: 1.2, textTransform: 'uppercase', color: T.t3, fontFamily: T.mono, marginBottom: 4 } }, tile.label),
+                        h('div', { style: { fontSize: 17, fontWeight: 700, fontFamily: T.mono, color: tile.color } }, tile.value),
+                        h('div', { style: { fontSize: 8, color: T.t2, fontFamily: T.mono, marginTop: 2 } }, tile.sub)
+                    );
+                })
+            )
         )
     );
 }
@@ -509,6 +909,8 @@ export function CorrelationTab(props) {
     var equitySyms      = d.equitySyms || [];
     var returnsBySymbol = d.returnsBySymbol || {};
     var riskView        = d.riskView || [];
+    var portfolioReturns = d.portfolioReturns || [];
+    var portfolioDates   = d.portfolioDates || [];
 
     // ── Limit to top 20 by market value for matrix readability ───────────────
     var matrixSyms = useMemo(function() {
@@ -590,6 +992,67 @@ export function CorrelationTab(props) {
         return { avgCorr: avgCorr, divScore: divScore, redundant: redundant, clusters: clusters };
     }, [corrMatrix, matrixSyms]);
 
+    // ── Conditional correlation ────────────────────────────────────────────────
+    var condCorr = useMemo(function() {
+        if (!equitySyms.length || !portfolioReturns.length) return null;
+        return computeConditionalCorr(returnsBySymbol, equitySyms, portfolioReturns);
+    }, [returnsBySymbol, equitySyms, portfolioReturns]);
+
+    // ── Rolling 20D avg correlation ───────────────────────────────────────────
+    var rollingAvgCorrData = useMemo(function() {
+        if (equitySyms.length < 2) return { dates: [], values: [], baseline: 0 };
+        var vals    = rollingAvgCorr(returnsBySymbol, equitySyms.slice(0, 20), 20);
+        var ddDates = portfolioDates.slice(portfolioDates.length - vals.length);
+        var baseline = corrStats ? corrStats.avgCorr : 0;
+        return { dates: ddDates, values: vals, baseline: baseline };
+    }, [returnsBySymbol, equitySyms, portfolioDates, corrStats]);
+
+    var rolAvgCanvasRef = useRef(null);
+    var rolAvgChartRef  = useRef(null);
+
+    useEffect(function() {
+        if (!rolAvgCanvasRef.current || !rollingAvgCorrData.dates.length) return;
+        if (rolAvgChartRef.current) { rolAvgChartRef.current.destroy(); rolAvgChartRef.current = null; }
+        var baseline = rollingAvgCorrData.baseline;
+        rolAvgChartRef.current = new Chart(rolAvgCanvasRef.current, {
+            type: 'line',
+            data: {
+                labels: rollingAvgCorrData.dates,
+                datasets: [
+                    {
+                        label: '20D Avg Corr', data: rollingAvgCorrData.values,
+                        borderColor: T.amber, borderWidth: 1.5, fill: true,
+                        backgroundColor: 'rgba(245,158,11,0.06)', tension: 0.3,
+                        pointRadius: 0, spanGaps: true,
+                    },
+                    {
+                        label: 'Full-period Baseline', type: 'line',
+                        data: rollingAvgCorrData.dates.map(function() { return baseline; }),
+                        borderColor: 'rgba(245,158,11,0.4)', borderWidth: 1,
+                        borderDash: [4, 4], pointRadius: 0, fill: false,
+                    },
+                ],
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false, animation: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: 'rgba(10,14,26,0.92)', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1,
+                        titleColor: T.t2, bodyColor: T.t1,
+                        titleFont: { family: T.mono, size: 10 }, bodyFont: { family: T.mono, size: 11 },
+                        callbacks: { label: function(ctx) { return ctx.datasetIndex === 0 ? ' 20D Avg Corr: ' + (ctx.parsed.y || 0).toFixed(3) : ' Baseline: ' + baseline.toFixed(3); } },
+                    },
+                },
+                scales: {
+                    x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: T.t3, font: { family: T.mono, size: 9 }, maxTicksLimit: 8 }, border: { display: false } },
+                    y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: T.t3, font: { family: T.mono, size: 9 }, callback: function(v) { return v.toFixed(2); } }, border: { display: false } },
+                },
+            },
+        });
+        return function() { if (rolAvgChartRef.current) { rolAvgChartRef.current.destroy(); rolAvgChartRef.current = null; } };
+    }, [rollingAvgCorrData]);
+
     function cellBg(v, isDiag) {
         if (isDiag) return 'rgba(0,212,184,0.20)';
         if (v >= 0.85) return 'rgba(239,68,68,0.70)';
@@ -628,6 +1091,47 @@ export function CorrelationTab(props) {
 
     return h('div', null,
         h(ModuleLabel, { label: 'Module 2 · Correlation Intelligence', color: T.amber }),
+
+        // ── Priority 1: Conditional Correlation Panel ─────────────────────────
+        condCorr && h('div', { style: Object.assign({}, card, { marginBottom: 12 }) },
+            h('div', { style: cardTitle }, 'CONDITIONAL CORRELATION — NORMAL DAYS vs STRESS DAYS'),
+            h('div', { style: { display: 'flex', alignItems: 'center', gap: 0, marginBottom: 12 } },
+                h('div', { style: { flex: 1, textAlign: 'center', padding: '14px 10px', background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: 8 } },
+                    h('div', { style: { fontSize: 8.5, letterSpacing: 1.2, textTransform: 'uppercase', color: T.t3, fontFamily: T.mono, marginBottom: 6 } }, 'Full Period Avg Correlation'),
+                    h('div', { style: { fontSize: 28, fontWeight: 700, fontFamily: T.mono, color: T.green } }, condCorr.fullPeriod.toFixed(3)),
+                    h('div', { style: { fontSize: 8, color: T.t2, fontFamily: T.mono, marginTop: 4 } }, 'all trading days')
+                ),
+                h('div', { style: { padding: '0 16px', textAlign: 'center' } },
+                    h('div', { style: { fontSize: 18, color: T.red } }, '→'),
+                    h('div', { style: { fontSize: 9, fontWeight: 700, fontFamily: T.mono, color: T.red, marginTop: 2 } }, '+' + condCorr.surge.toFixed(0) + '%')
+                ),
+                h('div', { style: { flex: 1, textAlign: 'center', padding: '14px 10px', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: 8 } },
+                    h('div', { style: { fontSize: 8.5, letterSpacing: 1.2, textTransform: 'uppercase', color: T.t3, fontFamily: T.mono, marginBottom: 6 } }, 'Stress Days Avg Correlation'),
+                    h('div', { style: { fontSize: 28, fontWeight: 700, fontFamily: T.mono, color: T.red } }, condCorr.stressDays.toFixed(3)),
+                    h('div', { style: { fontSize: 8, color: T.t2, fontFamily: T.mono, marginTop: 4 } }, 'worst ' + condCorr.n + ' days only')
+                )
+            ),
+            h('div', { style: { padding: '10px 14px', background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 6, fontSize: 10, color: T.t2, fontFamily: T.mono, lineHeight: 1.6 } },
+                'Correlation rises from ' + condCorr.fullPeriod.toFixed(2) + ' to ' + condCorr.stressDays.toFixed(2) + ' on the portfolio\'s worst ' + condCorr.n + ' days — a ' + condCorr.surge.toFixed(0) + '% surge. The diversification benefit shown in the Decomposition tab assumes the full-period figure. On stress days it is materially smaller.'
+            )
+        ),
+
+        // ── Priority 5: Rolling 20D Avg Correlation ───────────────────────────
+        rollingAvgCorrData.dates.length > 0 && h('div', { style: Object.assign({}, card, { marginBottom: 12 }) },
+            h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 } },
+                h('div', { style: { fontSize: 11, fontWeight: 600, color: T.t1 } }, 'Rolling 20D Average Pairwise Correlation'),
+                h('div', { style: { display: 'flex', gap: 12, alignItems: 'center' } },
+                    h('div', { style: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 8.5, color: T.amber, fontFamily: T.mono } },
+                        h('span', { style: { width: 14, height: 2, background: T.amber, display: 'inline-block' } }), '20D Avg'),
+                    h('div', { style: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 8.5, color: T.t3, fontFamily: T.mono } },
+                        h('span', { style: { width: 14, height: 2, borderTop: '2px dashed rgba(245,158,11,0.4)', display: 'inline-block' } }), 'Baseline')
+                )
+            ),
+            h(ChartCanvas, { canvasRef: rolAvgCanvasRef, height: 140 }),
+            h('div', { style: { marginTop: 6, fontSize: 8.5, color: T.t3, fontFamily: T.mono, fontStyle: 'italic' } },
+                'Rising above baseline = diversification benefit is eroding · Top 20 positions by market value'
+            )
+        ),
 
         // Stats strip — compact horizontal style
         corrStats && h('div', {
@@ -768,58 +1272,7 @@ export function CorrelationTab(props) {
             )
         )
             ) // end matrix card
-        ), // end 2-col grid
-
-        // Standalone cluster alert (full width, below the 2-col)
-        h('div', { style: { marginBottom: 16 } },
-            h('div', { style: { overflowX: 'auto', overflowY: 'auto', maxHeight: 560 } },
-                h('table', { style: { borderCollapse: 'collapse', fontSize: 9, fontFamily: T.mono } },
-                    // Header row
-                    h('thead', null,
-                        h('tr', null,
-                            h('th', { style: Object.assign({}, th, { width: 70, minWidth: 70, position: 'sticky', left: 0, background: '#0a0e1a', zIndex: 2 }) }, ''),
-                            matrixSyms.map(function(sym) {
-                                return h('th', {
-                                    key: sym,
-                                    style: Object.assign({}, th, {
-                                        textAlign: 'center', minWidth: 38, width: 38, writingMode: 'vertical-lr',
-                                        transform: 'rotate(180deg)', height: 72, paddingBottom: 6,
-                                        color: sectorColor((riskMap[sym] || {}).sector),
-                                    })
-                                }, sym);
-                            })
-                        )
-                    ),
-                    h('tbody', null,
-                        matrixSyms.map(function(symA, i) {
-                            return h('tr', { key: symA },
-                                h('td', { style: Object.assign({}, td, { fontWeight: 600, position: 'sticky', left: 0, background: '#0a0e1a', zIndex: 1, minWidth: 70 }) },
-                                    symLabel(symA)
-                                ),
-                                matrixSyms.map(function(symB, j) {
-                                    var v = corrMatrix[i] ? corrMatrix[i][j] : 0;
-                                    var isDiag = i === j;
-                                    return h('td', {
-                                        key: symB,
-                                        style: {
-                                            background:  cellBg(v, isDiag),
-                                            textAlign:   'center',
-                                            padding:     '4px 2px',
-                                            fontSize:    9,
-                                            fontFamily:  T.mono,
-                                            color:       isDiag ? T.teal : v > 0.55 ? T.t1 : T.t2,
-                                            fontWeight:  v > 0.70 || isDiag ? 700 : 400,
-                                            borderBottom: '1px solid rgba(255,255,255,0.03)',
-                                            minWidth:    38,
-                                        }
-                                    }, isDiag ? '—' : v.toFixed(2));
-                                })
-                            );
-                        })
-                    )
-                )
-            )
-        )
+        ) // end 2-col grid
     );
 }
 
@@ -835,6 +1288,24 @@ export function DecompositionTab(props) {
     var nav              = d.nav;
     var returnsBySymbol  = d.returnsBySymbol || {};
     var equitySyms       = d.equitySyms || [];
+
+    // ── Component VaR ─────────────────────────────────────────────────────────
+    var componentVarResult = useMemo(function() {
+        if (!equitySyms.length || !portfolioReturns.length) return null;
+        return computeComponentVaR(equitySyms, returnsBySymbol, portfolioReturns, riskView, nav);
+    }, [equitySyms, returnsBySymbol, portfolioReturns, riskView, nav]);
+
+    var effN = useMemo(function() {
+        if (!componentVarResult) return 0;
+        return effectiveN(componentVarResult.positions, componentVarResult.portVaR);
+    }, [componentVarResult]);
+
+    // Build lookup map for component VaR by symbol
+    var compVarMap = useMemo(function() {
+        var m = {};
+        if (componentVarResult) componentVarResult.positions.forEach(function(r) { m[r.symbol] = r; });
+        return m;
+    }, [componentVarResult]);
 
     // equity-only riskView, sorted by VaR
     var equityRisk = useMemo(function() {
@@ -901,10 +1372,58 @@ export function DecompositionTab(props) {
     }, [equityRisk]);
 
     // ── Chart refs ────────────────────────────────────────────────────────────
+    var compVarCanvasRef = useRef(null);
+    var compVarChartRef  = useRef(null);
     var sectorCanvasRef = useRef(null);
     var sectorChartRef  = useRef(null);
     var wvCanvasRef     = useRef(null);
     var wvChartRef      = useRef(null);
+
+    // Component VaR horizontal bar (signed)
+    useEffect(function() {
+        if (!compVarCanvasRef.current || !componentVarResult || !componentVarResult.positions.length) return;
+        if (compVarChartRef.current) { compVarChartRef.current.destroy(); compVarChartRef.current = null; }
+        var top15 = componentVarResult.positions.slice(0, 15);
+        var barColors  = top15.map(function(r) { return r.componentVaR >= 0 ? 'rgba(239,68,68,0.45)' : 'rgba(34,197,94,0.45)'; });
+        var borderColors = top15.map(function(r) { return r.componentVaR >= 0 ? '#ef4444' : '#22c55e'; });
+        compVarChartRef.current = new Chart(compVarCanvasRef.current, {
+            type: 'bar',
+            data: {
+                labels: top15.map(function(r) { return r.symbol; }),
+                datasets: [{
+                    data: top15.map(function(r) { return r.componentVaR; }),
+                    backgroundColor: barColors, borderColor: borderColors, borderWidth: 1.5, borderRadius: 4,
+                }],
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false, animation: false,
+                indexAxis: 'y',
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: 'rgba(10,14,26,0.92)', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1,
+                        titleColor: T.t2, bodyColor: T.t1,
+                        titleFont: { family: T.mono, size: 10 }, bodyFont: { family: T.mono, size: 11 },
+                        callbacks: {
+                            label: function(ctx) {
+                                var v = ctx.parsed.x;
+                                return v >= 0 ? ' Risk contributor: +$' + v.toFixed(0) : ' Risk reducer: −$' + Math.abs(v).toFixed(0);
+                            },
+                        },
+                    },
+                },
+                scales: {
+                    x: {
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        ticks: { color: T.t3, font: { family: T.mono, size: 9 }, callback: function(v) { return (v >= 0 ? '$' : '−$') + Math.abs(v).toFixed(0); } },
+                        border: { display: false },
+                    },
+                    y: { grid: { display: false }, ticks: { color: T.t1, font: { family: T.mono, size: 9 } }, border: { display: false } },
+                },
+            },
+        });
+        return function() { if (compVarChartRef.current) { compVarChartRef.current.destroy(); compVarChartRef.current = null; } };
+    }, [componentVarResult]);
 
     // Sector VaR horizontal bar
     useEffect(function() {
@@ -988,6 +1507,60 @@ export function DecompositionTab(props) {
     var fmtD = function(v) { return '$' + (Math.abs(v) >= 1000 ? (Math.abs(v) / 1000).toFixed(1) + 'k' : Math.abs(v).toFixed(0)); };
 
     return h('div', null,
+        h(ModuleLabel, { label: 'Module 3 · Risk Decomposition', color: T.blue }),
+
+        // Component VaR + Effective N
+        componentVarResult && h('div', { style: card },
+            h('div', { style: { display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16, marginBottom: 0 } },
+                // Component VaR bar chart
+                h('div', null,
+                    h('div', { style: { fontSize: 11, fontWeight: 600, color: T.t1, marginBottom: 3 } }, 'Component VaR — Signed Risk Contributions'),
+                    h('div', { style: { fontSize: 8.5, color: T.t2, fontFamily: T.mono, marginBottom: 8 } },
+                        'Green bars = risk reducers (negative component VaR). Sum ≈ Portfolio VaR.'
+                    ),
+                    h(ChartCanvas, { canvasRef: compVarCanvasRef, height: 240 }),
+                    // Validation line
+                    h('div', { style: { marginTop: 6, fontSize: 8.5, color: T.t3, fontFamily: T.mono } },
+                        (function() {
+                            var sumComp = componentVarResult.positions.reduce(function(s, r) { return s + r.componentVaR; }, 0);
+                            var delta   = componentVarResult.portVaR > 0 ? Math.abs((sumComp - componentVarResult.portVaR) / componentVarResult.portVaR) * 100 : 0;
+                            return 'Sum of component VaRs: $' + sumComp.toFixed(0) + ' · Portfolio VaR: $' + componentVarResult.portVaR.toFixed(0) + ' · Δ: ' + delta.toFixed(1) + '%' + (delta > 10 ? ' ⚠ alignment issue' : '');
+                        })()
+                    )
+                ),
+                // Effective N + Diversifiers
+                h('div', null,
+                    h('div', {
+                        style: Object.assign({}, { padding: '16px', background: 'rgba(0,212,184,0.04)', border: '1px solid rgba(0,212,184,0.25)', borderRadius: 8, marginBottom: 12 })
+                    },
+                        h('div', { style: { fontSize: 8.5, letterSpacing: 1.2, textTransform: 'uppercase', color: T.t3, fontFamily: T.mono, marginBottom: 6 } }, 'Effective N'),
+                        h('div', { style: { fontSize: 36, fontWeight: 700, fontFamily: T.mono, color: T.teal } }, Math.round(effN)),
+                        h('div', { style: { fontSize: 9, color: T.t2, fontFamily: T.mono, marginTop: 4 } },
+                            'of ' + componentVarResult.positions.length + ' positions'
+                        ),
+                        h('div', { style: { fontSize: 8, color: T.t3, fontFamily: T.mono, marginTop: 8, lineHeight: 1.5 } },
+                            '1/Σ(rc²) where rc = component VaR ÷ portfolio VaR. You have ' + componentVarResult.positions.length + ' line items but ' + Math.round(effN) + ' independent risk bets.'
+                        )
+                    ),
+                    h('div', { style: { fontSize: 8.5, letterSpacing: 1, textTransform: 'uppercase', color: T.t3, fontFamily: T.mono, marginBottom: 8 } }, 'True Diversifiers'),
+                    h('div', null,
+                        componentVarResult.positions.filter(function(r) { return r.componentVaR < 0; }).slice(0, 3).map(function(r, idx) {
+                            return h('div', {
+                                key: r.symbol,
+                                style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 8px', marginBottom: 5, background: 'rgba(34,197,94,0.05)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: 5 }
+                            },
+                                h('div', null,
+                                    h('div', { style: { fontSize: 10, fontWeight: 700, fontFamily: T.mono, color: T.green } }, r.symbol),
+                                    h('div', { style: { fontSize: 8, color: T.t3, fontFamily: T.mono } }, 'ρ=' + r.corrWithPortfolio.toFixed(2))
+                                ),
+                                h('div', { style: { fontSize: 9, fontFamily: T.mono, color: T.green } }, '−$' + Math.abs(r.componentVaR).toFixed(0))
+                            );
+                        })
+                    )
+                )
+            )
+        ),
+
         // Diversification benefit 3-panel card
         h('div', { style: Object.assign({}, card, { marginBottom: 16 }) },
             h('div', { style: cardTitle }, 'DIVERSIFICATION BENEFIT — PORTFOLIO CONSTRUCTION VALUE'),
@@ -1060,14 +1633,19 @@ export function DecompositionTab(props) {
                             h('th', { style: Object.assign({}, th, { textAlign: 'right' }) }, 'Ann. Vol'),
                             h('th', { style: Object.assign({}, th, { textAlign: 'right' }) }, 'Standalone VaR'),
                             h('th', { style: Object.assign({}, th, { textAlign: 'right' }) }, 'Marginal VaR'),
+                            h('th', { style: Object.assign({}, th, { textAlign: 'right', color: T.teal }) }, 'ρ (port)'),
+                            h('th', { style: Object.assign({}, th, { textAlign: 'right', color: T.teal }) }, 'Component VaR'),
                             h('th', { style: Object.assign({}, th, { textAlign: 'right' }) }, 'Weight')
                         )
                     ),
                     h('tbody', null,
                         equityRisk.map(function(r, idx) {
                             var mv   = marginalVaR[r.symbol];
+                            var cv   = compVarMap[r.symbol];
                             var tier = r.risk_tier || '';
                             var tc   = tier === 'High Risk' ? T.red : tier === 'Moderate Risk' ? T.amber : T.green;
+                            var rhoColor = cv ? (cv.corrWithPortfolio < 0 ? T.green : cv.corrWithPortfolio < 0.4 ? T.t3 : cv.corrWithPortfolio < 0.7 ? T.amber : T.red) : T.t3;
+                            var cvColor  = cv ? (cv.componentVaR < 0 ? T.green : T.t1) : T.t3;
                             return h('tr', { key: r.symbol + idx },
                                 h('td', { style: Object.assign({}, td, { color: T.teal, fontWeight: 600 }) }, r.symbol),
                                 h('td', { style: Object.assign({}, td, { color: T.t2 }) }, r.sector || '—'),
@@ -1076,6 +1654,12 @@ export function DecompositionTab(props) {
                                 h('td', { style: Object.assign({}, td, { textAlign: 'right', color: T.red }) }, '$' + Number(r.dollar_var_95_daily).toFixed(0)),
                                 h('td', { style: Object.assign({}, td, { textAlign: 'right', color: mv != null ? (mv > 0 ? T.amber : T.green) : T.t3 }) },
                                     mv != null ? (mv >= 0 ? '+' : '') + '$' + Math.abs(mv).toFixed(0) : '—'
+                                ),
+                                h('td', { style: Object.assign({}, td, { textAlign: 'right', color: rhoColor }) },
+                                    cv ? cv.corrWithPortfolio.toFixed(2) : '—'
+                                ),
+                                h('td', { style: Object.assign({}, td, { textAlign: 'right', color: cvColor, background: cv && cv.componentVaR < 0 ? 'rgba(34,197,94,0.06)' : 'transparent' }) },
+                                    cv ? (cv.componentVaR >= 0 ? '+$' : '−$') + Math.abs(cv.componentVaR).toFixed(0) : '—'
                                 ),
                                 h('td', { style: Object.assign({}, td, { textAlign: 'right', color: T.t2 }) }, (Number(r.weight) * 100).toFixed(2) + '%')
                             );
