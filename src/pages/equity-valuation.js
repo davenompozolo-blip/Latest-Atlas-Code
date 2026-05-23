@@ -302,7 +302,7 @@ function ScorePanel(p) {
 var mono2 = "'JetBrains Mono', ui-monospace, monospace";
 var T2 = { green: '#22c55e', red: '#ef4444', gold: '#f4b942', teal: '#00d4b8', blue: '#3b82f6', purple: '#a855f7', slate: '#64748b', amber: '#f59e0b' };
 
-function FairValueSynthesizerPanel(p) {
+export function FairValueSynthesizerPanel(p) {
     var s = p.snap, o = p.overview, price = p.price;
     if (!price || (!s && !o)) return React.createElement('div', { style: { color: 'var(--text-muted)' } }, 'Insufficient data.');
 

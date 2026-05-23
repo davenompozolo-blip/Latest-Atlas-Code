@@ -279,7 +279,7 @@ var TABS = [
 ];
 
 export function PeerComparison(p) {
-    var _t = useState('table');
+    var _t = useState(p.defaultTab || 'table');
     var tab = _t[0], setTab = _t[1];
 
     var _d = useState([]);
