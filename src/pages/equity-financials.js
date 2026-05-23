@@ -336,7 +336,7 @@ function altmanZ(overview, snapshot) {
     return { z: z, zone: zone };
 }
 
-function QualityPanel(props) {
+export function QualityPanel(props) {
     var o = props.overview, s = props.snapshot;
     if (!o && !s) return React.createElement('div', { style: { color: 'rgba(255,255,255,0.4)' } }, 'No data for quality scorecard.');
 
@@ -419,7 +419,7 @@ function capitalAllocation(overview, snapshot) {
     return { fcfYield, divYield, roic, wacc, roicSpread, fcf, mktCap };
 }
 
-function CapitalAllocationPanel(props) {
+export function CapitalAllocationPanel(props) {
     var o = props.overview, s = props.snapshot;
     var data = capitalAllocation(o, s);
     if (!data) return React.createElement('div', { style: { color: 'rgba(255,255,255,0.4)' } }, 'No data for capital allocation.');

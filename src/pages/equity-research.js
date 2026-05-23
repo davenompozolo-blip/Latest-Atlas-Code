@@ -1,36 +1,17 @@
 import React from 'react';
-// ============================================================
-// ATLAS Terminal — Equity Research Dashboard (Module B, Stage 1)
-// ------------------------------------------------------------
-// Buy-side single-ticker workstation. Stage 1 delivers:
-//   • Ticker search bar (enter key + button)
-//   • Left summary panel (company info, price, 52W range,
-//     drawdown, performance badges, volatility, analyst
-//     consensus, price sparkline)
-//   • Right panel placeholder (Financial Analysis / Valuation /
-//     Risk / Peers / DCF) — filled in Stage 2
-//
-// Data: /api/equity?symbol=XYZ  (Alpha Vantage proxy, server-side
-// key). Reference: ui/pages/equity_research.py (Streamlit v11).
-// ============================================================
-
-import { fmt, fmtPct, fmtCurrency, cls, useChart } from './utils.js';
+import { fmt, fmtCurrency, cls, useChart } from './utils.js';
 import { Loading, EmptyState } from './components.js';
-import { FinancialAnalysis } from './equity-financials.js';
-import { RiskAnalysis } from './equity-risk.js';
-import { ValuationEngine } from './equity-valuation.js';
+import { QualityPanel, CapitalAllocationPanel } from './equity-financials.js';
+import { FairValueSynthesizerPanel } from './equity-valuation.js';
 import { PeerComparison } from './equity-peers.js';
 import { DCFEngine } from './equity-dcf.js';
 import { TechnicalsTab } from './equity-technicals.js';
 import { sb } from './config.js';
 
-const { useState, useEffect, useRef, useCallback } = React;
+const { useState, useEffect, useCallback } = React;
 
-// ------------------------------------------------------------
-// Derivations from the Alpha Vantage raw payloads
-// ------------------------------------------------------------
+// ── Data parsing ────────────────────────────────────────────────────────────
 
-// Parse AV "Time Series (Daily)" object into ascending [{ date, close }]
 function parseDaily(dailyRaw) {
     if (!dailyRaw) return [];
     const ts = dailyRaw['Time Series (Daily)'];
@@ -45,7 +26,6 @@ function parseDaily(dailyRaw) {
     return rows;
 }
 
-// Compute return over `days` trading days back (null if not enough history)
 function retBack(series, days) {
     const n = series.length;
     if (n <= days) return null;
@@ -55,12 +35,11 @@ function retBack(series, days) {
     return (end / start) - 1;
 }
 
-// Annualised volatility of last `window` daily returns (null if not enough)
-function volWindow(series, window) {
+function volWindow(series, w) {
     const n = series.length;
-    if (n <= window) return null;
+    if (n <= w) return null;
     let sum = 0, sumSq = 0, count = 0;
-    for (let i = n - window; i < n; i++) {
+    for (let i = n - w; i < n; i++) {
         const r = series[i].close / series[i - 1].close - 1;
         sum += r; sumSq += r * r; count++;
     }
@@ -73,314 +52,393 @@ function volWindow(series, window) {
 function deriveMetrics(series) {
     if (!series || series.length < 2) return null;
     const current = series[series.length - 1].close;
-    // Use last ~252 closes for 52W window (calendar-year trading days)
     const window = series.slice(-252);
-    let high = -Infinity, low = Infinity, peak = -Infinity, drawdown = 0;
+    let high = -Infinity, low = Infinity, peak = -Infinity;
     for (const r of window) {
         if (r.close > high) high = r.close;
         if (r.close < low) low = r.close;
-    }
-    for (const r of window) {
         if (r.close > peak) peak = r.close;
     }
-    // Current drawdown from rolling peak
-    drawdown = peak > 0 ? (current - peak) / peak : null;
     return {
         current,
         high52: isFinite(high) ? high : null,
-        low52: isFinite(low) ? low : null,
-        drawdown,
+        low52:  isFinite(low)  ? low  : null,
+        drawdown: peak > 0 ? (current - peak) / peak : null,
         ret1D: retBack(series, 1),
         ret1W: retBack(series, 5),
         ret1M: retBack(series, 21),
         ret3M: retBack(series, 63),
         ret1Y: retBack(series, 252) || retBack(series, series.length - 1),
         vol30d: volWindow(series, 30),
-        vol90d: volWindow(series, 90),
     };
 }
 
 function parseOverview(o) {
     if (!o || !o.Symbol) return null;
     const num = (k) => { const v = Number(o[k]); return isFinite(v) ? v : null; };
-    const ratingCount = num('AnalystRatingStrongBuy') != null ? {
-        strongBuy: num('AnalystRatingStrongBuy') || 0,
-        buy:       num('AnalystRatingBuy') || 0,
-        hold:      num('AnalystRatingHold') || 0,
-        sell:      num('AnalystRatingSell') || 0,
-        strongSell: num('AnalystRatingStrongSell') || 0,
-    } : null;
     return {
-        symbol: o.Symbol,
-        name: o.Name || o.Symbol,
-        description: o.Description || '',
-        exchange: o.Exchange || '',
-        currency: o.Currency || 'USD',
-        sector: o.Sector || '\u2014',
-        industry: o.Industry || '\u2014',
-        marketCap: num('MarketCapitalization'),
-        peRatio: num('PERatio'),
-        pegRatio: num('PEGRatio'),
-        beta: num('Beta'),
-        eps: num('EPS'),
-        dividendYield: num('DividendYield'),
-        analystTarget: num('AnalystTargetPrice'),
-        ratingCount,
+        symbol: o.Symbol, name: o.Name || o.Symbol,
+        exchange: o.Exchange || '', sector: o.Sector || '—', industry: o.Industry || '—',
+        marketCap: num('MarketCapitalization'), peRatio: num('PERatio'),
+        pegRatio: num('PEGRatio'), beta: num('Beta'), eps: num('EPS'),
+        dividendYield: num('DividendYield'), analystTarget: num('AnalystTargetPrice'),
     };
 }
 
-// ------------------------------------------------------------
-// Small atoms
-// ------------------------------------------------------------
+// ── Sidebar components ──────────────────────────────────────────────────────
 
-function MetricTile({ label, value, sub, color }) {
-    return React.createElement('div', { className: 'metric-card' },
-        React.createElement('div', { className: 'label' }, label),
-        React.createElement('div', { className: 'value', style: color ? { color } : null }, value),
-        sub ? React.createElement('div', { className: 'sub' }, sub) : null
-    );
-}
-
-function PerfBadge({ label, value }) {
-    const bg = value == null ? 'rgba(255,255,255,0.04)'
-             : value > 0 ? 'rgba(16,185,129,0.12)'
-             : value < 0 ? 'rgba(239,68,68,0.12)'
-             : 'rgba(255,255,255,0.04)';
-    const color = value == null ? 'var(--text-muted)'
-                : value > 0 ? 'var(--green)'
-                : value < 0 ? 'var(--red)'
-                : 'var(--text-sec)';
-    const txt = value == null ? '\u2014' : (value > 0 ? '+' : '') + (value * 100).toFixed(2) + '%';
-    return React.createElement('div', { style: { textAlign: 'center', flex: 1, minWidth: 64 } },
-        React.createElement('div', { style: { fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, color: 'rgba(255,255,255,0.42)', marginBottom: 4 } }, label),
-        React.createElement('div', { style: { fontWeight: 600, fontSize: 13, padding: '4px 8px', borderRadius: 6, background: bg, color: color } }, txt)
-    );
-}
-
-function RangeBar({ low, high, current }) {
-    if (low == null || high == null || current == null || high <= low) {
-        return React.createElement('div', { style: { color: 'var(--text-muted)' } }, '\u2014');
-    }
-    const pct = Math.max(0, Math.min(100, ((current - low) / (high - low)) * 100));
+function CompanyHeader({ rawOverview, current, ret1D }) {
+    if (!rawOverview) return null;
+    const exchange = rawOverview.Exchange || '';
+    const sector   = rawOverview.Sector || '';
+    const industry = rawOverview.Industry || '';
+    const name     = rawOverview.Name || rawOverview.Symbol || '';
+    const tickerLine = [exchange, sector, industry].filter(Boolean).join(' · ');
+    const changeAmt  = ret1D != null && current ? ret1D * current : null;
+    const changeColor = ret1D == null ? 'rgba(255,255,255,0.4)' : ret1D >= 0 ? '#22c55e' : '#ef4444';
     return React.createElement('div', null,
-        React.createElement('div', { style: { position: 'relative', height: 6, background: 'rgba(255,255,255,0.06)', borderRadius: 3, marginTop: 6, marginBottom: 4 } },
-            React.createElement('div', { style: { position: 'absolute', top: -3, left: pct + '%', transform: 'translateX(-50%)', width: 12, height: 12, borderRadius: '50%', background: '#00d4ff', boxShadow: '0 0 8px rgba(0,212,255,0.6)' } })
+        tickerLine && React.createElement('div', {
+            style: { fontSize: 8.5, letterSpacing: 1.2, textTransform: 'uppercase', color: 'rgba(255,255,255,0.25)', marginBottom: 5 }
+        }, tickerLine),
+        React.createElement('div', { style: { display: 'flex', alignItems: 'baseline', gap: 7, marginBottom: 2 } },
+            React.createElement('div', { style: { fontSize: 24, fontWeight: 700, letterSpacing: -0.5, color: 'rgba(255,255,255,0.95)' } },
+                current ? '$' + current.toFixed(2) : '—'),
+            changeAmt != null && React.createElement('div', { style: { fontSize: 11, fontWeight: 600, color: changeColor } },
+                (changeAmt >= 0 ? '+' : '') + '$' + Math.abs(changeAmt).toFixed(2) +
+                ' ' + (ret1D >= 0 ? '+' : '') + (ret1D * 100).toFixed(2) + '%')
         ),
-        React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'rgba(255,255,255,0.42)' } },
-            React.createElement('span', null, fmtCurrency(low)),
-            React.createElement('span', null, fmtCurrency(high))
-        )
+        React.createElement('div', { style: { fontSize: 9.5, color: 'rgba(255,255,255,0.38)', lineHeight: 1.4 } }, name)
     );
 }
-
-function ConsensusBar({ rating }) {
-    if (!rating) return React.createElement('div', { style: { color: 'var(--text-muted)' } }, '\u2014');
-    const total = rating.strongBuy + rating.buy + rating.hold + rating.sell + rating.strongSell;
-    if (total <= 0) return React.createElement('div', { style: { color: 'var(--text-muted)' } }, '\u2014');
-    const seg = (w, c) => React.createElement('div', { style: { width: (w / total * 100) + '%', background: c, height: '100%' } });
-    return React.createElement('div', null,
-        React.createElement('div', { style: { display: 'flex', height: 8, borderRadius: 4, overflow: 'hidden', background: 'rgba(255,255,255,0.04)', marginBottom: 6 } },
-            seg(rating.strongBuy, '#10b981'),
-            seg(rating.buy, '#34d399'),
-            seg(rating.hold, '#f59e0b'),
-            seg(rating.sell, '#fb923c'),
-            seg(rating.strongSell, '#ef4444')
-        ),
-        React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'rgba(255,255,255,0.52)' } },
-            React.createElement('span', null, 'Buy ' + (rating.strongBuy + rating.buy)),
-            React.createElement('span', null, 'Hold ' + rating.hold),
-            React.createElement('span', null, 'Sell ' + (rating.sell + rating.strongSell))
-        )
-    );
-}
-
-function Sparkline({ series }) {
-    const ref = useRef(null);
-    useChart(ref, function() {
-        if (!series || !series.length) return null;
-        return {
-            type: 'line',
-            data: {
-                labels: series.map(d => d.date),
-                datasets: [{
-                    data: series.map(d => d.close),
-                    borderColor: '#00d4ff',
-                    backgroundColor: 'rgba(0,212,255,0.08)',
-                    borderWidth: 1.5,
-                    pointRadius: 0,
-                    fill: true,
-                    tension: 0.3,
-                }]
-            },
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                plugins: { legend: { display: false }, tooltip: { enabled: true } },
-                scales: {
-                    x: { display: false },
-                    y: { ticks: { color: 'rgba(255,255,255,0.3)', font: { size: 10 }, maxTicksLimit: 4 }, grid: { color: 'rgba(255,255,255,0.04)' } },
-                }
-            }
-        };
-    }, [series]);
-    return React.createElement('div', { style: { height: 160 } }, React.createElement('canvas', { ref: ref }));
-}
-
-function CompanyHero({ overview, symbol }) {
-    if (!overview) {
-        return React.createElement('div', { className: 'card' },
-            React.createElement('div', { style: { fontSize: 22, fontWeight: 700 } }, symbol),
-            React.createElement('div', { style: { color: 'var(--text-muted)', marginTop: 6 } }, 'Company profile unavailable')
-        );
-    }
-    return React.createElement('div', { className: 'card' },
-        React.createElement('div', { style: { fontSize: 22, fontWeight: 700 } },
-            overview.name, ' ',
-            React.createElement('span', { style: { color: '#00d4ff', fontSize: 18 } }, '(' + overview.symbol + ')')
-        ),
-        React.createElement('div', { style: { fontSize: 12, color: 'rgba(255,255,255,0.52)', marginTop: 4 } },
-            [overview.exchange, overview.sector, overview.industry].filter(Boolean).join(' \u00B7 ')
-        ),
-        overview.description
-            ? React.createElement('div', { style: { fontSize: 12, color: 'rgba(255,255,255,0.62)', marginTop: 10, lineHeight: 1.5, maxHeight: 72, overflow: 'hidden' } },
-                overview.description.length > 320 ? overview.description.slice(0, 320) + '\u2026' : overview.description)
-            : null
-    );
-}
-
-// ------------------------------------------------------------
-// Right-hand analysis panel with top-level tab routing
-// ------------------------------------------------------------
-
-var RIGHT_TABS = [
-    { id: 'financials',  label: 'Financial Analysis' },
-    { id: 'valuation',   label: 'Valuation Engine' },
-    { id: 'technicals',  label: 'Technicals' },
-    { id: 'risk',        label: 'Risk View' },
-    { id: 'peers',       label: 'Peer Comparison' },
-    { id: 'dcf',         label: 'DCF Engine' },
-];
-
-function AnalysisPanel(p) {
-    var symbol = p.symbol, financials = p.financials, overview = p.overview, overviewError = p.overviewError, series = p.series;
-    var _t = useState('financials');
-    var tab = _t[0];
-    var setTab = _t[1];
-
-    var content = null;
-    if (tab === 'financials')  content = React.createElement(FinancialAnalysis, { financials: financials, overview: overview, overviewError: overviewError });
-    else if (tab === 'valuation')  content = React.createElement(ValuationEngine, { financials: financials, overview: overview, series: series });
-    else if (tab === 'technicals') content = React.createElement(TechnicalsTab,   { series: series, overview: overview });
-    else if (tab === 'risk')       content = React.createElement(RiskAnalysis,    { symbol: symbol, series: series, overview: overview });
-    else if (tab === 'peers')      content = React.createElement(PeerComparison,  { symbol: symbol, financials: financials, overview: overview, peers: p.peers });
-    else if (tab === 'dcf')        content = React.createElement(DCFEngine,       { financials: financials, overview: overview, series: series });
-    else content = React.createElement('div', { className: 'card', style: { color: 'var(--text-muted)', padding: 32, textAlign: 'center' } }, 'This module is coming in a future stage.');
-
-    return React.createElement('div', null,
-        React.createElement('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 } },
-            RIGHT_TABS.map(function(t) {
-                var active = t.id === tab;
-                return React.createElement('button', {
-                    key: t.id,
-                    onClick: function() { if (!t.placeholder || t.id === 'financials') setTab(t.id); },
-                    style: {
-                        background: active ? 'rgba(0,212,255,0.15)' : t.placeholder ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.04)',
-                        color: active ? '#00d4ff' : t.placeholder ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.6)',
-                        border: '1px solid ' + (active ? 'rgba(0,212,255,0.3)' : 'rgba(255,255,255,0.06)'),
-                        borderRadius: 8, padding: '8px 16px', fontSize: 12,
-                        fontWeight: active ? 600 : 400, cursor: t.placeholder ? 'default' : 'pointer',
-                        letterSpacing: 0.5,
-                    }
-                }, t.label, t.placeholder ? React.createElement('span', { style: { fontSize: 9, marginLeft: 6, opacity: 0.5 } }, 'SOON') : null);
-            })
-        ),
-        content
-    );
-}
-
-// ------------------------------------------------------------
-// Main component
-// ------------------------------------------------------------
-
-// ---- Portfolio position chip ----------------------------------------
 
 function PortfolioChip({ pos, perf }) {
     if (!pos) return null;
-    var weight  = pos.weight != null ? (pos.weight * 100).toFixed(2) + '%' : '—';
-    var mv      = pos.market_value != null ? '$' + (Math.abs(pos.market_value) >= 1000 ? (pos.market_value / 1000).toFixed(1) + 'k' : pos.market_value.toFixed(0)) : '—';
-    var plDollar = perf && perf.total_return_pct != null && pos.market_value != null
-        ? (pos.market_value / (1 + perf.total_return_pct)) * perf.total_return_pct : null;
-    var plColor  = plDollar == null ? null : plDollar >= 0 ? '#22c55e' : '#ef4444';
+    const weight   = pos.weight != null ? (pos.weight * 100).toFixed(2) + '% weight' : null;
+    const mv       = pos.market_value != null ? pos.market_value : null;
+    const plDollar = perf && perf.total_return_pct != null && mv != null
+        ? (mv / (1 + perf.total_return_pct)) * perf.total_return_pct : null;
+    const plColor  = plDollar == null ? '#22c55e' : plDollar >= 0 ? '#22c55e' : '#ef4444';
+    const entryStr = perf && perf.entry_price
+        ? 'Entry $' + Number(perf.entry_price).toFixed(2)
+          + (perf.days_held ? ' · ' + perf.days_held + 'd' : '')
+          + (perf.total_return_pct != null
+              ? ' · ' + (perf.total_return_pct >= 0 ? '+' : '') + (perf.total_return_pct * 100).toFixed(1) + '%'
+              : '')
+        : null;
     return React.createElement('div', {
-        style: { padding: '10px 14px', background: 'rgba(0,212,184,0.05)', border: '1px solid rgba(0,212,184,0.3)', borderRadius: 8, marginTop: 10, display: 'flex', gap: 0, flexWrap: 'wrap' }
+        style: { background: 'rgba(0,212,184,0.08)', border: '1px solid rgba(0,212,184,0.28)', borderRadius: 7, padding: '9px 10px' }
     },
-        React.createElement('div', { style: { fontSize: 8.5, letterSpacing: 1.3, textTransform: 'uppercase', color: 'rgba(0,212,184,0.7)', fontFamily: "'JetBrains Mono',monospace", width: '100%', marginBottom: 8 } }, '◈ In Portfolio'),
-        [
-            { label: 'Weight', value: weight, color: '#00d4b8' },
-            { label: 'Market Value', value: mv },
-            { label: 'P&L', value: plDollar != null ? (plDollar >= 0 ? '+' : '') + '$' + Math.abs(plDollar).toFixed(0) : '—', color: plColor },
-            { label: 'Entry Price', value: perf && perf.entry_price ? '$' + Number(perf.entry_price).toFixed(2) : '—' },
-        ].map(function(tile, idx) {
-            return React.createElement('div', { key: tile.label, style: { flex: 1, minWidth: 80, paddingRight: 12 } },
-                React.createElement('div', { style: { fontSize: 8, color: 'rgba(255,255,255,0.35)', fontFamily: "'JetBrains Mono',monospace", letterSpacing: 1, marginBottom: 3 } }, tile.label),
-                React.createElement('div', { style: { fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace", color: tile.color || 'rgba(255,255,255,0.88)' } }, tile.value)
+        React.createElement('div', {
+            style: { fontSize: 7.5, letterSpacing: 1.2, textTransform: 'uppercase', color: '#00d4b8', marginBottom: 6 }
+        }, '◈ In Portfolio · Atlas Position'),
+        React.createElement('div', {
+            style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3 }
+        },
+            React.createElement('div', { style: { fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.8)' } }, weight || '—'),
+            plDollar != null && React.createElement('div', { style: { fontSize: 13, fontWeight: 700, color: plColor } },
+                (plDollar >= 0 ? '+' : '') + '$' + Math.abs(plDollar).toFixed(0))
+        ),
+        entryStr && React.createElement('div', { style: { fontSize: 8, color: 'rgba(255,255,255,0.35)' } }, entryStr)
+    );
+}
+
+function SidebarMetricTiles({ rawOverview, m }) {
+    const nf = (v) => { const x = parseFloat(v); return isFinite(x) ? x : null; };
+    const beta  = nf(rawOverview && rawOverview.Beta);
+    const vol   = m && m.vol30d;
+    const ma50  = nf(rawOverview && rawOverview['50DayMovingAverage']);
+    const ma200 = nf(rawOverview && rawOverview['200DayMovingAverage']);
+    const curr  = m && m.current;
+    const vs50  = ma50 > 0 && curr ? (curr - ma50) / ma50 : null;
+    const vs200 = ma200 > 0 && curr ? (curr - ma200) / ma200 : null;
+
+    const betaColor = beta == null ? null : beta > 1.5 ? '#ef4444' : beta > 1.0 ? '#f59e0b' : '#22c55e';
+    const volColor  = vol  == null ? null : vol  > 0.50 ? '#ef4444' : vol  > 0.25 ? '#f59e0b' : '#22c55e';
+    const pctColor  = (v) => v == null ? null : v >= 0 ? '#22c55e' : '#ef4444';
+    const pctFmt    = (v) => v == null ? '—' : (v >= 0 ? '+' : '') + (v * 100).toFixed(1) + '%';
+
+    const tiles = [
+        { label: 'Beta',      value: beta != null ? beta.toFixed(2) : '—', color: betaColor },
+        { label: 'Ann. Vol',  value: vol  != null ? (vol * 100).toFixed(1) + '%' : '—', color: volColor },
+        { label: 'vs 50DMA',  value: pctFmt(vs50),  color: pctColor(vs50) },
+        { label: 'vs 200DMA', value: pctFmt(vs200), color: pctColor(vs200) },
+    ];
+
+    return React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5 } },
+        tiles.map(function(t) {
+            return React.createElement('div', {
+                key: t.label,
+                style: { background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 5, padding: '7px 8px' }
+            },
+                React.createElement('div', {
+                    style: { fontSize: 7.5, letterSpacing: 1, textTransform: 'uppercase', color: 'rgba(255,255,255,0.25)', marginBottom: 3 }
+                }, t.label),
+                React.createElement('div', {
+                    style: { fontSize: 12, fontWeight: 600, color: t.color || 'rgba(255,255,255,0.88)' }
+                }, t.value)
             );
         })
     );
 }
 
-// ---- Analyst Target Range Bar --------------------------------------
-
-function AnalystRangeBar({ overview, current }) {
-    if (!overview) return null;
-    var targetMean = parseFloat(overview.AnalystTargetPrice);
-    if (!targetMean || !current) return null;
-    var low  = Math.min(current * 0.80, targetMean * 0.80);
-    var high = Math.max(current * 1.10, targetMean * 1.10);
-    var span = high - low;
-    if (span <= 0) return null;
-    function pos(v) { return Math.max(1, Math.min(99, (v - low) / span * 100)); }
-    var curPos    = pos(current);
-    var targetPos = pos(targetMean);
-    var upside    = (targetMean / current - 1) * 100;
-    var upsideColor = upside >= 10 ? '#22c55e' : upside >= 0 ? '#f59e0b' : '#ef4444';
-    var total = (parseFloat(overview.AnalystRatingStrongBuy) || 0) + (parseFloat(overview.AnalystRatingBuy) || 0)
-              + (parseFloat(overview.AnalystRatingHold) || 0) + (parseFloat(overview.AnalystRatingSell) || 0)
-              + (parseFloat(overview.AnalystRatingStrongSell) || 0);
-    var buys = (parseFloat(overview.AnalystRatingStrongBuy) || 0) + (parseFloat(overview.AnalystRatingBuy) || 0);
-    var holds = parseFloat(overview.AnalystRatingHold) || 0;
-    var sells = (parseFloat(overview.AnalystRatingSell) || 0) + (parseFloat(overview.AnalystRatingStrongSell) || 0);
-
-    return React.createElement('div', { className: 'card', style: { marginTop: 12 } },
-        React.createElement('div', { className: 'card-title' }, 'Analyst Target — Price Range'),
-        React.createElement('div', { style: { position: 'relative', height: 36, marginBottom: 6, marginTop: 8 } },
-            // Track
-            React.createElement('div', { style: { position: 'absolute', top: '50%', left: 0, right: 0, height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 2, transform: 'translateY(-50%)' } }),
-            // Current price
-            React.createElement('div', { style: { position: 'absolute', top: 0, left: curPos + '%', transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center' } },
-                React.createElement('div', { style: { fontSize: 7.5, color: '#00d4ff', fontFamily: "'JetBrains Mono',monospace", marginBottom: 2 } }, '$' + current.toFixed(0)),
-                React.createElement('div', { style: { width: 3, height: 20, background: '#00d4ff', borderRadius: 2 } })
-            ),
-            // Mean target
-            React.createElement('div', { style: { position: 'absolute', top: 0, left: targetPos + '%', transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center' } },
-                React.createElement('div', { style: { fontSize: 7.5, color: upsideColor, fontFamily: "'JetBrains Mono',monospace", marginBottom: 2 } }, '$' + targetMean.toFixed(0)),
-                React.createElement('div', { style: { width: 2, height: 20, background: upsideColor, borderRadius: 1 } })
-            )
+function Sidebar52WRange({ low, high, current }) {
+    if (low == null || high == null || current == null || high <= low) return null;
+    const pct = Math.max(0, Math.min(100, ((current - low) / (high - low)) * 100));
+    return React.createElement('div', {
+        style: { background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 5, padding: '9px 10px' }
+    },
+        React.createElement('div', {
+            style: { fontSize: 7.5, letterSpacing: 1, textTransform: 'uppercase', color: 'rgba(255,255,255,0.25)', marginBottom: 8 }
+        }, '52-Week Range · ' + Math.round(pct) + 'th Percentile'),
+        React.createElement('div', {
+            style: { position: 'relative', height: 6, background: 'rgba(255,255,255,0.08)', borderRadius: 3, margin: '0 0 6px' }
+        },
+            React.createElement('div', {
+                style: { position: 'absolute', top: 0, left: 0, height: '100%', width: pct + '%', borderRadius: 3, background: 'linear-gradient(90deg,rgba(34,197,94,0.4),rgba(0,212,184,0.6))' }
+            }),
+            React.createElement('div', {
+                style: { position: 'absolute', top: -5, left: pct + '%', width: 16, height: 16, borderRadius: '50%', background: '#00d4b8', border: '2px solid #07091a', marginLeft: -8, boxShadow: '0 0 8px rgba(0,212,184,0.5)' }
+            })
         ),
-        React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 } },
-            React.createElement('div', { style: { fontSize: 11, color: upsideColor, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace" } },
-                (upside >= 0 ? '+' : '') + upside.toFixed(1) + '% to mean target'
-            ),
-            total > 0 && React.createElement('div', { style: { display: 'flex', gap: 10, fontSize: 10 } },
-                React.createElement('span', { style: { color: '#22c55e' } }, '↑ ' + buys + ' buy'),
-                holds > 0 && React.createElement('span', { style: { color: '#f59e0b' } }, '→ ' + holds + ' hold'),
-                sells > 0 && React.createElement('span', { style: { color: '#ef4444' } }, '↓ ' + sells + ' sell')
-            )
+        React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 7.5 } },
+            React.createElement('span', { style: { color: 'rgba(255,255,255,0.3)' } }, '$' + low.toFixed(2)),
+            React.createElement('span', { style: { color: '#00d4b8', fontWeight: 600 } }, '$' + current.toFixed(0)),
+            React.createElement('span', { style: { color: 'rgba(255,255,255,0.3)' } }, '$' + high.toFixed(2))
         )
     );
 }
 
+function SidebarPerfBadges({ m }) {
+    if (!m) return null;
+    const periods = [
+        { label: '1D', value: m.ret1D }, { label: '1W', value: m.ret1W },
+        { label: '1M', value: m.ret1M }, { label: '3M', value: m.ret3M },
+        { label: '1Y', value: m.ret1Y },
+    ];
+    return React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 4 } },
+        periods.map(function(p) {
+            const v = p.value;
+            const bg    = v == null ? 'rgba(255,255,255,0.04)' : v >= 0 ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)';
+            const color = v == null ? 'rgba(255,255,255,0.35)' : v >= 0 ? '#22c55e' : '#ef4444';
+            const txt   = v == null ? p.label + ' —'
+                : p.label + ' ' + (v >= 0 ? '+' : '') + (v * 100).toFixed(1) + '%';
+            return React.createElement('div', {
+                key: p.label,
+                style: { fontSize: 7.5, padding: '3px 6px', borderRadius: 4, fontWeight: 600, background: bg, color }
+            }, txt);
+        })
+    );
+}
+
+function SidebarAnalystCard({ rawOverview, current }) {
+    if (!rawOverview || !current) return null;
+    const nf = (v) => { const x = parseFloat(v); return isFinite(x) && x > 0 ? x : null; };
+    const target = nf(rawOverview.AnalystTargetPrice);
+    if (!target) return null;
+    const buys  = (nf(rawOverview.AnalystRatingStrongBuy) || 0) + (nf(rawOverview.AnalystRatingBuy) || 0);
+    const holds = nf(rawOverview.AnalystRatingHold) || 0;
+    const sells = (nf(rawOverview.AnalystRatingSell) || 0) + (nf(rawOverview.AnalystRatingStrongSell) || 0);
+    const total = buys + holds + sells;
+    const upside = (target / current - 1) * 100;
+    const upsideColor = upside >= 10 ? '#22c55e' : upside >= 0 ? '#f59e0b' : '#ef4444';
+    const rangeLow  = Math.min(current * 0.80, target * 0.80);
+    const rangeHigh = Math.max(current * 1.10, target * 1.10);
+    const span = rangeHigh - rangeLow;
+    const barPos = (v) => Math.max(1, Math.min(99, (v - rangeLow) / span * 100));
+    const curPos = barPos(current);
+    const tgtPos = barPos(target);
+
+    return React.createElement('div', {
+        style: { background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 5, padding: '9px 10px' }
+    },
+        React.createElement('div', {
+            style: { fontSize: 7.5, letterSpacing: 1, textTransform: 'uppercase', color: 'rgba(255,255,255,0.25)', marginBottom: 7 }
+        }, 'Analyst Consensus' + (total > 0 ? ' · ' + total + ' Analysts' : '')),
+        total > 0 && React.createElement('div', {
+            style: { display: 'flex', height: 5, borderRadius: 3, overflow: 'hidden', gap: 2, marginBottom: 6 }
+        },
+            buys  > 0 && React.createElement('div', { style: { flex: buys,  background: '#22c55e', borderRadius: 3 } }),
+            holds > 0 && React.createElement('div', { style: { flex: holds, background: '#f59e0b', borderRadius: 3 } }),
+            sells > 0 && React.createElement('div', { style: { flex: Math.max(sells, 0.5), background: '#ef4444', borderRadius: 3 } })
+        ),
+        total > 0 && React.createElement('div', {
+            style: { display: 'flex', justifyContent: 'space-between', fontSize: 7.5, color: 'rgba(255,255,255,0.3)', marginBottom: 8 }
+        },
+            React.createElement('span', null, buys + ' Buy'),
+            React.createElement('span', null, holds + ' Hold'),
+            React.createElement('span', null, sells + ' Sell')
+        ),
+        React.createElement('div', { style: { fontSize: 8.5, color: 'rgba(255,255,255,0.35)' } },
+            'Mean target ',
+            React.createElement('span', { style: { color: upsideColor, fontWeight: 600 } }, '$' + target.toFixed(2)),
+            React.createElement('span', { style: { color: 'rgba(255,255,255,0.25)' } },
+                ' · ' + (upside >= 0 ? '+' : '') + upside.toFixed(1) + '% upside')
+        ),
+        React.createElement('div', {
+            style: { position: 'relative', height: 4, background: 'rgba(255,255,255,0.07)', borderRadius: 2, marginTop: 8 }
+        },
+            React.createElement('div', {
+                style: { position: 'absolute', top: 0, left: Math.min(curPos, tgtPos) + '%', width: Math.abs(tgtPos - curPos) + '%', height: '100%', background: 'rgba(34,197,94,0.3)', borderRadius: 2 }
+            }),
+            React.createElement('div', {
+                style: { position: 'absolute', top: -5, left: curPos + '%', width: 2, height: 14, background: '#00d4b8', borderRadius: 1 }
+            }),
+            React.createElement('div', {
+                style: { position: 'absolute', top: -5, left: tgtPos + '%', width: 2, height: 14, background: '#22c55e', borderRadius: 1 }
+            })
+        ),
+        React.createElement('div', {
+            style: { display: 'flex', justifyContent: 'space-between', fontSize: 7.5, color: 'rgba(255,255,255,0.2)', marginTop: 6 }
+        },
+            React.createElement('span', null, '$' + Math.round(rangeLow) + ' low'),
+            React.createElement('span', { style: { color: '#00d4b8' } }, '$' + current.toFixed(0) + ' now'),
+            React.createElement('span', { style: { color: '#22c55e' } }, '$' + target.toFixed(0) + ' target')
+        )
+    );
+}
+
+// ── Main tab content ────────────────────────────────────────────────────────
+
+function EarningsSummary({ quarterly, snapshot }) {
+    if (!quarterly || !quarterly.length) {
+        return React.createElement('div', { className: 'card', style: { color: 'var(--text-muted)' } }, 'No earnings data available.');
+    }
+    let streak = 0;
+    for (let i = 0; i < quarterly.length; i++) {
+        if (quarterly[i].actual != null && quarterly[i].estimate != null && quarterly[i].actual >= quarterly[i].estimate) streak++;
+        else break;
+    }
+    const title = 'Earnings Quality' + (streak >= 2 ? ' — ' + streak + ' Consecutive Beats' : '') + ' · Live Data';
+    const recent = quarterly.slice(0, 2);
+    const revGrowth = snapshot && parseFloat(snapshot.revenueGrowth);
+    const epsGrowth = snapshot && parseFloat(snapshot.earningsGrowth || snapshot.trailingEpsGrowth);
+
+    function EqCard(cp) {
+        return React.createElement('div', {
+            style: { flex: 1, borderRadius: 6, padding: '10px 12px', background: cp.bg, border: '1px solid ' + cp.bdr }
+        },
+            React.createElement('div', { style: { fontSize: 8, letterSpacing: 1, textTransform: 'uppercase', color: cp.lc, marginBottom: 5 } }, cp.label),
+            React.createElement('div', { style: { fontSize: 22, fontWeight: 700, color: cp.color, lineHeight: 1 } }, cp.value),
+            cp.sub1 && React.createElement('div', { style: { fontSize: 9, color: 'rgba(255,255,255,0.4)', marginTop: 4 } }, cp.sub1),
+            cp.sub2 && React.createElement('div', { style: { fontSize: 10, fontWeight: 600, color: cp.color, marginTop: 3 } }, cp.sub2)
+        );
+    }
+
+    function makeQCard(q, key) {
+        if (!q) return null;
+        const beat = q.actual >= q.estimate;
+        const color = beat ? '#22c55e' : '#ef4444';
+        const surprise = q.estimate ? ((q.actual - q.estimate) / Math.abs(q.estimate) * 100) : null;
+        return React.createElement(EqCard, {
+            key,
+            color, lc: beat ? 'rgba(34,197,94,0.7)' : 'rgba(239,68,68,0.7)',
+            label: q.quarter,
+            value: '$' + fmt(q.actual),
+            sub1: 'vs $' + fmt(q.estimate) + ' est',
+            sub2: surprise != null ? (beat ? 'Beat +' : 'Miss ') + Math.abs(surprise).toFixed(1) + '%' : null,
+            bg:  beat ? 'rgba(34,197,94,0.06)' : 'rgba(239,68,68,0.06)',
+            bdr: beat ? 'rgba(34,197,94,0.2)'  : 'rgba(239,68,68,0.2)',
+        });
+    }
+
+    const revValid = isFinite(revGrowth) && revGrowth;
+    const epsValid = isFinite(epsGrowth) && epsGrowth;
+
+    return React.createElement('div', { className: 'card' },
+        React.createElement('div', { className: 'card-title' }, title),
+        React.createElement('div', { className: 'card-sub' }, 'Quarterly EPS vs Estimate · Revenue Growth'),
+        React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 } },
+            makeQCard(recent[0], 'q0'),
+            makeQCard(recent[1], 'q1'),
+            React.createElement(EqCard, {
+                key: 'rev',
+                color: '#00d4b8', lc: 'rgba(0,212,184,0.7)',
+                label: 'Revenue Growth YoY',
+                value: revValid ? (revGrowth >= 0 ? '+' : '') + (revGrowth * 100).toFixed(1) + '%' : '—',
+                sub1: snapshot && snapshot.totalRevenue
+                    ? '$' + (parseFloat(snapshot.totalRevenue) / 1e9).toFixed(1) + 'B TTM revenue' : null,
+                sub2: epsValid ? 'EPS growth ' + (epsGrowth >= 0 ? '+' : '') + (epsGrowth * 100).toFixed(1) + '%' : null,
+                bg: 'rgba(0,212,184,0.05)', bdr: 'rgba(0,212,184,0.18)',
+            })
+        )
+    );
+}
+
+function FundamentalsTab({ financials, rawOverview }) {
+    if (!financials && !rawOverview) {
+        return React.createElement('div', { className: 'card', style: { color: 'var(--text-muted)', padding: 32 } }, 'Financial data unavailable.');
+    }
+    const snap = financials && financials.snapshot;
+    return React.createElement('div', null,
+        React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 13, marginBottom: 13 } },
+            React.createElement('div', null, React.createElement(QualityPanel, { overview: rawOverview, snapshot: snap })),
+            React.createElement('div', null, React.createElement(CapitalAllocationPanel, { overview: rawOverview, snapshot: snap }))
+        ),
+        React.createElement(EarningsSummary, { quarterly: financials && financials.quarterly, snapshot: snap })
+    );
+}
+
+function ValuationTab({ financials, rawOverview, series }) {
+    const snap  = financials && financials.snapshot;
+    const price = series && series.length ? series[series.length - 1].close : null;
+    return React.createElement(FairValueSynthesizerPanel, { snap, overview: rawOverview, price });
+}
+
+// ── Tab bar + routing ───────────────────────────────────────────────────────
+
+var MAIN_TABS = [
+    { id: 'fundamentals', label: 'Fundamentals' },
+    { id: 'valuation',    label: 'Valuation' },
+    { id: 'technicals',   label: 'Technicals', isNew: true },
+    { id: 'peers',        label: 'Peers' },
+    { id: 'dcf',          label: 'DCF' },
+];
+
+function MainPanel({ symbol, financials, rawOverview, overview, series, peers }) {
+    const [tab, setTab] = useState('fundamentals');
+
+    let content = null;
+    if      (tab === 'fundamentals') content = React.createElement(FundamentalsTab, { financials, rawOverview });
+    else if (tab === 'valuation')    content = React.createElement(ValuationTab,    { financials, rawOverview, series });
+    else if (tab === 'technicals')   content = React.createElement(TechnicalsTab,   { series, overview: rawOverview });
+    else if (tab === 'peers')        content = React.createElement(PeerComparison,  { symbol, financials, overview: rawOverview, peers, defaultTab: 'bubble' });
+    else if (tab === 'dcf')          content = React.createElement(DCFEngine,       { financials, overview, series });
+
+    return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 } },
+        React.createElement('div', {
+            style: { display: 'flex', background: 'rgba(255,255,255,0.015)', borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }
+        },
+            MAIN_TABS.map(function(t) {
+                const active = t.id === tab;
+                return React.createElement('div', {
+                    key: t.id,
+                    onClick: function() { setTab(t.id); },
+                    style: {
+                        fontSize: 9, letterSpacing: 1, textTransform: 'uppercase',
+                        color: active ? '#00d4b8' : 'rgba(255,255,255,0.25)',
+                        padding: '9px 15px',
+                        borderBottom: '2px solid ' + (active ? '#00d4b8' : 'transparent'),
+                        cursor: 'pointer', whiteSpace: 'nowrap',
+                        display: 'flex', alignItems: 'center', gap: 4,
+                    }
+                },
+                    t.label,
+                    t.isNew && React.createElement('span', {
+                        style: { fontSize: 7, background: 'rgba(0,212,184,0.15)', color: '#00d4b8', padding: '1px 5px', borderRadius: 6, letterSpacing: 0 }
+                    }, 'NEW')
+                );
+            })
+        ),
+        React.createElement('div', { style: { flex: 1, overflowY: 'auto', padding: '14px 16px' } },
+            content
+        )
+    );
+}
+
+// ── Main export ─────────────────────────────────────────────────────────────
+
 export function EquityResearch(props) {
-    const [input, setInput] = useState('AAPL');
+    const [input,  setInput]  = useState('AAPL');
     const [symbol, setSymbol] = useState(null);
     const [status, setStatus] = useState('idle');
     const [errMsg, setErrMsg] = useState(null);
@@ -392,19 +450,16 @@ export function EquityResearch(props) {
         const s = (raw || '').trim().toUpperCase();
         if (!s) return;
         if (!/^[A-Z0-9.\-]{1,12}$/.test(s)) {
-            setErrMsg('Ticker must be 1\u201312 characters of A\u2013Z / 0\u20139 / . / -');
-            setStatus('error');
-            return;
+            setErrMsg('Ticker must be 1–12 characters of A–Z / 0–9 / . / -');
+            setStatus('error'); return;
         }
         setSymbol(s);
     }, []);
 
-    // Auto-trigger when navigated from another module (atlas:navigate)
     useEffect(function() {
-        var sym = props && props.initialSymbol;
+        const sym = props && props.initialSymbol;
         if (!sym) return;
-        setInput(sym);
-        analyse(sym);
+        setInput(sym); analyse(sym);
     }, [props && props.initialSymbol]);
 
     useEffect(function() {
@@ -415,23 +470,13 @@ export function EquityResearch(props) {
             .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, status: r.status, body: j }; }); })
             .then(function(res) {
                 if (cancelled) return;
-                if (!res.ok) {
-                    setErrMsg((res.body && res.body.error) || 'Request failed (HTTP ' + res.status + ')');
-                    setStatus('error');
-                    return;
-                }
-                setPayload(res.body);
-                setStatus('ready');
+                if (!res.ok) { setErrMsg((res.body && res.body.error) || 'HTTP ' + res.status); setStatus('error'); return; }
+                setPayload(res.body); setStatus('ready');
             })
-            .catch(function(e) {
-                if (cancelled) return;
-                setErrMsg((e && e.message) || 'Network error');
-                setStatus('error');
-            });
+            .catch(function(e) { if (!cancelled) { setErrMsg((e && e.message) || 'Network error'); setStatus('error'); } });
         return function() { cancelled = true; };
     }, [symbol]);
 
-    // Portfolio position fetch (lightweight — single row)
     useEffect(function() {
         setPortfolioPos(null); setPortfolioPerf(null);
         if (!symbol || !sb) return;
@@ -445,192 +490,119 @@ export function EquityResearch(props) {
         if (!symbol) return;
         window.dispatchEvent(new CustomEvent('atlas:open-scrapbook', { detail: { ticker: symbol } }));
     }
-    function goTrade()    { if (!symbol) return; window.dispatchEvent(new CustomEvent('atlas:navigate', { detail: { tab: 'trading',   symbol } })); }
-    function goValue()    { if (!symbol) return; window.dispatchEvent(new CustomEvent('atlas:navigate', { detail: { tab: 'valuation', symbol } })); }
-    function goOptions()  { if (!symbol) return; window.dispatchEvent(new CustomEvent('atlas:navigate', { detail: { tab: 'options',   symbol } })); }
 
-    // Action bar — rendered only when research is ready
-    const actionBar = status === 'ready' && symbol
-        ? React.createElement('div', { style: {
-            display: 'flex', gap: 8, alignItems: 'center', padding: '10px 16px',
-            background: 'rgba(0,212,255,0.04)', border: '1px solid rgba(0,212,255,0.1)',
-            borderRadius: 8, marginTop: 10, flexWrap: 'wrap'
-          } },
-            React.createElement('span', { style: { fontSize: 9, color: 'rgba(255,255,255,0.3)', letterSpacing: 1.5, textTransform: 'uppercase', marginRight: 4, fontFamily: 'Figtree' } }, 'Next step:'),
-            React.createElement('button', { onClick: goTrade, title: 'Open order ticket for ' + symbol, style: actionBtnStyle('#10b981') }, '▶ Trade'),
-            React.createElement('button', { onClick: goValue, title: 'Run DCF / valuation models for ' + symbol, style: actionBtnStyle('#f59e0b') }, '◆ Value it'),
-            React.createElement('button', { onClick: goOptions, title: 'Analyse options chain for ' + symbol, style: actionBtnStyle('#6366f1') }, 'Ω Options'),
-            React.createElement('button', { onClick: saveToScrapbook, title: 'Save thesis notes for ' + symbol, style: actionBtnStyle('#8b5cf6') }, '📒 Scrapbook')
-          )
-        : null;
-
-    function actionBtnStyle(col) {
-        return {
-            background: col + '18', color: col, border: '1px solid ' + col + '44',
-            borderRadius: 6, padding: '5px 14px', fontSize: 11, fontWeight: 700,
-            cursor: 'pointer', letterSpacing: 0.6, textTransform: 'uppercase', fontFamily: 'Figtree'
-        };
-    }
-
-    // Header + search bar (rendered for every state)
-    const header = React.createElement('div', null,
-        React.createElement('div', { className: 'page-title' }, 'Equity Research'),
-        React.createElement('div', { className: 'card', style: { display: 'flex', gap: 12, alignItems: 'center', padding: 14 } },
-            React.createElement('input', {
-                type: 'text',
-                value: input,
-                onChange: function(e) { setInput(e.target.value); },
-                onKeyDown: function(e) { if (e.key === 'Enter') analyse(input); },
-                placeholder: 'Enter ticker (e.g. AAPL, MSFT, BRK.B)',
-                spellCheck: false,
-                style: {
-                    flex: 1, background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)',
-                    borderRadius: 8, padding: '10px 14px', color: 'rgba(255,255,255,0.92)',
-                    fontFamily: 'inherit', fontSize: 14, textTransform: 'uppercase', letterSpacing: 1
-                }
-            }),
-            React.createElement('button', {
-                onClick: function() { analyse(input); },
-                disabled: status === 'loading',
-                style: {
-                    background: 'linear-gradient(135deg, #00d4ff, #6366f1)', color: '#fff',
-                    border: 'none', borderRadius: 8, padding: '10px 20px', fontWeight: 600,
-                    cursor: status === 'loading' ? 'not-allowed' : 'pointer', opacity: status === 'loading' ? 0.6 : 1,
-                    letterSpacing: 1, textTransform: 'uppercase', fontSize: 12
-                }
-            }, status === 'loading' ? 'Loading\u2026' : 'Analyse'),
-            status === 'ready' && symbol
-                ? React.createElement('button', {
-                    onClick: saveToScrapbook,
-                    title: 'Open ' + symbol + ' in Scrapbook for thesis notes',
-                    style: {
-                        background: 'rgba(139,92,246,0.15)', color: '#8b5cf6',
-                        border: '1px solid rgba(139,92,246,0.35)', borderRadius: 8, padding: '10px 16px',
-                        fontWeight: 600, cursor: 'pointer', letterSpacing: 0.8,
-                        textTransform: 'uppercase', fontSize: 11, whiteSpace: 'nowrap'
-                    }
-                }, '\ud83d\udcd2 Save to Scrapbook')
-                : null
-        )
+    const searchBar = React.createElement('div', {
+        style: { display: 'flex', gap: 10, alignItems: 'center', padding: '10px 0', flexShrink: 0 }
+    },
+        React.createElement('div', { className: 'page-title', style: { margin: 0, flexShrink: 0 } }, 'Equity Research'),
+        React.createElement('input', {
+            type: 'text', value: input,
+            onChange: function(e) { setInput(e.target.value); },
+            onKeyDown: function(e) { if (e.key === 'Enter') analyse(input); },
+            placeholder: 'Ticker — AAPL, MSFT, AMD…',
+            spellCheck: false,
+            style: {
+                flex: 1, background: 'rgba(0,0,0,0.3)',
+                border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6,
+                padding: '8px 12px', color: 'rgba(255,255,255,0.92)',
+                fontFamily: 'inherit', fontSize: 13,
+                textTransform: 'uppercase', letterSpacing: 1,
+            }
+        }),
+        React.createElement('button', {
+            onClick: function() { analyse(input); },
+            disabled: status === 'loading',
+            style: {
+                background: 'linear-gradient(135deg,#00d4b8,#6366f1)', color: '#fff',
+                border: 'none', borderRadius: 6, padding: '8px 18px',
+                fontWeight: 600, cursor: status === 'loading' ? 'not-allowed' : 'pointer',
+                opacity: status === 'loading' ? 0.6 : 1,
+                fontSize: 12, textTransform: 'uppercase', letterSpacing: 1,
+            }
+        }, status === 'loading' ? 'Loading…' : 'Analyse'),
+        status === 'ready' && symbol && React.createElement('button', {
+            onClick: saveToScrapbook,
+            style: {
+                background: 'rgba(139,92,246,0.15)', color: '#8b5cf6',
+                border: '1px solid rgba(139,92,246,0.35)', borderRadius: 6,
+                padding: '8px 14px', fontWeight: 600, cursor: 'pointer',
+                fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.8,
+            }
+        }, '📒 Scrapbook')
     );
 
     if (status === 'idle') {
-        return React.createElement('div', null, header,
+        return React.createElement('div', null, searchBar,
             React.createElement('div', { className: 'card', style: { textAlign: 'center', padding: 40, color: 'var(--text-muted)' } },
-                'Enter a ticker above to fetch company fundamentals, price history, and performance metrics.'
-            )
-        );
+                'Enter a ticker above to fetch fundamentals, valuation, and technicals.'));
     }
-    if (status === 'loading') {
-        return React.createElement('div', null, header, React.createElement(Loading, null));
-    }
+    if (status === 'loading') return React.createElement('div', null, searchBar, React.createElement(Loading, null));
     if (status === 'error') {
-        return React.createElement('div', null, header,
+        return React.createElement('div', null, searchBar,
             React.createElement('div', { className: 'card', style: { borderColor: 'rgba(239,68,68,0.3)' } },
                 React.createElement('div', { className: 'card-title', style: { color: 'var(--red)' } }, 'Request failed'),
-                React.createElement('div', { style: { fontSize: 13, color: 'rgba(255,255,255,0.7)' } }, errMsg || 'Unknown error'),
-                React.createElement('div', { style: { fontSize: 12, color: 'var(--text-muted)', marginTop: 8 } },
-                    'Prices via Alpaca, fundamentals via Yahoo Finance. Responses cached in Supabase for 4h (prices) / 24h (fundamentals) so repeat lookups are instant.')
+                React.createElement('div', { style: { fontSize: 13, color: 'rgba(255,255,255,0.7)' } }, errMsg || 'Unknown error')
             )
         );
     }
 
-    // Ready state
-    const series = parseDaily(payload && payload.daily);
-    const metrics = deriveMetrics(series);
-    const overview = parseOverview(payload && payload.overview);
+    // ── Ready state ───────────────────────────────────────────────────────────
+    const series      = parseDaily(payload && payload.daily);
+    const metrics     = deriveMetrics(series);
+    const overview    = parseOverview(payload && payload.overview); // parsed — DCFEngine compat
+    const rawOverview = payload && payload.overview;               // raw AV fields — panels
 
-    if (!metrics && !overview) {
-        return React.createElement('div', null, header, React.createElement(EmptyState, null));
-    }
+    if (!metrics && !overview) return React.createElement('div', null, searchBar, React.createElement(EmptyState, null));
 
     const m = metrics || {};
-    const priceColor = m.ret1D == null ? null : m.ret1D >= 0 ? '#10b981' : '#ef4444';
-    const targetUpside = overview && overview.analystTarget && m.current
-        ? (overview.analystTarget - m.current) / m.current : null;
 
-    return React.createElement('div', null, header, actionBar,
-        React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'minmax(320px, 2fr) 3fr', gap: 16, marginTop: 16 } },
-            // --- LEFT PANEL --------------------------------------------
-            React.createElement('div', null,
-                React.createElement(CompanyHero, { overview: overview, symbol: symbol }),
+    // Sidebar footer quick-stats strip
+    const mktCap   = parseFloat(rawOverview && rawOverview.MarketCapitalization);
+    const eps      = parseFloat(rawOverview && rawOverview.EPS);
+    const revTTM   = parseFloat(rawOverview && rawOverview.RevenueTTM);
+    const insiders = parseFloat(rawOverview && rawOverview.PercentInsiders);
+    const footerParts = [];
+    if (isFinite(mktCap) && mktCap > 0) footerParts.push('Cap $' + (mktCap / 1e9).toFixed(1) + 'B');
+    if (isFinite(eps))                   footerParts.push('EPS $' + eps.toFixed(2));
+    if (isFinite(revTTM) && revTTM > 0)  footerParts.push('Rev $' + (revTTM / 1e9).toFixed(1) + 'B');
+    if (isFinite(insiders))              footerParts.push('Ins. ' + insiders.toFixed(2) + '%');
+
+    return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', height: '100%' } },
+        searchBar,
+        React.createElement('div', { style: { display: 'flex', flex: 1, minHeight: 0 } },
+
+            // ── SIDEBAR ────────────────────────────────────────────────────
+            React.createElement('div', {
+                style: {
+                    width: 210, flexShrink: 0,
+                    borderRight: '1px solid rgba(255,255,255,0.07)',
+                    padding: '14px 13px', overflowY: 'auto',
+                    background: 'rgba(3,5,12,0.5)',
+                    display: 'flex', flexDirection: 'column', gap: 10,
+                }
+            },
+                React.createElement(CompanyHeader, { rawOverview, current: m.current, ret1D: m.ret1D }),
                 React.createElement(PortfolioChip, { pos: portfolioPos, perf: portfolioPerf }),
-                React.createElement('div', { className: 'metrics-row', style: { gridTemplateColumns: 'repeat(2, 1fr)', marginTop: 12 } },
-                    React.createElement(MetricTile, {
-                        label: 'Current Price',
-                        value: fmtCurrency(m.current),
-                        sub: m.ret1D != null ? ((m.ret1D > 0 ? '+' : '') + (m.ret1D * 100).toFixed(2) + '% today') : null,
-                        color: priceColor
-                    }),
-                    React.createElement(MetricTile, {
-                        label: 'Market Cap',
-                        value: overview && overview.marketCap ? fmtCurrency(overview.marketCap) : '\u2014'
-                    }),
-                    React.createElement(MetricTile, {
-                        label: 'Drawdown (from 52W peak)',
-                        value: m.drawdown != null ? (m.drawdown * 100).toFixed(2) + '%' : '\u2014',
-                        color: m.drawdown != null && m.drawdown < 0 ? '#ef4444' : null
-                    }),
-                    React.createElement(MetricTile, {
-                        label: 'Beta',
-                        value: overview && overview.beta != null ? fmt(overview.beta) : '\u2014'
-                    })
-                ),
-                React.createElement('div', { className: 'card', style: { marginTop: 12 } },
-                    React.createElement('div', { className: 'card-title' }, '52-Week Range'),
-                    React.createElement(RangeBar, { low: m.low52, high: m.high52, current: m.current })
-                ),
-                React.createElement('div', { className: 'card', style: { marginTop: 12 } },
-                    React.createElement('div', { className: 'card-title' }, 'Performance'),
-                    React.createElement('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
-                        React.createElement(PerfBadge, { label: '1D', value: m.ret1D }),
-                        React.createElement(PerfBadge, { label: '1W', value: m.ret1W }),
-                        React.createElement(PerfBadge, { label: '1M', value: m.ret1M }),
-                        React.createElement(PerfBadge, { label: '3M', value: m.ret3M }),
-                        React.createElement(PerfBadge, { label: '1Y', value: m.ret1Y })
-                    )
-                ),
-                React.createElement('div', { className: 'metrics-row', style: { gridTemplateColumns: 'repeat(2, 1fr)', marginTop: 12 } },
-                    React.createElement(MetricTile, {
-                        label: 'Vol 30D (ann.)',
-                        value: m.vol30d != null ? (m.vol30d * 100).toFixed(1) + '%' : '\u2014'
-                    }),
-                    React.createElement(MetricTile, {
-                        label: 'Vol 90D (ann.)',
-                        value: m.vol90d != null ? (m.vol90d * 100).toFixed(1) + '%' : '\u2014'
-                    }),
-                    React.createElement(MetricTile, {
-                        label: 'P/E Ratio',
-                        value: overview && overview.peRatio != null ? fmt(overview.peRatio) : '\u2014'
-                    }),
-                    React.createElement(MetricTile, {
-                        label: 'Dividend Yield',
-                        value: overview && overview.dividendYield != null ? fmtPct(overview.dividendYield) : '\u2014'
-                    })
-                ),
-                React.createElement(AnalystRangeBar, { overview: overview, current: m.current }),
-                overview && overview.ratingCount
-                    ? React.createElement('div', { className: 'card', style: { marginTop: 12 } },
-                        React.createElement('div', { className: 'card-title' }, 'Analyst Consensus Distribution'),
-                        React.createElement(ConsensusBar, { rating: overview.ratingCount })
-                    )
+                React.createElement(SidebarMetricTiles, { rawOverview, m }),
+                m.low52 != null
+                    ? React.createElement(Sidebar52WRange, { low: m.low52, high: m.high52, current: m.current })
                     : null,
-                React.createElement('div', { className: 'card', style: { marginTop: 12 } },
-                    React.createElement('div', { className: 'card-title' }, 'Price History \u2014 1Y'),
-                    React.createElement(Sparkline, { series: series.slice(-252) })
-                )
+                React.createElement(SidebarPerfBadges, { m }),
+                React.createElement(SidebarAnalystCard, { rawOverview, current: m.current }),
+                footerParts.length > 0 && React.createElement('div', {
+                    style: { fontSize: 7.5, color: 'rgba(255,255,255,0.18)', paddingTop: 4, borderTop: '1px solid rgba(255,255,255,0.05)', lineHeight: 1.7 }
+                }, footerParts.join(' · '))
             ),
-            // --- RIGHT PANEL (analysis tabs) ---------------------------
-            React.createElement('div', null,
-                React.createElement(AnalysisPanel, {
-                    symbol: symbol,
-                    financials: payload && payload.financials,
-                    overview: overview,
-                    overviewError: payload && payload.overview_error,
-                    series: series,
-                    peers: payload && payload.peers,
-                })
-            )
+
+            // ── MAIN AREA ──────────────────────────────────────────────────
+            React.createElement(MainPanel, {
+                symbol,
+                financials: payload && payload.financials,
+                rawOverview,
+                overview,
+                series,
+                peers: payload && payload.peers,
+            })
         )
     );
 }
