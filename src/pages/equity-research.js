@@ -1,7 +1,7 @@
 import React from 'react';
 import { fmt, fmtCurrency, cls, useChart } from './utils.js';
 import { Loading, EmptyState } from './components.js';
-import { QualityPanel, CapitalAllocationPanel } from './equity-financials.js';
+import { QualityPanel, CapitalAllocationPanel, FinancialAnalysis } from './equity-financials.js';
 import { FairValueSynthesizerPanel } from './equity-valuation.js';
 import { PeerComparison } from './equity-peers.js';
 import { DCFEngine } from './equity-dcf.js';
@@ -364,17 +364,44 @@ function EarningsSummary({ quarterly, snapshot }) {
     );
 }
 
+var FUND_VIEWS = [
+    { id: 'quality',    label: 'Quality & Earnings' },
+    { id: 'statements', label: 'Statements & Ratios' },
+];
+
 function FundamentalsTab({ financials, rawOverview }) {
+    const [view, setView] = useState('quality');
     if (!financials && !rawOverview) {
         return React.createElement('div', { className: 'card', style: { color: 'var(--text-muted)', padding: 32 } }, 'Financial data unavailable.');
     }
     const snap = financials && financials.snapshot;
     return React.createElement('div', null,
-        React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 13, marginBottom: 13 } },
-            React.createElement('div', null, React.createElement(QualityPanel, { overview: rawOverview, snapshot: snap })),
-            React.createElement('div', null, React.createElement(CapitalAllocationPanel, { overview: rawOverview, snapshot: snap }))
+        // Sub-tab selector
+        React.createElement('div', { style: { display: 'flex', gap: 4, marginBottom: 14 } },
+            FUND_VIEWS.map(function(v) {
+                const active = v.id === view;
+                return React.createElement('button', {
+                    key: v.id,
+                    onClick: function() { setView(v.id); },
+                    style: {
+                        background: active ? 'rgba(0,212,184,0.12)' : 'rgba(255,255,255,0.04)',
+                        color: active ? '#00d4b8' : 'rgba(255,255,255,0.5)',
+                        border: '1px solid ' + (active ? 'rgba(0,212,184,0.3)' : 'rgba(255,255,255,0.06)'),
+                        borderRadius: 6, padding: '5px 14px', fontSize: 11,
+                        fontWeight: active ? 600 : 400, cursor: 'pointer',
+                        letterSpacing: 0.5, textTransform: 'uppercase',
+                    }
+                }, v.label);
+            })
         ),
-        React.createElement(EarningsSummary, { quarterly: financials && financials.quarterly, snapshot: snap })
+        view === 'quality' && React.createElement('div', null,
+            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 13, marginBottom: 13 } },
+                React.createElement('div', null, React.createElement(QualityPanel, { overview: rawOverview, snapshot: snap })),
+                React.createElement('div', null, React.createElement(CapitalAllocationPanel, { overview: rawOverview, snapshot: snap }))
+            ),
+            React.createElement(EarningsSummary, { quarterly: financials && financials.quarterly, snapshot: snap })
+        ),
+        view === 'statements' && React.createElement(FinancialAnalysis, { financials: financials, overview: rawOverview, overviewError: null })
     );
 }
 
@@ -490,6 +517,9 @@ export function EquityResearch(props) {
         if (!symbol) return;
         window.dispatchEvent(new CustomEvent('atlas:open-scrapbook', { detail: { ticker: symbol } }));
     }
+    function goTrade()   { if (symbol) window.dispatchEvent(new CustomEvent('atlas:navigate', { detail: { tab: 'trading',   symbol } })); }
+    function goValue()   { if (symbol) window.dispatchEvent(new CustomEvent('atlas:navigate', { detail: { tab: 'valuation', symbol } })); }
+    function goOptions() { if (symbol) window.dispatchEvent(new CustomEvent('atlas:navigate', { detail: { tab: 'options',   symbol } })); }
 
     const searchBar = React.createElement('div', {
         style: { display: 'flex', gap: 10, alignItems: 'center', padding: '10px 0', flexShrink: 0 }
@@ -520,15 +550,7 @@ export function EquityResearch(props) {
                 fontSize: 12, textTransform: 'uppercase', letterSpacing: 1,
             }
         }, status === 'loading' ? 'Loading…' : 'Analyse'),
-        status === 'ready' && symbol && React.createElement('button', {
-            onClick: saveToScrapbook,
-            style: {
-                background: 'rgba(139,92,246,0.15)', color: '#8b5cf6',
-                border: '1px solid rgba(139,92,246,0.35)', borderRadius: 6,
-                padding: '8px 14px', fontWeight: 600, cursor: 'pointer',
-                fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.8,
-            }
-        }, '📒 Scrapbook')
+        null
     );
 
     if (status === 'idle') {
@@ -567,18 +589,42 @@ export function EquityResearch(props) {
     if (isFinite(revTTM) && revTTM > 0)  footerParts.push('Rev $' + (revTTM / 1e9).toFixed(1) + 'B');
     if (isFinite(insiders))              footerParts.push('Ins. ' + insiders.toFixed(2) + '%');
 
+    const actionBar = React.createElement('div', {
+        style: { display: 'flex', gap: 6, alignItems: 'center', marginBottom: 8 }
+    },
+        React.createElement('span', { style: { fontSize: 9, color: 'rgba(255,255,255,0.3)', letterSpacing: 1.5, textTransform: 'uppercase', marginRight: 4 } }, symbol + ' ·'),
+        [
+            { label: '▶ Trade',   fn: goTrade,        color: '#10b981' },
+            { label: '◆ Value',   fn: goValue,        color: '#f59e0b' },
+            { label: 'Ω Options', fn: goOptions,      color: '#6366f1' },
+            { label: '📒 Notes',  fn: saveToScrapbook, color: '#8b5cf6' },
+        ].map(function(btn) {
+            return React.createElement('button', {
+                key: btn.label,
+                onClick: btn.fn,
+                style: {
+                    background: btn.color + '18', color: btn.color,
+                    border: '1px solid ' + btn.color + '44',
+                    borderRadius: 6, padding: '4px 12px', fontSize: 11,
+                    fontWeight: 700, cursor: 'pointer', letterSpacing: 0.5,
+                }
+            }, btn.label);
+        })
+    );
+
     return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', height: '100%' } },
         searchBar,
+        actionBar,
         React.createElement('div', { style: { display: 'flex', flex: 1, minHeight: 0 } },
 
             // ── SIDEBAR ────────────────────────────────────────────────────
             React.createElement('div', {
                 style: {
                     width: 210, flexShrink: 0,
-                    borderRight: '1px solid rgba(255,255,255,0.07)',
+                    borderRight: '1px solid rgba(255,255,255,0.05)',
                     padding: '14px 13px', overflowY: 'auto',
-                    background: 'rgba(3,5,12,0.5)',
-                    display: 'flex', flexDirection: 'column', gap: 10,
+                    background: 'rgba(0,0,0,0.25)',
+                    display: 'flex', flexDirection: 'column', gap: 9,
                 }
             },
                 React.createElement(CompanyHeader, { rawOverview, current: m.current, ret1D: m.ret1D }),

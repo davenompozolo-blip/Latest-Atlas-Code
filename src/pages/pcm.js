@@ -777,35 +777,71 @@ function TradeList({ trades, positions, onExecute }) {
     const posLookup = {};
     (positions || []).forEach(function(p) { posLookup[p.symbol] = p; });
     const hasShares = trades.some(function(t) { return t.delta_shares != null; });
-    return h('table', { className: 'atlas-table' },
-        h('thead', null,
-            h('tr', null,
-                ['Ticker', 'Name', 'Sector', 'Action', hasShares ? 'Δ Shares' : 'Δ Weight', 'Est. Value', 'Rationale', onExecute ? '' : null]
-                    .filter(Boolean).map(function(th) { return h('th', { key: th || 'x' }, th); })
-            )
+
+    // Checkbox selection state
+    const [selected, setSelected] = useState(function() {
+        var s = new Set();
+        trades.forEach(function(_, i) { s.add(i); });
+        return s;
+    });
+    const toggleAll = function() {
+        setSelected(function(prev) {
+            return prev.size === trades.length ? new Set() : new Set(trades.map(function(_, i) { return i; }));
+        });
+    };
+    const toggle = function(i) {
+        setSelected(function(prev) {
+            var next = new Set(prev);
+            next.has(i) ? next.delete(i) : next.add(i);
+            return next;
+        });
+    };
+    const executeSelected = function() {
+        if (!onExecute) return;
+        trades.forEach(function(t, i) { if (selected.has(i)) onExecute(t); });
+    };
+
+    return h('div', null,
+        onExecute && h('div', { style: { display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 } },
+            h('span', { style: { fontSize: 11, color: 'var(--text-3)' } }, selected.size + ' of ' + trades.length + ' selected'),
+            h('button', { className: 'btn btn-ghost', style: { padding: '4px 12px', fontSize: 11 },
+                onClick: toggleAll }, selected.size === trades.length ? 'Deselect All' : 'Select All'),
+            selected.size > 0 && h('button', {
+                className: 'btn btn-primary', style: { padding: '4px 14px', fontSize: 11 },
+                onClick: executeSelected,
+            }, 'Execute ' + selected.size + ' Trade' + (selected.size !== 1 ? 's' : ''))
         ),
-        h('tbody', null,
-            trades.map(function(t, i) {
-                const meta = posLookup[t.ticker] || {};
-                return h('tr', { key: t.ticker + i },
-                    h('td', { className: 'cell-ticker' }, t.ticker),
-                    h('td', { style: { maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } },
-                        meta.name || '—'),
-                    h('td', { style: { color: 'var(--text-3)', fontSize: 11 } }, meta.sector || '—'),
-                    h('td', null, h('span', { className: 'chip ' + (t.action === 'BUY' ? 'chip-green' : 'chip-red') }, t.action)),
-                    h('td', { className: t.action === 'BUY' ? 'pos' : 'neg' },
-                        t.delta_shares != null ? (t.action === 'BUY' ? '+' : '') + t.delta_shares
-                        : t.delta_pct   != null ? (t.delta_pct >= 0 ? '+' : '') + t.delta_pct.toFixed(1) + '%'
-                        : '—'
-                    ),
-                    h('td', null, t.est_value ? fmtCurrency(t.est_value) : '—'),
-                    h('td', { style: { color: 'var(--text-2)', fontSize: 11 } }, t.rationale),
-                    onExecute && h('td', null,
-                        h('button', { className: 'btn btn-ghost', style: { padding: '4px 10px' },
-                                       onClick: function() { onExecute(t); } }, 'Execute')
-                    )
-                );
-            })
+        h('table', { className: 'atlas-table' },
+            h('thead', null,
+                h('tr', null,
+                    [onExecute ? '☑' : null, 'Ticker', 'Name', 'Sector', 'Action', hasShares ? 'Δ Shares' : 'Δ Weight', 'Est. Value', 'Rationale']
+                        .filter(Boolean).map(function(th) { return h('th', { key: th }, th); })
+                )
+            ),
+            h('tbody', null,
+                trades.map(function(t, i) {
+                    const meta = posLookup[t.ticker] || {};
+                    return h('tr', { key: t.ticker + i, style: { opacity: (onExecute && !selected.has(i)) ? 0.4 : 1 } },
+                        onExecute && h('td', null,
+                            h('input', { type: 'checkbox', checked: selected.has(i),
+                                onChange: function() { toggle(i); },
+                                style: { cursor: 'pointer', accentColor: 'var(--teal)' } })
+                        ),
+                        h('td', { className: 'cell-ticker' }, t.ticker),
+                        h('td', { style: { maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } },
+                            meta.name || '—'),
+                        h('td', { style: { color: 'var(--text-3)', fontSize: 11 } }, meta.sector || '—'),
+                        h('td', null, h('span', { className: 'chip ' + (t.action === 'BUY' ? 'chip-green' : 'chip-red') }, t.action)),
+                        h('td', { className: t.action === 'BUY' ? 'pos' : 'neg' },
+                            t.delta_shares != null ? (t.action === 'BUY' ? '+' : '-') + Math.abs(t.delta_shares) + ' sh'
+                            : t.delta_pct   != null ? (t.delta_pct >= 0 ? '+' : '') + t.delta_pct.toFixed(1) + '%'
+                            : '—'
+                        ),
+                        h('td', null, t.est_value ? fmtCurrency(t.est_value) : '—'),
+                        h('td', { style: { color: 'var(--text-2)', fontSize: 11 } }, t.rationale)
+                    );
+                })
+            )
         )
     );
 }
@@ -843,7 +879,7 @@ function RebalancingPanel({ positions, drift, optimizerResult }) {
             h('div', { className: 'atlas-card' },
                 h('div', { className: 'card-title' }, 'Proposed Trades · Review Before Executing'),
                 trades.length > 0
-                    ? h(TradeList, { trades: trades, positions: positions, onExecute: function(t) { window.dispatchEvent(new CustomEvent('atlas:navigate', { detail: { tab: 'trading', symbol: t.ticker } })); } })
+                    ? h(TradeList, { trades: trades, positions: positions, onExecute: function(t) { window.dispatchEvent(new CustomEvent('atlas:navigate', { detail: { tab: 'trading', symbol: t.ticker, side: t.action === 'BUY' ? 'buy' : 'sell', qty: Math.abs(t.delta_shares || 0) || undefined } })); } })
                     : h('div', { style: { color: 'var(--text-3)', padding: '20px 0', textAlign: 'center' } },
                         'Portfolio is already close to optimal. No significant trades required.')
             )
@@ -978,7 +1014,7 @@ function AIReport({ ips, allocation, factors, risk, drift, positions }) {
                         return { ticker: t.ticker, action: t.action, delta_shares: null,
                                  est_value: null, rationale: t.rationale };
                     }),
-                    onExecute: function(t) { window.dispatchEvent(new CustomEvent('atlas:navigate', { detail: { tab: 'trading', symbol: t.ticker } })); },
+                    onExecute: function(t) { window.dispatchEvent(new CustomEvent('atlas:navigate', { detail: { tab: 'trading', symbol: t.ticker, side: t.action === 'BUY' ? 'buy' : 'sell', qty: Math.abs(t.delta_shares || 0) || undefined } })); },
                 })
             ),
         h('div', { style: { marginTop: 12 } },

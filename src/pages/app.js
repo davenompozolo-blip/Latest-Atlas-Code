@@ -115,10 +115,13 @@ function App() {
     var _st = useState(null);
     var scrapbookTicker = _st[0];
     var setScrapbookTicker = _st[1];
-    // Cross-module navigation: symbol passed when navigating to equity tab
+    // Cross-module navigation: symbol passed when navigating to equity/trading tab
     var _ns = useState(null);
     var navSymbol = _ns[0];
     var setNavSymbol = _ns[1];
+    // Trade pre-fill hints from PCM optimizer
+    var _navSide = useState(null); var navSide = _navSide[0]; var setNavSide = _navSide[1];
+    var _navQty  = useState(null); var navQty  = _navQty[0];  var setNavQty  = _navQty[1];
 
     var ActiveComponent = TABS.find(function(t) { return t.id === activeTab; }).component;
 
@@ -150,12 +153,14 @@ function App() {
         return function() { window.removeEventListener('atlas:open-scrapbook', onOpenScrapbook); };
     }, []);
 
-    // Cross-module navigation: atlas:navigate → { tab, symbol }
+    // Cross-module navigation: atlas:navigate → { tab, symbol, side?, qty? }
     useEffect(function() {
         function onNavigate(e) {
             if (!e.detail) return;
             if (e.detail.symbol) setNavSymbol(e.detail.symbol);
-            if (e.detail.tab) setActiveTab(e.detail.tab);
+            if (e.detail.tab)    setActiveTab(e.detail.tab);
+            if (e.detail.side)   setNavSide(e.detail.side);
+            if (e.detail.qty)    setNavQty(e.detail.qty);
         }
         window.addEventListener('atlas:navigate', onNavigate);
         return function() { window.removeEventListener('atlas:navigate', onNavigate); };
@@ -239,7 +244,7 @@ function App() {
                     React.createElement(ActiveComponent,
                         activeTab === 'scrapbook' ? { initialTicker: scrapbookTicker }
                         : activeTab === 'equity'   ? { initialSymbol: navSymbol }
-                        : activeTab === 'trading'  ? { initialSymbol: navSymbol }
+                        : activeTab === 'trading'  ? { initialSymbol: navSymbol, initialSide: navSide, initialQty: navQty }
                         : activeTab === 'options'  ? { initialSymbol: navSymbol }
                         : activeTab === 'valuation'? { initialSymbol: navSymbol }
                         : null)

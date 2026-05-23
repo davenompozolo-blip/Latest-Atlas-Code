@@ -391,9 +391,9 @@ function OrderTicket(p) {
     var quote = p.quote;
     var price = quote ? quote.last : null;
 
-    var _side  = useState('buy');    var side  = _side[0];  var setSide  = _side[1];
-    var _type  = useState('market'); var type  = _type[0];  var setType  = _type[1];
-    var _qty   = useState('1');      var qty   = _qty[0];   var setQty   = _qty[1];
+    var _side  = useState(p.initialSide || 'buy');     var side  = _side[0];  var setSide  = _side[1];
+    var _type  = useState('market');                    var type  = _type[0];  var setType  = _type[1];
+    var _qty   = useState(p.initialQty  || '1');        var qty   = _qty[0];   var setQty   = _qty[1];
     var _lp    = useState('');       var lp    = _lp[0];    var setLp    = _lp[1];
     var _sp    = useState('');       var sp    = _sp[0];    var setSp    = _sp[1];
     var _note  = useState('market'); var mode  = _note[0];  var setMode  = _note[1]; // 'qty'|'notional'
@@ -1173,6 +1173,9 @@ export function TradingDashboard(props) {
     var _live = useState(null);   var liveSym = _live[0]; var setLiveSym = _live[1];
     var _rng  = useState('1Y');   var range   = _rng[0];  var setRange   = _rng[1];
     var _tab  = useState('trade'); var tab    = _tab[0];   var setTab    = _tab[1];
+    // Pre-fill hints from cross-module navigation (e.g. PCM optimizer execute)
+    var _preSide = useState(null); var preSide = _preSide[0]; var setPreSide = _preSide[1];
+    var _preQty  = useState(null); var preQty  = _preQty[0];  var setPreQty  = _preQty[1];
 
     var acct = useAccount();
     var _q   = useQuote(liveSym);
@@ -1182,11 +1185,15 @@ export function TradingDashboard(props) {
     function handleLoad(sym) { setSymbol(sym); setLiveSym(sym); }
     useEffect(function () { setLiveSym('AAPL'); }, []);
 
-    // Accept symbol from cross-module navigation
+    // Accept symbol (+ optional side/qty) from cross-module navigation
     useEffect(function() {
-        var sym = props && props.initialSymbol;
+        var sym  = props && props.initialSymbol;
+        var side = props && props.initialSide;
+        var qty  = props && props.initialQty;
         if (!sym) return;
         handleLoad(sym);
+        if (side) setPreSide(side);
+        if (qty)  setPreQty(String(qty));
     }, [props && props.initialSymbol]);
 
     var TABS = [
@@ -1241,7 +1248,7 @@ export function TradingDashboard(props) {
 
         // Tab content
         tab === 'trade' && h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1.6fr', gap: 14 } },
-            h(OrderTicket,      { symbol: liveSym, quote: quote }),
+            h(OrderTicket,      { symbol: liveSym, quote: quote, initialSide: preSide, initialQty: preQty }),
             h(FundamentalsPanel, { data: _f.data, loading: _f.loading })
         ),
         tab === 'options' && h(OptionsChain, { symbol: liveSym, lastPrice: quote ? quote.last : null, acct: acct }),

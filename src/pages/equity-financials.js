@@ -326,10 +326,13 @@ function altmanZ(overview, snapshot) {
     var re   = n(snapshot.retainedEarnings);
     var ebit = n(overview.EBITDA) || n(snapshot.ebitda) || 0;
     var mve  = n(overview.MarketCapitalization);
-    var tl   = n(snapshot.totalLiabilities) || n(snapshot.totalDebt) || 1;
+    var tl   = n(snapshot.totalLiabilities) || n(snapshot.totalDebt) || 0;
     var rev  = n(overview.RevenueTTM) || n(snapshot.totalRevenue) || 0;
-    var x1 = wc / ta, x2 = re / ta, x3 = ebit / ta, x4 = mve / tl, x5 = rev / ta;
+    // Guard: if total liabilities is missing/tiny (< $1M), x4 = mve/tl explodes
+    var x4 = (tl > 1e6) ? mve / tl : (mve > 0 ? 2.0 : 0);
+    var x1 = wc / ta, x2 = re / ta, x3 = ebit / ta, x5 = rev / ta;
     var z = 1.2 * x1 + 1.4 * x2 + 3.3 * x3 + 0.6 * x4 + 1.0 * x5;
+    if (!isFinite(z) || z > 40 || z < -20) return null;
     var zone = z > 2.99 ? { label: 'Safe Zone', color: green }
              : z > 1.81 ? { label: 'Grey Zone', color: gold }
              :             { label: 'Distress',  color: red };
@@ -404,10 +407,11 @@ function capitalAllocation(overview, snapshot) {
     var fcfYield = fcf != null ? fcf / mktCap : null;
 
     var netIncome = n(snapshot.netIncome) || 0;
-    var equity    = n(snapshot.totalShareholderEquity) || n(snapshot.totalEquity) || 1;
+    var equity    = n(snapshot.totalShareholderEquity) || n(snapshot.totalEquity) || 0;
     var ltDebt    = n(snapshot.longTermDebt) || 0;
     var ic        = equity + ltDebt;
-    var roic      = ic > 0 ? netIncome / ic : null;
+    // Guard: invested capital must be meaningful (> $1M) to avoid division by tiny/zero values
+    var roic      = (Math.abs(ic) > 1e6) ? netIncome / ic : null;
 
     var beta = n(overview.Beta) || 1;
     var rf = 0.045, erp = 0.055;
