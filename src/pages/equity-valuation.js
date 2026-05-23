@@ -297,11 +297,140 @@ function ScorePanel(p) {
     );
 }
 
+// ---- Sub-tab 5: Fair Value Band Synthesizer ----
+
+var mono2 = "'JetBrains Mono', ui-monospace, monospace";
+var T2 = { green: '#22c55e', red: '#ef4444', gold: '#f4b942', teal: '#00d4b8', blue: '#3b82f6', purple: '#a855f7', slate: '#64748b', amber: '#f59e0b' };
+
+function FairValueSynthesizerPanel(p) {
+    var s = p.snap, o = p.overview, price = p.price;
+    if (!price || (!s && !o)) return React.createElement('div', { style: { color: 'var(--text-muted)' } }, 'Insufficient data.');
+
+    function n(v) { var x = parseFloat(v); return isFinite(x) && x > 0 ? x : null; }
+
+    var eps       = (s && n(s.trailingEps)) || n(o && o.EPS);
+    var fwdEps    = s && n(s.forwardEps);
+    var fwdPE     = s && n(s.forwardPE);
+    var ebitda    = (s && n(s.ebitda)) || n(o && o.EBITDA);
+    var sharesOut = n(o && o.SharesOutstanding);
+    var mktCap    = n(o && o.MarketCapitalization);
+    var analystT  = n(o && o.AnalystTargetPrice);
+    var growthRaw = s && parseFloat(s.revenueGrowth);
+    var growth    = isFinite(growthRaw) && growthRaw > 0 ? growthRaw : null;
+    // Derive fwdEps from fwdPE + price if not directly available
+    if (!fwdEps && fwdPE && price) fwdEps = price / fwdPE;
+
+    var methods = [];
+
+    // Method 1: Trailing P/E at 22×
+    if (eps) methods.push({ label: 'Trailing P/E (mkt avg 22×)', value: eps * 22, color: T2.slate });
+
+    // Method 2: EV/EBITDA 25× (semiconductor avg)
+    if (ebitda && sharesOut && mktCap) {
+        var ev25 = (ebitda * 25) / sharesOut;
+        if (ev25 > 0) methods.push({ label: 'EV/EBITDA (semi avg 25×)', value: ev25, color: T2.purple });
+    }
+
+    // Method 3: PEG = 1.0
+    if (fwdEps && growth) {
+        var peg1 = fwdEps * (growth * 100);
+        if (peg1 > 0) methods.push({ label: 'PEG = 1.0 (growth-adjusted)', value: peg1, color: T2.blue });
+    }
+
+    // Method 4: DCF proxy (analyst target × 0.85 conservative)
+    if (analystT) methods.push({ label: 'DCF proxy (analyst × 0.85)', value: analystT * 0.85, color: T2.gold });
+
+    // Method 5: Analyst consensus
+    if (analystT) methods.push({ label: 'Analyst consensus', value: analystT, color: T2.green });
+
+    if (!methods.length) return React.createElement('div', { style: { color: 'var(--text-muted)' } }, 'Not enough data for synthesizer.');
+
+    var vals   = methods.map(function(m) { return m.value; });
+    var bandMin = Math.min.apply(null, vals);
+    var bandMax = Math.max.apply(null, vals);
+    var spread = bandMax - bandMin;
+
+    function toPos(v) { return spread > 0 ? ((v - bandMin) / spread) * 100 : 50; }
+    var currentPos = toPos(price);
+    var clampedPos = Math.max(2, Math.min(98, currentPos));
+
+    var position = currentPos > 75 ? 'in the expensive tier of its own model' : currentPos > 40 ? 'near the fair value midpoint' : 'in the undervalued range of its own model';
+    var posColor = currentPos > 75 ? T2.red : currentPos > 40 ? T2.amber : T2.green;
+
+    return React.createElement('div', null,
+        // Insight
+        React.createElement('div', { style: { padding: '10px 14px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderLeft: '3px solid ' + posColor, borderRadius: '0 8px 8px 0', marginBottom: 16, fontSize: 11, color: 'rgba(255,255,255,0.7)', fontFamily: mono2 } },
+            (o && o.Symbol || 'This stock') + ' is ' + position + '. ' +
+            'Method range: $' + fN(bandMin, 0) + ' – $' + fN(bandMax, 0) + '. ' +
+            'Current price ($' + fN(price, 2) + ') sits at the ' + currentPos.toFixed(0) + 'th percentile of model outputs.'
+        ),
+
+        // Band chart
+        React.createElement('div', { className: 'card', style: { marginBottom: 16 } },
+            React.createElement('div', { style: { fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.5)', fontFamily: mono2, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 12 } }, 'Fair Value Band'),
+            React.createElement('div', { style: { position: 'relative', height: 48, marginBottom: 8 } },
+                // Band track
+                React.createElement('div', { style: { position: 'absolute', top: '50%', left: 0, right: 0, height: 6, background: 'rgba(255,255,255,0.08)', borderRadius: 3, transform: 'translateY(-50%)' } }),
+                // Method ticks
+                methods.map(function(m) {
+                    var pos = toPos(m.value);
+                    return React.createElement('div', {
+                        key: m.label,
+                        style: { position: 'absolute', top: 4, left: pos + '%', transform: 'translateX(-50%)' }
+                    },
+                        React.createElement('div', { style: { width: 2, height: 20, background: m.color, borderRadius: 1 } }),
+                        React.createElement('div', { style: { position: 'absolute', top: 22, left: '50%', transform: 'translateX(-50%)', fontSize: 7.5, color: m.color, fontFamily: mono2, whiteSpace: 'nowrap' } },
+                            '$' + fN(m.value, 0)
+                        )
+                    );
+                }),
+                // Current price marker
+                React.createElement('div', {
+                    style: { position: 'absolute', top: 0, left: clampedPos + '%', transform: 'translateX(-50%)' }
+                },
+                    React.createElement('div', { style: { width: 3, height: 28, background: T2.teal, borderRadius: 2, boxShadow: '0 0 8px rgba(0,212,184,0.5)' } }),
+                    React.createElement('div', { style: { position: 'absolute', top: -16, left: '50%', transform: 'translateX(-50%)', fontSize: 8, fontWeight: 700, color: T2.teal, fontFamily: mono2, whiteSpace: 'nowrap' } }, '● $' + fN(price, 0))
+                ),
+                // Labels
+                React.createElement('div', { style: { position: 'absolute', bottom: -20, left: 0, fontSize: 8.5, color: 'rgba(255,255,255,0.35)', fontFamily: mono2 } }, '$' + fN(bandMin, 0)),
+                React.createElement('div', { style: { position: 'absolute', bottom: -20, right: 0, fontSize: 8.5, color: 'rgba(255,255,255,0.35)', fontFamily: mono2 } }, '$' + fN(bandMax, 0))
+            ),
+            React.createElement('div', { style: { marginTop: 32 } })
+        ),
+
+        // Method breakdown table
+        React.createElement('table', { className: 'data-table' },
+            React.createElement('thead', null,
+                React.createElement('tr', null,
+                    ['Method', 'Implied Price', 'vs Current', 'Signal'].map(function(h) { return React.createElement('th', { key: h }, h); })
+                )
+            ),
+            React.createElement('tbody', null,
+                methods.map(function(m) {
+                    var diff = price > 0 ? (m.value / price - 1) : 0;
+                    var sigLabel = diff > 0.15 ? 'Undervalued' : diff < -0.15 ? 'Overvalued' : 'Fair';
+                    var sigColor = diff > 0.15 ? T2.green : diff < -0.15 ? T2.red : T2.amber;
+                    return React.createElement('tr', { key: m.label },
+                        React.createElement('td', null,
+                            React.createElement('span', { style: { display: 'inline-block', width: 8, height: 8, background: m.color, borderRadius: 2, marginRight: 7, verticalAlign: 'middle' } }),
+                            m.label
+                        ),
+                        React.createElement('td', { style: { fontWeight: 600, fontFamily: mono2 } }, '$' + fN(m.value, 2)),
+                        React.createElement('td', { style: { color: diff >= 0 ? T2.green : T2.red, fontFamily: mono2 } }, (diff >= 0 ? '+' : '') + (diff * 100).toFixed(1) + '%'),
+                        React.createElement('td', null, React.createElement('span', { className: 'badge', style: { color: sigColor, borderColor: sigColor, background: sigColor + '15' } }, sigLabel))
+                    );
+                })
+            )
+        )
+    );
+}
+
 // ---- Main export ----
 
 var TABS = [
     { id: 'multiples', label: 'Multiples' },
     { id: 'fairvalue', label: 'Fair Value' },
+    { id: 'synthesizer', label: 'Synthesizer' },
     { id: 'sensitivity', label: 'Sensitivity' },
     { id: 'score', label: 'Valuation Score' },
 ];
@@ -318,10 +447,11 @@ export function ValuationEngine(p) {
     }
 
     var content = null;
-    if (tab === 'multiples') content = React.createElement(MultiplesPanel, { snap: snap, overview: p.overview, price: price });
-    if (tab === 'fairvalue') content = React.createElement(FairValuePanel, { snap: snap, overview: p.overview, price: price });
-    if (tab === 'sensitivity') content = React.createElement(SensitivityPanel, { snap: snap, price: price });
-    if (tab === 'score') content = React.createElement(ScorePanel, { snap: snap, overview: p.overview, price: price });
+    if (tab === 'multiples')   content = React.createElement(MultiplesPanel,           { snap: snap, overview: p.overview, price: price });
+    if (tab === 'fairvalue')   content = React.createElement(FairValuePanel,            { snap: snap, overview: p.overview, price: price });
+    if (tab === 'synthesizer') content = React.createElement(FairValueSynthesizerPanel, { snap: snap, overview: p.overview, price: price });
+    if (tab === 'sensitivity') content = React.createElement(SensitivityPanel,          { snap: snap, price: price });
+    if (tab === 'score')       content = React.createElement(ScorePanel,                { snap: snap, overview: p.overview, price: price });
 
     return React.createElement('div', null,
         React.createElement(SubTab, { tabs: TABS, active: tab, onSelect: setTab }),

@@ -195,12 +195,87 @@ function MarginsChart(p) {
     );
 }
 
+// ---- Sub-tab 4: Positioning Bubble Chart ----
+
+function BubbleChart(p) {
+    var all = p.peers;
+    var ref = useRef(null);
+
+    useChart(ref, function() {
+        if (all.length < 2) return null;
+        var datasets = all.map(function(d) {
+            var fwdPE   = parseFloat(d.snap.forwardPE) || 0;
+            var revG    = parseFloat(d.snap.revenueGrowth) * 100 || 0;
+            var mktCap  = parseFloat(d.overview.MarketCapitalization) || 1;
+            var r = Math.max(5, Math.min(40, Math.log10(mktCap / 1e9) * 8));
+            return {
+                label: d.symbol,
+                data: [{ x: fwdPE, y: revG, r: r }],
+                backgroundColor: d.isTarget ? 'rgba(0,212,184,0.5)' : 'rgba(100,116,139,0.35)',
+                borderColor: d.isTarget ? '#00d4b8' : '#64748b',
+                borderWidth: d.isTarget ? 2.5 : 1.5,
+            };
+        });
+
+        return {
+            type: 'bubble',
+            data: { datasets: datasets },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: 'rgba(10,14,26,0.9)', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1,
+                        callbacks: {
+                            label: function(ctx) {
+                                return ' ' + ctx.dataset.label + ' · Fwd P/E: ' + (ctx.raw.x || 0).toFixed(1) + 'x · Rev Grth: ' + (ctx.raw.y || 0).toFixed(1) + '%';
+                            },
+                        },
+                    },
+                },
+                scales: {
+                    x: {
+                        title: { display: true, text: 'Forward P/E (valuation)', color: 'rgba(255,255,255,0.4)', font: { size: 10 } },
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        ticks: { color: 'rgba(255,255,255,0.35)', font: { size: 10 }, callback: function(v) { return v + 'x'; } },
+                        border: { display: false },
+                    },
+                    y: {
+                        title: { display: true, text: 'Revenue Growth % (growth)', color: 'rgba(255,255,255,0.4)', font: { size: 10 } },
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        ticks: { color: 'rgba(255,255,255,0.35)', font: { size: 10 }, callback: function(v) { return v + '%'; } },
+                        border: { display: false },
+                    },
+                },
+            },
+        };
+    }, [all]);
+
+    return React.createElement('div', { className: 'card' },
+        React.createElement('div', { className: 'card-title' }, 'Growth vs Valuation Positioning'),
+        React.createElement('div', { style: { fontSize: 11, color: 'rgba(255,255,255,0.4)', marginBottom: 8 } },
+            'X: Forward P/E · Y: Revenue Growth · Size: log(market cap) · ',
+            React.createElement('span', { style: { color: '#00d4b8' } }, 'Target highlighted in teal')
+        ),
+        React.createElement('div', { style: { height: 320 } }, React.createElement('canvas', { ref: ref })),
+        React.createElement('div', { style: { display: 'flex', gap: 20, marginTop: 10, flexWrap: 'wrap' } },
+            all.map(function(d) {
+                return React.createElement('div', { key: d.symbol, style: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 9, color: d.isTarget ? '#00d4b8' : 'rgba(255,255,255,0.4)', fontFamily: "'JetBrains Mono', monospace" } },
+                    React.createElement('span', { style: { width: 8, height: 8, background: d.isTarget ? '#00d4b8' : '#64748b', borderRadius: '50%', display: 'inline-block', flexShrink: 0 } }),
+                    d.symbol
+                );
+            })
+        )
+    );
+}
+
 // ---- Main export ----
 
 var TABS = [
     { id: 'table', label: 'Comparison' },
     { id: 'multiples', label: 'Relative Multiples' },
     { id: 'margins', label: 'Margins & Returns' },
+    { id: 'bubble', label: 'Growth vs Value' },
 ];
 
 export function PeerComparison(p) {
@@ -243,9 +318,10 @@ export function PeerComparison(p) {
     var all = [target].concat(peerData);
 
     var content = null;
-    if (tab === 'table') content = React.createElement(CompTable, { peers: all });
+    if (tab === 'table')    content = React.createElement(CompTable,     { peers: all });
     if (tab === 'multiples') content = React.createElement(MultiplesChart, { peers: all });
-    if (tab === 'margins') content = React.createElement(MarginsChart, { peers: all });
+    if (tab === 'margins')  content = React.createElement(MarginsChart,  { peers: all });
+    if (tab === 'bubble')   content = React.createElement(BubbleChart,   { peers: all });
 
     return React.createElement('div', null,
         React.createElement('div', { style: { fontSize: 12, color: 'var(--text-sec)', marginBottom: 12 } },

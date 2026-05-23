@@ -21,6 +21,8 @@ import { RiskAnalysis } from './equity-risk.js';
 import { ValuationEngine } from './equity-valuation.js';
 import { PeerComparison } from './equity-peers.js';
 import { DCFEngine } from './equity-dcf.js';
+import { TechnicalsTab } from './equity-technicals.js';
+import { sb } from './config.js';
 
 const { useState, useEffect, useRef, useCallback } = React;
 
@@ -250,11 +252,12 @@ function CompanyHero({ overview, symbol }) {
 // ------------------------------------------------------------
 
 var RIGHT_TABS = [
-    { id: 'financials', label: 'Financial Analysis' },
-    { id: 'valuation', label: 'Valuation Engine' },
-    { id: 'risk', label: 'Risk View' },
-    { id: 'peers', label: 'Peer Comparison' },
-    { id: 'dcf', label: 'DCF Engine' },
+    { id: 'financials',  label: 'Financial Analysis' },
+    { id: 'valuation',   label: 'Valuation Engine' },
+    { id: 'technicals',  label: 'Technicals' },
+    { id: 'risk',        label: 'Risk View' },
+    { id: 'peers',       label: 'Peer Comparison' },
+    { id: 'dcf',         label: 'DCF Engine' },
 ];
 
 function AnalysisPanel(p) {
@@ -264,11 +267,12 @@ function AnalysisPanel(p) {
     var setTab = _t[1];
 
     var content = null;
-    if (tab === 'financials') content = React.createElement(FinancialAnalysis, { financials: financials, overview: overview, overviewError: overviewError });
-    else if (tab === 'valuation') content = React.createElement(ValuationEngine, { financials: financials, overview: overview, series: series });
-    else if (tab === 'risk') content = React.createElement(RiskAnalysis, { symbol: symbol, series: series, overview: overview });
-    else if (tab === 'peers') content = React.createElement(PeerComparison, { symbol: symbol, financials: financials, overview: overview, peers: p.peers });
-    else if (tab === 'dcf') content = React.createElement(DCFEngine, { financials: financials, overview: overview, series: series });
+    if (tab === 'financials')  content = React.createElement(FinancialAnalysis, { financials: financials, overview: overview, overviewError: overviewError });
+    else if (tab === 'valuation')  content = React.createElement(ValuationEngine, { financials: financials, overview: overview, series: series });
+    else if (tab === 'technicals') content = React.createElement(TechnicalsTab,   { series: series, overview: overview });
+    else if (tab === 'risk')       content = React.createElement(RiskAnalysis,    { symbol: symbol, series: series, overview: overview });
+    else if (tab === 'peers')      content = React.createElement(PeerComparison,  { symbol: symbol, financials: financials, overview: overview, peers: p.peers });
+    else if (tab === 'dcf')        content = React.createElement(DCFEngine,       { financials: financials, overview: overview, series: series });
     else content = React.createElement('div', { className: 'card', style: { color: 'var(--text-muted)', padding: 32, textAlign: 'center' } }, 'This module is coming in a future stage.');
 
     return React.createElement('div', null,
@@ -297,12 +301,92 @@ function AnalysisPanel(p) {
 // Main component
 // ------------------------------------------------------------
 
+// ---- Portfolio position chip ----------------------------------------
+
+function PortfolioChip({ pos, perf }) {
+    if (!pos) return null;
+    var weight  = pos.weight != null ? (pos.weight * 100).toFixed(2) + '%' : '—';
+    var mv      = pos.market_value != null ? '$' + (Math.abs(pos.market_value) >= 1000 ? (pos.market_value / 1000).toFixed(1) + 'k' : pos.market_value.toFixed(0)) : '—';
+    var plDollar = perf && perf.total_return_pct != null && pos.market_value != null
+        ? (pos.market_value / (1 + perf.total_return_pct)) * perf.total_return_pct : null;
+    var plColor  = plDollar == null ? null : plDollar >= 0 ? '#22c55e' : '#ef4444';
+    return React.createElement('div', {
+        style: { padding: '10px 14px', background: 'rgba(0,212,184,0.05)', border: '1px solid rgba(0,212,184,0.3)', borderRadius: 8, marginTop: 10, display: 'flex', gap: 0, flexWrap: 'wrap' }
+    },
+        React.createElement('div', { style: { fontSize: 8.5, letterSpacing: 1.3, textTransform: 'uppercase', color: 'rgba(0,212,184,0.7)', fontFamily: "'JetBrains Mono',monospace", width: '100%', marginBottom: 8 } }, '◈ In Portfolio'),
+        [
+            { label: 'Weight', value: weight, color: '#00d4b8' },
+            { label: 'Market Value', value: mv },
+            { label: 'P&L', value: plDollar != null ? (plDollar >= 0 ? '+' : '') + '$' + Math.abs(plDollar).toFixed(0) : '—', color: plColor },
+            { label: 'Entry Price', value: perf && perf.entry_price ? '$' + Number(perf.entry_price).toFixed(2) : '—' },
+        ].map(function(tile, idx) {
+            return React.createElement('div', { key: tile.label, style: { flex: 1, minWidth: 80, paddingRight: 12 } },
+                React.createElement('div', { style: { fontSize: 8, color: 'rgba(255,255,255,0.35)', fontFamily: "'JetBrains Mono',monospace", letterSpacing: 1, marginBottom: 3 } }, tile.label),
+                React.createElement('div', { style: { fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace", color: tile.color || 'rgba(255,255,255,0.88)' } }, tile.value)
+            );
+        })
+    );
+}
+
+// ---- Analyst Target Range Bar --------------------------------------
+
+function AnalystRangeBar({ overview, current }) {
+    if (!overview) return null;
+    var targetMean = parseFloat(overview.AnalystTargetPrice);
+    if (!targetMean || !current) return null;
+    var low  = Math.min(current * 0.80, targetMean * 0.80);
+    var high = Math.max(current * 1.10, targetMean * 1.10);
+    var span = high - low;
+    if (span <= 0) return null;
+    function pos(v) { return Math.max(1, Math.min(99, (v - low) / span * 100)); }
+    var curPos    = pos(current);
+    var targetPos = pos(targetMean);
+    var upside    = (targetMean / current - 1) * 100;
+    var upsideColor = upside >= 10 ? '#22c55e' : upside >= 0 ? '#f59e0b' : '#ef4444';
+    var total = (parseFloat(overview.AnalystRatingStrongBuy) || 0) + (parseFloat(overview.AnalystRatingBuy) || 0)
+              + (parseFloat(overview.AnalystRatingHold) || 0) + (parseFloat(overview.AnalystRatingSell) || 0)
+              + (parseFloat(overview.AnalystRatingStrongSell) || 0);
+    var buys = (parseFloat(overview.AnalystRatingStrongBuy) || 0) + (parseFloat(overview.AnalystRatingBuy) || 0);
+    var holds = parseFloat(overview.AnalystRatingHold) || 0;
+    var sells = (parseFloat(overview.AnalystRatingSell) || 0) + (parseFloat(overview.AnalystRatingStrongSell) || 0);
+
+    return React.createElement('div', { className: 'card', style: { marginTop: 12 } },
+        React.createElement('div', { className: 'card-title' }, 'Analyst Target — Price Range'),
+        React.createElement('div', { style: { position: 'relative', height: 36, marginBottom: 6, marginTop: 8 } },
+            // Track
+            React.createElement('div', { style: { position: 'absolute', top: '50%', left: 0, right: 0, height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 2, transform: 'translateY(-50%)' } }),
+            // Current price
+            React.createElement('div', { style: { position: 'absolute', top: 0, left: curPos + '%', transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center' } },
+                React.createElement('div', { style: { fontSize: 7.5, color: '#00d4ff', fontFamily: "'JetBrains Mono',monospace", marginBottom: 2 } }, '$' + current.toFixed(0)),
+                React.createElement('div', { style: { width: 3, height: 20, background: '#00d4ff', borderRadius: 2 } })
+            ),
+            // Mean target
+            React.createElement('div', { style: { position: 'absolute', top: 0, left: targetPos + '%', transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center' } },
+                React.createElement('div', { style: { fontSize: 7.5, color: upsideColor, fontFamily: "'JetBrains Mono',monospace", marginBottom: 2 } }, '$' + targetMean.toFixed(0)),
+                React.createElement('div', { style: { width: 2, height: 20, background: upsideColor, borderRadius: 1 } })
+            )
+        ),
+        React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 } },
+            React.createElement('div', { style: { fontSize: 11, color: upsideColor, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace" } },
+                (upside >= 0 ? '+' : '') + upside.toFixed(1) + '% to mean target'
+            ),
+            total > 0 && React.createElement('div', { style: { display: 'flex', gap: 10, fontSize: 10 } },
+                React.createElement('span', { style: { color: '#22c55e' } }, '↑ ' + buys + ' buy'),
+                holds > 0 && React.createElement('span', { style: { color: '#f59e0b' } }, '→ ' + holds + ' hold'),
+                sells > 0 && React.createElement('span', { style: { color: '#ef4444' } }, '↓ ' + sells + ' sell')
+            )
+        )
+    );
+}
+
 export function EquityResearch(props) {
     const [input, setInput] = useState('AAPL');
-    const [symbol, setSymbol] = useState(null);    // committed symbol that triggers fetch
-    const [status, setStatus] = useState('idle');   // idle | loading | ready | error
+    const [symbol, setSymbol] = useState(null);
+    const [status, setStatus] = useState('idle');
     const [errMsg, setErrMsg] = useState(null);
     const [payload, setPayload] = useState(null);
+    const [portfolioPos,  setPortfolioPos]  = useState(null);
+    const [portfolioPerf, setPortfolioPerf] = useState(null);
 
     const analyse = useCallback(function(raw) {
         const s = (raw || '').trim().toUpperCase();
@@ -345,6 +429,16 @@ export function EquityResearch(props) {
                 setStatus('error');
             });
         return function() { cancelled = true; };
+    }, [symbol]);
+
+    // Portfolio position fetch (lightweight — single row)
+    useEffect(function() {
+        setPortfolioPos(null); setPortfolioPerf(null);
+        if (!symbol || !sb) return;
+        sb.from('vw_risk_analysis').select('symbol,market_value,weight,dollar_var_95_daily').eq('symbol', symbol).maybeSingle()
+            .then(function(res) { if (res.data) setPortfolioPos(res.data); });
+        sb.from('vw_performance_suite').select('symbol,total_return_pct,entry_price,days_held').eq('symbol', symbol).maybeSingle()
+            .then(function(res) { if (res.data) setPortfolioPerf(res.data); });
     }, [symbol]);
 
     function saveToScrapbook() {
@@ -460,6 +554,7 @@ export function EquityResearch(props) {
             // --- LEFT PANEL --------------------------------------------
             React.createElement('div', null,
                 React.createElement(CompanyHero, { overview: overview, symbol: symbol }),
+                React.createElement(PortfolioChip, { pos: portfolioPos, perf: portfolioPerf }),
                 React.createElement('div', { className: 'metrics-row', style: { gridTemplateColumns: 'repeat(2, 1fr)', marginTop: 12 } },
                     React.createElement(MetricTile, {
                         label: 'Current Price',
@@ -513,23 +608,10 @@ export function EquityResearch(props) {
                         value: overview && overview.dividendYield != null ? fmtPct(overview.dividendYield) : '\u2014'
                     })
                 ),
-                overview && (overview.analystTarget != null || overview.ratingCount)
+                React.createElement(AnalystRangeBar, { overview: overview, current: m.current }),
+                overview && overview.ratingCount
                     ? React.createElement('div', { className: 'card', style: { marginTop: 12 } },
-                        React.createElement('div', { className: 'card-title' }, 'Analyst Consensus'),
-                        overview.analystTarget != null
-                            ? React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 10 } },
-                                React.createElement('span', { style: { color: 'rgba(255,255,255,0.52)' } }, 'Target Price'),
-                                React.createElement('span', { style: { fontWeight: 600 } },
-                                    fmtCurrency(overview.analystTarget),
-                                    targetUpside != null
-                                        ? React.createElement('span', {
-                                            className: cls(targetUpside),
-                                            style: { marginLeft: 8, fontSize: 12 }
-                                        }, '(' + (targetUpside > 0 ? '+' : '') + (targetUpside * 100).toFixed(1) + '%)')
-                                        : null
-                                )
-                            )
-                            : null,
+                        React.createElement('div', { className: 'card-title' }, 'Analyst Consensus Distribution'),
                         React.createElement(ConsensusBar, { rating: overview.ratingCount })
                     )
                     : null,
