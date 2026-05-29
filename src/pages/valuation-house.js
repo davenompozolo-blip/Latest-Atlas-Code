@@ -10,6 +10,12 @@ import React from 'react';
 // ============================================================
 
 import { ScrapbookSaveBar } from './scrapbook.js';
+import {
+    SECTOR_NORMS,
+    resolveGICSSectorCode,
+    deriveProvenance,
+    computeCompassScore,
+} from '../lib/valuationIntelligence.js';
 
 const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
@@ -478,6 +484,16 @@ export function ValuationHouse(props) {
     var _sym = useState(null);    // committed ticker that triggers fetch
     var pendingSymbol = _sym[0], setPendingSymbol = _sym[1];
 
+    // ── Intelligence layer state ───────────────────────────────────────────────
+    var _intel = useState(null);
+    var intelligence = _intel[0], setIntelligence = _intel[1];
+    var _compass = useState(null);
+    var compassResult = _compass[0], setCompassResult = _compass[1];
+    var _iloading = useState(false);
+    var intelligenceLoading = _iloading[0], setIntelligenceLoading = _iloading[1];
+    var _flagsOpen = useState(false);
+    var flagsOpen = _flagsOpen[0], setFlagsOpen = _flagsOpen[1];
+
     var upd = useCallback(function(path, val) {
         setS(function(prev) {
             var next = JSON.parse(JSON.stringify(prev));
@@ -531,6 +547,10 @@ export function ValuationHouse(props) {
         var cancelled = false;
         setSearchStatus('loading');
         setSearchError(null);
+        setIntelligence(null);
+        setCompassResult(null);
+        setFlagsOpen(false);
+        setIntelligenceLoading(true);
         fetch('/api/equity?symbol=' + encodeURIComponent(pendingSymbol))
             .then(function(r) {
                 return r.json().then(function(j) { return { ok: r.ok, status: r.status, body: j }; });
@@ -558,14 +578,53 @@ export function ValuationHouse(props) {
                 setLoadedTicker(pendingSymbol);
                 setSearchStatus('ready');
                 setInnerTab('dash');
+                // Build intelligence layer synchronously — non-blocking, best-effort
+                try {
+                    var sectorCode = resolveGICSSectorCode(mapped.co.sector);
+                    var norm = SECTOR_NORMS[sectorCode] || SECTOR_NORMS['DEFAULT'];
+                    var prov = deriveProvenance(raw.overview || {}, mapped, norm);
+                    var intel = { sectorCode: sectorCode, sectorLabel: norm.label, provenance: prov };
+                    setIntelligence(intel);
+                    var re0 = mapped.coc.rf + mapped.coc.beta * mapped.coc.erp;
+                    var wc0 = re0 * (1 - mapped.coc.wd) + mapped.coc.rd * (1 - mapped.coc.tax) * mapped.coc.wd;
+                    var em0 = mapped.mult.ebitda > 0 && mapped.mult.rev > 0
+                        ? (mapped.mult.ebitda / mapped.mult.rev) * 100 : norm.ebitdaMargin.base;
+                    setCompassResult(computeCompassScore({
+                        wacc: wc0 * 100,
+                        terminalGrowth: mapped.fcf.gL * 100,
+                        revenueGrowthNear: mapped.ddm.gS * 100,
+                        ebitdaMargin: em0,
+                        beta: mapped.coc.beta,
+                    }, sectorCode));
+                } catch(_) {}
+                setIntelligenceLoading(false);
             })
             .catch(function(e) {
                 if (cancelled) return;
                 setSearchError((e && e.message) || 'Network error');
                 setSearchStatus('error');
+                setIntelligenceLoading(false);
             });
         return function() { cancelled = true; };
     }, [pendingSymbol]);
+
+    // ── Compass: recalculate on every input change ────────────────────────────
+    useEffect(function() {
+        if (!intelligence) return;
+        var sCode = intelligence.sectorCode;
+        var norm = SECTOR_NORMS[sCode] || SECTOR_NORMS['DEFAULT'];
+        var re_ = s.coc.rf + s.coc.beta * s.coc.erp;
+        var wc_ = re_ * (1 - s.coc.wd) + s.coc.rd * (1 - s.coc.tax) * s.coc.wd;
+        var em_ = s.mult.ebitda > 0 && s.mult.rev > 0
+            ? (s.mult.ebitda / s.mult.rev) * 100 : norm.ebitdaMargin.base;
+        setCompassResult(computeCompassScore({
+            wacc: wc_ * 100,
+            terminalGrowth: s.fcf.gL * 100,
+            revenueGrowthNear: s.ddm.gS * 100,
+            ebitdaMargin: em_,
+            beta: s.coc.beta,
+        }, sCode));
+    }, [s, intelligence]);
 
     var c = useMemo(function() {
         var coc = s.coc, ddm = s.ddm, fcf = s.fcf, mult = s.mult, ri = s.ri, priv = s.priv, wts = s.wts;
@@ -739,6 +798,126 @@ export function ValuationHouse(props) {
                         );
                     })
                 )
+            )
+        );
+    }
+
+    // ── Intelligence UI helpers ───────────────────────────────────────────────
+
+    function ProvenanceLabel(fieldKey) {
+        if (!intelligence || !intelligence.provenance || !intelligence.provenance[fieldKey]) return null;
+        var prov = intelligence.provenance[fieldKey];
+        return h('div', { style: {
+            display: 'flex', gap: 6, alignItems: 'center',
+            marginTop: 2, marginBottom: 2,
+            fontSize: 10, color: 'var(--text-muted)',
+            fontFamily: 'JetBrains Mono, monospace',
+        }},
+            h('span', { style: { color: 'var(--cyan)', fontWeight: 500 } }, prov.source),
+            h('span', null, '← ' + prov.provenance)
+        );
+    }
+
+    function ConfidenceBand(valuePct, fieldKey) {
+        if (!intelligence || !intelligence.provenance || !intelligence.provenance[fieldKey]) return null;
+        var range = intelligence.provenance[fieldKey].range;
+        if (!range) return null;
+        var bear = range.bear, base = range.base, bull = range.bull;
+        var span = bull - bear;
+        if (span <= 0) return null;
+        var pct = Math.min(100, Math.max(0, ((valuePct - bear) / span) * 100));
+        var isBase = Math.abs(valuePct - base) < 0.25;
+        return h('div', { style: { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 } },
+            h('span', { style: { fontSize: 9, color: 'var(--text-muted)', fontFamily: 'JetBrains Mono, monospace', minWidth: 30 } }, bear),
+            h('div', { style: { flex: 1, height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 2, position: 'relative', overflow: 'visible' } },
+                h('div', { style: { height: '100%', width: pct + '%', background: 'rgba(0,200,224,0.2)', borderRadius: 2 } }),
+                h('div', { style: {
+                    position: 'absolute', top: -3, left: pct + '%',
+                    width: 8, height: 8, borderRadius: '50%',
+                    background: isBase ? 'var(--cyan)' : 'var(--amber)',
+                    transform: 'translateX(-50%)',
+                    transition: 'left 0.15s ease',
+                }}),
+                h('div', { style: {
+                    position: 'absolute', top: -1, left: ((base - bear) / span * 100) + '%',
+                    width: 2, height: 6, background: 'rgba(255,255,255,0.18)',
+                    transform: 'translateX(-50%)',
+                }})
+            ),
+            h('span', { style: { fontSize: 9, color: 'var(--text-muted)', fontFamily: 'JetBrains Mono, monospace', minWidth: 30, textAlign: 'right' } }, bull)
+        );
+    }
+
+    function ValuationCompassBadge() {
+        if (intelligenceLoading) {
+            return h('div', { style: {
+                display: 'inline-flex', alignItems: 'center', gap: 5,
+                padding: '4px 10px', borderRadius: 100,
+                fontSize: 11, fontFamily: 'JetBrains Mono, monospace',
+                background: 'var(--card)', border: '1px solid var(--card-border)',
+                color: 'var(--text-muted)',
+            }}, '◎ COMPASS ···');
+        }
+        if (!compassResult) return null;
+        var score = compassResult.score;
+        var band = compassResult.band;
+        var bandLabel = compassResult.bandLabel;
+        var flags = compassResult.flags;
+        var colors = {
+            GREEN: { bg: 'rgba(34,197,94,0.12)', border: 'rgba(34,197,94,0.3)', text: '#22c55e' },
+            AMBER: { bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.3)', text: '#f59e0b' },
+            RED:   { bg: 'rgba(239,68,68,0.12)',  border: 'rgba(239,68,68,0.3)',  text: '#ef4444' },
+        };
+        var cc = colors[band] || colors.GREEN;
+        var tipText = flags.length
+            ? flags.map(function(f) { return f.severity.toUpperCase() + ': ' + f.message; }).join('\n')
+            : 'Assumptions are internally coherent';
+        return h('div', {
+            title: tipText,
+            style: {
+                display: 'inline-flex', alignItems: 'center', gap: 5,
+                padding: '4px 10px', borderRadius: 100,
+                fontSize: 11, fontFamily: 'JetBrains Mono, monospace',
+                background: cc.bg, border: '1px solid ' + cc.border,
+                cursor: 'default', letterSpacing: '0.03em', userSelect: 'none',
+            },
+        },
+            h('span', { style: { fontSize: 12 } }, '◎'),
+            h('span', { style: { color: cc.text } }, score + ' · ' + bandLabel),
+            flags.length > 0 && h('span', { style: { color: cc.text, fontSize: 10, marginLeft: 2 } }, flags.length + '⚑')
+        );
+    }
+
+    function CompassFlagsPanel() {
+        if (!compassResult || !compassResult.flags || !compassResult.flags.length) return null;
+        var flags = compassResult.flags;
+        return h('div', { style: { padding: '0 18px 4px', borderBottom: '1px solid var(--card-border)' } },
+            h('button', {
+                onClick: function() { setFlagsOpen(function(o) { return !o; }); },
+                style: {
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    color: 'var(--text-sec)', fontSize: 11,
+                    fontFamily: 'JetBrains Mono, monospace',
+                    padding: '5px 0', display: 'flex', alignItems: 'center', gap: 4,
+                },
+            },
+                flagsOpen ? '▾' : '▸',
+                ' ' + flags.length + ' assumption tension' + (flags.length > 1 ? 's' : '') + ' detected'
+            ),
+            flagsOpen && h('ul', { style: { listStyle: 'none', margin: '0 0 6px 0', padding: 0 } },
+                flags.map(function(f, i) {
+                    var sev = f.severity;
+                    var col = sev === 'critical' ? 'var(--red)' : sev === 'warning' ? 'var(--amber)' : 'var(--cyan)';
+                    return h('li', { key: i, style: {
+                        display: 'flex', gap: 8, alignItems: 'flex-start',
+                        padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.03)',
+                        fontSize: 11,
+                    }},
+                        h('span', { style: { color: col, fontFamily: 'JetBrains Mono, monospace', fontWeight: 700, fontSize: 9, flexShrink: 0, paddingTop: 2 } },
+                            sev.toUpperCase()),
+                        h('span', { style: { color: 'var(--text-sec)' } }, f.message)
+                    );
+                })
             )
         );
     }
@@ -920,6 +1099,8 @@ export function ValuationHouse(props) {
                         PctIn('Risk-Free Rate rf', s.coc.rf, function(v) { upd('coc.rf', v); }, '10Y Treasury yield'),
                         PctIn('Equity Risk Premium (ERP)', s.coc.erp, function(v) { upd('coc.erp', v); }),
                         NumIn('Beta (β)', s.coc.beta, function(v) { upd('coc.beta', v); }, '', 0.01),
+                        ProvenanceLabel('beta'),
+                        ConfidenceBand(s.coc.beta, 'beta'),
                         PctIn('Pre-tax Cost of Debt rd', s.coc.rd, function(v) { upd('coc.rd', v); }),
                         PctIn('Debt Weight wd', s.coc.wd, function(v) { upd('coc.wd', v); }),
                         PctIn('Tax Rate', s.coc.tax, function(v) { upd('coc.tax', v); }),
@@ -943,7 +1124,11 @@ export function ValuationHouse(props) {
                     Card('DDM Inputs', h('div', null,
                         NumIn('D₀ (last paid dividend)', s.ddm.D0, function(v) { upd('ddm.D0', v); }, '$', 0.01),
                         PctIn('Short-term growth gS', s.ddm.gS, function(v) { upd('ddm.gS', v); }),
+                        ProvenanceLabel('revenueGrowthNear'),
+                        ConfidenceBand(s.ddm.gS * 100, 'revenueGrowthNear'),
                         PctIn('Long-term growth gL', s.ddm.gL, function(v) { upd('ddm.gL', v); }),
+                        ProvenanceLabel('terminalGrowth'),
+                        ConfidenceBand(s.ddm.gL * 100, 'terminalGrowth'),
                         NumIn('Stage 1 years (n)', s.ddm.n, function(v) { upd('ddm.n', Math.max(1, Math.min(20, Math.round(v)))); }, '', 1),
                         NumIn('H (H-model half-life)', s.ddm.H, function(v) { upd('ddm.H', v); }, '', 0.5),
                     )),
@@ -951,6 +1136,8 @@ export function ValuationHouse(props) {
                         NumIn('FCFF₀ (base, $M)', s.fcf.fcff0, function(v) { upd('fcf.fcff0', v); }, '$M', 10),
                         NumIn('FCFE₀ (base, $M)', s.fcf.fcfe0, function(v) { upd('fcf.fcfe0', v); }, '$M', 10),
                         PctIn('Terminal growth gL', s.fcf.gL, function(v) { upd('fcf.gL', v); }),
+                        ProvenanceLabel('terminalGrowth'),
+                        ConfidenceBand(s.fcf.gL * 100, 'terminalGrowth'),
                         NumIn('Total Debt ($M)', s.fcf.debt, function(v) { upd('fcf.debt', v); }, '$M', 100),
                         NumIn('Cash ($M)', s.fcf.cash, function(v) { upd('fcf.cash', v); }, '$M', 100),
                         NumIn('Shares outstanding (M)', s.fcf.shs, function(v) { upd('fcf.shs', v); }, 'M', 10),
@@ -1415,10 +1602,15 @@ export function ValuationHouse(props) {
             display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
         }},
             h('div', null,
-                h('div', { style: { fontSize: 13, fontWeight: 700, color: 'var(--cyan)', letterSpacing: '0.06em', fontFamily: 'Syne, sans-serif' } },
-                    s.co.ticker ? s.co.ticker + ' — VALUATION HOUSE' : 'VALUATION HOUSE'),
+                h('div', { style: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' } },
+                    h('div', { style: { fontSize: 13, fontWeight: 700, color: 'var(--cyan)', letterSpacing: '0.06em', fontFamily: 'Syne, sans-serif' } },
+                        s.co.ticker ? s.co.ticker + ' — VALUATION HOUSE' : 'VALUATION HOUSE'),
+                    ValuationCompassBadge()
+                ),
                 h('div', { style: { fontSize: 9, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em' } },
-                    s.co.name && s.co.ticker ? s.co.name + ' · CFA Level II Suite' : 'CFA Level II Equity Research Suite')
+                    s.co.name && s.co.ticker
+                        ? s.co.name + ' · ' + (intelligence ? intelligence.sectorLabel : 'CFA Level II Suite')
+                        : 'CFA Level II Equity Research Suite')
             ),
             h('div', { style: { flex: 1, display: 'flex', gap: 6, flexWrap: 'wrap' } },
                 INNER_TABS.map(function(t) {
@@ -1441,6 +1633,8 @@ export function ValuationHouse(props) {
                 c.cons != null && h('div', { style: { marginTop: 2 } }, Sig(c.cons, price))
             )
         ),
+        // Compass flags panel (collapsed by default)
+        CompassFlagsPanel(),
         // Loading overlay
         searchStatus === 'loading' && h('div', { style: {
             padding: '18px 18px 0',
