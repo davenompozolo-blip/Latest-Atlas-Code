@@ -144,9 +144,12 @@ function App() {
         return function() { window.removeEventListener('atlas:open-scrapbook', onOpenScrapbook); };
     }, []);
 
-    // Nexus owns its entire viewport — bypass ATLAS shell, must be after all hooks
+    // Nexus owns its entire viewport — bypass ATLAS shell, must be after all hooks.
+    // Wrapped in its own ErrorBoundary so a data hiccup degrades gracefully
+    // instead of taking down the whole terminal.
     if (activeTab === 'nexus') {
-        return React.createElement(NexusPage, { onNavigate: setActiveTab });
+        return React.createElement(ErrorBoundary, null,
+            React.createElement(NexusPage, { onNavigate: setActiveTab }));
     }
 
     var c = topCmd || MOCK_COMMAND;
