@@ -13,6 +13,7 @@
 import { sb, loadView, MOCK_COMMAND } from './config.js';
 import { fmtPct, fmtCurrency, cls } from './utils.js';
 import { ConfigPrompt, TopBarSparkline, SyncStatusPill, RefreshButton } from './components.js';
+import { NexusPage } from './nexus-page.js';
 import { PortfolioHome } from './portfolio-home.js';
 import { QuantDashboard } from './quant-dashboard.js';
 import { RiskAnalysis, CommandCentre } from './pages-other.js';
@@ -33,6 +34,7 @@ const { useState, useEffect } = React;
 // Tab registry & sidebar navigation structure
 // ------------------------------------------------------------
 const TABS = [
+    { id: 'nexus',     label: 'NEXUS',     sub: 'Unified Intelligence',    icon: '\u2B21', component: NexusPage },
     { id: 'portfolio', label: 'PORTFOLIO', sub: 'Positions & NAV',        icon: '\u25CB', component: PortfolioHome },
     { id: 'trading',   label: 'TRADING',   sub: 'Order Desk & Research',   icon: '\u25B6', component: TradingDashboard },
     { id: 'quant',     label: 'QUANT',     sub: 'Quantitative Signals',    icon: '\u25C7', component: QuantDashboard },
@@ -51,6 +53,7 @@ const TABS = [
 
 const NAV_STRUCTURE = [
     { type: 'header', label: 'CORE' },
+    { type: 'tab', id: 'nexus' },
     { type: 'tab', id: 'portfolio' },
     { type: 'tab', id: 'trading' },
     { type: 'header', label: 'ANALYSIS' },
@@ -94,7 +97,7 @@ class ErrorBoundary extends React.Component {
 // Root App shell
 // ------------------------------------------------------------
 function App() {
-    var _s = useState('portfolio');
+    var _s = useState('nexus');
     var activeTab = _s[0];
     var setActiveTab = _s[1];
     var _n = useState(null);
