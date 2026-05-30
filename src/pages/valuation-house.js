@@ -777,13 +777,29 @@ export function ValuationHouse(props) {
         var ffR = fcffVal(fcf.fcff0, fcf.gr, fcf.gL, wc, fcf.debt, fcf.cash, fcf.shs);
         var feR = fcfeVal(fcf.fcfe0, fcf.gr, fcf.gL, re, fcf.shs);
 
-        var pPE   = mult.pPE * mult.eps;
-        var pPB   = mult.pPB * mult.bvps;
-        var pEVps = fcf.shs > 0 ? (mult.pEV * mult.ebitda - mult.netDebt) / fcf.shs : null;
-        var pPS   = fcf.shs > 0 ? mult.pPS * mult.rev / fcf.shs : null;
+        // ── Multiples: clamp peer ratios to plausible ranges before computing ──
+        // Company's own EV/EBITDA/Sales ratios are used as peer proxies. Clamp
+        // prevents runaway values when a single data field arrives in wrong units.
+        var safePE  = Math.min(Math.max(mult.pPE,  3),   200);
+        var safePB  = Math.min(Math.max(mult.pPB,  0.1),  20);
+        var safeEV  = Math.min(Math.max(mult.pEV,  1),    60);
+        var safePS  = Math.min(Math.max(mult.pPS,  0.1),  20);
+        // Live net-debt from current fcf state (may differ from stale mult.netDebt)
+        var liveNetDebt = Math.max(0, fcf.debt - fcf.cash);
+
+        var pPE   = safePE * mult.eps;
+        var pPB   = safePB * mult.bvps;
+        // EV/EBITDA → equity value: EV = multiple × EBITDA; equity = EV − netDebt
+        var pEVps = fcf.shs > 0 ? (safeEV * mult.ebitda - liveNetDebt) / fcf.shs : null;
+        // EV/Sales → equity value: EV = multiple × revenue; equity = EV − netDebt
+        var pPS   = fcf.shs > 0 ? (safePS * mult.rev - liveNetDebt) / fcf.shs : null;
         var jpeV  = jPELeading(mult.b, re, ddm.gL);
         var jpbV  = jPB(ri.ROE, re, ri.g);
-        var mVals = [pPE, pPB, pEVps, pPS].filter(function(v) { return v > 0 && isFinite(v); });
+        // Sanity gate: exclude any sub-model output > 50× market price (data error)
+        var priceRef = s.co.price > 0 ? s.co.price : Infinity;
+        var mVals = [pPE, pPB, pEVps, pPS].filter(function(v) {
+            return v > 0 && isFinite(v) && v < priceRef * 50;
+        });
         var multAvg = mVals.length ? mVals.reduce(function(a, b) { return a + b; }, 0) / mVals.length : null;
 
         var riR  = riCalc(ri.B0, ri.ROE, re, ri.g, ri.n, ri.mth, ri.omega);

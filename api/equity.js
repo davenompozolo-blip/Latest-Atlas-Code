@@ -801,10 +801,14 @@ function mapFinnhubFinancials(data) {
     }
 
     if (snapshot.enterpriseValue && snapshot.totalRevenue) {
-        snapshot.evToRevenue = snapshot.enterpriseValue / snapshot.totalRevenue;
+        var evs = snapshot.enterpriseValue / snapshot.totalRevenue;
+        // Sanity: EV/Sales outside 0.05–30 indicates a unit mismatch between EV and Revenue
+        if (evs >= 0.05 && evs <= 30) snapshot.evToRevenue = evs;
     }
     if (snapshot.enterpriseValue && snapshot.ebitda) {
-        snapshot.evToEbitda = snapshot.enterpriseValue / snapshot.ebitda;
+        var eve = snapshot.enterpriseValue / snapshot.ebitda;
+        // Sanity: EV/EBITDA outside 1–100 indicates a unit mismatch between EV and EBITDA
+        if (eve >= 1 && eve <= 100) snapshot.evToEbitda = eve;
     }
 
     // --- Supplement from financials-reported (XBRL 10-K) ---
