@@ -250,6 +250,39 @@ export function computeCompassScore(inputs, sectorCode) {
     deductions += 10;
   }
 
+  // --- Rule 6: Growth realism (assumption vs history) ---
+  if (inputs.historicalCAGR != null) {
+    const gap = inputs.revenueGrowthNear - inputs.historicalCAGR;
+    if (gap > 10) {
+      flags.push({
+        rule: 'GROWTH_REALISM',
+        severity: 'warning',
+        message: `Near-term growth (${inputs.revenueGrowthNear.toFixed(1)}%) is ${gap.toFixed(0)}pp above the ${inputs.historicalCAGR.toFixed(1)}% historical CAGR. Justify the acceleration.`
+      });
+      deductions += 15;
+    }
+  }
+
+  // --- Rule 7: DDM applicability ---
+  if (inputs.isDDMActive && (inputs.dividend == null || inputs.dividend === 0)) {
+    flags.push({
+      rule: 'DDM_APPLICABILITY',
+      severity: 'critical',
+      message: 'DDM is active but D₀ = 0 (non-dividend payer). DDM will return zero — use FCFE or Residual Income instead.'
+    });
+    deductions += 30;
+  }
+
+  // --- Rule 8: Leverage sanity ---
+  if (inputs.totalDebt === 0 && inputs.interestExpenseM > 0) {
+    flags.push({
+      rule: 'LEVERAGE_HYDRATION',
+      severity: 'info',
+      message: `Total debt = 0 but interest expense is positive ($${Number(inputs.interestExpenseM).toFixed(1)}M) — balance-sheet tag may be missing. Verify manually.`
+    });
+    deductions += 5;
+  }
+
   const score = Math.max(0, 100 - deductions);
   return {
     score,
@@ -284,9 +317,7 @@ export function assembleFundamentals(raw, mappedState) {
   const s = mappedState;
 
   const srcLabel = (raw.source && raw.source.overview) || 'Finnhub';
-  // Use reported FY from financials-reported endpoint when available (more precise than yearly array)
-  const reportedFY = fin._reportedFY || '';
-  const latestFY = reportedFY || (yearly.length ? yearly[yearly.length - 1].year : '');
+  const latestFY = yearly.length ? yearly[yearly.length - 1].year : '';
 
   // FCFE: Finnhub's freeCashflow ≈ CFO − CapEx
   const fcfeRaw = fin.freeCashflow;
