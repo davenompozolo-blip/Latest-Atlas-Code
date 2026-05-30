@@ -465,7 +465,7 @@ async function finnhubFundamentals(symbol) {
                 finnhubGet('/stock/recommendation?symbol=' + sym),
                 finnhubGet('/stock/earnings?symbol=' + sym),
                 finnhubGet('/stock/peers?symbol=' + sym),
-                finnhubGet('/financials-reported?symbol=' + sym + '&freq=annual&limit=4'),
+                finnhubGet('/stock/financials-reported?symbol=' + sym + '&freq=annual'),
             ]);
             var p = results[0].status === 'fulfilled' ? results[0].value : {};
             if (p && p.ticker) {
@@ -544,12 +544,20 @@ function mapFinnhubReported(reported) {
     var latest = annuals[0];
     var report = latest.report;
 
+    // Finnhub returns concept names either bare ("CashAndCashEquivalents…") or
+    // namespace-prefixed ("us-gaap_CashAndCashEquivalents…"). Match on suffix so
+    // both shapes resolve. Tags are tried in priority order; first hit wins.
     function concept(items, tags) {
         if (!Array.isArray(items)) return null;
         for (var t = 0; t < tags.length; t++) {
+            var tag = tags[t];
             for (var i = 0; i < items.length; i++) {
                 var v = items[i];
-                if (v.concept === tags[t] && v.value != null && isFinite(v.value) && v.value !== 0) {
+                var cName = String(v.concept || '');
+                var match = cName === tag
+                    || cName.split('_').pop() === tag
+                    || cName.split(':').pop() === tag;
+                if (match && v.value != null && isFinite(v.value) && Number(v.value) !== 0) {
                     return Number(v.value);
                 }
             }
@@ -862,7 +870,12 @@ function mapFinnhubFinancials(data) {
     if (!Object.keys(snapshot).length && !yearly.length) return null;
     return {
         snapshot: snapshot, yearly: yearly, quarterly: quarterly,
-        _debugKeys: { metric: mKeys.sort(), seriesAnnual: Object.keys(annual).sort() }
+        _debugKeys: {
+            metric: mKeys.sort(),
+            seriesAnnual: Object.keys(annual).sort(),
+            reportedFY: snapshot._reportedFY || null,
+            reportedFilled: Object.keys(rep).filter(function(k) { return k.charAt(0) !== '_'; }),
+        }
     };
 }
 
