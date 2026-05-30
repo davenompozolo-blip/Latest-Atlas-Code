@@ -7,8 +7,10 @@
 import React from 'react';
 import { sb } from './config.js';
 import '../styles/nexus-theme.css';
+import { useFreshnessGate } from '../lib/useFreshnessGate.js';
+import { useOrderMachine, useCircuitBreaker } from '../lib/useOrderMachine.js';
 
-const { useState, useEffect, useMemo } = React;
+const { useState, useEffect, useMemo, useRef, useCallback } = React;
 const e = React.createElement;
 
 // ── Formatters ───────────────────────────────────────────────
@@ -172,8 +174,76 @@ function FundamentalsBanner({ state, missingFundamentals, onSync }) {
     return null;
 }
 
+// ── StaleBanner ───────────────────────────────────────────────
+function StaleBanner({ tier, ageMin, lastOkAt, showingCached, lastKnownTs }) {
+    if (!tier || tier === 'fresh') return null;
+    const isCritical = tier === 'critical';
+    const bg   = isCritical ? 'var(--nx-red-b)'    : 'var(--nx-amber-b)';
+    const bc   = isCritical ? 'rgba(239,68,68,.25)' : 'rgba(245,158,11,.25)';
+    const col  = isCritical ? 'var(--nx-red)'       : 'var(--nx-amber)';
+    const ic   = isCritical ? '⛔' : '⏱';
+    let msg = isCritical
+        ? `Data is ${ageMin}m old — execution disabled. Prices too stale to trade safely.`
+        : `Prices as of ${lastOkAt ? lastOkAt.toLocaleTimeString('en-ZA',{hour:'2-digit',minute:'2-digit'}) : '??:??'} — ${ageMin}m old. Conviction & VaR may be off.`;
+    if (showingCached && lastKnownTs) {
+        const t = lastKnownTs.toLocaleTimeString('en-ZA',{hour:'2-digit',minute:'2-digit'});
+        msg += ` Showing last known data (${t}).`;
+    }
+    return e('div', {
+        style: { display:'flex', alignItems:'center', gap:10, background:bg, border:'1px solid '+bc,
+                 borderRadius:8, padding:'10px 14px', margin:'0 0 12px 0', flexShrink:0 }
+    },
+        e('span', { style:{fontSize:16} }, ic),
+        e('div', { style:{flex:1} },
+            e('div', { style:{fontSize:11, fontWeight:600, color:col} }, isCritical ? 'Execution disabled — data too old' : 'Stale data warning'),
+            e('div', { style:{fontSize:'9.5px', color:'var(--nx-text2)', marginTop:1} }, msg)
+        )
+    );
+}
+
+// ── HealthPill ────────────────────────────────────────────────
+function HealthPill({ label, status }) {
+    const cfg = {
+        ok:   { bg:'var(--nx-green-b)',  col:'var(--nx-green)',  dot:'var(--nx-green)',  anim:false },
+        warn: { bg:'var(--nx-amber-b)',  col:'var(--nx-amber)',  dot:'var(--nx-amber)',  anim:true  },
+        bad:  { bg:'var(--nx-red-b)',    col:'var(--nx-red)',    dot:'var(--nx-red)',    anim:true  },
+    }[status] || { bg:'var(--nx-bg3)', col:'var(--nx-text3)', dot:'var(--nx-text3)', anim:false };
+    return e('div', {
+        style: { display:'flex', alignItems:'center', gap:5, fontSize:9, textTransform:'uppercase',
+                 letterSpacing:'.05em', fontWeight:700, padding:'4px 9px', borderRadius:5,
+                 background:cfg.bg, color:cfg.col }
+    },
+        e('span', {
+            style: { width:6, height:6, borderRadius:'50%', background:cfg.dot, display:'inline-block',
+                     animation: cfg.anim ? 'nx-pulse 1.2s infinite' : 'none' }
+        }),
+        label
+    );
+}
+
+// ── SystemHealthBar ───────────────────────────────────────────
+function SystemHealthBar({ tier, ageMin, circuitTripped }) {
+    const [alpacaOk, setAlpacaOk] = useState(true);
+    useEffect(function() {
+        fetch('/api/health').then(r => r.json()).then(j => {
+            setAlpacaOk(j.alpaca === 'ok');
+        }).catch(() => {});
+    }, []);
+
+    const parserStatus = tier === 'fresh' ? 'ok' : tier === 'stale' ? 'warn' : 'bad';
+    const execStatus   = (circuitTripped || tier === 'critical') ? 'bad' : tier === 'stale' ? 'warn' : 'ok';
+    const parserLabel  = tier === 'fresh' ? 'Parser' : `Parser ${ageMin}m`;
+
+    return e('div', { style:{display:'flex', alignItems:'center', gap:8} },
+        e(HealthPill, { label: 'Alpaca',     status: alpacaOk ? 'ok' : 'bad' }),
+        e(HealthPill, { label: parserLabel,  status: parserStatus }),
+        e(HealthPill, { label: 'Supabase',   status: 'ok' }),
+        e(HealthPill, { label: 'Execution',  status: execStatus })
+    );
+}
+
 // ── NexusHeader ───────────────────────────────────────────────
-function NexusHeader({ holdings, onSync, syncState }) {
+function NexusHeader({ holdings, onSync, syncState, freshness, circuitTripped }) {
     const { total, wtConv, wtDaily, alerts, longPct } = calcStats(holdings);
     const score      = Math.round(wtConv);
     const offset     = Math.round(163 * (1 - Math.min(100, score) / 100));
@@ -194,6 +264,7 @@ function NexusHeader({ holdings, onSync, syncState }) {
                 e('span', { className: 'acc' }, 'Your Oyster.')
             ),
             e('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
+                freshness && e(SystemHealthBar, { tier: freshness.tier, ageMin: freshness.ageMin, circuitTripped: circuitTripped || false }),
                 e('div', { className: 'nx-ring-meta' },
                     e('div', { className: 'nx-rm-l' }, 'Portfolio Health'),
                     e('div', { className: 'nx-rm-v', style: { color: healthCol } }, healthLbl),
@@ -335,6 +406,9 @@ function ConvictionPanel({ holdings }) {
                     ),
                     e('div', { className: 'nx-ms', style: { color: SC(s) } }, s)
                 ),
+                h.conviction_score != null && h.dcf_upside_pct == null
+                    ? e('div', { style: { fontSize: 8, color: 'var(--nx-amber)', marginTop: 2, fontFamily: 'var(--nx-fm)' } }, '◑ Partial — valuation input missing')
+                    : null,
                 e('div', { className: 'nx-insight' },
                     e('strong', null, 'Nexus: '),
                     h.nexus_insight || ('Weight ' + h.weight_pct + '% · ' + h.technical_signal + ' tech · ' + h.quality_grade + ' quality')
@@ -528,7 +602,7 @@ function IntelCanvas({ holdings }) {
 }
 
 // ── ActionCentre (Zone C) ─────────────────────────────────────
-function ActionCentre({ holdings }) {
+function ActionCentre({ holdings, disabled }) {
     const alertRows = useMemo(function() {
         return holdings
             .filter(h => h.alert_flag)
@@ -596,6 +670,9 @@ function ActionCentre({ holdings }) {
             e('div', { className: 'nx-zh-t' }, 'Suggested Trades'),
             e('span', { className: 'nx-badge nx-bb' }, trades.length + ' signals')
         ),
+        disabled && e('div', { style: { padding: '10px 12px', fontSize: 9, color: 'var(--nx-red)',
+            background: 'var(--nx-red-b)', borderRadius: 6, margin: '0 0 8px 0',
+            border: '1px solid rgba(239,68,68,.2)' } }, '⛔ Execution paused — data too stale to trade safely.'),
         e('div', { className: 'nx-tqueue' },
             trades.length === 0
                 ? e('div', { style: { padding: '10px 12px', fontSize: 9, color: 'var(--nx-text3)' } }, 'No trades suggested.')
@@ -1014,14 +1091,25 @@ export function NexusShell({ children, onNavigate, activeTab }) {
 
 // ── Nexus landing content (no shell — shell is in app.js) ────
 export function NexusPage() {
-    const [holdings, setHoldings] = useState([]);
-    const [loading,  setLoading]  = useState(true);
-    const [err,      setErr]      = useState(null);
+    const [holdings,    setHoldings]    = useState([]);
+    const [loading,     setLoading]     = useState(true);
+    const [err,         setErr]         = useState(null);
+    const [showingCached, setShowingCached] = useState(false);
+    const [lastKnownTs,   setLastKnownTs]   = useState(null);
+    const lastKnownRef = useRef([]);
+
+    const freshness      = useFreshnessGate();
+    const circuitTripped = useCircuitBreaker();
+    const execDisabled   = freshness.tier === 'critical' || circuitTripped;
 
     function reloadHoldings() {
         if (!sb) return;
         sb.from('vw_nexus_holdings').select('*').then(function({ data }) {
-            if (data) setHoldings(data);
+            if (data) {
+                lastKnownRef.current = data;
+                setHoldings(data);
+                setShowingCached(false);
+            }
         });
     }
 
@@ -1030,8 +1118,20 @@ export function NexusPage() {
     useEffect(function() {
         if (!sb) { setLoading(false); return; }
         sb.from('vw_nexus_holdings').select('*').then(function({ data, error }) {
-            if (error) setErr(error.message);
-            else setHoldings(data || []);
+            if (error) {
+                // Fall back to last-known cache on error
+                if (lastKnownRef.current.length) {
+                    setHoldings(lastKnownRef.current);
+                    setShowingCached(true);
+                    setLastKnownTs(new Date());
+                } else {
+                    setErr(error.message);
+                }
+            } else {
+                lastKnownRef.current = data || [];
+                setHoldings(data || []);
+                setShowingCached(false);
+            }
             setLoading(false);
         });
     }, []);
@@ -1039,8 +1139,15 @@ export function NexusPage() {
     useEffect(function() {
         function onRefresh() {
             if (!sb) return;
-            sb.from('vw_nexus_holdings').select('*').then(function({ data }) {
-                if (data) setHoldings(data);
+            sb.from('vw_nexus_holdings').select('*').then(function({ data, error }) {
+                if (!error && data) {
+                    lastKnownRef.current = data;
+                    setHoldings(data);
+                    setShowingCached(false);
+                } else if (error && lastKnownRef.current.length) {
+                    setShowingCached(true);
+                    setLastKnownTs(new Date());
+                }
             });
         }
         window.addEventListener('atlas:refresh', onRefresh);
@@ -1057,11 +1164,12 @@ export function NexusPage() {
 
     return e('div', { className: 'nexus-root' },
         e(FundamentalsBanner, { state: syncState, missingFundamentals, onSync: runSync }),
-        e(NexusHeader,   { holdings, onSync: runSync, syncState }),
+        e(StaleBanner, { tier: freshness.tier, ageMin: freshness.ageMin, lastOkAt: freshness.lastOkAt, showingCached, lastKnownTs }),
+        e(NexusHeader,   { holdings, onSync: runSync, syncState, freshness, circuitTripped }),
         e('div', { className: 'nx-three-col' },
             e(ConvictionPanel, { holdings }),
             e(IntelCanvas,     { holdings }),
-            e(ActionCentre,    { holdings })
+            e(ActionCentre,    { holdings, disabled: execDisabled })
         ),
         e(NexusHoldings, { holdings })
     );
