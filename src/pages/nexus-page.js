@@ -926,6 +926,10 @@ const NEXUS_NAV = [
     { id: 'markets',     icon: '◎', label: 'Markets'   },
     { id: 'options',     icon: 'Ω', label: 'Options'   },
     { id: 'valuation',   icon: '◈', label: 'Valuation' },
+    { id: 'pcm',         icon: '⊞', label: 'PCM'       },
+    { id: 'scrapbook',   icon: '✦', label: 'Scrapbook' },
+    { id: 'command',     icon: '⌘', label: 'Command'   },
+    { id: 'sql',         icon: '⌗', label: 'SQL'       },
 ];
 
 // NexusShell is the universal persistent app shell — exported so app.js
