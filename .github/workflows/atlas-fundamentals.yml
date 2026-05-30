@@ -1,0 +1,37 @@
+name: ATLAS Fundamentals Sync
+
+# Populates equity_cache with overview fundamentals (P/E, PEG, Beta,
+# analyst targets) for every portfolio holding, so the Nexus valuation
+# columns light up. Runs pre-market on weekdays; can be triggered manually.
+
+on:
+  schedule:
+    # 7:30 AM ET (12:30 UTC) weekdays — before the morning Alpaca sync
+    - cron: '30 12 * * 1-5'
+  workflow_dispatch:
+
+jobs:
+  fundamentals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --prefer-offline
+
+      - name: Run fundamentals sync
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ATLAS_API_BASE: ${{ secrets.ATLAS_API_BASE }}
+          FUNDAMENTALS_THROTTLE_MS: '1500'
+        run: node scripts/sync-fundamentals.mjs
