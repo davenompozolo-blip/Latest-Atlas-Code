@@ -161,6 +161,40 @@ function buildConsensus(valMap, wts) {
     }, 0) / totalWt;
 }
 
+// Patches the mapped ValuationHouse state with real values from assembleFundamentals.
+// Only overwrites fields where hasData===true and the value is non-null/non-zero.
+// FCFE can be negative (high-capex companies) so we don't clamp it.
+function applyFundamentalsHydration(mappedState, fund) {
+    if (!fund) return mappedState;
+    var fcf = Object.assign({}, mappedState.fcf);
+    var ddm = Object.assign({}, mappedState.ddm);
+    var changed = false;
+
+    if (fund.fcff && fund.fcff.hasData && fund.fcff.value != null) {
+        fcf.fcff0 = Math.round(fund.fcff.value * 10) / 10;
+        changed = true;
+    }
+    if (fund.fcfe && fund.fcfe.hasData && fund.fcfe.value != null) {
+        fcf.fcfe0 = Math.round(fund.fcfe.value * 10) / 10;
+        changed = true;
+    }
+    if (fund.totalDebt && fund.totalDebt.hasData && fund.totalDebt.value != null) {
+        fcf.debt = fund.totalDebt.value;
+        changed = true;
+    }
+    if (fund.cash && fund.cash.hasData && fund.cash.value != null) {
+        fcf.cash = fund.cash.value;
+        changed = true;
+    }
+    if (fund.dividend && fund.dividend.hasData && fund.dividend.value != null) {
+        ddm.D0 = fund.dividend.value;
+        changed = true;
+    }
+
+    if (!changed) return mappedState;
+    return Object.assign({}, mappedState, { fcf: fcf, ddm: ddm });
+}
+
 function detectTraps(s, re, wc) {
     var t = [];
     if (wc <= s.fcf.gL)
@@ -585,19 +619,98 @@ export function ValuationHouse(props) {
                     var prov = deriveProvenance(raw.overview || {}, mapped, norm);
                     var intel = { sectorCode: sectorCode, sectorLabel: norm.label, provenance: prov };
                     setIntelligence(intel);
-                    var re0 = mapped.coc.rf + mapped.coc.beta * mapped.coc.erp;
-                    var wc0 = re0 * (1 - mapped.coc.wd) + mapped.coc.rd * (1 - mapped.coc.tax) * mapped.coc.wd;
-                    var em0 = mapped.mult.ebitda > 0 && mapped.mult.rev > 0
-                        ? (mapped.mult.ebitda / mapped.mult.rev) * 100 : norm.ebitdaMargin.base;
+                    // Fundamentals hydration — derive values from real statement data,
+                    // then write them into form state so inputs show actual numbers.
+                    var fund = assembleFundamentals(raw, mapped);
+                    setFundamentals(fund);
+                    var hydratedS = applyFundamentalsHydration(mapped, fund);
+                    if (hydratedS !== mapped) setS(hydratedS);
+                    var activeS = hydratedS;
+                    var re0 = activeS.coc.rf + activeS.coc.beta * activeS.coc.erp;
+                    var wc0 = re0 * (1 - activeS.coc.wd) + activeS.coc.rd * (1 - activeS.coc.tax) * activeS.coc.wd;
+                    var em0 = activeS.mult.ebitda > 0 && activeS.mult.rev > 0
+                        ? (activeS.mult.ebitda / activeS.mult.rev) * 100 : norm.ebitdaMargin.base;
                     setCompassResult(computeCompassScore({
                         wacc: wc0 * 100,
-                        terminalGrowth: mapped.fcf.gL * 100,
-                        revenueGrowthNear: mapped.ddm.gS * 100,
+                        terminalGrowth: activeS.fcf.gL * 100,
+                        revenueGrowthNear: activeS.ddm.gS * 100,
                         ebitdaMargin: em0,
-                        beta: mapped.coc.beta,
+                        beta: activeS.coc.beta,
+                        historicalCAGR: fund.historicalCAGR,
+                        isDDMActive: false,
+                        dividend: activeS.ddm.D0,
+                        totalDebt: activeS.fcf.debt,
+                        interestExpenseM: fund.interestExpenseM || 0,
                     }, sectorCode));
                 } catch(_) {}
                 setIntelligenceLoading(false);
+                // Background EDGAR enrichment — upgrades provenance labels with 10-K accession
+                // Fires after primary render; failures are silently ignored
+                fetch('/api/edgar?symbol=' + encodeURIComponent(pendingSymbol))
+                    .then(function(r) { return r.json(); })
+                    .then(function(edgar) {
+                        if (cancelled || !edgar || !edgar.cik || !edgar.concepts) return;
+                        var c = edgar.concepts;
+                        // Upgrade provenance labels and, where Finnhub had no data, write
+                        // EDGAR XBRL values into both fundamentals and form state.
+                        setFundamentals(function(prev) {
+                            if (!prev) return prev;
+                            var next = Object.assign({}, prev);
+                            function upgradeField(key, concept) {
+                                if (concept && concept.accn && next[key]) {
+                                    var upgradedProv = (next[key].provenance || '')
+                                        .replace(/FY\d{4}/, 'FY' + concept.fy)
+                                        + (next[key].provenance.indexOf('accn') < 0
+                                            ? ' · accn ' + concept.accn.slice(0, 20) : '');
+                                    next[key] = Object.assign({}, next[key], {
+                                        source: '10-K',
+                                        provenance: upgradedProv,
+                                        // Back-fill value from EDGAR if Finnhub had no data
+                                        value: next[key].hasData ? next[key].value : concept.valM,
+                                        hasData: next[key].hasData || (concept.valM != null),
+                                    });
+                                }
+                            }
+                            upgradeField('fcff', c.cfo);
+                            upgradeField('fcfe', c.cfo);
+                            upgradeField('totalDebt', c.debt);
+                            upgradeField('cash', c.cash);
+                            upgradeField('shares', c.shares);
+                            upgradeField('dividend', c.dps);
+                            return next;
+                        });
+                        // Also patch form state for fields that Finnhub left at defaults
+                        setS(function(prev) {
+                            var fcfPatch = {};
+                            var ddmPatch = {};
+                            var any = false;
+                            // Only write if Finnhub snapshot produced a default (i.e., value still
+                            // matches the INIT sentinel values — 500/400/5000/2000)
+                            if (c.cfo && c.cfo.valM != null && prev.fcf.fcff0 === 500) {
+                                // Approximate FCFF from CFO: FCFF ≈ CFO + interest×(1-tax)
+                                var cfoM = c.cfo.valM;
+                                var capexM = c.capex ? c.capex.valM : 0;
+                                var edgarFcfe = cfoM - (capexM || 0);
+                                fcfPatch.fcff0 = Math.round(edgarFcfe * 1.1 * 10) / 10;
+                                fcfPatch.fcfe0 = Math.round(edgarFcfe * 10) / 10;
+                                any = true;
+                            }
+                            if (c.debt && c.debt.valM != null && prev.fcf.debt === 5000) {
+                                fcfPatch.debt = Math.round(c.debt.valM);
+                                any = true;
+                            }
+                            if (c.cash && c.cash.valM != null && prev.fcf.cash === 2000) {
+                                fcfPatch.cash = Math.round(c.cash.valM);
+                                any = true;
+                            }
+                            if (!any) return prev;
+                            return Object.assign({}, prev, {
+                                fcf: Object.assign({}, prev.fcf, fcfPatch),
+                                ddm: Object.assign({}, prev.ddm, ddmPatch),
+                            });
+                        });
+                    })
+                    .catch(function() {}); // EDGAR is enrichment, never critical path
             })
             .catch(function(e) {
                 if (cancelled) return;

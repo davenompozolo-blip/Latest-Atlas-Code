@@ -334,6 +334,7 @@ function mapFinancials(summary) {
     var fd = summary.financialData || {};
     var stats = summary.defaultKeyStatistics || {};
     var earn = summary.earnings || {};
+    var detail = summary.summaryDetail || {};
 
     // Snapshot: current-period financial metrics
     var snapshot = {};
@@ -445,7 +446,7 @@ async function finnhubFundamentals(symbol) {
     // Try symbol candidates in order — stop at first one with a valid profile
     var candidates = finnhubSymbolCandidates(symbol);
     var lastErr = null;
-    var profile, metrics, recs, earnings, rawPeers;
+    var profile, metrics, recs, earnings, rawPeers, reported;
 
     for (var ci = 0; ci < candidates.length; ci++) {
         var sym = encodeURIComponent(candidates[ci]);
@@ -456,6 +457,7 @@ async function finnhubFundamentals(symbol) {
                 finnhubGet('/stock/recommendation?symbol=' + sym),
                 finnhubGet('/stock/earnings?symbol=' + sym),
                 finnhubGet('/stock/peers?symbol=' + sym),
+                finnhubGet('/financials-reported?symbol=' + sym + '&freq=annual&limit=4'),
             ]);
             var p = results[0].status === 'fulfilled' ? results[0].value : {};
             if (p && p.ticker) {
@@ -464,6 +466,7 @@ async function finnhubFundamentals(symbol) {
                 recs     = results[2].status === 'fulfilled' ? results[2].value : [];
                 earnings = results[3].status === 'fulfilled' ? results[3].value : [];
                 rawPeers = results[4].status === 'fulfilled' ? results[4].value : [];
+                reported = results[5].status === 'fulfilled' ? results[5].value : null;
                 break;
             }
             lastErr = new Error('empty profile for ' + candidates[ci]);
@@ -477,7 +480,7 @@ async function finnhubFundamentals(symbol) {
     }
 
     var peers = Array.isArray(rawPeers) ? rawPeers.filter(function(p) { return p && p !== symbol; }).slice(0, 8) : [];
-    return { profile: profile, metrics: metrics, recs: recs, earnings: earnings, peers: peers };
+    return { profile: profile, metrics: metrics, recs: recs, earnings: earnings, peers: peers, reported: reported };
 }
 
 function mapFinnhubOverview(data, symbol) {
@@ -514,6 +517,86 @@ function mapFinnhubOverview(data, symbol) {
         set('AnalystRatingSell', rec.sell);
         set('AnalystRatingStrongSell', rec.strongSell);
     }
+    return out;
+}
+
+// Extracts absolute financial statement values from Finnhub's /financials-reported
+// endpoint, which returns XBRL data from SEC 10-K filings.
+// Returns a flat object of absolute values (in raw dollars, not $M).
+function mapFinnhubReported(reported) {
+    if (!reported || !Array.isArray(reported.data) || !reported.data.length) return {};
+    // Most recent annual filing (quarter === 0 means annual)
+    var annuals = reported.data.filter(function(d) { return d.quarter === 0 && d.report; });
+    if (!annuals.length) {
+        // Some filers use quarter = 4 for annual
+        annuals = reported.data.filter(function(d) { return d.report; });
+    }
+    if (!annuals.length) return {};
+    annuals.sort(function(a, b) { return a.year < b.year ? 1 : -1; });
+    var latest = annuals[0];
+    var report = latest.report;
+
+    function concept(items, tags) {
+        if (!Array.isArray(items)) return null;
+        for (var t = 0; t < tags.length; t++) {
+            for (var i = 0; i < items.length; i++) {
+                var v = items[i];
+                if (v.concept === tags[t] && v.value != null && isFinite(v.value) && v.value !== 0) {
+                    return Number(v.value);
+                }
+            }
+        }
+        return null;
+    }
+
+    var bs = report.bs || [];
+    var ic = report.ic || [];
+    var cf = report.cf || [];
+
+    var cash = concept(bs, [
+        'CashAndCashEquivalentsAtCarryingValue',
+        'CashCashEquivalentsAndShortTermInvestments',
+        'CashAndCashEquivalentsPeriodIncreaseDecrease',
+    ]);
+
+    var ltDebt  = concept(bs, ['LongTermDebtNoncurrent', 'LongTermDebt', 'LongTermDebtAndCapitalLeaseObligations', 'LongTermDebtAndFinanceLeaseLiabilities']);
+    var curDebt = concept(bs, ['DebtCurrent', 'ShortTermBorrowings', 'LongTermDebtCurrent', 'CurrentPortionOfLongTermDebt', 'NotesPayableCurrent', 'CommercialPaper']);
+    var totalDebt = (ltDebt != null || curDebt != null) ? (ltDebt || 0) + (curDebt || 0) : null;
+
+    var ocf = concept(cf, [
+        'NetCashProvidedByUsedInOperatingActivities',
+        'NetCashProvidedByUsedInOperatingActivitiesContinuingOperations',
+    ]);
+    var capexRaw = concept(cf, [
+        'PaymentsToAcquirePropertyPlantAndEquipment',
+        'PaymentsForCapitalImprovements',
+        'PurchasesOfPropertyAndEquipment',
+    ]);
+    var capex = capexRaw != null ? Math.abs(capexRaw) : null;
+    var fcf = (ocf != null && capex != null) ? ocf - capex : null;
+
+    var interest = concept(ic, ['InterestExpense', 'InterestAndDebtExpense', 'InterestExpenseDebt', 'InterestExpenseRelatedParty']);
+    if (interest == null) interest = concept(cf, ['InterestPaidNet', 'InterestPaid']);
+    if (interest != null) interest = Math.abs(interest);
+
+    var revenue = concept(ic, [
+        'Revenues', 'RevenueFromContractWithCustomerExcludingAssessedTax',
+        'SalesRevenueNet', 'RevenueFromContractWithCustomerIncludingAssessedTax',
+        'SalesRevenueGoodsNet', 'RealEstateRevenueNet',
+    ]);
+    var netIncome = concept(ic, ['NetIncomeLoss', 'NetIncome', 'ProfitLoss', 'NetIncomeLossAttributableToParent']);
+
+    var out = {};
+    if (cash     != null) out.totalCash        = cash;
+    if (totalDebt!= null) out.totalDebt        = totalDebt;
+    if (ocf      != null) out.operatingCashflow= ocf;
+    if (capex    != null) out.capitalExpenditures = capex;
+    if (fcf      != null) out.freeCashflow     = fcf;
+    if (interest != null) out.interestExpense  = interest;
+    if (revenue  != null) out.totalRevenue     = revenue;
+    if (netIncome!= null) out.netIncome        = netIncome;
+    out._fy   = latest.year;
+    out._accn = latest.accessNumber || '';
     return out;
 }
 
@@ -591,9 +674,11 @@ function mapFinnhubFinancials(data) {
         perShare('ebitPerShare')
     ));
 
+    // freeCashflow: series.annual first, then per-share derivation.
+    // Do NOT use findM('freeCashFlow') — it matches freeCashFlowPerShareAnnual,
+    // returning a per-share value that gets treated as an absolute number.
     ss('freeCashflow', firstOf(
         latestVal('freeCashFlow'), latestVal('fcf'), latestVal('freeCashflow'),
-        findM('freeCashFlow'),
         perShare('fcfPerShare'),
         perShare('freeCashFlowPerShare')
     ));
@@ -601,20 +686,22 @@ function mapFinnhubFinancials(data) {
     ss('operatingCashflow', firstOf(
         latestVal('cashFlowFromOperatingActivities'), latestVal('operatingCashFlow'),
         latestVal('operatingCashflow'), latestVal('cashFromOperations'),
-        findM('operatingCashFlow'),
         perShare('cashFlowPerShare')
     ));
 
+    // totalCash / totalDebt: series.annual then per-share. Do NOT use findM —
+    // it matches ratio metrics (totalDebtToEquityAnnual, cashRatioAnnual, etc.)
+    // which are dimensionless and far too small to be treated as $-absolute values.
     ss('totalCash', firstOf(
         latestVal('cashAndShortTermInvestments'), latestVal('totalCash'),
         latestVal('cash'), latestVal('cashAndEquivalents'),
-        findM('totalCash'),
         perShare('cashPerShare')
     ));
 
     ss('totalDebt', firstOf(
         latestVal('totalDebt'),
-        findM('totalDebt'),
+        latestVal('longTermDebt'),
+        perShare('debtPerShare'),
         perShare('totalDebtPerShare'),
         perShare('longTermDebtPerShare')
     ));
@@ -684,6 +771,26 @@ function mapFinnhubFinancials(data) {
     if (snapshot.enterpriseValue && snapshot.ebitda) {
         snapshot.evToEbitda = snapshot.enterpriseValue / snapshot.ebitda;
     }
+
+    // --- Supplement from financials-reported (XBRL 10-K) ---
+    // Fills gaps where basicFinancials series.annual is absent. These are absolute
+    // dollar values from SEC XBRL, so they take precedence over per-share derivations
+    // but yield to values already resolved above (series.annual is more current).
+    var rep = mapFinnhubReported(data.reported);
+    if (snapshot.freeCashflow     == null && rep.freeCashflow      != null) snapshot.freeCashflow      = rep.freeCashflow;
+    if (snapshot.operatingCashflow== null && rep.operatingCashflow != null) snapshot.operatingCashflow = rep.operatingCashflow;
+    if (snapshot.totalCash        == null && rep.totalCash         != null) snapshot.totalCash         = rep.totalCash;
+    if (snapshot.totalDebt        == null && rep.totalDebt         != null) snapshot.totalDebt         = rep.totalDebt;
+    if (snapshot.interestExpense  == null && rep.interestExpense   != null) snapshot.interestExpense   = rep.interestExpense;
+    if (snapshot.totalRevenue     == null && rep.totalRevenue      != null) snapshot.totalRevenue      = rep.totalRevenue;
+    if (snapshot.netIncome        == null && rep.netIncome         != null) snapshot.netIncome         = rep.netIncome;
+    if (snapshot.capitalExpenditures == null && rep.capitalExpenditures != null) snapshot.capitalExpenditures = rep.capitalExpenditures;
+    // Re-derive FCF if we now have OCF + CapEx from reported but FCF was still null
+    if (snapshot.freeCashflow == null && snapshot.operatingCashflow != null && snapshot.capitalExpenditures != null) {
+        snapshot.freeCashflow = snapshot.operatingCashflow - snapshot.capitalExpenditures;
+    }
+    // Attach fiscal year metadata for provenance labels
+    if (rep._fy) { snapshot._reportedFY = rep._fy; snapshot._reportedAccn = rep._accn || ''; }
 
     // --- Yearly & quarterly trends ---
 
@@ -762,7 +869,16 @@ async function getOverview(symbol, skipCache) {
     if (!skipCache) {
         const mem = memGet(key); if (mem) return { data: mem, cache: 'mem' };
         const db = await dbCacheGet(key);
-        if (db) { memSet(key, db); return { data: db, cache: 'db' }; }
+        if (db) {
+            // Skip stale cache entries that pre-date the financials-reported addition.
+            // A fresh payload always has snapshot._reportedFY set for US stocks, or
+            // the Finnhub reported fetch will have run (non-US returns {} from mapFinnhubReported).
+            // We detect staleness by checking for the absence of this field when there IS
+            // financials data — old payloads have snapshot but no _reportedFY.
+            var snap = db.financials && db.financials.snapshot;
+            var isStale = snap && snap._reportedFY == null && snap.totalRevenue != null;
+            if (!isStale) { memSet(key, db); return { data: db, cache: 'db' }; }
+        }
     }
 
     var data = null;
@@ -816,7 +932,7 @@ export default async function handler(req, res) {
     }
 
     try {
-        const payload = { symbol: symbol, cached_at: new Date().toISOString(), _v: 6 };
+        const payload = { symbol: symbol, cached_at: new Date().toISOString(), _v: 7 };
         const cacheHits = { overview: null, daily: null };
         var ovSource = 'unknown';
         var finnhubKeyPresent = !!(process.env.FINNHUB_API_KEY || '').trim();

@@ -258,3 +258,123 @@ export function computeCompassScore(inputs, sectorCode) {
     flags
   };
 }
+
+// ============================================================
+// FUNDAMENTALS HYDRATION
+// Derives provenance-tagged metadata from the /api/equity response.
+// assembleFundamentals(raw, mappedState) is called AFTER mapPayload
+// has already set s — this layer adds source attribution and computes
+// more accurate FCFF using actual interest expense when available.
+// ============================================================
+
+/**
+ * Assembles provenance-tagged fundamentals metadata from the combined
+ * /api/equity response and the already-mapped ValuationHouse state.
+ *
+ * Returns one entry per hard-data field ({ value, source, provenance, hasData })
+ * plus historicalCAGR and interestExpenseM for the Compass.
+ *
+ * @param {object} raw          - full /api/equity JSON response
+ * @param {object} mappedState  - the `s` state object from ValuationHouse
+ */
+export function assembleFundamentals(raw, mappedState) {
+  const fin = (raw.financials && raw.financials.snapshot) || {};
+  const ov = raw.overview || {};
+  const yearly = (raw.financials && raw.financials.yearly) || [];
+  const s = mappedState;
+
+  const srcLabel = (raw.source && raw.source.overview) || 'Finnhub';
+  // Use reported FY from financials-reported endpoint when available (more precise than yearly array)
+  const reportedFY = fin._reportedFY || '';
+  const latestFY = reportedFY || (yearly.length ? yearly[yearly.length - 1].year : '');
+
+  // FCFE: Finnhub's freeCashflow ≈ CFO − CapEx
+  const fcfeRaw = fin.freeCashflow;
+  const fcfeM = fcfeRaw != null ? +(fcfeRaw / 1e6).toFixed(1) : null;
+
+  // FCFF: FCFE + Int(1−t) — use actual interestExpense where available
+  const interestRaw = fin.interestExpense;
+  const interestM = interestRaw != null ? interestRaw / 1e6 : null;
+  const effTax = s.coc.tax;
+  let fcffM = null;
+  let fcffProv = '';
+  if (fcfeRaw != null && interestRaw != null) {
+    fcffM = +((fcfeRaw + interestRaw * (1 - effTax)) / 1e6).toFixed(1);
+    fcffProv = `CFO + Int(1−t) − CapEx · FY${latestFY}`;
+  } else if (fcfeRaw != null) {
+    const intApprox = s.fcf.debt * s.coc.rd;
+    fcffM = +((fcfeRaw / 1e6) + intApprox * (1 - effTax)).toFixed(1);
+    fcffProv = `FCFE + debt×rd×(1−t) · FY${latestFY}`;
+  }
+
+  // Historical CAGR — prefer OCF series, fall back to revenue
+  let historicalCAGR = null;
+  const ocfYears = yearly.filter(yr => yr.ocf != null && yr.ocf > 0);
+  if (ocfYears.length >= 2) {
+    const n = ocfYears.length - 1;
+    historicalCAGR = +((Math.pow(ocfYears[n].ocf / ocfYears[0].ocf, 1 / n) - 1) * 100).toFixed(1);
+  } else {
+    const revYears = yearly.filter(yr => yr.revenue != null && yr.revenue > 0);
+    if (revYears.length >= 2) {
+      const n = revYears.length - 1;
+      historicalCAGR = +((Math.pow(revYears[n].revenue / revYears[0].revenue, 1 / n) - 1) * 100).toFixed(1);
+    }
+  }
+
+  const totalDebtM = fin.totalDebt != null ? +(fin.totalDebt / 1e6).toFixed(0) : null;
+  const cashM = fin.totalCash != null ? +(fin.totalCash / 1e6).toFixed(0) : null;
+
+  const dpsRaw = fin.dividendPerShare != null
+    ? fin.dividendPerShare
+    : Number(ov.DividendYield || 0) * s.co.price;
+  const dps = +Math.max(0, dpsRaw).toFixed(2);
+  const dpsSrc = fin.dividendPerShare != null ? srcLabel : 'DivYield × Price';
+
+  return {
+    fcff: {
+      value: fcffM,
+      source: fcfeRaw != null ? srcLabel : 'Estimated',
+      provenance: fcffProv || (fcffM == null ? 'No statement data — preset value' : ''),
+      hasData: fcffM != null
+    },
+    fcfe: {
+      value: fcfeM,
+      source: fcfeRaw != null ? srcLabel : 'Estimated',
+      provenance: fcfeRaw != null
+        ? `Reported FCF (CFO−CapEx) · FY${latestFY}`
+        : 'No statement data — preset value',
+      hasData: fcfeM != null
+    },
+    totalDebt: {
+      value: totalDebtM,
+      source: totalDebtM != null ? srcLabel + ' BS' : 'Default',
+      provenance: totalDebtM != null
+        ? `Total debt $${totalDebtM}M · FY${latestFY}`
+        : 'No balance-sheet data — preset value',
+      hasData: totalDebtM != null
+    },
+    cash: {
+      value: cashM,
+      source: cashM != null ? srcLabel + ' BS' : 'Default',
+      provenance: cashM != null
+        ? `Cash & equivalents $${cashM}M · FY${latestFY}`
+        : 'No balance-sheet data — preset value',
+      hasData: cashM != null
+    },
+    shares: {
+      value: s.fcf.shs,
+      source: srcLabel,
+      provenance: `${s.fcf.shs}M shares outstanding`,
+      hasData: true
+    },
+    dividend: {
+      value: dps,
+      source: dpsSrc,
+      provenance: dps > 0 ? `D₀ = $${dps}/share · annualised` : 'Non-dividend payer (D₀ = 0)',
+      hasData: true
+    },
+    historicalCAGR,
+    interestExpenseM: interestM,
+    latestFY,
+  };
+}
