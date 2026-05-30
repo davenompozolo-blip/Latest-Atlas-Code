@@ -116,6 +116,11 @@ function App() {
 
     var ActiveComponent = TABS.find(function(t) { return t.id === activeTab; }).component;
 
+    // Nexus owns its entire viewport — bypass the ATLAS shell entirely
+    if (activeTab === 'nexus') {
+        return React.createElement(NexusPage, { onNavigate: setActiveTab });
+    }
+
     // Load summary data for top bar — also re-runs on atlas:refresh
     useEffect(function() {
         function load() {

@@ -776,8 +776,107 @@ function NexusHoldings({ holdings }) {
     );
 }
 
+// ── Nexus shell: own topbar + icon sidebar ────────────────────
+const NEXUS_NAV = [
+    { id: 'nexus',       icon: '⬡', label: 'Nexus'     },
+    { id: 'portfolio',   icon: '◎', label: 'Portfolio' },
+    { id: 'trading',     icon: '▶', label: 'Trade'     },
+    { id: 'quant',       icon: '◇', label: 'Quant'     },
+    { id: 'risk',        icon: '△', label: 'Risk'      },
+    { id: 'performance', icon: '◆', label: 'Perf'      },
+    { id: 'equity',      icon: '□', label: 'Equity'    },
+    { id: 'macro',       icon: '◉', label: 'Macro'     },
+    { id: 'funds',       icon: '■', label: 'Funds'     },
+    { id: 'markets',     icon: '◎', label: 'Markets'   },
+    { id: 'options',     icon: 'Ω', label: 'Options'   },
+    { id: 'valuation',   icon: '◈', label: 'Valuation' },
+];
+
+function NexusShell({ children, onNavigate }) {
+    const topPills = ['nexus', 'portfolio', 'equity', 'macro', 'quant', 'trading', 'risk', 'funds'];
+    return e('div', {
+        style: {
+            position: 'fixed', inset: 0, zIndex: 9000,
+            display: 'flex', flexDirection: 'column',
+            background: 'var(--nx-bg1)', fontFamily: 'var(--nx-fb)',
+            overflow: 'hidden'
+        }
+    },
+        // gradient accent line
+        e('div', { style: { height: 2, flexShrink: 0, background: 'linear-gradient(90deg,transparent,var(--nx-blue),var(--nx-purple),transparent)' } }),
+        // topbar
+        e('div', {
+            style: {
+                height: 44, flexShrink: 0, display: 'flex', alignItems: 'center',
+                gap: 0, padding: '0 16px', borderBottom: '1px solid var(--nx-border)',
+                background: 'var(--nx-bg2)'
+            }
+        },
+            // Logo
+            e('div', { style: { display: 'flex', flexDirection: 'column', lineHeight: 1.1, marginRight: 24 } },
+                e('span', { style: { fontSize: 15, fontWeight: 800, letterSpacing: 2, color: 'var(--nx-blue)', fontFamily: 'var(--nx-fd)' } }, 'ATLAS⬡'),
+                e('span', { style: { fontSize: 7, letterSpacing: 2.5, color: 'var(--nx-text3)', textTransform: 'uppercase' } }, 'NEXUS')
+            ),
+            // top-nav pills
+            e('div', { style: { display: 'flex', gap: 2, flex: 1 } },
+                topPills.map(function(id) {
+                    const nav = NEXUS_NAV.find(n => n.id === id);
+                    if (!nav) return null;
+                    const isActive = id === 'nexus';
+                    return e('button', {
+                        key: id,
+                        onClick: () => onNavigate && onNavigate(id),
+                        style: {
+                            padding: '4px 10px', borderRadius: 4, border: 'none', cursor: 'pointer',
+                            fontSize: 9, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase',
+                            fontFamily: 'var(--nx-fb)',
+                            background: isActive ? 'rgba(0,212,255,.15)' : 'transparent',
+                            color: isActive ? 'var(--nx-blue)' : 'var(--nx-text3)',
+                            transition: 'all .15s'
+                        }
+                    }, nav.label);
+                })
+            ),
+            // regime badge
+            e('div', { style: { padding: '3px 8px', borderRadius: 4, background: 'rgba(20,184,166,.12)', color: 'var(--nx-teal)', fontSize: 9, fontWeight: 600, letterSpacing: 1, marginRight: 12 } }, 'RISK-ON'),
+            e(Clock, null)
+        ),
+        // body: icon sidebar + main
+        e('div', { style: { display: 'flex', flex: 1, overflow: 'hidden' } },
+            // 48px icon sidebar
+            e('nav', {
+                style: {
+                    width: 48, flexShrink: 0, display: 'flex', flexDirection: 'column',
+                    alignItems: 'center', paddingTop: 12, gap: 4,
+                    borderRight: '1px solid var(--nx-border)', background: 'var(--nx-bg2)', overflowY: 'auto'
+                }
+            },
+                NEXUS_NAV.map(function(nav) {
+                    const isActive = nav.id === 'nexus';
+                    return e('button', {
+                        key: nav.id,
+                        title: nav.label,
+                        onClick: () => onNavigate && onNavigate(nav.id),
+                        style: {
+                            width: 36, height: 36, borderRadius: 6, border: 'none', cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: 14, transition: 'all .15s',
+                            background: isActive ? 'rgba(0,212,255,.15)' : 'transparent',
+                            color: isActive ? 'var(--nx-blue)' : 'var(--nx-text3)'
+                        }
+                    }, nav.icon);
+                })
+            ),
+            // scrollable main content
+            e('div', { style: { flex: 1, overflowY: 'auto', overflowX: 'hidden' } },
+                children
+            )
+        )
+    );
+}
+
 // ── Main export ───────────────────────────────────────────────
-export function NexusPage() {
+export function NexusPage({ onNavigate }) {
     const [holdings, setHoldings] = useState([]);
     const [loading,  setLoading]  = useState(true);
     const [err,      setErr]      = useState(null);
@@ -803,30 +902,38 @@ export function NexusPage() {
     }, []);
 
     if (loading) {
-        return e('div', { className: 'nexus-root nx-loading' },
-            e('div', { style: { fontSize: 20, marginBottom: 10 } }, '⬡'),
-            'Loading Nexus Holdings…'
+        return e(NexusShell, { onNavigate },
+            e('div', { className: 'nexus-root nx-loading' },
+                e('div', { style: { fontSize: 20, marginBottom: 10 } }, '⬡'),
+                'Loading Nexus Holdings…'
+            )
         );
     }
     if (err) {
-        return e('div', { className: 'nexus-root nx-error' },
-            '⚠ Failed to load vw_nexus_holdings: ', e('br'), err
+        return e(NexusShell, { onNavigate },
+            e('div', { className: 'nexus-root nx-error' },
+                '⚠ Failed to load vw_nexus_holdings: ', e('br'), err
+            )
         );
     }
     if (!sb || !holdings.length) {
-        return e('div', { className: 'nexus-root nx-loading' },
-            e('div', { style: { fontSize: 20, marginBottom: 10 } }, '⬡'),
-            'No holdings data — configure Supabase key to load Nexus Intelligence.'
+        return e(NexusShell, { onNavigate },
+            e('div', { className: 'nexus-root nx-loading' },
+                e('div', { style: { fontSize: 20, marginBottom: 10 } }, '⬡'),
+                'No holdings data — configure Supabase key to load Nexus Intelligence.'
+            )
         );
     }
 
-    return e('div', { className: 'nexus-root' },
-        e(NexusHeader,   { holdings }),
-        e('div', { className: 'nx-three-col' },
-            e(ConvictionPanel, { holdings }),
-            e(IntelCanvas,     { holdings }),
-            e(ActionCentre,    { holdings })
-        ),
-        e(NexusHoldings, { holdings })
+    return e(NexusShell, { onNavigate },
+        e('div', { className: 'nexus-root' },
+            e(NexusHeader,   { holdings }),
+            e('div', { className: 'nx-three-col' },
+                e(ConvictionPanel, { holdings }),
+                e(IntelCanvas,     { holdings }),
+                e(ActionCentre,    { holdings })
+            ),
+            e(NexusHoldings, { holdings })
+        )
     );
 }
