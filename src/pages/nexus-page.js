@@ -794,7 +794,9 @@ const NEXUS_NAV = [
     { id: 'valuation',   icon: '◈', label: 'Valuation' },
 ];
 
-function NexusShell({ children, onNavigate }) {
+// NexusShell is the universal persistent app shell — exported so app.js
+// can use it for every module, not just the Nexus landing page.
+export function NexusShell({ children, onNavigate, activeTab }) {
     const topPills = ['nexus', 'portfolio', 'equity', 'macro', 'quant', 'trading', 'risk', 'funds'];
     return e('div', {
         style: {
@@ -814,17 +816,15 @@ function NexusShell({ children, onNavigate }) {
                 background: 'var(--nx-bg2)'
             }
         },
-            // Logo
             e('div', { style: { display: 'flex', flexDirection: 'column', lineHeight: 1.1, marginRight: 24 } },
                 e('span', { style: { fontSize: 15, fontWeight: 800, letterSpacing: 2, color: 'var(--nx-blue)', fontFamily: 'var(--nx-fd)' } }, 'ATLAS⬡'),
                 e('span', { style: { fontSize: 7, letterSpacing: 2.5, color: 'var(--nx-text3)', textTransform: 'uppercase' } }, 'NEXUS')
             ),
-            // top-nav pills
             e('div', { style: { display: 'flex', gap: 2, flex: 1 } },
                 topPills.map(function(id) {
                     const nav = NEXUS_NAV.find(n => n.id === id);
                     if (!nav) return null;
-                    const isActive = id === 'nexus';
+                    const isActive = id === activeTab;
                     return e('button', {
                         key: id,
                         onClick: () => onNavigate && onNavigate(id),
@@ -839,13 +839,11 @@ function NexusShell({ children, onNavigate }) {
                     }, nav.label);
                 })
             ),
-            // regime badge
             e('div', { style: { padding: '3px 8px', borderRadius: 4, background: 'rgba(20,184,166,.12)', color: 'var(--nx-teal)', fontSize: 9, fontWeight: 600, letterSpacing: 1, marginRight: 12 } }, 'RISK-ON'),
             e(Clock, null)
         ),
         // body: icon sidebar + main
         e('div', { style: { display: 'flex', flex: 1, overflow: 'hidden' } },
-            // 48px icon sidebar
             e('nav', {
                 style: {
                     width: 48, flexShrink: 0, display: 'flex', flexDirection: 'column',
@@ -854,7 +852,7 @@ function NexusShell({ children, onNavigate }) {
                 }
             },
                 NEXUS_NAV.map(function(nav) {
-                    const isActive = nav.id === 'nexus';
+                    const isActive = nav.id === activeTab;
                     return e('button', {
                         key: nav.id,
                         title: nav.label,
@@ -869,7 +867,6 @@ function NexusShell({ children, onNavigate }) {
                     }, nav.icon);
                 })
             ),
-            // scrollable main content
             e('div', { style: { flex: 1, overflowY: 'auto', overflowX: 'hidden' } },
                 children
             )
@@ -877,8 +874,8 @@ function NexusShell({ children, onNavigate }) {
     );
 }
 
-// ── Main export ───────────────────────────────────────────────
-export function NexusPage({ onNavigate }) {
+// ── Nexus landing content (no shell — shell is in app.js) ────
+export function NexusPage() {
     const [holdings, setHoldings] = useState([]);
     const [loading,  setLoading]  = useState(true);
     const [err,      setErr]      = useState(null);
@@ -903,39 +900,21 @@ export function NexusPage({ onNavigate }) {
         return () => window.removeEventListener('atlas:refresh', onRefresh);
     }, []);
 
-    if (loading) {
-        return e(NexusShell, { onNavigate },
-            e('div', { className: 'nexus-root nx-loading' },
-                e('div', { style: { fontSize: 20, marginBottom: 10 } }, '⬡'),
-                'Loading Nexus Holdings…'
-            )
-        );
-    }
-    if (err) {
-        return e(NexusShell, { onNavigate },
-            e('div', { className: 'nexus-root nx-error' },
-                '⚠ Failed to load vw_nexus_holdings: ', e('br'), err
-            )
-        );
-    }
-    if (!sb || !holdings.length) {
-        return e(NexusShell, { onNavigate },
-            e('div', { className: 'nexus-root nx-loading' },
-                e('div', { style: { fontSize: 20, marginBottom: 10 } }, '⬡'),
-                'No holdings data — configure Supabase key to load Nexus Intelligence.'
-            )
-        );
-    }
+    if (loading) return e('div', { className: 'nexus-root nx-loading' },
+        e('div', { style: { fontSize: 20, marginBottom: 10 } }, '⬡'), 'Loading Nexus…');
+    if (err) return e('div', { className: 'nexus-root nx-error' },
+        '⚠ Failed to load vw_nexus_holdings: ', e('br'), err);
+    if (!sb || !holdings.length) return e('div', { className: 'nexus-root nx-loading' },
+        e('div', { style: { fontSize: 20, marginBottom: 10 } }, '⬡'),
+        'No holdings data — configure Supabase key to load Nexus Intelligence.');
 
-    return e(NexusShell, { onNavigate },
-        e('div', { className: 'nexus-root' },
-            e(NexusHeader,   { holdings }),
-            e('div', { className: 'nx-three-col' },
-                e(ConvictionPanel, { holdings }),
-                e(IntelCanvas,     { holdings }),
-                e(ActionCentre,    { holdings })
-            ),
-            e(NexusHoldings, { holdings })
-        )
+    return e('div', { className: 'nexus-root' },
+        e(NexusHeader,   { holdings }),
+        e('div', { className: 'nx-three-col' },
+            e(ConvictionPanel, { holdings }),
+            e(IntelCanvas,     { holdings }),
+            e(ActionCentre,    { holdings })
+        ),
+        e(NexusHoldings, { holdings })
     );
 }
