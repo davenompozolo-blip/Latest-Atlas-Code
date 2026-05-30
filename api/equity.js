@@ -365,6 +365,14 @@ function mapFinancials(summary) {
     ss('evToEbitda',       rv(stats.enterpriseToEbitda));
     ss('bookValue',        rv(stats.bookValue));
 
+    // Fundamentals hydration extras (Yahoo path)
+    ss('sharesOutstanding', rv(stats.sharesOutstanding));
+    ss('dividendPerShare',  rv(detail.dividendRate)); // annual DPS from summaryDetail
+    if (snapshot.operatingCashflow != null && snapshot.freeCashflow != null) {
+        snapshot.capitalExpenditures = Math.abs(snapshot.operatingCashflow - snapshot.freeCashflow);
+    }
+    // interestExpense not in Yahoo quoteSummary modules — left null, approximated downstream
+
     // Yearly revenue + earnings (4 years from earnings module)
     var yearly = [];
     var fc = earn.financialsChart;
@@ -650,6 +658,25 @@ function mapFinnhubFinancials(data) {
     ss('revenueGrowth', mGrowth('revenueGrowthTTMYoy'));
     ss('earningsGrowth', mGrowth('epsGrowthTTMYoy'));
 
+    // --- Fundamentals hydration extras (used by assembleFundamentals) ---
+
+    // CapEx derived as |CFO − FCF| — Finnhub's freeCashFlow ≈ CFO − CapEx
+    if (snapshot.operatingCashflow != null && snapshot.freeCashflow != null) {
+        snapshot.capitalExpenditures = Math.abs(snapshot.operatingCashflow - snapshot.freeCashflow);
+    }
+    // Shares outstanding (raw count) — needed alongside totalDebt/totalCash for per-share derivations
+    if (shares != null) snapshot.sharesOutstanding = shares;
+    // Dividend per share — prefer annual metric, fall through to per-share search
+    ss('dividendPerShare', firstOf(
+        m.dividendPerShareAnnual, m.dividendPerShareTTM,
+        findM('dividendPerShare'), findM('lastDividend')
+    ));
+    // Interest expense — needed for accurate FCFF = FCFE + Int(1−t)
+    ss('interestExpense', firstOf(
+        latestVal('interestExpense'), latestVal('interestAndDebtExpense'),
+        latestVal('totalInterestExpense'), findM('interestExpense')
+    ));
+
     // --- Valuation multiples ---
 
     ss('trailingEps', m.epsBasicExclExtraItemsTTM);
@@ -699,6 +726,19 @@ function mapFinnhubFinancials(data) {
             if (niArr[nj].period.slice(0, 4) === year) { ni = niArr[nj].v; break; }
         }
         yearly.push({ year: year, revenue: rev, earnings: ni });
+    }
+    // Enrich yearly entries with OCF for historical CAGR computation
+    var ocfSeries = (annual.cashFlowFromOperatingActivities
+        || annual.operatingCashFlow
+        || annual.cashFlowFromOperations
+        || []).slice().sort(function(a, b) { return a.period < b.period ? 1 : -1; });
+    for (var oy = 0; oy < yearly.length; oy++) {
+        for (var oi = 0; oi < ocfSeries.length; oi++) {
+            if (ocfSeries[oi].period.slice(0, 4) === yearly[oy].year) {
+                yearly[oy].ocf = ocfSeries[oi].v;
+                break;
+            }
+        }
     }
 
     var quarterly = [];

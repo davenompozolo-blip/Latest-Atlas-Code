@@ -15,6 +15,7 @@ import {
     resolveGICSSectorCode,
     deriveProvenance,
     computeCompassScore,
+    assembleFundamentals,
 } from '../lib/valuationIntelligence.js';
 
 const { useState, useEffect, useRef, useMemo, useCallback } = React;
@@ -494,6 +495,10 @@ export function ValuationHouse(props) {
     var _flagsOpen = useState(false);
     var flagsOpen = _flagsOpen[0], setFlagsOpen = _flagsOpen[1];
 
+    // ── Fundamentals hydration state ──────────────────────────────────────────
+    var _fund = useState(null);
+    var fundamentals = _fund[0], setFundamentals = _fund[1];
+
     var upd = useCallback(function(path, val) {
         setS(function(prev) {
             var next = JSON.parse(JSON.stringify(prev));
@@ -549,6 +554,7 @@ export function ValuationHouse(props) {
         setSearchError(null);
         setIntelligence(null);
         setCompassResult(null);
+        setFundamentals(null);
         setFlagsOpen(false);
         setIntelligenceLoading(true);
         fetch('/api/equity?symbol=' + encodeURIComponent(pendingSymbol))
@@ -578,13 +584,16 @@ export function ValuationHouse(props) {
                 setLoadedTicker(pendingSymbol);
                 setSearchStatus('ready');
                 setInnerTab('dash');
-                // Build intelligence layer synchronously — non-blocking, best-effort
+                // Build intelligence + fundamentals layers synchronously — non-blocking, best-effort
                 try {
                     var sectorCode = resolveGICSSectorCode(mapped.co.sector);
                     var norm = SECTOR_NORMS[sectorCode] || SECTOR_NORMS['DEFAULT'];
                     var prov = deriveProvenance(raw.overview || {}, mapped, norm);
                     var intel = { sectorCode: sectorCode, sectorLabel: norm.label, provenance: prov };
                     setIntelligence(intel);
+                    // Fundamentals hydration — provenance metadata for hard-data fields
+                    var fund = assembleFundamentals(raw, mapped);
+                    setFundamentals(fund);
                     var re0 = mapped.coc.rf + mapped.coc.beta * mapped.coc.erp;
                     var wc0 = re0 * (1 - mapped.coc.wd) + mapped.coc.rd * (1 - mapped.coc.tax) * mapped.coc.wd;
                     var em0 = mapped.mult.ebitda > 0 && mapped.mult.rev > 0
@@ -595,9 +604,44 @@ export function ValuationHouse(props) {
                         revenueGrowthNear: mapped.ddm.gS * 100,
                         ebitdaMargin: em0,
                         beta: mapped.coc.beta,
+                        historicalCAGR: fund.historicalCAGR,
+                        isDDMActive: false,
+                        dividend: mapped.ddm.D0,
+                        totalDebt: mapped.fcf.debt,
+                        interestExpenseM: fund.interestExpenseM || 0,
                     }, sectorCode));
                 } catch(_) {}
                 setIntelligenceLoading(false);
+                // Background EDGAR enrichment — upgrades provenance labels with 10-K accession
+                // Fires after primary render; failures are silently ignored
+                fetch('/api/edgar?symbol=' + encodeURIComponent(pendingSymbol))
+                    .then(function(r) { return r.json(); })
+                    .then(function(edgar) {
+                        if (cancelled || !edgar || !edgar.cik || !edgar.concepts) return;
+                        // Upgrade provenance on fields where EDGAR has a 10-K match
+                        setFundamentals(function(prev) {
+                            if (!prev) return prev;
+                            var next = Object.assign({}, prev);
+                            function upgradeField(key, concept) {
+                                if (concept && concept.accn && next[key]) {
+                                    next[key] = Object.assign({}, next[key], {
+                                        source: '10-K',
+                                        provenance: next[key].provenance
+                                            .replace(/FY\d{4}/, 'FY' + concept.fy)
+                                            + ' · accn ' + concept.accn.slice(0, 20),
+                                    });
+                                }
+                            }
+                            upgradeField('fcff', edgar.concepts.cfo);
+                            upgradeField('fcfe', edgar.concepts.cfo);
+                            upgradeField('totalDebt', edgar.concepts.debt);
+                            upgradeField('cash', edgar.concepts.cash);
+                            upgradeField('shares', edgar.concepts.shares);
+                            upgradeField('dividend', edgar.concepts.dps);
+                            return next;
+                        });
+                    })
+                    .catch(function() {}); // EDGAR is enrichment, never critical path
             })
             .catch(function(e) {
                 if (cancelled) return;
@@ -623,8 +667,14 @@ export function ValuationHouse(props) {
             revenueGrowthNear: s.ddm.gS * 100,
             ebitdaMargin: em_,
             beta: s.coc.beta,
+            // Extended inputs for Compass rules 6–8
+            historicalCAGR: fundamentals ? fundamentals.historicalCAGR : null,
+            isDDMActive: innerTab === 'ddm',
+            dividend: s.ddm.D0,
+            totalDebt: s.fcf.debt,
+            interestExpenseM: fundamentals ? (fundamentals.interestExpenseM || 0) : 0,
         }, sCode));
-    }, [s, intelligence]);
+    }, [s, intelligence, fundamentals, innerTab]);
 
     var c = useMemo(function() {
         var coc = s.coc, ddm = s.ddm, fcf = s.fcf, mult = s.mult, ri = s.ri, priv = s.priv, wts = s.wts;
@@ -922,6 +972,23 @@ export function ValuationHouse(props) {
         );
     }
 
+    // FundamentalsProvenanceLabel — like ProvenanceLabel but driven by fundamentals state
+    function FundamentalsProvenanceLabel(fieldKey) {
+        if (!fundamentals || !fundamentals[fieldKey]) return null;
+        var f = fundamentals[fieldKey];
+        var noData = !f.hasData;
+        var color = noData ? 'var(--amber)' : 'var(--cyan)';
+        return h('div', { style: {
+            display: 'flex', gap: 6, alignItems: 'center',
+            marginTop: 2, marginBottom: 2,
+            fontSize: 10, color: 'var(--text-muted)',
+            fontFamily: 'JetBrains Mono, monospace',
+        }},
+            h('span', { style: { color: color, fontWeight: 500 } }, f.source),
+            h('span', null, '← ' + f.provenance)
+        );
+    }
+
     // ── Donut chart (Dashboard) ───────────────────────────────────────────────
     var donutRef = useRef(null);
     var donutChart = useRef(null);
@@ -1123,6 +1190,7 @@ export function ValuationHouse(props) {
                     )),
                     Card('DDM Inputs', h('div', null,
                         NumIn('D₀ (last paid dividend)', s.ddm.D0, function(v) { upd('ddm.D0', v); }, '$', 0.01),
+                        FundamentalsProvenanceLabel('dividend'),
                         PctIn('Short-term growth gS', s.ddm.gS, function(v) { upd('ddm.gS', v); }),
                         ProvenanceLabel('revenueGrowthNear'),
                         ConfidenceBand(s.ddm.gS * 100, 'revenueGrowthNear'),
@@ -1134,13 +1202,18 @@ export function ValuationHouse(props) {
                     )),
                     Card('FCF Inputs', h('div', null,
                         NumIn('FCFF₀ (base, $M)', s.fcf.fcff0, function(v) { upd('fcf.fcff0', v); }, '$M', 10),
+                        FundamentalsProvenanceLabel('fcff'),
                         NumIn('FCFE₀ (base, $M)', s.fcf.fcfe0, function(v) { upd('fcf.fcfe0', v); }, '$M', 10),
+                        FundamentalsProvenanceLabel('fcfe'),
                         PctIn('Terminal growth gL', s.fcf.gL, function(v) { upd('fcf.gL', v); }),
                         ProvenanceLabel('terminalGrowth'),
                         ConfidenceBand(s.fcf.gL * 100, 'terminalGrowth'),
                         NumIn('Total Debt ($M)', s.fcf.debt, function(v) { upd('fcf.debt', v); }, '$M', 100),
+                        FundamentalsProvenanceLabel('totalDebt'),
                         NumIn('Cash ($M)', s.fcf.cash, function(v) { upd('fcf.cash', v); }, '$M', 100),
+                        FundamentalsProvenanceLabel('cash'),
                         NumIn('Shares outstanding (M)', s.fcf.shs, function(v) { upd('fcf.shs', v); }, 'M', 10),
+                        FundamentalsProvenanceLabel('shares'),
                     ))
                 )
             )
