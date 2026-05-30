@@ -317,25 +317,107 @@ export function assembleFundamentals(raw, mappedState) {
   const s = mappedState;
 
   const srcLabel = (raw.source && raw.source.overview) || 'Finnhub';
-  const latestFY = yearly.length ? yearly[yearly.length - 1].year : '';
-
-  // FCFE: Finnhub's freeCashflow ≈ CFO − CapEx
-  const fcfeRaw = fin.freeCashflow;
-  const fcfeM = fcfeRaw != null ? +(fcfeRaw / 1e6).toFixed(1) : null;
-
-  // FCFF: FCFE + Int(1−t) — use actual interestExpense where available
-  const interestRaw = fin.interestExpense;
-  const interestM = interestRaw != null ? interestRaw / 1e6 : null;
+  const reportedFY = fin._reportedFY || '';
+  const latestFY = reportedFY || (yearly.length ? yearly[yearly.length - 1].year : '');
   const effTax = s.coc.tax;
-  let fcffM = null;
-  let fcffProv = '';
-  if (fcfeRaw != null && interestRaw != null) {
-    fcffM = +((fcfeRaw + interestRaw * (1 - effTax)) / 1e6).toFixed(1);
-    fcffProv = `CFO + Int(1−t) − CapEx · FY${latestFY}`;
-  } else if (fcfeRaw != null) {
-    const intApprox = s.fcf.debt * s.coc.rd;
-    fcffM = +((fcfeRaw / 1e6) + intApprox * (1 - effTax)).toFixed(1);
-    fcffProv = `FCFE + debt×rd×(1−t) · FY${latestFY}`;
+
+  // ── Tier 1: Direct statement data ──────────────────────────────────────────
+  const ocfRaw   = fin.operatingCashflow;
+  const capexRaw = fin.capitalExpenditures;
+  const fcfRaw   = fin.freeCashflow != null
+    ? fin.freeCashflow
+    : (ocfRaw != null && capexRaw != null ? ocfRaw - capexRaw : null);
+
+  const interestRaw = fin.interestExpense;
+  const interestM   = interestRaw != null ? interestRaw / 1e6 : null;
+
+  let fcfeM = null, fcfeProv = '', fcfeSrc = 'No data';
+  let fcffM = null, fcffProv = '', fcffSrc = 'No data';
+
+  if (fcfRaw != null) {
+    fcfeM    = +(fcfRaw / 1e6).toFixed(1);
+    fcfeProv = `Reported FCF (CFO−CapEx) · FY${latestFY}`;
+    fcfeSrc  = srcLabel;
+    if (interestRaw != null) {
+      fcffM    = +((fcfRaw + interestRaw * (1 - effTax)) / 1e6).toFixed(1);
+      fcffProv = `FCFE + Int×(1−t) · FY${latestFY}`;
+    } else {
+      const intApprox = s.fcf.debt * s.coc.rd;
+      fcffM    = +((fcfRaw / 1e6) + intApprox * (1 - effTax)).toFixed(1);
+      fcffProv = `FCFE + debt×rd×(1−t) estimate · FY${latestFY}`;
+    }
+    fcffSrc = srcLabel;
+  }
+
+  // ── Tier 2: EBITDA-based NOPAT (when no direct FCF) ───────────────────────
+  if (fcffM == null && fin.ebitda != null) {
+    const ebitdaM = fin.ebitda / 1e6;
+    // CapEx estimate: use reported if available, else sector-typical 4% of revenue
+    let capexEstM = null, capexProv = '';
+    if (capexRaw != null) {
+      capexEstM = capexRaw / 1e6;
+      capexProv = 'reported CapEx';
+    } else if (fin.totalRevenue != null) {
+      capexEstM = (fin.totalRevenue / 1e6) * 0.04;
+      capexProv = '4% revenue estimate';
+    }
+    if (capexEstM != null) {
+      fcffM    = +((ebitdaM * (1 - effTax)) - capexEstM).toFixed(1);
+      fcffProv = `EBITDA×(1−t)−CapEx [${capexProv}] · FY${latestFY}`;
+      fcffSrc  = srcLabel + ' (derived)';
+      // FCFE ≈ FCFF − Interest×(1−t) after-tax debt service
+      if (interestRaw != null) {
+        fcfeM    = +(fcffM - (interestRaw / 1e6) * (1 - effTax)).toFixed(1);
+        fcfeProv = `FCFF − Int×(1−t) · FY${latestFY}`;
+      } else {
+        const intApprox = s.fcf.debt * s.coc.rd;
+        fcfeM    = +(fcffM - intApprox * (1 - effTax)).toFixed(1);
+        fcfeProv = `FCFF − debt×rd×(1−t) estimate · FY${latestFY}`;
+      }
+      fcfeSrc = srcLabel + ' (derived)';
+    }
+  }
+
+  // ── Tier 3: Net income + D&A proxy (when no EBITDA) ───────────────────────
+  if (fcffM == null && fin.netIncome != null) {
+    const niM = fin.netIncome / 1e6;
+    const intM = interestM || 0;
+    // D&A proxy: EBITDA margin − EBIT margin if both exist, else 2% of revenue
+    let dnaM = 0, dnaProv = '';
+    if (fin.ebitdaMargins != null && fin.operatingMargins != null && fin.totalRevenue != null) {
+      dnaM    = fin.totalRevenue / 1e6 * (fin.ebitdaMargins - fin.operatingMargins);
+      dnaProv = '(EBITDA margin − EBIT margin)×Revenue';
+    } else if (fin.totalRevenue != null) {
+      dnaM    = fin.totalRevenue / 1e6 * 0.02;
+      dnaProv = '2% revenue D&A estimate';
+    }
+    let capexEstM = 0, capexProv2 = '';
+    if (capexRaw != null) {
+      capexEstM = capexRaw / 1e6;
+      capexProv2 = 'reported CapEx';
+    } else if (fin.totalRevenue != null) {
+      capexEstM = fin.totalRevenue / 1e6 * 0.04;
+      capexProv2 = '4% revenue CapEx estimate';
+    }
+    fcffM    = +(niM + intM * (1 - effTax) + dnaM - capexEstM).toFixed(1);
+    fcffProv = `NI + Int×(1−t) + D&A [${dnaProv}] − CapEx [${capexProv2}] · FY${latestFY}`;
+    fcffSrc  = srcLabel + ' (derived)';
+    fcfeM    = +(niM + dnaM - capexEstM).toFixed(1);
+    fcfeProv = `NI + D&A − CapEx · FY${latestFY}`;
+    fcfeSrc  = srcLabel + ' (derived)';
+  }
+
+  // ── Tier 4: Revenue × margin approach (last resort) ───────────────────────
+  if (fcffM == null && fin.totalRevenue != null && fin.operatingMargins != null) {
+    const revM     = fin.totalRevenue / 1e6;
+    const nopat    = revM * fin.operatingMargins * (1 - effTax);
+    const reinvest = 0.30; // assume 30% reinvestment rate
+    fcffM    = +(nopat * (1 - reinvest)).toFixed(1);
+    fcffProv = `NOPAT×(1−reinvest) [Rev×OpMargin×(1−t)×70%] · FY${latestFY}`;
+    fcffSrc  = srcLabel + ' (margin est.)';
+    fcfeM    = fcffM;
+    fcfeProv = `Same as FCFF (no leverage adjustment) · FY${latestFY}`;
+    fcfeSrc  = fcffSrc;
   }
 
   // Historical CAGR — prefer OCF series, fall back to revenue
@@ -364,32 +446,30 @@ export function assembleFundamentals(raw, mappedState) {
   return {
     fcff: {
       value: fcffM,
-      source: fcfeRaw != null ? srcLabel : 'Estimated',
-      provenance: fcffProv || (fcffM == null ? 'No statement data — preset value' : ''),
+      source: fcffSrc,
+      provenance: fcffProv || 'Insufficient data to derive FCFF',
       hasData: fcffM != null
     },
     fcfe: {
       value: fcfeM,
-      source: fcfeRaw != null ? srcLabel : 'Estimated',
-      provenance: fcfeRaw != null
-        ? `Reported FCF (CFO−CapEx) · FY${latestFY}`
-        : 'No statement data — preset value',
+      source: fcfeSrc,
+      provenance: fcfeProv || 'Insufficient data to derive FCFE',
       hasData: fcfeM != null
     },
     totalDebt: {
       value: totalDebtM,
-      source: totalDebtM != null ? srcLabel + ' BS' : 'Default',
+      source: totalDebtM != null ? srcLabel + ' BS' : 'No data',
       provenance: totalDebtM != null
         ? `Total debt $${totalDebtM}M · FY${latestFY}`
-        : 'No balance-sheet data — preset value',
+        : 'No balance-sheet data',
       hasData: totalDebtM != null
     },
     cash: {
       value: cashM,
-      source: cashM != null ? srcLabel + ' BS' : 'Default',
+      source: cashM != null ? srcLabel + ' BS' : 'No data',
       provenance: cashM != null
         ? `Cash & equivalents $${cashM}M · FY${latestFY}`
-        : 'No balance-sheet data — preset value',
+        : 'No balance-sheet data',
       hasData: cashM != null
     },
     shares: {
