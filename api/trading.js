@@ -171,6 +171,7 @@ async function submitOrder(body) {
     }
     if (body.limitPrice) payload.limit_price = String(body.limitPrice);
     if (body.stopPrice)  payload.stop_price  = String(body.stopPrice);
+    if (body.client_order_id) payload.client_order_id = body.client_order_id;
 
     var hdrs = Object.assign({}, alpacaHdrs(), { 'Content-Type': 'application/json' });
     var r = await fetchT(brokerBase() + '/orders', {
@@ -208,6 +209,28 @@ async function getOrders(status, limit) {
             updatedAt:  o.updated_at,
         };
     });
+}
+
+// ── Order by client_order_id ──────────────────────────────────────────────────
+
+async function getOrderByClientId(clientOrderId) {
+    var hdrs = alpacaHdrs();
+    var url = brokerBase() + '/orders:by_client_order_id?client_order_id=' + encodeURIComponent(clientOrderId);
+    var r = await fetchT(url, { headers: hdrs }, 8000);
+    if (r.status === 404) return null;
+    if (!r.ok) throw new Error('Alpaca order lookup HTTP ' + r.status);
+    var o = await r.json();
+    return {
+        id: o.id,
+        client_order_id: o.client_order_id,
+        symbol: o.symbol,
+        side: o.side,
+        status: o.status,
+        qty: o.qty,
+        filled_qty: o.filled_qty,
+        filled_avg_price: o.filled_avg_price,
+        reject_reason: o.failed_at ? (o.legs ? null : 'failed') : null,
+    };
 }
 
 // ── Options chain ─────────────────────────────────────────────────────────────
@@ -420,6 +443,13 @@ export default async function handler(req, res) {
                 var status = req.query.status || 'all';
                 var limit  = parseInt(req.query.limit) || 50;
                 return res.status(200).json(await getOrders(status, limit));
+            }
+            if (action === 'order_status') {
+                var cid = req.query.client_order_id;
+                if (!cid) return res.status(400).json({ error: 'client_order_id required' });
+                var ord = await getOrderByClientId(cid);
+                if (!ord) return res.status(404).json({ error: 'not found' });
+                return res.status(200).json(ord);
             }
             if (action === 'option_expiries') {
                 var sym = ((req.query.symbol) || '').toUpperCase().trim();

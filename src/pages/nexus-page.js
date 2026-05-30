@@ -7,8 +7,10 @@
 import React from 'react';
 import { sb } from './config.js';
 import '../styles/nexus-theme.css';
+import { useFreshnessGate } from '../lib/useFreshnessGate.js';
+import { useOrderMachine, useCircuitBreaker } from '../lib/useOrderMachine.js';
 
-const { useState, useEffect, useMemo } = React;
+const { useState, useEffect, useMemo, useRef, useCallback } = React;
 const e = React.createElement;
 
 // ── Formatters ───────────────────────────────────────────────

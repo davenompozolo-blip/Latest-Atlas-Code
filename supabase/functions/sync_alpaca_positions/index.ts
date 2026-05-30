@@ -311,6 +311,8 @@ Deno.serve(async (req) => {
         synced_as_of_date: new Date().toISOString().slice(0, 10),
       }
     )
+    // Update parser heartbeat on successful sync
+    await sql`select update_parser_heartbeat('ok', null)`.catch(() => {/* non-fatal */})
     return jsonResponse({ sync_log_id: syncLogId, ...result }, 200)
   } catch (err) {
     await closeSyncLogError(syncLogId, err)
