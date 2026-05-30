@@ -652,12 +652,11 @@ export function ValuationHouse(props) {
                         historicalCAGR: fund.historicalCAGR,
                         isDDMActive: false,
                         dividend: activeS.ddm.D0,
-                        totalDebt: activeS.fcf.debt,
-                        beta: mapped.coc.beta,
+                        beta: activeS.coc.beta,
                         historicalCAGR: fund.historicalCAGR,
                         isDDMActive: false,
-                        dividend: mapped.ddm.D0,
-                        totalDebt: mapped.fcf.debt,
+                        dividend: activeS.ddm.D0,
+                        totalDebt: activeS.fcf.debt,
                         interestExpenseM: fund.interestExpenseM || 0,
                     }, sectorCode));
                 } catch(_) {}
@@ -727,22 +726,6 @@ export function ValuationHouse(props) {
                                 fcf: Object.assign({}, prev.fcf, fcfPatch),
                                 ddm: Object.assign({}, prev.ddm, ddmPatch),
                             });
-                        });
-                                    next[key] = Object.assign({}, next[key], {
-                                        source: '10-K',
-                                        provenance: next[key].provenance
-                                            .replace(/FY\d{4}/, 'FY' + concept.fy)
-                                            + ' · accn ' + concept.accn.slice(0, 20),
-                                    });
-                                }
-                            }
-                            upgradeField('fcff', edgar.concepts.cfo);
-                            upgradeField('fcfe', edgar.concepts.cfo);
-                            upgradeField('totalDebt', edgar.concepts.debt);
-                            upgradeField('cash', edgar.concepts.cash);
-                            upgradeField('shares', edgar.concepts.shares);
-                            upgradeField('dividend', edgar.concepts.dps);
-                            return next;
                         });
                     })
                     .catch(function() {}); // EDGAR is enrichment, never critical path
