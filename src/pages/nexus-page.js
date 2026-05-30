@@ -83,8 +83,97 @@ function Clock() {
     return e('span', { style: { fontFamily: 'var(--nx-fm)', fontSize: 9, color: 'var(--nx-text3)' } }, t, ' SAST');
 }
 
+// ── Fundamentals Sync Engine ──────────────────────────────────
+// Drives /api/equity?endpoint=overview per symbol (same-origin fetch).
+// Each call writes into equity_cache as a side effect of the existing
+// API function, populating Beta, P/E, PEG, Analyst Target, Earnings.
+
+const THROTTLE_MS = 1200;
+
+function useFundamentalsSync(holdings, onComplete) {
+    const [state, setState] = useState({ phase: 'idle', done: 0, total: 0, enriched: 0, failed: 0 });
+
+    const missingFundamentals = useMemo(function() {
+        if (!holdings.length) return false;
+        const withPE = holdings.filter(h => h.fwd_pe != null).length;
+        return withPE < Math.ceil(holdings.length * 0.3);
+    }, [holdings]);
+
+    async function runSync() {
+        const syms = [...new Set(holdings.map(h => h.symbol).filter(Boolean))];
+        setState({ phase: 'running', done: 0, total: syms.length, enriched: 0, failed: 0 });
+        let enriched = 0, failed = 0;
+        for (let i = 0; i < syms.length; i++) {
+            try {
+                const res = await fetch('/api/equity?endpoint=overview&symbol=' + encodeURIComponent(syms[i]));
+                const body = await res.json().catch(() => ({}));
+                const ov = body && body.overview;
+                if (ov && (ov.PERatio != null || ov.Beta != null || ov.AnalystTargetPrice != null)) enriched++;
+                else if (!res.ok) failed++;
+            } catch (_) { failed++; }
+            setState(s => ({ ...s, done: i + 1, enriched, failed }));
+            if (i < syms.length - 1) await new Promise(r => setTimeout(r, THROTTLE_MS));
+        }
+        setState(s => ({ ...s, phase: 'done' }));
+        onComplete && onComplete();
+    }
+
+    return { state, missingFundamentals, runSync };
+}
+
+// ── FundamentalsBanner ────────────────────────────────────────
+function FundamentalsBanner({ state, missingFundamentals, onSync }) {
+    if (state.phase === 'running') {
+        const pct = state.total ? Math.round(state.done / state.total * 100) : 0;
+        return e('div', {
+            style: {
+                background: 'rgba(0,212,255,.08)', borderBottom: '1px solid rgba(0,212,255,.15)',
+                padding: '6px 20px', display: 'flex', alignItems: 'center', gap: 14, fontSize: 9,
+                fontFamily: 'var(--nx-fm)', color: 'var(--nx-text2)', flexShrink: 0
+            }
+        },
+            e('span', { style: { color: 'var(--nx-blue)', fontWeight: 700 } }, '⬡ SYNCING'),
+            e('div', { style: { flex: 1, height: 3, background: 'var(--nx-border)', borderRadius: 2, overflow: 'hidden' } },
+                e('div', { style: { width: pct + '%', height: '100%', background: 'var(--nx-blue)', transition: 'width .3s' } })
+            ),
+            e('span', null, state.done + '/' + state.total + ' symbols · ' + state.enriched + ' enriched')
+        );
+    }
+    if (state.phase === 'done') {
+        return e('div', {
+            style: {
+                background: 'rgba(34,197,94,.06)', borderBottom: '1px solid rgba(34,197,94,.15)',
+                padding: '5px 20px', display: 'flex', alignItems: 'center', gap: 10, fontSize: 9,
+                fontFamily: 'var(--nx-fm)', color: 'var(--nx-green)', flexShrink: 0
+            }
+        },
+            '✓ Fundamentals synced — ' + state.enriched + '/' + state.total + ' symbols enriched. Refresh the page to see updated valuation columns.'
+        );
+    }
+    if (missingFundamentals) {
+        return e('div', {
+            style: {
+                background: 'rgba(245,158,11,.07)', borderBottom: '1px solid rgba(245,158,11,.15)',
+                padding: '5px 20px', display: 'flex', alignItems: 'center', gap: 12, fontSize: 9,
+                fontFamily: 'var(--nx-fm)', color: 'var(--nx-amber)', flexShrink: 0
+            }
+        },
+            e('span', null, '⚠ Valuation data (Beta, P/E, PEG, DCF Δ, Earnings) not yet populated.'),
+            e('button', {
+                onClick: onSync,
+                style: {
+                    padding: '3px 10px', borderRadius: 4, border: '1px solid rgba(245,158,11,.4)',
+                    background: 'rgba(245,158,11,.12)', color: 'var(--nx-amber)',
+                    fontSize: 9, fontFamily: 'var(--nx-fm)', cursor: 'pointer', letterSpacing: .5
+                }
+            }, 'Sync Fundamentals Now')
+        );
+    }
+    return null;
+}
+
 // ── NexusHeader ───────────────────────────────────────────────
-function NexusHeader({ holdings }) {
+function NexusHeader({ holdings, onSync, syncState }) {
     const { total, wtConv, wtDaily, alerts, longPct } = calcStats(holdings);
     const score      = Math.round(wtConv);
     const offset     = Math.round(163 * (1 - Math.min(100, score) / 100));
@@ -95,6 +184,7 @@ function NexusHeader({ holdings }) {
     const trimCount  = holdings.filter(h => h.recommended_action === 'Trim' || h.recommended_action === 'Exit').length;
     const bullCount  = holdings.filter(h => h.technical_signal === 'Bull').length;
     const longCount  = holdings.filter(h => h.quant_signal === 'Long').length;
+    const syncBusy   = syncState && syncState.phase === 'running';
 
     return e('div', { className: 'nx-head' },
         e('div', { className: 'nx-head-top' },
@@ -161,6 +251,24 @@ function NexusHeader({ holdings }) {
                     longCount + 'L / ' + holdings.filter(h => h.quant_signal === 'Short').length + 'S'),
                 e('div', { className: 'nx-kc-d nx-nt' }, holdings.filter(h => h.quant_signal === 'Hold').length + ' Hold'),
                 e('div', { className: 'nx-kc-s' }, 'Optimizer')
+            ),
+            e('div', { className: 'nx-kc', style: { display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 6, minWidth: 100 } },
+                e('button', {
+                    onClick: onSync,
+                    disabled: syncBusy,
+                    style: {
+                        padding: '5px 10px', borderRadius: 4, border: '1px solid rgba(0,212,255,.3)',
+                        background: syncBusy ? 'rgba(0,212,255,.05)' : 'rgba(0,212,255,.1)',
+                        color: syncBusy ? 'var(--nx-text3)' : 'var(--nx-blue)',
+                        fontSize: 8, fontFamily: 'var(--nx-fm)', cursor: syncBusy ? 'default' : 'pointer',
+                        letterSpacing: .5, whiteSpace: 'nowrap', transition: 'all .15s'
+                    }
+                }, syncBusy ? '⬡ SYNCING…' : '⬡ SYNC DATA'),
+                e('div', { className: 'nx-kc-s', style: { textAlign: 'center' } },
+                    syncState && syncState.phase === 'done'
+                        ? '✓ ' + (syncState.enriched || 0) + ' enriched'
+                        : 'Beta · P/E · PEG · Earnings'
+                )
             )
         )
     );
@@ -511,11 +619,37 @@ function ActionCentre({ holdings }) {
             e('span', { className: 'nx-badge nx-bg' }, 'Next 14 Days')
         ),
         e('div', { className: 'nx-ecal' },
-            e('div', { style: { padding: '14px 12px', fontSize: 9, color: 'var(--nx-text3)', textAlign: 'center' } },
-                'Earnings dates not yet in data layer.',
-                e('br'),
-                'v2 will surface upcoming catalysts per holding.'
-            )
+            (() => {
+                const earningsRows = holdings
+                    .filter(h => h.next_earnings_date)
+                    .sort((a, b) => new Date(a.next_earnings_date) - new Date(b.next_earnings_date))
+                    .slice(0, 6);
+                if (!earningsRows.length) {
+                    return e('div', { style: { padding: '10px 12px', fontSize: 9, color: 'var(--nx-text3)' } },
+                        'No earnings dates — run Sync Fundamentals to populate.');
+                }
+                return earningsRows.map(h => {
+                    const daysOut = Math.round((new Date(h.next_earnings_date) - Date.now()) / 86400000);
+                    const urgency = daysOut <= 7 ? 'var(--nx-red)' : daysOut <= 14 ? 'var(--nx-amber)' : 'var(--nx-text2)';
+                    return e('div', {
+                        key: h.symbol,
+                        style: {
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            padding: '4px 12px', borderBottom: '1px solid var(--nx-border)'
+                        }
+                    },
+                        e('div', { style: { display: 'flex', flexDirection: 'column' } },
+                            e('span', { style: { fontSize: 10, fontWeight: 700, color: 'var(--nx-text)' } }, h.symbol),
+                            e('span', { style: { fontSize: 8, color: 'var(--nx-text3)' } }, h.sector || '')
+                        ),
+                        e('div', { style: { textAlign: 'right' } },
+                            e('div', { style: { fontSize: 9, fontFamily: 'var(--nx-fm)', color: urgency } }, h.next_earnings_date),
+                            e('div', { style: { fontSize: 8, color: 'var(--nx-text3)' } },
+                                daysOut === 0 ? 'Today' : daysOut === 1 ? 'Tomorrow' : 'in ' + daysOut + 'd')
+                        )
+                    );
+                });
+            })()
         )
     );
 }
@@ -792,6 +926,10 @@ const NEXUS_NAV = [
     { id: 'markets',     icon: '◎', label: 'Markets'   },
     { id: 'options',     icon: 'Ω', label: 'Options'   },
     { id: 'valuation',   icon: '◈', label: 'Valuation' },
+    { id: 'pcm',         icon: '⊞', label: 'PCM'       },
+    { id: 'scrapbook',   icon: '✦', label: 'Scrapbook' },
+    { id: 'command',     icon: '⌘', label: 'Command'   },
+    { id: 'sql',         icon: '⌗', label: 'SQL'       },
 ];
 
 // NexusShell is the universal persistent app shell — exported so app.js
@@ -880,6 +1018,15 @@ export function NexusPage() {
     const [loading,  setLoading]  = useState(true);
     const [err,      setErr]      = useState(null);
 
+    function reloadHoldings() {
+        if (!sb) return;
+        sb.from('vw_nexus_holdings').select('*').then(function({ data }) {
+            if (data) setHoldings(data);
+        });
+    }
+
+    const { state: syncState, missingFundamentals, runSync } = useFundamentalsSync(holdings, reloadHoldings);
+
     useEffect(function() {
         if (!sb) { setLoading(false); return; }
         sb.from('vw_nexus_holdings').select('*').then(function({ data, error }) {
@@ -909,7 +1056,8 @@ export function NexusPage() {
         'No holdings data — configure Supabase key to load Nexus Intelligence.');
 
     return e('div', { className: 'nexus-root' },
-        e(NexusHeader,   { holdings }),
+        e(FundamentalsBanner, { state: syncState, missingFundamentals, onSync: runSync }),
+        e(NexusHeader,   { holdings, onSync: runSync, syncState }),
         e('div', { className: 'nx-three-col' },
             e(ConvictionPanel, { holdings }),
             e(IntelCanvas,     { holdings }),
