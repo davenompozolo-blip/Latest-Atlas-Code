@@ -182,6 +182,64 @@ async function submitOrder(body) {
     return { id: j.id, status: j.status, symbol: j.symbol, qty: j.qty, side: j.side, type: j.order_type };
 }
 
+// ── Ledger persistence (best-effort) ───────────────────────────────────────────
+// On a successful submit, persist the order to our audit trail and — if the
+// client passed decision context — append the executed decision to the Ledger.
+// Never throws into the order path: a failed ledger write must not fail a trade.
+
+var _sbClient = null;
+function sbService() {
+    if (_sbClient) return _sbClient;
+    var url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+    var key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!url || !key) return null;
+    try {
+        var createClient = require('@supabase/supabase-js').createClient;
+        _sbClient = createClient(url, key, { auth: { persistSession: false } });
+        return _sbClient;
+    } catch (_) { return null; }
+}
+
+async function recordExecution(body, order) {
+    var sb = sbService();
+    if (!sb) return;   // ledger not configured — degrade silently, the trade still stands
+    try {
+        var cid = body.client_order_id || null;
+        var up = await sb.from('orders').upsert({
+            client_order_id:  cid,
+            alpaca_order_id:  order && order.id,
+            symbol:           order && order.symbol,
+            side:             (order && order.side) || body.side,
+            type:             (order && order.type) || body.type || 'market',
+            qty:              body.qty != null ? Number(body.qty) : null,
+            notional:         body.notional != null ? Number(body.notional) : null,
+            status:           (order && order.status) || 'submitted',
+            updated_at:       new Date().toISOString(),
+            raw:              order || null,
+        }, { onConflict: 'client_order_id' }).select('id').single();
+
+        if (up.error || !up.data) return;
+        var orderRowId = up.data.id;
+
+        // Append the executed decision once per order (idempotent on re-submit).
+        var L = body.ledger;
+        if (L && (L.conviction != null || L.snapshot || L.intent)) {
+            var existing = await sb.from('decisions').select('id').eq('order_id', orderRowId).limit(1);
+            if (!existing.error && (!existing.data || existing.data.length === 0)) {
+                await sb.from('decisions').insert({
+                    symbol:          order && order.symbol,
+                    decision_type:   'executed',
+                    intent:          L.intent || (body.side === 'sell' ? 'trim' : 'add'),
+                    order_id:        orderRowId,
+                    conviction:      L.conviction != null ? Math.round(L.conviction) : null,
+                    signal_snapshot: L.snapshot || null,
+                    rationale:       L.rationale || null,
+                });
+            }
+        }
+    } catch (_) { /* best-effort: swallow */ }
+}
+
 // ── Handler ───────────────────────────────────────────────────────────────────
 
 // ── Order history ─────────────────────────────────────────────────────────────
@@ -477,6 +535,7 @@ export default async function handler(req, res) {
                 var body = req.body || {};
                 if (typeof body === 'string') { try { body = JSON.parse(body); } catch (_) {} }
                 var order = await submitOrder(body);
+                await recordExecution(body, order);
                 return res.status(200).json({ success: true, order: order });
             }
             return res.status(400).json({ error: 'Unknown POST action: ' + action });
