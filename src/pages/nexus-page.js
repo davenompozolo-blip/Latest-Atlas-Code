@@ -249,6 +249,19 @@ function NexusHeader({ holdings, onSync, syncState, freshness, circuitTripped })
     const offset     = Math.round(163 * (1 - Math.min(100, score) / 100));
     const healthLbl  = score >= 70 ? 'Strong' : score >= 55 ? 'Neutral' : 'Weak';
     const healthCol  = score >= 70 ? 'var(--nx-green)' : score >= 55 ? 'var(--nx-amber)' : 'var(--nx-red)';
+
+    // Fetch Alpaca account equity for the Portfolio Value KPI
+    const [acct, setAcct] = useState(null);
+    useEffect(function() {
+        fetch('/api/trading?action=account')
+            .then(r => r.ok ? r.json() : null)
+            .then(function(j) { if (j && j.equity != null) setAcct(j); })
+            .catch(function() {});
+    }, []);
+    const displayEquity  = acct ? acct.equity   : total;
+    const equityDelta    = acct ? acct.dayPnl    : total * wtDaily / 100;
+    const equityDeltaPct = acct ? acct.dayPnlPct : wtDaily;
+
     const dailyDelta = total * wtDaily / 100;
     const addCount   = holdings.filter(h => h.recommended_action === 'Add').length;
     const trimCount  = holdings.filter(h => h.recommended_action === 'Trim' || h.recommended_action === 'Exit').length;
@@ -286,11 +299,11 @@ function NexusHeader({ holdings, onSync, syncState, freshness, circuitTripped })
         ),
         e('div', { className: 'nx-kpi-bar' },
             e('div', { className: 'nx-kc nx-bl' },
-                e('div', { className: 'nx-kc-l' }, 'Portfolio Value'),
-                e('div', { className: 'nx-kc-v', style: { color: 'var(--nx-blue)' } }, usd(total)),
-                e('div', { className: 'nx-kc-d ' + (wtDaily >= 0 ? 'nx-up' : 'nx-dn') },
-                    (wtDaily >= 0 ? '↑ +' : '↓ ') + usd(Math.abs(dailyDelta)) + ' (' + pct(wtDaily) + ')'),
-                e('div', { className: 'nx-kc-s' }, 'Portfolio module')
+                e('div', { className: 'nx-kc-l' }, 'Equity Value'),
+                e('div', { className: 'nx-kc-v', style: { color: 'var(--nx-blue)' } }, usd(displayEquity)),
+                e('div', { className: 'nx-kc-d ' + (equityDelta >= 0 ? 'nx-up' : 'nx-dn') },
+                    (equityDelta >= 0 ? '↑ +' : '↓ ') + usd(Math.abs(equityDelta)) + ' (' + pct(equityDeltaPct) + ')'),
+                e('div', { className: 'nx-kc-s' }, acct ? 'Alpaca account equity' : 'Portfolio module')
             ),
             e('div', { className: 'nx-kc nx-al' },
                 e('div', { className: 'nx-kc-l' }, 'Wtd. Conviction'),
