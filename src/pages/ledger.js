@@ -337,13 +337,20 @@ export function LedgerPage() {
         if (!sb) return;
         Promise.all([
             sb.from('vw_ledger_integrity').select('*').single(),
-            sb.from('decisions').select('*').order('seq', { ascending: false }).limit(200),
-            sb.from('decision_outcomes').select('*, decisions(symbol)').order('snapshot_at', { ascending: false }).limit(200),
+            sb.from('decisions').select('*').order('seq', { ascending: false }).limit(500),
+            // conviction & intent live on the parent decision, not the outcome row —
+            // pull them through so the calibration plot and Brier score can bin by conviction
+            sb.from('decision_outcomes').select('*, decisions(symbol, conviction, intent)').order('snapshot_at', { ascending: false }).limit(2000),
         ]).then(function([intRes, decRes, outRes]) {
             if (intRes.data) setIntegrity(intRes.data);
             if (decRes.data) setDecisions(decRes.data);
             if (outRes.data) {
-                setOutcomes(outRes.data.map(o => ({ ...o, symbol: o.decisions?.symbol })));
+                setOutcomes(outRes.data.map(o => ({
+                    ...o,
+                    symbol: o.decisions?.symbol,
+                    conviction: o.decisions?.conviction,
+                    intent: o.decisions?.intent,
+                })));
             }
             setLoading(false);
         });
@@ -411,7 +418,7 @@ export function LedgerPage() {
 
         // Phase note
         e('div', { style: { marginTop: 24, padding: '10px 14px', background: C.bg3, borderRadius: 6, fontSize: 9, color: C.text3, letterSpacing: 1 } },
-            'LEDGER PHASE 0–1 · Outcome snapshotting (Phase 2) activates automatically once executed decisions accrue 30-day history.'
+            'LEDGER PHASE 2 LIVE · Decisions are scored vs SPY at 30/60/90-day and to-date horizons as each matures. Calibration (predicted vs realized) lands in Phase 3.'
         )
     );
 }

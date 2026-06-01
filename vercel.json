@@ -4,9 +4,13 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "functions": {
-    "api/claude-analyse.js": { "maxDuration": 60 },
-    "api/claude-sector.js":  { "maxDuration": 60 }
+    "api/claude-analyse.js":  { "maxDuration": 60 },
+    "api/claude-sector.js":   { "maxDuration": 60 },
+    "api/ledger-snapshot.js": { "maxDuration": 60 }
   },
+  "crons": [
+    { "path": "/api/ledger-snapshot", "schedule": "30 22 * * 1-5" }
+  ],
   "rewrites": [
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
