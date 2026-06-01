@@ -419,9 +419,14 @@ function ConvictionPanel({ holdings }) {
                     ),
                     e('div', { className: 'nx-ms', style: { color: SC(s) } }, s)
                 ),
-                h.conviction_score != null && h.dcf_upside_pct == null
+                h.dcf_upside_pct == null
                     ? e('div', { style: { fontSize: 8, color: 'var(--nx-amber)', marginTop: 2, fontFamily: 'var(--nx-fm)' } }, '◑ Partial — valuation input missing')
-                    : null,
+                    : e('div', { style: { display:'flex', alignItems:'center', gap:6, fontSize: 8, marginTop: 2, fontFamily: 'var(--nx-fm)', color:'var(--nx-text3)' } },
+                        e('span', null, 'Fair value ' + usd(h.intrinsic_value, 2)),
+                        e('span', { style: { color: +h.dcf_upside_pct >= 0 ? 'var(--nx-green)' : 'var(--nx-red)' } }, pct(h.dcf_upside_pct)),
+                        h.valuation_source === 'model'
+                            ? e('span', { style: { fontSize:7, fontWeight:700, padding:'1px 4px', borderRadius:3, background:'rgba(139,92,246,.15)', color:'var(--nx-purple)', textTransform:'uppercase' } }, '◆ Model')
+                            : e('span', { style: { fontSize:7, fontWeight:700, padding:'1px 4px', borderRadius:3, background:'var(--nx-bg3)', color:'var(--nx-text3)', textTransform:'uppercase' } }, 'Analyst')),
                 e('div', { className: 'nx-insight' },
                     e('strong', null, 'Nexus: '),
                     h.nexus_insight || ('Weight ' + h.weight_pct + '% · ' + h.technical_signal + ' tech · ' + h.quality_grade + ' quality')
@@ -673,8 +678,19 @@ function ActionCentre({ holdings, disabled }) {
                             'Conv. ' + h.conviction_score + ' · Weight ' + h.weight_pct + '%' +
                             (h.var_contribution_pct ? ' · VaR ' + h.var_contribution_pct + '%' : ''))
                     ),
-                    e('button', { className: 'nx-al-act' },
-                        h.alert_flag === 'opportunity' ? 'Add' : 'Review')
+                    e('button', { className: 'nx-al-act',
+                        style: { cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? .55 : 1 },
+                        onClick: function() {
+                            if (disabled || h.alert_flag !== 'opportunity') return;
+                            openTradeTicket({
+                                symbol: h.symbol,
+                                side: 'buy',
+                                suggestedNotional: Math.abs(+h.market_value) * 0.02,
+                                currentPrice: h.current_price,
+                                ownedShares: (h.current_price ? Math.abs(+h.market_value) / +h.current_price : null),
+                            });
+                        }
+                    }, h.alert_flag === 'opportunity' ? 'Add' : 'Review')
                 );
             }),
 
@@ -690,14 +706,31 @@ function ActionCentre({ holdings, disabled }) {
             trades.length === 0
                 ? e('div', { style: { padding: '10px 12px', fontSize: 9, color: 'var(--nx-text3)' } }, 'No trades suggested.')
                 : trades.map(function(h) {
-                    return e('div', { key: h.symbol, className: 'nx-tr' },
+                    const isAdd = h.recommended_action === 'Add';
+                    const sz    = Math.abs(+h.market_value) * 0.02;
+                    return e('div', {
+                        key: h.symbol,
+                        className: 'nx-tr',
+                        title: disabled ? 'Execution paused' : 'Click to ' + (isAdd ? 'add to' : 'trim') + ' ' + h.symbol,
+                        style: { cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? .55 : 1 },
+                        onClick: function() {
+                            if (disabled) return;
+                            openTradeTicket({
+                                symbol: h.symbol,
+                                side: isAdd ? 'buy' : 'sell',
+                                suggestedNotional: sz,
+                                currentPrice: h.current_price,
+                                ownedShares: (h.current_price ? Math.abs(+h.market_value) / +h.current_price : null),
+                            });
+                        }
+                    },
                         e('span', { className: 'nx-td ' + tradeChipClass(h.recommended_action) }, h.recommended_action),
                         e('div', null,
                             e('div', { className: 'nx-ttk' }, h.symbol),
                             e('div', { className: 'nx-tre' }, (h.technical_signal || '?') + ' tech · ' + (h.quality_grade || '?') + ' qual')
                         ),
-                        e('div', { className: 'nx-tsz ' + (h.recommended_action === 'Add' ? 'nx-up' : 'nx-dn') },
-                            (h.recommended_action === 'Add' ? '+' : '−') + usd(Math.abs(+h.market_value) * 0.02)
+                        e('div', { className: 'nx-tsz ' + (isAdd ? 'nx-up' : 'nx-dn') },
+                            (isAdd ? '+' : '−') + usd(sz)
                         ),
                         e('div', { className: 'nx-tcf', style: { color: SC(h.conviction_score) } }, h.conviction_score)
                     );
@@ -747,7 +780,7 @@ function ActionCentre({ holdings, disabled }) {
 // ── NexusHoldings Table ───────────────────────────────────────
 const TABLE_FILTERS = ['All', 'High Conv.', 'Long', 'Alerts', 'Trim/Exit'];
 
-function NexusHoldings({ holdings }) {
+function NexusHoldings({ holdings, disabled }) {
     const [sortKey, setSortKey]   = useState('market_value');
     const [sortDir, setSortDir]   = useState(-1);
     const [filter,  setFilter]    = useState('All');
@@ -957,8 +990,22 @@ function NexusHoldings({ holdings }) {
                             e('td', { className: 'nx-c-act' },
                                 e('button', {
                                     className: 'nx-act-btn',
-                                    style: { background: aS.bg, color: aS.color, borderColor: aS.bc },
-                                    onClick: ev => ev.stopPropagation()
+                                    style: { background: aS.bg, color: aS.color, borderColor: aS.bc,
+                                        cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? .55 : 1 },
+                                    title: disabled ? 'Execution paused' : 'Trade ' + h.symbol,
+                                    onClick: function(ev) {
+                                        ev.stopPropagation();
+                                        if (disabled) return;
+                                        const act = h.recommended_action || 'Hold';
+                                        const isBuy = act === 'Add';
+                                        openTradeTicket({
+                                            symbol: h.symbol,
+                                            side: isBuy ? 'buy' : 'sell',
+                                            suggestedNotional: Math.abs(+h.market_value) * 0.02,
+                                            currentPrice: h.current_price,
+                                            ownedShares: (h.current_price ? Math.abs(+h.market_value) / +h.current_price : null),
+                                        });
+                                    }
                                 }, h.recommended_action || 'Hold')
                             )
                         ));
@@ -1102,6 +1149,160 @@ export function NexusShell({ children, onNavigate, activeTab }) {
     );
 }
 
+// ── Trade ticket ──────────────────────────────────────────────
+// Inline Add/Trim execution. Opened from anywhere via a window event so the
+// suggested-trade rows, alert cards, and holdings table can all summon it
+// without prop-drilling. Wired to useOrderMachine for the honest lifecycle
+// (SUBMITTING → CONFIRMING → FILLED / REJECTED / UNKNOWN) + circuit breaker.
+
+// detail: { symbol, side:'buy'|'sell', suggestedNotional?, currentPrice?, ownedShares? }
+function openTradeTicket(detail) {
+    window.dispatchEvent(new CustomEvent('atlas:trade-ticket', { detail }));
+}
+
+function TradeTicketModal({ ticket, onClose }) {
+    const { order, submit, recheck, reset } = useOrderMachine();
+    const tripped = useCircuitBreaker();
+    const [mode,  setMode]  = useState('notional');          // 'notional' | 'qty'
+    const [amount, setAmount] = useState('');
+    const [confirming, setConfirming] = useState(false);
+
+    const price = +ticket.currentPrice || 0;
+
+    // Prefill the suggested size whenever a new ticket opens
+    useEffect(function() {
+        reset();
+        setConfirming(false);
+        if (ticket.suggestedNotional) {
+            setMode('notional');
+            setAmount(String(Math.round(ticket.suggestedNotional)));
+        } else {
+            setMode('notional');
+            setAmount('');
+        }
+    }, [ticket.symbol, ticket.side, ticket.suggestedNotional]);
+
+    const amt        = parseFloat(amount) || 0;
+    const estShares  = mode === 'notional' ? (price ? amt / price : 0) : amt;
+    const estCost    = mode === 'notional' ? amt : amt * price;
+    const isBuy      = ticket.side === 'buy';
+    const sideCol    = isBuy ? 'var(--nx-green)' : 'var(--nx-red)';
+    const sideBg     = isBuy ? 'var(--nx-green-b)' : 'var(--nx-red-b)';
+    const overTrim   = !isBuy && ticket.ownedShares != null && estShares > ticket.ownedShares + 1e-6;
+
+    function doSubmit() {
+        const params = { symbol: ticket.symbol, side: ticket.side, type: 'market', tif: 'day' };
+        if (mode === 'notional') params.notional = amt;
+        else params.qty = amt;
+        submit(params);
+        setConfirming(false);
+    }
+
+    const lc = { display:'flex', alignItems:'center', gap:8, fontSize:10, fontFamily:'var(--nx-fm)' };
+    function lifecycle() {
+        if (!order) return null;
+        const S = order.status;
+        const row = (col, txt, extra) => e('div', { style: { ...lc, color: col, marginTop: 10, padding:'9px 11px', background:'var(--nx-bg2)', borderRadius:6, border:'1px solid var(--nx-border)' } }, txt, extra);
+        if (S === 'SUBMITTING') return row('var(--nx-blue)', '⟳ Submitting…');
+        if (S === 'CONFIRMING') return row('var(--nx-blue)', '⟳ Confirming with Alpaca…');
+        if (S === 'FILLED') return row('var(--nx-green)', '✓ Filled' + (order.filledQty ? ' · ' + (+order.filledQty).toFixed(2) + ' sh' : '') + (order.filledAvg ? ' @ ' + usd(order.filledAvg, 2) : ''));
+        if (S === 'REJECTED') return e('div', { style: { marginTop:10, padding:'9px 11px', background:'var(--nx-red-b)', borderRadius:6, border:'1px solid rgba(239,68,68,.25)' } },
+            e('div', { style: { ...lc, color:'var(--nx-red)', fontWeight:700 } }, '⊘ Rejected'),
+            e('div', { style: { fontSize:9, color:'var(--nx-text2)', marginTop:4, fontFamily:'var(--nx-fm)' } }, order.rejectReason || 'Order refused'));
+        if (S === 'UNKNOWN') return e('div', { style: { marginTop:10, padding:'9px 11px', background:'var(--nx-amber-b)', borderRadius:6, border:'1px solid rgba(245,158,11,.25)' } },
+            e('div', { style: { ...lc, color:'var(--nx-amber)' } }, '❓ Status unknown — edge timed out.'),
+            e('button', { onClick: () => recheck(order.clientOrderId),
+                style: { marginTop:6, fontSize:8, fontWeight:700, padding:'4px 8px', borderRadius:4, cursor:'pointer',
+                    background:'var(--nx-bg3)', color:'var(--nx-text2)', border:'1px solid var(--nx-border-md)', textTransform:'uppercase' } }, 'Check status'));
+        return null;
+    }
+
+    const done = order && (order.status === 'FILLED' || order.status === 'REJECTED');
+
+    return e('div', {
+        onClick: onClose,
+        style: { position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:1000,
+            display:'flex', alignItems:'center', justifyContent:'center' }
+    },
+        e('div', {
+            onClick: ev => ev.stopPropagation(),
+            style: { width:340, background:'var(--nx-bg1)', border:'1px solid var(--nx-border-md)',
+                borderRadius:12, padding:18, boxShadow:'0 20px 60px rgba(0,0,0,.5)' }
+        },
+            // header
+            e('div', { style: { display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 } },
+                e('div', null,
+                    e('div', { style: { fontFamily:'var(--nx-fd)', fontWeight:800, fontSize:15 } }, ticket.symbol),
+                    e('div', { style: { fontSize:9, color:'var(--nx-text3)', textTransform:'uppercase', letterSpacing:'.06em' } },
+                        (isBuy ? 'Buy / Add' : 'Sell / Trim') + (price ? ' · ' + usd(price, 2) : ''))
+                ),
+                e('span', { style: { fontSize:9, fontWeight:700, padding:'3px 8px', borderRadius:5, background:sideBg, color:sideCol, textTransform:'uppercase' } },
+                    ticket.side)
+            ),
+
+            tripped && e('div', { style: { fontSize:9, color:'var(--nx-red)', background:'var(--nx-red-b)', borderRadius:6, padding:'8px 10px', marginBottom:10, border:'1px solid rgba(239,68,68,.2)' } },
+                '⛔ Execution paused — circuit breaker active. Try again shortly.'),
+
+            // mode toggle
+            e('div', { style: { display:'flex', gap:6, marginBottom:8 } },
+                ['notional','qty'].map(m => e('button', {
+                    key: m, onClick: () => setMode(m),
+                    style: { flex:1, fontSize:9, fontWeight:700, padding:'6px', borderRadius:5, cursor:'pointer', textTransform:'uppercase',
+                        background: mode === m ? 'var(--nx-blue-b)' : 'var(--nx-bg2)',
+                        color: mode === m ? 'var(--nx-blue)' : 'var(--nx-text3)',
+                        border:'1px solid ' + (mode === m ? 'rgba(59,130,246,.3)' : 'var(--nx-border)') }
+                }, m === 'notional' ? 'Notional $' : 'Shares'))
+            ),
+
+            // amount input
+            e('input', {
+                type:'number', value: amount, onChange: ev => setAmount(ev.target.value),
+                placeholder: mode === 'notional' ? 'Dollar amount' : 'Share quantity',
+                disabled: !!order,
+                style: { width:'100%', padding:'9px 11px', fontSize:13, fontFamily:'var(--nx-fm)',
+                    background:'var(--nx-bg2)', border:'1px solid var(--nx-border-md)', borderRadius:6,
+                    color:'var(--nx-text)', outline:'none' }
+            }),
+
+            // est line
+            e('div', { style: { fontSize:9, color:'var(--nx-text3)', marginTop:6, fontFamily:'var(--nx-fm)' } },
+                mode === 'notional'
+                    ? '≈ ' + estShares.toFixed(3) + ' sh' + (price ? '' : ' (price unavailable)')
+                    : '≈ ' + usd(estCost, 2)),
+            ticket.ownedShares != null && e('div', { style: { fontSize:9, color: overTrim ? 'var(--nx-red)' : 'var(--nx-text3)', marginTop:2, fontFamily:'var(--nx-fm)' } },
+                'Position: ' + (+ticket.ownedShares).toFixed(2) + ' sh' + (overTrim ? ' · exceeds held qty' : '')),
+
+            lifecycle(),
+
+            // actions
+            e('div', { style: { display:'flex', gap:8, marginTop:14 } },
+                done
+                    ? e('button', { onClick: onClose, style: btn('var(--nx-bg3)', 'var(--nx-text)') }, 'Close')
+                    : !order && !confirming
+                        ? [
+                            e('button', { key:'c', onClick: onClose, style: btn('var(--nx-bg2)', 'var(--nx-text3)') }, 'Cancel'),
+                            e('button', { key:'r', disabled: amt <= 0 || tripped,
+                                onClick: () => setConfirming(true),
+                                style: btn(amt > 0 && !tripped ? sideBg : 'var(--nx-bg2)', amt > 0 && !tripped ? sideCol : 'var(--nx-text3)') },
+                                isBuy ? 'Review Buy' : 'Review Sell')
+                          ]
+                        : !order && confirming
+                            ? [
+                                e('button', { key:'b', onClick: () => setConfirming(false), style: btn('var(--nx-bg2)', 'var(--nx-text3)') }, 'Back'),
+                                e('button', { key:'s', onClick: doSubmit, style: btn(sideBg, sideCol) },
+                                    'Confirm ' + (isBuy ? 'Buy ' : 'Sell ') + (mode === 'notional' ? usd(amt) : amt + ' sh'))
+                              ]
+                            : e('div', { style: { flex:1, fontSize:9, color:'var(--nx-text3)', textAlign:'center', padding:'8px' } }, 'Working…')
+            )
+        )
+    );
+}
+
+function btn(bg, col) {
+    return { flex:1, padding:'9px', borderRadius:6, fontSize:10, fontWeight:700, cursor:'pointer',
+        background:bg, color:col, border:'1px solid var(--nx-border-md)', textTransform:'uppercase', letterSpacing:'.03em' };
+}
+
 // ── Nexus landing content (no shell — shell is in app.js) ────
 export function NexusPage() {
     const [holdings,    setHoldings]    = useState([]);
@@ -1114,6 +1315,16 @@ export function NexusPage() {
     const freshness      = useFreshnessGate();
     const circuitTripped = useCircuitBreaker();
     const execDisabled   = freshness.tier === 'critical' || circuitTripped;
+    const [ticket, setTicket] = useState(null);
+
+    useEffect(function() {
+        function onTicket(ev) {
+            if (execDisabled) return;   // gated: don't open ticket when execution paused
+            setTicket(ev.detail);
+        }
+        window.addEventListener('atlas:trade-ticket', onTicket);
+        return () => window.removeEventListener('atlas:trade-ticket', onTicket);
+    }, [execDisabled]);
 
     function reloadHoldings() {
         if (!sb) return;
@@ -1184,6 +1395,7 @@ export function NexusPage() {
             e(IntelCanvas,     { holdings }),
             e(ActionCentre,    { holdings, disabled: execDisabled })
         ),
-        e(NexusHoldings, { holdings })
+        e(NexusHoldings, { holdings, disabled: execDisabled }),
+        ticket && e(TradeTicketModal, { ticket, onClose: () => setTicket(null) })
     );
 }
