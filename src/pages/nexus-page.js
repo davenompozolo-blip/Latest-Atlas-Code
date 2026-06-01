@@ -688,6 +688,9 @@ function ActionCentre({ holdings, disabled }) {
                                 suggestedNotional: Math.abs(+h.market_value) * 0.02,
                                 currentPrice: h.current_price,
                                 ownedShares: (h.current_price ? Math.abs(+h.market_value) / +h.current_price : null),
+                                conviction: h.conviction_score,
+                                intent: 'add',
+                                snapshot: h,
                             });
                         }
                     }, h.alert_flag === 'opportunity' ? 'Add' : 'Review')
@@ -721,6 +724,9 @@ function ActionCentre({ holdings, disabled }) {
                                 suggestedNotional: sz,
                                 currentPrice: h.current_price,
                                 ownedShares: (h.current_price ? Math.abs(+h.market_value) / +h.current_price : null),
+                                conviction: h.conviction_score,
+                                intent: h.recommended_action === 'Exit' ? 'exit' : (isAdd ? 'add' : 'trim'),
+                                snapshot: h,
                             });
                         }
                     },
@@ -988,25 +994,39 @@ function NexusHoldings({ holdings, disabled }) {
                             ),
                             e('td', { className: 'nx-c-sig nx-mono', style: { color: 'var(--nx-text3)' } }, h.next_earnings_date || '—'),
                             e('td', { className: 'nx-c-act' },
-                                e('button', {
-                                    className: 'nx-act-btn',
-                                    style: { background: aS.bg, color: aS.color, borderColor: aS.bc,
-                                        cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? .55 : 1 },
-                                    title: disabled ? 'Execution paused' : 'Trade ' + h.symbol,
-                                    onClick: function(ev) {
-                                        ev.stopPropagation();
-                                        if (disabled) return;
-                                        const act = h.recommended_action || 'Hold';
-                                        const isBuy = act === 'Add';
-                                        openTradeTicket({
-                                            symbol: h.symbol,
-                                            side: isBuy ? 'buy' : 'sell',
-                                            suggestedNotional: Math.abs(+h.market_value) * 0.02,
-                                            currentPrice: h.current_price,
-                                            ownedShares: (h.current_price ? Math.abs(+h.market_value) / +h.current_price : null),
-                                        });
-                                    }
-                                }, h.recommended_action || 'Hold')
+                                e('div', { style: { display:'flex', alignItems:'center', gap:5, justifyContent:'flex-end' } },
+                                    e('button', {
+                                        className: 'nx-act-btn',
+                                        style: { background: aS.bg, color: aS.color, borderColor: aS.bc,
+                                            cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? .55 : 1 },
+                                        title: disabled ? 'Execution paused' : 'Trade ' + h.symbol,
+                                        onClick: function(ev) {
+                                            ev.stopPropagation();
+                                            if (disabled) return;
+                                            const act = h.recommended_action || 'Hold';
+                                            const isBuy = act === 'Add';
+                                            openTradeTicket({
+                                                symbol: h.symbol,
+                                                side: isBuy ? 'buy' : 'sell',
+                                                suggestedNotional: Math.abs(+h.market_value) * 0.02,
+                                                currentPrice: h.current_price,
+                                                ownedShares: (h.current_price ? Math.abs(+h.market_value) / +h.current_price : null),
+                                                conviction: h.conviction_score,
+                                                intent: act === 'Exit' ? 'exit' : (isBuy ? 'add' : 'trim'),
+                                                snapshot: h,
+                                            });
+                                        }
+                                    }, h.recommended_action || 'Hold'),
+                                    e('button', {
+                                        title: 'Log a pass on ' + h.symbol,
+                                        style: { background:'transparent', color:'var(--nx-text3)', border:'1px solid var(--nx-border)',
+                                            borderRadius:4, fontSize:8, fontWeight:700, padding:'3px 6px', cursor:'pointer', textTransform:'uppercase' },
+                                        onClick: function(ev) {
+                                            ev.stopPropagation();
+                                            openPassTicket({ symbol: h.symbol, conviction: h.conviction_score, snapshot: h });
+                                        }
+                                    }, 'Pass')
+                                )
                             )
                         ));
 
@@ -1166,6 +1186,7 @@ function TradeTicketModal({ ticket, onClose }) {
     const [mode,  setMode]  = useState('notional');          // 'notional' | 'qty'
     const [amount, setAmount] = useState('');
     const [confirming, setConfirming] = useState(false);
+    const [rationale, setRationale] = useState('');
 
     const price = +ticket.currentPrice || 0;
 
@@ -1194,6 +1215,13 @@ function TradeTicketModal({ ticket, onClose }) {
         const params = { symbol: ticket.symbol, side: ticket.side, type: 'market', tif: 'day' };
         if (mode === 'notional') params.notional = amt;
         else params.qty = amt;
+        // Ledger context — appended as an executed decision server-side on success
+        params.ledger = {
+            conviction: ticket.conviction != null ? ticket.conviction : null,
+            intent:     ticket.intent || (ticket.side === 'sell' ? 'trim' : 'add'),
+            snapshot:   ticket.snapshot || null,
+            rationale:  rationale.trim() || null,
+        };
         submit(params);
         setConfirming(false);
     }
@@ -1272,6 +1300,17 @@ function TradeTicketModal({ ticket, onClose }) {
             ticket.ownedShares != null && e('div', { style: { fontSize:9, color: overTrim ? 'var(--nx-red)' : 'var(--nx-text3)', marginTop:2, fontFamily:'var(--nx-fm)' } },
                 'Position: ' + (+ticket.ownedShares).toFixed(2) + ' sh' + (overTrim ? ' · exceeds held qty' : '')),
 
+            // optional rationale — recorded with the decision in the Ledger
+            !order && e('input', {
+                type:'text', value: rationale, onChange: ev => setRationale(ev.target.value),
+                placeholder: 'Why? (optional — logged to your record)',
+                style: { width:'100%', marginTop:10, padding:'7px 10px', fontSize:10,
+                    background:'var(--nx-bg2)', border:'1px solid var(--nx-border)', borderRadius:6,
+                    color:'var(--nx-text2)', outline:'none' }
+            }),
+            ticket.conviction != null && e('div', { style: { fontSize:8, color:'var(--nx-text3)', marginTop:5, fontFamily:'var(--nx-fm)' } },
+                '◆ Logs to Ledger · conviction ' + ticket.conviction + ' · ' + (ticket.intent || (isBuy ? 'add' : 'trim'))),
+
             lifecycle(),
 
             // actions
@@ -1303,6 +1342,71 @@ function btn(bg, col) {
         background:bg, color:col, border:'1px solid var(--nx-border-md)', textTransform:'uppercase', letterSpacing:'.03em' };
 }
 
+// ── Pass capture ──────────────────────────────────────────────
+// The selection-bias guard: log the trades you DIDN'T take, so calibration
+// spans taken + skipped. One tap + optional reason → an append-only 'passed'
+// decision. Without this the track record is a vanity metric.
+function openPassTicket(detail) {
+    window.dispatchEvent(new CustomEvent('atlas:pass-decision', { detail }));
+}
+
+function PassModal({ ticket, onClose }) {
+    const [reason, setReason] = useState('');
+    const [phase,  setPhase]  = useState('idle');   // idle | saving | done | error
+    const [msg,    setMsg]    = useState('');
+
+    async function logPass() {
+        if (!sb) { setPhase('error'); setMsg('Supabase not configured.'); return; }
+        setPhase('saving');
+        const { error } = await sb.from('decisions').insert({
+            symbol:          ticket.symbol,
+            decision_type:   'passed',
+            intent:          'avoid',
+            conviction:      ticket.conviction != null ? Math.round(ticket.conviction) : null,
+            signal_snapshot: ticket.snapshot || null,
+            rationale:       reason.trim() || null,
+        });
+        if (error) { setPhase('error'); setMsg(error.message); }
+        else { setPhase('done'); setTimeout(onClose, 1100); }
+    }
+
+    return e('div', {
+        onClick: onClose,
+        style: { position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:1000,
+            display:'flex', alignItems:'center', justifyContent:'center' }
+    },
+        e('div', {
+            onClick: ev => ev.stopPropagation(),
+            style: { width:320, background:'var(--nx-bg1)', border:'1px solid var(--nx-border-md)',
+                borderRadius:12, padding:18, boxShadow:'0 20px 60px rgba(0,0,0,.5)' }
+        },
+            e('div', { style: { display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 } },
+                e('div', { style: { fontFamily:'var(--nx-fd)', fontWeight:800, fontSize:14 } }, 'Pass on ' + ticket.symbol),
+                e('span', { style: { fontSize:8, fontWeight:700, padding:'3px 8px', borderRadius:5, background:'var(--nx-amber-b)', color:'var(--nx-amber)', textTransform:'uppercase' } }, 'Passed')
+            ),
+            e('div', { style: { fontSize:9, color:'var(--nx-text3)', marginBottom:12, lineHeight:1.5 } },
+                'Logs an append-only record that you looked and chose not to act' +
+                (ticket.conviction != null ? ' (conviction ' + ticket.conviction + ')' : '') +
+                '. This keeps your calibration honest — skipped calls count too.'),
+            phase === 'done'
+                ? e('div', { style: { fontSize:11, color:'var(--nx-green)', padding:'10px 0', fontFamily:'var(--nx-fm)' } }, '✓ Pass logged to your record.')
+                : [
+                    e('input', { key:'i', type:'text', value: reason, onChange: ev => setReason(ev.target.value),
+                        placeholder: 'Why pass? (optional)',
+                        style: { width:'100%', padding:'8px 11px', fontSize:11,
+                            background:'var(--nx-bg2)', border:'1px solid var(--nx-border-md)', borderRadius:6,
+                            color:'var(--nx-text)', outline:'none' } }),
+                    phase === 'error' && e('div', { key:'e', style: { fontSize:9, color:'var(--nx-red)', marginTop:6 } }, msg),
+                    e('div', { key:'a', style: { display:'flex', gap:8, marginTop:14 } },
+                        e('button', { onClick: onClose, style: btn('var(--nx-bg2)', 'var(--nx-text3)') }, 'Cancel'),
+                        e('button', { disabled: phase === 'saving', onClick: logPass,
+                            style: btn('var(--nx-amber-b)', 'var(--nx-amber)') }, phase === 'saving' ? 'Logging…' : 'Log Pass')
+                    )
+                  ]
+        )
+    );
+}
+
 // ── Nexus landing content (no shell — shell is in app.js) ────
 export function NexusPage() {
     const [holdings,    setHoldings]    = useState([]);
@@ -1316,14 +1420,20 @@ export function NexusPage() {
     const circuitTripped = useCircuitBreaker();
     const execDisabled   = freshness.tier === 'critical' || circuitTripped;
     const [ticket, setTicket] = useState(null);
+    const [passTicket, setPassTicket] = useState(null);
 
     useEffect(function() {
         function onTicket(ev) {
             if (execDisabled) return;   // gated: don't open ticket when execution paused
             setTicket(ev.detail);
         }
+        function onPass(ev) { setPassTicket(ev.detail); }   // passing is always allowed (no execution)
         window.addEventListener('atlas:trade-ticket', onTicket);
-        return () => window.removeEventListener('atlas:trade-ticket', onTicket);
+        window.addEventListener('atlas:pass-decision', onPass);
+        return () => {
+            window.removeEventListener('atlas:trade-ticket', onTicket);
+            window.removeEventListener('atlas:pass-decision', onPass);
+        };
     }, [execDisabled]);
 
     function reloadHoldings() {
@@ -1396,6 +1506,7 @@ export function NexusPage() {
             e(ActionCentre,    { holdings, disabled: execDisabled })
         ),
         e(NexusHoldings, { holdings, disabled: execDisabled }),
-        ticket && e(TradeTicketModal, { ticket, onClose: () => setTicket(null) })
+        ticket && e(TradeTicketModal, { ticket, onClose: () => setTicket(null) }),
+        passTicket && e(PassModal, { ticket: passTicket, onClose: () => setPassTicket(null) })
     );
 }
