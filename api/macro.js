@@ -30,15 +30,24 @@ async function fetchFred(seriesId, limit) {
     if (!key) return null;
     var url = FRED_BASE + '?series_id=' + seriesId +
               '&api_key=' + key + '&file_type=json&sort_order=desc&limit=' + (limit || 12);
-    var r = await fetchWithTimeout(url, {}, 10000);
-    if (!r.ok) return null;
-    var d = await r.json();
-    if (!d.observations) return null;
-    return d.observations
-        .filter(function(o) { return o.value !== '.'; })
-        .map(function(o) { return { date: o.date, value: parseFloat(o.value) }; })
-        .reverse();
+    for (var attempt = 0; attempt < 3; attempt++) {
+        try {
+            if (attempt > 0) await new Promise(function(r) { setTimeout(r, 600 * attempt); });
+            var r = await fetchWithTimeout(url, {}, 12000);
+            if (r.status === 429) { await new Promise(function(res) { setTimeout(res, 1000 * (attempt + 1)); }); continue; }
+            if (!r.ok) return null;
+            var d = await r.json();
+            if (!d.observations) return null;
+            return d.observations
+                .filter(function(o) { return o.value !== '.'; })
+                .map(function(o) { return { date: o.date, value: parseFloat(o.value) }; })
+                .reverse();
+        } catch (_) { /* retry on network error */ }
+    }
+    return null;
 }
+
+async function delay(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
 
 async function finnhubQuote(symbol) {
     var key = (process.env.FINNHUB_API_KEY || '').trim();
@@ -153,37 +162,48 @@ export default async function handler(req, res) {
             if (cached) { return res.status(200).json(cached); }
         }
 
-        // Fetch all FRED series in parallel
-        var fredResults = await Promise.allSettled([
-            /* 0  */ fetchFred('DGS3MO', 60),
-            /* 1  */ fetchFred('DGS2', 60),
-            /* 2  */ fetchFred('DGS5', 60),
-            /* 3  */ fetchFred('DGS10', 60),
-            /* 4  */ fetchFred('DGS30', 60),
-            /* 5  */ fetchFred('FEDFUNDS', 24),
-            /* 6  */ fetchFred('CPIAUCSL', 36),
-            /* 7  */ fetchFred('CPILFESL', 36),
-            /* 8  */ fetchFred('PCEPI', 36),
-            /* 9  */ fetchFred('T5YIE', 60),
-            /* 10 */ fetchFred('T10YIE', 60),
-            /* 11 */ fetchFred('GDP', 24),
-            /* 12 */ fetchFred('GDPC1', 24),
-            /* 13 */ fetchFred('PAYEMS', 24),
-            /* 14 */ fetchFred('UNRATE', 24),
-            /* 15 */ fetchFred('ICSA', 52),
-            /* 16 */ fetchFred('INDPRO', 24),
-            /* 17 */ fetchFred('BAMLH0A0HYM2', 60),
-            /* 18 */ fetchFred('BAMLC0A4CBBB', 60),
-            /* 19 */ fetchFred('NFCI', 60),
+        // Fetch FRED series in priority batches to avoid burst rate-limiting.
+        // Batch 1: yield curve (highest priority — visible above the fold)
+        var yieldBatch = await Promise.allSettled([
+            /* 0 */ fetchFred('DGS3MO', 60),
+            /* 1 */ fetchFred('DGS2', 60),
+            /* 2 */ fetchFred('DGS5', 60),
+            /* 3 */ fetchFred('DGS10', 60),
+            /* 4 */ fetchFred('DGS30', 60),
+            /* 5 */ fetchFred('FEDFUNDS', 24),
+        ]);
+        await delay(150);
+        // Batch 2: inflation
+        var inflBatch = await Promise.allSettled([
+            /* 0 */ fetchFred('CPIAUCSL', 36),
+            /* 1 */ fetchFred('CPILFESL', 36),
+            /* 2 */ fetchFred('PCEPI', 36),
+            /* 3 */ fetchFred('T5YIE', 60),
+            /* 4 */ fetchFred('T10YIE', 60),
+        ]);
+        await delay(150);
+        // Batch 3: growth & credit
+        var growthBatch = await Promise.allSettled([
+            /* 0 */ fetchFred('GDP', 24),
+            /* 1 */ fetchFred('GDPC1', 24),
+            /* 2 */ fetchFred('PAYEMS', 24),
+            /* 3 */ fetchFred('UNRATE', 24),
+            /* 4 */ fetchFred('ICSA', 52),
+            /* 5 */ fetchFred('INDPRO', 24),
+            /* 6 */ fetchFred('BAMLH0A0HYM2', 60),
+            /* 7 */ fetchFred('BAMLC0A4CBBB', 60),
+            /* 8 */ fetchFred('NFCI', 60),
         ]);
 
-        function val(i) { return fredResults[i].status === 'fulfilled' ? fredResults[i].value : null; }
+        function yv(i) { return yieldBatch[i].status === 'fulfilled' ? yieldBatch[i].value : null; }
+        function iv(i) { return inflBatch[i].status === 'fulfilled' ? inflBatch[i].value : null; }
+        function gv(i) { return growthBatch[i].status === 'fulfilled' ? growthBatch[i].value : null; }
 
-        var dgs3mo = val(0), dgs2 = val(1), dgs5 = val(2), dgs10 = val(3), dgs30 = val(4);
-        var fedFunds = val(5);
-        var cpi = val(6), coreCpi = val(7), pce = val(8), t5yie = val(9), t10yie = val(10);
-        var gdp = val(11), realGdp = val(12), payrolls = val(13), unrate = val(14), claims = val(15), indpro = val(16);
-        var hySpreads = val(17), igSpreads = val(18), nfci = val(19);
+        var dgs3mo = yv(0), dgs2 = yv(1), dgs5 = yv(2), dgs10 = yv(3), dgs30 = yv(4);
+        var fedFunds = yv(5);
+        var cpi = iv(0), coreCpi = iv(1), pce = iv(2), t5yie = iv(3), t10yie = iv(4);
+        var gdp = gv(0), realGdp = gv(1), payrolls = gv(2), unrate = gv(3), claims = gv(4), indpro = gv(5);
+        var hySpreads = gv(6), igSpreads = gv(7), nfci = gv(8);
 
         // Build yield curve snapshot from latest values
         function latestVal(arr) { return arr && arr.length ? arr[arr.length - 1].value : null; }
