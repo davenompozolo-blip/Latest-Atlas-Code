@@ -4,6 +4,7 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "functions": {
+    "api/macro.js":          { "maxDuration": 45 },
     "api/claude-analyse.js": { "maxDuration": 60 },
     "api/claude-sector.js":  { "maxDuration": 60 }
   },

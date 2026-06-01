@@ -174,7 +174,7 @@ function OverviewPanel(p) {
         h('div', { style: hb },
             h('div', { style: hl }, 'Curve 2s10s'),
             h('div', { style: mono(18, spreadColor) }, spread2s10s != null ? (spread2s10s >= 0 ? '+' : '') + fN(spread2s10s, 2) + '%' : '—'),
-            sub(spread2s10s != null && spread2s10s < 0 ? 'Inverted' : spread2s10s < 0.5 ? 'Flat' : 'Normal slope', spreadColor)
+            sub(spread2s10s == null ? 'Loading...' : spread2s10s < 0 ? 'Inverted' : spread2s10s < 0.5 ? 'Flat' : 'Normal slope', spreadColor)
         ),
         h('div', { style: sep }),
         h('div', { style: hb },
