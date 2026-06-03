@@ -216,8 +216,8 @@ async function fetchCandidates(
         AND a.symbol NOT IN (SELECT sym FROM held)
         AND EXISTS (
           SELECT 1 FROM price_history ph
-          WHERE ph.symbol = a.symbol
-          GROUP BY ph.symbol HAVING COUNT(*) >= 20
+          WHERE ph.asset_id = a.id
+          GROUP BY ph.asset_id HAVING COUNT(*) >= 20
         )
         AND (
           COALESCE(ec.payload->'Overview'->>'Sector', a.sector, '') = ${sector}
@@ -237,6 +237,68 @@ async function fetchCandidates(
     subtheme:  r.sector_src,
     fit_score: Math.min(100, Math.max(0, Number(r.quality ?? 0))),
   }))
+}
+
+// ── Sizing engine: Risk-Budgeted Conviction Sizing ─────────────────────────
+// Base allocation is set by conviction tier, scaled down for high-volatility
+// names toward a target portfolio vol, then clamped by SAA headroom, a hard
+// single-add ceiling, a sector-concentration cap, and a minimum economic size.
+const SIZE_TARGET_VOL_ANNUAL = 0.25  // names above this get scaled down
+const SIZE_HARD_CEILING_PCT  = 5     // never add more than this in one move
+const SIZE_FLOOR_PCT         = 0.5   // below this, costs outweigh alpha
+const SIZE_SECTOR_CONC_PCT   = 20    // sector above this → tighten new adds
+const SIZE_SECTOR_CONC_CAP   = 1.5   // cap when sector already concentrated
+
+function convictionToScore(c: 'low' | 'medium' | 'high'): number {
+  return c === 'high' ? 0.8 : c === 'medium' ? 0.55 : 0.3
+}
+
+function computeSuggestedSize(opts: {
+  conviction: 'low' | 'medium' | 'high'
+  headroomPct: number
+  sectorWeightPct: number
+  positionVol?: number   // annualized; omit when unknown (no vol scaling)
+}): { size_pct: number; rationale: string } {
+  const score = convictionToScore(opts.conviction)
+
+  // 1. Conviction-tiered base allocation
+  const base = score >= 0.7 ? 3.0 : score >= 0.4 ? 2.0 : 1.0
+
+  // 2. Volatility scalar (only when we have a vol estimate)
+  let volScalar = 1.0
+  if (opts.positionVol && opts.positionVol > 0) {
+    volScalar = Math.min(1.0, SIZE_TARGET_VOL_ANNUAL / opts.positionVol)
+  }
+
+  let size = base * volScalar
+  const beforeCaps = size
+
+  // 3. SAA headroom + hard single-add ceiling
+  const ceiling = Math.min(opts.headroomPct, SIZE_HARD_CEILING_PCT)
+  size = Math.min(size, ceiling)
+
+  // 4. Sector-concentration cap
+  let sectorCapped = false
+  if (opts.sectorWeightPct > SIZE_SECTOR_CONC_PCT) {
+    size = Math.min(size, SIZE_SECTOR_CONC_CAP)
+    sectorCapped = true
+  }
+
+  // 5. Minimum economic size — unless headroom itself is below the floor
+  if (ceiling >= SIZE_FLOOR_PCT) {
+    size = Math.max(size, SIZE_FLOOR_PCT)
+  } else {
+    size = ceiling
+  }
+
+  size = Math.round(size * 100) / 100
+
+  const parts = [`${opts.conviction} conviction → ${base.toFixed(1)}% base`]
+  if (volScalar < 1) parts.push(`vol-scaled ×${volScalar.toFixed(2)}`)
+  if (beforeCaps > ceiling) parts.push(`capped to ${ceiling.toFixed(1)}% headroom/ceiling`)
+  if (sectorCapped) parts.push(`sector >${SIZE_SECTOR_CONC_PCT}% → tightened to ${SIZE_SECTOR_CONC_CAP}%`)
+
+  return { size_pct: size, rationale: parts.join('; ') }
 }
 
 // ── Stage A: Rule engines ──────────────────────────────────────────────────
@@ -263,7 +325,12 @@ async function buildThesisSignals(
       candidates = await fetchCandidates(sql, 'any', state.held_symbols, CANDIDATE_LIMIT)
     }
 
-    const suggestedSizePct = Math.min(headroom * 0.5, 5) // half the headroom, capped at 5%
+    const sizing = computeSuggestedSize({
+      conviction,
+      headroomPct:     headroom,
+      sectorWeightPct: s.weight_pct,
+    })
+    const suggestedSizePct = sizing.size_pct
 
     signals.push({
       signal_class: 'thesis',
@@ -276,6 +343,7 @@ async function buildThesisSignals(
         theme_weight_from:   s.weight_pct,
         theme_weight_to:     Math.min(s.weight_pct + suggestedSizePct, THEME_CEILING_PCT),
         suggested_size_pct:  suggestedSizePct,
+        sizing_rationale:    sizing.rationale,
         subtheme:            s.sector,
         headroom_pct:        headroom,
         saa_ceiling_pct:     THEME_CEILING_PCT,
@@ -339,6 +407,13 @@ async function buildGapSignals(
     }
     if (candidates.length === 0) continue
 
+    // For gap fills, the room to deploy is the undershoot vs SAA target.
+    const sizing = computeSuggestedSize({
+      conviction,
+      headroomPct:     absgap,
+      sectorWeightPct: g.current_pct,
+    })
+
     signals.push({
       signal_class: 'gap',
       relevance,
@@ -350,7 +425,8 @@ async function buildGapSignals(
         gap_pct:             gap,
         current_weight_pct:  g.current_pct,
         saa_target_pct:      equal_weight_target_pct,
-        suggested_size_pct:  Math.min(absgap * 0.5, 5),
+        suggested_size_pct:  sizing.size_pct,
+        sizing_rationale:    sizing.rationale,
         from_gap:            true,
       },
       candidates,
@@ -472,26 +548,27 @@ async function enrichWithClaude(drafts: SignalDraft[]): Promise<SignalDraft[]> {
   const enriched: SignalDraft[] = []
 
   for (const d of drafts) {
-    const tickers = d.candidates.map(c => c.ticker).join(', ')
+    const tickers = d.candidates.map(c => c.name ? `${c.ticker} (${c.name})` : c.ticker).join(', ')
     const setup   = d.setup_json
 
     let prompt: string
     if (d.signal_class === 'thesis') {
-      const s = setup as { theme: string; theme_weight_from: number; suggested_size_pct: number }
+      const s = setup as { theme: string; theme_weight_from: number; suggested_size_pct: number; sizing_rationale?: string }
       prompt = [
         `Signal class: Thesis Extender`,
         `Sector: ${s.theme} | Current weight: ${s.theme_weight_from}% | Suggested add: ${s.suggested_size_pct}%`,
+        `Sizing rationale: ${s.sizing_rationale ?? 'risk-budgeted conviction sizing'}`,
         `Candidate tickers: ${tickers}`,
         `Thesis: The portfolio has an active ${s.theme} thesis with room to extend before hitting the 25% sector ceiling.`,
         `Generate title + 2-3 sentence thesis referencing these exact numbers and tickers.`,
         `Output JSON: {"title": "...", "thesis_md": "..."}`,
       ].join('\n')
     } else if (d.signal_class === 'gap') {
-      const s = setup as { theme: string; gap_pct: number; saa_target_pct: number; suggested_size_pct: number }
+      const s = setup as { theme: string; gap_pct: number; saa_target_pct: number; suggested_size_pct: number; sizing_rationale?: string }
       prompt = [
         `Signal class: Gap Filler`,
         `Sector: ${s.theme} | Current weight: ${((s.saa_target_pct + (s.gap_pct ?? 0)))}% | SAA target: ${s.saa_target_pct}% | Gap: ${s.gap_pct}%`,
-        `Suggested allocation: ${s.suggested_size_pct}% NAV`,
+        `Suggested allocation: ${s.suggested_size_pct}% NAV (${s.sizing_rationale ?? 'risk-budgeted conviction sizing'})`,
         `Candidate tickers: ${tickers}`,
         `Generate title + 2-3 sentence thesis explaining why closing this gap improves portfolio construction. Reference the numbers.`,
         `Output JSON: {"title": "...", "thesis_md": "..."}`,

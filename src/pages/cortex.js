@@ -55,6 +55,33 @@ async function fetchHeldSymbols() {
     return (data || []).map(r => r.symbol);
 }
 
+async function saveControl(signal_class, patch) {
+    if (!sb) return;
+    const { error } = await sb.from('cortex_signal_controls')
+        .update({ ...patch, updated_at: new Date().toISOString() })
+        .eq('signal_class', signal_class);
+    if (error) console.error('saveControl', error);
+}
+
+async function fetchWatchlist() {
+    if (!sb) return [];
+    const { data, error } = await sb.from('cortex_watchlist').select('*').order('sort_order');
+    if (error) { console.error('watchlist', error); return []; }
+    return data || [];
+}
+
+async function fetchScreener({ sector, search } = {}) {
+    if (!sb) return [];
+    let q = sb.from('vw_cortex_screener')
+        .select('symbol,name,sector,exchange,market_cap,ev_ebitda,rev_growth,net_margin,p_fcf,roic,roe,debt_equity,net_debt_ebitda,div_growth_5y,ret_1m');
+    if (sector && sector !== 'all') q = q.eq('sector', sector);
+    if (search) q = q.ilike('symbol', search + '%');
+    q = q.order('symbol').limit(400);
+    const { data, error } = await q;
+    if (error) { console.error('screener', error); return []; }
+    return data || [];
+}
+
 async function fetchPretradeRisk(ticker) {
     if (!sb) return null;
     try {
@@ -188,7 +215,7 @@ function CandidateChip({ c, colour, onClick }) {
     return h('button', {
         onClick: () => onClick && onClick(label),
         onMouseEnter: () => setHov(true), onMouseLeave: () => setHov(false),
-        title: c.name || '',
+        title: [c.name, c.sector].filter(Boolean).join(' · ') || '',
         style: {
             background: hov ? colour + '22' : 'rgba(255,255,255,0.03)',
             border: '1px solid ' + (hov ? colour + '66' : 'rgba(255,255,255,0.08)'),
@@ -253,6 +280,14 @@ function SignalCard({ signal, onTradeClick, onValueClick, onMute }) {
             } },
                 metrics.map((m, i) => h('div', { key: i, style: { background: 'var(--nx-bg1)' } }, h(MetricCell, m)))
             ),
+
+            // sizing rationale (risk-budgeted conviction sizing)
+            (cls === 'thesis' || cls === 'gap') && setup.sizing_rationale && h('div', { style: {
+                fontSize: 9.5, color: 'var(--nx-text3)', fontFamily: 'var(--nx-fb)', marginBottom: 12, marginTop: -4,
+                display: 'flex', alignItems: 'center', gap: 6,
+            } },
+                h('span', { style: { fontSize: 8, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: cc.fg, background: cc.bg, border: '1px solid ' + cc.border, borderRadius: 3, padding: '1px 5px' } }, 'Sizing'),
+                h('span', null, setup.sizing_rationale)),
 
             // candidate chips
             cands.length > 0
@@ -485,6 +520,194 @@ function TrimRow({ r, onTradeClick, onValueClick }) {
     );
 }
 
+// ── Advanced Screener ─────────────────────────────────────────
+// Preset strategy chips snap the filter bars to a strategy profile. Fundamentals
+// come from vw_cortex_screener (Finnhub/AlphaVantage cache); rows with missing
+// data show "—" and only fail a filter when that filter is actively engaged.
+const ADV_SECTORS = ['all', 'Technology', 'Healthcare', 'Financials', 'Energy', 'Materials', 'Industrials', 'Consumer Discretionary', 'Consumer Staples', 'Utilities', 'Real Estate', 'International', 'Communication Services'];
+
+// Filter defaults — sentinels meaning "off"
+const ADV_DEFAULTS = { mktCapMin: 0, sector: 'all', fcfMarginMin: null, revGrowthMin: null, roicMin: null, netDebtEbitdaMax: null, evEbitdaMax: null };
+
+const ADV_PRESETS = [
+    { key: 'ai_hw',     label: 'Quality AI Hardware',   sector: 'Technology', roicMin: 12, revGrowthMin: 15 },
+    { key: 'hc_fill',   label: 'Healthcare fill SAA',   sector: 'Healthcare', fcfMarginMin: 8 },
+    { key: 'deep_val',  label: 'Deep Value',            evEbitdaMax: 8, fcfMarginMin: 5 },
+    { key: 'garp',      label: 'GARP',                  revGrowthMin: 10, roicMin: 10, evEbitdaMax: 18 },
+    { key: 'fcf_yield', label: 'High FCF Yield',        fcfMarginMin: 15 },
+    { key: 'mom_qual',  label: 'Momentum + Quality',    roicMin: 12 },
+    { key: 'div_grow',  label: 'Dividend Growth',       fcfMarginMin: 10 },
+];
+
+function numCell(v, { suffix = '', d = 1, color, signed = false } = {}) {
+    if (v == null || isNaN(Number(v))) return cellTd('—', { align: 'right', color: 'var(--nx-text3)', mono: true });
+    const n = Number(v);
+    const txt = (signed && n >= 0 ? '+' : '') + n.toFixed(d) + suffix;
+    return cellTd(txt, { align: 'right', mono: true, color: color || 'var(--nx-text2)' });
+}
+
+function AdvancedRow({ r, fit, onTradeClick, onValueClick }) {
+    const [hov, setHov] = useState(false);
+    const fitCol = fit >= 60 ? '#22c55e' : fit >= 30 ? '#f59e0b' : 'var(--nx-text3)';
+    const retCol = r.ret_1m == null ? 'var(--nx-text3)' : r.ret_1m >= 0 ? '#22c55e' : '#ef4444';
+    return h('tr', { onMouseEnter: () => setHov(true), onMouseLeave: () => setHov(false), style: { background: hov ? 'rgba(59,130,246,0.05)' : 'transparent' } },
+        cellTd(r.symbol, { color: '#3b82f6', weight: 700, mono: true }),
+        cellTd(r.name || '—', { color: 'var(--nx-text2)' }),
+        cellTd(r.sector || '—', { color: 'var(--nx-text3)' }),
+        numCell(r.ev_ebitda, { suffix: '×', color: 'var(--nx-text)' }),
+        numCell(r.rev_growth, { suffix: '%', signed: true, color: r.rev_growth >= 0 ? '#22c55e' : '#ef4444' }),
+        numCell(r.net_margin, { suffix: '%', color: 'var(--nx-text)' }),
+        numCell(r.roic, { suffix: '%', color: r.roic >= 12 ? '#22c55e' : 'var(--nx-text)' }),
+        numCell(r.ret_1m, { suffix: '%', signed: true, color: retCol }),
+        h('td', { style: { padding: '9px 14px', textAlign: 'right', borderBottom: '1px solid rgba(255,255,255,0.04)' } },
+            h('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' } },
+                h('div', { style: { width: 36, height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 2, overflow: 'hidden' } },
+                    h('div', { style: { width: fit + '%', height: '100%', background: fitCol, borderRadius: 2 } })),
+                h('span', { style: { fontSize: 11, fontFamily: 'var(--nx-fd)', fontWeight: 700, color: fitCol, minWidth: 16 } }, fit))),
+        h('td', { style: { padding: '9px 14px', textAlign: 'right', borderBottom: '1px solid rgba(255,255,255,0.04)' } },
+            h('button', { onClick: () => onTradeClick && onTradeClick(r.symbol), style: { padding: '3px 10px', fontSize: 10, fontWeight: 700, background: hov ? '#3b82f6' : 'rgba(59,130,246,0.12)', color: hov ? '#fff' : '#3b82f6', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 4, cursor: 'pointer', fontFamily: 'var(--nx-fb)' } }, 'Risk'))
+    );
+}
+
+function FilterField({ label, value, suffix, onChange, placeholder }) {
+    return h('div', { style: { display: 'flex', flexDirection: 'column', gap: 3 } },
+        h('span', { style: { fontSize: 8, color: 'var(--nx-text3)', textTransform: 'uppercase', letterSpacing: '0.07em', fontFamily: 'var(--nx-fb)', fontWeight: 700 } }, label),
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: 3, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 5, padding: '3px 7px' } },
+            h('input', { type: 'number', value: value == null ? '' : value, placeholder: placeholder || 'any',
+                onChange: e => onChange(e.target.value === '' ? null : parseFloat(e.target.value)),
+                style: { width: 46, background: 'transparent', border: 'none', color: 'var(--nx-text)', fontSize: 11, fontFamily: 'var(--nx-fm)', outline: 'none' } }),
+            suffix && h('span', { style: { fontSize: 9, color: 'var(--nx-text3)' } }, suffix))
+    );
+}
+
+function AdvancedScreener({ onTradeClick, onValueClick }) {
+    const [filters, setFilters] = useState(ADV_DEFAULTS);
+    const [activePreset, setActivePreset] = useState(null);
+    const [search, setSearch]   = useState('');
+    const [rows, setRows]       = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [sectorW, setSectorW] = useState({});
+    const [showAdv, setShowAdv] = useState(false);
+
+    useEffect(() => {
+        if (!sb) return;
+        sb.from('vw_portfolio_home').select('sector,portfolio_weight').then(({ data }) => {
+            const agg = {};
+            (data || []).forEach(r => { if (r.sector) agg[r.sector] = (agg[r.sector] || 0) + (r.portfolio_weight || 0); });
+            setSectorW(agg);
+        });
+    }, []);
+
+    useEffect(() => {
+        let cancelled = false;
+        setLoading(true);
+        fetchScreener({ sector: filters.sector, search }).then(data => {
+            if (cancelled) return;
+            setRows(data);
+            setLoading(false);
+        });
+        return () => { cancelled = true; };
+    }, [filters.sector, search]);
+
+    const applyPreset = (p) => {
+        if (activePreset === p.key) { setActivePreset(null); setFilters(ADV_DEFAULTS); return; }
+        setActivePreset(p.key);
+        setFilters({ ...ADV_DEFAULTS,
+            sector:          p.sector          ?? 'all',
+            fcfMarginMin:    p.fcfMarginMin    ?? null,
+            revGrowthMin:    p.revGrowthMin    ?? null,
+            roicMin:         p.roicMin         ?? null,
+            evEbitdaMax:     p.evEbitdaMax     ?? null,
+            netDebtEbitdaMax: p.netDebtEbitdaMax ?? null,
+        });
+    };
+
+    const setF = (patch) => { setFilters(f => ({ ...f, ...patch })); setActivePreset(null); };
+
+    const fitFor = (sec) => {
+        const w = sectorW[sec] || 0;
+        return Math.max(0, Math.min(100, Math.round((0.25 - w) * 400)));
+    };
+
+    // Apply numeric filters client-side; null metric only fails an *engaged* filter
+    const filtered = rows.filter(r => {
+        if (filters.mktCapMin && (r.market_cap == null || r.market_cap < filters.mktCapMin * 1e9)) return false;
+        if (filters.fcfMarginMin != null) { if (r.net_margin == null || r.net_margin < filters.fcfMarginMin) return false; }
+        if (filters.revGrowthMin != null) { if (r.rev_growth == null || r.rev_growth < filters.revGrowthMin) return false; }
+        if (filters.roicMin != null)      { if (r.roic == null || r.roic < filters.roicMin) return false; }
+        if (filters.evEbitdaMax != null)  { if (r.ev_ebitda == null || r.ev_ebitda > filters.evEbitdaMax) return false; }
+        if (filters.netDebtEbitdaMax != null) { if (r.net_debt_ebitda == null || r.net_debt_ebitda > filters.netDebtEbitdaMax) return false; }
+        return true;
+    });
+    // sort: portfolio fit desc, then 1M return desc
+    const sorted = filtered.map(r => ({ r, fit: fitFor(r.sector) }))
+        .sort((a, b) => (b.fit - a.fit) || ((b.r.ret_1m ?? -999) - (a.r.ret_1m ?? -999)))
+        .slice(0, 120);
+
+    const COL = '#3b82f6';
+    return h('div', { style: { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' } },
+        // toolbar
+        h('div', { style: { padding: '12px 16px', borderBottom: '1px solid var(--nx-border)', background: 'rgba(255,255,255,0.01)', flexShrink: 0 } },
+            h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 } },
+                h('span', { style: { fontSize: 11, fontWeight: 800, fontFamily: 'var(--nx-fd)', color: 'var(--nx-text)', letterSpacing: '0.04em' } }, 'ADVANCED SCREENER'),
+                h('span', { style: { marginLeft: 'auto', fontSize: 10, color: 'var(--nx-text3)', fontFamily: 'var(--nx-fm)' } }, sorted.length + ' result' + (sorted.length !== 1 ? 's' : ''))
+            ),
+            // preset strategy chips
+            h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 10 } },
+                ADV_PRESETS.map(p => {
+                    const active = activePreset === p.key;
+                    return h('button', { key: p.key, onClick: () => applyPreset(p), style: {
+                        padding: '4px 11px', fontSize: 10, borderRadius: 20, cursor: 'pointer', fontFamily: 'var(--nx-fb)', fontWeight: active ? 700 : 500,
+                        border: '1px solid ' + (active ? COL + '66' : 'rgba(255,255,255,0.09)'),
+                        background: active ? COL + '1e' : 'rgba(255,255,255,0.02)', color: active ? COL : 'var(--nx-text2)',
+                        boxShadow: active ? '0 0 14px ' + COL + '33' : 'none', letterSpacing: '0.02em', transition: 'all 0.15s',
+                    } }, p.label);
+                })
+            ),
+            // filter bars
+            h('div', { style: { display: 'flex', alignItems: 'flex-end', gap: 10, flexWrap: 'wrap' } },
+                h('div', { style: { display: 'flex', flexDirection: 'column', gap: 3 } },
+                    h('span', { style: { fontSize: 8, color: 'var(--nx-text3)', textTransform: 'uppercase', letterSpacing: '0.07em', fontFamily: 'var(--nx-fb)', fontWeight: 700 } }, 'Search'),
+                    h('input', { value: search, placeholder: 'Ticker…', onChange: e => setSearch(e.target.value.toUpperCase()),
+                        style: { width: 100, padding: '4px 9px', fontSize: 11, fontFamily: 'var(--nx-fm)', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 5, color: 'var(--nx-text)' } })),
+                h('div', { style: { display: 'flex', flexDirection: 'column', gap: 3 } },
+                    h('span', { style: { fontSize: 8, color: 'var(--nx-text3)', textTransform: 'uppercase', letterSpacing: '0.07em', fontFamily: 'var(--nx-fb)', fontWeight: 700 } }, 'Sector'),
+                    h('select', { value: filters.sector, onChange: e => setF({ sector: e.target.value }),
+                        style: { padding: '4px 9px', fontSize: 11, fontFamily: 'var(--nx-fb)', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 5, color: 'var(--nx-text)' } },
+                        ADV_SECTORS.map(s => h('option', { key: s, value: s }, s === 'all' ? 'All sectors' : s)))),
+                h(FilterField, { label: 'MktCap ≥', value: filters.mktCapMin || null, suffix: 'B', onChange: v => setF({ mktCapMin: v || 0 }) }),
+                h(FilterField, { label: 'Rev Growth ≥', value: filters.revGrowthMin, suffix: '%', onChange: v => setF({ revGrowthMin: v }) }),
+                h(FilterField, { label: 'FCF Margin ≥', value: filters.fcfMarginMin, suffix: '%', onChange: v => setF({ fcfMarginMin: v }) }),
+                h(FilterField, { label: 'ROIC ≥', value: filters.roicMin, suffix: '%', onChange: v => setF({ roicMin: v }) }),
+                showAdv && h(FilterField, { label: 'EV/EBITDA ≤', value: filters.evEbitdaMax, suffix: '×', onChange: v => setF({ evEbitdaMax: v }) }),
+                showAdv && h(FilterField, { label: 'NetDebt/EBITDA ≤', value: filters.netDebtEbitdaMax, suffix: '×', onChange: v => setF({ netDebtEbitdaMax: v }) }),
+                h('button', { onClick: () => setShowAdv(x => !x), style: { padding: '5px 11px', fontSize: 10, fontWeight: 600, background: 'rgba(255,255,255,0.03)', color: 'var(--nx-text2)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 5, cursor: 'pointer', fontFamily: 'var(--nx-fb)' } }, showAdv ? '− Advanced Filters' : '+ Advanced Filters'),
+                (activePreset || filters.mktCapMin || filters.revGrowthMin != null || filters.fcfMarginMin != null || filters.roicMin != null || filters.evEbitdaMax != null || filters.netDebtEbitdaMax != null || filters.sector !== 'all')
+                    && h('button', { onClick: () => { setFilters(ADV_DEFAULTS); setActivePreset(null); }, style: { padding: '5px 11px', fontSize: 10, fontWeight: 600, background: 'transparent', color: 'var(--nx-text3)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 5, cursor: 'pointer', fontFamily: 'var(--nx-fb)' } }, 'Clear')
+            )
+        ),
+        // table
+        h('div', { style: { flex: 1, overflowY: 'auto' } },
+            loading
+                ? h('div', { style: { display: 'flex', justifyContent: 'center', padding: '50px 0' } },
+                    h('div', { style: { width: 28, height: 28, border: '2px solid rgba(255,255,255,0.1)', borderTopColor: COL, borderRadius: '50%', animation: 'spin 0.8s linear infinite' } }))
+                : sorted.length === 0
+                    ? h('div', { style: { textAlign: 'center', padding: '50px', color: 'var(--nx-text3)', fontSize: 12 } }, 'No matches for these filters.')
+                    : h('table', { style: { width: '100%', borderCollapse: 'collapse', fontFamily: 'var(--nx-fb)' } },
+                        h('thead', null,
+                            h('tr', { style: { position: 'sticky', top: 0, background: 'var(--nx-bg)', zIndex: 1 } },
+                                ['Ticker', 'Name', 'Sector', 'EV/EBITDA', 'Rev Growth', 'FCF Margin', 'ROIC', '1M', 'Portfolio Fit', ''].map((c, i) =>
+                                    h('th', { key: i, style: { textAlign: i < 3 ? 'left' : 'right', padding: '8px 14px', fontSize: 8, color: 'var(--nx-text3)', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700, borderBottom: '1px solid var(--nx-border)', whiteSpace: 'nowrap' } }, c))
+                            )
+                        ),
+                        h('tbody', null,
+                            sorted.map(({ r, fit }, i) => h(AdvancedRow, { key: r.symbol + i, r, fit, onTradeClick, onValueClick }))
+                        )
+                    )
+        )
+    );
+}
+
 // ── PretradePanel ─────────────────────────────────────────────
 function PretradePanel({ ticker, onClose }) {
     const [data, setData] = useState(null);
@@ -574,28 +797,100 @@ function ExposureSnapshot() {
     );
 }
 
-function SignalControlsReadOnly() {
+const CLASS_LABELS = { thesis: 'THESIS Extenders', gap: 'GAP Fillers', risk: 'RISK Flags' };
+const CLASS_ORDER  = ['thesis', 'gap', 'risk'];
+
+function SignalControls({ onChange }) {
     const [controls, setControls] = useState([]);
-    useEffect(() => { fetchControls().then(setControls); }, []);
+    const [saving, setSaving]     = useState(null);
+
+    useEffect(() => { fetchControls().then(rows => {
+        const byClass = {};
+        rows.forEach(r => { byClass[r.signal_class] = r; });
+        setControls(CLASS_ORDER.map(cls => byClass[cls] || { signal_class: cls, enabled: true, feed_weight: 0.5 }));
+    }); }, []);
+
+    const update = useCallback((cls, patch) => {
+        setControls(cs => cs.map(c => c.signal_class === cls ? { ...c, ...patch } : c));
+    }, []);
+
+    const persist = useCallback(async (cls, patch) => {
+        setSaving(cls);
+        await saveControl(cls, patch);
+        setSaving(null);
+        if (onChange) onChange();
+    }, [onChange]);
+
     if (!controls.length) return null;
+
     return h('div', null,
         h('div', { style: { fontSize: 9, color: 'var(--nx-text3)', textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'var(--nx-fb)', fontWeight: 700, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 } },
             h('div', { style: { width: 14, height: 1, background: 'var(--nx-border-md)' } }), 'Signal Controls', h('div', { style: { flex: 1, height: 1, background: 'var(--nx-border)' } })),
         controls.map(c => {
             const cc = CLASS_COL[c.signal_class]; const fg = cc ? cc.fg : 'var(--nx-text3)';
-            return h('div', { key: c.signal_class, style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, padding: '7px 10px', background: c.enabled ? (cc ? cc.bg : 'rgba(255,255,255,0.03)') : 'rgba(255,255,255,0.01)', border: '1px solid ' + (c.enabled ? (cc ? cc.border : 'rgba(255,255,255,0.08)') : 'rgba(255,255,255,0.04)'), borderRadius: 6 } },
-                h('div', { style: { width: 7, height: 7, borderRadius: '50%', background: c.enabled ? fg : 'rgba(255,255,255,0.12)', boxShadow: c.enabled ? '0 0 6px ' + fg : 'none', animation: c.enabled ? 'pulse 2.5s ease-in-out infinite' : 'none', flexShrink: 0 } }),
-                h('span', { style: { flex: 1, fontSize: 11, fontFamily: 'var(--nx-fb)', fontWeight: 600, color: c.enabled ? 'var(--nx-text)' : 'var(--nx-text3)' } }, (c.signal_class || '').toUpperCase()),
-                h('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 } },
-                    h('span', { style: { fontSize: 8, color: 'var(--nx-text3)', textTransform: 'uppercase', letterSpacing: '0.06em' } }, 'WEIGHT'),
-                    h('span', { style: { fontSize: 11, fontFamily: 'var(--nx-fm)', fontWeight: 700, color: c.enabled ? fg : 'var(--nx-text3)' } }, (c.feed_weight || 0).toFixed(2))));
+            const fw = Number(c.feed_weight ?? 0.5);
+            return h('div', { key: c.signal_class, style: { marginBottom: 8, padding: '9px 11px', background: c.enabled ? (cc ? cc.bg : 'rgba(255,255,255,0.03)') : 'rgba(255,255,255,0.01)', border: '1px solid ' + (c.enabled ? (cc ? cc.border : 'rgba(255,255,255,0.08)') : 'rgba(255,255,255,0.04)'), borderRadius: 7, transition: 'all 0.2s' } },
+                // header row: dot + label + toggle
+                h('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                    h('div', { style: { width: 7, height: 7, borderRadius: '50%', background: c.enabled ? fg : 'rgba(255,255,255,0.12)', boxShadow: c.enabled ? '0 0 6px ' + fg : 'none', animation: c.enabled ? 'pulse 2.5s ease-in-out infinite' : 'none', flexShrink: 0 } }),
+                    h('span', { style: { flex: 1, fontSize: 11, fontFamily: 'var(--nx-fb)', fontWeight: 600, color: c.enabled ? 'var(--nx-text)' : 'var(--nx-text3)' } }, CLASS_LABELS[c.signal_class] || (c.signal_class || '').toUpperCase()),
+                    // toggle switch
+                    h('button', {
+                        onClick: () => { const nv = !c.enabled; update(c.signal_class, { enabled: nv }); persist(c.signal_class, { enabled: nv }); },
+                        title: c.enabled ? 'Enabled — click to mute class' : 'Muted — click to enable',
+                        style: { width: 32, height: 18, borderRadius: 10, border: 'none', cursor: 'pointer', position: 'relative', background: c.enabled ? fg : 'rgba(255,255,255,0.12)', transition: 'background 0.2s', flexShrink: 0, padding: 0 }
+                    }, h('div', { style: { position: 'absolute', top: 2, left: c.enabled ? 16 : 2, width: 14, height: 14, borderRadius: '50%', background: '#fff', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.4)' } }))
+                ),
+                // feed weight slider
+                h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, opacity: c.enabled ? 1 : 0.4 } },
+                    h('span', { style: { fontSize: 8, color: 'var(--nx-text3)', textTransform: 'uppercase', letterSpacing: '0.06em', minWidth: 38 } }, 'Feed Wt'),
+                    h('input', { type: 'range', min: 0, max: 1, step: 0.05, value: fw, disabled: !c.enabled,
+                        onChange: e => update(c.signal_class, { feed_weight: parseFloat(e.target.value) }),
+                        onMouseUp: e => persist(c.signal_class, { feed_weight: parseFloat(e.target.value) }),
+                        onTouchEnd: e => persist(c.signal_class, { feed_weight: parseFloat(e.target.value) }),
+                        style: { flex: 1, accentColor: fg, cursor: c.enabled ? 'pointer' : 'not-allowed' } }),
+                    h('span', { style: { fontSize: 11, fontFamily: 'var(--nx-fm)', fontWeight: 700, color: c.enabled ? fg : 'var(--nx-text3)', minWidth: 28, textAlign: 'right' } }, fw.toFixed(2)),
+                    saving === c.signal_class && h('span', { style: { fontSize: 8, color: 'var(--nx-text3)' } }, '⟳')
+                )
+            );
         })
     );
 }
 
-function RightRail() {
+// ── Watchlist · Pinned ────────────────────────────────────────
+const WATCH_STATUS = {
+    active:    { fg: '#22c55e', label: 'Active' },
+    stale:     { fg: '#ef4444', label: 'Stale'  },
+    candidate: { fg: '#3b82f6', label: 'Candidate' },
+};
+
+function WatchlistPanel({ onTradeClick }) {
+    const [rows, setRows] = useState([]);
+    useEffect(() => { fetchWatchlist().then(setRows); }, []);
+    if (!rows.length) return null;
+    return h('div', null,
+        h('div', { style: { fontSize: 9, color: 'var(--nx-text3)', textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'var(--nx-fb)', fontWeight: 700, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 } },
+            h('div', { style: { width: 14, height: 1, background: 'var(--nx-border-md)' } }), 'Watchlist · Pinned', h('div', { style: { flex: 1, height: 1, background: 'var(--nx-border)' } })),
+        rows.map(r => {
+            const st = WATCH_STATUS[r.status] || WATCH_STATUS.candidate;
+            return h('div', { key: r.id || r.symbol, onClick: () => onTradeClick && onTradeClick(r.symbol),
+                style: { marginBottom: 7, padding: '8px 10px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 7, cursor: 'pointer', transition: 'all 0.15s' } },
+                h('div', { style: { display: 'flex', alignItems: 'center', gap: 7 } },
+                    h('div', { style: { width: 7, height: 7, borderRadius: '50%', background: st.fg, boxShadow: '0 0 6px ' + st.fg, flexShrink: 0 } }),
+                    h('span', { style: { fontSize: 12, fontFamily: 'var(--nx-fm)', fontWeight: 700, color: 'var(--nx-text)' } }, r.symbol),
+                    h('span', { style: { marginLeft: 'auto', fontSize: 8, fontFamily: 'var(--nx-fb)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: st.fg, background: st.fg + '1c', border: '1px solid ' + st.fg + '33', borderRadius: 4, padding: '1px 6px' } }, st.label)
+                ),
+                r.note && h('div', { style: { fontSize: 9.5, color: 'var(--nx-text3)', lineHeight: 1.45, marginTop: 5, fontFamily: 'var(--nx-fb)' } }, r.note)
+            );
+        })
+    );
+}
+
+function RightRail({ onControlsChange, onTradeClick }) {
     return h('div', { style: { width: 248, flexShrink: 0, borderLeft: '1px solid var(--nx-border)', padding: '16px 14px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16, background: 'rgba(255,255,255,0.006)' } },
-        h(ExposureSnapshot), h(SignalControlsReadOnly));
+        h(SignalControls, { onChange: onControlsChange }),
+        h(WatchlistPanel, { onTradeClick }),
+        h(ExposureSnapshot));
 }
 
 // ── Toast ─────────────────────────────────────────────────────
@@ -607,13 +902,14 @@ function Toast({ message, onDone }) {
 
 // ── CortexPage ────────────────────────────────────────────────
 function CortexPage() {
-    const [view,        setView]        = useState('signals');  // 'signals' | 'screener'
+    const [view,        setView]        = useState('signals');  // 'signals' | 'screener' | 'advanced'
     const [signals,     setSignals]     = useState([]);
     const [loading,     setLoading]     = useState(true);
     const [classFilter, setClassFilter] = useState('all');
     const [refreshing,  setRefreshing]  = useState(false);
     const [pretradeFor, setPretradeFor] = useState(null);
     const [toast,       setToast]       = useState(null);
+    const [controls,    setControls]    = useState({});  // signal_class → { enabled, feed_weight }
 
     const loadSignals = useCallback(async () => {
         setLoading(true);
@@ -621,7 +917,21 @@ function CortexPage() {
         setLoading(false);
     }, []);
 
-    useEffect(() => { loadSignals(); }, []);
+    const loadControls = useCallback(async () => {
+        const rows = await fetchControls();
+        const map = {};
+        rows.forEach(r => { map[r.signal_class] = { enabled: r.enabled, feed_weight: Number(r.feed_weight ?? 0.5) }; });
+        setControls(map);
+    }, []);
+
+    useEffect(() => { loadSignals(); loadControls(); }, []);
+
+    // Apply Signal Controls: drop muted classes, weight ordering by feed_weight
+    const effectiveSignals = signals
+        .filter(s => controls[s.signal_class]?.enabled !== false)
+        .map(s => ({ s, score: (s.relevance || 0) * (controls[s.signal_class]?.feed_weight ?? 0.5) }))
+        .sort((a, b) => b.score - a.score)
+        .map(x => x.s);
 
     async function handleRunEngine() {
         setRefreshing(true);
@@ -665,16 +975,19 @@ function CortexPage() {
             ),
             h('div', { style: { display: 'flex', gap: 4 } },
                 h(TabBtn, { id: 'signals', label: 'SIGNAL FEED' }),
-                h(TabBtn, { id: 'screener', label: 'IDEA SCREENER' }))
+                h(TabBtn, { id: 'screener', label: 'IDEA SCREENER' }),
+                h(TabBtn, { id: 'advanced', label: 'ADVANCED SCREENER' }))
         ),
 
         h(MarketRibbon),
 
         h('div', { style: { flex: 1, display: 'flex', overflow: 'hidden' } },
             view === 'signals'
-                ? h(SignalFeed, { signals, loading, classFilter, onClassFilter: setClassFilter, onTradeClick: setPretradeFor, onValueClick, onMute: handleMute, onRefresh: handleRunEngine, refreshing })
-                : h(Screener, { onTradeClick: setPretradeFor, onValueClick }),
-            h(RightRail)
+                ? h(SignalFeed, { signals: effectiveSignals, loading, classFilter, onClassFilter: setClassFilter, onTradeClick: setPretradeFor, onValueClick, onMute: handleMute, onRefresh: handleRunEngine, refreshing })
+                : view === 'advanced'
+                    ? h(AdvancedScreener, { onTradeClick: setPretradeFor, onValueClick })
+                    : h(Screener, { onTradeClick: setPretradeFor, onValueClick }),
+            h(RightRail, { onControlsChange: loadControls, onTradeClick: setPretradeFor })
         ),
 
         pretradeFor && h(PretradePanel, { ticker: pretradeFor, onClose: () => setPretradeFor(null) }),
