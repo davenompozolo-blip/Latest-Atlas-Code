@@ -32,9 +32,9 @@ const ANTHROPIC_API        = 'https://api.anthropic.com/v1/messages'
 // Thresholds
 const THEME_CEILING_PCT    = 25     // % NAV: sector above this → no thesis signal
 const HEADROOM_MIN_PCT     = 2      // min headroom vs ceiling to emit thesis signal
-const GAP_THRESHOLD_PCT    = 3      // undershoot vs equal-weight SAA → gap filler fires
-const VAR_SHARE_THRESHOLD  = 0.15   // single name > 15% of portfolio VaR → risk flag
-const HIGH_VOL_THRESHOLD   = 0.40   // annual vol > 40% → high vol risk flag
+const GAP_THRESHOLD_PCT    = 1.5    // undershoot vs equal-weight SAA → gap filler fires
+const VAR_SHARE_THRESHOLD  = 0.10   // single name > 10% of portfolio VaR → risk flag
+const HIGH_VOL_THRESHOLD   = 0.35   // annual vol > 35% → high vol risk flag
 const MAX_PER_CLASS        = 3      // cap per signal class per run
 const CANDIDATE_LIMIT      = 4      // max candidates per signal
 
@@ -217,7 +217,7 @@ async function fetchCandidates(
         AND EXISTS (
           SELECT 1 FROM price_history ph
           WHERE ph.asset_id = a.id
-            AND ph.price_date >= NOW() - INTERVAL '7 days'
+            AND ph.price_date >= NOW() - INTERVAL '30 days'
         )
         AND (
           COALESCE(ec.payload->'Overview'->>'Sector', a.sector, '') = ${sector}
@@ -258,8 +258,10 @@ async function buildThesisSignals(
     const conviction: 'low' | 'medium' | 'high' =
       s.weight_pct > 15 ? 'high' : s.weight_pct > 8 ? 'medium' : 'low'
 
-    const candidates = await fetchCandidates(sql, s.sector, state.held_symbols, CANDIDATE_LIMIT)
-    if (candidates.length === 0) continue
+    let candidates = await fetchCandidates(sql, s.sector, state.held_symbols, CANDIDATE_LIMIT)
+    if (candidates.length === 0) {
+      candidates = await fetchCandidates(sql, 'any', state.held_symbols, CANDIDATE_LIMIT)
+    }
 
     const suggestedSizePct = Math.min(headroom * 0.5, 5) // half the headroom, capped at 5%
 
@@ -332,7 +334,10 @@ async function buildGapSignals(
     const conviction: 'low' | 'medium' | 'high' =
       absgap > 8 ? 'high' : absgap > 4 ? 'medium' : 'low'
 
-    const candidates = await fetchCandidates(sql, g.sector, state.held_symbols, CANDIDATE_LIMIT)
+    let candidates = await fetchCandidates(sql, g.sector, state.held_symbols, CANDIDATE_LIMIT)
+    if (candidates.length === 0) {
+      candidates = await fetchCandidates(sql, 'any', state.held_symbols, CANDIDATE_LIMIT)
+    }
     if (candidates.length === 0) continue
 
     signals.push({
