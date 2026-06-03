@@ -689,10 +689,10 @@ function AdvancedScreener({ onTradeClick, onValueClick, onEquityClick }) {
                         ADV_SECTORS.map(s => h('option', { key: s, value: s }, s === 'all' ? 'All sectors' : s)))),
                 h(FilterField, { label: 'MktCap ≥', value: filters.mktCapMin || null, suffix: 'B', onChange: v => setF({ mktCapMin: v || 0 }) }),
                 h(FilterField, { label: 'Rev Growth ≥', value: filters.revGrowthMin, suffix: '%', onChange: v => setF({ revGrowthMin: v }) }),
-                h(FilterField, { label: 'FCF Margin ≥', value: filters.fcfMarginMin, suffix: '%', onChange: v => setF({ fcfMarginMin: v }) }),
+                h(FilterField, { label: 'Net Margin ≥', value: filters.fcfMarginMin, suffix: '%', onChange: v => setF({ fcfMarginMin: v }) }),
                 h(FilterField, { label: 'ROIC ≥', value: filters.roicMin, suffix: '%', onChange: v => setF({ roicMin: v }) }),
                 showAdv && h(FilterField, { label: 'EV/EBITDA ≤', value: filters.evEbitdaMax, suffix: '×', onChange: v => setF({ evEbitdaMax: v }) }),
-                showAdv && h(FilterField, { label: 'NetDebt/EBITDA ≤', value: filters.netDebtEbitdaMax, suffix: '×', onChange: v => setF({ netDebtEbitdaMax: v }) }),
+                showAdv && h(FilterField, { label: 'Debt/Equity ≤', value: filters.netDebtEbitdaMax, suffix: '×', onChange: v => setF({ netDebtEbitdaMax: v }) }),
                 h('button', { onClick: () => setShowAdv(x => !x), style: { padding: '5px 11px', fontSize: 10, fontWeight: 600, background: 'rgba(255,255,255,0.03)', color: 'var(--nx-text2)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 5, cursor: 'pointer', fontFamily: 'var(--nx-fb)' } }, showAdv ? '− Advanced Filters' : '+ Advanced Filters'),
                 (activePreset || filters.mktCapMin || filters.revGrowthMin != null || filters.fcfMarginMin != null || filters.roicMin != null || filters.evEbitdaMax != null || filters.netDebtEbitdaMax != null || filters.sector !== 'all')
                     && h('button', { onClick: () => { setFilters(ADV_DEFAULTS); setActivePreset(null); }, style: { padding: '5px 11px', fontSize: 10, fontWeight: 600, background: 'transparent', color: 'var(--nx-text3)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 5, cursor: 'pointer', fontFamily: 'var(--nx-fb)' } }, 'Clear')
@@ -708,7 +708,7 @@ function AdvancedScreener({ onTradeClick, onValueClick, onEquityClick }) {
                     : h('table', { style: { width: '100%', borderCollapse: 'collapse', fontFamily: 'var(--nx-fb)' } },
                         h('thead', null,
                             h('tr', { style: { position: 'sticky', top: 0, background: 'var(--nx-bg)', zIndex: 1 } },
-                                ['Ticker', 'Name', 'Sector', 'EV/EBITDA', 'Rev Growth', 'FCF Margin', 'ROIC', '1M', 'Portfolio Fit', 'Actions'].map((c, i) =>
+                                ['Ticker', 'Name', 'Sector', 'EV/EBITDA', 'Rev Growth', 'Net Margin', 'ROIC', '1M', 'Portfolio Fit', 'Actions'].map((c, i) =>
                                     h('th', { key: i, style: { textAlign: i < 3 ? 'left' : 'right', padding: '8px 14px', fontSize: 8, color: 'var(--nx-text3)', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700, borderBottom: '1px solid var(--nx-border)', whiteSpace: 'nowrap' } }, c))
                             )
                         ),
