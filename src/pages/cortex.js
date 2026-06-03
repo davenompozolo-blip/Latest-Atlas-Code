@@ -70,13 +70,14 @@ async function fetchWatchlist() {
     return data || [];
 }
 
-async function fetchScreener({ sector, search } = {}) {
+async function fetchScreener({ search } = {}) {
     if (!sb) return [];
+    // Load the whole screenable universe once (≈2k rows) and filter client-side,
+    // so the sector dropdown can be derived from the real (Finnhub) taxonomy.
     let q = sb.from('vw_cortex_screener')
         .select('symbol,name,sector,exchange,market_cap,ev_ebitda,rev_growth,net_margin,p_fcf,roic,roe,debt_equity,net_debt_ebitda,div_growth_5y,ret_1m');
-    if (sector && sector !== 'all') q = q.eq('sector', sector);
     if (search) q = q.ilike('symbol', search + '%');
-    q = q.order('symbol').limit(400);
+    q = q.order('symbol').limit(4000);
     const { data, error } = await q;
     if (error) { console.error('screener', error); return []; }
     return data || [];
@@ -537,8 +538,6 @@ function TrimRow({ r, onTradeClick, onValueClick, onEquityClick }) {
 // Preset strategy chips snap the filter bars to a strategy profile. Fundamentals
 // come from vw_cortex_screener (Finnhub/AlphaVantage cache); rows with missing
 // data show "—" and only fail a filter when that filter is actively engaged.
-const ADV_SECTORS = ['all', 'Technology', 'Healthcare', 'Financials', 'Energy', 'Materials', 'Industrials', 'Consumer Discretionary', 'Consumer Staples', 'Utilities', 'Real Estate', 'International', 'Communication Services'];
-
 // Filter defaults — sentinels meaning "off"
 const ADV_DEFAULTS = { mktCapMin: 0, sector: 'all', fcfMarginMin: null, revGrowthMin: null, roicMin: null, netDebtEbitdaMax: null, evEbitdaMax: null };
 
@@ -613,13 +612,16 @@ function AdvancedScreener({ onTradeClick, onValueClick, onEquityClick }) {
     useEffect(() => {
         let cancelled = false;
         setLoading(true);
-        fetchScreener({ sector: filters.sector, search }).then(data => {
+        fetchScreener({ search }).then(data => {
             if (cancelled) return;
             setRows(data);
             setLoading(false);
         });
         return () => { cancelled = true; };
-    }, [filters.sector, search]);
+    }, [search]);
+
+    // Sector options derived from the live data (Finnhub industry taxonomy)
+    const sectorOptions = ['all', ...Array.from(new Set(rows.map(r => r.sector).filter(Boolean))).sort()];
 
     const applyPreset = (p) => {
         if (activePreset === p.key) { setActivePreset(null); setFilters(ADV_DEFAULTS); return; }
@@ -643,6 +645,7 @@ function AdvancedScreener({ onTradeClick, onValueClick, onEquityClick }) {
 
     // Apply numeric filters client-side; null metric only fails an *engaged* filter
     const filtered = rows.filter(r => {
+        if (filters.sector !== 'all' && r.sector !== filters.sector) return false;
         if (filters.mktCapMin && (r.market_cap == null || r.market_cap < filters.mktCapMin * 1e9)) return false;
         if (filters.fcfMarginMin != null) { if (r.net_margin == null || r.net_margin < filters.fcfMarginMin) return false; }
         if (filters.revGrowthMin != null) { if (r.rev_growth == null || r.rev_growth < filters.revGrowthMin) return false; }
@@ -685,8 +688,8 @@ function AdvancedScreener({ onTradeClick, onValueClick, onEquityClick }) {
                 h('div', { style: { display: 'flex', flexDirection: 'column', gap: 3 } },
                     h('span', { style: { fontSize: 8, color: 'var(--nx-text3)', textTransform: 'uppercase', letterSpacing: '0.07em', fontFamily: 'var(--nx-fb)', fontWeight: 700 } }, 'Sector'),
                     h('select', { value: filters.sector, onChange: e => setF({ sector: e.target.value }),
-                        style: { padding: '4px 9px', fontSize: 11, fontFamily: 'var(--nx-fb)', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 5, color: 'var(--nx-text)' } },
-                        ADV_SECTORS.map(s => h('option', { key: s, value: s }, s === 'all' ? 'All sectors' : s)))),
+                        style: { padding: '4px 9px', fontSize: 11, fontFamily: 'var(--nx-fb)', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 5, color: 'var(--nx-text)', maxWidth: 180 } },
+                        sectorOptions.map(s => h('option', { key: s, value: s }, s === 'all' ? 'All sectors' : s)))),
                 h(FilterField, { label: 'MktCap ≥', value: filters.mktCapMin || null, suffix: 'B', onChange: v => setF({ mktCapMin: v || 0 }) }),
                 h(FilterField, { label: 'Rev Growth ≥', value: filters.revGrowthMin, suffix: '%', onChange: v => setF({ revGrowthMin: v }) }),
                 h(FilterField, { label: 'Net Margin ≥', value: filters.fcfMarginMin, suffix: '%', onChange: v => setF({ fcfMarginMin: v }) }),
