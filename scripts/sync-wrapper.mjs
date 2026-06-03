@@ -900,6 +900,16 @@ async function runFullSync() {
     console.error(`  ⚠ Nexus snapshot refresh failed: ${err.message}`);
   }
 
+  // 5c. Refresh Cortex screener snapshot so Advanced Screener loads instantly.
+  try {
+    console.log('\n[5c] Refreshing Cortex screener snapshot...');
+    const { error } = await supabase.rpc('refresh_cortex_screener');
+    if (error) throw error;
+    console.log('  ✓ mv_cortex_screener refreshed');
+  } catch (err) {
+    console.error(`  ⚠ Cortex screener refresh failed: ${err.message}`);
+  }
+
   // 6. Run Validation
   console.log('\n[VALIDATION] Running post-sync checks...');
   const validationResults = await runValidation(fullLog?.id);

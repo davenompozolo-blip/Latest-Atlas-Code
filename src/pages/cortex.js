@@ -365,7 +365,7 @@ function SignalFeed({ signals, loading, classFilter, onClassFilter, onTradeClick
 // ── Screener ──────────────────────────────────────────────────
 const SCREENER_SECTORS = ['all', 'Technology', 'Healthcare', 'Financials', 'Energy', 'Materials', 'Consumer Discretionary', 'International', 'Fixed Income'];
 
-function Screener({ onTradeClick, onValueClick }) {
+function Screener({ onTradeClick, onValueClick, onEquityClick }) {
     const [mode, setMode]     = useState('add');   // 'add' | 'trim'
     const [sector, setSector] = useState('all');
     const [search, setSearch] = useState('');
@@ -467,15 +467,15 @@ function Screener({ onTradeClick, onValueClick }) {
                         h('thead', null,
                             h('tr', { style: { position: 'sticky', top: 0, background: 'var(--nx-bg)', zIndex: 1 } },
                                 (mode === 'trim'
-                                    ? ['Ticker', 'Name', 'Weight', 'Annual Vol', 'VaR 95 1D', 'Tier', '']
-                                    : ['Ticker', 'Name', 'Sector', 'Exchange', 'Portfolio Fit', '']
-                                ).map((c, i) => h('th', { key: i, style: { textAlign: i===0?'left':(i>=2?'right':'left'), padding: '8px 14px', fontSize: 8, color: 'var(--nx-text3)', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700, borderBottom: '1px solid var(--nx-border)' } }, c))
+                                    ? ['Ticker', 'Name', 'Weight', 'Annual Vol', 'VaR 95 1D', 'Tier', 'Actions']
+                                    : ['Ticker', 'Name', 'Sector', 'Exchange', 'Portfolio Fit', 'Actions']
+                                ).map((c, i, arr) => h('th', { key: i, style: { textAlign: i===0?'left':(i===arr.length-1?'right':i>=2?'right':'left'), padding: '8px 14px', fontSize: 8, color: 'var(--nx-text3)', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700, borderBottom: '1px solid var(--nx-border)' } }, c))
                             )
                         ),
                         h('tbody', null,
                             rows.map((r, i) => mode === 'trim'
-                                ? h(TrimRow, { key: r.symbol + i, r, onTradeClick, onValueClick })
-                                : h(AddRow,  { key: r.symbol + i, r, fit: fitFor(r.sector), onTradeClick, onValueClick })
+                                ? h(TrimRow, { key: r.symbol + i, r, onTradeClick, onValueClick, onEquityClick })
+                                : h(AddRow,  { key: r.symbol + i, r, fit: fitFor(r.sector), onTradeClick, onValueClick, onEquityClick })
                             )
                         )
                     )
@@ -487,10 +487,25 @@ function cellTd(content, opts = {}) {
     return h('td', { style: { padding: '9px 14px', fontSize: 11, color: opts.color || 'var(--nx-text2)', textAlign: opts.align || 'left', fontFamily: opts.mono ? 'var(--nx-fm)' : 'var(--nx-fb)', fontWeight: opts.weight || 400, borderBottom: '1px solid rgba(255,255,255,0.04)', whiteSpace: 'nowrap' } }, content);
 }
 
-function AddRow({ r, fit, onTradeClick, onValueClick }) {
+// Shared mini action buttons for screener rows
+function RowActions({ symbol, hov, accent, onTradeClick, onValueClick, onEquityClick }) {
+    const btn = (label, col, onClick) => h('button', {
+        onClick, title: label,
+        style: { padding: '3px 9px', fontSize: 10, fontWeight: 700, cursor: 'pointer', fontFamily: 'var(--nx-fb)', borderRadius: 4, border: '1px solid ' + col + '44', background: hov ? col + '22' : 'rgba(255,255,255,0.03)', color: col, transition: 'all 0.12s', whiteSpace: 'nowrap' }
+    }, label);
+    return h('td', { style: { padding: '9px 10px', textAlign: 'right', borderBottom: '1px solid rgba(255,255,255,0.04)' } },
+        h('div', { style: { display: 'flex', gap: 5, justifyContent: 'flex-end', alignItems: 'center' } },
+            btn('Risk',   accent,    () => onTradeClick  && onTradeClick(symbol)),
+            btn('Value',  '#8b5cf6', () => onValueClick  && onValueClick(symbol)),
+            btn('Equity', '#f59e0b', () => onEquityClick && onEquityClick(symbol)),
+        )
+    );
+}
+
+function AddRow({ r, fit, onTradeClick, onValueClick, onEquityClick }) {
     const [hov, setHov] = useState(false);
     const fitCol = fit >= 60 ? '#22c55e' : fit >= 30 ? '#f59e0b' : 'var(--nx-text3)';
-    return h('tr', { onMouseEnter: () => setHov(true), onMouseLeave: () => setHov(false), style: { background: hov ? 'rgba(20,184,166,0.05)' : 'transparent' } },
+    return h('tr', { onMouseEnter: () => setHov(true), onMouseLeave: () => setHov(false), style: { background: hov ? 'rgba(20,184,166,0.04)' : 'transparent' } },
         cellTd(r.symbol, { color: '#14b8a6', weight: 700, mono: true }),
         cellTd(r.name || '—', { color: 'var(--nx-text2)' }),
         cellTd(r.sector || '—', { color: 'var(--nx-text3)' }),
@@ -500,23 +515,21 @@ function AddRow({ r, fit, onTradeClick, onValueClick }) {
                 h('div', { style: { width: 40, height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 2, overflow: 'hidden' } },
                     h('div', { style: { width: fit + '%', height: '100%', background: fitCol, borderRadius: 2 } })),
                 h('span', { style: { fontSize: 11, fontFamily: 'var(--nx-fd)', fontWeight: 700, color: fitCol, minWidth: 18 } }, fit))),
-        h('td', { style: { padding: '9px 14px', textAlign: 'right', borderBottom: '1px solid rgba(255,255,255,0.04)' } },
-            h('button', { onClick: () => onTradeClick && onTradeClick(r.symbol), style: { padding: '3px 10px', fontSize: 10, fontWeight: 700, background: hov ? '#14b8a6' : 'rgba(20,184,166,0.12)', color: hov ? '#fff' : '#14b8a6', border: '1px solid rgba(20,184,166,0.3)', borderRadius: 4, cursor: 'pointer', fontFamily: 'var(--nx-fb)' } }, 'Risk'))
+        h(RowActions, { symbol: r.symbol, hov, accent: '#14b8a6', onTradeClick, onValueClick, onEquityClick })
     );
 }
 
-function TrimRow({ r, onTradeClick, onValueClick }) {
+function TrimRow({ r, onTradeClick, onValueClick, onEquityClick }) {
     const [hov, setHov] = useState(false);
     const vol = (r.annual_vol || 0) * 100;
-    return h('tr', { onMouseEnter: () => setHov(true), onMouseLeave: () => setHov(false), style: { background: hov ? 'rgba(239,68,68,0.05)' : 'transparent' } },
+    return h('tr', { onMouseEnter: () => setHov(true), onMouseLeave: () => setHov(false), style: { background: hov ? 'rgba(239,68,68,0.04)' : 'transparent' } },
         cellTd(r.symbol, { color: '#ef4444', weight: 700, mono: true }),
         cellTd(r.name || '—', { color: 'var(--nx-text2)' }),
         cellTd(pctU(r.weight, 1), { align: 'right', mono: true, color: 'var(--nx-text)' }),
         cellTd(pctU(vol, 1), { align: 'right', mono: true, color: vol > 40 ? '#ef4444' : '#f59e0b' }),
         cellTd(usd(r.dollar_var_95_daily), { align: 'right', mono: true, color: '#ef4444' }),
         cellTd(r.risk_tier || '—', { align: 'right', color: 'var(--nx-text3)' }),
-        h('td', { style: { padding: '9px 14px', textAlign: 'right', borderBottom: '1px solid rgba(255,255,255,0.04)' } },
-            h('button', { onClick: () => onTradeClick && onTradeClick(r.symbol), style: { padding: '3px 10px', fontSize: 10, fontWeight: 700, background: hov ? '#ef4444' : 'rgba(239,68,68,0.12)', color: hov ? '#fff' : '#ef4444', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 4, cursor: 'pointer', fontFamily: 'var(--nx-fb)' } }, 'Risk'))
+        h(RowActions, { symbol: r.symbol, hov, accent: '#ef4444', onTradeClick, onValueClick, onEquityClick })
     );
 }
 
@@ -546,11 +559,11 @@ function numCell(v, { suffix = '', d = 1, color, signed = false } = {}) {
     return cellTd(txt, { align: 'right', mono: true, color: color || 'var(--nx-text2)' });
 }
 
-function AdvancedRow({ r, fit, onTradeClick, onValueClick }) {
+function AdvancedRow({ r, fit, onTradeClick, onValueClick, onEquityClick }) {
     const [hov, setHov] = useState(false);
     const fitCol = fit >= 60 ? '#22c55e' : fit >= 30 ? '#f59e0b' : 'var(--nx-text3)';
     const retCol = r.ret_1m == null ? 'var(--nx-text3)' : r.ret_1m >= 0 ? '#22c55e' : '#ef4444';
-    return h('tr', { onMouseEnter: () => setHov(true), onMouseLeave: () => setHov(false), style: { background: hov ? 'rgba(59,130,246,0.05)' : 'transparent' } },
+    return h('tr', { onMouseEnter: () => setHov(true), onMouseLeave: () => setHov(false), style: { background: hov ? 'rgba(59,130,246,0.04)' : 'transparent' } },
         cellTd(r.symbol, { color: '#3b82f6', weight: 700, mono: true }),
         cellTd(r.name || '—', { color: 'var(--nx-text2)' }),
         cellTd(r.sector || '—', { color: 'var(--nx-text3)' }),
@@ -564,8 +577,7 @@ function AdvancedRow({ r, fit, onTradeClick, onValueClick }) {
                 h('div', { style: { width: 36, height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 2, overflow: 'hidden' } },
                     h('div', { style: { width: fit + '%', height: '100%', background: fitCol, borderRadius: 2 } })),
                 h('span', { style: { fontSize: 11, fontFamily: 'var(--nx-fd)', fontWeight: 700, color: fitCol, minWidth: 16 } }, fit))),
-        h('td', { style: { padding: '9px 14px', textAlign: 'right', borderBottom: '1px solid rgba(255,255,255,0.04)' } },
-            h('button', { onClick: () => onTradeClick && onTradeClick(r.symbol), style: { padding: '3px 10px', fontSize: 10, fontWeight: 700, background: hov ? '#3b82f6' : 'rgba(59,130,246,0.12)', color: hov ? '#fff' : '#3b82f6', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 4, cursor: 'pointer', fontFamily: 'var(--nx-fb)' } }, 'Risk'))
+        h(RowActions, { symbol: r.symbol, hov, accent: '#3b82f6', onTradeClick, onValueClick, onEquityClick })
     );
 }
 
@@ -580,7 +592,7 @@ function FilterField({ label, value, suffix, onChange, placeholder }) {
     );
 }
 
-function AdvancedScreener({ onTradeClick, onValueClick }) {
+function AdvancedScreener({ onTradeClick, onValueClick, onEquityClick }) {
     const [filters, setFilters] = useState(ADV_DEFAULTS);
     const [activePreset, setActivePreset] = useState(null);
     const [search, setSearch]   = useState('');
@@ -696,12 +708,12 @@ function AdvancedScreener({ onTradeClick, onValueClick }) {
                     : h('table', { style: { width: '100%', borderCollapse: 'collapse', fontFamily: 'var(--nx-fb)' } },
                         h('thead', null,
                             h('tr', { style: { position: 'sticky', top: 0, background: 'var(--nx-bg)', zIndex: 1 } },
-                                ['Ticker', 'Name', 'Sector', 'EV/EBITDA', 'Rev Growth', 'FCF Margin', 'ROIC', '1M', 'Portfolio Fit', ''].map((c, i) =>
+                                ['Ticker', 'Name', 'Sector', 'EV/EBITDA', 'Rev Growth', 'FCF Margin', 'ROIC', '1M', 'Portfolio Fit', 'Actions'].map((c, i) =>
                                     h('th', { key: i, style: { textAlign: i < 3 ? 'left' : 'right', padding: '8px 14px', fontSize: 8, color: 'var(--nx-text3)', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700, borderBottom: '1px solid var(--nx-border)', whiteSpace: 'nowrap' } }, c))
                             )
                         ),
                         h('tbody', null,
-                            sorted.map(({ r, fit }, i) => h(AdvancedRow, { key: r.symbol + i, r, fit, onTradeClick, onValueClick }))
+                            sorted.map(({ r, fit }, i) => h(AdvancedRow, { key: r.symbol + i, r, fit, onTradeClick, onValueClick, onEquityClick }))
                         )
                     )
         )
@@ -952,7 +964,8 @@ function CortexPage() {
         setSignals(s => s.filter(x => x.id !== id));
     }
 
-    const onValueClick = ticker => window.dispatchEvent(new CustomEvent('atlas:navigate', { detail: { tab: 'valuation', symbol: ticker } }));
+    const onValueClick  = ticker => window.dispatchEvent(new CustomEvent('atlas:navigate', { detail: { tab: 'valuation', symbol: ticker } }));
+    const onEquityClick = ticker => window.dispatchEvent(new CustomEvent('atlas:navigate', { detail: { tab: 'equity',    symbol: ticker } }));
 
     const TabBtn = ({ id, label }) => {
         const active = view === id;
@@ -985,8 +998,8 @@ function CortexPage() {
             view === 'signals'
                 ? h(SignalFeed, { signals: effectiveSignals, loading, classFilter, onClassFilter: setClassFilter, onTradeClick: setPretradeFor, onValueClick, onMute: handleMute, onRefresh: handleRunEngine, refreshing })
                 : view === 'advanced'
-                    ? h(AdvancedScreener, { onTradeClick: setPretradeFor, onValueClick })
-                    : h(Screener, { onTradeClick: setPretradeFor, onValueClick }),
+                    ? h(AdvancedScreener, { onTradeClick: setPretradeFor, onValueClick, onEquityClick })
+                    : h(Screener, { onTradeClick: setPretradeFor, onValueClick, onEquityClick }),
             h(RightRail, { onControlsChange: loadControls, onTradeClick: setPretradeFor })
         ),
 
