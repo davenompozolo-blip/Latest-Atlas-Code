@@ -1,3 +1,4 @@
+import React from 'react';
 import { sb } from './config.js';
 
 const h = React.createElement;
