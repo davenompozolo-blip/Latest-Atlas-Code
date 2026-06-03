@@ -387,7 +387,7 @@ function Screener({ onTradeClick, onValueClick }) {
 
     const fitFor = (sec) => {
         const w = sectorW[sec] || 0;
-        return Math.max(0, Math.min(100, Math.round((25 - w) * 4)));   // more headroom to 25% ceiling = higher fit
+        return Math.max(0, Math.min(100, Math.round((0.25 - w) * 400)));   // portfolio_weight is a NAV fraction; 0.25 = 25% ceiling
     };
 
     const ACCENT = mode === 'trim' ? '#ef4444' : '#14b8a6';

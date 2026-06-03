@@ -214,6 +214,11 @@ async function fetchCandidates(
       LEFT JOIN equity_cache ec ON ec.symbol = a.symbol
       WHERE a.asset_class IN ('Stock', 'us_equity', 'equity', 'etf')
         AND a.symbol NOT IN (SELECT sym FROM held)
+        AND EXISTS (
+          SELECT 1 FROM price_history ph
+          WHERE ph.symbol = a.symbol
+          GROUP BY ph.symbol HAVING COUNT(*) >= 20
+        )
         AND (
           COALESCE(ec.payload->'Overview'->>'Sector', a.sector, '') = ${sector}
           OR ${sector} = 'any'
