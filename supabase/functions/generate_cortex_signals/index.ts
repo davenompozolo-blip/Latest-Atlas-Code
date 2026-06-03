@@ -16,6 +16,14 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import postgres from 'https://deno.land/x/postgresjs@v3.4.5/mod.js'
 
+// ── CORS ────────────────────────────────────────────────────────────────────
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin':  '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
+const JSON_HEADERS = { ...CORS_HEADERS, 'Content-Type': 'application/json' }
+
 // ── Constants (expose for tuning) ──────────────────────────────────────────
 const MODULE_NAME          = 'Cortex'
 const CLAUDE_MODEL         = 'claude-sonnet-4-6'
@@ -209,7 +217,7 @@ async function fetchCandidates(
         AND EXISTS (
           SELECT 1 FROM price_history ph
           WHERE ph.asset_id = a.id
-            AND ph.date >= NOW() - INTERVAL '7 days'
+            AND ph.price_date >= NOW() - INTERVAL '7 days'
         )
         AND (
           COALESCE(ec.payload->'Overview'->>'Sector', a.sector, '') = ${sector}
@@ -301,7 +309,7 @@ async function buildGapSignals(
     FROM assets a
     LEFT JOIN equity_cache ec ON ec.symbol = a.symbol
     WHERE a.asset_class = 'equity'
-      AND EXISTS (SELECT 1 FROM price_history ph WHERE ph.asset_id = a.id AND ph.date >= NOW() - INTERVAL '7 days')
+      AND EXISTS (SELECT 1 FROM price_history ph WHERE ph.asset_id = a.id AND ph.price_date >= NOW() - INTERVAL '7 days')
       AND COALESCE(ec.payload->'Overview'->>'Sector', a.sector) IS NOT NULL
       AND COALESCE(ec.payload->'Overview'->>'Sector', a.sector, '') NOT IN (
         SELECT UNNEST(${state.sectors.map(s => s.sector)}::text[])
@@ -507,8 +515,11 @@ async function enrichWithClaude(drafts: SignalDraft[]): Promise<SignalDraft[]> {
 
 // ── HTTP entry point ───────────────────────────────────────────────────────
 Deno.serve(async (req: Request) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: CORS_HEADERS })
+  }
   if (req.method !== 'POST') {
-    return new Response('Method Not Allowed', { status: 405 })
+    return new Response('Method Not Allowed', { status: 405, headers: CORS_HEADERS })
   }
 
   const payload    = await req.json().catch(() => ({}))
@@ -545,8 +556,8 @@ Deno.serve(async (req: Request) => {
 
     if (allDrafts.length === 0) {
       console.log(`[${MODULE_NAME}] No signal candidates generated — portfolio within normal bounds`)
-      return new Response(JSON.stringify({ ok: true, signals_generated: 0, dry_run: dryRun }), {
-        headers: { 'Content-Type': 'application/json' },
+      return new Response(JSON.stringify({ ok: true, signals_generated: 0, inserted: 0, dry_run: dryRun }), {
+        headers: JSON_HEADERS,
       })
     }
 
@@ -557,22 +568,20 @@ Deno.serve(async (req: Request) => {
       // Clear non-muted signals and replace with fresh batch
       await sql`DELETE FROM cortex_signals WHERE is_muted = false`
 
-      const rows = signals.map(s => ({
-        signal_class:  s.signal_class,
-        title:         s.title!,
-        thesis_md:     s.thesis_md!,
-        relevance:     s.relevance,
-        conviction:    s.conviction,
-        risk_urgency:  s.risk_urgency,
-        setup_json:    s.setup_json,
-        candidates:    s.candidates,
-        origin_metric: s.origin_metric,
-        generated_at:  new Date().toISOString(),
-        is_muted:      false,
-      }))
-
-      await sql`INSERT INTO cortex_signals ${sql(rows)}`
-      console.log(`[${MODULE_NAME}] Wrote ${rows.length} signals to cortex_signals`)
+      const generatedAt = new Date().toISOString()
+      for (const s of signals) {
+        await sql`
+          INSERT INTO cortex_signals
+            (signal_class, title, thesis_md, relevance, conviction, risk_urgency,
+             setup_json, candidates, origin_metric, generated_at, is_muted)
+          VALUES
+            (${s.signal_class}, ${s.title!}, ${s.thesis_md!}, ${s.relevance},
+             ${s.conviction}, ${s.risk_urgency},
+             ${JSON.stringify(s.setup_json)}::jsonb, ${JSON.stringify(s.candidates)}::jsonb,
+             ${s.origin_metric}, ${generatedAt}, false)
+        `
+      }
+      console.log(`[${MODULE_NAME}] Wrote ${signals.length} signals to cortex_signals`)
     } else {
       console.log(`[${MODULE_NAME}] dry_run=true — skipping DB write`)
     }
@@ -581,6 +590,7 @@ Deno.serve(async (req: Request) => {
       JSON.stringify({
         ok:                true,
         signals_generated: signals.length,
+        inserted:          dryRun ? 0 : signals.length,
         dry_run:           dryRun,
         breakdown: {
           thesis: signals.filter(s => s.signal_class === 'thesis').length,
@@ -593,13 +603,13 @@ Deno.serve(async (req: Request) => {
           origin: s.origin_metric,
         })),
       }),
-      { headers: { 'Content-Type': 'application/json' } },
+      { headers: JSON_HEADERS },
     )
   } catch (err) {
     console.error(`[${MODULE_NAME}] Error:`, err)
     return new Response(
       JSON.stringify({ ok: false, error: String(err) }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } },
+      { status: 500, headers: JSON_HEADERS },
     )
   } finally {
     await sql.end()

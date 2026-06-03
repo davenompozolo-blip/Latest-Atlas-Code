@@ -74,7 +74,7 @@ function MarketRibbon() {
         async function load() {
             // Pull key macro metrics from vw_risk_analysis aggregates + snapshot
             const { data: risk } = await sb.from('vw_risk_analysis').select('symbol,annual_vol,dollar_var_95_daily,weight');
-            const { data: snap } = await sb.from('account_snapshots').select('equity,cash').order('snapshot_date', { ascending: false }).limit(1);
+            const { data: snap } = await sb.from('account_snapshots').select('equity,cash').order('as_of', { ascending: false }).limit(1);
 
             if (!risk || !snap?.[0]) return;
 
@@ -225,7 +225,7 @@ function PretradePanel({ ticker, onClose }) {
                             row('Cand Daily Vol (σ)', pct(data.sigma_c * 100, 3)),
                             row('Cand Beta', num(data.beta_c, 2)),
                             row('Sector', data.candidate_sector || '—'),
-                            row('Sector Weight', pct(data.candidate_sector_weight, 1)),
+                            row('Sector Weight', pct((data.candidate_sector_weight || 0) * 100, 1)),
                         ),
                         newVol != null && h('div', { style: { marginBottom: 8 } },
                             h('div', { style: { fontSize: 10, color: 'var(--nx-text3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 } }, 'Pro-forma @ ' + pctStr + '%'),

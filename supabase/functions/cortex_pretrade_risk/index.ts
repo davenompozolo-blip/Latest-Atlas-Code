@@ -26,8 +26,17 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import postgres from 'https://deno.land/x/postgresjs@v3.4.5/mod.js'
 
+// ── CORS ────────────────────────────────────────────────────────────────────
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin':  '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
+const JSON_HEADERS = { ...CORS_HEADERS, 'Content-Type': 'application/json' }
+
 const LOOKBACK_DAYS  = 252   // ~1 trading year
 const Z_95           = 1.645 // one-tailed 95% VaR
+const MIN_OBS        = 30    // a position needs >= this many returns to enter the vol/cov calc
 
 type Sql = ReturnType<typeof postgres>
 
@@ -88,16 +97,20 @@ interface PositionRow {
 }
 
 async function fetchPortfolio(sql: Sql): Promise<{ positions: PositionRow[]; total_nav: number }> {
+  // Aggregate by asset — the positions table can hold multiple rows per asset
+  // (historical / multi-lot), so collapse to one row per asset_id.
   const rows = await sql<{
     symbol: string; asset_id: string; market_value: number; sector: string
   }[]>`
-    SELECT a.symbol, p.asset_id::text, p.market_value,
+    SELECT a.symbol, a.id::text AS asset_id,
+           SUM(p.market_value) AS market_value,
            COALESCE(ec.payload->'Overview'->>'Sector', a.sector, 'Other') AS sector
     FROM positions p
     JOIN assets a ON a.id = p.asset_id
     LEFT JOIN equity_cache ec ON ec.symbol = a.symbol
     WHERE p.quantity > 0
-    ORDER BY p.market_value DESC
+    GROUP BY a.symbol, a.id, COALESCE(ec.payload->'Overview'->>'Sector', a.sector, 'Other')
+    ORDER BY SUM(p.market_value) DESC
   `
 
   const totalNav = rows.reduce((s, r) => s + Number(r.market_value), 0)
@@ -221,19 +234,29 @@ async function computePreTradeRisk(
     throw new Error(`Insufficient price history for ${candidateTicker} (${candidateReturns.length} obs)`)
   }
 
-  // 5. Align all return series to the same length (shortest common window)
-  const portfolioReturnSeries = positions.map(p => returnMap.get(p.asset_id) ?? [])
-  const minLen = Math.min(
-    candidateReturns.length,
-    ...portfolioReturnSeries.map(r => r.length).filter(l => l > 0),
-  )
-  const obs = Math.max(minLen, 0)
+  // 5. Align to a common window. Positions with too little history (< MIN_OBS
+  //    returns) are excluded from the vol/cov computation so a single
+  //    newly-added name can't collapse the whole window to a few days.
+  //    Their weight is renormalised across the qualifying set.
+  const qualifying = positions
+    .map(p => ({ p, rets: returnMap.get(p.asset_id) ?? [] }))
+    .filter(x => x.rets.length >= MIN_OBS)
 
-  // 6. Compute portfolio return series (weighted sum of position returns)
+  if (qualifying.length === 0) {
+    throw new Error(`No portfolio positions have >= ${MIN_OBS} days of price history`)
+  }
+
+  const obs = Math.min(
+    candidateReturns.length,
+    ...qualifying.map(x => x.rets.length),
+  )
+
+  const qualWeightSum = qualifying.reduce((s, x) => s + x.p.weight, 0) || 1
+
+  // 6. Compute portfolio return series (weighted sum of qualifying position returns)
   const portfolioReturns: number[] = new Array(obs).fill(0)
-  for (let i = 0; i < positions.length; i++) {
-    const rets = portfolioReturnSeries[i]
-    const w    = positions[i].weight
+  for (const { p, rets } of qualifying) {
+    const w = p.weight / qualWeightSum   // renormalise within qualifying set
     for (let t = 0; t < obs; t++) {
       portfolioReturns[t] += w * (rets[t] ?? 0)
     }
@@ -321,8 +344,11 @@ async function computePreTradeRisk(
 
 // ── HTTP entry point ───────────────────────────────────────────────────────
 Deno.serve(async (req: Request) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: CORS_HEADERS })
+  }
   if (req.method !== 'POST') {
-    return new Response('Method Not Allowed', { status: 405 })
+    return new Response('Method Not Allowed', { status: 405, headers: CORS_HEADERS })
   }
 
   const payload = await req.json().catch(() => ({}))
@@ -331,7 +357,7 @@ Deno.serve(async (req: Request) => {
   if (!ticker || typeof ticker !== 'string') {
     return new Response(
       JSON.stringify({ ok: false, error: 'Missing required field: ticker' }),
-      { status: 400, headers: { 'Content-Type': 'application/json' } },
+      { status: 400, headers: JSON_HEADERS },
     )
   }
 
@@ -342,14 +368,14 @@ Deno.serve(async (req: Request) => {
 
     return new Response(
       JSON.stringify({ ok: true, ...result }),
-      { headers: { 'Content-Type': 'application/json' } },
+      { headers: JSON_HEADERS },
     )
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error(`[cortex_pretrade_risk] Error for ${ticker}:`, msg)
     return new Response(
       JSON.stringify({ ok: false, error: msg }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } },
+      { status: 500, headers: JSON_HEADERS },
     )
   } finally {
     await sql.end()
