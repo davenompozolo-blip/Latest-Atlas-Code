@@ -888,6 +888,18 @@ async function runFullSync() {
     console.error(`  ✗ Price history failed: ${err.message}`);
   }
 
+  // 5b. Refresh Nexus holdings snapshot (materialized view) so the terminal
+  //     home reads fresh data instantly within the anon role's 3s timeout.
+  try {
+    console.log('\n[5b] Refreshing Nexus holdings snapshot...');
+    const { error } = await supabase.rpc('refresh_nexus_holdings');
+    if (error) throw error;
+    console.log('  ✓ mv_nexus_holdings refreshed');
+  } catch (err) {
+    // Non-fatal: a stale snapshot is preferable to a failed sync.
+    console.error(`  ⚠ Nexus snapshot refresh failed: ${err.message}`);
+  }
+
   // 6. Run Validation
   console.log('\n[VALIDATION] Running post-sync checks...');
   const validationResults = await runValidation(fullLog?.id);
