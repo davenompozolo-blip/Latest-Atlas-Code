@@ -17,6 +17,7 @@ import { SqlTerminal } from './sql-terminal.js';
 import { Scrapbook } from './scrapbook.js';
 import { PortfolioConstruction } from './pcm.js';
 import { LedgerPage } from './ledger.js';
+import { CortexPage } from './cortex.js';
 
 const { useState, useEffect } = React;
 
@@ -38,6 +39,7 @@ const TABS = [
     { id: 'scrapbook',   component: Scrapbook },
     { id: 'pcm',         component: PortfolioConstruction },
     { id: 'ledger',      component: LedgerPage },
+    { id: 'cortex',      component: CortexPage },
 ];
 
 // ── Error boundary ────────────────────────────────────────────
