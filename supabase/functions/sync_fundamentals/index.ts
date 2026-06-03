@@ -128,7 +128,7 @@ Deno.serve(async (req: Request) => {
       const profile = await finnhubFetch<FinnhubProfile>(
         '/stock/profile2?symbol=' + encodeURIComponent(symbol), fhKey)
       const marketCapUsd = profile?.marketCapitalization != null
-        ? profile.marketCapitalization * 1_000_000   // Finnhub returns $M
+        ? Math.round(profile.marketCapitalization * 1_000_000)   // Finnhub returns $M; keep integer (downstream ::bigint casts)
         : null
 
       // 2. Gate to large/mid cap
