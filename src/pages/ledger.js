@@ -250,6 +250,119 @@ function DevilAdvocate({ devil }) {
     );
 }
 
+// ── Forward NAV chart (SVG line chart) ────────────────────────
+function ForwardNavChart({ series }) {
+    const W = 700, H = 200, PAD = { t: 16, r: 16, b: 28, l: 44 };
+    const iW = W - PAD.l - PAD.r;
+    const iH = H - PAD.t - PAD.b;
+
+    const pts = useMemo(function() {
+        return (series || []).filter(r => r.fwd_idx != null && r.spy_idx != null)
+            .sort((a, b) => a.dt < b.dt ? -1 : 1);
+    }, [series]);
+
+    if (!pts.length) return e('div', { style: { color: C.text3, fontSize: 10, textAlign: 'center', padding: 40 } }, 'No NAV data yet');
+
+    const allVals = pts.flatMap(p => [Number(p.fwd_idx), Number(p.spy_idx)]);
+    const minV = Math.min(...allVals) * 0.97;
+    const maxV = Math.max(...allVals) * 1.02;
+    const px = i => PAD.l + (i / Math.max(1, pts.length - 1)) * iW;
+    const py = v => PAD.t + (1 - (v - minV) / (maxV - minV)) * iH;
+
+    const fwdD = pts.map((p, i) => (i === 0 ? 'M' : 'L') + px(i).toFixed(1) + ',' + py(Number(p.fwd_idx)).toFixed(1)).join(' ');
+    const spyD = pts.map((p, i) => (i === 0 ? 'M' : 'L') + px(i).toFixed(1) + ',' + py(Number(p.spy_idx)).toFixed(1)).join(' ');
+
+    // alpha fill (fwd above spy → teal; below → red)
+    const fillPts = pts.map((p, i) => ({ x: px(i), fwd: py(Number(p.fwd_idx)), spy: py(Number(p.spy_idx)) }));
+    const fillD = [
+        ...fillPts.map((p, i) => (i === 0 ? 'M' : 'L') + p.x.toFixed(1) + ',' + p.fwd.toFixed(1)),
+        ...fillPts.slice().reverse().map((p, i) => (i === 0 ? 'L' : 'L') + p.x.toFixed(1) + ',' + p.spy.toFixed(1)),
+        'Z'
+    ].join(' ');
+
+    // y-axis gridlines at round values
+    const ticks = [100];
+    for (let v = Math.ceil(minV / 10) * 10; v <= maxV; v += 10) if (!ticks.includes(v)) ticks.push(v);
+
+    // x-axis: show month labels sparsely
+    const xLabels = pts.filter((_, i) => i === 0 || i === pts.length - 1 ||
+        (pts[i].dt.slice(0, 7) !== pts[i - 1].dt.slice(0, 7) && i % Math.max(1, Math.floor(pts.length / 8)) === 0));
+
+    const lastPt = pts[pts.length - 1];
+
+    return e('svg', { width: W, height: H, style: { ...mono, overflow: 'visible' } },
+        // gridlines
+        ticks.map(v =>
+            e('g', { key: v },
+                e('line', { x1: PAD.l, y1: py(v), x2: W - PAD.r, y2: py(v), stroke: v === 100 ? 'rgba(255,255,255,.15)' : C.border, strokeWidth: v === 100 ? 1 : 0.5, strokeDasharray: v === 100 ? '4,3' : '2,4' }),
+                e('text', { x: PAD.l - 4, y: py(v) + 3, textAnchor: 'end', fontSize: 7, fill: C.text3 }, v)
+            )
+        ),
+        // alpha fill
+        e('path', { d: fillD, fill: Number(lastPt.alpha_idx) >= 0 ? 'rgba(20,184,166,.08)' : 'rgba(239,68,68,.08)', stroke: 'none' }),
+        // SPY line
+        e('path', { d: spyD, fill: 'none', stroke: C.text3, strokeWidth: 1.5, strokeDasharray: '4,3' }),
+        // Forward NAV line
+        e('path', { d: fwdD, fill: 'none', stroke: C.blue, strokeWidth: 2 }),
+        // endpoint labels
+        e('text', { x: W - PAD.r + 4, y: py(Number(lastPt.fwd_idx)) + 3, fontSize: 8, fill: C.blue }, Number(lastPt.fwd_idx).toFixed(1)),
+        e('text', { x: W - PAD.r + 4, y: py(Number(lastPt.spy_idx)) + 3, fontSize: 8, fill: C.text3 }, Number(lastPt.spy_idx).toFixed(1)),
+        // x-axis labels
+        xLabels.map(p =>
+            e('text', { key: p.dt, x: px(pts.indexOf(p)), y: H - 4, textAnchor: 'middle', fontSize: 7, fill: C.text3 }, p.dt.slice(0, 7))
+        ),
+        // legend
+        e('g', null,
+            e('line', { x1: PAD.l, y1: PAD.t - 6, x2: PAD.l + 16, y2: PAD.t - 6, stroke: C.blue, strokeWidth: 2 }),
+            e('text', { x: PAD.l + 20, y: PAD.t - 3, fontSize: 7, fill: C.blue }, 'Forward Test'),
+            e('line', { x1: PAD.l + 90, y1: PAD.t - 6, x2: PAD.l + 106, y2: PAD.t - 6, stroke: C.text3, strokeWidth: 1.5, strokeDasharray: '4,3' }),
+            e('text', { x: PAD.l + 110, y: PAD.t - 3, fontSize: 7, fill: C.text3 }, 'SPY (benchmark)')
+        )
+    );
+}
+
+// ── Forward NAV panel ──────────────────────────────────────────
+function ForwardNavPanel({ fwdSeries, fwdSummary }) {
+    const s = fwdSummary || {};
+    const kpis = [
+        { label: 'Forward Return', value: fmtPct(s.total_return_pct), color: Number(s.total_return_pct) >= 0 ? C.green : C.red },
+        { label: 'SPY Return',     value: fmtPct(s.spy_total_return_pct), color: C.text2 },
+        { label: 'Total Alpha',    value: fmtPct(s.total_alpha_pct), color: Number(s.total_alpha_pct) >= 0 ? C.teal : C.red },
+        { label: 'Current NAV',    value: s.current_nav != null ? '$' + Number(s.current_nav).toLocaleString('en-US', { maximumFractionDigits: 0 }) : '—', color: C.blue },
+        { label: 'Drawdown',       value: s.drawdown_from_peak_pct != null ? '-' + fmt(s.drawdown_from_peak_pct, 1) + '%' : '—', color: Number(s.drawdown_from_peak_pct) > 5 ? C.amber : C.green },
+        { label: 'Open Positions', value: s.open_positions ?? '—', color: C.text2 },
+    ];
+    return e('div', { style: { ...card, padding: '14px 16px', marginBottom: 20 } },
+        // header
+        e('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 } },
+            e('span', { style: { ...mono, fontSize: 11, fontWeight: 700, color: C.text1 } }, 'FORWARD TEST — SHADOW NAV'),
+            e('span', { style: { fontSize: 9, color: C.text3, letterSpacing: 1 } },
+                s.inception_date ? `inception ${s.inception_date} · as of ${s.as_of_date}` : ''),
+            e('div', {
+                style: {
+                    marginLeft: 'auto', padding: '3px 10px', borderRadius: 12,
+                    background: 'rgba(20,184,166,.12)', border: '1px solid rgba(20,184,166,.25)',
+                    fontSize: 9, letterSpacing: 1, color: C.teal, ...mono
+                }
+            }, '⚿ ENTRY LOCKED')
+        ),
+        // KPI row
+        e('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 8, marginBottom: 14 } },
+            kpis.map(k => e('div', { key: k.label, style: { background: C.bg3, borderRadius: 6, padding: '8px 10px' } },
+                e('div', { style: { ...mono, fontSize: 16, fontWeight: 700, color: k.color } }, k.value),
+                e('div', { style: { fontSize: 8, color: C.text3, letterSpacing: 1, marginTop: 2, textTransform: 'uppercase' } }, k.label)
+            ))
+        ),
+        // chart
+        e('div', { style: { overflowX: 'auto' } },
+            e(ForwardNavChart, { series: fwdSeries })
+        ),
+        e('div', { style: { fontSize: 8, color: C.text3, marginTop: 8, textAlign: 'center' } },
+            'Both series indexed to 100 at inception. Entry prices locked at decision time — no look-ahead, no retroactive changes.'
+        )
+    );
+}
+
 // ── Decision row ───────────────────────────────────────────────
 function DecisionRow({ d, open, onToggle }) {
     const isBuy = d.intent === 'add';
@@ -423,6 +536,8 @@ export function LedgerPage() {
     const [calBins, setCalBins]       = useState([]);
     const [brierTrend, setBrierTrend] = useState([]);
     const [devil, setDevil]           = useState([]);
+    const [fwdSeries, setFwdSeries]   = useState([]);
+    const [fwdSummary, setFwdSummary] = useState(null);
     const [loading, setLoading]       = useState(true);
     const [horizon, setHorizon]       = useState(30);
 
@@ -435,16 +550,20 @@ export function LedgerPage() {
             sb.from('vw_calibration').select('*'),
             sb.from('vw_brier_trend').select('*'),
             sb.from('vw_devil_advocate').select('*'),
-        ]).then(function([intRes, decRes, outRes, calRes, brierRes, devilRes]) {
-            if (intRes.data)   setIntegrity(intRes.data);
-            if (decRes.data)   setDecisions(decRes.data);
-            if (outRes.data)   setOutcomes(outRes.data.map(o => ({
+            sb.from('vw_forward_vs_spy').select('dt,fwd_idx,spy_idx,alpha_idx,nav').order('dt', { ascending: true }),
+            sb.from('vw_forward_summary').select('*').single(),
+        ]).then(function([intRes, decRes, outRes, calRes, brierRes, devilRes, fwdRes, fwdSumRes]) {
+            if (intRes.data)    setIntegrity(intRes.data);
+            if (decRes.data)    setDecisions(decRes.data);
+            if (outRes.data)    setOutcomes(outRes.data.map(o => ({
                 ...o, symbol: o.decisions?.symbol,
                 conviction: o.decisions?.conviction, intent: o.decisions?.intent,
             })));
-            if (calRes.data)   setCalBins(calRes.data);
-            if (brierRes.data) setBrierTrend(brierRes.data);
-            if (devilRes.data) setDevil(devilRes.data);
+            if (calRes.data)    setCalBins(calRes.data);
+            if (brierRes.data)  setBrierTrend(brierRes.data);
+            if (devilRes.data)  setDevil(devilRes.data);
+            if (fwdRes.data)    setFwdSeries(fwdRes.data);
+            if (fwdSumRes.data) setFwdSummary(fwdSumRes.data);
             setLoading(false);
         });
     }, []);
@@ -530,6 +649,9 @@ export function LedgerPage() {
             )
         ),
 
+        // Forward test shadow NAV
+        e(ForwardNavPanel, { fwdSeries, fwdSummary }),
+
         // Devil's advocate
         e(DevilAdvocate, { devil }),
 
@@ -543,7 +665,7 @@ export function LedgerPage() {
 
         // Phase note
         e('div', { style: { marginTop: 24, padding: '10px 14px', background: C.bg3, borderRadius: 6, fontSize: 9, color: C.text3, letterSpacing: 1 } },
-            'LEDGER PHASE 3 LIVE · Calibration binned from DB (vw_calibration), Brier trend from vw_brier_trend, drift monitor, devil\'s advocate. Phase 4: forward-test shadow NAV.'
+            'LEDGER PHASE 4 LIVE · Forward-test shadow NAV: entry prices locked at decision time, indexed vs SPY from inception. Phase 5: adversary integrity export.'
         )
     );
 }
