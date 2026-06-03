@@ -40,17 +40,31 @@ jobs:
           SUPABASE_FUNCTIONS_URL: ${{ secrets.SUPABASE_FUNCTIONS_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          echo "[fundamentals] Invoking sync_fundamentals Edge Function..."
-          RESULT=$(curl -s -X POST \
-            "${SUPABASE_FUNCTIONS_URL}/sync_fundamentals" \
-            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
-            -H "Content-Type: application/json" \
-            --max-time 600)
-          echo "$RESULT" | python3 -c "
+          # sync_fundamentals v2 is paginated and universe-wide. One run covers a
+          # rolling slice; the offset rotates by day-of-year so the whole ~7.6k
+          # universe is covered over several days, then settles (only_missing
+          # skips already-cached large caps). PAGES × LIMIT symbols per run is
+          # bounded to stay inside the job timeout.
+          LIMIT=120
+          PAGES=6
+          DOY=$(date -u +%j)            # 001..366
+          START_OFFSET=$(( (10#$DOY * PAGES * LIMIT) % 7680 ))
+          echo "[fundamentals] start_offset=${START_OFFSET} pages=${PAGES} limit=${LIMIT}"
+          OFFSET=$START_OFFSET
+          for i in $(seq 1 $PAGES); do
+            RESULT=$(curl -s -X POST \
+              "${SUPABASE_FUNCTIONS_URL}/sync_fundamentals" \
+              -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+              -H "Content-Type: application/json" \
+              -d "{\"offset\": ${OFFSET}, \"limit\": ${LIMIT}, \"only_missing\": true}" \
+              --max-time 200)
+            echo "$RESULT" | python3 -c "
           import json,sys
           d=json.load(sys.stdin)
-          print(f'Symbols: {d.get(\"symbols\",0)}  Enriched: {d.get(\"enriched\",0)}  Failed: {d.get(\"failed\",0)}  Elapsed: {d.get(\"elapsed_s\",0)}s')
-          " || echo "$RESULT"
+          print(f'  offset={d.get(\"offset\")} enriched={d.get(\"enriched\",0)} small={d.get(\"skipped_small\",0)} cached={d.get(\"skipped_cached\",0)} failed={d.get(\"failed\",0)} {d.get(\"elapsed_s\",0)}s')
+          " 2>/dev/null || echo "  $RESULT"
+            OFFSET=$(( OFFSET + LIMIT ))
+          done
 
       - name: Setup Node (Path B fallback)
         if: ${{ secrets.ATLAS_API_BASE != '' && secrets.SUPABASE_FUNCTIONS_URL == '' }}
