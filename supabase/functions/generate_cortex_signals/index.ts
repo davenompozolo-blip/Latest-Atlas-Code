@@ -212,13 +212,8 @@ async function fetchCandidates(
         END                                                  AS quality
       FROM assets a
       LEFT JOIN equity_cache ec ON ec.symbol = a.symbol
-      WHERE a.asset_class = 'equity'
+      WHERE a.asset_class IN ('Stock', 'us_equity', 'equity', 'etf')
         AND a.symbol NOT IN (SELECT sym FROM held)
-        AND EXISTS (
-          SELECT 1 FROM price_history ph
-          WHERE ph.asset_id = a.id
-            AND ph.price_date >= NOW() - INTERVAL '30 days'
-        )
         AND (
           COALESCE(ec.payload->'Overview'->>'Sector', a.sector, '') = ${sector}
           OR ${sector} = 'any'
@@ -310,8 +305,7 @@ async function buildGapSignals(
     SELECT DISTINCT COALESCE(ec.payload->'Overview'->>'Sector', a.sector, 'Other') AS sector
     FROM assets a
     LEFT JOIN equity_cache ec ON ec.symbol = a.symbol
-    WHERE a.asset_class = 'equity'
-      AND EXISTS (SELECT 1 FROM price_history ph WHERE ph.asset_id = a.id AND ph.price_date >= NOW() - INTERVAL '7 days')
+    WHERE a.asset_class IN ('Stock', 'us_equity', 'equity', 'etf')
       AND COALESCE(ec.payload->'Overview'->>'Sector', a.sector) IS NOT NULL
       AND COALESCE(ec.payload->'Overview'->>'Sector', a.sector, '') NOT IN (
         SELECT UNNEST(${state.sectors.map(s => s.sector)}::text[])
@@ -433,7 +427,8 @@ async function callClaude(prompt: string): Promise<{ title: string; thesis_md: s
         model:      CLAUDE_MODEL,
         max_tokens: 300,
         system: [
-          'You are an institutional portfolio analyst for a JSE/ZAR-focused equity portfolio.',
+          'You are an institutional portfolio analyst for an international, US-dollar-denominated equity portfolio traded through Alpaca.',
+          'All monetary values are in USD. Do not reference the JSE, ZAR, or any South-Africa-specific framing.',
           'Generate concise, data-grounded signal narratives.',
           'Output ONLY valid JSON with keys "title" (string, one line) and "thesis_md" (string, 2-4 sentences).',
           'Only reference tickers supplied in the input. Do not fabricate numbers. If unsure, omit rather than invent.',
