@@ -5,7 +5,7 @@
 import React from 'react';
 import { sb } from './config.js';
 
-const { useState, useEffect, useRef, useMemo } = React;
+const { useState, useEffect, useRef, useMemo, useCallback } = React;
 const e = React.createElement;
 
 // ── palette (matches nexus-theme.css vars) ─────────────────────
@@ -36,22 +36,140 @@ function fmtTime(ts) {
     return d.toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
-// ── Integrity Badge ────────────────────────────────────────────
-function IntegrityBadge({ integrity }) {
+// ── Integrity Badge (with on-demand re-verify) ─────────────────
+function IntegrityBadge({ integrity, onRecheck }) {
+    const [checking, setChecking] = useState(false);
     if (!integrity) return e('div', { style: { ...mono, fontSize: 10, color: C.text3 } }, 'loading chain…');
     const ok = integrity.chain_ok;
+    return e('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+        e('div', {
+            style: {
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '6px 14px', borderRadius: 20,
+                background: ok ? 'rgba(34,197,94,.12)' : 'rgba(239,68,68,.12)',
+                border: `1px solid ${ok ? 'rgba(34,197,94,.3)' : 'rgba(239,68,68,.3)'}`,
+            }
+        },
+            e('div', { style: { width: 7, height: 7, borderRadius: '50%', background: ok ? C.green : C.red, boxShadow: `0 0 6px ${ok ? C.green : C.red}` } }),
+            e('span', { style: { ...mono, fontSize: 10, fontWeight: 700, letterSpacing: 1, color: ok ? C.green : C.red } },
+                ok ? 'CHAIN VERIFIED' : 'CHAIN BROKEN'),
+            e('span', { style: { ...mono, fontSize: 9, color: C.text3 } }, `${integrity.total} records`)
+        ),
+        e('button', {
+            title: 'Re-verify chain now',
+            disabled: checking,
+            onClick: async function() {
+                setChecking(true);
+                await onRecheck?.();
+                setChecking(false);
+            },
+            style: {
+                ...mono, fontSize: 9, padding: '4px 10px', borderRadius: 4,
+                border: `1px solid ${C.border}`, background: 'transparent',
+                color: C.text3, cursor: 'pointer', letterSpacing: 1
+            }
+        }, checking ? '…' : '↺ VERIFY')
+    );
+}
+
+// ── Alert Banner ───────────────────────────────────────────────
+function AlertBanner({ alerts }) {
+    const [dismissed, setDismissed] = useState({});
+    const active = (alerts || []).filter(a => !dismissed[a.id]);
+    if (!active.length) return null;
+    const critCount = active.filter(a => a.severity === 'critical').length;
+    const color = critCount ? C.red : C.amber;
     return e('div', {
         style: {
-            display: 'flex', alignItems: 'center', gap: 8,
-            padding: '6px 14px', borderRadius: 20,
-            background: ok ? 'rgba(34,197,94,.12)' : 'rgba(239,68,68,.12)',
-            border: `1px solid ${ok ? 'rgba(34,197,94,.3)' : 'rgba(239,68,68,.3)'}`,
+            marginBottom: 16, padding: '10px 14px', borderRadius: 6,
+            background: critCount ? 'rgba(239,68,68,.08)' : 'rgba(245,158,11,.08)',
+            border: `1px solid ${critCount ? 'rgba(239,68,68,.3)' : 'rgba(245,158,11,.3)'}`,
         }
     },
-        e('div', { style: { width: 7, height: 7, borderRadius: '50%', background: ok ? C.green : C.red, boxShadow: `0 0 6px ${ok ? C.green : C.red}` } }),
-        e('span', { style: { ...mono, fontSize: 10, fontWeight: 700, letterSpacing: 1, color: ok ? C.green : C.red } },
-            ok ? 'CHAIN VERIFIED' : 'CHAIN BROKEN'),
-        e('span', { style: { ...mono, fontSize: 9, color: C.text3 } }, `${integrity.total} records`)
+        e('div', { style: { ...mono, fontSize: 10, fontWeight: 700, color, marginBottom: 6, letterSpacing: 1 } },
+            `⚠ ${active.length} ADVERSARY ALERT${active.length > 1 ? 'S' : ''}`),
+        active.map(function(a) {
+            return e('div', {
+                key: a.id,
+                style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }
+            },
+                e('span', {
+                    style: {
+                        ...mono, fontSize: 8, padding: '1px 6px', borderRadius: 3, letterSpacing: 1,
+                        background: a.severity === 'critical' ? 'rgba(239,68,68,.2)' : 'rgba(245,158,11,.2)',
+                        color: a.severity === 'critical' ? C.red : C.amber, textTransform: 'uppercase',
+                    }
+                }, a.severity),
+                e('span', { style: { ...mono, fontSize: 9, color: C.text2, flex: 1 } }, a.detail),
+                e('button', {
+                    onClick: () => setDismissed(d => ({ ...d, [a.id]: true })),
+                    style: { ...mono, fontSize: 9, background: 'none', border: 'none', color: C.text3, cursor: 'pointer', padding: '0 4px' }
+                }, '×')
+            );
+        })
+    );
+}
+
+// ── Adversary Panel ────────────────────────────────────────────
+function AdversaryPanel({ adversary }) {
+    const contrarian = (adversary || []).filter(r => r.lens === 'contrarian').sort((a,b) => b.flipped_alpha_pct - a.flipped_alpha_pct);
+    const rfw        = (adversary || []).filter(r => r.lens === 'right_wrong_reasons');
+    return e('div', { style: { ...card, overflow: 'hidden', marginBottom: 20 } },
+        e('div', { style: { padding: '10px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 10 } },
+            e('span', { style: { ...mono, fontSize: 11, fontWeight: 700, color: C.purple } }, '⚡ ADVERSARY'),
+            e('span', { style: { fontSize: 9, color: C.text3, letterSpacing: 1 } }, '— contrarian returns · right for wrong reasons')
+        ),
+        e('div', { style: { display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 0 } },
+            // contrarian table
+            e('div', { style: { borderRight: `1px solid ${C.border}` } },
+                e('div', { style: { ...mono, fontSize: 9, color: C.text3, padding: '7px 14px', borderBottom: `1px solid ${C.border}`, letterSpacing: 1 } }, 'WHAT IF YOU\'D DONE THE OPPOSITE? (30d)'),
+                e('table', { style: { width: '100%', borderCollapse: 'collapse' } },
+                    e('thead', null,
+                        e('tr', { style: { borderBottom: `1px solid ${C.border}` } },
+                            ['Symbol', 'You did', '→ Flipped', 'Your alpha', 'Opposite alpha', 'Conv', 'n'].map(h =>
+                                e('th', { key: h, style: { ...mono, fontSize: 8, color: C.text3, padding: '5px 10px', textAlign: 'right', letterSpacing: 1, ':first-child': { textAlign: 'left' } } }, h)
+                            )
+                        )
+                    ),
+                    e('tbody', null,
+                        contrarian.slice(0, 10).map(function(r) {
+                            const flippedBetter = Number(r.flipped_alpha_pct) > Number(r.stated_alpha_pct);
+                            return e('tr', { key: r.symbol + r.stated_intent, style: { borderBottom: `1px solid ${C.border}` } },
+                                e('td', { style: { ...mono, fontSize: 11, fontWeight: 700, color: C.text1, padding: '6px 10px' } }, r.symbol),
+                                e('td', { style: { ...mono, fontSize: 9, color: { add: C.green, trim: C.amber, exit: C.red }[r.stated_intent] || C.text2, padding: '6px 10px', textAlign: 'right', textTransform: 'uppercase' } }, r.stated_intent),
+                                e('td', { style: { ...mono, fontSize: 9, color: C.text3, padding: '6px 10px', textAlign: 'right', textTransform: 'uppercase' } }, r.flipped_intent),
+                                e('td', { style: { ...mono, fontSize: 10, color: Number(r.stated_alpha_pct) >= 0 ? C.green : C.red, padding: '6px 10px', textAlign: 'right' } }, fmtPct(r.stated_alpha_pct)),
+                                e('td', { style: { ...mono, fontSize: 10, fontWeight: flippedBetter ? 700 : 400, color: Number(r.flipped_alpha_pct) >= 0 ? C.teal : C.red, padding: '6px 10px', textAlign: 'right' } },
+                                    fmtPct(r.flipped_alpha_pct),
+                                    flippedBetter && e('span', { style: { marginLeft: 4, color: C.amber } }, '←')
+                                ),
+                                e('td', { style: { ...mono, fontSize: 9, color: C.text3, padding: '6px 10px', textAlign: 'right' } }, r.avg_conviction),
+                                e('td', { style: { ...mono, fontSize: 9, color: C.text3, padding: '6px 10px', textAlign: 'right' } }, r.n)
+                            );
+                        })
+                    )
+                )
+            ),
+            // right for wrong reasons
+            e('div', { style: { padding: '8px 14px' } },
+                e('div', { style: { ...mono, fontSize: 9, color: C.text3, letterSpacing: 1, marginBottom: 10 } }, 'RIGHT FOR WRONG REASONS'),
+                e('div', { style: { ...mono, fontSize: 8, color: C.text3, marginBottom: 10 } }, 'High conviction (≥60), correct call, but alpha < 2% — conviction may be over-stated.'),
+                rfw.length === 0
+                    ? e('div', { style: { color: C.green, fontSize: 10 } }, '✓ No suspicious wins')
+                    : rfw.map(function(r) {
+                        return e('div', { key: r.symbol + r.stated_intent, style: { marginBottom: 8, padding: '8px 10px', background: C.bg3, borderRadius: 6 } },
+                            e('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 3 } },
+                                e('span', { style: { ...mono, fontSize: 11, fontWeight: 700, color: C.text1 } }, r.symbol),
+                                e('span', { style: { ...mono, fontSize: 8, color: C.amber } }, 'conv ' + r.avg_conviction)
+                            ),
+                            e('div', { style: { ...mono, fontSize: 9, color: C.text3 } },
+                                'Alpha: ', e('span', { style: { color: C.green } }, fmtPct(r.stated_alpha_pct)),
+                                ' · Edge/conv pt: ', e('span', { style: { color: C.amber } }, r.alpha_per_conviction_pt)
+                            )
+                        );
+                    })
+            )
+        )
     );
 }
 
@@ -538,10 +656,12 @@ export function LedgerPage() {
     const [devil, setDevil]           = useState([]);
     const [fwdSeries, setFwdSeries]   = useState([]);
     const [fwdSummary, setFwdSummary] = useState(null);
+    const [alerts, setAlerts]         = useState([]);
+    const [adversary, setAdversary]   = useState([]);
     const [loading, setLoading]       = useState(true);
     const [horizon, setHorizon]       = useState(30);
 
-    useEffect(function() {
+    const fetchAll = useCallback(function() {
         if (!sb) return;
         Promise.all([
             sb.from('vw_ledger_integrity').select('*').single(),
@@ -552,7 +672,9 @@ export function LedgerPage() {
             sb.from('vw_devil_advocate').select('*'),
             sb.from('vw_forward_vs_spy').select('dt,fwd_idx,spy_idx,alpha_idx,nav').order('dt', { ascending: true }),
             sb.from('vw_forward_summary').select('*').single(),
-        ]).then(function([intRes, decRes, outRes, calRes, brierRes, devilRes, fwdRes, fwdSumRes]) {
+            sb.from('ledger_alerts').select('*').eq('acknowledged', false).order('created_at', { ascending: false }),
+            sb.from('vw_adversary').select('*'),
+        ]).then(function([intRes, decRes, outRes, calRes, brierRes, devilRes, fwdRes, fwdSumRes, alertRes, advRes]) {
             if (intRes.data)    setIntegrity(intRes.data);
             if (decRes.data)    setDecisions(decRes.data);
             if (outRes.data)    setOutcomes(outRes.data.map(o => ({
@@ -564,9 +686,13 @@ export function LedgerPage() {
             if (devilRes.data)  setDevil(devilRes.data);
             if (fwdRes.data)    setFwdSeries(fwdRes.data);
             if (fwdSumRes.data) setFwdSummary(fwdSumRes.data);
+            if (alertRes.data)  setAlerts(alertRes.data);
+            if (advRes.data)    setAdversary(advRes.data);
             setLoading(false);
         });
     }, []);
+
+    useEffect(function() { fetchAll(); }, []);
 
     const stats = useMemo(function() {
         const total    = decisions.length;
@@ -602,13 +728,27 @@ export function LedgerPage() {
         style: { padding: '20px 24px', background: C.bg1, minHeight: '100%', color: C.text1, ...mono }
     },
         // header
-        e('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 } },
+        e('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 } },
             e('div', null,
                 e('div', { style: { fontSize: 18, fontWeight: 800, letterSpacing: 2, color: C.blue, marginBottom: 2 } }, 'ATLAS LEDGER'),
-                e('div', { style: { fontSize: 9, letterSpacing: 2, color: C.text3, textTransform: 'uppercase' } }, 'Provenance · Calibration · Integrity · Devil\'s Advocate')
+                e('div', { style: { fontSize: 9, letterSpacing: 2, color: C.text3, textTransform: 'uppercase' } }, 'Provenance · Calibration · Adversary · Forward Test')
             ),
-            e(IntegrityBadge, { integrity })
+            e('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+                e(IntegrityBadge, { integrity, onRecheck: fetchAll }),
+                e('a', {
+                    href: '/api/ledger-export',
+                    download: true,
+                    style: {
+                        ...mono, fontSize: 9, padding: '5px 12px', borderRadius: 4, letterSpacing: 1,
+                        border: `1px solid ${C.border}`, background: 'transparent', color: C.text2,
+                        textDecoration: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5
+                    }
+                }, '↓ EXPORT')
+            )
         ),
+
+        // alert banner
+        e(AlertBanner, { alerts }),
 
         // KPI strip
         e('div', { style: { marginBottom: 20 } }, e(KpiStrip, { stats })),
@@ -652,6 +792,9 @@ export function LedgerPage() {
         // Forward test shadow NAV
         e(ForwardNavPanel, { fwdSeries, fwdSummary }),
 
+        // Adversary panel
+        e(AdversaryPanel, { adversary }),
+
         // Devil's advocate
         e(DevilAdvocate, { devil }),
 
@@ -665,7 +808,7 @@ export function LedgerPage() {
 
         // Phase note
         e('div', { style: { marginTop: 24, padding: '10px 14px', background: C.bg3, borderRadius: 6, fontSize: 9, color: C.text3, letterSpacing: 1 } },
-            'LEDGER PHASE 4 LIVE · Forward-test shadow NAV: entry prices locked at decision time, indexed vs SPY from inception. Phase 5: adversary integrity export.'
+            'LEDGER COMPLETE (PHASES 0–5) · Hash-chained decisions · Outcome scoring · Calibration · Drift monitor · Forward NAV · Adversary · Alert system · Export artifact'
         )
     );
 }

@@ -74,10 +74,14 @@ module.exports = async function handler(req, res) {
     const { data, error } = await sb.rpc('snapshot_decision_outcomes');
     if (error) return res.status(500).json({ error: error.message, pricesUpserted, spyError: spy.error });
 
+    // Phase 5: check for drift / calibration / integrity alerts
+    const { data: alertsInserted } = await sb.rpc('insert_ledger_alerts');
+
     return res.status(200).json({
         ok: true,
         pricesUpserted,
         outcomesInserted: data,
+        alertsInserted: alertsInserted || 0,
         spyError: spy.error || null,
         ts: new Date().toISOString(),
     });

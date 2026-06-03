@@ -6,7 +6,8 @@
   "functions": {
     "api/claude-analyse.js":  { "maxDuration": 60 },
     "api/claude-sector.js":   { "maxDuration": 60 },
-    "api/ledger-snapshot.js": { "maxDuration": 60 }
+    "api/ledger-snapshot.js": { "maxDuration": 60 },
+    "api/ledger-export.js":   { "maxDuration": 30 }
   },
   "crons": [
     { "path": "/api/ledger-snapshot", "schedule": "30 22 * * 1-5" }
