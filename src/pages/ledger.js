@@ -77,87 +77,289 @@ function KpiStrip({ stats }) {
     );
 }
 
-// ── Calibration Plot (SVG) ─────────────────────────────────────
-function CalibrationPlot({ outcomes }) {
-    // Bin by conviction decile → compute accuracy
-    const W = 320, H = 200, PAD = 36;
-    const bins = useMemo(function() {
-        if (!outcomes.length) return [];
-        const bmap = {};
-        outcomes.forEach(function(o) {
-            const c = o.conviction;
-            if (c == null || o.correct == null) return;
-            const b = Math.min(9, Math.floor(c / 10));
-            if (!bmap[b]) bmap[b] = { sum: 0, n: 0 };
-            bmap[b].sum += o.correct ? 1 : 0;
-            bmap[b].n++;
-        });
-        return Object.entries(bmap).map(function([b, v]) {
-            return { b: +b, midProb: (+b * 10 + 5) / 100, acc: v.sum / v.n, n: v.n };
-        });
-    }, [outcomes]);
-
+// ── Calibration Plot — DB-driven (vw_calibration) ─────────────
+function CalibrationPlot({ calBins, horizon }) {
+    const W = 320, H = 200, PAD = 38;
+    const bins = (calBins || []).filter(b => b.horizon_days === horizon);
     const iW = W - PAD * 2, iH = H - PAD * 2;
-    function px(prob) { return PAD + prob * iW; }
-    function py(acc) { return PAD + (1 - acc) * iH; }
+    const px = prob => PAD + Number(prob) * iW;
+    const py = acc  => PAD + (1 - Number(acc)) * iH;
+    const colFor = flag => flag === 'calibrated' ? C.green : flag === 'over-confident' ? C.amber : C.purple;
 
-    return e('svg', { width: W, height: H, style: { ...mono } },
+    return e('svg', { width: W, height: H },
         // 45° perfect calibration line
         e('line', { x1: px(0), y1: py(0), x2: px(1), y2: py(1), stroke: C.border, strokeWidth: 1, strokeDasharray: '4,3' }),
         // axes
-        e('line', { x1: px(0), y1: py(0), x2: px(0), y2: py(1), stroke: C.text3, strokeWidth: 1 }),
+        e('line', { x1: px(0), y1: py(1), x2: px(0), y2: py(0), stroke: C.text3, strokeWidth: 1 }),
         e('line', { x1: px(0), y1: py(0), x2: px(1), y2: py(0), stroke: C.text3, strokeWidth: 1 }),
         // axis labels
-        e('text', { x: px(0.5), y: H - 6, textAnchor: 'middle', fontSize: 8, fill: C.text3 }, 'Predicted probability (conviction / 100)'),
-        e('text', { x: 10, y: py(0.5), textAnchor: 'middle', fontSize: 8, fill: C.text3, transform: `rotate(-90,10,${py(0.5)})` }, 'Actual accuracy'),
-        // tick labels
-        [0, 0.25, 0.5, 0.75, 1].map(function(v) {
-            return [
-                e('text', { key: 'x' + v, x: px(v), y: py(0) + 12, textAnchor: 'middle', fontSize: 7, fill: C.text3 }, v),
-                e('text', { key: 'y' + v, x: px(0) - 4, y: py(v) + 3, textAnchor: 'end', fontSize: 7, fill: C.text3 }, v),
-            ];
-        }),
-        // data points
-        bins.map(function(bin) {
-            const r = Math.max(3, Math.min(10, bin.n * 1.5));
-            const col = Math.abs(bin.acc - bin.midProb) < 0.1 ? C.green : C.amber;
-            return e('circle', {
-                key: bin.b, cx: px(bin.midProb), cy: py(bin.acc), r,
-                fill: col, fillOpacity: 0.7, stroke: col, strokeWidth: 1
-            });
-        }),
-        bins.length === 0 &&
-            e('text', { x: W / 2, y: H / 2, textAnchor: 'middle', fontSize: 10, fill: C.text3 }, 'No outcome data yet')
+        e('text', { x: px(0.5), y: H - 4, textAnchor: 'middle', fontSize: 8, fill: C.text3 }, 'Predicted (conviction / 100)'),
+        e('text', { x: 10, y: py(0.5), textAnchor: 'middle', fontSize: 8, fill: C.text3, transform: `rotate(-90,10,${py(0.5)})` }, 'Actual'),
+        [0, 0.25, 0.5, 0.75, 1].map(v => [
+            e('text', { key: 'x'+v, x: px(v), y: py(0)+11, textAnchor: 'middle', fontSize: 7, fill: C.text3 }, v),
+            e('text', { key: 'y'+v, x: px(0)-4, y: py(v)+3, textAnchor: 'end', fontSize: 7, fill: C.text3 }, v),
+        ]),
+        // data points sized by n
+        bins.length === 0
+            ? e('text', { x: W/2, y: H/2, textAnchor: 'middle', fontSize: 10, fill: C.text3 }, 'No outcome data yet')
+            : bins.map(function(bin) {
+                const r = Math.max(4, Math.min(12, Number(bin.n) * 1.2));
+                const col = colFor(bin.calibration_flag);
+                return e('g', { key: bin.bin_low },
+                    e('circle', { cx: px(bin.mid_prob), cy: py(bin.actual_accuracy), r,
+                        fill: col, fillOpacity: 0.65, stroke: col, strokeWidth: 1.5 }),
+                    e('title', null,
+                        `${bin.bin_low}–${bin.bin_high} conv · predicted ${Number(bin.mid_prob*100).toFixed(0)}% · actual ${Number(bin.actual_accuracy*100).toFixed(0)}% · n=${bin.n} · ${bin.calibration_flag}`)
+                );
+            })
     );
 }
 
-// ── Brier trend (mini sparkline) ───────────────────────────────
-function BrierTrend({ outcomes }) {
-    const W = 320, H = 80, PAD = 20;
+// ── Brier Trend — DB-driven (vw_brier_trend) ──────────────────
+function BrierTrend({ brierTrend, horizon }) {
+    const W = 340, H = 100, PAD = 24;
     const pts = useMemo(function() {
-        if (!outcomes.length) return [];
-        const sorted = [...outcomes].sort((a, b) => new Date(a.snapshot_at) - new Date(b.snapshot_at));
-        const running = [];
-        let ss = 0;
-        sorted.forEach(function(o, i) {
-            if (o.conviction == null || o.correct == null) return;
-            const p = o.conviction / 100;
-            ss += (p - (o.correct ? 1 : 0)) ** 2;
-            running.push({ i: running.length, score: ss / (running.length + 1) });
-        });
-        return running;
-    }, [outcomes]);
+        return (brierTrend || [])
+            .filter(r => r.horizon_days === horizon)
+            .sort((a, b) => a.month < b.month ? -1 : 1);
+    }, [brierTrend, horizon]);
 
-    if (!pts.length) return e('div', { style: { color: C.text3, fontSize: 10, textAlign: 'center', paddingTop: 20 } }, 'No Brier data yet');
-    const maxS = Math.max(...pts.map(p => p.score), 0.5);
+    if (!pts.length) return e('div', { style: { color: C.text3, fontSize: 10, textAlign: 'center', paddingTop: 28 } }, 'No Brier trend yet');
+    const scores = pts.map(p => Number(p.brier_score));
+    const maxS = Math.max(...scores, 0.4);
     const iW = W - PAD * 2, iH = H - PAD * 2;
-    const px = i => PAD + (i / Math.max(1, pts.length - 1)) * iW;
-    const py = s => PAD + (1 - s / maxS) * iH;
-    const d = pts.map((p, i) => (i === 0 ? 'M' : 'L') + px(i) + ',' + py(p.score)).join(' ');
+    const px = i  => PAD + (i / Math.max(1, pts.length - 1)) * iW;
+    const py = s  => PAD + (1 - s / maxS) * iH;
+    const d  = pts.map((p, i) => (i === 0 ? 'M' : 'L') + px(i) + ',' + py(Number(p.brier_score))).join(' ');
+    const threshold25 = py(0.25);
     return e('svg', { width: W, height: H },
         e('path', { d, fill: 'none', stroke: C.blue, strokeWidth: 1.5 }),
-        e('line', { x1: PAD, y1: py(0.25), x2: W - PAD, y2: py(0.25), stroke: C.amber, strokeWidth: 1, strokeDasharray: '3,3' }),
-        e('text', { x: W - PAD + 2, y: py(0.25) + 3, fontSize: 7, fill: C.amber }, '0.25')
+        e('line', { x1: PAD, y1: threshold25, x2: W-PAD, y2: threshold25, stroke: C.amber, strokeWidth: 1, strokeDasharray: '3,3' }),
+        e('text', { x: W-PAD+2, y: threshold25+3, fontSize: 7, fill: C.amber }, '0.25'),
+        pts.map((p, i) => e('circle', { key: i, cx: px(i), cy: py(Number(p.brier_score)), r: 3,
+            fill: Number(p.brier_score) < 0.25 ? C.green : C.amber })),
+        e('text', { x: px(0), y: H-4, textAnchor: 'middle', fontSize: 7, fill: C.text3 }, pts[0]?.month?.slice(0,7)),
+        pts.length > 1 && e('text', { x: px(pts.length-1), y: H-4, textAnchor: 'middle', fontSize: 7, fill: C.text3 }, pts[pts.length-1]?.month?.slice(0,7))
+    );
+}
+
+// ── Drift Monitor strip ────────────────────────────────────────
+function DriftMonitor({ brierTrend, calBins }) {
+    const horizons = [30, 60, 90, 0];
+    return e('div', { style: { ...card, padding: '14px 16px', marginBottom: 20 } },
+        e('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 } },
+            e('span', { style: { ...mono, fontSize: 11, fontWeight: 700, color: C.text1 } }, 'DRIFT MONITOR'),
+            e('span', { style: { fontSize: 9, color: C.text3, letterSpacing: 1 } }, '— Brier score and over-confidence by horizon')
+        ),
+        e('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 } },
+            horizons.map(function(h) {
+                const trend = (brierTrend || []).filter(r => r.horizon_days === h).sort((a,b) => a.month < b.month ? -1 : 1);
+                const latest = trend[trend.length - 1];
+                const prev   = trend[trend.length - 2];
+                const brier  = latest ? Number(latest.brier_score) : null;
+                const delta  = (latest && prev) ? brier - Number(prev.brier_score) : null;
+                const overConf = (calBins || []).filter(b => b.horizon_days === h && b.calibration_flag === 'over-confident').length;
+                const label  = h === 0 ? 'To-date' : `${h}d`;
+                const color  = brier == null ? C.text3 : brier < 0.25 ? C.green : brier < 0.33 ? C.amber : C.red;
+                return e('div', { key: h, style: { background: C.bg3, borderRadius: 6, padding: '10px 12px' } },
+                    e('div', { style: { ...mono, fontSize: 9, letterSpacing: 1, color: C.text3, marginBottom: 6 } }, label),
+                    e('div', { style: { display: 'flex', alignItems: 'baseline', gap: 6 } },
+                        e('span', { style: { ...mono, fontSize: 18, fontWeight: 700, color } }, brier != null ? brier.toFixed(3) : '—'),
+                        delta != null && e('span', { style: { ...mono, fontSize: 9, color: delta <= 0 ? C.green : C.red } },
+                            (delta > 0 ? '+' : '') + delta.toFixed(3))
+                    ),
+                    e('div', { style: { ...mono, fontSize: 9, color: C.text3, marginTop: 4 } },
+                        overConf > 0
+                            ? e('span', { style: { color: C.amber } }, `⚠ ${overConf} over-confident bin${overConf > 1 ? 's' : ''}`)
+                            : e('span', { style: { color: C.green } }, '✓ well-calibrated bins')
+                    )
+                );
+            })
+        )
+    );
+}
+
+// ── Devil's Advocate panel ─────────────────────────────────────
+function DevilAdvocate({ devil }) {
+    const worstCalls = (devil || []).filter(r => r.section === 'worst_calls');
+    const bias       = (devil || []).filter(r => r.section === 'bias');
+
+    return e('div', { style: { ...card, overflow: 'hidden', marginBottom: 20 } },
+        e('div', {
+            style: {
+                padding: '10px 16px', borderBottom: `1px solid ${C.border}`,
+                display: 'flex', alignItems: 'center', gap: 10
+            }
+        },
+            e('span', { style: { ...mono, fontSize: 11, fontWeight: 700, color: C.red } }, '⚔ DEVIL\'S ADVOCATE'),
+            e('span', { style: { fontSize: 9, color: C.text3, letterSpacing: 1 } }, '— worst calls + systematic bias')
+        ),
+        e('div', { style: { display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 0 } },
+            // worst calls table
+            e('div', { style: { borderRight: `1px solid ${C.border}` } },
+                e('div', { style: { ...mono, fontSize: 9, color: C.text3, letterSpacing: 1, padding: '8px 14px', borderBottom: `1px solid ${C.border}` } }, 'WORST CALLS BY ALPHA'),
+                e('table', { style: { width: '100%', borderCollapse: 'collapse' } },
+                    e('thead', null,
+                        e('tr', { style: { borderBottom: `1px solid ${C.border}` } },
+                            ['#', 'Symbol', 'Intent', 'Calls', 'Accuracy', 'Avg Alpha', 'Overconf'].map(h =>
+                                e('th', { key: h, style: { ...mono, fontSize: 8, color: C.text3, padding: '5px 10px', textAlign: h === 'Avg Alpha' || h === 'Accuracy' || h === 'Overconf' ? 'right' : 'left', letterSpacing: 1 } }, h)
+                            )
+                        )
+                    ),
+                    e('tbody', null,
+                        worstCalls.length === 0
+                            ? e('tr', null, e('td', { colSpan: 7, style: { textAlign: 'center', padding: 20, color: C.text3, fontSize: 10 } }, 'Insufficient data'))
+                            : worstCalls.map(function(r) {
+                                const overConf = Number(r.overconfidence_gap_pct);
+                                return e('tr', { key: r.alpha_rank, style: { borderBottom: `1px solid ${C.border}` } },
+                                    e('td', { style: { ...mono, fontSize: 9, color: C.text3, padding: '6px 10px' } }, r.alpha_rank),
+                                    e('td', { style: { ...mono, fontSize: 11, fontWeight: 700, color: C.text1, padding: '6px 10px' } }, r.symbol),
+                                    e('td', { style: { ...mono, fontSize: 9, color: { add: C.green, trim: C.amber, exit: C.red }[r.intent] || C.text2, padding: '6px 10px', textTransform: 'uppercase', letterSpacing: 1 } }, r.intent),
+                                    e('td', { style: { ...mono, fontSize: 9, color: C.text2, padding: '6px 10px' } }, r.calls),
+                                    e('td', { style: { ...mono, fontSize: 9, color: C.text2, padding: '6px 10px', textAlign: 'right' } }, r.accuracy_pct + '%'),
+                                    e('td', { style: { ...mono, fontSize: 10, fontWeight: 600, color: C.red, padding: '6px 10px', textAlign: 'right' } }, fmtPct(r.avg_alpha_pct)),
+                                    e('td', { style: { ...mono, fontSize: 9, color: overConf > 10 ? C.amber : C.text3, padding: '6px 10px', textAlign: 'right' } },
+                                        overConf > 0 ? '+' + overConf + 'pp' : overConf + 'pp')
+                                );
+                            })
+                    )
+                )
+            ),
+            // bias summary
+            e('div', { style: { padding: '8px 14px' } },
+                e('div', { style: { ...mono, fontSize: 9, color: C.text3, letterSpacing: 1, marginBottom: 12 } }, 'STANCE BIAS'),
+                bias.length === 0
+                    ? e('div', { style: { color: C.text3, fontSize: 10 } }, 'No data')
+                    : bias.map(function(r) {
+                        const overConf = Number(r.overconfidence_gap_pct);
+                        const color = Math.abs(overConf) > 5 ? C.amber : C.green;
+                        return e('div', { key: r.stance, style: { marginBottom: 14, padding: '10px 12px', background: C.bg3, borderRadius: 6 } },
+                            e('div', { style: { ...mono, fontSize: 9, letterSpacing: 1, color: r.stance === 'bullish' ? C.teal : C.purple, textTransform: 'uppercase', marginBottom: 6 } }, r.stance),
+                            e('div', { style: { ...mono, fontSize: 14, fontWeight: 700, color: C.text1, marginBottom: 2 } }, r.accuracy_pct + '%', e('span', { style: { fontSize: 9, color: C.text3, marginLeft: 4 } }, 'accuracy')),
+                            e('div', { style: { ...mono, fontSize: 9, color: C.text3, marginBottom: 2 } }, 'Avg conviction: ' + r.avg_conviction),
+                            e('div', { style: { ...mono, fontSize: 10, color } },
+                                overConf > 0
+                                    ? `+${overConf}pp over-confident`
+                                    : `${Math.abs(overConf)}pp under-confident`
+                            ),
+                            e('div', { style: { ...mono, fontSize: 8, color: C.text3, marginTop: 4 } }, r.calls + ' outcomes scored')
+                        );
+                    })
+            )
+        )
+    );
+}
+
+// ── Forward NAV chart (SVG line chart) ────────────────────────
+function ForwardNavChart({ series }) {
+    const W = 700, H = 200, PAD = { t: 16, r: 16, b: 28, l: 44 };
+    const iW = W - PAD.l - PAD.r;
+    const iH = H - PAD.t - PAD.b;
+
+    const pts = useMemo(function() {
+        return (series || []).filter(r => r.fwd_idx != null && r.spy_idx != null)
+            .sort((a, b) => a.dt < b.dt ? -1 : 1);
+    }, [series]);
+
+    if (!pts.length) return e('div', { style: { color: C.text3, fontSize: 10, textAlign: 'center', padding: 40 } }, 'No NAV data yet');
+
+    const allVals = pts.flatMap(p => [Number(p.fwd_idx), Number(p.spy_idx)]);
+    const minV = Math.min(...allVals) * 0.97;
+    const maxV = Math.max(...allVals) * 1.02;
+    const px = i => PAD.l + (i / Math.max(1, pts.length - 1)) * iW;
+    const py = v => PAD.t + (1 - (v - minV) / (maxV - minV)) * iH;
+
+    const fwdD = pts.map((p, i) => (i === 0 ? 'M' : 'L') + px(i).toFixed(1) + ',' + py(Number(p.fwd_idx)).toFixed(1)).join(' ');
+    const spyD = pts.map((p, i) => (i === 0 ? 'M' : 'L') + px(i).toFixed(1) + ',' + py(Number(p.spy_idx)).toFixed(1)).join(' ');
+
+    // alpha fill (fwd above spy → teal; below → red)
+    const fillPts = pts.map((p, i) => ({ x: px(i), fwd: py(Number(p.fwd_idx)), spy: py(Number(p.spy_idx)) }));
+    const fillD = [
+        ...fillPts.map((p, i) => (i === 0 ? 'M' : 'L') + p.x.toFixed(1) + ',' + p.fwd.toFixed(1)),
+        ...fillPts.slice().reverse().map((p, i) => (i === 0 ? 'L' : 'L') + p.x.toFixed(1) + ',' + p.spy.toFixed(1)),
+        'Z'
+    ].join(' ');
+
+    // y-axis gridlines at round values
+    const ticks = [100];
+    for (let v = Math.ceil(minV / 10) * 10; v <= maxV; v += 10) if (!ticks.includes(v)) ticks.push(v);
+
+    // x-axis: show month labels sparsely
+    const xLabels = pts.filter((_, i) => i === 0 || i === pts.length - 1 ||
+        (pts[i].dt.slice(0, 7) !== pts[i - 1].dt.slice(0, 7) && i % Math.max(1, Math.floor(pts.length / 8)) === 0));
+
+    const lastPt = pts[pts.length - 1];
+
+    return e('svg', { width: W, height: H, style: { ...mono, overflow: 'visible' } },
+        // gridlines
+        ticks.map(v =>
+            e('g', { key: v },
+                e('line', { x1: PAD.l, y1: py(v), x2: W - PAD.r, y2: py(v), stroke: v === 100 ? 'rgba(255,255,255,.15)' : C.border, strokeWidth: v === 100 ? 1 : 0.5, strokeDasharray: v === 100 ? '4,3' : '2,4' }),
+                e('text', { x: PAD.l - 4, y: py(v) + 3, textAnchor: 'end', fontSize: 7, fill: C.text3 }, v)
+            )
+        ),
+        // alpha fill
+        e('path', { d: fillD, fill: Number(lastPt.alpha_idx) >= 0 ? 'rgba(20,184,166,.08)' : 'rgba(239,68,68,.08)', stroke: 'none' }),
+        // SPY line
+        e('path', { d: spyD, fill: 'none', stroke: C.text3, strokeWidth: 1.5, strokeDasharray: '4,3' }),
+        // Forward NAV line
+        e('path', { d: fwdD, fill: 'none', stroke: C.blue, strokeWidth: 2 }),
+        // endpoint labels
+        e('text', { x: W - PAD.r + 4, y: py(Number(lastPt.fwd_idx)) + 3, fontSize: 8, fill: C.blue }, Number(lastPt.fwd_idx).toFixed(1)),
+        e('text', { x: W - PAD.r + 4, y: py(Number(lastPt.spy_idx)) + 3, fontSize: 8, fill: C.text3 }, Number(lastPt.spy_idx).toFixed(1)),
+        // x-axis labels
+        xLabels.map(p =>
+            e('text', { key: p.dt, x: px(pts.indexOf(p)), y: H - 4, textAnchor: 'middle', fontSize: 7, fill: C.text3 }, p.dt.slice(0, 7))
+        ),
+        // legend
+        e('g', null,
+            e('line', { x1: PAD.l, y1: PAD.t - 6, x2: PAD.l + 16, y2: PAD.t - 6, stroke: C.blue, strokeWidth: 2 }),
+            e('text', { x: PAD.l + 20, y: PAD.t - 3, fontSize: 7, fill: C.blue }, 'Forward Test'),
+            e('line', { x1: PAD.l + 90, y1: PAD.t - 6, x2: PAD.l + 106, y2: PAD.t - 6, stroke: C.text3, strokeWidth: 1.5, strokeDasharray: '4,3' }),
+            e('text', { x: PAD.l + 110, y: PAD.t - 3, fontSize: 7, fill: C.text3 }, 'SPY (benchmark)')
+        )
+    );
+}
+
+// ── Forward NAV panel ──────────────────────────────────────────
+function ForwardNavPanel({ fwdSeries, fwdSummary }) {
+    const s = fwdSummary || {};
+    const kpis = [
+        { label: 'Forward Return', value: fmtPct(s.total_return_pct), color: Number(s.total_return_pct) >= 0 ? C.green : C.red },
+        { label: 'SPY Return',     value: fmtPct(s.spy_total_return_pct), color: C.text2 },
+        { label: 'Total Alpha',    value: fmtPct(s.total_alpha_pct), color: Number(s.total_alpha_pct) >= 0 ? C.teal : C.red },
+        { label: 'Current NAV',    value: s.current_nav != null ? '$' + Number(s.current_nav).toLocaleString('en-US', { maximumFractionDigits: 0 }) : '—', color: C.blue },
+        { label: 'Drawdown',       value: s.drawdown_from_peak_pct != null ? '-' + fmt(s.drawdown_from_peak_pct, 1) + '%' : '—', color: Number(s.drawdown_from_peak_pct) > 5 ? C.amber : C.green },
+        { label: 'Open Positions', value: s.open_positions ?? '—', color: C.text2 },
+    ];
+    return e('div', { style: { ...card, padding: '14px 16px', marginBottom: 20 } },
+        // header
+        e('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 } },
+            e('span', { style: { ...mono, fontSize: 11, fontWeight: 700, color: C.text1 } }, 'FORWARD TEST — SHADOW NAV'),
+            e('span', { style: { fontSize: 9, color: C.text3, letterSpacing: 1 } },
+                s.inception_date ? `inception ${s.inception_date} · as of ${s.as_of_date}` : ''),
+            e('div', {
+                style: {
+                    marginLeft: 'auto', padding: '3px 10px', borderRadius: 12,
+                    background: 'rgba(20,184,166,.12)', border: '1px solid rgba(20,184,166,.25)',
+                    fontSize: 9, letterSpacing: 1, color: C.teal, ...mono
+                }
+            }, '⚿ ENTRY LOCKED')
+        ),
+        // KPI row
+        e('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 8, marginBottom: 14 } },
+            kpis.map(k => e('div', { key: k.label, style: { background: C.bg3, borderRadius: 6, padding: '8px 10px' } },
+                e('div', { style: { ...mono, fontSize: 16, fontWeight: 700, color: k.color } }, k.value),
+                e('div', { style: { fontSize: 8, color: C.text3, letterSpacing: 1, marginTop: 2, textTransform: 'uppercase' } }, k.label)
+            ))
+        ),
+        // chart
+        e('div', { style: { overflowX: 'auto' } },
+            e(ForwardNavChart, { series: fwdSeries })
+        ),
+        e('div', { style: { fontSize: 8, color: C.text3, marginTop: 8, textAlign: 'center' } },
+            'Both series indexed to 100 at inception. Entry prices locked at decision time — no look-ahead, no retroactive changes.'
+        )
     );
 }
 
@@ -328,60 +530,82 @@ function OutcomesPanel({ outcomes }) {
 
 // ── Main Ledger Page ───────────────────────────────────────────
 export function LedgerPage() {
-    const [integrity, setIntegrity] = useState(null);
-    const [decisions, setDecisions] = useState([]);
-    const [outcomes, setOutcomes] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const [integrity, setIntegrity]   = useState(null);
+    const [decisions, setDecisions]   = useState([]);
+    const [outcomes, setOutcomes]     = useState([]);
+    const [calBins, setCalBins]       = useState([]);
+    const [brierTrend, setBrierTrend] = useState([]);
+    const [devil, setDevil]           = useState([]);
+    const [fwdSeries, setFwdSeries]   = useState([]);
+    const [fwdSummary, setFwdSummary] = useState(null);
+    const [loading, setLoading]       = useState(true);
+    const [horizon, setHorizon]       = useState(30);
 
     useEffect(function() {
         if (!sb) return;
         Promise.all([
             sb.from('vw_ledger_integrity').select('*').single(),
             sb.from('decisions').select('*').order('seq', { ascending: false }).limit(500),
-            // conviction & intent live on the parent decision, not the outcome row —
-            // pull them through so the calibration plot and Brier score can bin by conviction
-            sb.from('decision_outcomes').select('*, decisions(symbol, conviction, intent)').order('snapshot_at', { ascending: false }).limit(2000),
-        ]).then(function([intRes, decRes, outRes]) {
-            if (intRes.data) setIntegrity(intRes.data);
-            if (decRes.data) setDecisions(decRes.data);
-            if (outRes.data) {
-                setOutcomes(outRes.data.map(o => ({
-                    ...o,
-                    symbol: o.decisions?.symbol,
-                    conviction: o.decisions?.conviction,
-                    intent: o.decisions?.intent,
-                })));
-            }
+            sb.from('decision_outcomes').select('*, decisions(symbol,conviction,intent)').order('snapshot_at', { ascending: false }).limit(2000),
+            sb.from('vw_calibration').select('*'),
+            sb.from('vw_brier_trend').select('*'),
+            sb.from('vw_devil_advocate').select('*'),
+            sb.from('vw_forward_vs_spy').select('dt,fwd_idx,spy_idx,alpha_idx,nav').order('dt', { ascending: true }),
+            sb.from('vw_forward_summary').select('*').single(),
+        ]).then(function([intRes, decRes, outRes, calRes, brierRes, devilRes, fwdRes, fwdSumRes]) {
+            if (intRes.data)    setIntegrity(intRes.data);
+            if (decRes.data)    setDecisions(decRes.data);
+            if (outRes.data)    setOutcomes(outRes.data.map(o => ({
+                ...o, symbol: o.decisions?.symbol,
+                conviction: o.decisions?.conviction, intent: o.decisions?.intent,
+            })));
+            if (calRes.data)    setCalBins(calRes.data);
+            if (brierRes.data)  setBrierTrend(brierRes.data);
+            if (devilRes.data)  setDevil(devilRes.data);
+            if (fwdRes.data)    setFwdSeries(fwdRes.data);
+            if (fwdSumRes.data) setFwdSummary(fwdSumRes.data);
             setLoading(false);
         });
     }, []);
 
     const stats = useMemo(function() {
-        const total = decisions.length;
+        const total    = decisions.length;
         const executed = decisions.filter(d => d.decision_type === 'executed').length;
-        const passed = decisions.filter(d => d.decision_type === 'passed').length;
-        const out30 = outcomes.filter(o => o.horizon_days === 30 && o.correct != null);
-        const acc30 = out30.length ? out30.filter(o => o.correct).length / out30.length : null;
-        const avgAlpha30 = out30.length ? out30.reduce((s, o) => s + (o.alpha || 0), 0) / out30.length * 100 : null;
-        let brier = null;
-        const withConv = outcomes.filter(o => o.conviction != null && o.correct != null);
-        if (withConv.length) {
-            brier = withConv.reduce((s, o) => s + (o.conviction / 100 - (o.correct ? 1 : 0)) ** 2, 0) / withConv.length;
-        }
-        return { total, executed, passed, acc30, avgAlpha30, brier };
-    }, [decisions, outcomes]);
+        const passed   = decisions.filter(d => d.decision_type === 'passed').length;
+        const cal30    = calBins.filter(b => b.horizon_days === 30);
+        const acc30    = cal30.length
+            ? cal30.reduce((s,b) => s + Number(b.actual_accuracy) * Number(b.n), 0) / cal30.reduce((s,b) => s + Number(b.n), 0)
+            : null;
+        const alpha30  = cal30.length
+            ? cal30.reduce((s,b) => s + Number(b.avg_alpha_pct) * Number(b.n), 0) / cal30.reduce((s,b) => s + Number(b.n), 0)
+            : null;
+        const brier30  = cal30.length
+            ? cal30.reduce((s,b) => s + Number(b.brier) * Number(b.n), 0) / cal30.reduce((s,b) => s + Number(b.n), 0)
+            : null;
+        return { total, executed, passed, acc30, avgAlpha30: alpha30, brier: brier30 };
+    }, [decisions, calBins]);
+
+    const horizonBtn = function(h, label) {
+        const active = horizon === h;
+        return e('button', {
+            key: h, onClick: () => setHorizon(h),
+            style: {
+                ...mono, fontSize: 9, letterSpacing: 1, padding: '3px 8px', borderRadius: 4,
+                border: 'none', cursor: 'pointer', textTransform: 'uppercase',
+                background: active ? 'rgba(0,212,255,.15)' : 'transparent',
+                color: active ? C.blue : C.text3,
+            }
+        }, label);
+    };
 
     return e('div', {
-        style: {
-            padding: '20px 24px', background: C.bg1, minHeight: '100%',
-            color: C.text1, ...mono
-        }
+        style: { padding: '20px 24px', background: C.bg1, minHeight: '100%', color: C.text1, ...mono }
     },
-        // header row
+        // header
         e('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 } },
             e('div', null,
                 e('div', { style: { fontSize: 18, fontWeight: 800, letterSpacing: 2, color: C.blue, marginBottom: 2 } }, 'ATLAS LEDGER'),
-                e('div', { style: { fontSize: 9, letterSpacing: 2, color: C.text3, textTransform: 'uppercase' } }, 'Provenance · Calibration · Integrity')
+                e('div', { style: { fontSize: 9, letterSpacing: 2, color: C.text3, textTransform: 'uppercase' } }, 'Provenance · Calibration · Integrity · Devil\'s Advocate')
             ),
             e(IntegrityBadge, { integrity })
         ),
@@ -389,24 +613,47 @@ export function LedgerPage() {
         // KPI strip
         e('div', { style: { marginBottom: 20 } }, e(KpiStrip, { stats })),
 
-        // Charts row
+        // Drift monitor
+        e(DriftMonitor, { brierTrend, calBins }),
+
+        // Horizon selector + charts row
+        e('div', { style: { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 } },
+            e('span', { style: { fontSize: 9, color: C.text3, letterSpacing: 1, marginRight: 4 } }, 'HORIZON:'),
+            horizonBtn(30, '30d'),
+            horizonBtn(60, '60d'),
+            horizonBtn(90, '90d'),
+            horizonBtn(0,  'to-date')
+        ),
         e('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 } },
             e('div', { style: { ...card, padding: '14px 16px' } },
-                e('div', { style: { fontSize: 9, letterSpacing: 1, color: C.text3, textTransform: 'uppercase', marginBottom: 10 } }, 'Calibration Plot'),
+                e('div', { style: { fontSize: 9, letterSpacing: 1, color: C.text3, textTransform: 'uppercase', marginBottom: 8 } }, 'Calibration Plot'),
                 e('div', { style: { display: 'flex', justifyContent: 'center' } },
-                    e(CalibrationPlot, { outcomes })
+                    e(CalibrationPlot, { calBins, horizon })
                 ),
-                e('div', { style: { fontSize: 8, color: C.text3, marginTop: 6, textAlign: 'center' } }, 'Dots near the diagonal = well-calibrated. Size = sample count.')
+                e('div', { style: { display: 'flex', gap: 12, marginTop: 8, justifyContent: 'center' } },
+                    [['calibrated', C.green], ['over-confident', C.amber], ['under-confident', C.purple]].map(([label, col]) =>
+                        e('div', { key: label, style: { display: 'flex', alignItems: 'center', gap: 4, fontSize: 8, color: C.text3 } },
+                            e('div', { style: { width: 7, height: 7, borderRadius: '50%', background: col } }),
+                            label
+                        )
+                    )
+                )
             ),
             e('div', { style: { ...card, padding: '14px 16px' } },
-                e('div', { style: { fontSize: 9, letterSpacing: 1, color: C.text3, textTransform: 'uppercase', marginBottom: 10 } }, 'Brier Score Trend'),
+                e('div', { style: { fontSize: 9, letterSpacing: 1, color: C.text3, textTransform: 'uppercase', marginBottom: 8 } }, 'Brier Score Trend'),
                 e('div', { style: { display: 'flex', justifyContent: 'center' } },
-                    e(BrierTrend, { outcomes })
+                    e(BrierTrend, { brierTrend, horizon })
                 ),
                 e('div', { style: { fontSize: 8, color: C.text3, marginTop: 6, textAlign: 'center' } },
                     e('span', { style: { color: C.amber } }, '— 0.25 threshold'), ' · Lower = better · Skill threshold ~0.25')
             )
         ),
+
+        // Forward test shadow NAV
+        e(ForwardNavPanel, { fwdSeries, fwdSummary }),
+
+        // Devil's advocate
+        e(DevilAdvocate, { devil }),
 
         // Decision table
         e('div', { style: { marginBottom: 20 } },
@@ -418,7 +665,7 @@ export function LedgerPage() {
 
         // Phase note
         e('div', { style: { marginTop: 24, padding: '10px 14px', background: C.bg3, borderRadius: 6, fontSize: 9, color: C.text3, letterSpacing: 1 } },
-            'LEDGER PHASE 2 LIVE · Decisions are scored vs SPY at 30/60/90-day and to-date horizons as each matures. Calibration (predicted vs realized) lands in Phase 3.'
+            'LEDGER PHASE 4 LIVE · Forward-test shadow NAV: entry prices locked at decision time, indexed vs SPY from inception. Phase 5: adversary integrity export.'
         )
     );
 }
