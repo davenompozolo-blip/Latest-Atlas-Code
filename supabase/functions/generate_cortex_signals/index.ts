@@ -189,9 +189,13 @@ async function buildPortfolioState(sql: Sql): Promise<PortfolioState> {
   }
 }
 
-// Get candidate tickers for a sector (non-held names with recent price data).
-// Enriches each with fundamentals (Finnhub metric blob), an annualised vol
-// computed from price history, and a per-candidate risk-budgeted size.
+// Get candidate tickers for a sector (non-held names with fundamentals and/or
+// recent price data). Candidates are resolved to the COARSE GICS sector taxonomy
+// the gaps/theses are defined in, so a "Consumer Staples" gap only ever surfaces
+// Consumer Staples names — never an off-theme name from a different sector.
+//
+// Finnhub stores granular industries ("Beverages", "Banking", "Semiconductors");
+// FINNHUB_TO_GICS rolls those up so they align with a.sector (already GICS).
 async function fetchCandidates(
   sql: Sql,
   sector: string,
@@ -199,6 +203,51 @@ async function fetchCandidates(
   limit: number,
   opts?: { conviction: 'low' | 'medium' | 'high'; headroomPct: number; sectorWeightPct: number },
 ): Promise<Candidate[]> {
+  // SQL CASE that maps Finnhub's granular industry → coarse GICS sector.
+  // Kept inline (not a DB function) so the engine stays self-contained.
+  const gicsCase = sql`
+    CASE ec.payload->'overview'->>'Sector'
+      WHEN 'Insurance'                        THEN 'Financials'
+      WHEN 'Banking'                          THEN 'Financials'
+      WHEN 'Financial Services'               THEN 'Financials'
+      WHEN 'Technology'                       THEN 'Technology'
+      WHEN 'Semiconductors'                   THEN 'Technology'
+      WHEN 'Biotechnology'                    THEN 'Healthcare'
+      WHEN 'Health Care'                      THEN 'Healthcare'
+      WHEN 'Pharmaceuticals'                  THEN 'Healthcare'
+      WHEN 'Life Sciences Tools & Services'   THEN 'Healthcare'
+      WHEN 'Electrical Equipment'             THEN 'Industrials'
+      WHEN 'Aerospace & Defense'              THEN 'Industrials'
+      WHEN 'Machinery'                        THEN 'Industrials'
+      WHEN 'Professional Services'            THEN 'Industrials'
+      WHEN 'Commercial Services & Supplies'   THEN 'Industrials'
+      WHEN 'Construction'                     THEN 'Industrials'
+      WHEN 'Building'                          THEN 'Industrials'
+      WHEN 'Trading Companies & Distributors' THEN 'Industrials'
+      WHEN 'Industrial Conglomerates'         THEN 'Industrials'
+      WHEN 'Transportation Infrastructure'    THEN 'Industrials'
+      WHEN 'Road & Rail'                      THEN 'Industrials'
+      WHEN 'Airlines'                         THEN 'Industrials'
+      WHEN 'Real Estate'                      THEN 'Real Estate'
+      WHEN 'Utilities'                        THEN 'Utilities'
+      WHEN 'Retail'                           THEN 'Consumer Discretionary'
+      WHEN 'Hotels, Restaurants & Leisure'    THEN 'Consumer Discretionary'
+      WHEN 'Auto Components'                  THEN 'Consumer Discretionary'
+      WHEN 'Textiles, Apparel & Luxury Goods' THEN 'Consumer Discretionary'
+      WHEN 'Diversified Consumer Services'    THEN 'Consumer Discretionary'
+      WHEN 'Energy'                           THEN 'Energy'
+      WHEN 'Metals & Mining'                  THEN 'Materials'
+      WHEN 'Chemicals'                        THEN 'Materials'
+      WHEN 'Packaging'                        THEN 'Materials'
+      WHEN 'Media'                            THEN 'Communications'
+      WHEN 'Telecommunication'                THEN 'Communications'
+      WHEN 'Communications'                   THEN 'Communications'
+      WHEN 'Beverages'                        THEN 'Consumer Staples'
+      WHEN 'Food Products'                    THEN 'Consumer Staples'
+      WHEN 'Consumer products'                THEN 'Consumer Staples'
+      ELSE NULL
+    END`
+
   const rows = await sql<{
     symbol: string; name: string; sector_src: string;
     roe: number | null; rev_growth: number | null; ev_ebitda: number | null;
@@ -211,13 +260,15 @@ async function fetchCandidates(
         a.id,
         a.symbol,
         COALESCE(a.name, a.symbol)                                        AS name,
-        COALESCE(ec.payload->'overview'->>'Sector', a.sector, 'Other')    AS sector_src,
+        -- GICS-coarse sector: prefer mapped Finnhub, fall back to a.sector
+        COALESCE(${gicsCase}, a.sector, 'Other')                          AS gics_sector,
         (ec.payload->'metric'->>'roeTTM')::numeric                        AS roe,
         (ec.payload->'metric'->>'revenueGrowthTTMYoy')::numeric           AS rev_growth,
         (ec.payload->'metric'->>'evEbitdaTTM')::numeric                   AS ev_ebitda,
         (ec.payload->'metric'->>'roiTTM')::numeric                        AS roic,
         (ec.payload->'metric'->>'netProfitMarginTTM')::numeric            AS net_margin,
         (ec.payload->>'market_cap_usd')::numeric                          AS market_cap,
+        (ec.symbol IS NOT NULL)                                           AS has_fundamentals,
         (CASE WHEN (ec.payload->'metric'->>'roiTTM')::numeric > 10 THEN 30 ELSE 0 END
           + CASE WHEN (ec.payload->'metric'->>'revenueGrowthTTMYoy')::numeric > 8 THEN 25 ELSE 0 END
           + CASE WHEN (ec.payload->'metric'->>'netProfitMarginTTM')::numeric > 10 THEN 25 ELSE 0 END
@@ -226,17 +277,17 @@ async function fetchCandidates(
       LEFT JOIN equity_cache ec ON ec.symbol = a.symbol
       WHERE a.asset_class IN ('Stock', 'us_equity', 'equity', 'etf')
         AND a.symbol NOT IN (SELECT sym FROM held)
-        AND EXISTS (
-          SELECT 1 FROM price_history ph
-          WHERE ph.asset_id = a.id
-          GROUP BY ph.asset_id HAVING COUNT(*) >= 20
-        )
+        -- Coverage: tradeable names that EITHER have price history OR fundamentals
         AND (
-          COALESCE(ec.payload->'overview'->>'Sector', a.sector, '') = ${sector}
-          OR ${sector} = 'any'
+          EXISTS (
+            SELECT 1 FROM price_history ph
+            WHERE ph.asset_id = a.id
+            GROUP BY ph.asset_id HAVING COUNT(*) >= 20
+          )
+          OR ec.symbol IS NOT NULL
         )
     )
-    SELECT u.symbol, u.name, u.sector_src, u.roe, u.rev_growth, u.ev_ebitda,
+    SELECT u.symbol, u.name, u.gics_sector AS sector_src, u.roe, u.rev_growth, u.ev_ebitda,
            u.roic, u.net_margin, u.market_cap, u.quality,
            v.annual_vol
     FROM universe u
@@ -249,7 +300,9 @@ async function fetchCandidates(
           AND ph.price_date >= CURRENT_DATE - INTERVAL '120 days'
       ) z WHERE ret IS NOT NULL
     ) v ON true
-    ORDER BY u.quality DESC NULLS LAST, u.symbol
+    WHERE u.gics_sector = ${sector}
+    -- Prefer names we have fundamentals for, then by quality
+    ORDER BY u.has_fundamentals DESC, u.quality DESC NULLS LAST, u.symbol
     LIMIT ${limit}
   `
 
@@ -368,10 +421,10 @@ async function buildThesisSignals(
       s.weight_pct > 15 ? 'high' : s.weight_pct > 8 ? 'medium' : 'low'
 
     const candOpts = { conviction, headroomPct: headroom, sectorWeightPct: s.weight_pct }
-    let candidates = await fetchCandidates(sql, s.sector, state.held_symbols, CANDIDATE_LIMIT, candOpts)
-    if (candidates.length === 0) {
-      candidates = await fetchCandidates(sql, 'any', state.held_symbols, CANDIDATE_LIMIT, candOpts)
-    }
+    const candidates = await fetchCandidates(sql, s.sector, state.held_symbols, CANDIDATE_LIMIT, candOpts)
+    // Coherence over coverage: a thesis with no in-sector names to add is not
+    // actionable — skip it rather than surface off-theme tickers.
+    if (candidates.length === 0) continue
 
     const sizing = computeSuggestedSize({
       conviction,
@@ -450,10 +503,8 @@ async function buildGapSignals(
       absgap > 8 ? 'high' : absgap > 4 ? 'medium' : 'low'
 
     const candOpts = { conviction, headroomPct: absgap, sectorWeightPct: g.current_pct }
-    let candidates = await fetchCandidates(sql, g.sector, state.held_symbols, CANDIDATE_LIMIT, candOpts)
-    if (candidates.length === 0) {
-      candidates = await fetchCandidates(sql, 'any', state.held_symbols, CANDIDATE_LIMIT, candOpts)
-    }
+    const candidates = await fetchCandidates(sql, g.sector, state.held_symbols, CANDIDATE_LIMIT, candOpts)
+    // No in-sector names to fill this gap → skip rather than recommend off-theme.
     if (candidates.length === 0) continue
 
     // For gap fills, the room to deploy is the undershoot vs SAA target.
@@ -674,11 +725,24 @@ async function enrichWithClaude(drafts: SignalDraft[]): Promise<SignalDraft[]> {
       why: narrative?.candidate_notes?.[c.ticker] ?? c.why,
     }))
 
+    // Clean human-readable fallbacks (never surface the internal origin_metric).
+    const theme = (setup.theme as string) || (setup.name as string) || d.candidates[0]?.sector || 'Portfolio'
+    const fallbackTitle =
+      d.signal_class === 'thesis' ? `Thesis Extender: ${theme}`
+        : d.signal_class === 'gap' ? `Gap Filler: ${theme}`
+          : `Risk Flag: ${theme}`
+    const fallbackThesis =
+      d.signal_class === 'thesis'
+        ? `The ${theme} thesis has room to extend before the sector ceiling. Suggested names below are in-sector additions sized by conviction and volatility.`
+        : d.signal_class === 'gap'
+          ? `${theme} is underweight versus its SAA target. The candidates below are in-sector names to close the gap, sized by conviction and volatility.`
+          : `${theme} is carrying an outsized share of portfolio risk. Consider trimming toward target to reduce concentration.`
+
     enriched.push({
       ...d,
       candidates: enrichedCandidates,
-      title:     narrative?.title     ?? `${d.signal_class.toUpperCase()}: ${d.candidates[0]?.sector ?? 'Portfolio'}`,
-      thesis_md: narrative?.thesis_md ?? d.origin_metric,
+      title:     narrative?.title     ?? fallbackTitle,
+      thesis_md: narrative?.thesis_md ?? fallbackThesis,
     })
   }
 
