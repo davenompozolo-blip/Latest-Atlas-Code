@@ -885,7 +885,13 @@ function TradeTicket({ cand, onClose, onDone }) {
         else body.qty = Math.round(amt * 10000) / 10000;
         fetch('/api/trading?action=order', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
             .then(r => r.json())
-            .then(j => { setResult(j); setBusy(false); setConfirm(false); if (j && (j.id || j.status) && onDone) onDone(); })
+            .then(j => {
+                // API wraps the Alpaca response under j.order — unwrap it so success checks work
+                const r = (j && j.order) ? { ...j.order, success: j.success } : j;
+                setResult(r);
+                setBusy(false); setConfirm(false);
+                if (r && (r.id || r.status === 'accepted' || r.success) && onDone) onDone();
+            })
             .catch(e => { setResult({ success: false, error: e.message }); setBusy(false); setConfirm(false); });
     }
 

@@ -1143,8 +1143,8 @@ export function NexusShell({ children, onNavigate, activeTab }) {
         e('div', { style: { display: 'flex', flex: 1, overflow: 'hidden' } },
             e('nav', {
                 style: {
-                    width: 48, flexShrink: 0, display: 'flex', flexDirection: 'column',
-                    alignItems: 'center', paddingTop: 12, gap: 4,
+                    width: 148, flexShrink: 0, display: 'flex', flexDirection: 'column',
+                    alignItems: 'stretch', paddingTop: 10, gap: 2,
                     borderRight: '1px solid var(--nx-border)', background: 'var(--nx-bg2)', overflowY: 'auto'
                 }
             },
@@ -1155,13 +1155,19 @@ export function NexusShell({ children, onNavigate, activeTab }) {
                         title: nav.label,
                         onClick: () => onNavigate && onNavigate(nav.id),
                         style: {
-                            width: 36, height: 36, borderRadius: 6, border: 'none', cursor: 'pointer',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: 14, transition: 'all .15s',
-                            background: isActive ? 'rgba(0,212,255,.15)' : 'transparent',
-                            color: isActive ? 'var(--nx-blue)' : 'var(--nx-text3)'
+                            width: '100%', height: 34, borderRadius: 0, border: 'none', cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', gap: 10,
+                            paddingLeft: 14, paddingRight: 10,
+                            fontSize: 11, transition: 'all .15s',
+                            background: isActive ? 'rgba(0,212,255,.12)' : 'transparent',
+                            color: isActive ? 'var(--nx-blue)' : 'var(--nx-text3)',
+                            borderLeft: isActive ? '2px solid var(--nx-blue)' : '2px solid transparent',
+                            textAlign: 'left',
                         }
-                    }, nav.icon);
+                    },
+                        e('span', { style: { fontSize: 13, width: 16, textAlign: 'center', flexShrink: 0 } }, nav.icon),
+                        e('span', { style: { fontFamily: 'var(--nx-fb)', fontWeight: isActive ? 600 : 400, letterSpacing: '0.04em', fontSize: 10, textTransform: 'uppercase' } }, nav.label)
+                    );
                 })
             ),
             e('div', { style: { flex: 1, overflowY: 'auto', overflowX: 'hidden' } },
