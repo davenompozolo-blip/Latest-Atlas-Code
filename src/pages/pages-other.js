@@ -849,6 +849,84 @@ function _RiskAnalysisOld() {
 // ============================================================
 // COMMAND CENTRE (note: _RiskAnalysisOld above is intentionally dead — kept for reference)
 // ============================================================
+// ── AccountBalances (live from Alpaca) ────────────────────────────────────────
+function AccountBalances() {
+    const [acct, setAcct] = useState(null);
+    const [err, setErr]   = useState(null);
+    const [ts, setTs]     = useState(null);
+
+    useEffect(() => {
+        fetch('/api/trading?action=account')
+            .then(r => r.json())
+            .then(j => { setAcct(j); setTs(new Date()); })
+            .catch(e => setErr(e.message));
+    }, []);
+
+    const f = (v) => v == null || !isFinite(v) ? '—' : '$' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const col = { neg: '#ef4444', pos: '#10b981', head: 'rgba(255,255,255,0.38)', val: 'rgba(255,255,255,0.88)' };
+
+    const section = (title) => React.createElement('tr', { key: 'h' + title },
+        React.createElement('td', { colSpan: 2, style: { paddingTop: 14, paddingBottom: 4, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--nx-blue)', fontFamily: 'var(--nx-fb)', borderBottom: '1px solid rgba(0,212,255,0.15)' } }, title)
+    );
+    const row = (label, val, highlight) => React.createElement('tr', { key: label },
+        React.createElement('td', { style: { padding: '5px 0', fontSize: 12, color: col.head, fontFamily: 'var(--nx-fb)', paddingLeft: 8 } }, label),
+        React.createElement('td', { style: { padding: '5px 0', fontSize: 12, fontFamily: 'var(--nx-fm)', textAlign: 'right', color: highlight === 'neg' ? col.neg : highlight === 'pos' ? col.pos : col.val } }, val)
+    );
+
+    const card = { background: 'var(--nx-bg2)', border: '1px solid var(--nx-border)', borderRadius: 10, padding: '18px 20px', marginBottom: 20 };
+
+    if (err) return React.createElement('div', { style: card },
+        React.createElement('div', { style: { fontSize: 11, color: '#ef4444' } }, '⚠ Could not load account: ' + err));
+
+    if (!acct) return React.createElement('div', { style: card },
+        React.createElement('div', { style: { fontSize: 11, color: 'var(--nx-text3)' } }, 'Loading account…'));
+
+    const dayPnlColor = acct.dayPnl >= 0 ? 'pos' : 'neg';
+    const cashColor   = acct.cash >= 0 ? 'pos' : 'neg';
+
+    return React.createElement('div', { style: card },
+        React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 } },
+            React.createElement('div', { style: { fontSize: 13, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'var(--nx-fb)', color: 'var(--nx-text)' } }, 'Account Balances'),
+            React.createElement('div', { style: { display: 'flex', gap: 10, alignItems: 'center' } },
+                React.createElement('span', { style: { fontSize: 9, padding: '3px 8px', borderRadius: 4, background: acct.mode === 'PAPER' ? 'rgba(245,158,11,0.15)' : 'rgba(16,185,129,0.15)', color: acct.mode === 'PAPER' ? '#f59e0b' : '#10b981', fontFamily: 'var(--nx-fb)', fontWeight: 700, letterSpacing: '0.08em' } }, acct.mode),
+                ts && React.createElement('span', { style: { fontSize: 9, color: 'var(--nx-text3)', fontFamily: 'var(--nx-fb)' } }, ts.toLocaleTimeString())
+            )
+        ),
+        React.createElement('table', { style: { width: '100%', borderCollapse: 'collapse' } },
+            React.createElement('thead', null,
+                React.createElement('tr', null,
+                    React.createElement('th', { style: { textAlign: 'left',  fontSize: 9, color: 'var(--nx-text3)', fontFamily: 'var(--nx-fb)', fontWeight: 600, letterSpacing: '0.08em', paddingBottom: 6, textTransform: 'uppercase' } }, 'Balance'),
+                    React.createElement('th', { style: { textAlign: 'right', fontSize: 9, color: 'var(--nx-text3)', fontFamily: 'var(--nx-fb)', fontWeight: 600, letterSpacing: '0.08em', paddingBottom: 6, textTransform: 'uppercase' } }, 'Current')
+                )
+            ),
+            React.createElement('tbody', null,
+                section('Buying Power'),
+                row('RegT Buying Power',           f(acct.regt_buying_power)),
+                row('Day Trading Buying Power',    f(acct.daytrading_buying_power)),
+                row('Effective Buying Power',      f(acct.buyingPower)),
+                row('Non-Marginable Buying Power', f(acct.non_marginable_buying_power)),
+                section('Margin'),
+                row('Initial Margin',              f(acct.initial_margin)),
+                row('Maintenance Margin',          f(acct.maintenance_margin)),
+                section('Cash'),
+                row('Cash',                        f(acct.cash),              cashColor),
+                row('Cash Withdrawable',           f(acct.cash_withdrawable)),
+                row('Pending Transfer Out',        f(acct.pending_transfer_out)),
+                section('Positions'),
+                row('Equity',                      f(acct.equity)),
+                row('Long Market Value',           f(acct.long_market_value)),
+                row('Short Market Value',          f(acct.short_market_value)),
+                row('Position Market Value',       f(acct.position_market_value)),
+                section('P&L'),
+                row('Day P&L',                     f(acct.dayPnl),            dayPnlColor),
+                section('Miscellaneous'),
+                row('Accrued Fees',                f(acct.accrued_fees)),
+                row('Day Trade Count',             String(acct.daytrade_count || 0))
+            )
+        )
+    );
+}
+
 export function CommandCentre() {
     const [command, setCommand] = useState(null);
     const [navData, setNavData] = useState(null);
@@ -1090,6 +1168,7 @@ export function CommandCentre() {
                     })
                 )
             )
-            : null
+            : null,
+        React.createElement(AccountBalances, null)
     );
 }

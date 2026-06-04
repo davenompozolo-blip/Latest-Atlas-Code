@@ -134,10 +134,24 @@ async function getAccount() {
     return {
         mode:        isPaper() ? 'PAPER' : 'LIVE',
         equity:      eq,
-        cash:        parseFloat(a.cash)          || 0,
-        buyingPower: parseFloat(a.buying_power)  || 0,
+        last_equity: leq,
+        cash:        parseFloat(a.cash)                    || 0,
+        buyingPower: parseFloat(a.buying_power)            || 0,
         dayPnl:      eq - leq,
         dayPnlPct:   leq ? (eq - leq) / leq * 100 : 0,
+        // Full balance detail (mirrors Alpaca dashboard)
+        regt_buying_power:        parseFloat(a.regt_buying_power)        || 0,
+        daytrading_buying_power:  parseFloat(a.daytrading_buying_power)  || 0,
+        non_marginable_buying_power: parseFloat(a.non_marginable_buying_power) || 0,
+        initial_margin:           parseFloat(a.initial_margin)           || 0,
+        maintenance_margin:       parseFloat(a.maintenance_margin)       || 0,
+        cash_withdrawable:        parseFloat(a.cash_withdrawable)        || 0,
+        long_market_value:        parseFloat(a.long_market_value)        || 0,
+        short_market_value:       parseFloat(a.short_market_value)       || 0,
+        position_market_value:    parseFloat(a.position_market_value)    || 0,
+        accrued_fees:             parseFloat(a.accrued_fees)             || 0,
+        pending_transfer_out:     parseFloat(a.pending_transfer_out)     || 0,
+        daytrade_count:           parseInt(a.daytrade_count)             || 0,
     };
 }
 
