@@ -79,6 +79,17 @@ interface Candidate {
   sector: string
   subtheme: string
   name?: string
+  // per-candidate enrichment
+  suggested_size_pct?: number
+  sizing_note?: string
+  annual_vol?: number | null
+  market_cap?: number | null
+  roe?: number | null
+  rev_growth?: number | null
+  ev_ebitda?: number | null
+  roic?: number | null
+  net_margin?: number | null
+  why?: string        // filled by Stage B (per-name rationale / catalyst)
 }
 
 interface SignalDraft {
@@ -178,38 +189,39 @@ async function buildPortfolioState(sql: Sql): Promise<PortfolioState> {
   }
 }
 
-// Get candidate tickers for a sector (non-held names with recent price data)
+// Get candidate tickers for a sector (non-held names with recent price data).
+// Enriches each with fundamentals (Finnhub metric blob), an annualised vol
+// computed from price history, and a per-candidate risk-budgeted size.
 async function fetchCandidates(
   sql: Sql,
   sector: string,
   heldSymbols: string[],
   limit: number,
+  opts?: { conviction: 'low' | 'medium' | 'high'; headroomPct: number; sectorWeightPct: number },
 ): Promise<Candidate[]> {
-  const rows = await sql<{ symbol: string; name: string; sector_src: string; roe: number | null; quality: number }[]>`
+  const rows = await sql<{
+    symbol: string; name: string; sector_src: string;
+    roe: number | null; rev_growth: number | null; ev_ebitda: number | null;
+    roic: number | null; net_margin: number | null; market_cap: number | null;
+    annual_vol: number | null; quality: number
+  }[]>`
     WITH held AS (SELECT UNNEST(${heldSymbols}::text[]) AS sym),
     universe AS (
       SELECT
+        a.id,
         a.symbol,
-        COALESCE(a.name, a.symbol)                          AS name,
-        COALESCE(ec.payload->'Overview'->>'Sector', a.sector, 'Other') AS sector_src,
-        (ec.payload->'Finnhub'->'metric'->>'roaRfy')::numeric         AS roe,
-        CASE
-          WHEN (ec.payload->'Finnhub'->'metric'->>'peBasicExclExtraTTM')::numeric BETWEEN 5 AND 30
-            THEN 20 ELSE 0
-        END +
-        CASE
-          WHEN (ec.payload->'Finnhub'->'metric'->>'roaRfy')::numeric > 0.05
-            THEN 30 ELSE 0
-        END +
-        CASE
-          WHEN (ec.payload->'Finnhub'->'metric'->>'revenueGrowthTTMYoy')::numeric > 0
-            THEN 20 ELSE 0
-        END +
-        CASE
-          WHEN (ec.payload->'Overview'->>'AnalystTargetPrice')::numeric >
-               (ec.payload->'Overview'->>'50DayMovingAverage')::numeric
-            THEN 30 ELSE 0
-        END                                                  AS quality
+        COALESCE(a.name, a.symbol)                                        AS name,
+        COALESCE(ec.payload->'overview'->>'Sector', a.sector, 'Other')    AS sector_src,
+        (ec.payload->'metric'->>'roeTTM')::numeric                        AS roe,
+        (ec.payload->'metric'->>'revenueGrowthTTMYoy')::numeric           AS rev_growth,
+        (ec.payload->'metric'->>'evEbitdaTTM')::numeric                   AS ev_ebitda,
+        (ec.payload->'metric'->>'roiTTM')::numeric                        AS roic,
+        (ec.payload->'metric'->>'netProfitMarginTTM')::numeric            AS net_margin,
+        (ec.payload->>'market_cap_usd')::numeric                          AS market_cap,
+        (CASE WHEN (ec.payload->'metric'->>'roiTTM')::numeric > 10 THEN 30 ELSE 0 END
+          + CASE WHEN (ec.payload->'metric'->>'revenueGrowthTTMYoy')::numeric > 8 THEN 25 ELSE 0 END
+          + CASE WHEN (ec.payload->'metric'->>'netProfitMarginTTM')::numeric > 10 THEN 25 ELSE 0 END
+          + CASE WHEN (ec.payload->'metric'->>'evEbitdaTTM')::numeric BETWEEN 1 AND 18 THEN 20 ELSE 0 END) AS quality
       FROM assets a
       LEFT JOIN equity_cache ec ON ec.symbol = a.symbol
       WHERE a.asset_class IN ('Stock', 'us_equity', 'equity', 'etf')
@@ -220,23 +232,58 @@ async function fetchCandidates(
           GROUP BY ph.asset_id HAVING COUNT(*) >= 20
         )
         AND (
-          COALESCE(ec.payload->'Overview'->>'Sector', a.sector, '') = ${sector}
+          COALESCE(ec.payload->'overview'->>'Sector', a.sector, '') = ${sector}
           OR ${sector} = 'any'
         )
     )
-    SELECT symbol, name, sector_src, roe, quality
-    FROM universe
-    ORDER BY quality DESC NULLS LAST, symbol
+    SELECT u.symbol, u.name, u.sector_src, u.roe, u.rev_growth, u.ev_ebitda,
+           u.roic, u.net_margin, u.market_cap, u.quality,
+           v.annual_vol
+    FROM universe u
+    LEFT JOIN LATERAL (
+      SELECT stddev(ret) * sqrt(252) AS annual_vol
+      FROM (
+        SELECT ph.close / NULLIF(lag(ph.close) OVER (ORDER BY ph.price_date), 0) - 1 AS ret
+        FROM price_history ph
+        WHERE ph.asset_id = u.id AND ph."interval" = '1d'
+          AND ph.price_date >= CURRENT_DATE - INTERVAL '120 days'
+      ) z WHERE ret IS NOT NULL
+    ) v ON true
+    ORDER BY u.quality DESC NULLS LAST, u.symbol
     LIMIT ${limit}
   `
 
-  return rows.map(r => ({
-    ticker:    r.symbol,
-    name:      r.name,
-    sector:    r.sector_src,
-    subtheme:  r.sector_src,
-    fit_score: Math.min(100, Math.max(0, Number(r.quality ?? 0))),
-  }))
+  return rows.map(r => {
+    const annualVol = r.annual_vol != null ? Number(r.annual_vol) : null
+    let size: number | undefined
+    let sizingNote: string | undefined
+    if (opts) {
+      const s = computeSuggestedSize({
+        conviction:      opts.conviction,
+        headroomPct:     opts.headroomPct,
+        sectorWeightPct: opts.sectorWeightPct,
+        positionVol:     annualVol ?? undefined,
+      })
+      size = s.size_pct
+      sizingNote = s.rationale
+    }
+    return {
+      ticker:     r.symbol,
+      name:       r.name,
+      sector:     r.sector_src,
+      subtheme:   r.sector_src,
+      fit_score:  Math.min(100, Math.max(0, Number(r.quality ?? 0))),
+      annual_vol: annualVol,
+      market_cap: r.market_cap != null ? Number(r.market_cap) : null,
+      roe:        r.roe != null ? Number(r.roe) : null,
+      rev_growth: r.rev_growth != null ? Number(r.rev_growth) : null,
+      ev_ebitda:  r.ev_ebitda != null ? Number(r.ev_ebitda) : null,
+      roic:       r.roic != null ? Number(r.roic) : null,
+      net_margin: r.net_margin != null ? Number(r.net_margin) : null,
+      suggested_size_pct: size,
+      sizing_note: sizingNote,
+    }
+  })
 }
 
 // ── Sizing engine: Risk-Budgeted Conviction Sizing ─────────────────────────
@@ -320,9 +367,10 @@ async function buildThesisSignals(
     const conviction: 'low' | 'medium' | 'high' =
       s.weight_pct > 15 ? 'high' : s.weight_pct > 8 ? 'medium' : 'low'
 
-    let candidates = await fetchCandidates(sql, s.sector, state.held_symbols, CANDIDATE_LIMIT)
+    const candOpts = { conviction, headroomPct: headroom, sectorWeightPct: s.weight_pct }
+    let candidates = await fetchCandidates(sql, s.sector, state.held_symbols, CANDIDATE_LIMIT, candOpts)
     if (candidates.length === 0) {
-      candidates = await fetchCandidates(sql, 'any', state.held_symbols, CANDIDATE_LIMIT)
+      candidates = await fetchCandidates(sql, 'any', state.held_symbols, CANDIDATE_LIMIT, candOpts)
     }
 
     const sizing = computeSuggestedSize({
@@ -401,9 +449,10 @@ async function buildGapSignals(
     const conviction: 'low' | 'medium' | 'high' =
       absgap > 8 ? 'high' : absgap > 4 ? 'medium' : 'low'
 
-    let candidates = await fetchCandidates(sql, g.sector, state.held_symbols, CANDIDATE_LIMIT)
+    const candOpts = { conviction, headroomPct: absgap, sectorWeightPct: g.current_pct }
+    let candidates = await fetchCandidates(sql, g.sector, state.held_symbols, CANDIDATE_LIMIT, candOpts)
     if (candidates.length === 0) {
-      candidates = await fetchCandidates(sql, 'any', state.held_symbols, CANDIDATE_LIMIT)
+      candidates = await fetchCandidates(sql, 'any', state.held_symbols, CANDIDATE_LIMIT, candOpts)
     }
     if (candidates.length === 0) continue
 
@@ -489,7 +538,13 @@ function buildRiskFlagSignals(state: PortfolioState): SignalDraft[] {
 }
 
 // ── Stage B: Claude narrative ──────────────────────────────────────────────
-async function callClaude(prompt: string): Promise<{ title: string; thesis_md: string } | null> {
+interface ClaudeNarrative {
+  title: string
+  thesis_md: string
+  candidate_notes?: Record<string, string>   // ticker → why-this-name rationale
+}
+
+async function callClaude(prompt: string): Promise<ClaudeNarrative | null> {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
   if (!apiKey) {
     console.warn('ANTHROPIC_API_KEY not set — skipping narrative enrichment')
@@ -506,13 +561,15 @@ async function callClaude(prompt: string): Promise<{ title: string; thesis_md: s
       },
       body: JSON.stringify({
         model:      CLAUDE_MODEL,
-        max_tokens: 300,
+        max_tokens: 700,
         system: [
           'You are an institutional portfolio analyst for an international, US-dollar-denominated equity portfolio traded through Alpaca.',
           'All monetary values are in USD. Do not reference the JSE, ZAR, or any South-Africa-specific framing.',
-          'Generate concise, data-grounded signal narratives.',
-          'Output ONLY valid JSON with keys "title" (string, one line) and "thesis_md" (string, 2-4 sentences).',
-          'Only reference tickers supplied in the input. Do not fabricate numbers. If unsure, omit rather than invent.',
+          'Generate concise, data-grounded narratives.',
+          'The "thesis_md" covers portfolio-level positioning. The "candidate_notes" must be SECURITY-SPECIFIC:',
+          'for each ticker, explain in 1-2 sentences why THIS name is attractive — the fundamental edge (growth, margins, ROIC, valuation), and a concrete catalyst or mispricing that could give it legs and drive alpha. Be specific to the company, not generic.',
+          'Output ONLY valid JSON with keys "title" (string, one line), "thesis_md" (string, 2-4 sentences), and "candidate_notes" (object mapping each ticker to its 1-2 sentence rationale).',
+          'Only reference tickers supplied in the input. Ground claims in the supplied fundamentals; do not fabricate precise figures. If unsure on a catalyst, frame it as the setup the data implies rather than inventing news.',
         ].join(' '),
         messages: [{ role: 'user', content: prompt }],
       }),
@@ -537,19 +594,38 @@ async function callClaude(prompt: string): Promise<{ title: string; thesis_md: s
 
     const parsed = JSON.parse(raw)
     if (typeof parsed.title !== 'string' || typeof parsed.thesis_md !== 'string') return null
-    return { title: parsed.title, thesis_md: parsed.thesis_md }
+    const notes = (parsed.candidate_notes && typeof parsed.candidate_notes === 'object')
+      ? parsed.candidate_notes as Record<string, string> : undefined
+    return { title: parsed.title, thesis_md: parsed.thesis_md, candidate_notes: notes }
   } catch (err) {
     console.error('Claude parse error:', err)
     return null
   }
 }
 
+// Compact one-line fundamentals descriptor for a candidate (for the Claude prompt)
+function candFacts(c: Candidate): string {
+  const bits: string[] = []
+  if (c.market_cap != null) bits.push(`mktcap $${(c.market_cap / 1e9).toFixed(1)}B`)
+  if (c.rev_growth != null) bits.push(`rev growth ${c.rev_growth.toFixed(1)}%`)
+  if (c.net_margin != null) bits.push(`net margin ${c.net_margin.toFixed(1)}%`)
+  if (c.roic != null)       bits.push(`ROIC ${c.roic.toFixed(1)}%`)
+  if (c.ev_ebitda != null)  bits.push(`EV/EBITDA ${c.ev_ebitda.toFixed(1)}x`)
+  if (c.annual_vol != null) bits.push(`ann.vol ${(c.annual_vol * 100).toFixed(0)}%`)
+  if (c.suggested_size_pct != null) bits.push(`suggested ${c.suggested_size_pct.toFixed(1)}% NAV`)
+  return `${c.ticker}${c.name ? ` (${c.name})` : ''}: ${bits.length ? bits.join(', ') : 'fundamentals pending'}`
+}
+
 async function enrichWithClaude(drafts: SignalDraft[]): Promise<SignalDraft[]> {
   const enriched: SignalDraft[] = []
 
   for (const d of drafts) {
-    const tickers = d.candidates.map(c => c.name ? `${c.ticker} (${c.name})` : c.ticker).join(', ')
-    const setup   = d.setup_json
+    const setup = d.setup_json
+    // Build per-candidate fundamentals lines for the prompt
+    const candLines = d.candidates
+      .filter(c => d.signal_class !== 'risk')   // risk flags are existing positions, not "why buy" candidates
+      .map(c => `  • ${candFacts(c)}`)
+      .join('\n')
 
     let prompt: string
     if (d.signal_class === 'thesis') {
@@ -558,20 +634,26 @@ async function enrichWithClaude(drafts: SignalDraft[]): Promise<SignalDraft[]> {
         `Signal class: Thesis Extender`,
         `Sector: ${s.theme} | Current weight: ${s.theme_weight_from}% | Suggested add: ${s.suggested_size_pct}%`,
         `Sizing rationale: ${s.sizing_rationale ?? 'risk-budgeted conviction sizing'}`,
-        `Candidate tickers: ${tickers}`,
-        `Thesis: The portfolio has an active ${s.theme} thesis with room to extend before hitting the 25% sector ceiling.`,
-        `Generate title + 2-3 sentence thesis referencing these exact numbers and tickers.`,
-        `Output JSON: {"title": "...", "thesis_md": "..."}`,
+        `Candidates (ticker, company name, fundamentals):`,
+        candLines || '  (none)',
+        ``,
+        `Write a "thesis_md" (2-4 sentences) covering portfolio-level rationale for extending the ${s.theme} theme.`,
+        `Write "candidate_notes" — for EACH ticker above give 1-2 sentences: why this specific company, what fundamental edge it has (growth/margin/ROIC/valuation), and what catalyst or setup could generate alpha. Be company-specific, not generic.`,
+        `Output JSON only: {"title": "...", "thesis_md": "...", "candidate_notes": {"TICK": "...", ...}}`,
       ].join('\n')
     } else if (d.signal_class === 'gap') {
       const s = setup as { theme: string; gap_pct: number; saa_target_pct: number; suggested_size_pct: number; sizing_rationale?: string }
+      const currentPct = (s.saa_target_pct + (s.gap_pct ?? 0))
       prompt = [
         `Signal class: Gap Filler`,
-        `Sector: ${s.theme} | Current weight: ${((s.saa_target_pct + (s.gap_pct ?? 0)))}% | SAA target: ${s.saa_target_pct}% | Gap: ${s.gap_pct}%`,
+        `Sector: ${s.theme} | Current weight: ${currentPct.toFixed(1)}% | SAA target: ${s.saa_target_pct}% | Gap: ${Math.abs(s.gap_pct ?? 0).toFixed(1)}%`,
         `Suggested allocation: ${s.suggested_size_pct}% NAV (${s.sizing_rationale ?? 'risk-budgeted conviction sizing'})`,
-        `Candidate tickers: ${tickers}`,
-        `Generate title + 2-3 sentence thesis explaining why closing this gap improves portfolio construction. Reference the numbers.`,
-        `Output JSON: {"title": "...", "thesis_md": "..."}`,
+        `Candidates (ticker, company name, fundamentals):`,
+        candLines || '  (none)',
+        ``,
+        `Write "thesis_md" (2-4 sentences): why closing the ${s.theme} underweight improves portfolio construction.`,
+        `Write "candidate_notes" — for EACH ticker above give 1-2 sentences: why this specific company, what fundamental edge it has, and what catalyst or mispricing setup makes it the right entry to close this gap. Be company-specific.`,
+        `Output JSON only: {"title": "...", "thesis_md": "...", "candidate_notes": {"TICK": "...", ...}}`,
       ].join('\n')
     } else {
       const s = setup as { symbol: string; name: string; var_share_pct: string; annual_vol_pct: string; suggested_reduction_pct: string }
@@ -579,14 +661,22 @@ async function enrichWithClaude(drafts: SignalDraft[]): Promise<SignalDraft[]> {
         `Signal class: Risk Flag`,
         `Name: ${s.name} (${s.symbol}) | VaR share: ${s.var_share_pct}% of portfolio | Annual vol: ${s.annual_vol_pct}%`,
         `Suggested reduction: ${s.suggested_reduction_pct}% NAV`,
-        `Generate title + 2-3 sentence risk management thesis explaining the concentration concern and suggested action.`,
-        `Output JSON: {"title": "...", "thesis_md": "..."}`,
+        `Generate title + 2-3 sentence risk management thesis explaining the concentration concern and suggested trim action.`,
+        `Output JSON only: {"title": "...", "thesis_md": "...", "candidate_notes": {}}`,
       ].join('\n')
     }
 
     const narrative = await callClaude(prompt)
+
+    // Wire per-candidate rationale back onto each candidate's `why` field
+    const enrichedCandidates: Candidate[] = d.candidates.map(c => ({
+      ...c,
+      why: narrative?.candidate_notes?.[c.ticker] ?? c.why,
+    }))
+
     enriched.push({
       ...d,
+      candidates: enrichedCandidates,
       title:     narrative?.title     ?? `${d.signal_class.toUpperCase()}: ${d.candidates[0]?.sector ?? 'Portfolio'}`,
       thesis_md: narrative?.thesis_md ?? d.origin_metric,
     })

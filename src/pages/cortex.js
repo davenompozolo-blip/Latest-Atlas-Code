@@ -212,11 +212,12 @@ function buildMetrics(cls, setup, conv) {
 // ── CandidateChip ─────────────────────────────────────────────
 function CandidateChip({ c, colour, onClick }) {
     const [hov, setHov] = useState(false);
-    const label = c.ticker || c;
+    const cand = typeof c === 'string' ? { ticker: c } : c;
+    const label = cand.ticker;
     return h('button', {
-        onClick: () => onClick && onClick(label),
+        onClick: () => onClick && onClick(cand),
         onMouseEnter: () => setHov(true), onMouseLeave: () => setHov(false),
-        title: [c.name, c.sector].filter(Boolean).join(' · ') || '',
+        title: [cand.name, cand.sector].filter(Boolean).join(' · ') || '',
         style: {
             background: hov ? colour + '22' : 'rgba(255,255,255,0.03)',
             border: '1px solid ' + (hov ? colour + '66' : 'rgba(255,255,255,0.08)'),
@@ -226,8 +227,37 @@ function CandidateChip({ c, colour, onClick }) {
     }, label);
 }
 
+// ── CandidateRow (per-name: identity, sizing, rationale, actions) ─────
+function CandidateRow({ c, cc, cls, signalSize, onTradeClick, onValueClick, onTradeExec }) {
+    const [hov, setHov] = useState(false);
+    const sizePct = (c.suggested_size_pct != null ? Number(c.suggested_size_pct) : signalSize);
+    const side = cls === 'risk' ? 'sell' : 'buy';
+    const cand = { ...c, suggested_size_pct: sizePct, side };
+    const why = c.why || c.rationale || null;
+    const btn = (label, col, onClick) => h('button', {
+        onClick,
+        style: { padding: '3px 10px', fontSize: 10, fontWeight: 700, cursor: 'pointer', fontFamily: 'var(--nx-fb)', borderRadius: 4, border: '1px solid ' + col + '55', background: col + '18', color: col, whiteSpace: 'nowrap' }
+    }, label);
+    return h('div', { onMouseEnter: () => setHov(true), onMouseLeave: () => setHov(false),
+        style: { padding: '8px 10px', borderRadius: 7, border: '1px solid ' + (hov ? cc.border : 'rgba(255,255,255,0.06)'), background: hov ? cc.bg : 'rgba(255,255,255,0.015)', transition: 'all 0.15s' } },
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+            h('span', { style: { fontSize: 12, fontWeight: 800, fontFamily: 'var(--nx-fm)', color: cc.fg } }, cand.ticker),
+            c.name && h('span', { style: { fontSize: 11, color: 'var(--nx-text2)', fontFamily: 'var(--nx-fb)' } }, c.name),
+            c.sector && h('span', { style: { fontSize: 9, color: 'var(--nx-text3)', fontFamily: 'var(--nx-fb)' } }, '· ' + c.sector),
+            sizePct != null && h('span', { style: { marginLeft: 'auto', fontSize: 10, fontWeight: 700, fontFamily: 'var(--nx-fm)', color: '#22c55e', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: 4, padding: '1px 7px' } },
+                (side === 'sell' ? 'Trim ' : 'Size ') + sizePct.toFixed(1) + '% NAV')
+        ),
+        why && h('div', { style: { fontSize: 10.5, color: 'var(--nx-text2)', lineHeight: 1.5, marginTop: 5, fontFamily: 'var(--nx-fb)' } }, why),
+        h('div', { style: { display: 'flex', gap: 5, marginTop: 7 } },
+            btn('→ Risk',  cc.fg,     () => onTradeClick && onTradeClick(cand)),
+            btn('Value',   '#8b5cf6', () => onValueClick && onValueClick(cand)),
+            btn('Trade',   '#22c55e', () => onTradeExec  && onTradeExec(cand))
+        )
+    );
+}
+
 // ── SignalCard ────────────────────────────────────────────────
-function SignalCard({ signal, onTradeClick, onValueClick, onMute }) {
+function SignalCard({ signal, onTradeClick, onValueClick, onMute, onTradeExec }) {
     const [expanded, setExpanded] = useState(false);
     const [hov, setHov] = useState(false);
     const cls   = signal.signal_class;
@@ -290,23 +320,19 @@ function SignalCard({ signal, onTradeClick, onValueClick, onMute }) {
                 h('span', { style: { fontSize: 8, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: cc.fg, background: cc.bg, border: '1px solid ' + cc.border, borderRadius: 3, padding: '1px 5px' } }, 'Sizing'),
                 h('span', null, setup.sizing_rationale)),
 
-            // candidate chips
+            // candidates — each with its name + (when present) per-candidate sizing & rationale
             cands.length > 0
-                ? h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 12, alignItems: 'center' } },
-                    h('span', { style: { fontSize: 9, color: 'var(--nx-text3)', textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'var(--nx-fb)', fontWeight: 700, marginRight: 2 } }, 'Candidates'),
-                    cands.slice(0, 6).map((c, i) => h(CandidateChip, { key: i, c, colour: cc.fg, onClick: t => onTradeClick && onTradeClick(t) })),
-                    cands.length > 6 && h('span', { style: { fontSize: 10, color: 'var(--nx-text3)', fontFamily: 'var(--nx-fm)' } }, '+' + (cands.length - 6))
+                ? h('div', { style: { marginBottom: 12 } },
+                    h('span', { style: { fontSize: 9, color: 'var(--nx-text3)', textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'var(--nx-fb)', fontWeight: 700, display: 'block', marginBottom: 6 } }, 'Candidates'),
+                    h('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+                        cands.slice(0, 6).map((c, i) => h(CandidateRow, { key: i, c, cc, cls, signalSize: n2(setup.suggested_size_pct), onTradeClick, onValueClick, onTradeExec })),
+                        cands.length > 6 && h('span', { style: { fontSize: 10, color: 'var(--nx-text3)', fontFamily: 'var(--nx-fm)' } }, '+' + (cands.length - 6) + ' more')
+                    )
                 )
                 : h('div', { style: { fontSize: 10, color: 'var(--nx-text3)', fontStyle: 'italic', marginBottom: 12 } }, 'No candidate tickers for this signal yet.'),
 
             // actions
             h('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
-                cands.length > 0 && h('button', {
-                    onClick: () => onTradeClick && onTradeClick(cands[0].ticker || cands[0]),
-                    style: { padding: '6px 16px', fontSize: 11, fontWeight: 700, background: cc.fg, color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: 'var(--nx-fb)', boxShadow: '0 2px 10px ' + cc.fg + '44', letterSpacing: '0.03em' } }, '→ Pre-trade Risk'),
-                cands.length > 0 && h('button', {
-                    onClick: () => onValueClick && onValueClick(cands[0].ticker || cands[0]),
-                    style: { padding: '6px 14px', fontSize: 11, fontWeight: 600, background: 'rgba(255,255,255,0.04)', color: 'var(--nx-text2)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 6, cursor: 'pointer', fontFamily: 'var(--nx-fb)' } }, 'Value'),
                 h('button', {
                     onClick: () => onMute && onMute(signal.id),
                     style: { padding: '6px 12px', fontSize: 11, fontWeight: 600, background: 'transparent', color: 'var(--nx-text3)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 6, cursor: 'pointer', fontFamily: 'var(--nx-fb)' } }, 'Mute'),
@@ -319,7 +345,7 @@ function SignalCard({ signal, onTradeClick, onValueClick, onMute }) {
 }
 
 // ── SignalFeed ────────────────────────────────────────────────
-function SignalFeed({ signals, loading, classFilter, onClassFilter, onTradeClick, onValueClick, onMute, onRefresh, refreshing }) {
+function SignalFeed({ signals, loading, classFilter, onClassFilter, onTradeClick, onValueClick, onMute, onRefresh, refreshing, onTradeExec }) {
     const CLASSES = ['all', 'thesis', 'gap', 'risk'];
     const filtered = classFilter === 'all' ? signals : signals.filter(s => s.signal_class === classFilter);
     const lastGen = signals.length > 0 ? signals[0].generated_at : null;
@@ -358,7 +384,7 @@ function SignalFeed({ signals, loading, classFilter, onClassFilter, onTradeClick
                         h('div', { style: { fontSize: 32, marginBottom: 12, opacity: 0.3 } }, '✦'),
                         h('div', { style: { color: 'var(--nx-text3)', fontSize: 13, fontFamily: 'var(--nx-fb)' } }, 'No signals in this view.'),
                         h('div', { style: { color: 'var(--nx-text3)', fontSize: 11, marginTop: 4 } }, 'Click "Run Engine" to generate.'))
-                    : filtered.map(s => h(SignalCard, { key: s.id, signal: s, onTradeClick, onValueClick, onMute }))
+                    : filtered.map(s => h(SignalCard, { key: s.id, signal: s, onTradeClick, onValueClick, onMute, onTradeExec }))
         )
     );
 }
@@ -366,7 +392,7 @@ function SignalFeed({ signals, loading, classFilter, onClassFilter, onTradeClick
 // ── Screener ──────────────────────────────────────────────────
 const SCREENER_SECTORS = ['all', 'Technology', 'Healthcare', 'Financials', 'Energy', 'Materials', 'Consumer Discretionary', 'International', 'Fixed Income'];
 
-function Screener({ onTradeClick, onValueClick, onEquityClick }) {
+function Screener({ onTradeClick, onValueClick, onEquityClick, onTradeExec }) {
     const [mode, setMode]     = useState('add');   // 'add' | 'trim'
     const [sector, setSector] = useState('all');
     const [search, setSearch] = useState('');
@@ -475,8 +501,8 @@ function Screener({ onTradeClick, onValueClick, onEquityClick }) {
                         ),
                         h('tbody', null,
                             rows.map((r, i) => mode === 'trim'
-                                ? h(TrimRow, { key: r.symbol + i, r, onTradeClick, onValueClick, onEquityClick })
-                                : h(AddRow,  { key: r.symbol + i, r, fit: fitFor(r.sector), onTradeClick, onValueClick, onEquityClick })
+                                ? h(TrimRow, { key: r.symbol + i, r, onTradeClick, onValueClick, onEquityClick, onTradeExec })
+                                : h(AddRow,  { key: r.symbol + i, r, fit: fitFor(r.sector), onTradeClick, onValueClick, onEquityClick, onTradeExec })
                             )
                         )
                     )
@@ -489,22 +515,24 @@ function cellTd(content, opts = {}) {
 }
 
 // Shared mini action buttons for screener rows
-function RowActions({ symbol, hov, accent, onTradeClick, onValueClick, onEquityClick }) {
+function RowActions({ cand, hov, accent, onTradeClick, onValueClick, onEquityClick, onTradeExec }) {
     const btn = (label, col, onClick) => h('button', {
         onClick, title: label,
         style: { padding: '3px 9px', fontSize: 10, fontWeight: 700, cursor: 'pointer', fontFamily: 'var(--nx-fb)', borderRadius: 4, border: '1px solid ' + col + '44', background: hov ? col + '22' : 'rgba(255,255,255,0.03)', color: col, transition: 'all 0.12s', whiteSpace: 'nowrap' }
     }, label);
     return h('td', { style: { padding: '9px 10px', textAlign: 'right', borderBottom: '1px solid rgba(255,255,255,0.04)' } },
         h('div', { style: { display: 'flex', gap: 5, justifyContent: 'flex-end', alignItems: 'center' } },
-            btn('Risk',   accent,    () => onTradeClick  && onTradeClick(symbol)),
-            btn('Value',  '#8b5cf6', () => onValueClick  && onValueClick(symbol)),
-            btn('Equity', '#f59e0b', () => onEquityClick && onEquityClick(symbol)),
+            btn('Risk',   accent,    () => onTradeClick  && onTradeClick(cand)),
+            btn('Value',  '#8b5cf6', () => onValueClick  && onValueClick(cand)),
+            btn('Equity', '#f59e0b', () => onEquityClick && onEquityClick(cand)),
+            btn('Trade',  '#22c55e', () => onTradeExec   && onTradeExec(cand)),
         )
     );
 }
 
-function AddRow({ r, fit, onTradeClick, onValueClick, onEquityClick }) {
+function AddRow({ r, fit, onTradeClick, onValueClick, onEquityClick, onTradeExec }) {
     const [hov, setHov] = useState(false);
+    const cand = { ticker: r.symbol, name: r.name, sector: r.sector };
     const fitCol = fit >= 60 ? '#22c55e' : fit >= 30 ? '#f59e0b' : 'var(--nx-text3)';
     return h('tr', { onMouseEnter: () => setHov(true), onMouseLeave: () => setHov(false), style: { background: hov ? 'rgba(20,184,166,0.04)' : 'transparent' } },
         cellTd(r.symbol, { color: '#14b8a6', weight: 700, mono: true }),
@@ -516,13 +544,14 @@ function AddRow({ r, fit, onTradeClick, onValueClick, onEquityClick }) {
                 h('div', { style: { width: 40, height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 2, overflow: 'hidden' } },
                     h('div', { style: { width: fit + '%', height: '100%', background: fitCol, borderRadius: 2 } })),
                 h('span', { style: { fontSize: 11, fontFamily: 'var(--nx-fd)', fontWeight: 700, color: fitCol, minWidth: 18 } }, fit))),
-        h(RowActions, { symbol: r.symbol, hov, accent: '#14b8a6', onTradeClick, onValueClick, onEquityClick })
+        h(RowActions, { cand, hov, accent: '#14b8a6', onTradeClick, onValueClick, onEquityClick, onTradeExec })
     );
 }
 
-function TrimRow({ r, onTradeClick, onValueClick, onEquityClick }) {
+function TrimRow({ r, onTradeClick, onValueClick, onEquityClick, onTradeExec }) {
     const [hov, setHov] = useState(false);
     const vol = (r.annual_vol || 0) * 100;
+    const cand = { ticker: r.symbol, name: r.name, sector: r.sector, side: 'sell' };
     return h('tr', { onMouseEnter: () => setHov(true), onMouseLeave: () => setHov(false), style: { background: hov ? 'rgba(239,68,68,0.04)' : 'transparent' } },
         cellTd(r.symbol, { color: '#ef4444', weight: 700, mono: true }),
         cellTd(r.name || '—', { color: 'var(--nx-text2)' }),
@@ -530,7 +559,7 @@ function TrimRow({ r, onTradeClick, onValueClick, onEquityClick }) {
         cellTd(pctU(vol, 1), { align: 'right', mono: true, color: vol > 40 ? '#ef4444' : '#f59e0b' }),
         cellTd(usd(r.dollar_var_95_daily), { align: 'right', mono: true, color: '#ef4444' }),
         cellTd(r.risk_tier || '—', { align: 'right', color: 'var(--nx-text3)' }),
-        h(RowActions, { symbol: r.symbol, hov, accent: '#ef4444', onTradeClick, onValueClick, onEquityClick })
+        h(RowActions, { cand, hov, accent: '#ef4444', onTradeClick, onValueClick, onEquityClick, onTradeExec })
     );
 }
 
@@ -558,8 +587,9 @@ function numCell(v, { suffix = '', d = 1, color, signed = false } = {}) {
     return cellTd(txt, { align: 'right', mono: true, color: color || 'var(--nx-text2)' });
 }
 
-function AdvancedRow({ r, fit, onTradeClick, onValueClick, onEquityClick }) {
+function AdvancedRow({ r, fit, onTradeClick, onValueClick, onEquityClick, onTradeExec }) {
     const [hov, setHov] = useState(false);
+    const cand = { ticker: r.symbol, name: r.name, sector: r.sector };
     const fitCol = fit >= 60 ? '#22c55e' : fit >= 30 ? '#f59e0b' : 'var(--nx-text3)';
     const retCol = r.ret_1m == null ? 'var(--nx-text3)' : r.ret_1m >= 0 ? '#22c55e' : '#ef4444';
     return h('tr', { onMouseEnter: () => setHov(true), onMouseLeave: () => setHov(false), style: { background: hov ? 'rgba(59,130,246,0.04)' : 'transparent' } },
@@ -576,7 +606,7 @@ function AdvancedRow({ r, fit, onTradeClick, onValueClick, onEquityClick }) {
                 h('div', { style: { width: 36, height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 2, overflow: 'hidden' } },
                     h('div', { style: { width: fit + '%', height: '100%', background: fitCol, borderRadius: 2 } })),
                 h('span', { style: { fontSize: 11, fontFamily: 'var(--nx-fd)', fontWeight: 700, color: fitCol, minWidth: 16 } }, fit))),
-        h(RowActions, { symbol: r.symbol, hov, accent: '#3b82f6', onTradeClick, onValueClick, onEquityClick })
+        h(RowActions, { cand, hov, accent: '#3b82f6', onTradeClick, onValueClick, onEquityClick, onTradeExec })
     );
 }
 
@@ -591,7 +621,7 @@ function FilterField({ label, value, suffix, onChange, placeholder }) {
     );
 }
 
-function AdvancedScreener({ onTradeClick, onValueClick, onEquityClick }) {
+function AdvancedScreener({ onTradeClick, onValueClick, onEquityClick, onTradeExec }) {
     const [filters, setFilters] = useState(ADV_DEFAULTS);
     const [activePreset, setActivePreset] = useState(null);
     const [search, setSearch]   = useState('');
@@ -716,7 +746,7 @@ function AdvancedScreener({ onTradeClick, onValueClick, onEquityClick }) {
                             )
                         ),
                         h('tbody', null,
-                            sorted.map(({ r, fit }, i) => h(AdvancedRow, { key: r.symbol + i, r, fit, onTradeClick, onValueClick, onEquityClick }))
+                            sorted.map(({ r, fit }, i) => h(AdvancedRow, { key: r.symbol + i, r, fit, onTradeClick, onValueClick, onEquityClick, onTradeExec }))
                         )
                     )
         )
@@ -724,10 +754,12 @@ function AdvancedScreener({ onTradeClick, onValueClick, onEquityClick }) {
 }
 
 // ── PretradePanel ─────────────────────────────────────────────
-function PretradePanel({ ticker, onClose }) {
+function PretradePanel({ cand, onClose, onTradeExec }) {
+    const ticker = typeof cand === 'string' ? cand : cand.ticker;
+    const name   = typeof cand === 'string' ? null : cand.name;
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [pctStr, setPctStr] = useState('5');
+    const [pctStr, setPctStr] = useState(typeof cand === 'object' && cand.suggested_size_pct != null ? String(cand.suggested_size_pct) : '5');
 
     useEffect(() => { setLoading(true); fetchPretradeRisk(ticker).then(d => { setData(d); setLoading(false); }); }, [ticker]);
 
@@ -760,7 +792,9 @@ function PretradePanel({ ticker, onClose }) {
             h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18 } },
                 h('div', null,
                     h('div', { style: { fontSize: 9, color: '#3b82f6', textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'var(--nx-fb)', marginBottom: 3 } }, 'Pre-trade Risk Analysis'),
-                    h('div', { style: { fontSize: 17, fontWeight: 800, fontFamily: 'var(--nx-fd)', color: 'var(--nx-text)' } }, ticker)),
+                    h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 8 } },
+                        h('span', { style: { fontSize: 17, fontWeight: 800, fontFamily: 'var(--nx-fd)', color: 'var(--nx-text)' } }, ticker),
+                        name && h('span', { style: { fontSize: 12, color: 'var(--nx-text2)', fontFamily: 'var(--nx-fb)' } }, name))),
                 h('button', { onClick: onClose, style: { background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--nx-text3)', cursor: 'pointer', fontSize: 14, width: 28, height: 28, borderRadius: 6 } }, '✕')),
             loading
                 ? h('div', { style: { color: 'var(--nx-text3)', fontSize: 12, textAlign: 'center', padding: '24px 0' } }, 'Computing risk metrics…')
@@ -788,7 +822,142 @@ function PretradePanel({ ticker, onClose }) {
                             row('New VaR 95 1D', usd(newVar)),
                             row('ΔVaR', usd(dVar))),
                         h('div', { style: { marginTop: 16, padding: '8px 12px', background: 'rgba(255,255,255,0.02)', borderRadius: 6, fontSize: 10, color: 'var(--nx-text3)', lineHeight: 1.6, borderLeft: '2px solid rgba(255,255,255,0.06)' } },
-                            'Parametric normal, 95% CI, 1D horizon, USD. Covariance from last ', h('strong', { style: { color: 'var(--nx-text2)' } }, data.obs + ' trading days'), ' of common price history.'))
+                            'Parametric normal, 95% CI, 1D horizon, USD. Covariance from last ', h('strong', { style: { color: 'var(--nx-text2)' } }, data.obs + ' trading days'), ' of common price history.'),
+                        onTradeExec && h('button', {
+                            onClick: () => onTradeExec({ ticker, name, suggested_size_pct: parseFloat(pctStr) || undefined, side: 'buy' }),
+                            style: { marginTop: 14, width: '100%', padding: '10px', fontSize: 12, fontWeight: 700, background: '#22c55e', color: '#04140a', border: 'none', borderRadius: 7, cursor: 'pointer', fontFamily: 'var(--nx-fb)', letterSpacing: '0.03em' } },
+                            'Proceed to Trade ' + ticker + ' @ ' + pctStr + '% NAV →'))
+        )
+    );
+}
+
+// ── TradeTicket (adjust quantum + execute via Alpaca) ─────────
+async function fetchNav() {
+    if (!sb) return 0;
+    const { data } = await sb.from('account_snapshots').select('equity').order('as_of', { ascending: false }).limit(1);
+    return data?.[0]?.equity || 0;
+}
+async function fetchQuote(ticker) {
+    try {
+        const r = await fetch('/api/trading?action=quote&symbol=' + encodeURIComponent(ticker));
+        const j = await r.json();
+        return j.price ?? j.last ?? j.ask ?? j.bid ?? null;
+    } catch { return null; }
+}
+
+function TradeTicket({ cand, onClose, onDone }) {
+    const ticker = cand.ticker;
+    const [side, setSide]     = useState(cand.side === 'sell' ? 'sell' : 'buy');
+    const [mode, setMode]     = useState('notional');   // 'notional' | 'shares'
+    const [nav, setNav]       = useState(0);
+    const [price, setPrice]   = useState(null);
+    const [amount, setAmount] = useState('');           // the quantum the user edits
+    const [busy, setBusy]     = useState(false);
+    const [confirm, setConfirm] = useState(false);
+    const [result, setResult] = useState(null);
+
+    useEffect(() => {
+        let live = true;
+        fetchNav().then(v => { if (live) setNav(v); });
+        fetchQuote(ticker).then(p => { if (live) setPrice(p); });
+        return () => { live = false; };
+    }, [ticker]);
+
+    // Initialise notional from suggested size once NAV is known
+    useEffect(() => {
+        if (nav > 0 && amount === '' && mode === 'notional') {
+            const sz = cand.suggested_size_pct != null ? Number(cand.suggested_size_pct) : 2;
+            setAmount(String(Math.round(nav * sz / 100)));
+        }
+    }, [nav]);
+
+    const amt = parseFloat(amount) || 0;
+    const estShares   = mode === 'notional' ? (price ? amt / price : null) : amt;
+    const estNotional = mode === 'notional' ? amt : (price ? amt * price : null);
+    const navPct = nav > 0 && estNotional != null ? (estNotional / nav * 100) : null;
+
+    const setPct = (p) => { if (nav > 0) { setMode('notional'); setAmount(String(Math.round(nav * p / 100))); } };
+
+    function submit() {
+        setBusy(true); setResult(null);
+        const body = { symbol: ticker, side, type: 'market', tif: 'day' };
+        if (mode === 'notional') body.notional = Math.round(amt * 100) / 100;
+        else body.qty = Math.round(amt * 10000) / 10000;
+        fetch('/api/trading?action=order', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+            .then(r => r.json())
+            .then(j => { setResult(j); setBusy(false); setConfirm(false); if (j && (j.id || j.status) && onDone) onDone(); })
+            .catch(e => { setResult({ success: false, error: e.message }); setBusy(false); setConfirm(false); });
+    }
+
+    const sideCol = side === 'buy' ? '#22c55e' : '#ef4444';
+    const inputStyle = { flex: 1, padding: '8px 11px', fontSize: 14, fontFamily: 'var(--nx-fm)', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 6, color: 'var(--nx-text)', outline: 'none' };
+
+    return h('div', { style: { position: 'fixed', inset: 0, zIndex: 9100, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.78)', backdropFilter: 'blur(4px)' }, onClick: onClose },
+        h('div', { onClick: e => e.stopPropagation(), style: { background: '#080b15', border: '1px solid ' + sideCol + '44', borderRadius: 12, padding: '22px 24px', width: 400, boxShadow: '0 24px 60px rgba(0,0,0,0.6)' } },
+            // header
+            h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 } },
+                h('div', null,
+                    h('div', { style: { fontSize: 9, color: sideCol, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'var(--nx-fb)', marginBottom: 3 } }, 'Trade Ticket'),
+                    h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 8 } },
+                        h('span', { style: { fontSize: 18, fontWeight: 800, fontFamily: 'var(--nx-fd)', color: 'var(--nx-text)' } }, ticker),
+                        cand.name && h('span', { style: { fontSize: 12, color: 'var(--nx-text2)' } }, cand.name))),
+                h('button', { onClick: onClose, style: { background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--nx-text3)', cursor: 'pointer', fontSize: 14, width: 28, height: 28, borderRadius: 6 } }, '✕')),
+
+            // buy/sell + context
+            h('div', { style: { display: 'flex', gap: 6, marginBottom: 14 } },
+                ['buy', 'sell'].map(s => h('button', { key: s, onClick: () => setSide(s), style: {
+                    flex: 1, padding: '7px', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', fontFamily: 'var(--nx-fb)', borderRadius: 6,
+                    border: '1px solid ' + (side === s ? (s === 'buy' ? '#22c55e' : '#ef4444') + '88' : 'rgba(255,255,255,0.1)'),
+                    background: side === s ? (s === 'buy' ? 'rgba(34,197,94,0.16)' : 'rgba(239,68,68,0.16)') : 'transparent',
+                    color: side === s ? (s === 'buy' ? '#22c55e' : '#ef4444') : 'var(--nx-text3)',
+                } }, s))),
+
+            h('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--nx-text3)', fontFamily: 'var(--nx-fb)', marginBottom: 12 } },
+                h('span', null, 'Last ', h('strong', { style: { color: 'var(--nx-text)', fontFamily: 'var(--nx-fm)' } }, price != null ? usd(price, 2) : '—')),
+                h('span', null, 'NAV ', h('strong', { style: { color: 'var(--nx-text)', fontFamily: 'var(--nx-fm)' } }, usd(nav)))),
+
+            // mode toggle
+            h('div', { style: { display: 'flex', gap: 6, marginBottom: 8 } },
+                [['notional', 'Notional ($)'], ['shares', 'Shares']].map(([m, lbl]) => h('button', { key: m, onClick: () => { setMode(m); setAmount(''); }, style: {
+                    flex: 1, padding: '5px', fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--nx-fb)', borderRadius: 5,
+                    border: '1px solid ' + (mode === m ? 'rgba(59,130,246,0.5)' : 'rgba(255,255,255,0.08)'),
+                    background: mode === m ? 'rgba(59,130,246,0.14)' : 'transparent', color: mode === m ? '#3b82f6' : 'var(--nx-text3)',
+                } }, lbl))),
+
+            // quantum input
+            h('div', { style: { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 } },
+                mode === 'notional' && h('span', { style: { fontSize: 14, color: 'var(--nx-text3)', fontFamily: 'var(--nx-fm)' } }, '$'),
+                h('input', { type: 'number', value: amount, placeholder: mode === 'notional' ? 'amount' : 'shares', onChange: e => setAmount(e.target.value), style: inputStyle })),
+
+            // % NAV quick buttons
+            h('div', { style: { display: 'flex', gap: 5, marginBottom: 10 } },
+                [1, 2, 3, 5].map(p => h('button', { key: p, onClick: () => setPct(p), style: {
+                    flex: 1, padding: '4px', fontSize: 10, cursor: 'pointer', fontFamily: 'var(--nx-fb)', borderRadius: 4,
+                    border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.03)', color: 'var(--nx-text2)',
+                } }, p + '%'))),
+
+            // estimate line
+            h('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 11, fontFamily: 'var(--nx-fm)', color: 'var(--nx-text2)', padding: '9px 11px', background: 'rgba(255,255,255,0.02)', borderRadius: 6, marginBottom: 14 } },
+                h('span', null, '≈ ', estShares != null ? num(estShares, 2) + ' sh' : '—'),
+                h('span', null, estNotional != null ? usd(estNotional) : '—'),
+                h('span', { style: { color: navPct != null && navPct > 5 ? '#f59e0b' : 'var(--nx-text3)' } }, navPct != null ? navPct.toFixed(1) + '% NAV' : '')),
+
+            // result / confirm / submit
+            result
+                ? h('div', { style: { padding: '12px', borderRadius: 7, fontSize: 12, fontFamily: 'var(--nx-fb)', background: (result.id || result.status) ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)', border: '1px solid ' + ((result.id || result.status) ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'), color: (result.id || result.status) ? '#22c55e' : '#ef4444' } },
+                    (result.id || result.status)
+                        ? '✓ Order ' + (result.status || 'submitted') + (result.id ? ' · ' + String(result.id).slice(0, 8) : '')
+                        : '✗ ' + (result.error || 'Order failed'))
+                : confirm
+                    ? h('div', { style: { display: 'flex', gap: 8 } },
+                        h('button', { onClick: submit, disabled: busy, style: { flex: 2, padding: '11px', fontSize: 12, fontWeight: 800, background: sideCol, color: '#04140a', border: 'none', borderRadius: 7, cursor: busy ? 'wait' : 'pointer', fontFamily: 'var(--nx-fb)', textTransform: 'uppercase', letterSpacing: '0.05em' } },
+                            busy ? 'Submitting…' : 'Confirm ' + side + ' ' + ticker),
+                        h('button', { onClick: () => setConfirm(false), disabled: busy, style: { flex: 1, padding: '11px', fontSize: 11, background: 'transparent', color: 'var(--nx-text3)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 7, cursor: 'pointer', fontFamily: 'var(--nx-fb)' } }, 'Back'))
+                    : h('button', { onClick: () => setConfirm(true), disabled: !(amt > 0), style: { width: '100%', padding: '11px', fontSize: 12, fontWeight: 700, background: amt > 0 ? sideCol : 'rgba(255,255,255,0.06)', color: amt > 0 ? '#04140a' : 'var(--nx-text3)', border: 'none', borderRadius: 7, cursor: amt > 0 ? 'pointer' : 'not-allowed', fontFamily: 'var(--nx-fb)', textTransform: 'uppercase', letterSpacing: '0.05em' } },
+                        'Review ' + side + ' order'),
+
+            h('div', { style: { marginTop: 12, fontSize: 9, color: 'var(--nx-text3)', textAlign: 'center', lineHeight: 1.5 } },
+                'Market order · day · routed to Alpaca' + (cand.suggested_size_pct != null ? ' · suggested ' + Number(cand.suggested_size_pct).toFixed(1) + '% NAV' : ''))
         )
     );
 }
@@ -923,6 +1092,7 @@ function CortexPage() {
     const [classFilter, setClassFilter] = useState('all');
     const [refreshing,  setRefreshing]  = useState(false);
     const [pretradeFor, setPretradeFor] = useState(null);
+    const [tradeFor,    setTradeFor]    = useState(null);
     const [toast,       setToast]       = useState(null);
     const [controls,    setControls]    = useState({});  // signal_class → { enabled, feed_weight }
 
@@ -967,8 +1137,10 @@ function CortexPage() {
         setSignals(s => s.filter(x => x.id !== id));
     }
 
-    const onValueClick  = ticker => window.dispatchEvent(new CustomEvent('atlas:navigate', { detail: { tab: 'valuation', symbol: ticker } }));
-    const onEquityClick = ticker => window.dispatchEvent(new CustomEvent('atlas:navigate', { detail: { tab: 'equity',    symbol: ticker } }));
+    const tk = c => (typeof c === 'string' ? c : c && c.ticker);
+    const onValueClick  = c => window.dispatchEvent(new CustomEvent('atlas:navigate', { detail: { tab: 'valuation', symbol: tk(c) } }));
+    const onEquityClick = c => window.dispatchEvent(new CustomEvent('atlas:navigate', { detail: { tab: 'equity',    symbol: tk(c) } }));
+    const onTradeExec   = c => setTradeFor(typeof c === 'string' ? { ticker: c } : c);
 
     const TabBtn = ({ id, label }) => {
         const active = view === id;
@@ -999,14 +1171,15 @@ function CortexPage() {
 
         h('div', { style: { flex: 1, display: 'flex', overflow: 'hidden' } },
             view === 'signals'
-                ? h(SignalFeed, { signals: effectiveSignals, loading, classFilter, onClassFilter: setClassFilter, onTradeClick: setPretradeFor, onValueClick, onMute: handleMute, onRefresh: handleRunEngine, refreshing })
+                ? h(SignalFeed, { signals: effectiveSignals, loading, classFilter, onClassFilter: setClassFilter, onTradeClick: setPretradeFor, onValueClick, onMute: handleMute, onRefresh: handleRunEngine, refreshing, onTradeExec })
                 : view === 'advanced'
-                    ? h(AdvancedScreener, { onTradeClick: setPretradeFor, onValueClick, onEquityClick })
-                    : h(Screener, { onTradeClick: setPretradeFor, onValueClick, onEquityClick }),
+                    ? h(AdvancedScreener, { onTradeClick: setPretradeFor, onValueClick, onEquityClick, onTradeExec })
+                    : h(Screener, { onTradeClick: setPretradeFor, onValueClick, onEquityClick, onTradeExec }),
             h(RightRail, { onControlsChange: loadControls, onTradeClick: setPretradeFor })
         ),
 
-        pretradeFor && h(PretradePanel, { ticker: pretradeFor, onClose: () => setPretradeFor(null) }),
+        pretradeFor && h(PretradePanel, { cand: pretradeFor, onClose: () => setPretradeFor(null), onTradeExec: c => { setPretradeFor(null); onTradeExec(c); } }),
+        tradeFor && h(TradeTicket, { cand: tradeFor, onClose: () => setTradeFor(null), onDone: () => setToast('Order submitted for ' + tradeFor.ticker + '.') }),
         toast && h(Toast, { message: toast, onDone: () => setToast(null) })
     );
 }
