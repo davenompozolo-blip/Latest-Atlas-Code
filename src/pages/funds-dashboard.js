@@ -621,6 +621,9 @@ export function FundsDashboard() {
         var s=(raw||'').trim().toUpperCase();
         if(!s)return;
         setSaFund(null);
+        setStatus('loading');
+        setErrMsg(null);
+        setData(null);
         setSymbol(s);
     },[]);
 
