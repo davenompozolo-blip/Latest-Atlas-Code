@@ -74,6 +74,23 @@ function StatBox(p) {
     );
 }
 
+// Editable slider row — drives interactive scenario inputs.
+function SliderRow(p) {
+    // p: { label, value, min, max, step, fmt, color, onChange }
+    return h('div', { style: { marginBottom: 10 } },
+        h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3 } },
+            h('span', { style: { fontSize: 11, color: T.muted } }, p.label),
+            h('b', { style: { fontFamily: T.mono, fontSize: 12, color: p.color || T.text, fontWeight: 600 } },
+                p.fmt ? p.fmt(p.value) : String(p.value))
+        ),
+        h('input', {
+            type: 'range', min: p.min, max: p.max, step: p.step, value: p.value,
+            onChange: function(e) { p.onChange(parseFloat(e.target.value)); },
+            style: { width: '100%', height: 4, accentColor: p.color || T.cyan, cursor: 'pointer' }
+        })
+    );
+}
+
 function CkRow(p) {
     var dot = p.na ? T.muted2 : p.pass ? T.green : T.red;
     return h('div', {
@@ -457,8 +474,8 @@ export function ThesisTab(p) {
             )
         ),
 
-        // Bull / Base / Bear
-        h(Card, { title: 'Bull / Base / Bear — probability-weighted', badge: 'NEW', meta: 'EV ' + (isFinite(ev_pw) ? fmtDol(ev_pw) : '—'), style: { marginBottom: 14 } },
+        // Bull / Base / Bear — interactive
+        h(Card, { title: 'Bull / Base / Bear — probability-weighted', badge: 'INTERACTIVE', meta: 'EV ' + (isFinite(ev_pw) ? fmtDol(ev_pw) : '—'), style: { marginBottom: 14 } },
             h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12 } },
                 [
                     { key: 'bull', label: 'Bull', color: T.green, topColor: T.green, s: bbb.bull },
@@ -466,27 +483,45 @@ export function ThesisTab(p) {
                     { key: 'bear', label: 'Bear', color: T.red,   topColor: T.red,   s: bbb.bear },
                 ].map(function(sc) {
                     var fv = sc.key === 'bull' ? bullFV : sc.key === 'base' ? baseFV : bearFV;
+                    var upPct = isFinite(fv) && isFinite(price) ? (fv / price - 1) : null;
+                    function set(field, v) {
+                        var next = Object.assign({}, bbb);
+                        next[sc.key] = Object.assign({}, bbb[sc.key]); next[sc.key][field] = v;
+                        setBBB(next);
+                    }
                     return h('div', {
                         key: sc.key,
                         style: { border: '1px solid ' + T.border, borderTop: '3px solid ' + sc.topColor, borderRadius: 11, padding: 16, background: T.card2 }
                     },
-                        h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 } },
+                        h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 } },
                             h('div', { style: { fontFamily: T.display, fontWeight: 700, fontSize: 14, color: sc.color } }, sc.label),
                             h('div', { style: { fontFamily: T.mono, fontSize: 20, fontWeight: 600, color: sc.color } }, isFinite(fv) ? fmtDol(fv) : '—')
                         ),
-                        [['Revenue CAGR', (sc.s.cagr * 100).toFixed(0) + '%'], ['Terminal margin', (sc.s.margin * 100).toFixed(0) + '%'], ['Exit multiple', sc.s.mult + '×']].map(function(row) {
-                            return h('div', { key: row[0], style: { display: 'flex', justifyContent: 'space-between', fontSize: 11.5, padding: '4px 0', color: T.muted } },
-                                h('span', null, row[0]),
-                                h('b', { style: { fontFamily: T.mono, color: T.text, fontWeight: 500 } }, row[1])
-                            );
-                        }),
-                        h('div', { style: { marginTop: 11, paddingTop: 10, borderTop: '1px solid ' + T.border, display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
-                            h('span', { style: { fontSize: 10, color: T.muted2, fontFamily: T.mono } }, 'PROBABILITY'),
-                            h('b', { style: { fontFamily: T.mono, fontSize: 15, color: sc.color } }, sc.s.prob + '%')
+                        h('div', { style: { fontFamily: T.mono, fontSize: 10.5, color: upPct == null ? T.muted2 : upPct >= 0 ? T.green : T.red, marginBottom: 12, minHeight: 14 } },
+                            upPct == null ? '' : (upPct >= 0 ? '+' : '') + (upPct * 100).toFixed(1) + '% vs price'),
+                        h(SliderRow, { label: 'Revenue CAGR', value: sc.s.cagr, min: 0, max: 0.40, step: 0.005, color: sc.color, fmt: function(v) { return (v * 100).toFixed(1) + '%'; }, onChange: function(v) { set('cagr', v); } }),
+                        h(SliderRow, { label: 'Terminal margin', value: sc.s.margin, min: 0.02, max: 0.70, step: 0.005, color: sc.color, fmt: function(v) { return (v * 100).toFixed(1) + '%'; }, onChange: function(v) { set('margin', v); } }),
+                        h(SliderRow, { label: 'Exit multiple', value: sc.s.mult, min: 6, max: 50, step: 1, color: sc.color, fmt: function(v) { return v + '×'; }, onChange: function(v) { set('mult', v); } }),
+                        h('div', { style: { marginTop: 7, paddingTop: 10, borderTop: '1px solid ' + T.border } },
+                            h(SliderRow, { label: 'Probability', value: sc.s.prob, min: 0, max: 100, step: 5, color: sc.color, fmt: function(v) { return v + '%'; }, onChange: function(v) { set('prob', v); } })
                         )
                     );
                 })
-            )
+            ),
+            (function() {
+                var ptot = bbb.bull.prob + bbb.base.prob + bbb.bear.prob;
+                var ok = ptot === 100;
+                return h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, paddingTop: 12, borderTop: '1px solid ' + T.border } },
+                    h('span', { style: { fontFamily: T.mono, fontSize: 10.5, color: ok ? T.muted : T.amber } },
+                        ok ? 'Probabilities sum to 100% · EV computed on weights as-is.' : 'Probabilities sum to ' + ptot + '% — EV is normalized to the total.'),
+                    h('button', {
+                        onClick: function() {
+                            setBBB({ bull: { cagr: 0.16, margin: 0.47, mult: 32, prob: 25 }, base: { cagr: 0.13, margin: 0.44, mult: 28, prob: 50 }, bear: { cagr: 0.08, margin: 0.40, mult: 22, prob: 25 } });
+                        },
+                        style: { fontFamily: T.mono, fontSize: 10, color: T.muted, background: 'transparent', border: '1px solid ' + T.border2, borderRadius: 6, padding: '5px 11px', cursor: 'pointer' }
+                    }, 'Reset')
+                );
+            })()
         ),
 
         // AI thesis placeholder (PR4)
@@ -594,6 +629,16 @@ export function ValuationTab(p) {
                     value: isFinite(impliedROIC) ? (impliedROIC * 100).toFixed(1) + '%' : '—',
                     sub: isFinite(pvSplit) ? (pvSplit * 100).toFixed(0) + '% of EV in explicit period' : null,
                 })
+            ),
+            isFinite(pvSplit) && h('div', { style: { marginBottom: 12 } },
+                h('div', { style: { display: 'flex', justifyContent: 'space-between', fontFamily: T.mono, fontSize: 10, color: T.muted2, marginBottom: 5 } },
+                    h('span', null, 'PV OF EXPLICIT ' + n + 'YR  ·  ' + (pvSplit * 100).toFixed(0) + '%'),
+                    h('span', null, 'TERMINAL VALUE  ·  ' + ((1 - pvSplit) * 100).toFixed(0) + '%')
+                ),
+                h('div', { style: { display: 'flex', height: 22, borderRadius: 6, overflow: 'hidden', border: '1px solid ' + T.border } },
+                    h('div', { style: { width: clamp(pvSplit * 100, 0, 100) + '%', background: T.cyanDim, borderRight: '2px solid ' + T.cyan, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: T.mono, fontSize: 10, color: T.cyan } }, (pvSplit * 100).toFixed(0) + '%'),
+                    h('div', { style: { flex: 1, background: T.amberDim, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: T.mono, fontSize: 10, color: T.amber } }, ((1 - pvSplit) * 100).toFixed(0) + '%')
+                )
             ),
             h(Note, null,
                 isFinite(pvSplit) ? ((1 - pvSplit) * 100).toFixed(0) + '% of value sits in terminal value, so the margin assumption dominates. ' : '',
