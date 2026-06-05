@@ -369,6 +369,108 @@ export function VerdictStrip(p) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// AI THESIS SYNTHESIZER CARD
+// ─────────────────────────────────────────────────────────────────────────────
+function AIThesisCard(p) {
+    var _st = useState('idle'); // 'idle' | 'loading' | 'done' | 'error'
+    var genStatus = _st[0], setGenStatus = _st[1];
+    var _err = useState(null); var errMsg = _err[0], setErrMsg = _err[1];
+    var thesis = p.thesis;
+
+    function generate() {
+        if (!p.symbol) return;
+        setGenStatus('loading'); setErrMsg(null);
+        // Call edge function via Supabase client (imported at top of file)
+        sb.functions.invoke('synthesize_thesis', { body: { ticker: p.symbol } })
+            .then(function(res) {
+                if (res.error) { setErrMsg(res.error.message || 'Generation failed'); setGenStatus('error'); return; }
+                var d = res.data;
+                if (d && d.bull && d.bear) {
+                    p.onThesis && p.onThesis(d);
+                    setGenStatus('done');
+                } else {
+                    setErrMsg((d && d.error) || 'Unexpected response from synthesizer');
+                    setGenStatus('error');
+                }
+            })
+            .catch(function(e) { setErrMsg(e.message || 'Network error'); setGenStatus('error'); });
+    }
+
+    var hasThesis = thesis && thesis.bull && thesis.bull.length;
+    var isLoading = genStatus === 'loading';
+
+    return h('div', {
+        style: { border: '1px solid rgba(167,139,250,.3)', borderRadius: 13, background: T.violetDim, padding: 20 }
+    },
+        // Header row
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: hasThesis ? 16 : 12 } },
+            h('span', { style: { fontFamily: T.mono, fontSize: 9, letterSpacing: '.14em', color: T.violet, border: '1px solid rgba(167,139,250,.4)', borderRadius: 5, padding: '4px 8px', flexShrink: 0 } }, '◆ AI ANALYST'),
+            h('div', { style: { fontFamily: T.mono, fontSize: 11, letterSpacing: '.15em', color: T.muted, textTransform: 'uppercase' } }, 'Thesis Synthesizer'),
+            hasThesis && thesis.filing_date && h('div', { style: { fontFamily: T.mono, fontSize: 10, color: T.muted2 } }, '10-K · ' + thesis.filing_date),
+            h('div', { style: { marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' } },
+                !hasThesis && !isLoading && h('button', {
+                    onClick: generate,
+                    style: { fontFamily: T.mono, fontSize: 10, color: T.violet, background: 'rgba(167,139,250,.12)', border: '1px solid rgba(167,139,250,.4)', borderRadius: 6, padding: '5px 12px', cursor: 'pointer' }
+                }, 'Generate'),
+                hasThesis && h('button', {
+                    onClick: generate, disabled: isLoading,
+                    style: { fontFamily: T.mono, fontSize: 9, color: T.muted2, background: 'transparent', border: '1px solid ' + T.border, borderRadius: 6, padding: '4px 10px', cursor: isLoading ? 'not-allowed' : 'pointer', opacity: isLoading ? 0.5 : 1 }
+                }, isLoading ? 'Refreshing…' : 'Refresh'),
+                isLoading && !hasThesis && h('div', { style: { fontFamily: T.mono, fontSize: 10, color: T.violet } }, 'Fetching 10-K from EDGAR…')
+            )
+        ),
+
+        // Loading skeleton
+        isLoading && !hasThesis && h('div', null,
+            h(Note, null, 'Reading SEC EDGAR 10-K filing · extracting MD&A · calling Claude · this takes ~15 seconds.'),
+            h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 14 } },
+                [T.green, T.red].map(function(col, i) {
+                    return h('div', { key: i, style: { border: '1px solid ' + col + '33', borderRadius: 9, padding: 14 } },
+                        h('div', { style: { fontFamily: T.mono, fontSize: 10, color: col, marginBottom: 10, letterSpacing: '.1em' } }, i === 0 ? 'BULL CASE' : 'BEAR CASE'),
+                        [1,2,3].map(function(j) {
+                            return h('div', { key: j, style: { height: 10, background: 'rgba(255,255,255,.06)', borderRadius: 4, marginBottom: 8, width: (60 + j * 10) + '%' } });
+                        })
+                    );
+                })
+            )
+        ),
+
+        // Error
+        genStatus === 'error' && h(Note, { style: { color: T.red, marginBottom: 10 } }, errMsg || 'Generation failed.'),
+
+        // Summary
+        hasThesis && thesis.summary && h('div', { style: { fontFamily: 'inherit', fontSize: 12.5, color: T.muted, lineHeight: 1.6, marginBottom: 16, paddingBottom: 14, borderBottom: '1px solid ' + T.border } },
+            thesis.summary
+        ),
+
+        // Bull / Bear grid
+        hasThesis && h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 } },
+            [
+                { key: 'bull', label: 'BULL CASE', color: T.green, dim: T.greenDim, items: thesis.bull },
+                { key: 'bear', label: 'BEAR CASE', color: T.red,   dim: T.redDim,   items: thesis.bear },
+            ].map(function(side) {
+                return h('div', { key: side.key },
+                    h('div', { style: { fontFamily: T.mono, fontSize: 9.5, letterSpacing: '.13em', color: side.color, textTransform: 'uppercase', marginBottom: 10 } }, side.label),
+                    (side.items || []).map(function(item, idx) {
+                        return h('div', { key: idx,
+                            style: { padding: '10px 12px', borderRadius: 8, background: side.dim, border: '1px solid ' + side.color + '33', marginBottom: 8 }
+                        },
+                            h('div', { style: { fontSize: 12.5, color: T.text, lineHeight: 1.55, marginBottom: 5 } }, item.point),
+                            h('div', { style: { fontFamily: T.mono, fontSize: 9, color: side.color, opacity: 0.75 } }, item.source)
+                        );
+                    })
+                );
+            })
+        ),
+
+        // Empty prompt (no thesis yet, not loading)
+        !hasThesis && !isLoading && genStatus !== 'error' && h(Note, null,
+            'Click Generate to fetch this company\'s latest 10-K from SEC EDGAR and produce structured bull/bear investment drivers using Claude. Results are cached for 90 days.'
+        )
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // TAB 1 — THESIS
 // ─────────────────────────────────────────────────────────────────────────────
 export function ThesisTab(p) {
@@ -533,17 +635,8 @@ export function ThesisTab(p) {
             })()
         ),
 
-        // AI thesis placeholder (PR4)
-        h('div', {
-            style: { border: '1px solid rgba(167,139,250,.3)', borderRadius: 13, background: T.violetDim, padding: 20 }
-        },
-            h('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 } },
-                h('span', { style: { fontFamily: T.mono, fontSize: 9, letterSpacing: '.14em', color: T.violet, border: '1px solid rgba(167,139,250,.4)', borderRadius: 5, padding: '4px 8px' } }, '◆ AI ANALYST'),
-                h('div', { style: { fontFamily: T.mono, fontSize: 11, letterSpacing: '.15em', color: T.muted, textTransform: 'uppercase' } }, 'Thesis Synthesizer — coming in PR4'),
-                h('div', { style: { marginLeft: 'auto', fontFamily: T.mono, fontSize: 10, color: T.muted2 } }, 'Claude API · 10-K MD&A')
-            ),
-            h(Note, null, 'AI thesis synthesizer will read SEC EDGAR 10-K filings and generate structured bull/bear drivers with source citations. Cache avoids redundant API calls.')
-        )
+        // ── AI Thesis Synthesizer ─────────────────────────────────────────
+        h(AIThesisCard, { thesis: p.thesis, symbol: p.symbol, onThesis: p.onThesis })
     );
 }
 
