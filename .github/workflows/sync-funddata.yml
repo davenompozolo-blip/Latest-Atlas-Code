@@ -1,0 +1,60 @@
+name: Atlas — FundsData SA NAV Sync
+
+on:
+  schedule:
+    # 4:00 PM SAST (14:00 UTC) weekdays — after JSE close
+    - cron: '0 14 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Sync mode: snapshot (latest prices) or backfill (historical for one fund)'
+        required: false
+        default: 'snapshot'
+      fund_code:
+        description: 'Fund code for backfill mode (e.g. AGEF001)'
+        required: false
+        default: ''
+
+jobs:
+  sync:
+    name: Sync SA Fund NAVs
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Run FundsData sync
+        env:
+          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SYNC_MODE:                 ${{ github.event.inputs.mode || 'snapshot' }}
+          BACKFILL_FUND_CODE:        ${{ github.event.inputs.fund_code || '' }}
+        run: node scripts/sync-funddata.mjs
+
+      - name: Record failure in atlas_memory
+        if: failure()
+        env:
+          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          curl -s -X POST "$SUPABASE_URL/rest/v1/atlas_memory" \
+            -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "category": "bug",
+              "key": "sync_funddata_failure_'"$(date -u +%Y%m%d)"'",
+              "content": "FundsData sync job failed. Check GitHub Actions logs.",
+              "tags": ["sync","funddata","automated"],
+              "priority": 2,
+              "source": "github_actions"
+            }'
