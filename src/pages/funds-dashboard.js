@@ -18,6 +18,7 @@ import { Loading } from './components.js';
 import { FundProfile } from './funds-profile.js';
 import { FundPerformance } from './funds-performance.js';
 import { FundComparison } from './funds-comparison.js';
+import { FundScreener } from './fund-screener.js';
 import { sb } from './config.js';
 
 var useState = React.useState, useEffect = React.useEffect,
@@ -619,8 +620,39 @@ export function FundsDashboard() {
     var analyse=useCallback(function(raw){
         var s=(raw||'').trim().toUpperCase();
         if(!s)return;
+        setSaFund(null);
         setSymbol(s);
     },[]);
+
+    // Open an SA fund from the screener. If it's a tracked fund (in the funds
+    // catalogue) we load the full dossier; otherwise we show the cost registry
+    // snapshot we have from fund_prices_raw.
+    var openSaFund=useCallback(function(fundName){
+        if(!fundName||!sb)return;
+        setSymbol(null); setSaFund(null);
+        setStatus('loading'); setErrMsg(null); setData(null);
+        (async function(){
+            try{
+                var tracked=await sb.from('funds').select('ticker,external_code')
+                    .ilike('name', fundName).limit(1).maybeSingle();
+                if(!tracked.error && tracked.data && (tracked.data.ticker||tracked.data.external_code)){
+                    analyse(tracked.data.ticker||tracked.data.external_code);
+                    return;
+                }
+                var pr=await sb.from('fund_prices_raw')
+                    .select('fund_name,asisa_category,ter,tc,tic,price_date,manager')
+                    .eq('source','funddata_public').eq('fund_name',fundName).limit(1).maybeSingle();
+                if(pr.error||!pr.data){setErrMsg('Fund not found in cost registry.');setStatus('error');return;}
+                var r=pr.data;
+                setSaFund({
+                    fund_name:r.fund_name, asisa_category:r.asisa_category, manager:r.manager,
+                    ter:r.ter!=null?Number(r.ter):null, tc:r.tc!=null?Number(r.tc):null,
+                    tic:r.tic!=null?Number(r.tic):null, price_date:r.price_date,
+                });
+                setStatus('ready');
+            }catch(e){setErrMsg(e.message||String(e));setStatus('error');}
+        })();
+    },[analyse]);
 
     // Universal entry resolver + data fetch
     useEffect(function(){
@@ -725,7 +757,12 @@ export function FundsDashboard() {
                 border:'none',borderRadius:8,padding:'10px 20px',fontWeight:600,
                 cursor:status==='loading'?'not-allowed':'pointer',opacity:status==='loading'?0.6:1,
                 letterSpacing:1,textTransform:'uppercase',fontSize:12}},
-            status==='loading'?'Loading…':'Analyse'));
+            status==='loading'?'Loading…':'Analyse'),
+        status!=='idle'&&h('button',{onClick:function(){setSymbol(null);setSaFund(null);setStatus('idle');setErrMsg(null);},
+            style:{background:'rgba(255,255,255,0.05)',color:'rgba(255,255,255,0.55)',
+                border:'1px solid rgba(255,255,255,0.12)',borderRadius:8,padding:'10px 16px',
+                fontWeight:600,cursor:'pointer',letterSpacing:1,textTransform:'uppercase',fontSize:12}},
+            '← Screener'));
 
     var header=h('div',null,
         h('div',{className:'page-title'},'Funds'),
@@ -733,14 +770,40 @@ export function FundsDashboard() {
 
     if(status==='idle')
         return h('div',null,header,
-            h('div',{className:'card',style:{textAlign:'center',padding:40,color:'var(--text-muted)',marginTop:16}},
-                'Enter a fund ticker (e.g. SPY) or fund name/code to open the research dossier.'));
+            h(FundScreener,{onPick:function(val,kind){
+                if(kind==='sa_fund') openSaFund(val);
+                else { setInput(val); analyse(val); }
+            }}));
     if(status==='loading') return h('div',null,header,h(Loading,null));
     if(status==='error')
         return h('div',null,header,
             h('div',{className:'card',style:{borderColor:'rgba(239,68,68,0.3)',marginTop:16}},
                 h('div',{className:'card-title',style:{color:'var(--red)'}},'Request failed'),
                 h('div',{style:{fontSize:13,color:'rgba(255,255,255,0.7)'}},errMsg||'Unknown error')));
+
+    // ── SA fund cost-registry view (fund not in tracked catalogue) ──
+    if(saFund)
+        return h('div',null,header,
+            h('div',{style:{display:'grid',gridTemplateColumns:'1fr',gap:16,marginTop:16}},
+                h('div',{className:'card'},
+                    h('div',{style:{fontSize:20,fontWeight:700}},saFund.fund_name),
+                    h('div',{style:{display:'flex',gap:8,marginTop:8,flexWrap:'wrap',alignItems:'center'}},
+                        saFund.asisa_category&&h('span',{style:{fontSize:11,padding:'3px 10px',borderRadius:12,
+                            background:'rgba(99,102,241,0.15)',color:'#818cf8',letterSpacing:0.5}},saFund.asisa_category),
+                        saFund.manager&&h('span',{style:{fontSize:12,color:'rgba(255,255,255,0.5)'}},'Manager: '+saFund.manager),
+                        h('span',{style:{fontSize:11,color:'rgba(255,255,255,0.4)'}},'As of '+(saFund.price_date||'—'))),
+                    h('div',{className:'metrics-row',style:{gridTemplateColumns:'repeat(3,1fr)',marginTop:14}},
+                        h(MetricTile,{label:'TER',value:saFund.ter!=null?saFund.ter.toFixed(2)+'%':'—',
+                            color:saFund.ter!=null&&saFund.ter>=3?'#ef4444':saFund.ter!=null&&saFund.ter>=1.75?'#f59e0b':'#10b981'}),
+                        h(MetricTile,{label:'Transaction Costs',value:saFund.tc!=null?saFund.tc.toFixed(2)+'%':'—'}),
+                        h(MetricTile,{label:'Total Investment Charge',value:saFund.tic!=null?saFund.tic.toFixed(2)+'%':'—',
+                            color:saFund.tic!=null&&saFund.tic>=3.5?'#ef4444':saFund.tic!=null&&saFund.tic>=2.25?'#f59e0b':'#10b981'}))),
+                h('div',{className:'card',style:{borderColor:'rgba(245,158,11,0.25)'}},
+                    h('div',{className:'card-title',style:{color:'#f59e0b'}},'Cost registry only'),
+                    h('div',{style:{fontSize:13,color:'rgba(255,255,255,0.7)',lineHeight:1.6}},
+                        'This fund is sourced from the public ASISA cost registry (TER / TC / TIC). Full '
+                        +'performance, risk, style and skill analytics become available once the fund is added to '
+                        +'the tracked catalogue with a returns history.'))));
 
     var profile=data.profile||{}, meta=data.meta||{}, metrics=data.metrics||{}, series=data.series||[];
     var fundName=profile.name||meta.name||symbol;
