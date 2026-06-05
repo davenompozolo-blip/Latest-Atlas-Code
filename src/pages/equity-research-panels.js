@@ -520,7 +520,7 @@ export function ValuationTab(p) {
     var pvSplit = null;
     if (inp.revenue && inp.shares && isFinite(price)) {
         impliedCagr   = solveImpliedCAGR(price, inp.shares, inp.netDebt, inp.revenue, margin, tax, wacc, g, n);
-        impliedMargin = solveReverseMargin(price, inp.shares, inp.netDebt, inp.revenue, impliedCagr, tax, wacc, g, n);
+        impliedMargin = solveImpliedMargin(price, inp.shares, inp.netDebt, inp.revenue, impliedCagr, tax, wacc, g, n);
 
         // PV split: explicit vs terminal
         var evTotal = price * inp.shares + inp.netDebt;
