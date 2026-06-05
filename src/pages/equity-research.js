@@ -1,12 +1,11 @@
 import React from 'react';
 import { fmt, fmtCurrency, cls, useChart } from './utils.js';
 import { Loading, EmptyState } from './components.js';
-import { QualityPanel, CapitalAllocationPanel } from './equity-financials.js';
-import { FairValueSynthesizerPanel } from './equity-valuation.js';
-import { PeerComparison } from './equity-peers.js';
-import { DCFEngine } from './equity-dcf.js';
-import { TechnicalsTab } from './equity-technicals.js';
 import { sb } from './config.js';
+import {
+    VerdictStrip, ThesisTab, ValuationTab, QualityTab,
+    CapitalTab, FactorTab, TechnicalsAndPeersTab, parseInputs,
+} from './equity-research-panels.js';
 
 const { useState, useEffect, useCallback } = React;
 
@@ -297,7 +296,7 @@ function SidebarAnalystCard({ rawOverview, current }) {
     );
 }
 
-// ── Main tab content ────────────────────────────────────────────────────────
+// ── Legacy EarningsSummary kept for possible reuse ──────────────────────────
 
 function EarningsSummary({ quarterly, snapshot }) {
     if (!quarterly || !quarterly.length) {
@@ -364,73 +363,65 @@ function EarningsSummary({ quarterly, snapshot }) {
     );
 }
 
-function FundamentalsTab({ financials, rawOverview }) {
-    if (!financials && !rawOverview) {
-        return React.createElement('div', { className: 'card', style: { color: 'var(--text-muted)', padding: 32 } }, 'Financial data unavailable.');
-    }
-    const snap = financials && financials.snapshot;
-    return React.createElement('div', null,
-        React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 13, marginBottom: 13 } },
-            React.createElement('div', null, React.createElement(QualityPanel, { overview: rawOverview, snapshot: snap })),
-            React.createElement('div', null, React.createElement(CapitalAllocationPanel, { overview: rawOverview, snapshot: snap }))
-        ),
-        React.createElement(EarningsSummary, { quarterly: financials && financials.quarterly, snapshot: snap })
-    );
-}
-
-function ValuationTab({ financials, rawOverview, series }) {
-    const snap  = financials && financials.snapshot;
-    const price = series && series.length ? series[series.length - 1].close : null;
-    return React.createElement(FairValueSynthesizerPanel, { snap, overview: rawOverview, price });
-}
-
-// ── Tab bar + routing ───────────────────────────────────────────────────────
+// ── New 6-tab main panel ─────────────────────────────────────────────────────
 
 var MAIN_TABS = [
-    { id: 'fundamentals', label: 'Fundamentals' },
-    { id: 'valuation',    label: 'Valuation' },
-    { id: 'technicals',   label: 'Technicals', isNew: true },
-    { id: 'peers',        label: 'Peers' },
-    { id: 'dcf',          label: 'DCF' },
+    { id: 'thesis',  label: 'Thesis' },
+    { id: 'val',     label: 'Valuation' },
+    { id: 'qual',    label: 'Quality & Forensics' },
+    { id: 'cap',     label: 'Capital Allocation' },
+    { id: 'factor',  label: 'Factor Lens',  isNew: true },
+    { id: 'tech',    label: 'Technicals & Peers' },
 ];
 
-function MainPanel({ symbol, financials, rawOverview, overview, series, peers }) {
-    const [tab, setTab] = useState('fundamentals');
+function MainPanel({ symbol, financials, rawOverview, overview, series, peers, derived }) {
+    const [tab,       setTab]      = useState('thesis');
+    const [blendedFV, setBlendedFV]= useState(null);
+    const [ev_pw,     setEVPW]     = useState(null);
 
-    let content = null;
-    if      (tab === 'fundamentals') content = React.createElement(FundamentalsTab, { financials, rawOverview });
-    else if (tab === 'valuation')    content = React.createElement(ValuationTab,    { financials, rawOverview, series });
-    else if (tab === 'technicals')   content = React.createElement(TechnicalsTab,   { series, overview: rawOverview });
-    else if (tab === 'peers')        content = React.createElement(PeerComparison,  { symbol, financials, overview: rawOverview, peers, defaultTab: 'bubble' });
-    else if (tab === 'dcf')          content = React.createElement(DCFEngine,       { financials, overview, series });
+    const price = series && series.length ? series[series.length - 1].close : null;
+    const snap  = financials && financials.snapshot;
+    const inp   = parseInputs(rawOverview, snap, price);
+
+    var tabContent = null;
+    if (tab === 'thesis')  tabContent = React.createElement(ThesisTab,  { inputs: inp, price, onBlendedFV: setBlendedFV, onEVPW: setEVPW });
+    if (tab === 'val')     tabContent = React.createElement(ValuationTab, { inputs: inp, price });
+    if (tab === 'qual')    tabContent = React.createElement(QualityTab,  { inputs: inp, derived, snap });
+    if (tab === 'cap')     tabContent = React.createElement(CapitalTab,  { inputs: inp, derived });
+    if (tab === 'factor')  tabContent = React.createElement(FactorTab,   { inputs: inp, derived });
+    if (tab === 'tech')    tabContent = React.createElement(TechnicalsAndPeersTab, { inputs: inp, price, series, rawOverview, peers, symbol });
 
     return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 } },
+        // verdict strip
+        React.createElement(VerdictStrip, { inputs: inp, price, ev_pw, derived, style: { margin: '8px 14px 0' } }),
+        // tab bar
         React.createElement('div', {
-            style: { display: 'flex', background: 'rgba(255,255,255,0.015)', borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }
+            style: { display: 'flex', background: 'rgba(255,255,255,0.015)', borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0, flexWrap: 'wrap' }
         },
             MAIN_TABS.map(function(t) {
-                const active = t.id === tab;
+                var active = t.id === tab;
                 return React.createElement('div', {
                     key: t.id,
                     onClick: function() { setTab(t.id); },
                     style: {
                         fontSize: 9, letterSpacing: 1, textTransform: 'uppercase',
-                        color: active ? '#00d4b8' : 'rgba(255,255,255,0.25)',
+                        color: active ? '#22d3ee' : 'rgba(255,255,255,0.25)',
                         padding: '9px 15px',
-                        borderBottom: '2px solid ' + (active ? '#00d4b8' : 'transparent'),
+                        borderBottom: '2px solid ' + (active ? '#22d3ee' : 'transparent'),
                         cursor: 'pointer', whiteSpace: 'nowrap',
                         display: 'flex', alignItems: 'center', gap: 4,
                     }
                 },
                     t.label,
                     t.isNew && React.createElement('span', {
-                        style: { fontSize: 7, background: 'rgba(0,212,184,0.15)', color: '#00d4b8', padding: '1px 5px', borderRadius: 6, letterSpacing: 0 }
+                        style: { fontSize: 7, background: 'rgba(34,211,238,0.15)', color: '#22d3ee', padding: '1px 5px', borderRadius: 6, letterSpacing: 0 }
                     }, 'NEW')
                 );
             })
         ),
+        // panel
         React.createElement('div', { style: { flex: 1, overflowY: 'auto', padding: '14px 16px' } },
-            content
+            tabContent
         )
     );
 }
@@ -443,6 +434,7 @@ export function EquityResearch(props) {
     const [status, setStatus] = useState('idle');
     const [errMsg, setErrMsg] = useState(null);
     const [payload, setPayload] = useState(null);
+    const [derived, setDerived] = useState(null);
     const [portfolioPos,  setPortfolioPos]  = useState(null);
     const [portfolioPerf, setPortfolioPerf] = useState(null);
 
@@ -478,12 +470,16 @@ export function EquityResearch(props) {
     }, [symbol]);
 
     useEffect(function() {
-        setPortfolioPos(null); setPortfolioPerf(null);
+        setPortfolioPos(null); setPortfolioPerf(null); setDerived(null);
         if (!symbol || !sb) return;
         sb.from('vw_risk_analysis').select('symbol,market_value,weight,dollar_var_95_daily').eq('symbol', symbol).maybeSingle()
             .then(function(res) { if (res.data) setPortfolioPos(res.data); });
         sb.from('vw_performance_suite').select('symbol,total_return_pct,entry_price,days_held').eq('symbol', symbol).maybeSingle()
             .then(function(res) { if (res.data) setPortfolioPerf(res.data); });
+        // Load precomputed quality/forensic scores — gracefully absent until sync_fundamentals runs
+        sb.from('equity_fundamentals_derived')
+            .select('*').eq('ticker', symbol).order('fiscal_year', { ascending: false }).limit(1).maybeSingle()
+            .then(function(res) { if (res.data) setDerived(res.data); });
     }, [symbol]);
 
     function saveToScrapbook() {
@@ -602,6 +598,7 @@ export function EquityResearch(props) {
                 overview,
                 series,
                 peers: payload && payload.peers,
+                derived,
             })
         )
     );
