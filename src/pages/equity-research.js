@@ -374,7 +374,7 @@ var MAIN_TABS = [
     { id: 'tech',    label: 'Technicals & Peers' },
 ];
 
-function MainPanel({ symbol, financials, rawOverview, overview, series, peers, derived }) {
+function MainPanel({ symbol, financials, rawOverview, overview, series, peers, derived, thesis, onThesis }) {
     const [tab,       setTab]      = useState('thesis');
     const [blendedFV, setBlendedFV]= useState(null);
     const [ev_pw,     setEVPW]     = useState(null);
@@ -384,7 +384,7 @@ function MainPanel({ symbol, financials, rawOverview, overview, series, peers, d
     const inp   = parseInputs(rawOverview, snap, price);
 
     var tabContent = null;
-    if (tab === 'thesis')  tabContent = React.createElement(ThesisTab,  { inputs: inp, price, onBlendedFV: setBlendedFV, onEVPW: setEVPW });
+    if (tab === 'thesis')  tabContent = React.createElement(ThesisTab,  { inputs: inp, price, onBlendedFV: setBlendedFV, onEVPW: setEVPW, symbol, thesis, onThesis });
     if (tab === 'val')     tabContent = React.createElement(ValuationTab, { inputs: inp, price });
     if (tab === 'qual')    tabContent = React.createElement(QualityTab,  { inputs: inp, derived, snap });
     if (tab === 'cap')     tabContent = React.createElement(CapitalTab,  { inputs: inp, derived });
@@ -435,6 +435,7 @@ export function EquityResearch(props) {
     const [errMsg, setErrMsg] = useState(null);
     const [payload, setPayload] = useState(null);
     const [derived, setDerived] = useState(null);
+    const [thesis,  setThesis]  = useState(null);
     const [portfolioPos,  setPortfolioPos]  = useState(null);
     const [portfolioPerf, setPortfolioPerf] = useState(null);
 
@@ -470,7 +471,7 @@ export function EquityResearch(props) {
     }, [symbol]);
 
     useEffect(function() {
-        setPortfolioPos(null); setPortfolioPerf(null); setDerived(null);
+        setPortfolioPos(null); setPortfolioPerf(null); setDerived(null); setThesis(null);
         if (!symbol || !sb) return;
         sb.from('vw_risk_analysis').select('symbol,market_value,weight,dollar_var_95_daily').eq('symbol', symbol).maybeSingle()
             .then(function(res) { if (res.data) setPortfolioPos(res.data); });
@@ -495,6 +496,15 @@ export function EquityResearch(props) {
                         .catch(function() {});  // graceful — live without derived data
                 }
             });
+        // Load cached AI thesis (90-day TTL; user triggers generation via button if absent)
+        var cutoff = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
+        sb.from('ai_thesis_cache')
+            .select('ticker,filing_date,bull,bear,summary,model')
+            .eq('ticker', symbol)
+            .gte('filing_date', cutoff)
+            .order('filing_date', { ascending: false })
+            .limit(1).maybeSingle()
+            .then(function(res) { if (res.data) setThesis(res.data); });
     }, [symbol]);
 
     function saveToScrapbook() {
@@ -614,6 +624,8 @@ export function EquityResearch(props) {
                 series,
                 peers: payload && payload.peers,
                 derived,
+                thesis,
+                onThesis: setThesis,
             })
         )
     );
