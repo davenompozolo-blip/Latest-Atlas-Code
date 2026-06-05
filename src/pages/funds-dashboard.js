@@ -186,17 +186,257 @@ function EtfStructural(p) {
         }));
 }
 
-// ── Stub layer ─────────────────────────────────────────────────
+// ── Style & Exposure layer (Layer 3) ──────────────────────────
 
-function StubLayer(p) {
-    return h('div',{style:{display:'flex',flexDirection:'column',alignItems:'center',
-        justifyContent:'center',minHeight:280,gap:10}},
-        h('div',{style:{fontFamily:T.mono,fontSize:12,color:T.muted2,letterSpacing:'.1em'}},
-            p.label+' — Coming in '+p.pr),
-        h('div',{style:{fontSize:12,color:T.muted2}},p.desc||''));
+var STYLE_CLASSES = [
+    {key:'sa_equity',       label:'SA Equity',       color:'#22d3ee'},
+    {key:'offshore_equity', label:'Offshore Equity', color:'#6366f1'},
+    {key:'sa_bonds',        label:'SA Bonds',         color:'#f5b53d'},
+    {key:'sa_property',     label:'SA Property',      color:'#41d18a'},
+    {key:'cash',            label:'Cash',             color:'#7e8b99'},
+];
+
+function StyleDriftChart(p) {
+    var rows = p.rows || [];
+    if (rows.length < 2) return h('div',{style:{color:T.muted2,fontSize:12}},'Insufficient drift data.');
+    var W = 480, H = 120, PX = 8, PY = 8;
+    var innerH = H - PY * 2, innerW = W - PX * 2;
+    var n = rows.length;
+
+    return h('svg',{width:'100%',height:H,viewBox:'0 0 '+W+' '+H,preserveAspectRatio:'none'},
+        STYLE_CLASSES.map(function(cls) {
+            var pts = rows.map(function(r, i) {
+                var w = r.weights ? (r.weights[cls.key] || 0) : 0;
+                var x = PX + (i / (n - 1)) * innerW;
+                var y = PY + (1 - w) * innerH;
+                return x.toFixed(1) + ',' + y.toFixed(1);
+            }).join(' ');
+            return h('polyline',{key:cls.key,points:pts,fill:'none',
+                stroke:cls.color,strokeWidth:1.5,opacity:.8});
+        }),
+        h('line',{x1:PX,y1:PY,x2:PX,y2:H-PY,stroke:'rgba(255,255,255,.06)'}),
+        h('line',{x1:PX,y1:H-PY,x2:W-PX,y2:H-PY,stroke:'rgba(255,255,255,.06)'}),
+        rows.filter(function(_,i){return i===0||i===n-1||i===Math.floor(n/2);}).map(function(r,i,arr){
+            var idx = i===0?0:i===arr.length-1?n-1:Math.floor(n/2);
+            var x = PX + (idx / (n - 1)) * innerW;
+            return h('text',{key:i,x:x,y:H-1,textAnchor:'middle',fill:T.muted,fontSize:8,fontFamily:T.mono},
+                r.as_of ? r.as_of.slice(0,7) : '');
+        }));
 }
 
-// ── Cost layer (Layer 7) ───────────────────────────────────────
+function StyleLayer(p) {
+    var rows = p.styleData || [];
+    var fundType = p.fundType || 'listed';
+    if (fundType !== 'tracked') {
+        return h('div',{style:{padding:32,textAlign:'center',color:T.muted2,fontSize:13}},
+            'Style decomposition (RBSA) is available for SA tracked funds only.',
+            h('br',null),
+            h('span',{style:{fontSize:11,marginTop:6,display:'block'}},
+                'For listed ETFs, refer to the fund prospectus for stated index exposure.'));
+    }
+    if (!rows.length) {
+        return h('div',{style:{padding:32,textAlign:'center',color:T.muted2,fontSize:12,fontFamily:T.mono}},
+            'No style data available. Run the RBSA compute job to populate fund_style.');
+    }
+    var latest = rows[rows.length - 1];
+    var w = latest.weights || {};
+    var r2 = latest.r2;
+    var totalW = STYLE_CLASSES.reduce(function(s,c){return s+(w[c.key]||0);},0);
+
+    return h('div',null,
+        h('div',{style:{display:'grid',gridTemplateColumns:'1.6fr 1fr',gap:14,marginBottom:14}},
+            // Stacked weights bar + legend
+            h('div',{className:'card'},
+                h('div',{className:'card-title'},'Latest RBSA Style Weights'),
+                h('div',{style:{marginBottom:16,marginTop:8}},
+                    // stacked bar
+                    h('div',{style:{display:'flex',height:28,borderRadius:6,overflow:'hidden',gap:2}},
+                        STYLE_CLASSES.map(function(cls){
+                            var wt = totalW > 0 ? (w[cls.key]||0)/totalW : 0;
+                            if (wt < 0.005) return null;
+                            return h('div',{key:cls.key,style:{flex:wt,background:cls.color,
+                                display:'flex',alignItems:'center',justifyContent:'center',
+                                fontSize:9,fontFamily:T.mono,color:'rgba(0,0,0,.7)',fontWeight:700}},
+                                wt >= 0.08 ? (wt*100).toFixed(0)+'%' : '');
+                        }))),
+                h('div',{style:{display:'flex',flexWrap:'wrap',gap:'6px 16px',marginTop:10}},
+                    STYLE_CLASSES.map(function(cls){
+                        var wt = w[cls.key] || 0;
+                        return h('div',{key:cls.key,style:{display:'flex',alignItems:'center',gap:5,fontSize:12}},
+                            h('span',{style:{width:10,height:10,borderRadius:2,background:cls.color,flexShrink:0}}),
+                            h('span',{style:{color:T.muted}},cls.label+':'),
+                            h('b',{style:{fontFamily:T.mono,fontSize:11}},(wt*100).toFixed(1)+'%'));
+                    }))),
+            // R² and date
+            h('div',{className:'card'},
+                h('div',{className:'card-title'},'Fit Statistics'),
+                h('div',{style:{textAlign:'center',padding:'16px 0'}},
+                    h('div',{style:{fontFamily:T.mono,fontSize:32,fontWeight:600,
+                        color:r2>=0.85?T.green:r2>=0.70?T.amber:T.red}},
+                        r2!=null?(r2*100).toFixed(1)+'%':'—'),
+                    h('div',{style:{fontSize:11,color:T.muted2,marginTop:4}},'R² — Return Explained')),
+                h('div',{style:{fontSize:12,color:T.muted,lineHeight:1.55}},
+                    r2>=0.85?'Strong fit. Style explains most of the fund\'s return variance.'
+                    :r2>=0.70?'Moderate fit. Some active allocation beyond core style factors.'
+                    :'Weak fit — significant idiosyncratic or alternative risk exposures.'))),
+        // Rolling drift chart
+        h('div',{className:'card'},
+            h('div',{className:'card-title'},'Rolling 36-Month Style Drift'),
+            h('div',{style:{marginBottom:6,display:'flex',gap:12,flexWrap:'wrap'}},
+                STYLE_CLASSES.map(function(cls){
+                    return h('div',{key:cls.key,style:{display:'flex',alignItems:'center',gap:4,fontSize:11}},
+                        h('span',{style:{width:16,height:2,background:cls.color,display:'inline-block',borderRadius:1}}),
+                        h('span',{style:{color:T.muted}},cls.label));
+                })),
+            h(StyleDriftChart,{rows:rows}),
+            h('div',{style:{fontSize:11,color:T.muted2,marginTop:6}},
+                'Each line is the implied '+rows[0]&&rows[0].weights?'RBSA':'style'+' weight for that asset class across quarterly rolling windows. Sharpe (1992) constrained QP — weights sum to 1, long-only.')));
+}
+
+// ── Skill vs Luck layer (Layer 4) ─────────────────────────────
+
+function AlphaGauge(p) {
+    // Horizontal bar showing raw vs shrunk alpha with CI
+    var raw = p.raw || 0, shrunk = p.shrunk || 0;
+    var lo = p.lo || 0, hi = p.hi || 0;
+    var scale = Math.max(Math.abs(hi), Math.abs(raw), 0.08);
+    function toX(v) { return 50 + (v / scale) * 45; }
+    var x0 = toX(0), xl = toX(lo), xh = toX(hi), xr = toX(raw), xs = toX(shrunk);
+    return h('svg',{width:'100%',height:56,viewBox:'0 0 100 56'},
+        // zero line
+        h('line',{x1:x0,y1:4,x2:x0,y2:52,stroke:'rgba(255,255,255,.12)',strokeWidth:0.5}),
+        // CI range bar
+        h('rect',{x:xl,y:18,width:Math.max(0,xh-xl),height:6,
+            fill:'rgba(34,211,238,.18)',rx:3}),
+        // raw alpha marker
+        h('line',{x1:xr,y1:12,x2:xr,y2:44,stroke:T.cyan,strokeWidth:1.5,strokeDasharray:'3 2'}),
+        h('text',{x:xr,y:10,textAnchor:'middle',fill:T.cyan,fontSize:7,fontFamily:T.mono},'raw'),
+        // shrunk alpha diamond
+        h('polygon',{points:[xs+',21',xs+4+',24',xs+',27',xs-4+',24'].join(' '),fill:T.amber}),
+        h('text',{x:xs,y:38,textAnchor:'middle',fill:T.amber,fontSize:7,fontFamily:T.mono},'post'),
+        // axis labels
+        h('text',{x:toX(-scale*0.5),y:52,textAnchor:'middle',fill:T.muted2,fontSize:6,fontFamily:T.mono},
+            ((-scale*0.5)*100).toFixed(1)+'%'),
+        h('text',{x:x0,y:52,textAnchor:'middle',fill:T.muted2,fontSize:6,fontFamily:T.mono},'0%'),
+        h('text',{x:toX(scale*0.5),y:52,textAnchor:'middle',fill:T.muted2,fontSize:6,fontFamily:T.mono},
+            ((scale*0.5)*100).toFixed(1)+'%'));
+}
+
+function QuartileGrid(p) {
+    var path = p.path || [];
+    var colorMap = {'1':T.green,'2':'#22c55e','3':T.amber,'4':T.red};
+    var labelMap = {'1':'1st','2':'2nd','3':'3rd','4':'4th'};
+    if (!path.length) return null;
+    return h('div',{style:{display:'flex',flexWrap:'wrap',gap:8,marginTop:8}},
+        path.map(function(pt,i){
+            var q = String(pt.q || pt.quartile || '—');
+            var col = colorMap[q] || T.muted;
+            return h('div',{key:i,style:{textAlign:'center',minWidth:52}},
+                h('div',{style:{fontFamily:T.mono,fontSize:22,fontWeight:700,color:col}},q),
+                h('div',{style:{fontSize:9,color:T.muted,letterSpacing:'.06em',textTransform:'uppercase'}},pt.period||''));
+        }));
+}
+
+function SkillLayer(p) {
+    var rows = p.skillData || [];
+    var fundType = p.fundType || 'listed';
+    if (fundType !== 'tracked') {
+        return h('div',{style:{padding:32,textAlign:'center',color:T.muted2,fontSize:13}},
+            'Alpha / skill analysis is available for SA tracked funds only.',
+            h('br',null),
+            h('span',{style:{fontSize:11,marginTop:6,display:'block'}},
+                'For listed ETFs, compare against the tracked index directly.'));
+    }
+    if (!rows.length) {
+        return h('div',{style:{padding:32,textAlign:'center',color:T.muted2,fontSize:12,fontFamily:T.mono}},
+            'No skill data available. Run the alpha compute job to populate fund_skill.');
+    }
+    var latest = rows[rows.length - 1];
+    var raw    = latest.alpha_raw;
+    var shrunk = latest.alpha_shrunk;
+    var se     = latest.alpha_se;
+    var lo     = latest.posterior_lo;
+    var hi     = latest.posterior_hi;
+    var tstat  = (raw != null && se != null && se > 0) ? raw / se : null;
+    var narrative = latest.shrink_narrative || '';
+    var quartiles = typeof latest.quartile_path === 'string'
+        ? JSON.parse(latest.quartile_path) : (latest.quartile_path || []);
+
+    var tColor = tstat == null ? T.muted : Math.abs(tstat) >= 2 ? T.green : Math.abs(tstat) >= 1.5 ? T.amber : T.red;
+    var conviction = tstat == null ? '—' : Math.abs(tstat) >= 2 ? 'SKILL SIGNAL' : Math.abs(tstat) >= 1.5 ? 'MARGINAL' : 'NOISE';
+
+    // Rolling alpha trend (from all rows)
+    var W = 360, H = 70, PX = 8, PY = 8;
+    var n = rows.length;
+    var maxAlpha = Math.max(...rows.map(function(r){return r.alpha_raw||0;}), 0.01);
+    function ax(i) { return PX + (i/(n-1))*(W-PX*2); }
+    function ay(v) { return H-PY - ((v||0)/maxAlpha)*(H-PY*2); }
+    var rawPts = rows.map(function(r,i){return ax(i).toFixed(1)+','+ay(r.alpha_raw).toFixed(1);}).join(' ');
+    var srkPts = rows.map(function(r,i){return ax(i).toFixed(1)+','+ay(r.alpha_shrunk).toFixed(1);}).join(' ');
+
+    return h('div',null,
+        h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:14}},
+            // Alpha summary card
+            h('div',{className:'card'},
+                h('div',{className:'card-title'},'Alpha Analysis — Latest Window'),
+                h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:12}},
+                    [{l:'Raw α (ann.)',  v:raw!=null?(raw*100).toFixed(2)+'%':null,  c:raw>0?T.green:T.red},
+                     {l:'Posterior α',  v:shrunk!=null?(shrunk*100).toFixed(2)+'%':null,c:T.amber},
+                     {l:'t-statistic',  v:tstat!=null?tstat.toFixed(2):null,          c:tColor},
+                    ].map(function(k,i){
+                        return h('div',{key:i,style:{textAlign:'center',padding:'10px 6px',
+                            background:'rgba(255,255,255,.03)',borderRadius:8}},
+                            h('div',{style:{fontSize:9,textTransform:'uppercase',letterSpacing:'.1em',
+                                color:T.muted,marginBottom:4}},k.l),
+                            h('div',{style:{fontFamily:T.mono,fontSize:18,fontWeight:600,color:k.c}},k.v||'—'));
+                    })),
+                h('div',{style:{marginBottom:10}},h(AlphaGauge,{raw:raw,shrunk:shrunk,lo:lo,hi:hi})),
+                h('div',{style:{display:'inline-flex',alignItems:'center',gap:8,padding:'6px 12px',
+                    borderRadius:7,border:'1px solid '+(tColor==='#41d18a'?'rgba(65,209,138,.3)':tColor===T.amber?'rgba(245,181,61,.3)':'rgba(247,109,109,.3)'),
+                    background:tColor==='#41d18a'?T.greenDim:tColor===T.amber?T.amberDim:T.redDim}},
+                    h('span',{style:{width:7,height:7,borderRadius:'50%',background:tColor,display:'inline-block'}}),
+                    h('b',{style:{fontFamily:T.mono,fontSize:11,color:tColor,letterSpacing:'.04em'}},conviction))),
+            // 95% CI card
+            h('div',{className:'card'},
+                h('div',{className:'card-title'},'Bayesian Posterior (95% CI)'),
+                h('div',{style:{textAlign:'center',padding:'14px 0'}},
+                    lo!=null&&hi!=null
+                        ? h('div',null,
+                            h('div',{style:{fontFamily:T.mono,fontSize:11,color:T.muted,marginBottom:4}},
+                                'Posterior mean'),
+                            h('div',{style:{fontFamily:T.mono,fontSize:28,fontWeight:600,color:T.amber}},
+                                shrunk!=null?(shrunk*100).toFixed(2)+'%':'—'),
+                            h('div',{style:{fontSize:11,color:T.muted2,marginTop:4}},
+                                '['+(lo*100).toFixed(2)+'%  —  '+(hi*100).toFixed(2)+'%]'))
+                        : h('div',{style:{color:T.muted2,fontSize:12}},'CI not available')),
+                narrative && h('div',{style:{fontSize:12,color:T.muted,lineHeight:1.65,
+                    borderTop:'1px solid '+T.border,paddingTop:10,marginTop:4}},narrative))),
+        h('div',{style:{display:'grid',gridTemplateColumns:'1.4fr 1fr',gap:14}},
+            // Rolling alpha trend
+            h('div',{className:'card'},
+                h('div',{className:'card-title'},'Rolling Alpha Trend'),
+                h('div',{style:{marginBottom:6,display:'flex',gap:16,fontSize:11}},
+                    h('div',{style:{display:'flex',alignItems:'center',gap:4}},
+                        h('span',{style:{width:16,height:2,background:T.cyan,display:'inline-block',borderRadius:1}}),
+                        h('span',{style:{color:T.muted}},'Raw α')),
+                    h('div',{style:{display:'flex',alignItems:'center',gap:4}},
+                        h('span',{style:{width:16,height:2,background:T.amber,display:'inline-block',borderRadius:1,borderTop:'2px dashed '+T.amber,height:0}}),
+                        h('span',{style:{color:T.muted}},'Posterior α'))),
+                n >= 2 ? h('svg',{width:'100%',height:H,viewBox:'0 0 '+W+' '+H,preserveAspectRatio:'none'},
+                    h('line',{x1:PX,y1:ay(0),x2:W-PX,y2:ay(0),stroke:'rgba(255,255,255,.06)'}),
+                    h('polyline',{points:rawPts,fill:'none',stroke:T.cyan,strokeWidth:2}),
+                    h('polyline',{points:srkPts,fill:'none',stroke:T.amber,strokeWidth:1.5,strokeDasharray:'4 3'}))
+                : h('div',{style:{color:T.muted2,fontSize:12,padding:16,textAlign:'center'}},'Insufficient windows for trend.')),
+            // Quartile consistency
+            h('div',{className:'card'},
+                h('div',{className:'card-title'},'Quartile Consistency (vs SA EQ General peers)'),
+                quartiles.length > 0
+                    ? h('div',null,
+                        h(QuartileGrid,{path:quartiles}),
+                        h('div',{style:{fontSize:11,color:T.muted2,marginTop:12,lineHeight:1.5}},
+                            'Peer universe: ASISA SA Equity General. 1 = top quartile. Rankings based on calendar-year net returns.'))
+                    : h('div',{style:{color:T.muted2,fontSize:12,padding:12}},'No quartile history available.'))));
+}
 
 function CostLayer(p) {
     var meta=p.meta||{}, metrics=p.metrics||{};
@@ -335,8 +575,8 @@ function DossierTabs(p) {
     var content=null;
     if(tab==='profile')     content=h(FundProfile,{data:d});
     else if(tab==='perf')   content=h(PerformanceLayer,{data:d});
-    else if(tab==='style')  content=h(StubLayer,{label:'Style & Exposure',pr:'PR2',desc:'RBSA style decomposition + rolling 36-month drift chart.'});
-    else if(tab==='skill')  content=h(StubLayer,{label:'Skill vs Luck',pr:'PR2',desc:'Rolling alpha / t-stat, Bayesian-shrunk alpha, quartile consistency.'});
+    else if(tab==='style')  content=h(StyleLayer,{styleData:p.styleData,fundType:type});
+    else if(tab==='skill')  content=h(SkillLayer,{skillData:p.skillData,fundType:type});
     else if(tab==='composition') content=h(StubLayer,{label:'Composition & Attribution',pr:'PR3',desc:'Brinson-Fachler attribution by sector; holdings & overlap heatmap.'});
     else if(tab==='operations') content=type==='tracked'
         ? h(OddScorecard,{odd:odd,scores:scores,findings:findings})
@@ -373,8 +613,9 @@ export function FundsDashboard() {
     var _odd=useState(null),       oddData=_odd[0],   setOddData=_odd[1];
     var _sc=useState([]),          oddScores=_sc[0],  setOddScores=_sc[1];
     var _fi=useState([]),          oddFindings=_fi[0],setOddFindings=_fi[1];
-    // SA fund cost view (funds not in the tracked catalogue — cost registry only)
-    var _saf=useState(null),       saFund=_saf[0],    setSaFund=_saf[1];
+    // Style & Skill state
+    var _sty=useState([]),         styleData=_sty[0], setStyleData=_sty[1];
+    var _ski=useState([]),         skillData=_ski[0], setSkillData=_ski[1];
 
     var analyse=useCallback(function(raw){
         var s=(raw||'').trim().toUpperCase();
@@ -419,6 +660,7 @@ export function FundsDashboard() {
         var cancelled=false;
         setStatus('loading'); setErrMsg(null); setData(null);
         setOddData(null); setOddScores([]); setOddFindings([]);
+        setStyleData([]); setSkillData([]);
 
         (async function(){
             try{
@@ -471,6 +713,17 @@ export function FundsDashboard() {
                             .select('severity,title,detail,status').eq('assessment_id',oa.data.id);
                         if(!of_.error) setOddFindings(of_.data||[]);
                     }
+                    // Load style & skill
+                    var styR = await sb.from('fund_style')
+                        .select('as_of,weights,r2,drift_flag')
+                        .eq('fund_id', trackedFund.id)
+                        .order('as_of', {ascending:true});
+                    if (!styR.error) setStyleData(styR.data || []);
+                    var skiR = await sb.from('fund_skill')
+                        .select('as_of,alpha_raw,alpha_se,alpha_shrunk,posterior_lo,posterior_hi,shrink_narrative,quartile_path')
+                        .eq('fund_id', trackedFund.id)
+                        .order('as_of', {ascending:true});
+                    if (!skiR.error) setSkillData(skiR.data || []);
                     if(!cancelled) setStatus('ready');
                 } else {
                     // 2. Listed fund — validate ticker format and hit the API
@@ -614,5 +867,6 @@ export function FundsDashboard() {
                 h(DossierTabs,{
                     symbol:symbol,data:data,fundType:fundType,
                     odd:oddData,scores:oddScores,findings:oddFindings,
+                    styleData:styleData,skillData:skillData,
                 }))));
 }
