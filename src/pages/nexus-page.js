@@ -1080,7 +1080,6 @@ const NEXUS_NAV = [
     { id: 'equity',      icon: '□', label: 'Equity'    },
     { id: 'macro',       icon: '◉', label: 'Macro'     },
     { id: 'funds',       icon: '■', label: 'Funds'     },
-    { id: 'fundresearch', icon: '◧', label: 'Mgr Research' },
     { id: 'markets',     icon: '◎', label: 'Markets'   },
     { id: 'options',     icon: 'Ω', label: 'Options'   },
     { id: 'valuation',   icon: '◈', label: 'Valuation' },
