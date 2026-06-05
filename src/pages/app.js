@@ -9,6 +9,7 @@ import { PerformanceSuite } from './performance-suite.js';
 import { EquityResearch } from './equity-research.js';
 import { MacroDashboard } from './macro-dashboard.js';
 import { FundsDashboard } from './funds-dashboard.js';
+import { FundResearchV2 } from './fund-research-v2.js';
 import { MarketWatch } from './market-watch.js';
 import { TradingDashboard } from './trading.js';
 import { OptionsAnalysis } from './options-analysis.js';
@@ -32,6 +33,7 @@ const TABS = [
     { id: 'equity',      component: EquityResearch },
     { id: 'macro',       component: MacroDashboard },
     { id: 'funds',       component: FundsDashboard },
+    { id: 'fundresearch', component: FundResearchV2 },
     { id: 'markets',     component: MarketWatch },
     { id: 'options',     component: OptionsAnalysis },
     { id: 'valuation',   component: ValuationHub },
