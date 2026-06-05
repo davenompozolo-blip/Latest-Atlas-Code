@@ -476,10 +476,25 @@ export function EquityResearch(props) {
             .then(function(res) { if (res.data) setPortfolioPos(res.data); });
         sb.from('vw_performance_suite').select('symbol,total_return_pct,entry_price,days_held').eq('symbol', symbol).maybeSingle()
             .then(function(res) { if (res.data) setPortfolioPerf(res.data); });
-        // Load precomputed quality/forensic scores — gracefully absent until sync_fundamentals runs
+        // Load precomputed quality/forensic scores; trigger on-demand computation if absent
         sb.from('equity_fundamentals_derived')
             .select('*').eq('ticker', symbol).order('fiscal_year', { ascending: false }).limit(1).maybeSingle()
-            .then(function(res) { if (res.data) setDerived(res.data); });
+            .then(function(res) {
+                if (res.data) {
+                    setDerived(res.data);
+                } else {
+                    // No derived data — invoke edge function to compute scores, then re-fetch
+                    sb.functions.invoke('compute_ticker_derived', { body: { ticker: symbol } })
+                        .then(function(fnRes) {
+                            if (fnRes.error) return;  // graceful — panels show N/A
+                            // Re-fetch after computation
+                            return sb.from('equity_fundamentals_derived')
+                                .select('*').eq('ticker', symbol).order('fiscal_year', { ascending: false }).limit(1).maybeSingle()
+                                .then(function(r2) { if (r2.data) setDerived(r2.data); });
+                        })
+                        .catch(function() {});  // graceful — live without derived data
+                }
+            });
     }, [symbol]);
 
     function saveToScrapbook() {
