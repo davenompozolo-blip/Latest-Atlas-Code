@@ -43,6 +43,24 @@ function extractTag(block, tag) {
     return m ? m[1].trim() : null;
 }
 
+function extractImage(block) {
+    // media:thumbnail url="..."
+    var m = /<media:thumbnail[^>]+url=["']([^"']+)["']/i.exec(block);
+    if (m) return m[1];
+    // media:content with image type
+    m = /<media:content[^>]+url=["']([^"']+)["'][^>]*(?:medium=["']image["']|type=["']image[^"']*["'])/i.exec(block)
+     || /<media:content[^>]+(?:medium=["']image["']|type=["']image[^"']*["'])[^>]+url=["']([^"']+)["']/i.exec(block);
+    if (m) return m[1];
+    // media:content any URL that looks like an image
+    m = /<media:content[^>]+url=["']([^"']+)["']/i.exec(block);
+    if (m && /\.(jpe?g|png|webp|gif)/i.test(m[1])) return m[1];
+    // enclosure with image type
+    m = /<enclosure[^>]+url=["']([^"']+)["'][^>]*type=["']image[^"']*["']/i.exec(block)
+     || /<enclosure[^>]+type=["']image[^"']*["'][^>]+url=["']([^"']+)["']/i.exec(block);
+    if (m) return m[1];
+    return null;
+}
+
 function extractLink(block) {
     // Atom <link href="..."/> or RSS <link>url</link>
     var m = /<link[^>]+href=["']([^"'>]+)["']/i.exec(block)
@@ -87,9 +105,10 @@ async function fetchSource(src, limit) {
             var rawDesc = extractTag(block, 'description') || extractTag(block, 'summary') || extractTag(block, 'content:encoded') || extractTag(block, 'content') || '';
             var summary = stripHtml(rawDesc).slice(0, 240);
             if (summary.length === 240) summary += '…';
-            var ts = parseDate(pubRaw);
+            var ts        = parseDate(pubRaw);
+            var thumbnail = extractImage(block);
             if (title && link) {
-                items.push({ title: title, source: src.name, color: src.color, link: link, published: ts, timeAgo: timeAgo(ts), summary: summary });
+                items.push({ title: title, source: src.name, color: src.color, link: link, published: ts, timeAgo: timeAgo(ts), summary: summary, thumbnail: thumbnail || null });
             }
         }
         return items;
