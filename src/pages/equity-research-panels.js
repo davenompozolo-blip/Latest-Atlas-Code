@@ -1258,9 +1258,11 @@ export function TechnicalsAndPeersTab(p) {
                     ma50Pts && h('polyline', { points: ma50Pts, fill: 'none', stroke: T.muted2, strokeWidth: 1.5, strokeDasharray: '4 3' })
                 ),
                 h(Note, { style: { marginTop: 6 } },
-                    fin(vs200) && vs200 > 0
-                        ? 'Uptrend intact — price above both moving averages. RSI ' + (fin(rsi14) ? (rsi14 > 70 ? 'overbought, watch for reversal.' : rsi14 < 30 ? 'oversold, potential recovery setup.' : 'within normal range.') : 'data pending.')
-                        : 'Price below ' + (fin(vs200) && vs200 < 0 ? '200-DMA' : 'key moving averages') + '. Momentum confirms factor read.'
+                    fin(vs200)
+                        ? (vs200 > 0
+                            ? 'Uptrend intact — price above both moving averages. RSI ' + (fin(rsi14) ? (rsi14 > 70 ? 'overbought, watch for reversal.' : rsi14 < 30 ? 'oversold, potential recovery setup.' : 'within normal range.') : 'data pending.')
+                            : 'Price below 200-DMA — bearish structure. RSI ' + (fin(rsi14) ? (rsi14 < 30 ? 'oversold, potential recovery setup.' : rsi14 > 70 ? 'overbought despite weakness.' : 'within normal range.') : 'data pending.'))
+                        : 'Moving average data unavailable. RSI ' + (fin(rsi14) ? rsi14.toFixed(0) + ' — ' + (rsi14 > 70 ? 'overbought.' : rsi14 < 30 ? 'oversold.' : 'neutral range.') : 'pending.')
                 )
             ),
 
@@ -1281,9 +1283,10 @@ export function TechnicalsAndPeersTab(p) {
                         var positions = [[210, 95], [300, 55], [320, 110], [160, 150]];
                         var radii     = [24, 20, 16, 14];
                         var pt = positions[i], r2 = radii[i];
-                        return h('g', { key: peer.symbol || i },
+                        var sym = (typeof peer === 'string') ? peer : (peer.symbol || '—');
+                        return h('g', { key: sym + i },
                             h('circle', { cx: pt[0], cy: pt[1], r: r2, fill: 'rgba(255,255,255,.04)', stroke: T.muted }),
-                            h('text', { x: pt[0], y: pt[1] + 3, fill: T.muted, fontFamily: T.mono, fontSize: 9, textAnchor: 'middle' }, peer.symbol || '—')
+                            h('text', { x: pt[0], y: pt[1] + 3, fill: T.muted, fontFamily: T.mono, fontSize: 9, textAnchor: 'middle' }, sym)
                         );
                     })
                 )
@@ -1320,10 +1323,11 @@ export function TechnicalsAndPeersTab(p) {
                     ),
                     // Peer rows
                     peers && Array.isArray(peers) && peers.slice(0, 5).map(function(peer) {
-                        var pRevG = fin(Number(peer.revenueGrowth)) ? Number(peer.revenueGrowth) : null;
-                        return h('tr', { key: peer.symbol },
-                            h('td', { style: { padding: '10px', color: T.text } }, peer.symbol || '—'),
-                            ...[peer.evToEbitda, peer.trailingPE, peer.priceToFCF, peer.returnOnEquity ? (peer.returnOnEquity * 100).toFixed(1) + '%' : '—', pRevG != null ? (pRevG * 100).toFixed(1) + '%' : '—'].map(function(v, i) {
+                        var pObj = (typeof peer === 'string') ? { symbol: peer } : peer;
+                        var pRevG = fin(Number(pObj.revenueGrowth)) ? Number(pObj.revenueGrowth) : null;
+                        return h('tr', { key: pObj.symbol },
+                            h('td', { style: { padding: '10px', color: T.text } }, pObj.symbol || '—'),
+                            ...[pObj.evToEbitda, pObj.trailingPE, pObj.priceToFCF, pObj.returnOnEquity ? (pObj.returnOnEquity * 100).toFixed(1) + '%' : '—', pRevG != null ? (pRevG * 100).toFixed(1) + '%' : '—'].map(function(v, i) {
                                 return h('td', { key: i, style: { padding: '10px', fontFamily: T.mono, textAlign: 'right', color: T.muted } }, fin(Number(v)) ? fmtD(Number(v), 1) + (i < 3 ? 'x' : '') : v || '—');
                             }),
                             h('td', { style: { padding: '10px', fontFamily: T.mono, textAlign: 'right', color: T.muted } }, '—')

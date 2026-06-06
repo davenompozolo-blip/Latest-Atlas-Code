@@ -98,17 +98,49 @@ async function fetchEdgarText(url: string): Promise<string | null> {
   }
 }
 
-// Resolve ticker → CIK using EDGAR's company ticker mapping
+// Resolve ticker → CIK using EDGAR's full-text search (avoids ~3MB ticker map download)
 async function resolveCIK(ticker: string): Promise<string | null> {
-  // EDGAR provides a JSON map of ticker→CIK (updated daily)
-  const map = await fetchEdgar<Record<string, { cik_str: string; ticker: string; title: string }>>(
-    'https://www.sec.gov/files/company_tickers.json'
+  // Try EDGAR's company search endpoint first — fast, no large download
+  try {
+    const upper = ticker.toUpperCase()
+    const r = await fetch(
+      `https://efts.sec.gov/LATEST/search-index?q=%22${encodeURIComponent(upper)}%22&forms=10-K`,
+      { headers: { 'User-Agent': EDGAR_USER_AGENT, Accept: 'application/json' }, signal: AbortSignal.timeout(8_000) }
+    )
+    if (r.ok) {
+      const data = await r.json() as { hits?: { hits?: Array<{ _source?: { period_of_report?: string; entity_id?: string; file_num?: string } }> } }
+      const hits = data?.hits?.hits
+      if (hits && hits.length > 0) {
+        const src = hits[0]._source
+        // entity_id is the CIK without zero-padding
+        if (src?.entity_id) return src.entity_id.padStart(10, '0')
+      }
+    }
+  } catch { /* fall through to company_search */ }
+
+  // Fallback: EDGAR company search by ticker
+  const search = await fetchEdgar<{ results?: { entityName?: string; cik?: string }[] }>(
+    `https://efts.sec.gov/LATEST/search-index?q=%22${encodeURIComponent(ticker.toUpperCase())}%22&forms=10-K&dateRange=custom&startdt=2020-01-01&enddt=2026-12-31`
   )
-  if (!map) return null
-  const upper = ticker.toUpperCase()
-  for (const entry of Object.values(map)) {
-    if (entry.ticker.toUpperCase() === upper) {
-      return entry.cik_str.padStart(10, '0')
+  if (search?.results?.length) {
+    const cik = search.results[0].cik
+    if (cik) return cik.padStart(10, '0')
+  }
+
+  // Last resort: EDGAR ticker→CIK JSON (only a subset, much smaller than company_tickers.json)
+  const map = await fetchEdgar<Record<string, { cik_str: string; ticker: string }>>(
+    'https://www.sec.gov/files/company_tickers_exchange.json'
+  )
+  if (map) {
+    const upper = ticker.toUpperCase()
+    // company_tickers_exchange.json has a "data" array of [cik, name, ticker, exchange]
+    const anyMap = map as unknown as { data?: Array<[number, string, string, string]> }
+    if (Array.isArray(anyMap.data)) {
+      for (const row of anyMap.data) {
+        if (String(row[2]).toUpperCase() === upper) {
+          return String(row[0]).padStart(10, '0')
+        }
+      }
     }
   }
   return null

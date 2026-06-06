@@ -487,7 +487,23 @@ async function finnhubFundamentals(symbol) {
         throw new Error('Finnhub profile failed for ' + symbol + ' (tried: ' + candidates.join(', ') + '): ' + (lastErr && lastErr.message));
     }
 
-    var peers = Array.isArray(rawPeers) ? rawPeers.filter(function(p) { return p && p !== symbol; }).slice(0, 8) : [];
+    var peerTickers = Array.isArray(rawPeers) ? rawPeers.filter(function(p) { return p && p !== symbol; }).slice(0, 5) : [];
+    var peers = await Promise.all(peerTickers.map(async function(sym) {
+        try {
+            var pm = await finnhubGet('/stock/metric?symbol=' + encodeURIComponent(sym) + '&metric=all');
+            var met = (pm && pm.metric) || {};
+            return {
+                symbol: sym,
+                evToEbitda: met.enterpriseValueEbitdaTTM || null,
+                trailingPE: met.peNormalizedAnnual || met.peTTM || null,
+                priceToFCF: null,
+                returnOnEquity: met.roeTTM != null ? met.roeTTM / 100 : null,
+                revenueGrowth: met.revenueGrowthTTMYoy != null ? met.revenueGrowthTTMYoy / 100 : null,
+            };
+        } catch (e) {
+            return { symbol: sym };
+        }
+    }));
     return { profile: profile, metrics: metrics, recs: recs, earnings: earnings, peers: peers, reported: reported };
 }
 
