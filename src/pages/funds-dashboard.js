@@ -17,6 +17,7 @@ import { Loading, EmptyState } from './components.js';
 import { FundProfile } from './funds-profile.js';
 import { FundPerformance } from './funds-performance.js';
 import { FundComparison } from './funds-comparison.js';
+import { FundScreener } from './fund-screener.js';
 
 var useState = React.useState, useEffect = React.useEffect, useCallback = React.useCallback, useRef = React.useRef;
 var h = React.createElement;
@@ -151,9 +152,20 @@ export function FundsDashboard() {
         return function() { cancelled = true; };
     }, [symbol]);
 
-    // Search bar (always visible)
+    // Search bar (visible when a symbol is loaded)
     var header = h('div', null,
-        h('div', { className: 'page-title' }, 'Funds Dashboard'),
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 } },
+            h('button', {
+                onClick: function() { setSymbol(null); setStatus('idle'); setData(null); setInput(''); },
+                style: {
+                    background: 'transparent', color: 'rgba(255,255,255,0.45)',
+                    border: '1px solid rgba(255,255,255,0.12)', borderRadius: 5,
+                    padding: '5px 10px', cursor: 'pointer', fontSize: 11,
+                    fontFamily: 'JetBrains Mono, monospace', letterSpacing: 0.5,
+                }
+            }, '← Screener'),
+            h('div', { className: 'page-title', style: { margin: 0 } }, 'Fund Research')
+        ),
         h('div', { className: 'card', style: { display: 'flex', gap: 12, alignItems: 'center', padding: 14 } },
             h('input', {
                 type: 'text',
@@ -181,13 +193,15 @@ export function FundsDashboard() {
         )
     );
 
-    // Idle state
+    // Idle state → show screener
     if (status === 'idle') {
-        return h('div', null, header,
-            h('div', { className: 'card', style: { textAlign: 'center', padding: 40, color: 'var(--text-muted)' } },
-                'Enter a fund ticker above to fetch profile, performance, and risk analytics.'
-            )
-        );
+        return h(FundScreener, {
+            onSelect: function(sel) {
+                // sel = { type, symbol, id }
+                var sym = sel.symbol || sel.id;
+                if (sym) { setInput(String(sym)); analyse(String(sym)); }
+            },
+        });
     }
     // Loading state
     if (status === 'loading') {
