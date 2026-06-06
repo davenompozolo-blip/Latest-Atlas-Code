@@ -1071,7 +1071,8 @@ function NexusHoldings({ holdings, disabled }) {
 
 // ── Nexus shell: own topbar + icon sidebar ────────────────────
 const NEXUS_NAV = [
-    { id: 'nexus',       icon: '⬡', label: 'Nexus'     },
+    { id: 'nexus',        icon: '⬡', label: 'Nexus'        },
+    { id: 'nexus-legacy', icon: '◷', label: 'Legacy Nexus' },
     { id: 'portfolio',   icon: '◎', label: 'Portfolio' },
     { id: 'trading',     icon: '▶', label: 'Trade'     },
     { id: 'quant',       icon: '◇', label: 'Quant'     },

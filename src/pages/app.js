@@ -2,6 +2,7 @@ import React from 'react';
 import { sb, loadView, MOCK_COMMAND } from './config.js';
 import { ConfigPrompt } from './components.js';
 import { NexusPage, NexusShell } from './nexus-page.js';
+import { NexusFlagshipPage } from './nexus/NexusFlagship.js';
 import { PortfolioHome } from './portfolio-home.js';
 import { QuantDashboard } from './quant-dashboard.js';
 import { RiskAnalysis, CommandCentre } from './pages-other.js';
@@ -22,7 +23,8 @@ import { CortexPage } from './cortex.js';
 const { useState, useEffect } = React;
 
 const TABS = [
-    { id: 'nexus',       component: NexusPage },
+    { id: 'nexus',        component: NexusFlagshipPage },   // primary Nexus (flagship spine)
+    { id: 'nexus-legacy', component: NexusPage },           // preserved, relabelled Legacy Nexus
     { id: 'portfolio',   component: PortfolioHome },
     { id: 'trading',     component: TradingDashboard },
     { id: 'quant',       component: QuantDashboard },
