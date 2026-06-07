@@ -609,6 +609,7 @@ export function FundsDashboard() {
     var _err=useState(null),       errMsg=_err[0], setErrMsg=_err[1];
     var _data=useState(null),      data=_data[0],  setData=_data[1];
     var _type=useState('listed'),  fundType=_type[0], setFundType=_type[1];
+    var _sf=useState(null),        saFund=_sf[0],     setSaFund=_sf[1];
     // ODD state (for tracked managers)
     var _odd=useState(null),       oddData=_odd[0],   setOddData=_odd[1];
     var _sc=useState([]),          oddScores=_sc[0],  setOddScores=_sc[1];
