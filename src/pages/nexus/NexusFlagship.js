@@ -257,9 +257,14 @@ const COLS = [
 ];
 
 function HoldingsTable({ holdings }) {
+    // Expanded `because` rows. The read chip is the why-affordance:
+    // clicking it toggles the explanation (and stops the row's
+    // open-object click so the two interactions don't collide).
+    const [expanded, setExpanded] = useState({});
     if (!holdings || !holdings.length) return null;
+    const toggle = id => setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
     return e('div', { className: 'nf-card nf-holdings nf-fade' },
-        e('div', { className: 'nf-card-h' }, e('h3', null, 'Holdings'), e('span', { className: 'nf-sub' }, holdings.length + ' live objects')),
+        e('div', { className: 'nf-card-h' }, e('h3', null, 'Holdings'), e('span', { className: 'nf-sub' }, holdings.length + ' live objects · derived reads')),
         e('div', { className: 'nf-table-scroll' },
             e('table', { className: 'nf-table' },
                 e('thead', null, e('tr', null,
@@ -267,24 +272,39 @@ function HoldingsTable({ holdings }) {
                 )),
                 e('tbody', null,
                     holdings.map(function (h) {
-                        return e('tr', {
-                            key: h.objectId,
-                            className: h.stale ? 'nf-stale-row' : '',
-                            onClick: () => openLiveObject(h.objectId, h.tk),
-                            title: 'Open ' + h.tk + ' live object',
-                        },
-                            e('td', { className: 'nf-l' }, e('span', { className: 'nf-tk' }, h.tk)),
-                            e('td', { className: 'nf-l nf-theme-cell' }, h.theme),
-                            e('td', null, e('span', { className: 'nf-conv-bar' },
-                                e('span', { className: 'nf-cb-track' }, e('i', { style: { width: h.conviction + '%', background: convColor(h.conviction) } })),
-                                e('span', { className: 'nf-mono-cell' }, h.conviction))),
-                            e('td', { className: 'nf-mono-cell ' + moveTone(h.todayPct) }, pct1(h.todayPct)),
-                            e('td', { className: 'nf-mono-cell ' + moveTone(h.contribPct) }, pct1(h.contribPct, 2)),
-                            e('td', { className: 'nf-mono-cell' }, h.componentVar.toFixed(1) + '%'),
-                            e('td', { className: 'nf-mono-cell ' + moveTone(h.fvGapPct) }, pct1(h.fvGapPct)),
-                            e('td', { className: 'nf-l' }, h.signal ? e('span', { className: 'nf-sig' }, h.signal) : e('span', { style: { color: 'var(--text3)' } }, '—')),
-                            e('td', null, e('span', { className: 'nf-read-chip ' + h.read }, h.read))
-                        );
+                        const isOpen = !!expanded[h.objectId];
+                        const rows = [
+                            e('tr', {
+                                key: h.objectId,
+                                className: h.stale ? 'nf-stale-row' : '',
+                                onClick: () => openLiveObject(h.objectId, h.tk),
+                                title: 'Open ' + h.tk + ' live object',
+                            },
+                                e('td', { className: 'nf-l' }, e('span', { className: 'nf-tk' }, h.tk)),
+                                e('td', { className: 'nf-l nf-theme-cell' }, h.theme),
+                                e('td', null, e('span', { className: 'nf-conv-bar' },
+                                    e('span', { className: 'nf-cb-track' }, e('i', { style: { width: h.conviction + '%', background: convColor(h.conviction) } })),
+                                    e('span', { className: 'nf-mono-cell' }, h.conviction))),
+                                e('td', { className: 'nf-mono-cell ' + moveTone(h.todayPct) }, pct1(h.todayPct)),
+                                e('td', { className: 'nf-mono-cell ' + moveTone(h.contribPct) }, pct1(h.contribPct, 2)),
+                                e('td', { className: 'nf-mono-cell' }, h.componentVar.toFixed(1) + '%'),
+                                e('td', { className: 'nf-mono-cell ' + moveTone(h.fvGapPct) }, pct1(h.fvGapPct)),
+                                e('td', { className: 'nf-l' }, h.signal ? e('span', { className: 'nf-sig' }, h.signal) : e('span', { style: { color: 'var(--text3)' } }, '—')),
+                                e('td', null, e('span', {
+                                    className: 'nf-read-chip ' + h.read + (isOpen ? ' open' : ''),
+                                    title: h.because,
+                                    onClick: ev => { ev.stopPropagation(); toggle(h.objectId); },
+                                }, h.read))
+                            ),
+                        ];
+                        if (isOpen) {
+                            rows.push(e('tr', { key: h.objectId + '-why', className: 'nf-why-row' },
+                                e('td', { colSpan: COLS.length },
+                                    e('span', { className: 'nf-why-label' }, 'WHY'),
+                                    e('span', { className: 'nf-why-text' }, h.because))
+                            ));
+                        }
+                        return rows;
                     })
                 )
             )

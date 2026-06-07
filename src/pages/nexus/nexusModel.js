@@ -103,8 +103,10 @@
  * @property {number} contribPct        to book P&L (Performance)
  * @property {number} componentVar      signed % of total VaR (Risk)
  * @property {number} fvGapPct          signed (Valuation)
- * @property {?string} signal           Cortex label or null
- * @property {"add"|"hold"|"trim"|"watch"} read   (Nexus)
+ * @property {?string} signal           Cortex display label or null (e.g. "Rich vs DCF")
+ * @property {"improving"|"neutral"|"deteriorating"} signalTone   structured Cortex tone the read engine consumes (mock now; Cortex later)
+ * @property {"add"|"hold"|"trim"|"watch"|"exit"} read   COMPUTED by the read engine — never authored
+ * @property {string} because           one-line explanation, COMPUTED alongside read
  * @property {boolean=} stale
  * @property {string} objectId          for Live Object navigation
  */
