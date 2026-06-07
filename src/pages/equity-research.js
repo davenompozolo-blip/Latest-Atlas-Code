@@ -552,6 +552,15 @@ export function EquityResearch(props) {
                 fontSize: 12, textTransform: 'uppercase', letterSpacing: 1,
             }
         }, status === 'loading' ? 'Loading…' : 'Analyse'),
+        status !== 'idle' && React.createElement('button', {
+            onClick: function() { setSymbol(null); setStatus('idle'); setErrMsg(null); },
+            style: {
+                background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.55)',
+                border: '1px solid rgba(255,255,255,0.12)', borderRadius: 6,
+                padding: '8px 14px', fontWeight: 600, cursor: 'pointer',
+                fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.8,
+            }
+        }, '← Screener'),
         status === 'ready' && symbol && React.createElement('button', {
             onClick: saveToScrapbook,
             style: {
@@ -564,11 +573,8 @@ export function EquityResearch(props) {
     );
 
     if (status === 'idle') {
-        return React.createElement(EquityScreener, {
-            initialInput: input,
-            onSelect: function(sym) { setInput(sym); analyse(sym); },
-            onDirectInput: function(sym) { setInput(sym); analyse(sym); },
-        });
+        return React.createElement('div', null, searchBar,
+            React.createElement(EquityScreener, { onPick: function(sym) { setInput(sym); analyse(sym); } }));
     }
     if (status === 'loading') return React.createElement('div', null, searchBar, React.createElement(Loading, null));
     if (status === 'error') {

@@ -55,7 +55,150 @@ function chStr(v) { return v == null ? '—' : (v >= 0 ? '+' : '') + fN(v) + '%'
 function latestVal(arr) { return arr && arr.length ? arr[arr.length - 1].value : null; }
 
 // ============================================================
-// 1. Asset tile
+// 1. TradingView index chart (iframe embed)
+// ============================================================
+function TVIndexChart(p) {
+    var intervalMap = { '1D': '5', '5D': '15', '1M': 'D', '3M': 'D', '6M': 'W', '1Y': 'W' };
+    var rangeMap    = { '1D': '1D', '5D': '5D', '1M': '1M', '3M': '3M', '6M': '6M', '1Y': '12M' };
+    var src = 'https://www.tradingview.com/widgetembed/?symbol=' + encodeURIComponent(p.symbol) +
+        '&interval=' + (intervalMap[p.period] || 'D') +
+        '&range='     + (rangeMap[p.period]    || '3M') +
+        '&theme=dark&style=1&locale=en&hide_side_toolbar=1&allow_symbol_change=0' +
+        '&save_image=0&details=0&hotlist=0&calendar=0';
+    return h('div', { style: { borderRadius: 8, overflow: 'hidden', background: '#0b1120', height: 220, border: '1px solid rgba(255,255,255,0.06)' } },
+        h('iframe', { key: p.symbol + '_' + p.period, src: src, style: { width: '100%', height: '100%', border: 'none', display: 'block' }, scrolling: 'no', title: p.symbol })
+    );
+}
+
+// ============================================================
+// 2. Index charts section with period selector
+// ============================================================
+function IndexChartsSection() {
+    var _p = useState('3M');
+    var period = _p[0], setPeriod = _p[1];
+    var PERIODS = ['1D', '5D', '1M', '3M', '6M', '1Y'];
+    var INDICES = [
+        { symbol: 'SPY', label: 'S&P 500 (SPY)' },
+        { symbol: 'QQQ', label: 'Nasdaq 100 (QQQ)' },
+        { symbol: 'DIA', label: 'Dow Jones (DIA)' },
+        { symbol: 'IWM', label: 'Russell 2000 (IWM)' },
+    ];
+    return h('div', { className: 'card', style: { marginBottom: 16 } },
+        h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 } },
+            h('div', { className: 'card-title', style: { marginBottom: 0 } }, 'Major Indices'),
+            h('div', { style: { display: 'flex', gap: 4 } },
+                PERIODS.map(function(pd) {
+                    var a = pd === period;
+                    return h('button', {
+                        key: pd, onClick: function() { setPeriod(pd); },
+                        style: { padding: '3px 9px', fontSize: 10, fontFamily: 'JetBrains Mono', fontWeight: a ? 700 : 400, borderRadius: 4, border: '1px solid ' + (a ? 'rgba(0,212,255,0.5)' : 'rgba(255,255,255,0.1)'), background: a ? 'rgba(0,212,255,0.12)' : 'transparent', color: a ? '#00d4ff' : 'rgba(255,255,255,0.4)', cursor: 'pointer', transition: 'all 0.1s' }
+                    }, pd);
+                })
+            )
+        ),
+        h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 } },
+            INDICES.map(function(idx) {
+                return h('div', { key: idx.symbol },
+                    h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.4)', fontFamily: 'JetBrains Mono', marginBottom: 4, letterSpacing: 0.5 } }, idx.label),
+                    h(TVIndexChart, { symbol: idx.symbol, period: period })
+                );
+            })
+        )
+    );
+}
+
+// ============================================================
+// 3. Market movers + cap spectrum (fetches /api/movers)
+// ============================================================
+function MoversSection() {
+    var _d = useState(null), moversData = _d[0], setMoversData = _d[1];
+    var _s = useState('loading'), mStatus = _s[0], setMStatus = _s[1];
+    var _t = useState('top'), mTab = _t[0], setMTab = _t[1];
+
+    useEffect(function() {
+        fetch('/api/movers').then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function(d) { setMoversData(d); setMStatus('ready'); })
+          .catch(function() { setMStatus('error'); });
+    }, []);
+
+    if (mStatus === 'error') return null;
+    if (mStatus === 'loading') return h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 } },
+        h('div', { className: 'card', style: { padding: 20, textAlign: 'center', color: 'rgba(255,255,255,0.25)', fontSize: 11 } }, 'Loading movers…'),
+        h('div', { className: 'card', style: { padding: 20, textAlign: 'center', color: 'rgba(255,255,255,0.25)', fontSize: 11 } }, 'Loading cap spectrum…')
+    );
+
+    var topMovers    = (moversData && moversData.top)         || [];
+    var bottomMovers = (moversData && moversData.bottom)      || [];
+    var capSpectrum  = (moversData && moversData.capSpectrum) || [];
+    var displayMovers = mTab === 'top' ? topMovers : bottomMovers;
+
+    var maxCapAbs = Math.max.apply(null, capSpectrum.map(function(c) { return Math.abs(c.changePct || 0); })) || 1;
+
+    return h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 } },
+        // Movers table
+        h('div', { className: 'card' },
+            h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 } },
+                h('div', { className: 'card-title', style: { marginBottom: 0 } }, 'Market Movers'),
+                h('div', { style: { display: 'flex', gap: 0, border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, overflow: 'hidden' } },
+                    h('button', {
+                        onClick: function() { setMTab('top'); },
+                        style: { padding: '3px 12px', fontSize: 10, border: 'none', background: mTab === 'top' ? 'rgba(16,185,129,0.18)' : 'transparent', color: mTab === 'top' ? '#10b981' : 'rgba(255,255,255,0.4)', cursor: 'pointer', fontFamily: 'JetBrains Mono', fontWeight: mTab === 'top' ? 700 : 400 }
+                    }, '▲ TOP'),
+                    h('button', {
+                        onClick: function() { setMTab('bottom'); },
+                        style: { padding: '3px 12px', fontSize: 10, border: 'none', background: mTab === 'bottom' ? 'rgba(239,68,68,0.18)' : 'transparent', color: mTab === 'bottom' ? '#ef4444' : 'rgba(255,255,255,0.4)', cursor: 'pointer', fontFamily: 'JetBrains Mono', fontWeight: mTab === 'bottom' ? 700 : 400 }
+                    }, '▼ BOTTOM')
+                )
+            ),
+            h('div', { style: { overflowX: 'auto' } },
+                h('table', { className: 'data-table' },
+                    h('thead', null,
+                        h('tr', null,
+                            h('th', null, 'Symbol'),
+                            h('th', null, 'Name'),
+                            h('th', { style: { textAlign: 'right' } }, 'Price'),
+                            h('th', { style: { textAlign: 'right' } }, 'Change')
+                        )
+                    ),
+                    h('tbody', null,
+                        displayMovers.map(function(item) {
+                            var col = (item.changePct || 0) >= 0 ? '#10b981' : '#ef4444';
+                            return h('tr', { key: item.symbol },
+                                h('td', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 700, color: '#f1f5f9' } }, item.symbol),
+                                h('td', { style: { fontSize: 11, color: 'rgba(255,255,255,0.55)' } }, item.name || item.symbol),
+                                h('td', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, color: '#f1f5f9', textAlign: 'right' } }, item.price != null ? '$' + fN(item.price) : '—'),
+                                h('td', { style: { fontFamily: 'JetBrains Mono', fontSize: 12, fontWeight: 700, color: col, textAlign: 'right' } }, chStr(item.changePct))
+                            );
+                        })
+                    )
+                )
+            )
+        ),
+        // Cap spectrum
+        h('div', { className: 'card' },
+            h('div', { className: 'card-title' }, 'Cap Spectrum  ·  Daily Return'),
+            capSpectrum.length === 0
+                ? h('div', { style: { color: 'rgba(255,255,255,0.3)', fontSize: 11, padding: '20px 0', textAlign: 'center' } }, 'No data')
+                : capSpectrum.map(function(item) {
+                    var col = (item.changePct || 0) >= 0 ? '#10b981' : '#ef4444';
+                    var barPct = Math.min(Math.abs(item.changePct || 0) / maxCapAbs * 100, 100);
+                    return h('div', { key: item.symbol, style: { display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' } },
+                        h('div', { style: { width: 34, fontFamily: 'JetBrains Mono', fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.75)', flexShrink: 0 } }, item.symbol),
+                        h('div', { style: { flex: 1, fontSize: 10, color: 'rgba(255,255,255,0.38)' } }, item.label),
+                        h('div', { style: { width: 70, height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 2, overflow: 'hidden', flexShrink: 0 } },
+                            h('div', { style: { height: '100%', width: barPct.toFixed(1) + '%', background: col, borderRadius: 2 } })
+                        ),
+                        h('div', { style: { width: 52, fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 700, color: col, textAlign: 'right', flexShrink: 0 } }, chStr(item.changePct))
+                    );
+                })
+        )
+    );
+}
+
+// ============================================================
+// 4. Asset tile
 // ============================================================
 function AssetTile(p) {
     var q = p.q;
@@ -77,7 +220,7 @@ function AssetTile(p) {
 }
 
 // ============================================================
-// 2. Sector bar chart
+// 5. Sector bar chart
 // ============================================================
 function SectorBarChart(p) {
     var ref = useRef(null);
@@ -114,7 +257,7 @@ function SectorBarChart(p) {
 }
 
 // ============================================================
-// 3. Overview panel
+// 6. Overview panel
 // ============================================================
 function OverviewPanel(p) {
     var data    = p.data || {};
@@ -260,11 +403,18 @@ function OverviewPanel(p) {
         imRow('US Dollar (UUP)', dolText, dolColor)
     );
 
-    return h('div', null, kpiBar, h(NarrativeStrip, { items: narr }), assetCard, imCard);
+    return h('div', null,
+        kpiBar,
+        h(NarrativeStrip, { items: narr }),
+        h(IndexChartsSection, null),
+        h(MoversSection, null),
+        assetCard,
+        imCard
+    );
 }
 
 // ============================================================
-// 4. Sectors panel
+// 7. Sectors panel
 // ============================================================
 function SectorsPanel(p) {
     var sectors = p.data && p.data.sectors ? p.data.sectors : [];
@@ -334,7 +484,7 @@ function SectorsPanel(p) {
 }
 
 // ============================================================
-// 5. News Panel
+// 8. News Panel
 // ============================================================
 function NewsPanel() {
     var _d = useState(null), newsData = _d[0], setNewsData = _d[1];
@@ -407,6 +557,9 @@ function NewsPanel() {
                     }
                 },
                     h('div', { style: { position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'linear-gradient(90deg,' + col + ',#6366f1)', opacity: 0.85 } }),
+                    item.thumbnail ? h('div', { style: { margin: '-14px -16px 12px -16px', height: 148, overflow: 'hidden', borderRadius: '11px 11px 0 0' } },
+                        h('img', { src: item.thumbnail, alt: '', loading: 'lazy', style: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' }, onError: function(e) { e.target.parentNode.style.display = 'none'; } })
+                    ) : null,
                     h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 } },
                         h('span', { style: { background: col, color: '#0f172a', padding: '2px 8px', borderRadius: 6, fontSize: 9.5, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase' } }, item.source),
                         h('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.35)', fontFamily: 'JetBrains Mono' } }, item.timeAgo)
@@ -423,7 +576,7 @@ function NewsPanel() {
 }
 
 // ============================================================
-// 6. Calendar Panel
+// 9. Calendar Panel
 // ============================================================
 function CalendarPanel() {
     var _d = useState(null), calData = _d[0], setCalData = _d[1];
