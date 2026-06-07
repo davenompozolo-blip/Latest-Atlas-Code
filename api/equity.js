@@ -614,7 +614,8 @@ function mapFinnhubReported(reported) {
     var revenue = concept(ic, [
         'Revenues', 'RevenueFromContractWithCustomerExcludingAssessedTax',
         'SalesRevenueNet', 'RevenueFromContractWithCustomerIncludingAssessedTax',
-        'SalesRevenueGoodsNet', 'RealEstateRevenueNet',
+        'SalesRevenueGoodsNet', 'RealEstateRevenueNet', 'NetRevenue',
+        'TotalRevenues', 'TotalRevenuesAndOtherIncome',
     ]);
     var netIncome = concept(ic, ['NetIncomeLoss', 'NetIncome', 'ProfitLoss', 'NetIncomeLossAttributableToParent']);
 
@@ -648,6 +649,9 @@ function mapFinnhubFinancials(data) {
         arr.sort(function(a, b) { return a.period < b.period ? 1 : -1; });
         return arr[0].v;
     }
+    // Finnhub series.annual reports absolute financial values in USD millions.
+    // Scale by 1e6 so snapshot values are in raw dollars (consistent with mktCap/shares).
+    function latestValM(key) { var v = latestVal(key); return v != null ? v * 1e6 : null; }
 
     function firstOf() {
         for (var i = 0; i < arguments.length; i++) {
@@ -682,13 +686,13 @@ function mapFinnhubFinancials(data) {
     // --- Absolute financials: series.annual → per-share × shares → derivation ---
 
     ss('netIncome', firstOf(
-        latestVal('netIncome'),
+        latestValM('netIncome'),
         perShare('netIncomePerShare'),
         m.epsBasicExclExtraItemsTTM && shares ? m.epsBasicExclExtraItemsTTM * shares : null
     ));
 
     ss('totalRevenue', firstOf(
-        latestVal('revenue'),
+        latestValM('revenue'),
         perShare('revenuePerShare'),
         perShare('salesPerShare'),
         snapshot.netIncome && m.netProfitMarginTTM && m.netProfitMarginTTM > 0
@@ -696,12 +700,12 @@ function mapFinnhubFinancials(data) {
     ));
 
     ss('grossProfits', firstOf(
-        latestVal('grossProfit'),
+        latestValM('grossProfit'),
         snapshot.totalRevenue && m.grossMarginTTM ? snapshot.totalRevenue * (m.grossMarginTTM / 100) : null
     ));
 
     ss('ebitda', firstOf(
-        latestVal('ebitda'),
+        latestValM('ebitda'),
         perShare('ebitdaPerShare'),
         perShare('ebitPerShare')
     ));
@@ -710,14 +714,14 @@ function mapFinnhubFinancials(data) {
     // Do NOT use findM('freeCashFlow') — it matches freeCashFlowPerShareAnnual,
     // returning a per-share value that gets treated as an absolute number.
     ss('freeCashflow', firstOf(
-        latestVal('freeCashFlow'), latestVal('fcf'), latestVal('freeCashflow'),
+        latestValM('freeCashFlow'), latestValM('fcf'), latestValM('freeCashflow'),
         perShare('fcfPerShare'),
         perShare('freeCashFlowPerShare')
     ));
 
     ss('operatingCashflow', firstOf(
-        latestVal('cashFlowFromOperatingActivities'), latestVal('operatingCashFlow'),
-        latestVal('operatingCashflow'), latestVal('cashFromOperations'),
+        latestValM('cashFlowFromOperatingActivities'), latestValM('operatingCashFlow'),
+        latestValM('operatingCashflow'), latestValM('cashFromOperations'),
         perShare('cashFlowPerShare')
     ));
 
@@ -725,14 +729,14 @@ function mapFinnhubFinancials(data) {
     // it matches ratio metrics (totalDebtToEquityAnnual, cashRatioAnnual, etc.)
     // which are dimensionless and far too small to be treated as $-absolute values.
     ss('totalCash', firstOf(
-        latestVal('cashAndShortTermInvestments'), latestVal('totalCash'),
-        latestVal('cash'), latestVal('cashAndEquivalents'),
+        latestValM('cashAndShortTermInvestments'), latestValM('totalCash'),
+        latestValM('cash'), latestValM('cashAndEquivalents'),
         perShare('cashPerShare')
     ));
 
     ss('totalDebt', firstOf(
-        latestVal('totalDebt'),
-        latestVal('longTermDebt'),
+        latestValM('totalDebt'),
+        latestValM('longTermDebt'),
         perShare('debtPerShare'),
         perShare('totalDebtPerShare'),
         perShare('longTermDebtPerShare')
@@ -784,8 +788,8 @@ function mapFinnhubFinancials(data) {
     ));
     // Interest expense — needed for accurate FCFF = FCFE + Int(1−t)
     ss('interestExpense', firstOf(
-        latestVal('interestExpense'), latestVal('interestAndDebtExpense'),
-        latestVal('totalInterestExpense'), findM('interestExpense')
+        latestValM('interestExpense'), latestValM('interestAndDebtExpense'),
+        latestValM('totalInterestExpense'), findM('interestExpense')
     ));
 
     // --- Valuation multiples ---
@@ -809,8 +813,9 @@ function mapFinnhubFinancials(data) {
 
     // --- Enterprise Value → EV/Revenue, EV/EBITDA ---
 
-    var evDirect = firstOf(findM('enterpriseValue'), latestVal('ev'));
-    if (evDirect != null && evDirect < 1e6 && mktCap > 1e9) evDirect = null;
+    // Finnhub metric.enterpriseValue and series.annual.ev are both in USD millions → scale by 1e6.
+    var evRaw = firstOf(findM('enterpriseValue'), latestVal('ev'));
+    var evDirect = evRaw != null ? evRaw * 1e6 : null;
     ss('enterpriseValue', evDirect);
     if (snapshot.enterpriseValue == null && mktCap) {
         snapshot.enterpriseValue = mktCap + (snapshot.totalDebt || 0) - (snapshot.totalCash || 0);
@@ -855,10 +860,10 @@ function mapFinnhubFinancials(data) {
     var years = Math.min(4, revArr.length);
     for (var yi = years - 1; yi >= 0; yi--) {
         var year = revArr[yi].period.slice(0, 4);
-        var rev = revArr[yi].v;
+        var rev = revArr[yi].v != null ? revArr[yi].v * 1e6 : null;  // Finnhub series in $M → dollars
         var ni = null;
         for (var nj = 0; nj < niArr.length; nj++) {
-            if (niArr[nj].period.slice(0, 4) === year) { ni = niArr[nj].v; break; }
+            if (niArr[nj].period.slice(0, 4) === year) { ni = niArr[nj].v != null ? niArr[nj].v * 1e6 : null; break; }
         }
         yearly.push({ year: year, revenue: rev, earnings: ni });
     }
@@ -870,7 +875,7 @@ function mapFinnhubFinancials(data) {
     for (var oy = 0; oy < yearly.length; oy++) {
         for (var oi = 0; oi < ocfSeries.length; oi++) {
             if (ocfSeries[oi].period.slice(0, 4) === yearly[oy].year) {
-                yearly[oy].ocf = ocfSeries[oi].v;
+                yearly[oy].ocf = ocfSeries[oi].v != null ? ocfSeries[oi].v * 1e6 : null;  // $M → dollars
                 break;
             }
         }
