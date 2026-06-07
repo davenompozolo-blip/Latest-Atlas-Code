@@ -15,11 +15,88 @@
 // ============================================================
 
 import { computeDataIntegrity } from './nexusDataIntegrity.js';
+import { computeRead, READ_CONFIG, ConcentrationPenalty } from './readEngine.js';
+
+// ── Mock ingredients (everything except read/because) ─────────
+// These are the synthetic figures from nexus-flagship.html. `read`
+// and `because` are deliberately ABSENT here — they are computed by
+// the read engine in getNexusModel(), never authored.
+
+const GAUGES = {
+    risk: {
+        budgetUsedPct: 73,
+        limitPct: 100,
+        deltaTodayPts: 4,
+        verdictChip: 'Within budget',
+        note: 'Marginal VaR rose on the rate move; still inside the 100% cap.',
+    },
+    performance: {
+        bookPct: -0.9,
+        benchPct: -1.2,
+        concentratedContribPct: 62,
+        topMovers: [
+            { tk: 'NVDA', pct: -2.1 },
+            { tk: 'AVGO', pct: -1.4 },
+            { tk: 'MSFT', pct:  0.3 },
+        ],
+        verdictChip: 'Beating bench',
+        note: 'Down less than the tape — semis did the damage, mega-cap cushioned.',
+    },
+    concentration: {
+        effectiveN: 11.2,
+        nominalN: 57,
+        topFactorPct: 38,
+        fragilityCluster: ['NVDA', 'AVGO', 'AMD', 'ASML'],
+        verdictChip: 'Fragile',
+        note: 'Effective N of 11 against 57 names — AI capex carries 38% of factor risk.',
+    },
+};
+
+const SPINE = [
+    { theme: 'AI / Accelerated compute', sharePct: 31.4, movePct: -1.8, riskShift:  2, fragility: true },
+    { theme: 'Mega-cap platforms',       sharePct: 22.1, movePct: -0.4, riskShift:  1 },
+    { theme: 'Energy / Real assets',     sharePct:  8.8, movePct:  0.9, riskShift: -1 },
+    { theme: 'Rate-sensitive / Duration',sharePct:  9.6, movePct: -1.1, riskShift:  2 },
+    { theme: 'Financials',               sharePct:  6.5, movePct:  0.3, riskShift:  0 },
+    { theme: 'Defensives / Health',      sharePct:  6.1, movePct:  0.2, riskShift: -1 },
+    { theme: 'Intl ADRs (OTC)',          sharePct:  7.3, movePct:  0.1, riskShift:  0, stale: true },
+    { theme: 'Cash & T-bills',           sharePct:  8.2, movePct:  0.0, riskShift:  0 },
+];
+
+// signalTone is the structured Cortex tone the engine consumes (mock
+// for now; later Cortex emits it directly). `signal` stays as the
+// human display label.
+const HOLDINGS = [
+    { tk: 'NVDA',  theme: 'AI / Accelerated compute', conviction: 78, todayPct: -2.1, contribPct: -0.62, componentVar: 18.4, fvGapPct:  6.2, signal: 'Momentum cooling', signalTone: 'neutral',       objectId: 'obj-nvda'  },
+    { tk: 'AVGO',  theme: 'AI / Accelerated compute', conviction: 72, todayPct: -1.4, contribPct: -0.21, componentVar:  9.1, fvGapPct: -3.4, signal: 'Rich vs DCF',      signalTone: 'neutral',       objectId: 'obj-avgo'  },
+    { tk: 'MSFT',  theme: 'Mega-cap platforms',       conviction: 81, todayPct:  0.3, contribPct:  0.04, componentVar:  7.7, fvGapPct:  9.8, signal: 'Quality A+',       signalTone: 'improving',     objectId: 'obj-msft'  },
+    { tk: 'AMZN',  theme: 'Mega-cap platforms',       conviction: 69, todayPct: -0.6, contribPct: -0.05, componentVar:  5.2, fvGapPct: 12.1, signal: null,               signalTone: 'neutral',       objectId: 'obj-amzn'  },
+    { tk: 'AMD',   theme: 'AI / Accelerated compute', conviction: 58, todayPct: -2.8, contribPct: -0.14, componentVar:  6.8, fvGapPct: -1.2, signal: 'High beta',        signalTone: 'deteriorating', objectId: 'obj-amd'   },
+    { tk: 'ASML',  theme: 'AI / Accelerated compute', conviction: 74, todayPct: -1.9, contribPct: -0.11, componentVar:  5.9, fvGapPct:  4.5, signal: 'Cheap vs peers',   signalTone: 'improving',     objectId: 'obj-asml'  },
+    { tk: 'CVX',   theme: 'Energy / Real assets',     conviction: 63, todayPct:  1.1, contribPct:  0.06, componentVar:  3.1, fvGapPct:  8.0, signal: 'Macro tailwind',   signalTone: 'improving',     objectId: 'obj-cvx'   },
+    { tk: 'BAC',   theme: 'Financials',               conviction: 55, todayPct:  0.4, contribPct:  0.02, componentVar:  2.4, fvGapPct:  2.1, signal: null,               signalTone: 'neutral',       objectId: 'obj-bac'   },
+    { tk: 'TCEHY', theme: 'Intl ADRs (OTC)',          conviction: 64, todayPct:  0.0, contribPct:  0.00, componentVar:  1.8, fvGapPct: 18.4, signal: 'Stale feed',       signalTone: 'neutral',       stale: true, objectId: 'obj-tcehy' },
+    { tk: 'PROSY', theme: 'Intl ADRs (OTC)',          conviction: 61, todayPct:  0.0, contribPct:  0.00, componentVar:  1.1, fvGapPct: 22.0, signal: 'Stale feed',       signalTone: 'neutral',       stale: true, objectId: 'obj-prosy' },
+    { tk: 'NPSNY', theme: 'Intl ADRs (OTC)',          conviction: 57, todayPct:  0.0, contribPct:  0.00, componentVar:  0.9, fvGapPct:  6.0, signal: 'Stale feed',       signalTone: 'neutral',       stale: true, objectId: 'obj-npsny' },
+    { tk: 'VWAGY', theme: 'Intl ADRs (OTC)',          conviction: 52, todayPct:  0.0, contribPct:  0.00, componentVar:  0.7, fvGapPct: 14.0, signal: 'Stale feed',       signalTone: 'neutral',       stale: true, objectId: 'obj-vwagy' },
+];
 
 /** @returns {Promise<import('./nexusModel.js').NexusModel>} */
 export async function getNexusModel() {
     // The only non-mock field this pass — computed from feed freshness.
     const dataIntegrity = await computeDataIntegrity();
+
+    // Holdings carry mock ingredients only (conviction, VaR, fvGap,
+    // signalTone). `read` and `because` are NEVER hand-set — they are
+    // outputs of the read engine, computed below. As step-2 feeds light
+    // up the ingredients, the verdicts improve automatically.
+    const spine = SPINE;
+    const rawHoldings = HOLDINGS;
+    const book = { holdings: rawHoldings, spine, gauges: GAUGES };
+    const holdings = rawHoldings.map(h => ({
+        ...h,
+        ...computeRead(h, book, READ_CONFIG, ConcentrationPenalty),
+    }));
 
     return {
         asOf: new Date().toISOString(),
@@ -39,61 +116,11 @@ export async function getNexusModel() {
             ],
         },
 
-        gauges: {
-            risk: {
-                budgetUsedPct: 73,
-                limitPct: 100,
-                deltaTodayPts: 4,
-                verdictChip: 'Within budget',
-                note: 'Marginal VaR rose on the rate move; still inside the 100% cap.',
-            },
-            performance: {
-                bookPct: -0.9,
-                benchPct: -1.2,
-                concentratedContribPct: 62,
-                topMovers: [
-                    { tk: 'NVDA', pct: -2.1 },
-                    { tk: 'AVGO', pct: -1.4 },
-                    { tk: 'MSFT', pct:  0.3 },
-                ],
-                verdictChip: 'Beating bench',
-                note: 'Down less than the tape — semis did the damage, mega-cap cushioned.',
-            },
-            concentration: {
-                effectiveN: 11.2,
-                nominalN: 57,
-                topFactorPct: 38,
-                fragilityCluster: ['NVDA', 'AVGO', 'AMD', 'ASML'],
-                verdictChip: 'Fragile',
-                note: 'Effective N of 11 against 57 names — AI capex carries 38% of factor risk.',
-            },
-        },
+        gauges: GAUGES,
 
-        spine: [
-            { theme: 'AI / Accelerated compute', sharePct: 31.4, movePct: -1.8, riskShift:  2, fragility: true },
-            { theme: 'Mega-cap platforms',       sharePct: 22.1, movePct: -0.4, riskShift:  1 },
-            { theme: 'Energy / Real assets',     sharePct:  8.8, movePct:  0.9, riskShift: -1 },
-            { theme: 'Rate-sensitive / Duration',sharePct:  9.6, movePct: -1.1, riskShift:  2 },
-            { theme: 'Financials',               sharePct:  6.5, movePct:  0.3, riskShift:  0 },
-            { theme: 'Defensives / Health',      sharePct:  6.1, movePct:  0.2, riskShift: -1 },
-            { theme: 'Intl ADRs (OTC)',          sharePct:  7.3, movePct:  0.1, riskShift:  0, stale: true },
-            { theme: 'Cash & T-bills',           sharePct:  8.2, movePct:  0.0, riskShift:  0 },
-        ],
+        spine,
 
-        holdings: [
-            { tk: 'NVDA',  theme: 'AI / Accelerated compute', conviction: 78, todayPct: -2.1, contribPct: -0.62, componentVar: 18.4, fvGapPct:  6.2, signal: 'Momentum cooling', read: 'hold',  objectId: 'obj-nvda'  },
-            { tk: 'AVGO',  theme: 'AI / Accelerated compute', conviction: 72, todayPct: -1.4, contribPct: -0.21, componentVar:  9.1, fvGapPct: -3.4, signal: 'Rich vs DCF',      read: 'trim',  objectId: 'obj-avgo'  },
-            { tk: 'MSFT',  theme: 'Mega-cap platforms',       conviction: 81, todayPct:  0.3, contribPct:  0.04, componentVar:  7.7, fvGapPct:  9.8, signal: 'Quality A+',       read: 'hold',  objectId: 'obj-msft'  },
-            { tk: 'AMZN',  theme: 'Mega-cap platforms',       conviction: 69, todayPct: -0.6, contribPct: -0.05, componentVar:  5.2, fvGapPct: 12.1, signal: null,               read: 'add',   objectId: 'obj-amzn'  },
-            { tk: 'AMD',   theme: 'AI / Accelerated compute', conviction: 58, todayPct: -2.8, contribPct: -0.14, componentVar:  6.8, fvGapPct: -1.2, signal: 'High beta',        read: 'watch', objectId: 'obj-amd'   },
-            { tk: 'ASML',  theme: 'AI / Accelerated compute', conviction: 74, todayPct: -1.9, contribPct: -0.11, componentVar:  5.9, fvGapPct:  4.5, signal: 'Cheap vs peers',   read: 'add',   objectId: 'obj-asml'  },
-            { tk: 'CVX',   theme: 'Energy / Real assets',     conviction: 63, todayPct:  1.1, contribPct:  0.06, componentVar:  3.1, fvGapPct:  8.0, signal: 'Macro tailwind',   read: 'add',   objectId: 'obj-cvx'   },
-            { tk: 'BAC',   theme: 'Financials',               conviction: 55, todayPct:  0.4, contribPct:  0.02, componentVar:  2.4, fvGapPct:  2.1, signal: null,               read: 'hold',  objectId: 'obj-bac'   },
-            { tk: 'TCEHY', theme: 'Intl ADRs (OTC)',          conviction: 64, todayPct:  0.0, contribPct:  0.00, componentVar:  1.8, fvGapPct: 18.4, signal: 'Stale feed',       read: 'hold',  stale: true, objectId: 'obj-tcehy' },
-            { tk: 'PROSY', theme: 'Intl ADRs (OTC)',          conviction: 61, todayPct:  0.0, contribPct:  0.00, componentVar:  1.1, fvGapPct: 22.0, signal: 'Stale feed',       read: 'hold',  stale: true, objectId: 'obj-prosy' },
-            { tk: 'NPSNY', theme: 'Intl ADRs (OTC)',          conviction: 57, todayPct:  0.0, contribPct:  0.00, componentVar:  0.9, fvGapPct:  6.0, signal: 'Stale feed',       read: 'hold',  stale: true, objectId: 'obj-npsny' },
-            { tk: 'VWAGY', theme: 'Intl ADRs (OTC)',          conviction: 52, todayPct:  0.0, contribPct:  0.00, componentVar:  0.7, fvGapPct: 14.0, signal: 'Stale feed',       read: 'watch', stale: true, objectId: 'obj-vwagy' },
-        ],
+        holdings,
 
         read: {
             default: 'market',
