@@ -516,6 +516,16 @@ export function EquityResearch(props) {
     const searchBar = React.createElement('div', {
         style: { display: 'flex', gap: 10, alignItems: 'center', padding: '10px 0', flexShrink: 0 }
     },
+        React.createElement('button', {
+            onClick: function() { setSymbol(null); setStatus('idle'); setPayload(null); setInput(''); },
+            style: {
+                background: 'transparent', color: 'rgba(255,255,255,0.45)',
+                border: '1px solid rgba(255,255,255,0.12)', borderRadius: 5,
+                padding: '5px 10px', cursor: 'pointer', fontSize: 11,
+                fontFamily: 'JetBrains Mono, monospace', letterSpacing: 0.5,
+                flexShrink: 0,
+            }
+        }, '← Screener'),
         React.createElement('div', { className: 'page-title', style: { margin: 0, flexShrink: 0 } }, 'Equity Research'),
         React.createElement('input', {
             type: 'text', value: input,
