@@ -396,8 +396,11 @@ ${formatObj(s.assumptions)}
   Analyst note: ${s.analyst_note || 'None'}`.trim();
   }).join('\n\n');
 
+  // Note: we deliberately do NOT pre-compute an arithmetic mean here. The
+  // platform derives the headline composite deterministically (trimming
+  // implausible methods); handing the model an "average" only anchored it into
+  // echoing that mean back as blended_fair_value. Show the range only.
   const prices = snapshots.map(s => Number(s.implied_price)).filter(Boolean);
-  const avgFV = prices.length ? (prices.reduce((a, b) => a + b, 0) / prices.length).toFixed(2) : 'N/A';
   const minFV = prices.length ? Math.min(...prices).toFixed(2) : 'N/A';
   const maxFV = prices.length ? Math.max(...prices).toFixed(2) : 'N/A';
 
@@ -414,7 +417,8 @@ LIVE PORTFOLIO CONTEXT (company is held in the ATLAS portfolio):
   return `COMPANY: ${company.company_name || company.ticker} (${company.ticker})
 Exchange: ${company.exchange || 'N/A'}  |  Sector: ${company.sector || 'N/A'}  |  Currency: ${currency}
 Current market price: ${currency} ${currentPrice}
-Blended fair value range across all methods: ${currency} ${minFV} – ${currency} ${maxFV}  (Average: ${currency} ${avgFV})
+Implied fair-value range across all methods: ${currency} ${minFV} – ${currency} ${maxFV}
+(The platform computes the headline composite deterministically by trimming methods whose implied price is implausible versus the current price — do NOT simply average the methods. Weight them analytically and name any you would discard.)
 Number of valuation methods run: ${snapshots.length}
 ${ctxBlock}
 

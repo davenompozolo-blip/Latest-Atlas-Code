@@ -85,8 +85,20 @@ function twoStageDDM(D0, gS, gL, n, r) {
     return { v: pvS + pvTV, divs: divs, pvS: pvS, pvTV: pvTV, tv: tv, tvPct: pvTV / (pvS + pvTV) * 100 };
 }
 
+// Minimum Gordon spread (discount rate − terminal growth). Below this the
+// terminal value explodes (tv = f·(1+gL)/(r−gL)); a 2.8% spread produced
+// BMY's $895B EV on a ~$115B company. Fail loud (null) rather than emit it.
+var MIN_TV_SPREAD = 0.02;
+
+// A quote older than this is stale and must not be trusted as current_price
+// (it feeds the saved price, the upside denominator and the share fallback).
+var PRICE_STALE_DAYS = 7;
+
 function fcffVal(f0, gr, gL, wc, debt, cash, shs) {
-    if (wc <= gL || f0 <= 0) return null;
+    // Fail loud: no fabricated base, no fabricated share count, no thin spread.
+    if (f0 == null || f0 <= 0) return null;
+    if (shs == null || shs <= 0) return null;
+    if (wc - gL < MIN_TV_SPREAD) return null;
     var f = f0, pvS = 0;
     var proj = gr.map(function(g, i) {
         f *= (1 + g);
@@ -98,12 +110,14 @@ function fcffVal(f0, gr, gL, wc, debt, cash, shs) {
     var tv = f * (1 + gL) / (wc - gL);
     var pvTV = tv / Math.pow(1 + wc, n);
     var ev = pvS + pvTV;
-    var eq = ev - debt + cash;
-    return { eqPS: shs > 0 ? eq / shs : null, ev: ev, eq: eq, pvS: pvS, pvTV: pvTV, tv: tv, tvPct: pvTV / ev * 100, proj: proj };
+    var eq = ev - (debt || 0) + (cash || 0);
+    return { eqPS: eq / shs, ev: ev, eq: eq, pvS: pvS, pvTV: pvTV, tv: tv, tvPct: pvTV / ev * 100, proj: proj };
 }
 
 function fcfeVal(f0, gr, gL, re, shs) {
-    if (re <= gL || f0 <= 0) return null;
+    if (f0 == null || f0 <= 0) return null;
+    if (shs == null || shs <= 0) return null;
+    if (re - gL < MIN_TV_SPREAD) return null;
     var f = f0, pvS = 0;
     var proj = gr.map(function(g, i) {
         f *= (1 + g);
@@ -115,7 +129,7 @@ function fcfeVal(f0, gr, gL, re, shs) {
     var tv = f * (1 + gL) / (re - gL);
     var pvTV = tv / Math.pow(1 + re, n);
     var eq = pvS + pvTV;
-    return { eqPS: shs > 0 ? eq / shs : null, eq: eq, pvS: pvS, pvTV: pvTV, tv: tv, tvPct: pvTV / eq * 100, proj: proj };
+    return { eqPS: eq / shs, eq: eq, pvS: pvS, pvTV: pvTV, tv: tv, tvPct: pvTV / eq * 100, proj: proj };
 }
 
 function jPELeading(b, r, g) { return r > g ? (1 - b) / (r - g) : null; }
@@ -380,34 +394,48 @@ function mapPayload(payload, series) {
     var fin    = (rawFin && rawFin.snapshot) ? rawFin.snapshot : rawFin;
     var num    = function(k, obj) { var v = Number((obj || o)[k]); return isFinite(v) && v !== 0 ? v : null; };
 
-    var price   = series && series.length ? series[series.length - 1].close : 45;
+    // Price: last close, but only if the series is fresh and positive. A stale
+    // or missing quote fails loud (priceTrusted = false) — see PRICE_STALE_DAYS.
+    var lastBar    = series && series.length ? series[series.length - 1] : null;
+    var price      = lastBar && lastBar.close > 0 ? lastBar.close : null;
+    var priceAgeMs = lastBar ? (Date.now() - new Date(lastBar.date).getTime()) : Infinity;
+    var priceTrusted = price != null && priceAgeMs < PRICE_STALE_DAYS * 864e5;
+
     var beta    = num('Beta') || 1.0;
     var mktCap  = num('MarketCapitalization') || null;   // raw dollars
     var mktCapM = mktCap ? mktCap / 1e6 : null;
 
-    // Shares: prefer netIncome/EPS derivation (more stable); fallback mktCap/price
+    // Shares (millions): real reported count first (Finnhub shareOutstanding is
+    // already fetched, absolute), then netIncome/EPS, then mktCap/price ONLY if
+    // the price is trusted. No placeholder — null drops the per-share methods.
     var trailingEps = fin.trailingEps || num('EPS') || null;
     var netIncomeM  = fin.netIncome ? fin.netIncome / 1e6 : null;
+    var realSharesM = (fin.sharesOutstanding && fin.sharesOutstanding > 0) ? fin.sharesOutstanding / 1e6 : null;
     var sharesM;
-    if (netIncomeM && trailingEps && Math.abs(trailingEps) > 0.01) {
+    if (realSharesM != null) {
+        sharesM = realSharesM;
+    } else if (netIncomeM && trailingEps && Math.abs(trailingEps) > 0.01) {
         sharesM = Math.abs(netIncomeM / trailingEps);
-    } else if (mktCap && price) {
+    } else if (mktCap && priceTrusted && price > 0) {
         sharesM = (mktCap / price) / 1e6;
     } else {
-        sharesM = 500;
+        sharesM = null;   // fail loud — no fabricated share count
     }
 
-    var eps    = trailingEps || 0;
-    var bvps   = fin.bookValue || num('BookValue') || 18.50;
+    var eps    = trailingEps || null;
+    var bvps   = fin.bookValue || num('BookValue') || null;
     var divYld = num('DividendYield') || 0;
-    var D0     = +(divYld * price).toFixed(2);
+    var D0     = +(divYld * (price || 0)).toFixed(2);
     var roe    = fin.returnOnEquity != null ? fin.returnOnEquity : 0.145;
 
-    // Balance sheet / income statement ($M)
-    var debt   = fin.totalDebt    ? +(fin.totalDebt    / 1e6).toFixed(0) : 5000;
-    var cash   = fin.totalCash    ? +(fin.totalCash    / 1e6).toFixed(0) : 2000;
-    var ebitda = fin.ebitda       ? +(fin.ebitda       / 1e6).toFixed(0) : 2800;
-    var rev    = fin.totalRevenue ? +(fin.totalRevenue / 1e6).toFixed(0) : 12000;
+    // Balance sheet / income statement ($M) — null when unhydrated (fail loud).
+    // debt/cash are coalesced to 0 only inside net-debt/WACC (a neutral stance,
+    // not a fabricated magnitude); the hydrated facts that drive implied prices
+    // (ebitda, rev) stay null so their methods drop.
+    var debt   = fin.totalDebt    ? +(fin.totalDebt    / 1e6).toFixed(0) : null;
+    var cash   = fin.totalCash    ? +(fin.totalCash    / 1e6).toFixed(0) : null;
+    var ebitda = fin.ebitda       ? +(fin.ebitda       / 1e6).toFixed(0) : null;
+    var rev    = fin.totalRevenue ? +(fin.totalRevenue / 1e6).toFixed(0) : null;
 
     // Tax rate derived from margin spread: 1 − (netMargin / opMargin), capped 15-40%
     var profitM = fin.profitMargins   != null ? fin.profitMargins   : null;
@@ -421,7 +449,7 @@ function mapPayload(payload, series) {
 
     // Cost of debt via Damodaran credit spread from Debt/EBITDA leverage ratio
     var rf         = 0.044;
-    var debtEbitda = (ebitda > 0) ? debt / ebitda : 2.0;
+    var debtEbitda = (debt != null && ebitda > 0) ? debt / ebitda : 2.0;
     var creditSpread;
     if      (debtEbitda < 1.0) creditSpread = 0.008;
     else if (debtEbitda < 2.0) creditSpread = 0.012;
@@ -431,11 +459,13 @@ function mapPayload(payload, series) {
     var rd = +(rf + creditSpread).toFixed(4);
 
     // FCF: Yahoo/Finnhub freeCashflow = operatingCF − capex = FCFE (post-interest)
-    // FCFF = FCFE + Debt × rd × (1 − tax)  [add back after-tax interest shield]
+    // FCFF = FCFE + Debt × rd × (1 − tax)  [add back after-tax interest shield].
+    // No real FCF → null base, so the DCF method drops rather than emitting a
+    // fabricated 400/500.
     var fcfe0raw    = fin.freeCashflow ? fin.freeCashflow / 1e6 : null;
-    var interestAdj = debt * rd * (1 - tax);
-    var fcfe0 = fcfe0raw != null ? +fcfe0raw.toFixed(0)              : 400;
-    var fcff0 = fcfe0raw != null ? +(fcfe0raw + interestAdj).toFixed(0) : 500;
+    var interestAdj = (debt || 0) * rd * (1 - tax);
+    var fcfe0 = fcfe0raw != null ? +fcfe0raw.toFixed(0)              : null;
+    var fcff0 = fcfe0raw != null ? +(fcfe0raw + interestAdj).toFixed(0) : null;
 
     // WACC weights: prefer market-value (debt / (debt + mktCap)); fallback book D/E
     var wd;
@@ -473,26 +503,29 @@ function mapPayload(payload, series) {
     // Sustainable growth for RI model: g = ROE × b
     var riG = Math.max(gL, Math.min(0.15, +(roe * b).toFixed(3)));
 
-    var netDebt = Math.max(0, debt - cash);
-    var pePeer  = num('PERatio') || fin.forwardPE || 22;
+    var netDebt = Math.max(0, (debt || 0) - (cash || 0));
+    // Peer multiples: real ratios only. null → that multiple sub-method drops,
+    // instead of anchoring on the shared 22 / 3.5 / 14 / 2.2 placeholders.
+    var pePeer  = num('PERatio') || fin.forwardPE || null;
+    var pbPeer  = fin.priceToBook  ? +fin.priceToBook.toFixed(1)
+                  : (bvps > 0 && priceTrusted && price > 0 ? +(price / bvps).toFixed(1) : null);
+    var pEV     = fin.evToEbitda   ? +fin.evToEbitda.toFixed(1)   : null;
+    var pPS     = fin.evToRevenue  ? +fin.evToRevenue.toFixed(1)  : null;
 
-    // Multiples from live fundamentals rather than hardcoded placeholders
-    var pbPeer = fin.priceToBook  ? +fin.priceToBook.toFixed(1)  : (bvps > 0 ? +(price / bvps).toFixed(1) : 3.5);
-    var pEV    = fin.evToEbitda   ? +fin.evToEbitda.toFixed(1)   : 14;
-    var pPS    = fin.evToRevenue  ? +fin.evToRevenue.toFixed(1)  : 2.2;
-
+    // Hard-data fields are null when unhydrated (fail loud → method drops).
+    // Assumption-side fields (gL, gS, tax, rf, erp, b) keep modeled defaults.
     return {
-        co:   { name: o.Name || o.Symbol || 'Unknown', ticker: o.Symbol || '', price: price, sector: secKey },
+        co:   { name: o.Name || o.Symbol || 'Unknown', ticker: o.Symbol || '', price: price, priceTrusted: priceTrusted, sector: secKey },
         coc:  { rf: rf, beta: beta, erp: 0.055, rd: rd, wd: +wd.toFixed(3), tax: +tax.toFixed(3) },
         ddm:  { D0: Math.max(0, D0), gS: +gS.toFixed(3), gL: gL, n: 5, H: 4, model: D0 > 0 ? '2stage' : 'gordon' },
-        fcf:  { fcff0: fcff0 > 0 ? fcff0 : 500, fcfe0: fcfe0 > 0 ? fcfe0 : 400,
+        fcf:  { fcff0: fcff0 != null && fcff0 > 0 ? fcff0 : null, fcfe0: fcfe0 != null && fcfe0 > 0 ? fcfe0 : null,
                 gr: gr, gL: gL, debt: debt, cash: cash,
-                shs: Math.round(Math.max(1, sharesM)), mode: 'fcff' },
-        mult: { eps: eps > 0 ? +eps.toFixed(2) : 3.20, bvps: bvps > 0 ? +bvps.toFixed(2) : 18.50,
-                ebitda: ebitda > 0 ? ebitda : 2800, rev: rev > 0 ? rev : 12000, b: b,
-                mktCap: mktCapM ? +mktCapM.toFixed(0) : 22500, netDebt: netDebt,
+                shs: sharesM != null ? Math.round(sharesM) : null, mode: 'fcff' },
+        mult: { eps: eps > 0 ? +eps.toFixed(2) : null, bvps: bvps > 0 ? +bvps.toFixed(2) : null,
+                ebitda: ebitda != null && ebitda > 0 ? ebitda : null, rev: rev != null && rev > 0 ? rev : null, b: b,
+                mktCap: mktCapM ? +mktCapM.toFixed(0) : null, netDebt: netDebt,
                 pPE: pePeer, pPB: pbPeer, pEV: pEV, pPS: pPS },
-        ri:   { B0: bvps > 0 ? +bvps.toFixed(2) : 18.50, ROE: roe > 0 ? +roe.toFixed(3) : 0.145,
+        ri:   { B0: bvps > 0 ? +bvps.toFixed(2) : null, ROE: roe > 0 ? +roe.toFixed(3) : 0.145,
                 g: riG, n: 5, mth: 'gordon', omega: 0.60 },
         priv: INIT.priv,
         wts:  INIT.wts,
@@ -702,9 +735,10 @@ export function ValuationHouse(props) {
                             var fcfPatch = {};
                             var ddmPatch = {};
                             var any = false;
-                            // Only write if Finnhub snapshot produced a default (i.e., value still
-                            // matches the INIT sentinel values — 500/400/5000/2000)
-                            if (c.cfo && c.cfo.valM != null && prev.fcf.fcff0 === 500) {
+                            // Only write where the Finnhub snapshot left a field unhydrated.
+                            // Hard-data fields now fail loud to null (no 500/400/5000/2000
+                            // sentinels), so EDGAR back-fills wherever the value is null.
+                            if (c.cfo && c.cfo.valM != null && prev.fcf.fcff0 == null) {
                                 // Approximate FCFF from CFO: FCFF ≈ CFO + interest×(1-tax)
                                 var cfoM = c.cfo.valM;
                                 var capexM = c.capex ? c.capex.valM : 0;
@@ -713,11 +747,11 @@ export function ValuationHouse(props) {
                                 fcfPatch.fcfe0 = Math.round(edgarFcfe * 10) / 10;
                                 any = true;
                             }
-                            if (c.debt && c.debt.valM != null && prev.fcf.debt === 5000) {
+                            if (c.debt && c.debt.valM != null && prev.fcf.debt == null) {
                                 fcfPatch.debt = Math.round(c.debt.valM);
                                 any = true;
                             }
-                            if (c.cash && c.cash.valM != null && prev.fcf.cash === 2000) {
+                            if (c.cash && c.cash.valM != null && prev.fcf.cash == null) {
                                 fcfPatch.cash = Math.round(c.cash.valM);
                                 any = true;
                             }
@@ -777,32 +811,35 @@ export function ValuationHouse(props) {
         var ffR = fcffVal(fcf.fcff0, fcf.gr, fcf.gL, wc, fcf.debt, fcf.cash, fcf.shs);
         var feR = fcfeVal(fcf.fcfe0, fcf.gr, fcf.gL, re, fcf.shs);
 
-        // ── Multiples: clamp peer ratios to plausible ranges before computing ──
-        // Company's own EV/EBITDA/Sales ratios are used as peer proxies. Clamp
-        // prevents runaway values when a single data field arrives in wrong units.
-        var safePE  = Math.min(Math.max(mult.pPE,  3),   200);
-        var safePB  = Math.min(Math.max(mult.pPB,  0.1),  20);
-        var safeEV  = Math.min(Math.max(mult.pEV,  1),    60);
-        var safePS  = Math.min(Math.max(mult.pPS,  0.1),  20);
+        // ── Multiples: real peer ratio × real base only; a null on either side
+        // drops that leg (no shared placeholder anchors its value). ──
+        var safeClamp = function(v, lo, hi) { return v == null ? null : Math.min(Math.max(v, lo), hi); };
+        var safePE  = safeClamp(mult.pPE,  3,   200);
+        var safePB  = safeClamp(mult.pPB,  0.1,  20);
+        var safeEV  = safeClamp(mult.pEV,  1,    60);
+        var safePS  = safeClamp(mult.pPS,  0.1,  20);
         // Live net-debt from current fcf state (may differ from stale mult.netDebt)
-        var liveNetDebt = Math.max(0, fcf.debt - fcf.cash);
+        var liveNetDebt = Math.max(0, (fcf.debt || 0) - (fcf.cash || 0));
+        var hasShs = fcf.shs != null && fcf.shs > 0;
 
-        var pPE   = safePE * mult.eps;
-        var pPB   = safePB * mult.bvps;
+        var pPE   = (safePE != null && mult.eps  != null) ? safePE * mult.eps  : null;
+        var pPB   = (safePB != null && mult.bvps != null) ? safePB * mult.bvps : null;
         // EV/EBITDA → equity value: EV = multiple × EBITDA; equity = EV − netDebt
-        var pEVps = fcf.shs > 0 ? (safeEV * mult.ebitda - liveNetDebt) / fcf.shs : null;
+        var pEVps = (hasShs && safeEV != null && mult.ebitda != null) ? (safeEV * mult.ebitda - liveNetDebt) / fcf.shs : null;
         // EV/Sales → equity value: EV = multiple × revenue; equity = EV − netDebt
-        var pPS   = fcf.shs > 0 ? (safePS * mult.rev - liveNetDebt) / fcf.shs : null;
+        var pPS   = (hasShs && safePS != null && mult.rev    != null) ? (safePS * mult.rev - liveNetDebt) / fcf.shs : null;
         var jpeV  = jPELeading(mult.b, re, ddm.gL);
         var jpbV  = jPB(ri.ROE, re, ri.g);
-        // Sanity gate: exclude any sub-model output > 50× market price (data error)
-        var priceRef = s.co.price > 0 ? s.co.price : Infinity;
+        // Sanity gate: only when we have a TRUSTED price; drop any leg outside an
+        // 8× band (replaces the old 50× gate, which was anchored to the suspect price).
+        var priceRef = (s.co.priceTrusted && s.co.price > 0) ? s.co.price : null;
         var mVals = [pPE, pPB, pEVps, pPS].filter(function(v) {
-            return v > 0 && isFinite(v) && v < priceRef * 50;
+            if (!(v > 0 && isFinite(v))) return false;
+            return priceRef == null ? true : (v <= priceRef * 8 && v >= priceRef / 8);
         });
         var multAvg = mVals.length ? mVals.reduce(function(a, b) { return a + b; }, 0) / mVals.length : null;
 
-        var riR  = riCalc(ri.B0, ri.ROE, re, ri.g, ri.n, ri.mth, ri.omega);
+        var riR  = (ri.B0 != null) ? riCalc(ri.B0, ri.ROE, re, ri.g, ri.n, ri.mth, ri.omega) : null;
 
         var privR = privCalc(priv.nE, priv.mult, priv.debt, priv.cash, priv.dlom, priv.dloc, priv.isCtrl, priv.cp);
         var privPS = priv.shs > 0 ? (priv.isCtrl ? privR.ctrl : privR.min) / priv.shs : null;
@@ -1927,7 +1964,7 @@ export function ValuationHouse(props) {
                     exchange: null,
                     sector: s.co.sector,
                     currency: 'USD',
-                    currentPrice: price,
+                    currentPrice: s.co.priceTrusted ? price : null,
                     impliedPrice: sbImplied,
                     inputs: sbInputs,
                     assumptions: sbAssumptions,

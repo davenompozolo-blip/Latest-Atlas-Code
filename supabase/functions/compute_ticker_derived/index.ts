@@ -569,7 +569,9 @@ Deno.serve(async (req: Request) => {
 
 // If Finnhub reported financials are unavailable, fall back to metric blob
 function makeMetricFallback(metric: FhMetric): AnnualData {
-  const shares = n(metric['shareOutstanding']) ?? n(metric['marketCapitalization'])
+  // Fail loud: no real share count → null. (Falling back to marketCapitalization
+  // as a share count was nonsensical and corrupted every per-share derivation.)
+  const shares = n(metric['shareOutstanding'])
   return {
     revenue:             n(metric['revenuePerShareTTM']) != null && shares ? (n(metric['revenuePerShareTTM'])! * shares) : null,
     grossProfit:         null,

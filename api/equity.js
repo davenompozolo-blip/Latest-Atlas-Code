@@ -137,7 +137,11 @@ async function alpacaBars(symbol) {
         + '&start=' + start.toISOString().slice(0, 10)
         + '&end=' + end.toISOString().slice(0, 10)
         + '&limit=10000'
-        + '&adjustment=raw'
+        // Split-adjusted closes — raw bars carry pre-split price levels for any
+        // name that split inside the window, which silently inflated the saved
+        // current_price (e.g. GOOGL reading ~2.2× its adjusted level). Dividends
+        // are intentionally NOT adjusted so the quote stays a true price level.
+        + '&adjustment=split'
         + '&feed=iex';
 
     const r = await fetchWithTimeout(url, {

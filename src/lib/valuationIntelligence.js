@@ -350,16 +350,14 @@ export function assembleFundamentals(raw, mappedState) {
   }
 
   // ── Tier 2: EBITDA-based NOPAT (when no direct FCF) ───────────────────────
+  // Fail loud: requires REAL CapEx. The old 4%-of-revenue estimate fabricated a
+  // base that flowed straight into the DCF — drop the method instead.
   if (fcffM == null && fin.ebitda != null) {
     const ebitdaM = fin.ebitda / 1e6;
-    // CapEx estimate: use reported if available, else sector-typical 4% of revenue
-    let capexEstM = null, capexProv = '';
+    let capexEstM = null;
+    const capexProv = 'reported CapEx';
     if (capexRaw != null) {
       capexEstM = capexRaw / 1e6;
-      capexProv = 'reported CapEx';
-    } else if (fin.totalRevenue != null) {
-      capexEstM = (fin.totalRevenue / 1e6) * 0.04;
-      capexProv = '4% revenue estimate';
     }
     if (capexEstM != null) {
       fcffM    = +((ebitdaM * (1 - effTax)) - capexEstM).toFixed(1);
@@ -379,46 +377,33 @@ export function assembleFundamentals(raw, mappedState) {
   }
 
   // ── Tier 3: Net income + D&A proxy (when no EBITDA) ───────────────────────
+  // Fail loud: requires a REAL margin-derived D&A AND real CapEx. The flat
+  // 2%-D&A / 4%-CapEx estimates fabricated the base, so drop the method if
+  // either is unavailable.
   if (fcffM == null && fin.netIncome != null) {
     const niM = fin.netIncome / 1e6;
     const intM = interestM || 0;
-    // D&A proxy: EBITDA margin − EBIT margin if both exist, else 2% of revenue
-    let dnaM = 0, dnaProv = '';
+    let dnaM = null, dnaProv = '';
     if (fin.ebitdaMargins != null && fin.operatingMargins != null && fin.totalRevenue != null) {
       dnaM    = fin.totalRevenue / 1e6 * (fin.ebitdaMargins - fin.operatingMargins);
       dnaProv = '(EBITDA margin − EBIT margin)×Revenue';
-    } else if (fin.totalRevenue != null) {
-      dnaM    = fin.totalRevenue / 1e6 * 0.02;
-      dnaProv = '2% revenue D&A estimate';
     }
-    let capexEstM = 0, capexProv2 = '';
-    if (capexRaw != null) {
-      capexEstM = capexRaw / 1e6;
-      capexProv2 = 'reported CapEx';
-    } else if (fin.totalRevenue != null) {
-      capexEstM = fin.totalRevenue / 1e6 * 0.04;
-      capexProv2 = '4% revenue CapEx estimate';
+    const capexEstM = capexRaw != null ? capexRaw / 1e6 : null;
+    if (dnaM != null && capexEstM != null) {
+      fcffM    = +(niM + intM * (1 - effTax) + dnaM - capexEstM).toFixed(1);
+      fcffProv = `NI + Int×(1−t) + D&A [${dnaProv}] − CapEx [reported] · FY${latestFY}`;
+      fcffSrc  = srcLabel + ' (derived)';
+      fcfeM    = +(niM + dnaM - capexEstM).toFixed(1);
+      fcfeProv = `NI + D&A − CapEx · FY${latestFY}`;
+      fcfeSrc  = srcLabel + ' (derived)';
     }
-    fcffM    = +(niM + intM * (1 - effTax) + dnaM - capexEstM).toFixed(1);
-    fcffProv = `NI + Int×(1−t) + D&A [${dnaProv}] − CapEx [${capexProv2}] · FY${latestFY}`;
-    fcffSrc  = srcLabel + ' (derived)';
-    fcfeM    = +(niM + dnaM - capexEstM).toFixed(1);
-    fcfeProv = `NI + D&A − CapEx · FY${latestFY}`;
-    fcfeSrc  = srcLabel + ' (derived)';
   }
 
-  // ── Tier 4: Revenue × margin approach (last resort) ───────────────────────
-  if (fcffM == null && fin.totalRevenue != null && fin.operatingMargins != null) {
-    const revM     = fin.totalRevenue / 1e6;
-    const nopat    = revM * fin.operatingMargins * (1 - effTax);
-    const reinvest = 0.30; // assume 30% reinvestment rate
-    fcffM    = +(nopat * (1 - reinvest)).toFixed(1);
-    fcffProv = `NOPAT×(1−reinvest) [Rev×OpMargin×(1−t)×70%] · FY${latestFY}`;
-    fcffSrc  = srcLabel + ' (margin est.)';
-    fcfeM    = fcffM;
-    fcfeProv = `Same as FCFF (no leverage adjustment) · FY${latestFY}`;
-    fcfeSrc  = fcffSrc;
-  }
+  // ── Tier 4 (Rev×OpMargin "margin estimate") removed ───────────────────────
+  // It fabricated an FCFF base out of revenue × margin × an assumed 70%
+  // reinvestment and flowed into the DCF via applyFundamentalsHydration. Per
+  // the fail-loud rule, no real cash-flow data → fcff/fcfe stay null and the
+  // DCF method drops rather than emitting a confident-wrong number.
 
   // Historical CAGR — prefer OCF series, fall back to revenue
   let historicalCAGR = null;
