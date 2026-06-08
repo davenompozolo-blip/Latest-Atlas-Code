@@ -10,9 +10,24 @@ import React from 'react';
 
 import { sb } from './config.js';
 import { fmtCurrency, fmtPct } from './utils.js';
+import { computeComposite } from '../lib/fairValueComposite.js';
 
 const { useState, useEffect, useCallback, useRef, useMemo } = React;
 const h = React.createElement;
+
+// Deterministic fair-value composite from a company's saved snapshots.
+// Replaces the LLM's echoed arithmetic mean: drops methods whose implied
+// price sits outside a sane band around the (trusted) current price, blends
+// the survivors, and returns nulls when nothing survives. Authoritative for
+// avg_fair_value / fair_value_low / fair_value_high.
+function compositeFields(snaps, currentPrice) {
+    const prices = (snaps || []).map(s => Number(s.implied_price)).filter(p => isFinite(p) && p > 0);
+    const trusted = (currentPrice != null && Number(currentPrice) > 0) ? Number(currentPrice) : null;
+    const blend = computeComposite(prices, trusted);
+    return blend
+        ? { avg_fair_value: blend.blended_fair_value, fair_value_low: blend.fair_value_low, fair_value_high: blend.fair_value_high }
+        : { avg_fair_value: null, fair_value_low: null, fair_value_high: null };
+}
 
 // ── Conviction badge colours ──────────────────────────────────────────────────
 function titleCaseSector(s) {
@@ -352,11 +367,15 @@ function ScrapbookProfile({ ticker, onBack }) {
                 .single();
             if (ne) throw ne;
 
-            // Update company conviction + thesis summary
+            // Update company conviction + thesis summary. Composite is the
+            // deterministic trimmed blend of survivors, not the LLM's echoed mean.
+            const comp = compositeFields(snapshots, company.current_price);
             await sb.from('scrapbook_companies').update({
                 conviction_rating: result.conviction_rating || null,
                 thesis_summary: result.thesis ? result.thesis.slice(0, 220) : null,
-                avg_fair_value: result.blended_fair_value || null,
+                avg_fair_value: comp.avg_fair_value,
+                fair_value_low: comp.fair_value_low,
+                fair_value_high: comp.fair_value_high,
                 updated_at: new Date().toISOString(),
             }).eq('id', company.id);
 
@@ -811,11 +830,15 @@ export function ScrapbookSaveBar({ method, methodLabel, ticker, companyName, exc
                 .single();
             if (e3) throw e3;
 
-            // 8. Update company
+            // 8. Update company — composite is computed deterministically (trimmed
+            //    blend of the survivors), not the LLM's echoed mean.
+            const comp = compositeFields(allSnaps || [snap], co.current_price);
             await sb.from('scrapbook_companies').update({
                 conviction_rating: result.conviction_rating || null,
                 thesis_summary: result.thesis ? result.thesis.slice(0, 220) : null,
-                avg_fair_value: result.blended_fair_value || null,
+                avg_fair_value: comp.avg_fair_value,
+                fair_value_low: comp.fair_value_low,
+                fair_value_high: comp.fair_value_high,
                 updated_at: new Date().toISOString(),
             }).eq('id', co.id);
 
