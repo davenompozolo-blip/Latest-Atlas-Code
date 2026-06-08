@@ -7,10 +7,12 @@
     "api/claude-analyse.js":  { "maxDuration": 60 },
     "api/claude-sector.js":   { "maxDuration": 60 },
     "api/ledger-snapshot.js": { "maxDuration": 60 },
-    "api/ledger-export.js":   { "maxDuration": 30 }
+    "api/ledger-export.js":   { "maxDuration": 30 },
+    "api/sync-valuations.js": { "maxDuration": 300 }
   },
   "crons": [
-    { "path": "/api/ledger-snapshot", "schedule": "30 22 * * 1-5" }
+    { "path": "/api/ledger-snapshot", "schedule": "30 22 * * 1-5" },
+    { "path": "/api/sync-valuations", "schedule": "0 6 * * 1" }
   ],
   "rewrites": [
     { "source": "/((?!api/).*)", "destination": "/index.html" }

@@ -145,6 +145,94 @@ function TypewriterText({ text, speed = 8 }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // ScrapbookLog — company grid
 // ─────────────────────────────────────────────────────────────────────────────
+// ── Valuation health surface — over the valuation_health view ──
+// The systematic version of the NVDA/BMY hunt: scan freshness + how many
+// methods backed each composite, with the reasons the rest dropped. Problem
+// children (stalest, most-dropped) float to the top.
+const DROP_LABELS = {
+    shares_unhydrated: 'shares', tv_clamped: 'TV-clamp', outlier_trimmed: 'outlier',
+    missing_fcf_base: 'no-FCF', stale_price: 'stale-px', no_dividend: 'no-div',
+    missing_book_value: 'no-BV', missing_multiples_inputs: 'no-mult',
+    ri_undefined: 'RI', ddm_undefined: 'DDM', dcf_undefined: 'DCF', unknown: '?',
+};
+function freshnessColor(d) {
+    if (d == null) return 'rgba(255,255,255,0.3)';
+    return d <= 7 ? '#10b981' : d <= 21 ? '#f59e0b' : '#ef4444';
+}
+
+function ValuationHealthPanel({ onSelect }) {
+    const [rows, setRows]       = useState(null);
+    const [sortKey, setSortKey] = useState('age');   // 'age' | 'dropped'
+    const [open, setOpen]       = useState(true);
+
+    useEffect(() => {
+        if (!sb) { setRows([]); return; }
+        sb.from('valuation_health').select('*').then(({ data }) => setRows(data || []));
+    }, []);
+
+    if (!rows || !rows.length) return null;
+
+    const sorted = [...rows].sort((a, b) =>
+        sortKey === 'dropped'
+            ? (b.methods_dropped || 0) - (a.methods_dropped || 0) || (b.age_days || 0) - (a.age_days || 0)
+            : (b.age_days || 0) - (a.age_days || 0) || (b.methods_dropped || 0) - (a.methods_dropped || 0));
+
+    const stale = rows.filter(r => (r.age_days || 0) > 7).length;
+    const noComposite = rows.filter(r => !r.has_composite).length;
+
+    const sortBtn = (key, label) => h('button', {
+        onClick: () => setSortKey(key),
+        style: {
+            fontSize: 10, fontWeight: 600, padding: '4px 10px', borderRadius: 5, cursor: 'pointer',
+            border: '1px solid ' + (sortKey === key ? 'rgba(0,212,255,0.4)' : 'rgba(255,255,255,0.1)'),
+            background: sortKey === key ? 'rgba(0,212,255,0.12)' : 'transparent',
+            color: sortKey === key ? '#00d4ff' : 'rgba(255,255,255,0.5)',
+        },
+    }, label);
+
+    const th = (t, alignRight) => h('th', { style: { textAlign: alignRight ? 'right' : 'left', padding: '6px 10px', fontSize: 9, letterSpacing: 1, textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)', borderBottom: '1px solid rgba(255,255,255,0.08)', whiteSpace: 'nowrap' } }, t);
+
+    return h(Card, { style: { marginBottom: 16 } },
+        h(SectionHeader, {
+            label: 'Valuation Health',
+            sub: rows.length + ' names · ' + stale + ' stale · ' + noComposite + ' without a composite',
+            action: h('div', { style: { display: 'flex', gap: 6, alignItems: 'center' } },
+                h('span', { style: { fontSize: 9, color: 'rgba(255,255,255,0.3)', marginRight: 4 } }, 'sort'),
+                sortBtn('age', 'Staleness'),
+                sortBtn('dropped', 'Dropped'),
+                h('button', { onClick: () => setOpen(o => !o), style: { fontSize: 10, padding: '4px 8px', borderRadius: 5, cursor: 'pointer', border: '1px solid rgba(255,255,255,0.1)', background: 'transparent', color: 'rgba(255,255,255,0.5)' } }, open ? '▾' : '▸')),
+        }),
+        open && h('div', { style: { overflowX: 'auto', maxHeight: 420, overflowY: 'auto' } },
+            h('table', { style: { width: '100%', borderCollapse: 'collapse', fontSize: 12 } },
+                h('thead', null, h('tr', null,
+                    th('Ticker'), th('Age', true), th('Valued', true), th('Dropped', true), th('Drop reasons'), th('Composite', true))),
+                h('tbody', null,
+                    sorted.map(r => h('tr', {
+                        key: r.ticker,
+                        onClick: () => onSelect && onSelect(r.ticker),
+                        style: { cursor: 'pointer', borderBottom: '1px solid rgba(255,255,255,0.04)' },
+                        onMouseEnter: e => { e.currentTarget.style.background = 'rgba(0,212,255,0.04)'; },
+                        onMouseLeave: e => { e.currentTarget.style.background = 'transparent'; },
+                    },
+                        h('td', { style: { padding: '7px 10px', fontFamily: 'JetBrains Mono, monospace', fontWeight: 600, color: '#fff' } }, r.ticker),
+                        h('td', { style: { padding: '7px 10px', textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', color: freshnessColor(r.age_days) } },
+                            r.age_days == null ? '—' : r.age_days + 'd'),
+                        h('td', { style: { padding: '7px 10px', textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', color: '#10b981' } }, r.methods_valued != null ? r.methods_valued : '—'),
+                        h('td', { style: { padding: '7px 10px', textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', color: (r.methods_dropped || 0) > 0 ? '#f59e0b' : 'rgba(255,255,255,0.3)' } }, r.methods_dropped != null ? r.methods_dropped : '—'),
+                        h('td', { style: { padding: '7px 10px' } },
+                            h('div', { style: { display: 'flex', gap: 4, flexWrap: 'wrap' } },
+                                (r.drop_reasons || []).map(dr => h('span', { key: dr, title: dr, style: { fontSize: 9, color: '#f59e0b', background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 3, padding: '1px 6px', whiteSpace: 'nowrap' } }, DROP_LABELS[dr] || dr)))),
+                        h('td', { style: { padding: '7px 10px', textAlign: 'right' } },
+                            r.has_composite
+                                ? h('span', { style: { color: '#00d4ff', fontFamily: 'JetBrains Mono, monospace' } }, fmtCurrency(r.avg_fair_value))
+                                : h('span', { style: { color: '#ef4444', fontSize: 11 } }, 'null'))
+                    ))
+                )
+            )
+        )
+    );
+}
+
 function ScrapbookLog({ onSelect }) {
     const [companies, setCompanies] = useState([]);
     const [loading, setLoading]     = useState(true);
@@ -175,6 +263,7 @@ function ScrapbookLog({ onSelect }) {
     }
 
     return h('div', { style: { padding: 24 } },
+        h(ValuationHealthPanel, { onSelect }),
         h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 } },
             companies.map(co =>
                 h('div', {

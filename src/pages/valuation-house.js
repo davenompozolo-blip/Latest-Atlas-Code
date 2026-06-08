@@ -17,6 +17,15 @@ import {
     computeCompassScore,
     assembleFundamentals,
 } from '../lib/valuationIntelligence.js';
+// Isomorphic valuation engine — the page runs the same pure model code that
+// the weekly sync (api/sync-valuations) uses as the canonical write path.
+import {
+    mapPayload,
+    applyFundamentalsHydration,
+    fcffVal,
+    computeMethods,
+    SECTORS,
+} from '../lib/valuationEngine.js';
 
 const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
@@ -53,161 +62,6 @@ function signalColor(v, price) {
     if (u > 0)     return 'var(--cyan)';
     if (u > -0.10) return 'var(--amber)';
     return 'var(--red)';
-}
-
-// ─── Calculation engine ───────────────────────────────────────────────────────
-function capm(rf, b, erp) { return rf + b * erp; }
-function calcWACC(re, we, rd, wd, t) { return re * we + rd * (1 - t) * wd; }
-
-function gordonGrowth(D0, g, r) {
-    if (r <= g || D0 <= 0) return null;
-    return D0 * (1 + g) / (r - g);
-}
-
-function hModel(D0, gS, gL, H, r) {
-    if (r <= gL || D0 <= 0) return null;
-    var lr = D0 * (1 + gL) / (r - gL);
-    var gp = D0 * H * (gS - gL) / (r - gL);
-    return { v: lr + gp, lr: lr, gp: gp };
-}
-
-function twoStageDDM(D0, gS, gL, n, r) {
-    if (r <= gL || D0 <= 0) return null;
-    var D = D0, pvS = 0, divs = [];
-    for (var t = 1; t <= n; t++) {
-        D *= (1 + gS);
-        var p = D / Math.pow(1 + r, t);
-        pvS += p;
-        divs.push({ t: t, D: +D.toFixed(4), pv: +p.toFixed(4) });
-    }
-    var tv = D * (1 + gL) / (r - gL);
-    var pvTV = tv / Math.pow(1 + r, n);
-    return { v: pvS + pvTV, divs: divs, pvS: pvS, pvTV: pvTV, tv: tv, tvPct: pvTV / (pvS + pvTV) * 100 };
-}
-
-// Minimum Gordon spread (discount rate − terminal growth). Below this the
-// terminal value explodes (tv = f·(1+gL)/(r−gL)); a 2.8% spread produced
-// BMY's $895B EV on a ~$115B company. Fail loud (null) rather than emit it.
-var MIN_TV_SPREAD = 0.02;
-
-// A quote older than this is stale and must not be trusted as current_price
-// (it feeds the saved price, the upside denominator and the share fallback).
-var PRICE_STALE_DAYS = 7;
-
-function fcffVal(f0, gr, gL, wc, debt, cash, shs) {
-    // Fail loud: no fabricated base, no fabricated share count, no thin spread.
-    if (f0 == null || f0 <= 0) return null;
-    if (shs == null || shs <= 0) return null;
-    if (wc - gL < MIN_TV_SPREAD) return null;
-    var f = f0, pvS = 0;
-    var proj = gr.map(function(g, i) {
-        f *= (1 + g);
-        var p = f / Math.pow(1 + wc, i + 1);
-        pvS += p;
-        return { t: i + 1, g: g, fcff: +f.toFixed(1), pv: +p.toFixed(1) };
-    });
-    var n = gr.length;
-    var tv = f * (1 + gL) / (wc - gL);
-    var pvTV = tv / Math.pow(1 + wc, n);
-    var ev = pvS + pvTV;
-    var eq = ev - (debt || 0) + (cash || 0);
-    return { eqPS: eq / shs, ev: ev, eq: eq, pvS: pvS, pvTV: pvTV, tv: tv, tvPct: pvTV / ev * 100, proj: proj };
-}
-
-function fcfeVal(f0, gr, gL, re, shs) {
-    if (f0 == null || f0 <= 0) return null;
-    if (shs == null || shs <= 0) return null;
-    if (re - gL < MIN_TV_SPREAD) return null;
-    var f = f0, pvS = 0;
-    var proj = gr.map(function(g, i) {
-        f *= (1 + g);
-        var p = f / Math.pow(1 + re, i + 1);
-        pvS += p;
-        return { t: i + 1, g: g, fcfe: +f.toFixed(1), pv: +p.toFixed(1) };
-    });
-    var n = gr.length;
-    var tv = f * (1 + gL) / (re - gL);
-    var pvTV = tv / Math.pow(1 + re, n);
-    var eq = pvS + pvTV;
-    return { eqPS: eq / shs, eq: eq, pvS: pvS, pvTV: pvTV, tv: tv, tvPct: pvTV / eq * 100, proj: proj };
-}
-
-function jPELeading(b, r, g) { return r > g ? (1 - b) / (r - g) : null; }
-function jPB(roe, r, g) { return r > g ? (roe - g) / (r - g) : null; }
-
-function riCalc(B0, ROE, re, g, n, mth, omega) {
-    if (B0 <= 0 || ROE <= 0 || re <= 0) return null;
-    var ret = Math.min(0.99, g / Math.max(ROE, 0.001));
-    var B = B0, pvS = 0, periods = [];
-    for (var t = 1; t <= n; t++) {
-        var NI = B * ROE;
-        var RI = (ROE - re) * B;
-        var p = RI / Math.pow(1 + re, t);
-        pvS += p;
-        periods.push({ t: t, B: +B.toFixed(2), NI: +NI.toFixed(2), RI: +RI.toFixed(2), pv: +p.toFixed(2) });
-        B += NI * ret;
-    }
-    var RI_n = (ROE - re) * B;
-    var tv = 0;
-    if (mth === 'persistence' && re > omega) tv = RI_n / (re - omega);
-    else if (mth === 'gordon' && re > g && RI_n > 0) tv = RI_n * (1 + g) / (re - g);
-    var pvTV = tv / Math.pow(1 + re, n);
-    return {
-        v: B0 + pvS + pvTV, B0: B0, pvS: pvS, pvTV: pvTV, periods: periods,
-        tvPct: Math.abs(pvTV) / (Math.abs(pvS) + Math.abs(pvTV) + B0) * 100,
-    };
-}
-
-function privCalc(nE, mult, debt, cash, dlom, dloc, isCtrl, cp) {
-    var ev   = nE * mult;
-    var eq   = ev - debt + cash;
-    var ctrl = eq * (1 + cp);
-    var min  = eq * (1 - dloc) * (1 - dlom);
-    return { ev: ev, eq: eq, ctrl: ctrl, min: min };
-}
-
-function buildConsensus(valMap, wts) {
-    var totalWt = Object.keys(wts).reduce(function(a, k) {
-        return a + (valMap[k] != null && valMap[k] > 0 ? wts[k] : 0);
-    }, 0);
-    if (totalWt === 0) return null;
-    return Object.keys(wts).reduce(function(a, k) {
-        return a + (valMap[k] != null && valMap[k] > 0 ? valMap[k] * wts[k] : 0);
-    }, 0) / totalWt;
-}
-
-// Patches the mapped ValuationHouse state with real values from assembleFundamentals.
-// Only overwrites fields where hasData===true and the value is non-null/non-zero.
-// FCFE can be negative (high-capex companies) so we don't clamp it.
-function applyFundamentalsHydration(mappedState, fund) {
-    if (!fund) return mappedState;
-    var fcf = Object.assign({}, mappedState.fcf);
-    var ddm = Object.assign({}, mappedState.ddm);
-    var changed = false;
-
-    if (fund.fcff && fund.fcff.hasData && fund.fcff.value != null) {
-        fcf.fcff0 = Math.round(fund.fcff.value * 10) / 10;
-        changed = true;
-    }
-    if (fund.fcfe && fund.fcfe.hasData && fund.fcfe.value != null) {
-        fcf.fcfe0 = Math.round(fund.fcfe.value * 10) / 10;
-        changed = true;
-    }
-    if (fund.totalDebt && fund.totalDebt.hasData && fund.totalDebt.value != null) {
-        fcf.debt = fund.totalDebt.value;
-        changed = true;
-    }
-    if (fund.cash && fund.cash.hasData && fund.cash.value != null) {
-        fcf.cash = fund.cash.value;
-        changed = true;
-    }
-    if (fund.dividend && fund.dividend.hasData && fund.dividend.value != null) {
-        ddm.D0 = fund.dividend.value;
-        changed = true;
-    }
-
-    if (!changed) return mappedState;
-    return Object.assign({}, mappedState, { fcf: fcf, ddm: ddm });
 }
 
 function detectTraps(s, re, wc) {
@@ -257,20 +111,6 @@ var INIT = {
     wts:  { ddm: 20, fcff: 25, fcfe: 20, mult: 20, ri: 15 },
 };
 
-var SECTORS = {
-    technology:  { beta: 1.25, D0: 0.50, gS: 0.12, gL: 0.030, rd: 0.048, wd: 0.15, label: 'Technology' },
-    financials:  { beta: 1.10, D0: 2.00, gS: 0.07, gL: 0.030, rd: 0.040, wd: 0.40, label: 'Financials' },
-    healthcare:  { beta: 0.85, D0: 1.00, gS: 0.09, gL: 0.025, rd: 0.042, wd: 0.20, label: 'Healthcare' },
-    energy:      { beta: 1.15, D0: 2.50, gS: 0.05, gL: 0.020, rd: 0.050, wd: 0.30, label: 'Energy' },
-    utilities:   { beta: 0.60, D0: 3.00, gS: 0.04, gL: 0.020, rd: 0.045, wd: 0.45, label: 'Utilities' },
-    consumer:    { beta: 0.80, D0: 1.50, gS: 0.07, gL: 0.025, rd: 0.040, wd: 0.20, label: 'Consumer' },
-    industrials: { beta: 1.05, D0: 1.20, gS: 0.07, gL: 0.025, rd: 0.042, wd: 0.25, label: 'Industrials' },
-    realestate:  { beta: 0.70, D0: 3.50, gS: 0.05, gL: 0.025, rd: 0.045, wd: 0.50, label: 'Real Estate' },
-    materials:   { beta: 1.05, D0: 1.50, gS: 0.06, gL: 0.022, rd: 0.043, wd: 0.28, label: 'Materials' },
-    comms:       { beta: 0.90, D0: 1.20, gS: 0.08, gL: 0.025, rd: 0.042, wd: 0.30, label: 'Comm. Services' },
-    general:     { beta: 1.00, D0: 1.00, gS: 0.07, gL: 0.025, rd: 0.044, wd: 0.25, label: 'General' },
-};
-
 var INNER_TABS = [
     { k: 'dash',  l: '◈ Dashboard' },
     { k: 'setup', l: '⚙ Setup' },
@@ -282,257 +122,6 @@ var INNER_TABS = [
     { k: 'sens',  l: '🔥 Sensitivity' },
 ];
 
-// ─── Sector classifier — covers Yahoo Finance sectors, Finnhub GICS industries,
-//     and Alpha Vantage sector strings. Pass both sector AND industry fields for
-//     best coverage (Finnhub only returns an industry string, not a broad sector).
-function sectorToKey(sector, industry) {
-    // Build a list of strings to test, most authoritative first
-    var candidates = [];
-    if (sector)   candidates.push(sector.toLowerCase());
-    if (industry && industry !== sector) candidates.push(industry.toLowerCase());
-
-    for (var ci = 0; ci < candidates.length; ci++) {
-        var s = candidates[ci];
-
-        // ── Real Estate (check before industrials to avoid 'construction' clash)
-        if (s.includes('real estate') || s.includes('reit') || s.includes('realty') ||
-            s.includes('property trust'))
-            return 'realestate';
-
-        // ── Utilities
-        if (s.includes('utilit') || s.includes('water utility') || s.includes('gas utility') ||
-            s.includes('regulated gas') || s.includes('regulated electric') ||
-            s.includes('regulated water') || s.includes('independent power'))
-            return 'utilities';
-
-        // ── Energy (check before industrials: pipelines, refiners)
-        if (s.includes('energy') || s.includes('oil') || s.includes('gas e&p') ||
-            s.includes('petroleum') || s.includes('coal') || s.includes('uranium') ||
-            s.includes('pipeline') || s.includes('refin') || s.includes('midstream') ||
-            s.includes('integrated oil') || s.includes('oil & gas') || s.includes('fossil'))
-            return 'energy';
-
-        // ── Healthcare (check before technology: med-tech overlap)
-        if (s.includes('health') || s.includes('pharma') || s.includes('biotech') ||
-            s.includes('medical') || s.includes('drug') || s.includes('hospital') ||
-            s.includes('diagnostics') || s.includes('managed care') || s.includes('life science') ||
-            s.includes('therapeut') || s.includes('clinical') || s.includes('genomic') ||
-            s.includes('radiolog') || s.includes('dental') || s.includes('optometri') ||
-            s.includes('medtech'))
-            return 'healthcare';
-
-        // ── Financials
-        if (s.includes('financ') || s.includes('bank') || s.includes('insurance') ||
-            s.includes('invest') || s.includes('asset management') || s.includes('credit') ||
-            s.includes('mortgage') || s.includes('brokerage') || s.includes('capital market') ||
-            s.includes('exchange') || s.includes('wealth') || s.includes('private equity') ||
-            s.includes('financial service') || s.includes('diversified financial'))
-            return 'financials';
-
-        // ── Communication Services (before technology: internet, media)
-        if (s.includes('communication service') || s.includes('telecom') || s.includes('wireless') ||
-            s.includes('broadcasting') || s.includes('publishing') || s.includes('advertising') ||
-            s.includes('interactive media') || s.includes('entertainment') ||
-            s.includes('gaming & multimedia') || s.includes('electronic gaming') ||
-            s.includes('social media') || s.includes('media'))
-            return 'comms';
-
-        // ── Technology
-        if (s.includes('tech') || s.includes('software') || s.includes('semiconductor') ||
-            s.includes('hardware') || s.includes('computer') || s.includes('internet content') ||
-            s.includes('data center') || s.includes('cloud') || s.includes('cybersecur') ||
-            s.includes('artificial intel') || s.includes('information tech') ||
-            s.includes('electronic components') || s.includes('it service'))
-            return 'technology';
-
-        // ── Materials (before industrials: mining, chemicals overlap)
-        if (s.includes('basic material') || s.includes('mining') || s.includes('gold') ||
-            s.includes('silver') || s.includes('copper') || s.includes('steel') ||
-            s.includes('aluminum') || s.includes('metal') || s.includes('chemical') ||
-            s.includes('specialty chemical') || s.includes('agricultural input') ||
-            s.includes('fertilizer') || s.includes('paper') || s.includes('forestry') ||
-            s.includes('lumber') || s.includes('packaging') || s.includes('platinum') ||
-            s.includes('precious metal') || s.includes('commodity'))
-            return 'materials';
-
-        // ── Industrials
-        if (s.includes('industr') || s.includes('aerospace') || s.includes('defense') ||
-            s.includes('airlin') || s.includes('railroad') || s.includes('transport') ||
-            s.includes('logistics') || s.includes('machinery') || s.includes('construction') ||
-            s.includes('engineering') || s.includes('farm & heavy') || s.includes('conglomerate') ||
-            s.includes('waste') || s.includes('staffing') || s.includes('consulting') ||
-            s.includes('commercial service') || s.includes('business service') ||
-            s.includes('professional service') || s.includes('marine') || s.includes('trucking'))
-            return 'industrials';
-
-        // ── Consumer (cyclical + defensive: apparel, food, auto, travel, luxury)
-        if (s.includes('consumer') || s.includes('retail') || s.includes('apparel') ||
-            s.includes('footwear') || s.includes('textile') || s.includes('luxury') ||
-            s.includes('food') || s.includes('beverage') || s.includes('restaurant') ||
-            s.includes('hotel') || s.includes('lodging') || s.includes('travel') ||
-            s.includes('gambling') || s.includes('casino') || s.includes('leisure') ||
-            s.includes('sporting') || s.includes('auto') || s.includes('automobile') ||
-            s.includes('vehicle') || s.includes('tobacco') || s.includes('household') ||
-            s.includes('personal product') || s.includes('packaged food') ||
-            s.includes('grocery') || s.includes('discount') || s.includes('specialty store') ||
-            s.includes('home furnishing') || s.includes('home improvement') ||
-            s.includes('department store') || s.includes('e-commerce'))
-            return 'consumer';
-    }
-
-    return null;
-}
-
-// Legacy alias kept for any external callers
-function avSectorToKey(sector) { return sectorToKey(sector, null); }
-
-// ─── Map /api/equity payload → ValuationHouse state ──────────────────────────
-function mapPayload(payload, series) {
-    var o      = payload.overview   || {};
-    var rawFin = payload.financials || {};
-    // API returns financials = { snapshot: {...}, yearly: [...], quarterly: [...] }
-    var fin    = (rawFin && rawFin.snapshot) ? rawFin.snapshot : rawFin;
-    var num    = function(k, obj) { var v = Number((obj || o)[k]); return isFinite(v) && v !== 0 ? v : null; };
-
-    // Price: last close, but only if the series is fresh and positive. A stale
-    // or missing quote fails loud (priceTrusted = false) — see PRICE_STALE_DAYS.
-    var lastBar    = series && series.length ? series[series.length - 1] : null;
-    var price      = lastBar && lastBar.close > 0 ? lastBar.close : null;
-    var priceAgeMs = lastBar ? (Date.now() - new Date(lastBar.date).getTime()) : Infinity;
-    var priceTrusted = price != null && priceAgeMs < PRICE_STALE_DAYS * 864e5;
-
-    var beta    = num('Beta') || 1.0;
-    var mktCap  = num('MarketCapitalization') || null;   // raw dollars
-    var mktCapM = mktCap ? mktCap / 1e6 : null;
-
-    // Shares (millions): real reported count first (Finnhub shareOutstanding is
-    // already fetched, absolute), then netIncome/EPS, then mktCap/price ONLY if
-    // the price is trusted. No placeholder — null drops the per-share methods.
-    var trailingEps = fin.trailingEps || num('EPS') || null;
-    var netIncomeM  = fin.netIncome ? fin.netIncome / 1e6 : null;
-    var realSharesM = (fin.sharesOutstanding && fin.sharesOutstanding > 0) ? fin.sharesOutstanding / 1e6 : null;
-    var sharesM;
-    if (realSharesM != null) {
-        sharesM = realSharesM;
-    } else if (netIncomeM && trailingEps && Math.abs(trailingEps) > 0.01) {
-        sharesM = Math.abs(netIncomeM / trailingEps);
-    } else if (mktCap && priceTrusted && price > 0) {
-        sharesM = (mktCap / price) / 1e6;
-    } else {
-        sharesM = null;   // fail loud — no fabricated share count
-    }
-
-    var eps    = trailingEps || null;
-    var bvps   = fin.bookValue || num('BookValue') || null;
-    var divYld = num('DividendYield') || 0;
-    var D0     = +(divYld * (price || 0)).toFixed(2);
-    var roe    = fin.returnOnEquity != null ? fin.returnOnEquity : 0.145;
-
-    // Balance sheet / income statement ($M) — null when unhydrated (fail loud).
-    // debt/cash are coalesced to 0 only inside net-debt/WACC (a neutral stance,
-    // not a fabricated magnitude); the hydrated facts that drive implied prices
-    // (ebitda, rev) stay null so their methods drop.
-    var debt   = fin.totalDebt    ? +(fin.totalDebt    / 1e6).toFixed(0) : null;
-    var cash   = fin.totalCash    ? +(fin.totalCash    / 1e6).toFixed(0) : null;
-    var ebitda = fin.ebitda       ? +(fin.ebitda       / 1e6).toFixed(0) : null;
-    var rev    = fin.totalRevenue ? +(fin.totalRevenue / 1e6).toFixed(0) : null;
-
-    // Tax rate derived from margin spread: 1 − (netMargin / opMargin), capped 15-40%
-    var profitM = fin.profitMargins   != null ? fin.profitMargins   : null;
-    var opM     = fin.operatingMargins != null ? fin.operatingMargins : null;
-    var tax;
-    if (profitM != null && opM != null && opM > 0.01) {
-        tax = Math.max(0.15, Math.min(0.40, 1 - profitM / opM));
-    } else {
-        tax = 0.21;
-    }
-
-    // Cost of debt via Damodaran credit spread from Debt/EBITDA leverage ratio
-    var rf         = 0.044;
-    var debtEbitda = (debt != null && ebitda > 0) ? debt / ebitda : 2.0;
-    var creditSpread;
-    if      (debtEbitda < 1.0) creditSpread = 0.008;
-    else if (debtEbitda < 2.0) creditSpread = 0.012;
-    else if (debtEbitda < 3.0) creditSpread = 0.018;
-    else if (debtEbitda < 4.5) creditSpread = 0.025;
-    else                       creditSpread = 0.040;
-    var rd = +(rf + creditSpread).toFixed(4);
-
-    // FCF: Yahoo/Finnhub freeCashflow = operatingCF − capex = FCFE (post-interest)
-    // FCFF = FCFE + Debt × rd × (1 − tax)  [add back after-tax interest shield].
-    // No real FCF → null base, so the DCF method drops rather than emitting a
-    // fabricated 400/500.
-    var fcfe0raw    = fin.freeCashflow ? fin.freeCashflow / 1e6 : null;
-    var interestAdj = (debt || 0) * rd * (1 - tax);
-    var fcfe0 = fcfe0raw != null ? +fcfe0raw.toFixed(0)              : null;
-    var fcff0 = fcfe0raw != null ? +(fcfe0raw + interestAdj).toFixed(0) : null;
-
-    // WACC weights: prefer market-value (debt / (debt + mktCap)); fallback book D/E
-    var wd;
-    if (mktCapM && debt > 0) {
-        wd = Math.max(0.05, Math.min(0.70, debt / (debt + mktCapM)));
-    } else {
-        var de = fin.debtToEquity != null ? fin.debtToEquity / 100 : 0.30;
-        wd = Math.max(0.05, Math.min(0.70, de / (1 + de)));
-    }
-
-    // Sector defaults — use both Sector and Industry fields so Finnhub's granular
-    // industry strings (e.g. "Apparel—Footwear & Accessories") resolve correctly
-    var secKey = sectorToKey(o.Sector, o.Industry) || 'general';
-    var sec    = SECTORS[secKey] || SECTORS['general'];
-    var gL     = sec.gL;   // sector-specific long-run growth
-
-    // Short-run growth priority: earningsGrowth → PEG-implied → revenueGrowth → sector default
-    var earningsG  = fin.earningsGrowth != null ? fin.earningsGrowth : null;
-    var revenueG   = fin.revenueGrowth  != null ? fin.revenueGrowth  : null;
-    var pegImplied = null;
-    if (fin.pegRatio && fin.pegRatio > 0 && fin.forwardPE && fin.forwardPE > 0) {
-        pegImplied = fin.forwardPE / fin.pegRatio / 100;
-    }
-    var gS = Math.max(0.01, Math.min(0.35, earningsG || pegImplied || revenueG || sec.gS));
-
-    // Five-year growth vector: convex step-down gS → gL
-    var gr = [];
-    for (var i = 0; i < 5; i++) {
-        gr.push(+(gS + (gL - gS) * (i / 4)).toFixed(3));
-    }
-
-    // Dividend retention ratio b
-    var b = eps > 0 && D0 > 0 ? Math.max(0, Math.min(0.99, +(1 - D0 / eps).toFixed(2))) : 0.40;
-
-    // Sustainable growth for RI model: g = ROE × b
-    var riG = Math.max(gL, Math.min(0.15, +(roe * b).toFixed(3)));
-
-    var netDebt = Math.max(0, (debt || 0) - (cash || 0));
-    // Peer multiples: real ratios only. null → that multiple sub-method drops,
-    // instead of anchoring on the shared 22 / 3.5 / 14 / 2.2 placeholders.
-    var pePeer  = num('PERatio') || fin.forwardPE || null;
-    var pbPeer  = fin.priceToBook  ? +fin.priceToBook.toFixed(1)
-                  : (bvps > 0 && priceTrusted && price > 0 ? +(price / bvps).toFixed(1) : null);
-    var pEV     = fin.evToEbitda   ? +fin.evToEbitda.toFixed(1)   : null;
-    var pPS     = fin.evToRevenue  ? +fin.evToRevenue.toFixed(1)  : null;
-
-    // Hard-data fields are null when unhydrated (fail loud → method drops).
-    // Assumption-side fields (gL, gS, tax, rf, erp, b) keep modeled defaults.
-    return {
-        co:   { name: o.Name || o.Symbol || 'Unknown', ticker: o.Symbol || '', price: price, priceTrusted: priceTrusted, sector: secKey },
-        coc:  { rf: rf, beta: beta, erp: 0.055, rd: rd, wd: +wd.toFixed(3), tax: +tax.toFixed(3) },
-        ddm:  { D0: Math.max(0, D0), gS: +gS.toFixed(3), gL: gL, n: 5, H: 4, model: D0 > 0 ? '2stage' : 'gordon' },
-        fcf:  { fcff0: fcff0 != null && fcff0 > 0 ? fcff0 : null, fcfe0: fcfe0 != null && fcfe0 > 0 ? fcfe0 : null,
-                gr: gr, gL: gL, debt: debt, cash: cash,
-                shs: sharesM != null ? Math.round(sharesM) : null, mode: 'fcff' },
-        mult: { eps: eps > 0 ? +eps.toFixed(2) : null, bvps: bvps > 0 ? +bvps.toFixed(2) : null,
-                ebitda: ebitda != null && ebitda > 0 ? ebitda : null, rev: rev != null && rev > 0 ? rev : null, b: b,
-                mktCap: mktCapM ? +mktCapM.toFixed(0) : null, netDebt: netDebt,
-                pPE: pePeer, pPB: pbPeer, pEV: pEV, pPS: pPS },
-        ri:   { B0: bvps > 0 ? +bvps.toFixed(2) : null, ROE: roe > 0 ? +roe.toFixed(3) : 0.145,
-                g: riG, n: 5, mth: 'gordon', omega: 0.60 },
-        priv: INIT.priv,
-        wts:  INIT.wts,
-    };
-}
-
-// ─── Component ───────────────────────────────────────────────────────────────
 export function ValuationHouse(props) {
     var h = React.createElement;
     var _s = useState(INIT);
@@ -798,67 +387,17 @@ export function ValuationHouse(props) {
     }, [s, intelligence, fundamentals, innerTab]);
 
     var c = useMemo(function() {
-        var coc = s.coc, ddm = s.ddm, fcf = s.fcf, mult = s.mult, ri = s.ri, priv = s.priv, wts = s.wts;
-        var re  = capm(coc.rf, coc.beta, coc.erp);
-        var we  = 1 - coc.wd;
-        var wc  = calcWACC(re, we, coc.rd, coc.wd, coc.tax);
-
-        var ggm = gordonGrowth(ddm.D0, ddm.gL, re);
-        var hm  = hModel(ddm.D0, ddm.gS, ddm.gL, ddm.H, re);
-        var ts  = twoStageDDM(ddm.D0, ddm.gS, ddm.gL, ddm.n, re);
-        var ddmV = ddm.model === 'gordon' ? ggm : ddm.model === 'h' ? (hm ? hm.v : null) : (ts ? ts.v : null);
-
-        var ffR = fcffVal(fcf.fcff0, fcf.gr, fcf.gL, wc, fcf.debt, fcf.cash, fcf.shs);
-        var feR = fcfeVal(fcf.fcfe0, fcf.gr, fcf.gL, re, fcf.shs);
-
-        // ── Multiples: real peer ratio × real base only; a null on either side
-        // drops that leg (no shared placeholder anchors its value). ──
-        var safeClamp = function(v, lo, hi) { return v == null ? null : Math.min(Math.max(v, lo), hi); };
-        var safePE  = safeClamp(mult.pPE,  3,   200);
-        var safePB  = safeClamp(mult.pPB,  0.1,  20);
-        var safeEV  = safeClamp(mult.pEV,  1,    60);
-        var safePS  = safeClamp(mult.pPS,  0.1,  20);
-        // Live net-debt from current fcf state (may differ from stale mult.netDebt)
-        var liveNetDebt = Math.max(0, (fcf.debt || 0) - (fcf.cash || 0));
-        var hasShs = fcf.shs != null && fcf.shs > 0;
-
-        var pPE   = (safePE != null && mult.eps  != null) ? safePE * mult.eps  : null;
-        var pPB   = (safePB != null && mult.bvps != null) ? safePB * mult.bvps : null;
-        // EV/EBITDA → equity value: EV = multiple × EBITDA; equity = EV − netDebt
-        var pEVps = (hasShs && safeEV != null && mult.ebitda != null) ? (safeEV * mult.ebitda - liveNetDebt) / fcf.shs : null;
-        // EV/Sales → equity value: EV = multiple × revenue; equity = EV − netDebt
-        var pPS   = (hasShs && safePS != null && mult.rev    != null) ? (safePS * mult.rev - liveNetDebt) / fcf.shs : null;
-        var jpeV  = jPELeading(mult.b, re, ddm.gL);
-        var jpbV  = jPB(ri.ROE, re, ri.g);
-        // Sanity gate: only when we have a TRUSTED price; drop any leg outside an
-        // 8× band (replaces the old 50× gate, which was anchored to the suspect price).
-        var priceRef = (s.co.priceTrusted && s.co.price > 0) ? s.co.price : null;
-        var mVals = [pPE, pPB, pEVps, pPS].filter(function(v) {
-            if (!(v > 0 && isFinite(v))) return false;
-            return priceRef == null ? true : (v <= priceRef * 8 && v >= priceRef / 8);
-        });
-        var multAvg = mVals.length ? mVals.reduce(function(a, b) { return a + b; }, 0) / mVals.length : null;
-
-        var riR  = (ri.B0 != null) ? riCalc(ri.B0, ri.ROE, re, ri.g, ri.n, ri.mth, ri.omega) : null;
-
-        var privR = privCalc(priv.nE, priv.mult, priv.debt, priv.cash, priv.dlom, priv.dloc, priv.isCtrl, priv.cp);
-        var privPS = priv.shs > 0 ? (priv.isCtrl ? privR.ctrl : privR.min) / priv.shs : null;
-
-        var valMap = { ddm: ddmV, fcff: ffR ? ffR.eqPS : null, fcfe: feR ? feR.eqPS : null, mult: multAvg, ri: riR ? riR.v : null };
-        var cons   = buildConsensus(valMap, wts);
-
-        var sg = buildSensGrid(s, wc);
-        var traps = detectTraps(s, re, wc);
-        var sustainableG = ri.ROE * (1 - mult.b);
-
-        return {
-            re: re, we: we, wc: wc, ggm: ggm, hm: hm, ts: ts, ddmV: ddmV,
-            ffR: ffR, feR: feR,
-            pPE: pPE, pPB: pPB, pEVps: pEVps, pPS: pPS, jpeV: jpeV, jpbV: jpbV, multAvg: multAvg,
-            riR: riR, privR: privR, privPS: privPS, valMap: valMap, cons: cons,
+        // Core valuation comes from the shared engine — identical math to the
+        // weekly sync. The page only layers on UI-only diagnostics (sensitivity
+        // grid + trap flags) that the headless path doesn't need.
+        var base = computeMethods(s);
+        var sg = buildSensGrid(s, base.wc);
+        var traps = detectTraps(s, base.re, base.wc);
+        var sustainableG = s.ri.ROE * (1 - s.mult.b);
+        return Object.assign({}, base, {
             sensCells: sg.cells, sensCols: sg.colLabels, sensRows: sg.rowLabels,
             traps: traps, sustainableG: sustainableG,
-        };
+        });
     }, [s]);
 
     var price = s.co.price;
