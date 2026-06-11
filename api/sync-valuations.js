@@ -10,9 +10,10 @@
 //      still re-prices cost of capital — that's what makes the cadence matter.
 //   3. Hydrate each ticker via the existing /api/equity endpoint (Finnhub +
 //      Alpaca split-adjusted prices), run every model, blend deterministically.
-//   4. Write headless with the service-role key (browser never sees it):
-//      a snapshot row for EVERY attempted method (dropped ones carry
-//      implied_price=null + drop_reason), and the composite onto the company.
+//   4. Write headless to the same Supabase project the app uses (anon key,
+//      which has full RLS access to the scrapbook tables): a snapshot row for
+//      EVERY attempted method (dropped ones carry implied_price=null +
+//      drop_reason), and the composite onto the company.
 //
 // Trigger: Vercel Cron (GET, weekly) or manual POST with ?token=CRON_SECRET.
 // Throttle keeps us under Finnhub's ~60/min free tier.
@@ -20,7 +21,19 @@
 import { runValuation } from '../src/lib/valuationEngine.js';
 
 const FRED_BASE = 'https://api.stlouisfed.org/fred/series/observations';
-const SB_URL = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://vdmojjszvvcithuxwexx.supabase.co').trim();
+
+// Pin to the SAME Supabase project the frontend uses. The anon key has full
+// RLS access to the scrapbook tables (policy anon_all_*) and SELECT on the
+// holdings view, so no service-role secret is required. We deliberately do NOT
+// read SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY here: on some deployments those
+// point at a different/older project and would silently send writes to the
+// wrong database. The sync must always hit the live data project, like the app.
+const FALLBACK_URL  = 'https://vdmojjszvvcithuxwexx.supabase.co';
+// Public anon key for the data project (the same one shipped in the frontend
+// bundle; writes are gated by RLS, so this is safe to commit).
+const FALLBACK_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZkbW9qanN6dnZjaXRodXh3ZXh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzOTg1NDgsImV4cCI6MjA4Nzk3NDU0OH0.xFo-N9CGQlpHlsykinr_ORAmzV4N7MIq0emW5N1Vojk';
+const SB_URL = (process.env.VITE_SUPABASE_URL || FALLBACK_URL).replace(/\/+$/, '');
+const SB_KEY = process.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_KEY || process.env.SUPABASE_ANON_KEY || FALLBACK_ANON;
 
 function sbHeaders(key) {
     return { apikey: key, Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' };
@@ -71,9 +84,6 @@ export default async function handler(req, res) {
         }
     }
 
-    const sbKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
-    if (!sbKey) return res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY not configured' });
-
     // Origin for the internal /api/equity hydration.
     const host = req.headers['x-forwarded-host'] || req.headers.host;
     const proto = req.headers['x-forwarded-proto'] || 'https';
@@ -88,7 +98,7 @@ export default async function handler(req, res) {
     // 1. Live book
     let tickers;
     try {
-        const hr = await fetch(SB_URL + '/rest/v1/nexus_holdings?select=tk', { headers: sbHeaders(sbKey) });
+        const hr = await fetch(SB_URL + '/rest/v1/nexus_holdings?select=tk', { headers: sbHeaders(SB_KEY) });
         if (!hr.ok) throw new Error('nexus_holdings ' + hr.status);
         const rows = await hr.json();
         tickers = [...new Set(rows.map(r => (r.tk || '').toUpperCase()).filter(Boolean))].sort();
@@ -131,7 +141,7 @@ export default async function handler(req, res) {
             };
             const upResp = await fetch(SB_URL + '/rest/v1/scrapbook_companies?on_conflict=ticker', {
                 method: 'POST',
-                headers: { ...sbHeaders(sbKey), Prefer: 'resolution=merge-duplicates,return=representation' },
+                headers: { ...sbHeaders(SB_KEY), Prefer: 'resolution=merge-duplicates,return=representation' },
                 body: JSON.stringify([compRow]),
             });
             if (!upResp.ok) throw new Error('company upsert ' + upResp.status + ' ' + (await upResp.text()).slice(0, 200));
@@ -156,7 +166,7 @@ export default async function handler(req, res) {
             }));
             const insResp = await fetch(SB_URL + '/rest/v1/scrapbook_snapshots', {
                 method: 'POST',
-                headers: { ...sbHeaders(sbKey), Prefer: 'return=minimal' },
+                headers: { ...sbHeaders(SB_KEY), Prefer: 'return=minimal' },
                 body: JSON.stringify(snapRows),
             });
             if (!insResp.ok) throw new Error('snapshots ' + insResp.status + ' ' + (await insResp.text()).slice(0, 200));
