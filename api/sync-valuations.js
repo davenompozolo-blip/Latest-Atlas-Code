@@ -112,7 +112,7 @@ export default async function handler(req, res) {
 
     const runTs = new Date().toISOString();
     const runDate = runTs.slice(0, 10);
-    const summary = { run_at: runTs, risk_free: rf, scope: tickers.length, valued: 0, dropped: 0, errors: 0, results: [] };
+    const summary = { run_at: runTs, risk_free: rf, scope: tickers.length, valued: 0, dropped: 0, kept: 0, errors: 0, results: [] };
 
     // 3 + 4. Per-ticker hydrate → engine → headless write
     for (const tk of tickers) {
@@ -125,20 +125,41 @@ export default async function handler(req, res) {
 
             const val = runValuation(payload, series, { riskFreeRate: rf != null ? rf : undefined });
 
-            // Upsert company (composite + freshness stamp)
+            // Upsert company (composite + freshness stamp).
             const ov = payload.overview || {};
+
+            // Keep-last guard: a transient *fetch* failure (fundamentals
+            // didn't hydrate — rate limit, missing key, ADR with no data)
+            // must never overwrite a previously trusted composite with null.
+            // When that happens we touch only updated_at and identity, leaving
+            // avg_fair_value / fair_value_* / last_run_at untouched so a bad run
+            // can't regress a good one (and age_days keeps counting from the
+            // last *real* valuation). Snapshots below still record the dropped
+            // attempt for the audit trail. A genuine valuation drop — real data
+            // in, every method trimmed — has no overview_error and still writes
+            // null, so fail-loud is preserved for names that are truly unvaluable.
+            const hydrationFailed = !!payload.overview_error
+                || (payload.source && payload.source.finnhub_key === false);
+            const protectComposite = hydrationFailed && val.composite.avg_fair_value == null;
+
             const compRow = {
                 ticker: tk,
                 company_name: ov.Name || tk,
-                sector: ov.Sector || null,
-                currency: ov.Currency || 'USD',
-                current_price: val.priceTrusted ? val.currentPrice : null,
-                avg_fair_value: val.composite.avg_fair_value,
-                fair_value_low: val.composite.fair_value_low,
-                fair_value_high: val.composite.fair_value_high,
-                last_run_at: runTs,
                 updated_at: runTs,
             };
+            if (!protectComposite) {
+                compRow.sector = ov.Sector || null;
+                compRow.currency = ov.Currency || 'USD';
+                compRow.current_price = val.priceTrusted ? val.currentPrice : null;
+                compRow.avg_fair_value = val.composite.avg_fair_value;
+                compRow.fair_value_low = val.composite.fair_value_low;
+                compRow.fair_value_high = val.composite.fair_value_high;
+                compRow.last_run_at = runTs;
+            } else {
+                // Preserve a known sector/currency without overwriting good data with null.
+                if (ov.Sector) compRow.sector = ov.Sector;
+                if (ov.Currency) compRow.currency = ov.Currency;
+            }
             const upResp = await fetch(SB_URL + '/rest/v1/scrapbook_companies?on_conflict=ticker', {
                 method: 'POST',
                 headers: { ...sbHeaders(SB_KEY), Prefer: 'resolution=merge-duplicates,return=representation' },
@@ -174,7 +195,8 @@ export default async function handler(req, res) {
             const nValued = val.methods.filter(m => m.implied_price != null).length;
             summary.valued += nValued;
             summary.dropped += val.methods.length - nValued;
-            summary.results.push({ tk, composite: val.composite.avg_fair_value, valued: nValued, dropped: val.methods.length - nValued, price_trusted: val.priceTrusted });
+            if (protectComposite) summary.kept++;
+            summary.results.push({ tk, composite: val.composite.avg_fair_value, valued: nValued, dropped: val.methods.length - nValued, price_trusted: val.priceTrusted, kept: protectComposite });
         } catch (e) {
             summary.errors++;
             summary.results.push({ tk, error: e.message });
