@@ -12,7 +12,7 @@
 // ============================================================
 
 import React from 'react';
-import { getNexusModel } from './nexusMock.js';
+import { getNexusModel } from './nexusLive.js';
 import '../../styles/nexus-flagship.css';
 
 const { useState, useEffect } = React;
