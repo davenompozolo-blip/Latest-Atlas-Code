@@ -40,7 +40,7 @@ const CRUMB_TTL_MS    = 60 * 60 * 1000;
 
 const ALPACA_BASE = 'https://data.alpaca.markets/v2';
 const YF          = 'https://query2.finance.yahoo.com';
-const SUMMARY_MODULES = 'summaryProfile,summaryDetail,financialData,defaultKeyStatistics,recommendationTrend,price,earnings';
+const SUMMARY_MODULES = 'summaryProfile,summaryDetail,financialData,defaultKeyStatistics,recommendationTrend,price,earnings,calendarEvents';
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
 
 const _memCache = new Map();
@@ -322,6 +322,18 @@ function mapOverview(summary, symbol) {
     set('EPS',           rawVal(stats.trailingEps));
     set('DividendYield', rawVal(detail.dividendYield));
     set('AnalystTargetPrice', rawVal(fin.targetMeanPrice));
+    set('52WeekHigh',    rawVal(detail.fiftyTwoWeekHigh));
+    set('52WeekLow',     rawVal(detail.fiftyTwoWeekLow));
+    // Upcoming calendar — feeds vw_earnings_calendar (→ next_earnings_date on
+    // the book) and the Nexus earnings panel. Yahoo gives {raw, fmt} dates.
+    const cal = summary.calendarEvents || {};
+    const toISO = d => (d && (d.fmt || (d.raw ? new Date(d.raw * 1000).toISOString().slice(0, 10) : null))) || null;
+    const today = new Date().toISOString().slice(0, 10);
+    const earnDates = ((cal.earnings && cal.earnings.earningsDate) || []).map(toISO).filter(Boolean);
+    const nextEarn = earnDates.find(d => d >= today) || earnDates[0] || null;
+    if (nextEarn) out.NextEarningsDate = nextEarn;
+    const exDiv = toISO(cal.exDividendDate);
+    if (exDiv) out.ExDividendDate = exDiv;
     if (rec) {
         set('AnalystRatingStrongBuy',  rec.strongBuy);
         set('AnalystRatingBuy',        rec.buy);
