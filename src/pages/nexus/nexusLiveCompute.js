@@ -47,9 +47,15 @@ export function mapHolding(row, compByTk, staleSet) {
         theme: row.sector || 'Unclassified',
         conviction: num(row.conviction_score) ?? 0,
         todayPct: num(row.daily_return_pct) ?? 0,
-        contribPct: num(row.pnl_contribution) ?? 0,
+        // Contribution to book daily return (pts). The view's pnl_contribution
+        // is a raw $ amount and not reliably signed, so derive it from the
+        // position's weight share × today's move — sign-correct and on the
+        // same scale as Today.
+        contribPct: ((num(row.weight_pct) ?? 0) * (num(row.daily_return_pct) ?? 0)) / 100,
         componentVar: num(row.var_contribution_pct) ?? 0,
-        fvGapPct: gap ?? 0,
+        // null (not 0) when there's no composite and no DCF — an unknown gap
+        // renders as "—", never a misleading "fairly valued" 0.0%.
+        fvGapPct: gap,
         signal: row.valuation_signal || null,
         signalTone: toSignalTone(row),
         stale: staleSet.has(row.symbol),

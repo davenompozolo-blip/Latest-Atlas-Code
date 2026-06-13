@@ -45,6 +45,7 @@ check('fvGap: none → null',    fvGapPct({ symbol: 'X', current_price: 10 }, ne
 // ── Row → Holding ─────────────────────────────────────────────
 const nvda = mapHolding(ROWS[0], COMP, STALE);
 check('map: NVDA fvGap',      nvda.fvGapPct, 12);
+check('map: NVDA contrib (w×ret/100)', nvda.contribPct, -0.6);  // 30% × −2% / 100
 check('map: NVDA tone',       nvda.signalTone, 'improving');
 check('map: NVDA objectId',   nvda.objectId, 'obj-nvda');
 check('map: TCEHY stale',     mapHolding(ROWS[3], COMP, STALE).stale, true);
