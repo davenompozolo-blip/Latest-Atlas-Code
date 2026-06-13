@@ -17,10 +17,10 @@ import {
 
 const FRED_BASE = 'https://api.stlouisfed.org/fred/series/observations';
 
-async function fetchWithTimeout(url, ms) {
+async function fetchWithTimeout(url, ms, headers) {
     const ac = new AbortController();
     const t = setTimeout(() => ac.abort(), ms || 9000);
-    try { return await fetch(url, { signal: ac.signal }); }
+    try { return await fetch(url, { signal: ac.signal, headers: headers || {} }); }
     finally { clearTimeout(t); }
 }
 
@@ -43,9 +43,12 @@ async function fredSeries(id, limit) {
 }
 
 // Daily closes for a symbol via the existing (cached) equity endpoint.
-async function dailyCloses(origin, symbol) {
+// `headers` forwards the caller's Vercel protection bypass/cookie so the
+// server-to-server call also clears deployment protection on previews
+// (no-op in public production).
+async function dailyCloses(origin, symbol, headers) {
     try {
-        const r = await fetchWithTimeout(origin + '/api/equity?endpoint=daily&symbol=' + encodeURIComponent(symbol), 15000);
+        const r = await fetchWithTimeout(origin + '/api/equity?endpoint=daily&symbol=' + encodeURIComponent(symbol), 15000, headers);
         if (!r.ok) return [];
         const j = await r.json();
         return closeSeriesFromAlpaca(j.daily);
@@ -62,17 +65,23 @@ export default async function handler(req, res) {
     const proto = req.headers['x-forwarded-proto'] || 'https';
     const origin = (process.env.SYNC_ORIGIN || (host ? proto + '://' + host : '')).replace(/\/$/, '');
 
+    // Forward deployment-protection credentials to the internal /api/equity
+    // calls so the board fills in on protected previews too (no-op in prod).
+    const fwd = {};
+    if (req.headers['x-vercel-protection-bypass']) fwd['x-vercel-protection-bypass'] = req.headers['x-vercel-protection-bypass'];
+    if (req.headers.cookie) fwd.cookie = req.headers.cookie;
+
     try {
         const [vix, hy, spy, qqq, iwm, dia, rsp, qqqe, tlt] = await Promise.all([
             fredSeries('VIXCLS', 300),
             fredSeries('BAMLH0A0HYM2', 5),
-            dailyCloses(origin, 'SPY'),
-            dailyCloses(origin, 'QQQ'),
-            dailyCloses(origin, 'IWM'),
-            dailyCloses(origin, 'DIA'),
-            dailyCloses(origin, 'RSP'),
-            dailyCloses(origin, 'QQQE'),
-            dailyCloses(origin, 'TLT'),
+            dailyCloses(origin, 'SPY', fwd),
+            dailyCloses(origin, 'QQQ', fwd),
+            dailyCloses(origin, 'IWM', fwd),
+            dailyCloses(origin, 'DIA', fwd),
+            dailyCloses(origin, 'RSP', fwd),
+            dailyCloses(origin, 'QQQE', fwd),
+            dailyCloses(origin, 'TLT', fwd),
         ]);
 
         const vix1y = tail(vix, 252);
