@@ -374,3 +374,43 @@
   .nf-header { flex-wrap: wrap; }
   .nf-tab { min-width: 92px; font-size: 10px; }
 }
+
+/* ── Macro & Breadth board ── */
+.nb-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; max-width: 1320px; margin: 0 auto 16px; }
+.nb-span2 { grid-column: 1 / -1; }
+@media (max-width: 980px) { .nb-grid { grid-template-columns: 1fr; } .nb-span2 { grid-column: auto; } }
+.nb-card { display: flex; flex-direction: column; }
+.nb-chart { height: 220px; width: 100%; }
+.nb-span2 .nb-chart { height: 240px; }
+.nb-empty { color: var(--text3); font-size: 12px; padding: 28px; text-align: center; }
+.nb-loading { display: flex; align-items: center; gap: 8px; justify-content: center; color: var(--text3); padding: 30px; font-size: 13px; max-width: 1320px; margin: 0 auto 16px; }
+.nb-spin { display: inline-block; animation: nb-rot 1s linear infinite; }
+@keyframes nb-rot { to { transform: rotate(360deg); } }
+.nb-readout { font-family: var(--fm); font-weight: 700; font-size: 16px; }
+.nb-foot { margin-top: 8px; font-size: 10px; color: var(--text3); }
+
+/* Fear & Greed */
+.nb-fg-top { display: flex; align-items: baseline; gap: 12px; margin: 8px 0 12px; }
+.nb-fg-score { font-family: var(--fm); font-size: 44px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+.nb-fg-label { font-family: var(--fb); font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.nb-fg-bar { position: relative; height: 8px; border-radius: 5px;
+  background: linear-gradient(90deg, #ef4444, #f5a623 35%, #51647b 50%, #22d3ee 65%, #22c55e); }
+.nb-fg-needle { position: absolute; top: -3px; width: 3px; height: 14px; background: #fff; border-radius: 2px; transform: translateX(-50%); box-shadow: 0 0 6px rgba(255,255,255,.6); }
+.nb-fg-scaleends { display: flex; justify-content: space-between; font-size: 9px; color: var(--text3); margin-top: 5px; text-transform: uppercase; letter-spacing: .05em; }
+.nb-fg-parts { margin-top: 16px; display: flex; flex-direction: column; gap: 9px; }
+.nb-fg-part { display: grid; grid-template-columns: 82px 1fr auto; align-items: center; gap: 10px; }
+.nb-fg-pname { font-size: 10px; color: var(--text2); text-transform: uppercase; letter-spacing: .04em; }
+.nb-fg-ptrack { height: 5px; border-radius: 3px; background: var(--bg1); overflow: hidden; }
+.nb-fg-ptrack > i { display: block; height: 100%; }
+.nb-fg-pval { font-family: var(--fm); font-size: 10px; color: var(--text3); white-space: nowrap; }
+
+/* legends + index chips */
+.nb-legend { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.nb-leg { display: inline-flex; align-items: center; gap: 5px; font-family: var(--fm); font-size: 10px; color: var(--text2); }
+.nb-leg i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+.nb-idx-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.nb-idx-chip { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; cursor: pointer; background: var(--bg1); border: 1px solid var(--border); border-radius: 7px; padding: 5px 9px; opacity: .6; transition: opacity .12s, box-shadow .12s; }
+.nb-idx-chip:hover { opacity: .9; }
+.nb-idx-chip.active { opacity: 1; box-shadow: inset 0 0 0 1px var(--border-hi); }
+.nb-idx-tk { font-family: var(--fb); font-size: 10px; font-weight: 700; color: var(--text); letter-spacing: .04em; }
+.nb-idx-chg { font-family: var(--fm); font-size: 10px; }
