@@ -414,3 +414,21 @@
 .nb-idx-chip.active { opacity: 1; box-shadow: inset 0 0 0 1px var(--border-hi); }
 .nb-idx-tk { font-family: var(--fb); font-size: 10px; font-weight: 700; color: var(--text); letter-spacing: .04em; }
 .nb-idx-chg { font-family: var(--fm); font-size: 10px; }
+
+/* ── Earnings intelligence table ── */
+.ne-soon { background: rgba(245,166,35,0.05); }
+.ne-date { font-family: var(--fm); color: var(--text); }
+.ne-hour { font-family: var(--fb); font-size: 8px; font-weight: 700; letter-spacing: .04em; color: var(--text3); border: 1px solid var(--border); border-radius: 3px; padding: 1px 4px; margin-left: 6px; vertical-align: middle; }
+.ne-when { font-size: 10px; color: var(--text3); margin-left: 8px; }
+.ne-when.hot { color: var(--amber); }
+.ne-surp { font-family: var(--fm); font-size: 10px; }
+.ne-surp.up { color: var(--success); }
+.ne-surp.down { color: var(--danger); }
+.ne-move { display: inline-flex; align-items: center; gap: 6px; font-family: var(--fm); }
+.ne-basis { font-family: var(--fb); font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 1px 5px; border-radius: 999px; }
+.ne-basis.history { background: var(--cyan-b); color: var(--cyan); }
+.ne-basis.vol { background: var(--purple-b); color: var(--purple); }
+.ne-sent { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; padding: 3px 9px; border-radius: 999px; display: inline-block; min-width: 56px; text-align: center; }
+.ne-sent.bullish { background: var(--success-b); color: var(--success); }
+.ne-sent.neutral { background: var(--card-hi); color: var(--text2); }
+.ne-sent.bearish { background: var(--danger-b); color: var(--danger); }
