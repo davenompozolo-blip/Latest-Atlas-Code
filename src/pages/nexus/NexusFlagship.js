@@ -245,35 +245,124 @@ function PositioningSpine({ spine }) {
 
 // ── Holdings table (Live Objects) ─────────────────────────────
 const COLS = [
-    { k: 'tk',           label: 'Ticker',     l: true },
-    { k: 'theme',        label: 'Theme',      l: true },
-    { k: 'conviction',   label: 'Conv (PCM)' },
-    { k: 'todayPct',     label: 'Today' },
-    { k: 'contribPct',   label: 'Contrib' },
-    { k: 'componentVar', label: 'VaR %' },
-    { k: 'fvGapPct',     label: 'FV gap' },
+    { k: 'tk',           label: 'Ticker',     l: true, sort: 'tk' },
+    { k: 'theme',        label: 'Theme',      l: true, sort: 'theme' },
+    { k: 'conviction',   label: 'Conv (PCM)',          sort: 'conviction' },
+    { k: 'todayPct',     label: 'Today',               sort: 'todayPct' },
+    { k: 'contribPct',   label: 'Contrib',             sort: 'contribPct' },
+    { k: 'componentVar', label: 'VaR %',               sort: 'componentVar' },
+    { k: 'fvGapPct',     label: 'FV gap',              sort: 'fvGapPct' },
     { k: 'signal',       label: 'Signal',     l: true },
-    { k: 'read',         label: 'Read' },
+    { k: 'read',         label: 'Read',                sort: 'read' },
 ];
+
+// Read taxonomy order — used for the filter rail and read-sort rank.
+const READ_ORDER = ['add', 'hold', 'trim', 'watch', 'exit'];
+const READ_RANK = { add: 0, hold: 1, trim: 2, watch: 3, exit: 4 };
+
+// Diverging fair-value-gap bar: green right (cheap), red left (rich),
+// centred at zero, scaled against the widest gap currently in view.
+function FvGapBar({ v, scale }) {
+    if (v == null) return e('span', { className: 'nf-fvbar' });
+    const frac = Math.max(-1, Math.min(1, v / (scale || 1)));
+    const w = Math.abs(frac) * 50;
+    const pos = v >= 0;
+    return e('span', { className: 'nf-fvbar' },
+        e('i', { className: pos ? 'pos' : 'neg', style: pos ? { left: '50%', width: w + '%' } : { right: '50%', width: w + '%' } })
+    );
+}
 
 function HoldingsTable({ holdings }) {
     // Expanded `because` rows. The read chip is the why-affordance:
     // clicking it toggles the explanation (and stops the row's
     // open-object click so the two interactions don't collide).
     const [expanded, setExpanded] = useState({});
+    const [query, setQuery] = useState('');
+    const [theme, setTheme] = useState('ALL');
+    const [reads, setReads] = useState(() => new Set());
+    const [sortK, setSortK] = useState('');     // '' = provider order (weight desc)
+    const [sortDir, setSortDir] = useState('desc');
     if (!holdings || !holdings.length) return null;
+
     const toggle = id => setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
+    const toggleRead = r => setReads(prev => {
+        const next = new Set(prev);
+        if (next.has(r)) next.delete(r); else next.add(r);
+        return next;
+    });
+    const setSort = k => {
+        if (!k) return;
+        if (sortK === k) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+        else { setSortK(k); setSortDir(k === 'tk' || k === 'theme' ? 'asc' : 'desc'); }
+    };
+    const arrow = k => (sortK === k ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '');
+
+    // Live facets: themes for the dropdown, read counts for the rail.
+    const themes = Array.from(new Set(holdings.map(h => h.theme))).sort();
+    const counts = holdings.reduce((m, h) => { m[h.read] = (m[h.read] || 0) + 1; return m; }, {});
+
+    // Filter → sort.
+    const q = query.trim().toLowerCase();
+    let rows = holdings.filter(h =>
+        (!q || h.tk.toLowerCase().includes(q)) &&
+        (theme === 'ALL' || h.theme === theme) &&
+        (!reads.size || reads.has(h.read))
+    );
+    if (sortK) {
+        const dir = sortDir === 'asc' ? 1 : -1;
+        rows = rows.slice().sort((a, b) => {
+            if (sortK === 'tk' || sortK === 'theme') return String(a[sortK] || '').localeCompare(String(b[sortK] || '')) * dir;
+            if (sortK === 'read') return ((READ_RANK[a.read] ?? 9) - (READ_RANK[b.read] ?? 9)) * dir;
+            let av = Number(a[sortK]); let bv = Number(b[sortK]);
+            if (isNaN(av)) av = -Infinity; if (isNaN(bv)) bv = -Infinity;
+            return (av - bv) * dir;
+        });
+    }
+    // FV-gap bar scale = widest absolute gap in view (floored so small books still read).
+    const fvScale = Math.max(10, ...rows.map(h => Math.abs(Number(h.fvGapPct) || 0)));
+    const dirty = reads.size || theme !== 'ALL' || query;
+
     return e('div', { className: 'nf-card nf-holdings nf-fade' },
-        e('div', { className: 'nf-card-h' }, e('h3', null, 'Holdings'), e('span', { className: 'nf-sub' }, holdings.length + ' live objects · derived reads')),
+        e('div', { className: 'nf-card-h' },
+            e('h3', null, 'Holdings'),
+            e('span', { className: 'nf-sub' }, rows.length + ' / ' + holdings.length + ' live objects · derived reads')
+        ),
+
+        // Filter bar — search + theme + read-distribution rail (doubles as a visual)
+        e('div', { className: 'nf-filters' },
+            e('input', {
+                className: 'nf-search', type: 'text', placeholder: 'Search ticker…',
+                value: query, onChange: ev => setQuery(ev.target.value),
+            }),
+            e('select', { className: 'nf-theme-select', value: theme, onChange: ev => setTheme(ev.target.value) },
+                e('option', { value: 'ALL' }, 'All themes'),
+                themes.map(t => e('option', { key: t, value: t }, t))
+            ),
+            e('div', { className: 'nf-rfilter' },
+                READ_ORDER.filter(r => counts[r]).map(r => e('button', {
+                    key: r,
+                    className: 'nf-rchip ' + r + (reads.has(r) ? ' active' : ''),
+                    onClick: () => toggleRead(r),
+                    title: 'Filter ' + r,
+                }, r, e('span', { className: 'nf-rchip-n' }, counts[r]))),
+                dirty ? e('button', { className: 'nf-rclear', onClick: () => { setReads(new Set()); setTheme('ALL'); setQuery(''); } }, 'clear') : null
+            )
+        ),
+
+        // Table — capped height + internal scroll, sticky header
         e('div', { className: 'nf-table-scroll' },
             e('table', { className: 'nf-table' },
                 e('thead', null, e('tr', null,
-                    COLS.map(c => e('th', { key: c.k, className: c.l ? 'nf-l' : '' }, c.label))
+                    COLS.map(c => e('th', {
+                        key: c.k,
+                        className: (c.l ? 'nf-l' : '') + (c.sort ? ' nf-th-sort' : ''),
+                        onClick: c.sort ? () => setSort(c.sort) : undefined,
+                    }, c.label, c.sort ? arrow(c.sort) : ''))
                 )),
                 e('tbody', null,
-                    holdings.map(function (h) {
+                    rows.length ? rows.map(function (h) {
                         const isOpen = !!expanded[h.objectId];
-                        const rows = [
+                        const out = [
                             e('tr', {
                                 key: h.objectId,
                                 className: h.stale ? 'nf-stale-row' : '',
@@ -287,8 +376,11 @@ function HoldingsTable({ holdings }) {
                                     e('span', { className: 'nf-mono-cell' }, h.conviction))),
                                 e('td', { className: 'nf-mono-cell ' + moveTone(h.todayPct) }, pct1(h.todayPct)),
                                 e('td', { className: 'nf-mono-cell ' + moveTone(h.contribPct) }, pct1(h.contribPct, 2)),
-                                e('td', { className: 'nf-mono-cell' }, h.componentVar.toFixed(1) + '%'),
-                                e('td', { className: 'nf-mono-cell ' + moveTone(h.fvGapPct) }, pct1(h.fvGapPct)),
+                                e('td', { className: 'nf-mono-cell' }, (h.componentVar ?? 0).toFixed(1) + '%'),
+                                e('td', { className: 'nf-mono-cell ' + moveTone(h.fvGapPct) },
+                                    e('span', { className: 'nf-fv-wrap' },
+                                        e(FvGapBar, { v: h.fvGapPct, scale: fvScale }),
+                                        e('span', null, pct1(h.fvGapPct)))),
                                 e('td', { className: 'nf-l' }, h.signal ? e('span', { className: 'nf-sig' }, h.signal) : e('span', { style: { color: 'var(--text3)' } }, '—')),
                                 e('td', null, e('span', {
                                     className: 'nf-read-chip ' + h.read + (isOpen ? ' open' : ''),
@@ -298,14 +390,14 @@ function HoldingsTable({ holdings }) {
                             ),
                         ];
                         if (isOpen) {
-                            rows.push(e('tr', { key: h.objectId + '-why', className: 'nf-why-row' },
+                            out.push(e('tr', { key: h.objectId + '-why', className: 'nf-why-row' },
                                 e('td', { colSpan: COLS.length },
                                     e('span', { className: 'nf-why-label' }, 'WHY'),
                                     e('span', { className: 'nf-why-text' }, h.because))
                             ));
                         }
-                        return rows;
-                    })
+                        return out;
+                    }) : e('tr', null, e('td', { colSpan: COLS.length, className: 'nf-empty' }, 'No holdings match these filters.'))
                 )
             )
         )
