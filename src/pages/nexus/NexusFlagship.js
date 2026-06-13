@@ -13,6 +13,7 @@
 
 import React from 'react';
 import { getNexusModel } from './nexusLive.js';
+import { NexusBoardSection } from './NexusBoard.js';
 import '../../styles/nexus-flagship.css';
 
 const { useState, useEffect } = React;
@@ -435,6 +436,7 @@ function FlagshipPanel({ model }) {
     return e('div', null,
         e(WindshieldBand, { windshield: model.windshield }),
         e(ContextGauges, { gauges: model.gauges }),
+        e(NexusBoardSection, null),
         e(PositioningSpine, { spine: model.spine }),
         e(HoldingsTable, { holdings: model.holdings }),
         e(TheRead, { read: model.read })
