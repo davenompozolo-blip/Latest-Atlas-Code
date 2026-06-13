@@ -470,7 +470,7 @@ async function finnhubFundamentals(symbol) {
     // Try symbol candidates in order — stop at first one with a valid profile
     var candidates = finnhubSymbolCandidates(symbol);
     var lastErr = null;
-    var profile, metrics, recs, earnings, rawPeers, reported;
+    var profile, metrics, recs, earnings, rawPeers, reported, earningsCal;
 
     for (var ci = 0; ci < candidates.length; ci++) {
         var sym = encodeURIComponent(candidates[ci]);
@@ -482,6 +482,7 @@ async function finnhubFundamentals(symbol) {
                 finnhubGet('/stock/earnings?symbol=' + sym),
                 finnhubGet('/stock/peers?symbol=' + sym),
                 finnhubGet('/stock/financials-reported?symbol=' + sym + '&freq=annual'),
+                finnhubGet('/calendar/earnings?symbol=' + sym),
             ]);
             var p = results[0].status === 'fulfilled' ? results[0].value : {};
             if (p && p.ticker) {
@@ -491,6 +492,7 @@ async function finnhubFundamentals(symbol) {
                 earnings = results[3].status === 'fulfilled' ? results[3].value : [];
                 rawPeers = results[4].status === 'fulfilled' ? results[4].value : [];
                 reported = results[5].status === 'fulfilled' ? results[5].value : null;
+                earningsCal = results[6].status === 'fulfilled' ? results[6].value : null;
                 break;
             }
             lastErr = new Error('empty profile for ' + candidates[ci]);
@@ -520,7 +522,7 @@ async function finnhubFundamentals(symbol) {
             return { symbol: sym };
         }
     }));
-    return { profile: profile, metrics: metrics, recs: recs, earnings: earnings, peers: peers, reported: reported };
+    return { profile: profile, metrics: metrics, recs: recs, earnings: earnings, peers: peers, reported: reported, earningsCalendar: earningsCal };
 }
 
 function mapFinnhubOverview(data, symbol) {
@@ -550,6 +552,14 @@ function mapFinnhubOverview(data, symbol) {
     set('EPS', m.epsBasicExclExtraItemsTTM);
     set('DividendYield', m.dividendYieldIndicatedAnnual != null ? m.dividendYieldIndicatedAnnual / 100 : null);
     set('AnalystTargetPrice', m.targetMedianPrice);
+    set('52WeekHigh', m['52WeekHigh']);
+    set('52WeekLow',  m['52WeekLow']);
+    // Next earnings date — feeds vw_earnings_calendar → next_earnings_date on
+    // the book. Finnhub /calendar/earnings returns past + future rows.
+    var ecal = (data.earningsCalendar && data.earningsCalendar.earningsCalendar) || [];
+    var todayISO = new Date().toISOString().slice(0, 10);
+    var future = ecal.map(function (r) { return r && r.date; }).filter(function (d) { return d && d >= todayISO; }).sort();
+    if (future.length) out.NextEarningsDate = future[0];
     if (rec) {
         set('AnalystRatingStrongBuy', rec.strongBuy);
         set('AnalystRatingBuy', rec.buy);
