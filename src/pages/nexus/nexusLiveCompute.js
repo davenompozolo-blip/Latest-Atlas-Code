@@ -164,3 +164,139 @@ export function buildLiveSections(rows, compByTk, staleSet) {
         concentration: buildConcentration(rows),
     };
 }
+
+// ── Macro helpers ─────────────────────────────────────────────
+// FRED series in the /api/macro payload are arrays of {date, value}
+// in ascending order (latest last).
+const lastVal = arr => (Array.isArray(arr) && arr.length ? arr[arr.length - 1].value : null);
+const lastTwo = arr => {
+    if (!Array.isArray(arr) || !arr.length) return null;
+    return { latest: arr[arr.length - 1].value, prev: arr.length > 1 ? arr[arr.length - 2].value : null };
+};
+const sgn = (v, dp) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(dp);
+const pctS = v => (v == null ? '—' : (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + '%');
+const yieldTone = ch => (ch > 0 ? 'down' : ch < 0 ? 'up' : 'neutral');
+
+// ── Windshield — live macro tiles from the /api/macro payload ──
+// Returns the Windshield contract { driver, driverEmphasis, stats[] }
+// or null (→ provider falls back to baseline) when no macro is available.
+export function buildWindshield(macro) {
+    if (!macro) return null;
+    const y = macro.yields || {};
+    const stats = [];
+
+    const vix = lastTwo(macro.volatility && macro.volatility.vix);
+    if (vix) stats.push({
+        label: 'VIX', value: vix.latest.toFixed(1),
+        change: vix.prev != null ? sgn(vix.latest - vix.prev, 1) : '', tone: 'warn',
+    });
+
+    const spy = (macro.market || []).find(q => q && q.symbol === 'SPY');
+    if (spy && isFinite(spy.changePct) && isFinite(spy.price)) stats.push({
+        label: 'S&P 500', value: Number(spy.price).toLocaleString('en-US', { maximumFractionDigits: 0 }),
+        change: sgn(spy.changePct, 1) + '%', tone: spy.changePct < 0 ? 'down' : spy.changePct > 0 ? 'up' : 'neutral',
+    });
+
+    const d2 = lastTwo(y.dgs2), d10 = lastTwo(y.dgs10);
+    if (d2) { const ch = d2.prev != null ? (d2.latest - d2.prev) * 100 : null;
+        stats.push({ label: '2Y UST', value: d2.latest.toFixed(2) + '%',
+            change: ch != null ? sgn(ch, 0) + 'bp' : '', tone: ch != null ? yieldTone(ch) : 'neutral' }); }
+    if (d10) { const ch = d10.prev != null ? (d10.latest - d10.prev) * 100 : null;
+        stats.push({ label: '10Y UST', value: d10.latest.toFixed(2) + '%',
+            change: ch != null ? sgn(ch, 0) + 'bp' : '', tone: ch != null ? yieldTone(ch) : 'neutral' }); }
+    if (d2 && d10) {
+        const v = (d10.latest - d2.latest) * 100;
+        const prevSpread = (d2.prev != null && d10.prev != null) ? (d10.prev - d2.prev) * 100 : null;
+        const ch = prevSpread != null ? v - prevSpread : null;
+        stats.push({ label: '10Y–2Y', value: sgn(v, 0) + 'bp',
+            change: ch != null ? sgn(ch, 0) + 'bp' : '', tone: v < 0 ? 'down' : 'up' });
+    }
+
+    if (!stats.length) return null;
+
+    // Factual, data-driven headline (the regime label is the only
+    // "narrative" and it comes straight from the macro classifier).
+    const reg = macro.regime || {};
+    let driver = 'Macro snapshot', driverEmphasis = null;
+    if (d2 && d10) {
+        const v = Math.round((d10.latest - d2.latest) * 100);
+        const label = reg.label && reg.label !== 'Assessing' ? reg.label + ' regime' : 'Rates in focus';
+        driver = label + ' — 2Y at ' + d2.latest.toFixed(2) + '%, the 10Y–2Y curve at ' + sgn(v, 0) + 'bp';
+        driverEmphasis = v < 0 ? 'curve still inverted' : 'curve positive';
+    }
+    return { driver, driverEmphasis, stats };
+}
+
+// ── Seasonal — live figures (factual templating, not generative) ──
+// Theme/Opportunities/Drift derive from the live book; Regime adds the
+// macro curve + regime label. Prose is templated from real numbers, so
+// nothing contradicts the spine. Always returns a value.
+export function buildSeasonal({ spine = [], concentration = null, holdings = [], macro = null }) {
+    const sorted = spine.slice().sort((a, b) => b.sharePct - a.sharePct);
+    const top = sorted[0];
+    const byMove = spine.slice().sort((a, b) => b.movePct - a.movePct);
+    const greenest = byMove[0], reddest = byMove[byMove.length - 1];
+
+    const valued = holdings.filter(h => h.fvGapPct != null && !h.stale);
+    const cheap = valued.slice().sort((a, b) => b.fvGapPct - a.fvGapPct).slice(0, 3);
+    const rich = valued.slice().sort((a, b) => a.fvGapPct - b.fvGapPct).slice(0, 3);
+    const nameGap = h => h.tk + ' ' + pctS(h.fvGapPct);
+
+    const c = concentration || {};
+    const y = (macro && macro.yields) || {};
+    const reg = (macro && macro.regime) || {};
+    const d2 = lastVal(y.dgs2), d10 = lastVal(y.dgs10);
+    const spreadBp = (d2 != null && d10 != null) ? Math.round((d10 - d2) * 100) : null;
+    const inverted = spreadBp != null && spreadBp < 0;
+
+    return {
+        theme: {
+            title: 'Theme transmission',
+            subtitle: 'How today’s macro is propagating through your themes',
+            tags: [top && top.theme, sorted[1] && sorted[1].theme, 'Rotation'].filter(Boolean),
+            body: [
+                top ? top.theme + ' is your largest theme at ' + top.sharePct + '% and moved ' + pctS(top.movePct) +
+                      ' today — the primary transmission node for the book.' : 'No theme data yet.',
+                (greenest && reddest && greenest.theme !== reddest.theme)
+                    ? greenest.theme + ' leads on the day (' + pctS(greenest.movePct) + '); ' + reddest.theme + ' lags (' + pctS(reddest.movePct) + ').'
+                    : 'Theme dispersion is muted today.',
+            ],
+        },
+        regime: {
+            title: 'Regime',
+            subtitle: 'Where the cycle and the book’s breadth sit',
+            tags: [
+                reg.label && reg.label !== 'Assessing' ? reg.label : null,
+                inverted ? 'Inverted curve' : (spreadBp != null ? 'Positive curve' : null),
+                c.verdictChip === 'Fragile' ? 'Fragile breadth' : 'Broad breadth',
+            ].filter(Boolean),
+            body: [
+                spreadBp != null
+                    ? 'The 10Y–2Y curve is ' + (inverted ? 'inverted at ' : 'positive at ') + (spreadBp >= 0 ? '+' : '−') + Math.abs(spreadBp) + 'bp' +
+                      (d2 != null ? ', the 2Y at ' + d2.toFixed(2) + '%' : '') +
+                      (reg.cpiYoY != null ? ' · CPI ' + reg.cpiYoY.toFixed(1) + '% YoY' : '') + '.'
+                    : 'Macro curve data unavailable.',
+                c.note || 'Concentration data unavailable.',
+            ],
+        },
+        opportunities: {
+            title: 'Opportunities',
+            subtitle: 'Where price and value diverge most',
+            tags: ['Value gaps', 'Mispriced'],
+            body: [
+                cheap.length ? 'Widest live upside to fair value: ' + cheap.map(nameGap).join(', ') + '.' : 'No live upside gaps in the trusted set yet.',
+                rich.length ? 'Richest vs fair value: ' + rich.map(nameGap).join(', ') + '.' : 'No rich names in the trusted set.',
+            ],
+        },
+        drift: {
+            title: 'Drift',
+            subtitle: 'How far the book has wandered from balance',
+            tags: ['Concentration', 'Rebalance'],
+            body: [
+                c.note || 'Concentration data unavailable.',
+                (c.fragilityCluster && c.fragilityCluster.length) ? 'Fragility cluster: ' + c.fragilityCluster.join(' · ') + '.' : 'No fragility cluster flagged.',
+            ],
+        },
+    };
+}
+

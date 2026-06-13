@@ -30,7 +30,21 @@
 
 import { sb } from '../config.js';
 import { getNexusModel as getBaselineModel } from './nexusMock.js';
-import { num, buildLiveSections } from './nexusLiveCompute.js';
+import { num, buildLiveSections, buildWindshield, buildSeasonal } from './nexusLiveCompute.js';
+
+// Live macro snapshot (FRED yields + regime + market quotes) from the
+// shared /api/macro endpoint. Same-origin, edge-cached; null on any
+// failure so the windshield falls back to baseline.
+async function loadMacro() {
+    try {
+        const r = await fetch('/api/macro');
+        if (!r.ok) return null;
+        const j = await r.json();
+        return j && !j.error ? j : null;
+    } catch (e) {
+        return null;
+    }
+}
 
 async function loadComposites() {
     try {
@@ -69,9 +83,14 @@ export async function getNexusModel() {
     if (!rows || !rows.length) return baseline; // unconfigured / empty / error → baseline
 
     const staleSet = new Set((baseline.dataIntegrity && baseline.dataIntegrity.staleTickers) || []);
-    const compByTk = await loadComposites();
+    const [compByTk, macro] = await Promise.all([loadComposites(), loadMacro()]);
 
     const { holdings, spine, concentration } = buildLiveSections(rows, compByTk, staleSet);
+
+    // Windshield macro tiles (live, falls back to baseline if FRED is down);
+    // seasonal Theme/Regime/Opportunities/Drift derived from the live book + macro.
+    const windshield = buildWindshield(macro) || baseline.windshield;
+    const seasonal = buildSeasonal({ spine, concentration, holdings, macro });
 
     return {
         ...baseline,
@@ -79,5 +98,7 @@ export async function getNexusModel() {
         holdings,
         spine,
         gauges: { ...baseline.gauges, concentration },
+        windshield,
+        seasonal,
     };
 }

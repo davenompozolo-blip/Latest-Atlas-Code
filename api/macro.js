@@ -171,6 +171,7 @@ export default async function handler(req, res) {
             /* 3 */ fetchFred('DGS10', 60),
             /* 4 */ fetchFred('DGS30', 60),
             /* 5 */ fetchFred('FEDFUNDS', 24),
+            /* 6 */ fetchFred('VIXCLS', 24),
         ]);
         await delay(150);
         // Batch 2: inflation
@@ -200,7 +201,7 @@ export default async function handler(req, res) {
         function gv(i) { return growthBatch[i].status === 'fulfilled' ? growthBatch[i].value : null; }
 
         var dgs3mo = yv(0), dgs2 = yv(1), dgs5 = yv(2), dgs10 = yv(3), dgs30 = yv(4);
-        var fedFunds = yv(5);
+        var fedFunds = yv(5), vix = yv(6);
         var cpi = iv(0), coreCpi = iv(1), pce = iv(2), t5yie = iv(3), t10yie = iv(4);
         var gdp = gv(0), realGdp = gv(1), payrolls = gv(2), unrate = gv(3), claims = gv(4), indpro = gv(5);
         var hySpreads = gv(6), igSpreads = gv(7), nfci = gv(8);
@@ -271,6 +272,7 @@ export default async function handler(req, res) {
             },
             market: marketQuotes,
             sectors: sectorQuotes,
+            volatility: { vix: vix },
             regime: classifyRegime({ growth: { unrate: unrate }, inflation: { cpi: cpi } }),
             _ts: Date.now(),
             _v: 1,
