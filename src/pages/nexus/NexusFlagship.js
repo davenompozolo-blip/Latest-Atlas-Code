@@ -403,7 +403,7 @@ function OrderBlotter({ tickets, onRemove, onClear }) {
     );
 }
 
-function HoldingsTable({ holdings }) {
+function HoldingsTable({ holdings, forceTheme }) {
     // Expanded `because` rows. The read chip is the why-affordance:
     // clicking it toggles the explanation (and stops the row's
     // open-object click so the two interactions don't collide).
@@ -414,6 +414,8 @@ function HoldingsTable({ holdings }) {
     const [sortK, setSortK] = useState('');     // '' = provider order (weight desc)
     const [sortDir, setSortDir] = useState('desc');
     const [blotter, setBlotter] = useState({}); // tk → staged ticket
+    // Drill-down from the Theme tab routes here with a theme to filter to.
+    useEffect(() => { if (forceTheme) setTheme(forceTheme); }, [forceTheme]);
     if (!holdings || !holdings.length) return null;
 
     const toggle = id => setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
@@ -578,13 +580,13 @@ function TheRead({ read }) {
 }
 
 // ── Flagship panel ────────────────────────────────────────────
-function FlagshipPanel({ model }) {
+function FlagshipPanel({ model, holdingsTheme }) {
     return e('div', null,
         e(WindshieldBand, { windshield: model.windshield }),
         e(ContextGauges, { gauges: model.gauges }),
         e(NexusBoardSection, null),
         e(PositioningSpine, { spine: model.spine }),
-        e(HoldingsTable, { holdings: model.holdings }),
+        e(HoldingsTable, { holdings: model.holdings, forceTheme: holdingsTheme }),
         e(NexusEarningsTable, null),
         e(NexusCotTable, null),
         e(TheRead, { read: model.read })
@@ -612,6 +614,7 @@ export function NexusFlagshipPage() {
     const [model, setModel] = useState(null);
     const [err, setErr] = useState(null);
     const [activeTab, setActiveTab] = useState('flagship');
+    const [holdingsTheme, setHoldingsTheme] = useState(null);
 
     useEffect(function () {
         let alive = true;
@@ -619,6 +622,19 @@ export function NexusFlagshipPage() {
             .then(m => { if (alive) setModel(m); })
             .catch(er => { if (alive) setErr(er.message || String(er)); });
         return () => { alive = false; };
+    }, []);
+
+    // Theme-tab drill-down → route to Flagship with the holdings filtered.
+    useEffect(function () {
+        const onFilter = ev => {
+            const theme = ev && ev.detail && ev.detail.theme;
+            if (!theme) return;
+            setHoldingsTheme(theme);
+            setActiveTab('flagship');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        };
+        window.addEventListener('nexus:filter-theme', onFilter);
+        return () => window.removeEventListener('nexus:filter-theme', onFilter);
     }, []);
 
     if (err) return e('div', { className: 'nexus-flagship nf-loading' }, '⚠ Nexus failed to load: ' + err);
@@ -630,7 +646,7 @@ export function NexusFlagshipPage() {
 
     let panel;
     if (activeTab === 'flagship') {
-        panel = e(FlagshipPanel, { model });
+        panel = e(FlagshipPanel, { model, holdingsTheme });
     } else if (activeTab === 'theme') {
         panel = e('div', { className: 'nf-seasonal' }, e(NexusThemePanel, { model }));
     } else {

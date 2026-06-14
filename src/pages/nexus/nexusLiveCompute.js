@@ -42,6 +42,10 @@ export function fvGapPct(row, compByTk) {
 // ── One view row → one Holding (contract shape, pre-read) ─────
 export function mapHolding(row, compByTk, staleSet) {
     const gap = fvGapPct(row, compByTk);
+    const price = num(row.current_price);
+    // Valuation is "trusted" only when it rests on OUR composite (not the
+    // view's bare DCF) — drives the Theme map's grey-when-pending honesty.
+    const valuationTrusted = compByTk.get(row.symbol) != null && price != null && price > 0;
     return {
         tk: row.symbol,
         theme: row.sector || 'Unclassified',
@@ -56,6 +60,7 @@ export function mapHolding(row, compByTk, staleSet) {
         // null (not 0) when there's no composite and no DCF — an unknown gap
         // renders as "—", never a misleading "fairly valued" 0.0%.
         fvGapPct: gap,
+        valuationTrusted: valuationTrusted,
         signal: row.valuation_signal || null,
         signalTone: toSignalTone(row),
         stale: staleSet.has(row.symbol),
