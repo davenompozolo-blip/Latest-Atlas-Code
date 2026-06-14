@@ -19,7 +19,9 @@ const FALLBACK_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 const SB_URL = (process.env.VITE_SUPABASE_URL || FALLBACK_URL).replace(/\/+$/, '');
 const SB_KEY = process.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_KEY || process.env.SUPABASE_ANON_KEY || FALLBACK_ANON;
 const HORIZON_DAYS = 75;
-const MAX_NAMES = 24;
+// Finnhub fan-out (surprise history + daily series) is bounded to the names
+// actually reporting in the window; every other holding still renders.
+const MAX_RICH = 24;
 
 async function fetchT(url, ms, headers) {
     const ac = new AbortController();
@@ -69,23 +71,52 @@ export default async function handler(req, res) {
             }
         });
 
-        // 3. Candidate set: calendar matches ∪ book names with a known upcoming date.
-        const candidates = new Set(calBySym.keys());
-        holdings.forEach(h => { if (h.next_earnings_date && h.next_earnings_date >= today && h.next_earnings_date <= to) candidates.add(h.symbol); });
-        const symbols = [...candidates].slice(0, MAX_NAMES);
+        // 3. Reporting set — names with a known upcoming date (Finnhub calendar
+        //    or the book), soonest first, capped so the Finnhub fan-out stays
+        //    bounded. Every *other* holding still renders below, just without
+        //    consensus / prior / implied-move context.
+        const upcomingDate = h => {
+            const cd = calBySym.get(h.symbol);
+            if (cd && cd.date && cd.date >= today) return cd.date;
+            if (h.next_earnings_date && h.next_earnings_date >= today) return h.next_earnings_date;
+            return null;
+        };
+        const richSyms = holdings
+            .map(h => ({ sym: h.symbol, d: upcomingDate(h) }))
+            .filter(x => x.d && x.d <= to)
+            .sort((a, b) => (a.d < b.d ? -1 : a.d > b.d ? 1 : 0))
+            .slice(0, MAX_RICH)
+            .map(x => x.sym);
 
-        // 4. Per name — surprise history + daily series, then assemble.
-        const rows = await Promise.all(symbols.map(async sym => {
-            const [hist, eqResp] = await Promise.all([
+        // 4. Rich context for the reporting set: per-symbol calendar (consensus
+        //    EPS + reporting hour — the bulk calendar only confirms a handful),
+        //    surprise history, and the daily series for the implied-move proxy.
+        const richData = new Map();
+        await Promise.all(richSyms.map(async sym => {
+            const [hist, eqResp, cal] = await Promise.all([
                 finnhub('/stock/earnings?symbol=' + encodeURIComponent(sym)),
                 fetchT(origin + '/api/equity?endpoint=daily&symbol=' + encodeURIComponent(sym), 15000, fwd).then(r => r.ok ? r.json() : null).catch(() => null),
+                finnhub('/calendar/earnings?symbol=' + encodeURIComponent(sym) + '&from=' + today + '&to=' + to),
             ]);
-            const series = eqResp ? closeSeriesFromAlpaca(eqResp.daily) : [];
-            return buildEarningsRow(bySymbol.get(sym) || { symbol: sym }, { calendar: calBySym.get(sym) || {}, history: hist || [], series }, today);
+            const upcoming = ((cal && cal.earningsCalendar) || [])
+                .filter(r => r && r.date && r.date >= today)
+                .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))[0];
+            richData.set(sym, {
+                history: hist || [],
+                series: eqResp ? closeSeriesFromAlpaca(eqResp.daily) : [],
+                calendar: upcoming || calBySym.get(sym) || {},
+            });
         }));
 
+        // 5. One row per holding — the deck mirrors the book, earnings-first.
+        const rows = holdings.map(h => {
+            const rd = richData.get(h.symbol) || {};
+            return buildEarningsRow(h, { calendar: rd.calendar || calBySym.get(h.symbol) || {}, history: rd.history || [], series: rd.series || [] }, today);
+        });
+        const reportingCount = rows.filter(r => r.daysUntil != null && r.daysUntil >= 0 && r.daysUntil <= HORIZON_DAYS).length;
+
         res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=21600');
-        return res.status(200).json({ ok: true, asOf: new Date().toISOString(), horizonDays: HORIZON_DAYS, rows: sortRows(rows) });
+        return res.status(200).json({ ok: true, asOf: new Date().toISOString(), horizonDays: HORIZON_DAYS, total: rows.length, reportingCount, rows: sortRows(rows) });
     } catch (e) {
         return res.status(200).json({ ok: false, error: (e && e.message) || 'earnings error', rows: [] });
     }
