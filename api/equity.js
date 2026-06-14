@@ -40,7 +40,7 @@ const CRUMB_TTL_MS    = 60 * 60 * 1000;
 
 const ALPACA_BASE = 'https://data.alpaca.markets/v2';
 const YF          = 'https://query2.finance.yahoo.com';
-const SUMMARY_MODULES = 'summaryProfile,summaryDetail,financialData,defaultKeyStatistics,recommendationTrend,price,earnings';
+const SUMMARY_MODULES = 'summaryProfile,summaryDetail,financialData,defaultKeyStatistics,recommendationTrend,price,earnings,calendarEvents';
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
 
 const _memCache = new Map();
@@ -322,6 +322,18 @@ function mapOverview(summary, symbol) {
     set('EPS',           rawVal(stats.trailingEps));
     set('DividendYield', rawVal(detail.dividendYield));
     set('AnalystTargetPrice', rawVal(fin.targetMeanPrice));
+    set('52WeekHigh',    rawVal(detail.fiftyTwoWeekHigh));
+    set('52WeekLow',     rawVal(detail.fiftyTwoWeekLow));
+    // Upcoming calendar — feeds vw_earnings_calendar (→ next_earnings_date on
+    // the book) and the Nexus earnings panel. Yahoo gives {raw, fmt} dates.
+    const cal = summary.calendarEvents || {};
+    const toISO = d => (d && (d.fmt || (d.raw ? new Date(d.raw * 1000).toISOString().slice(0, 10) : null))) || null;
+    const today = new Date().toISOString().slice(0, 10);
+    const earnDates = ((cal.earnings && cal.earnings.earningsDate) || []).map(toISO).filter(Boolean);
+    const nextEarn = earnDates.find(d => d >= today) || earnDates[0] || null;
+    if (nextEarn) out.NextEarningsDate = nextEarn;
+    const exDiv = toISO(cal.exDividendDate);
+    if (exDiv) out.ExDividendDate = exDiv;
     if (rec) {
         set('AnalystRatingStrongBuy',  rec.strongBuy);
         set('AnalystRatingBuy',        rec.buy);
@@ -458,7 +470,7 @@ async function finnhubFundamentals(symbol) {
     // Try symbol candidates in order — stop at first one with a valid profile
     var candidates = finnhubSymbolCandidates(symbol);
     var lastErr = null;
-    var profile, metrics, recs, earnings, rawPeers, reported;
+    var profile, metrics, recs, earnings, rawPeers, reported, earningsCal;
 
     for (var ci = 0; ci < candidates.length; ci++) {
         var sym = encodeURIComponent(candidates[ci]);
@@ -470,6 +482,9 @@ async function finnhubFundamentals(symbol) {
                 finnhubGet('/stock/earnings?symbol=' + sym),
                 finnhubGet('/stock/peers?symbol=' + sym),
                 finnhubGet('/stock/financials-reported?symbol=' + sym + '&freq=annual'),
+                finnhubGet('/calendar/earnings?symbol=' + sym
+                    + '&from=' + new Date(Date.now() - 2 * 864e5).toISOString().slice(0, 10)
+                    + '&to=' + new Date(Date.now() + 160 * 864e5).toISOString().slice(0, 10)),
             ]);
             var p = results[0].status === 'fulfilled' ? results[0].value : {};
             if (p && p.ticker) {
@@ -479,6 +494,7 @@ async function finnhubFundamentals(symbol) {
                 earnings = results[3].status === 'fulfilled' ? results[3].value : [];
                 rawPeers = results[4].status === 'fulfilled' ? results[4].value : [];
                 reported = results[5].status === 'fulfilled' ? results[5].value : null;
+                earningsCal = results[6].status === 'fulfilled' ? results[6].value : null;
                 break;
             }
             lastErr = new Error('empty profile for ' + candidates[ci]);
@@ -508,7 +524,7 @@ async function finnhubFundamentals(symbol) {
             return { symbol: sym };
         }
     }));
-    return { profile: profile, metrics: metrics, recs: recs, earnings: earnings, peers: peers, reported: reported };
+    return { profile: profile, metrics: metrics, recs: recs, earnings: earnings, peers: peers, reported: reported, earningsCalendar: earningsCal };
 }
 
 function mapFinnhubOverview(data, symbol) {
@@ -538,6 +554,14 @@ function mapFinnhubOverview(data, symbol) {
     set('EPS', m.epsBasicExclExtraItemsTTM);
     set('DividendYield', m.dividendYieldIndicatedAnnual != null ? m.dividendYieldIndicatedAnnual / 100 : null);
     set('AnalystTargetPrice', m.targetMedianPrice);
+    set('52WeekHigh', m['52WeekHigh']);
+    set('52WeekLow',  m['52WeekLow']);
+    // Next earnings date — feeds vw_earnings_calendar → next_earnings_date on
+    // the book. Finnhub /calendar/earnings returns past + future rows.
+    var ecal = (data.earningsCalendar && data.earningsCalendar.earningsCalendar) || [];
+    var todayISO = new Date().toISOString().slice(0, 10);
+    var future = ecal.map(function (r) { return r && r.date; }).filter(function (d) { return d && d >= todayISO; }).sort();
+    if (future.length) out.NextEarningsDate = future[0];
     if (rec) {
         set('AnalystRatingStrongBuy', rec.strongBuy);
         set('AnalystRatingBuy', rec.buy);
