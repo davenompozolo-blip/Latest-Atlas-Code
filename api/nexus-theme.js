@@ -8,7 +8,7 @@
 // resolved model. Pure maths in nexusThemeCompute.js; degrades to an
 // empty themes list, never throws.
 
-import { dailyReturns, themeReturnSeries, cumMomentum, beta } from '../src/pages/nexus/nexusThemeCompute.js';
+import { dailyReturns, themeReturnSeries, cumMomentum, beta, scaleReturnsToVol } from '../src/pages/nexus/nexusThemeCompute.js';
 import { closeSeriesFromAlpaca } from '../src/pages/nexus/nexusBoardCompute.js';
 
 const FALLBACK_URL = 'https://vdmojjszvvcithuxwexx.supabase.co';
@@ -78,6 +78,15 @@ export default async function handler(req, res) {
             factorRet[key] = dailyReturns((series || []).map(p => ({ date: p.t, close: p.c })));
         }));
 
+        // Vol-normalise the factor returns to a common 1% daily move so the
+        // rate / USD / oil betas are comparable (raw betas scale with the
+        // factor's own volatility — UUP would dwarf USO otherwise).
+        const fr = {
+            rate: scaleReturnsToVol(factorRet.rate),
+            usd: scaleReturnsToVol(factorRet.usd),
+            oil: scaleReturnsToVol(factorRet.oil),
+        };
+
         // 4. Per-theme momentum + betas.
         const byTheme = new Map();
         for (const h of holdings) {
@@ -87,7 +96,7 @@ export default async function handler(req, res) {
         }
         const themes = [...byTheme.entries()].map(([theme, members]) => {
             const tr = themeReturnSeries(members, retBySymbol);
-            const rateBeta = beta(tr, factorRet.rate);
+            const rateBeta = beta(tr, fr.rate);
             return {
                 theme,
                 momentum5d: cumMomentum(tr, MOMENTUM_N),
@@ -95,8 +104,8 @@ export default async function handler(req, res) {
                 // is the negative of the beta to TLT.
                 betas: {
                     rate: rateBeta == null ? null : +(-rateBeta).toFixed(2),
-                    usd: beta(tr, factorRet.usd),
-                    oil: beta(tr, factorRet.oil),
+                    usd: beta(tr, fr.usd),
+                    oil: beta(tr, fr.oil),
                 },
             };
         });

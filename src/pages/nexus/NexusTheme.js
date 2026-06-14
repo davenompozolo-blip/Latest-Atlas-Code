@@ -164,7 +164,7 @@ export function NexusThemePanel({ model }) {
         // 3. TRANSMISSION
         e('div', { className: 'nf-card nf-fade' },
             e('div', { className: 'nf-card-h' }, e('h3', null, 'Transmission'),
-                e('span', { className: 'nf-sub' }, 'sensitivity to the day’s factors — why it moved')),
+                e('span', { className: 'nf-sub' }, 'β to a 1% move in each factor (vol-normalised) — why it moved, not just that it moved')),
             e('div', { className: 'nf-table-scroll' },
                 e('table', { className: 'nf-table nt-tt' },
                     e('thead', null, e('tr', null,

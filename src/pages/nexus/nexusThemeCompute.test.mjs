@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
     buildThemeView, themeLeaders,
-    dailyReturns, themeReturnSeries, cumMomentum, beta, themeDispersion, rotationRead,
+    dailyReturns, themeReturnSeries, cumMomentum, beta, themeDispersion, rotationRead, stdev, scaleReturnsToVol,
 } from './nexusThemeCompute.js';
 
 const holdings = [
@@ -118,4 +118,21 @@ test('rotationRead: quadrant verdicts + a concrete out/in book read', () => {
     assert.equal(book.outTheme, 'Industrials');
     assert.equal(book.inTheme, 'Materials');
     assert.match(book.text, /out of Industrials into Materials/);
+});
+
+test('scaleReturnsToVol normalises a low-vol factor up to the target', () => {
+    const lo = Array.from({ length: 30 }, (_, i) => ({ date: 'd' + i, ret: (i % 2 ? 1 : -1) * 0.002 })); // ~0.2% vol
+    const sc = scaleReturnsToVol(lo, 0.01);
+    assert.ok(Math.abs(stdev(sc.map(r => r.ret)) - 0.01) < 1e-9);
+});
+
+test('vol-normalising a quiet factor deflates its inflated beta, sign preserved', () => {
+    // A sub-1%-vol factor (like UUP) regresses to a large raw beta; scaling it
+    // up to 1% vol divides that beta down — same sign, smaller magnitude.
+    const quiet = Array.from({ length: 25 }, (_, i) => ({ date: 'd' + i, ret: (i % 2 ? 1 : -1) * 0.002 }));
+    const theme = quiet.map((q, i) => ({ date: q.date, ret: q.ret * 3 + (i % 2 ? 0.005 : -0.005) }));
+    const raw = beta(theme, quiet);
+    const norm = beta(theme, scaleReturnsToVol(quiet, 0.01));
+    assert.ok(Math.abs(norm) < Math.abs(raw));   // quiet factor scaled up → beta deflated
+    assert.equal(Math.sign(norm), Math.sign(raw));
 });

@@ -117,6 +117,24 @@ export function cumMomentum(retSeries, n = 5) {
     return +((cum - 1) * 100).toFixed(2);
 }
 
+// Population standard deviation of a number array (null if too short).
+export function stdev(xs) {
+    const a = (xs || []).filter(v => isFinite(v));
+    if (a.length < 2) return null;
+    const m = a.reduce((s, v) => s + v, 0) / a.length;
+    return Math.sqrt(a.reduce((s, v) => s + (v - m) ** 2, 0) / a.length);
+}
+
+// Rescale a return series so its daily vol equals `targetVol`. Lets betas to
+// factors of very different volatility (UUP ≈ 0.2%/day vs USO ≈ 2%/day) be
+// compared on one scale — "theme move per 1% (vol-normalised) factor move".
+export function scaleReturnsToVol(retSeries, targetVol = 0.01) {
+    const sd = stdev((retSeries || []).map(r => r.ret));
+    if (!sd) return retSeries || [];
+    const k = targetVol / sd;
+    return (retSeries || []).map(r => ({ date: r.date, ret: r.ret * k }));
+}
+
 // OLS beta of theme returns on a factor, aligned by date. Null below `minN`
 // overlapping points — fail loud, never fabricate a sensitivity.
 export function beta(themeRet, factorRet, minN = 15) {
