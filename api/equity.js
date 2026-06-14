@@ -482,7 +482,9 @@ async function finnhubFundamentals(symbol) {
                 finnhubGet('/stock/earnings?symbol=' + sym),
                 finnhubGet('/stock/peers?symbol=' + sym),
                 finnhubGet('/stock/financials-reported?symbol=' + sym + '&freq=annual'),
-                finnhubGet('/calendar/earnings?symbol=' + sym),
+                finnhubGet('/calendar/earnings?symbol=' + sym
+                    + '&from=' + new Date(Date.now() - 2 * 864e5).toISOString().slice(0, 10)
+                    + '&to=' + new Date(Date.now() + 160 * 864e5).toISOString().slice(0, 10)),
             ]);
             var p = results[0].status === 'fulfilled' ? results[0].value : {};
             if (p && p.ticker) {
