@@ -88,20 +88,30 @@ export default async function handler(req, res) {
             .slice(0, MAX_RICH)
             .map(x => x.sym);
 
-        // 4. Rich context (surprise history + daily series) for the reporting set.
+        // 4. Rich context for the reporting set: per-symbol calendar (consensus
+        //    EPS + reporting hour — the bulk calendar only confirms a handful),
+        //    surprise history, and the daily series for the implied-move proxy.
         const richData = new Map();
         await Promise.all(richSyms.map(async sym => {
-            const [hist, eqResp] = await Promise.all([
+            const [hist, eqResp, cal] = await Promise.all([
                 finnhub('/stock/earnings?symbol=' + encodeURIComponent(sym)),
                 fetchT(origin + '/api/equity?endpoint=daily&symbol=' + encodeURIComponent(sym), 15000, fwd).then(r => r.ok ? r.json() : null).catch(() => null),
+                finnhub('/calendar/earnings?symbol=' + encodeURIComponent(sym) + '&from=' + today + '&to=' + to),
             ]);
-            richData.set(sym, { history: hist || [], series: eqResp ? closeSeriesFromAlpaca(eqResp.daily) : [] });
+            const upcoming = ((cal && cal.earningsCalendar) || [])
+                .filter(r => r && r.date && r.date >= today)
+                .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))[0];
+            richData.set(sym, {
+                history: hist || [],
+                series: eqResp ? closeSeriesFromAlpaca(eqResp.daily) : [],
+                calendar: upcoming || calBySym.get(sym) || {},
+            });
         }));
 
         // 5. One row per holding — the deck mirrors the book, earnings-first.
         const rows = holdings.map(h => {
             const rd = richData.get(h.symbol) || {};
-            return buildEarningsRow(h, { calendar: calBySym.get(h.symbol) || {}, history: rd.history || [], series: rd.series || [] }, today);
+            return buildEarningsRow(h, { calendar: rd.calendar || calBySym.get(h.symbol) || {}, history: rd.history || [], series: rd.series || [] }, today);
         });
         const reportingCount = rows.filter(r => r.daysUntil != null && r.daysUntil >= 0 && r.daysUntil <= HORIZON_DAYS).length;
 
