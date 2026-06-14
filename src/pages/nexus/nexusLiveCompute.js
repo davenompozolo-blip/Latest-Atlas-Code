@@ -143,10 +143,66 @@ export function buildConcentration(rows) {
     };
 }
 
+// ── Conviction-target sizing ──────────────────────────────────
+// "How much to trade" expressed off the page's own signals + our
+// positioning. Each name's target weight ∝ its conviction, normalised
+// to the book's *invested* weight (a rebalance within the same gross,
+// not a cash call). The quantum closes the gap to that target — but
+// only in the direction the read already calls: ADD buys the shortfall,
+// TRIM sells the excess, EXIT closes the line. HOLD / WATCH and names
+// already at their conviction weight trade nothing.
+
+// Book NAV via the weight identity every row shares (weight = |mv|/NAV).
+// Median over the rows that carry both, so a stray row can't skew it.
+export function bookNav(rows) {
+    const navs = [];
+    for (const r of rows) {
+        const w = num(r.weight_pct), mv = num(r.market_value);
+        if (w && mv != null && w !== 0) navs.push(Math.abs(mv) / (w / 100));
+    }
+    if (!navs.length) return null;
+    navs.sort((a, b) => a - b);
+    return navs[Math.floor(navs.length / 2)];
+}
+
+// symbol → conviction-implied target weight (% of NAV).
+export function targetWeights(rows) {
+    const invested = rows.reduce((a, r) => a + (num(r.weight_pct) || 0), 0);
+    const convSum = rows.reduce((a, r) => a + Math.max(0, num(r.conviction_score) || 0), 0) || 1;
+    const m = new Map();
+    for (const r of rows) {
+        const conv = Math.max(0, num(r.conviction_score) || 0);
+        m.set(r.symbol, (conv / convSum) * invested);
+    }
+    return m;
+}
+
+// read + position context → signed trade quantum (shares + $).
+// ctx = { nav, price, currentWeightPct, targetWeightPct, currentShares }
+export function sizeTrade(read, ctx) {
+    const blank = { tradeSide: null, tradeShares: null, tradeUsd: null, atTarget: false };
+    if (!ctx || !ctx.nav || !ctx.price || ctx.price <= 0) return blank;
+    const drift = ctx.targetWeightPct - ctx.currentWeightPct; // ppt of NAV
+    if (read === 'exit') {
+        const sh = ctx.currentShares != null ? Math.round(ctx.currentShares) : null;
+        return sh ? { tradeSide: 'sell', tradeShares: -sh, tradeUsd: -sh * ctx.price, atTarget: false } : blank;
+    }
+    if (read === 'add') {
+        if (drift > 0) { const usd = drift / 100 * ctx.nav; return { tradeSide: 'buy', tradeShares: Math.round(usd / ctx.price), tradeUsd: usd, atTarget: false }; }
+        return { ...blank, atTarget: true };
+    }
+    if (read === 'trim') {
+        if (drift < 0) { const usd = drift / 100 * ctx.nav; return { tradeSide: 'sell', tradeShares: Math.round(usd / ctx.price), tradeUsd: usd, atTarget: false }; }
+        return { ...blank, atTarget: true };
+    }
+    return blank; // hold / watch
+}
+
 // ── Orchestrate the live sections from raw rows ───────────────
 // Pure: rows + composite map + stale set → { holdings, spine,
-// concentration }. computeRead runs over the real ingredients with
-// the full book in scope for the room assessor.
+// concentration, nav }. computeRead runs over the real ingredients with
+// the full book in scope for the room assessor; sizeTrade then attaches
+// the conviction-target quantum to each read.
 export function buildLiveSections(rows, compByTk, staleSet) {
     const book = { holdings: [] };
     const ingredients = rows.map(r => {
@@ -154,14 +210,31 @@ export function buildLiveSections(rows, compByTk, staleSet) {
         book.holdings.push(ing);
         return ing;
     });
-    const holdings = ingredients.map(ing => ({
-        ...ing,
-        ...computeRead(ing, book, READ_CONFIG, ConcentrationPenalty),
-    }));
+    const nav = bookNav(rows);
+    const targets = targetWeights(rows);
+    const byTk = new Map(rows.map(r => [r.symbol, r]));
+    const holdings = ingredients.map(ing => {
+        const withRead = { ...ing, ...computeRead(ing, book, READ_CONFIG, ConcentrationPenalty) };
+        const r = byTk.get(withRead.tk) || {};
+        const price = num(r.current_price);
+        const currentWeightPct = num(r.weight_pct) || 0;
+        const targetWeightPct = targets.get(withRead.tk) || 0;
+        const currentShares = (price && price > 0 && num(r.market_value) != null) ? Math.abs(num(r.market_value)) / price : null;
+        const trade = sizeTrade(withRead.read, { nav, price, currentWeightPct, targetWeightPct, currentShares });
+        return {
+            ...withRead,
+            price,
+            currentWeightPct: +currentWeightPct.toFixed(2),
+            targetWeightPct: +targetWeightPct.toFixed(2),
+            driftPct: +(targetWeightPct - currentWeightPct).toFixed(2),
+            ...trade,
+        };
+    });
     return {
         holdings,
         spine: buildSpine(rows, staleSet),
         concentration: buildConcentration(rows),
+        nav,
     };
 }
 

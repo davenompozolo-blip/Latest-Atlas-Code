@@ -85,7 +85,7 @@ export async function getNexusModel() {
     const staleSet = new Set((baseline.dataIntegrity && baseline.dataIntegrity.staleTickers) || []);
     const [compByTk, macro] = await Promise.all([loadComposites(), loadMacro()]);
 
-    const { holdings, spine, concentration } = buildLiveSections(rows, compByTk, staleSet);
+    const { holdings, spine, concentration, nav } = buildLiveSections(rows, compByTk, staleSet);
 
     // Windshield macro tiles (live, falls back to baseline if FRED is down);
     // seasonal Theme/Regime/Opportunities/Drift derived from the live book + macro.
@@ -97,6 +97,7 @@ export async function getNexusModel() {
         asOf: new Date().toISOString(),
         holdings,
         spine,
+        nav,
         gauges: { ...baseline.gauges, concentration },
         windshield,
         seasonal,

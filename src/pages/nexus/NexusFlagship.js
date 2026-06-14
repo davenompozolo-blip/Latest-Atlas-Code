@@ -25,6 +25,12 @@ const signed = (v, d = 1) => (v == null ? '—' : (v >= 0 ? '+' : '−') + Math.
 const pct1   = (v, d = 1) => (v == null ? '—' : signed(v, d) + '%');
 const toneClass = t => 'tone-' + (t || 'neutral');
 const moveTone  = v => (v > 0 ? 'tone-up' : v < 0 ? 'tone-down' : 'tone-neutral');
+const fmtUsd = v => {
+    if (v == null) return '—';
+    const a = Math.abs(v);
+    if (a >= 1000) return '$' + (a / 1000).toFixed(a >= 10000 ? 0 : 1) + 'k';
+    return '$' + a.toFixed(0);
+};
 
 // Conviction → colour
 const convColor = c => (c >= 75 ? 'var(--success)' : c >= 60 ? 'var(--cyan)' : c >= 45 ? 'var(--amber)' : 'var(--danger)');
@@ -256,6 +262,7 @@ const COLS = [
     { k: 'fvGapPct',     label: 'FV gap',              sort: 'fvGapPct' },
     { k: 'signal',       label: 'Signal',     l: true },
     { k: 'read',         label: 'Read',                sort: 'read' },
+    { k: 'trade',        label: 'Trade',      l: true },
 ];
 
 // Read taxonomy order — used for the filter rail and read-sort rank.
@@ -274,6 +281,126 @@ function FvGapBar({ v, scale }) {
     );
 }
 
+// ── Trade quantum cell ────────────────────────────────────────
+// The conviction-target trade for a name, in the read's direction.
+// The chip stages it to the blotter (stop-propagation so the row's
+// open-object click doesn't also fire). HOLD/WATCH → —; an ADD/TRIM
+// already at its conviction weight → "at target".
+function TradeCell({ h, staged, onStage }) {
+    if (!h.tradeSide || !h.tradeShares) {
+        return h.atTarget
+            ? e('span', { className: 'nf-trade-at', title: 'Already at conviction-target weight' }, 'at target')
+            : e('span', { style: { color: 'var(--text3)' } }, '—');
+    }
+    const sh = Math.abs(h.tradeShares);
+    const cls = h.tradeSide === 'buy' ? 'buy' : 'sell';
+    return e('span', { className: 'nf-trade ' + cls },
+        e('button', {
+            className: 'nf-trade-stage ' + cls + (staged ? ' staged' : ''),
+            onClick: ev => { ev.stopPropagation(); onStage(h); },
+            title: (staged ? 'Staged — click to remove. ' : 'Stage → blotter. ') +
+                h.tradeSide.toUpperCase() + ' ' + sh + ' ' + h.tk +
+                ' (to ' + h.targetWeightPct + '% target vs ' + h.currentWeightPct + '% now)',
+        }, (h.tradeSide === 'buy' ? '＋' : '－') + sh),
+        e('span', { className: 'nf-trade-usd' }, fmtUsd(h.tradeUsd))
+    );
+}
+
+// ── Account mode (PAPER / LIVE) for the blotter banner ────────
+function useAccountMode() {
+    const [m, setM] = useState(null);
+    useEffect(function () {
+        let alive = true;
+        fetch('/api/trading?action=account').then(r => (r.ok ? r.json() : null))
+            .then(j => { if (alive && j && j.mode) setM({ mode: j.mode, buyingPower: j.buyingPower }); })
+            .catch(() => {});
+        return () => { alive = false; };
+    }, []);
+    return m;
+}
+
+// ── Order blotter ─────────────────────────────────────────────
+// Staged tickets, reviewed as a batch. Nothing reaches the broker
+// until an explicit two-step submit (arm → confirm). Each order posts
+// through /api/trading (paper by default) with the nexus decision
+// context (conviction + signal) so the Ledger records *why*.
+function OrderBlotter({ tickets, onRemove, onClear }) {
+    const acct = useAccountMode();
+    const [arming, setArming] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
+    const [results, setResults] = useState(null);
+    if (!tickets.length) return null;
+
+    const mode = acct && acct.mode;
+    const buys = tickets.filter(t => t.side === 'buy').reduce((a, t) => a + t.usd, 0);
+    const sells = tickets.filter(t => t.side === 'sell').reduce((a, t) => a + t.usd, 0);
+
+    async function submit() {
+        setSubmitting(true);
+        const out = {};
+        for (const t of tickets) {
+            try {
+                const r = await fetch('/api/trading?action=order', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        symbol: t.tk, side: t.side, qty: t.shares, type: 'market', tif: 'day',
+                        client_order_id: 'nexus-' + t.tk.toLowerCase() + '-' + Date.now(),
+                        ledger: {
+                            conviction: t.conviction, intent: t.read,
+                            rationale: 'Nexus conviction-target rebalance',
+                            snapshot: { signal: t.signal, side: t.side, shares: t.shares, read: t.read },
+                        },
+                    }),
+                });
+                const j = await r.json().catch(() => ({}));
+                out[t.tk] = (r.ok && j.success) ? { ok: true, status: (j.order && j.order.status) || 'submitted' } : { ok: false, status: j.error || 'rejected' };
+            } catch (e) { out[t.tk] = { ok: false, status: (e && e.message) || 'error' }; }
+        }
+        setResults(out);
+        setSubmitting(false);
+        setArming(false);
+    }
+
+    return e('div', { className: 'nf-card nf-blotter nf-fade' },
+        e('div', { className: 'nf-card-h' },
+            e('h3', null, 'Order blotter'),
+            e('span', { className: 'nf-sub' },
+                tickets.length + ' ticket' + (tickets.length > 1 ? 's' : '') + ' · buys ' + fmtUsd(buys) + ' · sells ' + fmtUsd(sells),
+                mode ? e('span', { className: 'nf-mode ' + (mode === 'LIVE' ? 'live' : 'paper') }, mode) : null
+            )
+        ),
+        e('div', { className: 'nf-blotter-list' },
+            tickets.map(function (t) {
+                const res = results && results[t.tk];
+                return e('div', { className: 'nf-blot-row', key: t.tk },
+                    e('span', { className: 'nf-blot-side ' + t.side }, t.side.toUpperCase()),
+                    e('span', { className: 'nf-tk' }, t.tk),
+                    e('span', { className: 'nf-blot-qty' }, t.shares + ' sh'),
+                    e('span', { className: 'nf-blot-usd' }, '≈ ' + fmtUsd(t.usd)),
+                    res
+                        ? e('span', { className: 'nf-blot-res ' + (res.ok ? 'ok' : 'err'), title: res.status }, (res.ok ? '✓ ' : '✗ ') + res.status)
+                        : e('button', { className: 'nf-blot-x', onClick: () => onRemove(t.tk), title: 'Remove ticket' }, '×')
+                );
+            })
+        ),
+        e('div', { className: 'nf-blotter-foot' },
+            e('span', { className: 'nf-blot-note ' + (mode === 'LIVE' ? 'live' : '') },
+                mode === 'LIVE'
+                    ? '⚠ LIVE account — these execute against real capital.'
+                    : 'Paper account — simulated fills. Market orders · day.'),
+            e('div', { className: 'nf-blot-actions' },
+                e('button', { className: 'nf-blot-clear', onClick: onClear, disabled: submitting }, results ? 'Close' : 'Clear'),
+                !results
+                    ? (arming
+                        ? e('button', { className: 'nf-blot-submit confirm', onClick: submit, disabled: submitting },
+                            submitting ? 'Submitting…' : 'Confirm ' + tickets.length + (mode ? ' · ' + mode : ''))
+                        : e('button', { className: 'nf-blot-submit', onClick: () => setArming(true) }, 'Submit batch'))
+                    : null
+            )
+        )
+    );
+}
+
 function HoldingsTable({ holdings }) {
     // Expanded `because` rows. The read chip is the why-affordance:
     // clicking it toggles the explanation (and stops the row's
@@ -284,9 +411,21 @@ function HoldingsTable({ holdings }) {
     const [reads, setReads] = useState(() => new Set());
     const [sortK, setSortK] = useState('');     // '' = provider order (weight desc)
     const [sortDir, setSortDir] = useState('desc');
+    const [blotter, setBlotter] = useState({}); // tk → staged ticket
     if (!holdings || !holdings.length) return null;
 
     const toggle = id => setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
+    // Stage / unstage a conviction-target trade. Clicking a staged name again
+    // pulls it back off the blotter (the chip doubles as the remove affordance).
+    const onStage = h => setBlotter(prev => {
+        const next = { ...prev };
+        if (next[h.tk]) delete next[h.tk];
+        else next[h.tk] = { tk: h.tk, side: h.tradeSide, shares: Math.abs(h.tradeShares), usd: Math.abs(h.tradeUsd), price: h.price, read: h.read, conviction: h.conviction, signal: h.signal };
+        return next;
+    });
+    const removeTicket = tk => setBlotter(prev => { const n = { ...prev }; delete n[tk]; return n; });
+    const clearBlotter = () => setBlotter({});
+    const tickets = Object.values(blotter);
     const toggleRead = r => setReads(prev => {
         const next = new Set(prev);
         if (next.has(r)) next.delete(r); else next.add(r);
@@ -324,7 +463,8 @@ function HoldingsTable({ holdings }) {
     const fvScale = Math.max(10, ...rows.map(h => Math.abs(Number(h.fvGapPct) || 0)));
     const dirty = reads.size || theme !== 'ALL' || query;
 
-    return e('div', { className: 'nf-card nf-holdings nf-fade' },
+    return e(React.Fragment, null,
+      e('div', { className: 'nf-card nf-holdings nf-fade' },
         e('div', { className: 'nf-card-h' },
             e('h3', null, 'Holdings'),
             e('span', { className: 'nf-sub' }, rows.length + ' / ' + holdings.length + ' live objects · derived reads')
@@ -388,7 +528,8 @@ function HoldingsTable({ holdings }) {
                                     className: 'nf-read-chip ' + h.read + (isOpen ? ' open' : ''),
                                     title: h.because,
                                     onClick: ev => { ev.stopPropagation(); toggle(h.objectId); },
-                                }, h.read))
+                                }, h.read)),
+                                e('td', { className: 'nf-l' }, e(TradeCell, { h, staged: !!blotter[h.tk], onStage }))
                             ),
                         ];
                         if (isOpen) {
@@ -403,6 +544,8 @@ function HoldingsTable({ holdings }) {
                 )
             )
         )
+      ),
+      e(OrderBlotter, { tickets, onRemove: removeTicket, onClear: clearBlotter })
     );
 }
 
