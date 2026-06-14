@@ -6,6 +6,7 @@
 import {
     daysUntil, beatRate, priorPrint, avgEarningsMovePct, realizedVolPct,
     expectedMove, sentimentFromSignals, buildEarningsRow, sortRows,
+    pickEarningsExpiry, atmStraddleMovePct,
 } from './nexusEarningsCompute.js';
 
 let fails = 0;
@@ -69,6 +70,29 @@ check('row sentiment', row.sentiment, 'bullish');
 
 const sorted = sortRows([{ daysUntil: 10 }, { daysUntil: -2 }, { daysUntil: 3 }, { daysUntil: null }]);
 check('sort soonest first, past/undated last', sorted.map(r => r.daysUntil), [3, 10, -2, null]);
+
+// ── options-implied move ──────────────────────────────────────
+const EXP = ['2026-06-15', '2026-06-22', '2026-06-26', '2026-07-17'];
+check('expiry brackets the print', pickEarningsExpiry(EXP, '2026-06-24'), '2026-06-26');
+check('expiry exact match', pickEarningsExpiry(EXP, '2026-06-22'), '2026-06-22');
+check('expiry none after → null', pickEarningsExpiry(EXP, '2026-08-01'), null);
+
+// ATM straddle: spot 100, ATM strike 100 call 3.0 / put 2.5 → 5.5% move.
+const CHAIN = {
+    calls: [{ strike: 95, bid: 6, ask: 6.4 }, { strike: 100, bid: 2.9, ask: 3.1 }, { strike: 105, bid: 1, ask: 1.2 }],
+    puts:  [{ strike: 95, bid: 1, ask: 1.2 }, { strike: 100, bid: 2.4, ask: 2.6 }, { strike: 105, bid: 5.8, ask: 6.2 }],
+};
+check('ATM straddle move %', atmStraddleMovePct(CHAIN, 100), 5.5);
+check('straddle no spot → null', atmStraddleMovePct(CHAIN, 0), null);
+check('straddle empty chain → null', atmStraddleMovePct({ calls: [], puts: [] }, 100), null);
+
+// buildEarningsRow prefers the options move (basis 'iv') over history.
+const ivRow = buildEarningsRow(
+    { symbol: 'NVDA', sector: 'Technology', next_earnings_date: '2026-06-17' },
+    { calendar: { date: '2026-06-17' }, history: HIST, series: SERIES, optionsMovePct: 6.2 },
+    TODAY,
+);
+check('row prefers options-implied move', [ivRow.expectedMovePct, ivRow.expectedMoveBasis], [6.2, 'iv']);
 
 if (fails) { console.error(`\nFAILED — ${fails} assertion(s).`); process.exit(1); }
 console.log('\nPASS — earnings transforms match the fixture.');

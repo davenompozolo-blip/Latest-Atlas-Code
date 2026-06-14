@@ -10,7 +10,7 @@
 // /stock/earnings (surprise history), and daily closes via /api/equity.
 // Scoring lives in nexusEarningsCompute.js (pure, unit-tested).
 
-import { buildEarningsRow, sortRows } from '../src/pages/nexus/nexusEarningsCompute.js';
+import { buildEarningsRow, sortRows, pickEarningsExpiry, atmStraddleMovePct } from '../src/pages/nexus/nexusEarningsCompute.js';
 import { closeSeriesFromAlpaca } from '../src/pages/nexus/nexusBoardCompute.js';
 
 const FINNHUB = 'https://finnhub.io/api/v1';
@@ -81,37 +81,53 @@ export default async function handler(req, res) {
             if (h.next_earnings_date && h.next_earnings_date >= today) return h.next_earnings_date;
             return null;
         };
-        const richSyms = holdings
+        const richSet = holdings
             .map(h => ({ sym: h.symbol, d: upcomingDate(h) }))
             .filter(x => x.d && x.d <= to)
             .sort((a, b) => (a.d < b.d ? -1 : a.d > b.d ? 1 : 0))
-            .slice(0, MAX_RICH)
-            .map(x => x.sym);
+            .slice(0, MAX_RICH);
 
         // 4. Rich context for the reporting set: per-symbol calendar (consensus
-        //    EPS + reporting hour — the bulk calendar only confirms a handful),
-        //    surprise history, and the daily series for the implied-move proxy.
+        //    EPS + reporting hour), surprise history, the daily series, and the
+        //    real options-implied move (ATM straddle at the first expiry after
+        //    the print) — falling back to the history/vol proxy when an account
+        //    has no options data for the name.
         const richData = new Map();
-        await Promise.all(richSyms.map(async sym => {
-            const [hist, eqResp, cal] = await Promise.all([
+        await Promise.all(richSet.map(async ({ sym, d }) => {
+            const [hist, eqResp, cal, expResp] = await Promise.all([
                 finnhub('/stock/earnings?symbol=' + encodeURIComponent(sym)),
                 fetchT(origin + '/api/equity?endpoint=daily&symbol=' + encodeURIComponent(sym), 15000, fwd).then(r => r.ok ? r.json() : null).catch(() => null),
                 finnhub('/calendar/earnings?symbol=' + encodeURIComponent(sym) + '&from=' + today + '&to=' + to),
+                fetchT(origin + '/api/trading?action=option_expiries&symbol=' + encodeURIComponent(sym), 12000, fwd).then(r => r.ok ? r.json() : null).catch(() => null),
             ]);
+            const series = eqResp ? closeSeriesFromAlpaca(eqResp.daily) : [];
+            const spot = series.length ? series[series.length - 1].c : null;
+
+            // Options-implied move — best-effort, isolated: any failure leaves
+            // optionsMovePct null and the proxy takes over.
+            let optionsMovePct = null;
+            const expiry = pickEarningsExpiry(Array.isArray(expResp) ? expResp : [], d);
+            if (expiry && spot) {
+                const chain = await fetchT(origin + '/api/trading?action=options_chain&symbol=' + encodeURIComponent(sym) + '&expiry=' + expiry, 15000, fwd)
+                    .then(r => r.ok ? r.json() : null).catch(() => null);
+                optionsMovePct = atmStraddleMovePct(chain, spot);
+            }
+
             const upcoming = ((cal && cal.earningsCalendar) || [])
                 .filter(r => r && r.date && r.date >= today)
                 .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))[0];
             richData.set(sym, {
                 history: hist || [],
-                series: eqResp ? closeSeriesFromAlpaca(eqResp.daily) : [],
+                series,
                 calendar: upcoming || calBySym.get(sym) || {},
+                optionsMovePct,
             });
         }));
 
         // 5. One row per holding — the deck mirrors the book, earnings-first.
         const rows = holdings.map(h => {
             const rd = richData.get(h.symbol) || {};
-            return buildEarningsRow(h, { calendar: rd.calendar || calBySym.get(h.symbol) || {}, history: rd.history || [], series: rd.series || [] }, today);
+            return buildEarningsRow(h, { calendar: rd.calendar || calBySym.get(h.symbol) || {}, history: rd.history || [], series: rd.series || [], optionsMovePct: rd.optionsMovePct }, today);
         });
         const reportingCount = rows.filter(r => r.daysUntil != null && r.daysUntil >= 0 && r.daysUntil <= HORIZON_DAYS).length;
 
