@@ -36,6 +36,14 @@ function useEarnings() {
     return s;
 }
 
+// Implied-move basis — options-implied IV first, then the name's own
+// earnings history, then a realized-vol estimate.
+const BASIS = {
+    iv:      { label: 'iv',   title: 'options-implied — ATM straddle at the first expiry after the print' },
+    history: { label: 'hist', title: "the name's own past earnings-day moves" },
+    vol:     { label: 'vol',  title: 'realized-vol estimate (no options / history)' },
+};
+
 const COLS = [
     { k: 'tk', label: 'Ticker', l: true },
     { k: 'theme', label: 'Theme', l: true },
@@ -78,7 +86,7 @@ function EarningsRow(r) {
         e('td', { className: 'nf-mono-cell' },
             r.expectedMovePct == null ? '—'
                 : e('span', { className: 'ne-move' }, '±' + r.expectedMovePct.toFixed(1) + '%',
-                    e('span', { className: 'ne-basis ' + r.expectedMoveBasis, title: r.expectedMoveBasis === 'history' ? "name's own past earnings moves" : 'realized-vol estimate (no history)' }, r.expectedMoveBasis === 'history' ? 'hist' : 'vol'))),
+                    e('span', { className: 'ne-basis ' + r.expectedMoveBasis, title: (BASIS[r.expectedMoveBasis] || {}).title || r.expectedMoveBasis }, (BASIS[r.expectedMoveBasis] || {}).label || r.expectedMoveBasis))),
         e('td', { className: 'nf-l' }, e(SentChip, { row: r }))
     );
 }
@@ -142,7 +150,7 @@ export function NexusEarningsTable() {
                     e('tbody', null, rows.map(EarningsRow))
                 )
             ),
-        e('div', { className: 'nb-foot' }, 'Implied move = the ticker’s own typical earnings-day reaction (hist), or a realized-vol estimate where there’s no history (vol). Sentiment is the book’s live signal read — options-implied pricing arrives with the positioning phase.')
+        e('div', { className: 'nb-foot' }, 'Implied move = options-implied (iv — ATM straddle at the first expiry after the print), else the ticker’s own past earnings reaction (hist), else a realized-vol estimate (vol). Sentiment is the book’s live signal read.')
     );
 }
 

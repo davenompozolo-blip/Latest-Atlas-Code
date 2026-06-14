@@ -469,6 +469,7 @@
 .ne-surp.down { color: var(--danger); }
 .ne-move { display: inline-flex; align-items: center; gap: 6px; font-family: var(--fm); }
 .ne-basis { font-family: var(--fb); font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 1px 5px; border-radius: 999px; }
+.ne-basis.iv { background: var(--success-b); color: var(--success); }
 .ne-basis.history { background: var(--cyan-b); color: var(--cyan); }
 .ne-basis.vol { background: var(--purple-b); color: var(--purple); }
 .ne-sent { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; padding: 3px 9px; border-radius: 999px; display: inline-block; min-width: 56px; text-align: center; }

@@ -82,6 +82,36 @@ export function expectedMove(series, earningsDates) {
     return { pct: null, basis: null };
 }
 
+// ── Options-implied earnings move (real IV) ───────────────────
+// The first listed expiry on/after the print captures the event; its
+// ATM straddle priced against spot is the market's implied move.
+
+// First expiry >= the earnings date (the contract that brackets the event).
+export function pickEarningsExpiry(expiries, earningsDate) {
+    if (!Array.isArray(expiries) || !expiries.length || !earningsDate) return null;
+    const after = expiries.filter(d => d && d >= earningsDate).sort();
+    return after.length ? after[0] : null;
+}
+
+// ATM straddle / spot → implied move %. chain = { calls:[{strike,bid,ask,last}],
+// puts:[...] }. Uses bid/ask mid (last as fallback); the ATM strike must be
+// listed on BOTH legs. Guards against junk quotes (non-finite, ≤0, absurd).
+export function atmStraddleMovePct(chain, spot) {
+    if (!chain || !spot || spot <= 0) return null;
+    const calls = chain.calls || [], puts = chain.puts || [];
+    if (!calls.length || !puts.length) return null;
+    const putStrikes = new Set(puts.map(p => p.strike));
+    const strikes = calls.map(c => c.strike).filter(k => putStrikes.has(k));
+    if (!strikes.length) return null;
+    const atm = strikes.reduce((a, k) => (Math.abs(k - spot) < Math.abs(a - spot) ? k : a), strikes[0]);
+    const mid = q => (q && q.bid != null && q.ask != null && q.ask > 0) ? (q.bid + q.ask) / 2 : (q && q.last != null ? q.last : null);
+    const cm = mid(calls.find(c => c.strike === atm));
+    const pm = mid(puts.find(p => p.strike === atm));
+    if (cm == null || pm == null) return null;
+    const move = ((cm + pm) / spot) * 100;
+    return (isFinite(move) && move > 0 && move < 80) ? round1(move) : null;
+}
+
 // Book signals → a single sentiment read for the name/theme.
 export function sentimentFromSignals(row) {
     const s = `${row.quant_signal || ''} ${row.valuation_signal || ''} ${row.technical_signal || ''}`.toLowerCase();
@@ -97,7 +127,11 @@ export function buildEarningsRow(holding, parts, today) {
     const series = parts.series || [];      // [{t,c}]
     const date = cal.date || holding.next_earnings_date || null;
     const prior = priorPrint(hist);
-    const em = expectedMove(series, (hist || []).map(r => r && r.period).filter(Boolean));
+    // Prefer the real options-implied move (ATM straddle) when the endpoint
+    // priced one; otherwise fall back to the name's history / realized-vol proxy.
+    const em = (parts.optionsMovePct != null)
+        ? { pct: round1(parts.optionsMovePct), basis: 'iv' }
+        : expectedMove(series, (hist || []).map(r => r && r.period).filter(Boolean));
     const sent = sentimentFromSignals(holding);
     return {
         tk: holding.symbol,

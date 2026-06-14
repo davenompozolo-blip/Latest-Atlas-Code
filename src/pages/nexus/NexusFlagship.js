@@ -15,6 +15,7 @@ import React from 'react';
 import { getNexusModel } from './nexusLive.js';
 import { NexusBoardSection } from './NexusBoard.js';
 import { NexusEarningsTable } from './NexusEarnings.js';
+import { NexusCotTable } from './NexusCot.js';
 import '../../styles/nexus-flagship.css';
 
 const { useState, useEffect } = React;
@@ -584,6 +585,7 @@ function FlagshipPanel({ model }) {
         e(PositioningSpine, { spine: model.spine }),
         e(HoldingsTable, { holdings: model.holdings }),
         e(NexusEarningsTable, null),
+        e(NexusCotTable, null),
         e(TheRead, { read: model.read })
     );
 }
