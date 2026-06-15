@@ -17,6 +17,7 @@ import { NexusBoardSection } from './NexusBoard.js';
 import { NexusEarningsTable } from './NexusEarnings.js';
 import { NexusCotTable } from './NexusCot.js';
 import { NexusThemePanel } from './NexusTheme.js';
+import { PortfolioSnapshot } from './NexusPortfolio.js';
 import { NexusRegimePanel } from './NexusRegime.js';
 import '../../styles/nexus-flagship.css';
 
@@ -583,6 +584,7 @@ function TheRead({ read }) {
 // ── Flagship panel ────────────────────────────────────────────
 function FlagshipPanel({ model, holdingsTheme }) {
     return e('div', null,
+        e(PortfolioSnapshot, { model }),
         e(WindshieldBand, { windshield: model.windshield }),
         e(ContextGauges, { gauges: model.gauges }),
         e(NexusBoardSection, null),
