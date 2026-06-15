@@ -203,6 +203,67 @@ export function sizeTrade(read, ctx) {
     return blank; // hold / watch
 }
 
+// ── Portfolio snapshot — book-level metrics for the Flagship header ──
+// Position-level aggregates from the raw vw_nexus_holdings rows (the
+// account-level equity/cash/leverage is fetched live from /api/trading
+// by the component — it isn't in the book view).
+const GRADE_SCORE = { 'A+': 97, A: 93, 'A-': 90, 'B+': 87, B: 83, 'B-': 80, 'C+': 77, C: 73, 'C-': 70, 'D+': 67, D: 63, 'D-': 60, F: 45 };
+
+export function buildPortfolioSnapshot(rows) {
+    const R = rows || [];
+    if (!R.length) return null;
+    const ret = r => num(r.total_return_pct);
+    const day = r => num(r.daily_return_pct);
+    const wt = r => num(r.weight_pct) || 0;
+    const mv = r => Math.abs(num(r.market_value) || 0);
+
+    const withRet = R.filter(r => ret(r) != null);
+    const winners = withRet.filter(r => ret(r) > 0).length;
+    const losers = withRet.filter(r => ret(r) < 0).length;
+    const todayUp = R.filter(r => day(r) > 0).length;
+    const todayDown = R.filter(r => day(r) < 0).length;
+    const winRate = withRet.length ? Math.round((winners / withRet.length) * 100) : null;
+    // "At risk" = currently down >10% on cost (deep drawdown), not the
+    // historical max-drawdown — matches the portfolio overview's reading.
+    const atRisk = withRet.filter(r => ret(r) <= -10).length;
+
+    const byWeight = R.slice().sort((a, b) => wt(b) - wt(a));
+    const top = byWeight[0];
+    const top5 = byWeight.slice(0, 5).reduce((a, r) => a + wt(r), 0);
+    const byRet = withRet.slice().sort((a, b) => ret(b) - ret(a));
+    const best = byRet[0], worst = byRet[byRet.length - 1];
+
+    // Cost basis + unrealised, reconstructed per position from value × return.
+    let cost = 0, mvSum = 0;
+    for (const r of R) {
+        const m = mv(r), rt = ret(r);
+        if (m > 0 && rt != null && rt > -100) { cost += m / (1 + rt / 100); mvSum += m; }
+    }
+    const unrealised = mvSum - cost;
+
+    // Weight-weighted quality from letter grades.
+    let qw = 0, qsum = 0;
+    for (const r of R) {
+        const s = GRADE_SCORE[String(r.quality_grade || '').trim()];
+        const w = wt(r);
+        if (s != null && w > 0) { qw += w; qsum += w * s; }
+    }
+
+    return {
+        positions: R.length, winners, losers, todayUp, todayDown, winRate, atRisk,
+        topSymbol: top ? top.symbol : null,
+        topWeightPct: top ? +wt(top).toFixed(1) : null,
+        top5WeightPct: +top5.toFixed(1),
+        best: best ? { tk: best.symbol, pct: +ret(best).toFixed(1) } : null,
+        worst: worst ? { tk: worst.symbol, pct: +ret(worst).toFixed(1) } : null,
+        marketValue: Math.round(mvSum),
+        costBasis: Math.round(cost),
+        unrealisedPnl: Math.round(unrealised),
+        totalReturnPct: cost > 0 ? +((unrealised / cost) * 100).toFixed(2) : null,
+        wtdQuality: qw > 0 ? Math.round(qsum / qw) : null,
+    };
+}
+
 // ── Orchestrate the live sections from raw rows ───────────────
 // Pure: rows + composite map + stale set → { holdings, spine,
 // concentration, nav }. computeRead runs over the real ingredients with
@@ -240,6 +301,7 @@ export function buildLiveSections(rows, compByTk, staleSet) {
         spine: buildSpine(rows, staleSet),
         concentration: buildConcentration(rows),
         nav,
+        portfolio: buildPortfolioSnapshot(rows),
     };
 }
 
