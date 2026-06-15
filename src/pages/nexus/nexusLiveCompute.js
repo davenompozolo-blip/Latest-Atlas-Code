@@ -42,6 +42,10 @@ export function fvGapPct(row, compByTk) {
 // ── One view row → one Holding (contract shape, pre-read) ─────
 export function mapHolding(row, compByTk, staleSet) {
     const gap = fvGapPct(row, compByTk);
+    const price = num(row.current_price);
+    // Valuation is "trusted" only when it rests on OUR composite (not the
+    // view's bare DCF) — drives the Theme map's grey-when-pending honesty.
+    const valuationTrusted = compByTk.get(row.symbol) != null && price != null && price > 0;
     return {
         tk: row.symbol,
         theme: row.sector || 'Unclassified',
@@ -56,6 +60,7 @@ export function mapHolding(row, compByTk, staleSet) {
         // null (not 0) when there's no composite and no DCF — an unknown gap
         // renders as "—", never a misleading "fairly valued" 0.0%.
         fvGapPct: gap,
+        valuationTrusted: valuationTrusted,
         signal: row.valuation_signal || null,
         signalTone: toSignalTone(row),
         stale: staleSet.has(row.symbol),
@@ -298,6 +303,37 @@ export function buildWindshield(macro) {
         driverEmphasis = v < 0 ? 'curve still inverted' : 'curve positive';
     }
     return { driver, driverEmphasis, stats };
+}
+
+// ── Chef — the single nudge: which tab is hot, and why (live) ─
+// Picks the most salient tab from the live book + concentration and
+// states a factual reason. Replaces the static baseline chefbar so the
+// nudge tracks today's book instead of a frozen literal.
+export function buildChef({ spine = [], holdings = [], concentration = null } = {}) {
+    const moves = (spine || []).filter(s => s.movePct != null);
+    const byMove = moves.slice().sort((a, b) => b.movePct - a.movePct);
+    const leader = byMove[0], laggard = byMove[byMove.length - 1];
+    const dispersion = (leader && laggard) ? leader.movePct - laggard.movePct : 0;
+
+    const cheap = (holdings || [])
+        .filter(h => h.fvGapPct != null && h.fvGapPct > 15 && !h.stale)
+        .sort((a, b) => b.fvGapPct - a.fvGapPct);
+    const fragile = concentration && concentration.verdictChip === 'Fragile';
+    const cluster = (concentration && concentration.fragilityCluster) || [];
+
+    // Wide theme dispersion → rotation is the story; nudge to Theme.
+    if (leader && laggard && leader.theme !== laggard.theme && dispersion >= 3) {
+        return { hotTab: 'theme', reason: 'Theme rotation is doing the work today — ' + leader.theme + ' ' + pctS(leader.movePct) + ' vs ' + laggard.theme + ' ' + pctS(laggard.movePct) + '. Start there.' };
+    }
+    // Concentration tightening into a fragile cluster → Drift.
+    if (fragile && cluster.length) {
+        return { hotTab: 'drift', reason: 'Concentration is tightening — ' + cluster.slice(0, 3).join(' · ') + ' carry the cluster. Check the drift.' };
+    }
+    // A real crop of cheap names → Opportunities.
+    if (cheap.length >= 3) {
+        return { hotTab: 'opp', reason: cheap.length + ' names sit cheap to fair value (' + cheap.slice(0, 3).map(h => h.tk).join(', ') + '). Worth a look in Opportunities.' };
+    }
+    return { hotTab: 'flagship', reason: 'No single driver dominating today — the book is reading balanced.' };
 }
 
 // ── Seasonal — live figures (factual templating, not generative) ──

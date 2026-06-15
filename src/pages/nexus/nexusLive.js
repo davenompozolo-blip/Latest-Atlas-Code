@@ -30,7 +30,7 @@
 
 import { sb } from '../config.js';
 import { getNexusModel as getBaselineModel } from './nexusMock.js';
-import { num, buildLiveSections, buildWindshield, buildSeasonal } from './nexusLiveCompute.js';
+import { num, buildLiveSections, buildWindshield, buildSeasonal, buildChef } from './nexusLiveCompute.js';
 
 // Live macro snapshot (FRED yields + regime + market quotes) from the
 // shared /api/macro endpoint. Same-origin, edge-cached; null on any
@@ -91,6 +91,7 @@ export async function getNexusModel() {
     // seasonal Theme/Regime/Opportunities/Drift derived from the live book + macro.
     const windshield = buildWindshield(macro) || baseline.windshield;
     const seasonal = buildSeasonal({ spine, concentration, holdings, macro });
+    const chef = buildChef({ spine, holdings, concentration });
 
     return {
         ...baseline,
@@ -101,5 +102,6 @@ export async function getNexusModel() {
         gauges: { ...baseline.gauges, concentration },
         windshield,
         seasonal,
+        chef,
     };
 }
