@@ -32,7 +32,7 @@ const normSector = s => {
     if (/staple/.test(x)) return 'Consumer Staples';
     if (/consumer|discretion/.test(x)) return 'Consumer Discretionary';
     if (/material|metal|mining|gold|precious/.test(x)) return 'Materials';
-    if (/communicat|media|internet/.test(x)) return 'Communications';
+    if (/communicat|comms|media|internet|telecom/.test(x)) return 'Communications';
     if (/industrial/.test(x)) return 'Industrials';
     if (/real estate|reit/.test(x)) return 'Real Estate';
     if (/utilit/.test(x)) return 'Utilities';

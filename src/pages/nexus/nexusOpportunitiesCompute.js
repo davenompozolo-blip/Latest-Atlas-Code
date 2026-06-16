@@ -72,9 +72,14 @@ export function opportunitiesRead(opp) {
 // How good the name looks in isolation: winsorised upside, trust-gated,
 // nudged by conviction. Only upside is merit; downside names aren't longs.
 export function isolatedMerit(c) {
-    const gap = clampGap(Number(c.fvGapPct) || 0);
-    if (gap <= 0) return 0;
-    const trust = c.fvTrustworthy ? 1 : 0.6;                 // bare DCF dampened
+    const raw = Number(c.fvGapPct) || 0;
+    if (raw <= 0) return 0;
+    // Trusted upside winsorises at 60%; untrusted (bare DCF / extreme) caps far
+    // lower AND is dampened — a +150% model artifact can't masquerade as a
+    // +150% edge, so it sinks to the "verify" tail rather than topping the ledger.
+    const cap = c.fvTrustworthy ? 60 : 25;
+    const gap = Math.min(cap, raw);
+    const trust = c.fvTrustworthy ? 1 : 0.6;
     const conv = c.conviction != null ? (0.6 + (Number(c.conviction) || 0) / 250) : 0.8;
     return +(gap * trust * conv).toFixed(2);
 }
