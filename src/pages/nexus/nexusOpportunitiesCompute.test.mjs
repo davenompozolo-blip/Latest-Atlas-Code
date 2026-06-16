@@ -1,7 +1,10 @@
 // Opportunities transforms — pure, runs under plain node.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildOpportunities, opportunitiesRead } from './nexusOpportunitiesCompute.js';
+import {
+    buildOpportunities, opportunitiesRead,
+    isolatedMerit, portfolioFit, scoreOpportunity, fundability, rankLedger, extractStance, sectorTilts,
+} from './nexusOpportunitiesCompute.js';
 
 const holdings = [
     { tk: 'KMI', fvGapPct: 35, conviction: 63, valuationTrusted: true, signalTone: 'improving', stale: false },
@@ -56,4 +59,46 @@ test('winsorised gap: a noisy +150% outlier does not beat cheap × convicted', (
         { tk: 'NVDA', fvGapPct: 61, conviction: 81, valuationTrusted: false, stale: false },
     ]);
     assert.equal(o.bestLong.tk, 'NVDA'); // clamp(149)=60 → 46.5 vs 60 × (0.5+0.405) = 54.3
+});
+
+test('v2 portfolioFit: high corr or excess VaR → redundant; low + diversifying → additive', () => {
+    assert.equal(portfolioFit({ maxCorrToBook: 0.72, excessVar: 0.1 }), 'redundant');
+    assert.equal(portfolioFit({ maxCorrToBook: 0.2, excessVar: -0.3 }), 'additive');
+    assert.equal(portfolioFit({ maxCorrToBook: 0.5, excessVar: 0.2 }), 'neutral');
+});
+
+test('v2 isolatedMerit winsorises, gates on trust, only counts upside', () => {
+    assert.equal(isolatedMerit({ fvGapPct: -20 }), 0);
+    assert.ok(isolatedMerit({ fvGapPct: 40, fvTrustworthy: true, conviction: 60 }) > isolatedMerit({ fvGapPct: 40, fvTrustworthy: false, conviction: 60 }));
+    assert.equal(isolatedMerit({ fvGapPct: 150, fvTrustworthy: true, conviction: 50 }), isolatedMerit({ fvGapPct: 60, fvTrustworthy: true, conviction: 50 }));
+});
+
+test('v2 THE POINT: a redundant cheap name ranks below an additive, less-cheap one', () => {
+    const cands = [
+        { tk: 'NVDA', fvGapPct: 61, fvTrustworthy: true, conviction: 81, maxCorrToBook: 0.72 },
+        { tk: 'PFE', fvGapPct: 36, fvTrustworthy: true, conviction: 66, maxCorrToBook: 0.2, excessVar: -0.2 },
+    ];
+    const ranked = rankLedger(cands, [{ tk: 'BIDU', fvGapPct: -36, conviction: 30 }]);
+    assert.equal(ranked[0].tk, 'PFE');
+    assert.equal(ranked[0].fit, 'additive');
+    assert.equal(ranked[0].fundFrom, 'BIDU');
+    assert.equal(ranked[1].tk, 'NVDA');
+    assert.equal(ranked[1].fit, 'redundant');
+    assert.equal(ranked[1].fundFrom, null);
+});
+
+test('v2 fundability picks the richest, lowest-conviction held name', () => {
+    assert.equal(fundability([{ tk: 'AMD', fvGapPct: -28, conviction: 53 }, { tk: 'BIDU', fvGapPct: -36, conviction: 30 }, { tk: 'JNJ', fvGapPct: 5, conviction: 64 }]), 'BIDU');
+    assert.equal(fundability([{ tk: 'JNJ', fvGapPct: 5 }]), null);
+});
+
+test('v2 extractStance reads prose; sectorTilts pits stance against weight', () => {
+    assert.equal(extractStance('a Neutral sector stance pending clarity'), 'neutral');
+    assert.equal(extractStance('selective opportunity, constructive setup'), 'cheap');
+    assert.equal(extractStance('the sector screens rich and late-cycle'), 'rich');
+    const tilts = sectorTilts(
+        [{ sector: 'Healthcare', sector_verdict: 'cheap, constructive' }, { sector: 'Technology', sector_verdict: 'rich, late' }],
+        { Healthcare: 10, Technology: 37 }, 12);
+    assert.equal(tilts.find(t => t.sector === 'Healthcare').tilt, 'up');
+    assert.equal(tilts.find(t => t.sector === 'Technology').tilt, 'down');
 });
