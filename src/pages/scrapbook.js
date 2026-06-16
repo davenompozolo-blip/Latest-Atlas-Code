@@ -401,6 +401,13 @@ function ScrapbookProfile({ ticker, onBack }) {
                 analyst_target: earnings?.analyst_target,
             } : null;
 
+            // Plain request/response JSON — no SSE. The stream was never consumed
+            // incrementally here (progress is a local animation; the body was read
+            // in full with .text() and then regex-scanned for the final
+            // atlas_result event). On Vercel any buffered/dropped final chunk or a
+            // function cut at maxDuration left that event missing, surfacing as
+            // "No thesis result in response" on every run. A flat JSON contract —
+            // the same one the save flow already uses — removes that failure class.
             const resp = await fetch('/api/claude-analyse', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -408,23 +415,13 @@ function ScrapbookProfile({ ticker, onBack }) {
                     company: { ticker: company.ticker, company_name: company.company_name, exchange: company.exchange, sector: company.sector, currency: company.currency, current_price: company.current_price },
                     snapshots,
                     portfolioContext,
-                    stream: true,
                 }),
             });
-            if (!resp.ok) {
-                const errText = await resp.text().catch(() => '');
-                let errMsg = `HTTP ${resp.status}`;
-                try { errMsg = JSON.parse(errText).error || errMsg; } catch {}
-                throw new Error(errMsg);
-            }
-            // Read SSE stream to completion and extract the atlas_result event
-            const sseText = await resp.text();
-            const evtMatch = sseText.match(/event:\s*atlas_result\s*\ndata:\s*(.+)/);
-            if (!evtMatch) throw new Error('No thesis result in response — please try again');
             let result;
-            try { result = JSON.parse(evtMatch[1]); }
+            try { result = await resp.json(); }
             catch (_) { throw new Error('Could not parse analysis result — please try again'); }
-            console.log('[claude-analyse stream]', { hasThesis: !!result.thesis, parseError: !!result.parse_error, error: result.error });
+            console.log('[claude-analyse]', { ok: resp.ok, status: resp.status, hasThesis: !!result?.thesis, parseError: !!result?.parse_error, error: result?.error });
+            if (!resp.ok || result.error) throw new Error(result.error || `Analysis failed (HTTP ${resp.status})`);
             if (result.parse_error) throw new Error(result.error || 'Claude response could not be parsed — please try again');
             if (!result.thesis) throw new Error('No thesis in response — please try again');
 
