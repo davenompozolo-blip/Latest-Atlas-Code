@@ -19,6 +19,7 @@ import { NexusCotTable } from './NexusCot.js';
 import { NexusThemePanel } from './NexusTheme.js';
 import { PortfolioSnapshot } from './NexusPortfolio.js';
 import { NexusRegimePanel } from './NexusRegime.js';
+import { NexusOpportunitiesPanel } from './NexusOpportunities.js';
 import '../../styles/nexus-flagship.css';
 
 const { useState, useEffect } = React;
@@ -656,6 +657,8 @@ export function NexusFlagshipPage() {
         panel = e('div', { className: 'nf-seasonal' }, e(NexusThemePanel, { model }));
     } else if (activeTab === 'regime') {
         panel = e('div', { className: 'nf-seasonal' }, e(NexusRegimePanel, { model }));
+    } else if (activeTab === 'opp') {
+        panel = e('div', { className: 'nf-seasonal' }, e(NexusOpportunitiesPanel, { model }));
     } else {
         panel = e('div', { className: 'nf-seasonal' }, e(SeasonalPanel, { data: model.seasonal && model.seasonal[tabEntry.seasonal] }));
     }
