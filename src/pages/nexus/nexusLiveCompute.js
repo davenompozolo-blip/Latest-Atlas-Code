@@ -48,6 +48,9 @@ export function mapHolding(row, compByTk, staleSet) {
     const valuationTrusted = compByTk.get(row.symbol) != null && price != null && price > 0;
     return {
         tk: row.symbol,
+        // Company / fund name — only when it adds something over the ticker
+        // (unenriched ETFs carry asset_name === symbol).
+        name: (row.asset_name && row.asset_name !== row.symbol) ? row.asset_name : null,
         theme: row.sector || 'Unclassified',
         conviction: num(row.conviction_score) ?? 0,
         todayPct: num(row.daily_return_pct) ?? 0,
