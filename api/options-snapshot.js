@@ -9,8 +9,10 @@
 // sync_log, mirroring the price sync's observability convention.
 //
 // Trigger: Vercel Cron (GET, trading days after close) or manual POST with
-// ?token=CRON_SECRET. Writes are service-role (the table is RLS-locked to
-// reads for anon); set SUPABASE_SERVICE_ROLE_KEY in the deployment.
+// ?token=CRON_SECRET. Snapshot writes use the anon key against the table's RLS
+// write policy (the same headless pattern sync-valuations uses for
+// scrapbook_snapshots) — no service-role secret required. The sync_log run row
+// is opportunistic: written only if SUPABASE_SERVICE_ROLE_KEY happens to be set.
 
 import { chainMetrics } from '../src/pages/nexus/nexusOptionsCompute.js';
 
@@ -134,12 +136,13 @@ export default async function handler(req, res) {
         if (throttleMs) await sleep(throttleMs);
     }
 
-    // 3. One upsert (service-role). Without the service key we still return the
-    //    computed summary so a manual run can be inspected, but nothing persists.
-    if (SB_SERVICE && snapRows.length) {
+    // 3. One upsert. Writes with the anon key against the table's RLS write
+    //    policy — the same headless pattern sync-valuations uses for
+    //    scrapbook_snapshots, so there's no service-role/env-binding dependency.
+    if (snapRows.length) {
         try {
             const up = await fetch(SB_URL + '/rest/v1/options_positioning_snapshots?on_conflict=symbol,snapshot_date', {
-                method: 'POST', headers: { ...sbHeaders(SB_SERVICE), Prefer: 'resolution=merge-duplicates,return=minimal' },
+                method: 'POST', headers: { ...sbHeaders(SB_ANON), Prefer: 'resolution=merge-duplicates,return=minimal' },
                 body: JSON.stringify(snapRows),
             });
             if (!up.ok) throw new Error('upsert ' + up.status + ' ' + (await up.text()).slice(0, 200));
@@ -147,8 +150,6 @@ export default async function handler(req, res) {
         } catch (e) {
             summary.errors++; summary.writeError = e.message;
         }
-    } else if (!SB_SERVICE) {
-        summary.writeError = 'SUPABASE_SERVICE_ROLE_KEY not set — computed but not persisted';
     }
 
     if (SB_SERVICE && logId != null) {
