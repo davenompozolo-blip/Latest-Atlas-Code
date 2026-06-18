@@ -76,7 +76,9 @@ export default async function handler(req, res) {
         const hr = await fetchT(SB_URL + '/rest/v1/nexus_options?select=tk', 9000, sbHeaders(SB_ANON));
         if (!hr.ok) throw new Error('nexus_options ' + hr.status);
         const rows = await hr.json();
-        tickers = [...new Set(rows.map(r => (r.tk || '').toUpperCase()).filter(Boolean))].sort();
+        // Foreign listings (2330.TW, 6758.T) duplicate US ADRs and carry no US
+        // options — skip the digit-tickers rather than spend Alpaca calls on them.
+        tickers = [...new Set(rows.map(r => (r.tk || '').toUpperCase()).filter(tk => tk && !/\d/.test(tk)))].sort();
     } catch (e) {
         return res.status(502).json({ error: 'Failed to read tracked pool: ' + e.message });
     }

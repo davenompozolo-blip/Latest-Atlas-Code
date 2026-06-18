@@ -41,7 +41,10 @@ create index if not exists options_snap_symbol_date_desc
 -- names carry nulls + drop_reason.
 create or replace view public.nexus_options as
 with tracked as (
-  select a.symbol as tk from positions p join assets a on a.id = p.asset_id where p.qty <> 0
+  -- open positions as of the latest snapshot (positions is dated; scope to the
+  -- newest as_of_date so closed names don't resurrect from historical rows)
+  select a.symbol as tk from positions p join assets a on a.id = p.asset_id
+    where p.quantity <> 0 and p.as_of_date = (select max(as_of_date) from positions)
   union select ticker from scrapbook_companies
   union select symbol from cortex_watchlist
 ),
