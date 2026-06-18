@@ -15,6 +15,31 @@ import { computeComposite } from '../lib/fairValueComposite.js';
 const { useState, useEffect, useCallback, useRef, useMemo } = React;
 const h = React.createElement;
 
+// Robustly turn an /api/claude-analyse response into a validated result, or
+// throw a *legible* error. A full thesis synthesis can run for tens of seconds,
+// and when it exceeds the Vercel function limit the platform returns a plain
+// 504 ("FUNCTION_INVOCATION_TIMEOUT"), not JSON — blindly calling resp.json()
+// on that surfaced the useless "Could not parse analysis result". Read the body
+// as text first so we can name the real failure (timeout vs. error envelope vs.
+// truncated model output). Shared by both the Regenerate and save-from-ticker
+// flows so they behave identically.
+async function readAnalyseResult(resp) {
+    const text = await resp.text().catch(() => '');
+    let result = null;
+    try { result = JSON.parse(text); } catch { /* non-JSON handled below */ }
+
+    if (!result) {
+        if (resp.status === 504 || /FUNCTION_INVOCATION_TIMEOUT/i.test(text)) {
+            throw new Error('Analysis timed out — the model took too long to respond. Please try again.');
+        }
+        throw new Error(`Analysis failed (HTTP ${resp.status || '?'}) — the server returned an unexpected response. Please try again.`);
+    }
+    if (!resp.ok || result.error) throw new Error(result.error || `Analysis failed (HTTP ${resp.status})`);
+    if (result.parse_error) throw new Error(result.error || 'Claude response could not be parsed — please try again');
+    if (!result.thesis) throw new Error('No thesis in response — please try again');
+    return result;
+}
+
 // Deterministic fair-value composite from a company's saved snapshots.
 // Replaces the LLM's echoed arithmetic mean: drops methods whose implied
 // price sits outside a sane band around the (trusted) current price, blends
@@ -417,13 +442,7 @@ function ScrapbookProfile({ ticker, onBack }) {
                     portfolioContext,
                 }),
             });
-            let result;
-            try { result = await resp.json(); }
-            catch (_) { throw new Error('Could not parse analysis result — please try again'); }
-            console.log('[claude-analyse]', { ok: resp.ok, status: resp.status, hasThesis: !!result?.thesis, parseError: !!result?.parse_error, error: result?.error });
-            if (!resp.ok || result.error) throw new Error(result.error || `Analysis failed (HTTP ${resp.status})`);
-            if (result.parse_error) throw new Error(result.error || 'Claude response could not be parsed — please try again');
-            if (!result.thesis) throw new Error('No thesis in response — please try again');
+            const result = await readAnalyseResult(resp);
 
             const methods = [...new Set(snapshots.map(s => s.method))];
             const { data: newNarr, error: ne } = await sb
@@ -878,10 +897,7 @@ export function ScrapbookSaveBar({ method, methodLabel, ticker, companyName, exc
                         portfolioContext,
                     }),
                 });
-                result = await resp.json();
-                if (!resp.ok || result.error) throw new Error(result.error || 'Analysis failed');
-                if (result.parse_error) throw new Error('Claude response could not be parsed — please try again');
-                if (!result.thesis) throw new Error('No thesis in response — please try again');
+                result = await readAnalyseResult(resp);
             } finally {
                 clearInterval(saveTimer);
                 setSaveProgress(100);
