@@ -101,6 +101,15 @@ export default async function handler(req, res) {
 
     const summary = { run_at: startedAt, scope: tickers.length, withChain: 0, noChain: 0, errors: 0, written: 0, results: [] };
     const snapRows = [];
+    // PostgREST bulk insert requires every object in the array to carry the
+    // SAME keys (else 400 PGRST102 "All object keys must match"). Build every
+    // row through one shape so no-chain / error rows match the computed ones.
+    const blankRow = (tk, reason) => ({
+        symbol: tk, snapshot_date: today,
+        atm_iv: null, skew_25d: null, pc_oi: null, pc_vol: null,
+        front_iv: null, back_iv: null, oi_peak_strike: null, next_expiry: null,
+        drop_reason: reason,
+    });
 
     // 2. Per-name: expiries → front + back chains → chainMetrics. Best-effort and
     //    isolated; a name that fails records a drop_reason rather than vanishing.
@@ -110,7 +119,7 @@ export default async function handler(req, res) {
                 .then(r => r.ok ? r.json() : null).catch(() => null);
             const { front, back } = pickExpiries(expResp, today);
             if (!front) {
-                snapRows.push({ symbol: tk, snapshot_date: today, drop_reason: 'no_listed_options' });
+                snapRows.push(blankRow(tk, 'no_listed_options'));
                 summary.noChain++; summary.results.push({ tk, drop_reason: 'no_listed_options' });
                 if (throttleMs) await sleep(throttleMs);
                 continue;
@@ -130,7 +139,7 @@ export default async function handler(req, res) {
             summary.results.push({ tk, atm_iv: m.atmIv, skew_25d: m.skew25d, drop_reason: m.dropReason });
         } catch (e) {
             summary.errors++;
-            snapRows.push({ symbol: tk, snapshot_date: today, drop_reason: 'no_listed_options' });
+            snapRows.push(blankRow(tk, 'no_listed_options'));
             summary.results.push({ tk, error: e.message });
         }
         if (throttleMs) await sleep(throttleMs);
