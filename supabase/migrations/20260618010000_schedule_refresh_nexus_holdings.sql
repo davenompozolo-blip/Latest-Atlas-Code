@@ -7,8 +7,11 @@
 -- the book read could lag a full trading day (today's moves read like
 -- yesterday) even though the live source (vw_portfolio_home) was current.
 --
--- Schedule a 10-minute refresh via pg_cron so the snapshot tracks the live data.
--- refresh_nexus_holdings() is the project's existing refresh entry point.
+-- Schedule a 10-minute refresh via pg_cron so the snapshots track the live data.
+-- Both project materialized views were unscheduled and stale: mv_cortex_screener
+-- (quant signals) and mv_nexus_holdings (the book read). Refresh both in one job,
+-- cortex first — mv_nexus_holdings reads the quant/screener views downstream of
+-- the cortex screener, so it must refresh after.
 do $$
 begin
   if exists (select 1 from cron.job where jobname = 'refresh-nexus-holdings') then
@@ -16,4 +19,5 @@ begin
   end if;
 end $$;
 
-select cron.schedule('refresh-nexus-holdings', '*/10 * * * *', $$select refresh_nexus_holdings();$$);
+select cron.schedule('refresh-nexus-holdings', '*/10 * * * *',
+  $$select refresh_cortex_screener(); select refresh_nexus_holdings();$$);

@@ -261,6 +261,7 @@ function PositioningSpine({ spine }) {
 const COLS = [
     { k: 'tk',           label: 'Ticker',     l: true, sort: 'tk' },
     { k: 'theme',        label: 'Theme',      l: true, sort: 'theme' },
+    { k: 'weight',       label: 'Weight',              sort: 'currentWeightPct' },
     { k: 'conviction',   label: 'Conv (PCM)',          sort: 'conviction' },
     { k: 'todayPct',     label: 'Today',               sort: 'todayPct' },
     { k: 'contribPct',   label: 'Contrib',             sort: 'contribPct' },
@@ -489,6 +490,8 @@ function HoldingsTable({ holdings, forceTheme }) {
     }
     // FV-gap bar scale = widest absolute gap in view (floored so small books still read).
     const fvScale = Math.max(10, ...rows.map(h => Math.abs(Number(h.fvGapPct) || 0)));
+    // Weight bar scale = heaviest position in view (floored so a light book still reads).
+    const wtScale = Math.max(2, ...rows.map(h => Number(h.currentWeightPct) || 0));
     const dirty = reads.size || theme !== 'ALL' || query;
 
     return e(React.Fragment, null,
@@ -543,6 +546,9 @@ function HoldingsTable({ holdings, forceTheme }) {
                                     e('span', { className: 'nf-tk' }, h.tk),
                                     h.name ? e('span', { className: 'nf-name', title: h.name }, h.name) : null),
                                 e('td', { className: 'nf-l nf-theme-cell' }, h.theme),
+                                e('td', null, e('span', { className: 'nf-conv-bar', title: (Number(h.currentWeightPct) || 0).toFixed(2) + '% of NAV' },
+                                    e('span', { className: 'nf-cb-track' }, e('i', { style: { width: Math.min(100, ((Number(h.currentWeightPct) || 0) / wtScale) * 100) + '%', background: '#5b6b7d' } })),
+                                    e('span', { className: 'nf-mono-cell' }, (Number(h.currentWeightPct) || 0).toFixed(1) + '%'))),
                                 e('td', null, e('span', { className: 'nf-conv-bar' },
                                     e('span', { className: 'nf-cb-track' }, e('i', { style: { width: h.conviction + '%', background: convColor(h.conviction) } })),
                                     e('span', { className: 'nf-mono-cell' }, h.conviction))),
