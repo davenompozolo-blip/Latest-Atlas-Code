@@ -332,6 +332,34 @@
 .nf-fvbar > i.pos { background: var(--success); }
 .nf-fvbar > i.neg { background: var(--danger); }
 
+/* ── Drift tab (nd-) — rebalance / balance lens ───────────────── */
+.nd-bar { position: relative; display: inline-block; width: 54px; height: 6px; flex: none; background: var(--bg1); border-radius: 3px; }
+.nd-bar::before { content: ''; position: absolute; left: 50%; top: -1px; bottom: -1px; width: 1px; background: var(--border-hi); }
+.nd-bar > i { position: absolute; top: 0; height: 100%; border-radius: 3px; }
+.nd-bar > i.over { background: var(--amber); }       /* overweight → trim */
+.nd-bar > i.under { background: var(--cyan); }       /* underweight → add */
+.nd-chip { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; padding: 3px 9px; border-radius: 999px; }
+.nd-chip.ok { background: var(--success-b); color: var(--success); }
+.nd-chip.bad { background: rgba(245,166,35,0.12); color: #f5a623; }
+.nd-act { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; padding: 2px 8px; border-radius: 999px; }
+.nd-act.trim { background: rgba(245,166,35,0.12); color: #f5a623; }
+.nd-act.add { background: var(--success-b); color: var(--success); }
+
+.nd-conc { display: grid; grid-template-columns: repeat(2, 1fr) 1.4fr; gap: 12px; margin-top: 12px; }
+.nd-metric { background: var(--bg1); box-shadow: inset 0 0 0 1px var(--border-hi); border-radius: 10px; padding: 12px 13px; }
+.nd-m-v { font-family: var(--fm); font-size: 20px; font-weight: 700; color: var(--text1); }
+.nd-m-l { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: .04em; margin-top: 4px; }
+.nd-frag .nd-frag-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.nd-fchip { font-family: var(--fm); font-size: 10px; color: var(--purple); box-shadow: inset 0 0 0 1px var(--purple); border-radius: 6px; padding: 2px 7px; cursor: pointer; }
+.nd-fchip:hover { background: rgba(139,124,246,0.12); }
+
+.nd-themes { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 10px; margin-top: 12px; }
+.nd-tcell { background: var(--bg1); box-shadow: inset 0 0 0 1px var(--border-hi); border-radius: 10px; padding: 11px 12px; display: flex; flex-direction: column; gap: 8px; }
+.nd-tn { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; font-weight: 600; color: var(--text1); }
+.nd-tbar { display: flex; }
+.nd-tbar .nd-bar { width: 100%; }
+.nd-tv { display: flex; justify-content: space-between; font-family: var(--fm); font-size: 11px; }
+
 /* derived-read explanation (the `because`) */
 .nf-why-row td { background: var(--bg1); padding: 7px 12px !important; text-align: left !important; border-bottom: 1px solid var(--border) !important; }
 .nf-why-label { font-family: var(--fm); font-size: 8px; font-weight: 700; letter-spacing: .1em; color: var(--cyan); margin-right: 10px; }
