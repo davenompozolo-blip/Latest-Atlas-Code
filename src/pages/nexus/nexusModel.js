@@ -108,7 +108,26 @@
  * @property {"add"|"hold"|"trim"|"watch"|"exit"} read   COMPUTED by the read engine — never authored
  * @property {string} because           one-line explanation, COMPUTED alongside read
  * @property {boolean=} stale
+ * @property {OptionsBlock=} options    options positioning (LIVE; absent/hasOptions:false in baseline)
  * @property {string} objectId          for Live Object navigation
+ */
+
+/**
+ * @typedef {Object} OptionsBlock       per-name options positioning (adjacent signal, NOT a read driver)
+ * @property {boolean} hasOptions       false for no-chain names (ADRs/OTC/thin) → render "—"
+ * @property {"stressed"|"hedged"|"neutral"|"complacent"} tone   from optionsRead (shared with Opportunities)
+ * @property {?string} because          context-neutral explanation grounded in the metrics
+ * @property {number=} atmIv            ATM implied vol (fraction)
+ * @property {?number=} ivRank          90d percentile (null until rankReady)
+ * @property {boolean=} rankReady        true once ~30 sessions accrue
+ * @property {?number=} skew25d          25Δ put−call IV (fraction)
+ * @property {?number=} skewRank
+ * @property {?number=} pcOi
+ * @property {?number=} pcVol
+ * @property {?string=} termTone         "backwardation"|"contango"|"flat"
+ * @property {?number=} oiPeak           OI-wall strike
+ * @property {?string=} dropReason       'no_listed_options' | 'chain_too_thin'
+ * @property {boolean=} stale
  */
 
 /**

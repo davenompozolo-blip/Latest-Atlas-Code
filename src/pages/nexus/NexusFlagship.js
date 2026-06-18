@@ -16,6 +16,7 @@ import { getNexusModel } from './nexusLive.js';
 import { NexusBoardSection } from './NexusBoard.js';
 import { NexusEarningsTable } from './NexusEarnings.js';
 import { NexusCotTable } from './NexusCot.js';
+import { NexusOptionsPanel } from './NexusOptions.js';
 import { NexusThemePanel } from './NexusTheme.js';
 import { PortfolioSnapshot } from './NexusPortfolio.js';
 import { NexusRegimePanel } from './NexusRegime.js';
@@ -266,6 +267,7 @@ const COLS = [
     { k: 'componentVar', label: 'VaR %',               sort: 'componentVar' },
     { k: 'fvGapPct',     label: 'FV gap',              sort: 'fvGapPct' },
     { k: 'signal',       label: 'Signal',     l: true },
+    { k: 'options',      label: 'Options',    l: true },
     { k: 'read',         label: 'Read',                sort: 'read' },
     { k: 'trade',        label: 'Trade',      l: true },
 ];
@@ -283,6 +285,25 @@ function FvGapBar({ v, scale }) {
     const pos = v >= 0;
     return e('span', { className: 'nf-fvbar' },
         e('i', { className: pos ? 'pos' : 'neg', style: pos ? { left: '50%', width: w + '%' } : { right: '50%', width: w + '%' } })
+    );
+}
+
+// ── Options tone cell ─────────────────────────────────────────
+// The market's options-positioning read on a held name — an adjacent,
+// glanceable signal beside the read (it does NOT drive the read verdict).
+// No chain (ADRs / OTC / thin) → "—". Tooltip carries the metric `because`,
+// framed here as a risk question ("is the market flagging downside?").
+const OPT_LABEL = { stressed: 'Stressed', hedged: 'Hedged', complacent: 'Complacent', neutral: 'Neutral' };
+function OptionsTone({ options }) {
+    if (!options || !options.hasOptions) {
+        return e('span', { style: { color: 'var(--text3)' }, title: 'No listed options / chain too thin' }, '—');
+    }
+    const t = options.tone || 'neutral';
+    const building = options.rankReady === false;
+    const title = (options.because || '') + (building ? ' (percentile ranks still building)' : '');
+    return e('span', { className: 'nf-opt nf-opt-' + t, title },
+        OPT_LABEL[t] || t,
+        building ? e('span', { className: 'nf-opt-bld', title: 'Percentile ranks build over ~30 sessions' }, '·') : null
     );
 }
 
@@ -533,6 +554,7 @@ function HoldingsTable({ holdings, forceTheme }) {
                                         e(FvGapBar, { v: h.fvGapPct, scale: fvScale }),
                                         e('span', null, pct1(h.fvGapPct)))),
                                 e('td', { className: 'nf-l' }, h.signal ? e('span', { className: 'nf-sig' }, h.signal) : e('span', { style: { color: 'var(--text3)' } }, '—')),
+                                e('td', { className: 'nf-l' }, e(OptionsTone, { options: h.options })),
                                 e('td', null, e('span', {
                                     className: 'nf-read-chip ' + h.read + (isOpen ? ' open' : ''),
                                     title: h.because,
@@ -595,6 +617,7 @@ function FlagshipPanel({ model, holdingsTheme }) {
         e(HoldingsTable, { holdings: model.holdings, forceTheme: holdingsTheme }),
         e(NexusEarningsTable, null),
         e(NexusCotTable, null),
+        e(NexusOptionsPanel, { holdings: model.holdings }),
         e(TheRead, { read: model.read })
     );
 }

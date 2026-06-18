@@ -31,6 +31,7 @@
 import { sb } from '../config.js';
 import { getNexusModel as getBaselineModel } from './nexusMock.js';
 import { num, buildLiveSections, buildWindshield, buildSeasonal, buildChef } from './nexusLiveCompute.js';
+import { toOptionsModel } from './nexusOptionsCompute.js';
 
 // Live macro snapshot (FRED yields + regime + market quotes) from the
 // shared /api/macro endpoint. Same-origin, edge-cached; null on any
@@ -71,6 +72,21 @@ async function loadHoldingRows() {
     }
 }
 
+// Options positioning per name (held filter is implicit — we look up by ticker).
+// One read from the canonical nexus_options view; absent/error → empty map, so
+// holdings simply render no options tone (hasOptions:false).
+async function loadOptions() {
+    try {
+        const { data, error } = await sb.from('nexus_options').select('*');
+        if (error) throw error;
+        const m = new Map();
+        (data || []).forEach(r => { if (r && r.tk) m.set(r.tk, toOptionsModel(r)); });
+        return m;
+    } catch (e) {
+        return new Map();
+    }
+}
+
 /** @returns {Promise<import('./nexusModel.js').NexusModel>} */
 export async function getNexusModel() {
     // Structural baseline carries the not-yet-live sections (windshield,
@@ -83,9 +99,16 @@ export async function getNexusModel() {
     if (!rows || !rows.length) return baseline; // unconfigured / empty / error → baseline
 
     const staleSet = new Set((baseline.dataIntegrity && baseline.dataIntegrity.staleTickers) || []);
-    const [compByTk, macro] = await Promise.all([loadComposites(), loadMacro()]);
+    const [compByTk, macro, optByTk] = await Promise.all([loadComposites(), loadMacro(), loadOptions()]);
 
-    const { holdings, spine, concentration, nav, portfolio } = buildLiveSections(rows, compByTk, staleSet);
+    const sections = buildLiveSections(rows, compByTk, staleSet);
+    const { spine, concentration, nav, portfolio } = sections;
+    // Attach the options block per holding (adjacent signal — does NOT feed the
+    // read engine; the verdict was already computed in buildLiveSections).
+    const holdings = sections.holdings.map(h => {
+        const o = optByTk.get(h.tk);
+        return o ? { ...h, options: o } : h;
+    });
 
     // Windshield macro tiles (live, falls back to baseline if FRED is down);
     // seasonal Theme/Regime/Opportunities/Drift derived from the live book + macro.
