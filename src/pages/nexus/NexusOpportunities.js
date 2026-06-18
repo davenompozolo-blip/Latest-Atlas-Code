@@ -72,6 +72,14 @@ function OppMap({ ledger, onPick }) {
     return e('svg', { viewBox: '0 0 760 290', width: '100%', role: 'img', 'aria-label': 'Opportunity map: conviction vs fair-value gap, coloured by portfolio fit, with suggested swap arrows.' }, kids);
 }
 
+// Entry-timing chip — options positioning framed as entry (annotates; the
+// ledger rank is unchanged by it). null when the name has no options coverage.
+const TM_LABEL = { clean: 'clean', crowded: 'crowded', stressed: 'stressed' };
+function TimingChip(l) {
+    if (!l.timing) return e('span', { style: { color: 'var(--text3)' } }, '—');
+    return e('span', { className: 'ol-tm ol-tm-' + l.timing, title: l.because || '' }, TM_LABEL[l.timing] || l.timing);
+}
+
 function LedgerRow(l, i, onPick) {
     const fit = l.fit || 'neutral';
     return e('tr', { key: l.tk, onClick: () => onPick(l.tk), title: 'Open ' + l.tk, style: { cursor: 'pointer' } },
@@ -81,6 +89,7 @@ function LedgerRow(l, i, onPick) {
         e('td', { className: 'nf-mono-cell ' + (l.fvGapPct >= 0 ? 'tone-up' : 'tone-down') }, sgnPct(l.fvGapPct), l.fvTrustworthy ? null : e('span', { className: 'ol-est', title: 'model estimate / extreme — verify' }, '~')),
         e('td', { className: 'nf-l' }, e('span', { className: 'ol-fit ' + fit }, FIT_LABEL[fit] || fit)),
         e('td', { className: 'nf-l ol-fund' }, l.fundFrom || '—'),
+        e('td', { className: 'nf-l' }, e(TimingChip, l)),
         e('td', { className: 'nf-l ol-because' }, l.thesis ? String(l.thesis).slice(0, 90) : (l.held ? 'top-up candidate' : 'new-position candidate')));
 }
 
@@ -92,6 +101,9 @@ function ThesisCard(t) {
             e('span', { className: 'ol-cc-vd ' + (good ? 'holds' : 'cond') }, good ? 'additive' : t.fit)),
         n.thesis ? e('div', { className: 'ol-cc-iso' }, String(n.thesis).slice(0, 220)) : e('div', { className: 'ol-cc-iso t3' }, 'No scrapbook narrative yet — valuation gap ' + sgnPct(t.fvGapPct) + '.'),
         e('div', { className: 'ol-cc-ctx' }, 'against the portfolio'),
+        t.timing ? e('div', { className: 'ol-cc-tm' },
+            e('span', { className: 'ol-tm ol-tm-' + t.timing }, TM_LABEL[t.timing] || t.timing),
+            e('span', { className: 'ol-cc-tm-txt' }, ' entry — ' + (t.timingBecause || 'options positioning'))) : null,
         e('div', { className: 'ol-cc-swap' }, t.fundFrom
             ? e('span', null, 'Net: add, funded by trimming ', e('b', null, t.fundFrom), '.')
             : e('span', null, 'Net: redundant to the book — a top-up or swap within its cluster, not a fresh add.')));
@@ -144,7 +156,7 @@ export function NexusOpportunitiesPanel() {
                 ? e('div', { className: 'nf-table-scroll', style: { maxHeight: 460 } },
                     e('table', { className: 'nf-table ol-table' },
                         e('thead', null, e('tr', null,
-                            ['#', 'Name', 'Surfaced by', 'FV gap', 'Fit', 'Fund from', 'Read'].map((h, i) => e('th', { key: h, className: (i === 0 || i === 1 || i === 2 || i === 4 || i === 5 || i === 6) ? 'nf-l' : '' }, h)))),
+                            ['#', 'Name', 'Surfaced by', 'FV gap', 'Fit', 'Fund from', 'Timing', 'Read'].map(h => e('th', { key: h, className: h === 'FV gap' ? '' : 'nf-l' }, h)))),
                         e('tbody', null, ledger.map((l, i) => LedgerRow(l, i, openObject)))))
                 : e('div', { className: 'nb-empty' }, 'No valued candidates yet.')),
 

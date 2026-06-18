@@ -11,6 +11,7 @@
 // Compute.js). Degrades to an empty ledger, never throws.
 
 import { rankLedger, sectorTilts } from '../src/pages/nexus/nexusOpportunitiesCompute.js';
+import { optionsRead, entryTiming } from '../src/pages/nexus/nexusOptionsCompute.js';
 
 const FALLBACK_URL = 'https://vdmojjszvvcithuxwexx.supabase.co';
 const FALLBACK_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZkbW9qanN6dnZjaXRodXh3ZXh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzOTg1NDgsImV4cCI6MjA4Nzk3NDU0OH0.xFo-N9CGQlpHlsykinr_ORAmzV4N7MIq0emW5N1Vojk';
@@ -54,7 +55,7 @@ export default async function handler(req, res) {
     if (req.method === 'OPTIONS') return res.status(200).end();
 
     try {
-        const [holdings, companies, narratives, sigs, watch, corr, varRows, sectorNotes] = await Promise.all([
+        const [holdings, companies, narratives, sigs, watch, corr, varRows, sectorNotes, options] = await Promise.all([
             sb('vw_nexus_holdings?select=symbol,sector,weight_pct,conviction_score,dcf_upside_pct'),
             sb('scrapbook_companies?select=id,ticker,company_name,sector,avg_fair_value,current_price,fair_value_low,fair_value_high,conviction_rating,thesis_summary&avg_fair_value=not.is.null&current_price=not.is.null'),
             sb('scrapbook_narratives?select=company_id,thesis,investment_verdict,avg_upside_pct,bull_case,bear_case,key_sensitivities'),
@@ -63,7 +64,19 @@ export default async function handler(req, res) {
             sb('insight_correlation_cluster?select=symbol_1,symbol_2,correlation'),
             sb('insight_counter_specific_var_vs_sector?select=symbol,excess_var'),
             sb('scrapbook_sector_notes?select=sector,sector_verdict,relative_value,company_tickers'),
+            sb('nexus_options?select=tk,atm_iv,skew_25d,pc_oi,front_iv,back_iv,iv_rank,skew_rank,rank_ready'),
         ]);
+
+        // Entry timing per candidate — the SAME optionsRead Flagship uses, framed
+        // here as entry (clean / crowded / stressed). Annotates the ledger; the
+        // rank stays own-worthiness (isolated merit + fit) — timing never reorders.
+        const optByTk = new Map((options || []).map(o => [o.tk, o]));
+        const timingFor = tk => {
+            const row = optByTk.get(tk);
+            if (!row || num(row.atm_iv) == null) return null;
+            const { tone, because } = optionsRead(row);
+            return { timing: entryTiming(tone), tone, because };
+        };
 
         const heldSet = new Set(holdings.map(h => h.symbol));
         const heldConv = new Map(holdings.map(h => [h.symbol, num(h.conviction_score)]));
@@ -125,7 +138,8 @@ export default async function handler(req, res) {
             };
         }).filter(c => c.fvGapPct != null && isFinite(c.fvGapPct));
 
-        const ledger = rankLedger(candidates, heldList).slice(0, MAX_LEDGER);
+        const ledger = rankLedger(candidates, heldList).slice(0, MAX_LEDGER)
+            .map(l => { const t = timingFor(l.tk); return t ? { ...l, ...t } : l; });
         // Normalise + dedupe sector notes onto the book taxonomy before tilting.
         const seenSec = new Set();
         const normNotes = sectorNotes.map(n => ({ ...n, sector: normSector(n.sector) }))
@@ -133,7 +147,7 @@ export default async function handler(req, res) {
         const tilts = sectorTilts(normNotes, sectorWeights);
         const topThesis = ledger.slice(0, 3).map(l => {
             const n = narrByTk.get(l.tk) || null;
-            return { tk: l.tk, thesis: l.thesis, fvGapPct: l.fvGapPct, fit: l.fit, fundFrom: l.fundFrom, narrative: n ? { thesis: n.thesis, verdict: n.investment_verdict, upside: num(n.avg_upside_pct) } : null };
+            return { tk: l.tk, thesis: l.thesis, fvGapPct: l.fvGapPct, fit: l.fit, fundFrom: l.fundFrom, timing: l.timing || null, timingBecause: l.because || null, narrative: n ? { thesis: n.thesis, verdict: n.investment_verdict, upside: num(n.avg_upside_pct) } : null };
         });
         const sorted = Object.entries(sectorWeights).sort((a, b) => b[1] - a[1]);
         const frame = { topSector: sorted[0] ? sorted[0][0] : null, topSectorPct: sorted[0] ? +sorted[0][1].toFixed(0) : null, valued: candidates.length };
