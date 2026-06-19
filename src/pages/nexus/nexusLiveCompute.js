@@ -336,7 +336,7 @@ export function buildWindshield(macro) {
 
     const spy = (macro.market || []).find(q => q && q.symbol === 'SPY');
     if (spy && isFinite(spy.changePct) && isFinite(spy.price)) stats.push({
-        label: 'S&P 500', value: Number(spy.price).toLocaleString('en-US', { maximumFractionDigits: 0 }),
+        label: 'S&P 500 (SPY)', value: '$' + Number(spy.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
         change: sgn(spy.changePct, 1) + '%', tone: spy.changePct < 0 ? 'down' : spy.changePct > 0 ? 'up' : 'neutral',
     });
 

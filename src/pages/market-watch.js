@@ -301,7 +301,7 @@ function OverviewPanel(p) {
         ),
         h('div', { style: sep }),
         h('div', { style: hb },
-            h('div', { style: hl }, 'S&P 500'),
+            h('div', { style: hl }, 'S&P 500 (SPY)'),
             h('div', { style: mono(22, spyColor) }, spy && spy.price != null ? '$' + fN(spy.price) : '—'),
             sub(spy && spy.changePct != null ? chStr(spy.changePct) + ' today' : 'Daily change', spyColor)
         ),

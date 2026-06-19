@@ -396,18 +396,28 @@ export function QualityPanel(props) {
 function capitalAllocation(overview, snapshot) {
     if (!overview || !snapshot) return null;
     function n(v) { var x = parseFloat(v); return isFinite(x) ? x : null; }
-    var mktCap   = n(overview.MarketCapitalization) || 1;
+    var mktCap   = n(overview.MarketCapitalization);
     var fcf      = n(snapshot.freeCashflow);
     var opCF     = n(snapshot.operatingCashflow);
     var capEx    = n(snapshot.capitalExpenditures);
     if (fcf == null && opCF != null && capEx != null) fcf = opCF - Math.abs(capEx);
-    var fcfYield = fcf != null ? fcf / mktCap : null;
+    var fcfYield = (fcf != null && mktCap != null && mktCap > 0) ? fcf / mktCap : null;
 
-    var netIncome = n(snapshot.netIncome) || 0;
-    var equity    = n(snapshot.totalShareholderEquity) || n(snapshot.totalEquity) || 1;
-    var ltDebt    = n(snapshot.longTermDebt) || 0;
-    var ic        = equity + ltDebt;
-    var roic      = ic > 0 ? netIncome / ic : null;
+    // Invested capital = equity + debt. The live snapshot frequently omits the
+    // equity/long-term-debt fields, so derive book equity from
+    // bookValue × sharesOutstanding rather than letting a `|| 1` fallback turn
+    // ROIC into raw dollars (a billions-percent scale blow-up). If equity still
+    // can't be derived, return null so the tile shows "—", never a fabricated ratio.
+    var netIncome = n(snapshot.netIncome);
+    var equity    = n(snapshot.totalShareholderEquity) || n(snapshot.totalEquity);
+    if (equity == null) {
+        var bvps = n(snapshot.bookValue), shrs = n(snapshot.sharesOutstanding);
+        if (bvps != null && shrs != null && bvps > 0 && shrs > 0) equity = bvps * shrs;
+    }
+    var debt      = n(snapshot.longTermDebt);
+    if (debt == null) debt = n(snapshot.totalDebt) || 0;
+    var ic        = (equity != null && equity > 0) ? equity + debt : null;
+    var roic      = (ic != null && netIncome != null) ? netIncome / ic : null;
 
     var beta = n(overview.Beta) || 1;
     var rf = 0.045, erp = 0.055;

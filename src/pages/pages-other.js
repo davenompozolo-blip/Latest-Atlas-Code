@@ -1034,9 +1034,9 @@ export function CommandCentre() {
             }),
             React.createElement(HeroCard, {
                 icon: '▽', label: 'MAX DRAWDOWN',
-                value: c.drawdown_pct != null ? fmt(c.drawdown_pct, 2) + '%' : '—',
+                value: fmtPct(c.drawdown_pct),
                 color: 'var(--red)', accent: 'red',
-                badge: ddStatus(c.drawdown_pct != null ? c.drawdown_pct / 100 : null)
+                badge: ddStatus(c.drawdown_pct)
             }),
             React.createElement(HeroCard, {
                 icon: '⚠', label: 'DAILY VAR (95%)', value: fmtCurrency(c.dollar_var_95), accent: 'amber'
