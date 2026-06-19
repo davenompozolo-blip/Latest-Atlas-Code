@@ -87,6 +87,25 @@ async function loadOptions() {
     }
 }
 
+// Saved scrapbook research per name — the thesis summary + conviction the user
+// wrote in the Valuation Scrapbook. Surfaced on held rows so notes on names you
+// already own stay visible in Nexus (the Opportunities ledger is a buy-new
+// engine and deliberately won't headline existing holdings). Empty map on any
+// failure, so holdings still render.
+async function loadScrapbookThesis() {
+    try {
+        const { data, error } = await sb.from('scrapbook_companies')
+            .select('ticker, thesis_summary, conviction_rating')
+            .not('thesis_summary', 'is', null);
+        if (error) throw error;
+        const m = new Map();
+        (data || []).forEach(r => { if (r && r.ticker) m.set(r.ticker, r); });
+        return m;
+    } catch (e) {
+        return new Map();
+    }
+}
+
 /** @returns {Promise<import('./nexusModel.js').NexusModel>} */
 export async function getNexusModel() {
     // Structural baseline carries the not-yet-live sections (windshield,
@@ -99,15 +118,19 @@ export async function getNexusModel() {
     if (!rows || !rows.length) return baseline; // unconfigured / empty / error → baseline
 
     const staleSet = new Set((baseline.dataIntegrity && baseline.dataIntegrity.staleTickers) || []);
-    const [compByTk, macro, optByTk] = await Promise.all([loadComposites(), loadMacro(), loadOptions()]);
+    const [compByTk, macro, optByTk, scrapByTk] = await Promise.all([loadComposites(), loadMacro(), loadOptions(), loadScrapbookThesis()]);
 
     const sections = buildLiveSections(rows, compByTk, staleSet);
     const { spine, concentration, nav, portfolio } = sections;
     // Attach the options block per holding (adjacent signal — does NOT feed the
-    // read engine; the verdict was already computed in buildLiveSections).
+    // read engine; the verdict was already computed in buildLiveSections) and the
+    // saved scrapbook thesis/conviction (surfaced in the row's WHY drawer).
     const holdings = sections.holdings.map(h => {
         const o = optByTk.get(h.tk);
-        return o ? { ...h, options: o } : h;
+        const sc = scrapByTk.get(h.tk);
+        let out = o ? { ...h, options: o } : h;
+        if (sc) out = { ...out, scrapbookThesis: sc.thesis_summary || null, scrapbookConviction: sc.conviction_rating || null };
+        return out;
     });
 
     // Windshield macro tiles (live, falls back to baseline if FRED is down);

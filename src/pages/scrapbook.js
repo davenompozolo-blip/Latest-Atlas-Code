@@ -385,7 +385,11 @@ function ScrapbookProfile({ ticker, onBack }) {
             ]);
             if (e2) throw e2;
             setSnapshots(snaps || []);
-            setNarrative(narr || null);
+            // Don't silently blank a saved thesis on a transient narrative-read
+            // error — log it and keep the current view rather than flipping to
+            // "No thesis yet", which previously prompted a needless regenerate.
+            if (e3) console.warn('[scrapbook] narrative read failed:', e3.message);
+            else setNarrative(narr || null);
         } catch (e) {
             setError(e.message);
         } finally {

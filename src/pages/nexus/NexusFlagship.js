@@ -574,7 +574,10 @@ function HoldingsTable({ holdings, forceTheme }) {
                             out.push(e('tr', { key: h.objectId + '-why', className: 'nf-why-row' },
                                 e('td', { colSpan: COLS.length },
                                     e('span', { className: 'nf-why-label' }, 'WHY'),
-                                    e('span', { className: 'nf-why-text' }, h.because))
+                                    e('span', { className: 'nf-why-text' }, h.because),
+                                    h.scrapbookThesis ? e('div', { className: 'nf-why-thesis', style: { marginTop: 6 } },
+                                        e('span', { className: 'nf-why-label' }, 'THESIS' + (h.scrapbookConviction ? ' · ' + h.scrapbookConviction : '')),
+                                        e('span', { className: 'nf-why-text' }, h.scrapbookThesis)) : null)
                             ));
                         }
                         return out;
