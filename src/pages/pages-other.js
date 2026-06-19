@@ -974,10 +974,17 @@ export function CommandCentre() {
 
     // Compute equity + cash balance from loaded data
     var _cNavSorted = navData ? navData.slice().sort(function(a,b){ return new Date(a.price_date) - new Date(b.price_date); }) : [];
-    var cmdEquity = _cNavSorted.length ? _cNavSorted[_cNavSorted.length - 1].nav : null;
-    var cmdPortMV = homeData && homeData.length ? homeData.reduce(function(s, r) { return s + (Number(r.market_value) || 0); }, 0) : null;
-    var cmdCash = cmdEquity != null && cmdPortMV != null ? cmdEquity - cmdPortMV : null;
-    var cmdLeverage = cmdEquity && cmdEquity > 0 && cmdPortMV != null ? cmdPortMV / cmdEquity : null;
+    // Canonical book aggregates come from the broker account snapshot
+    // (vw_command_centre), not the summed positions view, so exposure / cash /
+    // leverage agree with the Portfolio page and the broker.
+    var cmdEquity = c.portfolio_nav != null ? Number(c.portfolio_nav)
+        : (_cNavSorted.length ? _cNavSorted[_cNavSorted.length - 1].nav : null);
+    var cmdPortMV = c.long_market_value != null ? Number(c.long_market_value)
+        : (homeData && homeData.length ? homeData.reduce(function(s, r) { return s + (Number(r.market_value) || 0); }, 0) : null);
+    var cmdCash = c.cash_balance != null ? Number(c.cash_balance)
+        : (cmdEquity != null && cmdPortMV != null ? cmdEquity - cmdPortMV : null);
+    var cmdLeverage = c.gross_leverage != null ? Number(c.gross_leverage)
+        : (cmdEquity && cmdEquity > 0 && cmdPortMV != null ? cmdPortMV / cmdEquity : null);
     var cmdCashLabel = cmdCash == null ? '—' : (cmdCash >= 0 ? '+' : '') + fmtCurrency(cmdCash);
     var cmdCashBadge = cmdCash == null ? 'N/A' : cmdCash >= 0 ? 'Cash on Hand' : cmdLeverage != null ? cmdLeverage.toFixed(2) + '× Leveraged' : 'Margined';
     var cmdCashColor = cmdCash == null ? undefined : cmdCash >= 0 ? 'var(--green)' : 'var(--red)';
@@ -1042,7 +1049,7 @@ export function CommandCentre() {
                 icon: '⚠', label: 'DAILY VAR (95%)', value: fmtCurrency(c.dollar_var_95), accent: 'amber'
             }),
             React.createElement(HeroCard, {
-                icon: '◉', label: 'POSITIONS', value: String(c.position_count || '—'), accent: 'indigo'
+                icon: '◉', label: 'POSITIONS', value: String((homeData && homeData.length) || c.position_count || '—'), accent: 'indigo'
             }),
             React.createElement(HeroCard, {
                 icon: '≡', label: 'DAYS OF HISTORY', value: String(c.days_of_history || '—'), accent: 'indigo'

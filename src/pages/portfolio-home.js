@@ -1494,7 +1494,8 @@ export function PortfolioHome() {
     var portfolioLongMV = positions.reduce(function(s, p) { return s + (Number(p.market_value) || 0); }, 0);
     var cashBalance = c.cash_balance != null ? Number(c.cash_balance)
         : (accountEquity != null ? accountEquity - portfolioLongMV : null);
-    var leverageRatio = accountEquity && accountEquity > 0 ? portfolioLongMV / accountEquity : null;
+    var leverageRatio = c.gross_leverage != null ? Number(c.gross_leverage)
+        : (accountEquity && accountEquity > 0 ? portfolioLongMV / accountEquity : null);
     var cashColor = cashBalance == null ? 'rgba(255,255,255,0.5)' : cashBalance >= 0 ? '#10b981' : '#ef4444';
     var cashSub = cashBalance == null ? 'Unavailable'
         : cashBalance >= 0 ? 'Cash on hand'
@@ -1511,8 +1512,8 @@ export function PortfolioHome() {
             React.createElement('div', { style: div }),
             React.createElement('div', { style: hb },
                 React.createElement('div', { style: hl }, 'Long Exposure'),
-                React.createElement('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 18, fontWeight: 700, color: 'rgba(255,255,255,0.88)' } }, fmtCurrency(portfolioLongMV || c.long_market_value)),
-                React.createElement('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 3, fontFamily: 'JetBrains Mono' } }, (c.position_count || positions.length) + ' long positions')
+                React.createElement('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 18, fontWeight: 700, color: 'rgba(255,255,255,0.88)' } }, fmtCurrency(c.long_market_value != null ? Number(c.long_market_value) : portfolioLongMV)),
+                React.createElement('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 3, fontFamily: 'JetBrains Mono' } }, positions.length + ' long positions')
             ),
             React.createElement('div', { style: div }),
             React.createElement('div', { style: hb },

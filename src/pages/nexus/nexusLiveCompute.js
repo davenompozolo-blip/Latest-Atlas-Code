@@ -215,7 +215,9 @@ const GRADE_SCORE = { 'A+': 97, A: 93, 'A-': 90, 'B+': 87, B: 83, 'B-': 80, 'C+'
 export function buildPortfolioSnapshot(rows) {
     const R = rows || [];
     if (!R.length) return null;
-    const ret = r => num(r.total_return_pct);
+    // Winners/losers/at-risk are "vs cost" reads — use broker unrealised P&L
+    // (matches the Portfolio page), falling back to total return if absent.
+    const ret = r => { const u = num(r.unrealised_return_pct); return u != null ? u : num(r.total_return_pct); };
     const day = r => num(r.daily_return_pct);
     const wt = r => num(r.weight_pct) || 0;
     const mv = r => Math.abs(num(r.market_value) || 0);
