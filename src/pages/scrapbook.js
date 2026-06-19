@@ -250,7 +250,7 @@ function ValuationHealthPanel({ onSelect }) {
                         h('td', { style: { padding: '7px 10px', textAlign: 'right' } },
                             r.has_composite
                                 ? h('span', { style: { color: '#00d4ff', fontFamily: 'JetBrains Mono, monospace' } }, fmtCurrency(r.avg_fair_value))
-                                : h('span', { style: { color: '#ef4444', fontSize: 11 } }, 'null'))
+                                : h('span', { style: { color: 'rgba(255,255,255,0.3)', fontFamily: 'JetBrains Mono, monospace' } }, '—'))
                     ))
                 )
             )
