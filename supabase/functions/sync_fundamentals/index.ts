@@ -84,20 +84,30 @@ Deno.serve(async (req: Request) => {
   }
 
   const body = await req.json().catch(() => ({})) as {
-    offset?: number; limit?: number; min_market_cap_usd?: number; only_missing?: boolean
+    offset?: number; limit?: number; min_market_cap_usd?: number; only_missing?: boolean; symbols?: string[]
   }
   const offset   = Math.max(0, body.offset ?? 0)
   const limit    = Math.min(300, Math.max(1, body.limit ?? DEFAULT_LIMIT))
-  const minCap   = body.min_market_cap_usd ?? MIN_MARKET_CAP_USD
   const onlyMissing = body.only_missing === true
+  // Targeted mode: when `symbols` is supplied (e.g. the current holdings), sync
+  // exactly those names instead of a rotating universe slice. Lets a scheduled
+  // job keep holdings fresh regardless of where the universe rotation has reached.
+  const targetSymbols = Array.isArray(body.symbols)
+    ? body.symbols.filter((s): s is string => typeof s === 'string' && !!s).map(s => s.toUpperCase())
+    : null
+  // Held names must be covered even if they are below the universe large/mid-cap
+  // gate, so targeted mode defaults the floor to 0.
+  const minCap   = body.min_market_cap_usd ?? (targetSymbols ? 0 : MIN_MARKET_CAP_USD)
 
-  // Load a paginated slice of the equity universe from `assets`
+  // Load the symbols to enrich: either the explicit target list or a paginated
+  // slice of the equity universe from `assets`.
   let universe: { id: string; symbol: string }[] = []
   try {
-    const rows = await sbGet(sbUrl, sbKey,
-      `/rest/v1/assets?select=id,symbol&asset_class=in.(Stock,us_equity,equity,etf)` +
-      `&order=symbol.asc&offset=${offset}&limit=${limit}`
-    ) as { id: string; symbol: string }[]
+    const q = (targetSymbols && targetSymbols.length)
+      ? `/rest/v1/assets?select=id,symbol&symbol=in.(${targetSymbols.map(s => `"${s}"`).join(',')})`
+      : `/rest/v1/assets?select=id,symbol&asset_class=in.(Stock,us_equity,equity,etf)` +
+        `&order=symbol.asc&offset=${offset}&limit=${limit}`
+    const rows = await sbGet(sbUrl, sbKey, q) as { id: string; symbol: string }[]
     universe = rows.filter(r => r.symbol && !OCC_RE.test(r.symbol))
   } catch (e) {
     return new Response(JSON.stringify({ error: 'Failed to load universe: ' + (e as Error).message }), { status: 500 })
