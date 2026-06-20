@@ -24,8 +24,13 @@ import {
     applyFundamentalsHydration,
     fcffVal,
     computeMethods,
+    buildMethodSnapshots,
     SECTORS,
 } from '../lib/valuationEngine.js';
+// The deterministic trimmed composite — the single canonical fair value that is
+// persisted and read by the Scrapbook, Nexus and Sector Playbook. The House
+// headline uses it too so all surfaces agree.
+import { computeComposite } from '../lib/fairValueComposite.js';
 
 const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
@@ -393,10 +398,24 @@ export function ValuationHouse(props) {
         var base = computeMethods(s);
         var sg = buildSensGrid(s, base.wc);
         var traps = detectTraps(s, base.re, base.wc);
-        var sustainableG = s.ri.ROE * (1 - s.mult.b);
+        // Sustainable growth = ROE × retention(b). s.mult.b is the retention
+        // ratio, so multiply by b directly (was ROE × (1−b) = ROE × payout,
+        // which contradicted the "ROE × b" label).
+        var sustainableG = s.ri.ROE * s.mult.b;
+        // Canonical trimmed composite — computed identically to runValuation /
+        // the weekly sync (computeComposite over the valued method implied
+        // prices, anchored on the trusted price), so the House headline equals
+        // the avg_fair_value the Scrapbook and Nexus read. Falls back to the raw
+        // weighted consensus only when no trusted price exists to anchor a trim.
+        var _methods = buildMethodSnapshots(s, base);
+        var _trusted = (s.co.priceTrusted && s.co.price > 0) ? s.co.price : null;
+        var _valued = _methods.filter(function(m) { return m.implied_price != null; });
+        var _blend = computeComposite(_valued.map(function(m) { return m.implied_price; }), _trusted);
+        var consensusFV = _blend ? _blend.blended_fair_value : (_trusted == null ? base.cons : null);
         return Object.assign({}, base, {
             sensCells: sg.cells, sensCols: sg.colLabels, sensRows: sg.rowLabels,
             traps: traps, sustainableG: sustainableG,
+            consensusFV: consensusFV, compositeBlend: _blend,
         });
     }, [s]);
 
@@ -746,15 +765,15 @@ export function ValuationHouse(props) {
                 h('div', { style: { background: 'var(--card)', border: '1px solid var(--card-border)', borderRadius: 8, padding: 16, textAlign: 'center' } },
                     h('div', { style: { fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 6 } }, 'Consensus Value'),
                     h('div', { style: { fontSize: 28, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace',
-                        color: c.cons ? signalColor(c.cons, price) : 'var(--text-muted)' } },
-                        c.cons ? '$' + c.cons.toFixed(2) : '—'),
-                    h('div', { style: { marginTop: 6 } }, Sig(c.cons, price))
+                        color: c.consensusFV ? signalColor(c.consensusFV, price) : 'var(--text-muted)' } },
+                        c.consensusFV ? '$' + c.consensusFV.toFixed(2) : '—'),
+                    h('div', { style: { marginTop: 6 } }, Sig(c.consensusFV, price))
                 ),
                 h('div', { style: { background: 'var(--card)', border: '1px solid var(--card-border)', borderRadius: 8, padding: 16, textAlign: 'center' } },
                     h('div', { style: { fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 6 } }, 'Market Price'),
                     h('div', { style: { fontSize: 28, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', color: 'var(--text)' } },
                         '$' + price.toFixed(2)),
-                    h('div', { style: { marginTop: 6 } }, Upsid(c.cons, price))
+                    h('div', { style: { marginTop: 6 } }, Upsid(c.consensusFV, price))
                 ),
                 h('div', { style: { background: 'var(--card)', border: '1px solid var(--card-border)', borderRadius: 8, padding: 16, textAlign: 'center' } },
                     h('div', { style: { fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 6 } }, 'WACC / re'),
@@ -1379,10 +1398,10 @@ export function ValuationHouse(props) {
             h('div', { style: { textAlign: 'right', minWidth: 80 } },
                 h('div', { style: {
                     fontSize: 18, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace',
-                    color: c.cons ? signalColor(c.cons, price) : 'var(--text-muted)',
-                }}, c.cons ? '$' + c.cons.toFixed(2) : '—'),
+                    color: c.consensusFV ? signalColor(c.consensusFV, price) : 'var(--text-muted)',
+                }}, c.consensusFV ? '$' + c.consensusFV.toFixed(2) : '—'),
                 h('div', { style: { fontSize: 9, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' } }, 'Consensus'),
-                c.cons != null && h('div', { style: { marginTop: 2 } }, Sig(c.cons, price))
+                c.consensusFV != null && h('div', { style: { marginTop: 2 } }, Sig(c.consensusFV, price))
             )
         ),
         // Compass flags panel (collapsed by default)
