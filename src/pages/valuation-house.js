@@ -46,6 +46,19 @@ const fM  = (v) => {
 };
 const pct = (v)        => v == null ? '—' : (v * 100).toFixed(2) + '%';
 
+// True when at least one valuation method has a real base input hydrated.
+// Drives the Compass data-availability gate — a name with none (e.g. an ETF)
+// must not score a bogus "100 · Coherent" (B-15 / B-18).
+function hasValuationInputs(st) {
+    if (!st) return false;
+    return !!(
+        (st.fcf  && (st.fcf.fcff0 || st.fcf.fcfe0)) ||
+        (st.mult && (st.mult.eps || st.mult.bvps || st.mult.ebitda || st.mult.rev)) ||
+        (st.ddm  && st.ddm.D0 > 0) ||
+        (st.ri   && st.ri.B0)
+    );
+}
+
 // ─── Signal helpers ───────────────────────────────────────────────────────────
 function upside(v, price) {
     return (v != null && v > 0 && price > 0) ? (v - price) / price : null;
@@ -275,6 +288,7 @@ export function ValuationHouse(props) {
                         terminalGrowth: activeS.fcf.gL * 100,
                         revenueGrowthNear: activeS.ddm.gS * 100,
                         ebitdaMargin: em0,
+                        methodsAvailable: hasValuationInputs(activeS),
                         beta: activeS.coc.beta,
                         historicalCAGR: fund.historicalCAGR,
                         isDDMActive: false,
@@ -381,6 +395,7 @@ export function ValuationHouse(props) {
             terminalGrowth: s.fcf.gL * 100,
             revenueGrowthNear: s.ddm.gS * 100,
             ebitdaMargin: em_,
+            methodsAvailable: hasValuationInputs(s),
             beta: s.coc.beta,
             // Extended inputs for Compass rules 6–8
             historicalCAGR: fundamentals ? fundamentals.historicalCAGR : null,
@@ -615,8 +630,11 @@ export function ValuationHouse(props) {
             GREEN: { bg: 'rgba(34,197,94,0.12)', border: 'rgba(34,197,94,0.3)', text: '#22c55e' },
             AMBER: { bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.3)', text: '#f59e0b' },
             RED:   { bg: 'rgba(239,68,68,0.12)',  border: 'rgba(239,68,68,0.3)',  text: '#ef4444' },
+            NA:    { bg: 'rgba(148,163,184,0.12)', border: 'rgba(148,163,184,0.3)', text: '#94a3b8' },
         };
         var cc = colors[band] || colors.GREEN;
+        // No-data names report N/A rather than a numeric score (B-15 / B-18).
+        var label = score == null ? bandLabel : (score + ' · ' + bandLabel);
         var tipText = flags.length
             ? flags.map(function(f) { return f.severity.toUpperCase() + ': ' + f.message; }).join('\n')
             : 'Assumptions are internally coherent';
@@ -631,7 +649,7 @@ export function ValuationHouse(props) {
             },
         },
             h('span', { style: { fontSize: 12 } }, '◎'),
-            h('span', { style: { color: cc.text } }, score + ' · ' + bandLabel),
+            h('span', { style: { color: cc.text } }, label),
             flags.length > 0 && h('span', { style: { color: cc.text, fontSize: 10, marginLeft: 2 } }, flags.length + '⚑')
         );
     }
@@ -650,7 +668,9 @@ export function ValuationHouse(props) {
                 },
             },
                 flagsOpen ? '▾' : '▸',
-                ' ' + flags.length + ' assumption tension' + (flags.length > 1 ? 's' : '') + ' detected'
+                compassResult.band === 'NA'
+                    ? ' Coherence not scored — insufficient data'
+                    : ' ' + flags.length + ' assumption tension' + (flags.length > 1 ? 's' : '') + ' detected'
             ),
             flagsOpen && h('ul', { style: { listStyle: 'none', margin: '0 0 6px 0', padding: 0 } },
                 flags.map(function(f, i) {
