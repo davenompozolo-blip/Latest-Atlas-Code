@@ -16,11 +16,14 @@ var REGIME_ASSETS = {
     'Deflation':  { Equities: 'Bearish', Bonds: 'Bullish', Commodities: 'Bearish', USD: 'Bullish' },
 };
 
+// Layout matches the Nexus Regime tab: Y = growth (up = higher), X = inflation
+// (right = higher). Goldilocks top-left, Reflation top-right, Deflation
+// bottom-left, Stagflation bottom-right.
 var QUADRANTS = [
-    { key: 'Reflation',  row: 0, col: 0, color: '#f59e0b', desc: 'Growth \u2191 / Inflation \u2191' },
-    { key: 'Stagflation', row: 0, col: 1, color: '#ef4444', desc: 'Growth \u2193 / Inflation \u2191' },
-    { key: 'Goldilocks',  row: 1, col: 0, color: '#10b981', desc: 'Growth \u2191 / Inflation \u2193' },
-    { key: 'Deflation',   row: 1, col: 1, color: '#a855f7', desc: 'Growth \u2193 / Inflation \u2193' },
+    { key: 'Goldilocks',  row: 0, col: 0, color: '#10b981', desc: 'Growth \u2191 / Inflation \u2193' },
+    { key: 'Reflation',   row: 0, col: 1, color: '#f59e0b', desc: 'Growth \u2191 / Inflation \u2191' },
+    { key: 'Deflation',   row: 1, col: 0, color: '#a855f7', desc: 'Growth \u2193 / Inflation \u2193' },
+    { key: 'Stagflation', row: 1, col: 1, color: '#ef4444', desc: 'Growth \u2193 / Inflation \u2191' },
 ];
 
 function latest(arr) {
@@ -67,7 +70,7 @@ function QuadrantGrid(p) {
                 gridRow: '1 / 3', gridColumn: '1', writingMode: 'vertical-rl', transform: 'rotate(180deg)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 10, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, textTransform: 'uppercase',
-            }}, 'INFLATION \u2192'),
+            }}, 'GROWTH \u2192'),
             // Quadrant cells
             QUADRANTS.map(function(q) {
                 var isActive = active && active.toLowerCase() === q.key.toLowerCase();
@@ -91,7 +94,7 @@ function QuadrantGrid(p) {
                 gridRow: 3, gridColumn: '2 / 4',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 10, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, textTransform: 'uppercase',
-            }}, 'GROWTH \u2192')
+            }}, 'INFLATION \u2192')
         )
     );
 }
