@@ -24,8 +24,13 @@ import {
     applyFundamentalsHydration,
     fcffVal,
     computeMethods,
+    buildMethodSnapshots,
     SECTORS,
 } from '../lib/valuationEngine.js';
+// The deterministic trimmed composite — the single canonical fair value that is
+// persisted and read by the Scrapbook, Nexus and Sector Playbook. The House
+// headline uses it too so all surfaces agree.
+import { computeComposite } from '../lib/fairValueComposite.js';
 
 const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
@@ -40,6 +45,19 @@ const fM  = (v) => {
     return abs >= 1000 ? sign + '$' + (abs / 1000).toFixed(2) + 'B' : sign + '$' + abs.toFixed(1) + 'M';
 };
 const pct = (v)        => v == null ? '—' : (v * 100).toFixed(2) + '%';
+
+// True when at least one valuation method has a real base input hydrated.
+// Drives the Compass data-availability gate — a name with none (e.g. an ETF)
+// must not score a bogus "100 · Coherent" (B-15 / B-18).
+function hasValuationInputs(st) {
+    if (!st) return false;
+    return !!(
+        (st.fcf  && (st.fcf.fcff0 || st.fcf.fcfe0)) ||
+        (st.mult && (st.mult.eps || st.mult.bvps || st.mult.ebitda || st.mult.rev)) ||
+        (st.ddm  && st.ddm.D0 > 0) ||
+        (st.ri   && st.ri.B0)
+    );
+}
 
 // ─── Signal helpers ───────────────────────────────────────────────────────────
 function upside(v, price) {
@@ -270,6 +288,7 @@ export function ValuationHouse(props) {
                         terminalGrowth: activeS.fcf.gL * 100,
                         revenueGrowthNear: activeS.ddm.gS * 100,
                         ebitdaMargin: em0,
+                        methodsAvailable: hasValuationInputs(activeS),
                         beta: activeS.coc.beta,
                         historicalCAGR: fund.historicalCAGR,
                         isDDMActive: false,
@@ -376,6 +395,7 @@ export function ValuationHouse(props) {
             terminalGrowth: s.fcf.gL * 100,
             revenueGrowthNear: s.ddm.gS * 100,
             ebitdaMargin: em_,
+            methodsAvailable: hasValuationInputs(s),
             beta: s.coc.beta,
             // Extended inputs for Compass rules 6–8
             historicalCAGR: fundamentals ? fundamentals.historicalCAGR : null,
@@ -393,10 +413,24 @@ export function ValuationHouse(props) {
         var base = computeMethods(s);
         var sg = buildSensGrid(s, base.wc);
         var traps = detectTraps(s, base.re, base.wc);
-        var sustainableG = s.ri.ROE * (1 - s.mult.b);
+        // Sustainable growth = ROE × retention(b). s.mult.b is the retention
+        // ratio, so multiply by b directly (was ROE × (1−b) = ROE × payout,
+        // which contradicted the "ROE × b" label).
+        var sustainableG = s.ri.ROE * s.mult.b;
+        // Canonical trimmed composite — computed identically to runValuation /
+        // the weekly sync (computeComposite over the valued method implied
+        // prices, anchored on the trusted price), so the House headline equals
+        // the avg_fair_value the Scrapbook and Nexus read. Falls back to the raw
+        // weighted consensus only when no trusted price exists to anchor a trim.
+        var _methods = buildMethodSnapshots(s, base);
+        var _trusted = (s.co.priceTrusted && s.co.price > 0) ? s.co.price : null;
+        var _valued = _methods.filter(function(m) { return m.implied_price != null; });
+        var _blend = computeComposite(_valued.map(function(m) { return m.implied_price; }), _trusted);
+        var consensusFV = _blend ? _blend.blended_fair_value : (_trusted == null ? base.cons : null);
         return Object.assign({}, base, {
             sensCells: sg.cells, sensCols: sg.colLabels, sensRows: sg.rowLabels,
             traps: traps, sustainableG: sustainableG,
+            consensusFV: consensusFV, compositeBlend: _blend,
         });
     }, [s]);
 
@@ -596,8 +630,11 @@ export function ValuationHouse(props) {
             GREEN: { bg: 'rgba(34,197,94,0.12)', border: 'rgba(34,197,94,0.3)', text: '#22c55e' },
             AMBER: { bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.3)', text: '#f59e0b' },
             RED:   { bg: 'rgba(239,68,68,0.12)',  border: 'rgba(239,68,68,0.3)',  text: '#ef4444' },
+            NA:    { bg: 'rgba(148,163,184,0.12)', border: 'rgba(148,163,184,0.3)', text: '#94a3b8' },
         };
         var cc = colors[band] || colors.GREEN;
+        // No-data names report N/A rather than a numeric score (B-15 / B-18).
+        var label = score == null ? bandLabel : (score + ' · ' + bandLabel);
         var tipText = flags.length
             ? flags.map(function(f) { return f.severity.toUpperCase() + ': ' + f.message; }).join('\n')
             : 'Assumptions are internally coherent';
@@ -612,7 +649,7 @@ export function ValuationHouse(props) {
             },
         },
             h('span', { style: { fontSize: 12 } }, '◎'),
-            h('span', { style: { color: cc.text } }, score + ' · ' + bandLabel),
+            h('span', { style: { color: cc.text } }, label),
             flags.length > 0 && h('span', { style: { color: cc.text, fontSize: 10, marginLeft: 2 } }, flags.length + '⚑')
         );
     }
@@ -631,7 +668,9 @@ export function ValuationHouse(props) {
                 },
             },
                 flagsOpen ? '▾' : '▸',
-                ' ' + flags.length + ' assumption tension' + (flags.length > 1 ? 's' : '') + ' detected'
+                compassResult.band === 'NA'
+                    ? ' Coherence not scored — insufficient data'
+                    : ' ' + flags.length + ' assumption tension' + (flags.length > 1 ? 's' : '') + ' detected'
             ),
             flagsOpen && h('ul', { style: { listStyle: 'none', margin: '0 0 6px 0', padding: 0 } },
                 flags.map(function(f, i) {
@@ -746,15 +785,15 @@ export function ValuationHouse(props) {
                 h('div', { style: { background: 'var(--card)', border: '1px solid var(--card-border)', borderRadius: 8, padding: 16, textAlign: 'center' } },
                     h('div', { style: { fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 6 } }, 'Consensus Value'),
                     h('div', { style: { fontSize: 28, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace',
-                        color: c.cons ? signalColor(c.cons, price) : 'var(--text-muted)' } },
-                        c.cons ? '$' + c.cons.toFixed(2) : '—'),
-                    h('div', { style: { marginTop: 6 } }, Sig(c.cons, price))
+                        color: c.consensusFV ? signalColor(c.consensusFV, price) : 'var(--text-muted)' } },
+                        c.consensusFV ? '$' + c.consensusFV.toFixed(2) : '—'),
+                    h('div', { style: { marginTop: 6 } }, Sig(c.consensusFV, price))
                 ),
                 h('div', { style: { background: 'var(--card)', border: '1px solid var(--card-border)', borderRadius: 8, padding: 16, textAlign: 'center' } },
                     h('div', { style: { fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 6 } }, 'Market Price'),
                     h('div', { style: { fontSize: 28, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', color: 'var(--text)' } },
                         '$' + price.toFixed(2)),
-                    h('div', { style: { marginTop: 6 } }, Upsid(c.cons, price))
+                    h('div', { style: { marginTop: 6 } }, Upsid(c.consensusFV, price))
                 ),
                 h('div', { style: { background: 'var(--card)', border: '1px solid var(--card-border)', borderRadius: 8, padding: 16, textAlign: 'center' } },
                     h('div', { style: { fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 6 } }, 'WACC / re'),
@@ -1379,10 +1418,10 @@ export function ValuationHouse(props) {
             h('div', { style: { textAlign: 'right', minWidth: 80 } },
                 h('div', { style: {
                     fontSize: 18, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace',
-                    color: c.cons ? signalColor(c.cons, price) : 'var(--text-muted)',
-                }}, c.cons ? '$' + c.cons.toFixed(2) : '—'),
+                    color: c.consensusFV ? signalColor(c.consensusFV, price) : 'var(--text-muted)',
+                }}, c.consensusFV ? '$' + c.consensusFV.toFixed(2) : '—'),
                 h('div', { style: { fontSize: 9, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' } }, 'Consensus'),
-                c.cons != null && h('div', { style: { marginTop: 2 } }, Sig(c.cons, price))
+                c.consensusFV != null && h('div', { style: { marginTop: 2 } }, Sig(c.consensusFV, price))
             )
         ),
         // Compass flags panel (collapsed by default)

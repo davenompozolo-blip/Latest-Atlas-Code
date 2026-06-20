@@ -197,6 +197,26 @@ export function deriveProvenance(rawOverview, mappedState, sectorNorms) {
 export function computeCompassScore(inputs, sectorCode) {
   const norm = SECTOR_NORMS[sectorCode] || SECTOR_NORMS['DEFAULT'];
   const { wacc, terminalGrowth, revenueGrowthNear, ebitdaMargin, beta } = inputs;
+
+  // Data-availability gate (B-15 / B-18). The compass scores assumption
+  // coherence, not data presence — so a name with no hydrated fundamentals
+  // (an ETF like ACWI, or an unreported ticker) flows in on sector-default
+  // WACC/gL and scores a perfect 100 "Coherent", while degenerate zero inputs
+  // can also trip the spurious "terminal growth ≥ WACC" flag. Neither is
+  // meaningful when nothing was actually valued. Report N/A instead of scoring.
+  if (inputs.methodsAvailable === false || !(wacc > 0) || !isFinite(wacc)) {
+    return {
+      score: null,
+      band: 'NA',
+      bandLabel: 'No data',
+      flags: [{
+        rule: 'DATA_AVAILABILITY',
+        severity: 'info',
+        message: 'Insufficient fundamental data to score coherence — this instrument (e.g. an ETF or an unreported name) lacks the statement inputs the valuation methods require.'
+      }]
+    };
+  }
+
   const flags = [];
   let deductions = 0;
 

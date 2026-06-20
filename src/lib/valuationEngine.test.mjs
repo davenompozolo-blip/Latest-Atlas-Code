@@ -74,5 +74,24 @@ const allBroken = runValuation({
 }, [{ date: '2026-01-01', close: 3.1 }], {});
 check('all-broken: composite null', allBroken.composite.avg_fair_value == null);
 
+// ── Case 5 (B-09): RI Gordon terminal undefined (g ≥ re) → method drops loud,
+// rather than silently emitting a no-terminal book + explicit-period value.
+const riThin = {
+    co: { ticker: 'RIX', price: 100, priceTrusted: true, sector: 'technology' },
+    coc: { rf: 0.03, beta: 1.0, erp: 0.055, rd: 0.04, wd: 0.10, tax: 0.21 },
+    ddm: { D0: 0, gS: 0.10, gL: 0.03, n: 5, H: 4, model: 'gordon' },
+    fcf: { fcff0: null, fcfe0: null, gr: [0.1, 0.08, 0.06, 0.05, 0.04], gL: 0.03, debt: 0, cash: 0, shs: 100, mode: 'fcff' },
+    mult: { eps: null, bvps: null, ebitda: null, rev: null, b: 0.5, mktCap: null, netDebt: 0, pPE: null, pPB: null, pEV: null, pPS: null },
+    // re = 0.03 + 1.0*0.055 = 0.085; g = 0.12 ≥ re → Gordon terminal undefined
+    ri: { B0: 20, ROE: 0.30, g: 0.12, n: 5, mth: 'gordon', omega: 0.60 },
+    priv: { nE: 8000, mult: 10, debt: 25000, cash: 5000, shs: 2000, dlom: 0.2, dloc: 0.15, isCtrl: false, cp: 0.25 },
+    wts: { ddm: 20, fcff: 25, fcfe: 20, mult: 20, ri: 15 },
+};
+const riC = computeMethods(riThin);
+const riRows = buildMethodSnapshots(riThin, riC);
+const riRow = riRows.find(m => m.method === 'Residual_Income');
+check('ri-thin: g ≥ re so RI value is null (not a silent truncated value)', riC.riR == null);
+check('ri-thin: RI method drops loud (ri_undefined)', riRow.implied_price == null && riRow.drop_reason === 'ri_undefined');
+
 console.log(fails ? `\nFAILED — ${fails} check(s)` : '\nPASS — isomorphic engine behaves correctly.');
 if (fails) process.exit(1);

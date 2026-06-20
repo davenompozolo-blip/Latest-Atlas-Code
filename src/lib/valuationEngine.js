@@ -119,9 +119,20 @@ export function riCalc(B0, ROE, re, g, n, mth, omega) {
         B += NI * ret;
     }
     var RI_n = (ROE - re) * B;
-    var tv = 0;
-    if (mth === 'persistence' && re > omega) tv = RI_n / (re - omega);
-    else if (mth === 'gordon' && re > g && RI_n > 0) tv = RI_n * (1 + g) / (re - g);
+    // Fail loud (B-09): a terminal value that can't be formed for the selected
+    // fade method would otherwise be silently left at 0, truncating the RI to
+    // book + explicit-period only and understating value while still looking
+    // valid. Drop the method instead. Gordon mirrors the FCFF MIN_TV_SPREAD
+    // discipline so a near-singular (re ≈ g) perpetuity can't explode either.
+    var tv, tvOk;
+    if (mth === 'persistence') {
+        tvOk = re > omega;
+        tv = tvOk ? RI_n / (re - omega) : 0;
+    } else {
+        tvOk = (re - g) >= MIN_TV_SPREAD && RI_n > 0;
+        tv = tvOk ? RI_n * (1 + g) / (re - g) : 0;
+    }
+    if (!tvOk) return null;
     var pvTV = tv / Math.pow(1 + re, n);
     return {
         v: B0 + pvS + pvTV, B0: B0, pvS: pvS, pvTV: pvTV, periods: periods,
