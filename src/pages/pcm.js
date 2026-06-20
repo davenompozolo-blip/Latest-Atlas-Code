@@ -83,9 +83,15 @@ function IPSForm({ ips, setIps, onSave, saved }) {
                     (opts || []).map(function(o) { return h('option', { key: o, value: o }, o); })
                   )
                 : h('input', { className: 'atlas-input', type: type || 'number',
+                                min: opts && opts.min != null ? opts.min : undefined,
+                                max: opts && opts.max != null ? opts.max : undefined,
                                 value: ips[key] != null ? ips[key] : '',
                                 onChange: function(e) {
                                     var v = type === 'text' ? e.target.value : parseFloat(e.target.value);
+                                    if (type !== 'text' && opts && isFinite(v)) {
+                                        if (opts.min != null) v = Math.max(opts.min, v);
+                                        if (opts.max != null) v = Math.min(opts.max, v);
+                                    }
                                     setIps(Object.assign({}, ips, { [key]: v }));
                                 }
                               })
@@ -93,7 +99,7 @@ function IPSForm({ ips, setIps, onSave, saved }) {
     }
     return h('div', null,
         h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 } },
-            field('Risk Tolerance (1–10)', 'risk_tolerance', 'number'),
+            field('Risk Tolerance (1–10)', 'risk_tolerance', 'number', { min: 1, max: 10 }),
             field('Risk Label', 'risk_label', 'select',
                 ['Conservative', 'Moderate', 'Balanced', 'Growth', 'Aggressive']),
             field('Annual Return Target (%)', 'return_target', 'number'),
@@ -1079,7 +1085,7 @@ export function PortfolioConstruction() {
             if (res.data && res.data.length) {
                 const saved = res.data[0];
                 setIps({
-                    risk_tolerance:      saved.risk_tolerance,
+                    risk_tolerance:      saved.risk_tolerance != null ? Math.max(1, Math.min(10, Number(saved.risk_tolerance))) : saved.risk_tolerance,
                     risk_label:          saved.risk_label,
                     return_target:       saved.return_target,
                     time_horizon:        saved.time_horizon,
@@ -1268,7 +1274,7 @@ export function PortfolioConstruction() {
         setIpsSaved(true);
         if (sb) {
             sb.from('portfolio_ips').upsert([Object.assign({ id: 1 }, {
-                risk_tolerance:      ips.risk_tolerance,
+                risk_tolerance:      ips.risk_tolerance != null ? Math.max(1, Math.min(10, Number(ips.risk_tolerance))) : ips.risk_tolerance,
                 risk_label:          ips.risk_label,
                 return_target:       ips.return_target,
                 time_horizon:        ips.time_horizon,
