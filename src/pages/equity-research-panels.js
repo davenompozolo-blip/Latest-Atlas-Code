@@ -7,6 +7,7 @@ var h = React.createElement;
 var useState = React.useState;
 var useEffect = React.useEffect;
 var useMemo = React.useMemo;
+var useRef = React.useRef;
 
 // ── tokens ────────────────────────────────────────────────────────────────────
 var T = {
@@ -377,12 +378,23 @@ function AIThesisCard(p) {
     var _err = useState(null); var errMsg = _err[0], setErrMsg = _err[1];
     var thesis = p.thesis;
 
+    // Track the live ticker so a slow ~15s generation that resolves after the user
+    // has navigated away neither writes its thesis onto the new ticker nor leaves a
+    // stale spinner/error behind.
+    var symRef = useRef(p.symbol);
+    useEffect(function() {
+        symRef.current = p.symbol;
+        setGenStatus('idle'); setErrMsg(null);
+    }, [p.symbol]);
+
     function generate() {
         if (!p.symbol) return;
+        var reqSymbol = p.symbol;
         setGenStatus('loading'); setErrMsg(null);
         // Call edge function via Supabase client (imported at top of file)
-        sb.functions.invoke('synthesize_thesis', { body: { ticker: p.symbol } })
+        sb.functions.invoke('synthesize_thesis', { body: { ticker: reqSymbol } })
             .then(function(res) {
+                if (symRef.current !== reqSymbol) return;  // user navigated away — drop stale result
                 if (res.error) { setErrMsg(res.error.message || 'Generation failed'); setGenStatus('error'); return; }
                 var d = res.data;
                 if (d && d.bull && d.bear) {
@@ -393,7 +405,7 @@ function AIThesisCard(p) {
                     setGenStatus('error');
                 }
             })
-            .catch(function(e) { setErrMsg(e.message || 'Network error'); setGenStatus('error'); });
+            .catch(function(e) { if (symRef.current === reqSymbol) { setErrMsg(e.message || 'Network error'); setGenStatus('error'); } });
     }
 
     var hasThesis = thesis && thesis.bull && thesis.bull.length;

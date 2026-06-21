@@ -495,6 +495,10 @@ export function computeMethods(s) {
         re: re, we: we, wc: wc, ggm: ggm, hm: hm, ts: ts, ddmV: ddmV,
         ffR: ffR, feR: feR,
         pPE: pPE, pPB: pPB, pEVps: pEVps, pPS: pPS, jpeV: jpeV, jpbV: jpbV, multAvg: multAvg,
+        // Effective (clamped) multiples actually used for the implied prices above.
+        // A leg whose raw peer multiple sat outside the sane band is capped here,
+        // so the UI can show the multiple that produced the price — not the raw input.
+        safeMult: { pPE: safePE, pPB: safePB, pEV: safeEV, pPS: safePS },
         // diagnostics for drop-reason attribution
         _mLegsCount: mLegsRaw.length, _mLegsTrimmed: mLegsRaw.length - mLegs.length,
         riR: riR, privR: privR, privPS: privPS, valMap: valMap, cons: cons,

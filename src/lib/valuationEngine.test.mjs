@@ -35,6 +35,15 @@ check('healthy: DDM dropped (no dividend)', row(healthy, 'DDM').implied_price ==
 check('healthy: composite present', healthy.composite.avg_fair_value != null,
     `avg=${healthy.composite.avg_fair_value} [${healthy.composite.fair_value_low}–${healthy.composite.fair_value_high}]`);
 
+// ── B-07: peer P/B of 40× sits outside the sane band → the engine exposes the
+// effective (clamped) multiple so the UI can show what produced the implied price.
+const hc = computeMethods(healthy.state);
+check('B-07: raw peer P/B is 40×', healthy.state.mult.pPB === 40, `pPB=${healthy.state.mult.pPB}`);
+check('B-07: effective P/B clamped to 20×', hc.safeMult && hc.safeMult.pPB === 20, `safePB=${hc.safeMult && hc.safeMult.pPB}`);
+check('B-07: implied P/B reconciles to effective multiple × BVPS',
+    hc.pPB != null && Math.abs(hc.pPB - hc.safeMult.pPB * healthy.state.mult.bvps) < 1e-6,
+    `pPB=${hc.pPB} eff×bvps=${hc.safeMult.pPB * healthy.state.mult.bvps}`);
+
 // ── Case 2: NVDA-shape with NO real share count + stale price → fail loud.
 const noShares = runValuation({
     overview: { Name: 'NoShares', Symbol: 'NOSH', Sector: 'Technology', MarketCapitalization: 3.3e12, Beta: 1.5 },

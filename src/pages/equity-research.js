@@ -474,25 +474,30 @@ export function EquityResearch(props) {
     useEffect(function() {
         setPortfolioPos(null); setPortfolioPerf(null); setDerived(null); setThesis(null);
         if (!symbol || !sb) return;
+        // Guard every async write: a slow response for the *previous* ticker must
+        // not paint stale portfolio chips, derived scores or thesis/provenance onto
+        // the ticker the user has since navigated to.
+        let cancelled = false;
         sb.from('vw_risk_analysis').select('symbol,market_value,weight,dollar_var_95_daily').eq('symbol', symbol).maybeSingle()
-            .then(function(res) { if (res.data) setPortfolioPos(res.data); });
+            .then(function(res) { if (!cancelled && res.data) setPortfolioPos(res.data); });
         sb.from('vw_performance_suite').select('symbol,total_return_pct,entry_price,days_held').eq('symbol', symbol).maybeSingle()
-            .then(function(res) { if (res.data) setPortfolioPerf(res.data); });
+            .then(function(res) { if (!cancelled && res.data) setPortfolioPerf(res.data); });
         // Load precomputed quality/forensic scores; trigger on-demand computation if absent
         sb.from('equity_fundamentals_derived')
             .select('*').eq('ticker', symbol).order('fiscal_year', { ascending: false }).limit(1).maybeSingle()
             .then(function(res) {
+                if (cancelled) return;
                 if (res.data) {
                     setDerived(res.data);
                 } else {
                     // No derived data — invoke edge function to compute scores, then re-fetch
                     sb.functions.invoke('compute_ticker_derived', { body: { ticker: symbol } })
                         .then(function(fnRes) {
-                            if (fnRes.error) return;  // graceful — panels show N/A
+                            if (cancelled || fnRes.error) return;  // graceful — panels show N/A
                             // Re-fetch after computation
                             return sb.from('equity_fundamentals_derived')
                                 .select('*').eq('ticker', symbol).order('fiscal_year', { ascending: false }).limit(1).maybeSingle()
-                                .then(function(r2) { if (r2.data) setDerived(r2.data); });
+                                .then(function(r2) { if (!cancelled && r2.data) setDerived(r2.data); });
                         })
                         .catch(function() {});  // graceful — live without derived data
                 }
@@ -505,7 +510,8 @@ export function EquityResearch(props) {
             .gte('filing_date', cutoff)
             .order('filing_date', { ascending: false })
             .limit(1).maybeSingle()
-            .then(function(res) { if (res.data) setThesis(res.data); });
+            .then(function(res) { if (!cancelled && res.data) setThesis(res.data); });
+        return function() { cancelled = true; };
     }, [symbol]);
 
     function saveToScrapbook() {
