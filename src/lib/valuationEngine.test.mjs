@@ -102,5 +102,25 @@ const riRow = riRows.find(m => m.method === 'Residual_Income');
 check('ri-thin: g ≥ re so RI value is null (not a silent truncated value)', riC.riR == null);
 check('ri-thin: RI method drops loud (ri_undefined)', riRow.implied_price == null && riRow.drop_reason === 'ri_undefined');
 
+// ── Case 6: financials (bank) — DCF/EV/PS are inapplicable and must not
+// manufacture an absurd fair value from revenue×margin. Equity-research showed
+// Citigroup at +23,000% upside from exactly this. The bank should be valued on
+// DDM/RI/P-E/P-B and the composite must sit in a sane band around the price.
+const bank = runValuation({
+    overview: { Name: 'Bank Co', Symbol: 'BNK', Sector: 'Financial Services', Industry: 'Banks—Diversified',
+                MarketCapitalization: 2.45e11, Beta: 1.1, PERatio: 12, DividendYield: 0.03 },
+    financials: { snapshot: {
+        sharesOutstanding: 1.9e9, trailingEps: 11.5, netIncome: 21e9, totalRevenue: 80e9,
+        ebitda: 40e9, freeCashflow: 30e9, totalDebt: 300e9, totalCash: 200e9, bookValue: 100,
+        returnOnEquity: 0.11, dividendPerShare: 2.2, priceToBook: 0.9, forwardPE: 11,
+    } },
+}, freshSeries(143), { riskFreeRate: 0.043 });
+
+check('financials: classified as financials', bank.state.co.sector === 'financials', `sector=${bank.state.co.sector}`);
+check('financials: DCF drops sector_inapplicable', row(bank, 'DCF').implied_price == null && row(bank, 'DCF').drop_reason === 'sector_inapplicable');
+check('financials: composite present and sane vs $143 (not a revenue×margin blow-up)',
+    bank.composite.avg_fair_value != null && bank.composite.avg_fair_value > 30 && bank.composite.avg_fair_value < 600,
+    `avg=${bank.composite.avg_fair_value}`);
+
 console.log(fails ? `\nFAILED — ${fails} check(s)` : '\nPASS — isomorphic engine behaves correctly.');
 if (fails) process.exit(1);
