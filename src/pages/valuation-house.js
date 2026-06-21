@@ -1101,6 +1101,23 @@ export function ValuationHouse(props) {
     function renderMultiples() {
         var actPE = price > 0 && s.mult.eps > 0 ? fp(price / s.mult.eps, 1) + 'x' : '—';
         var actPB = s.mult.bvps > 0 ? fp(price / s.mult.bvps, 1) + 'x' : '—';
+        // The implied prices below are computed from the engine's *clamped* peer
+        // multiples (sane-band caps), so show that effective multiple — not the raw
+        // input — and flag any leg that was capped so the row reconciles to the price.
+        var sm = (c && c.safeMult) || {};
+        var clamped = false;
+        var effMult = function(raw, eff) {
+            if (raw == null) return '—';
+            if (eff == null || Math.abs(eff - raw) < 1e-6) return raw + 'x';
+            clamped = true;
+            return eff + 'x*';
+        };
+        var multRows = [
+            ['P/E', effMult(s.mult.pPE, sm.pPE), fd(c.pPE), Sig(c.pPE, price)],
+            ['P/B', effMult(s.mult.pPB, sm.pPB), fd(c.pPB), Sig(c.pPB, price)],
+            ['EV/EBITDA', effMult(s.mult.pEV, sm.pEV), fd(c.pEVps), Sig(c.pEVps, price)],
+            ['P/S', effMult(s.mult.pPS, sm.pPS), fd(c.pPS), Sig(c.pPS, price)],
+        ];
         return h('div', null,
             TwoCol(
                 h('div', null,
@@ -1123,13 +1140,10 @@ export function ValuationHouse(props) {
                     Card('Implied Values', h('div', null,
                         DTable(
                             ['Method', 'Multiple', 'Implied Price', 'Signal'],
-                            [
-                                ['P/E', s.mult.pPE + 'x', fd(c.pPE), Sig(c.pPE, price)],
-                                ['P/B', s.mult.pPB + 'x', fd(c.pPB), Sig(c.pPB, price)],
-                                ['EV/EBITDA', s.mult.pEV + 'x', fd(c.pEVps), Sig(c.pEVps, price)],
-                                ['P/S', s.mult.pPS + 'x', fd(c.pPS), Sig(c.pPS, price)],
-                            ]
+                            multRows
                         ),
+                        clamped && h('div', { style: { marginTop: 6, fontSize: 9.5, color: 'var(--text-muted)', fontFamily: 'JetBrains Mono, monospace' } },
+                            '* peer multiple capped to a sane band (P/E 3–200×, P/B 0.1–20×, EV/EBITDA 1–60×, P/S 0.1–20×) before deriving the implied price.'),
                         h('div', { style: { marginTop: 10 } },
                             StatRow('Average implied price', fd(c.multAvg), c.multAvg ? signalColor(c.multAvg, price) : 'var(--text-muted)')
                         ),
