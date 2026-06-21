@@ -384,6 +384,12 @@ function rawVal(x) {
     return x;
 }
 
+// Integer-domain vendor fields (market cap, share counts) carry no meaningful
+// fractional part. Round them at the ingestion boundary so the cache never
+// stores e.g. "245334658571.99997" — which is exactly what broke the screener's
+// downstream ::bigint cast. Normalize once, here, not lazily in every consumer.
+function intVal(v) { return v != null && isFinite(Number(v)) ? Math.round(Number(v)) : null; }
+
 function mapOverview(summary, symbol) {
     if (!summary) return { Symbol: symbol, Name: symbol };
     const price = summary.price || {};
@@ -404,7 +410,7 @@ function mapOverview(summary, symbol) {
         Industry: profile.industry || '',
     };
     const set = function(k, v) { if (v != null && isFinite(Number(v))) out[k] = String(v); };
-    set('MarketCapitalization', rawVal(price.marketCap) != null ? rawVal(price.marketCap) : rawVal(detail.marketCap));
+    set('MarketCapitalization', intVal(rawVal(price.marketCap) != null ? rawVal(price.marketCap) : rawVal(detail.marketCap)));
     set('PERatio',       rawVal(detail.trailingPE));
     set('PEGRatio',      rawVal(stats.pegRatio));
     set('Beta',          rawVal(detail.beta) != null ? rawVal(detail.beta) : rawVal(stats.beta));
@@ -644,7 +650,7 @@ function mapFinnhubOverview(data, symbol) {
         _country: p.country || '',
     };
     var set = function(k, v) { if (v != null && isFinite(Number(v))) out[k] = String(v); };
-    set('MarketCapitalization', p.marketCapitalization ? p.marketCapitalization * 1e6 : null);
+    set('MarketCapitalization', p.marketCapitalization ? intVal(p.marketCapitalization * 1e6) : null);
     set('PERatio', m.peBasicExclExtraTTM);
     set('PEGRatio', m.pegRatio);
     set('Beta', m.beta);
@@ -765,8 +771,8 @@ function mapFinnhubFinancials(data) {
     var earn = data.earnings;
     var profile = data.profile || {};
 
-    var shares = profile.shareOutstanding ? profile.shareOutstanding * 1e6 : null;
-    var mktCap = profile.marketCapitalization ? profile.marketCapitalization * 1e6 : null;
+    var shares = profile.shareOutstanding ? intVal(profile.shareOutstanding * 1e6) : null;
+    var mktCap = profile.marketCapitalization ? intVal(profile.marketCapitalization * 1e6) : null;
 
     function latestVal(key) {
         var arr = annual[key];
