@@ -176,14 +176,21 @@ function FootballField(p) {
         h('div', {
             style: { display: 'flex', justifyContent: 'space-between', marginTop: 6, marginLeft: 159, fontFamily: T.mono, fontSize: 10, color: T.muted2 }
         }, ticks.map(function(t) { return h('span', { key: t }, '$' + t); })),
-        fin(price) && fin(blendedFV) && h(Note, { style: { marginTop: 14, borderTop: '1px solid ' + T.border, paddingTop: 12 } },
-            'Blended fair value ', h('b', { style: { color: T.amber } }, fmtDol(blendedFV)),
-            '. Current price ', h('b', { style: { color: T.green } }, fmtDol(price, 2)),
-            ' (' + (price > blendedFV
-                ? h('span', { style: { color: T.red } }, fmtPct((price - blendedFV) / blendedFV) + ' above FV — modest overvaluation')
-                : h('span', { style: { color: T.green } }, fmtPct((price - blendedFV) / blendedFV) + ' below FV — modest discount')
-            ) + '). Green marker = current price.'
-        )
+        fin(price) && fin(blendedFV) && (function() {
+            var over = price > blendedFV;
+            var mag = Math.abs((price - blendedFV) / blendedFV);
+            var word = mag < 0.10 ? 'broadly fair value'
+                     : mag < 0.30 ? (over ? 'a meaningful premium' : 'a meaningful discount')
+                     : (over ? 'a steep premium to fair value' : 'a deep discount to fair value');
+            return h(Note, { style: { marginTop: 14, borderTop: '1px solid ' + T.border, paddingTop: 12 } },
+                'Blended fair value ', h('b', { style: { color: T.amber } }, fmtDol(blendedFV)),
+                '. Current price ', h('b', { style: { color: T.green } }, fmtDol(price, 2)),
+                ' — ',
+                h('span', { style: { color: over ? T.red : T.green } },
+                    fmtPct((price - blendedFV) / blendedFV) + (over ? ' above FV' : ' below FV')),
+                ' (' + word + '). Green marker = current price.'
+            );
+        })()
     );
 }
 
@@ -289,28 +296,28 @@ export function VerdictStrip(p) {
 
     if (!inp) return null;
 
-    // Compute composite FV (blended of available methods)
-    var fvs = [];
-    var n = inp.horizon, wacc = inp.wacc, g = inp.termGrowth;
-    var gr = fin(inp.revGrowth) ? inp.revGrowth : 0.10;
-    var margin = fin(inp.operM) ? inp.operM : 0.20;
-
-    if (inp.revenue && inp.shares) {
-        var fv1 = dcfFV(inp.revenue, gr, margin, inp.taxRate, wacc, g, n, inp.netDebt, inp.shares);
-        if (fin(fv1) && fv1 > 0) fvs.push(fv1);
-        // EV/EBITDA FV
-        if (inp.ebitda && inp.shares) {
-            var peerMult = fin(inp.evEbitda) ? inp.evEbitda * 0.9 : 18; // slight discount to current
-            var fv2 = (inp.ebitda * peerMult - inp.netDebt) / inp.shares;
-            if (fin(fv2) && fv2 > 0) fvs.push(fv2);
+    // Headline composite — prefer the canonical engine composite (the SAME blend
+    // the Valuation House and Scrapbook show, so the verdict can't disagree with
+    // them). Fall back to a local quick blend only when the engine could not run
+    // for this ticker (unhydrated fundamentals).
+    var compositeFV = fin(p.compositeFV) && p.compositeFV > 0 ? p.compositeFV : null;
+    if (compositeFV == null) {
+        var fvs = [];
+        var n = inp.horizon, wacc = inp.wacc, g = inp.termGrowth;
+        var gr = fin(inp.revGrowth) ? inp.revGrowth : 0.10;
+        var margin = fin(inp.operM) ? inp.operM : 0.20;
+        if (inp.revenue && inp.shares) {
+            var fv1 = dcfFV(inp.revenue, gr, margin, inp.taxRate, wacc, g, n, inp.netDebt, inp.shares);
+            if (fin(fv1) && fv1 > 0) fvs.push(fv1);
+            if (inp.ebitda && inp.shares) {
+                var peerMult = fin(inp.evEbitda) ? inp.evEbitda * 0.9 : 18;
+                var fv2 = (inp.ebitda * peerMult - inp.netDebt) / inp.shares;
+                if (fin(fv2) && fv2 > 0) fvs.push(fv2);
+            }
         }
+        if (inp.trailEps && inp.trailEps > 0) fvs.push(inp.trailEps * 20);
+        compositeFV = fvs.length ? fvs.reduce(function(a, b) { return a + b; }, 0) / fvs.length : null;
     }
-    if (inp.trailEps && inp.trailEps > 0) {
-        var fv3 = inp.trailEps * 20; // simple 20x earnings
-        fvs.push(fv3);
-    }
-
-    var compositeFV = fvs.length ? fvs.reduce(function(a, b) { return a + b; }, 0) / fvs.length : null;
     var upside = (compositeFV && p.price) ? (compositeFV / p.price - 1) : null;
 
     // Prob-weighted EV from Bull/Base/Bear (defaults)
@@ -495,48 +502,42 @@ export function ThesisTab(p) {
     var margin = fin(inp.operM) ? inp.operM : 0.20;
     var tax = inp.taxRate;
 
+    // Football field methods + blended FV come from the canonical engine (the
+    // same DDM / FCFF / FCFE / Multiples / RI legs and trimmed composite the
+    // Valuation House shows), so this synthesizer and the headline verdict can't
+    // tell two different stories. Sector-inapplicable legs (e.g. DCF for banks)
+    // are already dropped upstream. Falls back to the local quick models only
+    // when the engine could not run for this ticker.
+    var engine = p.engine;
     var models = [];
-    if (inp.revenue && inp.shares && fin(margin) && margin > 0) {
-        var fv_base = dcfFV(inp.revenue, gr, margin, tax, wacc, g, n, inp.netDebt, inp.shares);
-        var fv_lo   = dcfFV(inp.revenue, gr * 0.7, margin * 0.88, tax, wacc + 0.01, g, n, inp.netDebt, inp.shares);
-        var fv_hi   = dcfFV(inp.revenue, gr * 1.35, margin * 1.12, tax, wacc - 0.01, g, n, inp.netDebt, inp.shares);
-        if (fin(fv_lo) && fin(fv_hi) && fv_lo > 0) {
-            models.push({ label: '2-stage DCF', lo: fv_lo, point: fv_base, hi: fv_hi });
-        }
-        // Reverse DCF: solve implied GR, then vary margin ±100bps
-        if (fin(price) && inp.shares) {
-            var impliedGR  = solveImpliedCAGR(price, inp.shares, inp.netDebt, inp.revenue, margin, tax, wacc, g, n);
-            var rdcf_lo    = dcfFV(inp.revenue, impliedGR, margin - 0.01, tax, wacc, g, n, inp.netDebt, inp.shares);
-            var rdcf_hi    = dcfFV(inp.revenue, impliedGR, margin + 0.01, tax, wacc, g, n, inp.netDebt, inp.shares);
-            if (fin(rdcf_lo) && rdcf_lo > 0) {
-                models.push({ label: 'Reverse DCF (implied)', lo: Math.min(rdcf_lo, price), point: price, hi: Math.max(rdcf_hi, price) });
+    var blendedFV = null;
+    if (engine && engine.computed) {
+        var ec = engine.computed;
+        [
+            { label: 'DCF (FCFF)',      v: ec.ffR ? ec.ffR.eqPS : null },
+            { label: 'FCFE',            v: ec.feR ? ec.feR.eqPS : null },
+            { label: 'DDM',             v: ec.ddmV },
+            { label: 'Multiples',       v: ec.multAvg },
+            { label: 'Residual income', v: ec.riR ? ec.riR.v : null },
+        ].forEach(function(mm) { if (fin(mm.v) && mm.v > 0) models.push({ label: mm.label, point: mm.v }); });
+        blendedFV = engine.composite && fin(engine.composite.avg_fair_value) ? engine.composite.avg_fair_value : null;
+    } else {
+        if (inp.revenue && inp.shares && fin(margin) && margin > 0) {
+            var fv_base = dcfFV(inp.revenue, gr, margin, tax, wacc, g, n, inp.netDebt, inp.shares);
+            var fv_lo   = dcfFV(inp.revenue, gr * 0.7, margin * 0.88, tax, wacc + 0.01, g, n, inp.netDebt, inp.shares);
+            var fv_hi   = dcfFV(inp.revenue, gr * 1.35, margin * 1.12, tax, wacc - 0.01, g, n, inp.netDebt, inp.shares);
+            if (fin(fv_lo) && fin(fv_hi) && fv_lo > 0) {
+                models.push({ label: '2-stage DCF', lo: fv_lo, point: fv_base, hi: fv_hi });
             }
         }
+        if (inp.divPS && inp.divPS > 0 && wacc > g) {
+            models.push({ label: 'DDM', lo: inp.divPS / (wacc + 0.01 - g), point: inp.divPS / (wacc - g), hi: inp.divPS / (wacc - 0.01 - g + 0.01) });
+        } else if (inp.trailEps && inp.trailEps > 0) {
+            models.push({ label: 'Earnings Multiple', lo: inp.trailEps * 16, point: inp.trailEps * 22, hi: inp.trailEps * 28 });
+        }
+        var fvs = models.filter(function(m) { return fin(m.point) && m.point > 0; }).map(function(m) { return m.point; });
+        blendedFV = fvs.length ? fvs.reduce(function(a, b) { return a + b; }, 0) / fvs.length : null;
     }
-    if (inp.ebitda && inp.shares) {
-        var peerLo = inp.evEbitda ? inp.evEbitda * 0.7 : 14;
-        var peerHi = inp.evEbitda ? inp.evEbitda * 1.1 : 26;
-        var peerMid = (peerLo + peerHi) / 2;
-        var ev_lo  = (inp.ebitda * peerLo - inp.netDebt) / inp.shares;
-        var ev_hi  = (inp.ebitda * peerHi - inp.netDebt) / inp.shares;
-        var ev_mid = (inp.ebitda * peerMid - inp.netDebt) / inp.shares;
-        if (fin(ev_lo) && ev_lo > 0) models.push({ label: 'EV/EBITDA peers', lo: ev_lo, point: ev_mid, hi: ev_hi });
-    }
-    if (inp.divPS && inp.divPS > 0 && wacc > g) {
-        var ddm_lo  = inp.divPS / (wacc + 0.01 - g);
-        var ddm_hi  = inp.divPS / (wacc - 0.01 - g + 0.01);
-        var ddm_mid = inp.divPS / (wacc - g);
-        if (fin(ddm_lo) && ddm_lo > 0) models.push({ label: 'DDM', lo: ddm_lo, point: ddm_mid, hi: ddm_hi });
-    } else if (inp.trailEps && inp.trailEps > 0) {
-        // Use earnings-based FV as DDM proxy for non-payers
-        var ddmProxy_lo  = inp.trailEps * 16;
-        var ddmProxy_hi  = inp.trailEps * 28;
-        var ddmProxy_mid = inp.trailEps * 22;
-        models.push({ label: 'Earnings Multiple', lo: ddmProxy_lo, point: ddmProxy_mid, hi: ddmProxy_hi });
-    }
-
-    var fvs = models.filter(function(m) { return fin(m.point) && m.point > 0; }).map(function(m) { return m.point; });
-    var blendedFV = fvs.length ? fvs.reduce(function(a, b) { return a + b; }, 0) / fvs.length : null;
     if (fin(blendedFV)) p.onBlendedFV && p.onBlendedFV(blendedFV);
 
     // ── Bull / Base / Bear ─────────────────────────────────────────────────
@@ -573,7 +574,7 @@ export function ThesisTab(p) {
     return h('div', null,
         // Football field + R/R
         h(Grid, { style: { gridTemplateColumns: '1.3fr .7fr', marginBottom: 14 } },
-            h(Card, { title: 'Composite Fair-Value Synthesizer', badge: 'REWORKED', meta: 'football field · ' + models.length + ' methods' },
+            h(Card, { title: 'Composite Fair-Value Synthesizer', badge: engine && engine.computed ? 'SHARED ENGINE' : 'LOCAL', meta: (engine && engine.computed ? 'shared engine · ' : 'local models · ') + models.length + ' methods' },
                 h(FootballField, { models: models, price: price, blendedFV: blendedFV })
             ),
             h(Card, { title: 'Risk / Reward', badge: 'NEW' },
@@ -598,7 +599,7 @@ export function ThesisTab(p) {
         ),
 
         // Bull / Base / Bear — interactive
-        h(Card, { title: 'Bull / Base / Bear — probability-weighted', badge: 'INTERACTIVE', meta: 'EV ' + (fin(ev_pw) ? fmtDol(ev_pw) : '—'), style: { marginBottom: 14 } },
+        h(Card, { title: 'Bull / Base / Bear — probability-weighted', badge: 'SCENARIO', meta: 'what-if · does not set the call · EV ' + (fin(ev_pw) ? fmtDol(ev_pw) : '—'), style: { marginBottom: 14 } },
             h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12 } },
                 [
                     { key: 'bull', label: 'Bull', color: T.green, topColor: T.green, s: bbb.bull },

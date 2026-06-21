@@ -7,8 +7,19 @@ import {
     CapitalTab, FactorTab, TechnicalsAndPeersTab, parseInputs,
 } from './equity-research-panels.js';
 import { EquityScreener } from './equity-screener.js';
+import { runValuation } from '../lib/valuationEngine.js';
 
 const { useState, useEffect, useCallback } = React;
+
+// Canonical valuation via the shared engine — the SAME code path the Valuation
+// House and Scrapbook persist, so Equity Research speaks one valuation language
+// across the platform instead of its own isolated revenue×margin DCF. Fails
+// safe to null (header/football-field then fall back to the local quick models).
+function engineValuation(payload, series) {
+    if (!payload || !series || !series.length) return null;
+    try { return runValuation(payload, series); }
+    catch (_) { return null; }
+}
 
 // ── Data parsing ────────────────────────────────────────────────────────────
 
@@ -375,7 +386,7 @@ var MAIN_TABS = [
     { id: 'tech',    label: 'Technicals & Peers' },
 ];
 
-function MainPanel({ symbol, financials, rawOverview, overview, series, peers, derived, thesis, onThesis }) {
+function MainPanel({ symbol, financials, rawOverview, overview, series, engine, peers, derived, thesis, onThesis }) {
     const [tab,       setTab]      = useState('thesis');
     const [blendedFV, setBlendedFV]= useState(null);
     const [ev_pw,     setEVPW]     = useState(null);
@@ -383,9 +394,11 @@ function MainPanel({ symbol, financials, rawOverview, overview, series, peers, d
     const price = series && series.length ? series[series.length - 1].close : null;
     const snap  = financials && financials.snapshot;
     const inp   = parseInputs(rawOverview, snap, price);
+    // Headline composite comes from the canonical engine (one number across modules).
+    const engineFV = engine && engine.composite ? engine.composite.avg_fair_value : null;
 
     var tabContent = null;
-    if (tab === 'thesis')  tabContent = React.createElement(ThesisTab,  { inputs: inp, price, onBlendedFV: setBlendedFV, onEVPW: setEVPW, symbol, thesis, onThesis });
+    if (tab === 'thesis')  tabContent = React.createElement(ThesisTab,  { inputs: inp, price, engine, onBlendedFV: setBlendedFV, onEVPW: setEVPW, symbol, thesis, onThesis });
     if (tab === 'val')     tabContent = React.createElement(ValuationTab, { inputs: inp, price });
     if (tab === 'qual')    tabContent = React.createElement(QualityTab,  { inputs: inp, derived, snap });
     if (tab === 'cap')     tabContent = React.createElement(CapitalTab,  { inputs: inp, derived });
@@ -394,7 +407,7 @@ function MainPanel({ symbol, financials, rawOverview, overview, series, peers, d
 
     return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 } },
         // verdict strip
-        React.createElement(VerdictStrip, { inputs: inp, price, ev_pw, derived, style: { margin: '8px 14px 0' } }),
+        React.createElement(VerdictStrip, { inputs: inp, price, compositeFV: engineFV, ev_pw, derived, style: { margin: '8px 14px 0' } }),
         // tab bar
         React.createElement('div', {
             style: { display: 'flex', background: 'rgba(255,255,255,0.015)', borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0, flexWrap: 'wrap' }
@@ -597,6 +610,7 @@ export function EquityResearch(props) {
     const metrics     = deriveMetrics(series);
     const overview    = parseOverview(payload && payload.overview); // parsed — DCFEngine compat
     const rawOverview = payload && payload.overview;               // raw AV fields — panels
+    const engine      = engineValuation(payload, series);          // canonical composite + per-method
 
     if (!metrics && !overview) return React.createElement('div', null, searchBar, React.createElement(EmptyState, null));
 
@@ -647,6 +661,7 @@ export function EquityResearch(props) {
                 rawOverview,
                 overview,
                 series,
+                engine,
                 peers: payload && payload.peers,
                 derived,
                 thesis,

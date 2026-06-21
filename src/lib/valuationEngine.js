@@ -447,6 +447,12 @@ export function mapPayload(payload, series, opts) {
 // Identical math for both callers — no reimplementation.
 export function computeMethods(s) {
     var coc = s.coc, ddm = s.ddm, fcf = s.fcf, mult = s.mult, ri = s.ri, priv = s.priv, wts = s.wts;
+    // Financials (banks/insurers): free cash flow is not a meaningful concept and
+    // enterprise value is undefined (debt is raw material, not financing), so the
+    // DCF (FCFF/FCFE), EV/EBITDA and P/S legs are inapplicable. Value them on
+    // DDM, residual income and equity multiples (P/E, P/B) only — otherwise a
+    // revenue×margin DCF on a bank manufactures absurd fair values.
+    var isFin = (s.co && s.co.sector === 'financials');
     var re  = capm(coc.rf, coc.beta, coc.erp);
     var we  = 1 - coc.wd;
     var wc  = calcWACC(re, we, coc.rd, coc.wd, coc.tax);
@@ -456,8 +462,8 @@ export function computeMethods(s) {
     var ts  = twoStageDDM(ddm.D0, ddm.gS, ddm.gL, ddm.n, re);
     var ddmV = ddm.model === 'gordon' ? ggm : ddm.model === 'h' ? (hm ? hm.v : null) : (ts ? ts.v : null);
 
-    var ffR = fcffVal(fcf.fcff0, fcf.gr, fcf.gL, wc, fcf.debt, fcf.cash, fcf.shs);
-    var feR = fcfeVal(fcf.fcfe0, fcf.gr, fcf.gL, re, fcf.shs);
+    var ffR = isFin ? null : fcffVal(fcf.fcff0, fcf.gr, fcf.gL, wc, fcf.debt, fcf.cash, fcf.shs);
+    var feR = isFin ? null : fcfeVal(fcf.fcfe0, fcf.gr, fcf.gL, re, fcf.shs);
 
     // Multiples: real peer ratio × real base only; a null on either side drops
     // that leg (no shared placeholder anchors its value).
@@ -476,12 +482,14 @@ export function computeMethods(s) {
     var jpeV  = jPELeading(mult.b, re, ddm.gL);
     var jpbV  = jPB(ri.ROE, re, ri.g);
     // Sanity gate: only with a TRUSTED price; drop any leg outside an 8× band.
+    // Financials use equity multiples only (P/E, P/B) — EV/EBITDA and P/S drop.
     var priceRef = (s.co.priceTrusted && s.co.price > 0) ? s.co.price : null;
-    var mLegs = [pPE, pPB, pEVps, pPS].filter(function(v) {
+    var legSet = isFin ? [pPE, pPB] : [pPE, pPB, pEVps, pPS];
+    var mLegs = legSet.filter(function(v) {
         if (!(v > 0 && isFinite(v))) return false;
         return priceRef == null ? true : (v <= priceRef * 8 && v >= priceRef / 8);
     });
-    var mLegsRaw = [pPE, pPB, pEVps, pPS].filter(function(v) { return v > 0 && isFinite(v); });
+    var mLegsRaw = legSet.filter(function(v) { return v > 0 && isFinite(v); });
     var multAvg = mLegs.length ? mLegs.reduce(function(a, b) { return a + b; }, 0) / mLegs.length : null;
 
     var riR  = (ri.B0 != null) ? riCalc(ri.B0, ri.ROE, re, ri.g, ri.n, ri.mth, ri.omega) : null;
@@ -507,6 +515,7 @@ export function computeMethods(s) {
 
 // ── Drop-reason attribution per method (for the health surface) ──
 function dcfDrop(s, c) {
+    if (s.co && s.co.sector === 'financials') return 'sector_inapplicable';
     if (s.fcf.shs == null)  return 'shares_unhydrated';
     if (s.fcf.fcff0 == null) return 'missing_fcf_base';
     if (c.wc - s.fcf.gL < MIN_TV_SPREAD) return 'tv_clamped';
