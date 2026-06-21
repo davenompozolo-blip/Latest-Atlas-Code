@@ -37,6 +37,7 @@ const TTL_DAILY_MS    = 4 * 60 * 60 * 1000;     // 4h
 const TTL_OVERVIEW_MS = 24 * 60 * 60 * 1000;    // 24h
 const MEM_TTL_MS      = 15 * 60 * 1000;          // fallback in-memory only
 const CRUMB_TTL_MS    = 60 * 60 * 1000;
+const FX_TTL_MS       = 6 * 60 * 60 * 1000;      // FX rates cached 6h
 
 const ALPACA_BASE = 'https://data.alpaca.markets/v2';
 const YF          = 'https://query2.finance.yahoo.com';
@@ -44,6 +45,7 @@ const SUMMARY_MODULES = 'summaryProfile,summaryDetail,financialData,defaultKeySt
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
 
 const _memCache = new Map();
+const _fxCache = new Map();
 let _crumb = null;
 
 // ------------------------------------------------------------
@@ -286,6 +288,93 @@ async function yfSummary(symbol) {
     throw lastErr || new Error('Yahoo summary failed on all hosts');
 }
 
+// ------------------------------------------------------------
+// Currency normalisation — FX-convert foreign-reported fundamentals
+// ------------------------------------------------------------
+// ADRs and foreign listings report financial statements in a currency that can
+// differ from the trading (price) currency — e.g. TSMC reports in TWD but the
+// TSM ADR trades in USD. Valuing a TWD book value against a USD price blows up
+// the per-share methods. We detect the reporting currency, fetch the FX rate,
+// and convert the absolute/per-share fundamentals into the price currency.
+// Everything fails safe: any uncertainty leaves the values untouched.
+
+// 1 unit of `from` = N units of `to`, via Yahoo's public v8 chart FX pair.
+async function yahooFxRate(from, to) {
+    if (!from || !to) return null;
+    if (from === to) return 1;
+    const key = from + to;
+    const hit = _fxCache.get(key);
+    if (hit && Date.now() - hit.ts < FX_TTL_MS) return hit.rate;
+    const pair = from + to + '=X';
+    const hosts = [YF, 'https://query1.finance.yahoo.com'];
+    for (let hi = 0; hi < hosts.length; hi++) {
+        try {
+            const url = hosts[hi] + '/v8/finance/chart/' + encodeURIComponent(pair) + '?range=5d&interval=1d';
+            const r = await fetchWithTimeout(url, { headers: { 'User-Agent': UA, accept: 'application/json' } }, 8000);
+            if (!r.ok) continue;
+            const j = await r.json();
+            const meta = j && j.chart && j.chart.result && j.chart.result[0] && j.chart.result[0].meta;
+            const rate = meta && (meta.regularMarketPrice != null ? meta.regularMarketPrice : meta.previousClose);
+            if (rate != null && isFinite(Number(rate)) && Number(rate) > 0) {
+                _fxCache.set(key, { rate: Number(rate), ts: Date.now() });
+                return Number(rate);
+            }
+        } catch (_) { /* try next host */ }
+    }
+    return null;
+}
+
+// Yahoo's reporting currency for a symbol (financialData.financialCurrency).
+// Used only when the primary (Finnhub) path can't tell us — Finnhub's metric
+// blob carries no currency tag.
+async function yahooFinancialCurrency(symbol) {
+    try {
+        const summary = await yfSummary(symbol);
+        const fc = summary && summary.financialData && summary.financialData.financialCurrency;
+        return fc ? String(fc).toUpperCase() : null;
+    } catch (_) { return null; }
+}
+
+// Absolute / per-share fundamentals reported in the statement currency. Ratios,
+// margins, growth rates, share counts and market cap are deliberately excluded
+// (currency-neutral or already in the trading currency).
+const FX_CONVERT_FIELDS = [
+    'trailingEps', 'forwardEps', 'bookValue',
+    'totalRevenue', 'grossProfits', 'ebitda', 'operatingCashflow', 'freeCashflow',
+    'totalCash', 'totalDebt', 'netIncome', 'enterpriseValue',
+    'capitalExpenditures', 'dividendPerShare',
+];
+
+async function normalizeReportingCurrency(data, symbol) {
+    try {
+        if (!data || !data.overview || !data.financials || !data.financials.snapshot) return data;
+        const snap = data.financials.snapshot;
+        const tradingCcy = String(data.overview.Currency || '').toUpperCase();
+        if (!/^[A-Z]{3}$/.test(tradingCcy)) return data;
+
+        let reportingCcy = String(snap._reportingCurrency || '').toUpperCase();
+        if (!reportingCcy) {
+            // Only probe when the name looks foreign — a non-US domicile or a
+            // suffixed (home-listing) ticker. Avoids an extra call for US names.
+            const country = String(data.overview._country || '').toUpperCase();
+            const looksForeign = symbol.indexOf('.') >= 0 || (country && country !== 'US');
+            if (!looksForeign) return data;
+            reportingCcy = await yahooFinancialCurrency(symbol) || '';
+        }
+        if (!/^[A-Z]{3}$/.test(reportingCcy) || reportingCcy === tradingCcy) return data;
+
+        const rate = await yahooFxRate(reportingCcy, tradingCcy);
+        if (!(rate > 0) || !isFinite(rate)) return data;
+
+        FX_CONVERT_FIELDS.forEach(function(k) {
+            if (snap[k] != null && isFinite(snap[k])) snap[k] = snap[k] * rate;
+        });
+        snap._reportingCurrency = tradingCcy;
+        data.overview._fxConverted = { from: reportingCcy, to: tradingCcy, rate: rate };
+        return data;
+    } catch (_) { return data; }
+}
+
 function rawVal(x) {
     if (x == null) return null;
     if (typeof x === 'object') {
@@ -388,6 +477,11 @@ function mapFinancials(summary) {
     if (snapshot.operatingCashflow != null && snapshot.freeCashflow != null) {
         snapshot.capitalExpenditures = Math.abs(snapshot.operatingCashflow - snapshot.freeCashflow);
     }
+    // Reporting (financial-statement) currency — may differ from the trading
+    // currency for ADRs/foreign listings. Threaded so the payload assembler can
+    // FX-convert the per-share/absolute fundamentals into the price currency.
+    if (fd.financialCurrency) snapshot._reportingCurrency = String(fd.financialCurrency).toUpperCase();
+
     // interestExpense not in Yahoo quoteSummary modules — left null, approximated downstream
 
     // Yearly revenue + earnings (4 years from earnings module)
@@ -545,6 +639,9 @@ function mapFinnhubOverview(data, symbol) {
         Currency: p.currency || 'USD',
         Sector: p.finnhubIndustry || '',
         Industry: p.finnhubIndustry || '',
+        // Domicile — lets the assembler decide whether to probe for a foreign
+        // reporting currency (Finnhub's metric blob isn't currency-tagged).
+        _country: p.country || '',
     };
     var set = function(k, v) { if (v != null && isFinite(Number(v))) out[k] = String(v); };
     set('MarketCapitalization', p.marketCapitalization ? p.marketCapitalization * 1e6 : null);
@@ -1011,6 +1108,10 @@ async function getOverview(symbol, skipCache) {
             throw new Error(msg);
         }
     }
+
+    // FX-normalise foreign-reported fundamentals into the trading currency
+    // before caching, so every downstream consumer sees consistent units.
+    data = await normalizeReportingCurrency(data, symbol);
 
     memSet(key, data);
     dbCacheSet(key, symbol, 'overview', data, TTL_OVERVIEW_MS);
