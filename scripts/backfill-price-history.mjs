@@ -12,6 +12,7 @@
 //   BACKFILL_START=2026-03-25  (default: 2026-03-25, the day before data froze)
 
 import { createClient } from '@supabase/supabase-js';
+import { assessClose, fetchStooqClose, MAX_DIVERGENCE } from './lib/price-guard.mjs';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -91,6 +92,8 @@ async function main() {
   let totalFetched  = 0;
   let totalUpserted = 0;
   let totalErrors   = 0;
+  const quarantined = [];   // symbols whose Alpaca series diverged from the independent reference
+  const unvalidated = [];   // symbols with no reference available (written, but flagged)
 
   for (let i = 0; i < symbols.length; i += BATCH) {
     const batch = symbols.slice(i, i + BATCH);
@@ -112,8 +115,8 @@ async function main() {
         console.warn(`  ⚠ No asset_id for symbol: ${symbol}`);
         continue;
       }
-      for (const bar of barList) {
-        rows.push({
+      const symRows = barList.map(function(bar) {
+        return {
           asset_id:       assetId,
           price_date:     bar.t.slice(0, 10),
           open:           parseFloat(bar.o),
@@ -124,8 +127,28 @@ async function main() {
           volume:         parseInt(bar.v) || 0,
           interval:       '1d',
           source:         'alpaca',
-        });
+        };
+      });
+      if (symRows.length === 0) continue;
+
+      // Data-trust guard: validate this symbol's latest close against an
+      // independent source before writing. A corporate-action mis-adjustment can
+      // inflate the whole Alpaca series uniformly (SNDK ~27×, MU ~10×, GEV ~2×),
+      // which no internal check sees — so cross-check, and quarantine on a gross
+      // divergence rather than corrupt every downstream valuation.
+      const latest = symRows.reduce((a, b) => (a.price_date >= b.price_date ? a : b));
+      const ref = await fetchStooqClose(symbol);
+      const verdict = assessClose(latest.close, ref);
+      if (!verdict.ok && verdict.reason === 'reference_divergence') {
+        quarantined.push({ symbol, alpaca: latest.close, reference: ref, divergence: verdict.divergence });
+        console.warn(`  ⛔ QUARANTINED ${symbol}: alpaca ${latest.close} vs ref ${ref} (${(verdict.divergence * 100).toFixed(0)}% > ${MAX_DIVERGENCE * 100}%) — not writing`);
+        continue;
       }
+      if (verdict.reason === 'no_reference') {
+        unvalidated.push(symbol);
+        console.warn(`  ⚠ no reference for ${symbol} — writing unvalidated`);
+      }
+      rows.push(...symRows);
     }
 
     console.log(`  Rows built: ${rows.length}`);
@@ -154,9 +177,16 @@ async function main() {
   console.log(`  Rows fetched:  ${totalFetched}`);
   console.log(`  Rows upserted: ${totalUpserted}`);
   console.log(`  Batch errors:  ${totalErrors}`);
+  if (unvalidated.length) console.log(`  Unvalidated (no reference): ${unvalidated.join(', ')}`);
+  if (quarantined.length) {
+    console.log(`  ⛔ QUARANTINED ${quarantined.length} symbol(s) — corrupt vendor prices NOT written:`);
+    for (const q of quarantined) {
+      console.log(`     ${q.symbol}: alpaca ${q.alpaca} vs ref ${q.reference} (${(q.divergence * 100).toFixed(0)}% divergence)`);
+    }
+  }
   console.log(`═══════════════════════════════════════\n`);
 
-  if (totalErrors > 0) process.exit(1);
+  if (totalErrors > 0 || quarantined.length > 0) process.exit(1);
 }
 
 main().catch(err => {

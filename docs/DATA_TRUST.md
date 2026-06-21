@@ -53,7 +53,25 @@ when it is read:
   ingestion. (ROE/RevGrowth/Dividend differ between Finnhub percent and AV
   fraction — a naive ×100 fallback is a 100× scale trap. See PR #661.)
 
-### 3. Scale discipline downstream
+### 3. Price ingestion — validate against an independent source
+
+A vendor price feed can return a **distorted series** for a symbol — typically a
+corporate-action / split mis-adjustment on a recent spin-off — that inflates
+*every* bar uniformly from day one. Because the inflation is internally
+consistent, a day-over-day jump check can't see it, and a newly added symbol has
+no trusted history to compare against. This corrupted SNDK (~27×), MU (~10×) and
+GEV (~2×) — and with no cross-check, every downstream valuation, upside and
+signal for those names was wrong.
+
+Rule: before writing an Alpaca series, validate its latest close against an
+**independent** reference (Stooq — not Alpaca, not yfinance). A gross divergence
+(> `MAX_DIVERGENCE`, 30%) **quarantines** the symbol — it is not written, and the
+sync exits non-zero so it surfaces. Helpers live in `scripts/lib/price-guard.mjs`
+(`assessClose`, `fetchStooqClose`), enforced in `scripts/backfill-price-history.mjs`.
+A legit cross-feed difference is <5%, so 30% false-positives on nothing real
+while catching every corruption seen.
+
+### 4. Scale discipline downstream
 
 Money is absolute, ratios are ratios, margins/growth/ROE are fractions, and the
 display layer multiplies fractions by 100 exactly once. A value that is "1.4×
