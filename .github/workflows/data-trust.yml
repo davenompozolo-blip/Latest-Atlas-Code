@@ -1,0 +1,29 @@
+name: Data Trust
+
+# Guards the data-trust convention: new migrations must never coerce untrusted
+# vendor JSON straight into a strict SQL type (::bigint/::int/::date/...), which
+# throws at query time on a single malformed value and takes down the whole view.
+# They must route extractions through safe_bigint/safe_numeric/safe_date instead.
+# See docs/DATA_TRUST.md.
+
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/**'
+      - 'scripts/check-unsafe-casts.mjs'
+      - '.github/workflows/data-trust.yml'
+  workflow_dispatch:
+
+jobs:
+  unsafe-casts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Check for unsafe vendor-JSON casts
+        run: node scripts/check-unsafe-casts.mjs
