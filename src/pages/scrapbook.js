@@ -11,6 +11,7 @@ import React from 'react';
 import { sb } from './config.js';
 import { fmtCurrency, fmtPct } from './utils.js';
 import { computeComposite } from '../lib/fairValueComposite.js';
+import { sectorToKey, SECTORS } from '../lib/valuationEngine.js';
 
 const { useState, useEffect, useCallback, useRef, useMemo } = React;
 const h = React.createElement;
@@ -40,13 +41,33 @@ async function readAnalyseResult(resp) {
     return result;
 }
 
+// Collapse a snapshot history to the latest row per method. The weekly sync
+// appends one row per method per run (intentional history), so a company can
+// carry ~7 rows for the same method — and a naive blend would weight whichever
+// method synced most often. Dedupe to the most-recent row per method first
+// (B-11). Snapshots are read newest-first; we also guard with created_at in
+// case an unordered list is passed.
+function latestPerMethod(snaps) {
+    const byMethod = {};
+    (snaps || []).forEach(s => {
+        const k = s.method;
+        const prev = byMethod[k];
+        if (!prev || new Date(s.created_at || 0) > new Date(prev.created_at || 0)) {
+            byMethod[k] = s;
+        }
+    });
+    return Object.values(byMethod);
+}
+
 // Deterministic fair-value composite from a company's saved snapshots.
 // Replaces the LLM's echoed arithmetic mean: drops methods whose implied
 // price sits outside a sane band around the (trusted) current price, blends
 // the survivors, and returns nulls when nothing survives. Authoritative for
 // avg_fair_value / fair_value_low / fair_value_high.
 function compositeFields(snaps, currentPrice) {
-    const prices = (snaps || []).map(s => Number(s.implied_price)).filter(p => isFinite(p) && p > 0);
+    // One price per method (latest run) so duplicate history rows can't skew
+    // the blend toward an over-synced method (B-11).
+    const prices = latestPerMethod(snaps).map(s => Number(s.implied_price)).filter(p => isFinite(p) && p > 0);
     const trusted = (currentPrice != null && Number(currentPrice) > 0) ? Number(currentPrice) : null;
     const blend = computeComposite(prices, trusted);
     return blend
@@ -61,6 +82,25 @@ function titleCaseSector(s) {
         .split(' ')
         .map(function(w) { return w.length > 2 ? (w[0].toUpperCase() + w.slice(1).toLowerCase()) : w.toUpperCase(); })
         .join(' ');
+}
+
+// Collapse the free-form `sector` string onto one canonical bucket key so the
+// Sector Playbook stops fragmenting one real sector across taxonomies (B-13):
+// the column mixes raw Finnhub industries ("Semiconductors", "Banking"),
+// already-canonical engine keys ("technology", "consumer") and title-case
+// ("Technology"). `null` (ETFs/funds) buckets separately as Uncategorised.
+function canonicalSectorKey(raw) {
+    if (!raw) return 'uncategorised';
+    const low = String(raw).toLowerCase().trim();
+    if (SECTORS[low]) return low;            // already a canonical engine key
+    return sectorToKey(raw, null) || 'general';
+}
+
+// Display label for a canonical bucket key. Uses the engine's sector labels so
+// "technology"/"Technology"/"Semiconductors" all read as "Technology".
+function sectorKeyLabel(key) {
+    if (key === 'uncategorised') return 'Uncategorised';
+    return (SECTORS[key] && SECTORS[key].label) || titleCaseSector(key);
 }
 
 function convColor(rating) {
@@ -687,7 +727,10 @@ function ScrapbookProfile({ ticker, onBack }) {
                         )
                     ),
                     h('tbody', null,
-                        snapshots.map((snap, i) => {
+                        // Current view = latest run per method (the full append-only
+                        // history lives in "Saved Runs" below) so duplicate weekly
+                        // rows don't list one method many times (B-11).
+                        latestPerMethod(snapshots).map((snap, i) => {
                             const keyAssump = snap.assumptions && Object.values(snap.assumptions)[0] || '—';
                             return h('tr', {
                                 key: snap.id,
@@ -1121,9 +1164,17 @@ function ConvBar({ companies }) {
 function SectorCard({ sector, companies, latestNote, isExpanded, onToggle, onNavigate }) {
     const cl = sectorConvictionLabel(companies);
     const icon = SECTOR_ICONS[sector] || '◇';
+    // Average implied upside across names with a sane stored valuation. Guard
+    // against fair-value/price ratios that can only be a data error (chiefly
+    // currency-mismatched ADR vs home-listing fair values, e.g. a JPY fair
+    // value over a USD price) so a single bad row can't manufacture a phantom
+    // sector average (B-14). Band mirrors the composite's own 0.25×–4× sanity.
     const avgUpside = companies.reduce((a, c) => {
         if (c.avg_fair_value && c.current_price && c.current_price > 0) {
-            return [...a, (c.avg_fair_value - c.current_price) / c.current_price];
+            const ratio = c.avg_fair_value / c.current_price;
+            if (ratio >= 0.25 && ratio <= 4) {
+                return [...a, (c.avg_fair_value - c.current_price) / c.current_price];
+            }
         }
         return a;
     }, []);
@@ -1401,17 +1452,23 @@ function SectorPlaybook({ onNavigateToCompany }) {
             sb.from('scrapbook_sector_notes').select('*').order('created_at', { ascending: false }),
         ]).then(([{ data: cos }, { data: notes }]) => {
             setCompanies(cos || []);
+            // Key notes by the same canonical bucket label the cards use, so a
+            // note saved under "technology" still matches the "Technology" card.
             const latestBySector = {};
-            (notes || []).forEach(n => { if (!latestBySector[n.sector]) latestBySector[n.sector] = n; });
+            (notes || []).forEach(n => {
+                const k = sectorKeyLabel(canonicalSectorKey(n.sector));
+                if (!latestBySector[k]) latestBySector[k] = n;
+            });
             setSectorNotes(latestBySector);
             setLoading(false);
         });
     }, []);
 
-    // Group by sector
+    // Group by canonical sector bucket (B-13) so one real sector isn't split
+    // across "technology"/"Technology"/"Semiconductors".
     const bySector = {};
     companies.forEach(c => {
-        const s = c.sector || 'Uncategorised';
+        const s = sectorKeyLabel(canonicalSectorKey(c.sector));
         if (!bySector[s]) bySector[s] = [];
         bySector[s].push(c);
     });
