@@ -68,13 +68,13 @@
 
 /* ── Page frame ── */
 .nf-page { padding: 0 0 48px; }
-.nf-wrap { max-width: 1320px; margin: 0 auto; padding: 0 20px; }
+.nf-wrap { max-width: none; margin: 0; padding: 0 24px; }
 
 /* ── Header ── */
 .nf-header {
   display: flex; align-items: center; justify-content: space-between;
-  gap: 16px; padding: 16px 20px 12px;
-  max-width: 1320px; margin: 0 auto;
+  gap: 16px; padding: 16px 24px 12px;
+  max-width: none; margin: 0;
 }
 .nf-wordmark { display: flex; flex-direction: column; line-height: 1.05; }
 .nf-wordmark b {
@@ -118,10 +118,11 @@
 /* ── Tab rail ── */
 .nf-tabrail {
   display: flex; gap: 4px; padding: 4px;
-  margin: 4px 20px 18px; max-width: 1320px;
+  margin: 4px 24px 18px; max-width: none;
   border: 1px solid var(--border); border-radius: var(--r-lg);
   background: var(--card); overflow-x: auto;
 }
+.nf-page { padding: 0 24px; }
 .nf-wrap > .nf-tabrail, .nf-page > .nf-tabrail { margin-left: auto; margin-right: auto; }
 .nf-tab {
   position: relative; flex: 1; min-width: 116px;
@@ -144,7 +145,7 @@
 /* ── Chefbar ── */
 .nf-chefbar {
   display: flex; align-items: center; gap: 12px;
-  max-width: 1320px; margin: 0 auto 18px; padding: 11px 15px;
+  max-width: none; margin: 0 auto 18px; padding: 11px 15px;
   border-radius: var(--r-md);
   background: linear-gradient(90deg, var(--amber-b), transparent 70%);
   border: 1px solid rgba(245,166,35,.22);
@@ -175,7 +176,7 @@
 
 /* ── Windshield band ── */
 .nf-windshield {
-  max-width: 1320px; margin: 0 auto 16px;
+  max-width: none; margin: 0 auto 16px;
   background: linear-gradient(135deg, var(--card2), var(--card));
   border: 1px solid var(--border-md); border-radius: var(--r-lg);
   padding: 16px 18px;
@@ -201,7 +202,7 @@
 /* ── Context gauges ── */
 .nf-gauges {
   display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
-  max-width: 1320px; margin: 0 auto 16px;
+  max-width: none; margin: 0 auto 16px;
 }
 .nf-gauge .nf-gauge-top { display: flex; align-items: baseline; justify-content: space-between; }
 .nf-gauge .nf-gauge-big { font-family: var(--fm); font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -222,7 +223,7 @@
 .nf-gauge .nf-cluster { font-family: var(--fm); font-size: 10px; color: var(--purple); margin: 6px 0; }
 
 /* ── Positioning spine ── */
-.nf-spine { max-width: 1320px; margin: 0 auto 16px; }
+.nf-spine { max-width: none; margin: 0 auto 16px; }
 .nf-spine-row {
   display: grid; grid-template-columns: 1.6fr 64px 70px 1fr; align-items: center;
   gap: 10px; padding: 9px 4px; border-bottom: 1px solid var(--border);
@@ -241,7 +242,7 @@
 .nf-rs i.on-down { background: var(--success); }
 
 /* ── Holdings (Live Objects) ── */
-.nf-holdings { max-width: 1320px; margin: 0 auto 16px; }
+.nf-holdings { max-width: none; margin: 0 auto 16px; }
 .nf-table-scroll { overflow-x: auto; }
 .nf-table { width: 100%; border-collapse: collapse; font-size: 11px; }
 .nf-table thead th {
@@ -366,7 +367,7 @@
 .nf-why-text { font-size: 11px; color: var(--text2); }
 
 /* ── The Read ── */
-.nf-read { max-width: 1320px; margin: 0 auto 16px; }
+.nf-read { max-width: none; margin: 0 auto 16px; }
 .nf-read-body { font-size: 13px; line-height: 1.65; color: var(--text); }
 .nf-read-body strong { color: var(--cyan); font-weight: 700; }
 .nf-read-toggle { display: inline-flex; gap: 3px; padding: 3px; background: var(--bg1); border: 1px solid var(--border); border-radius: 8px; }
@@ -382,7 +383,7 @@
 .nf-read-dot.ok   { background: var(--success); box-shadow: 0 0 8px var(--success); }
 
 /* ── Seasonal panels (shell) ── */
-.nf-seasonal { max-width: 1320px; margin: 0 auto; }
+.nf-seasonal { max-width: none; margin: 0 auto; }
 .nf-seasonal .nf-tags { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0 14px; }
 .nf-seasonal .nf-tag { font-size: 9px; text-transform: uppercase; letter-spacing: .05em; padding: 3px 9px; border-radius: 999px; background: var(--card-hi); color: var(--text2); }
 .nf-seasonal p { font-size: 13px; line-height: 1.6; color: var(--text2); margin: 0 0 12px; }
@@ -404,14 +405,14 @@
 }
 
 /* ── Macro & Breadth board ── */
-.nb-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; max-width: 1320px; margin: 0 auto 16px; }
+.nb-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; max-width: none; margin: 0 auto 16px; }
 .nb-span2 { grid-column: 1 / -1; }
 @media (max-width: 980px) { .nb-grid { grid-template-columns: 1fr; } .nb-span2 { grid-column: auto; } }
 .nb-card { display: flex; flex-direction: column; }
 .nb-chart { height: 220px; width: 100%; }
 .nb-span2 .nb-chart { height: 240px; }
 .nb-empty { color: var(--text3); font-size: 12px; padding: 28px; text-align: center; }
-.nb-loading { display: flex; align-items: center; gap: 8px; justify-content: center; color: var(--text3); padding: 30px; font-size: 13px; max-width: 1320px; margin: 0 auto 16px; }
+.nb-loading { display: flex; align-items: center; gap: 8px; justify-content: center; color: var(--text3); padding: 30px; font-size: 13px; max-width: none; margin: 0 auto 16px; }
 .nb-spin { display: inline-block; animation: nb-rot 1s linear infinite; }
 @keyframes nb-rot { to { transform: rotate(360deg); } }
 .nb-readout { font-family: var(--fm); font-weight: 700; font-size: 16px; }
@@ -600,7 +601,7 @@
 @media (max-width: 760px) { .nr-dash { grid-template-columns: repeat(2, 1fr); } }
 
 /* ── Portfolio snapshot (Flagship header) ─────────────────────── */
-.np-card { max-width: 1320px; margin: 0 auto 16px; }   /* align with the windshield / gauges below */
+.np-card { max-width: none; margin: 0 auto 16px; }   /* align with the windshield / gauges below */
 .np-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 10px; }
 .np-tile { background: var(--bg1); box-shadow: inset 0 0 0 1px var(--border-hi); border-radius: 10px; padding: 11px 13px; animation: np-rise .42s cubic-bezier(.2,.7,.3,1) both; }
 .np-tile-l { font-family: var(--fb); font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text3); }
