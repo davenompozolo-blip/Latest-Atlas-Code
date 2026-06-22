@@ -716,7 +716,7 @@ function ScrapbookProfile({ ticker, onBack }) {
 
         // ── Valuation Summary Table ───────────────────────────────────────────
         snapshots.length > 0 && h(Card, { style: { marginBottom: 16 } },
-            h(SectionHeader, { label: 'Valuation Summary' }),
+            h(SectionHeader, { label: 'Valuation Summary', sub: 'stored snapshots — latest run per method, as of each Date; a live Valuation House recompute may differ' }),
             h('div', { style: { overflowX: 'auto' } },
                 h('table', { style: { width: '100%', borderCollapse: 'collapse', fontSize: 12 } },
                     h('thead', null,
