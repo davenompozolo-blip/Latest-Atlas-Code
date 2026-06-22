@@ -842,6 +842,7 @@ export function ScrapbookSaveBar({ method, methodLabel, ticker, companyName, exc
     const [saving, setSaving]     = useState(false);
     const [analysing, setAnalysing] = useState(false);
     const [saveProgress, setSaveProgress] = useState(0);
+    const [elapsedS, setElapsedS] = useState(0);
     const [toast, setToast]       = useState(null);
 
     const showToast = (msg, type = 'info') => {
@@ -926,12 +927,19 @@ export function ScrapbookSaveBar({ method, methodLabel, ticker, companyName, exc
                 analyst_target: earnings?.analyst_target,
             } : null;
 
-            // 6. Call Claude
+            // 6. Call Claude. The EDGAR-read + synthesis genuinely takes ~60s, so
+            // calibrate the progress estimate to that (not 22s) — otherwise the bar
+            // pins at 95% "Finalising…" for 30-50s and looks frozen (audit B-10).
+            // Also surface elapsed seconds so it's visibly still working.
+            const EXPECTED_MS = 60000;
             setSaveProgress(0);
+            setElapsedS(0);
+            const startedAt = Date.now();
             let fakePct2 = 0;
             const saveTimer = setInterval(() => {
-                fakePct2 = Math.min(fakePct2 + (250 / 22000) * 95, 95);
+                fakePct2 = Math.min(fakePct2 + (250 / EXPECTED_MS) * 95, 95);
                 setSaveProgress(Math.round(fakePct2));
+                setElapsedS(Math.round((Date.now() - startedAt) / 1000));
             }, 250);
             let result;
             try {
@@ -1003,7 +1011,7 @@ export function ScrapbookSaveBar({ method, methodLabel, ticker, companyName, exc
         } finally {
             setSaving(false);
             setAnalysing(false);
-            setTimeout(() => setSaveProgress(0), 600);
+            setTimeout(() => { setSaveProgress(0); setElapsedS(0); }, 600);
         }
     }, [sb, ticker, impliedPrice, currentPrice, method, methodLabel, inputs, assumptions, terminalValue, impliedEV, companyName, exchange, sector, currency, note, onSaved]);
 
@@ -1106,11 +1114,13 @@ export function ScrapbookSaveBar({ method, methodLabel, ticker, companyName, exc
                         })
                     ),
                     h('div', { style: { fontSize: 10, color: 'rgba(0,212,255,0.5)', marginTop: 3, textAlign: 'right', fontFamily: 'JetBrains Mono, monospace' } },
-                        saveProgress < 20 ? 'Reading models…'
+                        (saveProgress < 20 ? 'Reading 10-K…'
                         : saveProgress < 45 ? 'Synthesising thesis…'
                         : saveProgress < 70 ? 'Assessing risk…'
                         : saveProgress < 90 ? 'Computing conviction…'
-                        : 'Finalising…'
+                        : 'Finalising…')
+                        + (elapsedS > 0 ? '  ' + elapsedS + 's' : '')
+                        + (elapsedS >= 30 ? ' · ~60s typical' : '')
                     )
                 )
             )
