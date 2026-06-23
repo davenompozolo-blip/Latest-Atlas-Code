@@ -1931,7 +1931,9 @@ export function PortfolioHome() {
                             var type = getType(p.symbol, p);
                             var dayChg = p.daily_change_pct != null ? Number(p.daily_change_pct) : null;
                             var ret = p.unrealised_return_pct != null ? Number(p.unrealised_return_pct) : null;
-                            var wt = Number(p.weight_equity_pct || p.portfolio_weight || 0);
+                            // Weight = % of long market value (sums to 100%) — the canonical
+                            // basis used by Nexus and every other module, not % of equity.
+                            var wt = wqMv > 0 ? (Number(p.market_value) || 0) / wqMv : 0;
                             var q = p.quality_score != null ? Number(p.quality_score) : null;
                             var qCol = q == null ? 'rgba(255,255,255,0.3)' : q >= 60 ? '#10b981' : q >= 40 ? '#f59e0b' : '#ef4444';
                             // Stale price: >4 days old (covers Fri→Tue with Mon holiday).
