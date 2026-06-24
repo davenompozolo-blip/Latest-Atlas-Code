@@ -26,6 +26,11 @@ var T = {
 function nv(o, k) { var x = Number(o && o[k]); return fin(x) ? x : null; }
 function fmtD(v, d) { if (!fin(v)) return '—'; var x = Number(v); return x.toFixed(d == null ? 2 : d); }
 function fmtDol(v, d) { if (!fin(v)) return '—'; var x = Number(v); return '$' + x.toFixed(d == null ? 0 : d); }
+// Fair-value/price formatter that keeps cents on low-nominal names. Whole-dollar
+// rounding of a fair value is >5% of the figure under ~$20 (ABEV $8.41 → "$8"),
+// which makes the displayed FV disagree with the upside computed off the raw
+// value (ER-01). Show 2 decimals under $100, whole dollars above.
+function fmtFV(v) { if (!fin(v)) return '—'; var x = Number(v); return '$' + x.toFixed(Math.abs(x) < 100 ? 2 : 0); }
 function fmtPct(v, d) { if (!fin(v)) return '—'; var x = Number(v); return (x >= 0 ? '+' : '') + (x * 100).toFixed(d == null ? 1 : d) + '%'; }
 function fmtB(n) {
     if (!fin(n)) return '—';
@@ -139,7 +144,11 @@ function FootballField(p) {
     var dataMax = Math.max.apply(null, allVals);
     var span = dataMax - dataMin || 1;
     var pad = span * 0.15;
-    var axisMin = Math.floor((dataMin - pad) / 5) * 5;
+    // Fair values and prices are non-negative; never let the 15% padding push the
+    // axis floor below $0. On low-dividend names a small-but-positive DDM (e.g.
+    // NVDA ~$2 Gordon value) + padding crossed zero, drawing "$-30" ticks that
+    // implied a negative method (ER-03/ER-11). The floor is $0.
+    var axisMin = Math.max(0, Math.floor((dataMin - pad) / 5) * 5);
     var axisMax = Math.ceil((dataMax + pad) / 5) * 5;
     var axisSpan = axisMax - axisMin;
     function pos(v) { return fin(v) ? clamp((v - axisMin) / axisSpan * 100, 0, 100) : null; }
@@ -183,7 +192,7 @@ function FootballField(p) {
                      : mag < 0.30 ? (over ? 'a meaningful premium' : 'a meaningful discount')
                      : (over ? 'a steep premium to fair value' : 'a deep discount to fair value');
             return h(Note, { style: { marginTop: 14, borderTop: '1px solid ' + T.border, paddingTop: 12 } },
-                'Blended fair value ', h('b', { style: { color: T.amber } }, fmtDol(blendedFV)),
+                'Blended fair value ', h('b', { style: { color: T.amber } }, fmtFV(blendedFV)),
                 '. Current price ', h('b', { style: { color: T.green } }, fmtDol(price, 2)),
                 ' — ',
                 h('span', { style: { color: over ? T.red : T.green } },
@@ -323,8 +332,11 @@ export function VerdictStrip(p) {
     // Prob-weighted EV from Bull/Base/Bear (defaults)
     var ev_pw = p.ev_pw;
 
-    // Quality grade
-    var qualGrade = (derived && derived.piotroski_f != null)
+    // Quality grade. A real grade needs the precomputed Piotroski score; without
+    // it we fall back to a single ROE heuristic, which must NOT be presented as an
+    // authoritative forensic grade (ER-09) — the tile is labelled provisional.
+    var qualFromPiotroski = !!(derived && derived.piotroski_f != null);
+    var qualGrade = qualFromPiotroski
         ? (derived.piotroski_f >= 7 ? 'A−' : derived.piotroski_f >= 5 ? 'B' : 'C')
         : (inp.roe && inp.roe > 0.20 ? 'B+' : '—');
 
@@ -355,13 +367,13 @@ export function VerdictStrip(p) {
             padding: '14px 20px', marginBottom: 16, flexWrap: 'wrap',
         }
     },
-        vs('Composite FV', fin(compositeFV) ? fmtDol(compositeFV) : '—'),
+        vs('Composite FV', fin(compositeFV) ? fmtFV(compositeFV) : '—'),
         sep,
         vs('Up / Downside', fin(upside) ? fmtPct(upside) : '—', upsideColor),
         sep,
         vs('Prob-weighted EV', fin(ev_pw) ? fmtDol(ev_pw) : '—'),
         sep,
-        vs('Quality', qualGrade, qualGrade.startsWith('A') ? T.green : qualGrade.startsWith('B') ? T.cyan : T.amber),
+        vs(qualFromPiotroski ? 'Quality' : 'Quality · prov.', qualGrade, qualGrade.startsWith('A') ? T.green : qualGrade.startsWith('B') ? T.cyan : T.amber),
         sep,
         vs('Forensic flag', forensicClean == null ? '—' : forensicClean ? 'Clean' : 'Flag', forensicClean == null ? null : forensicClean ? T.green : T.red),
         h('div', {
@@ -570,6 +582,13 @@ export function ThesisTab(p) {
     var rrRatio = (fin(bullFV) && fin(bearFV) && fin(price))
         ? Math.abs(bullFV - price) / Math.abs(price - bearFV) : null;
 
+    // ER-02: the Bull/Base/Bear levers (Revenue CAGR / Terminal margin / Exit
+    // multiple) drive a DCF what-if and are meaningless without an underlying
+    // income statement. ETFs and funds (no revenue/EBITDA/shares — the exact
+    // inputs bbbFV needs) can't move them, so hide the interactive sliders
+    // instead of presenting live equity controls that produce nothing.
+    var scenarioOk = !!(inp.revenue && inp.ebitda && inp.shares);
+
     // ── Render ─────────────────────────────────────────────────────────────
     return h('div', null,
         // Football field + R/R
@@ -599,7 +618,8 @@ export function ThesisTab(p) {
         ),
 
         // Bull / Base / Bear — interactive
-        h(Card, { title: 'Bull / Base / Bear — probability-weighted', badge: 'SCENARIO', meta: 'what-if · does not set the call · EV ' + (fin(ev_pw) ? fmtDol(ev_pw) : '—'), style: { marginBottom: 14 } },
+        h(Card, { title: 'Bull / Base / Bear — probability-weighted', badge: 'SCENARIO', meta: scenarioOk ? ('what-if · does not set the call · EV ' + (fin(ev_pw) ? fmtFV(ev_pw) : '—')) : 'not applicable — no company fundamentals', style: { marginBottom: 14 } },
+            !scenarioOk ? h(Note, null, 'Scenario analysis needs revenue, EBITDA and a share count to drive a DCF what-if. ETFs and funds without an underlying income statement don’t support these levers, so the sliders are hidden.') :
             h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12 } },
                 [
                     { key: 'bull', label: 'Bull', color: T.green, topColor: T.green, s: bbb.bull },
@@ -619,7 +639,7 @@ export function ThesisTab(p) {
                     },
                         h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 } },
                             h('div', { style: { fontFamily: T.display, fontWeight: 700, fontSize: 14, color: sc.color } }, sc.label),
-                            h('div', { style: { fontFamily: T.mono, fontSize: 20, fontWeight: 600, color: sc.color } }, fin(fv) ? fmtDol(fv) : '—')
+                            h('div', { style: { fontFamily: T.mono, fontSize: 20, fontWeight: 600, color: sc.color } }, fin(fv) ? fmtFV(fv) : '—')
                         ),
                         h('div', { style: { fontFamily: T.mono, fontSize: 10.5, color: upPct == null ? T.muted2 : upPct >= 0 ? T.green : T.red, marginBottom: 12, minHeight: 14 } },
                             upPct == null ? '' : (upPct >= 0 ? '+' : '') + (upPct * 100).toFixed(1) + '% vs price'),
@@ -632,7 +652,7 @@ export function ThesisTab(p) {
                     );
                 })
             ),
-            (function() {
+            scenarioOk && (function() {
                 var ptot = bbb.bull.prob + bbb.base.prob + bbb.bear.prob;
                 var ok = ptot === 100;
                 return h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, paddingTop: 12, borderTop: '1px solid ' + T.border } },
@@ -841,13 +861,22 @@ export function QualityTab(p) {
     var gmRising   = pd ? pd.gmRising   : null;
     var atRising   = pd ? pd.atRising   : null;
 
+    // How many of the 9 criteria are actually determinable. Without the
+    // precomputed multi-year table only the single-period checks (net income,
+    // operating CF, accruals) resolve; the rest are null. Counting those nulls
+    // as fails produced a misleading "2 / 9 WEAK" when 7 inputs were simply
+    // unknown, not failing (ER-09). When partial, score against the known set
+    // and label it PARTIAL rather than a definitive weak grade.
+    var pfInputs = [niPos, cfoPos, cfoGtNi, roaRising, levFalling, crRising, noNewShares, gmRising, atRising];
+    var pfFromTable = derived && derived.piotroski_f != null;
+    var pfKnown = pfFromTable ? 9 : pfInputs.filter(function(v) { return v === true || v === false; }).length;
+    var pfPartial = !pfFromTable && pfKnown < 9;
     if (pf_score == null) {
-        pf_score = [niPos, cfoPos, cfoGtNi, roaRising, levFalling, crRising, noNewShares, gmRising, atRising]
-            .filter(function(v) { return v === true; }).length;
+        pf_score = pfInputs.filter(function(v) { return v === true; }).length;
     }
 
-    var pfColor = pf_score >= 7 ? T.green : pf_score >= 5 ? T.cyan : T.amber;
-    var pfTag   = pf_score >= 7 ? 'STRONG' : pf_score >= 5 ? 'GOOD' : 'WEAK';
+    var pfColor = pfPartial ? T.muted : pf_score >= 7 ? T.green : pf_score >= 5 ? T.cyan : T.amber;
+    var pfTag   = pfPartial ? 'PARTIAL' : pf_score >= 7 ? 'STRONG' : pf_score >= 5 ? 'GOOD' : 'WEAK';
 
     // Altman Z'' (service/non-manufacturing model)
     // X1=WC/TA, X2=RE/TA, X3=EBIT/TA, X4=BV_equity/TL
@@ -902,8 +931,8 @@ export function QualityTab(p) {
             h(Card, { title: 'Piotroski F-Score', badge: 'REWORKED' },
                 h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 14 } },
                     h('div', { style: { fontFamily: T.mono, fontWeight: 600, fontSize: 40, color: pfColor } }, pf_score),
-                    h('div', { style: { color: T.muted } }, '/ 9'),
-                    h(Pill, { text: pfTag, color: pfColor, dim: pfColor === T.green ? T.greenDim : pfColor === T.cyan ? T.cyanDim : T.amberDim, style: { marginLeft: 'auto' } })
+                    h('div', { style: { color: T.muted } }, '/ ' + (pfPartial ? pfKnown : 9)),
+                    h(Pill, { text: pfTag, color: pfColor, dim: pfColor === T.green ? T.greenDim : pfColor === T.cyan ? T.cyanDim : pfColor === T.muted ? T.border : T.amberDim, style: { marginLeft: 'auto' } })
                 ),
                 [
                     ['Positive net income',        niPos,       null],
@@ -918,7 +947,7 @@ export function QualityTab(p) {
                 ].map(function(r) {
                     return h(CkRow, { key: r[0], label: r[0], pass: r[1], na: r[2] });
                 }),
-                derived == null && h(Note, { style: { marginTop: 8, fontSize: 10 } }, '※ Multi-year ratios pending precomputation. Run sync_fundamentals to populate.')
+                pfPartial && h(Note, { style: { marginTop: 8, fontSize: 10 } }, '※ Scored on ' + pfKnown + ' of 9 criteria — the multi-year ratios (ROA, leverage, margin, turnover trends) need precomputation. Not a definitive weak score; run sync_fundamentals to complete it.')
             ),
 
             // Altman Z
@@ -949,7 +978,9 @@ export function QualityTab(p) {
                 h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 6 } },
                     h('div', { style: { fontFamily: T.mono, fontWeight: 600, fontSize: 40, color: bm != null && !bmFlag ? T.green : bm != null ? T.red : T.muted } },
                         bm != null ? bm.toFixed(2) : '—'),
-                    bm != null && h(Pill, { text: bmFlag ? 'FLAG' : 'NO FLAG', color: bmFlag ? T.red : T.green, dim: bmFlag ? T.redDim : T.greenDim })
+                    bm != null
+                        ? h(Pill, { text: bmFlag ? 'FLAG' : 'NO FLAG', color: bmFlag ? T.red : T.green, dim: bmFlag ? T.redDim : T.greenDim })
+                        : h(Pill, { text: 'N/A', color: T.muted, dim: T.border })
                 ),
                 h(Note, { style: { marginBottom: 14 } }, bm != null
                     ? (bmFlag ? 'Above −1.78 threshold — elevated manipulation probability.' : 'Below −1.78 threshold — low probability of earnings manipulation.')
