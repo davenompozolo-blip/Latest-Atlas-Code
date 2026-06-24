@@ -114,7 +114,11 @@ async function alpacaBars(symbol) {
     var secret = process.env.ALPACA_API_SECRET;
     if (!key || !secret) return null;
     var end = new Date();
-    var start = new Date(end.getTime() - 730 * 24 * 60 * 60 * 1000);
+    // ~5 years of daily history so 3Y annualised return (needs >756 bars) and
+    // the rolling 1Y Sharpe chart (needs >252 bars) can be computed. The prior
+    // 730-day (2y) window capped every fund at ~504 bars, so ret3y was always
+    // null and rolling analysis never had enough history — even for SPY (FD-02).
+    var start = new Date(end.getTime() - 1825 * 24 * 60 * 60 * 1000);
     var url = ALPACA_BASE + '/stocks/' + encodeURIComponent(symbol) + '/bars'
         + '?timeframe=1Day&start=' + start.toISOString().slice(0, 10)
         + '&end=' + end.toISOString().slice(0, 10)
@@ -184,7 +188,7 @@ function computeMetrics(candles) {
         current: current, high52: Math.max.apply(null, w52), low52: Math.min.apply(null, w52),
         ret1m: ret1m, ret3m: ret3m, ret6m: ret6m, ret1y: ret1y, ret3y: ret3y, retYtd: retYtd,
         annReturn: annReturn, annVol: annVol, sharpe: sharpe, sortino: sortino,
-        maxDD: maxDD, calmar: calmar, ddSeries: ddSeries.slice(-252),
+        maxDD: maxDD, calmar: calmar, ddSeries: ddSeries.slice(-1300),
     };
 }
 
@@ -194,7 +198,10 @@ function buildSeries(candles) {
     for (var i = 0; i < candles.c.length; i++) {
         series.push({ date: new Date(candles.t[i] * 1000).toISOString().slice(0, 10), close: candles.c[i] });
     }
-    return series.slice(-252);
+    // Return up to ~5 years so the client can compute the rolling 1Y Sharpe and
+    // a multi-year price/heatmap. Previously capped at 252 (1y), which forced
+    // "Insufficient data for rolling analysis" on every fund (FD-02).
+    return series.slice(-1300);
 }
 
 // -- Fetch & cache for a single symbol ----------------------------------------

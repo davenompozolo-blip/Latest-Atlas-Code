@@ -52,10 +52,14 @@ function extractFund(symbol, data) {
         category: meta.category || null,
         expense: meta.expense,
         price: metrics.current || meta.price,
-        ret1M: metrics.ret1M,
-        ret3M: metrics.ret3M,
-        ret6M: metrics.ret6M,
-        ret1Y: metrics.ret1Y,
+        // API (computeMetrics) emits lowercase ret1m/ret3m/ret6m/ret1y; reading
+        // ret1M/ret3M/ret6M/ret1Y returned undefined, so every period-return row
+        // and the Returns Comparison bar chart showed "—" (FD-01). The risk
+        // metrics below were already correctly cased, which is why they worked.
+        ret1M: metrics.ret1m,
+        ret3M: metrics.ret3m,
+        ret6M: metrics.ret6m,
+        ret1Y: metrics.ret1y,
         annReturn: metrics.annReturn,
         annVol: metrics.annVol,
         sharpe: metrics.sharpe,
