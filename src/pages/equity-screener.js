@@ -12,6 +12,18 @@ import {
     h, fmtN, retColor, retStr, selStyle, SortableHeader, PlainHeader,
     CatBadge, cmp, HoverRow,
 } from './screener-kit.js';
+import { canonicalSectorLabel } from '../lib/valuationEngine.js';
+
+// Normalise vendor sector strings to canonical GICS buckets so the Sector
+// column and the sector filter agree across the universe — the market feed
+// returned sub-industries like "Media" for Alphabet (ER-06).
+function normalizeSectors(rows) {
+    return (rows || []).map(function(s) {
+        if (!s || !s.sector) return s;
+        var canon = canonicalSectorLabel(s.sector, s.industry);
+        return canon && canon !== s.sector ? Object.assign({}, s, { sector: canon }) : s;
+    });
+}
 
 const { useState, useEffect, useMemo, useRef } = React;
 
@@ -103,7 +115,7 @@ export function EquityScreener({ onPick }) {
             sb.from('vw_screener').select('*').then(function(res) {
                 setLoading(false);
                 if (res.error) { setError(res.error.message); return; }
-                setData(res.data || []);
+                setData(normalizeSectors(res.data || []));
             });
         } else {
             fetch('/api/screener-market')
@@ -111,7 +123,7 @@ export function EquityScreener({ onPick }) {
                 .then(function(json) {
                     setLoading(false);
                     if (json.error) { setError(json.error); return; }
-                    setData(json.stocks || []);
+                    setData(normalizeSectors(json.stocks || []));
                 })
                 .catch(function(err) { setLoading(false); setError(err.message); });
         }
@@ -140,7 +152,7 @@ export function EquityScreener({ onPick }) {
                                 if (s.symbol !== sym) return s;
                                 return Object.assign({}, s, {
                                     name:          ov.Name !== sym ? ov.Name : s.name,
-                                    sector:        ov.Sector || s.sector,
+                                    sector:        canonicalSectorLabel(ov.Sector, ov.Industry) || s.sector,
                                     pe_ratio:      parseFloat(ov.PERatio) || s.pe_ratio,
                                     ev_ebitda:     parseFloat(ov.EVToEBITDA) || s.ev_ebitda,
                                     div_yield_pct: ov.DividendYield ? parseFloat(ov.DividendYield) * 100 : s.div_yield_pct,

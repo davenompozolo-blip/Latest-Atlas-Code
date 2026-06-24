@@ -7,7 +7,7 @@ import {
     CapitalTab, FactorTab, TechnicalsAndPeersTab, parseInputs,
 } from './equity-research-panels.js';
 import { EquityScreener } from './equity-screener.js';
-import { runValuation } from '../lib/valuationEngine.js';
+import { runValuation, canonicalSectorLabel } from '../lib/valuationEngine.js';
 
 const { useState, useEffect, useCallback } = React;
 
@@ -101,7 +101,10 @@ function parseOverview(o) {
 function CompanyHeader({ rawOverview, current, ret1D }) {
     if (!rawOverview) return null;
     const exchange = rawOverview.Exchange || '';
-    const sector   = rawOverview.Sector || '';
+    // Canonical GICS sector — the vendor sometimes returns a sub-industry here
+    // ("Electrical Equipment" for GE Vernova); show the real sector and keep the
+    // sub-industry as the detail that follows it (ER-08).
+    const sector   = canonicalSectorLabel(rawOverview.Sector, rawOverview.Industry) || '';
     const industry = rawOverview.Industry || '';
     const name     = rawOverview.Name || rawOverview.Symbol || '';
     const tickerLine = [exchange, sector, industry].filter(Boolean).join(' · ');
