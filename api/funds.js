@@ -43,6 +43,18 @@ var ETF_META = {
     EMB:  { name: 'iShares JP Morgan EM Bond',    category: 'Emerging Markets Bond',     expense: 0.0039 },
 };
 
+// Primary listing exchange for the curated ETFs. Finnhub /stock/profile2 returns
+// no profile for these on our tier, so the Exchange field showed "—" for every
+// fund (FD-03). Used as a fallback when the vendor profile is absent.
+var ETF_EXCH = {
+    SPY:'NYSE Arca', QQQ:'Nasdaq', IWM:'NYSE Arca', VTI:'NYSE Arca', VOO:'NYSE Arca',
+    EFA:'NYSE Arca', EEM:'NYSE Arca', TLT:'Nasdaq', AGG:'NYSE Arca', HYG:'NYSE Arca',
+    LQD:'NYSE Arca', GLD:'NYSE Arca', SLV:'NYSE Arca', VNQ:'NYSE Arca', XLK:'NYSE Arca',
+    XLF:'NYSE Arca', XLV:'NYSE Arca', XLE:'NYSE Arca', ARKK:'Cboe BZX', SCHD:'NYSE Arca',
+    VIG:'NYSE Arca', DIA:'NYSE Arca', BND:'Nasdaq', USO:'NYSE Arca', UUP:'NYSE Arca',
+    TQQQ:'Nasdaq', VYM:'NYSE Arca', IEF:'Nasdaq', TIP:'NYSE Arca', EMB:'Nasdaq',
+};
+
 // -- Helpers ------------------------------------------------------------------
 
 async function fetchWithTimeout(url, opts, ms) {
@@ -224,7 +236,14 @@ async function fetchFundData(symbol) {
         throw new Error('Failed to fetch data for ' + symbol + ': ' + reasons.join('; '));
     }
     var quoteObj = (quote && quote.c != null) ? { price: quote.c, change: quote.d != null ? quote.d : null, changePct: quote.dp != null ? quote.dp : null } : null;
-    var profileObj = (profile && (profile.name || profile.ticker)) ? { name: profile.name || symbol, exchange: profile.exchange || '', logo: profile.logo || null, industry: profile.finnhubIndustry || '' } : null;
+    var em = ETF_META[symbol] || null;
+    var exch = (profile && profile.exchange) || ETF_EXCH[symbol] || '';
+    // Use the vendor profile when present; otherwise synthesise a minimal one from
+    // the curated ETF metadata so the Profile tab shows a name + exchange instead
+    // of "—" (FD-03) — Finnhub returns no profile for these ETFs on our tier.
+    var profileObj = (profile && (profile.name || profile.ticker))
+        ? { name: profile.name || symbol, exchange: exch, logo: profile.logo || null, industry: profile.finnhubIndustry || '' }
+        : (em ? { name: em.name, exchange: exch, logo: null, industry: '' } : null);
     var metrics = candles ? computeMetrics(candles) : null;
     var series = candles ? buildSeries(candles) : [];
     if (metrics && quoteObj && quoteObj.price) metrics.current = quoteObj.price;
