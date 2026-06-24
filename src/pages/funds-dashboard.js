@@ -81,6 +81,17 @@ function MetricTile(p) {
         p.sub?h('div',{className:'sub'},p.sub):null);
 }
 
+// Placeholder for dossier layers not yet built out (e.g. Composition / PR3).
+// Renders a graceful "in development" card instead of crashing the dossier —
+// the Composition tab referenced StubLayer without it being defined, which
+// threw ReferenceError and blanked the entire Funds page on click.
+function StubLayer(p) {
+    return h('div',{style:{border:'1px solid '+T.border,borderRadius:12,background:T.card,padding:'40px 28px',textAlign:'center'}},
+        h('div',{style:{fontFamily:T.mono,fontSize:10,letterSpacing:'.16em',color:T.cyan,textTransform:'uppercase',marginBottom:10}},(p.pr?p.pr+' · ':'')+'in development'),
+        h('div',{style:{fontFamily:T.mono,fontSize:16,fontWeight:600,color:'rgba(255,255,255,.82)',marginBottom:8}},p.label||'Coming soon'),
+        p.desc?h('div',{style:{fontSize:12,color:T.muted,maxWidth:460,margin:'0 auto',lineHeight:1.5}},p.desc):null);
+}
+
 // ── ODD components (Layer 6, tracked managers) ────────────────
 
 function ScoreRing(p) {
