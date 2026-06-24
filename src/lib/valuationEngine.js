@@ -305,6 +305,37 @@ export function sectorToKey(sector, industry) {
 
 export function avSectorToKey(sector) { return sectorToKey(sector, null); }
 
+// Canonical GICS sector from a vendor sector/industry string — a JS mirror of
+// the DB's classify_canonical_sector() (migration 20260622000000). Vendors
+// sometimes return a sub-industry where a sector belongs ("Media" for Alphabet,
+// "Electrical Equipment" for GE Vernova, "Beverages" for AmBev); this maps those
+// to a real GICS bucket. Returns null when it can't classify. Order matters
+// (staples before discretionary, etc.) so the buckets don't bleed.
+export function classifyCanonicalSector(raw, industry) {
+    var t = ((raw || '') + ' ' + (industry || '')).toLowerCase();
+    if (!t.trim()) return null;
+    if (/semiconduct|software|information technology|infotech|electronic technology|technology services|hardware|internet software/.test(t)) return 'Technology';
+    if (/bank|insurance|financ|capital market|asset manage|brokerage|exchange/.test(t)) return 'Financials';
+    if (/pharmaceutic|biotech|health|medical|life science|\bdrug\b|hospital|therapeut/.test(t)) return 'Healthcare';
+    if (/beverage|tobacco|household|consumer product|staple|personal product|grocery|packaged food|\bfood\b/.test(t)) return 'Consumer Staples';
+    if (/media|telecom|communicat|entertain|publish|broadcast|wireless|cable/.test(t)) return 'Communications';
+    if (/retail|hotel|restaurant|leisure|apparel|automobile|auto manufactur|consumer discretion|textile|luxury|e-commerce|travel|gaming|footwear/.test(t)) return 'Consumer Discretionary';
+    if (/machinery|electrical equip|aerospace|defen|industrial|construction|transport|airline|railroad|building|engineering|logistics|capital goods/.test(t)) return 'Industrials';
+    if (/oil|\bgas\b|energy|pipeline|petroleum|coal|drilling|refin/.test(t)) return 'Energy';
+    if (/metal|mining|chemical|material|gold|steel|copper|forest|paper|cement|miner/.test(t)) return 'Materials';
+    if (/utilit|electric util|power generation|water util/.test(t)) return 'Utilities';
+    if (/real estate|reit/.test(t)) return 'Real Estate';
+    if (/bond|treasury|fixed income|municipal|\bcredit\b|debt/.test(t)) return 'Fixed Income';
+    return null;
+}
+
+// Display-safe canonical sector label: classify when we can, otherwise pass the
+// raw value through unchanged (so already-clean sectors and buckets the
+// classifier doesn't know — e.g. "International" — are never blanked).
+export function canonicalSectorLabel(raw, industry) {
+    return classifyCanonicalSector(raw, industry) || (raw || null);
+}
+
 // ── Hydration: payload → engine state ─────────────────────────
 // `opts.riskFreeRate` threads a live rate into WACC (weekly sync). When absent,
 // the client what-if path uses DEFAULT_RISK_FREE, so numbers are unchanged.
