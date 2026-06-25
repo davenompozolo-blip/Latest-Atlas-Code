@@ -15,6 +15,21 @@ export const MOCK_POSITIONS = [
 ];
 export const MOCK_COMMAND = { portfolio_nav: 119500, total_invested: 98000, total_return_pct: 0.2194, sharpe_ratio: 1.35, sortino_ratio: 1.82, drawdown_pct: -8.4, dollar_var_95: 2850, atlas_health_score: 72, portfolio_health_status: 'Moderate', position_count: 55, days_of_history: 420, computed_at: new Date().toISOString() };
 
+// The live vw_command_centre exposes different column names than the legacy
+// MOCK_COMMAND shape the UI was built against, so cards reading the old names
+// (Sortino, VaR$, Days, Total Return) rendered "—" against real data (PF-07).
+// Alias the canonical columns onto the names every consumer already reads, so
+// the same figure flows whether the source is the live view or the mock.
+export function normalizeCommand(c) {
+    if (!c) return c;
+    var out = Object.assign({}, c);
+    if (out.sortino_ratio   == null && out.sortino_annualised   != null) out.sortino_ratio   = out.sortino_annualised;
+    if (out.days_of_history == null && out.trading_days         != null) out.days_of_history = out.trading_days;
+    if (out.dollar_var_95   == null && out.var_95_daily_dollar  != null) out.dollar_var_95   = out.var_95_daily_dollar;
+    if (out.total_return_pct == null && out.unrealised_return_pct != null) out.total_return_pct = out.unrealised_return_pct;
+    return out;
+}
+
 // --- PCM Mock Data ---
 export const MOCK_PCM_IPS = {
     risk_tolerance: 7, risk_label: 'Aggressive', return_target: 12.5,

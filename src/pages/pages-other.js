@@ -8,7 +8,7 @@ import React from 'react';
 // CommandCentre.
 // ============================================================
 
-import { sb, loadView, MOCK_COMMAND } from './config.js';
+import { sb, loadView, MOCK_COMMAND, normalizeCommand } from './config.js';
 import { fmt, fmtPct, fmtCurrency, cls, badgeCls, healthCls, useChart, returnStatus, sharpeStatus, ddStatus } from './utils.js';
 import { Loading, EmptyState, HeroCard } from './components.js';
 
@@ -682,7 +682,7 @@ function _RiskAnalysisOld() {
     if (loading) return React.createElement(Loading, null);
     if (!risk || !risk.length) return React.createElement(EmptyState, null);
 
-    const c = command || MOCK_COMMAND;
+    const c = normalizeCommand(command || MOCK_COMMAND);
     const highRisk = risk.filter(r => r.risk_tier === 'High Risk').length;
     const modRisk  = risk.filter(r => r.risk_tier === 'Moderate Risk').length;
     const lowRisk  = risk.filter(r => r.risk_tier === 'Low Risk').length;
@@ -970,7 +970,7 @@ export function CommandCentre() {
     }, []);
 
     if (loading) return React.createElement(Loading, null);
-    const c = command || MOCK_COMMAND;
+    const c = normalizeCommand(command || MOCK_COMMAND);
 
     // Compute equity + cash balance from loaded data
     var _cNavSorted = navData ? navData.slice().sort(function(a,b){ return new Date(a.price_date) - new Date(b.price_date); }) : [];

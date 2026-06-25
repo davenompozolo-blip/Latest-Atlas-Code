@@ -230,7 +230,12 @@ export function OverviewPanel(p) {
     // Canonical overrides from cmdData
     var cmd = p.cmdData || {};
     var sharpe = cmd.sharpe_ratio != null ? cmd.sharpe_ratio : m.sharpe;
-    var sortino = cmd.sortino_ratio != null ? cmd.sortino_ratio : m.sortino;
+    // Read the canonical Sortino (vw_command_centre.sortino_annualised) so it uses
+    // the SAME excess-return basis as Sharpe above. Reading the wrong field name
+    // (sortino_ratio) silently fell back to the engine's geometric value, which
+    // could carry the opposite sign to Sharpe (PF-03).
+    var sortino = cmd.sortino_annualised != null ? cmd.sortino_annualised
+        : (cmd.sortino_ratio != null ? cmd.sortino_ratio : m.sortino);
     var maxDD = cmd.drawdown_pct != null ? cmd.drawdown_pct : m.maxDD;
 
     // A. Hero Metrics
@@ -279,7 +284,7 @@ export function OverviewPanel(p) {
         }),
         h(Tile, {
             icon: '◉',
-            label: 'Win Rate', value: fmtPct(m.winRate),
+            label: 'Day Win Rate', value: fmtPct(m.winRate),
             color: m.winRate > 0.55 ? '#10b981' : 'rgba(255,255,255,0.85)',
             accent: m.winRate > 0.55 ? 'green' : 'amber',
             badge: m.winRate > 0.6 ? 'Strong' : m.winRate > 0.5 ? 'Positive' : 'Fair'
@@ -299,7 +304,7 @@ export function OverviewPanel(p) {
         insights.push({ icon: '▽', text: 'Below inception level — down ' + Math.abs(m.totalReturn * 100).toFixed(2) + '%. Review positioning.' });
     }
     if (sharpe != null) {
-        if (sharpe > 2) insights.push({ icon: '✦', text: 'Exceptional risk-adjusted returns — Sharpe ' + sharpe.toFixed(2) + ', Sortino ' + (m.sortino || 0).toFixed(2) + '. Win rate ' + (m.winRate * 100).toFixed(0) + '% of trading days.' });
+        if (sharpe > 2) insights.push({ icon: '✦', text: 'Exceptional risk-adjusted returns — Sharpe ' + sharpe.toFixed(2) + ', Sortino ' + (sortino || 0).toFixed(2) + '. Win rate ' + (m.winRate * 100).toFixed(0) + '% of trading days.' });
         else if (sharpe > 1) insights.push({ icon: '≋', text: 'Good risk-adjusted profile — Sharpe ' + sharpe.toFixed(2) + ', vol ' + (m.annVol * 100).toFixed(1) + '% annualised. Best day: ' + (m.bestDay.value * 100).toFixed(2) + '% on ' + m.bestDay.date + '.' });
         else insights.push({ icon: '⚡', text: 'Below-target Sharpe of ' + sharpe.toFixed(2) + ' — vol at ' + (m.annVol * 100).toFixed(1) + '% annualised. Consider risk reduction.' });
     }

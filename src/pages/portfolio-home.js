@@ -708,7 +708,7 @@ function PerformanceSnapshot(p) {
         // Row 1: KPI strip
         h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 } },
             h(SnapCard, { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 } },
-                h(GaugeDial, { value: winRate, label: 'win rate' }),
+                h(GaugeDial, { value: winRate, label: 'position hit rate' }),
                 h('div', { style: { fontSize: 10, color: C.muted, textAlign: 'center', fontFamily: 'Figtree' } },
                     winners.length + ' of ' + withRet.length + ' positions profitable')
             ),
@@ -1593,7 +1593,7 @@ export function PortfolioHome() {
                 React.createElement(HeroCard, { icon: '▲', label: 'TODAY  UP / DOWN', accent: todayAccent,
                     value: todayUp + ' / ' + todayDn,
                     color: todayUp > todayDn ? 'var(--green)' : todayDn > todayUp ? 'var(--red)' : 'var(--amber)' }),
-                React.createElement(HeroCard, { icon: '✦', label: 'WIN RATE', accent: winAccent,
+                React.createElement(HeroCard, { icon: '✦', label: 'POSITION HIT RATE', accent: winAccent,
                     value: winRatePct + '%',
                     color: winRatePct >= 60 ? 'var(--green)' : winRatePct >= 45 ? 'var(--amber)' : 'var(--red)',
                     sub: winners.length + ' of ' + withRet.length + ' profitable' }),

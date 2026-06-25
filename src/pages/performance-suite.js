@@ -270,7 +270,7 @@ export function PerformanceSuite() {
         ),
         h('div', { style: div }),
         h('div', { style: hb },
-            h('div', { style: hl }, 'Win Rate'),
+            h('div', { style: hl }, 'Day Win Rate'),
             h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 18, fontWeight: 700, color: winRate != null && winRate > 0.55 ? '#10b981' : 'rgba(255,255,255,0.75)' } },
                 winRate != null ? (winRate * 100).toFixed(1) + '%' : '—'),
             h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'JetBrains Mono' } }, 'Positive days')
