@@ -133,7 +133,7 @@ export function EquityScreener({ onPick }) {
     const cancelRef = useRef(false);
     useEffect(function() {
         if (data.length === 0) return;
-        const needs = data.filter(function(s) { return !s.name || s.name === s.symbol || s.pe_ratio == null; });
+        const needs = data.filter(function(s) { return !s.name || s.name === s.symbol || s.pe_ratio == null || s.current_price == null; });
         if (!needs.length) return;
         cancelRef.current = false;
         var idx = 0;
@@ -141,20 +141,38 @@ export function EquityScreener({ onPick }) {
         function next() {
             if (cancelRef.current || idx >= needs.length) { setEnrichProg(null); return; }
             var sym = needs[idx].symbol; idx++;
-            fetch('/api/equity?symbol=' + encodeURIComponent(sym) + '&endpoint=overview')
+            // 'combined' (not 'overview') so one cached call carries everything the
+            // row needs: the latest close for Price and the snapshot's EV/EBITDA.
+            // The overview endpoint has no price field and no EVToEBITDA, which is
+            // why both columns stayed "—" no matter how far enrichment ran (ER-05).
+            fetch('/api/equity?symbol=' + encodeURIComponent(sym) + '&endpoint=combined')
                 .then(function(r) { return r.ok ? r.json() : null; })
                 .then(function(j) {
                     if (cancelRef.current) return;
                     var ov = j && (j.overview || j);
                     if (ov && ov.Name) {
+                        // Latest close from the daily series → Price.
+                        var ts = j && j.daily && j.daily['Time Series (Daily)'];
+                        var px = null;
+                        if (ts) {
+                            var dts = Object.keys(ts).sort();
+                            var last = dts[dts.length - 1];
+                            if (last && ts[last]) px = parseFloat(ts[last]['4. close']);
+                        }
+                        // EV/EBITDA from the financials snapshot (Yahoo/Finnhub),
+                        // with the AV overview field as a fallback.
+                        var snap = (j && j.financials && j.financials.snapshot) || {};
+                        var evx = parseFloat(snap.evToEbitda);
+                        if (!isFinite(evx)) evx = parseFloat(ov.EVToEBITDA);
                         setData(function(prev) {
                             return prev.map(function(s) {
                                 if (s.symbol !== sym) return s;
                                 return Object.assign({}, s, {
                                     name:          ov.Name !== sym ? ov.Name : s.name,
                                     sector:        canonicalSectorLabel(ov.Sector, ov.Industry) || s.sector,
+                                    current_price: (px != null && isFinite(px) && px > 0) ? px : s.current_price,
                                     pe_ratio:      parseFloat(ov.PERatio) || s.pe_ratio,
-                                    ev_ebitda:     parseFloat(ov.EVToEBITDA) || s.ev_ebitda,
+                                    ev_ebitda:     isFinite(evx) ? evx : s.ev_ebitda,
                                     div_yield_pct: ov.DividendYield ? parseFloat(ov.DividendYield) * 100 : s.div_yield_pct,
                                 });
                             });
