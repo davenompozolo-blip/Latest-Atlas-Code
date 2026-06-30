@@ -2,6 +2,7 @@ import React from 'react';
 import { Chart, registerables } from 'chart.js';
 import { perSymbolFactors } from './pcm-optimizer.js';
 import { Loading } from './components.js';
+import { loadView } from './config.js';
 
 Chart.register(...registerables);
 
@@ -37,11 +38,29 @@ var CLUSTERS = [
 ];
 
 // ── Regime windows ────────────────────────────────────────────────────────────
-var REGIME_WINDOWS = [
-    { name: 'Goldilocks',   start: '2026-01-02', end: '2026-02-04', color: '#10b981' },
-    { name: 'Tariff Shock', start: '2026-02-05', end: '2026-03-08', color: '#ef4444' },
-    { name: 'Reflation',    start: '2026-03-09', end: '2026-05-21', color: '#f59e0b' },
+// Macro regime windows now live in the `market_regime_windows` table and are
+// loaded at runtime (see RegimeSlicerPanel). This constant is only a fallback
+// for when the DB is unreachable / returns nothing. `end: null` = ongoing.
+// It mirrors the seeded rows, including the Stagflation + Deflation regimes that
+// SECTOR_BEST_REGIME references — previously these had no window at all (PF-08).
+var DEFAULT_REGIME_WINDOWS = [
+    { name: 'Goldilocks',   start: '2026-01-02', end: '2026-02-04', color: '#10b981', sort_order: 1 },
+    { name: 'Tariff Shock', start: '2026-02-05', end: '2026-03-08', color: '#ef4444', sort_order: 2 },
+    { name: 'Reflation',    start: '2026-03-09', end: '2026-05-21', color: '#f59e0b', sort_order: 3 },
+    { name: 'Stagflation',  start: '2026-05-22', end: '2026-06-12', color: '#a855f7', sort_order: 4 },
+    { name: 'Deflation',    start: '2026-06-13', end: null,         color: '#3b82f6', sort_order: 5 },
 ];
+
+// Normalize a `market_regime_windows` row into the shape the panel expects.
+function normalizeRegimeWindow(row) {
+    return {
+        name:       row.name,
+        start:      row.start_date != null ? row.start_date : row.start,
+        end:        row.end_date   != null ? row.end_date   : (row.end != null ? row.end : null),
+        color:      row.color,
+        sort_order: row.sort_order != null ? row.sort_order : 0,
+    };
+}
 
 // ── Factor weights ────────────────────────────────────────────────────────────
 var FACTOR_WEIGHTS = { mom: 0.40, quality: 0.24, value: 0.18, lowvol: 0.08, sector: 0.10 };
@@ -470,15 +489,16 @@ function computeFactorDecomps(positions, histBySymbol, perfData) {
 // ─────────────────────────────────────────────────────────────────────────────
 // computeRegimeAttribution
 // ─────────────────────────────────────────────────────────────────────────────
-function computeRegimeAttribution(positions, histBySymbol, perfData) {
+function computeRegimeAttribution(positions, histBySymbol, perfData, regimeWindows, today) {
     if (!positions || !positions.length) return [];
+
+    var windows = regimeWindows && regimeWindows.length ? regimeWindows : DEFAULT_REGIME_WINDOWS;
+    var asOf    = today || new Date().toISOString().slice(0, 10);
 
     var perfBySymbol = {};
     if (perfData && perfData.length) {
         perfData.forEach(function(row) { perfBySymbol[row.symbol] = row; });
     }
-
-    var today = '2026-05-21';
 
     var results = [];
 
@@ -514,9 +534,11 @@ function computeRegimeAttribution(positions, histBySymbol, perfData) {
 
         var windowReturns = {};
 
-        REGIME_WINDOWS.forEach(function(win) {
+        windows.forEach(function(win) {
+            // Open-ended (current) regimes have no end date — cap them at `asOf`.
+            var winEnd       = win.end != null ? win.end : asOf;
             var overlapStart = entryDate && entryDate > win.start ? entryDate : win.start;
-            var overlapEnd   = today < win.end ? today : win.end;
+            var overlapEnd   = asOf < winEnd ? asOf : winEnd;
 
             if (overlapStart > overlapEnd) {
                 windowReturns[win.name] = null;
@@ -1258,10 +1280,41 @@ export function RegimeSlicerPanel(props) {
     var _regimeFilter= useState('all'); // 'all' | window name
     var regimeFilter = _regimeFilter[0],setRegimeFilter = _regimeFilter[1];
 
+    // ── Regime windows (data-driven from market_regime_windows table) ──────────
+    var _windows     = useState(DEFAULT_REGIME_WINDOWS);
+    var regimeWindows= _windows[0],     setRegimeWindows= _windows[1];
+
+    useEffect(function() {
+        var cancelled = false;
+        loadView('market_regime_windows', []).then(function(rows) {
+            if (cancelled || !Array.isArray(rows) || !rows.length) return;
+            var wins = rows
+                .map(normalizeRegimeWindow)
+                .sort(function(a, b) { return a.sort_order - b.sort_order; });
+            setRegimeWindows(wins);
+        });
+        return function() { cancelled = true; };
+    }, []);
+
+    // `today` = latest price_history date present in the loaded history, so the
+    // open-ended (current) regime and all overlaps track real data instead of a
+    // frozen constant (PF-09). Histories are ascending, so the last row is newest.
+    var today = useMemo(function() {
+        var maxD = '';
+        Object.keys(histBySymbol).forEach(function(sym) {
+            var arr = histBySymbol[sym];
+            if (arr && arr.length) {
+                var d = arr[arr.length - 1].date;
+                if (d && d > maxD) maxD = d;
+            }
+        });
+        return maxD || new Date().toISOString().slice(0, 10);
+    }, [histBySymbol]);
+
     var regimeData = useMemo(function() {
         if (!histReady) return [];
-        return computeRegimeAttribution(positions, histBySymbol, perfData);
-    }, [positions, histBySymbol, histReady, perfData]);
+        return computeRegimeAttribution(positions, histBySymbol, perfData, regimeWindows, today);
+    }, [positions, histBySymbol, histReady, perfData, regimeWindows, today]);
 
     // All distinct sectors
     var allSectors = useMemo(function() {
@@ -1328,7 +1381,7 @@ export function RegimeSlicerPanel(props) {
 
     // ── Regime filter chips ───────────────────────────────────────────────────
     var regimeChips = h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 4 } },
-        [{ name: 'all', color: T.text2 }].concat(REGIME_WINDOWS).map(function(win) {
+        [{ name: 'all', color: T.text2 }].concat(regimeWindows).map(function(win) {
             var active = regimeFilter === win.name;
             var color  = win.color || T.text2;
             return h('button', {
@@ -1354,7 +1407,7 @@ export function RegimeSlicerPanel(props) {
     var hasFilters = searchQ || sectorF || matchFilter !== 'all' || regimeFilter !== 'all';
 
     // ── Regime window column headers ──────────────────────────────────────────
-    var regimeHeaders = REGIME_WINDOWS.map(function(win) {
+    var regimeHeaders = regimeWindows.map(function(win) {
         return h('th', {
             key: win.name,
             style: Object.assign({}, thStyle, {
@@ -1375,14 +1428,14 @@ export function RegimeSlicerPanel(props) {
 
         // Regime window date legend
         h('div', { style: { display: 'flex', gap: 20, marginBottom: 10, flexWrap: 'wrap' } },
-            REGIME_WINDOWS.map(function(win) {
+            regimeWindows.map(function(win) {
                 return h('div', {
                     key:   win.name,
                     style: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, fontFamily: T.mono, color: T.text2 }
                 },
                     h('span', { style: { width: 8, height: 8, background: win.color, borderRadius: 2, display: 'inline-block', flexShrink: 0 } }),
                     h('span', { style: { color: win.color } }, win.name),
-                    h('span', null, ' ' + win.start + ' → ' + win.end)
+                    h('span', null, ' ' + win.start + ' → ' + (win.end != null ? win.end : today + ' (ongoing)'))
                 );
             })
         ),
@@ -1425,7 +1478,7 @@ export function RegimeSlicerPanel(props) {
                         filteredData.map(function(row, idx) {
                             var retColor = row.totalReturn >= 0 ? T.green : T.red;
 
-                            var regimeCells = REGIME_WINDOWS.map(function(win) {
+                            var regimeCells = regimeWindows.map(function(win) {
                                 var v  = row.windowReturns[win.name];
                                 var bg = regimeCellBg(v);
                                 var fc = v == null ? T.text3 : v >= 0 ? T.green : T.red;
