@@ -56,7 +56,7 @@ export function computePortfolioMetrics(navSeries) {
 
     return {
         totalReturn: totalReturn, annReturn: annReturn, annVol: annVol,
-        sharpe: sharpe, sortino: sortino, maxDD: maxDD, currentDD: currentDD,
+        sharpe: sharpe, sortino: sortino, downsideDev: downsideDev, maxDD: maxDD, currentDD: currentDD,
         calmar: calmar, var95: var95, cvar95: cvar95, winRate: winRate,
         bestDay: { date: returns[bestIdx].date, value: returns[bestIdx].value },
         worstDay: { date: returns[worstIdx].date, value: returns[worstIdx].value },
@@ -114,8 +114,12 @@ export function computeReturnsBins(navSeries, binCount) {
     if (bw === 0) return [];
     var bins = [];
     for (var b = 0; b < binCount; b++) {
-        var lo = min + b * bw, ct = 0;
-        for (var j = 0; j < returns.length; j++) if (returns[j] >= lo && returns[j] < lo + bw) ct++;
+        var lo = min + b * bw, hi = lo + bw, isLast = b === binCount - 1, ct = 0;
+        // The final bin is closed on the right so the maximum observation
+        // (returns[j] === max === hi) is counted instead of being dropped.
+        for (var j = 0; j < returns.length; j++) {
+            if (returns[j] >= lo && (returns[j] < hi || (isLast && returns[j] <= hi))) ct++;
+        }
         bins.push({ mid: (lo + bw/2) * 100, count: ct });
     }
     return bins;

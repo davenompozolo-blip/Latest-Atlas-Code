@@ -79,7 +79,7 @@ export function RiskPanel(p) {
         h(Tile, { icon: '≋', label: 'Ann. Volatility', value: fmtPct(m.annVol), color: m.annVol > 0.25 ? '#ef4444' : m.annVol > 0.15 ? '#f59e0b' : '#10b981', accent: m.annVol > 0.25 ? 'red' : 'amber', badge: volStatus(m.annVol) }),
         h(Tile, { icon: '◆', label: 'Calmar Ratio', value: fmt(m.calmar, 2), color: m.calmar != null && m.calmar > 1 ? '#10b981' : 'rgba(255,255,255,0.85)', accent: 'indigo', badge: calmarStatus(m.calmar) }),
         h(Tile, { icon: '$', label: 'Dollar VaR (95%)', value: cmd.dollar_var_95 != null ? fmtCurrency(cmd.dollar_var_95) : fmtCurrency(m.var95 * (m.endNav || 0)), color: '#ef4444', accent: 'red' }),
-        h(Tile, { icon: '▼', label: 'Downside Dev.', value: fmtPct(m.annVol * 0.707), color: '#f59e0b', accent: 'amber', sub: 'Annualised' })
+        h(Tile, { icon: '▼', label: 'Downside Dev.', value: fmtPct(m.downsideDev), color: '#f59e0b', accent: 'amber', sub: 'Annualised' })
     );
 
     // B. ATLAS Health Score
