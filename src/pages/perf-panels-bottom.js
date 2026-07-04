@@ -79,7 +79,7 @@ export function RiskPanel(p) {
         h(Tile, { icon: '≋', label: 'Ann. Volatility', value: fmtPct(m.annVol), color: m.annVol > 0.25 ? '#ef4444' : m.annVol > 0.15 ? '#f59e0b' : '#10b981', accent: m.annVol > 0.25 ? 'red' : 'amber', badge: volStatus(m.annVol) }),
         h(Tile, { icon: '◆', label: 'Calmar Ratio', value: fmt(m.calmar, 2), color: m.calmar != null && m.calmar > 1 ? '#10b981' : 'rgba(255,255,255,0.85)', accent: 'indigo', badge: calmarStatus(m.calmar) }),
         h(Tile, { icon: '$', label: 'Dollar VaR (95%)', value: cmd.dollar_var_95 != null ? fmtCurrency(cmd.dollar_var_95) : fmtCurrency(m.var95 * (m.endNav || 0)), color: '#ef4444', accent: 'red' }),
-        h(Tile, { icon: '▼', label: 'Downside Dev.', value: fmtPct(m.annVol * 0.707), color: '#f59e0b', accent: 'amber', sub: 'Annualised' })
+        h(Tile, { icon: '▼', label: 'Downside Dev.', value: fmtPct(m.downsideDev), color: '#f59e0b', accent: 'amber', sub: 'Annualised' })
     );
 
     // B. ATLAS Health Score
@@ -196,14 +196,19 @@ export function RiskPanel(p) {
 // =============================================================
 
 export function PositionsPanel(p) {
+    // activeView + benchKey can be lifted to the parent (PerformanceSuite) so
+    // they persist across tab switches; fall back to local state when this
+    // panel is rendered standalone without the controlling props (PF-11).
     var _sv = React.useState('total');
-    var activeView = _sv[0], setActiveView = _sv[1];
+    var activeView = p.activeView != null ? p.activeView : _sv[0];
+    var setActiveView = p.onActiveView || _sv[1];
     var _s = React.useState('total_return_pct');
     var sortKey = _s[0], setSortKey = _s[1];
     var _d = React.useState(true);
     var desc = _d[0], setDesc = _d[1];
     var _b = React.useState('equal');
-    var benchKey = _b[0], setBenchKey = _b[1];
+    var benchKey = p.benchKey != null ? p.benchKey : _b[0];
+    var setBenchKey = p.onBenchKey || _b[1];
 
     var rawPerf = p.perfData || [];
 
@@ -352,7 +357,7 @@ export function PositionsPanel(p) {
                     h('table', { style: { width: '100%', borderCollapse: 'collapse', minWidth: 680 } },
                         h('thead', null,
                             h('tr', null,
-                                ['Sector', 'Pos', 'Port Wt', 'Bench Wt', 'Active Wt', 'Port Ret', 'Bench Ret', 'Allocation', 'Selection', 'Total'].map(function(col) {
+                                ['Sector', 'Pos', 'Port Wt', 'Bench Wt', 'Active Wt', 'Port Ret', 'Bench Ret', 'Allocation', 'Selection', 'Interaction', 'Total'].map(function(col) {
                                     return h('th', { key: col, style: { position: 'sticky', top: 0, background: '#0b0f1a', padding: '8px 8px', fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: 0.8, borderBottom: '1px solid rgba(255,255,255,0.07)', textAlign: col === 'Sector' || col === 'Pos' ? 'left' : 'right', fontFamily: 'Figtree', whiteSpace: 'nowrap' } }, col);
                                 })
                             )
@@ -372,6 +377,7 @@ export function PositionsPanel(p) {
                                     h('td', { style: { padding: '8px 8px', textAlign: 'right', fontFamily: 'JetBrains Mono', fontSize: 11, color: 'rgba(255,255,255,0.5)', borderBottom: '1px solid rgba(255,255,255,0.04)' } }, pctStr(s.benchmarkReturn, 1)),
                                     h('td', { style: { padding: '8px 8px', textAlign: 'right', fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 600, color: retC(s.allocationEffect), borderBottom: '1px solid rgba(255,255,255,0.04)' } }, pctStr(s.allocationEffect)),
                                     h('td', { style: { padding: '8px 8px', textAlign: 'right', fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 600, color: retC(s.selectionEffect), borderBottom: '1px solid rgba(255,255,255,0.04)' } }, pctStr(s.selectionEffect)),
+                                    h('td', { style: { padding: '8px 8px', textAlign: 'right', fontFamily: 'JetBrains Mono', fontSize: 11, color: retC(s.interactionEffect), borderBottom: '1px solid rgba(255,255,255,0.04)' } }, pctStr(s.interactionEffect)),
                                     h('td', { style: { padding: '8px 8px', textAlign: 'right', fontFamily: 'JetBrains Mono', fontSize: 12, fontWeight: 700, color: retC(s.totalEffect), borderBottom: '1px solid rgba(255,255,255,0.04)' } }, pctStr(s.totalEffect))
                                 );
                             }),
@@ -384,6 +390,7 @@ export function PositionsPanel(p) {
                                 h('td', { style: { padding: '8px 8px', textAlign: 'right', fontFamily: 'JetBrains Mono', fontSize: 11, color: 'rgba(255,255,255,0.5)', borderTop: '1px solid rgba(0,212,255,0.15)' } }, pctStr(brinson.benchmarkReturn, 1)),
                                 h('td', { style: { padding: '8px 8px', textAlign: 'right', fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 700, color: retC(brinson.totals.allocation), borderTop: '1px solid rgba(0,212,255,0.15)' } }, pctStr(brinson.totals.allocation)),
                                 h('td', { style: { padding: '8px 8px', textAlign: 'right', fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 700, color: retC(brinson.totals.selection), borderTop: '1px solid rgba(0,212,255,0.15)' } }, pctStr(brinson.totals.selection)),
+                                h('td', { style: { padding: '8px 8px', textAlign: 'right', fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 700, color: retC(brinson.totals.interaction), borderTop: '1px solid rgba(0,212,255,0.15)' } }, pctStr(brinson.totals.interaction)),
                                 h('td', { style: { padding: '8px 8px', textAlign: 'right', fontFamily: 'JetBrains Mono', fontSize: 12, fontWeight: 700, color: retC(brinson.totals.total), borderTop: '1px solid rgba(0,212,255,0.15)' } }, pctStr(brinson.totals.total))
                             )
                         )

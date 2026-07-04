@@ -291,10 +291,7 @@ export function OverviewPanel(p) {
         })
     );
 
-    // B. Narrative insight strip
-    var cmd = p.cmdData || {};
-    var sharpe = cmd.sharpe_ratio != null ? cmd.sharpe_ratio : m.sharpe;
-    var maxDD  = cmd.drawdown_pct  != null ? cmd.drawdown_pct  : m.maxDD;
+    // B. Narrative insight strip — cmd/sharpe/maxDD/sortino already resolved above.
     var insights = [];
     if (m.totalReturn > 0.15) {
         insights.push({ icon: '▲', text: 'Strong performance since inception — up ' + (m.totalReturn * 100).toFixed(2) + '%, annualising at ' + (m.annReturn * 100).toFixed(1) + '% p.a.' });

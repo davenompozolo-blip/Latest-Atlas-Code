@@ -48,6 +48,13 @@ export function PerformanceSuite() {
     var histBySymbol = _hist[0], setHistBySymbol = _hist[1];
     var _hr = useState(false);
     var histReady = _hr[0], setHistReady = _hr[1];
+    // Positions/Attribution selections are lifted here so they survive tab
+    // switches — panels are unmounted by the router below, so panel-local
+    // state would otherwise reset every time the tab is left (PF-11).
+    var _pv = useState('total');
+    var posView = _pv[0], setPosView = _pv[1];
+    var _pb = useState('equal');
+    var posBench = _pb[0], setPosBench = _pb[1];
 
     useEffect(function() {
         function load() {
@@ -318,7 +325,7 @@ export function PerformanceSuite() {
             panel = hasNav ? h(RiskPanel, { navSeries: navSeries, cmdData: cmdData }) : h(EmptyState, null);
             break;
         case 'positions':
-            panel = hasPerf ? h(PositionsPanel, { perfData: perfData, cmdData: cmdData, homeData: homeData || [] }) : h(EmptyState, null);
+            panel = hasPerf ? h(PositionsPanel, { perfData: perfData, cmdData: cmdData, homeData: homeData || [], activeView: posView, onActiveView: setPosView, benchKey: posBench, onBenchKey: setPosBench }) : h(EmptyState, null);
             break;
         case 'rolling':
             panel = h(RollingAttributionPanel, { positions: homeData || [], histBySymbol: histBySymbol, histReady: histReady, perfData: perfData || [] });
