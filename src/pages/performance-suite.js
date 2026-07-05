@@ -55,6 +55,14 @@ export function PerformanceSuite() {
     var posView = _pv[0], setPosView = _pv[1];
     var _pb = useState('equal');
     var posBench = _pb[0], setPosBench = _pb[1];
+    // Once the Charts tab is opened, keep AdvancedChart mounted (hidden) rather
+    // than unmounting it on tab switch — otherwise every return re-fetches the
+    // asset catalog and resets the benchmark/timeframe/overlay selections.
+    var _cv = useState(false);
+    var chartsVisited = _cv[0], setChartsVisited = _cv[1];
+    useEffect(function() {
+        if (activeTab === 'charts' && !chartsVisited) setChartsVisited(true);
+    }, [activeTab, chartsVisited]);
 
     useEffect(function() {
         function load() {
@@ -337,9 +345,19 @@ export function PerformanceSuite() {
             panel = h(RegimeSlicerPanel, { positions: homeData || [], histBySymbol: histBySymbol, histReady: histReady, perfData: perfData || [] });
             break;
         case 'charts':
-            panel = h('div', { style: { height: 'calc(100vh - 220px)', minHeight: 480 } }, h(AdvancedChart, { navSeries: navSeries }));
+            // Rendered as a persistent sibling below (keep-alive), not here.
             break;
     }
 
-    return h('div', null, kpiBar, tabBar, panel);
+    // Keep-alive charts panel: mounted on first visit, then shown/hidden via
+    // display so its internal state (benchmark, timeframe, overlays, fetched
+    // series) and asset catalog survive tab switches.
+    var chartsPanel = chartsVisited
+        ? h('div', {
+            key: 'charts-keepalive',
+            style: { height: 'calc(100vh - 220px)', minHeight: 480, display: activeTab === 'charts' ? 'block' : 'none' }
+        }, h(AdvancedChart, { navSeries: navSeries, active: activeTab === 'charts' }))
+        : null;
+
+    return h('div', null, kpiBar, tabBar, panel, chartsPanel);
 }

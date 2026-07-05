@@ -589,6 +589,21 @@ export function AdvancedChart(props) {
     useEffect(function() { draw(); },
         [series, overlays, subplots, timeframe, normalise, chartType, dataVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
+    // The parent keeps this panel mounted but hidden (display:none) when another
+    // Performance tab is active, so selections/data survive tab switches. While
+    // hidden the container measures 0px, so on re-reveal Plotly must re-measure —
+    // force a redraw + resize once we become active again. `active` defaults to
+    // true when the prop is omitted (standalone use).
+    var active = props.active !== false;
+    useEffect(function() {
+        if (!active || !ready.current || !chartRef.current) return;
+        requestAnimationFrame(function() {
+            if (!chartRef.current) return;
+            draw();
+            if (Plotly.Plots && Plotly.Plots.resize) Plotly.Plots.resize(chartRef.current);
+        });
+    }, [active]); // eslint-disable-line react-hooks/exhaustive-deps
+
     function draw() {
         if (!chartRef.current || !ready.current) return;
         var cfg = buildPlotlyConfig({
