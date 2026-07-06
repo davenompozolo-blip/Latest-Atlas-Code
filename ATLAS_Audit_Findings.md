@@ -213,3 +213,102 @@ mark them archived, so future audits don't chase this ghost.
    endpoints (`claude_sql_assistant`, `synthesize_thesis`).
 5. **`asset_class` normalisation** migration after canonical-vocabulary decision.
 6. Vault hygiene: fix or delete the placeholder `project_url` secret.
+
+---
+
+## Pass 2 — Data ingestion layer
+
+**Date:** 2026-07-06 · **Scope:** every scheduled ingestion path (pg_cron/Edge Functions, GitHub Actions, Vercel crons): deployed + scheduled + verified writing on schedule; idempotency; error handling; orphaned tables.
+
+### Summary
+
+| # | Item | Verdict | Severity |
+|---|------|---------|----------|
+| 2.1 | GitHub Actions ingestion tier (3 scheduled workflows) | **DEAD — every run of every workflow fails at startup** | CRITICAL |
+| 2.2 | `/api/ledger-snapshot` (SPY benchmark + decision outcomes) | **Dead twice over — crash since 06-11, silent SPY failure since 05-29** | HIGH — fixed this pass |
+| 2.3 | `/api/health`, `/api/ledger-export` | Crash on every call (same ESM bug) | HIGH — fixed this pass |
+| 2.4 | `/api/trading` ledger write path | Silently disabled (lazy `require` in try/catch) — `orders` 0 rows | HIGH — fixed this pass |
+| 2.5 | `/api/sync-valuations` | Runs green but wrote nothing for 2 consecutive Mondays | MEDIUM |
+| 2.6 | pg_cron / Edge Function tier | Healthy (all 6 jobs succeeding; verified freshness) | OK |
+| 2.7 | `/api/options-snapshot` | Healthy (881 rows, latest 2026-07-03, logs to `sync_log`) | OK |
+| 2.8 | Idempotency guards | Natural-key unique constraints verified on all key tables; one conflict-target trap found (fixed in 2.2) | OK/note |
+| 2.9 | `sync_funddata_prices` leaves `sync_log` rows stuck at `running` | Log-finalisation PATCH fails silently | LOW |
+
+### 2.1 GitHub Actions tier — every workflow fails on every run (CRITICAL, user action required)
+
+Live run history (GitHub API):
+
+| Workflow | Schedule | Runs | Recent conclusions | Last success found |
+|---|---|---|---|---|
+| `atlas-sync.yml` (Alpaca full sync + validation + trust layer) | 21:30 + 13:00 UTC wkdays | 765 | 60/60 sampled = failure (back through 2026-05-25) | none in sample |
+| `sync-funddata.yml` (SA fund **NAV** sync) | 14:00 UTC wkdays | 21 | 21/21 failure — never succeeded since creation 2026-06-08 | never |
+| `atlas-fundamentals.yml` | 12:30 UTC wkdays | 236 | 30/30 sampled = failure | none in sample |
+| `data-trust.yml` (unsafe-cast CI gate) | on PR | 6 | 6/6 failure — including PR-triggered runs | never |
+
+**Signature:** jobs complete in 3–5 s with `runner_id: 0`, no runner name, and **zero steps** — they die before any step executes. Raw logs return 404. This uniform pattern across all workflows and trigger types is the classic signature of an **account-level GitHub Actions block (lapsed spending limit / failed payment method)**, not a code bug. The API used here cannot read billing state — **check GitHub → Settings → Billing → Actions.**
+
+**Blast radius:**
+- `transactions` stuck at 146 rows (the wrapper's transactions sync never ran) — the Pass 1 finding 1.3 root cause is here, not just a missing Edge Function.
+- Data Trust Layer never populated (`atlas_sync_log`/`atlas_sync_status`/`atlas_validation_log` — Pass 1 finding 1.4): `scripts/sync-wrapper.mjs` is a complete, well-built writer (retries, validation, status upserts) that has never once executed to completion.
+- `atlas_memory` also 0 rows — even the workflows' failure-alerting step can't run, because jobs never start. The alert system for the outage is inside the thing that's out.
+- SA fund **NAVs** never ingested (the Edge Function scrapes the TER/cost registry where `nav` is null by design; NAVs were this workflow's job).
+- Migrations merge without the `data-trust` unsafe-cast gate.
+
+**Redundancy note:** positions / account snapshots / price history / fundamentals are independently covered by the healthy pg_cron tier, so day-to-day analytics kept working — which is exactly why this outage stayed invisible. The Actions tier's *unique* responsibilities (transactions, equity curve, validation, NAVs) are the ones that silently stopped.
+
+**Queued decision** (own pass): once billing is restored, either keep the Actions tier or port its unique jobs (transactions, validation/trust-layer, NAV sync) onto the pg_cron/Edge tier that has proven reliable — running both invites drift.
+
+### 2.2 `/api/ledger-snapshot` — two stacked failures froze SPY at 2026-05-29 (FIXED)
+
+**Failure A (2026-06-11 → now, total):** PR #632 added `"type": "module"` to the root `package.json`; `api/ledger-snapshot.js` was CommonJS (`require`) and has crashed with `FUNCTION_INVOCATION_FAILED` on every invocation since — verified live (`ReferenceError: require is not defined in ES module scope` in Vercel runtime logs, at `api/ledger-snapshot.js:12`).
+
+**Failure B (2026-05-29 → 06-11, silent):** all 124 existing SPY rows are `source='yahoo', interval='1Day'`; the handler upserts `source='alpaca'` with `onConflict: 'asset_id,source,interval,price_date'`. `price_history` also carries a **stricter** unique index `(asset_id, price_date, interval)` that the conflict target doesn't cover, so the historical dates in each ~200-day batch raised unique violations, the whole batch failed atomically, and `upsertSpy` swallowed the error (`return error ? 0 : rows.length`) while the handler returned `ok: true`. Net effect: SPY frozen at 2026-05-29, so `snapshot_decision_outcomes()` benchmarking has been computing against a stale benchmark (and `ledger_px` falls back to the last price ≤ asof, hiding the staleness).
+
+**Fix applied (this branch):**
+- Converted to ESM (`import`/`export default`).
+- Conflict target corrected to the real natural key `(asset_id, price_date, interval)`; `interval` aligned to the canonical `'1d'` used by the Edge Function feed.
+- Upsert errors are now returned in the JSON (`spyError`) instead of being swallowed.
+
+**Verification:** `node --check` passes; live verification requires merge + Vercel deploy — then `GET /api/ledger-snapshot` should return `pricesUpserted > 0` and `max(price_date)` for SPY should advance to the current session. **Re-probe after merge.**
+
+**Queued cleanup:** the 124 legacy `yahoo/1Day` SPY rows become redundant duplicates once the `1d` series backfills (harmless to `ledger_px`, which ignores source/interval); delete them in a follow-up migration after the fixed feed is verified.
+
+### 2.3 `/api/health` and `/api/ledger-export` — same ESM crash (FIXED)
+
+Both were CommonJS and have crashed on every call since 06-11 — including the pipeline **health check itself**. Converted to ESM; `node --check` passes.
+
+### 2.4 `/api/trading` order/decision audit trail silently disabled (FIXED)
+
+`recordExecution()` lazily did `require('@supabase/supabase-js')` inside a try/catch; under ESM that throws, is caught, and the function "degrades silently" — every executed trade since 06-11 skipped the `orders` audit-trail write and the Ledger decision append (`orders` table: 0 rows). Replaced with a static ESM import. Note: past executions in the gap are unrecoverable from this path; if any real trades were placed since 06-11, backfill from Alpaca order history.
+
+### 2.5 `/api/sync-valuations` — green but writing nothing (LOGGED)
+
+Ran on schedule today (Mon 06:01 UTC, HTTP 200) yet `scrapbook_companies`/`scrapbook_snapshots` were last written **2026-06-27**. The run loops 61 holdings through `/api/equity?endpoint=combined`; runtime logs show bursts of `/api/equity` 502s (consistent with Alpha Vantage free-tier quota exhaustion under 61 rapid calls), every ticker errors, `valued: 0`, and the handler still returns 200. No retry, no alert, no non-200 on zero-valued runs. Queued: quota-aware batching (it already supports `limit`/`offset` — schedule staggered slices), and fail the response when `valued === 0 && scope > 0`.
+
+### 2.6–2.7 Healthy paths (verified)
+
+- pg_cron: all 6 jobs succeeded on schedule over the past week (`cron.job_run_details`); `equity_cache` fresh today 12:01 UTC; `price_history` (non-SPY) current through 2026-07-02 (holiday-correct); positions/snapshots current (Pass 1).
+- FundsData TER/cost feed: fresh 2026-07-06 snapshot after the Pass 1 cron fix (11,202 rows).
+- `/api/options-snapshot`: 881 rows, latest 2026-07-03 (Friday), writes `sync_log` entries (the `function_name IS NULL` successes at 23:01 UTC).
+
+### 2.8 Idempotency audit
+
+Natural-key unique constraints verified: `fund_prices_raw(source,fund_code,price_date)`, `price_history(asset_id,price_date,interval)` (+ a redundant 4-col index with `source` — the trap that caused 2.2B; consider dropping it), `positions(portfolio_id,asset_id,as_of_date)`, `transactions(portfolio_id,external_id)`, `equity_cache(cache_key)`, `options_positioning_snapshots(symbol,snapshot_date)`. All writers use upsert/merge-duplicates.
+
+`account_snapshots` has **no** natural-key constraint: 26,281 rows over 92 days (~286/day ≈ one per 5-minute positions sync) — appears to be intentional intraday snapshotting, but confirm intent; if only daily granularity is consumed, this is unbounded growth.
+
+### 2.9 `sync_funddata_prices` sync_log rows stuck at `running` (LOW)
+
+Today's verified-successful run (HTTP 200, 5,609 upserted) left its `sync_log` row at `status='running'` — the function's log-finalisation PATCH fails silently (`sbPatch` only `console.warn`s). Queued with the observability pass.
+
+### Orphaned zero-row tables (live sweep)
+
+`ai_thesis_cache`, `asset_class_indices`, `index_returns`, `atlas_memory`, `atlas_sync_log`, `atlas_validation_log`, `cc_chats`, `cortex_paper_trades`, `equity_fundamentals_derived`, `opportunity_assessments`, `orders`, `org_members`, `users`. Most trace to findings 2.1/2.4 or Pass 1 items; `cc_chats`, `cortex_paper_trades`, `equity_fundamentals_derived`, `opportunity_assessments`, `ai_thesis_cache` need an owner-decision: wire a writer or drop (they fail the "no schema without a verified-writing counterpart" sign-off criterion).
+
+### Queue additions from this pass
+
+7. **GitHub Actions billing/spending-limit restoration (USER — cannot be done via API), then Actions-tier vs pg_cron consolidation decision.**
+8. `sync-valuations` resilience: staggered slices, retry, non-200 + alert on zero-valued runs.
+9. Post-merge verification: probe `/api/ledger-snapshot`, `/api/health`, `/api/ledger-export`; confirm SPY `max(price_date)` advances; then delete the 124 legacy `yahoo/1Day` SPY rows and consider dropping the redundant `price_history_unique_row` index.
+10. `orders`/Ledger backfill from Alpaca order history for the 06-11 → fix window (if any live trades occurred).
+11. Zero-row-table owner decisions (wire or drop): `cc_chats`, `cortex_paper_trades`, `equity_fundamentals_derived`, `opportunity_assessments`, `ai_thesis_cache`.

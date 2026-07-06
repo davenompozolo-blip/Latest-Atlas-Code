@@ -9,7 +9,7 @@
 // append-only with a unique(decision_id,horizon_days) guard. Safe to run
 // daily from vercel.json crons, or on demand.
 
-const { createClient } = require('@supabase/supabase-js');
+import { createClient } from '@supabase/supabase-js';
 
 function sbService() {
     const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -36,7 +36,7 @@ async function fetchSpyBars(startISO) {
 }
 
 async function upsertSpy(sb, bars) {
-    if (!bars.length) return 0;
+    if (!bars.length) return { upserted: 0, error: null };
     // ensure the SPY benchmark asset exists
     let { data: asset } = await sb.from('assets').select('id').eq('symbol', 'SPY').maybeSingle();
     if (!asset) {
@@ -45,44 +45,49 @@ async function upsertSpy(sb, bars) {
             .select('id').single();
         asset = ins.data;
     }
-    if (!asset) return 0;
+    if (!asset) return { upserted: 0, error: 'SPY asset row missing and insert failed' };
     const rows = bars.map(function(b) {
         return {
             asset_id: asset.id,
             price_date: b.t.slice(0, 10),
             open: b.o, high: b.h, low: b.l, close: b.c,
             adjusted_close: b.c, volume: b.v,
-            source: 'alpaca', interval: '1Day',
+            source: 'alpaca', interval: '1d',
         };
     });
+    // price_history has a strict unique index on (asset_id, price_date, interval)
+    // — conflicting on the 4-column key with `source` raises instead of merging
+    // whenever a row from another source exists for the same date, and the whole
+    // batch fails atomically. Conflict on the real natural key.
     const { error } = await sb.from('price_history')
-        .upsert(rows, { onConflict: 'asset_id,source,interval,price_date' });
-    return error ? 0 : rows.length;
+        .upsert(rows, { onConflict: 'asset_id,price_date,interval' });
+    if (error) return { upserted: 0, error: error.message };
+    return { upserted: rows.length, error: null };
 }
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
     const sb = sbService();
     if (!sb) return res.status(503).json({ error: 'supabase misconfigured' });
 
     // refresh SPY from ~120 days back (covers the longest open horizon)
     const start = new Date(Date.now() - 200 * 86400000).toISOString().slice(0, 10);
     const spy = await fetchSpyBars(start);
-    let pricesUpserted = 0;
-    if (spy.bars) pricesUpserted = await upsertSpy(sb, spy.bars);
+    let spyResult = { upserted: 0, error: spy.error || null };
+    if (spy.bars) spyResult = await upsertSpy(sb, spy.bars);
 
     // run the snapshotter regardless (entity prices may have advanced)
     const { data, error } = await sb.rpc('snapshot_decision_outcomes');
-    if (error) return res.status(500).json({ error: error.message, pricesUpserted, spyError: spy.error });
+    if (error) return res.status(500).json({ error: error.message, pricesUpserted: spyResult.upserted, spyError: spyResult.error });
 
     // Phase 5: check for drift / calibration / integrity alerts
     const { data: alertsInserted } = await sb.rpc('insert_ledger_alerts');
 
     return res.status(200).json({
         ok: true,
-        pricesUpserted,
+        pricesUpserted: spyResult.upserted,
         outcomesInserted: data,
         alertsInserted: alertsInserted || 0,
-        spyError: spy.error || null,
+        spyError: spyResult.error,
         ts: new Date().toISOString(),
     });
-};
+}

@@ -6,7 +6,7 @@
 // The chain_ok flag in the integrity section tells the recipient whether
 // the chain was intact at export time.
 
-const { createClient } = require('@supabase/supabase-js');
+import { createClient } from '@supabase/supabase-js';
 
 function sbAnon() {
     const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -15,7 +15,7 @@ function sbAnon() {
     return createClient(url, key, { auth: { persistSession: false } });
 }
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
     if (req.method !== 'GET') return res.status(405).end();
 
     const sb = sbAnon();
@@ -54,4 +54,4 @@ module.exports = async function handler(req, res) {
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     return res.status(200).json(artifact);
-};
+}
