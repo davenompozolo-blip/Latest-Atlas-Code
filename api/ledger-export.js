@@ -9,8 +9,10 @@
 import { createClient } from '@supabase/supabase-js';
 
 function sbAnon() {
-    const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const key = process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    // ATLAS_ overrides first — SUPABASE_URL may be integration-injected and
+    // point at a non-ATLAS Supabase project (see api/options-snapshot.js).
+    const url = process.env.ATLAS_SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://vdmojjszvvcithuxwexx.supabase.co';
+    const key = process.env.ATLAS_SUPABASE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
     if (!url || !key) return null;
     return createClient(url, key, { auth: { persistSession: false } });
 }
