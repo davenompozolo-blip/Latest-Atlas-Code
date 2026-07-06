@@ -1,3 +1,4 @@
+import { createClient as _sbCreateClient } from '@supabase/supabase-js';
 // Vercel Serverless Function: trading data + order execution for ATLAS Terminal.
 //
 // Actions:
@@ -208,8 +209,7 @@ function sbService() {
     var key = process.env.SUPABASE_SERVICE_ROLE_KEY;
     if (!url || !key) return null;
     try {
-        var createClient = require('@supabase/supabase-js').createClient;
-        _sbClient = createClient(url, key, { auth: { persistSession: false } });
+        _sbClient = _sbCreateClient(url, key, { auth: { persistSession: false } });
         return _sbClient;
     } catch (_) { return null; }
 }

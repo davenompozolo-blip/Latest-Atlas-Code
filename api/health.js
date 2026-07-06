@@ -2,7 +2,7 @@
 // /api/health — lightweight pipeline health check
 // Returns: { alpaca: 'ok'|'down', supabase: 'ok'|'down', ts: ISO }
 
-const { createClient } = require('@supabase/supabase-js');
+import { createClient } from '@supabase/supabase-js';
 
 function cors(res) {
     var origin = process.env.ATLAS_ALLOWED_ORIGIN;
@@ -38,10 +38,10 @@ async function pingSupabase() {
     } catch (_) { return 'down'; }
 }
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
     cors(res);
     if (req.method === 'OPTIONS') return res.status(204).end();
     const [alpaca, supabase] = await Promise.all([pingAlpaca(), pingSupabase()]);
     const status = (alpaca === 'ok' && supabase === 'ok') ? 200 : 503;
     return res.status(status).json({ alpaca, supabase, ts: new Date().toISOString() });
-};
+}
