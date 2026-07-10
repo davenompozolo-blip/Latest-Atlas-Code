@@ -391,3 +391,15 @@ spyError: null`, and SPY `max(price_date)` advancing past 2026-05-29 in `price_h
 12. Consolidate Vercel deployments / dedupe `vercel.json` crons (see 2.10).
 13. After user adds the override service key: re-probe ledger endpoints, confirm SPY series
     resumes, then run the queued item 9 cleanup (legacy `yahoo/1Day` rows + redundant index).
+
+---
+
+## Pass 1 closure — FundsData cron verification (finding 1.1)
+
+**Date:** 2026-07-10 · Four consecutive scheduled fires of `sync_funddata_prices_daily`
+succeeded after the fix (2026-07-07 through 2026-07-10, each at 05:00 UTC, `cron.job_run_details`
+status `succeeded`); the last failure on record is 2026-07-06 — the pre-fix vault-lookup command.
+`fund_prices_raw`: 16,816 rows, `max(price_date)` = 2026-07-09 with `created_at` = 2026-07-09
+05:00 UTC (the 05:00 run precedes same-day ASISA publication, so each day's snapshot lands on the
+following fire — expected cadence). **Finding 1.1 is closed: the fix held on schedule with no
+manual intervention.**
