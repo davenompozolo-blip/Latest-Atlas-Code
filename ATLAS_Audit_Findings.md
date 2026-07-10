@@ -403,3 +403,29 @@ status `succeeded`); the last failure on record is 2026-07-06 — the pre-fix va
 05:00 UTC (the 05:00 run precedes same-day ASISA publication, so each day's snapshot lands on the
 following fire — expected cadence). **Finding 1.1 is closed: the fix held on schedule with no
 manual intervention.**
+
+---
+
+## Pass 2 closure — post-merge verification of PR #690 (findings 2.2, 2.3, 2.10)
+
+**Date:** 2026-07-10 · Live probes against `latest-atlas-code-o19a` production after the merge deploy went READY:
+
+- `GET /api/health` → `{"alpaca":"ok","supabase":"ok"}` — the pipeline health check reports
+  fully healthy **for the first time ever** (it previously probed the nonexistent
+  `system_health` table and could not pass).
+- `GET /api/ledger-export` → HTTP 200, 282 KB export; integrity: 137 decisions,
+  `chain_ok: true`, 0 broken links, 0 tampered rows.
+- `GET /api/ledger-snapshot` → `{"ok":true,"pricesUpserted":137,"spyError":null}` — the SPY
+  benchmark feed **writes again**. `price_history` now carries a fresh `alpaca/1d` SPY series
+  through **2026-07-10** (139 rows from 2025-12-18), ending the freeze at 2026-05-29.
+- Notably, **no Vercel env action was required**: o19a's existing `SUPABASE_SERVICE_ROLE_KEY`
+  is valid for the real ATLAS project — only the integration-injected `SUPABASE_URL` was
+  wrong, and the override-first resolution shipped in PR #690 bypasses it. The
+  `ATLAS_SUPABASE_SERVICE_ROLE_KEY` user action from 2.10 is **not needed**; remaining 2.10
+  actions are the deployment/cron consolidation (queue item 12) and optional integration
+  re-scoping.
+
+**Findings 2.2, 2.3, and the endpoint-level portion of 2.10 are closed.** Still queued:
+legacy `yahoo/1Day` SPY row cleanup + redundant `price_history_unique_row` index drop
+(item 9/13 — deliberate data/schema change, own pass), Vercel project consolidation (12),
+and the GitHub Actions billing restoration (7, user).
