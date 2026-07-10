@@ -11,11 +11,19 @@
 
 import { createClient } from '@supabase/supabase-js';
 
+const FALLBACK_URL = 'https://vdmojjszvvcithuxwexx.supabase.co';
+// Env resolution mirrors api/options-snapshot.js: several Vercel projects
+// deploy this repo, and on some of them the Supabase Vercel integration
+// injects SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY pointing at its own
+// (non-ATLAS) project. ATLAS_-prefixed overrides win, then VITE_, then the
+// hardcoded ATLAS project — never the integration-injected SUPABASE_URL.
+function sbUrl() {
+    return (process.env.ATLAS_SUPABASE_URL || process.env.VITE_SUPABASE_URL || FALLBACK_URL).replace(/\/+$/, '');
+}
 function sbService() {
-    const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!url || !key) return null;
-    return createClient(url, key, { auth: { persistSession: false } });
+    const key = process.env.ATLAS_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!key) return null;
+    return createClient(sbUrl(), key, { auth: { persistSession: false } });
 }
 
 // Pull SPY daily bars from Alpaca's market-data API (keys already in env).

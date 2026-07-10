@@ -312,3 +312,94 @@ Today's verified-successful run (HTTP 200, 5,609 upserted) left its `sync_log` r
 9. Post-merge verification: probe `/api/ledger-snapshot`, `/api/health`, `/api/ledger-export`; confirm SPY `max(price_date)` advances; then delete the 124 legacy `yahoo/1Day` SPY rows and consider dropping the redundant `price_history_unique_row` index.
 10. `orders`/Ledger backfill from Alpaca order history for the 06-11 → fix window (if any live trades occurred).
 11. Zero-row-table owner decisions (wire or drop): `cc_chats`, `cortex_paper_trades`, `equity_fundamentals_derived`, `opportunity_assessments`, `ai_thesis_cache`.
+
+---
+
+## Pass 2b — Post-merge verification of PR #689 + Vercel/Supabase env findings
+
+**Date:** 2026-07-06 · **Scope:** live verification of the pass 2 fixes after merge; root-causing what the revived endpoints exposed.
+
+### Verification of the ESM fix — PASSED (and immediately exposed a deeper bug)
+
+After PR #689 merged and the production deploy went READY, all three previously-crashing
+endpoints now **execute** instead of dying with `FUNCTION_INVOCATION_FAILED`:
+
+- `GET /api/health` → `{"alpaca":"ok","supabase":"down",...}` (HTTP 503, but running)
+- `GET /api/ledger-snapshot` → structured JSON error (HTTP 500, but running)
+- `GET /api/ledger-export` → HTTP 500 JSON (running)
+
+The errors they returned exposed finding 2.10.
+
+### 2.10 Vercel↔Supabase env drift across SIX deployments of the same repo (CRITICAL)
+
+**Discovery chain (all verified live):**
+
+1. `ledger-snapshot` on `latest-atlas-code-o19a` failed with PostgREST `PGRST202`
+   ("function `snapshot_decision_outcomes` not found in schema cache") and "SPY asset row
+   missing". Both the RPC and the SPY row demonstrably exist in the real ATLAS project —
+   calling the RPC on `vdmojjszvvcithuxwexx` via REST reaches it fine (it fails only on RLS,
+   as expected for anon).
+2. A **second Supabase project exists**: `supabase-green-field` (ref `jikbulixwvvfrirjpgra`),
+   created 2026-04-05 under a **Vercel-integration organization**. It contains the ATLAS
+   **Codex** schema (`codex_*`) plus an empty partial copy of the core portfolio tables
+   (`assets`/`positions`/`transactions`/`price_history` — 0 rows; no ATLAS RPCs).
+   No portfolio data has landed there — writes failed, nothing forked.
+3. The Supabase Vercel integration **injects `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` /
+   `SUPABASE_ANON_KEY` pointing at green-field** on the Vercel project(s) where it's
+   installed (o19a at minimum). This is the store-locked-env problem the repo already
+   documents in `inject-env.js` ("bypass store-linked SUPABASE_ANON_KEY that Vercel won't
+   let you edit"), now biting the **serverless functions**, not just the frontend.
+4. **Six Vercel projects deploy this repo** (`latest-atlas-code`, `-o19a`, `-9odn`, `-amyn`,
+   `-aceu`, `altas_hub`) and `vercel.json` crons run on **each** of them. The real project's
+   `sync_log` shows *paired* `options_snapshot` entries nightly (23:00:15 **and** 23:01:45) —
+   at least two projects run every cron, with different env sets, so the same endpoint
+   works from one deployment and hits green-field from another.
+
+**Corrected timeline for the SPY freeze (supersedes the 2.2 "Failure B" explanation):**
+`decision_outcomes` in the real project was last written **2026-06-01 22:00 UTC** — a run that
+also carried SPY bars through 05-29 (the preceding Friday). The freeze cause was the env
+redirect to green-field (integration connected ~June 2), then the ESM crash from 06-11
+buried it. The overlapping-unique-index hazard described in 2.2 is real and the conflict-key
+fix stands, but it was the *latent* bug, not the trigger.
+
+**Fix applied (this branch):** the four repaired endpoints (`ledger-snapshot`, `health`,
+`ledger-export`, `trading`) now resolve Supabase config **override-first, the same way the
+working endpoints do**: `ATLAS_SUPABASE_URL || VITE_SUPABASE_URL || hardcoded ATLAS project`
+for the URL (never trusting integration-injected `SUPABASE_URL`), `ATLAS_SUPABASE_SERVICE_ROLE_KEY
+|| SUPABASE_SERVICE_ROLE_KEY` for the service key, and the existing `ATLAS_SUPABASE_KEY`
+chain for anon. `health` additionally now probes `assets` instead of `system_health` — a
+table that **does not exist anywhere**, so the old check reported `supabase: "down"`
+unconditionally (a health check that could never pass).
+
+**Remaining user actions:**
+1. On any Vercel project whose `SUPABASE_SERVICE_ROLE_KEY` is the green-field key (o19a at
+   minimum): add **`ATLAS_SUPABASE_SERVICE_ROLE_KEY`** with the real project's service key
+   (Settings → Environment Variables). URL-side is already handled by the code fix.
+2. **Consolidate the six Vercel projects** (or strip `crons` from all but one): every cron
+   currently fires once per project — duplicated syncs, duplicated vendor-API spend, and
+   env drift exactly like this. This should become its own audit-queue item.
+3. Optional hygiene: uninstall/re-scope the Supabase Vercel integration so green-field vars
+   stop shadowing ATLAS ones; green-field legitimately serves Codex (`atlas-cfa-study-terminal`)
+   and should keep doing so.
+
+**Verification still pending** (blocked on user action 1 for o19a; may already pass on the
+project that holds real credentials): `GET /api/ledger-snapshot` → `ok:true, pricesUpserted > 0,
+spyError: null`, and SPY `max(price_date)` advancing past 2026-05-29 in `price_history`.
+
+### Queue updates
+
+12. Consolidate Vercel deployments / dedupe `vercel.json` crons (see 2.10).
+13. After user adds the override service key: re-probe ledger endpoints, confirm SPY series
+    resumes, then run the queued item 9 cleanup (legacy `yahoo/1Day` rows + redundant index).
+
+---
+
+## Pass 1 closure — FundsData cron verification (finding 1.1)
+
+**Date:** 2026-07-10 · Four consecutive scheduled fires of `sync_funddata_prices_daily`
+succeeded after the fix (2026-07-07 through 2026-07-10, each at 05:00 UTC, `cron.job_run_details`
+status `succeeded`); the last failure on record is 2026-07-06 — the pre-fix vault-lookup command.
+`fund_prices_raw`: 16,816 rows, `max(price_date)` = 2026-07-09 with `created_at` = 2026-07-09
+05:00 UTC (the 05:00 run precedes same-day ASISA publication, so each day's snapshot lands on the
+following fire — expected cadence). **Finding 1.1 is closed: the fix held on schedule with no
+manual intervention.**
