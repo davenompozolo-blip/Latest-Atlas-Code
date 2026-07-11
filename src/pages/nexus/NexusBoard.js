@@ -101,6 +101,9 @@ function VixChart({ vix }) {
     const series = (vix && vix.series) || [];
     const events = (vix && vix.events) || [];
     const last = series.length ? series[series.length - 1].v : null;
+    // Legend chips toggle each event type on/off the chart.
+    const [hidden, setHidden] = useState({});
+    const toggle = k => setHidden(h => ({ ...h, [k]: !h[k] }));
     useChart(ref, function (chart) {
         const s = chart.addSeries(LC.AreaSeries, {
             lineColor: COL.amber, topColor: 'rgba(245,166,35,0.22)', bottomColor: 'rgba(245,166,35,0.01)', lineWidth: 2,
@@ -112,16 +115,18 @@ function VixChart({ vix }) {
         const first = series.length ? series[0].t : null;
         const lastT = series.length ? series[series.length - 1].t : null;
         const marks = events
-            .filter(ev => first && lastT && ev.time >= first && ev.time <= lastT)
+            .filter(ev => first && lastT && ev.time >= first && ev.time <= lastT && !hidden[ev.kind])
             .map(ev => ({ time: ev.time, position: 'aboveBar', color: EVENT_COL[ev.kind] || COL.dim, shape: 'circle', text: ev.label }));
         if (marks.length && LC.createSeriesMarkers) LC.createSeriesMarkers(s, marks);
-    }, [JSON.stringify(series.map(d => d.t)), events.length]);
+    }, [JSON.stringify(series.map(d => d.t)), events.length, JSON.stringify(hidden)]);
 
     const legend = e('div', { className: 'nb-legend' },
-        ['FOMC', 'CPI', 'NFP'].map(k => e('span', { key: k, className: 'nb-leg' },
-            e('i', { style: { background: EVENT_COL[k] } }), k === 'NFP' ? 'Jobs' : k))
+        ['FOMC', 'CPI', 'NFP'].map(k => e('button', {
+            key: k, className: 'nb-leg nb-leg-btn' + (hidden[k] ? ' off' : ''), onClick: () => toggle(k),
+            title: (hidden[k] ? 'Show ' : 'Hide ') + (k === 'NFP' ? 'jobs-report' : k) + ' markers',
+        }, e('i', { style: { background: EVENT_COL[k] } }), k === 'NFP' ? 'Jobs' : k))
     );
-    return e(Card, { title: 'Volatility track record', sub: 'VIX, 1Y — spikes against macro events', right: last != null ? e('span', { className: 'nb-readout', style: { color: COL.amber } }, last.toFixed(1)) : null, span2: true },
+    return e(Card, { title: 'Volatility track record', sub: 'VIX, 1Y — spikes against macro events · click a legend chip to filter', right: last != null ? e('span', { className: 'nb-readout', style: { color: COL.amber } }, last.toFixed(1)) : null, span2: true },
         legend,
         series.length ? e('div', { ref, className: 'nb-chart' }) : e('div', { className: 'nb-empty' }, 'VIX history unavailable.')
     );
@@ -149,30 +154,45 @@ function BreadthChart({ breadth }) {
     );
 }
 
-// ── Major indices (selectable) ────────────────────────────────
+// ── Major indices (selectable symbol + timeframe) ─────────────
+// Ranges in trading sessions; the API ships the full available history
+// and the client slices, so switching is instant with no refetch.
+const IDX_RANGES = [['1M', 21], ['3M', 63], ['6M', 126], ['1Y', 252], ['Max', Infinity]];
+
 function IndexChart({ indices }) {
     const list = indices || [];
     const [sel, setSel] = useState(list.length ? list[0].symbol : null);
+    const [range, setRange] = useState('6M');
     const ref = useRef(null);
     const active = list.find(i => i.symbol === sel) || list[0];
-    const series = (active && active.series) || [];
+    const full = (active && active.series) || [];
+    const n = (IDX_RANGES.find(r => r[0] === range) || IDX_RANGES[2])[1];
+    const series = full.length > n ? full.slice(full.length - n) : full;
+    // Colour by the move over the VISIBLE window, not the day.
+    const windowPct = series.length > 1 && series[0].c > 0
+        ? ((series[series.length - 1].c - series[0].c) / series[0].c) * 100 : null;
     useChart(ref, function (chart) {
-        const up = active && active.changePct != null && active.changePct < 0;
-        const c = up ? COL.red : COL.green;
+        const down = windowPct != null && windowPct < 0;
+        const c = down ? COL.red : COL.green;
         const s = chart.addSeries(LC.AreaSeries, {
-            lineColor: c, topColor: up ? 'rgba(239,68,68,0.18)' : 'rgba(34,197,94,0.18)', bottomColor: 'rgba(0,0,0,0)', lineWidth: 2,
+            lineColor: c, topColor: down ? 'rgba(239,68,68,0.18)' : 'rgba(34,197,94,0.18)', bottomColor: 'rgba(0,0,0,0)', lineWidth: 2,
             priceFormat: { type: 'custom', formatter: v => v.toFixed(0) },
         });
         s.setData(series.map(d => ({ time: d.t, value: d.c })));
-    }, [sel, JSON.stringify(series.map(d => d.t))]);
+    }, [sel, range, JSON.stringify(series.map(d => d.t))]);
 
-    return e(Card, { title: 'Major indices', sub: '6-month price · ' + (active ? active.symbol : '—'),
+    return e(Card, { title: 'Major indices',
+        sub: range + ' price · ' + (active ? active.symbol : '—') + (windowPct != null ? ' · ' + pct(windowPct) + ' over window' : ''),
         right: e('div', { className: 'nb-idx-chips' },
             list.map(i => e('button', {
                 key: i.symbol, className: 'nb-idx-chip' + (i.symbol === sel ? ' active' : ''), onClick: () => setSel(i.symbol),
             }, e('span', { className: 'nb-idx-tk' }, i.symbol),
                e('span', { className: 'nb-idx-chg', style: { color: moveTone(i.changePct) } }, pct(i.changePct))))) },
-        series.length ? e('div', { ref, className: 'nb-chart' }) : e('div', { className: 'nb-empty' }, 'Index history unavailable.')
+        series.length ? e('div', { ref, className: 'nb-chart' }) : e('div', { className: 'nb-empty' }, 'Index history unavailable.'),
+        e('div', { className: 'nb-ranges' },
+            IDX_RANGES.map(([k]) => e('button', {
+                key: k, className: 'nb-range-chip' + (k === range ? ' active' : ''), onClick: () => setRange(k),
+            }, k)))
     );
 }
 

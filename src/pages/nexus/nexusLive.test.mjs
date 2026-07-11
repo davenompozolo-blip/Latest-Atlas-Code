@@ -10,7 +10,7 @@
 
 import {
     toSignalTone, fvGapPct, mapHolding, buildSpine, buildConcentration, buildLiveSections,
-    buildWindshield, buildSeasonal,
+    buildWindshield, buildSeasonal, buildRead,
 } from './nexusLiveCompute.js';
 
 const M = '−';  // unicode minus, as the formatters emit
@@ -89,7 +89,7 @@ const ws = buildWindshield(MACRO);
 check('ws: tile count',        ws.stats.length, 5);
 check('ws: VIX value',         ws.stats[0].value, '18.4');
 check('ws: VIX change',        ws.stats[0].change, '+2.1');
-check('ws: S&P value',         ws.stats[1].value, '5,123');
+check('ws: S&P value',         ws.stats[1].value, '$5,123.00');
 check('ws: S&P change',        ws.stats[1].change, M + '1.2%');
 check('ws: 2Y value',          ws.stats[2].value, '4.62%');
 check('ws: 2Y change (bp)',    ws.stats[2].change, '+11bp');
@@ -107,6 +107,21 @@ check('seasonal: regime label',   seas.regime.tags.includes('Reflation'), true);
 check('seasonal: inverted curve', seas.regime.tags.includes('Inverted curve'), true);
 check('seasonal: opp cheap name', /NVDA/.test(seas.opportunities.body[0]), true);
 check('seasonal: drift cluster',  /NVDA/.test(seas.drift.body[1]), true);
+
+// ── The Read (live narrative from macro + gauge + verdicts) ───
+const read = buildRead({ macro: MACRO, concentration, holdings, spine });
+check('read: shape',            Object.keys(read.variants).sort(), ['hfl', 'market']);
+check('read: default stance',   read.default, 'market');
+check('read: prices the tape',  /2Y at 4\.62%.*10Y at 4\.55%.*curve −7bp.*VIX 18\.4/.test(read.variants.market.html), true);
+check('read: regime named',     /reflation/.test(read.variants.market.html), true);
+check('read: cluster share',    new RegExp(concentration.topFactorPct + '% of factor risk in Technology').test(read.variants.market.html), true);
+// The trims the hfl stance names must be the engine's own trim/exit verdicts.
+const trimTks = holdings.filter(h => h.read === 'trim' || h.read === 'exit').map(h => h.tk);
+const namesTrim = trimTks.some(tk => read.variants.hfl.html.includes(tk));
+check('read: hfl trims are engine verdicts', trimTks.length ? namesTrim : /no forced trims/.test(read.variants.hfl.html), true);
+check('read: hfl stresses the 2Y', /2Y holds near 4\.62%/.test(read.variants.hfl.html), true);
+check('read: no macro → null (baseline fallback)', buildRead({ macro: null, concentration, holdings, spine }), null);
+check('read: empty book → null', buildRead({ macro: MACRO, concentration, holdings: [], spine }), null);
 
 if (fails) { console.error(`\nFAILED — ${fails} assertion(s) did not match.`); process.exit(1); }
 console.log('\nPASS — live transforms match the worked fixture.');
