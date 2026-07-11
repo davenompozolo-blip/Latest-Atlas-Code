@@ -11,6 +11,7 @@
 // ============================================================
 
 import React from 'react';
+import { LedgerDispersionNote } from './NexusDispersion.js';
 
 const { useState, useEffect } = React;
 const e = React.createElement;
@@ -127,6 +128,10 @@ export function NexusOpportunitiesPanel() {
     const topThesis = (data && data.topThesis) || [];
 
     return e('div', null,
+        // Regime qualifier (portfolio dispersion basket): when correlation is
+        // elevated the isolated-merit leg of the scoring is less trustworthy —
+        // display-only in v1, the scoring itself is untouched.
+        e(LedgerDispersionNote),
         // 1. FRAME
         e('div', { className: 'ol-frame' },
             frame.topSector

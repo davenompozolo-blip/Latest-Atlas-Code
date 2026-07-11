@@ -13,6 +13,7 @@
 
 import React from 'react';
 import { buildThemeView, themeLeaders, themeDispersion, rotationRead } from './nexusThemeCompute.js';
+import { DispersionRegime, SectorDispersionStrip } from './NexusDispersion.js';
 
 const { useState, useEffect } = React;
 const e = React.createElement;
@@ -153,7 +154,12 @@ export function NexusThemePanel({ model }) {
                 e('div', null, e('h3', null, 'Rotation map'),
                     e('div', { className: 'nf-sub', style: { marginTop: 4 } }, 'where your money sits vs where the momentum is · bubble = VaR share · colour = valuation')),
                 !series.loaded ? e('span', { className: 'nf-sub' }, 'loading momentum…') : null),
+            // Regime qualifier for the whole funnel: wide dispersion → the
+            // rotation/name calls below are trustworthy; compressed → beta
+            // dominates and they're more likely noise.
+            e(DispersionRegime),
             e(RotationMap, { rows, onPick: drillTheme }),
+            e(SectorDispersionStrip),
             e('div', { className: 'nt-leg' },
                 e('span', null, e('i', { className: 'nt-sw', style: { background: 'var(--success)' } }), 'cheap'),
                 e('span', null, e('i', { className: 'nt-sw', style: { background: 'var(--danger)' } }), 'rich'),
