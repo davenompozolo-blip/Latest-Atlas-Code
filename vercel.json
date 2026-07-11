@@ -10,13 +10,15 @@
     "api/ledger-export.js":   { "maxDuration": 30 },
     "api/sync-valuations.js": { "maxDuration": 300 },
     "api/options-snapshot.js": { "maxDuration": 300 },
-    "api/vol-dispersion-sync.js": { "maxDuration": 300 }
+    "api/vol-dispersion-sync.js": { "maxDuration": 300 },
+    "api/theme-leadership-snapshot.js": { "maxDuration": 60 }
   },
   "crons": [
     { "path": "/api/ledger-snapshot", "schedule": "30 22 * * 1-5" },
     { "path": "/api/sync-valuations", "schedule": "0 6 * * 1" },
     { "path": "/api/options-snapshot", "schedule": "0 23 * * 1-5" },
-    { "path": "/api/vol-dispersion-sync", "schedule": "30 2 * * 2-6" }
+    { "path": "/api/vol-dispersion-sync", "schedule": "30 2 * * 2-6" },
+    { "path": "/api/theme-leadership-snapshot", "schedule": "0 22 * * 5" }
   ],
   "rewrites": [
     { "source": "/((?!api/).*)", "destination": "/index.html" }
