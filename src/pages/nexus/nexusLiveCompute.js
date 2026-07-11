@@ -476,3 +476,69 @@ export function buildSeasonal({ spine = [], concentration = null, holdings = [],
     };
 }
 
+// ── The Read — live narrative (factual templating, not generative) ──
+// Replaces the frozen baseline stances: both rate views are assembled
+// from today's macro snapshot (FRED yields + regime), the live
+// concentration gauge, and the read engine's own per-name verdicts —
+// so the copy moves when the data moves, and the trims it names are
+// the trims the engine actually called. Returns null when macro or
+// the book is missing, so the caller can fall back to the structural
+// baseline instead of rendering a half-true narrative.
+const escHtml = s => String(s).replace(/[&<>"']/g, ch =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+
+export function buildRead({ macro = null, concentration = null, holdings = [], spine = [] } = {}) {
+    const y = (macro && macro.yields) || {};
+    const d2 = lastTwo(y.dgs2), d10 = lastTwo(y.dgs10);
+    if (!d2 || !d10 || !holdings.length || !concentration) return null;
+
+    const curveBp = Math.round((d10.latest - d2.latest) * 100);
+    const inverted = curveBp < 0;
+    const regLabel = (macro.regime && macro.regime.label && macro.regime.label !== 'Assessing')
+        ? macro.regime.label : null;
+    const vix = lastVal(macro.volatility && macro.volatility.vix);
+
+    // Heaviest-VaR theme: the spine flags it; fall back to largest share.
+    const topRow = spine.find(s => s.fragility) || spine.slice().sort((a, b) => b.sharePct - a.sharePct)[0];
+    const topTheme = escHtml((topRow && topRow.theme) || 'the top cluster');
+    const fragile = concentration.verdictChip === 'Fragile';
+
+    // The trims the engine actually called, heaviest risk first.
+    const trims = holdings
+        .filter(h => h.read === 'trim' || h.read === 'exit')
+        .sort((a, b) => (b.componentVar || 0) - (a.componentVar || 0))
+        .slice(0, 2)
+        .map(h => escHtml(h.tk));
+
+    const curveTxt = (curveBp >= 0 ? '+' : '−') + Math.abs(curveBp) + 'bp';
+    const pricedBits = [
+        '2Y at ' + d2.latest.toFixed(2) + '%',
+        '10Y at ' + d10.latest.toFixed(2) + '%',
+        'curve ' + curveTxt,
+        vix != null ? 'VIX ' + vix.toFixed(1) : null,
+    ].filter(Boolean).join(', ');
+
+    const market = {
+        dotTone: fragile ? 'warn' : 'ok',
+        html: '<strong>The market</strong> is pricing ' + (regLabel ? escHtml(regLabel).toLowerCase() + ' — ' : '') +
+              pricedBits + '. Your book runs <strong>' + concentration.topFactorPct + '% of factor risk in ' +
+              topTheme + '</strong> (' + concentration.effectiveN + ' effective bets across ' +
+              concentration.nominalN + ' names). The read: <strong>' +
+              (fragile
+                  ? 'hold the core, keep trimming the ' + topTheme + ' tail'
+                  : 'no forced action — sizing is balanced against what’s priced') + '</strong>.',
+    };
+
+    const hfl = {
+        dotTone: fragile ? 'bad' : 'warn',
+        html: '<strong>Higher-for-longer</strong> is the tail to stress: if the 2Y holds near ' +
+              d2.latest.toFixed(2) + '%' + (inverted ? ' with the curve still inverted' : '') +
+              ', the ' + topTheme + ' cluster (' + concentration.topFactorPct + '% of factor risk) re-rates together' +
+              (fragile ? ' — that’s the fragility the concentration gauge is flagging' : '') + '. The read: <strong>' +
+              (trims.length
+                  ? 'take the ' + trims.join(' / ') + ' trim' + (trims.length > 1 ? 's' : '')
+                  : 'no forced trims — nothing in the book reads trim today') + '</strong>.',
+    };
+
+    return { default: 'market', variants: { market, hfl } };
+}

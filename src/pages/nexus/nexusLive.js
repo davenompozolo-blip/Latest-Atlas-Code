@@ -30,7 +30,7 @@
 
 import { sb } from '../config.js';
 import { getNexusModel as getBaselineModel } from './nexusMock.js';
-import { num, buildLiveSections, buildWindshield, buildSeasonal, buildChef } from './nexusLiveCompute.js';
+import { num, buildLiveSections, buildWindshield, buildSeasonal, buildChef, buildRead } from './nexusLiveCompute.js';
 import { toOptionsModel } from './nexusOptionsCompute.js';
 
 // Live macro snapshot (FRED yields + regime + market quotes) from the
@@ -138,6 +138,9 @@ export async function getNexusModel() {
     const windshield = buildWindshield(macro) || baseline.windshield;
     const seasonal = buildSeasonal({ spine, concentration, holdings, macro });
     const chef = buildChef({ spine, holdings, concentration });
+    // The Read narrative, assembled from the same live ingredients (falls
+    // back to the structural baseline when macro is down).
+    const read = buildRead({ macro, concentration, holdings, spine }) || baseline.read;
 
     return {
         ...baseline,
@@ -150,5 +153,6 @@ export async function getNexusModel() {
         windshield,
         seasonal,
         chef,
+        read,
     };
 }

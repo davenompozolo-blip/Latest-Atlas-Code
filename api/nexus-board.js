@@ -99,9 +99,11 @@ export default async function handler(req, res) {
             breadth: rspSpy,
         });
 
+        // Ship the full available history (bounded ~5y) — the client's
+        // timeframe chips slice it locally, so no refetch per range.
         const idx = (symbol, series) => {
             const { last, changePct } = lastChange(series);
-            return { symbol, series: tail(series, 180), last, changePct };
+            return { symbol, series: tail(series, 1300), last, changePct };
         };
 
         res.setHeader('Cache-Control', 's-maxage=1800, stale-while-revalidate=7200');
