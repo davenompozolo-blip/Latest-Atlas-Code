@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
     buildThemeView, themeLeaders,
     dailyReturns, themeReturnSeries, cumMomentum, beta, themeDispersion, rotationRead, stdev, scaleReturnsToVol,
+    positionRankPct, rotationConviction, rotationCall, breadthNote, VERDICT_CHIP, CONVICTION_WEIGHTS,
 } from './nexusThemeCompute.js';
 
 const holdings = [
@@ -135,4 +136,113 @@ test('vol-normalising a quiet factor deflates its inflated beta, sign preserved'
     const norm = beta(theme, scaleReturnsToVol(quiet, 0.01));
     assert.ok(Math.abs(norm) < Math.abs(raw));   // quiet factor scaled up → beta deflated
     assert.equal(Math.sign(norm), Math.sign(raw));
+});
+
+// ── Rotation redesign v1 — call, conviction, rank ──
+
+const pairRows = [
+    { theme: 'Materials', sharePct: 2, momentum5d: 3.5, valuationPending: true, valuationTilt: null },
+    { theme: 'Industrials', sharePct: 12, momentum5d: -10.0, valuationTilt: 'fair', valuationPending: false },
+    { theme: 'Tech', sharePct: 30, momentum5d: 1.1, valuationTilt: 'rich', valuationPending: false },
+    { theme: 'Energy', sharePct: 5, momentum5d: -2.0, valuationTilt: 'fair', valuationPending: false },
+];
+
+test('positionRankPct: centre (rank 50) splits exactly at rotationRead median cut', () => {
+    const ranks = positionRankPct(pairRows);
+    // sorted shares: 2, 5, 12, 30 → median (idx 2) = 12 → Industrials & Tech heavy
+    assert.ok(ranks.get('Industrials') >= 50 && ranks.get('Tech') >= 50);
+    assert.ok(ranks.get('Materials') < 50 && ranks.get('Energy') < 50);
+    assert.equal(ranks.get('Materials'), 0);
+    assert.equal(ranks.get('Tech'), 100);
+});
+
+test('positionRankPct: null shares excluded, single theme sits mid-axis', () => {
+    const ranks = positionRankPct([{ theme: 'A', sharePct: 9 }, { theme: 'B', sharePct: null }]);
+    assert.equal(ranks.get('A'), 50);
+    assert.equal(ranks.has('B'), false);
+});
+
+test('rotationCall: pair matches rotationRead book — the card and map never disagree', () => {
+    const call = rotationCall(pairRows, {}, null);
+    const read = rotationRead(pairRows);
+    assert.equal(call.sell.theme, read.book.outTheme);   // Industrials
+    assert.equal(call.buy.theme, read.book.inTheme);     // Materials
+});
+
+test('rotationCall drivers: momentum + positioning confirmed, valuation pending when a leg is unresolved', () => {
+    const call = rotationCall(pairRows, {}, null);
+    const d = k => call.drivers.find(x => x.key === k);
+    assert.equal(d('momentum').status, 'confirmed');
+    assert.match(d('momentum').text, /Industrials −10\.0% 5d vs Materials \+3\.5% 5d/);
+    assert.equal(d('positioning').status, 'confirmed');
+    assert.equal(d('breadth').status, 'pending');        // no dispersion supplied
+    assert.equal(d('valuation').status, 'pending');      // Materials leg unresolved
+    assert.match(d('valuation').text, /pending on Materials/);
+});
+
+test('rotationCall drivers: wide sell-leg spread flags narrow breadth with the driving name', () => {
+    const disp = { Industrials: { spread: 11.9, winners: [], losers: [{ tk: 'KMTUY', pct: -10.3 }] } };
+    const call = rotationCall(pairRows, disp, null);
+    const b = call.drivers.find(x => x.key === 'breadth');
+    assert.equal(b.status, 'caution');
+    assert.match(b.text, /KMTUY/);
+});
+
+test('rotationCall drivers: cheap sell leg cuts against the call → caution', () => {
+    // (A rich BUY leg can't occur: rotationRead already demotes ADD+rich to
+    // LET_RUN, so it never becomes the in-candidate.)
+    const rows = pairRows.map(r => {
+        if (r.theme === 'Industrials') return { ...r, valuationTilt: 'cheap' };
+        if (r.theme === 'Materials') return { ...r, valuationPending: false, valuationTilt: 'fair' };
+        return r;
+    });
+    const v = rotationCall(rows, {}, null).drivers.find(x => x.key === 'valuation');
+    assert.equal(v.status, 'caution');
+    assert.match(v.text, /cuts against/);
+});
+
+test('rotationCall: no qualifying pair degrades to text, null score', () => {
+    const call = rotationCall([{ theme: 'Only', sharePct: 100, momentum5d: 2, valuationPending: true }], {}, null);
+    assert.equal(call.sell, null);
+    assert.equal(call.conviction.score, null);
+    assert.ok(call.text.length > 0);
+});
+
+test('rotationConviction: equal weights, renormalised over available factors', () => {
+    assert.deepEqual(Object.values(CONVICTION_WEIGHTS), [0.25, 0.25, 0.25, 0.25]);
+    const sell = { theme: 'Industrials', sharePct: 12, momentum5d: -10 };
+    const buy = { theme: 'Materials', sharePct: 2, momentum5d: 3.5 };
+    // No dispersion, no regime → momentum + positioning only, weights renormalise.
+    const c = rotationConviction(sell, buy, null, null);
+    assert.equal(c.factors.breadth, null);
+    assert.equal(c.factors.macroFit, null);
+    // momentum gap 13.5pp → clamps to 100; skew 10pp/15 → 66.67; mean ≈ 83
+    assert.equal(c.factors.momentum, 100);
+    assert.equal(Math.round(c.factors.positioning), 67);
+    assert.equal(c.score, 83);
+    assert.equal(c.tag, 'BUY BIAS');
+});
+
+test('rotationConviction: macro fit rewards regime-aligned pairs, breadth penalises wide spreads', () => {
+    const sell = { theme: 'Technology', sharePct: 30, momentum5d: -4 };
+    const buy = { theme: 'Energy', sharePct: 3, momentum5d: 2 };
+    const playbook = { rewards: ['Energy', 'Materials'], punishes: ['Technology'] };
+    const c = rotationConviction(sell, buy, { spread: 8, winners: [{ tk: 'X', pct: 1 }], losers: [] }, playbook);
+    assert.equal(c.factors.macroFit, 100);   // buy rewarded (+50) and sell punished (+50)
+    assert.equal(c.factors.breadth, 60);     // 100 − 8×5
+    const inverse = rotationConviction(buy, sell, null, playbook);  // selling what the regime rewards
+    assert.equal(inverse.factors.macroFit, 0);
+});
+
+test('VERDICT_CHIP maps every quadrant verdict to a card chip', () => {
+    assert.deepEqual(
+        ['ADD', 'LET_RUN', 'TRIM', 'IGNORE', 'HOLD'].map(v => VERDICT_CHIP[v]),
+        ['BUY', 'HOLD', 'SELL', 'WATCH', 'HOLD']);
+});
+
+test('breadthNote: names the driver when wide, reports spread when moderate', () => {
+    assert.equal(breadthNote(null), '—');
+    assert.equal(breadthNote({ spread: 0.8, winners: [{ tk: 'A', pct: 0.5 }], losers: [] }), 'breadth tight');
+    assert.equal(breadthNote({ spread: 3.1, winners: [{ tk: 'A', pct: 2 }], losers: [{ tk: 'B', pct: -1.1 }] }), 'spread 3.1pp');
+    assert.equal(breadthNote({ spread: 11.9, winners: [{ tk: 'A', pct: 1.6 }], losers: [{ tk: 'KMTUY', pct: -10.3 }] }), 'KMTUY driving');
 });

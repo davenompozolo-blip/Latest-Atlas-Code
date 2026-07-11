@@ -225,3 +225,136 @@ export function rotationRead(rows, cfg = {}) {
         book: { outTheme: outCand ? outCand.theme : null, inTheme: inCand ? inCand.theme : null, text },
     };
 }
+
+// Verdict → the one-word chip on the theme card face. Mechanical mapping so
+// a theme's chip always matches its map quadrant — never a separate call.
+export const VERDICT_CHIP = { ADD: 'BUY', LET_RUN: 'HOLD', TRIM: 'SELL', IGNORE: 'WATCH', HOLD: 'HOLD' };
+
+// ── Rotation call (v1 redesign) — pair, drivers, conviction ──
+// The recommendation card and the map are two views on the same computation:
+// the pair comes from rotationRead (quadrant verdicts), so they can never
+// disagree.
+
+// Percentile rank of position weight across themes, 0–100. Rank ≥ 50 ⟺
+// sharePct ≥ median, i.e. the map's centre line at rank 50 is exactly
+// rotationRead's heavy/light cut — quadrant membership and verdict agree
+// by construction. Chosen over raw weight because one dominant theme
+// (Technology ~29%) compresses everything else into the left margin.
+export function positionRankPct(rows) {
+    const withShare = (rows || []).filter(r => r.sharePct != null);
+    const n = withShare.length;
+    const out = new Map();
+    if (!n) return out;
+    for (const r of withShare) {
+        const below = withShare.filter(o => o.sharePct < r.sharePct).length;
+        out.set(r.theme, n > 1 ? +((100 * below) / (n - 1)).toFixed(1) : 50);
+    }
+    return out;
+}
+
+// Conviction weights — equal by design (spec open item 3): defined once,
+// held constant for a review quarter, then revisited against realized
+// outcomes. Do NOT tune per period or the score becomes unfalsifiable.
+export const CONVICTION_WEIGHTS = { momentum: 0.25, positioning: 0.25, breadth: 0.25, macroFit: 0.25 };
+
+const clamp100 = v => Math.max(0, Math.min(100, v));
+
+// Four-factor conviction for a sell→buy pair, 0–100 per factor:
+//   momentum    — 5d momentum divergence (buy − sell), 12pp saturates
+//   positioning — weight skew (sell − buy), 15pp saturates
+//   breadth     — 100 minus 5×(sell-leg intra-theme spread): a drawdown one
+//                 name is driving deserves less conviction than a broad one
+//   macroFit    — regime playbook agreement: ±50 for each leg the regime
+//                 rewards/punishes in the call's direction, from 50 base
+// A factor with no data is null and its weight is renormalised over the
+// rest — the score degrades honestly, it never fabricates an input.
+export function rotationConviction(sell, buy, sellDisp, playbook) {
+    const factors = {
+        momentum: (sell.momentum5d != null && buy.momentum5d != null)
+            ? clamp100(((buy.momentum5d - sell.momentum5d) / 12) * 100) : null,
+        positioning: (sell.sharePct != null && buy.sharePct != null)
+            ? clamp100(((sell.sharePct - buy.sharePct) / 15) * 100) : null,
+        breadth: (sellDisp && sellDisp.spread != null && (sellDisp.winners.length || sellDisp.losers.length))
+            ? clamp100(100 - sellDisp.spread * 5) : null,
+        macroFit: null,
+    };
+    if (playbook && (playbook.rewards.length || playbook.punishes.length)) {
+        let fit = 50;
+        if (playbook.rewards.includes(buy.theme)) fit += 50;
+        if (playbook.punishes.includes(buy.theme)) fit -= 50;
+        if (playbook.punishes.includes(sell.theme)) fit += 50;
+        if (playbook.rewards.includes(sell.theme)) fit -= 50;
+        factors.macroFit = clamp100(fit);
+    }
+    let wsum = 0, acc = 0;
+    for (const [k, v] of Object.entries(factors)) {
+        if (v == null) continue;
+        wsum += CONVICTION_WEIGHTS[k];
+        acc += CONVICTION_WEIGHTS[k] * v;
+    }
+    const score = wsum ? Math.round(acc / wsum) : null;
+    const tag = score == null ? null : score >= 60 ? 'BUY BIAS' : score >= 40 ? 'NEUTRAL' : 'LOW CONVICTION';
+    return { score, tag, factors };
+}
+
+// The full rotation call: pair from rotationRead + driver lines. Every
+// driver traces to a real field (spec §3.2) — momentum and positioning from
+// the pair legs, breadth from themeDispersion, valuation only when both
+// legs carry a resolved tilt. status: confirmed | caution | pending.
+export function rotationCall(rows, disp, playbook) {
+    const read = rotationRead(rows);
+    const { outTheme, inTheme, text } = read.book;
+    const sell = rows.find(r => r.theme === outTheme) || null;
+    const buy = rows.find(r => r.theme === inTheme) || null;
+    if (!sell || !buy) return { sell, buy, text, drivers: [], conviction: { score: null, tag: null, factors: {} }, perTheme: read.perTheme };
+
+    const sd = (disp || {})[sell.theme];
+    const fp = v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + '%';
+    const drivers = [];
+
+    drivers.push({
+        key: 'momentum', status: 'confirmed',
+        text: 'Momentum diverging — ' + sell.theme + ' ' + fp(sell.momentum5d) + ' 5d vs ' + buy.theme + ' ' + fp(buy.momentum5d) + ' 5d',
+    });
+    drivers.push({
+        key: 'positioning', status: 'confirmed',
+        text: 'Positioning skew — ' + sell.theme + ' committed at ' + sell.sharePct.toFixed(1) + '% weight, ' + buy.theme + ' light at ' + buy.sharePct.toFixed(1) + '%',
+    });
+    if (sd && (sd.winners.length || sd.losers.length)) {
+        const movers = [...sd.winners, ...sd.losers];
+        const top = movers.slice().sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct))[0];
+        if (sd.spread >= 5 && top) {
+            drivers.push({ key: 'breadth', status: 'caution', text: 'Narrow breadth — ' + sell.theme + ' dispersion ' + sd.spread + 'pp spread, ' + top.tk + ' ' + fp(top.pct) + ' driving the move' });
+        } else {
+            drivers.push({ key: 'breadth', status: 'confirmed', text: 'Broad move — ' + sell.theme + ' dispersion ' + sd.spread + 'pp spread, no single name dominating' });
+        }
+    } else {
+        drivers.push({ key: 'breadth', status: 'pending', text: 'Breadth — intra-theme dispersion pending' });
+    }
+    const sTilt = sell.valuationPending ? null : sell.valuationTilt;
+    const bTilt = buy.valuationPending ? null : buy.valuationTilt;
+    if (sTilt && bTilt) {
+        const against = bTilt === 'rich' || sTilt === 'cheap';
+        drivers.push({
+            key: 'valuation', status: against ? 'caution' : 'confirmed',
+            text: 'Valuation — ' + sell.theme + ' ' + sTilt + ', ' + buy.theme + ' ' + bTilt + (against ? ' (cuts against the call)' : ''),
+        });
+    } else {
+        const legs = [!sTilt && sell.theme, !bTilt && buy.theme].filter(Boolean).join(' and ');
+        drivers.push({ key: 'valuation', status: 'pending', text: 'Valuation — pending on ' + legs + ', not yet a supporting signal' });
+    }
+
+    return { sell, buy, text, drivers, conviction: rotationConviction(sell, buy, sd, playbook), perTheme: read.perTheme };
+}
+
+// One-line breadth note for the card face, from the existing per-name
+// dispersion breakdown. Mechanical: ≥5pp with a dominant mover → name it.
+export function breadthNote(d) {
+    if (!d || (!d.winners.length && !d.losers.length)) return '—';
+    if (d.spread >= 5) {
+        const movers = [...d.winners, ...d.losers].sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct));
+        return movers.length ? movers[0].tk + ' driving' : 'wide ' + d.spread + 'pp';
+    }
+    if (d.spread >= 2) return 'spread ' + d.spread + 'pp';
+    return 'breadth tight';
+}

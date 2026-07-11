@@ -22,6 +22,14 @@ export function regimePlaybook(label) {
     return PLAYBOOKS[label] || UNKNOWN;
 }
 
+// Which way the regime pushes the book — the Theme tab's banner line.
+// Derived from the playbook's risk posture, null while still assessing.
+export function rotationBias(label) {
+    const pb = PLAYBOOKS[label];
+    if (!pb) return null;
+    return pb.risk === 'on' ? 'Defensive → Cyclical' : 'Cyclical → Defensive';
+}
+
 const lastTwo = arr => {
     if (!Array.isArray(arr) || !arr.length) return null;
     return { latest: arr[arr.length - 1].value, prev: arr.length > 1 ? arr[arr.length - 2].value : null };

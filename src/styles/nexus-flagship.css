@@ -702,3 +702,71 @@
 .nvd-cell.deg { box-shadow: inset 0 0 0 1px var(--amber); opacity: .8; }
 .nvd-note { background: var(--amber-b); box-shadow: inset 0 0 0 1px rgba(245,166,35,.28); border-radius: 10px; padding: 11px 14px; margin-bottom: 14px; font-size: 13px; line-height: 1.55; color: var(--text1); }
 .nvd-note b { color: var(--amber); font-weight: 600; }
+
+/* ── Theme tab rotation redesign (ntr-) — regime banner, call, conviction, ledger ── */
+.ntr-banner { display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap; background: linear-gradient(90deg, var(--cyan-b), transparent 60%), var(--bg1); box-shadow: inset 0 0 0 1px var(--border-hi); border-left: 3px solid var(--cyan); border-radius: 12px; padding: 13px 17px; margin-bottom: 14px; }
+.ntr-banner-name { font-family: var(--fd); font-weight: 700; font-size: 17px; }
+.ntr-banner-bias { font-size: 12px; color: var(--text2); margin-top: 2px; }
+.ntr-banner-bias b { color: var(--cyan); font-weight: 600; }
+.ntr-banner-facts { display: flex; gap: 16px; font-size: 11.5px; color: var(--text2); flex-wrap: wrap; }
+.ntr-banner-conf { text-align: right; }
+.ntr-banner-conf .num { font-family: var(--fm); font-size: 20px; font-weight: 700; color: var(--cyan); }
+.ntr-banner-conf .lbl { font-size: 9px; letter-spacing: .08em; color: var(--text3); }
+.ntr-manual { font-size: 11px; color: var(--amber); margin-top: 3px; }
+
+.ntr-top { display: grid; grid-template-columns: 1.6fr 1fr; gap: 14px; margin-bottom: 14px; }
+.ntr-mid { display: grid; grid-template-columns: 1.7fr 1fr; gap: 14px; }
+@media (max-width: 1100px) { .ntr-top, .ntr-mid { grid-template-columns: 1fr; } }
+
+.ntr-reco-head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding-bottom: 12px; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
+.ntr-tag { font-family: var(--fm); font-weight: 700; font-size: 10px; letter-spacing: .06em; padding: 2px 8px; border-radius: 4px; }
+.ntr-tag.sell { color: var(--danger); background: var(--danger-b); }
+.ntr-tag.buy { color: var(--success); background: var(--success-b); }
+.ntr-reco-theme { font-family: var(--fd); font-weight: 700; font-size: 18px; margin-top: 5px; }
+.ntr-reco-arrow { color: var(--text3); font-size: 20px; }
+.ntr-convrow { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.ntr-convrow .lbl { font-size: 11px; color: var(--text3); width: 104px; flex: none; }
+.ntr-convrow .num { font-family: var(--fm); font-size: 13px; color: var(--cyan); width: 28px; text-align: right; flex: none; }
+.ntr-track { flex: 1; height: 6px; background: var(--card-hi); border-radius: 3px; overflow: hidden; }
+.ntr-fill { height: 100%; background: var(--cyan); border-radius: 3px; }
+.ntr-drivers { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+@media (max-width: 800px) { .ntr-drivers { grid-template-columns: 1fr; } }
+.ntr-driver { display: flex; align-items: flex-start; gap: 8px; font-size: 11.5px; line-height: 1.45; color: var(--text2); box-shadow: inset 0 0 0 1px var(--border); border-radius: 7px; padding: 8px 10px; }
+.ntr-driver .ic { font-family: var(--fm); flex: none; }
+.ntr-driver.confirmed .ic { color: var(--success); }
+.ntr-driver.caution .ic { color: var(--amber); }
+.ntr-driver.pending .ic { color: var(--text3); }
+
+.ntr-cv-row { display: flex; align-items: baseline; gap: 10px; margin: 2px 0 4px; }
+.ntr-cv-score { font-family: var(--fm); font-weight: 700; font-size: 36px; color: var(--cyan); line-height: 1; }
+.ntr-cv-tag { font-family: var(--fm); font-weight: 700; font-size: 10px; letter-spacing: .06em; padding: 2px 8px; border-radius: 4px; color: var(--success); background: var(--success-b); }
+.ntr-cv-tag.neutral { color: var(--amber); background: var(--amber-b); }
+.ntr-cv-tag.low { color: var(--text3); background: var(--card-hi); }
+.ntr-cv-bar { height: 7px; background: var(--card-hi); border-radius: 4px; overflow: hidden; margin: 10px 0 4px; }
+.ntr-cv-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--cyan), var(--success)); }
+.ntr-cv-item { display: flex; align-items: center; gap: 10px; font-size: 11px; margin-top: 7px; }
+.ntr-cv-item .lbl { width: 78px; flex: none; color: var(--text3); }
+.ntr-cv-item .track { flex: 1; height: 4px; background: var(--card-hi); border-radius: 2px; overflow: hidden; }
+.ntr-cv-item .track i { display: block; height: 100%; background: var(--text2); }
+.ntr-cv-item .wt { width: 32px; flex: none; text-align: right; font-family: var(--fm); color: var(--text3); }
+
+.ntr-ledger-row { display: grid; grid-template-columns: 116px 1fr 52px; align-items: center; gap: 10px; margin-top: 7px; }
+.ntr-ledger-row .lname { font-size: 11.5px; color: var(--text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ntr-ledger-row .lval { font-family: var(--fm); font-size: 11px; text-align: right; }
+.ntr-ltrack { position: relative; height: 13px; background: var(--card-hi); border-radius: 3px; overflow: hidden; }
+.ntr-ltrack .zero { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--border-hi); }
+.ntr-ltrack .bar { position: absolute; top: 1px; bottom: 1px; border-radius: 2px; }
+.ntr-ltrack .bar.up { background: var(--success); opacity: .55; }
+.ntr-ltrack .bar.down { background: var(--danger); opacity: .5; }
+
+.ntr-mom { height: 4px; background: var(--card-hi); border-radius: 2px; overflow: hidden; }
+.ntr-mom i { display: block; height: 100%; }
+.ntr-valtag { font-size: 9px; letter-spacing: .04em; text-transform: uppercase; padding: 1px 6px; border-radius: 4px; box-shadow: inset 0 0 0 1px var(--border-md); color: var(--text2); }
+.ntr-valtag.cheap { color: var(--success); box-shadow: inset 0 0 0 1px rgba(34,197,94,.4); }
+.ntr-valtag.rich { color: var(--danger); box-shadow: inset 0 0 0 1px rgba(239,68,68,.4); }
+.ntr-valtag.pending { color: var(--text3); box-shadow: none; outline: 1px dashed var(--border-md); outline-offset: -1px; }
+.ntr-note { font-size: 10px; color: var(--text3); }
+.ntr-chip { font-family: var(--fm); font-size: 9px; font-weight: 700; letter-spacing: .07em; text-align: center; padding: 3px 0; border-radius: 5px; background: var(--card-hi); color: var(--text2); }
+.ntr-chip.buy { color: var(--success); background: var(--success-b); }
+.ntr-chip.sell { color: var(--danger); background: var(--danger-b); }
+.ntr-chip.watch { color: var(--purple); background: var(--purple-b); }
