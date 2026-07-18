@@ -53,8 +53,20 @@ export function PerformanceSuite() {
     // state would otherwise reset every time the tab is left (PF-11).
     var _pv = useState('total');
     var posView = _pv[0], setPosView = _pv[1];
-    var _pb = useState('equal');
-    var posBench = _pb[0], setPosBench = _pb[1];
+    // Benchmark selection is shared with Nexus beat 07 (Decision scorecard)
+    // via localStorage — switching benchmark on either surface follows to
+    // the other, since both grade against the same attribution engine.
+    var _pb = useState(function() {
+        try {
+            var k = localStorage.getItem('atlas_brinson_bench');
+            return (k === 'equal' || k === 'spy' || k === 'qqq') ? k : 'equal';
+        } catch (e) { return 'equal'; }
+    });
+    var posBench = _pb[0];
+    var setPosBench = function(k) {
+        try { localStorage.setItem('atlas_brinson_bench', k); } catch (e) { /* private mode */ }
+        _pb[1](k);
+    };
     // Once the Charts tab is opened, keep AdvancedChart mounted (hidden) rather
     // than unmounting it on tab switch — otherwise every return re-fetches the
     // asset catalog and resets the benchmark/timeframe/overlay selections.

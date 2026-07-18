@@ -87,6 +87,22 @@ export default async function handler(req, res) {
             oil: scaleReturnsToVol(factorRet.oil),
         };
 
+        // Today's factor moves in the SAME vol-normalised units the betas are
+        // regressed against, so implied return = Σ β_f × move_f is internally
+        // consistent. Consumed by Nexus beat 05 (Realized transmission) —
+        // the betas and these moves must come from one place or the implied
+        // vs actual panel can silently disagree with the transmission strip.
+        // Rate sign flipped to match the beta convention (β to *rising* rates).
+        const lastMove = rs => {
+            const r = rs && rs.length ? rs[rs.length - 1] : null;
+            return (r && r.ret != null && isFinite(r.ret)) ? r.ret : null;
+        };
+        const factorMoves = {
+            rate: lastMove(fr.rate) == null ? null : +(-lastMove(fr.rate) * 100).toFixed(3),
+            usd: lastMove(fr.usd) == null ? null : +(lastMove(fr.usd) * 100).toFixed(3),
+            oil: lastMove(fr.oil) == null ? null : +(lastMove(fr.oil) * 100).toFixed(3),
+        };
+
         // 4. Per-theme momentum + betas.
         const byTheme = new Map();
         for (const h of holdings) {
