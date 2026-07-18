@@ -12,36 +12,12 @@ import { fmt, fmtPct, fmtCurrency, cls, healthCls, useChart, volStatus, ddStatus
 import { HeroCard } from './components.js';
 import {
     computePortfolioMetrics, computeRollingMetrics,
-    computeDrawdownPeriods, computeBrinsonAttribution, computePositionContributions
+    computeDrawdownPeriods, computePositionContributions
 } from './perf-engine.js';
+import { computeBrinsonAttribution, BENCHMARKS } from '../lib/attributionEngine.js';
 
 var useState = React.useState, useRef = React.useRef, useMemo = React.useMemo;
 var h = React.createElement;
-
-// GICS sector weights for Brinson benchmark swap.
-// Approximate weights as of Q1 2026; sector names match assets.sector mapping.
-var BENCHMARKS = {
-    equal: { label: 'Equal Wt', desc: 'Equal weight across portfolio sectors', weights: null },
-    spy: {
-        label: 'S&P 500', desc: 'S&P 500 GICS sector weights (approx.)',
-        weights: {
-            'Technology': 0.295, 'Financials': 0.135, 'Healthcare': 0.115,
-            'Consumer Discretionary': 0.105, 'Communication': 0.090,
-            'Industrials': 0.085, 'Consumer Staples': 0.060,
-            'Energy': 0.035, 'Real Estate': 0.025, 'Materials': 0.025, 'Utilities': 0.025,
-        }
-    },
-    qqq: {
-        label: 'NASDAQ-100', desc: 'NASDAQ-100 GICS sector weights (approx.)',
-        weights: {
-            'Technology': 0.520, 'Communication': 0.170,
-            'Consumer Discretionary': 0.130, 'Healthcare': 0.060,
-            'Industrials': 0.040, 'Consumer Staples': 0.030,
-            'Financials': 0.025, 'Materials': 0.010,
-            'Energy': 0.005, 'Real Estate': 0.005, 'Utilities': 0.005,
-        }
-    },
-};
 
 function retColor(v) {
     if (v == null) return 'rgba(255,255,255,0.5)';

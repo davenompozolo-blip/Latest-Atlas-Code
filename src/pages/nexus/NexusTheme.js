@@ -25,6 +25,7 @@ import {
 } from './nexusThemeCompute.js';
 import { regimePlaybook, rotationBias } from './nexusRegimeCompute.js';
 import { DispersionRegime, SectorDispersionStrip } from './NexusDispersion.js';
+import { NexusRealizedLayer } from './NexusRealized.js';
 
 const { useState, useEffect } = React;
 const e = React.createElement;
@@ -42,16 +43,19 @@ function drillTheme(theme) {
 }
 
 function useThemeSeries() {
-    const [s, setS] = useState({ map: new Map(), loaded: false });
+    const [s, setS] = useState({ map: new Map(), factorMoves: null, priceAsOf: null, loaded: false });
     useEffect(function () {
         let alive = true;
         fetch('/api/nexus-theme').then(r => r.json())
             .then(j => {
                 if (!alive) return;
                 const map = new Map(((j && j.themes) || []).map(t => [t.theme, t]));
-                setS({ map, loaded: true });
+                // factorMoves: today's factor moves in the same vol-normalised
+                // units the betas are regressed against — consumed by beat 05
+                // so implied-vs-actual can never disagree with the strip.
+                setS({ map, factorMoves: (j && j.factorMoves) || null, priceAsOf: (j && j.priceAsOf) || null, loaded: true });
             })
-            .catch(() => { if (alive) setS({ map: new Map(), loaded: true }); });
+            .catch(() => { if (alive) setS({ map: new Map(), factorMoves: null, priceAsOf: null, loaded: true }); });
         return () => { alive = false; };
     }, []);
     return s;
@@ -340,7 +344,19 @@ export function NexusThemePanel({ model }) {
                     e('span', { className: 'mono ' + moveTone(r.movePct) }, pct1(r.movePct)), e('span', { className: 't3' }, ' surface · spread ' + d.spread + 'pp')),
                 e('div', { className: 'nt-chips' },
                     d.winners.map(w => e('span', { key: w.tk, className: 'nt-chip w' }, w.tk + ' ' + pct1(w.pct))),
-                    d.losers.map(l => e('span', { key: l.tk, className: 'nt-chip l' }, l.tk + ' ' + pct1(l.pct))))))) : null);
+                    d.losers.map(l => e('span', { key: l.tk, className: 'nt-chip l' }, l.tk + ' ' + pct1(l.pct))))))) : null,
+
+        // 6. REALIZED LAYER — beats 05–08. Everything above makes a call;
+        // this grades it. themeRows/factorMoves are the SAME objects the
+        // transmission strip renders, so the two layers can never disagree.
+        e(NexusRealizedLayer, {
+            themeRows: rows,
+            factorMoves: series.factorMoves,
+            betasAsOf: series.priceAsOf,
+            model,
+            macro,
+            rotation: { buyTheme: call.buy ? call.buy.theme : null, sellTheme: call.sell ? call.sell.theme : null },
+        }));
 }
 
 export default NexusThemePanel;

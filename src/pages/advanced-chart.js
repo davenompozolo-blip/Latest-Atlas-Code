@@ -1,25 +1,37 @@
-import * as LightweightCharts from 'lightweight-charts';
 import Plotly from 'plotly.js-dist-min';
-import Chart from 'chart.js/auto';
 import React from 'react';
 // ============================================================
-// ATLAS Terminal — Advanced Charting Module
+// ATLAS Terminal — Advanced Charting Module (PERF → Charts)
 // ------------------------------------------------------------
 // Portfolio equity curve vs real comparison assets.
+//
+// Thin renderer over src/lib/chartSeriesEngine.js — the SAME engine
+// Nexus beat 08 (Evidence) uses. Series fetching stays here (Supabase
+// access), but all alignment, rebasing and metrics come from the
+// engine, so the two chart surfaces can never drift apart:
+//   • union date axis = portfolio calendar, assets left-joined + ffilled
+//   • normalise rebases every series at the COMMON start date
+//   • engine warnings (truncated history, ffill, dropped tickers) are
+//     rendered under the chart, not swallowed
+//   • per-series stats are computed on the displayed window, with beta
+//     and correlation vs the portfolio
 //
 // Data sources:
 //   Portfolio  — vw_portfolio_nav_daily (real, passed as prop)
 //   All others — price_history via Supabase (fetched on-demand)
-//
-// Depends on: Plotly (CDN global), React (CDN global), sb (config)
 // ============================================================
 
 import { sb } from './config.js';
+import {
+    alignSeries, computeMetrics, makeRequestGate, TIMEFRAMES,
+    sma, ema, bollingerBands, rsi, macd,
+} from '../lib/chartSeriesEngine.js';
 
 var h           = React.createElement;
 var useState    = React.useState;
 var useEffect   = React.useEffect;
 var useRef      = React.useRef;
+var useMemo     = React.useMemo;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -36,12 +48,11 @@ var SERIES_PALETTE = [
     '#34d399', // mint
 ];
 
-var TIMEFRAMES = ['1M', '3M', '6M', 'YTD', '1Y', '3Y', '5Y'];
-var MAX_SERIES  = 8;
+var MAX_SERIES = 8;
 
 // ── Data helpers ──────────────────────────────────────────────────────────────
 
-function navToOHLC(navSeries) {
+function navToSeries(navSeries) {
     // Portfolio NAV has no intraday data — close = nav for all OHLC fields
     return navSeries
         .slice()
@@ -49,7 +60,8 @@ function navToOHLC(navSeries) {
         .map(function(d) {
             var v = parseFloat(d.nav);
             return { date: d.price_date, open: v, high: v, low: v, close: v, volume: 0 };
-        });
+        })
+        .filter(function(d) { return isFinite(d.close) && d.close > 0; });
 }
 
 function priceRowToOHLC(d) {
@@ -63,142 +75,7 @@ function priceRowToOHLC(d) {
     };
 }
 
-function sliceByTimeframe(data, tf) {
-    var now    = new Date();
-    var cutoff = new Date(now);
-    if      (tf === '1M')  { cutoff.setMonth(cutoff.getMonth() - 1); }
-    else if (tf === '3M')  { cutoff.setMonth(cutoff.getMonth() - 3); }
-    else if (tf === '6M')  { cutoff.setMonth(cutoff.getMonth() - 6); }
-    else if (tf === 'YTD') { cutoff.setMonth(0); cutoff.setDate(1);  }
-    else if (tf === '1Y')  { cutoff.setFullYear(cutoff.getFullYear() - 1); }
-    else if (tf === '3Y')  { cutoff.setFullYear(cutoff.getFullYear() - 3); }
-    else if (tf === '5Y')  { cutoff.setFullYear(cutoff.getFullYear() - 5); }
-    else                   { return data; }
-    return data.filter(function(d) { return new Date(d.date) >= cutoff; });
-}
-
-function normaliseData(sliced) {
-    if (!sliced.length) return sliced;
-    var base = sliced[0].close;
-    if (!base) return sliced;
-    return sliced.map(function(d) {
-        return {
-            date: d.date,
-            open:   +(d.open   / base * 100).toFixed(4),
-            high:   +(d.high   / base * 100).toFixed(4),
-            low:    +(d.low    / base * 100).toFixed(4),
-            close:  +(d.close  / base * 100).toFixed(4),
-            volume: d.volume,
-        };
-    });
-}
-
-// ── Technical indicators ──────────────────────────────────────────────────────
-
-function sma(prices, period) {
-    return prices.map(function(_, i) {
-        if (i < period - 1) return null;
-        var sum = 0;
-        for (var j = i - period + 1; j <= i; j++) sum += prices[j];
-        return sum / period;
-    });
-}
-
-function ema(prices, period) {
-    var k      = 2 / (period + 1);
-    var result = new Array(prices.length).fill(null);
-    var prev   = null;
-    prices.forEach(function(v, i) {
-        if (i < period - 1) return;
-        if (prev === null) {
-            prev = 0;
-            for (var j = 0; j < period; j++) prev += prices[j];
-            prev /= period;
-            result[i] = prev;
-            return;
-        }
-        prev = v * k + prev * (1 - k);
-        result[i] = prev;
-    });
-    return result;
-}
-
-function bollingerBands(prices, period, mult) {
-    period = period || 20; mult = mult || 2;
-    var mid = sma(prices, period);
-    return prices.map(function(_, i) {
-        if (mid[i] === null) return { upper: null, mid: null, lower: null };
-        var slice = prices.slice(Math.max(0, i - period + 1), i + 1);
-        var avg   = mid[i];
-        var variance = 0;
-        slice.forEach(function(v) { variance += (v - avg) * (v - avg); });
-        var std = Math.sqrt(variance / slice.length);
-        return { upper: avg + mult * std, mid: avg, lower: avg - mult * std };
-    });
-}
-
-function rsi(closes, period) {
-    period = period || 14;
-    var gains = [], losses = [];
-    for (var i = 1; i < closes.length; i++) {
-        var diff = closes[i] - closes[i - 1];
-        gains.push(diff > 0 ? diff : 0);
-        losses.push(diff < 0 ? -diff : 0);
-    }
-    var result = [null];
-    var avgGain = 0, avgLoss = 0;
-    for (var j = 0; j < period && j < gains.length; j++) { avgGain += gains[j]; avgLoss += losses[j]; }
-    avgGain /= period; avgLoss /= period;
-    for (var k = 0; k < gains.length; k++) {
-        if (k < period) { result.push(null); continue; }
-        avgGain = (avgGain * (period - 1) + gains[k])  / period;
-        avgLoss = (avgLoss * (period - 1) + losses[k]) / period;
-        result.push(avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss));
-    }
-    return result;
-}
-
-function macd(closes, fast, slow, signal) {
-    fast = fast || 12; slow = slow || 26; signal = signal || 9;
-    var emaFast  = ema(closes, fast);
-    var emaSlow  = ema(closes, slow);
-    var macdLine = closes.map(function(_, i) {
-        return emaFast[i] !== null && emaSlow[i] !== null ? emaFast[i] - emaSlow[i] : null;
-    });
-    var signalLine = ema(macdLine.map(function(v) { return v !== null ? v : 0; }), signal);
-    var histogram  = macdLine.map(function(v, i) {
-        return v !== null && signalLine[i] !== null ? v - signalLine[i] : null;
-    });
-    return { macdLine: macdLine, signalLine: signalLine, histogram: histogram };
-}
-
-// ── Performance stats ─────────────────────────────────────────────────────────
-
-function computeStats(sliced) {
-    if (!sliced || sliced.length < 2) return null;
-    var closes = sliced.map(function(d) { return d.close; });
-    var first  = closes[0], last = closes[closes.length - 1], days = sliced.length;
-    var totalReturn = last / first - 1;
-    var annReturn   = Math.pow(1 + totalReturn, 252 / days) - 1;
-    var logReturns  = [], mean = 0;
-    for (var i = 1; i < closes.length; i++) {
-        var lr = Math.log(closes[i] / closes[i - 1]);
-        logReturns.push(lr); mean += lr;
-    }
-    mean /= logReturns.length;
-    var variance = 0;
-    logReturns.forEach(function(v) { variance += (v - mean) * (v - mean); });
-    var volatility = Math.sqrt(variance / logReturns.length * 252);
-    var peak = closes[0], maxDD = 0;
-    closes.forEach(function(c) {
-        if (c > peak) peak = c;
-        var dd = (c - peak) / peak;
-        if (dd < maxDD) maxDD = dd;
-    });
-    return { totalReturn: totalReturn, annReturn: annReturn, volatility: volatility, maxDD: maxDD };
-}
-
-// ── Plotly config builder ─────────────────────────────────────────────────────
+// ── Plotly config builder — renders ALIGNED data from the engine ──────────────
 
 var AXIS_BASE = {
     gridcolor:     'rgba(255,255,255,0.04)',
@@ -210,62 +87,58 @@ var AXIS_BASE = {
 };
 
 function buildPlotlyConfig(opts) {
-    var series    = opts.series,   allData   = opts.allData;
-    var overlays  = opts.overlays, subplots  = opts.subplots;
-    var timeframe = opts.timeframe, normalise = opts.normalise;
+    var aligned  = opts.aligned;   // { dates, series } from alignSeries
+    var labels   = opts.labels;    // { id → label }
+    var overlays = opts.overlays, subplots = opts.subplots;
     var chartType = opts.chartType;
-    var traces    = [], shapes    = [];
+    var dates    = aligned.dates;
+    var traces   = [], shapes = [];
 
     // Subplot domain allocation
     var spDefs = [];
-    if (subplots.volume) spDefs.push({ key: 'volume', frac: 0.12, yKey: 'yaxis2' });
-    if (subplots.rsi)    spDefs.push({ key: 'rsi',    frac: 0.15, yKey: 'yaxis3' });
-    if (subplots.macd)   spDefs.push({ key: 'macd',   frac: 0.18, yKey: 'yaxis4' });
+    if (subplots.volume) spDefs.push({ key: 'volume', frac: 0.12 });
+    if (subplots.rsi)    spDefs.push({ key: 'rsi',    frac: 0.15 });
+    if (subplots.macd)   spDefs.push({ key: 'macd',   frac: 0.18 });
     var GAP = 0.015;
     var totalFrac  = spDefs.reduce(function(s, sp) { return s + sp.frac + GAP; }, 0);
-    var mainDomain = [totalFrac, 1.0];
     var currentBottom = 0, spDomains = {};
     spDefs.forEach(function(sp) {
         spDomains[sp.key] = [currentBottom, currentBottom + sp.frac - GAP];
         currentBottom += sp.frac;
     });
-    var yaxes = { yaxis: Object.assign({}, AXIS_BASE, { domain: mainDomain }) };
+    var yaxes = { yaxis: Object.assign({}, AXIS_BASE, { domain: [totalFrac, 1.0] }) };
 
-    // Primary series + overlays
-    series.forEach(function(s, idx) {
-        var raw = allData[s.id];
-        if (!raw || !raw.length) return;
-        var sliced = sliceByTimeframe(raw, timeframe);
-        if (!sliced.length) return;
-        var disp   = normalise ? normaliseData(sliced) : sliced;
+    var primary = aligned.series[0] || null;
+
+    aligned.series.forEach(function(s, idx) {
         var colour = SERIES_PALETTE[idx % SERIES_PALETTE.length];
-        var dates  = disp.map(function(d) { return d.date; });
-        var closes = disp.map(function(d) { return d.close; });
+        var label  = labels[s.id] || s.id;
 
-        if (chartType === 'candlestick' && idx === 0) {
+        if (chartType === 'candlestick' && idx === 0 && aligned.series.length === 1) {
             traces.push({
-                type: 'candlestick', name: s.label, x: dates,
-                open:  disp.map(function(d) { return d.open;  }),
-                high:  disp.map(function(d) { return d.high;  }),
-                low:   disp.map(function(d) { return d.low;   }),
-                close: closes,
+                type: 'candlestick', name: label, x: dates,
+                open:  s.ohlc.map(function(o) { return o && o.open;  }),
+                high:  s.ohlc.map(function(o) { return o && o.high;  }),
+                low:   s.ohlc.map(function(o) { return o && o.low;   }),
+                close: s.ohlc.map(function(o) { return o && o.close; }),
                 increasing: { line: { color: '#00d4ff', width: 1 }, fillcolor: 'rgba(0,212,255,0.45)' },
                 decreasing: { line: { color: '#ef4444', width: 1 }, fillcolor: 'rgba(239,68,68,0.45)'  },
                 yaxis: 'y', xaxis: 'x',
             });
         } else {
             traces.push({
-                type: 'scatter', mode: 'lines', name: s.label, x: dates, y: closes,
+                type: 'scatter', mode: 'lines', name: label, x: dates, y: s.values,
                 line:      { color: colour, width: 2 },
-                fill:      chartType === 'area' ? 'tozeroy' : 'none',
-                fillcolor: chartType === 'area' ? colour + '18' : undefined,
+                fill:      chartType === 'area' && idx === 0 ? 'tozeroy' : 'none',
+                fillcolor: chartType === 'area' && idx === 0 ? colour + '18' : undefined,
+                connectgaps: false,
                 yaxis: 'y', xaxis: 'x',
             });
         }
 
         // Overlays on primary series only
         if (idx === 0) {
-            var prices = closes;
+            var prices = s.values.map(function(v) { return v == null ? NaN : v; });
             if (overlays.ma20)  traces.push({ type:'scatter', mode:'lines', name:'MA 20',  x:dates, y:sma(prices,20),  line:{color:'#fbbf24',width:1.3,dash:'dash'}, yaxis:'y',xaxis:'x' });
             if (overlays.ma50)  traces.push({ type:'scatter', mode:'lines', name:'MA 50',  x:dates, y:sma(prices,50),  line:{color:'#a78bfa',width:1.3,dash:'dash'}, yaxis:'y',xaxis:'x' });
             if (overlays.ma200) traces.push({ type:'scatter', mode:'lines', name:'MA 200', x:dates, y:sma(prices,200), line:{color:'#fb923c',width:1.3,dash:'dot'},  yaxis:'y',xaxis:'x' });
@@ -282,17 +155,14 @@ function buildPlotlyConfig(opts) {
         }
     });
 
-    // Volume subplot
-    if (subplots.volume && series.length > 0) {
-        var vRaw    = allData[series[0].id];
-        var vSliced = sliceByTimeframe(vRaw || [], timeframe);
-        var vCloses = vSliced.map(function(d) { return d.close; });
+    // Volume subplot (primary series)
+    if (subplots.volume && primary) {
+        var vCloses = primary.values;
         traces.push({
-            type: 'bar', name: 'Volume',
-            x: vSliced.map(function(d) { return d.date; }),
-            y: vSliced.map(function(d) { return d.volume; }),
+            type: 'bar', name: 'Volume', x: dates,
+            y: primary.ohlc.map(function(o) { return o ? o.volume : null; }),
             marker: { color: vCloses.map(function(c, i) {
-                return i === 0 || c >= vCloses[i-1] ? 'rgba(0,212,255,0.38)' : 'rgba(239,68,68,0.38)';
+                return i === 0 || c == null || vCloses[i-1] == null || c >= vCloses[i-1] ? 'rgba(0,212,255,0.38)' : 'rgba(239,68,68,0.38)';
             }) },
             yaxis: 'y2', xaxis: 'x',
         });
@@ -300,13 +170,11 @@ function buildPlotlyConfig(opts) {
     }
 
     // RSI subplot
-    if (subplots.rsi && series.length > 0) {
-        var rRaw    = allData[series[0].id];
-        var rSliced = sliceByTimeframe(rRaw || [], timeframe);
-        var rCloses = rSliced.map(function(d) { return d.close; });
+    if (subplots.rsi && primary) {
+        var rCloses = primary.values.map(function(v) { return v == null ? NaN : v; });
         traces.push({
             type:'scatter', mode:'lines', name:'RSI',
-            x: rSliced.map(function(d) { return d.date; }), y: rsi(rCloses),
+            x: dates, y: rsi(rCloses),
             line: { color: '#8b5cf6', width: 1.5 }, yaxis: 'y3', xaxis: 'x',
         });
         yaxes['yaxis3'] = Object.assign({}, AXIS_BASE, {
@@ -320,18 +188,15 @@ function buildPlotlyConfig(opts) {
     }
 
     // MACD subplot
-    if (subplots.macd && series.length > 0) {
-        var mRaw    = allData[series[0].id];
-        var mSliced = sliceByTimeframe(mRaw || [], timeframe);
-        var mCloses = mSliced.map(function(d) { return d.close; });
-        var mDates  = mSliced.map(function(d) { return d.date;  });
+    if (subplots.macd && primary) {
+        var mCloses = primary.values.map(function(v) { return v == null ? NaN : v; });
         var mCalc   = macd(mCloses);
         traces.push(
-            { type:'bar',     name:'MACD Hist', x:mDates, y:mCalc.histogram,
+            { type:'bar',     name:'MACD Hist', x:dates, y:mCalc.histogram,
               marker:{ color: mCalc.histogram.map(function(v) { return (v||0)>=0 ? 'rgba(0,212,255,0.5)' : 'rgba(239,68,68,0.5)'; }) },
               yaxis:'y4', xaxis:'x' },
-            { type:'scatter', mode:'lines', name:'MACD',   x:mDates, y:mCalc.macdLine,   line:{ color:'#00d4ff', width:1.3 }, yaxis:'y4', xaxis:'x' },
-            { type:'scatter', mode:'lines', name:'Signal', x:mDates, y:mCalc.signalLine, line:{ color:'#f59e0b', width:1.3 }, yaxis:'y4', xaxis:'x' }
+            { type:'scatter', mode:'lines', name:'MACD',   x:dates, y:mCalc.macdLine,   line:{ color:'#00d4ff', width:1.3 }, yaxis:'y4', xaxis:'x' },
+            { type:'scatter', mode:'lines', name:'Signal', x:dates, y:mCalc.signalLine, line:{ color:'#f59e0b', width:1.3 }, yaxis:'y4', xaxis:'x' }
         );
         yaxes['yaxis4'] = Object.assign({}, AXIS_BASE, {
             domain: spDomains.macd || [0, 0.18],
@@ -340,18 +205,15 @@ function buildPlotlyConfig(opts) {
     }
 
     // Anchor area chart to data range (prevents fill drawing to absolute zero)
-    if (chartType === 'area' && series.length > 0) {
+    if (chartType === 'area' && aligned.series.length > 0) {
         var allCloses = [];
-        series.forEach(function(s) {
-            var raw = allData[s.id];
-            if (!raw) return;
-            var sl = normalise ? normaliseData(sliceByTimeframe(raw, timeframe)) : sliceByTimeframe(raw, timeframe);
-            sl.forEach(function(d) { allCloses.push(d.close); });
+        aligned.series.forEach(function(s) {
+            s.values.forEach(function(v) { if (v != null) allCloses.push(v); });
         });
         if (allCloses.length > 0) {
             var minC = Math.min.apply(null, allCloses);
             var maxC = Math.max.apply(null, allCloses);
-            var pad  = (maxC - minC) * 0.06;
+            var pad  = (maxC - minC) * 0.06 || 1;
             yaxes['yaxis'].range     = [minC - pad, maxC + pad];
             yaxes['yaxis'].autorange = false;
         }
@@ -364,7 +226,7 @@ function buildPlotlyConfig(opts) {
         font:          { color: 'rgba(255,255,255,0.42)', size: 10, family: "'JetBrains Mono',monospace" },
         hoverlabel:    { bgcolor: '#0d0f1a', bordercolor: 'rgba(0,212,255,0.28)', font: { color: 'rgba(255,255,255,0.92)', size: 11, family: "'JetBrains Mono',monospace" } },
         legend:        { bgcolor: 'transparent', font: { color: 'rgba(255,255,255,0.42)', size: 10 }, orientation: 'h', y: -0.09, x: 0 },
-        xaxis:         Object.assign({}, AXIS_BASE, { showspikes: true, spikecolor: 'rgba(0,212,255,0.3)', spikethickness: 1, domain: [0, 1] }),
+        xaxis:         Object.assign({}, AXIS_BASE, { showspikes: true, spikecolor: 'rgba(0,212,255,0.3)', spikethickness: 1, domain: [0, 1], rangeslider: { visible: false } }),
         annotations:   [{ text: 'ATLAS', xref: 'paper', yref: 'paper', x: 0.5, y: 0.5, showarrow: false,
                           font: { color: 'rgba(0,212,255,0.04)', size: 52, family: "'JetBrains Mono',monospace" } }],
         shapes: shapes,
@@ -381,7 +243,10 @@ function PillGroup(props) {
             return h('button', {
                 key: o.value,
                 className: 'ac-pill' + (props.value === o.value ? ' on' : ''),
-                onClick: function() { props.onChange(o.value); },
+                title: o.reason || o.label,
+                disabled: !!o.disabled,
+                style: o.disabled ? { opacity: 0.4, cursor: 'not-allowed' } : null,
+                onClick: o.disabled ? undefined : function() { props.onChange(o.value); },
             }, o.label);
         })
     );
@@ -425,6 +290,13 @@ function SeriesItem(props) {
 function StatCard(props) {
     function fmt(v) { return v == null ? '—' : (v * 100).toFixed(1) + '%'; }
     function cls(v) { return v == null ? 'neu' : v > 0.001 ? 'pos' : v < -0.001 ? 'neg' : 'neu'; }
+    if (props.insufficient) {
+        return h('div', { className: 'ac-stat-card' },
+            h('div', { className: 'ac-stat-card-label' }, props.label),
+            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: "'JetBrains Mono',monospace", padding: '6px 0' } },
+                'insufficient history in this window (' + props.obs + ' obs, need 20)')
+        );
+    }
     return h('div', { className: 'ac-stat-card' },
         h('div', { className: 'ac-stat-card-label' }, props.label),
         h('div', { className: 'ac-stat-grid' },
@@ -437,12 +309,20 @@ function StatCard(props) {
                 h('div', { className: 'ac-stat-key' }, 'Ann. Return')
             ),
             h('div', { className: 'ac-stat-cell' },
-                h('div', { className: 'ac-stat-val neu' }, fmt(props.volatility)),
+                h('div', { className: 'ac-stat-val neu' }, fmt(props.vol)),
                 h('div', { className: 'ac-stat-key' }, 'Volatility')
             ),
             h('div', { className: 'ac-stat-cell' },
                 h('div', { className: 'ac-stat-val ' + cls(props.maxDD) }, fmt(props.maxDD)),
                 h('div', { className: 'ac-stat-key' }, 'Max DD')
+            ),
+            h('div', { className: 'ac-stat-cell' },
+                h('div', { className: 'ac-stat-val neu' }, props.beta == null ? '—' : props.beta.toFixed(2)),
+                h('div', { className: 'ac-stat-key' }, 'Beta vs Port')
+            ),
+            h('div', { className: 'ac-stat-cell' },
+                h('div', { className: 'ac-stat-val neu' }, props.corr == null ? '—' : props.corr.toFixed(2)),
+                h('div', { className: 'ac-stat-key' }, 'Corr vs Port')
             )
         )
     );
@@ -475,14 +355,21 @@ function InlineSearchResults(props) {
             return h('div', { key: sec.cat },
                 h('div', { className: 'ac-sb-title', style: { padding: '6px 10px 2px', fontSize: 9, letterSpacing: 1.2 } }, sec.cat),
                 sec.items.map(function(item) {
+                    // Tickers that already failed a price-history fetch are
+                    // disabled with the reason shown — they never silently
+                    // select-and-render-nothing again (§6.1 #1).
+                    var dead = props.deadTickers[item.id];
                     return h('div', {
                         key: item.id,
                         className: 'ac-catalog-item',
+                        title: dead ? item.id + ': ' + dead : item.label,
+                        style: dead ? { opacity: 0.4, cursor: 'not-allowed', textDecoration: 'line-through' } : null,
                         onMouseDown: function(e) {
                             e.preventDefault(); // keep input focus until click fires
+                            if (dead) return;
                             props.onAdd(item);
                         },
-                    }, item.label);
+                    }, item.label + (dead ? '  (' + dead + ')' : ''));
                 })
             );
         })
@@ -494,8 +381,7 @@ function InlineSearchResults(props) {
 export function AdvancedChart(props) {
     var navSeries  = props.navSeries || [];
     var chartRef   = useRef(null);
-    var allDataRef = useRef({});
-    var ready      = useRef(false);
+    var gate       = useRef(makeRequestGate());
 
     var _m  = useState('portfolio-vs-benchmark');
     var mode = _m[0], setMode = _m[1];
@@ -524,9 +410,18 @@ export function AdvancedChart(props) {
     var _srch = useState('');
     var searchQuery = _srch[0], setSearchQuery = _srch[1];
 
-    // dataVersion bumps after async fetches complete to trigger a redraw
-    var _dv = useState(0);
-    var dataVersion = _dv[0], setDataVersion = _dv[1];
+    // Raw fetched data lives in state (not a ref) so alignment re-runs
+    // deterministically when a fetch lands — no manual dataVersion bumps.
+    var _raw = useState({});
+    var rawById = _raw[0], setRawById = _raw[1];
+
+    // Tickers whose price_history fetch came back empty/errored, with reason.
+    var _dead = useState({});
+    var deadTickers = _dead[0], setDeadTickers = _dead[1];
+
+    // Fetch-level warnings (engine warnings are computed per render).
+    var _fw = useState([]);
+    var fetchWarnings = _fw[0], setFetchWarnings = _fw[1];
 
     // Catalog built from DB
     var _cat = useState({});
@@ -535,89 +430,97 @@ export function AdvancedChart(props) {
     var _cl = useState(true);
     var catalogLoading = _cl[0], setCatalogLoading = _cl[1];
 
-    // Sync navSeries into allDataRef whenever it changes (handles late-loading data)
+    // Sync navSeries into raw data whenever it changes (handles late-loading data)
     useEffect(function() {
         if (navSeries && navSeries.length) {
-            allDataRef.current['portfolio'] = navToOHLC(navSeries);
-            if (ready.current) draw();
+            var s = navToSeries(navSeries);
+            setRawById(function(prev) { return Object.assign({}, prev, { portfolio: s }); });
         }
-    }, [navSeries]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [navSeries]);
 
-    // On mount: build asset catalog and trigger first draw once layout is painted
+    // On mount: build asset catalog
     useEffect(function() {
-        ready.current = true;
+        if (!sb) { setCatalogLoading(false); return; }
+        Promise.all([
+            sb.from('assets').select('id, symbol, name, asset_class'),
+            sb.from('positions').select('asset_id'),
+        ]).then(function(results) {
+            var assets  = results[0].data || [];
+            var posSet  = {};
+            (results[1].data || []).forEach(function(p) { if (p.asset_id) posSet[p.asset_id] = true; });
 
-        // 2. Build asset catalog from Supabase
-        if (sb) {
-            Promise.all([
-                sb.from('assets').select('id, symbol, name, asset_class'),
-                sb.from('positions').select('asset_id'),
-            ]).then(function(results) {
-                var assets  = results[0].data || [];
-                var posSet  = {};
-                (results[1].data || []).forEach(function(p) { if (p.asset_id) posSet[p.asset_id] = true; });
+            var holdings = [], others = [];
+            assets.forEach(function(a) {
+                if (!a.symbol) return;
+                var label = a.symbol + (a.name && a.name !== a.symbol ? '  –  ' + a.name : '');
+                var item  = { id: a.symbol, label: label, assetId: a.id };
+                if (posSet[a.id]) holdings.push(item);
+                else others.push(item);
+            });
 
-                var holdings = [], others = [];
-                assets.forEach(function(a) {
-                    if (!a.symbol) return;
-                    var label = a.symbol + (a.name && a.name !== a.symbol ? '  –  ' + a.name : '');
-                    var item  = { id: a.symbol, label: label, assetId: a.id };
-                    if (posSet[a.id]) holdings.push(item);
-                    else others.push(item);
-                });
+            function byLabel(a, b) { return a.id < b.id ? -1 : 1; }
+            holdings.sort(byLabel);
+            others.sort(byLabel);
 
-                // Sort alphabetically within each group
-                function byLabel(a, b) { return a.id < b.id ? -1 : 1; }
-                holdings.sort(byLabel);
-                others.sort(byLabel);
-
-                var built = {};
-                if (holdings.length) built['My Holdings'] = holdings;
-                if (others.length)   built['All Assets']  = others;
-                setCatalog(built);
-                setCatalogLoading(false);
-            }).catch(function() { setCatalogLoading(false); });
-        } else {
+            var built = {};
+            if (holdings.length) built['My Holdings'] = holdings;
+            if (others.length)   built['All Assets']  = others;
+            setCatalog(built);
             setCatalogLoading(false);
-        }
+        }).catch(function() { setCatalogLoading(false); });
+    }, []);
 
-        // rAF ensures the canvas has been laid out before Plotly measures its dimensions
-        requestAnimationFrame(function() { draw(); });
-    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    // ── Aligned data + metrics from the shared engine ─────────────────────────
+    var ids = useMemo(function() { return series.map(function(s) { return s.id; }); }, [series]);
+    var aligned = useMemo(function() {
+        return alignSeries({ raw: rawById, ids: ids, timeframe: timeframe, normalise: normalise });
+    }, [rawById, ids, timeframe, normalise]);
+    var metrics = useMemo(function() {
+        return computeMetrics({ dates: aligned.dates, series: aligned.series, referenceId: 'portfolio', rf: 0.045 });
+    }, [aligned]);
 
-    // Redraw whenever series/options or newly-fetched data changes
-    useEffect(function() { draw(); },
-        [series, overlays, subplots, timeframe, normalise, chartType, dataVersion]); // eslint-disable-line react-hooks/exhaustive-deps
+    var labelById = useMemo(function() {
+        var m = {};
+        series.forEach(function(s) { m[s.id] = s.label; });
+        return m;
+    }, [series]);
 
-    // The parent keeps this panel mounted but hidden (display:none) when another
-    // Performance tab is active, so selections/data survive tab switches. While
-    // hidden the container measures 0px, so on re-reveal Plotly must re-measure —
-    // force a redraw + resize once we become active again. `active` defaults to
-    // true when the prop is omitted (standalone use).
+    // Candle only makes sense for a single series — disabled with reason
+    // instead of silently rendering the others as lines.
+    var candleDisabled = aligned.series.length > 1;
+    useEffect(function() {
+        if (candleDisabled && chartType === 'candlestick') setChartType('line');
+    }, [candleDisabled, chartType]);
+
+    // ── Draw ──────────────────────────────────────────────────────────────────
     var active = props.active !== false;
     useEffect(function() {
-        if (!active || !ready.current || !chartRef.current) return;
-        requestAnimationFrame(function() {
-            if (!chartRef.current) return;
-            draw();
-            if (Plotly.Plots && Plotly.Plots.resize) Plotly.Plots.resize(chartRef.current);
-        });
-    }, [active]); // eslint-disable-line react-hooks/exhaustive-deps
-
-    function draw() {
-        if (!chartRef.current || !ready.current) return;
+        if (!chartRef.current) return;
         var cfg = buildPlotlyConfig({
-            series: series, allData: allDataRef.current,
-            overlays: overlays, subplots: subplots,
-            timeframe: timeframe, normalise: normalise, chartType: chartType,
+            aligned: aligned, labels: labelById,
+            overlays: overlays, subplots: subplots, chartType: chartType,
         });
         Plotly.react(chartRef.current, cfg.traces, cfg.layout, { responsive: true, displayModeBar: false });
-    }
+    }, [aligned, labelById, overlays, subplots, chartType]);
+
+    // The parent keeps this panel mounted but hidden (display:none) when
+    // another Performance tab is active. While hidden the container measures
+    // 0px, so on re-reveal Plotly must re-measure.
+    useEffect(function() {
+        if (!active || !chartRef.current) return;
+        requestAnimationFrame(function() {
+            if (!chartRef.current) return;
+            if (Plotly.Plots && Plotly.Plots.resize) Plotly.Plots.resize(chartRef.current);
+        });
+    }, [active]);
 
     function handleModeChange(newMode) {
         setMode(newMode);
         if (newMode === 'portfolio-vs-benchmark') {
-            setSeries([{ id: 'portfolio', label: 'ATLAS Portfolio', locked: true }]);
+            setSeries(function(prev) {
+                var rest = prev.filter(function(s) { return s.id !== 'portfolio'; });
+                return [{ id: 'portfolio', label: 'ATLAS Portfolio', locked: true }].concat(rest);
+            });
         }
     }
 
@@ -629,9 +532,10 @@ export function AdvancedChart(props) {
         });
 
         // Fetch price history from Supabase if not already cached.
-        // Fetch 6 years descending (most recent first) to avoid the 1000-row
-        // default cap silently truncating to stale data, then reverse on client.
-        if (!allDataRef.current[item.id] && item.assetId && sb) {
+        // 6 years descending (most recent first) to avoid the 1000-row
+        // default cap silently truncating to stale data, then reverse.
+        if (!rawById[item.id] && item.assetId && sb) {
+            var token = gate.current.next();
             var sixYearsAgo = new Date();
             sixYearsAgo.setFullYear(sixYearsAgo.getFullYear() - 6);
             var cutoffDate = sixYearsAgo.toISOString().slice(0, 10);
@@ -642,17 +546,28 @@ export function AdvancedChart(props) {
               .order('price_date', { ascending: false })
               .limit(1600)
               .then(function(res) {
-                  if (res.error) {
-                      console.warn('[ATLAS chart] price_history fetch error:', res.error.message);
+                  // Empty or errored fetch fails LOUD: the series is removed,
+                  // the ticker is marked unavailable in search, and a warning
+                  // renders under the chart (§6.1 #1 — the old code logged to
+                  // console and rendered nothing).
+                  if (res.error || !res.data || !res.data.length) {
+                      if (!gate.current.isCurrent(token)) return;
+                      var reason = res.error ? 'price fetch failed' : 'no price history';
+                      setSeries(function(prev) { return prev.filter(function(s) { return s.id !== item.id; }); });
+                      setDeadTickers(function(prev) { var n = Object.assign({}, prev); n[item.id] = reason; return n; });
+                      setFetchWarnings(function(prev) {
+                          return prev.concat([item.id + ': ' + reason + (res.error ? ' — ' + res.error.message : ' in the database — not plotted')]);
+                      });
                       return;
                   }
-                  if (res.data && res.data.length) {
-                      // Reverse to restore chronological order
-                      allDataRef.current[item.id] = res.data.slice().reverse().map(priceRowToOHLC);
-                      setDataVersion(function(v) { return v + 1; });
-                  }
+                  var seriesData = res.data.slice().reverse().map(priceRowToOHLC);
+                  setRawById(function(prev) { return Object.assign({}, prev, { [item.id]: seriesData }); });
               })
-              .catch(function(err) { console.warn('[ATLAS chart] price_history:', err); });
+              .catch(function(err) {
+                  if (!gate.current.isCurrent(token)) return;
+                  setSeries(function(prev) { return prev.filter(function(s) { return s.id !== item.id; }); });
+                  setFetchWarnings(function(prev) { return prev.concat([item.id + ': price fetch failed — ' + (err && err.message)]); });
+              });
         }
     }
 
@@ -668,16 +583,22 @@ export function AdvancedChart(props) {
         setSubplots(function(prev) { var n = Object.assign({}, prev); n[key] = !n[key]; return n; });
     }
 
-    // Per-series stats over the selected timeframe
-    var stats = series.map(function(s) {
-        var raw = allDataRef.current[s.id];
-        if (!raw || !raw.length) return null;
-        var st = computeStats(sliceByTimeframe(raw, timeframe));
-        return st ? Object.assign({ id: s.id, label: s.label }, st) : null;
-    }).filter(Boolean);
+    // Warnings: engine (alignment) + fetch failures, rendered — not swallowed.
+    // no_data engine warnings are dropped here: a series with no raw data is
+    // either still fetching (transient) or already failed its fetch — and the
+    // fetch handler removed it and reported the reason via fetchWarnings.
+    var allWarnings = aligned.warnings
+        .filter(function(w) { return w.kind !== 'no_data'; })
+        .map(function(w) { return w.text; })
+        .concat(fetchWarnings);
 
     var modeOptions      = [{ value:'portfolio-vs-benchmark', label:'Portfolio vs Benchmark' }, { value:'asset-vs-asset', label:'Asset vs Asset' }];
-    var chartTypeOptions = [{ value:'area', label:'Area' }, { value:'line', label:'Line' }, { value:'candlestick', label:'Candle' }];
+    var chartTypeOptions = [
+        { value:'area', label:'Area' },
+        { value:'line', label:'Line' },
+        { value:'candlestick', label:'Candle', disabled: candleDisabled,
+          reason: candleDisabled ? 'Candles need exactly one series — remove the others first.' : 'OHLC candles' },
+    ];
     var overlayConfig    = [
         { key:'ma20',  label:'MA 20',           colour:'#fbbf24'                 },
         { key:'ma50',  label:'MA 50',            colour:'#a78bfa'                 },
@@ -706,7 +627,11 @@ export function AdvancedChart(props) {
                 })
             ),
             h('div', { className: 'ac-topbar-div' }),
-            h(Toggle, { on: normalise, onToggle: function() { setNormalise(function(n) { return !n; }); }, label: 'Normalise' })
+            h(Toggle, { on: normalise, onToggle: function() { setNormalise(function(n) { return !n; }); }, label: 'Normalise' }),
+            normalise && aligned.commonStart
+                ? h('span', { style: { fontSize: 9, letterSpacing: 1, color: '#f59e0b', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 3, padding: '2px 6px', fontFamily: "'JetBrains Mono',monospace", marginLeft: 8 } },
+                    'REBASED TO COMMON START · ' + aligned.commonStart)
+                : null
         ),
 
         // Body
@@ -723,11 +648,9 @@ export function AdvancedChart(props) {
                             ? h('span', { style: { fontSize: 9, color: 'rgba(255,255,255,0.28)', fontFamily: "'JetBrains Mono',monospace" } }, 'MAX')
                             : null
                     ),
-                    // Active series list
                     series.map(function(s, idx) {
                         return h(SeriesItem, { key: s.id, item: s, idx: idx, onRemove: removeSeries });
                     }),
-                    // Inline search — always visible if room for more series
                     series.length < MAX_SERIES ? h('div', { style: { marginTop: 8, position: 'relative' } },
                         h('input', {
                             className: 'ac-srch-inp',
@@ -742,6 +665,7 @@ export function AdvancedChart(props) {
                             catalog:      catalog,
                             query:        searchQuery,
                             activeSeries: series,
+                            deadTickers:  deadTickers,
                             onAdd:        function(item) {
                                 addSeries(item);
                                 setSearchQuery('');
@@ -767,17 +691,25 @@ export function AdvancedChart(props) {
                     })
                 ),
 
-                // Performance stats
+                // Performance stats — computed on the DISPLAYED window by the
+                // shared engine, beta/corr vs portfolio included.
                 h('div', { className: 'ac-sb-sec', style: { borderBottom: 'none' } },
-                    h('div', { className: 'ac-sb-title', style: { marginBottom: 8 } }, 'Performance'),
-                    stats.length
-                        ? stats.map(function(st) { return h(StatCard, Object.assign({ key: st.id }, st)); })
+                    h('div', { className: 'ac-sb-title', style: { marginBottom: 8 } }, 'Performance · ' + timeframe + ' window'),
+                    metrics.length
+                        ? metrics.map(function(m) {
+                            return h(StatCard, Object.assign({ key: m.id, label: labelById[m.id] || m.id }, m));
+                        })
                         : h('div', { style: { fontSize: 11, color: 'rgba(255,255,255,0.28)', paddingTop: 4 } }, 'Add a series to see stats')
                 )
             ),
 
-            // Chart canvas
-            h('div', { ref: chartRef, className: 'ac-canvas' })
+            // Chart canvas + warnings
+            h('div', { style: { display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 } },
+                h('div', { ref: chartRef, className: 'ac-canvas', style: { flex: 1 } }),
+                allWarnings.length ? h('div', {
+                    style: { padding: '6px 10px', fontSize: 10, color: '#f59e0b', fontFamily: "'JetBrains Mono',monospace", lineHeight: 1.6 }
+                }, allWarnings.slice(0, 6).map(function(w, i) { return h('div', { key: i }, '⚠ ' + w); })) : null
+            )
         )
     );
 }
