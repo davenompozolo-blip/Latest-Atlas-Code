@@ -22,6 +22,7 @@ import { NexusThemePanel } from './NexusTheme.js';
 import { PortfolioSnapshot } from './NexusPortfolio.js';
 import { NexusRegimePanel } from './NexusRegime.js';
 import { NexusOpportunitiesPanel } from './NexusOpportunities.js';
+import { NexusBenchPanel } from './NexusBench.js';
 import '../../styles/nexus-flagship.css';
 
 const { useState, useEffect } = React;
@@ -48,6 +49,7 @@ const TABS = [
     { id: 'theme',    label: 'Theme',         seasonal: 'theme' },
     { id: 'regime',   label: 'Regime',        seasonal: 'regime' },
     { id: 'opp',      label: 'Opportunities', seasonal: 'opportunities' },
+    { id: 'bench',    label: 'The Bench' },
     { id: 'drift',    label: 'Drift',         seasonal: 'drift' },
 ];
 
@@ -692,6 +694,8 @@ export function NexusFlagshipPage() {
         panel = e('div', { className: 'nf-seasonal' }, e(NexusRegimePanel, { model }));
     } else if (activeTab === 'opp') {
         panel = e('div', { className: 'nf-seasonal' }, e(NexusOpportunitiesPanel, { model }));
+    } else if (activeTab === 'bench') {
+        panel = e('div', { className: 'nf-seasonal' }, e(NexusBenchPanel, { model }));
     } else if (activeTab === 'drift') {
         panel = e('div', { className: 'nf-seasonal' }, e(NexusDriftPanel, { model }));
     } else {
