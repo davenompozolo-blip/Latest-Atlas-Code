@@ -3,7 +3,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
     buildOpportunities, opportunitiesRead,
-    isolatedMerit, portfolioFit, scoreOpportunity, fundability, rankLedger, extractStance, sectorTilts,
+    isolatedMerit, portfolioFit, scoreOpportunity, fundingSleeveFor, rankLedger, extractStance, sectorTilts,
+    trackSleeveComposition,
 } from './nexusOpportunitiesCompute.js';
 
 const holdings = [
@@ -78,18 +79,37 @@ test('v2 THE POINT: a redundant cheap name ranks below an additive, less-cheap o
         { tk: 'NVDA', fvGapPct: 61, fvTrustworthy: true, conviction: 81, maxCorrToBook: 0.72 },
         { tk: 'PFE', fvGapPct: 36, fvTrustworthy: true, conviction: 66, maxCorrToBook: 0.2, excessVar: -0.2 },
     ];
-    const ranked = rankLedger(cands, [{ tk: 'BIDU', fvGapPct: -36, conviction: 30 }]);
+    const ranked = rankLedger(cands, ['RGLD', 'BABA', 'GOOGL']);
     assert.equal(ranked[0].tk, 'PFE');
     assert.equal(ranked[0].fit, 'additive');
-    assert.equal(ranked[0].fundFrom, 'BIDU');
+    assert.deepEqual(ranked[0].fundFrom, ['RGLD', 'BABA', 'GOOGL']);
     assert.equal(ranked[1].tk, 'NVDA');
     assert.equal(ranked[1].fit, 'redundant');
-    assert.equal(ranked[1].fundFrom, null);
+    assert.deepEqual(ranked[1].fundFrom, []);
 });
 
-test('v2 fundability picks the richest, lowest-conviction held name', () => {
-    assert.equal(fundability([{ tk: 'AMD', fvGapPct: -28, conviction: 53 }, { tk: 'BIDU', fvGapPct: -36, conviction: 30 }, { tk: 'JNJ', fvGapPct: 5, conviction: 64 }]), 'BIDU');
-    assert.equal(fundability([{ tk: 'JNJ', fvGapPct: 5 }]), null);
+test('v2 fundingSleeveFor: top 3 sleeve names, self excluded, empty sleeve stays empty', () => {
+    assert.deepEqual(fundingSleeveFor(['RGLD', 'BABA', 'GOOGL', 'AMD'], 'PFE'), ['RGLD', 'BABA', 'GOOGL']);
+    // a candidate never funds itself — the next-ranked name steps in
+    assert.deepEqual(fundingSleeveFor(['RGLD', 'BABA', 'GOOGL', 'AMD'], 'BABA'), ['RGLD', 'GOOGL', 'AMD']);
+    // empty sleeve → empty array, never an invented ticker
+    assert.deepEqual(fundingSleeveFor([], 'PFE'), []);
+    assert.deepEqual(rankLedger([{ tk: 'PFE', fvGapPct: 36, fvTrustworthy: true, maxCorrToBook: 0.2, excessVar: -0.2 }], [])[0].fundFrom, []);
+});
+
+test('sleeve staleness: counts consecutive sessions, resets on composition change', () => {
+    let s = trackSleeveComposition(null, ['RGLD', 'BABA', 'GOOGL'], '2026-07-01');
+    assert.deepEqual(s, { comp: 'RGLD|BABA|GOOGL', days: 1, last: '2026-07-01' });
+    // same day → no double count
+    assert.equal(trackSleeveComposition(s, ['RGLD', 'BABA', 'GOOGL'], '2026-07-01').days, 1);
+    // next session, unchanged → increments
+    s = trackSleeveComposition(s, ['RGLD', 'BABA', 'GOOGL'], '2026-07-02');
+    assert.equal(s.days, 2);
+    // composition changed → resets
+    s = trackSleeveComposition(s, ['RGLD', 'BABA', 'AMD'], '2026-07-03');
+    assert.deepEqual(s, { comp: 'RGLD|BABA|AMD', days: 1, last: '2026-07-03' });
+    // empty sleeve → zeroed, no stale carry-over
+    assert.equal(trackSleeveComposition(s, [], '2026-07-04').days, 0);
 });
 
 test('v2 extractStance reads prose; sectorTilts pits stance against weight', () => {

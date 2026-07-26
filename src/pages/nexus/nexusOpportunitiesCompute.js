@@ -102,18 +102,16 @@ export function scoreOpportunity(c) {
     return +(isolatedMerit(c) * (FIT_MULT[fit] || 1)).toFixed(2);
 }
 
-// The cleanest place to source the dollars: the richest, lowest-conviction
-// held name (the rich, low-conviction tail). Ticker or null.
-export function fundability(held) {
-    const rich = (held || []).filter(h => Number(h.fvGapPct) < -5);
-    if (!rich.length) return null;
-    return rich
-        .map(h => ({ tk: h.tk, s: (-Number(h.fvGapPct)) * (1 - (Number(h.conviction) || 0) / 200) }))
-        .sort((a, b) => b.s - a.s)[0].tk;
+// The cleanest place to source the dollars: the qualified funding sleeve
+// (vw_funding_sleeve, sleeve_rank order). Per candidate: the top 3 sleeve
+// names, minus the candidate itself — a name never funds its own add.
+// Empty sleeve → empty array, NEVER an invented ticker.
+export function fundingSleeveFor(sleeve, tk) {
+    return (sleeve || []).filter(s => s && s !== tk).slice(0, 3);
 }
 
-// Score + rank the candidate set, attaching fit and a funding source.
-export function rankLedger(candidates, held) {
+// Score + rank the candidate set, attaching fit and the funding sleeve.
+export function rankLedger(candidates, sleeve) {
     return (candidates || []).map(c => {
         const fit = portfolioFit(c);
         return {
@@ -121,9 +119,25 @@ export function rankLedger(candidates, held) {
             fit,
             isolatedMerit: isolatedMerit(c),
             score: scoreOpportunity({ ...c, fit }),
-            fundFrom: fit === 'redundant' ? null : fundability(held),
+            fundFrom: fit === 'redundant' ? [] : fundingSleeveFor(sleeve, c.tk),
         };
     }).sort((a, b) => b.score - a.score);
+}
+
+// ── Sleeve staleness self-check ───────────────────────────────
+// If the sleeve's top-3 composition hasn't changed across consecutive
+// sessions (calendar days seen), the inputs may have gone stale. Pure
+// state-step: prev {comp, days, last} + today's composition + ISO date
+// → next state. The component persists it (localStorage) and badges
+// when days >= SLEEVE_STALE_SESSIONS.
+export const SLEEVE_STALE_SESSIONS = 10;
+
+export function trackSleeveComposition(prev, sleeveTks, todayIso) {
+    const comp = (sleeveTks || []).join('|');
+    if (!comp) return { comp: '', days: 0, last: todayIso };
+    if (!prev || prev.comp !== comp) return { comp, days: 1, last: todayIso };
+    if (prev.last === todayIso) return prev;
+    return { comp, days: (Number(prev.days) || 1) + 1, last: todayIso };
 }
 
 // Coarse stance from the scrapbook's LLM prose (sector_verdict / relative_value).

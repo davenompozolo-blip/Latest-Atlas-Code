@@ -7,8 +7,11 @@
 // (fair value), scrapbook_narratives (thesis), cortex_signals /
 // cortex_watchlist (provenance), insight_correlation_cluster (redundancy),
 // insight_counter_specific_var_vs_sector (marginal risk),
-// scrapbook_sector_notes (sector tilts). Scoring is pure (nexusOpportunities
-// Compute.js). Degrades to an empty ledger, never throws.
+// scrapbook_sector_notes (sector tilts), vw_funding_sleeve (the honest
+// funding ranking — the ONLY fund-from source). Scoring is pure
+// (nexusOpportunitiesCompute.js). Degrades to an empty ledger, never throws.
+// An empty qualified sleeve degrades to an explicit unresolved state with
+// the disqualification reasons — a funding name is never invented.
 
 import { rankLedger, sectorTilts } from '../src/pages/nexus/nexusOpportunitiesCompute.js';
 import { optionsRead, entryTiming } from '../src/pages/nexus/nexusOptionsCompute.js';
@@ -55,7 +58,7 @@ export default async function handler(req, res) {
     if (req.method === 'OPTIONS') return res.status(200).end();
 
     try {
-        const [holdings, companies, narratives, sigs, watch, corr, varRows, sectorNotes, options] = await Promise.all([
+        const [holdings, companies, narratives, sigs, watch, corr, varRows, sectorNotes, options, sleeveRows, disqRows] = await Promise.all([
             sb('vw_nexus_holdings?select=symbol,sector,weight_pct,conviction_score,dcf_upside_pct'),
             sb('scrapbook_companies?select=id,ticker,company_name,sector,avg_fair_value,current_price,fair_value_low,fair_value_high,conviction_rating,thesis_summary&avg_fair_value=not.is.null&current_price=not.is.null'),
             sb('scrapbook_narratives?select=company_id,thesis,investment_verdict,avg_upside_pct,bull_case,bear_case,key_sensitivities'),
@@ -65,7 +68,23 @@ export default async function handler(req, res) {
             sb('insight_counter_specific_var_vs_sector?select=symbol,excess_var'),
             sb('scrapbook_sector_notes?select=sector,sector_verdict,relative_value,company_tickers'),
             sb('nexus_options?select=tk,atm_iv,skew_25d,pc_oi,front_iv,back_iv,iv_rank,skew_rank,rank_ready'),
+            // sleeve_rank restarts within each qualified group — filter first, then order.
+            sb('vw_funding_sleeve?select=tk,funding_score,disqualification_reason,sleeve_rank&qualified=eq.true&order=sleeve_rank.asc&limit=6'),
+            sb('vw_funding_sleeve?select=disqualification_reason&qualified=eq.false&disqualification_reason=not.is.null'),
         ]);
+
+        // The funding sleeve — the single honest fund-from source. Empty when
+        // nothing qualifies; the payload then says so explicitly (unresolved +
+        // top disqualification reasons) instead of falling back to any name.
+        const sleeveTks = (sleeveRows || []).map(r => r.tk).filter(Boolean);
+        const disqCounts = {};
+        for (const d of disqRows || []) { const r = d.disqualification_reason; if (r) disqCounts[r] = (disqCounts[r] || 0) + 1; }
+        const funding = {
+            sleeve: (sleeveRows || []).slice(0, 3).map(r => ({ tk: r.tk, score: num(r.funding_score), rank: r.sleeve_rank })),
+            unresolved: sleeveTks.length === 0,
+            disqualifications: Object.entries(disqCounts).sort((a, b) => b[1] - a[1]).slice(0, 3)
+                .map(([reason, n]) => ({ reason, n })),
+        };
 
         // Entry timing per candidate — the SAME optionsRead Flagship uses, framed
         // here as entry (clean / crowded / stressed). Annotates the ledger; the
@@ -102,13 +121,6 @@ export default async function handler(req, res) {
             return m;
         };
 
-        const scrapByTk = new Map(companies.map(c => [c.ticker, c]));
-        const heldList = holdings.map(h => {
-            const c = scrapByTk.get(h.symbol);
-            const gap = (c && num(c.avg_fair_value) != null && num(c.current_price)) ? (c.avg_fair_value - c.current_price) / c.current_price * 100 : num(h.dcf_upside_pct);
-            return { tk: h.symbol, fvGapPct: gap, conviction: num(h.conviction_score) };
-        });
-
         // Foreign listings (2330.TW, 6758.T, ABEV3.SA) duplicate held US ADRs
         // with junk prices — exclude anything with a digit in the ticker.
         const tradeable = c => c.ticker && !/\d/.test(c.ticker);
@@ -138,7 +150,7 @@ export default async function handler(req, res) {
             };
         }).filter(c => c.fvGapPct != null && isFinite(c.fvGapPct));
 
-        const ledger = rankLedger(candidates, heldList).slice(0, MAX_LEDGER)
+        const ledger = rankLedger(candidates, sleeveTks).slice(0, MAX_LEDGER)
             .map(l => { const t = timingFor(l.tk); return t ? { ...l, ...t } : l; });
         // Normalise + dedupe sector notes onto the book taxonomy before tilting.
         const seenSec = new Set();
@@ -153,8 +165,8 @@ export default async function handler(req, res) {
         const frame = { topSector: sorted[0] ? sorted[0][0] : null, topSectorPct: sorted[0] ? +sorted[0][1].toFixed(0) : null, valued: candidates.length };
 
         res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=21600');
-        return res.status(200).json({ ok: true, asOf: new Date().toISOString(), ledger, sectorTilts: tilts, frame, topThesis });
+        return res.status(200).json({ ok: true, asOf: new Date().toISOString(), ledger, sectorTilts: tilts, frame, topThesis, funding });
     } catch (e) {
-        return res.status(200).json({ ok: false, error: (e && e.message) || 'opportunities error', ledger: [], sectorTilts: [] });
+        return res.status(200).json({ ok: false, error: (e && e.message) || 'opportunities error', ledger: [], sectorTilts: [], funding: { sleeve: [], unresolved: true, disqualifications: [] } });
     }
 }
