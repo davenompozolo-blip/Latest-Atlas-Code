@@ -656,6 +656,16 @@
 .ol-fit.redundant { color: var(--amber); }
 .ol-fit.neutral { color: var(--text3); }
 .ol-fund { font-family: var(--fm); font-size: 11px; color: var(--text2); }
+.ol-fund-unres { color: var(--amber); font-style: italic; }
+/* Funding sleeve chip — the honest fund-from read (vw_funding_sleeve) */
+.ol-sleeve { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px; font-family: var(--fm); font-size: 11.5px; color: var(--text2); background: var(--bg1); box-shadow: inset 0 0 0 1px var(--border-hi); border-radius: 8px; padding: 6px 11px; margin-bottom: 10px; }
+.ol-sleeve-l { color: var(--text3); text-transform: uppercase; font-size: 10px; letter-spacing: .05em; }
+.ol-sleeve-tk { color: var(--danger); font-weight: 600; cursor: pointer; }
+.ol-sleeve-sep { color: var(--text3); }
+.ol-sleeve.unresolved b { color: var(--amber); font-weight: 600; }
+.ol-sleeve-dq { display: flex; gap: 6px; flex-wrap: wrap; margin-left: 8px; }
+.ol-sleeve-dq-i { font-size: 10px; color: var(--text3); background: rgba(245,166,35,0.10); border-radius: 999px; padding: 1px 7px; }
+.ol-sleeve-stale { font-size: 10px; color: var(--amber); background: rgba(245,166,35,0.12); border-radius: 999px; padding: 1px 8px; margin-left: 8px; }
 .ol-because { font-size: 11px; color: var(--text3); white-space: normal; max-width: 320px; }
 .ol-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 .ol-cc { box-shadow: inset 0 0 0 1px var(--border-hi); border-radius: 12px; padding: 14px 15px; background: var(--bg1); }

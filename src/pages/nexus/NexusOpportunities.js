@@ -12,6 +12,7 @@
 
 import React from 'react';
 import { LedgerDispersionNote } from './NexusDispersion.js';
+import { trackSleeveComposition, SLEEVE_STALE_SESSIONS } from './nexusOpportunitiesCompute.js';
 
 const { useState, useEffect } = React;
 const e = React.createElement;
@@ -26,16 +27,76 @@ function openObject(tk) {
     window.dispatchEvent(new CustomEvent('nexus:open-object', { detail: { objectId: 'obj-' + String(tk).toLowerCase(), tk } }));
 }
 
+const EMPTY_FUNDING = { sleeve: [], unresolved: true, disqualifications: [] };
+
 function useOpps() {
     const [s, setS] = useState({ data: null, loading: true });
     useEffect(function () {
         let alive = true;
         fetch('/api/nexus-opportunities').then(r => r.json())
-            .then(j => { if (alive) setS({ data: j && j.ok ? j : { ledger: [], sectorTilts: [] }, loading: false }); })
-            .catch(() => { if (alive) setS({ data: { ledger: [], sectorTilts: [] }, loading: false }); });
+            .then(j => { if (alive) setS({ data: j && j.ok ? j : { ledger: [], sectorTilts: [], funding: EMPTY_FUNDING }, loading: false }); })
+            .catch(() => { if (alive) setS({ data: { ledger: [], sectorTilts: [], funding: EMPTY_FUNDING }, loading: false }); });
         return () => { alive = false; };
     }, []);
     return s;
+}
+
+// ── Funding sleeve — staleness self-check (localStorage) ──────
+// One step per calendar day: same top-3 composition across
+// SLEEVE_STALE_SESSIONS consecutive sessions → badge "verify inputs".
+const SLEEVE_LS_KEY = 'nexus.fundingSleeve.history';
+
+function useSleeveStaleness(sleeveTks) {
+    const [days, setDays] = useState(0);
+    const comp = (sleeveTks || []).join('|');
+    useEffect(function () {
+        if (!comp) { setDays(0); return; }
+        try {
+            const prev = JSON.parse(window.localStorage.getItem(SLEEVE_LS_KEY) || 'null');
+            const next = trackSleeveComposition(prev, sleeveTks, new Date().toISOString().slice(0, 10));
+            window.localStorage.setItem(SLEEVE_LS_KEY, JSON.stringify(next));
+            setDays(next.days);
+        } catch { setDays(0); }
+    }, [comp]);
+    return days;
+}
+
+// ── The fund-from chip — sleeve of up to 3 names, never a fallback ──
+// Qualified sleeve → "fund: RGLD / BABA / GOOGL" (+ staleness badge).
+// Empty sleeve → the explicit degraded state with the top
+// disqualification reasons. A name is never invented.
+function FundingSleeveChip({ funding, onPick }) {
+    const f = funding || EMPTY_FUNDING;
+    const tks = (f.sleeve || []).map(s => s.tk);
+    const staleDays = useSleeveStaleness(tks);
+    if (!tks.length) {
+        return e('div', { className: 'ol-sleeve unresolved' },
+            e('span', { className: 'ol-sleeve-l' }, 'funding source: '),
+            e('b', null, 'unresolved — no qualified candidates'),
+            f.disqualifications && f.disqualifications.length
+                ? e('span', { className: 'ol-sleeve-dq' },
+                    f.disqualifications.map(d => e('span', { key: d.reason, className: 'ol-sleeve-dq-i' }, d.reason + ' ×' + d.n)))
+                : null);
+    }
+    return e('div', { className: 'ol-sleeve' },
+        e('span', { className: 'ol-sleeve-l' }, 'fund: '),
+        tks.map((tk, i) => e(React.Fragment, { key: tk },
+            i ? e('span', { className: 'ol-sleeve-sep' }, ' / ') : null,
+            e('b', { className: 'ol-sleeve-tk', onClick: onPick ? () => onPick(tk) : undefined, title: 'Open ' + tk }, tk))),
+        staleDays >= SLEEVE_STALE_SESSIONS
+            ? e('span', { className: 'ol-sleeve-stale', title: 'The top-3 funding sleeve has not changed in ' + staleDays + ' consecutive sessions — check vw_funding_sleeve inputs.' },
+                'sleeve unchanged ' + staleDays + 'd — verify inputs')
+            : null);
+}
+
+// Ledger cell: the per-name sleeve (self excluded upstream), or the
+// honest empty states — never a single global constant.
+function fundCell(l, sleeveEmpty) {
+    const tks = Array.isArray(l.fundFrom) ? l.fundFrom : (l.fundFrom ? [l.fundFrom] : []);
+    if (tks.length) return tks.join(' / ');
+    if (l.fit === 'redundant') return e('span', { title: 'Redundant to the book — a swap within its cluster, not a funded add' }, '—');
+    if (sleeveEmpty) return e('span', { className: 'ol-fund-unres', title: 'No qualified funding candidates' }, 'unresolved');
+    return '—';
 }
 
 // ── Signature: the opportunity map (conviction × fv-gap, fit-coloured) ──
@@ -58,9 +119,10 @@ function OppMap({ ledger, onPick }) {
         .forEach((q, i) => kids.push(e('text', { key: 'ql' + i, x: q[1], y: q[2], textAnchor: q[3], fontSize: 10, fill: 'var(--text3)', style: { fontFamily: 'var(--fm)' } }, q[0])));
     kids.push(e('text', { key: 'ax', x: (X0 + X1) / 2, y: Y1 + 26, textAnchor: 'middle', fontSize: 11, fill: 'var(--text2)' }, 'Fair-value gap   rich ←  0  → cheap'));
     kids.push(e('text', { key: 'ay', x: X0 - 24, y: (Y0 + Y1) / 2, textAnchor: 'middle', fontSize: 11, fill: 'var(--text2)', transform: 'rotate(-90 ' + (X0 - 24) + ' ' + ((Y0 + Y1) / 2) + ')' }, 'Conviction   low → high'));
-    // swap arrows: additive ledger entries funded from a held name that's on the map
-    plot.filter(l => l.fit === 'additive' && l.fundFrom && byTk.has(l.fundFrom)).slice(0, 3).forEach((l, i) => {
-        const a = byTk.get(l.fundFrom), b = l;
+    // swap arrows: additive ledger entries funded from the first sleeve name that's on the map
+    const sleeveOnMap = l => (Array.isArray(l.fundFrom) ? l.fundFrom : [l.fundFrom]).find(tk => tk && byTk.has(tk));
+    plot.filter(l => l.fit === 'additive' && sleeveOnMap(l)).slice(0, 3).forEach((l, i) => {
+        const a = byTk.get(sleeveOnMap(l)), b = l;
         const x1 = px(a.fvGapPct), y1 = py(a.conviction), x2 = px(b.fvGapPct), y2 = py(b.conviction);
         kids.push(e('path', { key: 'sw' + i, d: 'M' + x1 + ' ' + y1 + ' Q ' + ((x1 + x2) / 2) + ' ' + (((y1 + y2) / 2) - 22) + ' ' + x2 + ' ' + y2, fill: 'none', stroke: 'var(--cyan)', strokeWidth: 1.1, strokeDasharray: '4 3', opacity: 0.5 }));
     });
@@ -81,7 +143,7 @@ function TimingChip(l) {
     return e('span', { className: 'ol-tm ol-tm-' + l.timing, title: l.because || '' }, TM_LABEL[l.timing] || l.timing);
 }
 
-function LedgerRow(l, i, onPick) {
+function LedgerRow(l, i, onPick, sleeveEmpty) {
     const fit = l.fit || 'neutral';
     return e('tr', { key: l.tk, onClick: () => onPick(l.tk), title: 'Open ' + l.tk, style: { cursor: 'pointer' } },
         e('td', { className: 'ol-rk' }, i + 1),
@@ -89,7 +151,7 @@ function LedgerRow(l, i, onPick) {
         e('td', { className: 'nf-l' }, e('span', { className: 'ol-src' }, (l.provenance || []).map(p => e('span', { key: p, className: 'ol-tag ' + p }, PROV[p] || p)))),
         e('td', { className: 'nf-mono-cell ' + (l.fvGapPct >= 0 ? 'tone-up' : 'tone-down') }, sgnPct(l.fvGapPct), l.fvTrustworthy ? null : e('span', { className: 'ol-est', title: 'model estimate / extreme — verify' }, '~')),
         e('td', { className: 'nf-l' }, e('span', { className: 'ol-fit ' + fit }, FIT_LABEL[fit] || fit)),
-        e('td', { className: 'nf-l ol-fund' }, l.fundFrom || '—'),
+        e('td', { className: 'nf-l ol-fund' }, fundCell(l, sleeveEmpty)),
         e('td', { className: 'nf-l' }, e(TimingChip, l)),
         e('td', { className: 'nf-l ol-because' }, l.thesis ? String(l.thesis).slice(0, 90) : (l.held ? 'top-up candidate' : 'new-position candidate')));
 }
@@ -105,9 +167,12 @@ function ThesisCard(t) {
         t.timing ? e('div', { className: 'ol-cc-tm' },
             e('span', { className: 'ol-tm ol-tm-' + t.timing }, TM_LABEL[t.timing] || t.timing),
             e('span', { className: 'ol-cc-tm-txt' }, ' entry — ' + (t.timingBecause || 'options positioning'))) : null,
-        e('div', { className: 'ol-cc-swap' }, t.fundFrom
-            ? e('span', null, 'Net: add, funded by trimming ', e('b', null, t.fundFrom), '.')
-            : e('span', null, 'Net: redundant to the book — a top-up or swap within its cluster, not a fresh add.')));
+        e('div', { className: 'ol-cc-swap' }, (() => {
+            const tks = Array.isArray(t.fundFrom) ? t.fundFrom : (t.fundFrom ? [t.fundFrom] : []);
+            if (tks.length) return e('span', null, 'Net: add, funded from the sleeve — trim ', e('b', null, tks.join(' / ')), '.');
+            if (t.fit === 'redundant') return e('span', null, 'Net: redundant to the book — a top-up or swap within its cluster, not a fresh add.');
+            return e('span', null, 'Net: funding source unresolved — no qualified candidates in the sleeve.');
+        })()));
 }
 
 function SectorCell(s) {
@@ -126,6 +191,8 @@ export function NexusOpportunitiesPanel() {
     const tilts = (data && data.sectorTilts) || [];
     const frame = (data && data.frame) || {};
     const topThesis = (data && data.topThesis) || [];
+    const funding = (data && data.funding) || EMPTY_FUNDING;
+    const sleeveEmpty = !(funding.sleeve && funding.sleeve.length);
 
     return e('div', null,
         // Regime qualifier (portfolio dispersion basket): when correlation is
@@ -146,6 +213,7 @@ export function NexusOpportunitiesPanel() {
                 e('div', null, e('h3', null, 'Opportunity map'),
                     e('div', { className: 'nf-sub', style: { marginTop: 4 } }, 'conviction × fair-value gap, re-coloured by portfolio fit · arrows = suggested swaps · ring solid = composite, dashed = model/extreme')),
                 e('span', { className: 'nf-sub' }, (frame.valued || ledger.length) + ' valued')),
+            e(FundingSleeveChip, { funding, onPick: openObject }),
             e(OppMap, { ledger, onPick: openObject }),
             e('div', { className: 'op-leg' },
                 e('span', null, e('i', { className: 'op-dot', style: { background: 'var(--cyan)' } }), 'additive · diversifies'),
@@ -162,7 +230,7 @@ export function NexusOpportunitiesPanel() {
                     e('table', { className: 'nf-table ol-table' },
                         e('thead', null, e('tr', null,
                             ['#', 'Name', 'Surfaced by', 'FV gap', 'Fit', 'Fund from', 'Timing', 'Read'].map(h => e('th', { key: h, className: h === 'FV gap' ? '' : 'nf-l' }, h)))),
-                        e('tbody', null, ledger.map((l, i) => LedgerRow(l, i, openObject)))))
+                        e('tbody', null, ledger.map((l, i) => LedgerRow(l, i, openObject, sleeveEmpty)))))
                 : e('div', { className: 'nb-empty' }, 'No valued candidates yet.')),
 
         // 4. THESIS IN CONTEXT
