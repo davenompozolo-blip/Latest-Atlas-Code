@@ -832,6 +832,10 @@
 .bn-cbar i.dn { background: var(--danger); }
 .bn-sig { font-family: var(--fm); font-size: 9.5px; color: var(--cyan); background: rgba(58,214,224,.1); border-radius: 4px; padding: 1px 6px; margin-right: 4px; }
 .bn-sig.t { color: var(--purple); background: var(--purple-b); }
+.bn-ctx { font-family: var(--fm); font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; border-radius: 999px; padding: 1px 7px; margin-right: 4px; }
+.bn-ctx.contradict { color: var(--danger); background: var(--danger-b); }
+.bn-ctx.confirm { color: var(--success); background: var(--success-b); }
+.bn-ctx.adjacent { color: var(--cyan); background: rgba(58,214,224,.1); }
 .bn-tape-none { color: var(--text3); }
 .bn-open td { background: rgba(58,214,224,0.03); }
 /* trial panel */

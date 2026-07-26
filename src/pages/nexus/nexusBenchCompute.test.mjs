@@ -5,6 +5,7 @@ import {
     thesisFreshness, claimsTally, deriveIntegrity, resolveVerdict,
     buildWaterfall, cumulativeFromCloses, themeComposite, buildJaws,
     tapeEvents, buildCirculatory, benchDiagnostics,
+    parseCortexCandidates, mapCortexToHoldings,
 } from './nexusBenchCompute.js';
 
 const NOW = '2026-07-26T00:00:00Z';
@@ -118,6 +119,40 @@ test('tapeEvents: claim marks, thesis ticks, silence washes', () => {
     // never updated → whole window silent
     const silent = tapeEvents({ claims: [], thesisDates: [], windowStart: '2026-04-27', windowEnd: '2026-07-26' });
     assert.deepEqual(silent.silences, [{ from: '2026-04-27', to: '2026-07-26' }]);
+});
+
+test('tapeEvents: a silence beginning before the window washes from the window edge, not off-canvas', () => {
+    // last thesis update long before the window: silence starts update+30d,
+    // which predates windowStart → must clip to windowStart, not vanish
+    const ev = tapeEvents({ claims: [], thesisDates: ['2026-01-10'], windowStart: '2026-04-27', windowEnd: '2026-07-26' });
+    assert.deepEqual(ev.silences, [{ from: '2026-04-27', to: '2026-07-26' }]);
+});
+
+test('parseCortexCandidates handles the double-encoded jsonb string', () => {
+    assert.deepEqual(parseCortexCandidates('[{"ticker":"BKNG"}]'), [{ ticker: 'BKNG' }]);
+    assert.deepEqual(parseCortexCandidates([{ ticker: 'AMGN' }]), [{ ticker: 'AMGN' }]);
+    assert.deepEqual(parseCortexCandidates('not json'), []);
+    assert.deepEqual(parseCortexCandidates(null), []);
+});
+
+test('mapCortexToHoldings: candidates by ticker, risk flags by company name, hub taxonomy kept', () => {
+    const holdings = [
+        { tk: 'SNDK', name: 'SanDisk Corp' },
+        { tk: 'AMGN', name: 'AMGEN Inc' },
+        { tk: 'TSM', name: 'Taiwan Semiconductor' },
+    ];
+    const signals = [
+        { signal_class: 'thesis', title: 'Thesis Extender: Healthcare', relevance: 59, candidates: '[{"ticker":"AMGN"}]', is_muted: false },
+        { signal_class: 'risk', title: 'Risk Flag: Sandisk Corp', relevance: 13, candidates: '[]', is_muted: false },
+        { signal_class: 'gap', title: 'Gap Filler: Communications', relevance: 55, candidates: '[{"ticker":"ANET"}]', is_muted: false },
+        { signal_class: 'thesis', title: 'Muted one', relevance: 90, candidates: '[{"ticker":"TSM"}]', is_muted: true },
+    ];
+    const m = mapCortexToHoldings(signals, holdings);
+    assert.equal(m.get('AMGN')[0].stance, 'confirm');
+    assert.equal(m.get('AMGN')[0].class, 'thesis');
+    assert.equal(m.get('SNDK')[0].stance, 'contradict');   // matched via title company name
+    assert.equal(m.get('SNDK')[0].relevance, 13);
+    assert.equal(m.get('TSM'), undefined);                  // muted signals never attach
 });
 
 test('buildCirculatory: freed pool, recruits from additive non-held ledger, factor shift', () => {
