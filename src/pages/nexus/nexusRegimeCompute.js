@@ -36,7 +36,8 @@ const lastTwo = arr => {
 };
 
 // One dashboard row from a series. opt: { fmt, dp, bp (delta in bp), invert
-// (rising = bad → 'down' tone), dsuffix }.
+// (rising = bad → 'down' tone), dsuffix, dscale (divide the delta to match a
+// scaled value format — a value shown as "187k" must delta in k, not units) }.
 function row(group, label, series, opt = {}) {
     const t = lastTwo(series);
     if (!t || t.latest == null) return null;
@@ -44,7 +45,7 @@ function row(group, label, series, opt = {}) {
     let delta = null, deltaTone = 'neutral';
     if (t.prev != null) {
         const raw = t.latest - t.prev;
-        const dv = opt.bp ? raw * 100 : raw;
+        const dv = opt.bp ? raw * 100 : raw / (opt.dscale || 1);
         const ddp = opt.ddp == null ? (opt.bp ? 0 : 2) : opt.ddp;
         delta = (dv >= 0 ? '+' : '−') + Math.abs(dv).toFixed(ddp) + (opt.bp ? 'bp' : (opt.dsuffix || ''));
         const up = raw > 0, down = raw < 0;
@@ -79,7 +80,7 @@ export function macroIndicators(macro) {
     add(row('Inflation', '5y breakeven', inf.breakeven5y));
 
     add(row('Growth', 'Unemployment', g.unrate, { invert: true, dp: 1 }));
-    add(row('Growth', 'Jobless claims', g.claims, { fmt: v => (v / 1000).toFixed(0) + 'k', invert: true, dsuffix: 'k', ddp: 0, suffix: 'k' }));
+    add(row('Growth', 'Jobless claims', g.claims, { fmt: v => (v / 1000).toFixed(0) + 'k', invert: true, dsuffix: 'k', ddp: 0, suffix: 'k', dscale: 1000 }));
 
     add(row('Stress', 'VIX', vol.vix, { fmt: v => v.toFixed(1), invert: true, suffix: '', dsuffix: '' }));
     add(row('Stress', 'HY spreads', cr.hySpreads, { invert: true }));

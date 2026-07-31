@@ -78,11 +78,15 @@ function FundingSleeveChip({ funding, onPick }) {
                     f.disqualifications.map(d => e('span', { key: d.reason, className: 'ol-sleeve-dq-i' }, d.reason + ' ×' + d.n)))
                 : null);
     }
-    return e('div', { className: 'ol-sleeve' },
+    // Provenance is explicit: the same trio on every additive row is the
+    // BOOK-LEVEL sleeve (rank order from vw_funding_sleeve, recomputed per
+    // load), not a constant — tooltips carry rank + score so it reads that way.
+    const provTitle = (f.sleeve || []).map(s => s.tk + ' #' + s.rank + (s.score != null ? ' (' + s.score + ')' : '')).join(' · ');
+    return e('div', { className: 'ol-sleeve', title: 'live from vw_funding_sleeve — ' + provTitle },
         e('span', { className: 'ol-sleeve-l' }, 'fund: '),
-        tks.map((tk, i) => e(React.Fragment, { key: tk },
+        (f.sleeve || []).map((s, i) => e(React.Fragment, { key: s.tk },
             i ? e('span', { className: 'ol-sleeve-sep' }, ' / ') : null,
-            e('b', { className: 'ol-sleeve-tk', onClick: onPick ? () => onPick(tk) : undefined, title: 'Open ' + tk }, tk))),
+            e('b', { className: 'ol-sleeve-tk', onClick: onPick ? () => onPick(s.tk) : undefined, title: s.tk + ' — sleeve rank #' + s.rank + (s.score != null ? ', funding score ' + s.score : '') + '. Click to open.' }, s.tk))),
         staleDays >= SLEEVE_STALE_SESSIONS
             ? e('span', { className: 'ol-sleeve-stale', title: 'The top-3 funding sleeve has not changed in ' + staleDays + ' consecutive sessions — check vw_funding_sleeve inputs.' },
                 'sleeve unchanged ' + staleDays + 'd — verify inputs')
@@ -93,7 +97,7 @@ function FundingSleeveChip({ funding, onPick }) {
 // honest empty states — never a single global constant.
 function fundCell(l, sleeveEmpty) {
     const tks = Array.isArray(l.fundFrom) ? l.fundFrom : (l.fundFrom ? [l.fundFrom] : []);
-    if (tks.length) return tks.join(' / ');
+    if (tks.length) return e('span', { title: 'book-level funding sleeve (vw_funding_sleeve, rank order, this row’s own name excluded) — identical across rows by design' }, tks.join(' / '));
     if (l.fit === 'redundant') return e('span', { title: 'Redundant to the book — a swap within its cluster, not a funded add' }, '—');
     if (sleeveEmpty) return e('span', { className: 'ol-fund-unres', title: 'No qualified funding candidates' }, 'unresolved');
     return '—';

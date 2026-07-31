@@ -193,20 +193,75 @@ export function tapeEvents({ claims = [], thesisDates = [], windowStart, windowE
     const ticks = (thesisDates || []).map(t => String(t).slice(0, 10)).filter(inWin);
 
     // silence stretches: gaps of 30+ days between consecutive thesis
-    // updates (and from the last update to the window end)
+    // updates (and from the last update to the window end), clipped to the
+    // visible window — a silence that began before the window still washes
+    // from the window's left edge instead of vanishing off-canvas.
     const sorted = (thesisDates || []).map(t => String(t).slice(0, 10)).sort();
     const silences = [];
     const pushSilence = (fromIso, toIso) => {
         const from = Date.parse(fromIso), to = Date.parse(toIso);
-        if (isFinite(from) && isFinite(to) && (to - from) / DAY_MS >= THESIS_STALE_DAYS) {
-            silences.push({ from: new Date(from + THESIS_STALE_DAYS * DAY_MS).toISOString().slice(0, 10), to: toIso });
-        }
+        if (!isFinite(from) || !isFinite(to) || (to - from) / DAY_MS < THESIS_STALE_DAYS) return;
+        let a = new Date(from + THESIS_STALE_DAYS * DAY_MS).toISOString().slice(0, 10);
+        let b = toIso;
+        if (windowStart && a < windowStart) a = windowStart;
+        if (windowEnd && b > windowEnd) b = windowEnd;
+        if (a < b) silences.push({ from: a, to: b });
     };
     for (let i = 1; i < sorted.length; i++) pushSilence(sorted[i - 1], sorted[i]);
     if (sorted.length && windowEnd) pushSilence(sorted[sorted.length - 1], windowEnd);
     // never updated at all → the whole window is silent
     if (!sorted.length && windowStart && windowEnd) silences.push({ from: windowStart, to: windowEnd });
     return { claimMarks, ticks, silences };
+}
+
+// ── Cortex signal check — leveraged, not duplicated ───────────
+// The Bench's signal column reads the ACTUAL Cortex hub taxonomy
+// (Thesis Extender / Gap Filler / Risk Flag with relevance), not a
+// parallel vocabulary. cortex_signals.candidates arrives DOUBLE-ENCODED
+// (a JSON string inside jsonb) — parse defensively, never iterate the
+// raw value (for..of over a string walks characters and matches nothing).
+export function parseCortexCandidates(raw) {
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === 'string') {
+        try { const p = JSON.parse(raw); return Array.isArray(p) ? p : []; } catch { return []; }
+    }
+    return [];
+}
+
+// symbol → [{class, title, relevance, stance}] for held names. A signal
+// attaches when its candidates name the ticker, or (risk flags) when the
+// title names the holding's company. stance: risk = contradicting,
+// thesis = confirming, gap = adjacent.
+const CORTEX_STANCE = { risk: 'contradict', thesis: 'confirm', gap: 'adjacent' };
+
+export function mapCortexToHoldings(signals, holdings) {
+    const out = new Map();
+    const push = (tk, sig) => {
+        if (!out.has(tk)) out.set(tk, []);
+        const arr = out.get(tk);
+        if (!arr.some(s => s.title === sig.title)) arr.push(sig);
+    };
+    const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\b(inc|corp|corporation|ltd|plc|co|group|holdings?)\b/g, '').trim();
+    for (const sig of signals || []) {
+        if (sig.is_muted) continue;
+        const entry = {
+            class: sig.signal_class || 'thesis',
+            title: sig.title || '',
+            relevance: num(sig.relevance),
+            stance: CORTEX_STANCE[sig.signal_class] || 'adjacent',
+        };
+        const cands = parseCortexCandidates(sig.candidates);
+        const candTks = new Set(cands.map(c => c && c.ticker).filter(Boolean));
+        for (const h of holdings || []) {
+            if (candTks.has(h.tk)) { push(h.tk, entry); continue; }
+            // risk flags carry the company name in the title, not a ticker
+            if (sig.signal_class === 'risk' && h.name) {
+                const nm = norm(h.name);
+                if (nm && norm(sig.title).includes(nm)) push(h.tk, entry);
+            }
+        }
+    }
+    return out;
 }
 
 // ── Circulatory chart data (6.4) ──────────────────────────────

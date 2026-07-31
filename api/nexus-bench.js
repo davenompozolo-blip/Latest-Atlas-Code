@@ -82,7 +82,7 @@ export default async function handler(req, res) {
 
     try {
         const since = ymd(new Date(Date.now() - TAPE_DAYS * 86_400_000));
-        const [holdings, assess, claims, sleeve, contribView, scrapCos, freshness, prices] = await Promise.all([
+        const [holdings, assess, claims, sleeve, contribView, scrapCos, freshness, prices, cortexSignals] = await Promise.all([
             sb('vw_nexus_holdings?select=symbol,asset_name,sector,weight_pct,market_value,daily_return_pct,total_return_pct,unrealised_return_pct,conviction_score,var_contribution_pct,dcf_upside_pct,current_price,quant_signal,technical_signal,valuation_signal,quality_grade'),
             fetchAssessments(),
             sb('bench_claims?select=id,symbol,thesis_ref,claim_text,status,evidence_text,evidence_value,evidence_source,status_changed_at,created_at&order=created_at.asc&limit=1000'),
@@ -91,6 +91,7 @@ export default async function handler(req, res) {
             sb('scrapbook_companies?select=ticker,thesis_summary,updated_at'),
             sb('vw_nexus_price_freshness?select=symbol,days_old'),
             sbPaged('price_history?select=price_date,close,assets!inner(symbol)&interval=eq.1d&price_date=gte.' + since + '&order=price_date.asc,asset_id.asc', 6),
+            sb('cortex_signals?select=signal_class,title,relevance,candidates,is_muted&is_muted=eq.false&order=generated_at.desc&limit=60'),
         ]);
 
         if (!holdings || !holdings.length) {
@@ -98,17 +99,26 @@ export default async function handler(req, res) {
         }
         const heldSet = new Set(holdings.map(h => h.symbol));
 
-        // narratives (thesis ticks) need the company-id map — second hop
+        // narratives (thesis ticks + FULL thesis text) need the company-id
+        // map — second hop. scrapbook_companies.thesis_summary is truncated
+        // at 220 chars by the upstream writer; the narrative carries the
+        // full text, so the trial quotes that when it exists.
         const scrapIdRows = await sb('scrapbook_companies?select=id,ticker');
         const idToTk = new Map((scrapIdRows || []).map(c => [c.id, c.ticker]));
-        const narrs = await sb('scrapbook_narratives?select=company_id,created_at&order=created_at.asc&limit=2000');
+        const narrs = await sb('scrapbook_narratives?select=company_id,thesis,created_at&order=created_at.asc&limit=2000');
         const thesisDatesByTk = new Map();
+        const fullThesisByTk = new Map();
         for (const n of narrs || []) {
             const tk = idToTk.get(n.company_id);
             if (!tk || !heldSet.has(tk)) continue;
             if (!thesisDatesByTk.has(tk)) thesisDatesByTk.set(tk, []);
             thesisDatesByTk.get(tk).push(n.created_at);
+            if (n.thesis) fullThesisByTk.set(tk, n.thesis);   // ascending order → last write wins (latest)
         }
+
+        // the ACTUAL Cortex hub signals, mapped per held name in the
+        // compute layer client-side — ship them raw
+        const cortex = (cortexSignals || []).map(s => ({ signal_class: s.signal_class, title: s.title, relevance: s.relevance, candidates: s.candidates }));
 
         // latest assessment per symbol (rows arrive newest-first)
         const assessByTk = new Map();
@@ -156,7 +166,10 @@ export default async function handler(req, res) {
                 fvGapPct: num(h.dcf_upside_pct),
                 signals: { quant: h.quant_signal || null, technical: h.technical_signal || null, valuation: h.valuation_signal || null },
                 priceStale: staleSet.has(h.symbol),
-                thesis: (scrap && scrap.thesis_summary) || null,
+                thesis: fullThesisByTk.get(h.symbol) || (scrap && scrap.thesis_summary) || null,
+                // summary-only + exactly 220 chars = the upstream truncation;
+                // the trial labels it instead of quoting a cut-off sentence silently
+                thesisTruncated: !fullThesisByTk.has(h.symbol) && !!(scrap && scrap.thesis_summary && scrap.thesis_summary.length === 220),
                 thesisUpdatedAt: (scrap && scrap.updated_at) || null,
                 thesisDates: thesisDatesByTk.get(h.symbol) || [],
                 claims: claimsByTk.get(h.symbol) || [],
@@ -192,7 +205,7 @@ export default async function handler(req, res) {
         };
 
         res.setHeader('Cache-Control', 's-maxage=900, stale-while-revalidate=3600');
-        return res.status(200).json({ ok: true, asOf: new Date().toISOString(), docket, series, funding, diagnostics });
+        return res.status(200).json({ ok: true, asOf: new Date().toISOString(), docket, series, funding, diagnostics, cortex });
     } catch (e) {
         return res.status(200).json({ ok: false, error: (e && e.message) || 'bench error', docket: [], series: {}, diagnostics: [] });
     }

@@ -102,8 +102,15 @@ export default async function handler(req, res) {
         const sectorWeights = {};
         for (const h of holdings) { const s = h.sector || 'Unclassified'; sectorWeights[s] = (sectorWeights[s] || 0) + (num(h.weight_pct) || 0); }
 
+        // candidates arrives double-encoded (a JSON string inside jsonb) —
+        // parse before iterating, or for..of walks characters and the
+        // cortex provenance never matches a single ticker.
         const cortexTk = new Set();
-        for (const s of sigs) for (const c of (s.candidates || [])) if (c && c.ticker) cortexTk.add(c.ticker);
+        for (const s of sigs) {
+            let cands = s.candidates;
+            if (typeof cands === 'string') { try { cands = JSON.parse(cands); } catch { cands = []; } }
+            for (const c of (Array.isArray(cands) ? cands : [])) if (c && c.ticker) cortexTk.add(c.ticker);
+        }
         const watchSet = new Set(watch.map(w => w.symbol));
         const varMap = new Map(varRows.map(v => [v.symbol, num(v.excess_var)]));
         const idToTicker = new Map(companies.map(c => [c.id, c.ticker]));

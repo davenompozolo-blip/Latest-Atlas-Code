@@ -19,7 +19,7 @@ import React from 'react';
 import {
     thesisFreshness, claimsTally, deriveIntegrity, resolveVerdict,
     buildWaterfall, cumulativeFromCloses, themeComposite, buildJaws,
-    tapeEvents, buildCirculatory, benchDiagnostics,
+    tapeEvents, buildCirculatory, benchDiagnostics, mapCortexToHoldings,
 } from './nexusBenchCompute.js';
 import { trackSleeveComposition, SLEEVE_STALE_SESSIONS } from './nexusOpportunitiesCompute.js';
 
@@ -165,7 +165,7 @@ function AnnotatedTape({ row, series }) {
     // amber wash over thesis-silence stretches, under everything
     for (const s of ev.silences) {
         const a = nearestX(s.from), b = nearestX(s.to);
-        if (a != null && b != null && b > a) kids.push(e('rect', { key: 'sil' + s.from, x: a, y: 0, width: b - a, height: H, fill: 'rgba(245,166,35,0.10)' }));
+        if (a != null && b != null && b > a) kids.push(e('rect', { key: 'sil' + s.from, x: a, y: 0, width: b - a, height: H, fill: 'rgba(245,166,35,0.18)' }));
     }
     kids.push(e('polyline', { key: 'line', points: cum.map((p, i) => px(i) + ',' + py(p.v)).join(' '), fill: 'none', stroke: 'rgba(160,178,196,0.75)', strokeWidth: 1 }));
     kids.push(e('circle', { key: 'entry', cx: px(0), cy: py(cum[0].v), r: 2.2, fill: 'var(--cyan)' }));
@@ -185,33 +185,55 @@ function JawsChart({ row, series, docket, seriesByTk }) {
     const tape = cumulativeFromCloses(series);
     const story = themeComposite(seriesByTk, docket, row.theme, row.tk);
     const j = buildJaws(tape, story);
-    if (!j) return e('div', { className: 'nb-empty' }, 'No price series in window — jaws unavailable.');
+    if (!j) return e('div', { className: 'nb-empty' }, 'No price series in window — tape unavailable, no line invented.');
     if (j.mode === 'tape-only') {
         return e('div', null,
             e(SimpleLine, { pts: j.tape.map(p => p.v), color: 'var(--text2)' }),
             e('div', { className: 'bn-jaws-note' }, 'story unquantified — tape only, no dashed line invented'));
     }
-    const W = 680, H = 160, P = 14;
+    const W = 680, H = 172, P = 14;
     const all = j.points.flatMap(p => [p.tape, p.story]);
     const vMin = Math.min(...all), vMax = Math.max(...all);
     const span = (vMax - vMin) || 1;
     const px = i => P + (i / (j.points.length - 1)) * (W - 2 * P);
-    const py = v => (H - P) - ((v - vMin) / span) * (H - 2 * P);
+    const py = v => (H - P - 12) - ((v - vMin) / span) * (H - 2 * P - 12);
     const tapeColor = j.tracking ? 'var(--success)' : 'var(--danger)';
     const band = j.points.map((p, i) => px(i) + ',' + py(p.story)).join(' ') + ' ' +
                  j.points.slice().reverse().map((p, i) => px(j.points.length - 1 - i) + ',' + py(p.tape)).join(' ');
     const last = j.points[j.points.length - 1];
+    // claim verdict markers (C1 ✓ / C2 ✗) pinned at status_changed_at
+    const dToIdx = new Map(j.points.map((p, i) => [p.d, i]));
+    const nearestIdx = d => {
+        let idx = null;
+        for (const p of j.points) { if (p.d <= d) idx = dToIdx.get(p.d); else break; }
+        return idx;
+    };
+    const markers = [];
+    (row.claims || []).forEach((c, n) => {
+        if (c.status === 'pending' || !c.status_changed_at) return;
+        const idx = nearestIdx(String(c.status_changed_at).slice(0, 10));
+        if (idx == null) return;
+        const ok = c.status === 'confirmed';
+        markers.push(
+            e('circle', { key: 'cm' + n, cx: px(idx), cy: py(j.points[idx].tape), r: 3.4, fill: ok ? 'var(--success)' : 'var(--danger)' }),
+            e('text', { key: 'cml' + n, x: px(idx), y: py(j.points[idx].tape) - 7, textAnchor: 'middle', fontSize: 8.5, fill: ok ? 'var(--success)' : 'var(--danger)', style: { fontFamily: 'var(--fm)' } },
+                'C' + (n + 1) + ' ' + (ok ? '✓' : '✗')));
+    });
     return e('div', null,
         e('svg', { viewBox: '0 0 ' + W + ' ' + H, width: '100%', role: 'img', 'aria-label': 'Story vs tape' },
             e('polygon', { points: band, fill: j.tracking ? 'rgba(58,214,224,0.07)' : 'rgba(240,88,79,0.09)' }),
             e('line', { x1: P, y1: py(0), x2: W - P, y2: py(0), stroke: 'rgba(255,255,255,.1)', strokeDasharray: '2 3' }),
             e('polyline', { points: j.points.map((p, i) => px(i) + ',' + py(p.story)).join(' '), fill: 'none', stroke: 'var(--cyan)', strokeWidth: 1.2, strokeDasharray: '5 4' }),
             e('polyline', { points: j.points.map((p, i) => px(i) + ',' + py(p.tape)).join(' '), fill: 'none', stroke: tapeColor, strokeWidth: 1.4 }),
+            markers,
             j.annotate ? e('text', { x: W - P, y: py((last.story + last.tape) / 2), textAnchor: 'end', fontSize: 10, fill: 'var(--amber)', style: { fontFamily: 'var(--fm)' } },
-                'honesty gap ' + (j.gapPpt >= 0 ? '+' : '−') + Math.abs(j.gapPpt) + 'ppt') : null),
+                'honesty gap ' + (j.gapPpt >= 0 ? '+' : '−') + Math.abs(j.gapPpt) + 'ppt') : null,
+            e('text', { x: P, y: H - 2, fontSize: 8.5, fill: 'var(--text3)', style: { fontFamily: 'var(--fm)' } }, j.points[0].d),
+            e('text', { x: W - P, y: H - 2, textAnchor: 'end', fontSize: 8.5, fill: 'var(--text3)', style: { fontFamily: 'var(--fm)' } }, last.d)),
         e('div', { className: 'bn-jaws-leg' },
             e('span', null, e('i', { className: 'bn-leg-dash' }), 'the story (theme composite)'),
             e('span', null, e('i', { className: 'bn-leg-solid', style: { background: tapeColor } }), 'the tape (position)'),
+            markers.length ? e('span', null, 'C✓/C✗ = claim verdicts at their stamp date') : null,
             j.annotate ? e('span', { className: 'bn-jaws-gapl' }, 'gap ' + Math.abs(j.gapPpt) + 'ppt') : null));
 }
 
@@ -236,7 +258,8 @@ function TrialPanel({ row, series, docket, seriesByTk, res }) {
             e('div', { className: 'bn-trial-thesis' },
                 e('span', { className: 'bn-lab' }, 'THE THESIS, AS FILED '),
                 e(FreshnessStamp, { fresh }),
-                e('div', { className: 'bn-quote' }, row.thesis || 'No scrapbook thesis on file — the story was never written down.')),
+                e('div', { className: 'bn-quote' }, row.thesis || 'No scrapbook thesis on file — the story was never written down.'),
+                row.thesisTruncated ? e('div', { className: 'bn-degraded' }, 'Summary truncated at source (220 chars, mid-sentence) — full narrative missing from the scrapbook. Upstream writer bug, flagged.') : null),
             e('div', { className: 'bn-trial-claims' },
                 e('span', { className: 'bn-lab' }, 'CLAIMS v EVIDENCE'),
                 row.claims.length
@@ -292,9 +315,22 @@ function RulingBlock({ cutRows, ledger }) {
         e(CirculatoryChart, { flow }));
 }
 
+// ── Cortex signal chips — the hub's own taxonomy, not a parallel one ──
+// Risk Flag = contradicting (red) · Thesis Extender = confirming (green)
+// · Gap Filler = adjacent (cyan). Tooltip carries title + relevance.
+const CORTEX_LABEL = { risk: 'risk flag', thesis: 'thesis ext', gap: 'gap filler' };
+function CortexChips({ sigs }) {
+    if (!sigs || !sigs.length) return null;
+    return sigs.slice(0, 2).map((s, i) => e('span', {
+        key: i,
+        className: 'bn-ctx ' + s.stance,
+        title: s.title + (s.relevance != null ? ' · relevance ' + s.relevance : '') + ' — Cortex hub',
+    }, CORTEX_LABEL[s.class] || s.class));
+}
+
 // ── Docket table ──────────────────────────────────────────────
 const VERDICT_ORDER = { cut: 0, watch: 1, press: 2, stays: 3 };
-function DocketTable({ docket, series, ledger, writerRows }) {
+function DocketTable({ docket, series, ledger, writerRows, cortexByTk }) {
     const [open, setOpen] = useState({});
     const rows = docket.map(row => {
         const derived = deriveIntegrity(row.claims);
@@ -344,9 +380,10 @@ function DocketTable({ docket, series, ledger, writerRows }) {
                                 tally.total ? e('span', { className: 'bn-tally' }, tally.confirmed + '✓ ' + tally.contradicted + '✗ ' + tally.pending + '·') : null,
                                 e(FreshnessStamp, { fresh })),
                             e('td', { className: 'nf-l' },
+                                e(CortexChips, { sigs: cortexByTk.get(row.tk) }),
                                 row.signals.quant ? e('span', { className: 'bn-sig' }, row.signals.quant) : null,
                                 row.signals.technical ? e('span', { className: 'bn-sig t' }, row.signals.technical) : null,
-                                (!row.signals.quant && !row.signals.technical) ? e('span', { style: { color: 'var(--text3)' } }, '—') : null),
+                                (!(cortexByTk.get(row.tk) || []).length && !row.signals.quant && !row.signals.technical) ? e('span', { style: { color: 'var(--text3)' } }, '—') : null),
                             e('td', { className: 'nf-l' }, e(AnnotatedTape, { row, series: series[row.tk] })),
                             e('td', { className: 'nf-l' }, e(VerdictChip, { res })))];
                         if (isOpen) out.push(e(TrialPanel, { key: row.tk + '-trial', row, series: series[row.tk], docket, seriesByTk: series, res }));
@@ -361,10 +398,11 @@ export function NexusBenchPanel() {
     if (loading) return e('div', { className: 'nf-card nb-loading' }, e('span', { className: 'nb-spin' }, '◴'), ' Convening the bench…');
     if (!bench) return e('div', { className: 'nf-card' }, e('div', { className: 'nb-empty' }, 'The bench cannot sit — holdings feed unavailable. No verdicts are rendered on missing data.'));
     const { docket, series, funding, diagnostics } = bench;
+    const cortexByTk = mapCortexToHoldings(bench.cortex, docket);
     return e('div', null,
         e(DiagnosticsStrip, { diagnostics, funding }),
         e(ContributionWaterfall, { docket, basis: diagnostics.contributionBasis }),
-        e(DocketTable, { docket, series, ledger, writerRows: diagnostics.writerRows }));
+        e(DocketTable, { docket, series, ledger, writerRows: diagnostics.writerRows, cortexByTk }));
 }
 
 export default NexusBenchPanel;

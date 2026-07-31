@@ -36,6 +36,9 @@ test('macroIndicators builds grouped rows with levels + deltas + tone', () => {
     assert.equal(get('Unemployment').deltaTone, 'down');   // inverted: rising unemployment is bad
     assert.equal(get('VIX').value, '19.4');
     assert.equal(get('VIX').deltaTone, 'up');              // inverted: falling VIX is good
+    assert.equal(get('Jobless claims').value, '229k');
+    assert.equal(get('Jobless claims').delta, '+8k');      // delta scaled to match the value's k units
+    assert.equal(get('Jobless claims').deltaTone, 'down'); // inverted: rising claims are bad
     assert.ok(new Set(ind.map(r => r.group)).size >= 4);   // Rates / Inflation / Growth / Stress
 });
 
