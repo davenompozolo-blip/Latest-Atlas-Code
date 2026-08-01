@@ -286,11 +286,20 @@ export function buildCirculatory(cutRows, ledger) {
 // ── Diagnostics strip (7) ─────────────────────────────────────
 // The bench audits itself: every input's health is a visible line,
 // "never fired" is a warning on screen, not a hidden state.
-export function benchDiagnostics({ fvTrusted = null, fvTotal = null, writerLastRun = null, writerRows = 0, claimsAvailable = false, contributionBasis = 'today-only', sleeveUnresolved = false, nowIso = null }) {
+export function benchDiagnostics({ fvTrusted = null, fvTotal = null, fvReasons = null, writerLastRun = null, writerRows = 0, claimsAvailable = false, contributionBasis = 'today-only', sleeveUnresolved = false, nowIso = null }) {
     const items = [];
     if (fvTotal != null) {
+        // A bare "0/54" tells you nothing actionable. nexus_holdings.fv_untrust_reason
+        // says WHY — stale valuations read differently from single-method ones,
+        // and only one of them is fixed by re-running the valuation pipeline.
+        const top = (fvReasons || []).slice()
+            .sort((a, b) => b.n - a.n)
+            .slice(0, 2)
+            .map(r => r.n + ' ' + r.reason)
+            .join(', ');
         items.push({
-            key: 'fv', label: 'fv_trustworthy ' + (fvTrusted ?? 0) + '/' + fvTotal,
+            key: 'fv',
+            label: 'fv_trustworthy ' + (fvTrusted ?? 0) + '/' + fvTotal + (top ? ' — ' + top : ''),
             level: !fvTrusted ? 'bad' : fvTrusted < fvTotal * 0.5 ? 'warn' : 'ok',
         });
     }
