@@ -169,6 +169,20 @@ test('buildCirculatory: freed pool, recruits from additive non-held ledger, fact
     assert.equal(buildCirculatory([], []), null);
 });
 
+test('benchDiagnostics: fv coverage carries the reason, not a bare zero', () => {
+    const items = benchDiagnostics({
+        fvTrusted: 0, fvTotal: 54,
+        fvReasons: [{ reason: 'stale valuations', n: 34 }, { reason: 'no valuation on file', n: 25 }, { reason: 'single method only', n: 3 }],
+        writerRows: 0, nowIso: NOW,
+    });
+    const fv = items.find(i => i.key === 'fv');
+    assert.match(fv.label, /0\/54/);
+    assert.match(fv.label, /34 stale valuations/);      // the actionable half
+    assert.match(fv.label, /25 no valuation on file/);
+    assert.ok(!/single method/.test(fv.label));          // only the top two
+    assert.equal(fv.level, 'bad');
+});
+
 test('benchDiagnostics: never-fired is a visible warning, degraded bases are labelled', () => {
     const items = benchDiagnostics({ fvTrusted: 0, fvTotal: 61, writerRows: 0, claimsAvailable: false, contributionBasis: 'today-only', sleeveUnresolved: false, nowIso: NOW });
     assert.equal(items.find(i => i.key === 'fv').level, 'bad');

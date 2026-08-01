@@ -82,7 +82,7 @@ export default async function handler(req, res) {
 
     try {
         const since = ymd(new Date(Date.now() - TAPE_DAYS * 86_400_000));
-        const [holdings, assess, claims, sleeve, contribView, scrapCos, freshness, prices, cortexSignals] = await Promise.all([
+        const [holdings, assess, claims, sleeve, contribView, scrapCos, freshness, prices, cortexSignals, fvRows] = await Promise.all([
             sb('vw_nexus_holdings?select=symbol,asset_name,sector,weight_pct,market_value,daily_return_pct,total_return_pct,unrealised_return_pct,conviction_score,var_contribution_pct,dcf_upside_pct,current_price,quant_signal,technical_signal,valuation_signal,quality_grade'),
             fetchAssessments(),
             sb('bench_claims?select=id,symbol,thesis_ref,claim_text,status,evidence_text,evidence_value,evidence_source,status_changed_at,created_at&order=created_at.asc&limit=1000'),
@@ -92,6 +92,8 @@ export default async function handler(req, res) {
             sb('vw_nexus_price_freshness?select=symbol,days_old'),
             sbPaged('price_history?select=price_date,close,assets!inner(symbol)&interval=eq.1d&price_date=gte.' + since + '&order=price_date.asc,asset_id.asc', 6),
             sb('cortex_signals?select=signal_class,title,relevance,candidates,is_muted&is_muted=eq.false&order=generated_at.desc&limit=60'),
+            // fv_untrust_reason explains the coverage number on the strip
+            sb('nexus_holdings?select=tk,fv_trustworthy,fv_untrust_reason'),
         ]);
 
         if (!holdings || !holdings.length) {
@@ -189,9 +191,22 @@ export default async function handler(req, res) {
         const writerRows = (assess.rows || []).length;
         const writerLastRun = writerRows ? (assess.rows[0].created_at || assess.rows[0].as_of_date) : null;
 
+        // fv coverage + the reason breakdown behind it
+        const fvReasonCounts = {};
+        for (const r of fvRows || []) {
+            if (r.fv_trustworthy || !r.fv_untrust_reason) continue;
+            // collapse "valuation 50d stale" / "valuation 44d stale" into one bucket
+            const bucket = r.fv_untrust_reason.replace(/^valuation \d+d stale$/, 'stale valuations');
+            fvReasonCounts[bucket] = (fvReasonCounts[bucket] || 0) + 1;
+        }
+        const fvReasons = Object.entries(fvReasonCounts)
+            .sort((a, b) => b[1] - a[1])
+            .map(([reason, n]) => ({ reason, n }));
+
         const diagnostics = {
-            fvTrusted: sleeveRows.filter(r => r.fv_trustworthy).length,
-            fvTotal: sleeveRows.length || null,
+            fvTrusted: (fvRows || []).filter(r => r.fv_trustworthy).length || sleeveRows.filter(r => r.fv_trustworthy).length,
+            fvTotal: (fvRows || []).length || sleeveRows.length || null,
+            fvReasons,
             writerRows,
             writerLastRun,
             writerExtended: assess.extended,

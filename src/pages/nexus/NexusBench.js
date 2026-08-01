@@ -98,7 +98,7 @@ function DiagnosticsStrip({ diagnostics, funding }) {
         } catch { /* localStorage unavailable → no badge, never a crash */ }
     }, [comp]);
     const items = benchDiagnostics({
-        fvTrusted: diagnostics.fvTrusted, fvTotal: diagnostics.fvTotal,
+        fvTrusted: diagnostics.fvTrusted, fvTotal: diagnostics.fvTotal, fvReasons: diagnostics.fvReasons,
         writerRows: diagnostics.writerRows, writerLastRun: diagnostics.writerLastRun,
         claimsAvailable: diagnostics.claimsAvailable, contributionBasis: diagnostics.contributionBasis,
         sleeveUnresolved: !!(funding && funding.unresolved),
