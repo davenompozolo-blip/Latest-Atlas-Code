@@ -102,17 +102,25 @@ export function buildWaterfall(rows) {
     const pos = R.filter(r => r.contrib > 0).sort((a, b) => b.contrib - a.contrib);
     const neg = R.filter(r => r.contrib < 0).sort((a, b) => a.contrib - b.contrib);
     const posTotal = pos.reduce((a, r) => a + r.contrib, 0);
+    const negTotal = neg.reduce((a, r) => a + r.contrib, 0);
     const carriers = pos.filter((r, i) => i < 6 && posTotal > 0 && r.contrib >= posTotal * 0.08);
     const passengers = pos.slice(carriers.length);
     const passengersNet = passengers.reduce((a, r) => a + r.contrib, 0);
+    // Detractors collapse the same way carriers do. Drawing all ~30 negatives
+    // individually crushed the axis into unreadable overlapping labels; the
+    // named teeth are the ones that actually cost you something.
+    const teeth = neg.filter((r, i) => i < 6 && negTotal < 0 && r.contrib <= negTotal * 0.08);
+    const tail = neg.slice(teeth.length);
+    const tailNet = tail.reduce((a, r) => a + r.contrib, 0);
     const net = R.reduce((a, r) => a + r.contrib, 0);
 
     // Bar sequence with running offsets (start → end of each segment).
     const bars = [];
     let cum = 0;
     for (const c of carriers) { bars.push({ kind: 'carrier', tk: c.tk, value: c.contrib, from: cum, to: cum + c.contrib }); cum += c.contrib; }
-    if (passengers.length) { bars.push({ kind: 'shelf', tk: passengers.length + ' passengers', value: passengersNet, from: cum, to: cum + passengersNet }); cum += passengersNet; }
-    for (const d of neg) { bars.push({ kind: 'detractor', tk: d.tk, value: d.contrib, from: cum, to: cum + d.contrib }); cum += d.contrib; }
+    if (passengers.length) { bars.push({ kind: 'shelf', tk: passengers.length + ' small', value: passengersNet, from: cum, to: cum + passengersNet }); cum += passengersNet; }
+    for (const d of teeth) { bars.push({ kind: 'detractor', tk: d.tk, value: d.contrib, from: cum, to: cum + d.contrib }); cum += d.contrib; }
+    if (tail.length) { bars.push({ kind: 'tail', tk: tail.length + ' small', value: tailNet, from: cum, to: cum + tailNet }); cum += tailNet; }
 
     const carrierSum = carriers.reduce((a, r) => a + r.contrib, 0);
     return {
