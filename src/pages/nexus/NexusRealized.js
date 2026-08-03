@@ -101,15 +101,35 @@ function WaterfallSvg({ items, total, isPct }) {
     let run = 0;
     const pts = items.map(it => { const p = { n: it.sector, v: it.value, s: run, e: run + it.value }; run += it.value; return p; });
     const all = pts.flatMap(p => [p.s, p.e]).concat([0, total]);
-    const min = Math.min(...all) * 1.15 - 1e-9, max = Math.max(...all) * 1.15 + 1e-9;
-    const y = v => pad.t + ih - ((v - min) / (max - min)) * ih;
+    // Zero-anchored, round-number scale. The old version scaled raw min/max by
+    // 1.15, which put the gridlines on arbitrary values and left zero floating
+    // at whatever height fell out. Now zero is always a real gridline and the
+    // ticks land on clean steps either side of it.
+    const rawMin = Math.min(...all, 0), rawMax = Math.max(...all, 0);
+    const niceStep = span => {
+        const rough = (span || 1) / 4;
+        const mag = Math.pow(10, Math.floor(Math.log10(rough)));
+        const n = rough / mag;
+        return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * mag;
+    };
+    const stepV = niceStep((rawMax - rawMin) || Math.abs(total) || 1);
+    const min = Math.floor(rawMin / stepV) * stepV;
+    const max = Math.ceil(rawMax / stepV) * stepV;
+    const lo = min === max ? min - stepV : min, hi = max === min ? max + stepV : max;
+    const y = v => pad.t + ih - ((v - lo) / (hi - lo)) * ih;
     const step = iw / (pts.length + 1), bw = step * 0.62;
     const fmtV = v => (isPct ? pctS(v, 2) : money(v));
     const kids = [];
-    [max, (max + min) / 2, 0, min].forEach((g, i) => {
-        kids.push(e('line', { key: 'g' + i, x1: pad.l, x2: W - pad.r, y1: y(g), y2: y(g), stroke: 'rgba(255,255,255,.05)' }));
-        kids.push(e('text', { key: 'gt' + i, x: pad.l - 8, y: y(g) + 3, fill: 'var(--text3)', fontSize: 9, textAnchor: 'end', style: { fontFamily: 'var(--fm)' } },
-            isPct ? g.toFixed(1) + '%' : (g < 0 ? '-$' : '$') + Math.abs(Math.round(g))));
+    const ticks = [];
+    for (let g = lo; g <= hi + 1e-9; g += stepV) ticks.push(+g.toFixed(10));
+    ticks.forEach((g, i) => {
+        const isZero = Math.abs(g) < 1e-9;
+        kids.push(e('line', {
+            key: 'g' + i, x1: pad.l, x2: W - pad.r, y1: y(g), y2: y(g),
+            stroke: isZero ? 'rgba(255,255,255,.22)' : 'rgba(255,255,255,.05)',
+        }));
+        kids.push(e('text', { key: 'gt' + i, x: pad.l - 8, y: y(g) + 3, fill: isZero ? 'var(--text2)' : 'var(--text3)', fontSize: 9, textAnchor: 'end', style: { fontFamily: 'var(--fm)' } },
+            isPct ? g.toFixed(2) + '%' : (g < 0 ? '-$' : '$') + Math.abs(Math.round(g))));
     });
     pts.forEach((p, i) => {
         const x = pad.l + step * i + step * 0.5 - bw / 2;
@@ -141,7 +161,7 @@ function NameBars({ bars, isPct, totalMv }) {
         const c = v >= 0 ? 'var(--success)' : 'var(--danger)';
         const x = v >= 0 ? mid : mid + sc(v);
         kids.push(e('rect', { key: 'r' + b.symbol, x, y: yy, width: Math.abs(sc(v)), height: hh, fill: c, opacity: .82, rx: 2, style: { cursor: 'pointer' }, onClick: () => drillName(b.symbol) }));
-        kids.push(e('text', { key: 'n' + b.symbol, x: pad.l - 10, y: yy + hh - 3, fill: 'var(--text1)', fontSize: 10.5, textAnchor: 'end', style: { fontFamily: 'var(--fm)', cursor: 'pointer' }, onClick: () => drillName(b.symbol) }, b.symbol));
+        kids.push(e('text', { key: 'n' + b.symbol, x: pad.l - 10, y: yy + hh - 3, fill: '#fff', fontSize: 10.5, textAnchor: 'end', style: { fontFamily: 'var(--fm)', cursor: 'pointer', fontWeight: 600 }, onClick: () => drillName(b.symbol) }, b.symbol));
         const lx = v >= 0 ? x + Math.abs(sc(v)) + 7 : x - 7;
         kids.push(e('text', { key: 'v' + b.symbol, x: lx, y: yy + hh - 3, fill: c, fontSize: 10, textAnchor: v >= 0 ? 'start' : 'end', style: { fontFamily: 'var(--fm)' } }, isPct ? pctS(v) : money(v)));
     });
@@ -240,7 +260,22 @@ function EvidenceChart({ aligned, drawnIds, chartType, subplots, overlays, norma
             tickfont: { color: 'rgba(255,255,255,0.28)', size: 10, family: "'JetBrains Mono',monospace" },
             showgrid: true, zeroline: false,
         };
-        const yaxes = { yaxis: Object.assign({}, axisBase, { domain: [totalFrac, 1] }) };
+        // Tick labels live on the RIGHT. The layout reserves 62px there and only
+        // 8px on the left, so left-side labels were clipped to their last glyph —
+        // an index-100 series rendered as a column of bare "0"s.
+        const yAxisSide = { side: 'right' };
+        // In normalise mode the engine rebases to index 100. Plot it as % change
+        // from the common start instead, so the baseline IS zero and sits mid-
+        // chart at natural eye level rather than the reader decoding "100".
+        const asPct = normalise && chartType !== 'candlestick';
+        const shiftY = v => (v == null || !isFinite(v) ? null : +(v - 100).toFixed(4));
+        const yaxes = {
+            yaxis: Object.assign({}, axisBase, yAxisSide, {
+                domain: [totalFrac, 1],
+                zeroline: asPct, zerolinecolor: 'rgba(255,255,255,0.22)', zerolinewidth: 1,
+                ticksuffix: asPct ? '%' : '',
+            }),
+        };
 
         drawn.forEach((s, idx) => {
             const colour = EV_PALETTE[idx % EV_PALETTE.length];
@@ -255,15 +290,19 @@ function EvidenceChart({ aligned, drawnIds, chartType, subplots, overlays, norma
                 });
             } else {
                 traces.push({
-                    type: 'scatter', mode: 'lines', name: s.id, x: dates, y: s.values,
+                    type: 'scatter', mode: 'lines', name: s.id, x: dates,
+                    y: asPct ? s.values.map(shiftY) : s.values,
                     line: { color: colour, width: idx === 0 ? 2 : 1.5 },
                     fill: chartType === 'area' && idx === 0 ? 'tozeroy' : 'none',
                     fillcolor: chartType === 'area' && idx === 0 ? 'rgba(58,214,224,0.08)' : undefined,
+                    hovertemplate: asPct ? '%{y:+.2f}%<extra>' + s.id + '</extra>' : undefined,
                     connectgaps: false, yaxis: 'y', xaxis: 'x',
                 });
             }
             if (idx === 0) {
-                const prices = s.values.map(v => (v == null ? NaN : v));
+                // Overlays must live in the same space as the line they annotate:
+                // MA(v − 100) ≡ MA(v) − 100, so shifting the input is exact.
+                const prices = (asPct ? s.values.map(shiftY) : s.values).map(v => (v == null ? NaN : v));
                 if (overlays.ma20) traces.push({ type: 'scatter', mode: 'lines', name: 'MA 20', x: dates, y: sma(prices, 20), line: { color: '#fbbf24', width: 1.2, dash: 'dash' } });
                 if (overlays.ma50) traces.push({ type: 'scatter', mode: 'lines', name: 'MA 50', x: dates, y: sma(prices, 50), line: { color: '#a78bfa', width: 1.2, dash: 'dash' } });
                 if (overlays.ma200) traces.push({ type: 'scatter', mode: 'lines', name: 'MA 200', x: dates, y: sma(prices, 200), line: { color: '#fb923c', width: 1.2, dash: 'dot' } });
@@ -286,11 +325,11 @@ function EvidenceChart({ aligned, drawnIds, chartType, subplots, overlays, norma
                 type: 'bar', name: 'Volume', x: dates, y: primary.ohlc.map(o => (o ? o.volume : null)),
                 marker: { color: 'rgba(58,214,224,0.3)' }, yaxis: 'y2', xaxis: 'x',
             });
-            yaxes.yaxis2 = Object.assign({}, axisBase, { domain: domains.volume, showticklabels: false });
+            yaxes.yaxis2 = Object.assign({}, axisBase, yAxisSide, { domain: domains.volume, showticklabels: false });
         }
         if (subplots.rsi && primary) {
             traces.push({ type: 'scatter', mode: 'lines', name: 'RSI', x: dates, y: rsiCalc(primary.values.map(v => (v == null ? NaN : v))), line: { color: '#8b7bd8', width: 1.4 }, yaxis: 'y3', xaxis: 'x' });
-            yaxes.yaxis3 = Object.assign({}, axisBase, { domain: domains.rsi, range: [0, 100], title: { text: 'RSI', font: { color: 'rgba(255,255,255,0.28)', size: 9 } } });
+            yaxes.yaxis3 = Object.assign({}, axisBase, yAxisSide, { domain: domains.rsi, range: [0, 100], title: { text: 'RSI', font: { color: 'rgba(255,255,255,0.28)', size: 9 } } });
             shapes.push(
                 { type: 'line', xref: 'paper', yref: 'y3', x0: 0, x1: 1, y0: 70, y1: 70, line: { color: 'rgba(224,64,92,0.4)', width: 1, dash: 'dash' } },
                 { type: 'line', xref: 'paper', yref: 'y3', x0: 0, x1: 1, y0: 30, y1: 30, line: { color: 'rgba(58,214,224,0.4)', width: 1, dash: 'dash' } },
@@ -303,7 +342,7 @@ function EvidenceChart({ aligned, drawnIds, chartType, subplots, overlays, norma
                 { type: 'scatter', mode: 'lines', name: 'MACD', x: dates, y: mc.macdLine, line: { color: '#3ad6e0', width: 1.2 }, yaxis: 'y4', xaxis: 'x' },
                 { type: 'scatter', mode: 'lines', name: 'Signal', x: dates, y: mc.signalLine, line: { color: '#f0b429', width: 1.2 }, yaxis: 'y4', xaxis: 'x' },
             );
-            yaxes.yaxis4 = Object.assign({}, axisBase, { domain: domains.macd, title: { text: 'MACD', font: { color: 'rgba(255,255,255,0.28)', size: 9 } } });
+            yaxes.yaxis4 = Object.assign({}, axisBase, yAxisSide, { domain: domains.macd, title: { text: 'MACD', font: { color: 'rgba(255,255,255,0.28)', size: 9 } } });
         }
         if (betaLive) {
             // The subplot that makes this a Nexus tool: rolling 60d beta of
@@ -312,7 +351,7 @@ function EvidenceChart({ aligned, drawnIds, chartType, subplots, overlays, norma
                 traces.push({ type: 'scatter', mode: 'lines', name: 'β60 ' + bs.id, x: dates, y: bs.values, line: { color: EV_PALETTE[(drawnIds.indexOf(bs.id) + 8) % 8], width: 1.3 }, connectgaps: false, yaxis: 'y5', xaxis: 'x' });
             });
             shapes.push({ type: 'line', xref: 'paper', yref: 'y5', x0: 0, x1: 1, y0: 1, y1: 1, line: { color: 'rgba(255,255,255,0.18)', width: 1, dash: 'dash' } });
-            yaxes.yaxis5 = Object.assign({}, axisBase, { domain: domains.beta, title: { text: 'β60 vs port', font: { color: 'rgba(255,255,255,0.28)', size: 9 } } });
+            yaxes.yaxis5 = Object.assign({}, axisBase, yAxisSide, { domain: domains.beta, title: { text: 'β60 vs port', font: { color: 'rgba(255,255,255,0.28)', size: 9 } } });
         }
 
         const layout = Object.assign({
@@ -324,9 +363,8 @@ function EvidenceChart({ aligned, drawnIds, chartType, subplots, overlays, norma
             annotations: [{ text: 'ATLAS', xref: 'paper', yref: 'paper', x: 0.5, y: 0.55, showarrow: false, font: { color: 'rgba(58,214,224,0.04)', size: 52, family: "'Syne',sans-serif" } }],
             shapes,
         }, yaxes);
-        if (normalise && chartType !== 'candlestick') {
-            shapes.push({ type: 'line', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: 100, y1: 100, line: { color: 'rgba(255,255,255,0.15)', width: 1, dash: 'dot' } });
-        }
+        // The rebase baseline is now the axis zeroline itself (values are % change
+        // from the common start), so no separate index-100 rule is needed.
         Plotly.react(ref.current, traces, layout, { responsive: true, displayModeBar: false });
     }, [aligned, drawnIds, chartType, subplots, overlays, normalise, betaSub]);
     return e('div', { ref, style: { height: 380 } });
@@ -386,18 +424,27 @@ export function NexusRealizedLayer({ themeRows, factorMoves, betasAsOf, model, m
     const flagged = useMemo(() => flaggedSectors(iva, sigma), [iva, sigma]);
     const tRead = useMemo(() => transmissionRead(iva, sigma), [iva, sigma]);
     const ivaTop = useMemo(() => topResidualRows(iva, 5), [iva]);
+    // Implied needs BOTH legs: today's factor moves and per-sector betas. Name
+    // the missing one — "β pending" was shown even when the real gap was that
+    // factorMoves never reached the client at all.
+    const movesLive = ['rate', 'usd', 'oil'].some(k => factorMoves && factorMoves[k] != null);
+    const betasLive = betasBySector.size > 0
+        && [...betasBySector.values()].some(b => b && ['rate', 'usd', 'oil'].some(k => b[k] != null));
+    const pendingReason = !movesLive && !betasLive ? 'factor feed down'
+        : !movesLive ? 'factor moves pending'
+        : !betasLive ? 'β pending'
+        : 'β pending';
 
-    // Waterfall order = beat 03's transmission-strip order (share-weight
-    // desc, the buildThemeView sort), so the eye tracks straight down.
-    // Sectors absent from the strip append after, by P&L.
+    // Waterfall order = contribution, best to worst. A bridge reads as a story
+    // when the winners stack up first and the losers walk it back down; beat
+    // 03's share-weight order interleaved them and the shape said nothing.
     const wfItems = useMemo(() => {
-        const order = new Map((themeRows || []).map((r, i) => [r.theme, i]));
-        const inStrip = cut.sectors.filter(s => order.has(s.sector)).sort((a, b) => order.get(a.sector) - order.get(b.sector));
-        const rest = cut.sectors.filter(s => !order.has(s.sector));
         const isPct = valMode === '%';
         const scale = isPct && cut.totalMv ? 100 / cut.totalMv : 1;
-        return inStrip.concat(rest).map(s => ({ sector: s.sector, value: s.pnl * scale }));
-    }, [cut, themeRows, valMode]);
+        return cut.sectors.slice()
+            .map(s => ({ sector: s.sector, value: s.pnl * scale }))
+            .sort((a, b) => b.value - a.value);
+    }, [cut, valMode]);
 
     // ── Beat 06 compute ───────────────────────────────────────
     // Pre-select 'Flagged sectors' only when beat 05 actually flagged
@@ -657,7 +704,7 @@ export function NexusRealizedLayer({ themeRows, factorMoves, betasAsOf, model, m
                                 e('td', { className: 'nf-mono-cell' }, pending ? '—' : money(r.implied)),
                                 e('td', { className: 'nf-mono-cell ' + toneOf(r.actual) }, money(r.actual)),
                                 e('td', { className: 'nf-mono-cell ' + (pending ? 't3' : toneOf(r.residual)) },
-                                    pending ? '— β pending' : money(r.residual)));
+                                    pending ? '— ' + pendingReason : money(r.residual)));
                         })))),
                 e(ReadLine, { tag: 'Transmission read' }, tRead.text))),
 
@@ -837,16 +884,25 @@ export function NexusRealizedLayer({ themeRows, factorMoves, betasAsOf, model, m
                                         e('td', { className: 'nf-l' }, e('span', { className: 'nf-tk' }, m.id === 'portfolio' ? 'ATLAS Portfolio' : m.id)),
                                         e('td', { className: 'nf-mono-cell t3', colSpan: 8 }, 'insufficient history in this window (' + m.obs + ' obs, need 20)'));
                                 }
+                                // Beta / corr / capture are measured AGAINST the
+                                // portfolio, so for the portfolio row itself they
+                                // are trivially 1.00 / 1.00 / 100. Reporting that
+                                // as a metric is noise dressed as information.
+                                const isRef = m.id === 'portfolio';
+                                const selfCell = title => e('td', { className: 'nf-mono-cell t3', title }, '—');
                                 return e('tr', { key: m.id },
-                                    e('td', { className: 'nf-l' }, e('span', { className: 'nf-tk' }, m.id === 'portfolio' ? 'ATLAS Portfolio' : m.id)),
+                                    e('td', { className: 'nf-l' }, e('span', { className: 'nf-tk' }, isRef ? 'ATLAS Portfolio' : m.id)),
                                     e('td', { className: 'nf-mono-cell ' + toneOf(m.totalReturn) }, fpct(m.totalReturn)),
                                     e('td', { className: 'nf-mono-cell ' + toneOf(m.annReturn) }, fpct(m.annReturn, 1)),
                                     e('td', { className: 'nf-mono-cell' }, m.vol == null ? '—' : (m.vol * 100).toFixed(1) + '%'),
                                     e('td', { className: 'nf-mono-cell tone-down' }, m.maxDD == null ? '—' : (m.maxDD * 100).toFixed(1) + '%'),
                                     e('td', { className: 'nf-mono-cell' }, m.sharpe == null ? '—' : m.sharpe.toFixed(2)),
-                                    e('td', { className: 'nf-mono-cell' }, m.beta == null ? '—' : m.beta.toFixed(2)),
-                                    e('td', { className: 'nf-mono-cell' }, m.corr == null ? '—' : m.corr.toFixed(2)),
-                                    e('td', { className: 'nf-mono-cell' },
+                                    isRef ? selfCell('β against itself is 1.00 by definition')
+                                          : e('td', { className: 'nf-mono-cell' }, m.beta == null ? '—' : m.beta.toFixed(2)),
+                                    isRef ? selfCell('correlation with itself is 1.00 by definition')
+                                          : e('td', { className: 'nf-mono-cell' }, m.corr == null ? '—' : m.corr.toFixed(2)),
+                                    isRef ? selfCell('capture against itself is 100 / 100 by definition')
+                                          : e('td', { className: 'nf-mono-cell' },
                                         m.upCapture == null ? '—' : Math.round(m.upCapture) + ' / ' + (m.downCapture == null ? '—' : Math.round(m.downCapture))));
                             })))),
                     e('div', { className: 'nf-sub', style: { marginTop: 8, lineHeight: 1.5 } },

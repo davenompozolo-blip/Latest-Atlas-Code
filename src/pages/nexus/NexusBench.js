@@ -113,36 +113,71 @@ function ContributionWaterfall({ docket, basis }) {
     const rows = docket.map(d => ({ tk: d.tk, contrib: basis === 'view' && d.contrib.ytd != null ? d.contrib.ytd : d.contrib.today }));
     const w = buildWaterfall(rows);
     if (!w) return null;
-    const X0 = 40, X1 = 730, Y0 = 24, Y1 = 150;
-    const vals = w.bars.flatMap(b => [b.from, b.to]).concat([0]);
-    const vMin = Math.min(...vals), vMax = Math.max(...vals);
-    const span = (vMax - vMin) || 1;
-    const py = v => Y1 - ((v - vMin) / span) * (Y1 - Y0);
-    const bw = Math.min(64, (X1 - X0) / w.bars.length - 6);
+    // Layout: room reserved above for the concentration rail and below for the
+    // ticker row, so nothing collides. Y-scale is zero-anchored on round steps.
+    const W = 760, H = 230;
+    const X0 = 46, X1 = W - 74, Y0 = 40, Y1 = 172;
+    const vals = w.bars.flatMap(b => [b.from, b.to]).concat([0, w.net]);
+    const rawMin = Math.min(...vals, 0), rawMax = Math.max(...vals, 0);
+    const rough = ((rawMax - rawMin) || 1) / 4;
+    const mag = Math.pow(10, Math.floor(Math.log10(rough)));
+    const nn = rough / mag;
+    const stepV = (nn <= 1 ? 1 : nn <= 2 ? 2 : nn <= 5 ? 5 : 10) * mag;
+    const lo = Math.floor(rawMin / stepV) * stepV;
+    const hi = Math.ceil(rawMax / stepV) * stepV;
+    const loF = lo === hi ? lo - stepV : lo, hiF = hi === lo ? hi + stepV : hi;
+    const py = v => Y1 - ((v - loF) / (hiF - loF)) * (Y1 - Y0);
+    const slot = (X1 - X0) / w.bars.length;
+    const bw = Math.max(6, Math.min(46, slot - 8));
     const kids = [];
-    kids.push(e('line', { key: 'zero', x1: X0, y1: py(0), x2: X1, y2: py(0), stroke: 'rgba(255,255,255,.12)', strokeDasharray: '2 3' }));
+
+    // Gridlines on round steps, zero picked out.
+    for (let g = loF; g <= hiF + 1e-9; g += stepV) {
+        const gv = +g.toFixed(10), isZero = Math.abs(gv) < 1e-9;
+        kids.push(e('line', { key: 'g' + gv, x1: X0, y1: py(gv), x2: X1, y2: py(gv), stroke: isZero ? 'rgba(255,255,255,.20)' : 'rgba(255,255,255,.045)' }));
+        kids.push(e('text', { key: 'gl' + gv, x: X0 - 7, y: py(gv) + 3, textAnchor: 'end', fontSize: 8.5, fill: isZero ? 'var(--text2)' : 'var(--text3)', style: { fontFamily: 'var(--fm)' } }, gv.toFixed(1) + '%'));
+    }
+
+    const FILL = { carrier: 'var(--success)', detractor: 'var(--danger)', shelf: '#5b6b7d', tail: '#5b6b7d' };
     let lastCarrierX = X0;
     w.bars.forEach((b, i) => {
-        const x = X0 + i * ((X1 - X0) / w.bars.length) + 3;
+        const x = X0 + i * slot + (slot - bw) / 2;
         const yA = py(b.from), yB = py(b.to);
-        const fill = b.kind === 'carrier' ? 'var(--success)' : b.kind === 'detractor' ? 'var(--danger)' : '#5b6b7d';
-        kids.push(e('rect', { key: 'b' + i, x, y: Math.min(yA, yB), width: bw, height: Math.max(2, Math.abs(yA - yB)), rx: 2, fill, opacity: b.kind === 'shelf' ? 0.6 : 0.85 }));
-        kids.push(e('text', { key: 't' + i, x: x + bw / 2, y: Y1 + 14, textAnchor: 'middle', fontSize: 8.5, fill: 'var(--text3)', style: { fontFamily: 'var(--fm)' } }, b.tk));
-        kids.push(e('text', { key: 'v' + i, x: x + bw / 2, y: Math.min(yA, yB) - 4, textAnchor: 'middle', fontSize: 8, fill: 'var(--text2)', style: { fontFamily: 'var(--fm)' } }, sgnPct(b.value)));
+        const top = Math.min(yA, yB), h = Math.max(2, Math.abs(yA - yB));
+        const grouped = b.kind === 'shelf' || b.kind === 'tail';
+        kids.push(e('rect', {
+            key: 'b' + i, x, y: top, width: bw, height: h, rx: 2,
+            fill: FILL[b.kind] || '#5b6b7d', opacity: grouped ? 0.5 : 0.9,
+        }));
+        // Ticker labels rotate 40° so they never overlap at any bar count.
+        kids.push(e('text', {
+            key: 't' + i, transform: 'translate(' + (x + bw / 2) + ',' + (Y1 + 11) + ') rotate(40)',
+            fontSize: 9, fill: grouped ? 'var(--text3)' : '#fff', style: { fontFamily: 'var(--fm)' },
+        }, b.tk));
+        // Value labels only where they fit and mean something — a column of
+        // "0.02%" on hairline bars was the noise that made this unreadable.
+        if (!grouped && Math.abs(b.value) >= stepV * 0.4) {
+            kids.push(e('text', {
+                key: 'v' + i, x: x + bw / 2, y: (b.value >= 0 ? top - 5 : top + h + 10),
+                textAnchor: 'middle', fontSize: 8.5, fill: b.value >= 0 ? 'var(--success)' : 'var(--danger)',
+                style: { fontFamily: 'var(--fm)' },
+            }, sgnPct(b.value)));
+        }
         if (b.kind === 'carrier') lastCarrierX = x + bw;
     });
-    // net marker + concentration rail over the carriers
-    kids.push(e('line', { key: 'net', x1: X0, y1: py(w.net), x2: X1, y2: py(w.net), stroke: 'var(--cyan)', strokeWidth: 1, strokeDasharray: '5 4', opacity: 0.7 }));
-    kids.push(e('text', { key: 'netl', x: X1, y: py(w.net) - 4, textAnchor: 'end', fontSize: 9, fill: 'var(--cyan)', style: { fontFamily: 'var(--fm)' } }, 'net ' + sgnPct(w.net)));
+
+    // Net marker, labelled in the right-hand gutter so it clears the bars.
+    kids.push(e('line', { key: 'net', x1: X0, y1: py(w.net), x2: X1 + 4, y2: py(w.net), stroke: 'var(--cyan)', strokeWidth: 1, strokeDasharray: '5 4', opacity: 0.75 }));
+    kids.push(e('text', { key: 'netl', x: X1 + 8, y: py(w.net) + 3, textAnchor: 'start', fontSize: 9, fill: 'var(--cyan)', style: { fontFamily: 'var(--fm)' } }, 'net ' + sgnPct(w.net)));
     if (w.concentration) {
-        kids.push(e('line', { key: 'rail', x1: X0, y1: Y0 - 8, x2: lastCarrierX, y2: Y0 - 8, stroke: 'var(--purple)', strokeWidth: 1, strokeDasharray: '3 3' }));
-        kids.push(e('text', { key: 'raill', x: X0, y: Y0 - 12, fontSize: 9, fill: 'var(--purple)', style: { fontFamily: 'var(--fm)' } },
+        kids.push(e('line', { key: 'rail', x1: X0, y1: Y0 - 14, x2: lastCarrierX, y2: Y0 - 14, stroke: 'var(--purple)', strokeWidth: 1, strokeDasharray: '3 3' }));
+        kids.push(e('text', { key: 'raill', x: X0, y: Y0 - 20, fontSize: 9, fill: 'var(--purple)', style: { fontFamily: 'var(--fm)' } },
             w.concentration.names + ' names = ' + w.concentration.pctOfPositive + '% of contribution'));
     }
     return e('div', { className: 'nf-card nf-fade' },
         e('div', { className: 'nf-card-h' }, e('h3', null, 'Contribution'),
             e('span', { className: 'nf-sub' }, basis === 'view' ? 'cumulative YTD' : 'today only — cumulative view pending')),
-        e('svg', { viewBox: '0 0 760 175', width: '100%', role: 'img', 'aria-label': 'Contribution waterfall: carriers, passengers, detractors, net.' }, kids));
+        e('svg', { viewBox: '0 0 ' + W + ' ' + H, width: '100%', role: 'img', 'aria-label': 'Contribution waterfall: carriers, small names, detractors, net.' }, kids));
 }
 
 // ── 6.3 Annotated tape sparkline ──────────────────────────────

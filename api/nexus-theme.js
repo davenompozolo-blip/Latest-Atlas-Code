@@ -133,6 +133,14 @@ export default async function handler(req, res) {
             betaDays: BETA_DAYS,
             priceAsOf: priceRows.length ? priceRows[priceRows.length - 1].price_date : null,
             themes,
+            // Beat 05 (Realized transmission) computes implied = Σ β_f × move_f
+            // and needs these. They were being computed above and then dropped
+            // on the floor, so the front end always saw `undefined`, `movesLive`
+            // was always false, and EVERY sector's implied rendered "—".
+            factorMoves,
+            // When the factor proxy fetch fails, betas AND moves are null — the
+            // panel needs to say which leg is missing instead of a bare dash.
+            factorsAvailable: ['rate', 'usd', 'oil'].some(k => factorMoves[k] != null),
         });
     } catch (e) {
         return res.status(200).json({ ok: false, error: (e && e.message) || 'theme error', themes: [] });

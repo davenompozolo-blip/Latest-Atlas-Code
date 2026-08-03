@@ -56,7 +56,7 @@ test('buildWaterfall: carriers, shelf, teeth, net, concentration rail', () => {
     assert.equal(w.bars[0].kind, 'carrier');
     assert.equal(w.bars[1].tk, 'NVDA');
     const shelf = w.bars.find(b => b.kind === 'shelf');
-    assert.match(shelf.tk, /2 passengers/);
+    assert.match(shelf.tk, /2 small/);
     assert.ok(Math.abs(shelf.value - 0.03) < 1e-9);
     const tooth = w.bars.find(b => b.kind === 'detractor');
     assert.equal(tooth.tk, 'BABA');
@@ -66,6 +66,20 @@ test('buildWaterfall: carriers, shelf, teeth, net, concentration rail', () => {
     // offsets chain: each bar starts where the previous ended
     for (let i = 1; i < w.bars.length; i++) assert.ok(Math.abs(w.bars[i].from - w.bars[i - 1].to) < 1e-9);
     assert.equal(buildWaterfall([]), null);
+});
+
+test('buildWaterfall: a long tail of tiny detractors collapses instead of crushing the axis', () => {
+    const rows = [{ tk: 'BIG', contrib: 5 }];
+    for (let i = 0; i < 30; i++) rows.push({ tk: 'T' + i, contrib: -0.02 });  // the unreadable tail
+    rows.push({ tk: 'HURT', contrib: -1.2 });                                  // a real tooth
+    const w = buildWaterfall(rows);
+    assert.ok(w.bars.length <= 14, 'bar count stays legible, got ' + w.bars.length);
+    assert.ok(w.bars.some(b => b.kind === 'detractor' && b.tk === 'HURT'), 'material detractor stays named');
+    const tail = w.bars.find(b => b.kind === 'tail');
+    assert.match(tail.tk, /small/);
+    // collapsing is presentational only — the arithmetic must still close
+    const last = w.bars[w.bars.length - 1];
+    assert.ok(Math.abs(last.to - w.net) < 1e-9, 'bars must still bridge to net');
 });
 
 test('cumulativeFromCloses rebases to first close', () => {
