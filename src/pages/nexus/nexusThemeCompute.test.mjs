@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
     buildThemeView, themeLeaders,
     dailyReturns, themeReturnSeries, cumMomentum, beta, themeDispersion, rotationRead, stdev, scaleReturnsToVol,
-    positionRankPct, rotationConviction, rotationCall, breadthNote, VERDICT_CHIP, CONVICTION_WEIGHTS,
+    positionRankPct, rotationConviction, rotationCall, rotationGap, breadthNote, VERDICT_CHIP, CONVICTION_WEIGHTS,
 } from './nexusThemeCompute.js';
 
 const holdings = [
@@ -206,6 +206,75 @@ test('rotationCall: no qualifying pair degrades to text, null score', () => {
     assert.equal(call.sell, null);
     assert.equal(call.conviction.score, null);
     assert.ok(call.text.length > 0);
+});
+
+test('rotationGap: names why there is no buy leg when every improver is already core', () => {
+    // The live shape: all positive-momentum themes sit at/above median weight,
+    // so the ACCUMULATE quadrant is empty and only a trim qualifies.
+    const rows = [
+        { theme: 'Technology', sharePct: 29, momentum5d: 9.1, valuationPending: true },
+        { theme: 'Healthcare', sharePct: 12, momentum5d: 3.2, valuationPending: true },
+        { theme: 'Industrials', sharePct: 11, momentum5d: -3.4, valuationPending: true },
+        { theme: 'Energy', sharePct: 2, momentum5d: -6.5, valuationPending: true },
+        { theme: 'Real Estate', sharePct: 1, momentum5d: -0.2, valuationPending: true },
+    ];
+    const gap = rotationGap(rows);
+    assert.ok(gap.buyGap, 'buy leg is missing, so it must be explained');
+    assert.match(gap.buyGap, /underweight and improving/);
+    assert.match(gap.buyGap, /Technology/);            // names the improvers that are already core
+    assert.match(gap.buyGap, /Closest underweight theme is Real Estate/);
+    assert.equal(gap.sellGap, null);                    // a sell leg DOES qualify
+    assert.deepEqual(gap.improvingHeavy.map(r => r.theme), ['Technology', 'Healthcare']);
+
+    // and the call itself carries the gap plus sell-leg drivers, not an empty card
+    const call = rotationCall(rows, {}, null);
+    assert.equal(call.sell.theme, 'Industrials');
+    assert.equal(call.buy, null);
+    assert.ok(call.drivers.length >= 3, 'one-leg call still ships drivers');
+    assert.ok(call.drivers.some(d => d.key === 'gap'), 'the missing leg is itself a driver line');
+    assert.equal(call.conviction.score, null);          // still refuses to score a half pair
+});
+
+test('rotationGap: a RICH light improver is not counted as a buy leg', () => {
+    // rotationRead downgrades ADD → LET_RUN when the name screens rich, so the
+    // call has no buy leg. The gap must say so; previously hasBuy was true and
+    // the card rendered a half call with no explanation at all.
+    const rows = [
+        { theme: 'Core', sharePct: 20, momentum5d: -2, valuationPending: true },
+        { theme: 'Small', sharePct: 2, momentum5d: 5, valuationPending: false, valuationTilt: 'rich' },
+    ];
+    const call = rotationCall(rows, {}, null);
+    assert.equal(call.buy, null, 'rich light improver is not a buy leg');
+    const gap = rotationGap(rows);
+    assert.ok(gap.buyGap, 'the missing buy leg must still be explained');
+    assert.match(gap.buyGap, /screens rich/);
+    assert.deepEqual(gap.improvingRich.map(r => r.theme), ['Small']);
+    assert.ok(call.drivers.some(d => d.key === 'gap'), 'and it reaches the card');
+});
+
+test('rotationGap: median cut matches rotationRead even with momentum-pending rows', () => {
+    // A row with a share but no momentum counts toward rotationRead's median.
+    // Excluding it moved the quoted cut (30% vs the real 10%) — the card would
+    // have printed a boundary that never set any verdict.
+    const rows = [
+        { theme: 'A', sharePct: 1, momentum5d: null, valuationPending: true },
+        { theme: 'B', sharePct: 2, momentum5d: null, valuationPending: true },
+        { theme: 'C', sharePct: 10, momentum5d: -1, valuationPending: true },
+        { theme: 'D', sharePct: 30, momentum5d: -2, valuationPending: true },
+    ];
+    assert.equal(rotationGap(rows).heavyCut, 10);
+    // and a pending momentum makes the claim unconfirmed rather than absolute
+    assert.match(rotationGap(rows).buyGap, /momentum pending sync, so this is unconfirmed/);
+    assert.equal(rotationGap(rows).momentumPending.length, 2);
+});
+
+test('rotationGap: no sell leg is explained too', () => {
+    const rows = [
+        { theme: 'Technology', sharePct: 20, momentum5d: 4, valuationPending: true },
+        { theme: 'Energy', sharePct: 3, momentum5d: 2, valuationPending: true },
+    ];
+    const gap = rotationGap(rows);
+    assert.match(gap.sellGap, /No core theme is rolling over/);
 });
 
 test('rotationConviction: equal weights, renormalised over available factors', () => {

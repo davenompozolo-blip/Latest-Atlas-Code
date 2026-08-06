@@ -297,6 +297,75 @@ export function rotationConviction(sell, buy, sellDisp, playbook) {
     return { score, tag, factors };
 }
 
+// ── Why there is no pair ──────────────────────────────────────
+// A half-call ("Trim Industrials.") is the least interesting way to say
+// something quite interesting: the book has no theme that is BOTH
+// underweight and improving, because every improving theme is already a
+// core position. That is a real read about the shape of the book, so name
+// the near-misses instead of rendering an empty card.
+// Classification comes from rotationRead's OWN verdicts, never re-derived.
+// Re-deriving drifted twice: the median was taken over a different row set
+// (a momentum-pending row moved the cut), and the ADD→LET_RUN downgrade for
+// rich names was missed, so a rich light improver counted as a buy leg that
+// rotationCall had already rejected — leaving the card silent about it.
+export function rotationBlockers(rows) {
+    const read = rotationRead(rows);
+    const heavyCut = median((rows || []).map(r => r.sharePct)) || 0;   // identical to rotationRead
+    const row = t => (rows || []).find(r => r.theme === t);
+    const of = v => read.perTheme.filter(p => p.verdict === v).map(p => row(p.theme)).filter(Boolean);
+    const byMom = (a, b) => (b.momentum5d ?? 0) - (a.momentum5d ?? 0);
+    const letRun = of('LET_RUN');
+    return {
+        heavyCut: +heavyCut.toFixed(1),
+        addCandidates: of('ADD').sort(byMom),
+        trimCandidates: of('TRIM').sort(byMom),
+        // improving but already core — can't be bought without concentrating
+        improvingHeavy: letRun.filter(r => r.sharePct != null && r.sharePct >= heavyCut).sort(byMom),
+        // underweight and improving, but rich — rotationRead declined to chase
+        improvingRich: letRun.filter(r => r.sharePct != null && r.sharePct < heavyCut).sort(byMom),
+        lightFading: of('IGNORE').sort(byMom),
+        // momentum not in yet: the read is unconfirmed, not negative
+        momentumPending: of('HOLD').filter(r => r.momentum5d == null),
+    };
+}
+
+const themeList = (arr, n = 3) => arr.slice(0, n).map(r => r.theme).join(', ');
+
+// One honest sentence for each missing leg, or null when the leg exists.
+export function rotationGap(rows) {
+    const b = rotationBlockers(rows);
+    const hasBuy = b.addCandidates.length > 0;
+    const hasSell = b.trimCandidates.length > 0;
+    const pendingNote = b.momentumPending.length
+        ? ' ' + b.momentumPending.length + ' theme' + (b.momentumPending.length > 1 ? 's have' : ' has')
+          + ' momentum pending sync, so this is unconfirmed.'
+        : '';
+    let buyGap = null, sellGap = null;
+    if (!hasBuy) {
+        const parts = [];
+        if (b.improvingHeavy.length) {
+            parts.push('Every improving theme — ' + themeList(b.improvingHeavy)
+                + ' — already sits at or above the ' + b.heavyCut
+                + '% median weight, so adding would concentrate, not rotate.');
+        }
+        if (b.improvingRich.length) {
+            parts.push('The underweight improver' + (b.improvingRich.length > 1 ? 's ' : ' ')
+                + themeList(b.improvingRich) + ' screen'
+                + (b.improvingRich.length > 1 ? '' : 's') + ' rich, so the call declines to chase.');
+        }
+        buyGap = parts.length
+            ? 'No theme is both underweight and improving. ' + parts.join(' ')
+            : 'No theme is improving on 5-day momentum, so there is nothing to rotate into.';
+        if (b.lightFading.length) {
+            buyGap += ' Closest underweight theme is ' + b.lightFading[0].theme + ' at '
+                + (b.lightFading[0].momentum5d >= 0 ? '+' : '−') + Math.abs(b.lightFading[0].momentum5d).toFixed(1) + '% 5d.';
+        }
+        buyGap += pendingNote;
+    }
+    if (!hasSell) sellGap = 'No core theme is rolling over — nothing qualifies as a funding leg.' + pendingNote;
+    return { buyGap, sellGap, ...b };
+}
+
 // The full rotation call: pair from rotationRead + driver lines. Every
 // driver traces to a real field (spec §3.2) — momentum and positioning from
 // the pair legs, breadth from themeDispersion, valuation only when both
@@ -306,10 +375,38 @@ export function rotationCall(rows, disp, playbook) {
     const { outTheme, inTheme, text } = read.book;
     const sell = rows.find(r => r.theme === outTheme) || null;
     const buy = rows.find(r => r.theme === inTheme) || null;
-    if (!sell || !buy) return { sell, buy, text, drivers: [], conviction: { score: null, tag: null, factors: {} }, perTheme: read.perTheme };
+    const gap = rotationGap(rows);
+    const fp = v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + '%';
+
+    // Half a call is still a call. When only one leg qualifies, ship the
+    // drivers that leg CAN support (they never referenced the other leg) plus
+    // the reason the second leg is missing — instead of an empty card.
+    if (!sell || !buy) {
+        const leg = sell || buy;
+        const drivers = [];
+        if (leg) {
+            const ld = (disp || {})[leg.theme];
+            drivers.push({
+                key: 'momentum', status: 'confirmed',
+                text: leg.theme + ' momentum ' + fp(leg.momentum5d) + ' 5d',
+            });
+            drivers.push({
+                key: 'positioning', status: 'confirmed',
+                text: leg.theme + ' weight ' + leg.sharePct.toFixed(1) + '% vs ' + gap.heavyCut + '% median',
+            });
+            if (ld && ld.spread != null && (ld.winners.length || ld.losers.length)) {
+                const top = [...ld.winners, ...ld.losers].sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct))[0];
+                drivers.push(ld.spread >= 5 && top
+                    ? { key: 'breadth', status: 'caution', text: 'Narrow breadth — ' + ld.spread + 'pp spread, ' + top.tk + ' ' + fp(top.pct) + ' driving the move' }
+                    : { key: 'breadth', status: 'confirmed', text: 'Broad move — ' + ld.spread + 'pp spread, no single name dominating' });
+            }
+        }
+        const missing = !buy ? gap.buyGap : gap.sellGap;
+        if (missing) drivers.push({ key: 'gap', status: 'pending', text: missing });
+        return { sell, buy, text, drivers, gap, conviction: { score: null, tag: null, factors: {} }, perTheme: read.perTheme };
+    }
 
     const sd = (disp || {})[sell.theme];
-    const fp = v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + '%';
     const drivers = [];
 
     drivers.push({
@@ -344,7 +441,7 @@ export function rotationCall(rows, disp, playbook) {
         drivers.push({ key: 'valuation', status: 'pending', text: 'Valuation — pending on ' + legs + ', not yet a supporting signal' });
     }
 
-    return { sell, buy, text, drivers, conviction: rotationConviction(sell, buy, sd, playbook), perTheme: read.perTheme };
+    return { sell, buy, text, drivers, gap, conviction: rotationConviction(sell, buy, sd, playbook), perTheme: read.perTheme };
 }
 
 // One-line breadth note for the card face, from the existing per-name
