@@ -303,18 +303,29 @@ export function rotationConviction(sell, buy, sellDisp, playbook) {
 // underweight and improving, because every improving theme is already a
 // core position. That is a real read about the shape of the book, so name
 // the near-misses instead of rendering an empty card.
+// Classification comes from rotationRead's OWN verdicts, never re-derived.
+// Re-deriving drifted twice: the median was taken over a different row set
+// (a momentum-pending row moved the cut), and the ADD→LET_RUN downgrade for
+// rich names was missed, so a rich light improver counted as a buy leg that
+// rotationCall had already rejected — leaving the card silent about it.
 export function rotationBlockers(rows) {
-    const R = (rows || []).filter(r => r.momentum5d != null && r.sharePct != null);
-    const heavyCut = median(R.map(r => r.sharePct)) || 0;
-    const byMom = (a, b) => b.momentum5d - a.momentum5d;
+    const read = rotationRead(rows);
+    const heavyCut = median((rows || []).map(r => r.sharePct)) || 0;   // identical to rotationRead
+    const row = t => (rows || []).find(r => r.theme === t);
+    const of = v => read.perTheme.filter(p => p.verdict === v).map(p => row(p.theme)).filter(Boolean);
+    const byMom = (a, b) => (b.momentum5d ?? 0) - (a.momentum5d ?? 0);
+    const letRun = of('LET_RUN');
     return {
         heavyCut: +heavyCut.toFixed(1),
-        // improving, but already core → why they can't be the buy leg
-        improvingHeavy: R.filter(r => r.momentum5d > 0 && r.sharePct >= heavyCut).sort(byMom),
-        // underweight, but not working → the closest thing to a buy leg
-        lightFading: R.filter(r => r.momentum5d <= 0 && r.sharePct < heavyCut).sort(byMom),
-        // core and rolling over → candidates for the sell leg
-        heavyFading: R.filter(r => r.momentum5d <= 0 && r.sharePct >= heavyCut).sort(byMom),
+        addCandidates: of('ADD').sort(byMom),
+        trimCandidates: of('TRIM').sort(byMom),
+        // improving but already core — can't be bought without concentrating
+        improvingHeavy: letRun.filter(r => r.sharePct != null && r.sharePct >= heavyCut).sort(byMom),
+        // underweight and improving, but rich — rotationRead declined to chase
+        improvingRich: letRun.filter(r => r.sharePct != null && r.sharePct < heavyCut).sort(byMom),
+        lightFading: of('IGNORE').sort(byMom),
+        // momentum not in yet: the read is unconfirmed, not negative
+        momentumPending: of('HOLD').filter(r => r.momentum5d == null),
     };
 }
 
@@ -323,24 +334,35 @@ const themeList = (arr, n = 3) => arr.slice(0, n).map(r => r.theme).join(', ');
 // One honest sentence for each missing leg, or null when the leg exists.
 export function rotationGap(rows) {
     const b = rotationBlockers(rows);
-    const hasBuy = (rows || []).some(r => r.momentum5d != null && r.sharePct != null
-        && r.momentum5d > 0 && r.sharePct < b.heavyCut);
-    const hasSell = b.heavyFading.length > 0;
+    const hasBuy = b.addCandidates.length > 0;
+    const hasSell = b.trimCandidates.length > 0;
+    const pendingNote = b.momentumPending.length
+        ? ' ' + b.momentumPending.length + ' theme' + (b.momentumPending.length > 1 ? 's have' : ' has')
+          + ' momentum pending sync, so this is unconfirmed.'
+        : '';
     let buyGap = null, sellGap = null;
     if (!hasBuy) {
+        const parts = [];
         if (b.improvingHeavy.length) {
-            buyGap = 'No theme is both underweight and improving. Every improving theme — '
-                + themeList(b.improvingHeavy) + ' — already sits at or above the '
-                + b.heavyCut + '% median weight, so adding would concentrate, not rotate.';
-        } else {
-            buyGap = 'No theme is improving on 5-day momentum, so there is nothing to rotate into.';
+            parts.push('Every improving theme — ' + themeList(b.improvingHeavy)
+                + ' — already sits at or above the ' + b.heavyCut
+                + '% median weight, so adding would concentrate, not rotate.');
         }
+        if (b.improvingRich.length) {
+            parts.push('The underweight improver' + (b.improvingRich.length > 1 ? 's ' : ' ')
+                + themeList(b.improvingRich) + ' screen'
+                + (b.improvingRich.length > 1 ? '' : 's') + ' rich, so the call declines to chase.');
+        }
+        buyGap = parts.length
+            ? 'No theme is both underweight and improving. ' + parts.join(' ')
+            : 'No theme is improving on 5-day momentum, so there is nothing to rotate into.';
         if (b.lightFading.length) {
             buyGap += ' Closest underweight theme is ' + b.lightFading[0].theme + ' at '
                 + (b.lightFading[0].momentum5d >= 0 ? '+' : '−') + Math.abs(b.lightFading[0].momentum5d).toFixed(1) + '% 5d.';
         }
+        buyGap += pendingNote;
     }
-    if (!hasSell) sellGap = 'No core theme is rolling over — nothing qualifies as a funding leg.';
+    if (!hasSell) sellGap = 'No core theme is rolling over — nothing qualifies as a funding leg.' + pendingNote;
     return { buyGap, sellGap, ...b };
 }
 

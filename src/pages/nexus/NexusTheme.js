@@ -179,16 +179,27 @@ function ConvictionPanel({ conviction, call }) {
         e('div', { className: 'nf-card-h' }, e('h3', null, 'Rotation conviction'),
             e('span', { className: 'nf-sub' }, 'equal weights, held fixed')),
         score == null
-            ? e('div', null,
-                e('div', { className: 'ntr-cv-gate' },
-                    e('span', { className: 'ntr-cv-gate-h' }, 'Not scored — the call has one leg'),
-                    e('div', { className: 'ntr-note' },
-                        'Conviction grades a sell→buy pair. '
-                        + (call && call.gap && call.gap.buyGap ? call.gap.buyGap : call && call.gap && call.gap.sellGap ? call.gap.sellGap : ''))),
-                CV_FACTORS.map(([k, label]) => e('div', { className: 'ntr-cv-item pending', key: k },
-                    e('span', { className: 'lbl' }, label),
-                    e('div', { className: 'track' }),
-                    e('span', { className: 'wt' }, PAIR_ONLY[k] ? 'needs both legs' : 'sell leg only'))))
+            ? (() => {
+                // Zero legs and one leg are different states: with no sell leg
+                // even breadth is unavailable, and both gaps want explaining.
+                const gp = (call && call.gap) || {};
+                const hasSell = !!(call && call.sell), hasBuy = !!(call && call.buy);
+                const legs = (hasSell ? 1 : 0) + (hasBuy ? 1 : 0);
+                const reasons = legs === 0
+                    ? [gp.sellGap, gp.buyGap].filter(Boolean)
+                    : [hasSell ? gp.buyGap : gp.sellGap].filter(Boolean);
+                return e('div', null,
+                    e('div', { className: 'ntr-cv-gate' },
+                        e('span', { className: 'ntr-cv-gate-h' },
+                            legs === 0 ? 'Not scored — no rotation candidate' : 'Not scored — the call has one leg'),
+                        e('div', { className: 'ntr-note' },
+                            ['Conviction grades a sell→buy pair.'].concat(reasons).join(' '))),
+                    CV_FACTORS.map(([k, label]) => e('div', { className: 'ntr-cv-item pending', key: k },
+                        e('span', { className: 'lbl' }, label),
+                        e('div', { className: 'track' }),
+                        e('span', { className: 'wt' },
+                            PAIR_ONLY[k] ? 'needs both legs' : (hasSell ? 'sell leg only' : 'needs a sell leg')))));
+            })()
             : e('div', null,
                 e('div', { className: 'ntr-cv-row' },
                     e('span', { className: 'ntr-cv-score' }, score),

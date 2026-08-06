@@ -235,6 +235,39 @@ test('rotationGap: names why there is no buy leg when every improver is already 
     assert.equal(call.conviction.score, null);          // still refuses to score a half pair
 });
 
+test('rotationGap: a RICH light improver is not counted as a buy leg', () => {
+    // rotationRead downgrades ADD → LET_RUN when the name screens rich, so the
+    // call has no buy leg. The gap must say so; previously hasBuy was true and
+    // the card rendered a half call with no explanation at all.
+    const rows = [
+        { theme: 'Core', sharePct: 20, momentum5d: -2, valuationPending: true },
+        { theme: 'Small', sharePct: 2, momentum5d: 5, valuationPending: false, valuationTilt: 'rich' },
+    ];
+    const call = rotationCall(rows, {}, null);
+    assert.equal(call.buy, null, 'rich light improver is not a buy leg');
+    const gap = rotationGap(rows);
+    assert.ok(gap.buyGap, 'the missing buy leg must still be explained');
+    assert.match(gap.buyGap, /screens rich/);
+    assert.deepEqual(gap.improvingRich.map(r => r.theme), ['Small']);
+    assert.ok(call.drivers.some(d => d.key === 'gap'), 'and it reaches the card');
+});
+
+test('rotationGap: median cut matches rotationRead even with momentum-pending rows', () => {
+    // A row with a share but no momentum counts toward rotationRead's median.
+    // Excluding it moved the quoted cut (30% vs the real 10%) — the card would
+    // have printed a boundary that never set any verdict.
+    const rows = [
+        { theme: 'A', sharePct: 1, momentum5d: null, valuationPending: true },
+        { theme: 'B', sharePct: 2, momentum5d: null, valuationPending: true },
+        { theme: 'C', sharePct: 10, momentum5d: -1, valuationPending: true },
+        { theme: 'D', sharePct: 30, momentum5d: -2, valuationPending: true },
+    ];
+    assert.equal(rotationGap(rows).heavyCut, 10);
+    // and a pending momentum makes the claim unconfirmed rather than absolute
+    assert.match(rotationGap(rows).buyGap, /momentum pending sync, so this is unconfirmed/);
+    assert.equal(rotationGap(rows).momentumPending.length, 2);
+});
+
 test('rotationGap: no sell leg is explained too', () => {
     const rows = [
         { theme: 'Technology', sharePct: 20, momentum5d: 4, valuationPending: true },
