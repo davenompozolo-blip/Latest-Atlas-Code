@@ -864,3 +864,15 @@
 .bn-circ { margin-top: 10px; }
 .bn-circ-foot { font-family: var(--fm); font-size: 10.5px; color: var(--text3); margin-top: 6px; }
 @media (max-width: 760px) { .bn-trial { grid-template-columns: 1fr; } }
+
+/* ── Rotation call / conviction — one-leg (half call) states ──── */
+/* A missing leg is drawn as an explicit empty slot, not a blank card. */
+.ntr-tag.none { color: var(--text3); background: var(--card-hi); }
+.ntr-reco-theme.none { color: var(--text3); font-style: italic; font-weight: 500; font-size: 15px; }
+.ntr-reco-arrow.dim { opacity: .35; }
+.ntr-nocall { font-size: 13.5px; color: var(--text2); padding: 4px 0 2px; }
+.ntr-cv-gate { padding: 2px 0 10px; }
+.ntr-cv-gate-h { display: block; font-family: var(--fd); font-weight: 700; font-size: 14px; color: var(--text2); margin-bottom: 5px; }
+.ntr-cv-item.pending .lbl { opacity: .55; }
+.ntr-cv-item.pending .track { background: var(--card-hi); opacity: .45; }
+.ntr-cv-item.pending .wt { width: auto; font-size: 9.5px; letter-spacing: .02em; opacity: .7; }

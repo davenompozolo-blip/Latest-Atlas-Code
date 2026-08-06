@@ -116,10 +116,38 @@ function RegimeBanner({ macro, loading }) {
 const DRIVER_IC = { confirmed: '✓', caution: '!', pending: '–' };
 
 function RecoCard({ call }) {
+    // Half a call still renders as a call: the leg that qualified keeps the
+    // SELL→BUY frame, the missing leg is an explicit empty slot, and the
+    // reason it is missing carries as a driver line. An empty box hid the
+    // most interesting fact on the page.
     if (!call.sell || !call.buy) {
+        const leg = call.sell || call.buy;
+        const legIsSell = !!call.sell;
+        if (!leg) {
+            return e('div', { className: 'nf-card nf-fade' },
+                e('div', { className: 'nf-card-h' }, e('h3', null, 'Rotation call')),
+                e('div', { className: 'ntr-nocall' }, call.text || 'No clear rotation — themes are balanced.'),
+                (call.gap && (call.gap.buyGap || call.gap.sellGap))
+                    ? e('div', { className: 'ntr-drivers' },
+                        [call.gap.sellGap, call.gap.buyGap].filter(Boolean).map((t, i) =>
+                            e('div', { key: i, className: 'ntr-driver pending' }, e('span', { className: 'ic' }, '–'), e('span', null, t))))
+                    : null);
+        }
         return e('div', { className: 'nf-card nf-fade' },
-            e('div', { className: 'nf-card-h' }, e('h3', null, 'Rotation call')),
-            e('div', { className: 'nb-empty' }, call.text || 'No clear rotation — themes are balanced.'));
+            e('div', { className: 'nf-card-h' }, e('h3', null, 'Rotation call'),
+                e('span', { className: 'nf-sub' }, 'one leg only — not a rotation')),
+            e('div', { className: 'ntr-reco-head' },
+                legIsSell
+                    ? e('div', null, e('span', { className: 'ntr-tag sell' }, 'SELL'), e('div', { className: 'ntr-reco-theme' }, leg.theme))
+                    : e('div', null, e('span', { className: 'ntr-tag none' }, 'SELL'), e('div', { className: 'ntr-reco-theme none' }, 'no candidate')),
+                e('span', { className: 'ntr-reco-arrow dim' }, '→'),
+                legIsSell
+                    ? e('div', null, e('span', { className: 'ntr-tag none' }, 'BUY'), e('div', { className: 'ntr-reco-theme none' }, 'no candidate'))
+                    : e('div', null, e('span', { className: 'ntr-tag buy' }, 'BUY'), e('div', { className: 'ntr-reco-theme' }, leg.theme))),
+            e('div', { className: 'ntr-drivers' }, call.drivers.map(d =>
+                e('div', { key: d.key, className: 'ntr-driver ' + d.status },
+                    e('span', { className: 'ic' }, DRIVER_IC[d.status]),
+                    e('span', null, d.text)))));
     }
     const score = call.conviction.score;
     return e('div', { className: 'nf-card nf-fade' },
@@ -140,14 +168,27 @@ function RecoCard({ call }) {
 // ── 2b. Conviction score panel — the four-factor breakdown ────
 const CV_FACTORS = [['momentum', 'Momentum'], ['positioning', 'Positioning'], ['breadth', 'Breadth'], ['macroFit', 'Macro fit']];
 
-function ConvictionPanel({ conviction }) {
+function ConvictionPanel({ conviction, call }) {
     const { score, tag, factors } = conviction;
     const tagCls = tag === 'BUY BIAS' ? '' : tag === 'NEUTRAL' ? ' neutral' : ' low';
+    // Unscored is not the same as unexplained. Three of the four factors are
+    // pair-relative by construction, so show WHICH ones the missing leg takes
+    // out rather than a bare "nothing to score".
+    const PAIR_ONLY = { momentum: true, positioning: true, macroFit: true, breadth: false };
     return e('div', { className: 'nf-card nf-fade' },
         e('div', { className: 'nf-card-h' }, e('h3', null, 'Rotation conviction'),
             e('span', { className: 'nf-sub' }, 'equal weights, held fixed')),
         score == null
-            ? e('div', { className: 'nb-empty' }, 'No qualifying pair — nothing to score.')
+            ? e('div', null,
+                e('div', { className: 'ntr-cv-gate' },
+                    e('span', { className: 'ntr-cv-gate-h' }, 'Not scored — the call has one leg'),
+                    e('div', { className: 'ntr-note' },
+                        'Conviction grades a sell→buy pair. '
+                        + (call && call.gap && call.gap.buyGap ? call.gap.buyGap : call && call.gap && call.gap.sellGap ? call.gap.sellGap : ''))),
+                CV_FACTORS.map(([k, label]) => e('div', { className: 'ntr-cv-item pending', key: k },
+                    e('span', { className: 'lbl' }, label),
+                    e('div', { className: 'track' }),
+                    e('span', { className: 'wt' }, PAIR_ONLY[k] ? 'needs both legs' : 'sell leg only'))))
             : e('div', null,
                 e('div', { className: 'ntr-cv-row' },
                     e('span', { className: 'ntr-cv-score' }, score),
@@ -285,7 +326,7 @@ export function NexusThemePanel({ model }) {
         // 2. THE CALL — recommendation + conviction breakdown
         e('div', { className: 'ntr-top' },
             e(RecoCard, { call }),
-            e(ConvictionPanel, { conviction: call.conviction })),
+            e(ConvictionPanel, { conviction: call.conviction, call })),
 
         // 3. MAP + LEDGER — where positioning sits vs where momentum is moving
         e('div', { className: 'ntr-mid' },
