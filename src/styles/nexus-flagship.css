@@ -797,6 +797,150 @@
 .bn-diag-i.ok { color: var(--success); background: var(--success-b); }
 .bn-diag-i.warn { color: var(--amber); background: rgba(245,166,35,0.11); }
 .bn-diag-i.bad { color: var(--danger); background: var(--danger-b); }
+/* coverage gap stated under a partial chart, and the fully-unmeasurable case */
+.bn-omit { font-family: var(--fm); font-size: 9.5px; color: var(--amber); margin-top: 6px; letter-spacing: .02em; }
+.bn-empty { font-family: var(--fm); font-size: 11px; color: var(--text3); padding: 22px 4px; text-align: center; }
+/* §6 capital circulation footer — sources, gated uses, residual */
+.bn-circ { margin: 12px 0 4px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px; }
+.bn-circ-id {
+    display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap;
+    font-family: var(--fm); font-size: 10.5px; color: var(--text3); margin-bottom: 9px;
+}
+.bn-circ-id b { color: var(--text1); font-weight: 600; }
+.bn-circ-op { color: rgba(255,255,255,0.24); }
+.bn-circ-res b { color: var(--cyan); }
+.bn-circ-note { font-size: 9px; color: var(--text3); font-style: italic; }
+.bn-uses { display: flex; flex-direction: column; gap: 4px; }
+.bn-use {
+    display: grid; grid-template-columns: 78px 54px 1fr 84px 2fr; gap: 8px; align-items: center;
+    font-family: var(--fm); font-size: 9.5px; color: var(--text3);
+    padding: 4px 7px; border-radius: 4px; background: rgba(255,255,255,0.02);
+}
+.bn-use.blocked { opacity: .72; }
+.bn-use.none { display: block; color: var(--text3); font-style: italic; }
+.bn-gate { font-size: 8.5px; font-weight: 700; letter-spacing: .07em; padding: 1px 6px; border-radius: 999px; text-align: center; }
+.bn-gate.permitted { color: var(--success); background: var(--success-b); }
+.bn-gate.queued { color: var(--amber); background: rgba(245,166,35,0.12); }
+.bn-gate.blocked { color: var(--danger); background: var(--danger-b); }
+.bn-gate.unfunded { color: var(--text3); background: rgba(255,255,255,0.06); }
+.bn-use-sl { color: var(--text2); }
+.bn-use-sz { text-align: right; color: var(--text2); }
+.bn-use-why { color: var(--text3); }
+/* section labels shared by the census strip and the headroom rail */
+.bn-seclabel {
+    font-family: var(--fm); font-size: 9.5px; letter-spacing: .10em; text-transform: uppercase;
+    color: var(--text3); margin: 16px 0 7px; display: flex; align-items: baseline; gap: 10px;
+}
+.bn-src { font-size: 9px; letter-spacing: .03em; text-transform: none; color: rgba(255,255,255,0.22); }
+.bn-src.warn { color: var(--amber); }
+/* census strip — four legacy panels, every row a docket filter */
+.bn-census { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.bn-census-col {
+    background: var(--card, rgba(255,255,255,0.02)); border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 6px; padding: 9px 11px 7px;
+}
+.bn-census-col h4 {
+    font-family: var(--fm); font-size: 9px; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--text2); margin: 0 0 6px; display: flex; justify-content: space-between; font-weight: 600;
+}
+.bn-census-col h4 span { color: var(--text3); letter-spacing: .03em; }
+.bn-crow {
+    display: grid; grid-template-columns: 54px 1fr 34px; align-items: center; gap: 6px;
+    padding: 2px 4px; margin: 0 -4px; border-radius: 3px; cursor: pointer;
+}
+.bn-crow:hover { background: rgba(255,255,255,0.045); }
+.bn-crow.on { background: rgba(56,189,248,0.13); box-shadow: inset 2px 0 0 var(--cyan); }
+.bn-ck { font-family: var(--fm); font-size: 9.5px; color: var(--text2); overflow: hidden; text-overflow: ellipsis; }
+.bn-cbar2 { display: block; height: 6px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden; }
+.bn-cbar2 i { display: block; height: 100%; border-radius: 2px; }
+.bn-cbar2 i.good { background: var(--success); }
+.bn-cbar2 i.cyan { background: var(--cyan); }
+.bn-cbar2 i.warn { background: var(--amber); }
+.bn-cbar2 i.bad  { background: var(--danger); }
+.bn-cbar2 i.none { background: rgba(255,255,255,0.16); }
+.bn-cv { font-family: var(--fm); font-size: 9.5px; color: var(--text3); text-align: right; }
+/* headroom rail — gauges against the sleeve cap */
+.bn-headroom {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    background: var(--card, rgba(255,255,255,0.02)); border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 6px; padding: 10px 13px;
+}
+.bn-hr-title { font-family: var(--fm); font-size: 9px; letter-spacing: .08em; color: var(--text3); }
+.bn-sleeve { display: flex; align-items: center; gap: 7px; }
+.bn-hr-nm { font-family: var(--fm); font-size: 10px; color: var(--text2); }
+.bn-gauge { position: relative; display: block; width: 74px; height: 6px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; }
+.bn-gauge i { display: block; height: 100%; border-radius: 2px; }
+.bn-gauge i.ok { background: var(--cyan); }
+.bn-gauge i.tight { background: var(--amber); }
+.bn-gauge i.breach { background: var(--danger); }
+.bn-hd { font-family: var(--fm); font-size: 9.5px; color: var(--text3); }
+.bn-hd.tight { color: var(--amber); }
+.bn-hd.breach { color: var(--danger); }
+.bn-hr-rest { font-family: var(--fm); font-size: 9.5px; color: rgba(255,255,255,0.22); margin-left: auto; }
+/* active filter bar */
+.bn-filterbar {
+    font-family: var(--fm); font-size: 10px; color: var(--cyan); margin: 12px 0 -4px;
+    display: flex; align-items: center; gap: 10px;
+}
+.bn-clear {
+    font-family: var(--fm); font-size: 9px; color: var(--text3); background: transparent;
+    border: 1px solid rgba(255,255,255,0.14); border-radius: 3px; padding: 1px 7px; cursor: pointer;
+}
+.bn-clear:hover { color: var(--text1); border-color: rgba(255,255,255,0.3); }
+/* §3.1 judged columns — every one of these has an abstaining state */
+.bn-table th.bn-sorted { color: var(--cyan); }
+.bn-table td.bn-r { text-align: right; }
+.bn-nm2 { font-size: 9.5px; color: var(--text3); margin-top: 1px; }
+/* §4.4 vol trigger — a flag on the row, never a panel */
+.bn-volflag {
+    font-family: var(--fm); font-size: 8.5px; font-weight: 700; letter-spacing: .04em;
+    color: var(--amber); background: rgba(245,166,35,0.13); border-radius: 3px;
+    padding: 1px 5px; margin-left: 5px; white-space: nowrap;
+}
+.bn-volflag.stale { color: var(--text3); background: rgba(255,255,255,0.05); font-weight: 400; }
+.bn-divider-row td {
+    font-family: var(--fm); font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--text3); background: rgba(255,255,255,0.02);
+    border-top: 1px solid rgba(255,255,255,0.10); border-bottom: 1px solid rgba(255,255,255,0.06);
+    padding: 7px 10px !important;
+}
+/* thesis clock */
+.bn-clock { font-family: var(--fm); font-size: 11px; color: var(--text2); }
+.bn-clock.none { color: var(--danger); }
+.bn-clock-sub { display: block; font-size: 8.5px; letter-spacing: .04em; color: var(--text3); }
+.bn-clock-sub.stale { color: var(--amber); }
+.bn-clock-sub.silent { color: var(--danger); }
+/* weight vs conviction */
+.bn-wt { position: relative; width: 108px; height: 22px; }
+.bn-wt.none { font-family: var(--fm); font-size: 11px; color: var(--text3); height: auto; width: auto; }
+.bn-wt.none small { display: block; font-size: 8.5px; color: var(--text3); }
+.bn-wt-track { position: absolute; left: 0; top: 6px; width: 100%; height: 3px; background: rgba(255,255,255,0.07); border-radius: 2px; }
+.bn-wt-fill { position: absolute; top: 6px; height: 3px; border-radius: 2px; }
+.bn-wt-fill.under { background: var(--cyan); }
+.bn-wt-fill.over { background: var(--amber); }
+.bn-wt-fill.flat { background: rgba(255,255,255,0.22); }
+.bn-wt-tgt { position: absolute; top: 2px; width: 1px; height: 11px; background: var(--text2); }
+.bn-wt-lbl { position: absolute; left: 0; top: 12px; font-family: var(--fm); font-size: 9.5px; color: var(--text3); }
+.bn-wt-lbl.under { color: var(--cyan); }
+.bn-wt-lbl.over { color: var(--amber); }
+/* R / VaR */
+.bn-num { font-family: var(--fm); font-size: 11.5px; }
+.bn-num.pos { color: var(--success); }
+.bn-num.neg { color: var(--danger); }
+.bn-num.none { color: var(--text3); }
+.bn-num small { display: block; font-size: 8.5px; color: var(--text3); letter-spacing: .03em; }
+/* damage */
+.bn-damage { font-family: var(--fm); font-size: 11.5px; color: var(--danger); }
+.bn-damage.none { color: var(--text3); }
+/* signal check — four chips, fixed order, dashed where an input is missing */
+.bn-chips { display: flex; flex-wrap: wrap; gap: 3px; align-items: center; }
+.bn-chip { font-family: var(--fm); font-size: 9px; padding: 1px 5px; border-radius: 3px; background: rgba(255,255,255,0.05); color: var(--text2); }
+.bn-chip small { display: block; font-size: 7.5px; color: var(--text3); letter-spacing: .06em; }
+.bn-chip.pos { background: var(--success-b); color: var(--success); }
+.bn-chip.neg { background: var(--danger-b); color: var(--danger); }
+.bn-chip.miss { background: transparent; border: 1px dashed rgba(255,255,255,0.18); color: var(--text3); }
+.bn-partial { font-family: var(--fm); font-size: 8.5px; color: var(--amber); width: 100%; margin-top: 2px; }
+.bn-trial-inline { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 4px; }
 /* verdict chips */
 .bn-vwrap { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .bn-verdict { font-family: var(--fm); font-size: 9.5px; font-weight: 700; letter-spacing: .06em; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }

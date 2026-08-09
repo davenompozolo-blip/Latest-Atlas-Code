@@ -20,6 +20,9 @@ import {
     thesisFreshness, claimsTally, deriveIntegrity, resolveVerdict,
     buildWaterfall, cumulativeFromCloses, themeComposite, buildJaws,
     tapeEvents, buildCirculatory, benchDiagnostics, mapCortexToHoldings,
+    thesisClock, weightVsConviction, rVarRead, damageRead, signalCheck, sortDocket,
+    buildCensus, applyCensusFilter, buildHeadroomRail,
+    sellsFromVerdicts, buildCirculation, volTriggerRead,
 } from './nexusBenchCompute.js';
 import { trackSleeveComposition, SLEEVE_STALE_SESSIONS } from './nexusOpportunitiesCompute.js';
 
@@ -102,6 +105,8 @@ function DiagnosticsStrip({ diagnostics, funding }) {
         writerRows: diagnostics.writerRows, writerLastRun: diagnostics.writerLastRun,
         claimsAvailable: diagnostics.claimsAvailable, contributionBasis: diagnostics.contributionBasis,
         sleeveUnresolved: !!(funding && funding.unresolved),
+        navCoveragePct: diagnostics.navCoveragePct, contribUncovered: diagnostics.contribUncovered,
+        volRows: diagnostics.volRows, volTriggered: diagnostics.volTriggered, volAbstaining: diagnostics.volAbstaining,
     });
     if (sleeveDays >= SLEEVE_STALE_SESSIONS) items.push({ key: 'sleeve-stale', label: 'sleeve unchanged ' + sleeveDays + 'd — verify inputs', level: 'warn' });
     return e('div', { className: 'bn-diag' },
@@ -110,9 +115,24 @@ function DiagnosticsStrip({ diagnostics, funding }) {
 
 // ── 6.1 Contribution waterfall ────────────────────────────────
 function ContributionWaterfall({ docket, basis }) {
-    const rows = docket.map(d => ({ tk: d.tk, contrib: basis === 'view' && d.contrib.ytd != null ? d.contrib.ytd : d.contrib.today }));
+    const rows = docket.map(d => ({
+        tk: d.tk,
+        contrib: basis === 'view' && d.contrib.ytd != null ? d.contrib.ytd : d.contrib.today,
+        weightPct: d.weightPct,
+        contribReason: d.contrib.reason,
+    }));
     const w = buildWaterfall(rows);
     if (!w) return null;
+    const omitLine = w.omitted
+        ? w.omitted.n + ' holdings (' + w.omitted.weightPct + '% of book) not measurable'
+            + (w.omitted.reason === 'no_transaction_history' ? ' — no transaction history' : '')
+        : null;
+    // Every name unmeasurable → say so rather than draw an empty axis.
+    if (!w.bars.length) {
+        return e('div', { className: 'nf-card nf-fade' },
+            e('div', { className: 'nf-card-h' }, e('h3', null, 'Contribution')),
+            e('div', { className: 'bn-empty' }, 'No measurable contribution. ' + (omitLine || '')));
+    }
     // Layout: room reserved above for the concentration rail and below for the
     // ticker row, so nothing collides. Y-scale is zero-anchored on round steps.
     const W = 760, H = 230;
@@ -177,7 +197,10 @@ function ContributionWaterfall({ docket, basis }) {
     return e('div', { className: 'nf-card nf-fade' },
         e('div', { className: 'nf-card-h' }, e('h3', null, 'Contribution'),
             e('span', { className: 'nf-sub' }, basis === 'view' ? 'cumulative YTD' : 'today only — cumulative view pending')),
-        e('svg', { viewBox: '0 0 ' + W + ' ' + H, width: '100%', role: 'img', 'aria-label': 'Contribution waterfall: carriers, small names, detractors, net.' }, kids));
+        e('svg', { viewBox: '0 0 ' + W + ' ' + H, width: '100%', role: 'img', 'aria-label': 'Contribution waterfall: carriers, small names, detractors, net.' }, kids),
+        // The chart spans only what is measurable; the gap is stated under it
+        // rather than left for the reader to discover by counting bars.
+        omitLine && e('div', { className: 'bn-omit' }, omitLine));
 }
 
 // ── 6.3 Annotated tape sparkline ──────────────────────────────
@@ -288,7 +311,7 @@ function SimpleLine({ pts, color }) {
 const CLAIM_ICON = { confirmed: '✓', contradicted: '✗', pending: '·' };
 function TrialPanel({ row, series, docket, seriesByTk, res }) {
     const fresh = thesisFreshness(row.thesisUpdatedAt);
-    return e('tr', { className: 'bn-trial-row' }, e('td', { colSpan: 8 },
+    return e('tr', { className: 'bn-trial-row' }, e('td', { colSpan: 7 },
         e('div', { className: 'bn-trial' },
             e('div', { className: 'bn-trial-thesis' },
                 e('span', { className: 'bn-lab' }, 'THE THESIS, AS FILED '),
@@ -338,15 +361,46 @@ function CirculatoryChart({ flow }) {
             flow.factorShifts.map(f => f.theme + ' frees ' + f.freedPct + '%').join(' · ') + ' — advisory, no ticket drafted (phase 2).') : null);
 }
 
-function RulingBlock({ cutRows, ledger }) {
-    if (!cutRows.length) return null;
+const GATE_LABEL = { permitted: 'PERMITTED', queued: 'QUEUED', blocked: 'BLOCKED', unfunded: 'UNFUNDED' };
+
+function RulingBlock({ cutRows, sellRows, ledger, sleeves, navUsd }) {
+    const sells = sellsFromVerdicts(sellRows || []);
+    if (!sells.length) return null;
     const flow = buildCirculatory(cutRows, ledger);
+    const circ = buildCirculation({ sells, ledger, sleeves, navUsd });
+    const pp = v => (v == null ? '—' : v.toFixed(2) + 'pp');
+    const usd = v => (v == null ? '' : ' ($' + Math.abs(v).toLocaleString() + ')');
     return e('div', { className: 'nf-card nf-fade bn-ruling' },
         e('div', { className: 'nf-card-h' }, e('h3', null, 'The ruling'),
-            e('span', { className: 'nf-sub' }, cutRows.length + ' cut' + (cutRows.length > 1 ? 's' : '') + ' · freed capital routed through the ledger')),
-        cutRows.map(r => e('div', { key: r.tk, className: 'bn-ruling-row' },
-            e('b', null, r.tk), ' — exit stages the full ' + (r.weightPct != null ? r.weightPct.toFixed(2) : '—') + '% via PCM; ',
-            r.condition ? 'ruling condition: ' + r.condition : 'no stay: ' + (r.reason || 'thesis failed on the evidence') + '.')),
+            e('span', { className: 'nf-sub' },
+                sells.filter(s => s.kind === 'exit').length + ' exit · ' +
+                sells.filter(s => s.kind === 'trim').length + ' trim · freed capital gated on sleeve headroom')),
+        // §6.1 every sell is a verdict outcome, and says which one
+        sells.map(s => e('div', { key: s.kind + s.tk, className: 'bn-ruling-row' },
+            e('b', null, s.tk),
+            s.kind === 'exit'
+                ? ' — CUT stages the full ' + pp(s.freesPp) + ' via PCM; '
+                : ' — ON WATCH trims ' + pp(s.freesPp) + ' back to target; ',
+            s.reason)),
+        // §6.2 the identity, stated in full including the residual
+        e('div', { className: 'bn-circ' },
+            e('div', { className: 'bn-circ-id' },
+                e('span', null, 'available ', e('b', null, pp(circ.availablePp)), usd(circ.availableUsd)),
+                e('span', { className: 'bn-circ-op' }, '−'),
+                e('span', null, 'deployed ', e('b', null, pp(circ.deployedPp)), usd(circ.deployedUsd)),
+                e('span', { className: 'bn-circ-op' }, '='),
+                e('span', { className: 'bn-circ-res' }, 'residual ', e('b', null, pp(circ.residualPp)), usd(circ.residualUsd)),
+                circ.residualNote ? e('span', { className: 'bn-circ-note' }, circ.residualNote) : null),
+            // §6.3 the gate is hard: a blocked recruit cannot be executed here
+            e('div', { className: 'bn-uses' }, circ.uses.length
+                ? circ.uses.map(u => e('div', { key: u.tk, className: 'bn-use ' + u.gate },
+                    e('span', { className: 'bn-gate ' + u.gate }, GATE_LABEL[u.gate]),
+                    e('span', { className: 'nf-tk', onClick: () => openObject(u.tk) }, u.tk),
+                    e('span', { className: 'bn-use-sl' }, u.sleeve || 'no sleeve'),
+                    e('span', { className: 'bn-use-sz' },
+                        u.gate === 'permitted' ? pp(u.deployedPp) + (u.partial ? ' part' : '') : pp(u.wantPp) + ' wanted'),
+                    e('span', { className: 'bn-use-why' }, u.detail || u.reason)))
+                : e('div', { className: 'bn-use none' }, 'No additive recruits on the ledger — freed capital returns to cash.'))),
         e(CirculatoryChart, { flow }));
 }
 
@@ -364,19 +418,120 @@ function CortexChips({ sigs }) {
 }
 
 // ── Docket table ──────────────────────────────────────────────
-const VERDICT_ORDER = { cut: 0, watch: 1, press: 2, stays: 3 };
-function DocketTable({ docket, series, ledger, writerRows, cortexByTk }) {
+// ── Census strip — four legacy panels as one control surface ──
+function CensusStrip({ docket, filter, onFilter }) {
+    const cols = buildCensus(docket);
+    if (!cols) return null;
+    const active = filter ? filter.field + ':' + filter.value : null;
+    return e('div', null,
+        e('div', { className: 'bn-seclabel' }, 'State of the docket',
+            e('span', { className: 'bn-src' }, 'absorbs: Legacy Nexus · Cross-Module Intelligence')),
+        e('div', { className: 'bn-census' }, cols.map(c =>
+            e('div', { key: c.key, className: 'bn-census-col' },
+                e('h4', null, c.title, e('span', null, c.sub)),
+                c.rows.map(r => e('div', {
+                    key: r.key,
+                    className: 'bn-crow' + (active === r.key ? ' on' : ''),
+                    // Clicking the active row clears it — a filter you cannot
+                    // undo from the same control is a trap.
+                    onClick: () => onFilter(active === r.key ? null : r.filter),
+                    title: active === r.key ? 'Clear filter' : 'Filter the docket to ' + r.label,
+                },
+                    e('span', { className: 'bn-ck' }, r.label),
+                    e('span', { className: 'bn-cbar2' }, e('i', { className: r.tone, style: { width: r.barPct + '%' } })),
+                    e('span', { className: 'bn-cv' }, r.count)))))));
+}
+
+// ── Sleeve headroom rail (§5.4) ───────────────────────────────
+function HeadroomRail({ sleeves, namedSleeves }) {
+    const rail = buildHeadroomRail(sleeves, namedSleeves);
+    if (!rail) {
+        return e('div', { className: 'bn-seclabel' }, 'Sleeve headroom',
+            e('span', { className: 'bn-src warn' }, 'unavailable — no sleeve reading'));
+    }
+    return e('div', null,
+        e('div', { className: 'bn-seclabel' }, 'Sleeve headroom',
+            e('span', { className: 'bn-src' }, 'absorbs: Portfolio Risk · Sector Risk Budget')),
+        e('div', { className: 'bn-headroom' },
+            e('span', { className: 'bn-hr-title' }, rail.capPct + '% cap'),
+            rail.sleeves.map(s => e('div', { key: s.sleeve, className: 'bn-sleeve' },
+                e('span', { className: 'bn-hr-nm' }, s.sleeve),
+                e('span', { className: 'bn-gauge' },
+                    e('i', { className: s.tone, style: { width: s.fillPct + '%' } }),
+                    e('b', null)),
+                e('span', { className: 'bn-hd ' + s.tone, title: s.headroomUsd != null ? '$' + Math.round(s.headroomUsd).toLocaleString() + ' of room' : '' }, s.label))),
+            rail.hidden > 0
+                ? e('span', { className: 'bn-hr-rest' }, rail.hidden + ' sleeves with room to spare not shown')
+                : null));
+}
+
+// ── §3.1 judged column cells ──────────────────────────────────
+// Each abstains loudly. None of them can render a substituted average, and
+// none renders a zero where the input was absent.
+function ClockCell({ clock }) {
+    return e('div', { className: 'bn-clock' + (clock.state === 'unknown' ? ' none' : '') },
+        clock.label,
+        e('small', { className: 'bn-clock-sub ' + clock.state }, clock.sub));
+}
+
+function WeightCell({ wv }) {
+    if (wv.state !== 'resolved') {
+        return e('div', { className: 'bn-wt none' }, '—', e('small', null, wv.sub));
+    }
+    // Track spans 0 → 2x target so a target sits mid-rail and the filled span
+    // reads as the distance actually travelled from it.
+    const span = Math.max(wv.targetPct * 2, wv.actualPct * 1.15, 0.5);
+    const pct = v => Math.max(0, Math.min(100, (v / span) * 100));
+    const lo = Math.min(pct(wv.targetPct), pct(wv.actualPct));
+    const hi = Math.max(pct(wv.targetPct), pct(wv.actualPct));
+    return e('div', { className: 'bn-wt', title: wv.label + ' (' + wv.sub + ')' },
+        e('span', { className: 'bn-wt-track' }),
+        e('span', { className: 'bn-wt-fill ' + wv.tone, style: { left: lo + '%', width: Math.max(1, hi - lo) + '%' } }),
+        e('span', { className: 'bn-wt-tgt', style: { left: pct(wv.targetPct) + '%' } }),
+        e('span', { className: 'bn-wt-lbl ' + wv.tone }, wv.label));
+}
+
+function RVarCell({ rv }) {
+    if (rv.state !== 'ok') return e('div', { className: 'bn-num none' }, '—', e('small', null, rv.sub));
+    return e('div', { className: 'bn-num ' + rv.tone }, rv.label, rv.sub ? e('small', null, rv.sub) : null);
+}
+
+function SignalChips({ check }) {
+    return e('div', { className: 'bn-chips' + (check.partial ? ' partial' : '') },
+        check.chips.map(c => e('span', { key: c.key, className: 'bn-chip ' + c.tone },
+            e('small', null, c.key), c.label)),
+        check.partial ? e('span', { className: 'bn-partial', title: check.missingKeys.join(', ') + ' missing' }, 'Partial — input missing') : null);
+}
+
+function DocketTable({ docket, series, ledger, writerRows, cortexByTk, sleeves, total, navUsd }) {
     const [open, setOpen] = useState({});
-    const rows = docket.map(row => {
+    const built = docket.map(row => {
         const derived = deriveIntegrity(row.claims);
         const res = resolveVerdict(row.assessment, { priceStale: row.priceStale });
         const integrity = res.integrity || derived;
-        return { row, res, integrity, derivedOnly: !res.integrity && !!derived, fresh: thesisFreshness(row.thesisUpdatedAt), tally: claimsTally(row.claims) };
-    }).sort((a, b) => {
-        const av = a.res.verdict ? VERDICT_ORDER[a.res.verdict] ?? 9 : 9;
-        const bv = b.res.verdict ? VERDICT_ORDER[b.res.verdict] ?? 9 : 9;
-        return av - bv || (b.row.weightPct || 0) - (a.row.weightPct || 0);
+        const fresh = thesisFreshness(row.thesisUpdatedAt);
+        const j = row.judged || {};
+        return {
+            row, res, integrity, derivedOnly: !res.integrity && !!derived, fresh,
+            tally: claimsTally(row.claims),
+            clock: thesisClock(j.daysHeld, fresh),
+            wv: weightVsConviction(row.weightPct, j.targetWeightPct),
+            rv: rVarRead(j.rVar, j.unrealisedPct, j.componentVarPct),
+            dmg: damageRead(j.damagePp),
+            check: signalCheck(row),
+            vol: volTriggerRead(row.vol),
+            judged: { ...j, actualWeightPct: row.weightPct },
+        };
     });
+    // §3: damage descending, divider, then the undamaged block by |gap|.
+    const { damaged, clean, dividerLabel } = sortDocket(built);
+    const rows = damaged.concat(clean);
+    // §6.1 the sell side: CUT exits and ON WATCH size breaches, nothing else
+    const sellRows = rows.map(b => ({
+        tk: b.row.tk, theme: b.row.theme, verdict: b.res.verdict,
+        weightPct: b.row.weightPct, weightGapPp: b.judged.weightGapPp,
+        reason: b.res.condition || b.res.synthesis || null,
+    }));
     const cuts = rows.filter(r => r.res.verdict === 'cut')
         .map(r => ({ tk: r.row.tk, weightPct: r.row.weightPct, theme: r.row.theme, condition: r.res.condition, reason: r.res.synthesis }));
 
@@ -384,16 +539,25 @@ function DocketTable({ docket, series, ledger, writerRows, cortexByTk }) {
         e('div', { className: 'nf-card nf-fade' },
             e('div', { className: 'nf-card-h' },
                 e('h3', null, 'The docket'),
-                e('span', { className: 'nf-sub' }, docket.length + ' names before the bench' +
+                e('span', { className: 'nf-sub' },
+                    (total && total !== docket.length ? docket.length + ' of ' + total + ' names' : docket.length + ' names before the bench') +
                     (writerRows ? '' : ' · no rulings on file — assessment writer has never fired'))),
             e('div', { className: 'nf-table-scroll', style: { maxHeight: 520 } },
                 e('table', { className: 'nf-table bn-table' },
+                    // §3 seven columns, fixed order, no user reordering in v1
                     e('thead', null, e('tr', null,
-                        ['Name', 'Theme', 'Wt', 'Contribution', 'Thesis on trial', 'Signals', 'Tape', 'Verdict']
-                            .map(h => e('th', { key: h, className: 'nf-l' }, h)))),
-                    e('tbody', null, rows.flatMap(({ row, res, integrity, derivedOnly, fresh, tally }) => {
+                        ['Holding', 'Thesis clock', 'Weight vs conviction', 'R / VaR', 'Damage ↓', 'Signal check', 'Verdict']
+                            .map(h => e('th', { key: h, className: 'nf-l' + (h === 'Damage ↓' ? ' bn-sorted' : '') }, h)))),
+                    e('tbody', null, rows.flatMap(b => {
+                        const { row, res, integrity, derivedOnly, fresh, tally, clock, wv, rv, dmg, check, vol } = b;
                         const isOpen = !!open[row.tk];
-                        const out = [e('tr', {
+                        const out = [];
+                        // The divider is a row so it scrolls with the block it labels.
+                        if (b === clean[0] && damaged.length) {
+                            out.push(e('tr', { key: '--divider', className: 'bn-divider-row' },
+                                e('td', { colSpan: 7 }, dividerLabel)));
+                        }
+                        out.push(e('tr', {
                             key: row.tk,
                             className: (row.priceStale ? 'nf-stale-row ' : '') + (isOpen ? 'bn-open' : ''),
                             onClick: () => setOpen(p => ({ ...p, [row.tk]: !p[row.tk] })),
@@ -401,43 +565,60 @@ function DocketTable({ docket, series, ledger, writerRows, cortexByTk }) {
                         },
                             e('td', { className: 'nf-l' },
                                 e('span', { className: 'nf-tk', onClick: ev => { ev.stopPropagation(); openObject(row.tk); }, title: 'Open ' + row.tk }, row.tk),
-                                row.sleeveRank ? e('span', { className: 'bn-slv', title: 'funding sleeve rank (qualified)' }, '#' + row.sleeveRank) : null),
-                            e('td', { className: 'nf-l bn-theme' }, row.theme),
-                            e('td', { className: 'nf-l nf-mono-cell' }, row.weightPct != null ? row.weightPct.toFixed(1) + '%' : '—'),
+                                row.sleeveRank ? e('span', { className: 'bn-slv', title: 'funding sleeve rank (qualified)' }, '#' + row.sleeveRank) : null,
+                                // §4.4 the trigger surfaces here and nowhere
+                                // else — a flag on the row it concerns
+                                vol.trigger ? e('span', { className: 'bn-volflag', title: vol.reason }, vol.label) : null,
+                                vol.state === 'stale' ? e('span', { className: 'bn-volflag stale', title: vol.reason }, 'vol ?') : null,
+                                row.name ? e('div', { className: 'bn-nm2' }, row.name) : null,
+                                e('div', { className: 'bn-theme' }, row.theme)),
+                            e('td', { className: 'nf-l' }, e(ClockCell, { clock })),
+                            e('td', { className: 'nf-l' }, e(WeightCell, { wv })),
+                            e('td', { className: 'nf-l bn-r' }, e(RVarCell, { rv })),
+                            e('td', { className: 'nf-l bn-r' },
+                                e('span', { className: 'bn-damage' + (dmg.state === 'damaged' ? '' : ' none') }, dmg.label)),
                             e('td', { className: 'nf-l' },
-                                e('span', { className: 'bn-contrib ' + (row.contrib.today > 0 ? 'up' : row.contrib.today < 0 ? 'dn' : '') }, sgnPct(row.contrib.today)),
-                                e('span', { className: 'bn-cbar' }, e('i', {
-                                    className: row.contrib.today >= 0 ? 'up' : 'dn',
-                                    style: { width: Math.min(40, Math.abs(row.contrib.today || 0) * 220) + 'px' },
-                                }))),
+                                e(SignalChips, { check }),
+                                e(CortexChips, { sigs: cortexByTk.get(row.tk) })),
                             e('td', { className: 'nf-l' },
-                                e(IntegrityChip, { integrity, derived: derivedOnly }),
-                                tally.total ? e('span', { className: 'bn-tally' }, tally.confirmed + '✓ ' + tally.contradicted + '✗ ' + tally.pending + '·') : null,
-                                e(FreshnessStamp, { fresh })),
-                            e('td', { className: 'nf-l' },
-                                e(CortexChips, { sigs: cortexByTk.get(row.tk) }),
-                                row.signals.quant ? e('span', { className: 'bn-sig' }, row.signals.quant) : null,
-                                row.signals.technical ? e('span', { className: 'bn-sig t' }, row.signals.technical) : null,
-                                (!(cortexByTk.get(row.tk) || []).length && !row.signals.quant && !row.signals.technical) ? e('span', { style: { color: 'var(--text3)' } }, '—') : null),
-                            e('td', { className: 'nf-l' }, e(AnnotatedTape, { row, series: series[row.tk] })),
-                            e('td', { className: 'nf-l' }, e(VerdictChip, { res })))];
+                                e(VerdictChip, { res }),
+                                e('div', { className: 'bn-trial-inline' },
+                                    e(IntegrityChip, { integrity, derived: derivedOnly }),
+                                    tally.total ? e('span', { className: 'bn-tally' }, tally.confirmed + '✓ ' + tally.contradicted + '✗ ' + tally.pending + '·') : null,
+                                    e(FreshnessStamp, { fresh })))));
                         if (isOpen) out.push(e(TrialPanel, { key: row.tk + '-trial', row, series: series[row.tk], docket, seriesByTk: series, res }));
                         return out;
                     }))))),
-        e(RulingBlock, { cutRows: cuts, ledger }));
+        e(RulingBlock, { cutRows: cuts, sellRows, ledger, sleeves, navUsd }));
 }
 
 // ── The beat ──────────────────────────────────────────────────
 export function NexusBenchPanel() {
     const { bench, ledger, loading } = useBench();
+    const [filter, setFilter] = useState(null);
     if (loading) return e('div', { className: 'nf-card nb-loading' }, e('span', { className: 'nb-spin' }, '◴'), ' Convening the bench…');
     if (!bench) return e('div', { className: 'nf-card' }, e('div', { className: 'nb-empty' }, 'The bench cannot sit — holdings feed unavailable. No verdicts are rendered on missing data.'));
     const { docket, series, funding, diagnostics } = bench;
     const cortexByTk = mapCortexToHoldings(bench.cortex, docket);
+    // Sleeves named by an open ruling stay on the rail even when they have
+    // room — those are the ones a ruling is about to move.
+    const namedSleeves = docket.filter(r => {
+        const v = resolveVerdict(r.assessment, { priceStale: r.priceStale }).verdict;
+        return v === 'cut' || v === 'watch';
+    }).map(r => r.theme);
+    const shown = applyCensusFilter(docket, filter);
     return e('div', null,
         e(DiagnosticsStrip, { diagnostics, funding }),
+        e(CensusStrip, { docket, filter, onFilter: setFilter }),
+        e(HeadroomRail, { sleeves: bench.sleeves, namedSleeves }),
         e(ContributionWaterfall, { docket, basis: diagnostics.contributionBasis }),
-        e(DocketTable, { docket, series, ledger, writerRows: diagnostics.writerRows, cortexByTk }));
+        filter ? e('div', { className: 'bn-filterbar' },
+            'Docket filtered to ' + filter.field + ' = ' + filter.value + ' · ' + shown.length + ' of ' + docket.length,
+            e('button', { className: 'bn-clear', onClick: () => setFilter(null) }, 'clear')) : null,
+        e(DocketTable, {
+            docket: shown, series, ledger, writerRows: diagnostics.writerRows, cortexByTk,
+            sleeves: bench.sleeves, total: docket.length, navUsd: bench.navUsd,
+        }));
 }
 
 export default NexusBenchPanel;

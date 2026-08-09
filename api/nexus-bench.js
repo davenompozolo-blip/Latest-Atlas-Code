@@ -82,12 +82,17 @@ export default async function handler(req, res) {
 
     try {
         const since = ymd(new Date(Date.now() - TAPE_DAYS * 86_400_000));
-        const [holdings, assess, claims, sleeve, contribView, scrapCos, freshness, prices, cortexSignals, fvRows] = await Promise.all([
+        const [holdings, assess, claims, sleeve, contribView, docketView, headroom, volRows, scrapCos, freshness, prices, cortexSignals, fvRows] = await Promise.all([
             sb('vw_nexus_holdings?select=symbol,asset_name,sector,weight_pct,market_value,daily_return_pct,total_return_pct,unrealised_return_pct,conviction_score,var_contribution_pct,dcf_upside_pct,current_price,quant_signal,technical_signal,valuation_signal,quality_grade'),
             fetchAssessments(),
             sb('bench_claims?select=id,symbol,thesis_ref,claim_text,status,evidence_text,evidence_value,evidence_source,status_changed_at,created_at&order=created_at.asc&limit=1000'),
             sb('vw_funding_sleeve?select=tk,qualified,sleeve_rank,funding_score,disqualification_reason,fv_trustworthy'),
-            sb('vw_bench_contribution?select=symbol,contrib_today,contrib_ytd,contrib_since_entry'),
+            sb('vw_bench_contribution?select=symbol,contrib_today,contrib_ytd,contrib_since_entry,covered,coverage_reason,nav_coverage_pct'),
+            // the judged columns: conviction-implied target, R/VaR, damage, clock
+            sb('vw_bench_docket?select=symbol,target_weight_pct,weight_gap_pp,r_var,damage_pp,days_held,component_var_pct,unrealised_return_pct,macro_regime_fit,quality_grade'),
+            sb('vw_sleeve_headroom?select=sleeve,weight_pct,cap_pct,headroom_pp,headroom_usd,positions,nav_usd'),
+            // §4.4 surfacing trigger — a flag on a docket row, never a panel
+            sb('vw_holding_vol_latest?select=symbol,asof,ret_1d,vol_20d,z_move,days_old,vol_trigger,abstain_reason'),
             sb('scrapbook_companies?select=ticker,thesis_summary,updated_at'),
             sb('vw_nexus_price_freshness?select=symbol,days_old'),
             sbPaged('price_history?select=price_date,close,assets!inner(symbol)&interval=eq.1d&price_date=gte.' + since + '&order=price_date.asc,asset_id.asc', 6),
@@ -139,6 +144,8 @@ export default async function handler(req, res) {
         for (const r of sleeveRows) if (!r.qualified && r.disqualification_reason) disqCounts[r.disqualification_reason] = (disqCounts[r.disqualification_reason] || 0) + 1;
 
         const contribByTk = new Map((contribView || []).map(r => [r.symbol, r]));
+        const judgedByTk = new Map((docketView || []).map(r => [r.symbol, r]));
+        const volByTk = new Map((volRows || []).map(r => [r.symbol, r]));
         const scrapByTk = new Map((scrapCos || []).map(c => [c.ticker, c]));
         const staleSet = new Set((freshness || []).filter(f => num(f.days_old) != null && f.days_old > PRICE_STALE_DAYS).map(f => f.symbol));
 
@@ -156,6 +163,8 @@ export default async function handler(req, res) {
             const scrap = scrapByTk.get(h.symbol);
             const cv = contribByTk.get(h.symbol);
             const sl = sleeveByTk.get(h.symbol);
+            const j = judgedByTk.get(h.symbol);
+            const vt = volByTk.get(h.symbol);
             return {
                 tk: h.symbol,
                 name: (h.asset_name && h.asset_name !== h.symbol) ? h.asset_name : null,
@@ -178,11 +187,42 @@ export default async function handler(req, res) {
                 assessment: assessByTk.get(h.symbol) || null,
                 sleeveRank: sl && sl.qualified ? sl.sleeve_rank : null,
                 fvTrustworthy: sl ? !!sl.fv_trustworthy : false,
+                // Measured contribution only. A name with no position history
+                // reports null with the reason attached — never a weight x
+                // return estimate dressed up as a measured number.
                 contrib: {
-                    today: cv ? num(cv.contrib_today) : +(((num(h.weight_pct) ?? 0) * (num(h.daily_return_pct) ?? 0)) / 100).toFixed(3),
+                    today: cv ? num(cv.contrib_today) : null,
                     ytd: cv ? num(cv.contrib_ytd) : null,
                     sinceEntry: cv ? num(cv.contrib_since_entry) : null,
+                    covered: cv ? !!cv.covered : false,
+                    reason: cv ? (cv.coverage_reason || null) : 'not_in_contribution_view',
                 },
+                // §3.1 judged columns. Every one of these is nullable on
+                // purpose: a null renders an em dash and its reason, never a
+                // substituted average.
+                judged: {
+                    targetWeightPct: j ? num(j.target_weight_pct) : null,
+                    weightGapPp: j ? num(j.weight_gap_pp) : null,
+                    rVar: j ? num(j.r_var) : null,
+                    damagePp: j ? num(j.damage_pp) : null,
+                    daysHeld: j ? num(j.days_held) : null,
+                    componentVarPct: j ? num(j.component_var_pct) : null,
+                    unrealisedPct: j ? num(j.unrealised_return_pct) : null,
+                    macro: (j && j.macro_regime_fit) || null,
+                    quality: (j && j.quality_grade) || null,
+                },
+                // §4.4 the move measured against the name's own trailing vol,
+                // not against the tape. Absent = no reading at all, which is
+                // a different thing from a reading that says "calm".
+                vol: vt ? {
+                    z: num(vt.z_move),
+                    ret1d: num(vt.ret_1d),
+                    vol20d: num(vt.vol_20d),
+                    asOf: vt.asof || null,
+                    daysOld: num(vt.days_old),
+                    trigger: !!vt.vol_trigger,
+                    abstainReason: vt.abstain_reason || null,
+                } : null,
             };
         });
 
@@ -212,6 +252,19 @@ export default async function handler(req, res) {
             writerExtended: assess.extended,
             claimsAvailable: claims != null,
             contributionBasis: contribView ? 'view' : 'today-only',
+            // the contribution waterfall spans only the names with position
+            // history; the strip states that share rather than letting a
+            // partial chart read as the whole book
+            navCoveragePct: (contribView || []).length ? num(contribView[0].nav_coverage_pct) : null,
+            contribUncovered: (contribView || []).filter(r => !r.covered).length,
+            contribCovered: (contribView || []).filter(r => r.covered).length,
+            docketJudged: (docketView || []).length,
+            volRows: (volRows || []).length,
+            volTriggered: (volRows || []).filter(r => r.vol_trigger).length,
+            volAbstaining: (volRows || []).filter(r => r.z_move == null).length,
+            // §5.2: the clock is missing precisely where it matters most, so
+            // the count is a diagnostic, not a rendering detail
+            clockMissing: (docketView || []).filter(r => r.days_held == null).length,
         };
         const funding = {
             sleeve: qualified.slice(0, 3).map(r => ({ tk: r.tk, score: num(r.funding_score), rank: r.sleeve_rank })),
@@ -219,8 +272,20 @@ export default async function handler(req, res) {
             disqualifications: Object.entries(disqCounts).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([reason, n]) => ({ reason, n })),
         };
 
+        const sleeves = (headroom || []).map(r => ({
+            sleeve: r.sleeve || 'Unclassified',
+            weightPct: num(r.weight_pct),
+            capPct: num(r.cap_pct),
+            headroomPp: num(r.headroom_pp),
+            headroomUsd: num(r.headroom_usd),
+            positions: num(r.positions),
+        }));
+
+        // one NAV, read off the same view the headroom figures come from
+        const navUsd = (headroom || []).length ? num(headroom[0].nav_usd) : null;
+
         res.setHeader('Cache-Control', 's-maxage=900, stale-while-revalidate=3600');
-        return res.status(200).json({ ok: true, asOf: new Date().toISOString(), docket, series, funding, diagnostics, cortex });
+        return res.status(200).json({ ok: true, asOf: new Date().toISOString(), docket, series, funding, diagnostics, cortex, sleeves, navUsd });
     } catch (e) {
         return res.status(200).json({ ok: false, error: (e && e.message) || 'bench error', docket: [], series: {}, diagnostics: [] });
     }

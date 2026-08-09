@@ -90,6 +90,288 @@ export function resolveVerdict(assessment, { priceStale = false, nowIso = null }
     };
 }
 
+// ── Docket row contract (§3.1) ────────────────────────────────
+// Every reader here abstains rather than substitutes. A null input yields an
+// em dash plus its reason; it never inherits a portfolio average, and it
+// never renders a zero that would read as a measured result.
+
+// §4.1 verdict triggers. PRESS wants a name proven and underweight; the size
+// breach fires on weight alone — the TSM case, proven, oversized, still a
+// problem.
+export const WEIGHT_GAP_PP = 1.0;
+// Within this band actual and target are the same call, not a drift.
+export const WEIGHT_FLAT_PP = 0.15;
+
+// Thesis clock. days_held only ever comes from transaction history; where it
+// is absent the column says so (§3.1, §5.2) — never zero, never inferred
+// from the earliest price observation.
+export function thesisClock(daysHeld, fresh) {
+    const d = num(daysHeld);
+    if (d == null) return { state: 'unknown', days: null, label: '—', sub: 'no entry date' };
+    const sub = !fresh || fresh.state === 'silent' ? 'silent'
+        : fresh.state + (fresh.days != null ? ' ' + fresh.days + 'd' : '');
+    return { state: fresh ? fresh.state : 'silent', days: d, label: d + 'd', sub };
+}
+
+// Weight vs conviction. Returns the track geometry the mini-bar draws plus
+// the tone that reads the gap.
+export function weightVsConviction(actualPct, targetPct) {
+    const a = num(actualPct), t = num(targetPct);
+    if (a == null || t == null) {
+        return { state: 'unresolved', label: '—', sub: t == null ? 'no conviction' : 'no weight', tone: 'none', gapPp: null };
+    }
+    const gap = +(a - t).toFixed(3);
+    const tone = Math.abs(gap) <= WEIGHT_FLAT_PP ? 'flat' : gap < 0 ? 'under' : 'over';
+    return {
+        state: 'resolved', tone, gapPp: gap,
+        label: a.toFixed(1) + ' / ' + t.toFixed(1),
+        sub: (gap >= 0 ? '+' : '') + gap.toFixed(2) + 'pp',
+        actualPct: a, targetPct: t,
+    };
+}
+
+// §4.2 return per unit of risk. The view already abstains below 0.25%
+// component VaR; this carries the two inputs so the sub-line can show the
+// arithmetic rather than assert a bare ratio.
+export function rVarRead(rVar, unrealisedPct, componentVarPct) {
+    const r = num(rVar);
+    if (r == null) {
+        const cv = num(componentVarPct);
+        return { state: 'abstain', label: '—', sub: cv == null ? 'no component VaR' : 'VaR below 0.25%', value: null };
+    }
+    const u = num(unrealisedPct), c = num(componentVarPct);
+    return {
+        state: 'ok', value: r,
+        label: (r >= 0 ? '' : '−') + Math.abs(r).toFixed(1) + '×',
+        sub: u != null && c != null ? (u >= 0 ? '' : '−') + Math.abs(u).toFixed(1) + ' / ' + c.toFixed(1) : null,
+        tone: r >= 0 ? 'pos' : 'neg',
+    };
+}
+
+// §3.1 Damage renders an em dash for holdings that are not underwater —
+// never 0.00pp, which would read as measured-and-zero.
+export function damageRead(damagePp) {
+    const d = num(damagePp);
+    if (d == null || d <= 0) return { state: 'none', label: '—', value: null };
+    return { state: 'damaged', label: d.toFixed(2) + 'pp', value: d };
+}
+
+// §4.4 Volatility surfacing trigger. Not a panel — it decides which holdings
+// carry a `vol trigger` flag on today's docket.
+//
+// Measured against the name's own trailing 20-session vol, because the raw
+// daily move the legacy panel showed just re-lists the same high-beta names
+// every session. A 12% day in a name that routinely moves 6% is ordinary; a
+// 4% day in a name that never moves 1% is the one worth reading.
+export const VOL_TRIGGER_Z = 2.0;
+export const VOL_STALE_DAYS = 5;
+
+export function volTriggerRead(vol) {
+    if (!vol) return { state: 'none', trigger: false, label: null, reason: 'no volatility reading' };
+    const z = num(vol.z);
+    // An abstention is not a quiet "calm" — say which it is.
+    if (z == null) {
+        return { state: 'abstain', trigger: false, label: null, reason: vol.abstainReason || 'window under 20 sessions' };
+    }
+    // A dead feed cannot report calm. Silence on a stale price is not evidence
+    // of a quiet day, so the trigger declines to fire rather than assume one.
+    const daysOld = num(vol.daysOld);
+    if (daysOld != null && daysOld > VOL_STALE_DAYS) {
+        return { state: 'stale', trigger: false, z, label: null, reason: 'vol reading ' + daysOld + 'd old — trigger withheld' };
+    }
+    if (z < VOL_TRIGGER_Z) return { state: 'quiet', trigger: false, z, label: null, reason: null };
+    return {
+        state: 'triggered', trigger: true, z,
+        label: z.toFixed(1) + 'σ',
+        reason: (vol.ret1d != null ? (vol.ret1d >= 0 ? '+' : '−') + Math.abs(vol.ret1d).toFixed(1) + '%' : 'move')
+            + ' against ' + (vol.vol20d != null ? vol.vol20d.toFixed(1) + '% typical' : 'its trailing vol'),
+    };
+}
+
+// §3.1 Signal check — four chips in fixed order. A missing input is a dashed
+// chip carrying an em dash and marks the whole row partial, which is the
+// legacy conviction card's treatment carried over rather than rewritten.
+const SIGNAL_TONE = {
+    CHEAP: 'pos', UNDERVALUED: 'pos', BUY: 'pos', STRONG: 'pos', TAILWIND: 'pos', SUPPORT: 'pos',
+    RICH: 'neg', OVERVALUED: 'neg', SELL: 'neg', WEAK: 'neg', HEADWIND: 'neg', WARY: 'neg', HEAD: 'neg',
+};
+export function signalCheck(row) {
+    const j = (row && row.judged) || {};
+    const s = (row && row.signals) || {};
+    const raw = [
+        { key: 'VAL', v: s.valuation },
+        { key: 'MAC', v: j.macro },
+        { key: 'TEC', v: s.technical },
+        { key: 'QUA', v: j.quality },
+    ];
+    const chips = raw.map(c => {
+        const t = c.v == null || c.v === '' ? null : String(c.v).trim();
+        if (!t) return { key: c.key, label: '—', tone: 'miss', missing: true };
+        const tone = SIGNAL_TONE[t.toUpperCase()] || (/^[AB][+-]?$/.test(t) ? 'pos' : /^[DF]/.test(t) ? 'neg' : 'flat');
+        return { key: c.key, label: t.toUpperCase(), tone, missing: false };
+    });
+    const missing = chips.filter(c => c.missing);
+    return { chips, partial: missing.length > 0, missingKeys: missing.map(c => c.key) };
+}
+
+// §3 default sort: damage descending, then a divider, then the undamaged
+// block ranked by |weight_gap_pp| descending so the largest conviction
+// mismatches lead it. Rows with neither key sort last, in weight order.
+export function sortDocket(rows, keyOf) {
+    const k = keyOf || (r => r.judged || {});
+    const damaged = [], clean = [];
+    for (const r of rows || []) (num(k(r).damagePp) > 0 ? damaged : clean).push(r);
+    damaged.sort((a, b) => num(k(b).damagePp) - num(k(a).damagePp));
+    clean.sort((a, b) => {
+        const ag = num(k(a).weightGapPp), bg = num(k(b).weightGapPp);
+        if (ag == null && bg == null) return (num(k(b).actualWeightPct) || 0) - (num(k(a).actualWeightPct) || 0);
+        if (ag == null) return 1;
+        if (bg == null) return -1;
+        return Math.abs(bg) - Math.abs(ag);
+    });
+    return { damaged, clean, dividerLabel: 'No drawdown damage · ' + clean.length + ' holdings · ranked by conviction gap' };
+}
+
+// ── Census strip (§2 item 8) ──────────────────────────────────
+// Four legacy cross-module panels collapse into one strip. Every row is a
+// docket filter, so the census is a control surface rather than a readout.
+// Unknown inputs get their own bucket instead of being folded into a
+// plausible-looking one.
+const QUALITY_TONE = { A: 'good', 'A-': 'good', 'B+': 'cyan', B: 'warn', 'B-': 'warn', C: 'bad', D: 'bad', F: 'bad' };
+const SIGNAL_BUCKET_TONE = { long: 'good', bull: 'good', buy: 'good', hold: 'cyan', neutral: 'cyan', short: 'bad', wary: 'warn', sell: 'bad' };
+
+function tally(rows, pick) {
+    const counts = new Map();
+    for (const r of rows) {
+        const raw = pick(r);
+        const k = raw == null || raw === '' ? 'unknown' : String(raw).trim();
+        counts.set(k, (counts.get(k) || 0) + 1);
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+}
+
+export function buildCensus(docket) {
+    const rows = docket || [];
+    const n = rows.length;
+    if (!n) return null;
+    const col = (key, title, entries, field, toneOf) => {
+        const top = entries.slice(0, 4);
+        const max = top.length ? top[0][1] : 1;
+        return {
+            key, title, sub: n + ' pos',
+            rows: top.map(([label, count]) => ({
+                key: field + ':' + label, label, count,
+                barPct: Math.round((count / (max || 1)) * 100),
+                tone: label === 'unknown' ? 'none' : (toneOf(label) || 'cyan'),
+                filter: { field, value: label },
+            })),
+        };
+    };
+    // VaR is a magnitude ranking, not a tally — the top four risk consumers,
+    // each filtering the docket to that one name.
+    const byVar = rows
+        .filter(r => num(r.varPct) != null)
+        .sort((a, b) => Math.abs(num(b.varPct)) - Math.abs(num(a.varPct)))
+        .slice(0, 4);
+    const varMax = byVar.length ? Math.abs(num(byVar[0].varPct)) : 1;
+    const varCol = {
+        key: 'var', title: 'VaR contribution', sub: 'top 4',
+        rows: byVar.map(r => {
+            const v = Math.abs(num(r.varPct));
+            return {
+                key: 'tk:' + r.tk, label: r.tk, count: v.toFixed(1) + '%',
+                barPct: Math.round((v / (varMax || 1)) * 100),
+                tone: v >= varMax * 0.9 ? 'bad' : 'warn',
+                filter: { field: 'tk', value: r.tk },
+            };
+        }),
+    };
+    return [
+        col('quality', 'Quality', tally(rows, r => (r.judged || {}).quality), 'quality', l => QUALITY_TONE[l.toUpperCase()]),
+        varCol,
+        col('quant', 'Quant signal', tally(rows, r => (r.signals || {}).quant), 'quant', l => SIGNAL_BUCKET_TONE[l.toLowerCase()]),
+        col('technical', 'Technical', tally(rows, r => (r.signals || {}).technical), 'technical', l => SIGNAL_BUCKET_TONE[l.toLowerCase()]),
+    ];
+}
+
+// Applying a census filter to the docket. 'unknown' matches exactly the rows
+// whose input was absent — the bucket is selectable, not decorative.
+export function applyCensusFilter(docket, filter) {
+    if (!filter) return docket || [];
+    const val = String(filter.value);
+    const read = r => {
+        if (filter.field === 'tk') return r.tk;
+        if (filter.field === 'quality') return (r.judged || {}).quality;
+        if (filter.field === 'quant') return (r.signals || {}).quant;
+        if (filter.field === 'technical') return (r.signals || {}).technical;
+        return null;
+    };
+    return (docket || []).filter(r => {
+        const v = read(r);
+        return val === 'unknown' ? (v == null || v === '') : String(v).trim() === val;
+    });
+}
+
+// ── Sleeve headroom rail (§5.4) ───────────────────────────────
+// Rail renders sleeves under HEADROOM_RAIL_PP of headroom, plus any sleeve
+// named by an open ruling. Everything else collapses to a count, so a rail of
+// twelve near-empty gauges never buries the one that actually binds.
+export const SLEEVE_TIGHT_PP = 3.0;
+export const HEADROOM_RAIL_PP = 20.0;
+
+export function buildHeadroomRail(sleeves, namedSleeves) {
+    const all = (sleeves || []).filter(s => s && s.sleeve);
+    if (!all.length) return null;
+    const named = new Set((namedSleeves || []).filter(Boolean));
+    const shown = all
+        .filter(s => num(s.headroomPp) != null && (num(s.headroomPp) < HEADROOM_RAIL_PP || named.has(s.sleeve)))
+        .sort((a, b) => num(a.headroomPp) - num(b.headroomPp))
+        .map(s => {
+            const cap = num(s.capPct) || 30;
+            const w = num(s.weightPct) || 0;
+            const hp = num(s.headroomPp);
+            return {
+                ...s, capPct: cap,
+                fillPct: Math.max(0, Math.min(100, (w / cap) * 100)),
+                tone: hp <= 0 ? 'breach' : hp < SLEEVE_TIGHT_PP ? 'tight' : 'ok',
+                label: w.toFixed(1) + '% · ' + (hp <= 0 ? Math.abs(hp).toFixed(1) + 'pp over' : hp.toFixed(1) + 'pp left'),
+            };
+        });
+    const hidden = all.length - shown.length;
+    return { capPct: shown.length ? shown[0].capPct : 30, sleeves: shown, hidden };
+}
+
+// §6.3 headroom is a hard gate. A recruit is PERMITTED, QUEUED or BLOCKED,
+// and a block always names its reason. QUEUED is the interesting state: the
+// headroom does not exist yet but a pending ruling will create it.
+export function gateRecruit(recruit, sleeves, pendingRulings) {
+    const need = num(recruit && recruit.sizePp);
+    const sleeveName = recruit && recruit.sleeve;
+    const s = (sleeves || []).find(x => x.sleeve === sleeveName);
+    if (!s || num(s.headroomPp) == null) {
+        return { state: 'blocked', reason: 'no headroom reading for ' + (sleeveName || 'unknown sleeve') };
+    }
+    const have = num(s.headroomPp);
+    if (need == null) return { state: 'blocked', reason: 'recruit has no size' };
+    if (have >= need) return { state: 'permitted', reason: have.toFixed(1) + 'pp available in ' + sleeveName };
+    // Would a ruling in flight create the room?
+    const freeing = (pendingRulings || []).filter(r => r.sleeve === sleeveName && num(r.freesPp) > 0);
+    const wouldHave = have + freeing.reduce((a, r) => a + num(r.freesPp), 0);
+    if (freeing.length && wouldHave >= need) {
+        const behind = freeing.map(r => r.tk + (r.stage ? ' stage ' + r.stage : '')).join(', ');
+        return {
+            state: 'queued',
+            reason: 'queued behind ' + behind,
+            detail: have.toFixed(1) + 'pp now → ' + wouldHave.toFixed(1) + 'pp after, needs ' + need.toFixed(1) + 'pp',
+        };
+    }
+    return {
+        state: 'blocked',
+        reason: sleeveName + ' has ' + have.toFixed(1) + 'pp, recruit needs ' + need.toFixed(1) + 'pp'
+            + (freeing.length ? ' — pending rulings free only ' + (wouldHave - have).toFixed(1) + 'pp' : ' and no pending ruling would create it'),
+    };
+}
+
 // ── Contribution waterfall (6.1) ──────────────────────────────
 // Carriers as green cliffs, passengers as one grey shelf, detractors
 // as red teeth, net marker, concentration rail over the carriers.
@@ -97,8 +379,19 @@ export function resolveVerdict(assessment, { priceStale = false, nowIso = null }
 // (≥ 8% of total positive contribution, max 6 named); the rest of
 // the positives collapse into the shelf. Detractors render singly.
 export function buildWaterfall(rows) {
-    const R = (rows || []).filter(r => num(r.contrib) != null).map(r => ({ tk: r.tk, contrib: Number(r.contrib) }));
-    if (!R.length) return null;
+    const all = rows || [];
+    const R = all.filter(r => num(r.contrib) != null).map(r => ({ tk: r.tk, contrib: Number(r.contrib) }));
+    // Names with no measurable contribution are counted, not dropped. A bar
+    // chart that quietly spans 76% of the book reads as if it spans all of it.
+    const missing = all.filter(r => num(r.contrib) == null);
+    const omitted = missing.length
+        ? {
+            n: missing.length,
+            weightPct: +missing.reduce((a, r) => a + (num(r.weightPct) || 0), 0).toFixed(2),
+            reason: missing.find(r => r.contribReason)?.contribReason || null,
+        }
+        : null;
+    if (!R.length) return omitted ? { bars: [], net: null, concentration: null, omitted } : null;
     const pos = R.filter(r => r.contrib > 0).sort((a, b) => b.contrib - a.contrib);
     const neg = R.filter(r => r.contrib < 0).sort((a, b) => a.contrib - b.contrib);
     const posTotal = pos.reduce((a, r) => a + r.contrib, 0);
@@ -128,6 +421,7 @@ export function buildWaterfall(rows) {
         concentration: carriers.length && posTotal > 0
             ? { names: carriers.length, pctOfPositive: Math.round((carrierSum / posTotal) * 100) }
             : null,
+        omitted,
     };
 }
 
@@ -291,10 +585,89 @@ export function buildCirculatory(cutRows, ledger) {
     return { cuts, freedPct, recruits, factorShifts };
 }
 
+// ── Capital circulation (§6) ──────────────────────────────────
+// Three surfaces used to issue trade recommendations independently and could
+// therefore disagree. The contract: the Bench owns every sell, the ledger owns
+// every buy candidate, and this footer only joins them — it holds no opinion
+// of its own.
+
+// §6.1 A trim is a verdict outcome, never an independent signal. ON WATCH
+// with a size breach trims back to target; CUT stages the full position. No
+// other verdict emits a sell.
+export function sellsFromVerdicts(rows) {
+    const sells = [];
+    for (const r of rows || []) {
+        const v = r.verdict;
+        const gap = num(r.weightGapPp);
+        const wt = num(r.weightPct);
+        if (v === 'cut') {
+            sells.push({ kind: 'exit', tk: r.tk, sleeve: r.theme || null, freesPp: wt, reason: r.reason || 'thesis failed on the evidence' });
+        } else if (v === 'watch' && gap != null && gap >= WEIGHT_GAP_PP) {
+            // sized to bring the position back to target, not to zero — the
+            // problem is size, not story
+            sells.push({ kind: 'trim', tk: r.tk, sleeve: r.theme || null, freesPp: +gap.toFixed(2), reason: 'size breach: ' + gap.toFixed(2) + 'pp over conviction target' });
+        }
+    }
+    return sells;
+}
+
+// §6.2 The circulation identity. residual returns to cash and is rendered as
+// such — there is no forced deployment. A page that must spend everything it
+// raises will manufacture a recruit, which is the failure mode this whole
+// structure exists to prevent.
+export function buildCirculation({ sells, ledger, sleeves, navUsd }) {
+    const sources = sells || [];
+    const availablePp = +sources.reduce((a, s) => a + (num(s.freesPp) || 0), 0).toFixed(2);
+    // Rulings in flight, keyed by the sleeve they would free room in.
+    const pending = sources.map(s => ({ sleeve: s.sleeve, tk: s.tk, freesPp: num(s.freesPp), stage: s.stage || null }));
+    const candidates = (ledger || [])
+        .filter(l => l.fit === 'additive' && !l.held)
+        .slice(0, 6);
+    let remaining = availablePp;
+    const uses = candidates.map(l => {
+        // A recruit is sized by what is left, capped at the sleeve's room.
+        const want = num(l.sizePp) != null ? num(l.sizePp) : Math.min(remaining, 2.0);
+        const gate = gateRecruit({ sleeve: l.theme || l.sleeve || null, sizePp: want }, sleeves, pending);
+        const deployed = gate.state === 'permitted' ? Math.max(0, Math.min(want, remaining)) : 0;
+        if (deployed > 0) remaining = +(remaining - deployed).toFixed(2);
+        // Headroom permits it but there is nothing left to spend. That is a
+        // different state from an approval, and saying "PERMITTED · 0.00pp"
+        // would read as one.
+        const starved = gate.state === 'permitted' && deployed < want;
+        return {
+            tk: l.tk, sleeve: l.theme || l.sleeve || null,
+            wantPp: want != null ? +want.toFixed(2) : null,
+            deployedPp: +deployed.toFixed(2),
+            gate: deployed === 0 && starved ? 'unfunded' : gate.state,
+            partial: starved && deployed > 0,
+            reason: starved
+                ? (deployed > 0
+                    ? 'partially funded — ' + deployed.toFixed(2) + 'pp of ' + want.toFixed(2) + 'pp available'
+                    : 'headroom available, but freed capital is exhausted')
+                : gate.reason,
+            detail: gate.detail || null,
+            fvGapPct: num(l.fvGapPct),
+        };
+    });
+    const deployedPp = +uses.reduce((a, u) => a + u.deployedPp, 0).toFixed(2);
+    const residualPp = +(availablePp - deployedPp).toFixed(2);
+    const usd = pp => (num(navUsd) == null ? null : Math.round((pp / 100) * navUsd));
+    return {
+        sources, uses,
+        availablePp, deployedPp, residualPp,
+        availableUsd: usd(availablePp), deployedUsd: usd(deployedPp), residualUsd: usd(residualPp),
+        blocked: uses.filter(u => u.gate === 'blocked').length,
+        queued: uses.filter(u => u.gate === 'queued').length,
+        // residual is cash, stated as cash. Never redistributed to make the
+        // identity look tidy.
+        residualNote: residualPp > 0 ? 'returns to cash — no forced deployment' : null,
+    };
+}
+
 // ── Diagnostics strip (7) ─────────────────────────────────────
 // The bench audits itself: every input's health is a visible line,
 // "never fired" is a warning on screen, not a hidden state.
-export function benchDiagnostics({ fvTrusted = null, fvTotal = null, fvReasons = null, writerLastRun = null, writerRows = 0, claimsAvailable = false, contributionBasis = 'today-only', sleeveUnresolved = false, nowIso = null }) {
+export function benchDiagnostics({ fvTrusted = null, fvTotal = null, fvReasons = null, writerLastRun = null, writerRows = 0, claimsAvailable = false, contributionBasis = 'today-only', sleeveUnresolved = false, navCoveragePct = null, contribUncovered = 0, volRows = null, volTriggered = 0, volAbstaining = 0, nowIso = null }) {
     const items = [];
     if (fvTotal != null) {
         // A bare "0/54" tells you nothing actionable. nexus_holdings.fv_untrust_reason
@@ -327,6 +700,32 @@ export function benchDiagnostics({ fvTrusted = null, fvTotal = null, fvReasons =
     items.push(contributionBasis === 'view'
         ? { key: 'contrib', label: 'contribution: cumulative (vw_bench_contribution)', level: 'ok' }
         : { key: 'contrib', label: 'contribution: today only — cumulative view pending', level: 'warn' });
+    // Coverage is a first-class diagnostic, not a footnote. Contribution is
+    // computed against the names with position history only, so the strip
+    // states that share outright.
+    if (contribUncovered > 0) {
+        items.push({
+            key: 'coverage',
+            label: 'contribution covers ' + (navCoveragePct != null ? navCoveragePct + '% of book' : 'part of book')
+                 + ' — ' + contribUncovered + ' holdings have no transaction history',
+            level: navCoveragePct != null && navCoveragePct < 90 ? 'bad' : 'warn',
+        });
+    }
+    // §4.4 the trigger's own health. "0 triggered" is only meaningful if the
+    // store is actually populated, so the two are reported together rather
+    // than letting an empty table read as a calm market.
+    if (volRows == null) {
+        items.push({ key: 'vol', label: 'vol trigger: store not provisioned', level: 'warn' });
+    } else if (!volRows) {
+        items.push({ key: 'vol', label: 'vol trigger: no readings — trigger cannot fire', level: 'bad' });
+    } else {
+        items.push({
+            key: 'vol',
+            label: 'vol trigger: ' + volTriggered + ' flagged of ' + volRows
+                 + (volAbstaining ? ' · ' + volAbstaining + ' abstaining on short window' : ''),
+            level: volAbstaining > volRows / 2 ? 'warn' : 'ok',
+        });
+    }
     if (sleeveUnresolved) items.push({ key: 'sleeve', label: 'funding sleeve: unresolved', level: 'bad' });
     return items;
 }
