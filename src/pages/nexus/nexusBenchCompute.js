@@ -156,6 +156,38 @@ export function damageRead(damagePp) {
     return { state: 'damaged', label: d.toFixed(2) + 'pp', value: d };
 }
 
+// §4.4 Volatility surfacing trigger. Not a panel — it decides which holdings
+// carry a `vol trigger` flag on today's docket.
+//
+// Measured against the name's own trailing 20-session vol, because the raw
+// daily move the legacy panel showed just re-lists the same high-beta names
+// every session. A 12% day in a name that routinely moves 6% is ordinary; a
+// 4% day in a name that never moves 1% is the one worth reading.
+export const VOL_TRIGGER_Z = 2.0;
+export const VOL_STALE_DAYS = 5;
+
+export function volTriggerRead(vol) {
+    if (!vol) return { state: 'none', trigger: false, label: null, reason: 'no volatility reading' };
+    const z = num(vol.z);
+    // An abstention is not a quiet "calm" — say which it is.
+    if (z == null) {
+        return { state: 'abstain', trigger: false, label: null, reason: vol.abstainReason || 'window under 20 sessions' };
+    }
+    // A dead feed cannot report calm. Silence on a stale price is not evidence
+    // of a quiet day, so the trigger declines to fire rather than assume one.
+    const daysOld = num(vol.daysOld);
+    if (daysOld != null && daysOld > VOL_STALE_DAYS) {
+        return { state: 'stale', trigger: false, z, label: null, reason: 'vol reading ' + daysOld + 'd old — trigger withheld' };
+    }
+    if (z < VOL_TRIGGER_Z) return { state: 'quiet', trigger: false, z, label: null, reason: null };
+    return {
+        state: 'triggered', trigger: true, z,
+        label: z.toFixed(1) + 'σ',
+        reason: (vol.ret1d != null ? (vol.ret1d >= 0 ? '+' : '−') + Math.abs(vol.ret1d).toFixed(1) + '%' : 'move')
+            + ' against ' + (vol.vol20d != null ? vol.vol20d.toFixed(1) + '% typical' : 'its trailing vol'),
+    };
+}
+
 // §3.1 Signal check — four chips in fixed order. A missing input is a dashed
 // chip carrying an em dash and marks the whole row partial, which is the
 // legacy conviction card's treatment carried over rather than rewritten.
@@ -635,7 +667,7 @@ export function buildCirculation({ sells, ledger, sleeves, navUsd }) {
 // ── Diagnostics strip (7) ─────────────────────────────────────
 // The bench audits itself: every input's health is a visible line,
 // "never fired" is a warning on screen, not a hidden state.
-export function benchDiagnostics({ fvTrusted = null, fvTotal = null, fvReasons = null, writerLastRun = null, writerRows = 0, claimsAvailable = false, contributionBasis = 'today-only', sleeveUnresolved = false, navCoveragePct = null, contribUncovered = 0, nowIso = null }) {
+export function benchDiagnostics({ fvTrusted = null, fvTotal = null, fvReasons = null, writerLastRun = null, writerRows = 0, claimsAvailable = false, contributionBasis = 'today-only', sleeveUnresolved = false, navCoveragePct = null, contribUncovered = 0, volRows = null, volTriggered = 0, volAbstaining = 0, nowIso = null }) {
     const items = [];
     if (fvTotal != null) {
         // A bare "0/54" tells you nothing actionable. nexus_holdings.fv_untrust_reason
@@ -677,6 +709,21 @@ export function benchDiagnostics({ fvTrusted = null, fvTotal = null, fvReasons =
             label: 'contribution covers ' + (navCoveragePct != null ? navCoveragePct + '% of book' : 'part of book')
                  + ' — ' + contribUncovered + ' holdings have no transaction history',
             level: navCoveragePct != null && navCoveragePct < 90 ? 'bad' : 'warn',
+        });
+    }
+    // §4.4 the trigger's own health. "0 triggered" is only meaningful if the
+    // store is actually populated, so the two are reported together rather
+    // than letting an empty table read as a calm market.
+    if (volRows == null) {
+        items.push({ key: 'vol', label: 'vol trigger: store not provisioned', level: 'warn' });
+    } else if (!volRows) {
+        items.push({ key: 'vol', label: 'vol trigger: no readings — trigger cannot fire', level: 'bad' });
+    } else {
+        items.push({
+            key: 'vol',
+            label: 'vol trigger: ' + volTriggered + ' flagged of ' + volRows
+                 + (volAbstaining ? ' · ' + volAbstaining + ' abstaining on short window' : ''),
+            level: volAbstaining > volRows / 2 ? 'warn' : 'ok',
         });
     }
     if (sleeveUnresolved) items.push({ key: 'sleeve', label: 'funding sleeve: unresolved', level: 'bad' });

@@ -82,7 +82,7 @@ export default async function handler(req, res) {
 
     try {
         const since = ymd(new Date(Date.now() - TAPE_DAYS * 86_400_000));
-        const [holdings, assess, claims, sleeve, contribView, docketView, headroom, scrapCos, freshness, prices, cortexSignals, fvRows] = await Promise.all([
+        const [holdings, assess, claims, sleeve, contribView, docketView, headroom, volRows, scrapCos, freshness, prices, cortexSignals, fvRows] = await Promise.all([
             sb('vw_nexus_holdings?select=symbol,asset_name,sector,weight_pct,market_value,daily_return_pct,total_return_pct,unrealised_return_pct,conviction_score,var_contribution_pct,dcf_upside_pct,current_price,quant_signal,technical_signal,valuation_signal,quality_grade'),
             fetchAssessments(),
             sb('bench_claims?select=id,symbol,thesis_ref,claim_text,status,evidence_text,evidence_value,evidence_source,status_changed_at,created_at&order=created_at.asc&limit=1000'),
@@ -91,6 +91,8 @@ export default async function handler(req, res) {
             // the judged columns: conviction-implied target, R/VaR, damage, clock
             sb('vw_bench_docket?select=symbol,target_weight_pct,weight_gap_pp,r_var,damage_pp,days_held,component_var_pct,unrealised_return_pct,macro_regime_fit,quality_grade'),
             sb('vw_sleeve_headroom?select=sleeve,weight_pct,cap_pct,headroom_pp,headroom_usd,positions,nav_usd'),
+            // §4.4 surfacing trigger — a flag on a docket row, never a panel
+            sb('vw_holding_vol_latest?select=symbol,asof,ret_1d,vol_20d,z_move,days_old,vol_trigger,abstain_reason'),
             sb('scrapbook_companies?select=ticker,thesis_summary,updated_at'),
             sb('vw_nexus_price_freshness?select=symbol,days_old'),
             sbPaged('price_history?select=price_date,close,assets!inner(symbol)&interval=eq.1d&price_date=gte.' + since + '&order=price_date.asc,asset_id.asc', 6),
@@ -143,6 +145,7 @@ export default async function handler(req, res) {
 
         const contribByTk = new Map((contribView || []).map(r => [r.symbol, r]));
         const judgedByTk = new Map((docketView || []).map(r => [r.symbol, r]));
+        const volByTk = new Map((volRows || []).map(r => [r.symbol, r]));
         const scrapByTk = new Map((scrapCos || []).map(c => [c.ticker, c]));
         const staleSet = new Set((freshness || []).filter(f => num(f.days_old) != null && f.days_old > PRICE_STALE_DAYS).map(f => f.symbol));
 
@@ -161,6 +164,7 @@ export default async function handler(req, res) {
             const cv = contribByTk.get(h.symbol);
             const sl = sleeveByTk.get(h.symbol);
             const j = judgedByTk.get(h.symbol);
+            const vt = volByTk.get(h.symbol);
             return {
                 tk: h.symbol,
                 name: (h.asset_name && h.asset_name !== h.symbol) ? h.asset_name : null,
@@ -207,6 +211,18 @@ export default async function handler(req, res) {
                     macro: (j && j.macro_regime_fit) || null,
                     quality: (j && j.quality_grade) || null,
                 },
+                // §4.4 the move measured against the name's own trailing vol,
+                // not against the tape. Absent = no reading at all, which is
+                // a different thing from a reading that says "calm".
+                vol: vt ? {
+                    z: num(vt.z_move),
+                    ret1d: num(vt.ret_1d),
+                    vol20d: num(vt.vol_20d),
+                    asOf: vt.asof || null,
+                    daysOld: num(vt.days_old),
+                    trigger: !!vt.vol_trigger,
+                    abstainReason: vt.abstain_reason || null,
+                } : null,
             };
         });
 
@@ -243,6 +259,9 @@ export default async function handler(req, res) {
             contribUncovered: (contribView || []).filter(r => !r.covered).length,
             contribCovered: (contribView || []).filter(r => r.covered).length,
             docketJudged: (docketView || []).length,
+            volRows: (volRows || []).length,
+            volTriggered: (volRows || []).filter(r => r.vol_trigger).length,
+            volAbstaining: (volRows || []).filter(r => r.z_move == null).length,
             // §5.2: the clock is missing precisely where it matters most, so
             // the count is a diagnostic, not a rendering detail
             clockMissing: (docketView || []).filter(r => r.days_held == null).length,

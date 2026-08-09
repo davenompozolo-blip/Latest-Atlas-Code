@@ -22,7 +22,7 @@ import {
     tapeEvents, buildCirculatory, benchDiagnostics, mapCortexToHoldings,
     thesisClock, weightVsConviction, rVarRead, damageRead, signalCheck, sortDocket,
     buildCensus, applyCensusFilter, buildHeadroomRail,
-    sellsFromVerdicts, buildCirculation,
+    sellsFromVerdicts, buildCirculation, volTriggerRead,
 } from './nexusBenchCompute.js';
 import { trackSleeveComposition, SLEEVE_STALE_SESSIONS } from './nexusOpportunitiesCompute.js';
 
@@ -106,6 +106,7 @@ function DiagnosticsStrip({ diagnostics, funding }) {
         claimsAvailable: diagnostics.claimsAvailable, contributionBasis: diagnostics.contributionBasis,
         sleeveUnresolved: !!(funding && funding.unresolved),
         navCoveragePct: diagnostics.navCoveragePct, contribUncovered: diagnostics.contribUncovered,
+        volRows: diagnostics.volRows, volTriggered: diagnostics.volTriggered, volAbstaining: diagnostics.volAbstaining,
     });
     if (sleeveDays >= SLEEVE_STALE_SESSIONS) items.push({ key: 'sleeve-stale', label: 'sleeve unchanged ' + sleeveDays + 'd — verify inputs', level: 'warn' });
     return e('div', { className: 'bn-diag' },
@@ -518,6 +519,7 @@ function DocketTable({ docket, series, ledger, writerRows, cortexByTk, sleeves, 
             rv: rVarRead(j.rVar, j.unrealisedPct, j.componentVarPct),
             dmg: damageRead(j.damagePp),
             check: signalCheck(row),
+            vol: volTriggerRead(row.vol),
             judged: { ...j, actualWeightPct: row.weightPct },
         };
     });
@@ -547,7 +549,7 @@ function DocketTable({ docket, series, ledger, writerRows, cortexByTk, sleeves, 
                         ['Holding', 'Thesis clock', 'Weight vs conviction', 'R / VaR', 'Damage ↓', 'Signal check', 'Verdict']
                             .map(h => e('th', { key: h, className: 'nf-l' + (h === 'Damage ↓' ? ' bn-sorted' : '') }, h)))),
                     e('tbody', null, rows.flatMap(b => {
-                        const { row, res, integrity, derivedOnly, fresh, tally, clock, wv, rv, dmg, check } = b;
+                        const { row, res, integrity, derivedOnly, fresh, tally, clock, wv, rv, dmg, check, vol } = b;
                         const isOpen = !!open[row.tk];
                         const out = [];
                         // The divider is a row so it scrolls with the block it labels.
@@ -564,6 +566,10 @@ function DocketTable({ docket, series, ledger, writerRows, cortexByTk, sleeves, 
                             e('td', { className: 'nf-l' },
                                 e('span', { className: 'nf-tk', onClick: ev => { ev.stopPropagation(); openObject(row.tk); }, title: 'Open ' + row.tk }, row.tk),
                                 row.sleeveRank ? e('span', { className: 'bn-slv', title: 'funding sleeve rank (qualified)' }, '#' + row.sleeveRank) : null,
+                                // §4.4 the trigger surfaces here and nowhere
+                                // else — a flag on the row it concerns
+                                vol.trigger ? e('span', { className: 'bn-volflag', title: vol.reason }, vol.label) : null,
+                                vol.state === 'stale' ? e('span', { className: 'bn-volflag stale', title: vol.reason }, 'vol ?') : null,
                                 row.name ? e('div', { className: 'bn-nm2' }, row.name) : null,
                                 e('div', { className: 'bn-theme' }, row.theme)),
                             e('td', { className: 'nf-l' }, e(ClockCell, { clock })),

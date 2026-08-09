@@ -8,7 +8,7 @@ import {
     parseCortexCandidates, mapCortexToHoldings,
     thesisClock, weightVsConviction, rVarRead, damageRead, signalCheck, sortDocket,
     buildCensus, applyCensusFilter, buildHeadroomRail, gateRecruit,
-    sellsFromVerdicts, buildCirculation,
+    sellsFromVerdicts, buildCirculation, volTriggerRead,
 } from './nexusBenchCompute.js';
 
 const NOW = '2026-07-26T00:00:00Z';
@@ -318,6 +318,50 @@ test('buildCirculation: never deploys more than it raised', () => {
     assert.match(c.uses[0].reason, /partially funded/);
     assert.equal(c.uses[1].gate, 'unfunded');
     assert.match(c.uses[1].reason, /freed capital is exhausted/);
+});
+
+test('volTriggerRead: fires on the move relative to the name, not the tape', () => {
+    // the legacy panel's failure: a 12% day in a name that routinely moves 6%
+    const highBeta = volTriggerRead({ z: 1.9, ret1d: 12.0, vol20d: 6.3, daysOld: 0 });
+    assert.equal(highBeta.trigger, false);
+    assert.equal(highBeta.state, 'quiet');
+    // and the case it missed: a 4% day in a name that never moves 1%
+    const sleeper = volTriggerRead({ z: 3.6, ret1d: 4.0, vol20d: 1.1, daysOld: 0 });
+    assert.equal(sleeper.trigger, true);
+    assert.equal(sleeper.label, '3.6σ');
+    assert.match(sleeper.reason, /\+4\.0% against 1\.1% typical/);
+    // boundary is inclusive at 2.0
+    assert.equal(volTriggerRead({ z: 2.0, ret1d: 3, vol20d: 1.5, daysOld: 0 }).trigger, true);
+    assert.equal(volTriggerRead({ z: 1.999, ret1d: 3, vol20d: 1.5, daysOld: 0 }).trigger, false);
+});
+
+test('volTriggerRead: abstains rather than reporting calm it has not measured', () => {
+    // no reading at all is different from a reading that says quiet
+    const none = volTriggerRead(null);
+    assert.equal(none.state, 'none');
+    assert.equal(none.trigger, false);
+    assert.match(none.reason, /no volatility reading/);
+    // window too short — the spec requires 20 sessions before z means anything
+    const short = volTriggerRead({ z: null, abstainReason: 'window under 20 sessions', daysOld: 0 });
+    assert.equal(short.state, 'abstain');
+    assert.equal(short.trigger, false);
+    assert.match(short.reason, /under 20 sessions/);
+    // a dead feed cannot report calm, and must not fire either
+    const stale = volTriggerRead({ z: 4.2, ret1d: 9, vol20d: 2, daysOld: 40 });
+    assert.equal(stale.state, 'stale');
+    assert.equal(stale.trigger, false, 'a 40d-old reading must not fire a trigger');
+    assert.match(stale.reason, /40d old/);
+});
+
+test('benchDiagnostics: an empty vol store never reads as a calm market', () => {
+    const base = { fvTotal: null, writerRows: 1, writerLastRun: NOW, claimsAvailable: true, contributionBasis: 'view', nowIso: NOW };
+    assert.match(benchDiagnostics({ ...base, volRows: null }).find(i => i.key === 'vol').label, /not provisioned/);
+    const empty = benchDiagnostics({ ...base, volRows: 0, volTriggered: 0 }).find(i => i.key === 'vol');
+    assert.equal(empty.level, 'bad');
+    assert.match(empty.label, /trigger cannot fire/);
+    const live = benchDiagnostics({ ...base, volRows: 58, volTriggered: 3, volAbstaining: 0 }).find(i => i.key === 'vol');
+    assert.equal(live.level, 'ok');
+    assert.match(live.label, /3 flagged of 58/);
 });
 
 test('cumulativeFromCloses rebases to first close', () => {
