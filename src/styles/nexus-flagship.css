@@ -800,6 +800,67 @@
 /* coverage gap stated under a partial chart, and the fully-unmeasurable case */
 .bn-omit { font-family: var(--fm); font-size: 9.5px; color: var(--amber); margin-top: 6px; letter-spacing: .02em; }
 .bn-empty { font-family: var(--fm); font-size: 11px; color: var(--text3); padding: 22px 4px; text-align: center; }
+/* section labels shared by the census strip and the headroom rail */
+.bn-seclabel {
+    font-family: var(--fm); font-size: 9.5px; letter-spacing: .10em; text-transform: uppercase;
+    color: var(--text3); margin: 16px 0 7px; display: flex; align-items: baseline; gap: 10px;
+}
+.bn-src { font-size: 9px; letter-spacing: .03em; text-transform: none; color: rgba(255,255,255,0.22); }
+.bn-src.warn { color: var(--amber); }
+/* census strip — four legacy panels, every row a docket filter */
+.bn-census { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.bn-census-col {
+    background: var(--card, rgba(255,255,255,0.02)); border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 6px; padding: 9px 11px 7px;
+}
+.bn-census-col h4 {
+    font-family: var(--fm); font-size: 9px; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--text2); margin: 0 0 6px; display: flex; justify-content: space-between; font-weight: 600;
+}
+.bn-census-col h4 span { color: var(--text3); letter-spacing: .03em; }
+.bn-crow {
+    display: grid; grid-template-columns: 54px 1fr 34px; align-items: center; gap: 6px;
+    padding: 2px 4px; margin: 0 -4px; border-radius: 3px; cursor: pointer;
+}
+.bn-crow:hover { background: rgba(255,255,255,0.045); }
+.bn-crow.on { background: rgba(56,189,248,0.13); box-shadow: inset 2px 0 0 var(--cyan); }
+.bn-ck { font-family: var(--fm); font-size: 9.5px; color: var(--text2); overflow: hidden; text-overflow: ellipsis; }
+.bn-cbar2 { display: block; height: 6px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden; }
+.bn-cbar2 i { display: block; height: 100%; border-radius: 2px; }
+.bn-cbar2 i.good { background: var(--success); }
+.bn-cbar2 i.cyan { background: var(--cyan); }
+.bn-cbar2 i.warn { background: var(--amber); }
+.bn-cbar2 i.bad  { background: var(--danger); }
+.bn-cbar2 i.none { background: rgba(255,255,255,0.16); }
+.bn-cv { font-family: var(--fm); font-size: 9.5px; color: var(--text3); text-align: right; }
+/* headroom rail — gauges against the sleeve cap */
+.bn-headroom {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    background: var(--card, rgba(255,255,255,0.02)); border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 6px; padding: 10px 13px;
+}
+.bn-hr-title { font-family: var(--fm); font-size: 9px; letter-spacing: .08em; color: var(--text3); }
+.bn-sleeve { display: flex; align-items: center; gap: 7px; }
+.bn-hr-nm { font-family: var(--fm); font-size: 10px; color: var(--text2); }
+.bn-gauge { position: relative; display: block; width: 74px; height: 6px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; }
+.bn-gauge i { display: block; height: 100%; border-radius: 2px; }
+.bn-gauge i.ok { background: var(--cyan); }
+.bn-gauge i.tight { background: var(--amber); }
+.bn-gauge i.breach { background: var(--danger); }
+.bn-hd { font-family: var(--fm); font-size: 9.5px; color: var(--text3); }
+.bn-hd.tight { color: var(--amber); }
+.bn-hd.breach { color: var(--danger); }
+.bn-hr-rest { font-family: var(--fm); font-size: 9.5px; color: rgba(255,255,255,0.22); margin-left: auto; }
+/* active filter bar */
+.bn-filterbar {
+    font-family: var(--fm); font-size: 10px; color: var(--cyan); margin: 12px 0 -4px;
+    display: flex; align-items: center; gap: 10px;
+}
+.bn-clear {
+    font-family: var(--fm); font-size: 9px; color: var(--text3); background: transparent;
+    border: 1px solid rgba(255,255,255,0.14); border-radius: 3px; padding: 1px 7px; cursor: pointer;
+}
+.bn-clear:hover { color: var(--text1); border-color: rgba(255,255,255,0.3); }
 /* §3.1 judged columns — every one of these has an abstaining state */
 .bn-table th.bn-sorted { color: var(--cyan); }
 .bn-table td.bn-r { text-align: right; }

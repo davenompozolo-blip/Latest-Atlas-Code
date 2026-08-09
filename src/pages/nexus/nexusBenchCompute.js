@@ -200,6 +200,146 @@ export function sortDocket(rows, keyOf) {
     return { damaged, clean, dividerLabel: 'No drawdown damage · ' + clean.length + ' holdings · ranked by conviction gap' };
 }
 
+// ── Census strip (§2 item 8) ──────────────────────────────────
+// Four legacy cross-module panels collapse into one strip. Every row is a
+// docket filter, so the census is a control surface rather than a readout.
+// Unknown inputs get their own bucket instead of being folded into a
+// plausible-looking one.
+const QUALITY_TONE = { A: 'good', 'A-': 'good', 'B+': 'cyan', B: 'warn', 'B-': 'warn', C: 'bad', D: 'bad', F: 'bad' };
+const SIGNAL_BUCKET_TONE = { long: 'good', bull: 'good', buy: 'good', hold: 'cyan', neutral: 'cyan', short: 'bad', wary: 'warn', sell: 'bad' };
+
+function tally(rows, pick) {
+    const counts = new Map();
+    for (const r of rows) {
+        const raw = pick(r);
+        const k = raw == null || raw === '' ? 'unknown' : String(raw).trim();
+        counts.set(k, (counts.get(k) || 0) + 1);
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+}
+
+export function buildCensus(docket) {
+    const rows = docket || [];
+    const n = rows.length;
+    if (!n) return null;
+    const col = (key, title, entries, field, toneOf) => {
+        const top = entries.slice(0, 4);
+        const max = top.length ? top[0][1] : 1;
+        return {
+            key, title, sub: n + ' pos',
+            rows: top.map(([label, count]) => ({
+                key: field + ':' + label, label, count,
+                barPct: Math.round((count / (max || 1)) * 100),
+                tone: label === 'unknown' ? 'none' : (toneOf(label) || 'cyan'),
+                filter: { field, value: label },
+            })),
+        };
+    };
+    // VaR is a magnitude ranking, not a tally — the top four risk consumers,
+    // each filtering the docket to that one name.
+    const byVar = rows
+        .filter(r => num(r.varPct) != null)
+        .sort((a, b) => Math.abs(num(b.varPct)) - Math.abs(num(a.varPct)))
+        .slice(0, 4);
+    const varMax = byVar.length ? Math.abs(num(byVar[0].varPct)) : 1;
+    const varCol = {
+        key: 'var', title: 'VaR contribution', sub: 'top 4',
+        rows: byVar.map(r => {
+            const v = Math.abs(num(r.varPct));
+            return {
+                key: 'tk:' + r.tk, label: r.tk, count: v.toFixed(1) + '%',
+                barPct: Math.round((v / (varMax || 1)) * 100),
+                tone: v >= varMax * 0.9 ? 'bad' : 'warn',
+                filter: { field: 'tk', value: r.tk },
+            };
+        }),
+    };
+    return [
+        col('quality', 'Quality', tally(rows, r => (r.judged || {}).quality), 'quality', l => QUALITY_TONE[l.toUpperCase()]),
+        varCol,
+        col('quant', 'Quant signal', tally(rows, r => (r.signals || {}).quant), 'quant', l => SIGNAL_BUCKET_TONE[l.toLowerCase()]),
+        col('technical', 'Technical', tally(rows, r => (r.signals || {}).technical), 'technical', l => SIGNAL_BUCKET_TONE[l.toLowerCase()]),
+    ];
+}
+
+// Applying a census filter to the docket. 'unknown' matches exactly the rows
+// whose input was absent — the bucket is selectable, not decorative.
+export function applyCensusFilter(docket, filter) {
+    if (!filter) return docket || [];
+    const val = String(filter.value);
+    const read = r => {
+        if (filter.field === 'tk') return r.tk;
+        if (filter.field === 'quality') return (r.judged || {}).quality;
+        if (filter.field === 'quant') return (r.signals || {}).quant;
+        if (filter.field === 'technical') return (r.signals || {}).technical;
+        return null;
+    };
+    return (docket || []).filter(r => {
+        const v = read(r);
+        return val === 'unknown' ? (v == null || v === '') : String(v).trim() === val;
+    });
+}
+
+// ── Sleeve headroom rail (§5.4) ───────────────────────────────
+// Rail renders sleeves under HEADROOM_RAIL_PP of headroom, plus any sleeve
+// named by an open ruling. Everything else collapses to a count, so a rail of
+// twelve near-empty gauges never buries the one that actually binds.
+export const SLEEVE_TIGHT_PP = 3.0;
+export const HEADROOM_RAIL_PP = 20.0;
+
+export function buildHeadroomRail(sleeves, namedSleeves) {
+    const all = (sleeves || []).filter(s => s && s.sleeve);
+    if (!all.length) return null;
+    const named = new Set((namedSleeves || []).filter(Boolean));
+    const shown = all
+        .filter(s => num(s.headroomPp) != null && (num(s.headroomPp) < HEADROOM_RAIL_PP || named.has(s.sleeve)))
+        .sort((a, b) => num(a.headroomPp) - num(b.headroomPp))
+        .map(s => {
+            const cap = num(s.capPct) || 30;
+            const w = num(s.weightPct) || 0;
+            const hp = num(s.headroomPp);
+            return {
+                ...s, capPct: cap,
+                fillPct: Math.max(0, Math.min(100, (w / cap) * 100)),
+                tone: hp <= 0 ? 'breach' : hp < SLEEVE_TIGHT_PP ? 'tight' : 'ok',
+                label: w.toFixed(1) + '% · ' + (hp <= 0 ? Math.abs(hp).toFixed(1) + 'pp over' : hp.toFixed(1) + 'pp left'),
+            };
+        });
+    const hidden = all.length - shown.length;
+    return { capPct: shown.length ? shown[0].capPct : 30, sleeves: shown, hidden };
+}
+
+// §6.3 headroom is a hard gate. A recruit is PERMITTED, QUEUED or BLOCKED,
+// and a block always names its reason. QUEUED is the interesting state: the
+// headroom does not exist yet but a pending ruling will create it.
+export function gateRecruit(recruit, sleeves, pendingRulings) {
+    const need = num(recruit && recruit.sizePp);
+    const sleeveName = recruit && recruit.sleeve;
+    const s = (sleeves || []).find(x => x.sleeve === sleeveName);
+    if (!s || num(s.headroomPp) == null) {
+        return { state: 'blocked', reason: 'no headroom reading for ' + (sleeveName || 'unknown sleeve') };
+    }
+    const have = num(s.headroomPp);
+    if (need == null) return { state: 'blocked', reason: 'recruit has no size' };
+    if (have >= need) return { state: 'permitted', reason: have.toFixed(1) + 'pp available in ' + sleeveName };
+    // Would a ruling in flight create the room?
+    const freeing = (pendingRulings || []).filter(r => r.sleeve === sleeveName && num(r.freesPp) > 0);
+    const wouldHave = have + freeing.reduce((a, r) => a + num(r.freesPp), 0);
+    if (freeing.length && wouldHave >= need) {
+        const behind = freeing.map(r => r.tk + (r.stage ? ' stage ' + r.stage : '')).join(', ');
+        return {
+            state: 'queued',
+            reason: 'queued behind ' + behind,
+            detail: have.toFixed(1) + 'pp now → ' + wouldHave.toFixed(1) + 'pp after, needs ' + need.toFixed(1) + 'pp',
+        };
+    }
+    return {
+        state: 'blocked',
+        reason: sleeveName + ' has ' + have.toFixed(1) + 'pp, recruit needs ' + need.toFixed(1) + 'pp'
+            + (freeing.length ? ' — pending rulings free only ' + (wouldHave - have).toFixed(1) + 'pp' : ' and no pending ruling would create it'),
+    };
+}
+
 // ── Contribution waterfall (6.1) ──────────────────────────────
 // Carriers as green cliffs, passengers as one grey shelf, detractors
 // as red teeth, net marker, concentration rail over the carriers.

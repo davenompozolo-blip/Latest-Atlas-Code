@@ -21,6 +21,7 @@ import {
     buildWaterfall, cumulativeFromCloses, themeComposite, buildJaws,
     tapeEvents, buildCirculatory, benchDiagnostics, mapCortexToHoldings,
     thesisClock, weightVsConviction, rVarRead, damageRead, signalCheck, sortDocket,
+    buildCensus, applyCensusFilter, buildHeadroomRail, gateRecruit,
 } from './nexusBenchCompute.js';
 import { trackSleeveComposition, SLEEVE_STALE_SESSIONS } from './nexusOpportunitiesCompute.js';
 
@@ -384,6 +385,53 @@ function CortexChips({ sigs }) {
 }
 
 // ── Docket table ──────────────────────────────────────────────
+// ── Census strip — four legacy panels as one control surface ──
+function CensusStrip({ docket, filter, onFilter }) {
+    const cols = buildCensus(docket);
+    if (!cols) return null;
+    const active = filter ? filter.field + ':' + filter.value : null;
+    return e('div', null,
+        e('div', { className: 'bn-seclabel' }, 'State of the docket',
+            e('span', { className: 'bn-src' }, 'absorbs: Legacy Nexus · Cross-Module Intelligence')),
+        e('div', { className: 'bn-census' }, cols.map(c =>
+            e('div', { key: c.key, className: 'bn-census-col' },
+                e('h4', null, c.title, e('span', null, c.sub)),
+                c.rows.map(r => e('div', {
+                    key: r.key,
+                    className: 'bn-crow' + (active === r.key ? ' on' : ''),
+                    // Clicking the active row clears it — a filter you cannot
+                    // undo from the same control is a trap.
+                    onClick: () => onFilter(active === r.key ? null : r.filter),
+                    title: active === r.key ? 'Clear filter' : 'Filter the docket to ' + r.label,
+                },
+                    e('span', { className: 'bn-ck' }, r.label),
+                    e('span', { className: 'bn-cbar2' }, e('i', { className: r.tone, style: { width: r.barPct + '%' } })),
+                    e('span', { className: 'bn-cv' }, r.count)))))));
+}
+
+// ── Sleeve headroom rail (§5.4) ───────────────────────────────
+function HeadroomRail({ sleeves, namedSleeves }) {
+    const rail = buildHeadroomRail(sleeves, namedSleeves);
+    if (!rail) {
+        return e('div', { className: 'bn-seclabel' }, 'Sleeve headroom',
+            e('span', { className: 'bn-src warn' }, 'unavailable — no sleeve reading'));
+    }
+    return e('div', null,
+        e('div', { className: 'bn-seclabel' }, 'Sleeve headroom',
+            e('span', { className: 'bn-src' }, 'absorbs: Portfolio Risk · Sector Risk Budget')),
+        e('div', { className: 'bn-headroom' },
+            e('span', { className: 'bn-hr-title' }, rail.capPct + '% cap'),
+            rail.sleeves.map(s => e('div', { key: s.sleeve, className: 'bn-sleeve' },
+                e('span', { className: 'bn-hr-nm' }, s.sleeve),
+                e('span', { className: 'bn-gauge' },
+                    e('i', { className: s.tone, style: { width: s.fillPct + '%' } }),
+                    e('b', null)),
+                e('span', { className: 'bn-hd ' + s.tone, title: s.headroomUsd != null ? '$' + Math.round(s.headroomUsd).toLocaleString() + ' of room' : '' }, s.label))),
+            rail.hidden > 0
+                ? e('span', { className: 'bn-hr-rest' }, rail.hidden + ' sleeves with room to spare not shown')
+                : null));
+}
+
 // ── §3.1 judged column cells ──────────────────────────────────
 // Each abstains loudly. None of them can render a substituted average, and
 // none renders a zero where the input was absent.
@@ -422,7 +470,7 @@ function SignalChips({ check }) {
         check.partial ? e('span', { className: 'bn-partial', title: check.missingKeys.join(', ') + ' missing' }, 'Partial — input missing') : null);
 }
 
-function DocketTable({ docket, series, ledger, writerRows, cortexByTk }) {
+function DocketTable({ docket, series, ledger, writerRows, cortexByTk, sleeves, total }) {
     const [open, setOpen] = useState({});
     const built = docket.map(row => {
         const derived = deriveIntegrity(row.claims);
@@ -451,7 +499,8 @@ function DocketTable({ docket, series, ledger, writerRows, cortexByTk }) {
         e('div', { className: 'nf-card nf-fade' },
             e('div', { className: 'nf-card-h' },
                 e('h3', null, 'The docket'),
-                e('span', { className: 'nf-sub' }, docket.length + ' names before the bench' +
+                e('span', { className: 'nf-sub' },
+                    (total && total !== docket.length ? docket.length + ' of ' + total + ' names' : docket.length + ' names before the bench') +
                     (writerRows ? '' : ' · no rulings on file — assessment writer has never fired'))),
             e('div', { className: 'nf-table-scroll', style: { maxHeight: 520 } },
                 e('table', { className: 'nf-table bn-table' },
@@ -502,14 +551,30 @@ function DocketTable({ docket, series, ledger, writerRows, cortexByTk }) {
 // ── The beat ──────────────────────────────────────────────────
 export function NexusBenchPanel() {
     const { bench, ledger, loading } = useBench();
+    const [filter, setFilter] = useState(null);
     if (loading) return e('div', { className: 'nf-card nb-loading' }, e('span', { className: 'nb-spin' }, '◴'), ' Convening the bench…');
     if (!bench) return e('div', { className: 'nf-card' }, e('div', { className: 'nb-empty' }, 'The bench cannot sit — holdings feed unavailable. No verdicts are rendered on missing data.'));
     const { docket, series, funding, diagnostics } = bench;
     const cortexByTk = mapCortexToHoldings(bench.cortex, docket);
+    // Sleeves named by an open ruling stay on the rail even when they have
+    // room — those are the ones a ruling is about to move.
+    const namedSleeves = docket.filter(r => {
+        const v = resolveVerdict(r.assessment, { priceStale: r.priceStale }).verdict;
+        return v === 'cut' || v === 'watch';
+    }).map(r => r.theme);
+    const shown = applyCensusFilter(docket, filter);
     return e('div', null,
         e(DiagnosticsStrip, { diagnostics, funding }),
+        e(CensusStrip, { docket, filter, onFilter: setFilter }),
+        e(HeadroomRail, { sleeves: bench.sleeves, namedSleeves }),
         e(ContributionWaterfall, { docket, basis: diagnostics.contributionBasis }),
-        e(DocketTable, { docket, series, ledger, writerRows: diagnostics.writerRows, cortexByTk }));
+        filter ? e('div', { className: 'bn-filterbar' },
+            'Docket filtered to ' + filter.field + ' = ' + filter.value + ' · ' + shown.length + ' of ' + docket.length,
+            e('button', { className: 'bn-clear', onClick: () => setFilter(null) }, 'clear')) : null,
+        e(DocketTable, {
+            docket: shown, series, ledger, writerRows: diagnostics.writerRows, cortexByTk,
+            sleeves: bench.sleeves, total: docket.length,
+        }));
 }
 
 export default NexusBenchPanel;

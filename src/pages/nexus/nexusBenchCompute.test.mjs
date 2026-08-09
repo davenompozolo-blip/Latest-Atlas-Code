@@ -7,6 +7,7 @@ import {
     tapeEvents, buildCirculatory, benchDiagnostics,
     parseCortexCandidates, mapCortexToHoldings,
     thesisClock, weightVsConviction, rVarRead, damageRead, signalCheck, sortDocket,
+    buildCensus, applyCensusFilter, buildHeadroomRail, gateRecruit,
 } from './nexusBenchCompute.js';
 
 const NOW = '2026-07-26T00:00:00Z';
@@ -182,6 +183,78 @@ test('sortDocket: damage descending, then undamaged by |weight gap|', () => {
     // largest conviction mismatch leads the second block; no-gap rows sink
     assert.deepEqual(clean.map(x => x.tk), ['B', 'A', 'C']);
     assert.match(dividerLabel, /No drawdown damage · 3 holdings/);
+});
+
+const holding = (tk, quality, quant, technical, varPct) =>
+    ({ tk, judged: { quality }, signals: { quant, technical }, varPct });
+
+test('buildCensus: four columns, VaR ranked by magnitude, unknowns bucketed not hidden', () => {
+    const d = [
+        holding('MU', 'C', 'Hold', 'Neutral', 5.7),
+        holding('SNDK', 'C', 'Hold', 'Wary', 5.5),
+        holding('GDX', 'B', 'Long', 'Bull', 4.8),
+        holding('X', null, 'Hold', null, 0.4),
+    ];
+    const [quality, vars, quant, technical] = buildCensus(d);
+    assert.equal(quality.title, 'Quality');
+    assert.equal(quality.rows[0].label, 'C');
+    assert.equal(quality.rows[0].count, 2);
+    // a missing grade gets its own selectable bucket rather than folding into C
+    const unk = quality.rows.find(r => r.label === 'unknown');
+    assert.equal(unk.count, 1);
+    assert.equal(unk.tone, 'none');
+    assert.deepEqual(vars.rows.map(r => r.label), ['MU', 'SNDK', 'GDX', 'X']);
+    assert.equal(vars.rows[0].barPct, 100);
+    assert.equal(quant.rows[0].label, 'Hold');
+    assert.equal(technical.rows.length, 4);
+    assert.equal(buildCensus([]), null);
+});
+
+test('applyCensusFilter: filters the docket, and unknown selects exactly the absent rows', () => {
+    const d = [holding('MU', 'C', 'Hold', null, 1), holding('X', null, 'Long', null, 1)];
+    assert.deepEqual(applyCensusFilter(d, { field: 'quality', value: 'C' }).map(r => r.tk), ['MU']);
+    assert.deepEqual(applyCensusFilter(d, { field: 'quality', value: 'unknown' }).map(r => r.tk), ['X']);
+    assert.deepEqual(applyCensusFilter(d, { field: 'tk', value: 'X' }).map(r => r.tk), ['X']);
+    assert.equal(applyCensusFilter(d, null).length, 2);
+});
+
+test('buildHeadroomRail: shows the binding sleeves, collapses the roomy ones to a count', () => {
+    const s = (sleeve, weightPct, headroomPp) => ({ sleeve, weightPct, capPct: 30, headroomPp, headroomUsd: 1000 });
+    const rail = buildHeadroomRail([
+        s('Technology', 28.57, 1.43), s('Healthcare', 13.46, 16.54),
+        s('Utilities', 2.0, 28.0), s('Energy', 1.5, 28.5),
+    ], []);
+    assert.deepEqual(rail.sleeves.map(x => x.sleeve), ['Technology', 'Healthcare']);
+    assert.equal(rail.hidden, 2);
+    assert.equal(rail.sleeves[0].tone, 'tight');
+    assert.match(rail.sleeves[0].label, /28\.6% · 1\.4pp left/);
+    assert.equal(rail.sleeves[1].tone, 'ok');
+    // a sleeve named by an open ruling stays on the rail even with room to spare
+    assert.ok(buildHeadroomRail([s('Utilities', 2.0, 28.0)], ['Utilities']).sleeves.length === 1);
+    // an over-cap sleeve reads as a breach, not as negative headroom left
+    const over = buildHeadroomRail([s('Technology', 31.0, -1.0)], []).sleeves[0];
+    assert.equal(over.tone, 'breach');
+    assert.match(over.label, /1\.0pp over/);
+    assert.equal(buildHeadroomRail([], []), null);
+});
+
+test('gateRecruit: headroom is a hard gate and a block always names its reason', () => {
+    const sleeves = [{ sleeve: 'Technology', headroomPp: 1.4 }, { sleeve: 'Healthcare', headroomPp: 16.5 }];
+    assert.equal(gateRecruit({ sleeve: 'Healthcare', sizePp: 2 }, sleeves, []).state, 'permitted');
+    // the spec's worked case: cutting SNDK frees 1.8pp of Technology
+    const q = gateRecruit({ sleeve: 'Technology', sizePp: 2.5 }, sleeves, [{ sleeve: 'Technology', tk: 'SNDK', stage: '03', freesPp: 1.8 }]);
+    assert.equal(q.state, 'queued');
+    assert.match(q.reason, /queued behind SNDK stage 03/);
+    assert.match(q.detail, /1\.4pp now → 3\.2pp after/);
+    // no ruling would create the room
+    const b = gateRecruit({ sleeve: 'Technology', sizePp: 2.5 }, sleeves, []);
+    assert.equal(b.state, 'blocked');
+    assert.match(b.reason, /no pending ruling would create it/);
+    // pending rulings that still fall short block rather than queue
+    assert.equal(gateRecruit({ sleeve: 'Technology', sizePp: 9 }, sleeves, [{ sleeve: 'Technology', tk: 'SNDK', freesPp: 1.8 }]).state, 'blocked');
+    // unknown sleeve or sizeless recruit blocks rather than assuming room
+    assert.equal(gateRecruit({ sleeve: 'Nowhere', sizePp: 1 }, sleeves, []).state, 'blocked');
+    assert.equal(gateRecruit({ sleeve: 'Healthcare', sizePp: null }, sleeves, []).state, 'blocked');
 });
 
 test('cumulativeFromCloses rebases to first close', () => {
