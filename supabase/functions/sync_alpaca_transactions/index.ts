@@ -139,7 +139,8 @@ async function closeSyncLogSuccess(id: number, upserted: number, details: Record
             finished_at           = now(),
             status                = 'success',
             transactions_upserted = ${upserted},
-            duration_ms           = (extract(epoch from (now() - started_at)) * 1000)::int,
+            -- duration_ms is a generated column; assigning it raises
+            -- "can only be updated to DEFAULT" and would fail the whole close
             details               = ${sql.json(details)}
         where id = ${id}
     `
