@@ -46,7 +46,11 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
-          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          # The repository secret is named ALPACA_API_SECRET; this env var must
+          # keep the name the wrapper reads (process.env.ALPACA_SECRET_KEY).
+          # Referencing secrets.ALPACA_SECRET_KEY resolved to an empty string
+          # and sent APCA-API-SECRET-KEY: undefined, failing Alpaca auth.
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_API_SECRET }}
           ALPACA_API_URL: ${{ secrets.ALPACA_API_URL }}
           SYNC_TYPE: ${{ inputs.sync_type || 'full' }}
         run: node scripts/sync-wrapper.mjs
