@@ -85,21 +85,49 @@ When operating Atlas via remote control, use these session roles:
 ## Data Trust Layer
 
 ### Sync System
-- Alpaca sync runs via GitHub Actions (4:30 PM ET weekdays + 8:00 AM ET pre-market)
-- All syncs logged to `atlas_sync_log` with metrics and validation results
-- Current sync health in `atlas_sync_status` (single-row table, always ID=1)
-- Failed syncs auto-write to `atlas_memory` with category='bug', priority=2
+Everything runs on Supabase `pg_cron` calling edge functions. GitHub Actions is
+no longer part of the data path — `atlas-sync.yml` and `scripts/sync-wrapper.mjs`
+were retired on 2026-08-09 (see below).
 
-### Validation Checks (run post-sync)
-1. `position_count` — positions exist and match transaction history
-2. `nav_reconciliation` — calculated NAV vs broker equity (tolerance: 0.5% warn, 2% fail)
-3. `snapshot_continuity` — no gaps > 3 days in account_snapshots
-4. `data_freshness` — last successful sync within 24 hours
+| Job | Schedule (UTC) | Writes |
+|-----|----------------|--------|
+| `sync-alpaca-positions` | every 5 min | `positions`, `account_snapshots` |
+| `sync_alpaca_prices_daily` | 22:00 weekdays | `price_history` |
+| `sync_alpaca_transactions` | 13:10, 22:10 weekdays | `transactions`, `assets` |
+| `refresh_holding_vol_trailing` | 22:25 weekdays | `holding_vol_trailing` |
+| `atlas_run_validation` | 22:40 weekdays | `atlas_validation_log`, `atlas_sync_status` |
+| `sync_portfolio_history_nightly` | 01:00 daily | `portfolio_equity_curve` |
+| `refresh-nexus-holdings` | every 10 min | `nexus_holdings`, `mv_cortex_screener` |
+
+- Edge functions log to **`sync_log`** (the live table). `atlas_sync_log` is a
+  legacy table that has never received a row — do not read it for freshness.
+- Current sync health in `atlas_sync_status` (single-row table, always ID=1)
+- Critical validation failures auto-write to `atlas_memory` with
+  category='bug', priority=2, on conflict **(category, key)**
+
+### Validation Checks (`atlas_run_validation()`, 22:40 weekdays)
+Pure SQL — every check is a database query, so there is no edge function, no
+secret, and no HTTP hop in this layer.
+1. `position_count` — positions exist for today and match transaction history
+2. `nav_reconciliation` — calculated NAV vs broker equity (0.5% warn, 2% fail)
+3. `snapshot_continuity` — no gaps > 3 days **between distinct snapshot days**
+   (row-to-row would measure minutes, since snapshots land every 5 min)
+4. `data_freshness` — last `sync_log` success within 24h (48h fails)
 
 ### Key Tables
-- `atlas_sync_log` — full sync history with metrics
+- `sync_log` — live sync history, written by every edge function
 - `atlas_sync_status` — single-row current state (query with `.eq('id', 1)`)
 - `atlas_validation_log` — all validation check results
+- `atlas_sync_log` — **legacy, empty**; superseded by `sync_log`
+
+### Why GitHub Actions was retired (2026-08-09)
+All 30 `atlas-sync.yml` runs on record failed: Actions could not provision a
+runner (`runner_id: 0`, dead in 3–5s). Once that was fixed, two further faults
+surfaced — the workflow referenced secrets under names that did not exist, and
+`sync-wrapper.mjs` wrote columns that do not exist on `transactions` and
+`account_snapshots`. Its five sync legs were all duplicated by pg_cron, and its
+validation layer had never written a row. Rebuilt on pg_cron rather than
+repaired. **When adding a scheduled job, add it here — not to Actions.**
 
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
