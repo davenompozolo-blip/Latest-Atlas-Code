@@ -90,7 +90,7 @@ export default async function handler(req, res) {
             sb('vw_bench_contribution?select=symbol,contrib_today,contrib_ytd,contrib_since_entry,covered,coverage_reason,nav_coverage_pct'),
             // the judged columns: conviction-implied target, R/VaR, damage, clock
             sb('vw_bench_docket?select=symbol,target_weight_pct,weight_gap_pp,r_var,damage_pp,days_held,component_var_pct,unrealised_return_pct,macro_regime_fit,quality_grade'),
-            sb('vw_sleeve_headroom?select=sleeve,weight_pct,cap_pct,headroom_pp,headroom_usd,positions'),
+            sb('vw_sleeve_headroom?select=sleeve,weight_pct,cap_pct,headroom_pp,headroom_usd,positions,nav_usd'),
             sb('scrapbook_companies?select=ticker,thesis_summary,updated_at'),
             sb('vw_nexus_price_freshness?select=symbol,days_old'),
             sbPaged('price_history?select=price_date,close,assets!inner(symbol)&interval=eq.1d&price_date=gte.' + since + '&order=price_date.asc,asset_id.asc', 6),
@@ -262,8 +262,11 @@ export default async function handler(req, res) {
             positions: num(r.positions),
         }));
 
+        // one NAV, read off the same view the headroom figures come from
+        const navUsd = (headroom || []).length ? num(headroom[0].nav_usd) : null;
+
         res.setHeader('Cache-Control', 's-maxage=900, stale-while-revalidate=3600');
-        return res.status(200).json({ ok: true, asOf: new Date().toISOString(), docket, series, funding, diagnostics, cortex, sleeves });
+        return res.status(200).json({ ok: true, asOf: new Date().toISOString(), docket, series, funding, diagnostics, cortex, sleeves, navUsd });
     } catch (e) {
         return res.status(200).json({ ok: false, error: (e && e.message) || 'bench error', docket: [], series: {}, diagnostics: [] });
     }

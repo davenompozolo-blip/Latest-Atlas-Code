@@ -21,7 +21,8 @@ import {
     buildWaterfall, cumulativeFromCloses, themeComposite, buildJaws,
     tapeEvents, buildCirculatory, benchDiagnostics, mapCortexToHoldings,
     thesisClock, weightVsConviction, rVarRead, damageRead, signalCheck, sortDocket,
-    buildCensus, applyCensusFilter, buildHeadroomRail, gateRecruit,
+    buildCensus, applyCensusFilter, buildHeadroomRail,
+    sellsFromVerdicts, buildCirculation,
 } from './nexusBenchCompute.js';
 import { trackSleeveComposition, SLEEVE_STALE_SESSIONS } from './nexusOpportunitiesCompute.js';
 
@@ -359,15 +360,46 @@ function CirculatoryChart({ flow }) {
             flow.factorShifts.map(f => f.theme + ' frees ' + f.freedPct + '%').join(' · ') + ' — advisory, no ticket drafted (phase 2).') : null);
 }
 
-function RulingBlock({ cutRows, ledger }) {
-    if (!cutRows.length) return null;
+const GATE_LABEL = { permitted: 'PERMITTED', queued: 'QUEUED', blocked: 'BLOCKED', unfunded: 'UNFUNDED' };
+
+function RulingBlock({ cutRows, sellRows, ledger, sleeves, navUsd }) {
+    const sells = sellsFromVerdicts(sellRows || []);
+    if (!sells.length) return null;
     const flow = buildCirculatory(cutRows, ledger);
+    const circ = buildCirculation({ sells, ledger, sleeves, navUsd });
+    const pp = v => (v == null ? '—' : v.toFixed(2) + 'pp');
+    const usd = v => (v == null ? '' : ' ($' + Math.abs(v).toLocaleString() + ')');
     return e('div', { className: 'nf-card nf-fade bn-ruling' },
         e('div', { className: 'nf-card-h' }, e('h3', null, 'The ruling'),
-            e('span', { className: 'nf-sub' }, cutRows.length + ' cut' + (cutRows.length > 1 ? 's' : '') + ' · freed capital routed through the ledger')),
-        cutRows.map(r => e('div', { key: r.tk, className: 'bn-ruling-row' },
-            e('b', null, r.tk), ' — exit stages the full ' + (r.weightPct != null ? r.weightPct.toFixed(2) : '—') + '% via PCM; ',
-            r.condition ? 'ruling condition: ' + r.condition : 'no stay: ' + (r.reason || 'thesis failed on the evidence') + '.')),
+            e('span', { className: 'nf-sub' },
+                sells.filter(s => s.kind === 'exit').length + ' exit · ' +
+                sells.filter(s => s.kind === 'trim').length + ' trim · freed capital gated on sleeve headroom')),
+        // §6.1 every sell is a verdict outcome, and says which one
+        sells.map(s => e('div', { key: s.kind + s.tk, className: 'bn-ruling-row' },
+            e('b', null, s.tk),
+            s.kind === 'exit'
+                ? ' — CUT stages the full ' + pp(s.freesPp) + ' via PCM; '
+                : ' — ON WATCH trims ' + pp(s.freesPp) + ' back to target; ',
+            s.reason)),
+        // §6.2 the identity, stated in full including the residual
+        e('div', { className: 'bn-circ' },
+            e('div', { className: 'bn-circ-id' },
+                e('span', null, 'available ', e('b', null, pp(circ.availablePp)), usd(circ.availableUsd)),
+                e('span', { className: 'bn-circ-op' }, '−'),
+                e('span', null, 'deployed ', e('b', null, pp(circ.deployedPp)), usd(circ.deployedUsd)),
+                e('span', { className: 'bn-circ-op' }, '='),
+                e('span', { className: 'bn-circ-res' }, 'residual ', e('b', null, pp(circ.residualPp)), usd(circ.residualUsd)),
+                circ.residualNote ? e('span', { className: 'bn-circ-note' }, circ.residualNote) : null),
+            // §6.3 the gate is hard: a blocked recruit cannot be executed here
+            e('div', { className: 'bn-uses' }, circ.uses.length
+                ? circ.uses.map(u => e('div', { key: u.tk, className: 'bn-use ' + u.gate },
+                    e('span', { className: 'bn-gate ' + u.gate }, GATE_LABEL[u.gate]),
+                    e('span', { className: 'nf-tk', onClick: () => openObject(u.tk) }, u.tk),
+                    e('span', { className: 'bn-use-sl' }, u.sleeve || 'no sleeve'),
+                    e('span', { className: 'bn-use-sz' },
+                        u.gate === 'permitted' ? pp(u.deployedPp) + (u.partial ? ' part' : '') : pp(u.wantPp) + ' wanted'),
+                    e('span', { className: 'bn-use-why' }, u.detail || u.reason)))
+                : e('div', { className: 'bn-use none' }, 'No additive recruits on the ledger — freed capital returns to cash.'))),
         e(CirculatoryChart, { flow }));
 }
 
@@ -470,7 +502,7 @@ function SignalChips({ check }) {
         check.partial ? e('span', { className: 'bn-partial', title: check.missingKeys.join(', ') + ' missing' }, 'Partial — input missing') : null);
 }
 
-function DocketTable({ docket, series, ledger, writerRows, cortexByTk, sleeves, total }) {
+function DocketTable({ docket, series, ledger, writerRows, cortexByTk, sleeves, total, navUsd }) {
     const [open, setOpen] = useState({});
     const built = docket.map(row => {
         const derived = deriveIntegrity(row.claims);
@@ -492,6 +524,12 @@ function DocketTable({ docket, series, ledger, writerRows, cortexByTk, sleeves, 
     // §3: damage descending, divider, then the undamaged block by |gap|.
     const { damaged, clean, dividerLabel } = sortDocket(built);
     const rows = damaged.concat(clean);
+    // §6.1 the sell side: CUT exits and ON WATCH size breaches, nothing else
+    const sellRows = rows.map(b => ({
+        tk: b.row.tk, theme: b.row.theme, verdict: b.res.verdict,
+        weightPct: b.row.weightPct, weightGapPp: b.judged.weightGapPp,
+        reason: b.res.condition || b.res.synthesis || null,
+    }));
     const cuts = rows.filter(r => r.res.verdict === 'cut')
         .map(r => ({ tk: r.row.tk, weightPct: r.row.weightPct, theme: r.row.theme, condition: r.res.condition, reason: r.res.synthesis }));
 
@@ -545,7 +583,7 @@ function DocketTable({ docket, series, ledger, writerRows, cortexByTk, sleeves, 
                         if (isOpen) out.push(e(TrialPanel, { key: row.tk + '-trial', row, series: series[row.tk], docket, seriesByTk: series, res }));
                         return out;
                     }))))),
-        e(RulingBlock, { cutRows: cuts, ledger }));
+        e(RulingBlock, { cutRows: cuts, sellRows, ledger, sleeves, navUsd }));
 }
 
 // ── The beat ──────────────────────────────────────────────────
@@ -573,7 +611,7 @@ export function NexusBenchPanel() {
             e('button', { className: 'bn-clear', onClick: () => setFilter(null) }, 'clear')) : null,
         e(DocketTable, {
             docket: shown, series, ledger, writerRows: diagnostics.writerRows, cortexByTk,
-            sleeves: bench.sleeves, total: docket.length,
+            sleeves: bench.sleeves, total: docket.length, navUsd: bench.navUsd,
         }));
 }
 

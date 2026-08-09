@@ -8,6 +8,7 @@ import {
     parseCortexCandidates, mapCortexToHoldings,
     thesisClock, weightVsConviction, rVarRead, damageRead, signalCheck, sortDocket,
     buildCensus, applyCensusFilter, buildHeadroomRail, gateRecruit,
+    sellsFromVerdicts, buildCirculation,
 } from './nexusBenchCompute.js';
 
 const NOW = '2026-07-26T00:00:00Z';
@@ -255,6 +256,68 @@ test('gateRecruit: headroom is a hard gate and a block always names its reason',
     // unknown sleeve or sizeless recruit blocks rather than assuming room
     assert.equal(gateRecruit({ sleeve: 'Nowhere', sizePp: 1 }, sleeves, []).state, 'blocked');
     assert.equal(gateRecruit({ sleeve: 'Healthcare', sizePp: null }, sleeves, []).state, 'blocked');
+});
+
+test('sellsFromVerdicts: only CUT and ON WATCH size breaches emit a sell', () => {
+    const sells = sellsFromVerdicts([
+        { tk: 'SNDK', theme: 'Technology', verdict: 'cut', weightPct: 1.76, weightGapPp: -0.02 },
+        { tk: 'TSM', theme: 'Technology', verdict: 'watch', weightPct: 4.26, weightGapPp: 1.678 },
+        { tk: 'SMALL', theme: 'Technology', verdict: 'watch', weightPct: 1.0, weightGapPp: 0.4 },  // under the threshold
+        { tk: 'GOOD', theme: 'Healthcare', verdict: 'stays', weightPct: 3.0, weightGapPp: 2.0 },   // STAYS never sells
+        { tk: 'MORE', theme: 'Healthcare', verdict: 'press', weightPct: 2.0, weightGapPp: -2.0 },
+    ]);
+    assert.deepEqual(sells.map(s => s.tk), ['SNDK', 'TSM']);
+    assert.equal(sells[0].kind, 'exit');
+    assert.equal(sells[0].freesPp, 1.76);          // full position
+    assert.equal(sells[1].kind, 'trim');
+    assert.equal(sells[1].freesPp, 1.68);          // back to target, not to zero
+    assert.match(sells[1].reason, /size breach/);
+});
+
+test('buildCirculation: identity closes and the residual returns to cash', () => {
+    const sleeves = [{ sleeve: 'Technology', headroomPp: 1.4 }, { sleeve: 'Healthcare', headroomPp: 16.5 }];
+    const sells = [{ kind: 'exit', tk: 'SNDK', sleeve: 'Technology', freesPp: 1.8 }];
+    const c = buildCirculation({
+        sells, sleeves, navUsd: 100000,
+        ledger: [
+            { tk: 'HEAL', theme: 'Healthcare', fit: 'additive', held: false, sizePp: 1.0 },
+            { tk: 'TECH', theme: 'Technology', fit: 'additive', held: false, sizePp: 2.5 },
+            { tk: 'OWNED', theme: 'Healthcare', fit: 'additive', held: true, sizePp: 1.0 },
+        ],
+    });
+    assert.equal(c.availablePp, 1.8);
+    assert.equal(c.deployedPp, 1.0);
+    assert.equal(c.residualPp, 0.8);
+    assert.equal(c.availablePp - c.deployedPp, c.residualPp);   // §6.2 identity
+    assert.match(c.residualNote, /no forced deployment/);
+    assert.equal(c.residualUsd, 800);
+    // held names are not recruits; the technology recruit queues behind SNDK
+    assert.deepEqual(c.uses.map(u => u.tk), ['HEAL', 'TECH']);
+    assert.equal(c.uses[0].gate, 'permitted');
+    assert.equal(c.uses[1].gate, 'queued');
+    assert.equal(c.uses[1].deployedPp, 0);          // a gated recruit spends nothing
+    assert.equal(c.queued, 1);
+});
+
+test('buildCirculation: never deploys more than it raised', () => {
+    const c = buildCirculation({
+        sells: [{ kind: 'trim', tk: 'TSM', sleeve: 'Technology', freesPp: 0.5 }],
+        sleeves: [{ sleeve: 'Healthcare', headroomPp: 16.5 }],
+        ledger: [
+            { tk: 'A', theme: 'Healthcare', fit: 'additive', held: false, sizePp: 2.0 },
+            { tk: 'B', theme: 'Healthcare', fit: 'additive', held: false, sizePp: 2.0 },
+        ],
+        navUsd: 100000,
+    });
+    assert.ok(c.deployedPp <= c.availablePp, 'deployed ' + c.deployedPp + ' exceeded available ' + c.availablePp);
+    assert.ok(c.residualPp >= 0);
+    // headroom permits both, but only 0.5pp was raised: the first is partly
+    // funded and the second says so rather than reading PERMITTED at 0.00pp
+    assert.equal(c.uses[0].gate, 'permitted');
+    assert.equal(c.uses[0].partial, true);
+    assert.match(c.uses[0].reason, /partially funded/);
+    assert.equal(c.uses[1].gate, 'unfunded');
+    assert.match(c.uses[1].reason, /freed capital is exhausted/);
 });
 
 test('cumulativeFromCloses rebases to first close', () => {

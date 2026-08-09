@@ -553,6 +553,85 @@ export function buildCirculatory(cutRows, ledger) {
     return { cuts, freedPct, recruits, factorShifts };
 }
 
+// ── Capital circulation (§6) ──────────────────────────────────
+// Three surfaces used to issue trade recommendations independently and could
+// therefore disagree. The contract: the Bench owns every sell, the ledger owns
+// every buy candidate, and this footer only joins them — it holds no opinion
+// of its own.
+
+// §6.1 A trim is a verdict outcome, never an independent signal. ON WATCH
+// with a size breach trims back to target; CUT stages the full position. No
+// other verdict emits a sell.
+export function sellsFromVerdicts(rows) {
+    const sells = [];
+    for (const r of rows || []) {
+        const v = r.verdict;
+        const gap = num(r.weightGapPp);
+        const wt = num(r.weightPct);
+        if (v === 'cut') {
+            sells.push({ kind: 'exit', tk: r.tk, sleeve: r.theme || null, freesPp: wt, reason: r.reason || 'thesis failed on the evidence' });
+        } else if (v === 'watch' && gap != null && gap >= WEIGHT_GAP_PP) {
+            // sized to bring the position back to target, not to zero — the
+            // problem is size, not story
+            sells.push({ kind: 'trim', tk: r.tk, sleeve: r.theme || null, freesPp: +gap.toFixed(2), reason: 'size breach: ' + gap.toFixed(2) + 'pp over conviction target' });
+        }
+    }
+    return sells;
+}
+
+// §6.2 The circulation identity. residual returns to cash and is rendered as
+// such — there is no forced deployment. A page that must spend everything it
+// raises will manufacture a recruit, which is the failure mode this whole
+// structure exists to prevent.
+export function buildCirculation({ sells, ledger, sleeves, navUsd }) {
+    const sources = sells || [];
+    const availablePp = +sources.reduce((a, s) => a + (num(s.freesPp) || 0), 0).toFixed(2);
+    // Rulings in flight, keyed by the sleeve they would free room in.
+    const pending = sources.map(s => ({ sleeve: s.sleeve, tk: s.tk, freesPp: num(s.freesPp), stage: s.stage || null }));
+    const candidates = (ledger || [])
+        .filter(l => l.fit === 'additive' && !l.held)
+        .slice(0, 6);
+    let remaining = availablePp;
+    const uses = candidates.map(l => {
+        // A recruit is sized by what is left, capped at the sleeve's room.
+        const want = num(l.sizePp) != null ? num(l.sizePp) : Math.min(remaining, 2.0);
+        const gate = gateRecruit({ sleeve: l.theme || l.sleeve || null, sizePp: want }, sleeves, pending);
+        const deployed = gate.state === 'permitted' ? Math.max(0, Math.min(want, remaining)) : 0;
+        if (deployed > 0) remaining = +(remaining - deployed).toFixed(2);
+        // Headroom permits it but there is nothing left to spend. That is a
+        // different state from an approval, and saying "PERMITTED · 0.00pp"
+        // would read as one.
+        const starved = gate.state === 'permitted' && deployed < want;
+        return {
+            tk: l.tk, sleeve: l.theme || l.sleeve || null,
+            wantPp: want != null ? +want.toFixed(2) : null,
+            deployedPp: +deployed.toFixed(2),
+            gate: deployed === 0 && starved ? 'unfunded' : gate.state,
+            partial: starved && deployed > 0,
+            reason: starved
+                ? (deployed > 0
+                    ? 'partially funded — ' + deployed.toFixed(2) + 'pp of ' + want.toFixed(2) + 'pp available'
+                    : 'headroom available, but freed capital is exhausted')
+                : gate.reason,
+            detail: gate.detail || null,
+            fvGapPct: num(l.fvGapPct),
+        };
+    });
+    const deployedPp = +uses.reduce((a, u) => a + u.deployedPp, 0).toFixed(2);
+    const residualPp = +(availablePp - deployedPp).toFixed(2);
+    const usd = pp => (num(navUsd) == null ? null : Math.round((pp / 100) * navUsd));
+    return {
+        sources, uses,
+        availablePp, deployedPp, residualPp,
+        availableUsd: usd(availablePp), deployedUsd: usd(deployedPp), residualUsd: usd(residualPp),
+        blocked: uses.filter(u => u.gate === 'blocked').length,
+        queued: uses.filter(u => u.gate === 'queued').length,
+        // residual is cash, stated as cash. Never redistributed to make the
+        // identity look tidy.
+        residualNote: residualPp > 0 ? 'returns to cash — no forced deployment' : null,
+    };
+}
+
 // ── Diagnostics strip (7) ─────────────────────────────────────
 // The bench audits itself: every input's health is a visible line,
 // "never fired" is a warning on screen, not a hidden state.
