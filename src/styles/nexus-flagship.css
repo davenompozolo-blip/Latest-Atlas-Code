@@ -800,6 +800,53 @@
 /* coverage gap stated under a partial chart, and the fully-unmeasurable case */
 .bn-omit { font-family: var(--fm); font-size: 9.5px; color: var(--amber); margin-top: 6px; letter-spacing: .02em; }
 .bn-empty { font-family: var(--fm); font-size: 11px; color: var(--text3); padding: 22px 4px; text-align: center; }
+/* §3.1 judged columns — every one of these has an abstaining state */
+.bn-table th.bn-sorted { color: var(--cyan); }
+.bn-table td.bn-r { text-align: right; }
+.bn-nm2 { font-size: 9.5px; color: var(--text3); margin-top: 1px; }
+.bn-divider-row td {
+    font-family: var(--fm); font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--text3); background: rgba(255,255,255,0.02);
+    border-top: 1px solid rgba(255,255,255,0.10); border-bottom: 1px solid rgba(255,255,255,0.06);
+    padding: 7px 10px !important;
+}
+/* thesis clock */
+.bn-clock { font-family: var(--fm); font-size: 11px; color: var(--text2); }
+.bn-clock.none { color: var(--danger); }
+.bn-clock-sub { display: block; font-size: 8.5px; letter-spacing: .04em; color: var(--text3); }
+.bn-clock-sub.stale { color: var(--amber); }
+.bn-clock-sub.silent { color: var(--danger); }
+/* weight vs conviction */
+.bn-wt { position: relative; width: 108px; height: 22px; }
+.bn-wt.none { font-family: var(--fm); font-size: 11px; color: var(--text3); height: auto; width: auto; }
+.bn-wt.none small { display: block; font-size: 8.5px; color: var(--text3); }
+.bn-wt-track { position: absolute; left: 0; top: 6px; width: 100%; height: 3px; background: rgba(255,255,255,0.07); border-radius: 2px; }
+.bn-wt-fill { position: absolute; top: 6px; height: 3px; border-radius: 2px; }
+.bn-wt-fill.under { background: var(--cyan); }
+.bn-wt-fill.over { background: var(--amber); }
+.bn-wt-fill.flat { background: rgba(255,255,255,0.22); }
+.bn-wt-tgt { position: absolute; top: 2px; width: 1px; height: 11px; background: var(--text2); }
+.bn-wt-lbl { position: absolute; left: 0; top: 12px; font-family: var(--fm); font-size: 9.5px; color: var(--text3); }
+.bn-wt-lbl.under { color: var(--cyan); }
+.bn-wt-lbl.over { color: var(--amber); }
+/* R / VaR */
+.bn-num { font-family: var(--fm); font-size: 11.5px; }
+.bn-num.pos { color: var(--success); }
+.bn-num.neg { color: var(--danger); }
+.bn-num.none { color: var(--text3); }
+.bn-num small { display: block; font-size: 8.5px; color: var(--text3); letter-spacing: .03em; }
+/* damage */
+.bn-damage { font-family: var(--fm); font-size: 11.5px; color: var(--danger); }
+.bn-damage.none { color: var(--text3); }
+/* signal check — four chips, fixed order, dashed where an input is missing */
+.bn-chips { display: flex; flex-wrap: wrap; gap: 3px; align-items: center; }
+.bn-chip { font-family: var(--fm); font-size: 9px; padding: 1px 5px; border-radius: 3px; background: rgba(255,255,255,0.05); color: var(--text2); }
+.bn-chip small { display: block; font-size: 7.5px; color: var(--text3); letter-spacing: .06em; }
+.bn-chip.pos { background: var(--success-b); color: var(--success); }
+.bn-chip.neg { background: var(--danger-b); color: var(--danger); }
+.bn-chip.miss { background: transparent; border: 1px dashed rgba(255,255,255,0.18); color: var(--text3); }
+.bn-partial { font-family: var(--fm); font-size: 8.5px; color: var(--amber); width: 100%; margin-top: 2px; }
+.bn-trial-inline { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 4px; }
 /* verdict chips */
 .bn-vwrap { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .bn-verdict { font-family: var(--fm); font-size: 9.5px; font-weight: 700; letter-spacing: .06em; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }

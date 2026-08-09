@@ -90,6 +90,116 @@ export function resolveVerdict(assessment, { priceStale = false, nowIso = null }
     };
 }
 
+// ── Docket row contract (§3.1) ────────────────────────────────
+// Every reader here abstains rather than substitutes. A null input yields an
+// em dash plus its reason; it never inherits a portfolio average, and it
+// never renders a zero that would read as a measured result.
+
+// §4.1 verdict triggers. PRESS wants a name proven and underweight; the size
+// breach fires on weight alone — the TSM case, proven, oversized, still a
+// problem.
+export const WEIGHT_GAP_PP = 1.0;
+// Within this band actual and target are the same call, not a drift.
+export const WEIGHT_FLAT_PP = 0.15;
+
+// Thesis clock. days_held only ever comes from transaction history; where it
+// is absent the column says so (§3.1, §5.2) — never zero, never inferred
+// from the earliest price observation.
+export function thesisClock(daysHeld, fresh) {
+    const d = num(daysHeld);
+    if (d == null) return { state: 'unknown', days: null, label: '—', sub: 'no entry date' };
+    const sub = !fresh || fresh.state === 'silent' ? 'silent'
+        : fresh.state + (fresh.days != null ? ' ' + fresh.days + 'd' : '');
+    return { state: fresh ? fresh.state : 'silent', days: d, label: d + 'd', sub };
+}
+
+// Weight vs conviction. Returns the track geometry the mini-bar draws plus
+// the tone that reads the gap.
+export function weightVsConviction(actualPct, targetPct) {
+    const a = num(actualPct), t = num(targetPct);
+    if (a == null || t == null) {
+        return { state: 'unresolved', label: '—', sub: t == null ? 'no conviction' : 'no weight', tone: 'none', gapPp: null };
+    }
+    const gap = +(a - t).toFixed(3);
+    const tone = Math.abs(gap) <= WEIGHT_FLAT_PP ? 'flat' : gap < 0 ? 'under' : 'over';
+    return {
+        state: 'resolved', tone, gapPp: gap,
+        label: a.toFixed(1) + ' / ' + t.toFixed(1),
+        sub: (gap >= 0 ? '+' : '') + gap.toFixed(2) + 'pp',
+        actualPct: a, targetPct: t,
+    };
+}
+
+// §4.2 return per unit of risk. The view already abstains below 0.25%
+// component VaR; this carries the two inputs so the sub-line can show the
+// arithmetic rather than assert a bare ratio.
+export function rVarRead(rVar, unrealisedPct, componentVarPct) {
+    const r = num(rVar);
+    if (r == null) {
+        const cv = num(componentVarPct);
+        return { state: 'abstain', label: '—', sub: cv == null ? 'no component VaR' : 'VaR below 0.25%', value: null };
+    }
+    const u = num(unrealisedPct), c = num(componentVarPct);
+    return {
+        state: 'ok', value: r,
+        label: (r >= 0 ? '' : '−') + Math.abs(r).toFixed(1) + '×',
+        sub: u != null && c != null ? (u >= 0 ? '' : '−') + Math.abs(u).toFixed(1) + ' / ' + c.toFixed(1) : null,
+        tone: r >= 0 ? 'pos' : 'neg',
+    };
+}
+
+// §3.1 Damage renders an em dash for holdings that are not underwater —
+// never 0.00pp, which would read as measured-and-zero.
+export function damageRead(damagePp) {
+    const d = num(damagePp);
+    if (d == null || d <= 0) return { state: 'none', label: '—', value: null };
+    return { state: 'damaged', label: d.toFixed(2) + 'pp', value: d };
+}
+
+// §3.1 Signal check — four chips in fixed order. A missing input is a dashed
+// chip carrying an em dash and marks the whole row partial, which is the
+// legacy conviction card's treatment carried over rather than rewritten.
+const SIGNAL_TONE = {
+    CHEAP: 'pos', UNDERVALUED: 'pos', BUY: 'pos', STRONG: 'pos', TAILWIND: 'pos', SUPPORT: 'pos',
+    RICH: 'neg', OVERVALUED: 'neg', SELL: 'neg', WEAK: 'neg', HEADWIND: 'neg', WARY: 'neg', HEAD: 'neg',
+};
+export function signalCheck(row) {
+    const j = (row && row.judged) || {};
+    const s = (row && row.signals) || {};
+    const raw = [
+        { key: 'VAL', v: s.valuation },
+        { key: 'MAC', v: j.macro },
+        { key: 'TEC', v: s.technical },
+        { key: 'QUA', v: j.quality },
+    ];
+    const chips = raw.map(c => {
+        const t = c.v == null || c.v === '' ? null : String(c.v).trim();
+        if (!t) return { key: c.key, label: '—', tone: 'miss', missing: true };
+        const tone = SIGNAL_TONE[t.toUpperCase()] || (/^[AB][+-]?$/.test(t) ? 'pos' : /^[DF]/.test(t) ? 'neg' : 'flat');
+        return { key: c.key, label: t.toUpperCase(), tone, missing: false };
+    });
+    const missing = chips.filter(c => c.missing);
+    return { chips, partial: missing.length > 0, missingKeys: missing.map(c => c.key) };
+}
+
+// §3 default sort: damage descending, then a divider, then the undamaged
+// block ranked by |weight_gap_pp| descending so the largest conviction
+// mismatches lead it. Rows with neither key sort last, in weight order.
+export function sortDocket(rows, keyOf) {
+    const k = keyOf || (r => r.judged || {});
+    const damaged = [], clean = [];
+    for (const r of rows || []) (num(k(r).damagePp) > 0 ? damaged : clean).push(r);
+    damaged.sort((a, b) => num(k(b).damagePp) - num(k(a).damagePp));
+    clean.sort((a, b) => {
+        const ag = num(k(a).weightGapPp), bg = num(k(b).weightGapPp);
+        if (ag == null && bg == null) return (num(k(b).actualWeightPct) || 0) - (num(k(a).actualWeightPct) || 0);
+        if (ag == null) return 1;
+        if (bg == null) return -1;
+        return Math.abs(bg) - Math.abs(ag);
+    });
+    return { damaged, clean, dividerLabel: 'No drawdown damage · ' + clean.length + ' holdings · ranked by conviction gap' };
+}
+
 // ── Contribution waterfall (6.1) ──────────────────────────────
 // Carriers as green cliffs, passengers as one grey shelf, detractors
 // as red teeth, net marker, concentration rail over the carriers.

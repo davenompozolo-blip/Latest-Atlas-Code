@@ -6,6 +6,7 @@ import {
     buildWaterfall, cumulativeFromCloses, themeComposite, buildJaws,
     tapeEvents, buildCirculatory, benchDiagnostics,
     parseCortexCandidates, mapCortexToHoldings,
+    thesisClock, weightVsConviction, rVarRead, damageRead, signalCheck, sortDocket,
 } from './nexusBenchCompute.js';
 
 const NOW = '2026-07-26T00:00:00Z';
@@ -117,6 +118,70 @@ test('benchDiagnostics: partial contribution coverage is stated on the strip', (
     assert.match(cov.label, /12 holdings/);
     // full coverage → no coverage chip at all
     assert.equal(benchDiagnostics({ ...base, navCoveragePct: 100, contribUncovered: 0 }).find(i => i.key === 'coverage'), undefined);
+});
+
+test('thesisClock: never renders zero, never infers an entry date', () => {
+    const c = thesisClock(null, { state: 'fresh', days: 3 });
+    assert.equal(c.state, 'unknown');
+    assert.equal(c.label, '—');
+    assert.equal(c.sub, 'no entry date');
+    assert.equal(c.days, null);                      // not 0 — absent, not new
+    assert.equal(thesisClock(217, { state: 'silent' }).label, '217d');
+    assert.equal(thesisClock(222, { state: 'stale', days: 44 }).sub, 'stale 44d');
+});
+
+test('weightVsConviction: missing conviction abstains rather than averaging', () => {
+    const none = weightVsConviction(1.8, null);
+    assert.equal(none.state, 'unresolved');
+    assert.equal(none.label, '—');
+    assert.equal(none.sub, 'no conviction');
+    assert.equal(none.gapPp, null);
+    // over target -> amber, under -> cyan, inside the band -> flat
+    assert.equal(weightVsConviction(1.8, 1.0).tone, 'over');
+    assert.equal(weightVsConviction(1.0, 2.4).tone, 'under');
+    assert.equal(weightVsConviction(2.00, 2.10).tone, 'flat');
+    assert.equal(weightVsConviction(1.8, 1.0).label, '1.8 / 1.0');
+    assert.equal(weightVsConviction(1.8, 1.0).sub, '+0.80pp');
+});
+
+test('rVarRead: abstains on a null ratio and names why', () => {
+    assert.equal(rVarRead(null, -48.4, 0.1).sub, 'VaR below 0.25%');
+    assert.equal(rVarRead(null, -48.4, null).sub, 'no component VaR');
+    const r = rVarRead(-8.8, -48.4, 5.5);
+    assert.equal(r.label, '−8.8×');
+    assert.equal(r.sub, '−48.4 / 5.5');
+    assert.equal(r.tone, 'neg');
+});
+
+test('damageRead: not-underwater renders an em dash, never 0.00pp', () => {
+    assert.equal(damageRead(null).label, '—');
+    assert.equal(damageRead(0).label, '—');
+    assert.equal(damageRead(0.712).label, '0.71pp');   // matches the signed-off mockup
+});
+
+test('signalCheck: fixed order, missing input dashes the chip and marks the row partial', () => {
+    const c = signalCheck({ signals: { valuation: null, technical: 'WARY' }, judged: { macro: 'HEAD', quality: 'C' } });
+    assert.deepEqual(c.chips.map(x => x.key), ['VAL', 'MAC', 'TEC', 'QUA']);
+    assert.equal(c.chips[0].missing, true);
+    assert.equal(c.chips[0].label, '—');
+    assert.equal(c.partial, true);
+    assert.deepEqual(c.missingKeys, ['VAL']);
+    const full = signalCheck({ signals: { valuation: 'CHEAP', technical: 'WARY' }, judged: { macro: 'HEAD', quality: 'A' } });
+    assert.equal(full.partial, false);
+    assert.equal(full.chips[0].tone, 'pos');
+    assert.equal(full.chips[3].tone, 'pos');           // quality grade A
+});
+
+test('sortDocket: damage descending, then undamaged by |weight gap|', () => {
+    const r = (tk, damagePp, weightGapPp) => ({ tk, judged: { damagePp, weightGapPp } });
+    const { damaged, clean, dividerLabel } = sortDocket([
+        r('A', null, 0.2), r('SNDK', 0.71, 0.8), r('B', null, -2.4),
+        r('MU', 0.40, -0.1), r('C', null, null),
+    ]);
+    assert.deepEqual(damaged.map(x => x.tk), ['SNDK', 'MU']);
+    // largest conviction mismatch leads the second block; no-gap rows sink
+    assert.deepEqual(clean.map(x => x.tk), ['B', 'A', 'C']);
+    assert.match(dividerLabel, /No drawdown damage · 3 holdings/);
 });
 
 test('cumulativeFromCloses rebases to first close', () => {
