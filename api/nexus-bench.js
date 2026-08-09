@@ -87,7 +87,7 @@ export default async function handler(req, res) {
             fetchAssessments(),
             sb('bench_claims?select=id,symbol,thesis_ref,claim_text,status,evidence_text,evidence_value,evidence_source,status_changed_at,created_at&order=created_at.asc&limit=1000'),
             sb('vw_funding_sleeve?select=tk,qualified,sleeve_rank,funding_score,disqualification_reason,fv_trustworthy'),
-            sb('vw_bench_contribution?select=symbol,contrib_today,contrib_ytd,contrib_since_entry'),
+            sb('vw_bench_contribution?select=symbol,contrib_today,contrib_ytd,contrib_since_entry,covered,coverage_reason,nav_coverage_pct'),
             sb('scrapbook_companies?select=ticker,thesis_summary,updated_at'),
             sb('vw_nexus_price_freshness?select=symbol,days_old'),
             sbPaged('price_history?select=price_date,close,assets!inner(symbol)&interval=eq.1d&price_date=gte.' + since + '&order=price_date.asc,asset_id.asc', 6),
@@ -178,10 +178,15 @@ export default async function handler(req, res) {
                 assessment: assessByTk.get(h.symbol) || null,
                 sleeveRank: sl && sl.qualified ? sl.sleeve_rank : null,
                 fvTrustworthy: sl ? !!sl.fv_trustworthy : false,
+                // Measured contribution only. A name with no position history
+                // reports null with the reason attached — never a weight x
+                // return estimate dressed up as a measured number.
                 contrib: {
-                    today: cv ? num(cv.contrib_today) : +(((num(h.weight_pct) ?? 0) * (num(h.daily_return_pct) ?? 0)) / 100).toFixed(3),
+                    today: cv ? num(cv.contrib_today) : null,
                     ytd: cv ? num(cv.contrib_ytd) : null,
                     sinceEntry: cv ? num(cv.contrib_since_entry) : null,
+                    covered: cv ? !!cv.covered : false,
+                    reason: cv ? (cv.coverage_reason || null) : 'not_in_contribution_view',
                 },
             };
         });
@@ -212,6 +217,12 @@ export default async function handler(req, res) {
             writerExtended: assess.extended,
             claimsAvailable: claims != null,
             contributionBasis: contribView ? 'view' : 'today-only',
+            // the contribution waterfall spans only the names with position
+            // history; the strip states that share rather than letting a
+            // partial chart read as the whole book
+            navCoveragePct: (contribView || []).length ? num(contribView[0].nav_coverage_pct) : null,
+            contribUncovered: (contribView || []).filter(r => !r.covered).length,
+            contribCovered: (contribView || []).filter(r => r.covered).length,
         };
         const funding = {
             sleeve: qualified.slice(0, 3).map(r => ({ tk: r.tk, score: num(r.funding_score), rank: r.sleeve_rank })),

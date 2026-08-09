@@ -82,6 +82,43 @@ test('buildWaterfall: a long tail of tiny detractors collapses instead of crushi
     assert.ok(Math.abs(last.to - w.net) < 1e-9, 'bars must still bridge to net');
 });
 
+test('buildWaterfall: unmeasurable names are counted, never silently dropped', () => {
+    const w = buildWaterfall([
+        { tk: 'AMD', contrib: 0.5, weightPct: 4 },
+        { tk: 'BABA', contrib: -0.2, weightPct: 3 },
+        // no position history → no measurable contribution
+        { tk: 'SNDK', contrib: null, weightPct: 1.76, contribReason: 'no_transaction_history' },
+        { tk: 'MU', contrib: null, weightPct: 2.63, contribReason: 'no_transaction_history' },
+    ]);
+    assert.equal(w.omitted.n, 2);
+    assert.equal(w.omitted.weightPct, 4.39);
+    assert.equal(w.omitted.reason, 'no_transaction_history');
+    // the omission must not distort the drawn arithmetic
+    assert.ok(Math.abs(w.net - 0.3) < 1e-9);
+    assert.ok(!w.bars.some(b => b.tk === 'SNDK' || b.tk === 'MU'));
+    // fully covered → nothing to declare
+    assert.equal(buildWaterfall([{ tk: 'AMD', contrib: 0.5, weightPct: 4 }]).omitted, null);
+});
+
+test('buildWaterfall: every name unmeasurable returns a declared-empty shape, not null', () => {
+    const w = buildWaterfall([
+        { tk: 'SNDK', contrib: null, weightPct: 1.76, contribReason: 'no_transaction_history' },
+    ]);
+    assert.deepEqual(w.bars, []);
+    assert.equal(w.net, null);
+    assert.equal(w.omitted.n, 1);
+});
+
+test('benchDiagnostics: partial contribution coverage is stated on the strip', () => {
+    const base = { fvTotal: null, writerRows: 1, writerLastRun: NOW, claimsAvailable: true, contributionBasis: 'view', nowIso: NOW };
+    const cov = benchDiagnostics({ ...base, navCoveragePct: 75.87, contribUncovered: 12 }).find(i => i.key === 'coverage');
+    assert.equal(cov.level, 'bad');
+    assert.match(cov.label, /75\.87% of book/);
+    assert.match(cov.label, /12 holdings/);
+    // full coverage → no coverage chip at all
+    assert.equal(benchDiagnostics({ ...base, navCoveragePct: 100, contribUncovered: 0 }).find(i => i.key === 'coverage'), undefined);
+});
+
 test('cumulativeFromCloses rebases to first close', () => {
     const c = cumulativeFromCloses([{ date: 'd1', close: 100 }, { date: 'd2', close: 110 }, { date: 'd3', close: 99 }]);
     assert.deepEqual(c.map(p => p.v), [0, 10, -1]);

@@ -102,6 +102,7 @@ function DiagnosticsStrip({ diagnostics, funding }) {
         writerRows: diagnostics.writerRows, writerLastRun: diagnostics.writerLastRun,
         claimsAvailable: diagnostics.claimsAvailable, contributionBasis: diagnostics.contributionBasis,
         sleeveUnresolved: !!(funding && funding.unresolved),
+        navCoveragePct: diagnostics.navCoveragePct, contribUncovered: diagnostics.contribUncovered,
     });
     if (sleeveDays >= SLEEVE_STALE_SESSIONS) items.push({ key: 'sleeve-stale', label: 'sleeve unchanged ' + sleeveDays + 'd — verify inputs', level: 'warn' });
     return e('div', { className: 'bn-diag' },
@@ -110,9 +111,24 @@ function DiagnosticsStrip({ diagnostics, funding }) {
 
 // ── 6.1 Contribution waterfall ────────────────────────────────
 function ContributionWaterfall({ docket, basis }) {
-    const rows = docket.map(d => ({ tk: d.tk, contrib: basis === 'view' && d.contrib.ytd != null ? d.contrib.ytd : d.contrib.today }));
+    const rows = docket.map(d => ({
+        tk: d.tk,
+        contrib: basis === 'view' && d.contrib.ytd != null ? d.contrib.ytd : d.contrib.today,
+        weightPct: d.weightPct,
+        contribReason: d.contrib.reason,
+    }));
     const w = buildWaterfall(rows);
     if (!w) return null;
+    const omitLine = w.omitted
+        ? w.omitted.n + ' holdings (' + w.omitted.weightPct + '% of book) not measurable'
+            + (w.omitted.reason === 'no_transaction_history' ? ' — no transaction history' : '')
+        : null;
+    // Every name unmeasurable → say so rather than draw an empty axis.
+    if (!w.bars.length) {
+        return e('div', { className: 'nf-card nf-fade' },
+            e('div', { className: 'nf-card-h' }, e('h3', null, 'Contribution')),
+            e('div', { className: 'bn-empty' }, 'No measurable contribution. ' + (omitLine || '')));
+    }
     // Layout: room reserved above for the concentration rail and below for the
     // ticker row, so nothing collides. Y-scale is zero-anchored on round steps.
     const W = 760, H = 230;
@@ -177,7 +193,10 @@ function ContributionWaterfall({ docket, basis }) {
     return e('div', { className: 'nf-card nf-fade' },
         e('div', { className: 'nf-card-h' }, e('h3', null, 'Contribution'),
             e('span', { className: 'nf-sub' }, basis === 'view' ? 'cumulative YTD' : 'today only — cumulative view pending')),
-        e('svg', { viewBox: '0 0 ' + W + ' ' + H, width: '100%', role: 'img', 'aria-label': 'Contribution waterfall: carriers, small names, detractors, net.' }, kids));
+        e('svg', { viewBox: '0 0 ' + W + ' ' + H, width: '100%', role: 'img', 'aria-label': 'Contribution waterfall: carriers, small names, detractors, net.' }, kids),
+        // The chart spans only what is measurable; the gap is stated under it
+        // rather than left for the reader to discover by counting bars.
+        omitLine && e('div', { className: 'bn-omit' }, omitLine));
 }
 
 // ── 6.3 Annotated tape sparkline ──────────────────────────────

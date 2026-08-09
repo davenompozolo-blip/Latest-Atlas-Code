@@ -97,8 +97,19 @@ export function resolveVerdict(assessment, { priceStale = false, nowIso = null }
 // (≥ 8% of total positive contribution, max 6 named); the rest of
 // the positives collapse into the shelf. Detractors render singly.
 export function buildWaterfall(rows) {
-    const R = (rows || []).filter(r => num(r.contrib) != null).map(r => ({ tk: r.tk, contrib: Number(r.contrib) }));
-    if (!R.length) return null;
+    const all = rows || [];
+    const R = all.filter(r => num(r.contrib) != null).map(r => ({ tk: r.tk, contrib: Number(r.contrib) }));
+    // Names with no measurable contribution are counted, not dropped. A bar
+    // chart that quietly spans 76% of the book reads as if it spans all of it.
+    const missing = all.filter(r => num(r.contrib) == null);
+    const omitted = missing.length
+        ? {
+            n: missing.length,
+            weightPct: +missing.reduce((a, r) => a + (num(r.weightPct) || 0), 0).toFixed(2),
+            reason: missing.find(r => r.contribReason)?.contribReason || null,
+        }
+        : null;
+    if (!R.length) return omitted ? { bars: [], net: null, concentration: null, omitted } : null;
     const pos = R.filter(r => r.contrib > 0).sort((a, b) => b.contrib - a.contrib);
     const neg = R.filter(r => r.contrib < 0).sort((a, b) => a.contrib - b.contrib);
     const posTotal = pos.reduce((a, r) => a + r.contrib, 0);
@@ -128,6 +139,7 @@ export function buildWaterfall(rows) {
         concentration: carriers.length && posTotal > 0
             ? { names: carriers.length, pctOfPositive: Math.round((carrierSum / posTotal) * 100) }
             : null,
+        omitted,
     };
 }
 
@@ -294,7 +306,7 @@ export function buildCirculatory(cutRows, ledger) {
 // ── Diagnostics strip (7) ─────────────────────────────────────
 // The bench audits itself: every input's health is a visible line,
 // "never fired" is a warning on screen, not a hidden state.
-export function benchDiagnostics({ fvTrusted = null, fvTotal = null, fvReasons = null, writerLastRun = null, writerRows = 0, claimsAvailable = false, contributionBasis = 'today-only', sleeveUnresolved = false, nowIso = null }) {
+export function benchDiagnostics({ fvTrusted = null, fvTotal = null, fvReasons = null, writerLastRun = null, writerRows = 0, claimsAvailable = false, contributionBasis = 'today-only', sleeveUnresolved = false, navCoveragePct = null, contribUncovered = 0, nowIso = null }) {
     const items = [];
     if (fvTotal != null) {
         // A bare "0/54" tells you nothing actionable. nexus_holdings.fv_untrust_reason
@@ -327,6 +339,17 @@ export function benchDiagnostics({ fvTrusted = null, fvTotal = null, fvReasons =
     items.push(contributionBasis === 'view'
         ? { key: 'contrib', label: 'contribution: cumulative (vw_bench_contribution)', level: 'ok' }
         : { key: 'contrib', label: 'contribution: today only — cumulative view pending', level: 'warn' });
+    // Coverage is a first-class diagnostic, not a footnote. Contribution is
+    // computed against the names with position history only, so the strip
+    // states that share outright.
+    if (contribUncovered > 0) {
+        items.push({
+            key: 'coverage',
+            label: 'contribution covers ' + (navCoveragePct != null ? navCoveragePct + '% of book' : 'part of book')
+                 + ' — ' + contribUncovered + ' holdings have no transaction history',
+            level: navCoveragePct != null && navCoveragePct < 90 ? 'bad' : 'warn',
+        });
+    }
     if (sleeveUnresolved) items.push({ key: 'sleeve', label: 'funding sleeve: unresolved', level: 'bad' });
     return items;
 }
