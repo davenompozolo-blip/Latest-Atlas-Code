@@ -362,9 +362,13 @@
 .nd-tv { display: flex; justify-content: space-between; font-family: var(--fm); font-size: 11px; }
 
 /* derived-read explanation (the `because`) */
-.nf-why-row td { background: var(--bg1); padding: 7px 12px !important; text-align: left !important; border-bottom: 1px solid var(--border) !important; }
+/* white-space must be re-declared here for the same reason as the bench trial
+   cell: this row is a td, so it inherits nowrap from `.nf-table tbody td` and
+   a scrapbook thesis renders as one unwrapped line. The !important on the
+   other three properties is the earlier symptom of the same specificity trap. */
+.nf-why-row td { background: var(--bg1); padding: 7px 12px !important; text-align: left !important; border-bottom: 1px solid var(--border) !important; white-space: normal !important; }
 .nf-why-label { font-family: var(--fm); font-size: 8px; font-weight: 700; letter-spacing: .1em; color: var(--cyan); margin-right: 10px; }
-.nf-why-text { font-size: 11px; color: var(--text2); }
+.nf-why-text { font-size: 11px; color: var(--text2); line-height: 1.5; overflow-wrap: anywhere; }
 
 /* ── The Read ── */
 .nf-read { max-width: none; margin: 0 auto 16px; }
@@ -983,19 +987,35 @@
 .bn-tape-none { color: var(--text3); }
 .bn-open td { background: rgba(58,214,224,0.03); }
 /* trial panel */
-/* The expanded row spans an auto-layout table, so its content decides the
-   cell's width. Left unchecked, a long thesis paragraph widened the cell past
-   the scroll container, and the jaws SVG — width:100% with a viewBox and no
-   cap — resolved its percentage against that inflated width. Strokes rendered
-   several times too thick and the chart ran off the card. Names with no
-   thesis got a short fallback string and barely blew out, which is why this
-   looked like it only affected names with a story on file. */
-.bn-trial-row td { background: var(--bg1); padding: 14px 16px; }
-.bn-trial { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; min-width: 0; }
+/* `.nf-table tbody td` sets white-space:nowrap for the docket's own cells, and
+   the expanded row is a td, so every paragraph inside it inherited nowrap and
+   rendered as one unbroken line that overflowed its track and drew across the
+   neighbouring column. overflow-wrap cannot rescue that — nowrap removes the
+   soft-wrap opportunities it would act on — so wrapping has to be restored
+   here. The selector carries a class on the td because `.nf-table tbody td`
+   (0,1,2) outranks a bare `.bn-trial-row td` (0,1,1); an under-specific rule
+   here is silently discarded, which is how the panel's padding went missing. */
+.nf-table tbody td.bn-trial-cell {
+    background: var(--bg1); padding: 14px 16px;
+    white-space: normal; vertical-align: top;
+}
+/* The exhibit column is the chart's own width; the thesis card takes what is
+   left, so a wide terminal spends its slack on prose instead of dead space. */
+.bn-trial {
+    display: grid; grid-template-columns: minmax(0, 680px) minmax(0, 1fr);
+    gap: 14px 16px; align-items: stretch; min-width: 0;
+}
 /* Grid items default to min-width:auto and refuse to shrink below their
    content's intrinsic size — the classic grid blowout. */
 .bn-trial > * { min-width: 0; }
-.bn-trial-jaws, .bn-trial-synth { grid-column: 1 / -1; min-width: 0; }
+.bn-trial-exhibit { grid-column: 1; grid-row: 1; min-width: 0; }
+.bn-trial-thesis {
+    grid-column: 2; grid-row: 1; min-width: 0;
+    background: var(--card2); border: 1px solid var(--border);
+    border-radius: var(--r-lg); padding: 11px 13px;
+}
+.bn-trial-synth { grid-column: 1 / -1; min-width: 0; }
+.bn-trial-claims { margin-top: 12px; }
 /* The SVG can never exceed its own viewBox width, so it degrades by
    letterboxing rather than by scaling every stroke up with it. */
 .bn-trial-jaws svg, .bn-trial-jaws > div > svg {
@@ -1004,14 +1024,16 @@
 /* A single unbroken token in a quoted thesis must not set the column width. */
 .bn-quote, .bn-claim-tx, .bn-claim-ev { overflow-wrap: anywhere; }
 .bn-lab { font-family: var(--fb); font-size: 9px; font-weight: 700; letter-spacing: .08em; color: var(--text3); }
-.bn-quote { font-size: 12px; color: var(--text2); font-style: italic; margin-top: 5px; line-height: 1.5; }
-.bn-claim { display: flex; gap: 8px; align-items: baseline; font-size: 12px; margin-top: 5px; }
-.bn-claim-ic { font-family: var(--fm); width: 12px; }
+.bn-quote { font-size: 12px; color: var(--text2); font-style: italic; margin-top: 6px; line-height: 1.6; }
+/* Grid, not flex: the evidence line wraps under its claim instead of competing
+   with it for the same row, and the 1fr track is what lets both wrap at all. */
+.bn-claim { display: grid; grid-template-columns: 12px minmax(0, 1fr); gap: 2px 8px; font-size: 12px; margin-top: 7px; }
+.bn-claim-ic { font-family: var(--fm); grid-column: 1; grid-row: 1; }
 .bn-claim.confirmed .bn-claim-ic { color: var(--success); }
 .bn-claim.contradicted .bn-claim-ic { color: var(--danger); }
 .bn-claim.pending .bn-claim-ic { color: var(--text3); }
-.bn-claim-tx { color: var(--text2); }
-.bn-claim-ev { color: var(--text3); font-size: 11px; }
+.bn-claim-tx { grid-column: 2; color: var(--text2); line-height: 1.45; }
+.bn-claim-ev { grid-column: 2; color: var(--text3); font-size: 11px; line-height: 1.45; }
 .bn-degraded { font-size: 11.5px; color: var(--amber); font-style: italic; margin-top: 5px; }
 .bn-cond { margin-top: 5px; font-size: 12px; color: var(--text2); }
 .bn-jaws-note { font-size: 10.5px; color: var(--text3); font-style: italic; margin-top: 4px; }
@@ -1024,7 +1046,14 @@
 .bn-ruling-row b { color: var(--danger); }
 .bn-circ { margin-top: 10px; }
 .bn-circ-foot { font-family: var(--fm); font-size: 10.5px; color: var(--text3); margin-top: 6px; }
-@media (max-width: 760px) { .bn-trial { grid-template-columns: 1fr; } }
+/* Below this the two columns would each be too narrow to be worth having, so
+   they stack. Explicit placement has to be unwound with them, or the thesis
+   stays pinned to a column 2 that no longer exists. Stacked, the DOM order
+   already reads correctly: thesis, then the exhibit it is judged against. */
+@media (max-width: 1080px) {
+    .bn-trial { grid-template-columns: minmax(0, 1fr); }
+    .bn-trial-thesis, .bn-trial-exhibit { grid-column: 1; grid-row: auto; }
+}
 
 /* ── Rotation call / conviction — one-leg (half call) states ──── */
 /* A missing leg is drawn as an explicit empty slot, not a blank card. */

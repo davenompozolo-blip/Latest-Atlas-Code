@@ -321,27 +321,32 @@ function SimpleLine({ pts, color }) {
 const CLAIM_ICON = { confirmed: '✓', contradicted: '✗', pending: '·' };
 function TrialPanel({ row, series, docket, seriesByTk, res }) {
     const fresh = thesisFreshness(row.thesisUpdatedAt);
-    return e('tr', { className: 'bn-trial-row' }, e('td', { colSpan: 7 },
+    // Two columns: the exhibit (chart, then claims) on the left at the chart's
+    // own width, the thesis as a card on the right absorbing the remainder.
+    // The thesis comes first in the DOM so the reading order stays argument-
+    // then-evidence even though the chart sits left of it.
+    return e('tr', { className: 'bn-trial-row' }, e('td', { colSpan: 7, className: 'bn-trial-cell' },
         e('div', { className: 'bn-trial' },
             e('div', { className: 'bn-trial-thesis' },
                 e('span', { className: 'bn-lab' }, 'THE THESIS, AS FILED '),
                 e(FreshnessStamp, { fresh }),
                 e('div', { className: 'bn-quote' }, row.thesis || 'No scrapbook thesis on file — the story was never written down.'),
                 row.thesisTruncated ? e('div', { className: 'bn-degraded' }, 'Summary truncated at source (220 chars, mid-sentence) — full narrative missing from the scrapbook. Upstream writer bug, flagged.') : null),
-            e('div', { className: 'bn-trial-claims' },
-                e('span', { className: 'bn-lab' }, 'CLAIMS v EVIDENCE'),
-                row.claims.length
-                    ? row.claims.map((c, i) => e('div', { key: c.id || i, className: 'bn-claim ' + c.status },
-                        e('span', { className: 'bn-claim-ic' }, CLAIM_ICON[c.status] || '·'),
-                        e('span', { className: 'bn-claim-tx' }, c.claim_text),
-                        c.evidence_text ? e('span', { className: 'bn-claim-ev' }, c.evidence_text) : null))
-                    : e('div', { className: 'bn-degraded' }, 'No claims extracted yet — bench_claims pending provisioning. The trial cannot proceed on evidence it does not have.')),
+            e('div', { className: 'bn-trial-exhibit' },
+                e('div', { className: 'bn-trial-jaws' },
+                    e('span', { className: 'bn-lab' }, 'STORY v TAPE'),
+                    e(JawsChart, { row, series, docket, seriesByTk })),
+                e('div', { className: 'bn-trial-claims' },
+                    e('span', { className: 'bn-lab' }, 'CLAIMS v EVIDENCE'),
+                    row.claims.length
+                        ? row.claims.map((c, i) => e('div', { key: c.id || i, className: 'bn-claim ' + c.status },
+                            e('span', { className: 'bn-claim-ic' }, CLAIM_ICON[c.status] || '·'),
+                            e('span', { className: 'bn-claim-tx' }, c.claim_text),
+                            c.evidence_text ? e('span', { className: 'bn-claim-ev' }, c.evidence_text) : null))
+                        : e('div', { className: 'bn-degraded' }, 'No claims extracted yet — bench_claims pending provisioning. The trial cannot proceed on evidence it does not have.'))),
             (res.synthesis || res.condition) ? e('div', { className: 'bn-trial-synth' },
                 res.synthesis ? e('div', null, e('span', { className: 'bn-lab' }, 'SYNTHESIS '), res.synthesis) : null,
-                res.condition ? e('div', { className: 'bn-cond' }, e('span', { className: 'bn-lab' }, 'THIS RULING CHANGES IF '), res.condition) : null) : null,
-            e('div', { className: 'bn-trial-jaws' },
-                e('span', { className: 'bn-lab' }, 'STORY v TAPE'),
-                e(JawsChart, { row, series, docket, seriesByTk })))));
+                res.condition ? e('div', { className: 'bn-cond' }, e('span', { className: 'bn-lab' }, 'THIS RULING CHANGES IF '), res.condition) : null) : null)));
 }
 
 // ── Ruling panel (CUT verdicts) + 6.4 circulatory chart ───────
