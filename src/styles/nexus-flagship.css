@@ -983,9 +983,26 @@
 .bn-tape-none { color: var(--text3); }
 .bn-open td { background: rgba(58,214,224,0.03); }
 /* trial panel */
+/* The expanded row spans an auto-layout table, so its content decides the
+   cell's width. Left unchecked, a long thesis paragraph widened the cell past
+   the scroll container, and the jaws SVG — width:100% with a viewBox and no
+   cap — resolved its percentage against that inflated width. Strokes rendered
+   several times too thick and the chart ran off the card. Names with no
+   thesis got a short fallback string and barely blew out, which is why this
+   looked like it only affected names with a story on file. */
 .bn-trial-row td { background: var(--bg1); padding: 14px 16px; }
-.bn-trial { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-.bn-trial-jaws, .bn-trial-synth { grid-column: 1 / -1; }
+.bn-trial { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; min-width: 0; }
+/* Grid items default to min-width:auto and refuse to shrink below their
+   content's intrinsic size — the classic grid blowout. */
+.bn-trial > * { min-width: 0; }
+.bn-trial-jaws, .bn-trial-synth { grid-column: 1 / -1; min-width: 0; }
+/* The SVG can never exceed its own viewBox width, so it degrades by
+   letterboxing rather than by scaling every stroke up with it. */
+.bn-trial-jaws svg, .bn-trial-jaws > div > svg {
+    display: block; width: 100%; height: auto; max-width: 680px;
+}
+/* A single unbroken token in a quoted thesis must not set the column width. */
+.bn-quote, .bn-claim-tx, .bn-claim-ev { overflow-wrap: anywhere; }
 .bn-lab { font-family: var(--fb); font-size: 9px; font-weight: 700; letter-spacing: .08em; color: var(--text3); }
 .bn-quote { font-size: 12px; color: var(--text2); font-style: italic; margin-top: 5px; line-height: 1.5; }
 .bn-claim { display: flex; gap: 8px; align-items: baseline; font-size: 12px; margin-top: 5px; }
