@@ -278,7 +278,13 @@ function JawsChart({ row, series, docket, seriesByTk }) {
                 'C' + (n + 1) + ' ' + (ok ? '✓' : '✗')));
     });
     return e('div', null,
-        e('svg', { viewBox: '0 0 ' + W + ' ' + H, width: '100%', role: 'img', 'aria-label': 'Story vs tape' },
+        // The chart lives in a table cell whose width is content-driven, so it
+        // caps itself at its own viewBox width. Without the cap, a wide cell
+        // scales every stroke up with it and the chart leaves the card.
+        e('svg', {
+            viewBox: '0 0 ' + W + ' ' + H, role: 'img', 'aria-label': 'Story vs tape',
+            style: { display: 'block', width: '100%', maxWidth: W + 'px', height: 'auto' },
+        },
             e('polygon', { points: band, fill: j.tracking ? 'rgba(58,214,224,0.07)' : 'rgba(240,88,79,0.09)' }),
             e('line', { x1: P, y1: py(0), x2: W - P, y2: py(0), stroke: 'rgba(255,255,255,.1)', strokeDasharray: '2 3' }),
             e('polyline', { points: j.points.map((p, i) => px(i) + ',' + py(p.story)).join(' '), fill: 'none', stroke: 'var(--cyan)', strokeWidth: 1.2, strokeDasharray: '5 4' }),
@@ -300,7 +306,11 @@ function SimpleLine({ pts, color }) {
     const W = 680, H = 90, P = 8;
     const vMin = Math.min(...pts), vMax = Math.max(...pts);
     const span = (vMax - vMin) || 1;
-    return e('svg', { viewBox: '0 0 ' + W + ' ' + H, width: '100%' },
+    // Same cap as JawsChart — this renders in the same table cell.
+    return e('svg', {
+        viewBox: '0 0 ' + W + ' ' + H,
+        style: { display: 'block', width: '100%', maxWidth: W + 'px', height: 'auto' },
+    },
         e('polyline', {
             points: pts.map((v, i) => (P + i / (pts.length - 1) * (W - 2 * P)) + ',' + ((H - P) - (v - vMin) / span * (H - 2 * P))).join(' '),
             fill: 'none', stroke: color, strokeWidth: 1.2,

@@ -7,8 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "lint:sql-casts": "node scripts/check-unsafe-casts.mjs",
-    "preview": "vite preview",
-    "sync": "node scripts/sync-wrapper.mjs"
+    "preview": "vite preview"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.4",
