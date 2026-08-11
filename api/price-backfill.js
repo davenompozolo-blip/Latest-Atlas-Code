@@ -234,10 +234,9 @@ async function stageBars(cursor, limit) {
                         open: b.o, high: b.h, low: b.l, close: b.c,
                         adjusted_close: b.c,
                         volume: b.v,
-                        // '1d' is the convention the other 84k rows use; the
-                        // unique key is (asset_id, source, interval, price_date),
-                        // so a mismatched interval would duplicate rather than
-                        // upsert.
+                        // '1d' is the convention the other 84k rows use, and it
+                        // is part of the upsert key, so a mismatched interval
+                        // would duplicate rather than upsert.
                         interval: '1d',
                         source: 'alpaca',
                     });
@@ -247,7 +246,15 @@ async function stageBars(cursor, limit) {
         } while (pageToken);
 
         if (rows.length) {
-            barCount += await sbWrite('price_history', rows, 'asset_id,source,interval,price_date');
+            // price_history carries TWO unique indexes: price_history_unique_row
+            // on (asset_id, source, interval, price_date) and the tighter
+            // price_history_asset_date_interval_uniq on (asset_id, price_date,
+            // interval). Upserting against the looser one resolves its own
+            // conflict and then violates the tighter one with a 409 the moment a
+            // bar already exists under a different source — which is every
+            // symbol the edge-function sync already covers. The three-column key
+            // is the real one, and the one CLAUDE.md documents.
+            barCount += await sbWrite('price_history', rows, 'asset_id,price_date,interval');
         }
         covered += chunk.length;
     }
