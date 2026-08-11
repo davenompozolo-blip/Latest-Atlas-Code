@@ -147,6 +147,39 @@ of the previous snapshot with it and left the old matrix in place. If a
 maintenance RPC starts dying part-way through, check the role's timeout before
 suspecting the query.
 
+### Holdings views must filter price_history to held assets (2026-08-11)
+Four views ranked or lagged over the **whole** price book to serve ~54 held
+rows: `vw_portfolio_home` (4046 ms), `vw_quant_dashboard` (2721 ms),
+`nexus_holdings` (1057 ms), `vw_quant_rolling_returns` (493 ms). Harmless at
+84k rows; the Trade backfill took `price_history` to 481k and their cost is
+linear in the size of the whole table, so they all grew ~5.7× at once.
+
+`anon` is capped at 3s, so `vw_portfolio_home` began failing **every** call and
+`vw_nexus_holdings` (which reads it) sat on the line. The UI never says "timed
+out" — every loader catches and falls back, so the page reported *"Feeds
+degraded"*, *"The bench cannot sit — holdings feed unavailable"*, *"No sector
+P&L for this period yet"*. Those messages describe missing data; the data was
+there and the query was being cancelled.
+
+Fix is a pure pushdown — `AND asset_id IN (SELECT asset_id FROM latest_pos)`
+inside the price CTEs, which every one of these views already computes before
+it touches prices. `vw_screener` always did this and was the only one healthy.
+Results are byte-identical; 4046→358 ms and 2048→138 ms.
+
+**When adding a view over `price_history`, filter to the assets you will
+actually return.** The table is now a 1,500-name universe, not the book.
+
+### Sector ≠ theme (2026-08-11)
+`position_themes` is the hand-kept theme taxonomy (14 themes; 48 of 54 held
+names mapped). `nexus_holdings` always joined it; `vw_nexus_holdings` did not,
+so the flagship displayed **sector** values under the heading "Theme" and the
+spine grouped by sector while calling the buckets themes. Both feeds now carry
+both fields, spine rows are keyed `label` + `dimension` rather than `theme`,
+and the flagship toggles between the two cuts.
+
+`theme` stays **NULL** for unmapped names — never coalesced to sector. The
+spine reports the unmapped weight instead of quietly showing a smaller book.
+
 ### Key Tables
 - `sync_log` — live sync history, written by every edge function
 - `atlas_sync_status` — single-row current state (query with `.eq('id', 1)`)

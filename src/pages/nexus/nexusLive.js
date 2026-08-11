@@ -10,7 +10,8 @@
 //   • holdings   — every Live Object row, with computeRead() run
 //                  over real ingredients (conviction, VaR, FV gap,
 //                  signal tone, real staleness).
-//   • spine      — theme aggregation (share / move / risk shift).
+//   • spine      — sector aggregation (share / move / risk shift),
+//                  with themeSpine carrying the same cut by theme.
 //   • gauges.concentration — effective N, top factor, fragility.
 //   • dataIntegrity — already live (feed freshness + sync age).
 //
@@ -121,7 +122,7 @@ export async function getNexusModel() {
     const [compByTk, macro, optByTk, scrapByTk] = await Promise.all([loadComposites(), loadMacro(), loadOptions(), loadScrapbookThesis()]);
 
     const sections = buildLiveSections(rows, compByTk, staleSet);
-    const { spine, concentration, nav, portfolio } = sections;
+    const { spine, themeSpine, concentration, nav, portfolio } = sections;
     // Attach the options block per holding (adjacent signal — does NOT feed the
     // read engine; the verdict was already computed in buildLiveSections) and the
     // saved scrapbook thesis/conviction (surfaced in the row's WHY drawer).
@@ -147,6 +148,7 @@ export async function getNexusModel() {
         asOf: new Date().toISOString(),
         holdings,
         spine,
+        themeSpine,
         nav,
         portfolio,
         gauges: { ...baseline.gauges, concentration },

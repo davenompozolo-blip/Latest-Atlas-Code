@@ -43,11 +43,11 @@ test('macroIndicators builds grouped rows with levels + deltas + tone', () => {
 });
 
 const spine = [
-    { theme: 'Technology', sharePct: 37 },   // Reflation punishes
-    { theme: 'Energy', sharePct: 8 },         // rewards
-    { theme: 'Financials', sharePct: 7 },     // rewards
-    { theme: 'Materials', sharePct: 8 },      // rewards
-    { theme: 'Healthcare', sharePct: 10 },    // neutral
+    { label: 'Technology', sharePct: 37 },   // Reflation punishes
+    { label: 'Energy', sharePct: 8 },         // rewards
+    { label: 'Financials', sharePct: 7 },     // rewards
+    { label: 'Materials', sharePct: 8 },      // rewards
+    { label: 'Healthcare', sharePct: 10 },    // neutral
 ];
 
 test('bookRegimeFit scores the spine against the playbook', () => {
@@ -68,7 +68,7 @@ test('regimeRead calls misalignment and prescribes a tilt', () => {
 });
 
 test('regimeRead flags alignment when the book leans into the rewards', () => {
-    const aligned = bookRegimeFit([{ theme: 'Energy', sharePct: 30 }, { theme: 'Financials', sharePct: 20 }, { theme: 'Technology', sharePct: 5 }], 'Reflation');
+    const aligned = bookRegimeFit([{ label: 'Energy', sharePct: 30 }, { label: 'Financials', sharePct: 20 }, { label: 'Technology', sharePct: 5 }], 'Reflation');
     const r = regimeRead('Reflation', aligned);
     assert.equal(r.verdict, 'aligned');
     assert.match(r.text, /leans into/);

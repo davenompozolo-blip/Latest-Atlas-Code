@@ -53,14 +53,14 @@ const GAUGES = {
 };
 
 const SPINE = [
-    { theme: 'AI / Accelerated compute', sharePct: 31.4, movePct: -1.8, riskShift:  2, fragility: true },
-    { theme: 'Mega-cap platforms',       sharePct: 22.1, movePct: -0.4, riskShift:  1 },
-    { theme: 'Energy / Real assets',     sharePct:  8.8, movePct:  0.9, riskShift: -1 },
-    { theme: 'Rate-sensitive / Duration',sharePct:  9.6, movePct: -1.1, riskShift:  2 },
-    { theme: 'Financials',               sharePct:  6.5, movePct:  0.3, riskShift:  0 },
-    { theme: 'Defensives / Health',      sharePct:  6.1, movePct:  0.2, riskShift: -1 },
-    { theme: 'Intl ADRs (OTC)',          sharePct:  7.3, movePct:  0.1, riskShift:  0, stale: true },
-    { theme: 'Cash & T-bills',           sharePct:  8.2, movePct:  0.0, riskShift:  0 },
+    { label: 'AI / Accelerated compute', sharePct: 31.4, movePct: -1.8, riskShift:  2, fragility: true },
+    { label: 'Mega-cap platforms',       sharePct: 22.1, movePct: -0.4, riskShift:  1 },
+    { label: 'Energy / Real assets',     sharePct:  8.8, movePct:  0.9, riskShift: -1 },
+    { label: 'Rate-sensitive / Duration',sharePct:  9.6, movePct: -1.1, riskShift:  2 },
+    { label: 'Financials',               sharePct:  6.5, movePct:  0.3, riskShift:  0 },
+    { label: 'Defensives / Health',      sharePct:  6.1, movePct:  0.2, riskShift: -1 },
+    { label: 'Intl ADRs (OTC)',          sharePct:  7.3, movePct:  0.1, riskShift:  0, stale: true },
+    { label: 'Cash & T-bills',           sharePct:  8.2, movePct:  0.0, riskShift:  0 },
 ];
 
 // signalTone is the structured Cortex tone the engine consumes (mock
@@ -90,7 +90,10 @@ export async function getNexusModel() {
     // signalTone). `read` and `because` are NEVER hand-set — they are
     // outputs of the read engine, computed below. As step-2 feeds light
     // up the ingredients, the verdicts improve automatically.
+    // The mockup's spine was always drawn as themes, which is what made the
+    // live page's sector cut look like a regression. Both are exposed now.
     const spine = SPINE;
+    const themeSpine = SPINE;
     const rawHoldings = HOLDINGS;
     const book = { holdings: rawHoldings, spine, gauges: GAUGES };
     const holdings = rawHoldings.map(h => ({
@@ -119,6 +122,7 @@ export async function getNexusModel() {
         gauges: GAUGES,
 
         spine,
+        themeSpine,
 
         holdings,
 

@@ -237,15 +237,36 @@ function riskShiftBars(rs) {
     return e('span', { className: 'nf-rs', title: 'risk shift ' + rs }, bars);
 }
 
-function PositioningSpine({ spine }) {
-    if (!spine || !spine.length) return null;
-    const maxShare = Math.max.apply(null, spine.map(r => r.sharePct));
+// Two views of the same book. Sector answers "what industries am I in";
+// theme answers "what bets am I actually making". A book can look spread
+// across sectors while being one trade expressed eight ways, and only the
+// theme cut shows that — which is the point of carrying both.
+function PositioningSpine({ spine, themeSpine }) {
+    const [dim, setDim] = useState('sector');
+    const hasTheme = !!(themeSpine && themeSpine.length);
+    const active = (dim === 'theme' && hasTheme) ? themeSpine : spine;
+    if (!active || !active.length) return null;
+
+    const maxShare = Math.max.apply(null, active.map(r => r.sharePct));
+    const unmapped = Number(active.unmappedWeight) || 0;
+
     return e('div', { className: 'nf-card nf-spine nf-fade' },
-        e('div', { className: 'nf-card-h' }, e('h3', null, 'Positioning spine'), e('span', { className: 'nf-sub' }, 'share · today · risk shift')),
-        spine.map(function (r, i) {
-            return e('div', { className: 'nf-spine-row', key: i },
-                e('div', { className: 'nf-spine-theme' },
-                    r.theme,
+        e('div', { className: 'nf-card-h' },
+            e('h3', null, 'Positioning spine'),
+            e('div', { className: 'nf-spine-head-right' },
+                hasTheme ? e('div', { className: 'nf-spine-toggle' },
+                    ['sector', 'theme'].map(d => e('button', {
+                        key: d,
+                        className: 'nf-sp-tab' + (dim === d ? ' active' : ''),
+                        onClick: () => setDim(d),
+                    }, d === 'sector' ? 'Sector' : 'Theme'))
+                ) : null,
+                e('span', { className: 'nf-sub' }, 'share · today · risk shift'))),
+        active.map(function (r, i) {
+            return e('div', { className: 'nf-spine-row', key: (r.label || i) },
+                e('div', { className: 'nf-spine-theme' + (r.label === 'Unclassified' ? ' nf-unmapped' : '') },
+                    r.label,
+                    r.names ? e('span', { className: 'nf-sp-n' }, r.names) : null,
                     r.fragility ? e('span', { className: 'nf-frag', title: 'fragility cluster' }, '◆') : null,
                     r.stale ? e('span', { className: 'nf-stale-tag' }, 'stale') : null
                 ),
@@ -256,13 +277,25 @@ function PositioningSpine({ spine }) {
                     riskShiftBars(r.riskShift)
                 )
             );
-        })
+        }),
+        // Say what the view could not place rather than quietly showing a
+        // smaller book than the one that exists.
+        unmapped > 0
+            ? e('div', { className: 'nf-spine-note' },
+                unmapped.toFixed(1) + '% of the book has no ' + dim + ' mapped and sits in Unclassified — '
+                + 'that is a gap in the taxonomy, not a position with no exposure.')
+            : null
     );
 }
 
 // ── Holdings table (Live Objects) ─────────────────────────────
+// Sector and Theme are separate columns because they are separate facts.
+// The table previously showed one column of sector values under the heading
+// "Theme", which made the book look classified along an axis nobody had
+// actually classified it along.
 const COLS = [
     { k: 'tk',           label: 'Ticker',     l: true, sort: 'tk' },
+    { k: 'sector',       label: 'Sector',     l: true, sort: 'sector' },
     { k: 'theme',        label: 'Theme',      l: true, sort: 'theme' },
     { k: 'weight',       label: 'Weight',              sort: 'currentWeightPct' },
     { k: 'conviction',   label: 'Conv (PCM)',          sort: 'conviction' },
@@ -466,25 +499,26 @@ function HoldingsTable({ holdings, forceTheme }) {
     const setSort = k => {
         if (!k) return;
         if (sortK === k) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
-        else { setSortK(k); setSortDir(k === 'tk' || k === 'theme' ? 'asc' : 'desc'); }
+        else { setSortK(k); setSortDir(k === 'tk' || k === 'theme' || k === 'sector' ? 'asc' : 'desc'); }
     };
     const arrow = k => (sortK === k ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '');
 
     // Live facets: themes for the dropdown, read counts for the rail.
-    const themes = Array.from(new Set(holdings.map(h => h.theme))).sort();
+    const themes = Array.from(new Set(holdings.map(h => h.theme).filter(Boolean))).sort();
+    const anyUnmapped = holdings.some(h => !h.theme);
     const counts = holdings.reduce((m, h) => { m[h.read] = (m[h.read] || 0) + 1; return m; }, {});
 
     // Filter → sort.
     const q = query.trim().toLowerCase();
     let rows = holdings.filter(h =>
         (!q || h.tk.toLowerCase().includes(q)) &&
-        (theme === 'ALL' || h.theme === theme) &&
+        (theme === 'ALL' || (theme === 'UNMAPPED' ? !h.theme : h.theme === theme)) &&
         (!reads.size || reads.has(h.read))
     );
     if (sortK) {
         const dir = sortDir === 'asc' ? 1 : -1;
         rows = rows.slice().sort((a, b) => {
-            if (sortK === 'tk' || sortK === 'theme') return String(a[sortK] || '').localeCompare(String(b[sortK] || '')) * dir;
+            if (sortK === 'tk' || sortK === 'theme' || sortK === 'sector') return String(a[sortK] || '').localeCompare(String(b[sortK] || '')) * dir;
             if (sortK === 'read') return ((READ_RANK[a.read] ?? 9) - (READ_RANK[b.read] ?? 9)) * dir;
             let av = Number(a[sortK]); let bv = Number(b[sortK]);
             if (isNaN(av)) av = -Infinity; if (isNaN(bv)) bv = -Infinity;
@@ -512,7 +546,8 @@ function HoldingsTable({ holdings, forceTheme }) {
             }),
             e('select', { className: 'nf-theme-select', value: theme, onChange: ev => setTheme(ev.target.value) },
                 e('option', { value: 'ALL' }, 'All themes'),
-                themes.map(t => e('option', { key: t, value: t }, t))
+                themes.map(t => e('option', { key: t, value: t }, t)),
+                anyUnmapped ? e('option', { value: 'UNMAPPED' }, 'Unclassified') : null
             ),
             e('div', { className: 'nf-rfilter' },
                 READ_ORDER.filter(r => counts[r]).map(r => e('button', {
@@ -548,7 +583,11 @@ function HoldingsTable({ holdings, forceTheme }) {
                                 e('td', { className: 'nf-l' },
                                     e('span', { className: 'nf-tk' }, h.tk),
                                     h.name ? e('span', { className: 'nf-name', title: h.name }, h.name) : null),
-                                e('td', { className: 'nf-l nf-theme-cell' }, h.theme),
+                                e('td', { className: 'nf-l nf-theme-cell' }, h.sector || '—'),
+                                e('td', {
+                                    className: 'nf-l nf-theme-cell' + (h.theme ? '' : ' nf-unmapped'),
+                                    title: h.theme ? null : 'No theme mapped for ' + h.tk + ' in position_themes',
+                                }, h.theme || 'Unclassified'),
                                 e('td', null, e('span', { className: 'nf-conv-bar', title: (Number(h.currentWeightPct) || 0).toFixed(2) + '% of NAV' },
                                     e('span', { className: 'nf-cb-track' }, e('i', { style: { width: Math.min(100, ((Number(h.currentWeightPct) || 0) / wtScale) * 100) + '%', background: '#5b6b7d' } })),
                                     e('span', { className: 'nf-mono-cell' }, (Number(h.currentWeightPct) || 0).toFixed(1) + '%'))),
@@ -625,7 +664,7 @@ function FlagshipPanel({ model, holdingsTheme }) {
         e(WindshieldBand, { windshield: model.windshield }),
         e(ContextGauges, { gauges: model.gauges }),
         e(NexusBoardSection, null),
-        e(PositioningSpine, { spine: model.spine }),
+        e(PositioningSpine, { spine: model.spine, themeSpine: model.themeSpine }),
         e(HoldingsTable, { holdings: model.holdings, forceTheme: holdingsTheme }),
         e(NexusEarningsTable, null),
         e(NexusCotTable, null),

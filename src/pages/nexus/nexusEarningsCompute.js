@@ -135,7 +135,11 @@ export function buildEarningsRow(holding, parts, today) {
     const sent = sentimentFromSignals(holding);
     return {
         tk: holding.symbol,
-        theme: holding.sector || 'Unclassified',
+        // This carried sector under the name `theme` and the table headed the
+        // column "Theme". Both facts are available, so carry both and let the
+        // column say which one it is showing.
+        sector: holding.sector || 'Unclassified',
+        theme: holding.theme || null,
         date,
         hour: cal.hour || null,
         daysUntil: daysUntil(date, today),

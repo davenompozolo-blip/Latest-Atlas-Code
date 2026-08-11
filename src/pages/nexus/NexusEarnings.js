@@ -46,6 +46,7 @@ const BASIS = {
 
 const COLS = [
     { k: 'tk', label: 'Ticker', l: true },
+    { k: 'sector', label: 'Sector', l: true },
     { k: 'theme', label: 'Theme', l: true },
     { k: 'when', label: 'Reports' },
     { k: 'cons', label: 'Consensus' },
@@ -72,7 +73,8 @@ function EarningsRow(r) {
     const undated = r.daysUntil == null;
     return e('tr', { key: r.tk, className: soon ? 'ne-soon' : (undated ? 'ne-undated' : '') },
         e('td', { className: 'nf-l' }, e('span', { className: 'nf-tk' }, r.tk)),
-        e('td', { className: 'nf-l nf-theme-cell' }, r.theme),
+        e('td', { className: 'nf-l nf-theme-cell' }, r.sector || '—'),
+        e('td', { className: 'nf-l nf-theme-cell' + (r.theme ? '' : ' nf-unmapped') }, r.theme || 'Unclassified'),
         e('td', { className: 'nf-l' },
             e('span', { className: 'ne-date' }, fmtDate(r.date)),
             r.hour && HOUR[r.hour] ? e('span', { className: 'ne-hour' }, HOUR[r.hour]) : null,
@@ -106,11 +108,12 @@ export function NexusEarningsTable() {
 
     // Live facets.
     const themes = Array.from(new Set(allRows.map(r => r.theme).filter(Boolean))).sort();
+    const anyUnmapped = allRows.some(r => !r.theme);
     const q = query.trim().toLowerCase();
     const winDef = WINDOWS.find(w => w.id === win);
     const rows = allRows.filter(r =>
         (!q || r.tk.toLowerCase().includes(q)) &&
-        (theme === 'ALL' || r.theme === theme) &&
+        (theme === 'ALL' || (theme === 'UNMAPPED' ? !r.theme : r.theme === theme)) &&
         (!winDef || !winDef.days || (r.daysUntil != null && r.daysUntil >= 0 && r.daysUntil <= winDef.days))
     );
     const dirty = query || theme !== 'ALL' || win !== 'all';
@@ -129,6 +132,7 @@ export function NexusEarningsTable() {
             }),
             e('select', { className: 'nf-theme-select', value: theme, onChange: ev => setTheme(ev.target.value) },
                 e('option', { value: 'ALL' }, 'All themes'),
+                anyUnmapped ? e('option', { value: 'UNMAPPED' }, 'Unclassified') : null,
                 themes.map(t => e('option', { key: t, value: t }, t))
             ),
             e('div', { className: 'nf-rfilter' },
