@@ -12,6 +12,7 @@ import { MacroDashboard } from './macro-dashboard.js';
 import { FundsDashboard } from './funds-dashboard.js';
 import { MarketWatch } from './market-watch.js';
 import { TradingDashboard } from './trading.js';
+import { TradeModule } from './trade/TradeModule.js';
 import { OptionsAnalysis } from './options-analysis.js';
 import { ValuationHub } from './valuation-hub.js';
 import { SqlTerminal } from './sql-terminal.js';
@@ -26,7 +27,8 @@ const TABS = [
     { id: 'nexus',        component: NexusFlagshipPage },   // primary Nexus (flagship spine)
     { id: 'nexus-legacy', component: NexusPage },           // preserved, relabelled Legacy Nexus
     { id: 'portfolio',   component: PortfolioHome },
-    { id: 'trading',     component: TradingDashboard },
+    { id: 'trading',     component: TradeModule },          // revamped: universe / ticket / blotter
+    { id: 'trading-legacy', component: TradingDashboard },  // preserved single-screen ticket
     { id: 'quant',       component: QuantDashboard },
     { id: 'risk',        component: RiskAnalysis },
     { id: 'performance', component: PerformanceSuite },

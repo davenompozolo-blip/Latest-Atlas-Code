@@ -989,7 +989,10 @@ function OptionOrderPanel(p) {
 
 // ── Chunk 7: OptionsChain ─────────────────────────────────────
 
-function OptionsChain(p) {
+// Exported so the revamped Trade module can keep the options chain alongside
+// its three new routes rather than dropping a working surface (spec §8 lists
+// three routes; the chain is not one of them and is not a reason to lose it).
+export function OptionsChain(p) {
     var sym = p.symbol;
     var _expiries = useState([]); var expiries = _expiries[0]; var setExpiries = _expiries[1];
     var _expiry   = useState(null); var expiry   = _expiry[0]; var setExpiry   = _expiry[1];
