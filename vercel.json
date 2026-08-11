@@ -12,7 +12,8 @@
     "api/options-snapshot.js": { "maxDuration": 300 },
     "api/vol-dispersion-sync.js": { "maxDuration": 300 },
     "api/theme-leadership-snapshot.js": { "maxDuration": 60 },
-    "api/trade-sync.js": { "maxDuration": 300 }
+    "api/trade-sync.js": { "maxDuration": 300 },
+    "api/price-backfill.js": { "maxDuration": 300 }
   },
   "crons": [
     { "path": "/api/ledger-snapshot", "schedule": "30 22 * * 1-5" },
