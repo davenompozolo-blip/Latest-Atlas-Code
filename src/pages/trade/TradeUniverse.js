@@ -102,7 +102,10 @@ export function TradeUniverse({ universe, onOpenTicket, loading }) {
                     e('span', { className: 'tr-lg' }, 'RING = IN BOOK')) : null),
 
             e('div', { style: { display: 'flex', flexDirection: 'column', gap: 14 } },
-                e(ExcludedDrawer, { excluded, onOpenTicket }),
+                e(ExcludedDrawer, {
+                    excluded, onOpenTicket,
+                    total: universe.excludedTotal != null ? universe.excludedTotal : excluded.length,
+                }),
                 e(RankedPanel, { rows: filtered, rankBy, setRankBy, onOpenTicket, axes, view }))),
 
         e(Ann, { title: 'WHY THIS IS NOT A SCREENER' },
@@ -377,14 +380,27 @@ function TableView({ rows, onOpenTicket, rankBy, setRankBy, axes, view }) {
 
 // ── Excluded drawer (§3.2) ───────────────────────────────────────────────────
 
-function ExcludedDrawer({ excluded, onOpenTicket }) {
+function ExcludedDrawer({ excluded, onOpenTicket, total }) {
     const [expanded, setExpanded] = React.useState(false);
     const held = excluded.filter((r) => r.bookState === 'held');
     const shown = expanded ? excluded : excluded.slice(0, 8);
+    const sampled = total > excluded.length;
+
+    // Reason codes across the whole drawer, so the shape of the exclusion is
+    // legible even when the list itself is a sample.
+    const byReason = {};
+    for (const r of excluded) byReason[r.exclusionCode] = (byReason[r.exclusionCode] || 0) + 1;
+    const reasons = Object.entries(byReason).sort((a, b) => b[1] - a[1]);
 
     return e('div', { className: 'tr-card' },
-        e('div', { className: 'tr-ch' }, `EXCLUDED · ${excluded.length} NAME${excluded.length === 1 ? '' : 'S'}`),
+        e('div', { className: 'tr-ch' }, `EXCLUDED · ${total} NAME${total === 1 ? '' : 'S'}`),
         e('div', { className: 'tr-cb tr-exc' },
+            reasons.length
+                ? e('div', { className: 'tr-exreasons' },
+                    reasons.map(([code, n]) =>
+                        e('span', { key: code, className: 'tr-badge warn', title: `${n} in this sample` },
+                            code + ' ×' + n)))
+                : null,
             excluded.length === 0
                 ? e('div', { className: 'tr-dim3', style: { fontSize: 12 } }, 'Nothing was excluded today.')
                 : shown.map((r) =>
@@ -395,13 +411,42 @@ function ExcludedDrawer({ excluded, onOpenTicket }) {
                 ? e('button', {
                     className: 'tr-chip', style: { marginTop: 8 }, type: 'button',
                     onClick: () => setExpanded((x) => !x),
-                }, expanded ? 'SHOW LESS' : `SHOW ALL ${excluded.length}`) : null,
-            held.length
-                ? e('div', { className: 'tr-note', style: { marginTop: 10 } },
-                    held.map((h) => `${h.symbol} is held at ${fNum(h.heldWeightPct, 1)}%`).join(', '),
-                    held.length === 1 ? ' and is ' : ' and are ',
-                    'ineligible for new trades. Existing exposure is unaffected. Exits are always permitted through a data gate.')
-                : null));
+                }, expanded ? 'SHOW LESS' : `SHOW ${excluded.length}`) : null,
+            sampled
+                ? e('div', { className: 'tr-note', style: { marginTop: 8 } },
+                    `Showing ${excluded.length} of ${total}, held names first. The full set is on the daily snapshot; `
+                    + 'the drawer samples it so the page does not ship the whole listed universe to read one column.')
+                : null,
+            held.length ? e(HeldButIneligible, { held }) : null));
+}
+
+/**
+ * Held names that are ineligible today. The point of this note is the rule, not
+ * the roll-call, so it names the largest few and totals the rest — a book with
+ * thirty ineligible holdings would otherwise bury the sentence that matters
+ * under a list nobody reads.
+ */
+function HeldButIneligible({ held }) {
+    const [all, setAll] = React.useState(false);
+    const sorted = held.slice().sort((a, b) => (b.heldWeightPct || 0) - (a.heldWeightPct || 0));
+    const named = all ? sorted : sorted.slice(0, 3);
+    const rest = sorted.length - named.length;
+    const restWeight = sorted.slice(named.length).reduce((a, h) => a + (h.heldWeightPct || 0), 0);
+
+    return e('div', { className: 'tr-note', style: { marginTop: 10 } },
+        named.map((h) => `${h.symbol} at ${fNum(h.heldWeightPct, 1)}%`).join(', '),
+        rest > 0
+            ? ` and ${rest} other${rest === 1 ? '' : 's'} totalling ${fNum(restWeight, 1)}%`
+            : '',
+        sorted.length === 1 ? ' is ' : ' are ',
+        'held and ineligible for new trades. Existing exposure is unaffected. ',
+        'Exits are always permitted through a data gate.',
+        rest > 0
+            ? e('button', {
+                className: 'tr-chip', type: 'button', style: { marginTop: 6, display: 'block' },
+                onClick: () => setAll(true),
+            }, `NAME ALL ${sorted.length}`)
+            : null);
 }
 
 // ── Ranked panel (§3.4) ──────────────────────────────────────────────────────
