@@ -67,7 +67,14 @@ function weightVector(positions, equity, candidate) {
  */
 export function effectiveExposure({ symbol, positions, equity, rho, threshold = DEFAULT_CORR_THRESHOLD, deltaNotional = 0 }) {
     const peers = [];
+    // Positions we could not assess at all, because no correlation is on file
+    // against them — typically a recent listing with too short a series to
+    // measure. They are NOT evidence of independence, and reporting the cluster
+    // weight without saying how much of the book was unmeasurable would imply
+    // they had been checked and cleared.
+    const unmeasured = [];
     let clusterWeightBefore = 0;
+    let unmeasuredWeight = 0;
 
     for (const p of positions) {
         const mv = num(p.marketValue);
@@ -75,7 +82,12 @@ export function effectiveExposure({ symbol, positions, equity, rho, threshold = 
         const w = mv / equity;
         if (p.symbol === symbol) { clusterWeightBefore += w; continue; }
         const r = rho(symbol, p.symbol);
-        if (isNum(r) && r >= threshold) {
+        if (!isNum(r)) {
+            unmeasured.push({ symbol: p.symbol, weight: w });
+            unmeasuredWeight += w;
+            continue;
+        }
+        if (r >= threshold) {
             peers.push({ symbol: p.symbol, rho: r, weight: w, weighted: r * w });
             clusterWeightBefore += w;
         }
@@ -97,6 +109,8 @@ export function effectiveExposure({ symbol, positions, equity, rho, threshold = 
         // a 0.95 one instead of counting both in full.
         correlationWeighted: peers.reduce((a, p) => a + p.weighted, 0),
         peerCount: peers.length,
+        unmeasured: unmeasured.sort((a, b) => b.weight - a.weight),
+        unmeasuredWeight,
     };
 }
 
