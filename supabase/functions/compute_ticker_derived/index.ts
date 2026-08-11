@@ -404,14 +404,20 @@ function computeScores(cur: AnnualData, prv: AnnualData | null, metric: FhMetric
   const pct_earnings_var: number | null = null
 
   // Value percentiles (lower multiple = higher percentile for value)
-  const evEbitda = n(metric['enterpriseValueEbitdaTTM']) ?? n(metric['evEbitda'])
+  // Finnhub's own key is evEbitdaTTM. The first two names below were never
+  // present in a /stock/metric payload, so both value percentiles silently
+  // resolved to null on every ticker and equity_fundamentals_derived shipped
+  // with no valuation content at all. Keep the aliases as fallbacks.
+  const evEbitda = n(metric['evEbitdaTTM'])
+    ?? n(metric['enterpriseValueEbitdaTTM']) ?? n(metric['evEbitda'])
   const pct_ev_ebitda_z = evEbitda != null ? pctEst(evEbitda, [8, 14, 20, 28], true) : null
 
   const fcfYield = (cur.cfo != null && cur.capex != null && marketCapUsd && marketCapUsd > 0)
     ? (cur.cfo - Math.abs(cur.capex)) / marketCapUsd : null
   const pct_fcf_yield = pctEst(fcfYield, [0.005, 0.02, 0.04, 0.06])
 
-  const peg = n(metric['pegRatio'])
+  // Same key mismatch: Finnhub serves pegTTM (and forwardPEG), never pegRatio.
+  const peg = n(metric['pegTTM']) ?? n(metric['forwardPEG']) ?? n(metric['pegRatio'])
   const pct_peg = peg != null && peg > 0 ? pctEst(peg, [0.5, 1.0, 1.5, 2.5], true) : null
 
   // Momentum percentiles — require price series, not available here; leave null
