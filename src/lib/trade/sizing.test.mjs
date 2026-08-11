@@ -136,6 +136,19 @@ eq('a 0.70 peer is excluded at the 0.75 cut', effectiveExposure({
     symbol: 'AVGO', positions, equity: EQUITY, rho, threshold: 0.75,
 }).peers.map((p) => p.symbol).sort(), ['NVDA', 'SMH']);
 
+console.log('\n— a position with no correlation on file is declared, not dropped —');
+// A name whose series is too short to correlate must not be silently counted
+// as independent: that would understate the cluster and read as "checked and
+// cleared" when nothing was checked.
+const withGap = effectiveExposure({
+    symbol: 'NVDA', positions, equity: EQUITY, threshold: 0.75,
+    rho: (a, b) => (a === b ? 1 : (b === 'MU' || a === 'MU' ? null : rho(a, b))),
+});
+eq('MU is reported as unmeasured', withGap.unmeasured.map((u) => u.symbol), ['MU']);
+near('and its weight is carried so the gap can be sized', withGap.unmeasuredWeight * 100, 4.80, 0.01);
+eq('it is not counted among the correlated peers', withGap.peers.map((p) => p.symbol).sort(), ['AVGO', 'SMH']);
+eq('nothing unmeasured means an empty list, not a null', eff.unmeasured, []);
+
 console.log('\n— the pairwise cut is a scaffold, clusters are the destination (§4.1) —');
 const clusters = clusterByCorrelation(['NVDA', 'AVGO', 'MU', 'SMH', 'PG'], rho, { distanceCut: 0.35 });
 const semis = clusters.find((c) => c.members.includes('NVDA'));

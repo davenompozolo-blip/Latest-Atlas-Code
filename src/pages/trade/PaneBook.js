@@ -63,6 +63,15 @@ export function PaneBook({ impact, symbol, riskLayer, volDrift, corrThreshold })
                     : 'No correlation snapshot on file, so effective exposure cannot be measured today. '
                       + 'It is not zero — it is unmeasured.'),
 
+        eff && eff.unmeasured && eff.unmeasured.length
+            ? e('div', { className: 'tr-note', style: { marginTop: 6 } },
+                e('span', { className: 'tr-am' },
+                    `${fPct(eff.unmeasuredWeight, 1)} of the book could not be assessed`),
+                ` — no correlation on file against ${eff.unmeasured.slice(0, 4).map((u) => u.symbol).join(', ')}`,
+                eff.unmeasured.length > 4 ? ` and ${eff.unmeasured.length - 4} more` : '',
+                '. Those weights are missing from the cluster figure above, and they are not evidence of independence.')
+            : null,
+
         clu
             ? e('div', null,
                 e(DeltaRow, {

@@ -38,6 +38,7 @@ const SB_KEY = process.env.ATLAS_SUPABASE_SERVICE_ROLE_KEY
 const UNIVERSE_CODE = 'us_core';
 const CORR_WINDOW = 120;
 const CORR_THRESHOLD = 0.75;
+const CORR_MAX_SYMBOLS = 400;
 
 // Sector → SPDR proxy, for the trend family's relative-strength leg.
 const SECTOR_ETF = {
@@ -251,8 +252,12 @@ async function jobAssets() {
 // ── Job: correlations ────────────────────────────────────────────────────────
 
 async function jobCorrelations() {
+    // p_max_symbols bounds the pairwise matrix: correlation is quadratic, so a
+    // 1,500-name universe would be 1.1m pairs. Everything held is included
+    // regardless of rank, so the cap never hides a position from effective
+    // exposure — it only trims the unowned tail.
     const pairs = await sbRpc('refresh_universe_correlations', {
-        p_window: CORR_WINDOW, p_min_days: 60, p_lambda: 0.97,
+        p_window: CORR_WINDOW, p_min_days: 60, p_lambda: 0.97, p_max_symbols: CORR_MAX_SYMBOLS,
     });
 
     const stats = await sbGet(`universe_risk_stats?select=as_of_date,symbol&window_days=eq.${CORR_WINDOW}&order=as_of_date.desc&limit=5000`);
