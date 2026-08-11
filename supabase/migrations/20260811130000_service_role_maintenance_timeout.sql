@@ -1,0 +1,21 @@
+-- Let the nightly maintenance RPC finish.
+--
+-- refresh_universe_correlations is quadratic by construction: at the 400-symbol
+-- cap it joins ~10.8m rows to produce ~87k pairs, and it measured 166s against
+-- the widened price book. It was being killed at ~54s with 57014 (canceling
+-- statement due to statement timeout) part-way through, which is worse than
+-- failing outright — the delete of the previous snapshot rolls back with it, so
+-- the matrix silently stayed at the 51-symbol version the book alone produced,
+-- and every "no correlation on file" in the ticket was an artefact of the
+-- timeout rather than a fact about the market.
+--
+-- service_role is the key held only by the Vercel serverless functions and
+-- pg_cron. It is never reachable from a browser, and api/trade-sync.js already
+-- budgets 300s for exactly this call (vercel.json maxDuration), so matching the
+-- database ceiling to the function's own budget does not widen anything a user
+-- can trigger.
+--
+-- anon (3s) and authenticated (8s) are deliberately left alone. Those are the
+-- roles the terminal itself talks on, where a slow query should still fail fast
+-- rather than hang the UI.
+alter role service_role set statement_timeout = '300s';

@@ -136,6 +136,17 @@ missed night self-heals on the next run instead of leaving a permanent hole.
 Backfilled 3,363 rows. The 10 remaining empty weekdays in the last 400 days are
 all genuine US market holidays.
 
+### Statement timeouts are per-role (2026-08-11)
+`anon` is capped at 3s and `authenticated` at 8s — those are the roles the
+terminal talks on, and a slow query there should fail fast rather than hang the
+UI. `service_role`, held only by the Vercel functions and pg_cron, is set to
+**300s** to match the `maxDuration` those functions already budget. The nightly
+`refresh_universe_correlations` runs ~166s at its 400-symbol cap and was being
+cancelled at ~54s with `57014` — silently, because the rollback took the delete
+of the previous snapshot with it and left the old matrix in place. If a
+maintenance RPC starts dying part-way through, check the role's timeout before
+suspecting the query.
+
 ### Key Tables
 - `sync_log` — live sync history, written by every edge function
 - `atlas_sync_status` — single-row current state (query with `.eq('id', 1)`)
