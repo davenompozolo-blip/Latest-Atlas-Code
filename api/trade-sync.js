@@ -54,10 +54,41 @@ function hdrs() {
     return { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json' };
 }
 
-async function sbGet(path) {
-    const r = await fetch(SB_URL + '/rest/v1/' + path, { headers: hdrs() });
-    if (!r.ok) throw new Error(`GET ${path.split('?')[0]}: ${r.status} ${(await r.text()).slice(0, 200)}`);
-    return r.json();
+const PAGE = 1000;
+
+/**
+ * Paginated read. PostgREST caps a response at its max-rows setting (1000 on
+ * this project) regardless of any `limit` in the query string, and it does so
+ * silently — the first run of this job scored 6 symbols instead of 55 because
+ * a 11,000-row price history came back as its first 1,000 rows with no error.
+ * Every read therefore walks Range headers until a short page arrives.
+ */
+async function sbGet(path, { paginate = true } = {}) {
+    // A small explicit limit means the caller wants exactly that many rows
+    // (`order=…&limit=1`); leave it alone. A large one was only ever shorthand
+    // for "everything", and combining it with Range makes PostgREST compute a
+    // negative limit and 416 partway through, so it is stripped.
+    const m = path.match(/[?&]limit=(\d+)/);
+    if (m && Number(m[1]) <= PAGE) paginate = false;
+    if (paginate && m) path = path.replace(/([?&])limit=\d+&?/, '$1').replace(/[?&]$/, '');
+
+    const rows = [];
+    let offset = 0;
+    for (;;) {
+        const headers = paginate
+            ? { ...hdrs(), Range: `${offset}-${offset + PAGE - 1}`, 'Range-Unit': 'items' }
+            : hdrs();
+        const r = await fetch(SB_URL + '/rest/v1/' + path, { headers });
+        if (!r.ok && r.status !== 206) {
+            throw new Error(`GET ${path.split('?')[0]}: ${r.status} ${(await r.text()).slice(0, 200)}`);
+        }
+        const page = await r.json();
+        if (!Array.isArray(page)) return page;           // .single() style reads
+        rows.push(...page);
+        if (!paginate || page.length < PAGE) return rows;
+        offset += PAGE;
+        if (offset > 500000) return rows;                // hard stop, never loop forever
+    }
 }
 
 async function sbWrite(table, rows, { onConflict = null, method = 'POST' } = {}) {
@@ -98,10 +129,13 @@ const daysBetween = (a, b) => Math.round((new Date(a) - new Date(b)) / 86400000)
  * expensive leg, so it is pulled in one pass and indexed by symbol.
  */
 async function loadContext() {
-    const [assets, riskStats, screener, regimes, vols, options, dispersion, positions, acctRows] = await Promise.all([
+    // equity_screener_universe exposes pct_ev_ebitda_z but not pct_peg or
+    // pct_fcf_yield, so the value percentiles are read from their own table.
+    const [assets, riskStats, screener, derived, regimes, vols, options, dispersion, positions, acctRows] = await Promise.all([
         sbGet('assets?select=id,symbol,name,sector,asset_class,exchange,listing_status,metadata&limit=20000'),
         sbGet(`universe_risk_stats?select=*&window_days=eq.${CORR_WINDOW}&order=as_of_date.desc&limit=5000`),
-        sbGet('equity_screener_universe?select=symbol,sector,market_cap_usd,market_cap_bucket,forward_pe,pe_ratio,peg_ratio,ev_ebitda,beta,return_52w,return_13w,vol_3m,pct_ev_ebitda_z,pct_peg,pct_roic,pct_momentum_12_1&limit=2000'),
+        sbGet('equity_screener_universe?select=symbol,sector,market_cap_usd,market_cap_bucket,forward_pe,pe_ratio,peg_ratio,ev_ebitda,beta,return_52w,return_13w,vol_3m,pct_ev_ebitda_z,pct_roic,pct_momentum_12_1&limit=2000'),
+        sbGet('equity_fundamentals_derived?select=ticker,fiscal_year,pct_ev_ebitda_z,pct_peg,pct_fcf_yield,pct_revision_breadth&order=fiscal_year.desc&limit=5000'),
         sbGet('market_regime_windows?select=*&order=start_date.desc&limit=10'),
         sbGet('holding_vol_trailing?select=symbol,asof,vol_20d,z_move,ret_1d&order=asof.desc&limit=8000'),
         sbGet('options_positioning_snapshots?select=*&order=snapshot_date.desc&limit=3000'),
@@ -140,6 +174,7 @@ async function loadContext() {
         riskDate,
         screener: new Map(screener.map((r) => [r.symbol, r])),
         screenerRows: screener,
+        derived: firstOf(derived, 'ticker'),   // newest fiscal year per ticker
         regime: regimes.find((r) => !r.end_date) || regimes[0] || null,
         volLatest: firstOf(vols, 'symbol'),
         volSeries: vols,
@@ -292,6 +327,7 @@ async function buildVectors(ctx, symbols, closesBySymbol) {
 
         const asset = ctx.assetBySymbol.get(symbol);
         const scr = ctx.screener.get(symbol) || {};
+        const der = ctx.derived.get(symbol) || {};
         const sector = scr.sector || (asset && asset.sector) || null;
         const sectorEtf = SECTOR_ETF[sector] || null;
         const sectorCloses = sectorEtf ? (closesBySymbol.get(sectorEtf) || []).map((x) => x.c) : null;
@@ -325,8 +361,10 @@ async function buildVectors(ctx, symbols, closesBySymbol) {
                 evEbitda: n(scr.ev_ebitda),
                 sectorEvEbitdas: sectorSample.evEbitda,
                 peg: n(scr.peg_ratio),
-                pctEvEbitdaZ: n(scr.pct_ev_ebitda_z),
-                pctPeg: n(scr.pct_peg),
+                pctEvEbitdaZ: n(der.pct_ev_ebitda_z) ?? n(scr.pct_ev_ebitda_z),
+                pctPeg: n(der.pct_peg),
+                pctFcfYield: n(der.pct_fcf_yield),
+                revisionBreadth: n(der.pct_revision_breadth),
                 ageDays: 0,
             }),
             stretchFamily({

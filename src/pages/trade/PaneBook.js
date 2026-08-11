@@ -66,7 +66,7 @@ export function PaneBook({ impact, symbol, riskLayer, volDrift, corrThreshold })
         clu
             ? e('div', null,
                 e(DeltaRow, {
-                    label: `Cluster weight (derived, ${clu.size} names)`,
+                    label: `Cluster weight (derived, ${clu.size} name${clu.size === 1 ? '' : 's'})`,
                     before: clu.weightBefore, after: clu.weightAfter, format: pctFmt,
                     sub: clu.avgIntraRho != null ? `ρ̄ ${fNum(clu.avgIntraRho, 2)}` : null,
                 }),

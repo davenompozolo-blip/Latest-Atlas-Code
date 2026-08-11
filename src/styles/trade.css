@@ -134,11 +134,37 @@
 .tr-exc .tr-e:first-child { border-top: none; }
 .tr-exc .tr-sym { font-family: var(--tr-mono); color: var(--tr-tx); cursor: pointer; }
 .tr-exc .tr-why { font-family: var(--tr-mono); font-size: 10.5px; color: var(--tr-amber); text-align: right; }
+.tr-exreasons {
+  display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 9px;
+  padding-bottom: 9px; border-bottom: 1px solid var(--tr-line);
+}
+.tr-exreasons .tr-badge { font-size: 8.5px; }
 
 /* ── ticket ───────────────────────────────────────────────────────────────── */
 .tr-tgrid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; align-items: start; }
-.tr-quote { display: flex; align-items: baseline; gap: 14px; margin-bottom: 14px; flex-wrap: wrap; }
+/* flex-end rather than baseline: the identity strip makes the first column
+   taller than the rest, and baseline alignment would pin the quote metadata to
+   the ticker line instead of the price it belongs to. */
+.tr-quote { display: flex; align-items: flex-end; gap: 14px; margin-bottom: 14px; flex-wrap: wrap; }
+.tr-quote > div:first-child { display: flex; flex-direction: column; }
 .tr-quote .tr-px { font-family: var(--tr-mono); font-size: 34px; letter-spacing: -.03em; }
+
+/* Identity + period performance, between the name and the price. */
+.tr-istrip { margin: 3px 0 5px; }
+.tr-imeta {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px;
+  font-family: var(--tr-mono); font-size: 10px; letter-spacing: .07em;
+  color: var(--tr-tx-2); text-transform: uppercase;
+}
+.tr-imeta span + span::before { content: '·'; margin-right: 8px; color: var(--tr-tx-3); }
+.tr-iperf { display: flex; gap: 14px; margin-top: 5px; }
+.tr-ip { display: flex; flex-direction: column; line-height: 1.25; }
+.tr-ip .tr-ipl {
+  font-family: var(--tr-mono); font-size: 8.5px; letter-spacing: .16em; color: var(--tr-tx-3);
+}
+.tr-ip .tr-ipv {
+  font-family: var(--tr-mono); font-size: 12px; font-variant-numeric: tabular-nums;
+}
 
 .tr-sidebtn { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
 .tr-sidebtn button {

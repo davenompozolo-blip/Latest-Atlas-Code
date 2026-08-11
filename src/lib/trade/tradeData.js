@@ -10,8 +10,13 @@
 //      panes render that rather than a confident-looking zero.
 
 import { sb } from '../supabase.js';
+import { performanceSnapshot } from './performance.js';
 
 const UNIVERSE_CODE = 'us_core';
+
+// How many excluded names the drawer carries. Enough to browse, not so many
+// that the page ships the whole listed universe to read one column of it.
+const EXCLUDED_SAMPLE = 250;
 
 function fail(scope, error) {
     if (error) console.warn(`[trade] ${scope}:`, error.message || error);
@@ -52,17 +57,37 @@ export async function loadUniverse({ asOf = null } = {}) {
     if (uni.error) { fail('universe', uni.error); return { available: false, reason: uni.error.message, members: [], funnel: [], rules: [] }; }
     const universeId = uni.data.id;
 
-    const [snap, members, rules] = await Promise.all([
+    // The eligible set is small and is fetched whole; the excluded set is the
+    // rest of the listed universe and can run to thousands of rows that all say
+    // the same thing. Shipping all of them would blow past PostgREST's 1000-row
+    // cap and silently truncate the ELIGIBLE names along with them, which is how
+    // a universe of 26 first rendered as a universe of 4. Eligible rows are
+    // therefore fetched on their own, and the excluded drawer takes a bounded
+    // sample with held names first — its headline count comes from the snapshot.
+    const [snap, eligibleRes, excludedRes, rules] = await Promise.all([
         sb.from('trade_universe_snapshots').select('*').eq('universe_id', universeId).eq('as_of_date', date).single(),
-        sb.from('trade_universe_members').select('*').eq('universe_id', universeId).eq('as_of_date', date),
+        sb.from('trade_universe_members').select('*')
+            .eq('universe_id', universeId).eq('as_of_date', date).eq('eligible', true)
+            .order('rank', { ascending: true }).limit(1000),
+        sb.from('trade_universe_members').select('*')
+            .eq('universe_id', universeId).eq('as_of_date', date).eq('eligible', false)
+            .order('held_weight_pct', { ascending: false, nullsFirst: false })
+            .order('symbol', { ascending: true })
+            .limit(EXCLUDED_SAMPLE),
         sb.from('trade_universe_rules').select('*').eq('universe_id', universeId).eq('is_active', true).order('sort_order'),
     ]);
 
-    fail('snapshot', snap.error); fail('members', members.error); fail('rules', rules.error);
+    fail('snapshot', snap.error); fail('eligible', eligibleRes.error);
+    fail('excluded', excludedRes.error); fail('rules', rules.error);
+
+    const members = { data: (eligibleRes.data || []).concat(excludedRes.data || []), error: eligibleRes.error };
+    const excludedTotal = snap.data ? snap.data.excluded_count : (excludedRes.data || []).length;
 
     return {
         available: !members.error && !!(members.data || []).length,
         reason: members.error ? members.error.message : null,
+        excludedTotal,
+        excludedShown: (excludedRes.data || []).length,
         asOfDate: date,
         universeId,
         label: uni.data.label,
@@ -278,21 +303,21 @@ export async function loadRiskLayer({ symbols = null, window = 120 } = {}) {
 /** Portfolio vol at 90 / 60 / 30 days ago against today (§10 residual q1). */
 export async function loadVolDrift() {
     if (!sb) return null;
+    // The curve keys on ts/equity, not as_of_date. Ordering by a column that
+    // does not exist returned 400 on every load, so the drift indicator was
+    // silently absent rather than visibly unavailable.
     const { data, error } = await sb
         .from('portfolio_equity_curve')
-        .select('*')
-        .order('as_of_date', { ascending: true })
-        .limit(500);
+        .select('ts, equity, timeframe')
+        .eq('timeframe', '1D')
+        .order('ts', { ascending: true })
+        .limit(1000);
     if (error || !data || data.length < 40) { fail('vol drift', error); return null; }
-
-    const key = Object.keys(data[0]).find((k) => /nav|equity|value/i.test(k) && typeof data[0][k] !== 'string');
-    const dateKey = Object.keys(data[0]).find((k) => /date|as_of/i.test(k));
-    if (!key || !dateKey) return null;
 
     const rets = [];
     for (let i = 1; i < data.length; i++) {
-        const a = Number(data[i - 1][key]), b = Number(data[i][key]);
-        if (a > 0 && b > 0) rets.push({ date: data[i][dateKey], r: b / a - 1 });
+        const a = Number(data[i - 1].equity), b = Number(data[i].equity);
+        if (a > 0 && b > 0) rets.push({ date: String(data[i].ts).slice(0, 10), r: b / a - 1 });
     }
     // Trailing 60-session realised vol, annualised, sampled along the curve.
     const series = [];
@@ -303,6 +328,53 @@ export async function loadVolDrift() {
         series.push({ date: rets[i].date, vol: v });
     }
     return series;
+}
+
+/**
+ * Identity and period performance for the ticket header: full company name,
+ * sector, geography, and day / WTD / MTD / YTD off the stored price series.
+ */
+export async function loadInstrumentSnapshot(symbol) {
+    if (!sb) return null;
+
+    const [assetRes, screenerRes] = await Promise.all([
+        sb.from('assets').select('id, symbol, name, sector, exchange, asset_class').eq('symbol', symbol).limit(1),
+        sb.from('equity_screener_universe')
+            .select('company_name, sector, industry, country, exchange, market_cap_usd')
+            .eq('symbol', symbol).limit(1),
+    ]);
+    fail('instrument', assetRes.error);
+
+    const asset = assetRes.data && assetRes.data.length ? assetRes.data[0] : null;
+    const scr = screenerRes.data && screenerRes.data.length ? screenerRes.data[0] : null;
+
+    let bars = [];
+    if (asset) {
+        const since = new Date(Date.now() - 450 * 86400000).toISOString().slice(0, 10);
+        const px = await sb.from('price_history')
+            .select('price_date, close')
+            .eq('asset_id', asset.id)
+            .gte('price_date', since)
+            .order('price_date', { ascending: true });
+        fail('price series', px.error);
+        bars = (px.data || []).map((r) => ({ d: r.price_date, c: numOrNull(r.close) }));
+    }
+
+    const perf = performanceSnapshot(bars);
+
+    return {
+        symbol,
+        name: (scr && scr.company_name) || (asset && asset.name) || null,
+        sector: (scr && scr.sector) || (asset && asset.sector) || null,
+        industry: scr ? scr.industry : null,
+        // Geography is the listing country where the profile carries one; the
+        // universe is US-listed at V1, so that is the honest fallback (§10.3).
+        geography: (scr && scr.country) || 'US',
+        exchange: (scr && scr.exchange) || (asset && asset.exchange) || null,
+        marketCapUsd: scr ? numOrNull(scr.market_cap_usd) : null,
+        performance: perf,
+        barCount: bars.length,
+    };
 }
 
 /** Claims on file for a symbol (§4.2). */

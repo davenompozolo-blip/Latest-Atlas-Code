@@ -12,6 +12,7 @@ import { PaneCoherence } from './PaneCoherence.js';
 import { size, detectOverride } from '../../lib/trade/sizing.js';
 import { computeBookImpact, volDrift, DEFAULT_CORR_THRESHOLD } from '../../lib/trade/bookImpact.js';
 import { assessCoherence } from '../../lib/trade/coherence.js';
+import { PERIODS } from '../../lib/trade/performance.js';
 import { covarianceMatrix, portfolioVol, marginalContributions } from '../../lib/trade/stats.js';
 import * as data from '../../lib/trade/tradeData.js';
 
@@ -24,6 +25,7 @@ export function TradeTicket({ symbol, universeContext, onNavigate }) {
     const [claims, setClaims] = useState([]);
     const [triggers, setTriggers] = useState([]);
     const [driftSeries, setDrift] = useState(null);
+    const [instrument, setInstrument] = useState(null);
     const [quote, setQuote] = useState(null);
     const [loading, setLoading] = useState(true);
 
@@ -50,9 +52,11 @@ export function TradeTicket({ symbol, universeContext, onNavigate }) {
             data.loadClaims(symbol),
             data.loadTriggers({ symbol, status: null }),
             data.loadVolDrift(),
-        ]).then(([b, r, s, c, t, d]) => {
+            data.loadInstrumentSnapshot(symbol),
+        ]).then(([b, r, s, c, t, d, inst]) => {
             if (!live) return;
             setBook(b); setRisk(r); setScores(s); setClaims(c); setTriggers(t); setDrift(d);
+            setInstrument(inst);
             setLoading(false);
         }).catch(() => { if (live) setLoading(false); });
         return () => { live = false; };
@@ -339,7 +343,7 @@ export function TradeTicket({ symbol, universeContext, onNavigate }) {
     }
 
     return e('div', { className: 'tr-wrap' },
-        e(QuoteHeader, { symbol, quote, account, price, risk, scores }),
+        e(QuoteHeader, { symbol, quote, account, price, risk, scores, instrument }),
 
         e('div', { className: 'tr-tgrid' },
             e(PaneOrder, {
@@ -459,13 +463,15 @@ function proposeTriggers(coh, { symbol, price, scores }) {
 
 // ── Quote header ─────────────────────────────────────────────────────────────
 
-function QuoteHeader({ symbol, quote, account, price, risk, scores }) {
+function QuoteHeader({ symbol, quote, account, price, risk, scores, instrument }) {
     const stat = risk && risk.available ? { adv: risk.advs ? risk.advs[symbol] : null } : {};
     const ev = scores && scores.available ? scores.families.find((f) => f.isSuppressor) : null;
     const dte = ev && ev.inputs ? ev.inputs.days_to_earnings : null;
     return e('div', { className: 'tr-quote' },
         e('div', null,
-            e('div', { className: 'tr-lbl', style: { margin: '0 0 2px' } }, symbol),
+            e('div', { className: 'tr-lbl', style: { margin: '0 0 2px' } },
+                symbol + (instrument && instrument.name ? ' · ' + instrument.name.toUpperCase() : '')),
+            e(InstrumentStrip, { instrument }),
             e('div', { className: 'tr-px' }, price == null ? DASH : fMoney(price))),
         quote && quote.change != null
             ? e('div', { className: 'tr-mono ' + toneOf(quote.change), style: { fontSize: 15 } },
@@ -485,6 +491,39 @@ function QuoteHeader({ symbol, quote, account, price, risk, scores }) {
                 'GROSS ', e('span', { className: 'tr-am' },
                     account.equity ? fNum(account.long_market_value / account.equity, 2) + '×' : DASH))
             : null);
+}
+
+/**
+ * The identity and period-performance strip: sector, geography, and
+ * day / WTD / MTD / YTD. Sits between the name and the price, so you read what
+ * the instrument IS and how it has been travelling before you read what it
+ * costs. A period with no history behind it prints an em dash — the strip never
+ * shows 0.00% for a return it cannot measure.
+ */
+function InstrumentStrip({ instrument }) {
+    if (!instrument) return null;
+    const p = instrument.performance || {};
+    const meta = [instrument.sector, instrument.geography, instrument.exchange].filter(Boolean);
+
+    return e('div', { className: 'tr-istrip' },
+        meta.length
+            ? e('div', { className: 'tr-imeta' },
+                meta.map((m, i) => e('span', { key: i }, m)))
+            : null,
+        e('div', { className: 'tr-iperf' },
+            PERIODS.map(({ key, label }) => {
+                const v = p[key];
+                return e('span', { key, className: 'tr-ip', title: periodTitle(key, p) },
+                    e('span', { className: 'tr-ipl' }, label),
+                    e('span', { className: 'tr-ipv ' + toneOf(v) },
+                        v == null ? DASH : fPct(v, 2, { signed: true })));
+            })));
+}
+
+function periodTitle(key, p) {
+    if (p[key] == null) return 'Not measurable — no close on file before this period opened';
+    const from = { day: 'the previous close', wtd: 'the close before this week opened', mtd: 'the last close of the previous month', ytd: 'the last close of the previous year' }[key];
+    return `Measured from ${from}${p.asOf ? ', as at ' + p.asOf : ''}`;
 }
 
 // ── Fundamentals, collapsed beneath coherence (§4.3, §8) ─────────────────────
