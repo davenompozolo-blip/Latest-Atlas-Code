@@ -11,8 +11,11 @@
 const READS = ['add', 'hold', 'trim', 'watch', 'exit'];
 
 // holdings + spine → per-theme rows, heaviest share first.
+// `spine` must be the THEME spine: this view groups holdings by h.theme,
+// so joining it to the sector spine would match almost nothing and quietly
+// zero out every share.
 export function buildThemeView(holdings, spine) {
-    const bySpine = new Map((spine || []).map(s => [s.theme, s]));
+    const bySpine = new Map((spine || []).map(s => [s.label, s]));
     const m = new Map();
     for (const h of holdings || []) {
         const t = h.theme || 'Unclassified';

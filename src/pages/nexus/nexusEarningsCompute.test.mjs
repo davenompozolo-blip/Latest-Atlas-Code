@@ -56,11 +56,18 @@ check('sentiment neutral', sentimentFromSignals({}).tone, 'neutral');
 
 // ── buildEarningsRow + sort ───────────────────────────────────
 const row = buildEarningsRow(
-    { symbol: 'NVDA', sector: 'Technology', next_earnings_date: '2026-06-17', valuation_signal: 'Cheap', quant_signal: 'Long', conviction_score: 83 },
+    { symbol: 'NVDA', sector: 'Technology', theme: 'AI / accelerated compute', next_earnings_date: '2026-06-17', valuation_signal: 'Cheap', quant_signal: 'Long', conviction_score: 83 },
     { calendar: { date: '2026-06-17', epsEstimate: 1.25, hour: 'amc' }, history: HIST, series: SERIES },
     TODAY,
 );
-check('row tk/theme', [row.tk, row.theme], ['NVDA', 'Technology']);
+// Sector and theme are separate fields now; the row used to carry sector
+// under the name `theme`.
+check('row tk/sector/theme', [row.tk, row.sector, row.theme], ['NVDA', 'Technology', 'AI / accelerated compute']);
+// A name with no theme mapped reports null rather than borrowing its sector.
+check('row unmapped theme', buildEarningsRow(
+    { symbol: 'XYZ', sector: 'Energy', next_earnings_date: '2026-06-17' },
+    { calendar: { date: '2026-06-17' }, history: [], series: [] }, TODAY,
+).theme, null);
 check('row daysUntil', row.daysUntil, 4);
 check('row consensus', row.consensusEps, 1.25);
 check('row beatRate', row.beatRate, 75);

@@ -312,7 +312,7 @@ function movedBecause(r) {
 export function NexusThemePanel({ model }) {
     const series = useThemeSeries();
     const { macro, loading: macroLoading } = useMacro();
-    const base = buildThemeView(model.holdings, model.spine);
+    const base = buildThemeView(model.holdings, model.themeSpine || model.spine);
     const rows = base.map(r => {
         const td = series.map.get(r.theme);
         return { ...r, momentum5d: td ? td.momentum5d : null, betas: td ? td.betas : { rate: null, usd: null, oil: null } };

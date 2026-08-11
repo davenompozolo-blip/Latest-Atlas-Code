@@ -241,6 +241,27 @@
 .nf-rs i.on-up   { background: var(--danger); }
 .nf-rs i.on-down { background: var(--success); }
 
+/* Sector / Theme switch — two readings of the same book */
+.nf-spine-head-right { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+.nf-spine-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.nf-sp-tab {
+  font-family: var(--fm); font-size: 10px; letter-spacing: .04em; text-transform: uppercase;
+  padding: 3px 10px; background: transparent; color: var(--text3);
+  border: none; cursor: pointer; transition: background .12s, color .12s;
+}
+.nf-sp-tab + .nf-sp-tab { border-left: 1px solid var(--border); }
+.nf-sp-tab:hover { color: var(--text2); }
+.nf-sp-tab.active { background: var(--card-hi); color: var(--cyan); }
+.nf-spine-theme .nf-sp-n {
+  font-family: var(--fm); font-size: 9px; color: var(--text3);
+  border: 1px solid var(--border); border-radius: 4px; padding: 0 4px;
+}
+.nf-unmapped { color: var(--text3); font-style: italic; }
+.nf-spine-note {
+  margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--border);
+  font-size: 11px; line-height: 1.5; color: var(--text3);
+}
+
 /* ── Holdings (Live Objects) ── */
 .nf-holdings { max-width: none; margin: 0 auto 16px; }
 .nf-table-scroll { overflow-x: auto; }

@@ -51,7 +51,17 @@ export function mapHolding(row, compByTk, staleSet) {
         // Company / fund name — only when it adds something over the ticker
         // (unenriched ETFs carry asset_name === symbol).
         name: (row.asset_name && row.asset_name !== row.symbol) ? row.asset_name : null,
-        theme: row.sector || 'Unclassified',
+        // Sector and theme are different questions and this row answers both.
+        // Sector is the GICS-style classification that rides on the asset;
+        // theme is the hand-kept position_themes taxonomy ("AI / accelerated
+        // compute"), which is how the book is actually reasoned about. Until
+        // now the feed carried only sector and the UI called it theme.
+        //
+        // theme stays null when a name is unmapped rather than defaulting to
+        // its sector — a made-up theme is worse than a visible gap, and the
+        // spine reports the unmapped weight rather than hiding it.
+        sector: row.sector || 'Unclassified',
+        theme: row.theme || null,
         conviction: num(row.conviction_score) ?? 0,
         todayPct: num(row.daily_return_pct) ?? 0,
         // Contribution to book daily return (pts). The view's pnl_contribution
@@ -71,31 +81,44 @@ export function mapHolding(row, compByTk, staleSet) {
     };
 }
 
-// ── Spine — aggregate the raw book by theme (sector) ──────────
-// share  = Σ weight_pct                     (theme footprint)
-// move   = weight-weighted Σ daily_return   (theme P&L today)
-// riskShift = risk *density* bucketed: a theme carrying more of the
+// ── Spine — aggregate the raw book along one dimension ────────
+// `dimension` is 'sector' or 'theme'. They answer different questions —
+// "what industries am I in" versus "what bets am I actually making" — and
+// a book can look diversified on one and concentrated on the other, which
+// is the whole reason both views exist.
+//
+// share  = Σ weight_pct                     (group footprint)
+// move   = weight-weighted Σ daily_return   (group P&L today)
+// riskShift = risk *density* bucketed: a group carrying more of the
 //   VaR than its share earns a positive shift; less, negative.
-// fragility = the single heaviest-VaR theme (the cluster the
+// fragility = the single heaviest-VaR group (the cluster the
 //   concentration gauge flags), when it is also a real weight.
-export function buildSpine(rows, staleSet) {
+//
+// Rows come out keyed on `label`, not `theme`: the spine used to call its
+// sector buckets themes, and naming the field after the dimension it is
+// actually carrying is what stops that from happening again.
+export function buildSpine(rows, staleSet, dimension = 'sector') {
     const totalVar = rows.reduce((a, r) => a + (num(r.var_contribution_pct) || 0), 0) || 1;
     const m = new Map();
+    let unmappedWeight = 0;
     for (const r of rows) {
-        const theme = r.sector || 'Unclassified';
+        const raw = dimension === 'theme' ? r.theme : r.sector;
+        const label = raw || 'Unclassified';
         const w = num(r.weight_pct) || 0;
+        if (!raw) unmappedWeight += w;
         const ret = num(r.daily_return_pct) || 0;
         const v = num(r.var_contribution_pct) || 0;
-        const g = m.get(theme) || { theme, share: 0, moveW: 0, varSum: 0, anyFresh: false };
+        const g = m.get(label) || { label, share: 0, moveW: 0, varSum: 0, anyFresh: false, count: 0 };
         g.share += w;
         g.moveW += w * ret;
         g.varSum += v;
+        g.count += 1;
         if (!staleSet.has(r.symbol)) g.anyFresh = true;
-        m.set(theme, g);
+        m.set(label, g);
     }
 
-    const fragileTheme = [...m.values()].sort((a, b) => b.varSum - a.varSum)[0];
-    return [...m.values()]
+    const fragile = [...m.values()].sort((a, b) => b.varSum - a.varSum)[0];
+    const out = [...m.values()]
         .sort((a, b) => b.share - a.share)
         .map(g => {
             const share = +g.share.toFixed(1);
@@ -103,17 +126,27 @@ export function buildSpine(rows, staleSet) {
             const varShare = (g.varSum / totalVar) * 100;
             const density = share > 0 ? varShare / share : 0;
             const riskShift = density >= 1.5 ? 2 : density >= 1.1 ? 1 : density <= 0.6 ? -1 : 0;
-            const row = { theme: g.theme, sharePct: share, movePct, riskShift };
+            const row = { label: g.label, dimension, names: g.count, sharePct: share, movePct, riskShift };
             if (!g.anyFresh) row.stale = true;
-            if (fragileTheme && g.theme === fragileTheme.theme && share >= 5) row.fragility = true;
+            // 'Unclassified' is an absence of data, not a cluster that moves
+            // together, so it never earns the fragility flag.
+            if (fragile && g.label === fragile.label && g.label !== 'Unclassified' && share >= 5) row.fragility = true;
             return row;
         });
+    // Carried on the array so the UI can say how much of the book the view
+    // could not place, instead of silently showing a smaller book.
+    out.unmappedWeight = +unmappedWeight.toFixed(1);
+    return out;
 }
 
 // ── Concentration gauge — derived from the real weights/VaR ───
 // effectiveN = 1 / Σ wᵢ²  (Herfindahl effective number of bets)
-// topFactorPct = share of total VaR carried by the heaviest theme
-// fragilityCluster = the heaviest-VaR theme's largest names
+// topFactorPct = share of total VaR carried by the heaviest sector
+// fragilityCluster = the heaviest-VaR sector's largest names
+//
+// Deliberately sector-based rather than theme-based: this gauge feeds the
+// risk read, every name carries a sector, and a theme gap would quietly
+// shrink the denominator it measures against.
 export function buildConcentration(rows) {
     const nominalN = rows.length;
     const wsum = rows.reduce((a, r) => a + (num(r.weight_pct) || 0), 0) || 1;
@@ -124,15 +157,15 @@ export function buildConcentration(rows) {
     const effectiveN = hhi > 0 ? 1 / hhi : nominalN;
 
     const totalVar = rows.reduce((a, r) => a + (num(r.var_contribution_pct) || 0), 0) || 1;
-    const themeVar = new Map();
+    const sectorVar = new Map();
     for (const r of rows) {
         const t = r.sector || 'Unclassified';
-        themeVar.set(t, (themeVar.get(t) || 0) + (num(r.var_contribution_pct) || 0));
+        sectorVar.set(t, (sectorVar.get(t) || 0) + (num(r.var_contribution_pct) || 0));
     }
-    const [topTheme, topVar] = [...themeVar.entries()].sort((a, b) => b[1] - a[1])[0] || ['—', 0];
+    const [topSector, topVar] = [...sectorVar.entries()].sort((a, b) => b[1] - a[1])[0] || ['—', 0];
     const topFactorPct = Math.round((topVar / totalVar) * 100);
     const fragilityCluster = rows
-        .filter(r => (r.sector || 'Unclassified') === topTheme)
+        .filter(r => (r.sector || 'Unclassified') === topSector)
         .sort((a, b) => (num(b.var_contribution_pct) || 0) - (num(a.var_contribution_pct) || 0))
         .slice(0, 4)
         .map(r => r.symbol);
@@ -147,7 +180,7 @@ export function buildConcentration(rows) {
         fragilityCluster,
         verdictChip: fragile ? 'Fragile' : 'Diversified',
         note: `Effective N of ${effectiveN.toFixed(0)} against ${nominalN} names — ` +
-              `${topTheme} carries ${topFactorPct}% of factor risk.`,
+              `${topSector} carries ${topFactorPct}% of factor risk.`,
     };
 }
 
@@ -303,7 +336,11 @@ export function buildLiveSections(rows, compByTk, staleSet) {
     });
     return {
         holdings,
-        spine: buildSpine(rows, staleSet),
+        // Both cuts of the same book. `spine` stays sector-grouped because the
+        // regime playbook, the theme map and the read narrative all key off
+        // sector names; `themeSpine` is the second view the UI toggles to.
+        spine: buildSpine(rows, staleSet, 'sector'),
+        themeSpine: buildSpine(rows, staleSet, 'theme'),
         concentration: buildConcentration(rows),
         nav,
         portfolio: buildPortfolioSnapshot(rows),
@@ -388,9 +425,9 @@ export function buildChef({ spine = [], holdings = [], concentration = null } = 
     const fragile = concentration && concentration.verdictChip === 'Fragile';
     const cluster = (concentration && concentration.fragilityCluster) || [];
 
-    // Wide theme dispersion → rotation is the story; nudge to Theme.
-    if (leader && laggard && leader.theme !== laggard.theme && dispersion >= 3) {
-        return { hotTab: 'theme', reason: 'Theme rotation is doing the work today — ' + leader.theme + ' ' + pctS(leader.movePct) + ' vs ' + laggard.theme + ' ' + pctS(laggard.movePct) + '. Start there.' };
+    // Wide sector dispersion → rotation is the story; nudge to Theme.
+    if (leader && laggard && leader.label !== laggard.label && dispersion >= 3) {
+        return { hotTab: 'theme', reason: 'Sector rotation is doing the work today — ' + leader.label + ' ' + pctS(leader.movePct) + ' vs ' + laggard.label + ' ' + pctS(laggard.movePct) + '. Start there.' };
     }
     // Concentration tightening into a fragile cluster → Drift.
     if (fragile && cluster.length) {
@@ -429,12 +466,12 @@ export function buildSeasonal({ spine = [], concentration = null, holdings = [],
         theme: {
             title: 'Theme transmission',
             subtitle: 'How today’s macro is propagating through your themes',
-            tags: [top && top.theme, sorted[1] && sorted[1].theme, 'Rotation'].filter(Boolean),
+            tags: [top && top.label, sorted[1] && sorted[1].label, 'Rotation'].filter(Boolean),
             body: [
-                top ? top.theme + ' is your largest theme at ' + top.sharePct + '% and moved ' + pctS(top.movePct) +
-                      ' today — the primary transmission node for the book.' : 'No theme data yet.',
-                (greenest && reddest && greenest.theme !== reddest.theme)
-                    ? greenest.theme + ' leads on the day (' + pctS(greenest.movePct) + '); ' + reddest.theme + ' lags (' + pctS(reddest.movePct) + ').'
+                top ? top.label + ' is your largest sector at ' + top.sharePct + '% and moved ' + pctS(top.movePct) +
+                      ' today — the primary transmission node for the book.' : 'No sector data yet.',
+                (greenest && reddest && greenest.label !== reddest.label)
+                    ? greenest.label + ' leads on the day (' + pctS(greenest.movePct) + '); ' + reddest.label + ' lags (' + pctS(reddest.movePct) + ').'
                     : 'Theme dispersion is muted today.',
             ],
         },
@@ -500,7 +537,7 @@ export function buildRead({ macro = null, concentration = null, holdings = [], s
 
     // Heaviest-VaR theme: the spine flags it; fall back to largest share.
     const topRow = spine.find(s => s.fragility) || spine.slice().sort((a, b) => b.sharePct - a.sharePct)[0];
-    const topTheme = escHtml((topRow && topRow.theme) || 'the top cluster');
+    const topTheme = escHtml((topRow && topRow.label) || 'the top cluster');
     const fragile = concentration.verdictChip === 'Fragile';
 
     // The trims the engine actually called, heaviest risk first.

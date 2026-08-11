@@ -15,8 +15,8 @@ const holdings = [
     { tk: 'NVDA', theme: 'Technology', conviction: 74, contribPct: 0.20, componentVar: 3.0, fvGapPct: null, read: 'watch' },
 ];
 const spine = [
-    { theme: 'Technology', sharePct: 30, movePct: 1.5, riskShift: 2, fragility: true },
-    { theme: 'Energy', sharePct: 12, movePct: -0.8, riskShift: 0, stale: false },
+    { label: 'Technology', sharePct: 30, movePct: 1.5, riskShift: 2, fragility: true },
+    { label: 'Energy', sharePct: 12, movePct: -0.8, riskShift: 0, stale: false },
 ];
 
 test('buildThemeView rolls holdings up by theme, heaviest share first', () => {

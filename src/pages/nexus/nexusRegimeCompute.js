@@ -98,8 +98,11 @@ export function bookRegimeFit(spine, label) {
         const w = Number(s.sharePct) || 0;
         if (w <= 0) continue;
         wsum += w;
-        if (rew.has(s.theme)) { num += w; aligned.push({ theme: s.theme, sharePct: +w.toFixed(1) }); }
-        else if (pun.has(s.theme)) { num -= w; misaligned.push({ theme: s.theme, sharePct: +w.toFixed(1) }); }
+        // The playbooks are written in sector names, so this reads the
+        // sector spine. `label` is the group name; the aligned/misaligned
+        // entries keep the `theme` key their consumers already render.
+        if (rew.has(s.label)) { num += w; aligned.push({ theme: s.label, sharePct: +w.toFixed(1) }); }
+        else if (pun.has(s.label)) { num -= w; misaligned.push({ theme: s.label, sharePct: +w.toFixed(1) }); }
     }
     aligned.sort((a, b) => b.sharePct - a.sharePct);
     misaligned.sort((a, b) => b.sharePct - a.sharePct);

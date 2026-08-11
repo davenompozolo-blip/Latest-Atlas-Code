@@ -17,9 +17,9 @@ const M = '−';  // unicode minus, as the formatters emit
 
 // vw_nexus_holdings rows (only the fields the transforms read).
 const ROWS = [
-    { symbol: 'NVDA',  sector: 'Technology', weight_pct: 30, daily_return_pct: -2, var_contribution_pct: 40, conviction_score: 78, current_price: 100, dcf_upside_pct:  5, valuation_signal: 'Momentum cooling', quant_signal: 'Bullish',   technical_signal: '' },
-    { symbol: 'AVGO',  sector: 'Technology', weight_pct: 20, daily_return_pct: -1, var_contribution_pct: 25, conviction_score: 72, current_price: 200, dcf_upside_pct: -4, valuation_signal: 'Rich vs DCF',      quant_signal: 'Bearish',   technical_signal: '' },
-    { symbol: 'CVX',   sector: 'Energy',     weight_pct: 10, daily_return_pct:  1, var_contribution_pct:  5, conviction_score: 63, current_price: 150, dcf_upside_pct:  8, valuation_signal: 'Macro tailwind',   quant_signal: 'Improving', technical_signal: '' },
+    { symbol: 'NVDA',  sector: 'Technology', theme: 'AI / accelerated compute', weight_pct: 30, daily_return_pct: -2, var_contribution_pct: 40, conviction_score: 78, current_price: 100, dcf_upside_pct:  5, valuation_signal: 'Momentum cooling', quant_signal: 'Bullish',   technical_signal: '' },
+    { symbol: 'AVGO',  sector: 'Technology', theme: 'AI / accelerated compute', weight_pct: 20, daily_return_pct: -1, var_contribution_pct: 25, conviction_score: 72, current_price: 200, dcf_upside_pct: -4, valuation_signal: 'Rich vs DCF',      quant_signal: 'Bearish',   technical_signal: '' },
+    { symbol: 'CVX',   sector: 'Energy',     theme: 'Energy',                     weight_pct: 10, daily_return_pct:  1, var_contribution_pct:  5, conviction_score: 63, current_price: 150, dcf_upside_pct:  8, valuation_signal: 'Macro tailwind',   quant_signal: 'Improving', technical_signal: '' },
     { symbol: 'TCEHY', sector: 'Intl ADRs',  weight_pct:  5, daily_return_pct:  0, var_contribution_pct:  2, conviction_score: 64, current_price:  50, dcf_upside_pct: 18, valuation_signal: 'Stale feed',       quant_signal: '',          technical_signal: '' },
 ];
 
@@ -54,15 +54,40 @@ check('map: NVDA objectId',   nvda.objectId, 'obj-nvda');
 check('map: TCEHY stale',     mapHolding(ROWS[3], COMP, STALE).stale, true);
 
 // ── Derived reads (computeRead over the real ingredients) ─────
-const { holdings, spine, concentration } = buildLiveSections(ROWS, COMP, STALE);
+const sections = buildLiveSections(ROWS, COMP, STALE);
+const { holdings, spine, concentration } = sections;
 const readOf = tk => holdings.find(h => h.tk === tk).read;
 check('read: NVDA  (cheap, no room) → hold',  readOf('NVDA'),  'hold');
 check('read: AVGO  (deteriorating)  → watch', readOf('AVGO'),  'watch');
 check('read: CVX   (cheap + room)   → add',   readOf('CVX'),   'add');
 check('read: TCEHY (stale gate)     → hold',  readOf('TCEHY'), 'hold');
 
-// ── Spine (theme aggregation) ─────────────────────────────────
-check('spine: theme order',        spine.map(s => s.theme), ['Technology', 'Energy', 'Intl ADRs']);
+// ── Spine (sector aggregation) ────────────────────────────────
+// Rows are keyed on `label` + `dimension` — the spine groups by whichever
+// axis it was asked for, so naming the field `theme` was only ever right
+// by accident.
+check('spine: sector order',       spine.map(s => s.label), ['Technology', 'Energy', 'Intl ADRs']);
+check('spine: dimension',          spine[0].dimension, 'sector');
+
+// ── Theme spine — the second cut of the same book ─────────────
+// Sector says the book is half Technology; theme says the same 50% is one
+// bet. Both are true and the difference is the reason both views exist.
+const themeSpine = buildSpine(ROWS, STALE, 'theme');
+check('themeSpine: order',         themeSpine.map(s => s.label), ['AI / accelerated compute', 'Energy', 'Unclassified']);
+check('themeSpine: dimension',     themeSpine[0].dimension, 'theme');
+check('themeSpine: AI share',      themeSpine[0].sharePct, 50);
+check('themeSpine: AI names',      themeSpine[0].names, 2);
+// 30×−2 + 20×−1 = −80, over 50% share = −1.6
+check('themeSpine: AI move',       themeSpine[0].movePct, -1.6);
+// TCEHY carries no theme: it lands in Unclassified and is reported, not hidden.
+check('themeSpine: unmapped bucket', themeSpine[2].sharePct, 5);
+check('themeSpine: unmappedWeight',  themeSpine.unmappedWeight, 5);
+check('spine: nothing unmapped by sector', spine.unmappedWeight, 0);
+// Unclassified is an absence of data, never a fragility cluster.
+check('themeSpine: unmapped not fragile', !!themeSpine[2].fragility, false);
+// Both cuts still describe the whole book.
+check('themeSpine: shares total',  themeSpine.reduce((a, r) => a + r.sharePct, 0), 65);
+check('spine: shares total',       spine.reduce((a, r) => a + r.sharePct, 0), 65);
 check('spine: Tech share',         spine[0].sharePct, 50);
 check('spine: Tech move',          spine[0].movePct, -1.6);
 check('spine: Tech riskShift',     spine[0].riskShift, 2);
@@ -102,7 +127,13 @@ check('ws: no macro → null',   buildWindshield(null), null);
 // ── Seasonal (live figures, no stale literals) ────────────────
 const seas = buildSeasonal({ spine, concentration, holdings, macro: MACRO });
 check('seasonal: keys',           Object.keys(seas).sort(), ['drift', 'opportunities', 'regime', 'theme']);
-check('seasonal: theme largest',  /Technology is your largest theme at 50%/.test(seas.theme.body[0]), true);
+check('sections: both spines',     [sections.spine[0].dimension, sections.themeSpine[0].dimension], ['sector', 'theme']);
+// Holdings carry sector and theme separately; theme stays null when unmapped.
+check('map: NVDA sector',         holdings.find(h => h.tk === 'NVDA').sector, 'Technology');
+check('map: NVDA theme',          holdings.find(h => h.tk === 'NVDA').theme, 'AI / accelerated compute');
+check('map: TCEHY theme null',    holdings.find(h => h.tk === 'TCEHY').theme, null);
+check('map: TCEHY sector kept',   holdings.find(h => h.tk === 'TCEHY').sector, 'Intl ADRs');
+check('seasonal: sector largest', /Technology is your largest sector at 50%/.test(seas.theme.body[0]), true);
 check('seasonal: regime label',   seas.regime.tags.includes('Reflation'), true);
 check('seasonal: inverted curve', seas.regime.tags.includes('Inverted curve'), true);
 check('seasonal: opp cheap name', /NVDA/.test(seas.opportunities.body[0]), true);
