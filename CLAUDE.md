@@ -169,6 +169,28 @@ Results are byte-identical; 4046→358 ms and 2048→138 ms.
 **When adding a view over `price_history`, filter to the assets you will
 actually return.** The table is now a 1,500-name universe, not the book.
 
+**Sweep completed 2026-08-12.** The first pass grepped for `ranked_prices` /
+`row_number() OVER (PARTITION BY … asset_id)` and so missed every view using
+`lag()`, `max() OVER`, or `DISTINCT ON` — which was five more, including the two
+behind Risk and Perf. All 16 views over `price_history` have now been *timed*,
+not pattern-matched. Do that instead of grepping:
+
+```sql
+select c.relname from pg_class c join pg_namespace n on n.oid=c.relnamespace
+where n.nspname='public' and c.relkind in ('v','m')
+  and pg_get_viewdef(c.oid, true) ~* 'price_history';
+```
+
+Second batch: `vw_performance_suite` →379 ms, `vw_position_nav_daily` →560 ms,
+`vw_quant_correlation` →1380 ms, `vw_quant_drawdown` →310 ms,
+`vw_risk_analysis` 4984→46 ms. Still warm-ish but under budget:
+`vw_forward_vs_spy` (~2.0s) and `vw_portfolio_nav_daily` (~1.9s, seq-scans
+36k `account_snapshots` rows for 93) — watch these if the book grows.
+
+**"No data available — run Alpaca sync first" and "Insufficient return history"
+are timeout symptoms, not sync failures.** Check the view's runtime against the
+role cap before touching the sync.
+
 ### Sector ≠ theme (2026-08-11)
 `position_themes` is the hand-kept theme taxonomy (14 themes; 48 of 54 held
 names mapped). `nexus_holdings` always joined it; `vw_nexus_holdings` did not,
