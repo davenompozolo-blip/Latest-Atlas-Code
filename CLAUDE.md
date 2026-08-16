@@ -217,6 +217,65 @@ surfaced — the workflow referenced secrets under names that did not exist, and
 validation layer had never written a row. Rebuilt on pg_cron rather than
 repaired. **When adding a scheduled job, add it here — not to Actions.**
 
+### There are three schedulers, not one (audited 2026-08-16)
+The line above — "pg_cron is the data path" — is true of the **Alpaca core**
+and of nothing else. A full audit found scheduled work in three places:
+
+| Scheduler | Where | Jobs |
+|-----------|-------|------|
+| pg_cron | `cron.job` | 9 — the Alpaca core, nexus refresh, validation |
+| Vercel Cron | `vercel.json` → `crons` | 7 — ledger, valuations, options, dispersion, theme leadership, trade-sync ×2 |
+| GitHub Actions | `.github/workflows/` | 2 — `atlas-fundamentals.yml` (12:30), `sync-funddata.yml` (14:00) |
+
+Actions was retired **from the Alpaca sync path**, not from the platform.
+
+**Only the pg_cron half is reliably firing.** The Vercel crons are the ones to
+distrust: of the seven, only `options-snapshot` and `vol-dispersion-sync`
+demonstrably produce rows. `theme_leadership_weekly` has **0 rows ever**,
+`signal_scores` has exactly one date (2026-08-11, a manual run), and
+`ledger_alerts` last wrote 2026-08-03. `api/trade-sync.js` writes **no
+`sync_log` row at all**, so it fails completely invisibly — instrument it
+before trusting any conclusion about whether it ran.
+
+### Validation covers the whole platform now (2026-08-16)
+`atlas_run_validation()` checked five things and all five were Alpaca. The core
+was green every night while four feeds sat dark. Two checks were added:
+
+- **`feed_coverage`** — reads `atlas_feed_status()`, one row per non-Alpaca
+  feed. Staleness is measured against `atlas_last_traded_day()` (last session
+  with a SPY bar), never `now()` — **a weekday feed is not late on a Sunday**,
+  and measuring against wall-clock would fire every weekend.
+- **`stuck_syncs`** — `sync_log` rows open more than 6h. Caught 41, oldest
+  2026-06-05, from `sync_funddata_prices` and `sync_alpaca_positions`.
+
+Both cap at **warning, never critical**, on purpose. `critical` increments
+`consecutive_failures` and writes an `atlas_memory` bug row nightly; two of the
+four gaps are subscription problems no retry can fix, and a red light that can
+never go green is one you learn to ignore. Raise a feed to critical only once
+its pipeline is actually capable of succeeding.
+
+### Known-dead feeds (as at 2026-08-16)
+- `vol_dispersion_daily` — **0 rows ever**. `api/vol-dispersion-sync.js` needs a
+  *premium* Alpha Vantage key (~100 `HISTORICAL_OPTIONS` pulls per run); the key
+  in use returns `"This is a premium endpoint"`. 10/10 runs failed. Not fixable
+  in code — the Nexus Dispersion page has never had data.
+- `theme_leadership_weekly` — 0 rows ever.
+- `signal_scores` — frozen at 2026-08-11. **This starves the Trade ticket's
+  coherence pane**; Pane C renders "NO FAMILY VECTOR ON FILE" once it ages out.
+- `sync_funddata_prices` — the job *works* (`fund_prices_raw` is current), but
+  its terminal `sync_log` PATCH goes through PostgREST and the failure is
+  swallowed at `supabase/functions/sync_funddata_prices/index.ts:44`
+  (`console.warn`), so every run leaves an open row.
+
+**A single simultaneous sync point is the wrong fix.** These jobs have real
+dependencies — prices must land before vol, vol before validation, signals
+after both — and firing them at one instant makes each read a table its
+upstream has not written yet. That is non-deterministic staleness, which looks
+exactly like the bug it was meant to cure. What the platform wants is one
+*ordered chain* under one scheduler, each stage gated on the previous. The
+22:00–22:45 window is already nearly that; it is just split across pg_cron and
+Vercel with no ordering guarantee between them.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel
