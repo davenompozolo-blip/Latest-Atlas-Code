@@ -474,11 +474,11 @@ function QuoteHeader({ symbol, quote, account, price, risk, scores, instrument }
             e(InstrumentStrip, { instrument }),
             e('div', { className: 'tr-px' }, price == null ? DASH : fMoney(price))),
         quote && quote.change != null
-            ? e('div', { className: 'tr-mono ' + toneOf(quote.change), style: { fontSize: 15 } },
+            ? e('div', { className: 'tr-mono ' + toneOf(quote.change), style: { fontSize: 'var(--tr-fs-5)' } },
                 (quote.change >= 0 ? '▲ +' : '▼ −') + Math.abs(quote.change).toFixed(2)
                 + ' (' + (quote.changePct >= 0 ? '+' : '−') + Math.abs(quote.changePct).toFixed(2) + '%)')
             : null,
-        e('div', { className: 'tr-mono tr-dim', style: { fontSize: 11 } },
+        e('div', { className: 'tr-mono tr-dim', style: { fontSize: 'var(--tr-fs-2)' } },
             [
                 quote && quote.vwap ? 'VWAP ' + fMoney(quote.vwap) : null,
                 stat.adv ? 'ADV ' + (stat.adv >= 1e9 ? '$' + (stat.adv / 1e9).toFixed(1) + 'b' : '$' + (stat.adv / 1e6).toFixed(0) + 'm') : null,
@@ -551,7 +551,7 @@ function Fundamentals({ symbol, scores }) {
                                         e('tr', { key: k },
                                             e('td', null, k.replace(/_/g, ' ')),
                                             e('td', null, typeof v === 'number' ? fNum(v, 2) : String(v))))))
-                        : e('div', { className: 'tr-dim3', style: { fontSize: 12 } },
+                        : e('div', { className: 'tr-dim3', style: { fontSize: 'var(--tr-fs-4)' } },
                             'No valuation inputs on file for ' + symbol + '.')))
             : null);
 }

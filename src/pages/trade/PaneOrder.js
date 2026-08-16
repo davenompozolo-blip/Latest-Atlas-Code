@@ -55,7 +55,7 @@ export function PaneOrder({
         e('div', {
             style: {
                 display: 'flex', justifyContent: 'space-between', marginTop: 6,
-                fontFamily: 'var(--tr-mono)', fontSize: 11,
+                fontFamily: 'var(--tr-mono)', fontSize: 'var(--tr-fs-3)',
             },
         },
             e('span', { className: 'tr-cy' }, fPct(derived.pctOfEquity, 2, { signed: true }) + ' equity'),
@@ -88,7 +88,7 @@ export function PaneOrder({
                     style: {
                         width: '100%', background: 'var(--tr-card-2)', border: '1px solid var(--tr-line-2)',
                         borderRadius: 4, color: 'var(--tr-tx)', fontFamily: 'var(--tr-mono)',
-                        fontSize: 12, padding: '8px 10px',
+                        fontSize: 'var(--tr-fs-4)', padding: '8px 10px',
                     },
                 }))
             : null,
@@ -113,7 +113,7 @@ export function PaneOrder({
                     style: {
                         width: '100%', background: 'var(--tr-card-2)', border: '1px solid var(--tr-line-2)',
                         borderRadius: 4, color: 'var(--tr-tx)', fontFamily: 'var(--tr-body)',
-                        fontSize: 12, padding: '8px 10px', minHeight: 38, resize: 'vertical',
+                        fontSize: 'var(--tr-fs-4)', padding: '8px 10px', minHeight: 38, resize: 'vertical',
                     },
                 }))
             : null,
@@ -183,19 +183,22 @@ function MethodInput({ method, input, setInput, price }) {
                 type: 'button', 'aria-label': 'Increase',
                 onClick: () => setInput(method === 'manual' ? { qty: (Number(value) || 0) + cfg.step } : (Number(value) || 0) + cfg.step),
             }, '+')),
-        e('div', { className: 'tr-dim3', style: { fontFamily: 'var(--tr-mono)', fontSize: 10, marginTop: 4 } }, cfg.unit));
+        e('div', { className: 'tr-dim3', style: { fontFamily: 'var(--tr-mono)', fontSize: 'var(--tr-fs-2)', marginTop: 4 } }, cfg.unit));
 }
 
 // ── The five derived values ──────────────────────────────────────────────────
 
 function DerivedBlock({ derived }) {
-    const row = (k, v, tone, title) => e('div', { className: 'tr-dr', title },
+    const row = (k, v, tone, title, cls) => e('div', { className: 'tr-dr' + (cls ? ' ' + cls : ''), title },
         e('span', { className: 'tr-k' }, k),
         e('span', { className: 'tr-v ' + (tone || '') }, v));
 
+    // All six rows in their original order. SHARES carries `hero` because the
+    // size is the decision and it was reading as one row among six — the
+    // weight moves, the order does not.
     return e('div', { className: 'tr-derived' },
         row('NOTIONAL', fMoney(derived.targetNotional ?? derived.notional)),
-        row('SHARES', derived.qty == null ? DASH : String(derived.qty)),
+        row('SHARES', derived.qty == null ? DASH : String(derived.qty), '', null, 'hero'),
         row('FILLED NOTIONAL', fMoney(derived.filledNotional)),
         row('INCREMENTAL VOL', derived.incrementalVol == null ? DASH : fPct(derived.incrementalVol, 2, { signed: true }),
             'tr-am', 'What this trade adds to portfolio volatility, from the cached covariance matrix'),
@@ -242,7 +245,7 @@ export function ClaimForm({ claim, setClaim, claimState, existingClaim }) {
             style: {
                 width: '100%', background: 'var(--tr-card-2)', border: '1px solid var(--tr-line-2)',
                 borderRadius: 4, color: 'var(--tr-tx)', fontFamily: 'var(--tr-mono)',
-                fontSize: 12, padding: '8px 10px',
+                fontSize: 'var(--tr-fs-4)', padding: '8px 10px',
             },
         }),
 

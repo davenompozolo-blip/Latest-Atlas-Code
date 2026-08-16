@@ -35,7 +35,7 @@ export function PaneBook({ impact, symbol, riskLayer, volDrift, corrThreshold })
         e(DeltaRow, { label: 'Weight of equity', before: p.weightOfEquityBefore, after: p.weightOfEquityAfter, format: pctFmt }),
         e('div', { className: 'tr-row' },
             e('span', { className: 'tr-k tr-dim3' }, 'Weight of gross ',
-                e('span', { style: { fontSize: 10 } }, '(context only)')),
+                e('span', { style: { fontSize: 'var(--tr-fs-2)' } }, '(context only)')),
             e('span', { className: 'tr-v tr-dim3' },
                 pctFmt(p.weightOfGrossBefore), e('span', { className: 'tr-delta' }, '→'), pctFmt(p.weightOfGrossAfter))),
 

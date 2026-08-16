@@ -152,8 +152,8 @@ function RadialPlot({ coherence }) {
                 });
             })),
         e('polygon', {
-            points: poly, fill: '#3ad6e0', fillOpacity: '.07',
-            stroke: '#3ad6e0', strokeOpacity: '.5', strokeWidth: 1.4,
+            points: poly, fill: '#48b9c4', fillOpacity: '.07',
+            stroke: '#48b9c4', strokeOpacity: '.5', strokeWidth: 1.4,
         }),
         e('g', null, codes.map((c, i) => {
             const f = byCode.get(c);
@@ -161,7 +161,7 @@ function RadialPlot({ coherence }) {
             return e('circle', {
                 key: c, cx: x, cy: y,
                 r: 2.5 + (f.conviction || 0) * 5,
-                fill: f.score >= 0 ? '#26d0a5' : '#ff5f52',
+                fill: f.score >= 0 ? '#35b691' : '#e0655c',
                 fillOpacity: 0.35 + (f.confidence || 0) * 0.55,
             }, e('title', null,
                 `${FAMILY_LABELS[c] || c}: score ${fSigned(f.score)}, conviction ${fNum(f.conviction, 2)}, confidence ${fNum(f.confidence, 2)}`));
