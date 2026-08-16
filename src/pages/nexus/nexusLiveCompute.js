@@ -76,6 +76,18 @@ export function mapHolding(row, compByTk, staleSet) {
         valuationTrusted: valuationTrusted,
         signal: row.valuation_signal || null,
         signalTone: toSignalTone(row),
+        // Return since entry, from the view's own cost basis.
+        totalReturnPct: num(row.total_return_pct),
+        // Annualised realised vol, 120d window, from universe_risk_stats. null
+        // for the handful of names the nightly risk snapshot does not cover —
+        // an unknown vol renders as "—", never as a comfortable zero.
+        annualVol: num(row.annual_vol),
+        // Forward multiple, and where it sits against the market. The market
+        // figure is the MEDIAN forward P/E of the screener universe, not a
+        // cap-weighted index level — see the view comment for why.
+        fwdPe: num(row.fwd_pe),
+        marketFwdPe: num(row.market_fwd_pe),
+        fwdPePremiumPct: num(row.fwd_pe_premium_pct),
         stale: staleSet.has(row.symbol),
         objectId: 'obj-' + String(row.symbol || '').toLowerCase(),
     };
