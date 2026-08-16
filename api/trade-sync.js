@@ -676,6 +676,57 @@ function evaluateTrigger(t, { bars, last, ctx }) {
     return { met, value, observed };
 }
 
+// ── sync_log instrumentation ─────────────────────────────────────────────────
+// This job wrote no sync_log row of any kind, so a failure — or a cron that
+// never fired at all — was completely invisible. signal_scores sat frozen on a
+// single date for five days and nothing anywhere went amber. Every run now
+// opens a row on entry and closes it on the way out, success or failure.
+//
+// Logging is strictly best-effort: a broken log must never take the sync down
+// with it, so both helpers swallow their own errors.
+
+async function openLog(job, source) {
+    try {
+        const r = await fetch(SB_URL + '/rest/v1/sync_log', {
+            method: 'POST',
+            headers: { ...hdrs(), Prefer: 'return=representation' },
+            body: JSON.stringify([{
+                function_name: 'trade_sync_' + job,
+                status: 'running',
+                source: source || 'vercel_cron',
+                started_at: new Date().toISOString(),
+            }]),
+        });
+        if (!r.ok) return null;
+        const rows = await r.json().catch(() => []);
+        return rows && rows[0] ? rows[0].id : null;
+    } catch (_) { return null; }
+}
+
+// NOTE: never write duration_ms. It is GENERATED ALWAYS from
+// (finished_at - started_at); including it makes PostgREST reject the whole
+// PATCH with 428C9 and the row stays open. That is exactly the bug that left
+// 41 sync_funddata_prices rows stuck in 'running' since 2026-06-05.
+async function closeLog(id, status, details, errorMsg) {
+    if (id == null) return;
+    try {
+        const r = await fetch(SB_URL + '/rest/v1/sync_log?id=eq.' + id, {
+            method: 'PATCH',
+            headers: hdrs(),
+            body: JSON.stringify({
+                status,
+                finished_at: new Date().toISOString(),
+                error_message: errorMsg || null,
+                details: details || null,
+            }),
+        });
+        if (!r.ok) {
+            const t = await r.text().catch(() => '');
+            console.error('sync_log close FAILED', r.status, t.slice(0, 300));
+        }
+    } catch (e) { console.error('sync_log close threw', e && e.message); }
+}
+
 // ── Handler ──────────────────────────────────────────────────────────────────
 
 export default async function handler(req, res) {
@@ -690,6 +741,7 @@ export default async function handler(req, res) {
     const job = ((req.query && req.query.job) || 'all').toLowerCase();
     const started = Date.now();
     const out = { job, started_at: new Date().toISOString(), steps: {} };
+    const logId = await openLog(job, (req.query && req.query.source) || undefined);
 
     try {
         if (job === 'assets') {
@@ -717,11 +769,16 @@ export default async function handler(req, res) {
 
         out.ok = true;
         out.duration_ms = Date.now() - started;
+        await closeLog(logId, 'success', {
+            steps: out.steps, scored_symbols: out.scored_symbols ?? null,
+            duration_ms: out.duration_ms,
+        });
         return res.status(200).json(out);
     } catch (e) {
         out.ok = false;
         out.error = e && e.message ? e.message : String(e);
         out.duration_ms = Date.now() - started;
+        await closeLog(logId, 'error', { steps: out.steps, duration_ms: out.duration_ms }, out.error);
         return res.status(500).json(out);
     }
 }

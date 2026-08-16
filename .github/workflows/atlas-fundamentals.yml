@@ -20,9 +20,9 @@ name: ATLAS Fundamentals Sync
 #   ATLAS_API_BASE — deployed Vercel app URL (e.g. https://your-atlas.vercel.app)
 
 on:
-  schedule:
-    # 7:30 AM ET (12:30 UTC) weekdays — before the morning Alpaca sync
-    - cron: '30 12 * * 1-5'
+  # Schedule retired 2026-08-16 — this sweep now runs from pg_cron as
+  # `sync_universe_fundamentals` (12:30 UTC weekdays), so that pg_cron is the
+  # platform's only scheduler. Kept dispatchable for manual backfills.
   workflow_dispatch:
 
 jobs:

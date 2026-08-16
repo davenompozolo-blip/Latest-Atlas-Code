@@ -217,25 +217,69 @@ surfaced — the workflow referenced secrets under names that did not exist, and
 validation layer had never written a row. Rebuilt on pg_cron rather than
 repaired. **When adding a scheduled job, add it here — not to Actions.**
 
-### There are three schedulers, not one (audited 2026-08-16)
-The line above — "pg_cron is the data path" — is true of the **Alpaca core**
-and of nothing else. A full audit found scheduled work in three places:
+### There were three schedulers; now there is one (consolidated 2026-08-16)
+Scheduled work used to live in pg_cron (9 jobs), Vercel Cron (7 in
+`vercel.json`) and GitHub Actions (2 workflows). Only the pg_cron half fired
+reliably: of the seven Vercel crons only `options-snapshot` and
+`vol-dispersion-sync` ever produced rows.
 
-| Scheduler | Where | Jobs |
-|-----------|-------|------|
-| pg_cron | `cron.job` | 9 — the Alpaca core, nexus refresh, validation |
-| Vercel Cron | `vercel.json` → `crons` | 7 — ledger, valuations, options, dispersion, theme leadership, trade-sync ×2 |
-| GitHub Actions | `.github/workflows/` | 2 — `atlas-fundamentals.yml` (12:30), `sync-funddata.yml` (14:00) |
+**pg_cron is now the only scheduler.** `vercel.json` has no `crons` key and
+both workflows are `workflow_dispatch:` only. The Vercel handlers were not
+rewritten — pg_cron simply calls them over pg_net with the same
+`Bearer CRON_SECRET` the Vercel scheduler used. Only the trigger moved.
 
-Actions was retired **from the Alpaca sync path**, not from the platform.
+**When adding a scheduled job, add it to `cron.job`. Nowhere else.**
 
-**Only the pg_cron half is reliably firing.** The Vercel crons are the ones to
-distrust: of the seven, only `options-snapshot` and `vol-dispersion-sync`
-demonstrably produce rows. `theme_leadership_weekly` has **0 rows ever**,
-`signal_scores` has exactly one date (2026-08-11, a manual run), and
-`ledger_alerts` last wrote 2026-08-03. `api/trade-sync.js` writes **no
-`sync_log` row at all**, so it fails completely invisibly — instrument it
-before trusting any conclusion about whether it ran.
+### The nightly chain
+Stages are staggered and **gated**, not simultaneous. A single sync point was
+considered and rejected: these stages have real dependencies, and firing them
+at one instant makes each read a table its upstream has not written yet —
+non-deterministic staleness that looks exactly like the bug it would be meant
+to cure.
+
+| UTC | Stage | Gate |
+|-----|-------|------|
+| 21:00 | `chain_trade_sync_assets` | — (first) |
+| 22:00 | `sync_alpaca_prices_daily` (Mon–Sat) | — |
+| 22:10 | `sync_alpaca_transactions` | — |
+| 22:25 | `refresh_holding_vol_trailing` | — |
+| 22:30 | `chain_ledger_snapshot` | prices |
+| 22:45 | `chain_trade_sync_all` (signals) | prices |
+| 23:00 | `chain_options_snapshot` | — (Alpha Vantage sourced) |
+| 23:15 | `chain_theme_leadership` (Fri) | prices |
+| 23:40 | `atlas_run_validation` | — |
+
+**Validation moved from 22:40 to 23:40.** At 22:40 it ran *before* the signals
+job (22:45) and options (23:00), so it could never see the night it was
+grading — it always reported on the previous day.
+
+`atlas_chain_dispatch(stage, path, gate)` opens a `sync_log` row, checks
+`atlas_prices_current()`, fires the request and stores the pg_net request id.
+pg_net is asynchronous, so `atlas_chain_reap()` (every 15 min) closes the row
+with the real status code. Without the reaper every HTTP stage would look
+permanently 'running' — which is precisely how these jobs were invisible
+before.
+
+The secret lives in Vault, never inline in `cron.job.command`:
+`select vault.create_secret('<value>', 'CRON_SECRET');`
+Until it is set, every HTTP stage logs a clean `skipped` rather than a 401.
+
+### Never write `duration_ms` on `sync_log` (2026-08-16)
+It is `GENERATED ALWAYS` from `finished_at - started_at`. Including it in a
+PostgREST payload makes the server reject the **entire** PATCH with `428C9`
+*"column can only be updated to DEFAULT"*. Set `finished_at` and let the
+column derive itself.
+
+This single mistake is why 41 `sync_funddata_prices` rows sat open in
+'running' back to 2026-06-05. The scrape always worked; only the close was
+refused, and `sbPatch` swallowed the 400 in a `console.warn`. A second latent
+bug sat behind it — the function wrote statuses (`succeeded`, `failed`,
+`skipped_cache`, `debug`) that `sync_log_status_check` never permitted — but
+the generated column failed first, so that one had not yet had a chance to
+fire. `'skipped'` is now a permitted status and the function writes the real
+vocabulary.
+
+**A swallowed write failure costs months.** Log it at error level.
 
 ### Validation covers the whole platform now (2026-08-16)
 `atlas_run_validation()` checked five things and all five were Alpaca. The core
