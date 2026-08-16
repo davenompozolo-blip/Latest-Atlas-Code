@@ -23,6 +23,9 @@ import { PortfolioSnapshot } from './NexusPortfolio.js';
 import { NexusRegimePanel } from './NexusRegime.js';
 import { NexusOpportunitiesPanel } from './NexusOpportunities.js';
 import { NexusBenchPanel } from './NexusBench.js';
+import { NexusQuickTicket } from './NexusQuickTicket.js';
+import { SpineTreemap } from './NexusSpineTreemap.js';
+import { COLUMNS, DEFAULT_VISIBLE, loadVisible, saveVisible, columnGroups, premiumBand } from './nexusColumns.js';
 import '../../styles/nexus-flagship.css';
 
 const { useState, useEffect } = React;
@@ -243,6 +246,9 @@ function riskShiftBars(rs) {
 // theme cut shows that — which is the point of carrying both.
 function PositioningSpine({ spine, themeSpine }) {
     const [dim, setDim] = useState('sector');
+    // Bars are the default because they carry risk-shift, which the treemap
+    // has no free channel for. The treemap wins on share comparison.
+    const [view, setView] = useState('bars');
     const hasTheme = !!(themeSpine && themeSpine.length);
     const active = (dim === 'theme' && hasTheme) ? themeSpine : spine;
     if (!active || !active.length) return null;
@@ -261,8 +267,20 @@ function PositioningSpine({ spine, themeSpine }) {
                         onClick: () => setDim(d),
                     }, d === 'sector' ? 'Sector' : 'Theme'))
                 ) : null,
-                e('span', { className: 'nf-sub' }, 'share · today · risk shift'))),
-        active.map(function (r, i) {
+                e('div', { className: 'nf-spine-toggle' },
+                    [['bars', 'Bars'], ['map', 'Treemap']].map(([v, label]) => e('button', {
+                        key: v,
+                        className: 'nf-sp-tab' + (view === v ? ' active' : ''),
+                        onClick: () => setView(v),
+                    }, label))),
+                e('span', { className: 'nf-sub' },
+                    view === 'bars' ? 'share · today · risk shift' : 'area = share · colour = today'))),
+
+        view === 'map'
+            ? e(SpineTreemap, { rows: active, dimension: dim, unmappedWeight: unmapped })
+            : null,
+
+        view === 'map' ? null : active.map(function (r, i) {
             return e('div', { className: 'nf-spine-row', key: (r.label || i) },
                 e('div', { className: 'nf-spine-theme' + (r.label === 'Unclassified' ? ' nf-unmapped' : '') },
                     r.label,
@@ -280,7 +298,7 @@ function PositioningSpine({ spine, themeSpine }) {
         }),
         // Say what the view could not place rather than quietly showing a
         // smaller book than the one that exists.
-        unmapped > 0
+        unmapped > 0 && view === 'bars'
             ? e('div', { className: 'nf-spine-note' },
                 unmapped.toFixed(1) + '% of the book has no ' + dim + ' mapped and sits in Unclassified — '
                 + 'that is a gap in the taxonomy, not a position with no exposure.')
@@ -289,25 +307,130 @@ function PositioningSpine({ spine, themeSpine }) {
 }
 
 // ── Holdings table (Live Objects) ─────────────────────────────
-// Sector and Theme are separate columns because they are separate facts.
-// The table previously showed one column of sector values under the heading
-// "Theme", which made the book look classified along an axis nobody had
-// actually classified it along.
-const COLS = [
-    { k: 'tk',           label: 'Ticker',     l: true, sort: 'tk' },
-    { k: 'sector',       label: 'Sector',     l: true, sort: 'sector' },
-    { k: 'theme',        label: 'Theme',      l: true, sort: 'theme' },
-    { k: 'weight',       label: 'Weight',              sort: 'currentWeightPct' },
-    { k: 'conviction',   label: 'Conv (PCM)',          sort: 'conviction' },
-    { k: 'todayPct',     label: 'Today',               sort: 'todayPct' },
-    { k: 'contribPct',   label: 'Contrib',             sort: 'contribPct' },
-    { k: 'componentVar', label: 'VaR %',               sort: 'componentVar' },
-    { k: 'fvGapPct',     label: 'FV gap',              sort: 'fvGapPct' },
-    { k: 'signal',       label: 'Signal',     l: true },
-    { k: 'options',      label: 'Options',    l: true },
-    { k: 'read',         label: 'Read',                sort: 'read' },
-    { k: 'trade',        label: 'Trade',      l: true },
-];
+// Column catalogue, default set and persistence live in nexusColumns.js —
+// the table now renders whichever subset the user has chosen.
+
+// Per-cell tone, applied to the <td> itself so the whole cell colours.
+const CELL_CLASS = {
+    todayPct:     h => 'nf-mono-cell ' + moveTone(h.todayPct),
+    totalReturn:  h => 'nf-mono-cell ' + moveTone(h.totalReturnPct),
+    contribPct:   h => 'nf-mono-cell ' + moveTone(h.contribPct),
+    componentVar: () => 'nf-mono-cell',
+    annualVol:    () => 'nf-mono-cell',
+    fwdPe:        () => 'nf-mono-cell',
+    marketFwdPe:  () => 'nf-mono-cell',
+    // The gap is signed the other way round to a return: a POSITIVE premium is
+    // the expensive direction, so it must not render in the same green that
+    // means "up" two columns to the left.
+    fwdPeGap:     h => 'nf-mono-cell ' + (h.fwdPePremiumPct == null ? '' : (h.fwdPePremiumPct > 0 ? 'tone-down' : 'tone-up')),
+    fvGapPct:     h => 'nf-mono-cell ' + moveTone(h.fvGapPct),
+    sector:       () => 'nf-theme-cell',
+    theme:        h => 'nf-theme-cell' + (h.theme ? '' : ' nf-unmapped'),
+};
+
+const num1 = (v, suffix = '') => (v == null || !isFinite(v) ? '—' : Number(v).toFixed(1) + suffix);
+
+function renderCell(k, h, ctx) {
+    switch (k) {
+        case 'tk':
+            // The row opens the quick ticket; the ticker itself keeps the
+            // live-object drill it always had. Nothing listens for that event
+            // yet, but deleting the affordance because its receiver is not
+            // built would be the wrong way round.
+            return [
+                e('span', {
+                    className: 'nf-tk', key: 'a', title: 'Open ' + h.tk + ' live object',
+                    onClick: ev => { ev.stopPropagation(); openLiveObject(h.objectId, h.tk); },
+                }, h.tk),
+                h.name ? e('span', { className: 'nf-name', title: h.name, key: 'b' }, h.name) : null,
+            ];
+        case 'sector': return h.sector || '—';
+        case 'theme':  return h.theme || 'Unclassified';
+        case 'weight':
+            return e('span', { className: 'nf-conv-bar', title: (Number(h.currentWeightPct) || 0).toFixed(2) + '% of NAV' },
+                e('span', { className: 'nf-cb-track' }, e('i', { style: { width: Math.min(100, ((Number(h.currentWeightPct) || 0) / ctx.wtScale) * 100) + '%', background: '#5b6b7d' } })),
+                e('span', { className: 'nf-mono-cell' }, (Number(h.currentWeightPct) || 0).toFixed(1) + '%'));
+        case 'conviction':
+            return e('span', { className: 'nf-conv-bar' },
+                e('span', { className: 'nf-cb-track' }, e('i', { style: { width: h.conviction + '%', background: convColor(h.conviction) } })),
+                e('span', { className: 'nf-mono-cell' }, h.conviction));
+        case 'todayPct':     return pct1(h.todayPct);
+        case 'totalReturn':  return pct1(h.totalReturnPct);
+        case 'contribPct':   return pct1(h.contribPct, 2);
+        case 'componentVar': return (h.componentVar ?? 0).toFixed(1) + '%';
+        // Vol is a magnitude, not a direction — no sign, no tone.
+        case 'annualVol':    return h.annualVol == null ? '—' : (h.annualVol * 100).toFixed(0) + '%';
+        case 'fwdPe':        return h.fwdPe == null ? '—' : Number(h.fwdPe).toFixed(1) + '×';
+        case 'marketFwdPe':  return h.marketFwdPe == null ? '—' : Number(h.marketFwdPe).toFixed(1) + '×';
+        case 'fwdPeGap':
+            return h.fwdPePremiumPct == null
+                ? e('span', { title: 'No forward multiple on file — not the same as trading in line with the market' }, '—')
+                : (h.fwdPePremiumPct >= 0 ? '+' : '−') + Math.abs(h.fwdPePremiumPct).toFixed(0) + '%';
+        case 'fwdPeBadge': {
+            const b = premiumBand(h.fwdPePremiumPct);
+            return b
+                ? e('span', { className: 'nf-band ' + b.tone, title: 'Forward P/E ' + num1(h.fwdPe) + '× vs market median ' + num1(h.marketFwdPe) + '×' }, b.label)
+                : e('span', { style: { color: 'var(--text3)' } }, '—');
+        }
+        case 'fvGapPct':
+            return e('span', { className: 'nf-fv-wrap' },
+                e(FvGapBar, { v: h.fvGapPct, scale: ctx.fvScale }),
+                e('span', null, pct1(h.fvGapPct)));
+        case 'signal':
+            return h.signal ? e('span', { className: 'nf-sig' }, h.signal) : e('span', { style: { color: 'var(--text3)' } }, '—');
+        case 'options': return e(OptionsTone, { options: h.options });
+        case 'read':
+            return e('span', {
+                className: 'nf-read-chip ' + h.read + (ctx.isOpen ? ' open' : ''),
+                title: h.because,
+                onClick: ev => { ev.stopPropagation(); ctx.toggle(h.objectId); },
+            }, h.read);
+        case 'trade':
+            return e(TradeCell, { h, staged: !!ctx.blotter[h.tk], onStage: ctx.onStage });
+        default: return null;
+    }
+}
+
+// ── Column chooser ────────────────────────────────────────────
+function ColumnChooser({ visible, setVisible }) {
+    const [open, setOpen] = useState(false);
+    const groups = columnGroups();
+    const n = visible.size;
+    const toggle = (k) => setVisible(prev => {
+        const next = new Set(prev);
+        if (next.has(k)) next.delete(k); else next.add(k);
+        saveVisible(next);
+        return next;
+    });
+    return e('div', { className: 'nf-colwrap' },
+        e('button', {
+            className: 'nf-colbtn' + (open ? ' active' : ''),
+            onClick: () => setOpen(o => !o),
+            title: 'Choose columns',
+        }, '☰ Columns', e('span', { className: 'nf-colcount' }, n)),
+        open ? e('div', { className: 'nf-colpop' },
+            e('div', { className: 'nf-colpop-h' },
+                e('span', null, 'Columns'),
+                e('button', {
+                    className: 'nf-colreset',
+                    onClick: () => { const d = new Set(DEFAULT_VISIBLE); saveVisible(d); setVisible(d); },
+                }, 'reset')),
+            groups.map(g => e('div', { className: 'nf-colgrp', key: g.name },
+                e('div', { className: 'nf-colgrp-n' }, g.name),
+                g.cols.map(c => e('label', {
+                    key: c.k,
+                    className: 'nf-colitem' + (c.locked ? ' locked' : ''),
+                    title: c.locked ? 'Always shown' : null,
+                },
+                    e('input', {
+                        type: 'checkbox',
+                        checked: visible.has(c.k),
+                        disabled: !!c.locked,
+                        onChange: () => toggle(c.k),
+                    }),
+                    e('span', null, c.label))))),
+            e('div', { className: 'nf-colpop-f' }, 'Saved on this browser.')) : null);
+}
 
 // Read taxonomy order — used for the filter rail and read-sort rank.
 const READ_ORDER = ['add', 'hold', 'trim', 'watch', 'exit'];
@@ -475,6 +598,8 @@ function HoldingsTable({ holdings, forceTheme }) {
     const [sortK, setSortK] = useState('');     // '' = provider order (weight desc)
     const [sortDir, setSortDir] = useState('desc');
     const [blotter, setBlotter] = useState({}); // tk → staged ticket
+    const [visible, setVisible] = useState(loadVisible);
+    const [ticket, setTicket] = useState(null);  // holding whose quick ticket is open
     // Drill-down from the Theme tab routes here with a theme to filter to.
     useEffect(() => { if (forceTheme) setTheme(forceTheme); }, [forceTheme]);
     if (!holdings || !holdings.length) return null;
@@ -502,6 +627,10 @@ function HoldingsTable({ holdings, forceTheme }) {
         else { setSortK(k); setSortDir(k === 'tk' || k === 'theme' || k === 'sector' ? 'asc' : 'desc'); }
     };
     const arrow = k => (sortK === k ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '');
+
+    // Registry order is the display order — the chooser picks membership, not
+    // position, so the table never reshuffles under the reader.
+    const cols = COLUMNS.filter(c => visible.has(c.k));
 
     // Live facets: themes for the dropdown, read counts for the rail.
     const themes = Array.from(new Set(holdings.map(h => h.theme).filter(Boolean))).sort();
@@ -557,17 +686,21 @@ function HoldingsTable({ holdings, forceTheme }) {
                     title: 'Filter ' + r,
                 }, r, e('span', { className: 'nf-rchip-n' }, counts[r]))),
                 dirty ? e('button', { className: 'nf-rclear', onClick: () => { setReads(new Set()); setTheme('ALL'); setQuery(''); } }, 'clear') : null
-            )
+            ),
+            e(ColumnChooser, { visible, setVisible })
         ),
 
         // Table — capped height + internal scroll, sticky header
         e('div', { className: 'nf-table-scroll' },
             e('table', { className: 'nf-table' },
                 e('thead', null, e('tr', null,
-                    COLS.map(c => e('th', {
+                    cols.map(c => e('th', {
                         key: c.k,
                         className: (c.l ? 'nf-l' : '') + (c.sort ? ' nf-th-sort' : ''),
                         onClick: c.sort ? () => setSort(c.sort) : undefined,
+                        title: c.k === 'fwdPeGap'
+                            ? 'Forward P/E against the median forward P/E of the screener universe'
+                            : (c.k === 'annualVol' ? 'Annualised realised volatility, 120-day window' : null),
                     }, c.label, c.sort ? arrow(c.sort) : ''))
                 )),
                 e('tbody', null,
@@ -576,44 +709,19 @@ function HoldingsTable({ holdings, forceTheme }) {
                         const out = [
                             e('tr', {
                                 key: h.objectId,
-                                className: h.stale ? 'nf-stale-row' : '',
-                                onClick: () => openLiveObject(h.objectId, h.tk),
-                                title: 'Open ' + h.tk + ' live object',
+                                className: 'nf-clickrow' + (h.stale ? ' nf-stale-row' : ''),
+                                onClick: () => setTicket(h),
+                                title: 'Quick ticket · ' + h.tk,
                             },
-                                e('td', { className: 'nf-l' },
-                                    e('span', { className: 'nf-tk' }, h.tk),
-                                    h.name ? e('span', { className: 'nf-name', title: h.name }, h.name) : null),
-                                e('td', { className: 'nf-l nf-theme-cell' }, h.sector || '—'),
-                                e('td', {
-                                    className: 'nf-l nf-theme-cell' + (h.theme ? '' : ' nf-unmapped'),
-                                    title: h.theme ? null : 'No theme mapped for ' + h.tk + ' in position_themes',
-                                }, h.theme || 'Unclassified'),
-                                e('td', null, e('span', { className: 'nf-conv-bar', title: (Number(h.currentWeightPct) || 0).toFixed(2) + '% of NAV' },
-                                    e('span', { className: 'nf-cb-track' }, e('i', { style: { width: Math.min(100, ((Number(h.currentWeightPct) || 0) / wtScale) * 100) + '%', background: '#5b6b7d' } })),
-                                    e('span', { className: 'nf-mono-cell' }, (Number(h.currentWeightPct) || 0).toFixed(1) + '%'))),
-                                e('td', null, e('span', { className: 'nf-conv-bar' },
-                                    e('span', { className: 'nf-cb-track' }, e('i', { style: { width: h.conviction + '%', background: convColor(h.conviction) } })),
-                                    e('span', { className: 'nf-mono-cell' }, h.conviction))),
-                                e('td', { className: 'nf-mono-cell ' + moveTone(h.todayPct) }, pct1(h.todayPct)),
-                                e('td', { className: 'nf-mono-cell ' + moveTone(h.contribPct) }, pct1(h.contribPct, 2)),
-                                e('td', { className: 'nf-mono-cell' }, (h.componentVar ?? 0).toFixed(1) + '%'),
-                                e('td', { className: 'nf-mono-cell ' + moveTone(h.fvGapPct) },
-                                    e('span', { className: 'nf-fv-wrap' },
-                                        e(FvGapBar, { v: h.fvGapPct, scale: fvScale }),
-                                        e('span', null, pct1(h.fvGapPct)))),
-                                e('td', { className: 'nf-l' }, h.signal ? e('span', { className: 'nf-sig' }, h.signal) : e('span', { style: { color: 'var(--text3)' } }, '—')),
-                                e('td', { className: 'nf-l' }, e(OptionsTone, { options: h.options })),
-                                e('td', null, e('span', {
-                                    className: 'nf-read-chip ' + h.read + (isOpen ? ' open' : ''),
-                                    title: h.because,
-                                    onClick: ev => { ev.stopPropagation(); toggle(h.objectId); },
-                                }, h.read)),
-                                e('td', { className: 'nf-l' }, e(TradeCell, { h, staged: !!blotter[h.tk], onStage }))
+                                cols.map(c => e('td', {
+                                    key: c.k,
+                                    className: (c.l ? 'nf-l' : '') + (CELL_CLASS[c.k] ? ' ' + CELL_CLASS[c.k](h) : ''),
+                                }, renderCell(c.k, h, { wtScale, fvScale, isOpen, toggle, blotter, onStage })))
                             ),
                         ];
                         if (isOpen) {
                             out.push(e('tr', { key: h.objectId + '-why', className: 'nf-why-row' },
-                                e('td', { colSpan: COLS.length },
+                                e('td', { colSpan: cols.length },
                                     e('span', { className: 'nf-why-label' }, 'WHY'),
                                     e('span', { className: 'nf-why-text' }, h.because),
                                     h.scrapbookThesis ? e('div', { className: 'nf-why-thesis', style: { marginTop: 6 } },
@@ -622,12 +730,13 @@ function HoldingsTable({ holdings, forceTheme }) {
                             ));
                         }
                         return out;
-                    }) : e('tr', null, e('td', { colSpan: COLS.length, className: 'nf-empty' }, 'No holdings match these filters.'))
+                    }) : e('tr', null, e('td', { colSpan: cols.length, className: 'nf-empty' }, 'No holdings match these filters.'))
                 )
             )
         )
       ),
-      e(OrderBlotter, { tickets, onRemove: removeTicket, onClear: clearBlotter })
+      e(OrderBlotter, { tickets, onRemove: removeTicket, onClear: clearBlotter }),
+      ticket ? e(NexusQuickTicket, { holding: ticket, onClose: () => setTicket(null) }) : null
     );
 }
 
