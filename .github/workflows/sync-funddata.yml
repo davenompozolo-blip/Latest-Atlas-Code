@@ -1,9 +1,11 @@
 name: Atlas — FundsData SA NAV Sync
 
 on:
-  schedule:
-    # 4:00 PM SAST (14:00 UTC) weekdays — after JSE close
-    - cron: '0 14 * * 1-5'
+  # Schedule retired 2026-08-16 — superseded by the pg_cron job
+  # `sync_funddata_prices_daily`, which now runs at 14:30 UTC (16:30 SAST,
+  # after the JSE close). It previously ran at 05:00 UTC, nine hours before the
+  # close it was meant to capture; this workflow had the timing right and the
+  # pg_cron copy did not. Kept dispatchable for backfills.
   workflow_dispatch:
     inputs:
       mode:

@@ -8,29 +8,85 @@
  *
  * Everything is scoped under .tr-root and prefixed tr- so it cannot collide
  * with globals.css or nexus-flagship.css, both of which define their own --cyan.
+ *
+ * ── Restyle, 2026-08-16 ──────────────────────────────────────────────────────
+ * Presentation only. Same panes, same figures, same gates.
+ *
+ * TYPE. The module had grown fifteen distinct font sizes between 8.5px and
+ * 34px, most of them a half-pixel apart and none of them meaning anything.
+ * They are now seven steps, --tr-fs-1 through --tr-fs-7, and nothing sets a
+ * raw px size. Seven steps is enough to build a hierarchy and few enough that
+ * two things at the same level actually look like it.
+ *
+ * COLOUR. The accents were doing ambient work — cyan was on the tabs, the
+ * chips, the method rows, the stepper, the trigger badges, every `b` inside
+ * every note, and the annotation rule. When the accent is everywhere it
+ * stops being an accent, so the decision had nothing left to be loud with.
+ * Chroma is down a notch across all four accents, and the ambient uses are
+ * off the accent entirely and onto --tr-tx-2/3.
+ *
+ * WEIGHT. Three tiers, and the tier is what a rule is allowed to spend on:
+ *
+ *   1 DECISION   price, posture, the derived size, submit, the gate message.
+ *                Full accent, top of the ramp, room around it.
+ *   2 INPUT      side, method, stepper, order type, the claim fields.
+ *                Mid ramp, accent only on the active state.
+ *   3 EVIDENCE   book impact rows, the family table, notes, legends.
+ *                Bottom of the ramp, no accent, tighter leading.
+ *
+ * Pane B and the family table hold a lot of numbers and every one of them
+ * still renders. They are tier 3 because they are what you consult, not what
+ * you decide with — reading them should take a deliberate look down the page
+ * rather than compete with the posture badge for the same glance.
  */
 
 .tr-root {
   --tr-bg: #0a0d12;
   --tr-card: #10151d;
   --tr-card-2: #141a24;
-  --tr-cyan: #3ad6e0;
-  --tr-amber: #f0a830;
-  --tr-pos: #26d0a5;
-  --tr-neg: #ff5f52;
+
+  /* Accents, a notch down in chroma from the mockup's values. The hues are
+     unchanged; only the shout is. */
+  --tr-cyan: #48b9c4;
+  --tr-amber: #d99b3f;
+  --tr-pos: #35b691;
+  --tr-neg: #e0655c;
+
+  /* Tinted fills, so a state can read without the border doing all the work. */
+  --tr-cyan-w: rgba(72, 185, 196, .09);
+  --tr-amber-w: rgba(217, 155, 63, .09);
+  --tr-pos-w: rgba(53, 182, 145, .11);
+  --tr-neg-w: rgba(224, 101, 92, .10);
+
   --tr-line: rgba(255, 255, 255, .07);
   --tr-line-2: rgba(255, 255, 255, .12);
-  --tr-tx: #e6ecf2;
+  --tr-hair: rgba(255, 255, 255, .035);
+
+  --tr-tx: #dde5ed;
   --tr-tx-2: #8b98a8;
   --tr-tx-3: #5a6675;
+
   --tr-disp: 'Syne', system-ui, sans-serif;
   --tr-body: 'DM Sans', system-ui, sans-serif;
   --tr-mono: 'JetBrains Mono', ui-monospace, monospace;
 
+  /* The ramp. Nothing below sets a raw size. */
+  --tr-fs-1: 9px;       /* all-caps labels, table headers, badges */
+  --tr-fs-2: 10.5px;    /* meta, chips, legends */
+  --tr-fs-3: 11.5px;    /* notes, secondary tables */
+  --tr-fs-4: 12.5px;    /* body rows, the tension statement */
+  --tr-fs-5: 15px;      /* pane headings, submit, posture */
+  --tr-fs-6: 21px;      /* the three numbers, the stepper, the derived size */
+  --tr-fs-7: 30px;      /* the price */
+
+  /* Tracking, tied to the ramp — small caps need more, large needs less. */
+  --tr-tr-1: .17em;
+  --tr-tr-2: .12em;
+
   background: var(--tr-bg);
   color: var(--tr-tx);
   font-family: var(--tr-body);
-  font-size: 13px;
+  font-size: var(--tr-fs-4);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   min-height: 100%;
@@ -56,10 +112,11 @@
 }
 .tr-tabs button {
   background: none; border: none; border-bottom: 2px solid transparent;
-  color: var(--tr-tx-3); font-family: var(--tr-mono); font-size: 11px;
-  letter-spacing: .13em; padding: 11px 16px; cursor: pointer;
+  color: var(--tr-tx-3); font-family: var(--tr-mono); font-size: var(--tr-fs-2);
+  letter-spacing: var(--tr-tr-2); padding: 11px 16px; cursor: pointer;
 }
-.tr-tabs button.on { color: var(--tr-cyan); border-bottom-color: var(--tr-cyan); }
+.tr-tabs button:hover { color: var(--tr-tx-2); }
+.tr-tabs button.on { color: var(--tr-tx); border-bottom-color: var(--tr-cyan); }
 .tr-tabs button:focus-visible { outline: 2px solid var(--tr-cyan); outline-offset: -2px; }
 
 .tr-wrap { padding: 20px 22px 60px; max-width: 1500px; }
@@ -67,22 +124,26 @@
 /* ── primitives ───────────────────────────────────────────────────────────── */
 .tr-card { background: var(--tr-card); border: 1px solid var(--tr-line); border-radius: 5px; }
 .tr-ch {
-  font-family: var(--tr-mono); font-size: 9.5px; letter-spacing: .19em;
+  font-family: var(--tr-mono); font-size: var(--tr-fs-1); letter-spacing: var(--tr-tr-1);
   color: var(--tr-tx-3); padding: 11px 14px; border-bottom: 1px solid var(--tr-line);
 }
 .tr-cb { padding: 14px; }
+
+/* Tier 3. The evidence rows: tight, unaccented, legible on a deliberate look. */
 .tr-row {
   display: flex; justify-content: space-between; align-items: baseline;
-  padding: 6px 0; font-size: 12.5px;
+  padding: 5px 0; font-size: var(--tr-fs-4); line-height: 1.45;
 }
-.tr-row + .tr-row { border-top: 1px solid rgba(255, 255, 255, .035); }
+.tr-row + .tr-row { border-top: 1px solid var(--tr-hair); }
 .tr-row .tr-k { color: var(--tr-tx-2); }
 .tr-row .tr-v { font-family: var(--tr-mono); font-variant-numeric: tabular-nums; }
-.tr-delta { font-family: var(--tr-mono); font-size: 11px; padding: 0 5px; color: var(--tr-tx-3); }
-.tr-h2 { font-family: var(--tr-disp); font-size: 15px; font-weight: 700; letter-spacing: .01em; margin-bottom: 3px; }
-.tr-sub { color: var(--tr-tx-2); font-size: 12px; margin-bottom: 14px; max-width: 70ch; }
-.tr-note { font-size: 11.5px; color: var(--tr-tx-3); margin-top: 9px; line-height: 1.5; }
-.tr-note b { color: var(--tr-cyan); font-weight: 500; }
+.tr-delta { font-family: var(--tr-mono); font-size: var(--tr-fs-3); padding: 0 5px; color: var(--tr-tx-3); }
+.tr-h2 { font-family: var(--tr-disp); font-size: var(--tr-fs-5); font-weight: 700; letter-spacing: .01em; margin-bottom: 3px; }
+.tr-sub { color: var(--tr-tx-2); font-size: var(--tr-fs-4); margin-bottom: 14px; max-width: 70ch; }
+.tr-note { font-size: var(--tr-fs-3); color: var(--tr-tx-3); margin-top: 9px; line-height: 1.5; }
+/* Was cyan. A note is tier 3 and there are a dozen of them; emphasis inside
+   one is a weight change, not a colour change. */
+.tr-note b { color: var(--tr-tx-2); font-weight: 500; }
 
 /* ── universe funnel ──────────────────────────────────────────────────────── */
 .tr-ubar {
@@ -90,13 +151,13 @@
   border-radius: 5px; overflow: hidden; margin-bottom: 16px; background: var(--tr-line);
 }
 .tr-ustep { flex: 1; background: var(--tr-card); padding: 11px 14px; }
-.tr-ustep .tr-n { font-family: var(--tr-mono); font-size: 19px; letter-spacing: -.02em; }
+.tr-ustep .tr-n { font-family: var(--tr-mono); font-size: var(--tr-fs-6); letter-spacing: -.02em; }
 .tr-ustep .tr-l {
-  font-size: 10.5px; color: var(--tr-tx-3); font-family: var(--tr-mono);
+  font-size: var(--tr-fs-2); color: var(--tr-tx-3); font-family: var(--tr-mono);
   letter-spacing: .08em; margin-top: 2px;
 }
 .tr-ustep.drop .tr-n { color: var(--tr-tx-2); }
-.tr-ustep.gate { background: rgba(240, 168, 48, .07); }
+.tr-ustep.gate { background: var(--tr-amber-w); }
 .tr-ustep.final .tr-n { color: var(--tr-cyan); }
 
 .tr-ugrid { display: grid; grid-template-columns: 186px 1fr 268px; gap: 14px; align-items: start; }
@@ -104,16 +165,17 @@
 .tr-fgroup { margin-bottom: 15px; }
 .tr-fgroup:last-child { margin-bottom: 0; }
 .tr-fgroup h4 {
-  font-family: var(--tr-mono); font-size: 9.5px; letter-spacing: .17em;
+  font-family: var(--tr-mono); font-size: var(--tr-fs-1); letter-spacing: var(--tr-tr-1);
   color: var(--tr-tx-3); margin: 0 0 7px; font-weight: 400;
 }
 .tr-chips { display: flex; flex-wrap: wrap; gap: 4px; }
 .tr-chip {
-  font-family: var(--tr-mono); font-size: 10px; padding: 3px 7px;
+  font-family: var(--tr-mono); font-size: var(--tr-fs-2); padding: 4px 8px;
   border: 1px solid var(--tr-line-2); border-radius: 3px; color: var(--tr-tx-2);
   cursor: pointer; background: none;
 }
-.tr-chip.on { border-color: var(--tr-cyan); color: var(--tr-cyan); background: rgba(58, 214, 224, .08); }
+.tr-chip:hover { color: var(--tr-tx); border-color: var(--tr-line-2); }
+.tr-chip.on { border-color: var(--tr-cyan); color: var(--tr-cyan); background: var(--tr-cyan-w); }
 .tr-chip:focus-visible { outline: 2px solid var(--tr-cyan); outline-offset: 1px; }
 .tr-chip:disabled { opacity: .45; cursor: not-allowed; }
 
@@ -121,74 +183,85 @@
 .tr-legend {
   display: flex; flex-wrap: wrap; gap: 14px; padding: 9px 14px;
   border-top: 1px solid var(--tr-line); font-family: var(--tr-mono);
-  font-size: 10px; color: var(--tr-tx-3);
+  font-size: var(--tr-fs-2); color: var(--tr-tx-3);
 }
 .tr-lg { display: flex; align-items: center; gap: 5px; }
 .tr-dot { width: 7px; height: 7px; border-radius: 50%; }
 
-.tr-exc { font-size: 12px; }
+.tr-exc { font-size: var(--tr-fs-4); }
 .tr-exc .tr-e {
   display: flex; justify-content: space-between; padding: 6px 0;
-  border-top: 1px solid rgba(255, 255, 255, .035); gap: 8px;
+  border-top: 1px solid var(--tr-hair); gap: 8px;
 }
 .tr-exc .tr-e:first-child { border-top: none; }
 .tr-exc .tr-sym { font-family: var(--tr-mono); color: var(--tr-tx); cursor: pointer; }
-.tr-exc .tr-why { font-family: var(--tr-mono); font-size: 10.5px; color: var(--tr-amber); text-align: right; }
+.tr-exc .tr-why { font-family: var(--tr-mono); font-size: var(--tr-fs-2); color: var(--tr-amber); text-align: right; }
 .tr-exreasons {
   display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 9px;
   padding-bottom: 9px; border-bottom: 1px solid var(--tr-line);
 }
-.tr-exreasons .tr-badge { font-size: 8.5px; }
+.tr-exreasons .tr-badge { font-size: var(--tr-fs-1); }
 
 /* ── ticket ───────────────────────────────────────────────────────────────── */
 .tr-tgrid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; align-items: start; }
 /* flex-end rather than baseline: the identity strip makes the first column
    taller than the rest, and baseline alignment would pin the quote metadata to
    the ticker line instead of the price it belongs to. */
-.tr-quote { display: flex; align-items: flex-end; gap: 14px; margin-bottom: 14px; flex-wrap: wrap; }
+.tr-quote {
+  display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap;
+  margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--tr-line);
+}
 .tr-quote > div:first-child { display: flex; flex-direction: column; }
-.tr-quote .tr-px { font-family: var(--tr-mono); font-size: 34px; letter-spacing: -.03em; }
+/* Tier 1. The anchor of the page. */
+.tr-quote .tr-px {
+  font-family: var(--tr-mono); font-size: var(--tr-fs-7);
+  letter-spacing: -.03em; line-height: 1.1; margin-top: 2px;
+}
 
 /* Identity + period performance, between the name and the price. */
-.tr-istrip { margin: 3px 0 5px; }
+.tr-istrip { margin: 4px 0 6px; }
 .tr-imeta {
   display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px;
-  font-family: var(--tr-mono); font-size: 10px; letter-spacing: .07em;
+  font-family: var(--tr-mono); font-size: var(--tr-fs-2); letter-spacing: .07em;
   color: var(--tr-tx-2); text-transform: uppercase;
 }
 .tr-imeta span + span::before { content: '·'; margin-right: 8px; color: var(--tr-tx-3); }
-.tr-iperf { display: flex; gap: 14px; margin-top: 5px; }
+.tr-iperf { display: flex; gap: 16px; margin-top: 6px; }
 .tr-ip { display: flex; flex-direction: column; line-height: 1.25; }
 .tr-ip .tr-ipl {
-  font-family: var(--tr-mono); font-size: 8.5px; letter-spacing: .16em; color: var(--tr-tx-3);
+  font-family: var(--tr-mono); font-size: var(--tr-fs-1); letter-spacing: var(--tr-tr-1); color: var(--tr-tx-3);
 }
 .tr-ip .tr-ipv {
-  font-family: var(--tr-mono); font-size: 12px; font-variant-numeric: tabular-nums;
+  font-family: var(--tr-mono); font-size: var(--tr-fs-4); font-variant-numeric: tabular-nums;
 }
 
+/* Tier 2. Side is an input, so the active state carries the colour and the
+   inactive state stays quiet. */
 .tr-sidebtn { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
 .tr-sidebtn button {
-  font-family: var(--tr-mono); font-size: 12px; letter-spacing: .13em; padding: 9px;
+  font-family: var(--tr-mono); font-size: var(--tr-fs-4); letter-spacing: var(--tr-tr-2); padding: 10px;
   border-radius: 4px; border: 1px solid var(--tr-line-2); background: none;
-  color: var(--tr-tx-2); cursor: pointer;
+  color: var(--tr-tx-3); cursor: pointer;
 }
-.tr-sidebtn button.on.buy { border-color: var(--tr-pos); background: rgba(38, 208, 165, .13); color: var(--tr-pos); }
-.tr-sidebtn button.on.sell { border-color: var(--tr-neg); background: rgba(255, 95, 82, .13); color: var(--tr-neg); }
+.tr-sidebtn button:hover { color: var(--tr-tx-2); }
+.tr-sidebtn button.on.buy { border-color: var(--tr-pos); background: var(--tr-pos-w); color: var(--tr-pos); }
+.tr-sidebtn button.on.sell { border-color: var(--tr-neg); background: var(--tr-neg-w); color: var(--tr-neg); }
 .tr-sidebtn button:focus-visible { outline: 2px solid var(--tr-cyan); outline-offset: 1px; }
 
 .tr-lbl {
-  font-family: var(--tr-mono); font-size: 9.5px; letter-spacing: .17em;
-  color: var(--tr-tx-3); margin: 14px 0 6px;
+  font-family: var(--tr-mono); font-size: var(--tr-fs-1); letter-spacing: var(--tr-tr-1);
+  color: var(--tr-tx-3); margin: 16px 0 7px;
 }
 .tr-methods { display: flex; flex-direction: column; gap: 3px; }
 .tr-mth {
-  display: flex; align-items: center; gap: 8px; padding: 6px 9px;
+  display: flex; align-items: center; gap: 8px; padding: 7px 9px;
   border: 1px solid var(--tr-line); border-radius: 4px; font-family: var(--tr-mono);
-  font-size: 11px; color: var(--tr-tx-2); cursor: pointer; background: none;
+  font-size: var(--tr-fs-3); color: var(--tr-tx-2); cursor: pointer; background: none;
   text-align: left; width: 100%;
 }
-.tr-mth.on { border-color: var(--tr-cyan); color: var(--tr-tx); background: rgba(58, 214, 224, .06); }
-.tr-mth .tr-tag { margin-left: auto; font-size: 9px; color: var(--tr-tx-3); letter-spacing: .1em; }
+.tr-mth:hover { color: var(--tr-tx); }
+.tr-mth.on { border-color: var(--tr-cyan); color: var(--tr-tx); background: var(--tr-cyan-w); }
+.tr-mth .tr-tag { margin-left: auto; font-size: var(--tr-fs-1); color: var(--tr-tx-3); letter-spacing: .1em; }
 .tr-mth:focus-visible { outline: 2px solid var(--tr-cyan); outline-offset: 1px; }
 
 .tr-stepper {
@@ -197,91 +270,148 @@
 }
 .tr-stepper button {
   width: 40px; background: var(--tr-card-2); border: none; color: var(--tr-tx-2);
-  font-family: var(--tr-mono); font-size: 15px; cursor: pointer;
+  font-family: var(--tr-mono); font-size: var(--tr-fs-5); cursor: pointer;
 }
 .tr-stepper button:hover { color: var(--tr-cyan); }
 .tr-stepper button:focus-visible { outline: 2px solid var(--tr-cyan); outline-offset: -2px; }
 .tr-stepper .tr-val {
-  flex: 1; text-align: center; font-family: var(--tr-mono); font-size: 21px;
-  padding: 9px 0; color: var(--tr-cyan); background: transparent; border: none;
+  flex: 1; text-align: center; font-family: var(--tr-mono); font-size: var(--tr-fs-6);
+  padding: 9px 0; color: var(--tr-tx); background: transparent; border: none;
   font-variant-numeric: tabular-nums;
 }
 .tr-stepper .tr-val:focus-visible { outline: 2px solid var(--tr-cyan); outline-offset: -2px; }
-.tr-stepper .tr-unit { font-size: 12px; color: var(--tr-tx-3); }
+.tr-stepper .tr-unit { font-size: var(--tr-fs-4); color: var(--tr-tx-3); }
 
 .tr-derived {
-  margin-top: 11px; border: 1px dashed var(--tr-line-2); border-radius: 4px;
-  padding: 10px 12px; background: rgba(255, 255, 255, .012);
+  margin-top: 12px; border: 1px solid var(--tr-line); border-radius: 4px;
+  padding: 4px 12px 10px; background: rgba(255, 255, 255, .015);
 }
-.tr-derived .tr-dr { display: flex; justify-content: space-between; padding: 4px 0; font-size: 12px; gap: 10px; }
-.tr-derived .tr-dr .tr-k { color: var(--tr-tx-3); font-size: 11px; }
+.tr-derived .tr-dr {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: 5px 0; font-size: var(--tr-fs-4); gap: 10px;
+}
+.tr-derived .tr-dr + .tr-dr { border-top: 1px solid var(--tr-hair); }
+.tr-derived .tr-dr .tr-k { color: var(--tr-tx-3); font-size: var(--tr-fs-3); }
 .tr-derived .tr-dr .tr-v { font-family: var(--tr-mono); }
+/* Tier 1. The size IS the decision and it was reading as one row among six.
+   It keeps its place in the order and takes the weight instead: banded off
+   above and below, and the only figure in the block on the accent. */
+.tr-derived .tr-dr.hero {
+  border-top: 1px solid var(--tr-line) !important;
+  padding: 9px 0 10px; margin-top: 2px; align-items: center;
+}
+/* The band closes on the next row's own top border rather than a second one
+   of its own, so the hero sits in a single hairline box. */
+.tr-derived .tr-dr.hero + .tr-dr { border-top-color: var(--tr-line); margin-top: 2px; }
+.tr-derived .tr-dr.hero .tr-k {
+  font-family: var(--tr-mono); font-size: var(--tr-fs-1);
+  letter-spacing: var(--tr-tr-1); color: var(--tr-tx-3);
+}
+.tr-derived .tr-dr.hero .tr-v {
+  font-size: var(--tr-fs-6); letter-spacing: -.02em; color: var(--tr-cyan);
+  font-variant-numeric: tabular-nums; line-height: 1.1;
+}
 
+/* Tier 1. The gate. */
 .tr-submit {
-  width: 100%; margin-top: 13px; padding: 12px; border-radius: 4px;
-  font-family: var(--tr-mono); font-size: 13px; letter-spacing: .13em;
-  background: rgba(38, 208, 165, .13); border: 1px solid var(--tr-pos);
+  width: 100%; margin-top: 14px; padding: 13px; border-radius: 4px;
+  font-family: var(--tr-mono); font-size: var(--tr-fs-5); letter-spacing: var(--tr-tr-2);
+  background: var(--tr-pos-w); border: 1px solid var(--tr-pos);
   color: var(--tr-pos); cursor: pointer;
 }
+.tr-submit:hover:not(:disabled) { background: rgba(53, 182, 145, .18); }
+/* A blocked gate is not a dimmed button you skim past. It keeps its size and
+   states plainly that it will not go. */
 .tr-submit:disabled {
-  background: rgba(255, 255, 255, .03); border-color: var(--tr-line-2);
+  background: rgba(255, 255, 255, .02); border-color: var(--tr-line-2);
   color: var(--tr-tx-3); cursor: not-allowed;
 }
 .tr-submit:focus-visible { outline: 2px solid var(--tr-cyan); outline-offset: 2px; }
-.tr-submit.alt { background: rgba(58, 214, 224, .1); border-color: var(--tr-cyan); color: var(--tr-cyan); }
-.tr-gatemsg { margin-top: 8px; font-size: 11.5px; color: var(--tr-amber); font-family: var(--tr-mono); }
-.tr-okmsg { margin-top: 8px; font-size: 11.5px; color: var(--tr-pos); font-family: var(--tr-mono); }
+.tr-submit.alt {
+  background: transparent; border-color: var(--tr-line-2); color: var(--tr-tx-2);
+  font-size: var(--tr-fs-3); padding: 9px;
+}
+.tr-submit.alt:hover:not(:disabled) { border-color: var(--tr-cyan); color: var(--tr-cyan); background: var(--tr-cyan-w); }
+
+/* Tier 1. Why it will not go — same weight as the button it belongs to. */
+.tr-gatemsg {
+  margin-top: 9px; padding: 8px 10px; border-radius: 4px;
+  font-size: var(--tr-fs-3); color: var(--tr-amber); font-family: var(--tr-mono);
+  line-height: 1.45; background: var(--tr-amber-w);
+  border-left: 2px solid var(--tr-amber);
+}
+.tr-okmsg {
+  margin-top: 9px; padding: 8px 10px; border-radius: 4px;
+  font-size: var(--tr-fs-3); color: var(--tr-pos); font-family: var(--tr-mono);
+  line-height: 1.45; background: var(--tr-pos-w);
+  border-left: 2px solid var(--tr-pos);
+}
 
 .tr-claim textarea {
   width: 100%; background: var(--tr-card-2); border: 1px solid var(--tr-line-2);
   border-radius: 4px; color: var(--tr-tx); font-family: var(--tr-body);
-  font-size: 12px; padding: 8px 10px; resize: vertical; min-height: 44px;
+  font-size: var(--tr-fs-4); padding: 8px 10px; resize: vertical; min-height: 44px;
+  line-height: 1.5;
 }
 .tr-claim textarea:focus { outline: none; border-color: var(--tr-cyan); }
+.tr-claim textarea::placeholder { color: var(--tr-tx-3); }
 .tr-claim .tr-cl {
-  font-family: var(--tr-mono); font-size: 9.5px; letter-spacing: .15em;
-  color: var(--tr-tx-3); margin: 11px 0 5px;
+  font-family: var(--tr-mono); font-size: var(--tr-fs-1); letter-spacing: var(--tr-tr-1);
+  color: var(--tr-tx-3); margin: 12px 0 6px;
 }
 
 /* ── coherence ────────────────────────────────────────────────────────────── */
 .tr-three {
   display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px;
   background: var(--tr-line); border: 1px solid var(--tr-line);
-  border-radius: 4px; overflow: hidden; margin-bottom: 13px;
+  border-radius: 4px; overflow: hidden; margin-bottom: 12px;
 }
 .tr-three > div { background: var(--tr-card-2); padding: 10px 11px; }
-.tr-three .tr-n { font-family: var(--tr-mono); font-size: 22px; letter-spacing: -.02em; }
+.tr-three .tr-n { font-family: var(--tr-mono); font-size: var(--tr-fs-6); letter-spacing: -.02em; line-height: 1.15; }
 .tr-three .tr-l {
-  font-family: var(--tr-mono); font-size: 9px; letter-spacing: .15em;
-  color: var(--tr-tx-3); margin-top: 1px;
+  font-family: var(--tr-mono); font-size: var(--tr-fs-1); letter-spacing: var(--tr-tr-1);
+  color: var(--tr-tx-3); margin-top: 2px;
 }
+
+/* Tier 1. The posture is the pane's conclusion and was reading as a caption.
+   It now carries an accent rule, the tinted field and a step up the ramp. */
 .tr-posture {
-  display: flex; align-items: center; gap: 9px; padding: 9px 12px; border-radius: 4px;
-  background: rgba(240, 168, 48, .09); border: 1px solid rgba(240, 168, 48, .3); margin-bottom: 13px;
+  display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 4px;
+  background: var(--tr-amber-w); border: 1px solid rgba(217, 155, 63, .32);
+  border-left: 3px solid var(--tr-amber); margin-bottom: 12px;
 }
-.tr-posture .tr-p { font-family: var(--tr-mono); font-size: 12px; letter-spacing: .13em; color: var(--tr-amber); }
-.tr-posture .tr-m { margin-left: auto; font-family: var(--tr-mono); font-size: 11px; color: var(--tr-tx-2); }
-.tr-posture.act { background: rgba(38, 208, 165, .09); border-color: rgba(38, 208, 165, .3); }
+.tr-posture .tr-p {
+  font-family: var(--tr-mono); font-size: var(--tr-fs-5); letter-spacing: var(--tr-tr-2);
+  color: var(--tr-amber); line-height: 1.2;
+}
+.tr-posture .tr-m {
+  margin-left: auto; font-family: var(--tr-mono); font-size: var(--tr-fs-3);
+  color: var(--tr-tx-2); white-space: nowrap;
+}
+.tr-posture.act { background: var(--tr-pos-w); border-color: rgba(53, 182, 145, .32); border-left-color: var(--tr-pos); }
 .tr-posture.act .tr-p { color: var(--tr-pos); }
-.tr-posture.stand_down { background: rgba(255, 95, 82, .09); border-color: rgba(255, 95, 82, .3); }
+.tr-posture.stand_down { background: var(--tr-neg-w); border-color: rgba(224, 101, 92, .32); border-left-color: var(--tr-neg); }
 .tr-posture.stand_down .tr-p { color: var(--tr-neg); }
 
 .tr-tension {
-  font-size: 12.5px; line-height: 1.62; color: var(--tr-tx); padding: 12px 0;
+  font-size: var(--tr-fs-4); line-height: 1.65; color: var(--tr-tx); padding: 13px 0;
   border-top: 1px solid var(--tr-line); border-bottom: 1px solid var(--tr-line);
   margin-bottom: 12px; font-family: var(--tr-body);
 }
+/* The tension statement is prose and the emphasis is on the reading it cites.
+   Kept accented — it is the one place a colour change earns its keep. */
 .tr-tension b { color: var(--tr-cyan); font-weight: 500; }
 
-.tr-ftable { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+/* Tier 3. */
+.tr-ftable { width: 100%; border-collapse: collapse; font-size: var(--tr-fs-3); }
 .tr-ftable th {
-  font-family: var(--tr-mono); font-size: 9px; letter-spacing: .13em; color: var(--tr-tx-3);
-  text-align: right; padding: 5px 4px; font-weight: 400; border-bottom: 1px solid var(--tr-line);
+  font-family: var(--tr-mono); font-size: var(--tr-fs-1); letter-spacing: var(--tr-tr-2); color: var(--tr-tx-3);
+  text-align: right; padding: 6px 4px; font-weight: 400; border-bottom: 1px solid var(--tr-line);
 }
 .tr-ftable th:first-child { text-align: left; }
 .tr-ftable td {
   padding: 5px 4px; text-align: right; font-family: var(--tr-mono);
-  border-bottom: 1px solid rgba(255, 255, 255, .035);
+  border-bottom: 1px solid var(--tr-hair);
 }
 .tr-ftable td:first-child { text-align: left; font-family: var(--tr-body); color: var(--tr-tx-2); }
 .tr-ftable tr.clickable { cursor: pointer; }
@@ -289,29 +419,29 @@
 
 .tr-trig {
   display: flex; gap: 9px; padding: 9px 0;
-  border-top: 1px solid rgba(255, 255, 255, .035); font-size: 12px;
+  border-top: 1px solid var(--tr-hair); font-size: var(--tr-fs-4);
 }
 .tr-trig .tr-st {
-  font-family: var(--tr-mono); font-size: 9px; letter-spacing: .13em; color: var(--tr-cyan);
-  border: 1px solid rgba(58, 214, 224, .35); border-radius: 2px; padding: 1px 5px;
+  font-family: var(--tr-mono); font-size: var(--tr-fs-1); letter-spacing: var(--tr-tr-2); color: var(--tr-tx-2);
+  border: 1px solid var(--tr-line-2); border-radius: 2px; padding: 2px 6px;
   height: fit-content; white-space: nowrap;
 }
 .tr-trig .tr-tx .tr-w { color: var(--tr-tx); }
-.tr-trig .tr-tx .tr-s { color: var(--tr-tx-3); font-size: 11px; }
+.tr-trig .tr-tx .tr-s { color: var(--tr-tx-3); font-size: var(--tr-fs-3); }
 
 .tr-ann {
-  border-left: 2px solid var(--tr-cyan); padding: 9px 0 9px 12px; margin: 16px 0 4px;
-  font-size: 12px; color: var(--tr-tx-2); max-width: 78ch;
+  border-left: 2px solid var(--tr-cyan); padding: 9px 0 9px 12px; margin: 18px 0 4px;
+  font-size: var(--tr-fs-4); color: var(--tr-tx-2); max-width: 78ch; line-height: 1.55;
 }
 .tr-ann b {
   color: var(--tr-cyan); font-weight: 500; font-family: var(--tr-mono);
-  font-size: 11px; letter-spacing: .1em; display: block; margin-bottom: 3px;
+  font-size: var(--tr-fs-3); letter-spacing: .1em; display: block; margin-bottom: 4px;
 }
 
 /* ── table view / blotter ─────────────────────────────────────────────────── */
-.tr-table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+.tr-table { width: 100%; border-collapse: collapse; font-size: var(--tr-fs-3); }
 .tr-table th {
-  font-family: var(--tr-mono); font-size: 9px; letter-spacing: .13em; color: var(--tr-tx-3);
+  font-family: var(--tr-mono); font-size: var(--tr-fs-1); letter-spacing: var(--tr-tr-2); color: var(--tr-tx-3);
   text-align: right; padding: 7px 8px; font-weight: 400;
   border-bottom: 1px solid var(--tr-line); white-space: nowrap;
   position: sticky; top: 0; background: var(--tr-card); cursor: pointer;
@@ -319,26 +449,29 @@
 .tr-table th:first-child, .tr-table td:first-child { text-align: left; }
 .tr-table td {
   padding: 6px 8px; text-align: right; font-family: var(--tr-mono);
-  border-bottom: 1px solid rgba(255, 255, 255, .035); white-space: nowrap;
+  border-bottom: 1px solid var(--tr-hair); white-space: nowrap;
 }
 .tr-table tbody tr:hover td { background: rgba(255, 255, 255, .025); cursor: pointer; }
 .tr-table td.name { font-family: var(--tr-body); color: var(--tr-tx); }
 .tr-scroll { max-height: 560px; overflow: auto; }
 
 .tr-badge {
-  font-family: var(--tr-mono); font-size: 9px; letter-spacing: .1em; padding: 1px 5px;
+  font-family: var(--tr-mono); font-size: var(--tr-fs-1); letter-spacing: .1em; padding: 2px 6px;
   border-radius: 2px; border: 1px solid var(--tr-line-2); color: var(--tr-tx-3);
 }
-.tr-badge.held { border-color: rgba(58, 214, 224, .5); color: var(--tr-cyan); }
-.tr-badge.pos { border-color: rgba(38, 208, 165, .5); color: var(--tr-pos); }
-.tr-badge.neg { border-color: rgba(255, 95, 82, .5); color: var(--tr-neg); }
-.tr-badge.warn { border-color: rgba(240, 168, 48, .5); color: var(--tr-amber); }
+.tr-badge.held { border-color: rgba(72, 185, 196, .5); color: var(--tr-cyan); }
+.tr-badge.pos { border-color: rgba(53, 182, 145, .5); color: var(--tr-pos); }
+.tr-badge.neg { border-color: rgba(224, 101, 92, .5); color: var(--tr-neg); }
+.tr-badge.warn { border-color: rgba(217, 155, 63, .5); color: var(--tr-amber); }
 
 .tr-empty {
   padding: 28px 14px; text-align: center; color: var(--tr-tx-3);
-  font-size: 12px; line-height: 1.6;
+  font-size: var(--tr-fs-4); line-height: 1.6;
 }
-.tr-empty b { display: block; color: var(--tr-amber); font-family: var(--tr-mono); font-size: 11px; letter-spacing: .1em; margin-bottom: 6px; }
+.tr-empty b {
+  display: block; color: var(--tr-amber); font-family: var(--tr-mono);
+  font-size: var(--tr-fs-3); letter-spacing: .1em; margin-bottom: 7px;
+}
 
 .tr-bar { display: inline-block; height: 3px; border-radius: 2px; vertical-align: middle; }
 

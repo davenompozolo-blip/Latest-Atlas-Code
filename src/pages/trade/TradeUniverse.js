@@ -94,9 +94,9 @@ export function TradeUniverse({ universe, onOpenTicket, loading }) {
                     : e(TableView, { rows: filtered, onOpenTicket, rankBy, setRankBy, axes, view }),
 
                 view !== 'table' ? e('div', { className: 'tr-legend' },
-                    e('span', { className: 'tr-lg' }, e('span', { className: 'tr-dot', style: { background: '#3ad6e0' } }), 'HELD'),
-                    e('span', { className: 'tr-lg' }, e('span', { className: 'tr-dot', style: { background: '#26d0a5' } }), 'NET POSITIVE COHERENCE'),
-                    e('span', { className: 'tr-lg' }, e('span', { className: 'tr-dot', style: { background: '#ff5f52' } }), 'NET NEGATIVE'),
+                    e('span', { className: 'tr-lg' }, e('span', { className: 'tr-dot', style: { background: '#48b9c4' } }), 'HELD'),
+                    e('span', { className: 'tr-lg' }, e('span', { className: 'tr-dot', style: { background: '#35b691' } }), 'NET POSITIVE COHERENCE'),
+                    e('span', { className: 'tr-lg' }, e('span', { className: 'tr-dot', style: { background: '#e0655c' } }), 'NET NEGATIVE'),
                     e('span', { className: 'tr-lg' }, e('span', { className: 'tr-dot', style: { background: '#8b98a8' } }), 'NEUTRAL / UNSCORED'),
                     e('span', { className: 'tr-lg' }, 'RADIUS = LIQUIDITY'),
                     e('span', { className: 'tr-lg' }, 'RING = IN BOOK')) : null),
@@ -194,7 +194,7 @@ function AxesPanel({ axes, sectors, toggle, setAxes }) {
 
 function fillFor(r) {
     if (r.net == null) return '#8b98a8';
-    return r.net > 0.05 ? '#26d0a5' : r.net < -0.05 ? '#ff5f52' : '#8b98a8';
+    return r.net > 0.05 ? '#35b691' : r.net < -0.05 ? '#e0655c' : '#8b98a8';
 }
 
 function radiusFor(r) {
@@ -220,8 +220,8 @@ function FieldView({ rows, onOpenTicket, axes, rankBy, view }) {
             },
                 e('defs', null,
                     e('linearGradient', { id: 'tr-qg', x1: '0', y1: '1', x2: '1', y2: '0' },
-                        e('stop', { offset: '0', stopColor: '#3ad6e0', stopOpacity: '0' }),
-                        e('stop', { offset: '1', stopColor: '#3ad6e0', stopOpacity: '.06' }))),
+                        e('stop', { offset: '0', stopColor: '#48b9c4', stopOpacity: '0' }),
+                        e('stop', { offset: '1', stopColor: '#48b9c4', stopOpacity: '.06' }))),
                 e('rect', { x: 310, y: 40, width: 270, height: 170, fill: 'url(#tr-qg)' }),
                 e('g', { stroke: 'rgba(255,255,255,.055)' },
                     e('line', { x1: L, y1: T, x2: L, y2: B }),
@@ -258,12 +258,12 @@ function FieldView({ rows, onOpenTicket, axes, rankBy, view }) {
                     e('g', { key: r.symbol, className: 'tr-node', onClick: () => onOpenTicket(r, { view, rankBy, axes }) },
                         e('circle', {
                             cx: x(r.momentumPct), cy: y(r.volPct), r: radiusFor(r) + 2,
-                            fill: '#3ad6e0', fillOpacity: 0.18, stroke: '#3ad6e0', strokeWidth: 1.5,
+                            fill: '#48b9c4', fillOpacity: 0.18, stroke: '#48b9c4', strokeWidth: 1.5,
                         },
                             e('title', null, `${r.symbol} · held ${fNum(r.heldWeightPct, 2)}% of equity`)),
                         e('text', {
                             x: x(r.momentumPct), y: y(r.volPct) - 12, fontFamily: 'JetBrains Mono',
-                            fontSize: '10', fill: '#3ad6e0', textAnchor: 'middle',
+                            fontSize: '10', fill: '#48b9c4', textAnchor: 'middle',
                         }, r.symbol))))));
 }
 
@@ -330,13 +330,13 @@ function MapView({ rows, onOpenTicket, axes, rankBy, view }) {
                             x: c.x, y: c.y, width: Math.max(c.w - 1, 0), height: Math.max(c.h - 1, 0),
                             fill: fillFor(c.row),
                             fillOpacity: c.row.net == null ? 0.12 : 0.14 + Math.min(Math.abs(c.row.net), 1) * 0.5,
-                            stroke: c.row.bookState === 'held' ? '#3ad6e0' : 'rgba(255,255,255,.07)',
+                            stroke: c.row.bookState === 'held' ? '#48b9c4' : 'rgba(255,255,255,.07)',
                             strokeWidth: c.row.bookState === 'held' ? 1.4 : 0.6,
                         }, e('title', null, `${c.key} · ${t.key} · net ${fSigned(c.row.net)} · ADV ${fLarge(c.row.advUsd)}`)),
                         c.w > 34 && c.h > 16
                             ? e('text', {
                                 x: c.x + 4, y: c.y + 13, fontFamily: 'JetBrains Mono', fontSize: '9',
-                                fill: c.row.bookState === 'held' ? '#3ad6e0' : '#e6ecf2',
+                                fill: c.row.bookState === 'held' ? '#48b9c4' : '#dde5ed',
                             }, c.key) : null)),
                     t.w > 60 && t.h > 26
                         ? e('text', {
@@ -370,7 +370,7 @@ function TableView({ rows, onOpenTicket, rankBy, setRankBy, axes, view }) {
                     key: c.key,
                     onClick: c.sortKey ? () => setRankBy(c.sortKey) : null,
                     title: c.sortKey ? 'Rank by ' + c.label : null,
-                    style: { color: c.sortKey === rankBy ? '#3ad6e0' : null },
+                    style: { color: c.sortKey === rankBy ? '#48b9c4' : null },
                 }, c.label)))),
             e('tbody', null, rows.map((r) =>
                 e('tr', { key: r.symbol, onClick: () => onOpenTicket(r, { view, rankBy, axes }) },

@@ -4,7 +4,7 @@
 // ============================================================
 
 import { COLUMNS, DEFAULT_VISIBLE, columnGroups, premiumBand } from './nexusColumns.js';
-import { squarify } from './NexusSpineTreemap.js';
+import { squarify, moveFill, CLIP_PCT } from './NexusSpineTreemap.js';
 
 let fails = 0;
 const check = (name, got, want) => {
@@ -85,6 +85,38 @@ ok('no zero-size tiles', tiles.every(t => t.w > 0 && t.h > 0));
 // this is not a pie. The smallest slivers are allowed to be elongated.
 const biggest = tiles.slice().sort((a, b) => (b.w * b.h) - (a.w * a.h)).slice(0, 3);
 ok('the three largest tiles are within 2.5:1', biggest.every(t => Math.max(t.w / t.h, t.h / t.w) < 2.5));
+
+// ── Treemap colour ramp ───────────────────────────────────────
+// Matched to the NAME IMPACT heatmap. Three properties carry the design:
+const rgbaOf = (s) => s.match(/[\d.]+/g).map(Number);
+
+// 1. A dead zone at zero, so a bucket that barely moved reads as neutral
+//    ground rather than faint green. Without it every tile is tinted.
+check('zero move is slate',        rgbaOf(moveFill(0)).slice(0, 3), [15, 23, 42]);
+check('tiny +move still slate',    rgbaOf(moveFill(0.05)).slice(0, 3), [15, 23, 42]);
+check('tiny -move still slate',    rgbaOf(moveFill(-0.05)).slice(0, 3), [15, 23, 42]);
+
+// 2. Direction is never ambiguous: up is green, down is red.
+ok('a strong gain is green', (() => { const c = rgbaOf(moveFill(CLIP_PCT)); return c[1] > c[0]; })());
+ok('a strong loss is red',   (() => { const c = rgbaOf(moveFill(-CLIP_PCT)); return c[0] > c[1]; })());
+
+// 3. Clipping is saturating, not wrapping — a bucket past the ramp must not
+//    come back round and read as the opposite sign.
+check('beyond +clip is pinned', moveFill(CLIP_PCT * 12), moveFill(CLIP_PCT));
+check('beyond -clip is pinned', moveFill(-CLIP_PCT * 12), moveFill(-CLIP_PCT));
+check('missing move is neutral', moveFill(null), 'rgba(15,23,42,0.55)');
+check('NaN move is neutral',     moveFill(NaN), 'rgba(15,23,42,0.55)');
+
+// 4. Dominance grows with magnitude. The green channel alone is NOT monotone
+//    across the ramp — deep red (28) carries more green than slate (23) — so
+//    the property that actually holds is that the winning channel's lead over
+//    the other widens as the move gets bigger.
+const lead = (v) => { const c = rgbaOf(moveFill(v)); return v < 0 ? c[0] - c[1] : c[1] - c[0]; };
+const losses = [-0.5, -1.5, -CLIP_PCT].map(lead);
+const gains = [0.5, 1.5, CLIP_PCT].map(lead);
+ok('red lead widens as losses deepen', losses.every((d, i) => i === 0 || d > losses[i - 1]));
+ok('green lead widens as gains build', gains.every((d, i) => i === 0 || d > gains[i - 1]));
+ok('every non-zero move picks a side', [...losses, ...gains].every((d) => d > 0));
 
 // ── Degenerate inputs ─────────────────────────────────────────
 check('no rows → no tiles',        squarify([], W, H), []);

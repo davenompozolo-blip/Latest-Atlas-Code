@@ -41,7 +41,7 @@ async function sbInsert(base: string, key: string, table: string, row: Record<st
 }
 async function sbPatch(base: string, key: string, table: string, id: number, patch: Record<string, unknown>) {
   const r = await fetch(base + '/rest/v1/' + table + '?id=eq.' + id, { method: 'PATCH', headers: { apikey: key, Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' }, body: JSON.stringify(patch) })
-  if (!r.ok) { const t = await r.text().catch(() => ''); console.warn('sync_log patch failed', r.status, t.slice(0, 100)) }
+  if (!r.ok) { const t = await r.text().catch(() => ''); console.error('sync_log patch FAILED', r.status, t.slice(0, 300)) }
 }
 
 // ── HTML parser ──────────────────────────────────────────────────────────────
@@ -224,12 +224,15 @@ Deno.serve(async (req: Request) => {
 
   async function finishLog(status: string, pricesUpserted: number, errorMsg?: string, details?: unknown) {
     if (logId == null) return
-    await sbPatch(base!, key!, 'sync_log', logId, { status, finished_at: new Date().toISOString(), prices_upserted: pricesUpserted, duration_ms: Date.now() - new Date(startedAt).getTime(), error_message: errorMsg ?? null, details: details ?? null })
+    // duration_ms is GENERATED ALWAYS from (finished_at - started_at). Sending
+    // it made PostgREST reject the entire PATCH with 428C9, which is why every
+    // run since 2026-06-05 left its row open in 'running'.
+    await sbPatch(base!, key!, 'sync_log', logId, { status, finished_at: new Date().toISOString(), prices_upserted: pricesUpserted, error_message: errorMsg ?? null, details: details ?? null })
   }
 
   try {
     if (!dryRun && !debugMode && !rawDebug && await cacheIsFresh(base, key)) {
-      await finishLog('skipped_cache', 0, undefined, { reason: 'cache_fresh' })
+      await finishLog('skipped', 0, undefined, { reason: 'cache_fresh' })
       return new Response(JSON.stringify({ status: 'skipped', reason: 'cache_fresh' }), { headers: { 'Content-Type': 'application/json' } })
     }
 
@@ -246,21 +249,21 @@ Deno.serve(async (req: Request) => {
     } catch (e) {
       clearTimeout(timer)
       const msg = e instanceof Error ? e.message : String(e)
-      await finishLog('failed', 0, msg)
+      await finishLog('error', 0, msg)
       return new Response(JSON.stringify({ error: msg }), { status: 502, headers: { 'Content-Type': 'application/json' } })
     }
 
     // Debug modes
     if (debugMode || rawDebug) {
       const info = htmlDebugInfo(html, rawDebug)
-      await finishLog('debug', 0)
+      await finishLog('skipped', 0, undefined, { reason: 'debug_mode' })
       return new Response(JSON.stringify({ debug: true, ...info }), { headers: { 'Content-Type': 'application/json' } })
     }
 
     // Parse
     const parsed = parseLargestTable(html)
     if (!parsed.length) {
-      await finishLog('failed', 0, 'No table rows parsed', { html_preview: html.slice(0, 500) })
+      await finishLog('error', 0, 'No table rows parsed', { html_preview: html.slice(0, 500) })
       return new Response(JSON.stringify({ error: 'No rows parsed' }), { status: 422, headers: { 'Content-Type': 'application/json' } })
     }
     console.log('Parsed', parsed.length, 'candidate rows')
@@ -273,7 +276,7 @@ Deno.serve(async (req: Request) => {
     }
 
     if (!upsertRows.length) {
-      await finishLog('failed', 0, 'No valid rows after mapping', { sample_row: parsed[0] })
+      await finishLog('error', 0, 'No valid rows after mapping', { sample_row: parsed[0] })
       return new Response(JSON.stringify({ error: 'No valid rows', sample_row: parsed[0] }), { status: 422, headers: { 'Content-Type': 'application/json' } })
     }
 
@@ -281,20 +284,24 @@ Deno.serve(async (req: Request) => {
 
     let inserted = 0
     if (!dryRun) {
+      // on_conflict names the unique constraint explicitly. Without it
+      // PostgREST resolves merge-duplicates against the primary key only, and
+      // a re-run on a price_date already present fails with 23505 instead of
+      // updating - which is why every repeat run returned HTTP 500.
       for (let i = 0; i < upsertRows.length; i += BATCH_SIZE) {
-        await sbPost(base, key, '/rest/v1/fund_prices_raw', upsertRows.slice(i, i + BATCH_SIZE))
+        await sbPost(base, key, '/rest/v1/fund_prices_raw?on_conflict=source,fund_code,price_date', upsertRows.slice(i, i + BATCH_SIZE))
       }
       inserted = upsertRows.length
     } else {
       inserted = upsertRows.length
     }
 
-    await finishLog('succeeded', inserted, undefined, { parsed_rows: parsed.length, valid_rows: upsertRows.length, dry_run: dryRun, price_date: today, provider_url: PROVIDER_URL })
+    await finishLog('success', inserted, undefined, { parsed_rows: parsed.length, valid_rows: upsertRows.length, dry_run: dryRun, price_date: today, provider_url: PROVIDER_URL })
     return new Response(JSON.stringify({ status: 'ok', parsed_rows: parsed.length, upserted: inserted, dry_run: dryRun }), { headers: { 'Content-Type': 'application/json' } })
 
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    await finishLog('failed', 0, msg).catch(() => {})
+    await finishLog('error', 0, msg).catch(() => {})
     return new Response(JSON.stringify({ error: msg }), { status: 500, headers: { 'Content-Type': 'application/json' } })
   }
 })

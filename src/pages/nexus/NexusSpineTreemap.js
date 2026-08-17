@@ -22,17 +22,48 @@ import React from 'react';
 const e = React.createElement;
 const { useState } = React;
 
-/** Move → colour. Same scale as the table's tone classes, as a gradient. */
-function moveFill(movePct, fragility) {
-    if (movePct == null || !isFinite(movePct)) return 'rgba(100,116,139,0.35)';
-    const m = Math.max(-3, Math.min(3, movePct)) / 3;   // clamp at ±3%
-    if (fragility) {
-        // The fragility cluster keeps its purple identity from the bar view.
-        const a = 0.35 + Math.abs(m) * 0.4;
-        return `rgba(167,139,250,${a.toFixed(3)})`;
+// ── Colour ────────────────────────────────────────────────────
+// The exact ramp the NAME IMPACT heatmap uses (NexusRealized.js), so the two
+// surfaces read as one system. Three things make that language work and the
+// first version of this treemap had none of them:
+//
+//   Deep, desaturated fills rather than bright ones. A saturated green block
+//   at 30% of the book dominates a page whose every other element is dark.
+//
+//   A DEAD ZONE at zero. The stops sit at 0.48 and 0.52, both slate, so a
+//   bucket that barely moved reads as neutral ground rather than faint green.
+//   Without it every tile is tinted and nothing stands out.
+//
+//   Colour carries ONE variable. The old version hijacked the fill to purple
+//   for fragility clusters, which meant a tile's colour answered two different
+//   questions. Fragility is now a glyph on the label; colour is only the move.
+export const CLIP_PCT = 3;
+
+const RAMP = [
+    [0.00, [185, 28, 28], 0.92],
+    [0.35, [127, 29, 29], 0.70],
+    [0.48, [15, 23, 42], 0.85],
+    [0.52, [15, 23, 42], 0.85],
+    [0.65, [6, 78, 59], 0.70],
+    [1.00, [5, 150, 105], 0.92],
+];
+
+/** Move → colour, piecewise-linear across the heatmap's stops. */
+export function moveFill(movePct) {
+    if (movePct == null || !isFinite(movePct)) return 'rgba(15,23,42,0.55)';
+    const clamped = Math.max(-CLIP_PCT, Math.min(CLIP_PCT, movePct));
+    const t = (clamped + CLIP_PCT) / (2 * CLIP_PCT);   // 0..1
+
+    let lo = RAMP[0], hi = RAMP[RAMP.length - 1];
+    for (let i = 0; i < RAMP.length - 1; i++) {
+        if (t >= RAMP[i][0] && t <= RAMP[i + 1][0]) { lo = RAMP[i]; hi = RAMP[i + 1]; break; }
     }
-    if (m >= 0) return `rgba(34,197,94,${(0.18 + m * 0.55).toFixed(3)})`;
-    return `rgba(239,68,68,${(0.18 + Math.abs(m) * 0.55).toFixed(3)})`;
+    const span = hi[0] - lo[0];
+    const k = span === 0 ? 0 : (t - lo[0]) / span;
+    const ch = (a, b) => Math.round(a + (b - a) * k);
+    const rgb = [ch(lo[1][0], hi[1][0]), ch(lo[1][1], hi[1][1]), ch(lo[1][2], hi[1][2])];
+    const alpha = lo[2] + (hi[2] - lo[2]) * k;
+    return `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${alpha.toFixed(3)})`;
 }
 
 /**
@@ -124,49 +155,60 @@ export function SpineTreemap({ rows, dimension, unmappedWeight }) {
         },
             tiles.map((t, i) => {
                 // Only label tiles with room for it — a clipped label is noise.
-                const showLabel = t.w > 92 && t.h > 34;
-                const showPct = t.w > 52 && t.h > 22;
+                const showLabel = t.w > 78 && t.h > 30;
+                const showPct = t.w > 46 && t.h > 20;
                 const isHover = hover === t.label;
+                // Same convention as the heatmap: the clip is visible, not
+                // silent, so a bucket past the ramp is marked rather than
+                // quietly flattened to full green or full red.
+                const clipped = t.movePct != null && Math.abs(t.movePct) > CLIP_PCT;
+                const mark = (clipped ? ' ◤' : '') + (t.fragility ? ' ⌁' : '');
                 return e('g', {
                     key: t.label || i,
                     onMouseEnter: () => setHover(t.label),
                     onMouseLeave: () => setHover(null),
                     style: { cursor: 'default' },
                 },
+                    e('title', null,
+                        `${t.label} — ${t.value.toFixed(1)}% of book`
+                        + (t.movePct != null ? `, ${t.movePct >= 0 ? '+' : '−'}${Math.abs(t.movePct).toFixed(2)}% today` : '')
+                        + (clipped ? ` (colour clipped at ±${CLIP_PCT}%)` : '')
+                        + (t.fragility ? ' · fragility cluster' : '')
+                        + (t.stale ? ' · stale' : '')),
                     e('rect', {
-                        x: t.x + 1, y: t.y + 1, width: Math.max(0, t.w - 2), height: Math.max(0, t.h - 2),
-                        fill: moveFill(t.movePct, t.fragility),
-                        stroke: isHover ? 'var(--cyan)' : 'rgba(255,255,255,0.10)',
-                        strokeWidth: isHover ? 2 : 1, rx: 3,
+                        x: t.x, y: t.y, width: Math.max(0, t.w - 2), height: Math.max(0, t.h - 2),
+                        fill: moveFill(t.movePct),
+                        // Dark separators, as on the heatmap. Light hairlines
+                        // read as a grid drawn on top; dark ones read as gaps
+                        // between solids, which is what a treemap is.
+                        stroke: isHover ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.60)',
+                        strokeWidth: isHover ? 1.5 : 1.5, rx: 1,
                     }),
                     showLabel
-                        ? e('text', {
-                            x: t.x + 10, y: t.y + 20, className: 'nf-tm-lbl',
-                            style: { fontSize: Math.min(13, Math.max(10, t.w / 14)) },
-                        }, t.label)
+                        ? e('text', { x: t.x + 9, y: t.y + 18, className: 'nf-tm-lbl' }, t.label + mark)
                         : null,
                     showPct
                         ? e('text', {
-                            x: t.x + 10, y: t.y + (showLabel ? 38 : 18), className: 'nf-tm-val',
+                            x: t.x + 9, y: t.y + (showLabel ? 33 : 15), className: 'nf-tm-val',
                         }, t.value.toFixed(1) + '%'
                             + (showLabel && t.movePct != null
-                                ? '  ' + (t.movePct >= 0 ? '+' : '−') + Math.abs(t.movePct).toFixed(1) + '%'
+                                ? '  ' + (t.movePct >= 0 ? '+' : '−') + Math.abs(t.movePct).toFixed(2) + '%'
                                 : ''))
                         : null,
-                    t.stale && t.w > 120 && t.h > 52
-                        ? e('text', { x: t.x + 10, y: t.y + 54, className: 'nf-tm-stale' }, 'STALE')
+                    t.stale && t.w > 110 && t.h > 48
+                        ? e('text', { x: t.x + 9, y: t.y + 48, className: 'nf-tm-stale' }, 'STALE')
                         : null);
             })),
         // A legend, because colour carrying a signed variable needs one.
         e('div', { className: 'nf-tm-legend' },
-            e('span', null, 'area = share of book · colour = today'),
+            e('span', null, `area = share of book · colour = today, clipped at ±${CLIP_PCT}% (◤)`),
             e('span', { className: 'nf-tm-scale' },
-                e('i', { style: { background: moveFill(-3) } }),
-                e('i', { style: { background: moveFill(-1) } }),
+                e('i', { style: { background: moveFill(-CLIP_PCT) } }),
+                e('i', { style: { background: moveFill(-CLIP_PCT / 2) } }),
                 e('i', { style: { background: moveFill(0) } }),
-                e('i', { style: { background: moveFill(1) } }),
-                e('i', { style: { background: moveFill(3) } }),
-                e('span', { className: 'nf-tm-scalelbl' }, '−3%  →  +3%')),
+                e('i', { style: { background: moveFill(CLIP_PCT / 2) } }),
+                e('i', { style: { background: moveFill(CLIP_PCT) } }),
+                e('span', { className: 'nf-tm-scalelbl' }, `−${CLIP_PCT}%  →  +${CLIP_PCT}%`)),
             hover
                 ? e('span', { className: 'nf-tm-hover' }, hover)
                 : (unmappedWeight > 0
