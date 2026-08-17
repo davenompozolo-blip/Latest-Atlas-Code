@@ -157,7 +157,9 @@ declare
     v_closed integer := 0;
 begin
     with open_rows as (
-        select sl.id, (sl.details->>'request_id')::bigint as req_id, sl.started_at
+        -- safe_bigint, not ::bigint: details is jsonb and a malformed value
+        -- would throw and take the whole reaper down. See docs/DATA_TRUST.md.
+        select sl.id, safe_bigint(sl.details->>'request_id') as req_id, sl.started_at
         from sync_log sl
         where sl.source = 'pg_cron_chain'
           and sl.status = 'running'

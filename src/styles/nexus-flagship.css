@@ -1150,10 +1150,25 @@
 .nf-clickrow { cursor: pointer; }
 
 /* ══ Spine treemap ════════════════════════════════════════════ */
+/* Matched to the NAME IMPACT heatmap so the two surfaces read as one system:
+   a framed dark field, mono labels, and gaps between solids rather than a
+   light grid drawn over them. */
 .nf-tmwrap { margin-top: 4px; }
-.nf-treemap { width: 100%; height: 280px; display: block; }
-.nf-tm-lbl  { fill: var(--text); font-weight: 600; pointer-events: none; }
-.nf-tm-val  { fill: var(--text2); font-family: var(--fm); font-size: 10.5px; pointer-events: none; }
+.nf-treemap {
+  width: 100%; height: 280px; display: block;
+  background: rgba(15, 23, 42, .55);
+  border: 1px solid var(--border); border-radius: 3px;
+}
+/* Mono, not the body face — every other figure on this page is mono, and the
+   label sitting in a different family was most of why this looked bolted on. */
+.nf-tm-lbl  {
+  fill: rgba(255, 255, 255, .92); font-family: var(--fm);
+  font-size: 11px; font-weight: 500; pointer-events: none;
+}
+.nf-tm-val  {
+  fill: rgba(255, 255, 255, .62); font-family: var(--fm);
+  font-size: 10px; pointer-events: none; font-variant-numeric: tabular-nums;
+}
 .nf-tm-stale {
   fill: var(--warn); font-family: var(--fm); font-size: 8.5px;
   letter-spacing: .06em; pointer-events: none;
@@ -1164,7 +1179,7 @@
   font-size: 10.5px; color: var(--text3);
 }
 .nf-tm-scale { display: inline-flex; align-items: center; gap: 3px; }
-.nf-tm-scale i { width: 22px; height: 9px; border-radius: 2px; display: inline-block; }
+.nf-tm-scale i { width: 22px; height: 9px; border-radius: 1px; display: inline-block; }
 .nf-tm-scalelbl { font-family: var(--fm); font-size: 9.5px; margin-left: 5px; }
 .nf-tm-hover { margin-left: auto; font-family: var(--fm); color: var(--cyan); }
 
