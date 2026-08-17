@@ -1150,37 +1150,68 @@
 .nf-clickrow { cursor: pointer; }
 
 /* ══ Spine treemap ════════════════════════════════════════════ */
-/* Matched to the NAME IMPACT heatmap so the two surfaces read as one system:
-   a framed dark field, mono labels, and gaps between solids rather than a
-   light grid drawn over them. */
+/* Matched to the NAME IMPACT heatmap so the two surfaces read as one system.
+   Laid out as real DOM at true device pixels — the previous SVG used
+   preserveAspectRatio="none" over a 1000x280 viewBox stretched across a
+   ~1700px card, so every glyph was scaled ~1.7x horizontally and 1.0x
+   vertically. That distortion, not the palette, was the "low resolution"
+   look, and it also silently undid squarify's near-square guarantee. */
 .nf-tmwrap { margin-top: 4px; }
 .nf-treemap {
-  width: 100%; height: 280px; display: block;
+  position: relative;
+  width: 100%; height: 300px;
   background: rgba(15, 23, 42, .55);
   border: 1px solid var(--border); border-radius: 3px;
+  overflow: hidden;
 }
-/* Mono, not the body face — every other figure on this page is mono, and the
-   label sitting in a different family was most of why this looked bolted on. */
-.nf-tm-lbl  {
-  fill: rgba(255, 255, 255, .92); font-family: var(--fm);
-  font-size: 11px; font-weight: 500; pointer-events: none;
+.nf-tm-tile {
+  position: absolute;
+  box-sizing: border-box;
+  padding: 7px 9px;
+  /* Dark separators, as on the heatmap: gaps between solids rather than a
+     light grid drawn on top, which is what a treemap actually is. */
+  border: 1px solid rgba(0, 0, 0, .6);
+  border-radius: 1px;
+  overflow: hidden;                 /* a label can never escape its tile */
+  transition: box-shadow .12s ease;
 }
-.nf-tm-val  {
-  fill: rgba(255, 255, 255, .62); font-family: var(--fm);
-  font-size: 10px; pointer-events: none; font-variant-numeric: tabular-nums;
+.nf-tm-tile.on { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .55); }
+
+/* Mono, matching every other figure on the page. nowrap + ellipsis means a
+   long sector name degrades gracefully instead of overflowing its neighbour. */
+.nf-tm-lbl {
+  font-family: var(--fm); font-size: 11px; font-weight: 500;
+  color: rgba(255, 255, 255, .93);
+  line-height: 1.25; letter-spacing: .01em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.nf-tm-val {
+  font-family: var(--fm); font-size: 10px;
+  color: rgba(255, 255, 255, .60);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.35; margin-top: 1px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.nf-tm-val .nf-tm-move { margin-left: 7px; color: rgba(255, 255, 255, .46); }
 .nf-tm-stale {
-  fill: var(--warn); font-family: var(--fm); font-size: 8.5px;
-  letter-spacing: .06em; pointer-events: none;
+  font-family: var(--fm); font-size: 8.5px; letter-spacing: .08em;
+  color: var(--warn); margin-top: 4px;
 }
+
 .nf-tm-legend {
   display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
   margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--border);
   font-size: 10.5px; color: var(--text3);
 }
-.nf-tm-scale { display: inline-flex; align-items: center; gap: 3px; }
-.nf-tm-scale i { width: 22px; height: 9px; border-radius: 1px; display: inline-block; }
-.nf-tm-scalelbl { font-family: var(--fm); font-size: 9.5px; margin-left: 5px; }
+.nf-tm-scale { display: inline-flex; align-items: center; gap: 0; }
+/* Contiguous, so it reads as one continuous ramp rather than loose chips. */
+.nf-tm-scale i { width: 26px; height: 9px; display: inline-block; }
+.nf-tm-scale i:first-of-type { border-radius: 2px 0 0 2px; }
+.nf-tm-scale i:last-of-type { border-radius: 0 2px 2px 0; }
+.nf-tm-scalelbl {
+  font-family: var(--fm); font-size: 9.5px; color: var(--text3);
+  margin: 0 7px;
+}
 .nf-tm-hover { margin-left: auto; font-family: var(--fm); color: var(--cyan); }
 
 /* ══ Quick ticket ═════════════════════════════════════════════ */
