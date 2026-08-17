@@ -20,7 +20,7 @@
 import React from 'react';
 
 const e = React.createElement;
-const { useState } = React;
+const { useState, useRef, useLayoutEffect } = React;
 
 // ── Colour ────────────────────────────────────────────────────
 // The exact ramp the NAME IMPACT heatmap uses (NexusRealized.js), so the two
@@ -134,81 +134,115 @@ export function squarify(items, width, height) {
     return out;
 }
 
+/**
+ * Measure the element in real CSS pixels.
+ *
+ * This exists because the first version drew into an SVG with
+ * viewBox="0 0 1000 280" and preserveAspectRatio="none", stretched to fill a
+ * ~1700px card. Everything inside was therefore scaled ~1.7x horizontally and
+ * 1.0x vertically: glyphs came out literally stretched (the "low resolution"
+ * look), a 1.5px stroke rendered 2.55px wide and 1.5px tall, and squarify's
+ * whole purpose — keeping tiles near-square — was undone by the distortion
+ * after the fact. Laying out in true pixels is the fix for all three.
+ */
+function useMeasure() {
+    const ref = useRef(null);
+    const [box, setBox] = useState({ w: 0, h: 0 });
+    useLayoutEffect(() => {
+        const el = ref.current;
+        if (!el) return undefined;
+        const read = () => setBox({ w: el.clientWidth, h: el.clientHeight });
+        read();
+        if (typeof ResizeObserver === 'undefined') return undefined;
+        const ro = new ResizeObserver(read);
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
+    return [ref, box];
+}
+
+// JetBrains Mono advance width is a hair under 0.6em. Used only to decide
+// whether a label has room; CSS ellipsis is the backstop when it does not.
+const CH = 0.6;
+
 export function SpineTreemap({ rows, dimension, unmappedWeight }) {
     const [hover, setHover] = useState(null);
-    if (!rows || !rows.length) return null;
+    const [ref, box] = useMeasure();
 
-    const W = 1000, H = 280;   // viewBox units; the SVG scales to the card
-    const tiles = squarify(
-        rows.map(r => ({
-            label: r.label, value: r.sharePct, movePct: r.movePct,
-            fragility: r.fragility, stale: r.stale, names: r.names, riskShift: r.riskShift,
-        })),
-        W, H,
-    );
+    const tiles = (rows && rows.length && box.w > 0 && box.h > 0)
+        ? squarify(
+            rows.map(r => ({
+                label: r.label, value: r.sharePct, movePct: r.movePct,
+                fragility: r.fragility, stale: r.stale, names: r.names, riskShift: r.riskShift,
+            })),
+            box.w, box.h,
+        )
+        : [];
 
     return e('div', { className: 'nf-tmwrap' },
-        e('svg', {
-            className: 'nf-treemap', viewBox: `0 0 ${W} ${H}`,
-            preserveAspectRatio: 'none', role: 'img',
-            'aria-label': `Positioning by ${dimension}, area is share of book`,
+        e('div', {
+            className: 'nf-treemap', ref,
+            role: 'img', 'aria-label': `Positioning by ${dimension}, area is share of book`,
         },
             tiles.map((t, i) => {
-                // Only label tiles with room for it — a clipped label is noise.
-                const showLabel = t.w > 78 && t.h > 30;
-                const showPct = t.w > 46 && t.h > 20;
-                const isHover = hover === t.label;
-                // Same convention as the heatmap: the clip is visible, not
-                // silent, so a bucket past the ramp is marked rather than
-                // quietly flattened to full green or full red.
                 const clipped = t.movePct != null && Math.abs(t.movePct) > CLIP_PCT;
                 const mark = (clipped ? ' ◤' : '') + (t.fragility ? ' ⌁' : '');
-                return e('g', {
+                const pct = t.value.toFixed(1) + '%';
+                const move = t.movePct == null ? ''
+                    : (t.movePct >= 0 ? '+' : '−') + Math.abs(t.movePct).toFixed(2) + '%';
+
+                // Both lines need real room, measured against the tile's actual
+                // pixel width rather than a viewBox unit — the wrong unit is
+                // what let "Consumer Staples" bleed into its neighbour before.
+                //
+                // A label shows if it fits outright, or if there is room for a
+                // recognisable prefix (~10 chars) that CSS then ellipsises.
+                // Below that the tile keeps only its share, which is the more
+                // useful of the two when space is this tight.
+                const inner = t.w - 18;
+                const charW = 11 * CH;
+                const need = (t.label.length + mark.length) * charW;
+                const fitsLabel = t.h >= 34 && inner >= Math.min(need, 10 * charW);
+                const fitsValue = t.h >= 20 && inner >= 34;
+
+                return e('div', {
                     key: t.label || i,
+                    className: 'nf-tm-tile' + (hover === t.label ? ' on' : ''),
+                    style: {
+                        left: t.x, top: t.y,
+                        width: Math.max(0, t.w - 2), height: Math.max(0, t.h - 2),
+                        background: moveFill(t.movePct),
+                    },
                     onMouseEnter: () => setHover(t.label),
                     onMouseLeave: () => setHover(null),
-                    style: { cursor: 'default' },
-                },
-                    e('title', null,
-                        `${t.label} — ${t.value.toFixed(1)}% of book`
-                        + (t.movePct != null ? `, ${t.movePct >= 0 ? '+' : '−'}${Math.abs(t.movePct).toFixed(2)}% today` : '')
+                    title: `${t.label} — ${pct} of book`
+                        + (move ? `, ${move} today` : '')
                         + (clipped ? ` (colour clipped at ±${CLIP_PCT}%)` : '')
                         + (t.fragility ? ' · fragility cluster' : '')
-                        + (t.stale ? ' · stale' : '')),
-                    e('rect', {
-                        x: t.x, y: t.y, width: Math.max(0, t.w - 2), height: Math.max(0, t.h - 2),
-                        fill: moveFill(t.movePct),
-                        // Dark separators, as on the heatmap. Light hairlines
-                        // read as a grid drawn on top; dark ones read as gaps
-                        // between solids, which is what a treemap is.
-                        stroke: isHover ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.60)',
-                        strokeWidth: isHover ? 1.5 : 1.5, rx: 1,
-                    }),
-                    showLabel
-                        ? e('text', { x: t.x + 9, y: t.y + 18, className: 'nf-tm-lbl' }, t.label + mark)
+                        + (t.stale ? ' · stale' : ''),
+                },
+                    fitsLabel ? e('div', { className: 'nf-tm-lbl' }, t.label + mark) : null,
+                    fitsValue
+                        ? e('div', { className: 'nf-tm-val' },
+                            pct,
+                            move ? e('span', { className: 'nf-tm-move' }, move) : null)
                         : null,
-                    showPct
-                        ? e('text', {
-                            x: t.x + 9, y: t.y + (showLabel ? 33 : 15), className: 'nf-tm-val',
-                        }, t.value.toFixed(1) + '%'
-                            + (showLabel && t.movePct != null
-                                ? '  ' + (t.movePct >= 0 ? '+' : '−') + Math.abs(t.movePct).toFixed(2) + '%'
-                                : ''))
-                        : null,
-                    t.stale && t.w > 110 && t.h > 48
-                        ? e('text', { x: t.x + 9, y: t.y + 48, className: 'nf-tm-stale' }, 'STALE')
+                    t.stale && t.h >= 52 && inner >= 40
+                        ? e('div', { className: 'nf-tm-stale' }, 'STALE')
                         : null);
             })),
+
         // A legend, because colour carrying a signed variable needs one.
         e('div', { className: 'nf-tm-legend' },
             e('span', null, `area = share of book · colour = today, clipped at ±${CLIP_PCT}% (◤)`),
             e('span', { className: 'nf-tm-scale' },
+                e('span', { className: 'nf-tm-scalelbl' }, `−${CLIP_PCT}%`),
                 e('i', { style: { background: moveFill(-CLIP_PCT) } }),
-                e('i', { style: { background: moveFill(-CLIP_PCT / 2) } }),
+                e('i', { style: { background: moveFill(-CLIP_PCT * 0.55) } }),
                 e('i', { style: { background: moveFill(0) } }),
-                e('i', { style: { background: moveFill(CLIP_PCT / 2) } }),
+                e('i', { style: { background: moveFill(CLIP_PCT * 0.55) } }),
                 e('i', { style: { background: moveFill(CLIP_PCT) } }),
-                e('span', { className: 'nf-tm-scalelbl' }, `−${CLIP_PCT}%  →  +${CLIP_PCT}%`)),
+                e('span', { className: 'nf-tm-scalelbl' }, `+${CLIP_PCT}%`)),
             hover
                 ? e('span', { className: 'nf-tm-hover' }, hover)
                 : (unmappedWeight > 0
