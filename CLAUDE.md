@@ -191,6 +191,78 @@ Second batch: `vw_performance_suite` →379 ms, `vw_position_nav_daily` →560 m
 are timeout symptoms, not sync failures.** Check the view's runtime against the
 role cap before touching the sync.
 
+### A mean under the cap is not a fix — read the max (2026-08-18)
+The two sweeps above were judged on the mean and declared done. They were not.
+`pg_stat_statements` over real PostgREST traffic:
+
+| view | calls | mean | **max** | cap |
+|---|---|---|---|---|
+| `vw_portfolio_home` | 303 | 944 ms | **2978 ms** | 3000 ms |
+| `vw_nexus_holdings` | 50 | 600 ms | **2914 ms** | 3000 ms |
+| `nexus_holdings` | 45 | 584 ms | **2901 ms** | 3000 ms |
+
+Sitting *on* the ceiling, not under it. Every call landing on a colder buffer
+cache was cancelled with `57014`. **This is what "different parts of Atlas
+aren't feeding like clockwork" looks like** — the failures are per-call, so
+they land somewhere different each load and never reproduce on demand.
+
+```sql
+select round(mean_exec_time::numeric) mean_ms, round(max_exec_time::numeric) max_ms,
+       calls, left(regexp_replace(query,'\s+',' ','g'),90)
+from pg_stat_statements where query ilike '%pgrst_source%'
+order by max_exec_time desc limit 20;
+```
+
+**Use `LATERAL` top-N, not a date bound.** These views rank the entire history
+of each held asset to read rows 1, 2 and 5 of it. A `price_date >= …` bound
+looks like the obvious cut and is wrong: one held name's most recent bar is
+158 days old, so any window short enough to help silently drops its price. A
+lateral `ORDER BY price_date DESC LIMIT n` reads exactly n rows per asset off
+`idx_price_history_asset_date_interval_uniq` (Index Scan Backward, no sort),
+is exact however stale a name is, and does not care how big the table gets.
+60,043 rows → 340. `vw_portfolio_home` 272–308 ms → 149–166 ms; `nexus_holdings`
+→ 5–19 ms.
+
+Prove equivalence before applying: keep the old definition under another name
+and `EXCEPT` both ways in one transaction. A snapshot-vs-now diff will show
+false positives — positions sync every 5 minutes, so `weight_pct` drifts by
+±0.01 under you.
+
+The one deliberate exception is `vw_portfolio_home`'s `returns`/`stats` CTE
+(~470 ms, unbounded). `mu` and `sigma` are annualised vol and Sharpe over the
+whole series, so bounding that window changes published numbers rather than
+just their cost. Change it as a decision about the statistic, never as an
+optimisation.
+
+### Never page a shared table without a filter (2026-08-18)
+`api/nexus-bench.js` fetched 95 days of `price_history` with **no symbol
+filter**, ordered `price_date ASC`, stopping after 6 pages of 1000. The window
+holds 89,262 rows across 1,513 symbols, so it read the oldest 6.7% and quit:
+every tape stopped at 2026-05-20 while data ran to 2026-08-17, and three held
+names got nothing. The page printed *"No price series in window — tape
+unavailable"* for a name with 281 bars ending yesterday.
+
+Scoped to the book it is 3,707 rows. `price_history` is a 1,500-name universe,
+not the book — the same lesson as the views, in a different layer.
+
+**Order DESC when paging a time series.** If a bounded fetch ever truncates
+again it should lose the oldest rows, not the newest: a short tape is usable,
+a stale one is a lie.
+
+### Stale bars must not publish a move (2026-08-18)
+KMTUY (2.03% of book), VWAGY, NPSNY and PROSY are OTC ADRs the price feed does
+not cover; their last close is 144–158 days old. `nexus_holdings` flagged them
+`stale` and went on publishing `today_pct` and `contrib_pct` from those bars,
+so the Theme tab reported *"China internet (ADRs) −3.7%, NPSNY driving"* — a
+sector attribution resting entirely on a print from March.
+
+Those columns are NULL past **7 days**, and `price_days_old` is published so a
+consumer can say why. 7, not the view's own 4-day `stale` flag: 4 is right for
+badging a row but too tight to null a number on — a Thursday close before a
+Friday holiday is 5 days old by Tuesday. **A flag beside a number nobody
+checks is not a safeguard.** If the data cannot support the figure, the figure
+is NULL.
+
 ### Sector ≠ theme (2026-08-11)
 `position_themes` is the hand-kept theme taxonomy (14 themes; 48 of 54 held
 names mapped). `nexus_holdings` always joined it; `vw_nexus_holdings` did not,
@@ -201,6 +273,43 @@ and the flagship toggles between the two cuts.
 
 `theme` stays **NULL** for unmapped names — never coalesced to sector. The
 spine reports the unmapped weight instead of quietly showing a smaller book.
+
+**Two more sites found 2026-08-18, both server-side.** `api/nexus-theme.js`
+selected and grouped by `sector` while the Theme panel joins the payload by
+`theme`, and `api/nexus-bench.js` set the docket's `theme` field from
+`h.sector`. The first was invisible because the two taxonomies *overlap*: only
+`Financials` and `Energy` exist in both, so exactly those two themes resolved
+and the other twelve read "momentum pending sync" — and the two that resolved
+were showing the **sector's** number (Financials −1.8% where the theme is
+−0.72%). A partial match is worse than none: it looks like a data gap rather
+than a join bug.
+
+When you fix one of these, grep for the *other* field too:
+```bash
+grep -rn "\.sector\b" api/ src/ | grep -i "theme"
+```
+
+### The 97-stock ceiling was a door, not a wall (2026-08-18)
+The valuation house takes any symbol and resolves it live through
+`/api/equity`; the trade ticket looks everything up per-symbol. Neither was
+restricted. What was restricted was the *entry point* — both modules' search
+boxes filtered rows their landing screen had already loaded, so a name outside
+the curated list matched nothing, and TRADE's ticket tab was disabled outright
+until you clicked a row.
+
+`atlas_symbol_search(q, lim)` resolves over `assets` (7,860 active listings)
+and returns capability flags per hit: `held`, `has_prices`, `has_valuation`,
+`in_screener`. **The flags are the point** — "does this ticker exist" is rarely
+the question, "will the stack do anything with it" is. Shared component at
+`src/components/TickerSearch.js`.
+
+Compute flags **after** the limit. Doing it per candidate row made a loose
+query ("goldman") run a few hundred `price_history` probes to return twelve
+rows: 1.99s against a 3s cap and inside a keystroke budget. Bounded by `lim`
+it is 24–37 ms for every query shape.
+
+Note that in TRADE a searched name clears `universeContext` rather than faking
+it — the intent row should say the name came in by ticker, because it did.
 
 ### Key Tables
 - `sync_log` — live sync history, written by every edge function
