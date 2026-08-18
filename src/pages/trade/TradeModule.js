@@ -17,6 +17,7 @@ import { TradeTicket } from './TradeTicket.js';
 import { TradeBlotter } from './TradeBlotter.js';
 import { OptionsChain } from '../trading.js';
 import { loadUniverse } from '../../lib/trade/tradeData.js';
+import { TickerSearch } from '../../components/TickerSearch.js';
 
 const { useState, useEffect, useCallback } = React;
 
@@ -112,16 +113,41 @@ export function TradeModule(props) {
 
     const tabLabel = (r) => (r.id === 'ticket' && symbol ? r.label + '/' + symbol : r.label);
 
+    /**
+     * Search is a SECOND way into the ticket, not a replacement for the
+     * universe. The universe is the considered route — it ranks, filters and
+     * records which set surfaced a name, and that provenance lands in the
+     * intent row. A searched name has no such context, so universeContext is
+     * cleared rather than faked: reviewing the trade later will say it came
+     * in by ticker, which is the truth.
+     *
+     * This exists because the ticket was previously unreachable for anything
+     * the universe had not already surfaced — the tab sat disabled with
+     * "Pick a name from the universe first".
+     */
+    const openBySearch = useCallback((sym) => {
+        setSymbol(sym);
+        setUniverseContext(null);
+        setRoute('ticket');
+        window.scrollTo(0, 0);
+    }, []);
+
     return e('div', { className: 'tr-root' },
-        e('div', { className: 'tr-tabs' },
-            ROUTES.map((r) =>
-                e('button', {
-                    key: r.id, type: 'button',
-                    className: route === r.id ? 'on' : '',
-                    onClick: () => { setRoute(r.id); window.scrollTo(0, 0); },
-                    disabled: r.id === 'ticket' && !symbol,
-                    title: r.id === 'ticket' && !symbol ? 'Pick a name from the universe first' : null,
-                }, tabLabel(r)))),
+        e('div', { className: 'tr-topbar' },
+            e('div', { className: 'tr-tabs' },
+                ROUTES.map((r) =>
+                    e('button', {
+                        key: r.id, type: 'button',
+                        className: route === r.id ? 'on' : '',
+                        onClick: () => { setRoute(r.id); window.scrollTo(0, 0); },
+                        disabled: r.id === 'ticket' && !symbol,
+                        title: r.id === 'ticket' && !symbol ? 'Pick a name from the universe, or search for one' : null,
+                    }, tabLabel(r)))),
+            e(TickerSearch, {
+                label: 'open',
+                placeholder: 'ticker or company → ticket',
+                onPick: openBySearch,
+            })),
 
         route === 'universe'
             ? e(TradeUniverse, { universe, loading: loadingUniverse, onOpenTicket: openTicket })
