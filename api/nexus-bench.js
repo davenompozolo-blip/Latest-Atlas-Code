@@ -82,8 +82,29 @@ export default async function handler(req, res) {
 
     try {
         const since = ymd(new Date(Date.now() - TAPE_DAYS * 86_400_000));
-        const [holdings, assess, claims, sleeve, contribView, docketView, headroom, volRows, scrapCos, freshness, prices, cortexSignals, fvRows] = await Promise.all([
-            sb('vw_nexus_holdings?select=symbol,asset_name,sector,weight_pct,market_value,daily_return_pct,total_return_pct,unrealised_return_pct,conviction_score,var_contribution_pct,dcf_upside_pct,current_price,quant_signal,technical_signal,valuation_signal,quality_grade'),
+
+        // The book is fetched FIRST so the tape query below can be scoped to
+        // the names actually on the docket. It used to sit inside the
+        // Promise.all, which is why the tape query could not filter and had
+        // to read the whole universe — see the note on that query.
+        const holdings = await sb('vw_nexus_holdings?select=symbol,asset_name,sector,theme,weight_pct,market_value,daily_return_pct,total_return_pct,unrealised_return_pct,conviction_score,var_contribution_pct,dcf_upside_pct,current_price,quant_signal,technical_signal,valuation_signal,quality_grade');
+        const heldSymbols = [...new Set((holdings || []).map(h => h.symbol).filter(Boolean))];
+
+        // TAPES. This read `price_history` for the whole 1,500-name universe
+        // with no symbol filter, ordered price_date ASC, and stopped after
+        // 6 pages of 1000. The 95-day window holds 89,262 rows, so the fetch
+        // took the OLDEST 6.7% of it and quit: every tape stopped at
+        // 2026-05-20 while the data ran to 2026-08-17, and three held names
+        // got no rows at all. That is what "No price series in window — tape
+        // unavailable" was reporting, on a name with 281 bars ending
+        // yesterday.
+        //
+        // Scoped to the book it is 3,707 rows — four pages, whole window,
+        // current to the last close. DESC ordering is deliberate belt-and-
+        // braces: if this ever truncates again it loses the oldest bars
+        // rather than the newest, so a short tape beats a stale one. The
+        // series is re-sorted ascending on the way into `series` below.
+        const [assess, claims, sleeve, contribView, docketView, headroom, volRows, scrapCos, freshness, prices, cortexSignals, fvRows] = await Promise.all([
             fetchAssessments(),
             sb('bench_claims?select=id,symbol,thesis_ref,claim_text,status,evidence_text,evidence_value,evidence_source,status_changed_at,created_at&order=created_at.asc&limit=1000'),
             sb('vw_funding_sleeve?select=tk,qualified,sleeve_rank,funding_score,disqualification_reason,fv_trustworthy'),
@@ -95,7 +116,11 @@ export default async function handler(req, res) {
             sb('vw_holding_vol_latest?select=symbol,asof,ret_1d,vol_20d,z_move,days_old,vol_trigger,abstain_reason'),
             sb('scrapbook_companies?select=ticker,thesis_summary,updated_at'),
             sb('vw_nexus_price_freshness?select=symbol,days_old'),
-            sbPaged('price_history?select=price_date,close,assets!inner(symbol)&interval=eq.1d&price_date=gte.' + since + '&order=price_date.asc,asset_id.asc', 6),
+            heldSymbols.length
+                ? sbPaged('price_history?select=price_date,close,assets!inner(symbol)&interval=eq.1d'
+                    + '&assets.symbol=in.(' + heldSymbols.join(',') + ')'
+                    + '&price_date=gte.' + since + '&order=price_date.desc,asset_id.asc', 6)
+                : Promise.resolve([]),
             sb('cortex_signals?select=signal_class,title,relevance,candidates,is_muted&is_muted=eq.false&order=generated_at.desc&limit=60'),
             // fv_untrust_reason explains the coverage number on the strip
             sb('nexus_holdings?select=tk,fv_trustworthy,fv_untrust_reason'),
@@ -157,7 +182,13 @@ export default async function handler(req, res) {
             if (!tk || !heldSet.has(tk) || !(close > 0)) continue;
             (series[tk] = series[tk] || []).push({ date: row.price_date, close });
         }
-        for (const tk of Object.keys(series)) series[tk] = downsample(series[tk], TAPE_POINTS);
+        // The tape query orders DESC (see above), so put each series back into
+        // chronological order before downsampling — a reversed tape draws the
+        // line backwards.
+        for (const tk of Object.keys(series)) {
+            series[tk].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+            series[tk] = downsample(series[tk], TAPE_POINTS);
+        }
 
         const docket = holdings.map(h => {
             const scrap = scrapByTk.get(h.symbol);
@@ -168,7 +199,11 @@ export default async function handler(req, res) {
             return {
                 tk: h.symbol,
                 name: (h.asset_name && h.asset_name !== h.symbol) ? h.asset_name : null,
-                theme: h.sector || 'Unclassified',
+                // Theme, not sector. The docket's sleeve logic groups on this
+                // field and calls the buckets themes; feeding it sector meant
+                // the Bench was recruiting and funding against a different
+                // taxonomy from the one it displayed (CLAUDE.md, 2026-08-11).
+                theme: h.theme || 'Unclassified',
                 weightPct: num(h.weight_pct),
                 conviction: num(h.conviction_score) ?? 0,
                 todayPct: num(h.daily_return_pct),
