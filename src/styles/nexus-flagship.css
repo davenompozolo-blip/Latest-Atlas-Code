@@ -1156,51 +1156,69 @@
    ~1700px card, so every glyph was scaled ~1.7x horizontally and 1.0x
    vertically. That distortion, not the palette, was the "low resolution"
    look, and it also silently undid squarify's near-square guarantee. */
+/* ══ Positioning-spine treemap ════════════════════════════════
+ * Transcribed from the NAME IMPACT heatmap's Plotly spec in
+ * NexusRealized.js so the two surfaces are the same object drawn twice.
+ * Every value below has a counterpart there — change one, change both:
+ *
+ *   textfont  { family: 'JetBrains Mono', size: 11,
+ *               color: 'rgba(255,255,255,0.92)' }
+ *   marker.line { width: 1.5, color: 'rgba(0,0,0,0.6)' }
+ *   tiling    { pad: 2 }
+ *   paper_bgcolor / plot_bgcolor: transparent
+ *   colorscale: the six stops replicated in moveFill()
+ *
+ * The heatmap is a bare 300px div on the card — no frame, no fill, no
+ * radius. This carried all three, which is most of why it read as a
+ * different component sitting next to one rather than the same one.
+ */
 .nf-tmwrap { margin-top: 4px; }
 .nf-treemap {
   position: relative;
   width: 100%; height: 300px;
-  background: rgba(15, 23, 42, .55);
-  border: 1px solid var(--border); border-radius: 3px;
+  /* No background, border or radius: paper_bgcolor is transparent on the
+     heatmap and the tile gaps show the card straight through. */
   overflow: hidden;
 }
 .nf-tm-tile {
   position: absolute;
   box-sizing: border-box;
-  padding: 7px 9px;
-  /* Dark separators, as on the heatmap: gaps between solids rather than a
-     light grid drawn on top, which is what a treemap actually is. */
-  border: 1px solid rgba(0, 0, 0, .6);
-  border-radius: 1px;
+  padding: 6px 8px;
+  /* marker.line — 1.5px, black at 60%. Dark separators between solids,
+     not a light grid drawn on top, which is what a treemap actually is. */
+  border: 1.5px solid rgba(0, 0, 0, .6);
+  border-radius: 0;                 /* Plotly tiles are square */
   overflow: hidden;                 /* a label can never escape its tile */
   transition: box-shadow .12s ease;
 }
 .nf-tm-tile.on { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .55); }
 
-/* Mono, matching every other figure on the page. nowrap + ellipsis means a
-   long sector name degrades gracefully instead of overflowing its neighbour. */
-.nf-tm-lbl {
-  font-family: var(--fm); font-size: 11px; font-weight: 500;
-  color: rgba(255, 255, 255, .93);
-  line-height: 1.25; letter-spacing: .01em;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
+/* ONE type treatment for both lines. Plotly applies a single `textfont` to
+   the whole label including the text after <br>, so the ticker and its
+   percentage render identically on the heatmap; a second line dimmed to 60%
+   is the tell that these were two different components. nowrap + ellipsis
+   is ours — a long sector name has to degrade rather than overflow. */
+.nf-tm-lbl,
 .nf-tm-val {
-  font-family: var(--fm); font-size: 10px;
-  color: rgba(255, 255, 255, .60);
-  font-variant-numeric: tabular-nums;
-  line-height: 1.35; margin-top: 1px;
+  font-family: var(--fm); font-size: 11px; font-weight: 400;
+  color: rgba(255, 255, 255, .92);
+  letter-spacing: .01em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.nf-tm-val .nf-tm-move { margin-left: 7px; color: rgba(255, 255, 255, .46); }
+.nf-tm-lbl { line-height: 1.25; }
+.nf-tm-val { line-height: 1.35; margin-top: 1px; font-variant-numeric: tabular-nums; }
+.nf-tm-val .nf-tm-move { margin-left: 7px; }
 .nf-tm-stale {
   font-family: var(--fm); font-size: 8.5px; letter-spacing: .08em;
   color: var(--warn); margin-top: 4px;
 }
 
+/* The heatmap's caption is a bare .nf-sub at marginTop 8 with no rule above
+   it, so the divider went. The colour swatches stay: this legend carries the
+   scale, which the heatmap states in prose instead. */
 .nf-tm-legend {
   display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-  margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--border);
+  margin-top: 8px;
   font-size: 10.5px; color: var(--text3);
 }
 .nf-tm-scale { display: inline-flex; align-items: center; gap: 0; }
