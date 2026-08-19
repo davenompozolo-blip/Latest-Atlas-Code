@@ -43,17 +43,21 @@ const { useState, useRef, useLayoutEffect } = React;
 // .nf-treemap in nexus-flagship.css; the two are meant to be one component
 // drawn twice, so a change to either belongs in both.
 //
-// THE ONE DELIBERATE DIFFERENCE is the clip, and it is a statement about the
-// data rather than about the palette. The heatmap clips at ±6% because it
-// plots single names, which on any given day run from −15% to +4%. Sector
-// aggregates do not: today's widest is Consumer Discretionary at −1.40%.
-// Evaluating this book's thirteen sectors through the same ramp at ±6 halves
-// the mean colour distance from neutral (22 → 11) and collapses seven of them
-// onto identical slate — Consumer Discretionary goes from rgb(141,29,29) to a
-// muddy rgb(98,27,32) and the map stops distinguishing anything. Same palette,
-// different domain. The legend states the clip so the difference is visible
-// rather than silent.
-export const CLIP_PCT = 3;
+// THE CLIP IS THE HEATMAP'S, and this is the one thing the earlier passes got
+// wrong. It sat at ±3 on the argument that sector aggregates move less than
+// single names, so they need a tighter clip to stay legible. That optimises
+// contrast WITHIN this one card at the cost of what colour means ACROSS the
+// terminal — and a shared palette whose intensity maps to a different
+// magnitude on each screen is not a shared palette. Rendering both surfaces
+// side by side settled it: at ±3 a sector down 1.10% painted a bold
+// rgba(133,29,29,.72) while the heatmap gave a name down 1.16% a muted
+// rgb(81,27,34), so the smaller event looked louder than the larger one.
+//
+// The fear that ±6 would flatten the map was wrong too. Sectors that moved
+// 0.00% render neutral, which is correct and is exactly what the heatmap does
+// with a name that barely moved; the day's actual movers still read clearly
+// against them. A calm day is allowed to look calm.
+export const CLIP_PCT = 6;
 
 const RAMP = [
     [0.00, [185, 28, 28], 0.92],
