@@ -191,11 +191,19 @@ const CH = 0.6;
 // INSET — Plotly lays its leaves out inside the plot area with a 5.5px margin
 // on left, right and bottom, so every perimeter tile has dark around it and
 // the block reads as bounded. Ours ran to the container edge, which is why it
-// looked like it was bleeding while the heatmap looked framed. (Plotly's top
-// inset is 22px, not 5.5 — that is its root-node header bar, an artefact of
-// drawing a hierarchy we do not have. Copying 22px of dead space at the top of
-// a flat 13-tile map would be imitating the accident rather than the design,
-// so the inset here is uniform.)
+// looked like it was bleeding while the heatmap looked framed.
+//
+// INSET_TOP — measured 22px on the heatmap against 5.5 on the other three
+// edges. It is Plotly's root-node header bar, so on that surface it is an
+// artefact of drawing a hierarchy this map does not have; the asymmetry was
+// left out at first for exactly that reason. Kept now as a deliberate
+// decision, because it stopped being invisible: once the field carries a
+// colour (see .nf-treemap) the frame is a *visible* element of both surfaces,
+// and a frame that is thin on one and thick on the other reads as two
+// components no matter how well the tiles inside them match. Coherence across
+// the terminal beats internal justification for one panel — a heavier top
+// edge is also the more conventional way to cap a block of this kind, so the
+// borrowed accident is not a bad rule.
 //
 // GAP — Plotly's tiling.pad is 2px and the 1.5px stroke is centred ON the tile
 // boundary, so it spends 0.75px outside each edge: the dark band between two
@@ -205,6 +213,7 @@ const CH = 0.6;
 // makes up the difference: 1 + 1.5 + 1 = the same 3.5px band, without relying
 // on a fractional border width that renders differently per display.
 const INSET = 5.5;
+const INSET_TOP = 22;
 const GAP = 1.5;
 
 export function SpineTreemap({ rows, dimension, unmappedWeight }) {
@@ -219,7 +228,7 @@ export function SpineTreemap({ rows, dimension, unmappedWeight }) {
     // without it the right and bottom insets measure INSET + GAP against a
     // left and top of INSET, and the frame is visibly lopsided.
     const innerW = box.w - INSET * 2;
-    const innerH = box.h - INSET * 2;
+    const innerH = box.h - INSET_TOP - INSET;
     const tiles = (rows && rows.length && innerW > 0 && innerH > 0)
         ? squarify(
             rows.map(r => ({
@@ -227,7 +236,7 @@ export function SpineTreemap({ rows, dimension, unmappedWeight }) {
                 fragility: r.fragility, stale: r.stale, names: r.names, riskShift: r.riskShift,
             })),
             innerW + GAP, innerH + GAP,
-        ).map(t => ({ ...t, x: t.x + INSET, y: t.y + INSET }))
+        ).map(t => ({ ...t, x: t.x + INSET, y: t.y + INSET_TOP }))
         : [];
 
     return e('div', { className: 'nf-tmwrap' },
