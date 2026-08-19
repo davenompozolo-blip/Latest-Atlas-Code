@@ -8,6 +8,7 @@ import React from 'react';
 // ============================================================
 
 import { sb } from './config.js';
+import { TickerSearch } from '../components/TickerSearch.js';
 
 const { useState, useEffect, useMemo } = React;
 const h = React.createElement;
@@ -645,16 +646,34 @@ export function ValuationScreener({ onNavigate }) {
                 (marketMeta.enriched || 0) + ' / ' + (marketMeta.total || 0) + ' enriched from Alpha Vantage'
                 + (!marketMeta.hasKey ? ' · add ALPHA_VANTAGE_API_KEY to Vercel to load fundamentals' : '')
             ),
-            // Search
+            // Catalogue-wide search → straight into the valuation house.
+            //
+            // The house has never been restricted: it takes any symbol and
+            // resolves it live through /api/equity. The restriction was here,
+            // at the door — the only way in was to click "Value →" on a row,
+            // and the rows are whichever list this screener happens to have
+            // loaded. So a name outside the portfolio and the curated set was
+            // unreachable even though every calculator behind it would have
+            // worked on it.
+            h(TickerSearch, {
+                label: 'value',
+                placeholder: 'any ticker or company…',
+                onPick: function(sym) { onNavigate(sym); },
+            }),
+            // The box below is a FILTER, not a search: it narrows the rows
+            // already on screen and can never surface a new one. It used to
+            // say "Search ticker or name", which is why reaching past the
+            // loaded list looked impossible rather than merely unbuilt.
             h('input', {
                 type: 'text', value: search,
                 onChange: function(e) { setSearch(e.target.value); },
-                placeholder: 'Search ticker or name…',
+                placeholder: 'Filter these rows…',
+                title: 'Narrows the rows currently loaded. To value a name that is not listed, use the search to its left.',
                 style: {
                     background: 'rgba(255,255,255,0.06)',
                     border: '1px solid rgba(255,255,255,0.12)',
                     borderRadius: 6, color: '#fff',
-                    padding: '7px 12px', fontSize: 12, width: 200,
+                    padding: '7px 12px', fontSize: 12, width: 160,
                     outline: 'none', fontFamily: 'JetBrains Mono, monospace',
                 }
             }),

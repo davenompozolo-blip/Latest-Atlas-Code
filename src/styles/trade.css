@@ -105,10 +105,24 @@
 .tr-dim3 { color: var(--tr-tx-3); }
 
 /* ── chrome ───────────────────────────────────────────────────────────────── */
-.tr-tabs {
-  display: flex; gap: 0; padding: 0 22px;
+/* The sticky chrome moved up onto .tr-topbar when the ticker search joined
+ * the tab row — the search dropdown has to escape the bar, so the bar cannot
+ * be the thing that clips it. */
+.tr-topbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 20px;
+  padding: 0 22px;
   border-bottom: 1px solid var(--tr-line); background: var(--tr-bg);
   position: sticky; top: 0; z-index: 9;
+}
+.tr-topbar .tks { flex: 0 1 320px; padding: 7px 0; }
+
+@media (max-width: 780px) {
+  .tr-topbar { flex-wrap: wrap; }
+  .tr-topbar .tks { flex: 1 1 100%; padding-bottom: 9px; }
+}
+
+.tr-tabs {
+  display: flex; gap: 0;
 }
 .tr-tabs button {
   background: none; border: none; border-bottom: 2px solid transparent;

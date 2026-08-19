@@ -1,6 +1,6 @@
 // api/nexus-theme.js
 // ------------------------------------------------------------
-// Series-derived inputs for the Theme tab's rotation funnel: per-theme
+// Series-derived inputs for the Theme tab's rotation funnel: per-THEME
 // 5-day momentum and factor betas (rate / USD / oil). The book's daily
 // closes come from price_history in ONE query; three liquid proxy ETFs
 // (TLT, UUP, USO) supply the factor returns. Everything else the Theme
@@ -44,7 +44,7 @@ export default async function handler(req, res) {
 
     try {
         // 1. Book — symbol, theme, weight.
-        const hr = await fetchT(SB_URL + '/rest/v1/vw_nexus_holdings?select=symbol,sector,weight_pct', 8000, sbHdr);
+        const hr = await fetchT(SB_URL + '/rest/v1/vw_nexus_holdings?select=symbol,theme,weight_pct', 8000, sbHdr);
         const holdings = hr.ok ? await hr.json() : [];
         if (!holdings.length) return res.status(200).json({ ok: true, asOf: new Date().toISOString(), themes: [] });
         const symbols = [...new Set(holdings.map(h => h.symbol))];
@@ -104,9 +104,19 @@ export default async function handler(req, res) {
         };
 
         // 4. Per-theme momentum + betas.
+        // Bucket on THEME, and fall back to 'Unclassified' exactly as
+        // buildThemeView / themeDispersion do — the Theme panel joins this
+        // payload by theme name, so any other key silently drops the row.
+        // This grouped by `sector`, and sector and theme are different
+        // taxonomies (CLAUDE.md, 2026-08-11). Only names that happen to
+        // exist in both — "Financials" and "Energy" — ever matched, so 12
+        // of the book's 14 themes rendered "momentum pending sync" and
+        // "factor betas pending" while the series behind them was fine.
+        // "Real estate" the theme missed "Real Estate" the sector on case
+        // alone, which is how narrow the accidental overlap was.
         const byTheme = new Map();
         for (const h of holdings) {
-            const t = h.sector || 'Unclassified';
+            const t = h.theme || 'Unclassified';
             if (!byTheme.has(t)) byTheme.set(t, []);
             byTheme.get(t).push({ symbol: h.symbol, weight: Number(h.weight_pct) || 0 });
         }

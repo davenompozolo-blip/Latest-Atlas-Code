@@ -113,6 +113,16 @@ function DiagnosticsStrip({ diagnostics, funding }) {
         items.map(i => e('span', { key: i.key, className: 'bn-diag-i ' + i.level }, i.label)));
 }
 
+// vw_bench_contribution.coverage_reason → the phrase the waterfall prints
+// under the axis. Anything unmapped falls back to the bare "not measurable",
+// so a new reason shows up honestly rather than being mislabelled as an
+// existing one.
+const OMIT_REASON = {
+    no_priced_position_days: 'held too briefly to measure — no prior close yet',
+    no_transaction_history: 'not measurable — no transaction history',
+    not_in_contribution_view: 'not measurable — outside the contribution view',
+};
+
 // ── 6.1 Contribution waterfall ────────────────────────────────
 function ContributionWaterfall({ docket, basis }) {
     const rows = docket.map(d => ({
@@ -123,9 +133,13 @@ function ContributionWaterfall({ docket, basis }) {
     }));
     const w = buildWaterfall(rows);
     if (!w) return null;
+    // Name the reason. "not measurable" on its own reads as a broken feed,
+    // and the commonest cause is the opposite of broken: a position opened
+    // in the last day or two has no prior close to be measured against yet,
+    // which is simply what a new position looks like.
     const omitLine = w.omitted
-        ? w.omitted.n + ' holdings (' + w.omitted.weightPct + '% of book) not measurable'
-            + (w.omitted.reason === 'no_transaction_history' ? ' — no transaction history' : '')
+        ? w.omitted.n + ' holdings (' + w.omitted.weightPct + '% of book) '
+            + (OMIT_REASON[w.omitted.reason] || 'not measurable')
         : null;
     // Every name unmeasurable → say so rather than draw an empty axis.
     if (!w.bars.length) {
