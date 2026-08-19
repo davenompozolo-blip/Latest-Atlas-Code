@@ -1176,9 +1176,36 @@
 .nf-treemap {
   position: relative;
   width: 100%; height: 300px;
-  /* No background, border or radius: paper_bgcolor is transparent on the
-     heatmap and the tile gaps show the card straight through. */
+  /* #444 is not a decorative choice — it is the colour Plotly paints the
+     heatmap's ROOT SECTOR, and matching it is the whole reason that grid
+     reads and this one did not.
+     A Plotly treemap with `parents: labels.map(() => '')` has an implicit
+     root: a full-bleed rect drawn behind every tile in the default sector
+     colour rgb(68,68,68). `tiling.pad` then lets it show through, so the
+     heatmap's separator is measured dark · LIGHT · dark — 14,17,20 │ 48,48,48
+     │ 21,22,24 — a pale line with the black stroke as its shading. The line
+     is the root; the stroke is only its edge.
+     Leaving this transparent showed the card (#121821 = 18,24,33) in the gaps
+     instead, against a tile fill of 15,23,41: the same luminance, so the grid
+     had nothing to read against and the borders looked absent however dark
+     they were made. Painting the field grey is what makes them appear.
+     #303030 and not #444 because the root's *pure* colour is not what the
+     heatmap's dividers actually are: Plotly centres a 1.5px stroke on each
+     boundary, so it bleeds 0.75px into the 2px pad from both sides and the
+     gap resolves to 48,48,48, not 68. A CSS border paints inside the box and
+     bleeds nowhere, so taking #444 literally gave a divider-to-tile contrast
+     of +38 against the heatmap's +16 — the same grid, twice as loud. #303030
+     lands it at +18. Match the separator you can see, not the fill behind it. */
+  background: #303030;
   overflow: hidden;
+}
+/* Nothing to map: drop the grey, since the field colour only means anything
+   when there are tiles for it to separate. */
+.nf-treemap.nf-tm-void { background: var(--bg1); height: 120px; }
+.nf-tm-voidmsg {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--fm); font-size: 11px; color: var(--text3);
 }
 .nf-tm-tile {
   position: absolute;
