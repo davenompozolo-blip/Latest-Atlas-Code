@@ -37,6 +37,22 @@ const { useState, useRef, useLayoutEffect } = React;
 //   Colour carries ONE variable. The old version hijacked the fill to purple
 //   for fragility clusters, which meant a tile's colour answered two different
 //   questions. Fragility is now a glyph on the label; colour is only the move.
+//
+// The CSS is transcribed from the heatmap's Plotly spec beat for beat — type,
+// borders, tile gaps, the absence of any frame or fill. See the block above
+// .nf-treemap in nexus-flagship.css; the two are meant to be one component
+// drawn twice, so a change to either belongs in both.
+//
+// THE ONE DELIBERATE DIFFERENCE is the clip, and it is a statement about the
+// data rather than about the palette. The heatmap clips at ±6% because it
+// plots single names, which on any given day run from −15% to +4%. Sector
+// aggregates do not: today's widest is Consumer Discretionary at −1.40%.
+// Evaluating this book's thirteen sectors through the same ramp at ±6 halves
+// the mean colour distance from neutral (22 → 11) and collapses seven of them
+// onto identical slate — Consumer Discretionary goes from rgb(141,29,29) to a
+// muddy rgb(98,27,32) and the map stops distinguishing anything. Same palette,
+// different domain. The legend states the clip so the difference is visible
+// rather than silent.
 export const CLIP_PCT = 3;
 
 const RAMP = [
@@ -199,11 +215,18 @@ export function SpineTreemap({ rows, dimension, unmappedWeight }) {
                 // recognisable prefix (~10 chars) that CSS then ellipsises.
                 // Below that the tile keeps only its share, which is the more
                 // useful of the two when space is this tight.
-                const inner = t.w - 18;
+                // Chrome per tile, from the CSS above: 8px padding and a
+                // 1.5px border on each side horizontally (19px), 6px padding
+                // and 1.5px border top and bottom (15px). Both lines are now
+                // 11px to match the heatmap's single textfont, so the height
+                // gates are 15 + 14.85 for the value alone and a further
+                // 13.75 for the label above it. Measured, not guessed —
+                // getting this wrong is what let a label overflow before.
+                const inner = t.w - 19;
                 const charW = 11 * CH;
                 const need = (t.label.length + mark.length) * charW;
-                const fitsLabel = t.h >= 34 && inner >= Math.min(need, 10 * charW);
-                const fitsValue = t.h >= 20 && inner >= 34;
+                const fitsLabel = t.h >= 44 && inner >= Math.min(need, 10 * charW);
+                const fitsValue = t.h >= 30 && inner >= 40;
 
                 return e('div', {
                     key: t.label || i,
@@ -227,7 +250,9 @@ export function SpineTreemap({ rows, dimension, unmappedWeight }) {
                             pct,
                             move ? e('span', { className: 'nf-tm-move' }, move) : null)
                         : null,
-                    t.stale && t.h >= 52 && inner >= 40
+                    // 44 for the two lines above it, plus the badge's own
+                    // ~10px and its 4px margin.
+                    t.stale && t.h >= 58 && inner >= 40
                         ? e('div', { className: 'nf-tm-stale' }, 'STALE')
                         : null);
             })),
