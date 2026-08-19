@@ -232,9 +232,15 @@ export function SpineTreemap({ rows, dimension, unmappedWeight }) {
 
     return e('div', { className: 'nf-tmwrap' },
         e('div', {
-            className: 'nf-treemap', ref,
+            // The field carries a colour now (see .nf-treemap), so an empty
+            // one is a 300px grey slab rather than the invisible block it used
+            // to be. Say what is missing instead of presenting a blank surface
+            // as though it were a reading.
+            className: 'nf-treemap' + (tiles.length ? '' : ' nf-tm-void'), ref,
             role: 'img', 'aria-label': `Positioning by ${dimension}, area is share of book`,
         },
+            tiles.length ? null : e('div', { className: 'nf-tm-voidmsg' },
+                `No ${dimension} weights to map`),
             tiles.map((t, i) => {
                 const clipped = t.movePct != null && Math.abs(t.movePct) > CLIP_PCT;
                 const mark = (clipped ? ' ◤' : '') + (t.fragility ? ' ⌁' : '');
