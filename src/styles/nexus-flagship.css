@@ -1184,9 +1184,14 @@
   position: absolute;
   box-sizing: border-box;
   padding: 6px 8px;
-  /* marker.line — 1.5px, black at 60%. Dark separators between solids,
-     not a light grid drawn on top, which is what a treemap actually is. */
-  border: 1.5px solid rgba(0, 0, 0, .6);
+  /* marker.line is 1.5px on the heatmap, but a CSS border cannot be: Chromium
+     floors 1.5px to 1px at devicePixelRatio 1 (measured — getComputedStyle
+     returns "1px"), so asking for 1.5 here renders 1 on most displays and 1.5
+     on retina. Declaring 1px is honest about what paints, and the separator is
+     brought to the heatmap's measured 3.5px dark band by the layout gap
+     instead, which is not subject to that rounding. See GAP in
+     NexusSpineTreemap.js — the two are a pair. */
+  border: 1px solid rgba(0, 0, 0, .6);
   border-radius: 0;                 /* Plotly tiles are square */
   overflow: hidden;                 /* a label can never escape its tile */
   transition: box-shadow .12s ease;

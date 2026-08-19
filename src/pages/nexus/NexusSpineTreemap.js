@@ -181,18 +181,49 @@ function useMeasure() {
 // whether a label has room; CSS ellipsis is the backstop when it does not.
 const CH = 0.6;
 
+// Both measured off the heatmap by rendering its exact Plotly config in
+// Chromium and reading the DOM rects, rather than eyeballing a screenshot.
+//
+// INSET — Plotly lays its leaves out inside the plot area with a 5.5px margin
+// on left, right and bottom, so every perimeter tile has dark around it and
+// the block reads as bounded. Ours ran to the container edge, which is why it
+// looked like it was bleeding while the heatmap looked framed. (Plotly's top
+// inset is 22px, not 5.5 — that is its root-node header bar, an artefact of
+// drawing a hierarchy we do not have. Copying 22px of dead space at the top of
+// a flat 13-tile map would be imitating the accident rather than the design,
+// so the inset here is uniform.)
+//
+// GAP — Plotly's tiling.pad is 2px and the 1.5px stroke is centred ON the tile
+// boundary, so it spends 0.75px outside each edge: the dark band between two
+// neighbours measures 2 + 0.75 + 0.75 = 3.5px. A CSS border sits INSIDE the
+// box instead, and Chromium floors a 1.5px border to 1px at devicePixelRatio 1
+// — so the tile border is declared 1px (what actually paints) and this gap
+// makes up the difference: 1 + 1.5 + 1 = the same 3.5px band, without relying
+// on a fractional border width that renders differently per display.
+const INSET = 5.5;
+const GAP = 1.5;
+
 export function SpineTreemap({ rows, dimension, unmappedWeight }) {
     const [hover, setHover] = useState(null);
     const [ref, box] = useMeasure();
 
-    const tiles = (rows && rows.length && box.w > 0 && box.h > 0)
+    // Lay out into the inset box, then shift every tile in by the same margin.
+    // Absolutely-positioned children resolve against the padding box, not the
+    // content box, so CSS padding on the container would not do this.
+    // Lay out into innerW + GAP so the shrink each tile takes for the gap lands
+    // on the trailing edge of the field rather than eating into the margin —
+    // without it the right and bottom insets measure INSET + GAP against a
+    // left and top of INSET, and the frame is visibly lopsided.
+    const innerW = box.w - INSET * 2;
+    const innerH = box.h - INSET * 2;
+    const tiles = (rows && rows.length && innerW > 0 && innerH > 0)
         ? squarify(
             rows.map(r => ({
                 label: r.label, value: r.sharePct, movePct: r.movePct,
                 fragility: r.fragility, stale: r.stale, names: r.names, riskShift: r.riskShift,
             })),
-            box.w, box.h,
-        )
+            innerW + GAP, innerH + GAP,
+        ).map(t => ({ ...t, x: t.x + INSET, y: t.y + INSET }))
         : [];
 
     return e('div', { className: 'nf-tmwrap' },
@@ -222,7 +253,7 @@ export function SpineTreemap({ rows, dimension, unmappedWeight }) {
                 // gates are 15 + 14.85 for the value alone and a further
                 // 13.75 for the label above it. Measured, not guessed —
                 // getting this wrong is what let a label overflow before.
-                const inner = t.w - 19;
+                const inner = t.w - GAP - 19;
                 const charW = 11 * CH;
                 const need = (t.label.length + mark.length) * charW;
                 const fitsLabel = t.h >= 44 && inner >= Math.min(need, 10 * charW);
@@ -233,7 +264,7 @@ export function SpineTreemap({ rows, dimension, unmappedWeight }) {
                     className: 'nf-tm-tile' + (hover === t.label ? ' on' : ''),
                     style: {
                         left: t.x, top: t.y,
-                        width: Math.max(0, t.w - 2), height: Math.max(0, t.h - 2),
+                        width: Math.max(0, t.w - GAP), height: Math.max(0, t.h - GAP),
                         background: moveFill(t.movePct),
                     },
                     onMouseEnter: () => setHover(t.label),
