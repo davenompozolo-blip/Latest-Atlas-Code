@@ -373,6 +373,46 @@ The secret lives in Vault, never inline in `cron.job.command`:
 `select vault.create_secret('<value>', 'CRON_SECRET');`
 Until it is set, every HTTP stage logs a clean `skipped` rather than a 401.
 
+### The price sync covers the book; the universe needs its own run (2026-08-23)
+`sync_alpaca_prices` builds its symbol list by joining `positions`, so it
+prices what is held — ~67 names — and nothing else. `price_history` holds
+~1,523. The other ~1,441 arrived in the one-off Trade backfill and then had
+**no writer at all**: every non-held name froze at **2026-08-10** and stayed
+frozen for eleven sessions.
+
+| | symbols | median last bar |
+|---|---|---|
+| held | 82 | 2026-08-21 |
+| universe, not held | 1,441 | **2026-08-10** |
+
+The job never failed. Seventeen consecutive nightly runs, every one `success`,
+1.3–3.9s, 228–330 rows. **This is what "inconsistent across components" looks
+like from the writer side** — anything reading a held name was correct, while
+the screener, valuation comps, bench peers, correlation inputs and ticker
+search's `has_prices` flag served prices up to eleven sessions old. No error
+anywhere, so it read as flakiness rather than as a stopped feed.
+
+`price_coverage` could not see it. It counts holdings only — *"Every traded day
+in the last 30 has a price book (70 holdings tracked)"* — so it passed,
+correctly, every night throughout. **A check scoped to the book cannot see the
+universe stop.** Same lesson as the views and the bench pager, now in a third
+layer.
+
+Fixed with `scope: 'universe'` on the edge function (symbols derived from
+`price_history` itself plus `equity_screener_universe` — 1,724 names, the set
+someone already decided was worth storing, so it self-maintains as backfills
+add names; options excluded because they expire). New cron
+`sync_alpaca_prices_universe` at **23:20 Mon–Sat**, clear of the 22:30–23:15
+trade chain. Backfilled 17,019 rows; universe median is now level with the book.
+
+`universe_price_coverage` measures the universe against **the book's newest
+bar**, never `now()` — same reason `feed_coverage` uses
+`atlas_last_traded_day()`: a weekday feed is not late on a Sunday.
+
+**`sync_log.details.scope` now records which set a run covered.** Without it a
+book run and a universe run are indistinguishable, and *"success, 260 rows"*
+reads fine until you know it should have been 1,700 symbols.
+
 ### Never write `duration_ms` on `sync_log` (2026-08-16)
 It is `GENERATED ALWAYS` from `finished_at - started_at`. Including it in a
 PostgREST payload makes the server reject the **entire** PATCH with `428C9`
