@@ -50,11 +50,52 @@ export default async function handler(req, res) {
         const tr = await fetchT(origin + '/api/nexus-theme', 30000, fwd);
         if (!tr.ok) return res.status(502).json({ error: 'nexus-theme ' + tr.status });
         const j = await tr.json();
+
+        // Both no-data paths answer 503, never 200.
+        //
+        // This job ran on 2026-08-21, logged `success`, and wrote nothing —
+        // because it returned 200 with {ok: false, written: 0}. The chain reaps
+        // stages by HTTP status, so a no-op was indistinguishable from a write
+        // and the stage went green. `theme_leadership_weekly` has 0 rows ever
+        // and every nightly validation agreed the chain was healthy.
+        //
+        // The upstream does the same thing: /api/nexus-theme answers 200 with
+        // `themes: []` both when the book is empty and when its own query
+        // throws. So a degraded upstream produced a green stage here, twice
+        // laundered. A weekly job that silently skips costs a week each time.
+        if (j && j.ok === false) {
+            return res.status(503).json({
+                ok: false, written: 0,
+                reason: 'upstream nexus-theme degraded: ' + ((j && j.error) || 'unknown'),
+            });
+        }
         const themes = ((j && j.themes) || []).filter(t => t.momentum5d != null);
-        if (!themes.length) return res.status(200).json({ ok: false, written: 0, reason: 'no momentum data — price history not synced' });
+        if (!themes.length) {
+            return res.status(503).json({
+                ok: false, written: 0,
+                reason: 'no momentum data — price history not synced',
+                themes_seen: ((j && j.themes) || []).length,
+                price_as_of: (j && j.priceAsOf) || null,
+            });
+        }
 
         // 2. Rank; snapshot_date = the session the momentum is as of.
         const snapshotDate = j.priceAsOf || new Date().toISOString().slice(0, 10);
+
+        // A weekly history keyed on a stale date is worse than a gap: the row
+        // looks like a real observation of that week forever after. When the
+        // upstream tape was truncated this resolved to 2026-07-08 while the
+        // book's newest bar was 2026-08-21, so a "weekly" snapshot would have
+        // been filed six weeks in the past. Refuse rather than record it.
+        const ageDays = Math.round(
+            (Date.now() - new Date(snapshotDate + 'T00:00:00Z').getTime()) / 86_400_000);
+        if (!(ageDays >= 0) || ageDays > 10) {
+            return res.status(503).json({
+                ok: false, written: 0,
+                reason: 'momentum is as of ' + snapshotDate + ' (' + ageDays
+                      + ' days old) — refusing to file a weekly snapshot on a stale tape',
+            });
+        }
         const rows = themes
             .slice().sort((a, b) => b.momentum5d - a.momentum5d)
             .map((t, i) => ({
