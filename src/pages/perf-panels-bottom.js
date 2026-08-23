@@ -205,10 +205,19 @@ export function PositionsPanel(p) {
         });
     }, [rawPerf, p.homeData]);
 
+    // Both engines coerce a missing return to 0 (`Number(x || 0)`), so an
+    // unpriced position would enter attribution as a genuine 0% — diluting its
+    // sector's average return and its own contribution line. Feed them only
+    // what can be measured; the count of what was withheld is shown on the
+    // Best Performer tile rather than dropped silently.
+    var measurablePerf = useMemo(function() {
+        return perf.filter(function(p) { return p.total_return_pct != null; });
+    }, [perf]);
+
     var brinson = useMemo(function() {
-        return computeBrinsonAttribution(perf, BENCHMARKS[benchKey].weights);
-    }, [perf, benchKey]);
-    var contribs = useMemo(function() { return computePositionContributions(perf); }, [perf]);
+        return computeBrinsonAttribution(measurablePerf, BENCHMARKS[benchKey].weights);
+    }, [measurablePerf, benchKey]);
+    var contribs = useMemo(function() { return computePositionContributions(measurablePerf); }, [measurablePerf]);
 
     if (!perf.length) {
         return h('div', { className: 'card', style: { color: 'rgba(255,255,255,0.4)', textAlign: 'center', padding: 32 } }, 'No position data available.');
@@ -236,10 +245,29 @@ export function PositionsPanel(p) {
     function retC(v) { return v == null ? 'rgba(255,255,255,0.4)' : v >= 0 ? '#10b981' : '#ef4444'; }
     function pctStr(v, decimals) { if (v == null) return '—'; return (v >= 0 ? '+' : '') + (v * 100).toFixed(decimals != null ? decimals : 2) + '%'; }
 
+    // Aggregate only over positions we can actually measure.
+    //
+    // vw_performance_suite now NULLs total_return_pct / annualised_return /
+    // cut_candidate_flag for any position whose last close is more than 7 days
+    // old (three OTC ADRs, 149-163 days stale). Every reducer below used
+    // `Number(x) || 0`, which turns those NULLs into a hard zero — so an
+    // unpriced name would have counted as a 0% return: eligible to be named
+    // Worst Performer, and dragging Avg CAGR toward zero across the whole book.
+    // Filter first, then reduce.
+    var measured = perf.filter(function(p) { return p.total_return_pct != null; });
+    var unmeasured = perf.filter(function(p) { return p.total_return_pct == null; });
+    var cagrRows = perf.filter(function(p) { return p.annualised_return != null; });
+
     var cuts = perf.filter(function(p) { return p.cut_candidate_flag; });
-    var best = perf.reduce(function(b, q) { return (Number(q.total_return_pct)||0) > (Number(b.total_return_pct)||0) ? q : b; }, perf[0]);
-    var worst = perf.reduce(function(w, q) { return (Number(q.total_return_pct)||0) < (Number(w.total_return_pct)||0) ? q : w; }, perf[0]);
-    var avgCagr = perf.reduce(function(s, q) { return s + (Number(q.annualised_return)||0); }, 0) / perf.length;
+    var best = measured.length
+        ? measured.reduce(function(b, q) { return Number(q.total_return_pct) > Number(b.total_return_pct) ? q : b; }, measured[0])
+        : null;
+    var worst = measured.length
+        ? measured.reduce(function(w, q) { return Number(q.total_return_pct) < Number(w.total_return_pct) ? q : w; }, measured[0])
+        : null;
+    var avgCagr = cagrRows.length
+        ? cagrRows.reduce(function(s, q) { return s + Number(q.annualised_return); }, 0) / cagrRows.length
+        : null;
     var maxAbsC = Math.max.apply(null, contribs.map(function(c) { return Math.abs(c.contribution); }).concat([0.001]));
 
     function mkContribRow(c, i) {
@@ -265,7 +293,9 @@ export function PositionsPanel(p) {
         h('div', { className: 'hero-grid', style: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 } },
             h(Tile, { icon: '◈', label: 'Positions', value: String(perf.length), color: '#00d4ff', accent: 'cyan', badge: 'In Portfolio' }),
             h(Tile, { icon: '◆', label: 'Avg CAGR', value: fmtPct(avgCagr), color: retC(avgCagr), accent: avgCagr >= 0 ? 'green' : 'red' }),
-            h(Tile, { icon: '▲', label: 'Best Performer', value: best.symbol, color: '#10b981', accent: 'green', sub: fmtPct(best.total_return_pct) }),
+            h(Tile, { icon: '▲', label: 'Best Performer', value: best ? best.symbol : '—', color: '#10b981', accent: 'green',
+                      sub: best ? fmtPct(best.total_return_pct) : 'no measurable position',
+                      badge: unmeasured.length ? unmeasured.length + ' unpriced' : null }),
             h(Tile, { icon: '✂', label: 'Cut Candidates', value: String(cuts.length), color: cuts.length > 0 ? '#ef4444' : '#10b981', accent: cuts.length > 0 ? 'red' : 'green', badge: cuts.length > 0 ? 'Review' : 'All Clear' })
         ),
         // Contribution split: top contributors vs top detractors
@@ -378,7 +408,15 @@ export function PositionsPanel(p) {
 
     // ---- POSITION TABLE ----------------------------------------
     var sorted = perf.slice().sort(function(a, b) {
-        var av = Number(a[sortKey]) || 0, bv = Number(b[sortKey]) || 0;
+        // NULLs sink, in both directions. `Number(x) || 0` sorted an unmeasurable
+        // position as though it had returned exactly 0%, which lands it in the
+        // middle of the table among real flat performers rather than out of the
+        // ranking where it belongs.
+        var an = a[sortKey], bn = b[sortKey];
+        if (an == null && bn == null) return 0;
+        if (an == null) return 1;
+        if (bn == null) return -1;
+        var av = Number(an), bv = Number(bn);
         return desc ? bv - av : av - bv;
     });
 
@@ -429,9 +467,22 @@ export function PositionsPanel(p) {
                             h('td', { style: { padding: '8px 8px', textAlign: 'right', fontFamily: 'JetBrains Mono', fontSize: 11, color: retC(row.annualised_return), borderBottom: '1px solid rgba(255,255,255,0.04)' } }, fmtPct(row.annualised_return)),
                             h('td', { style: { padding: '8px 8px', textAlign: 'right', fontFamily: 'JetBrains Mono', fontSize: 11, color: 'rgba(255,255,255,0.65)', borderBottom: '1px solid rgba(255,255,255,0.04)' } }, fmt(row.entry_efficiency_score, 1)),
                             h('td', { style: { padding: '8px 8px', borderBottom: '1px solid rgba(255,255,255,0.04)' } },
-                                row.cut_candidate_flag
-                                    ? h('span', { className: 'badge red' }, 'CUT')
-                                    : h('span', { className: 'badge green' }, 'HOLD')
+                                // Three states, not two. cut_candidate_flag is
+                                // NULL — not false — when the price is too old
+                                // to judge, and rendering that as a green HOLD
+                                // asserts something we cannot support. Say why
+                                // instead: the reason is on the row.
+                                row.total_return_pct == null
+                                    ? h('span', {
+                                        className: 'badge',
+                                        title: row.status_reason
+                                            ? 'Last close ' + row.last_price_date + ' (' + row.price_days_old + ' days ago)'
+                                            : 'No usable price',
+                                        style: { background: 'rgba(245,166,35,0.13)', color: '#f5a623' }
+                                      }, 'NO PRICE')
+                                    : row.cut_candidate_flag
+                                        ? h('span', { className: 'badge red' }, 'CUT')
+                                        : h('span', { className: 'badge green' }, 'HOLD')
                             )
                         );
                     }))
