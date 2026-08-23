@@ -574,12 +574,21 @@ export function CommandCenterTab(props) {
         var maxMv = 0;
         d.riskView.forEach(function(r) { if (r.market_value > maxMv) maxMv = r.market_value; });
 
-        var equities = d.riskView.filter(function(r) { return !isOption(r.symbol) && r.annual_vol > 0; });
+        // A position with no usable return has no y-coordinate. Plotting it at
+        // 0 puts an unpriced name on the risk/return scatter as though it had
+        // returned exactly nothing — vw_performance_suite NULLs the return past
+        // a 7-day price gap, and `Number(null)` is 0. Drop those points rather
+        // than place them.
+        var equities = d.riskView.filter(function(r) {
+            if (isOption(r.symbol) || !(r.annual_vol > 0)) return false;
+            var p = perfMap[r.symbol];
+            return p && p.total_return_pct != null;
+        });
         var points = equities.map(function(r) {
             var perf = perfMap[r.symbol];
             return {
                 x:      Number(r.annual_vol) * 100,
-                y:      perf ? Number(perf.total_return_pct) * 100 : 0,
+                y:      Number(perf.total_return_pct) * 100,
                 label:  r.symbol,
                 sector: r.sector || 'Other',
                 mv:     Number(r.market_value) || 0,
