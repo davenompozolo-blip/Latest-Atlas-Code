@@ -12,6 +12,8 @@
 //   POST {}                                  → ingest yesterday's bars (cron)
 //   POST {start_date, end_date}              → backfill that range (inclusive)
 //   POST {symbols: [...], start_date, ...}   → restrict universe
+//   POST {scope: 'universe'}                 → price the whole stored universe,
+//                                              not just the book (see below)
 //   POST {dry_run: true, ...}                → end-to-end without upsert
 //   POST {feed: 'iex'|'sip'}                → override Alpaca data feed
 //
@@ -160,14 +162,45 @@ const OCC_RE = /^[A-Z.]{1,6}\d{6}[CP]\d{8}$/
 
 interface AssetRow { id: string; symbol: string; asset_class: string | null }
 
-async function getAssetUniverse(symbolFilter?: string[]): Promise<AssetRow[]> {
+// scope 'book' (default) prices what we hold. scope 'universe' prices every
+// name that already carries daily history, plus the screener list.
+//
+// This split exists because the two are NOT the same set and only one of them
+// was ever being refreshed. The join to `positions` below is correct for the
+// book and was always meant to be — but it made this the *only* price writer
+// and it covers ~67 symbols, while `price_history` holds ~1,520. The other
+// ~1,441 arrived in the one-off Trade backfill and then had nothing to keep
+// them current: every non-held name froze at 2026-08-10 and stayed there for
+// eleven sessions while every run of this function logged success.
+//
+// Deriving the universe from `price_history` itself rather than from `assets`
+// (7,860 listings) is deliberate: it is exactly the set someone has already
+// decided is worth storing, it self-maintains as backfills add names, and it
+// keeps the nightly job bounded at ~1,500 symbols instead of an order of
+// magnitude more. Options are excluded — they expire, so a stale OCC symbol
+// is not a gap to fill, and thousands of dead ones would waste the batch.
+async function getAssetUniverse(
+  symbolFilter?: string[],
+  scope: 'book' | 'universe' = 'book',
+): Promise<AssetRow[]> {
   const cutoff = ymd(new Date(Date.now() - 30 * 86_400_000))
   const rows = await sql<AssetRow[]>`
     select distinct a.id, a.symbol, a.asset_class
     from public.assets a
+    ${scope === 'universe'
+        ? sql`
+    where a.symbol is not null
+      and coalesce(lower(a.asset_class), '') <> 'option'
+      and (
+        exists (select 1 from public.price_history ph
+                 where ph.asset_id = a.id and ph."interval" = '1d')
+        or exists (select 1 from public.equity_screener_universe eu
+                    where eu.symbol = a.symbol)
+      )`
+        : sql`
     join public.positions p on p.asset_id = a.id
     where p.as_of_date >= ${cutoff}
-      and a.symbol is not null
+      and a.symbol is not null`}
       ${symbolFilter && symbolFilter.length
           ? sql`and a.symbol = any(${symbolFilter})`
           : sql``}
@@ -239,6 +272,7 @@ interface Payload {
   start_date?:          string
   end_date?:            string
   symbols?:             string[]
+  scope?:               'book' | 'universe'
   dry_run?:             boolean
   feed?:                string
   source?:              string
@@ -248,6 +282,7 @@ interface Payload {
 interface RunResult {
   start_date:           string
   end_date:             string
+  scope:                'book' | 'universe'
   assets_seen:          number
   rows_built:           number
   upserted:             number
@@ -263,7 +298,8 @@ async function runPriceSync(payload: Payload): Promise<RunResult> {
   const dry_run    = !!payload.dry_run
   const feed       = payload.feed ?? DEFAULT_FEED
 
-  const universe  = await getAssetUniverse(payload.symbols)
+  const scope     = payload.scope === 'universe' ? 'universe' : 'book'
+  const universe  = await getAssetUniverse(payload.symbols, scope)
   const partition = partitionAssets(universe)
 
   const [stockBars, cryptoBars, optionBars] = await Promise.all([
@@ -299,7 +335,7 @@ async function runPriceSync(payload: Payload): Promise<RunResult> {
   }
 
   return {
-    start_date, end_date,
+    start_date, end_date, scope,
     assets_seen:          universe.length,
     rows_built:           rows.length,
     upserted,
