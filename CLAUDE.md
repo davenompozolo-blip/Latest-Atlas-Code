@@ -413,6 +413,91 @@ bar**, never `now()` — same reason `feed_coverage` uses
 book run and a universe run are indistinguishable, and *"success, 260 rows"*
 reads fine until you know it should have been 1,700 symbols.
 
+### "Doesn't load on the first pass" is a cold-cache timeout (2026-08-23)
+`vw_portfolio_nav_daily` measured **4,850 ms warm** against anon's 3s cap, so it
+failed on every call — and *which* components came up depended on the buffer
+cache, not on the data. That is the whole signature of "some panels load, some
+don't, reload fixes it".
+
+EXPLAIN put **3,098 ms of a 3,110 ms run in a single node**: a Seq Scan on
+`account_snapshots` removing 39,854 rows to find 141. The filter was
+
+```sql
+WHERE (as_of)::date = CURRENT_DATE      -- unsargable: casts the column
+```
+
+`account_snapshots_portfolio_as_of_idx (portfolio_id, as_of DESC)` **already
+existed** and could never be used. The fix is a half-open range on the raw
+column; no new index. **3,110 ms → 246 ms.**
+
+**Never wrap a column in a cast or function in a WHERE clause.** Range the raw
+column instead. Find them with:
+
+```sql
+select c.relname from pg_class c join pg_namespace n on n.oid=c.relnamespace
+where n.nspname='public' and c.relkind in ('v','m')
+  and pg_get_viewdef(c.oid,true) ~* '\([a-z_]+\)::date\s*(=|<|>)';
+```
+
+This one also degrades on a timer with no code change: positions sync every 5
+minutes, so `account_snapshots` gains ~288 rows a day whether the book moves or
+not. **A seq scan over an append-only table is a clock, not a constant** — it
+will cross any cap eventually, and the day it does is unrelated to any deploy.
+
+`vw_performance_suite` is at 1,960 ms (was 379 ms after the 2026-08-12 sweep).
+Under the cap warm, over it cold. Next one to go.
+
+### PostgREST caps at 1,000 rows whatever `limit` says (2026-08-23)
+`api/nexus-theme.js` asked for `order=price_date.asc&limit=20000`. PostgREST
+returned **1,000 rows, all stamped the same single date** — the oldest 1,000 in
+the window — and dropped everything after. `priceAsOf` published **2026-07-08**
+while the book's newest bar was **2026-08-21**: theme momentum and every factor
+beta were computed on a tape that stopped six weeks early, with no error and
+nothing in the shape of the data to give it away.
+
+`limit` is a request, not a guarantee. **Order DESC and page.** This is the
+same rule already written down for `api/nexus-bench.js` and it was not applied
+here — check every PostgREST read of a time series, not just the one that broke:
+
+```bash
+grep -rn "order=.*\.asc" api/ | grep -i "price\|date"
+```
+
+### A no-op must not answer 200 (2026-08-23)
+`chain_theme_leadership` ran on 2026-08-21, logged **success**, and wrote
+nothing. `theme_leadership_weekly` has 0 rows ever while the chain reported
+healthy every night.
+
+`atlas_chain_reap()` grades stages by HTTP status and does so correctly. The
+handler returned `200 {ok: false, written: 0}` on its no-data path, so a no-op
+was indistinguishable from a write. The upstream launders it twice:
+`/api/nexus-theme` answers **200 with `themes: []`** both when the book is
+empty and when its own query throws, so a degraded upstream produced a green
+stage downstream.
+
+Both no-data paths now answer **503**. A weekly job that silently skips costs a
+week each time.
+
+`snapshot_date` is also refused past 10 days old — a weekly history keyed on a
+stale date is worse than a gap, because the row reads as a real observation of
+that week forever after.
+
+### The chain's target host lives in Vault, not in the function (2026-08-23)
+`atlas_chain_dispatch` hardcoded `https://latest-atlas-code-o19a.vercel.app` —
+one of eight Vercel projects, inside a `SECURITY DEFINER` body. Renaming or
+pausing that project silently redirects or kills every scheduled write, and a
+stale-but-live deployment would keep logging success while running old code.
+
+`atlas_chain_base()` reads `CHAIN_BASE_URL` from Vault and falls back to that
+same host, so moving the chain is one secret and no code:
+
+```sql
+select vault.create_secret('https://<host>', 'CHAIN_BASE_URL');
+```
+
+No trailing slash — paths are concatenated and `//api/...` 404s. Each stage now
+records the host it hit in `sync_log.details.base`.
+
 ### Never write `duration_ms` on `sync_log` (2026-08-16)
 It is `GENERATED ALWAYS` from `finished_at - started_at`. Including it in a
 PostgREST payload makes the server reject the **entire** PATCH with `428C9`

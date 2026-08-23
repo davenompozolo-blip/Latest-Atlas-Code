@@ -51,13 +51,35 @@ export default async function handler(req, res) {
 
         // 2. Book closes — one price_history query (joined to assets for the symbol).
         const since = ymd(new Date(Date.now() - (BETA_DAYS + 12) * 86_400_000));
-        const pUrl = SB_URL + '/rest/v1/price_history'
+        // DESC + paged, not `order=asc&limit=20000`.
+        //
+        // PostgREST caps a response at 1,000 rows whatever `limit` asks for, so
+        // the old query returned the OLDEST 1,000 rows of the window and
+        // silently dropped everything after them. Measured: every one of the
+        // 1,000 rows came back stamped the same single date, and `priceAsOf`
+        // published 2026-07-08 while the book's newest bar was 2026-08-21.
+        // Theme momentum and the factor betas were being computed on a tape
+        // that stopped six weeks early, with no error and no gap in the shape
+        // of the data to give it away.
+        //
+        // Ordering DESC means a truncation loses the oldest rows instead: a
+        // short tape is usable, a stale one is a lie. Paging then restores the
+        // full window (~70 symbols x 72 days, so 3-4 pages), and the rows are
+        // reversed back to ascending because dailyReturns() walks forward.
+        const pBase = SB_URL + '/rest/v1/price_history'
             + '?select=price_date,close,assets!inner(symbol)'
             + '&assets.symbol=in.(' + symbols.join(',') + ')'
             + '&price_date=gte.' + since
-            + '&order=price_date.asc&limit=20000';
-        const pr = await fetchT(pUrl, 10000, sbHdr);
-        const priceRows = pr.ok ? await pr.json() : [];
+            + '&order=price_date.desc,asset_id.asc';
+        const priceRows = [];
+        for (let page = 0; page < 8; page++) {
+            const r = await fetchT(pBase + '&limit=1000&offset=' + page * 1000, 10000, sbHdr);
+            if (!r.ok) break;
+            const batch = await r.json();
+            priceRows.push(...batch);
+            if (batch.length < 1000) break;
+        }
+        priceRows.reverse();
         const closesBySymbol = new Map();
         for (const row of priceRows) {
             const sym = row.assets && row.assets.symbol;
