@@ -260,8 +260,25 @@ async function jobCorrelations() {
         p_window: CORR_WINDOW, p_min_days: 60, p_lambda: 0.97, p_max_symbols: CORR_MAX_SYMBOLS,
     });
 
+    return { pairs };
+}
+
+// Clustering is its OWN stage, not the tail of jobCorrelations.
+//
+// Together they could not fit in one request. The RPC above writes the matrix
+// in ~203s; this half then reads all ~88,000 pairs back — 88 paginated
+// round-trips — and clusters them. The combined request never returned before
+// pg_net's 300s cutoff, so every night:
+//   - the chain logged `ts_correlations` as an ERROR on a night the matrix had
+//     landed correctly (88,116 pairs, 421 symbols) — a false red that made the
+//     one genuinely-broken stage indistinguishable from a working one, and
+//   - Vercel killed the function mid-flight, so this handler's own closeLog
+//     never ran and left a `trade_sync_correlations` row open in 'running'
+//     forever. Those accumulated one per night.
+// Splitting them gives each half its own 300s budget and its own honest status.
+async function jobClusters() {
     const stats = await sbGet(`universe_risk_stats?select=as_of_date,symbol&window_days=eq.${CORR_WINDOW}&order=as_of_date.desc&limit=5000`);
-    if (!stats.length) return { pairs, clusters: 0, note: 'no risk stats written' };
+    if (!stats.length) return { clusters: 0, note: 'no risk stats written' };
     const date = stats[0].as_of_date;
     const symbols = stats.filter((r) => r.as_of_date === date).map((r) => r.symbol);
 
@@ -286,7 +303,7 @@ async function jobCorrelations() {
         }
     }
     await sbWrite('universe_clusters', rows, { onConflict: 'as_of_date,symbol,method' });
-    return { as_of: date, pairs, symbols: symbols.length, clusters: clusters.length, multi_name_clusters: clusters.filter((c) => c.size > 1).length };
+    return { as_of: date, symbols: symbols.length, clusters: clusters.length, multi_name_clusters: clusters.filter((c) => c.size > 1).length };
 }
 
 // ── Job: signals ─────────────────────────────────────────────────────────────
@@ -744,8 +761,16 @@ export default async function handler(req, res) {
     const logId = await openLog(job, (req.query && req.query.source) || undefined);
 
     try {
+        // Jobs that need neither the book context nor the close tape run on
+        // their own. loadContext + loadCloses is minutes of work for the
+        // scoring jobs and pure waste for these two, which was part of why
+        // correlations could not fit inside its window.
         if (job === 'assets') {
             out.steps.assets = await jobAssets();
+        } else if (job === 'correlations') {
+            out.steps.correlations = await jobCorrelations();
+        } else if (job === 'clusters') {
+            out.steps.clusters = await jobClusters();
         } else {
             const ctx = await loadContext();
             // Score the names we can actually price: everything with a risk-stat
@@ -759,7 +784,8 @@ export default async function handler(req, res) {
             const closes = await loadCloses([...new Set([...scored, ...support])], ctx.assetBySymbol);
             const symbols = [...scored].filter((s) => (closes.get(s) || []).length >= 30);
 
-            if (job === 'all' || job === 'correlations') out.steps.correlations = await jobCorrelations();
+            if (job === 'all') out.steps.correlations = await jobCorrelations();
+            if (job === 'all') out.steps.clusters     = await jobClusters();
             if (job === 'all' || job === 'signals')      out.steps.signals = await jobSignals(ctx, closes, symbols);
             if (job === 'all' || job === 'coherence')    out.steps.coherence = await jobCoherence(ctx, closes, symbols);
             if (job === 'all' || job === 'universe')     out.steps.universe = await jobUniverse(ctx, closes);
