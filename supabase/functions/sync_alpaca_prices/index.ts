@@ -370,6 +370,11 @@ Deno.serve(async (req) => {
       {
         start_date:           result.start_date,
         end_date:             result.end_date,
+        // Which set this run covered. Without it a book run and a universe run
+        // are indistinguishable in sync_log, which is most of how the freeze
+        // stayed invisible: 'success, 260 rows' reads fine until you know it
+        // should have been ~1,700 symbols.
+        scope:                result.scope,
         rows_built:           result.rows_built,
         missing_symbol_count: result.missing_symbol_count,
         missing_sample:       result.missing_sample,
