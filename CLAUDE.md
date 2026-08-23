@@ -444,8 +444,13 @@ minutes, so `account_snapshots` gains ~288 rows a day whether the book moves or
 not. **A seq scan over an append-only table is a clock, not a constant** — it
 will cross any cap eventually, and the day it does is unrelated to any deploy.
 
-`vw_performance_suite` is at 1,960 ms (was 379 ms after the 2026-08-12 sweep).
-Under the cap warm, over it cold. Next one to go.
+`vw_performance_suite` is the next one. 1,960 ms on a cold run, 493 ms warm —
+under the cap warm, and that gap is exactly the exposure. Its dominant node is
+a Unique over a Sort of **59,767 rows spilling to disk** (`external merge Disk:
+2440kB`) to return 63: the full-history `DISTINCT ON (asset_id … price_date
+DESC)` pattern this file already says to replace with a LATERAL top-N. It reads
+60,850 rows for 63 answers, and it grows every night now that the universe
+syncs. Not yet fixed.
 
 ### PostgREST caps at 1,000 rows whatever `limit` says (2026-08-23)
 `api/nexus-theme.js` asked for `order=price_date.asc&limit=20000`. PostgREST
