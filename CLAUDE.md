@@ -413,6 +413,38 @@ bar**, never `now()` — same reason `feed_coverage` uses
 book run and a universe run are indistinguishable, and *"success, 260 rows"*
 reads fine until you know it should have been 1,700 symbols.
 
+### Three traps found fixing `vw_position_nav_daily` (2026-08-23)
+6,161 ms → 557 ms. It was the heaviest read in either the Performance or Risk
+module, and the substrate the return engine is built on.
+
+**1. A plain equijoin to `price_history` needs bounding too.** The final
+`LEFT JOIN price_history ph ON ph.asset_id = dh.asset_id AND ph.price_date =
+dh.cal_date` hashed the **entire 496,553-row table** (8 batches, spilling to
+disk) to serve 10,207 rows for 99 held assets — 4,244 ms of the 6,161. The
+2026-08-11 sweep missed it because it looks for ranked CTEs, and this is an
+ordinary join. Replaced with a `LATERAL … LIMIT 1`: 10,207 unique-index probes
+at ~0.003 ms. **Grep for the table, not for the pattern.**
+
+**2. A scalar subquery is evaluated once per reference, not once per row.**
+`quantity` was a correlated scalar subquery used three times — in `quantity`,
+in `position_value`, and in the `WHERE`. The plan showed SubPlan 3, 4 *and* 5:
+32,255 executions for 10,207 rows, ~1,030 ms. Postgres does not memoise across
+references. **Use it more than once, promote it to a `LEFT JOIN LATERAL`.**
+
+**3. `Index Only Scan` with non-zero `Heap Fetches` is not index-only.**
+`trading_days` showed **Heap Fetches: 70,163** — a stale visibility map, so
+every "index-only" row still visited the heap. `VACUUM (ANALYZE) price_history`
+took it to 0 and dropped the per-row probe from 0.010 ms to 0.003 ms. The same
+vacuum took **`vw_risk_analysis` from 1,362 ms to 327 ms with no view change at
+all.** `price_history` gains ~1,700 rows a night from the universe sync, so
+check `Heap Fetches` before rewriting a view — the table may just need a vacuum.
+
+**Never benchmark a view rewrite with `select count(*)`.** It lets the planner
+elide the very joins under test: the old and new definitions here measured
+1,124 ms vs 983 ms on `count(*)`, and 6,161 ms vs 557 ms on the real workload.
+Use `explain analyze select *`, or `count(*)` over a subquery that forces
+materialisation.
+
 ### "Doesn't load on the first pass" is a cold-cache timeout (2026-08-23)
 `vw_portfolio_nav_daily` measured **4,850 ms warm** against anon's 3s cap, so it
 failed on every call — and *which* components came up depended on the buffer
