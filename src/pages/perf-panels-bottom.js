@@ -19,6 +19,12 @@ import { computeBrinsonAttribution, BENCHMARKS } from '../lib/attributionEngine.
 var useState = React.useState, useRef = React.useRef, useMemo = React.useMemo;
 var h = React.createElement;
 
+// Mirrors the floor in vw_performance_suite (memo v2 §2.7). The view is the
+// authority — it decides which rows carry an annualised_return at all. This
+// constant exists only so the UI can say *why* a row is blank; it must not be
+// used to recompute or re-filter, or the two will drift.
+var CAGR_MIN_DAYS = 90;
+
 function retColor(v) {
     if (v == null) return 'rgba(255,255,255,0.5)';
     return v >= 0 ? '#10b981' : '#ef4444';
@@ -292,7 +298,14 @@ export function PositionsPanel(p) {
         // Summary HeroCards
         h('div', { className: 'hero-grid', style: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 } },
             h(Tile, { icon: '◈', label: 'Positions', value: String(perf.length), color: '#00d4ff', accent: 'cyan', badge: 'In Portfolio' }),
-            h(Tile, { icon: '◆', label: 'Avg CAGR', value: fmtPct(avgCagr), color: retC(avgCagr), accent: avgCagr >= 0 ? 'green' : 'red' }),
+            // The mean now covers fewer positions than the book holds: the
+            // 90-day floor withholds short holds and the staleness gate
+            // withholds unpriced ones. A headline average over an unstated
+            // subset is the same defect as an unstated stale price, so the
+            // denominator is on the tile.
+            h(Tile, { icon: '◆', label: 'Avg CAGR', value: fmtPct(avgCagr), color: retC(avgCagr), accent: avgCagr >= 0 ? 'green' : 'red',
+                      sub: cagrRows.length < perf.length ? cagrRows.length + ' of ' + perf.length + ' positions' : null,
+                      badge: cagrRows.length < perf.length ? '≥' + CAGR_MIN_DAYS + 'd held' : null }),
             h(Tile, { icon: '▲', label: 'Best Performer', value: best ? best.symbol : '—', color: '#10b981', accent: 'green',
                       sub: best ? fmtPct(best.total_return_pct) : 'no measurable position',
                       badge: unmeasured.length ? unmeasured.length + ' unpriced' : null }),
@@ -464,7 +477,18 @@ export function PositionsPanel(p) {
                             h('td', { style: { padding: '8px 8px', textAlign: 'right', fontFamily: 'JetBrains Mono', fontSize: 11, color: 'rgba(255,255,255,0.75)', borderBottom: '1px solid rgba(255,255,255,0.04)' } }, fmtCurrency(row.current_price)),
                             h('td', { style: { padding: '8px 8px', textAlign: 'right', fontFamily: 'JetBrains Mono', fontSize: 11, color: 'rgba(255,255,255,0.55)', borderBottom: '1px solid rgba(255,255,255,0.04)' } }, row.days_held || '—'),
                             h('td', { style: { padding: '8px 8px', textAlign: 'right', fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 700, color: retC(row.total_return_pct), borderBottom: '1px solid rgba(255,255,255,0.04)' } }, fmtPct(row.total_return_pct)),
-                            h('td', { style: { padding: '8px 8px', textAlign: 'right', fontFamily: 'JetBrains Mono', fontSize: 11, color: retC(row.annualised_return), borderBottom: '1px solid rgba(255,255,255,0.04)' } }, fmtPct(row.annualised_return)),
+                            // CAGR is NULL for two different reasons and a bare
+                            // dash conflates them: the price is too old to
+                            // measure at all, or the hold is too short to
+                            // annualise (§2.7 floor, 90 days). Days and
+                            // Return % are the columns immediately to the left,
+                            // so the row still says what happened.
+                            h('td', {
+                                title: row.annualised_return != null ? null
+                                    : row.total_return_pct == null ? 'No usable price'
+                                    : 'Not annualised below ' + CAGR_MIN_DAYS + ' days held — ' + row.days_held + 'd so far',
+                                style: { padding: '8px 8px', textAlign: 'right', fontFamily: 'JetBrains Mono', fontSize: 11, color: retC(row.annualised_return), borderBottom: '1px solid rgba(255,255,255,0.04)', cursor: row.annualised_return == null ? 'help' : 'default' }
+                            }, fmtPct(row.annualised_return)),
                             h('td', { style: { padding: '8px 8px', textAlign: 'right', fontFamily: 'JetBrains Mono', fontSize: 11, color: 'rgba(255,255,255,0.65)', borderBottom: '1px solid rgba(255,255,255,0.04)' } }, fmt(row.entry_efficiency_score, 1)),
                             h('td', { style: { padding: '8px 8px', borderBottom: '1px solid rgba(255,255,255,0.04)' } },
                                 // Three states, not two. cut_candidate_flag is
