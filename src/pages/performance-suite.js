@@ -18,19 +18,30 @@ import { AdvancedChart } from './advanced-chart.js';
 var useState = React.useState, useEffect = React.useEffect, useMemo = React.useMemo;
 var h = React.createElement;
 
+// Position-first ordering (memo v2 §4 step 0b). The brief is "every position
+// fights for its place" — so the position-level cuts lead and the book-level
+// aggregates follow. OVERVIEW moves last: it is the book summary, which is
+// what the terminal header already shows, and leading with it buried the
+// surface the module is actually about.
+//
+// Pure IA. No panel, prop or route changed — only the order of this array and
+// the landing tab below. Reverting is this array back the way it was.
 var SUB_TABS = [
-    { id: 'overview',     label: 'OVERVIEW',     sub: 'Metrics & Curve' },
-    { id: 'returns',      label: 'RETURNS',       sub: 'Period Analysis' },
-    { id: 'risk',         label: 'RISK',          sub: 'Drawdown & VaR' },
     { id: 'positions',    label: 'POSITIONS',     sub: 'Attribution' },
     { id: 'rolling',      label: 'CONTRIBUTION',  sub: 'Rolling P&L · NEW', isNew: true },
     { id: 'factors',      label: 'FACTOR ENGINE', sub: 'Return Decomp · NEW', isNew: true },
+    { id: 'returns',      label: 'RETURNS',       sub: 'Period Analysis' },
+    { id: 'risk',         label: 'RISK',          sub: 'Drawdown & VaR' },
     { id: 'regime',       label: 'REGIME SLICER', sub: 'Macro Windows · NEW', isNew: true },
     { id: 'charts',       label: 'CHARTS',        sub: 'Advanced Analysis' },
+    { id: 'overview',     label: 'OVERVIEW',      sub: 'Metrics & Curve' },
 ];
 
 export function PerformanceSuite() {
-    var _t = useState('overview');
+    // Land on the first tab rather than a hardcoded id, so the ordering above
+    // is the single source of truth. Positions-first is only IA if the module
+    // also opens there.
+    var _t = useState(SUB_TABS[0].id);
     var activeTab = _t[0], setActiveTab = _t[1];
     var _n = useState(null);
     var navSeries = _n[0], setNavSeries = _n[1];
