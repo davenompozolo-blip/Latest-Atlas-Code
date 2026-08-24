@@ -73,6 +73,24 @@ async function loadHoldingRows() {
     }
 }
 
+// The cash-flow return engine (step 2), for the SINCE ENTRY / MWR toggle.
+// Read from the nightly snapshot: vw_position_returns recomputes an IRR and a
+// self-counterfactual per position (~940ms) and has no business in a page load.
+// Absent or erroring → empty map, so rows simply carry no MWR and the toggle
+// renders a stated reason rather than a substituted number.
+async function loadReturnEngine() {
+    try {
+        const { data, error } = await sb.from('mv_position_returns')
+            .select('symbol, position_mwr_period_pct, position_mwr_pct, position_twr_pct, engine_status, engine_reason, days_held');
+        if (error) throw error;
+        const m = new Map();
+        (data || []).forEach(r => { if (r.symbol) m.set(r.symbol, r); });
+        return m;
+    } catch (e) {
+        return new Map();
+    }
+}
+
 // Options positioning per name (held filter is implicit — we look up by ticker).
 // One read from the canonical nexus_options view; absent/error → empty map, so
 // holdings simply render no options tone (hasOptions:false).
@@ -119,7 +137,9 @@ export async function getNexusModel() {
     if (!rows || !rows.length) return baseline; // unconfigured / empty / error → baseline
 
     const staleSet = new Set((baseline.dataIntegrity && baseline.dataIntegrity.staleTickers) || []);
-    const [compByTk, macro, optByTk, scrapByTk] = await Promise.all([loadComposites(), loadMacro(), loadOptions(), loadScrapbookThesis()]);
+    const [compByTk, macro, optByTk, scrapByTk, retByTk] = await Promise.all([
+        loadComposites(), loadMacro(), loadOptions(), loadScrapbookThesis(), loadReturnEngine(),
+    ]);
 
     const sections = buildLiveSections(rows, compByTk, staleSet);
     const { spine, themeSpine, concentration, nav, portfolio } = sections;
@@ -130,6 +150,16 @@ export async function getNexusModel() {
         const o = optByTk.get(h.tk);
         const sc = scrapByTk.get(h.tk);
         let out = o ? { ...h, options: o } : h;
+        // Engine figures ride alongside totalReturnPct rather than replacing
+        // it: the toggle picks between them at render time, so both bases stay
+        // available and neither is silently substituted for the other.
+        const rr = retByTk.get(h.tk);
+        out = {
+            ...out,
+            mwrPct: rr && rr.position_mwr_period_pct != null ? Number(rr.position_mwr_period_pct) * 100 : null,
+            engineStatus: rr ? rr.engine_status : null,
+            engineReason: rr ? rr.engine_reason : null,
+        };
         if (sc) out = { ...out, scrapbookThesis: sc.thesis_summary || null, scrapbookConviction: sc.conviction_rating || null };
         return out;
     });

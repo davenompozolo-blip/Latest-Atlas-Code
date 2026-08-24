@@ -95,6 +95,11 @@ export function PerformanceSuite() {
                 loadView('vw_command_centre', [MOCK_COMMAND]),
                 loadView('vw_portfolio_home', []),
                 loadView('vw_transactions', []),
+                // The cash-flow return engine (step 2). Read from the nightly
+                // snapshot, never from vw_position_returns: the view recomputes
+                // an IRR and a self-counterfactual per position and takes
+                // ~940ms, which has no business in a page load.
+                loadView('mv_position_returns', []),
             ]).then(function(res) {
                 var nav = res[0];
                 if (Array.isArray(nav) && nav.length) {
@@ -103,7 +108,28 @@ export function PerformanceSuite() {
                     });
                 }
                 setNavSeries(nav);
-                setPerfData(res[1]);
+                // Merge the engine onto the perf rows by symbol so every
+                // consumer sees one row per position carrying both bases.
+                // Left join: a position with no engine row keeps its plain
+                // figures and simply has no MWR, which the basis toggle
+                // renders as a stated reason rather than a fallback number.
+                var engineBySymbol = {};
+                (res[5] || []).forEach(function(r) { if (r.symbol) engineBySymbol[r.symbol] = r; });
+                setPerfData((res[1] || []).map(function(row) {
+                    var e = engineBySymbol[row.symbol];
+                    return e ? Object.assign({}, row, {
+                        position_mwr_period_pct:     e.position_mwr_period_pct,
+                        position_mwr_pct:            e.position_mwr_pct,
+                        position_mwr_close_basis_pct: e.position_mwr_close_basis_pct,
+                        execution_effect_pp:         e.execution_effect_pp,
+                        position_twr_pct:            e.position_twr_pct,
+                        capital_deployed_usd:        e.capital_deployed_usd,
+                        net_pnl_usd:                 e.net_pnl_usd,
+                        engine_status:               e.engine_status,
+                        engine_reason:               e.engine_reason,
+                        engine_days_held:            e.days_held,
+                    }) : row;
+                }));
                 var cmd = Array.isArray(res[2]) ? res[2][0] : res[2];
                 setCmdData(cmd || MOCK_COMMAND);
                 var home = res[3] || [];

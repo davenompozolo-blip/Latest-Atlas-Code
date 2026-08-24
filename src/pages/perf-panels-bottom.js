@@ -15,6 +15,8 @@ import {
     computeDrawdownPeriods, computePositionContributions
 } from './perf-engine.js';
 import { computeBrinsonAttribution, BENCHMARKS } from '../lib/attributionEngine.js';
+import { BASIS_MWR, mwrOf, PLAIN_LABEL, STATUS_TEXT } from '../lib/returnBasis.js';
+import { ReturnBasisToggle, useReturnBasis } from '../components/ReturnBasisToggle.js';
 
 var useState = React.useState, useRef = React.useRef, useMemo = React.useMemo;
 var h = React.createElement;
@@ -184,10 +186,29 @@ export function PositionsPanel(p) {
     var _sv = React.useState('total');
     var activeView = p.activeView != null ? p.activeView : _sv[0];
     var setActiveView = p.onActiveView || _sv[1];
-    var _s = React.useState('total_return_pct');
+    // 'active_return' is a synthetic sort key meaning "whichever return the
+    // basis toggle is currently showing". Sorting on the literal column would
+    // silently keep ranking by SINCE ENTRY while the table displayed MWR.
+    var _s = React.useState('active_return');
     var sortKey = _s[0], setSortKey = _s[1];
     var _d = React.useState(true);
     var desc = _d[0], setDesc = _d[1];
+    var _rb = useReturnBasis();
+    var basis = _rb[0], setBasis = _rb[1];
+    var isMwr = basis === BASIS_MWR;
+
+    // The active return for a row, and why it is absent when it is.
+    // Never falls back across bases: six of 86 positions have no MWR, and a
+    // column that quietly swapped in SINCE ENTRY for those would be mixed-basis
+    // with nothing on screen to say so.
+    function activeRet(row) {
+        if (!isMwr) return { value: row.total_return_pct == null ? null : Number(row.total_return_pct), reason: 'No usable price' };
+        return mwrOf(row);
+    }
+    function activeVal(row) {
+        var r = activeRet(row);
+        return r.value;
+    }
     var _b = React.useState('equal');
     var benchKey = p.benchKey != null ? p.benchKey : _b[0];
     var setBenchKey = p.onBenchKey || _b[1];
@@ -216,6 +237,14 @@ export function PositionsPanel(p) {
     // sector's average return and its own contribution line. Feed them only
     // what can be measured; the count of what was withheld is shown on the
     // Best Performer tile rather than dropped silently.
+    //
+    // Deliberately NOT basis-aware. `computeBrinsonAttribution` is shared with
+    // Nexus beat 07, so feeding it MWR here would silently re-base a second
+    // module that nobody asked to change — the same shared-engine hazard
+    // flagged when the staleness gate landed. Re-basing Brinson is step 5,
+    // where it is done on purpose and behind a flag. Until then this panel
+    // states the basis it is on, so a screen showing MWR elsewhere cannot be
+    // misread as showing it here.
     var measurablePerf = useMemo(function() {
         return perf.filter(function(p) { return p.total_return_pct != null; });
     }, [perf]);
@@ -235,7 +264,7 @@ export function PositionsPanel(p) {
         { id: 'table',   label: 'POSITION TABLE' },
     ];
 
-    var viewBar = h('div', { style: { display: 'flex', gap: 4, marginBottom: 16 } },
+    var viewBar = h('div', { style: { display: 'flex', gap: 4, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' } },
         VIEWS.map(function(v) {
             var a = activeView === v.id;
             return h('button', { key: v.id, onClick: function() { setActiveView(v.id); }, style: {
@@ -244,7 +273,9 @@ export function PositionsPanel(p) {
                 color: a ? '#00d4ff' : 'rgba(255,255,255,0.38)', fontSize: 10, fontWeight: 700,
                 fontFamily: 'JetBrains Mono', letterSpacing: 0.8, cursor: 'pointer',
             }}, v.label);
-        })
+        }),
+        h('div', { style: { marginLeft: 'auto' } },
+            h(ReturnBasisToggle, { surface: 'performance', basis: basis, onBasis: setBasis }))
     );
 
     // ---- ATTRIBUTION OVERVIEW ----------------------------------
@@ -260,16 +291,20 @@ export function PositionsPanel(p) {
     // unpriced name would have counted as a 0% return: eligible to be named
     // Worst Performer, and dragging Avg CAGR toward zero across the whole book.
     // Filter first, then reduce.
-    var measured = perf.filter(function(p) { return p.total_return_pct != null; });
-    var unmeasured = perf.filter(function(p) { return p.total_return_pct == null; });
+    // Measurability is now basis-dependent: a position can have a SINCE ENTRY
+    // return and no MWR (ledger mismatch, stale mark), so Best/Worst and the
+    // averages have to be taken over whatever the active basis can actually
+    // measure — not over a fixed column.
+    var measured = perf.filter(function(p) { return activeVal(p) != null; });
+    var unmeasured = perf.filter(function(p) { return activeVal(p) == null; });
     var cagrRows = perf.filter(function(p) { return p.annualised_return != null; });
 
     var cuts = perf.filter(function(p) { return p.cut_candidate_flag; });
     var best = measured.length
-        ? measured.reduce(function(b, q) { return Number(q.total_return_pct) > Number(b.total_return_pct) ? q : b; }, measured[0])
+        ? measured.reduce(function(b, q) { return activeVal(q) > activeVal(b) ? q : b; }, measured[0])
         : null;
     var worst = measured.length
-        ? measured.reduce(function(w, q) { return Number(q.total_return_pct) < Number(w.total_return_pct) ? q : w; }, measured[0])
+        ? measured.reduce(function(w, q) { return activeVal(q) < activeVal(w) ? q : w; }, measured[0])
         : null;
     var avgCagr = cagrRows.length
         ? cagrRows.reduce(function(s, q) { return s + Number(q.annualised_return); }, 0) / cagrRows.length
@@ -306,9 +341,14 @@ export function PositionsPanel(p) {
             h(Tile, { icon: '◆', label: 'Avg CAGR', value: fmtPct(avgCagr), color: retC(avgCagr), accent: avgCagr >= 0 ? 'green' : 'red',
                       sub: cagrRows.length < perf.length ? cagrRows.length + ' of ' + perf.length + ' positions' : null,
                       badge: cagrRows.length < perf.length ? '≥' + CAGR_MIN_DAYS + 'd held' : null }),
+            // Best Performer follows the active basis, and says which — under
+            // MWR this can be a different position entirely from the one
+            // SINCE ENTRY names, which is the whole point of the toggle.
             h(Tile, { icon: '▲', label: 'Best Performer', value: best ? best.symbol : '—', color: '#10b981', accent: 'green',
-                      sub: best ? fmtPct(best.total_return_pct) : 'no measurable position',
-                      badge: unmeasured.length ? unmeasured.length + ' unpriced' : null }),
+                      sub: best ? fmtPct(activeVal(best)) : 'no measurable position',
+                      badge: unmeasured.length
+                          ? unmeasured.length + (isMwr ? ' no MWR' : ' unpriced')
+                          : (isMwr ? 'MWR' : null) }),
             h(Tile, { icon: '✂', label: 'Cut Candidates', value: String(cuts.length), color: cuts.length > 0 ? '#ef4444' : '#10b981', accent: cuts.length > 0 ? 'red' : 'green', badge: cuts.length > 0 ? 'Review' : 'All Clear' })
         ),
         // Contribution split: top contributors vs top detractors
@@ -365,7 +405,17 @@ export function PositionsPanel(p) {
             // Brinson sector table
             h('div', { className: 'card' },
                 h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 } },
-                    h('div', { className: 'card-title', style: { margin: 0 } }, 'BRINSON-FACHLER ATTRIBUTION BY SECTOR'),
+                    h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' } },
+                        h('div', { className: 'card-title', style: { margin: 0 } }, 'BRINSON-FACHLER ATTRIBUTION BY SECTOR'),
+                        // Named because the toggle can say MWR while this panel
+                        // is still on SINCE ENTRY — re-basing the shared engine
+                        // is step 5. An unlabelled mixed basis on one screen is
+                        // the defect; a labelled one is a stated scope.
+                        isMwr ? h('span', {
+                            title: 'Brinson runs on ' + PLAIN_LABEL.performance + ' regardless of the return basis: the attribution engine is shared with Nexus, and re-basing it is a separate change.',
+                            style: { fontSize: 9, fontFamily: 'JetBrains Mono', letterSpacing: 0.6, color: '#f5a623', border: '1px solid rgba(245,166,35,0.3)', background: 'rgba(245,166,35,0.1)', borderRadius: 3, padding: '1px 6px', cursor: 'help' },
+                        }, 'ON ' + PLAIN_LABEL.performance) : null
+                    ),
                     h('div', { style: { display: 'flex', gap: 16 } },
                         h('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'JetBrains Mono' } }, 'Portfolio return: ' + pctStr(brinson.portfolioReturn)),
                         h('span', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'JetBrains Mono' } }, 'Benchmark: ' + pctStr(brinson.benchmarkReturn)),
@@ -425,7 +475,8 @@ export function PositionsPanel(p) {
         // position as though it had returned exactly 0%, which lands it in the
         // middle of the table among real flat performers rather than out of the
         // ranking where it belongs.
-        var an = a[sortKey], bn = b[sortKey];
+        var an = sortKey === 'active_return' ? activeVal(a) : a[sortKey];
+        var bn = sortKey === 'active_return' ? activeVal(b) : b[sortKey];
         if (an == null && bn == null) return 0;
         if (an == null) return 1;
         if (bn == null) return -1;
@@ -443,7 +494,10 @@ export function PositionsPanel(p) {
         { key: 'entry_price',         label: 'Entry $',   align: 'right' },
         { key: 'current_price',       label: 'Current $', align: 'right' },
         { key: 'days_held',           label: 'Days',      align: 'right' },
-        { key: 'total_return_pct',    label: 'Return %',  align: 'right' },
+        // The return column is the basis toggle made visible: it changes both
+        // its heading and its numbers, so the column can never show one basis
+        // under the other's name.
+        { key: 'active_return',       label: isMwr ? 'MWR %' : 'RETURN %', align: 'right' },
         { key: 'annualised_return',   label: 'CAGR %',    align: 'right' },
         { key: 'entry_efficiency_score', label: 'Efficiency', align: 'right' },
     ];
@@ -476,7 +530,15 @@ export function PositionsPanel(p) {
                             h('td', { style: { padding: '8px 8px', textAlign: 'right', fontFamily: 'JetBrains Mono', fontSize: 11, color: 'rgba(255,255,255,0.65)', borderBottom: '1px solid rgba(255,255,255,0.04)' } }, fmtCurrency(row.entry_price)),
                             h('td', { style: { padding: '8px 8px', textAlign: 'right', fontFamily: 'JetBrains Mono', fontSize: 11, color: 'rgba(255,255,255,0.75)', borderBottom: '1px solid rgba(255,255,255,0.04)' } }, fmtCurrency(row.current_price)),
                             h('td', { style: { padding: '8px 8px', textAlign: 'right', fontFamily: 'JetBrains Mono', fontSize: 11, color: 'rgba(255,255,255,0.55)', borderBottom: '1px solid rgba(255,255,255,0.04)' } }, row.days_held || '—'),
-                            h('td', { style: { padding: '8px 8px', textAlign: 'right', fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 700, color: retC(row.total_return_pct), borderBottom: '1px solid rgba(255,255,255,0.04)' } }, fmtPct(row.total_return_pct)),
+                            // Under MWR a refused position shows why, not a
+                            // substituted number from the other basis.
+                            (function() {
+                                var ar = activeRet(row);
+                                return h('td', {
+                                    title: ar.value != null ? null : ar.reason,
+                                    style: { padding: '8px 8px', textAlign: 'right', fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 700, color: retC(ar.value), borderBottom: '1px solid rgba(255,255,255,0.04)', cursor: ar.value == null ? 'help' : 'default' },
+                                }, ar.value != null ? fmtPct(ar.value) : '—');
+                            })(),
                             // CAGR is NULL for two different reasons and a bare
                             // dash conflates them: the price is too old to
                             // measure at all, or the hold is too short to

@@ -646,6 +646,44 @@ never be zero — treat it as a permanent gate, not a bug to close.
   11.93pp. Publish the position on a close basis too and difference *that*;
   the gap between the two is the execution effect, which is worth having.
 
+### Return basis is one shared control (2026-08-24)
+`atlas.return.basis.v1` selects SINCE ENTRY vs MWR and is **shared** across
+Performance and Nexus — the opposite of `atlas_brinson_bench`, which the memo
+says to namespace. The rule is the same in both cases: share a control when the
+two surfaces are answering the same question, namespace it when they are not.
+"Time-weight my return by when the money was in, or don't" is one question.
+
+**The toggle never falls back across bases.** 5 positions have no MWR and 3
+have no SINCE ENTRY figure, and the sets do not overlap; substituting one for
+the other would produce a mixed-basis column with nothing on screen to say so.
+A row that cannot be measured on the active basis shows a reason.
+
+It changes rankings, not just labels: Worst Performer is **MRVL** on SINCE
+ENTRY and **TSLA** on MWR.
+
+Brinson stays on SINCE ENTRY whatever the toggle says, and is badged `ON SINCE
+ENTRY` when they differ — `computeBrinsonAttribution` is shared with Nexus beat
+07, so re-basing it here would silently re-base a module nobody asked to
+change. That is step 5.
+
+### `vw_nexus_holdings` publishes two returns and Nexus uses both
+Unlabelled, and they disagree in sign:
+
+| | `total_return_pct` | `unrealised_return_pct` |
+|---|---:|---:|
+| AMD | +134.89% | +15.04% |
+| MU | +8.28% | **−16.43%** |
+| SNDK | +12.91% | **−18.11%** |
+
+`total_return_pct` is return since the first fill (identical to
+`vw_performance_suite` — the two modules' return columns **do** agree).
+`unrealised_return_pct` is the mark against average cost on what is still held.
+The holdings table uses the first; winners/losers/at-risk
+(`nexusLiveCompute.js` ~265) and the Portfolio panel's "total return" line
+(~312) use the second. So a name can be counted a loser in the summary and
+show green in the table. Not yet fixed — decide which read each surface wants
+before touching it.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel
