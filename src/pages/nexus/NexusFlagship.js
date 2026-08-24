@@ -26,6 +26,19 @@ import { NexusBenchPanel } from './NexusBench.js';
 import { NexusQuickTicket } from './NexusQuickTicket.js';
 import { SpineTreemap } from './NexusSpineTreemap.js';
 import { COLUMNS, DEFAULT_VISIBLE, loadVisible, saveVisible, columnGroups, premiumBand } from './nexusColumns.js';
+import { BASIS_MWR, PLAIN_LABEL } from '../../lib/returnBasis.js';
+import { ReturnBasisToggle, useReturnBasis } from '../../components/ReturnBasisToggle.js';
+
+// The return a row shows under the active basis, and why it is absent.
+// Never falls back across bases: a position with no MWR renders a reason, not
+// its SINCE ENTRY number wearing the MWR heading.
+function activeRetOf(h, basis) {
+    if (basis !== BASIS_MWR) return h.totalReturnPct;
+    return h.mwrPct == null ? null : h.mwrPct;
+}
+function activeRetReason(h) {
+    return h.engineReason || h.engineStatus || 'no engine row';
+}
 import '../../styles/nexus-flagship.css';
 
 const { useState, useEffect } = React;
@@ -313,7 +326,7 @@ function PositioningSpine({ spine, themeSpine }) {
 // Per-cell tone, applied to the <td> itself so the whole cell colours.
 const CELL_CLASS = {
     todayPct:     h => 'nf-mono-cell ' + moveTone(h.todayPct),
-    totalReturn:  h => 'nf-mono-cell ' + moveTone(h.totalReturnPct),
+    totalReturn:  (h, basis) => 'nf-mono-cell ' + moveTone(activeRetOf(h, basis)),
     contribPct:   h => 'nf-mono-cell ' + moveTone(h.contribPct),
     componentVar: () => 'nf-mono-cell',
     annualVol:    () => 'nf-mono-cell',
@@ -355,7 +368,7 @@ function renderCell(k, h, ctx) {
                 e('span', { className: 'nf-cb-track' }, e('i', { style: { width: h.conviction + '%', background: convColor(h.conviction) } })),
                 e('span', { className: 'nf-mono-cell' }, h.conviction));
         case 'todayPct':     return pct1(h.todayPct);
-        case 'totalReturn':  return pct1(h.totalReturnPct);
+        case 'totalReturn':  return pct1(activeRetOf(h, ctx.basis));
         case 'contribPct':   return pct1(h.contribPct, 2);
         case 'componentVar': return (h.componentVar ?? 0).toFixed(1) + '%';
         // Vol is a magnitude, not a direction — no sign, no tone.
@@ -599,6 +612,7 @@ function HoldingsTable({ holdings, forceTheme }) {
     const [sortDir, setSortDir] = useState('desc');
     const [blotter, setBlotter] = useState({}); // tk → staged ticket
     const [visible, setVisible] = useState(loadVisible);
+    const [basis, setBasis] = useReturnBasis();
     const [ticket, setTicket] = useState(null);  // holding whose quick ticket is open
     // Drill-down from the Theme tab routes here with a theme to filter to.
     useEffect(() => { if (forceTheme) setTheme(forceTheme); }, [forceTheme]);
@@ -649,7 +663,10 @@ function HoldingsTable({ holdings, forceTheme }) {
         rows = rows.slice().sort((a, b) => {
             if (sortK === 'tk' || sortK === 'theme' || sortK === 'sector') return String(a[sortK] || '').localeCompare(String(b[sortK] || '')) * dir;
             if (sortK === 'read') return ((READ_RANK[a.read] ?? 9) - (READ_RANK[b.read] ?? 9)) * dir;
-            let av = Number(a[sortK]); let bv = Number(b[sortK]);
+            // Sorting follows the displayed basis, or the column would rank by
+            // SINCE ENTRY while showing MWR.
+            const key = h => sortK === 'totalReturnPct' ? activeRetOf(h, basis) : h[sortK];
+            let av = Number(key(a)); let bv = Number(key(b));
             if (isNaN(av)) av = -Infinity; if (isNaN(bv)) bv = -Infinity;
             return (av - bv) * dir;
         });
@@ -687,6 +704,7 @@ function HoldingsTable({ holdings, forceTheme }) {
                 }, r, e('span', { className: 'nf-rchip-n' }, counts[r]))),
                 dirty ? e('button', { className: 'nf-rclear', onClick: () => { setReads(new Set()); setTheme('ALL'); setQuery(''); } }, 'clear') : null
             ),
+            e(ReturnBasisToggle, { surface: 'nexus', basis, onBasis: setBasis }),
             e(ColumnChooser, { visible, setVisible })
         ),
 
@@ -701,7 +719,8 @@ function HoldingsTable({ holdings, forceTheme }) {
                         title: c.k === 'fwdPeGap'
                             ? 'Forward P/E against the median forward P/E of the screener universe'
                             : (c.k === 'annualVol' ? 'Annualised realised volatility, 120-day window' : null),
-                    }, c.label, c.sort ? arrow(c.sort) : ''))
+                    }, c.k === 'totalReturn' ? (basis === BASIS_MWR ? 'MWR' : c.label) : c.label,
+                       c.sort ? arrow(c.sort) : ''))
                 )),
                 e('tbody', null,
                     rows.length ? rows.map(function (h) {
@@ -715,8 +734,9 @@ function HoldingsTable({ holdings, forceTheme }) {
                             },
                                 cols.map(c => e('td', {
                                     key: c.k,
-                                    className: (c.l ? 'nf-l' : '') + (CELL_CLASS[c.k] ? ' ' + CELL_CLASS[c.k](h) : ''),
-                                }, renderCell(c.k, h, { wtScale, fvScale, isOpen, toggle, blotter, onStage })))
+                                    className: (c.l ? 'nf-l' : '') + (CELL_CLASS[c.k] ? ' ' + CELL_CLASS[c.k](h, basis) : ''),
+                                    title: c.k === 'totalReturn' && activeRetOf(h, basis) == null ? activeRetReason(h) : undefined,
+                                }, renderCell(c.k, h, { wtScale, fvScale, isOpen, toggle, blotter, onStage, basis })))
                             ),
                         ];
                         if (isOpen) {
