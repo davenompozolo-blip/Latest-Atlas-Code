@@ -591,6 +591,61 @@ exactly like the bug it was meant to cure. What the platform wants is one
 22:00–22:45 window is already nearly that; it is just split across pg_cron and
 Vercel with no ordering guarantee between them.
 
+### A cancelled order is not a transaction (2026-08-24)
+`transactions` holds 9 rows with `price IS NULL` / `notes = 'canceled'`. Two
+carry a real quantity, and **every consumer counted them**: the ledger claimed
+1,500 shares of IBIF the broker has never held, and 150.58 UAE against the
+broker's 100.58. $975 of phantom value — 0.60% of NAV, under the 2% at which
+`nav_reconciliation` fails, so nothing ever went red.
+
+The date damage was worse. `first_buys` takes the earliest row, so a cancelled
+order became the entry date for **three** positions. UAE published
+`days_held = 177` on a position held 81 — three days from `cut_candidate_flag`,
+which fires past 180. TSLA's cancelled row had no price, so
+`COALESCE(first_buy, average_cost)` fell back to average cost and TSLA alone
+was measured on a different basis from every other position: **−14.04% became
+−20.70%** once its real first fill (457.50 on 2026-01-02) was used.
+
+Read **`vw_filled_transactions`**, never `transactions`, for any quantity,
+cost, return or cash-flow computation. Filter on `price IS NOT NULL`, not on
+`notes` — a priceless row cannot participate in a cost whatever the broker
+called it. These 9 rows are legacy (an orders-based import, March); the live
+sync requests `activity_types: 'FILL'` and cannot produce more.
+
+### The ledger must be reconciled per position, not just per book (2026-08-24)
+`nav_reconciliation` compares total NAV against broker equity. That passes
+while individual names are wrong, because errors net out. Reconciling
+ledger-derived quantity against `positions` per name found **four** breaks, all
+exact round lots — PBR −500 sh, GDX −100 sh, NPSNY +27 sh, plus OILK's missing
+opening. **Round-number divergence means missing transactions, not drift.**
+`vw_position_returns.engine_status = 'ledger_mismatch'` now refuses to publish
+a return for those names: a cash-flow return over a schedule missing a
+500-share buy is not approximately right, it is unanswerable.
+
+`transactions` begins 2025-12-29 and some positions predate it, so this will
+never be zero — treat it as a permanent gate, not a bug to close.
+
+### Return-engine traps (2026-08-24)
+- **Solve MWR over the holding period, not annualised.** An annualised root
+  leaves any sane bracket on a short window: CRWV (−6.35% over 2 days) fell
+  below −0.9999 and OILK (+3572% over 3 days) rose above 100, so a
+  conditioning failure read as an undefined rate. Normalise the exponents to
+  the window and derive the annualised figure from that root.
+- **MWR is annualised by construction**, so it explodes on short holds exactly
+  as `annualised_return` did: AMGN's +6.18% over 7 days is **+2,182.99%**. Same
+  90-day floor applies.
+- **Date the terminal mark at the valuation date, never the price date.** KMTUY
+  has buys three months after its last close; dating the mark at the price date
+  put it mid-schedule and returned −79.27% on flows summing to +$956.
+- **`asset_class` is `'us_option'`, not `'option'`.** Equality misses every
+  contract. Test the class prefix *and* the OCC symbol shape — either alone has
+  been wrong here. `vw_performance_suite` still carries the equality test and is
+  only saved by starting from `positions`.
+- **Own return is priced at fills; a counterfactual has no fills.**
+  Differencing them folds execution into stock selection — SNDK 18.71pp, AMD
+  11.93pp. Publish the position on a close basis too and difference *that*;
+  the gap between the two is the execution effect, which is worth having.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel
