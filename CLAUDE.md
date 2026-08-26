@@ -356,6 +356,8 @@ to cure.
 | 22:45 | `chain_trade_sync_all` (signals) | prices |
 | 23:00 | `chain_options_snapshot` | — (Alpha Vantage sourced) |
 | 23:15 | `chain_theme_leadership` (Fri) | prices |
+| 23:35 | `refresh_position_returns` | — |
+| 23:37 | `atlas_write_verdicts` (Mon–Fri) | positions snapshot current |
 | 23:40 | `atlas_run_validation` | — |
 
 **Validation moved from 22:40 to 23:40.** At 22:40 it ran *before* the signals
@@ -665,6 +667,139 @@ Brinson stays on SINCE ENTRY whatever the toggle says, and is badged `ON SINCE
 ENTRY` when they differ — `computeBrinsonAttribution` is shared with Nexus beat
 07, so re-basing it here would silently re-base a module nobody asked to
 change. That is step 5.
+
+### The verdict layer: three tiers, and what each is for (2026-08-26)
+`position_verdicts` is a **history**, not a view — a row records what was known
+on `as_of` under `logic_version` and is never updated. That single property
+drives most of the design decisions below.
+
+| Tier | Basis | Coverage | Question |
+|---|---|---|---|
+| 1 | Cluster median, ρ ≥ 0.75, n ≥ 5 | 17 of 57 | Right name among substitutes? |
+| 2 | Rest of book at prevailing weights | 56 of 57 | Earned its slot against my alternatives? |
+| — | Frozen weight (do-nothing) | 77 of 82 | Did my trading add anything? |
+
+`peer_basis` records which tier produced the score. **Never fall back between
+tiers without recording which was used.**
+
+The book has no peers by construction — single names, ADRs, sector ETFs, bond
+funds, commodity trackers. 24 of 57 open positions have no correlate above ρ
+0.65; the median position's best correlate is 0.662. That is a portfolio
+property, not a data gap, and it is why Tier 2 is the primary basis. **Do not
+loosen ρ to manufacture peers** — a name at 0.66 is the sector-label claim the
+brief already rejected, with a number attached.
+
+**Two different cluster objects, deliberately not merged.** Tier 1 ranks
+against a *neighbourhood* (every name at ρ ≥ 0.75; overlapping, 17 names).
+`cluster_risk_share` needs a *partition* (`universe_clusters`, avg-linkage, one
+bucket per name, shares summing to 1) so the position → cluster → book chain
+closes. Using the neighbourhood for the risk share is what would break the
+identity. Different columns on purpose.
+
+**Effective bets: 3.87** across 19 risk clusters, against memo v2 §2.8's
+predicted five or six. 57 positions, four bets.
+
+**The do-nothing book beats the traded book**: traded +11.37%, frozen +12.73%,
+trading effect **−1.37pp** over 77 positions. Per position 36 helped, 41 hurt,
+median 0.00pp — most trades did nothing and the tail is mildly negative.
+
+### Invariants belong in constraints, not only in the job (2026-08-26)
+Rev. B §6 asked for the verdict invariants to be "asserted in the nightly job,
+failing loudly". Every rule that is a predicate over a *single row* is a CHECK
+on `position_verdicts` instead. The memo's own argument for writing these
+columns from row one is that a history cannot be backfilled — so a constraint
+the job cannot forget beats an assertion it might.
+
+Impossible, not merely discouraged: a `cut_candidate` on an unmeasurable
+position, an annualised return under 90 days held, a cluster verdict over two
+names, an eligibility claim at ρ 0.65, a reason code with no measurement behind
+it, `switch_to_cluster_leader` on the book tier, and an
+`evidence_own_return_known` that disagrees with `verdict_status`.
+
+Only two rules span rows and stay in the job: `sum(cluster_risk_share) = 1.0`,
+and **no verdict row while `positions` is behind the last traded day**. The
+second is the step 4 blocker in permanent form.
+
+`supabase/tests/position_verdicts_constraints.sql` proves all of it — ten
+violating inserts refused plus one well-formed row accepted, whole thing rolls
+back. **Always include the happy-path case**: a wall of CHECKs that also blocks
+legitimate writes is worse than no CHECKs.
+
+### The ledger and the tape can price different shares (2026-08-26)
+The frozen-weight baseline published **DD at +229.75%** against a tape that
+went 122 → 136. DD's ledger fills are at 41.24, 49.48 and 47.06 while the tape
+reads 122–148 on those same dates; its final fill at 138.75 matches exactly. An
+unadjusted corporate action left the two **pricing different shares**, ~1:3.
+
+Anything multiplying ledger quantity by tape price is fabricated for such a
+name — which includes the return engine's own terminal mark. DD is the **only
+equity affected** (9 of 10 fills). The other three hits are option contracts,
+where one fill against a thin contract tape can differ by a lot without either
+being wrong, so options are excluded — testing the class prefix **and** the OCC
+symbol shape, since either alone has been wrong here before.
+
+`vw_position_price_basis` is the shared check. Consumers **refuse** with
+`basis_mismatch` and the observed ratio rather than guessing an adjustment
+factor: a fabricated benchmark is worse than a missing one, because the traded
+book is graded against it. DD is closed, so no open position is affected today
+and `vw_position_returns` is not yet gated on this — that changes a published
+number and wants its own step.
+
+### Never rank on regret; the leader is often leveraged (2026-08-26)
+`cf_best_symbol` is **SOXL** — a 3× semiconductor fund — for five of the
+seventeen cluster-eligible positions. A levered fund takes a levered share of
+any move that went the right way, so it tops the cluster on any tape that rose.
+This is why `regret_vs_best_pct` is display-only and never a sort key: ranking
+on it grades leverage and luck.
+
+`switch_to_cluster_leader` is gated on **measured volatility**, not a name
+match — a deny-list of "3X"/"Ultra"/"Bull" strings would miss the next one and
+flag an innocent fund. A leader above 1.5× the position's own annualised vol is
+not a like-for-like substitute whatever it is called, and the reason code falls
+back to `cut_underperforming_comparables`.
+
+Verdict labels use **absolute bands, not quantiles**. A quantile rule forces a
+fixed share of the book to be cut candidates every night however the book
+actually did — a ranking dressed as a verdict.
+
+### Excluding one name from the book costs one scan, not n (2026-08-26)
+The Tier 2 counterfactual needs "the book without asset i" for every i.
+Computed independently that is O(n²·T). It does not need to be — with
+S(t) = Σ wⱼrⱼ and F(t) = Σ wⱼ over names priced that day:
+
+```
+r_ex_i(t) = (S(t) − w_i(t)·r_i(t)) / (F(t) − w_i(t))
+```
+
+One pass of `mv_book_daily_weights` yields every exclusion. 8,732 rows in,
+14,190 out; the whole 86-position counterfactual runs in 543 ms. Guarded at
+`F − w_i ≥ 0.02` — the rest of the book is not an alternative when the excluded
+name *is* most of the book.
+
+Sanity check any such construction against the whole book: ex-AMD +17.94% vs
++21.86% (removing a big winner must cost), ex-GOOGL +21.87% (a name that
+performed in line must not move it).
+
+**Book returns come from consecutive bars, never from `vw_position_nav_daily`'s
+close.** That close is a LATERAL top-1 on `price_date <= cal_date`, so a name
+with no bar carries the last one forward and differencing it reports a 0.00%
+move for a name that did not trade — publishing a move off a dead print. A name
+with no bar gets no row and is renormalised out instead.
+
+### `universe_correlations` does not cover the book (2026-08-26)
+It holds ~420 symbols of a ~1,500-name universe, and inclusion is **not
+guaranteed for held names**: coverage of the open book went 71 → 70 → 67 over
+three days as the cap churned. Today only KMTUY is missing, and only because
+its feed is dark, so nothing is lost.
+
+But a held name dropping out silently would read as *"no close peer"* when it
+means *"not measured"*. `absent_from_matrix` is published to keep the two
+apart. Watch it; not fixed.
+
+`best_correlate_rho` is scoped to the **open book** — §2.5 asks how
+differentiated the book is, and a sold name is not an alternative you hold.
+Tier 1's peer set is scoped to the **whole matrix** — a substitute you could
+have bought counts whether or not you owned it. Opposite scoping, on purpose.
 
 ### `vw_nexus_holdings` publishes two returns and Nexus uses both
 Unlabelled, and they disagree in sign:
