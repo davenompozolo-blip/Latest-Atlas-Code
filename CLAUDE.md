@@ -725,6 +725,39 @@ violating inserts refused plus one well-formed row accepted, whole thing rolls
 back. **Always include the happy-path case**: a wall of CHECKs that also blocks
 legitimate writes is worse than no CHECKs.
 
+### A gate that can never pass is one you learn to ignore (2026-08-26)
+The verdict job's preflight is three checks, and each one had to be *scoped* to
+be useful. Written literally, two of the three would refuse the job every night
+forever.
+
+**Freshness and coherence are different gates catching different failures.**
+The 08-24 phantom rows carried a **current** snapshot date — `positions` was
+synced, dated correctly, and wrong in content. Any date comparison passes that
+cleanly. Only reconciling broker quantity against the ledger catches it.
+
+- `positions_freshness` compares to `atlas_last_traded_day()`, **never
+  `CURRENT_DATE`** — a calendar comparison refuses every Saturday, Sunday and
+  market holiday, and gaps in an append-only history cannot be backfilled.
+- `ledger_coherence` fires only on the **phantom signature**: broker holds a
+  non-zero quantity the ledger says was sold out. "Every symbol must
+  reconcile" fails on 12 permanent rows — GDX (−100) and PBR (−500) predating
+  the ledger start, plus 10 broker-closed rows that are mostly expired options,
+  where expiry is not a transaction so the opening buy has no closing row.
+  Both classes are already gated per position by the engine.
+- `matrix_coverage` refuses only for a name with a **live** feed that is
+  missing. KMTUY has 7 bars in a 120-day window against a 60-bar minimum, so no
+  correlation pair is mathematically possible — a fact about its feed, not the
+  400-symbol cap, and the same dark feed that already makes it `stale_mark`.
+
+**`refresh_universe_correlations` already pins held names** —
+`held UNION liquid(LIMIT n) UNION 'SPY'` — so the cap has always applied to the
+candidate remainder. Pinning cannot fix a name with no returns to correlate.
+
+`supabase/tests/verdict_preflight_forced_failures.sql` forces both failures in
+a rolled-back transaction. **"Has not been observed failing" is not a test**,
+and in FORCE 2 freshness still passes while coherence refuses — which is the
+whole argument for having both.
+
 ### The ledger and the tape can price different shares (2026-08-26)
 The frozen-weight baseline published **DD at +229.75%** against a tape that
 went 122 → 136. DD's ledger fills are at 41.24, 49.48 and 47.06 while the tape
@@ -741,9 +774,20 @@ symbol shape, since either alone has been wrong here before.
 `vw_position_price_basis` is the shared check. Consumers **refuse** with
 `basis_mismatch` and the observed ratio rather than guessing an adjustment
 factor: a fabricated benchmark is worse than a missing one, because the traded
-book is graded against it. DD is closed, so no open position is affected today
-and `vw_position_returns` is not yet gated on this — that changes a published
-number and wants its own step.
+book is graded against it.
+
+**Gated in the engine as of 2026-08-26**, not per consumer — a gate applied at
+the consumer is missed by the next consumer. `basis_mismatch` is its own
+`engine_status`, ranked after `ledger_mismatch` (if the quantities disagree
+nothing downstream is safe) and never folded into `stale_mark`: a stale mark
+self-heals when the feed returns, a basis mismatch needs a corporate-action
+adjustment and never does. DD moved measured → `basis_mismatch`; measured
+positions 82 → 81. It is closed, so no open position is affected today.
+
+This was the third instance of one pattern — `search_path` on the engine
+functions, the phantom `positions` rows, and this — each deferred on a version
+of *nothing currently needs it*. The first two both went on to fail. **A
+dormant defect costs nothing to fix while the context is loaded.**
 
 ### Never rank on regret; the leader is often leveraged (2026-08-26)
 `cf_best_symbol` is **SOXL** — a 3× semiconductor fund — for five of the

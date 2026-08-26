@@ -105,5 +105,9 @@ export const STATUS_TEXT = {
     ledger_mismatch:   'ledger disagrees with broker',
     incomplete_ledger: 'ledger predates the position',
     stale_mark:        'price too old to mark',
+    // Kept distinct from stale_mark on purpose: a stale mark self-heals when
+    // the feed returns, this one needs a corporate-action adjustment and never
+    // does. DD's fills sit at ~1:3 to its own tape.
+    basis_mismatch:    'ledger and tape price different shares',
     no_rate:           'no defined rate',
 };
