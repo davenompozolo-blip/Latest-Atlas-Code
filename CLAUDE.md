@@ -725,6 +725,31 @@ violating inserts refused plus one well-formed row accepted, whole thing rolls
 back. **Always include the happy-path case**: a wall of CHECKs that also blocks
 legitimate writes is worse than no CHECKs.
 
+### A no-op must not answer 200 — second instance (2026-08-27)
+`atlas_write_verdicts`'s first scheduled run logged **success with
+rows_written = 0**. Benign that night — the 57 rows for that `as_of` already
+existed from an earlier manual run the same UTC day, and
+`ON CONFLICT (as_of, asset_id, logic_version) DO NOTHING` skipped them all.
+
+The defect is that the job could not tell that apart from producing nothing.
+An empty `positions`, a broken join, or any later change that made the
+`INSERT ... SELECT` return no rows would log the identical shape. Exactly what
+`chain_theme_leadership` did for weeks while `theme_leadership_weekly` never
+received a row.
+
+Three outcomes now, and `rows_present` is logged beside `rows_written` so they
+are readable apart without re-deriving anything:
+
+| written | present | status |
+|---|---|---|
+| > 0 | — | `success` |
+| 0 | > 0 | `skipped`, "already written for this as_of" |
+| 0 | 0 | `error` + RAISE |
+
+**The idempotent re-run is no longer dressed up as a successful write.** That
+middle row is the ordinary case and saying `success` for it is what hid the
+third.
+
 ### A gate that can never pass is one you learn to ignore (2026-08-26)
 The verdict job's preflight is three checks, and each one had to be *scoped* to
 be useful. Written literally, two of the three would refuse the job every night
