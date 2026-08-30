@@ -16,6 +16,7 @@ import { OverviewPanel, ReturnsPanel } from './perf-panels-top.js';
 import { RiskPanel, PositionsPanel } from './perf-panels-bottom.js';
 import { RollingAttributionPanel, FactorEnginePanel, RegimeSlicerPanel } from './perf-panels-analytics.js';
 import { ClusterRankingPanel } from './perf-panel-clusters.js';
+import { VerdictCardsPanel } from './perf-panel-verdicts.js';
 import { AdvancedChart } from './advanced-chart.js';
 
 var useState = React.useState, useEffect = React.useEffect, useMemo = React.useMemo;
@@ -31,10 +32,13 @@ var h = React.createElement;
 // the landing tab below. Reverting is this array back the way it was.
 var SUB_TABS = [
     { id: 'positions',    label: 'POSITIONS',     sub: 'Attribution' },
-    // Sits second, right after the position-level cut: it is the same
-    // question ("did this name earn its slot") asked against peers instead of
-    // against the book, and §5.3 puts the ranking here rather than on each
-    // card because only ~19 of 57 positions can carry one.
+    // The three position-level cuts run from raw to judged to ranked:
+    // POSITIONS says what each name returned, VERDICTS says what that was
+    // worth against the comparison that applies to it, CLUSTERS ranks the ones
+    // that have peers to be ranked against.
+    { id: 'verdicts',     label: 'VERDICTS',      sub: 'Per Position · NEW', isNew: true },
+    // §5.3 puts the peer ranking here rather than on each card, because only
+    // ~19 of 57 positions can carry one and the rest would show a hole.
     { id: 'clusters',     label: 'CLUSTERS',      sub: 'Peer Ranking · NEW', isNew: true },
     { id: 'rolling',      label: 'CONTRIBUTION',  sub: 'Rolling P&L · NEW', isNew: true },
     { id: 'factors',      label: 'FACTOR ENGINE', sub: 'Return Decomp · NEW', isNew: true },
@@ -406,6 +410,11 @@ export function PerformanceSuite() {
             break;
         case 'positions':
             panel = hasPerf ? h(PositionsPanel, { perfData: perfData, cmdData: cmdData, homeData: homeData || [], activeView: posView, onActiveView: setPosView, benchKey: posBench, onBenchKey: setPosBench }) : h(EmptyState, null);
+            break;
+        case 'verdicts':
+            // Self-loading for the same reason as CLUSTERS: it reads
+            // position_verdicts, which the suite-wide fetch does not touch.
+            panel = h(VerdictCardsPanel, null);
             break;
         case 'clusters':
             // Self-loading: it reads position_verdicts, which no other panel
