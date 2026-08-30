@@ -18,6 +18,7 @@ import React from 'react';
 // ============================================================
 
 import { loadVerdictRows, buildVerdictCards, barGeometry } from '../lib/verdictCard.js';
+import { thesisGate, thesisQuadrants, QUADRANT_READ, THESIS_STALE_DAYS } from '../lib/thesisGate.js';
 import { sb } from './config.js';
 import { Loading } from './components.js';
 
@@ -54,6 +55,20 @@ var BASIS = {
     cluster: { color: T.teal,  text: 'TIER 1 · CLUSTER' },
     book:    { color: T.blue,  text: 'TIER 2 · REST OF BOOK' },
     none:    { color: T.slate, text: 'NOT MEASURED' },
+};
+
+// Bench vocabulary. `untested` is deliberately muted rather than warning-
+// coloured: it is the honest reading of a thesis nobody has judged, not a
+// fault, and colouring it amber would read as an alert about the position.
+var THESIS_COLOR = {
+    intact:       T.green,
+    confirmed:    T.green,
+    bending:      T.amber,
+    broken:       T.red,
+    contradicted: T.red,
+    expired:      T.slate,
+    untested:     T.slate,
+    pending:      T.slate,
 };
 
 function pct(v) {
@@ -157,6 +172,29 @@ function VerdictCard(props) {
                     'best peer ' + s.bestSymbol + (s.regret == null ? '' : ' · ' + ppOf(s.regret, 1) + ' behind'))
             ),
 
+        // ── the Bench's thesis, gated (§5.2) ─────────────────
+        // Absent entirely when no claim was ever written for the name — there
+        // is no absence to explain, so no row is drawn. Present but unjudged
+        // renders UNTESTED with the reason, which is every held thesis today.
+        (function () {
+            var g = thesisGate({
+                thesis_state: c.thesisState, thesis_state_as_of: c.thesisAsOf,
+            });
+            if (!g) return null;
+            var col = THESIS_COLOR[g.display] || T.slate;
+            return h('div', { style: { marginTop: 9, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.05)' } },
+                h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 7 } },
+                    h('span', { style: { fontSize: 8.5, letterSpacing: 1, color: T.text2 } }, 'THESIS'),
+                    h('span', { style: { fontSize: 10, fontWeight: 700, letterSpacing: 0.6, color: col } },
+                        g.display.toUpperCase()),
+                    // A gated state is flagged as such: the reader should see
+                    // that the word was produced by the freshness rule, not by
+                    // someone judging the thesis untested.
+                    g.gated && h('span', { style: { fontSize: 8, color: T.amber, border: '1px solid rgba(245,158,11,0.35)', borderRadius: 3, padding: '0 3px' } }, 'STALE')
+                ),
+                h('div', { style: { fontSize: 9, color: T.text3, marginTop: 2, lineHeight: 1.35 } }, g.reason));
+        })(),
+
         // footer — evidence
         h('div', { style: { marginTop: 'auto', paddingTop: 9, display: 'flex', justifyContent: 'space-between', fontSize: 9, color: T.text3, fontFamily: T.mono } },
             h('span', null, c.daysHeld != null ? c.daysHeld + 'd held' : '—'),
@@ -232,6 +270,8 @@ export function VerdictCardsView(props) {
                 h('div', null, view.logicVersion || ''))
         ),
 
+        h(ThesisMatrix, { cards: view.cards }),
+
         h('div', {
             style: {
                 display: 'grid', gap: 12,
@@ -241,5 +281,69 @@ export function VerdictCardsView(props) {
         }, view.cards.map(function (c) {
             return h(VerdictCard, { key: c.symbol, card: c, scale: view.scale });
         }))
+    );
+}
+
+// ── the book-level 2×2 (§5.2) ────────────────────────────────
+// One level up from the card: does the thesis still hold, and is the position
+// actually working? The two questions are independent, which is the whole
+// point — "right for a reason you no longer believe" and "the case survives
+// the price" are different situations needing different actions.
+//
+// Placement uses the GATED state. A quadrant built on a stale INTACT would put
+// a position in "working as intended" on a judgement nobody has made for
+// months. Anything unjudged, gated or edgeless lands in its own bucket beside
+// the grid rather than inside it: not knowing is not the same as knowing the
+// thesis is broken.
+function ThesisMatrix(props) {
+    var q = thesisQuadrants(props.cards);
+    var placed = q.holdingWinning.length + q.holdingLosing.length
+               + q.brokenWinning.length + q.brokenLosing.length;
+
+    function Cell(key, label, color) {
+        var list = q[key];
+        return h('div', {
+            style: {
+                background: 'rgba(255,255,255,0.02)', border: '1px solid ' + T.cardBorder,
+                borderLeft: '2px solid ' + (list.length ? color : 'rgba(255,255,255,0.07)'),
+                borderRadius: 6, padding: '9px 11px', minHeight: 62,
+            }
+        },
+            h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 8 } },
+                h('div', { style: { fontFamily: T.mono, fontSize: 17, fontWeight: 700, color: list.length ? color : T.text3 } },
+                    String(list.length)),
+                h('div', { style: { fontSize: 9, color: T.text2, letterSpacing: 0.4 } }, label)),
+            h('div', { style: { fontSize: 9, color: T.text3, marginTop: 3, lineHeight: 1.35 } }, QUADRANT_READ[key]),
+            list.length ? h('div', { style: { fontSize: 9.5, color: T.text2, marginTop: 4, fontFamily: T.mono } },
+                list.slice(0, 8).map(function (c) { return c.symbol; }).join(' ')
+                + (list.length > 8 ? ' +' + (list.length - 8) : '')) : null);
+    }
+
+    return h('div', { style: { marginBottom: 16 } },
+        h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8 } },
+            h('div', { style: { fontFamily: T.mono, fontSize: 11.5, fontWeight: 700, color: T.text1, letterSpacing: 0.6 } },
+                'THESIS vs POSITION'),
+            h('div', { style: { fontSize: 10, color: T.text2 } },
+                placed + ' of ' + props.cards.length + ' placeable')),
+        h('div', { style: { display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))' } },
+            Cell('holdingWinning', 'holding · ahead',  T.green),
+            Cell('holdingLosing',  'holding · behind', T.amber),
+            Cell('brokenWinning',  'gone · ahead',     T.amber),
+            Cell('brokenLosing',   'gone · behind',    T.red)),
+        h('div', { style: { display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', marginTop: 10 } },
+            Cell('notJudged', 'no reliable reading', T.slate),
+            Cell('noThesis',  'no thesis on file',   T.slate)),
+        placed === 0 && h('div', {
+            style: {
+                marginTop: 10, padding: '9px 12px', borderRadius: 6,
+                background: 'rgba(124,133,152,0.08)', border: '1px solid rgba(124,133,152,0.28)',
+                fontSize: 10.5, color: T.text2, lineHeight: 1.5,
+            }
+        },
+            h('strong', { style: { color: T.text1 } }, 'Nothing is placeable yet. '),
+            'The Bench holds ', h('strong', null, String(q.notJudged.length)), ' theses for held names, each with a '
+            + 'falsifier and a review date, and not one claim has been judged — so every state is UNTESTED and '
+            + 'undated. The grid fills as claims are marked confirmed or contradicted; a state older than '
+            + THESIS_STALE_DAYS + ' days falls back out of it.')
     );
 }
