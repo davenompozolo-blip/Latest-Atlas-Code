@@ -10,6 +10,8 @@ import { sb, loadView, MOCK_COMMAND } from './config.js';
 import { fmtPct, fmt, fmtCurrency } from './utils.js';
 import { Loading, EmptyState } from './components.js';
 import { computePortfolioMetrics, computePeriodReturns } from './perf-engine.js';
+import { loadBookBaseline, readBookBaseline } from '../lib/bookBaseline.js';
+import { BookBaselineTile } from '../components/BookBaselineTile.js';
 import { OverviewPanel, ReturnsPanel } from './perf-panels-top.js';
 import { RiskPanel, PositionsPanel } from './perf-panels-bottom.js';
 import { RollingAttributionPanel, FactorEnginePanel, RegimeSlicerPanel } from './perf-panels-analytics.js';
@@ -59,6 +61,9 @@ export function PerformanceSuite() {
     var histBySymbol = _hist[0], setHistBySymbol = _hist[1];
     var _hr = useState(false);
     var histReady = _hr[0], setHistReady = _hr[1];
+    // The do-nothing baseline (close-out §5.1). One row, read newest-first.
+    var _bb = useState(null);
+    var baselineRow = _bb[0], setBaselineRow = _bb[1];
     // Positions/Attribution selections are lifted here so they survive tab
     // switches — panels are unmounted by the router below, so panel-local
     // state would otherwise reset every time the tab is left (PF-11).
@@ -100,6 +105,10 @@ export function PerformanceSuite() {
                 // an IRR and a self-counterfactual per position and takes
                 // ~940ms, which has no business in a page load.
                 loadView('mv_position_returns', []),
+                // The frozen-weight counterfactual, written nightly by
+                // atlas_write_verdicts. Not loadView: this table grows a row
+                // every weekday and must be read newest-first.
+                loadBookBaseline(sb),
             ]).then(function(res) {
                 var nav = res[0];
                 if (Array.isArray(nav) && nav.length) {
@@ -135,6 +144,7 @@ export function PerformanceSuite() {
                 var home = res[3] || [];
                 setHomeData(home);
                 setTxData(res[4] || []);
+                setBaselineRow(res[6] || null);
                 setLoading(false);
 
                 // ── Price history batch fetch for analytics tabs ─────────────
@@ -210,6 +220,12 @@ export function PerformanceSuite() {
     var periods = useMemo(function() {
         return navSeries && navSeries.length > 1 ? computePeriodReturns(navSeries) : null;
     }, [navSeries]);
+
+    // Staleness is measured against the NAV series because its dates ARE the
+    // trading sessions — no clock, no calendar table, no weekend false alarm.
+    var baseline = useMemo(function() {
+        return readBookBaseline(baselineRow, navSeries);
+    }, [baselineRow, navSeries]);
 
     if (loading) return h(Loading, null);
 
@@ -339,7 +355,8 @@ export function PerformanceSuite() {
                 winRate != null ? (winRate * 100).toFixed(1) + '%' : '—'),
             h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'JetBrains Mono' } }, 'Positive days')
         ),
-        h('div', { style: { marginLeft: 'auto' } },
+        h(BookBaselineTile, { baseline: baseline }),
+        h('div', { style: { paddingLeft: 20, display: 'flex', alignItems: 'center' } },
             h('div', { style: { padding: '6px 16px', borderRadius: 20, background: statusBg, border: '1px solid ' + statusBorder, color: statusColor, fontSize: 11, fontWeight: 700, fontFamily: 'JetBrains Mono', letterSpacing: 0.8, whiteSpace: 'nowrap' } },
                 statusLabel)
         )
