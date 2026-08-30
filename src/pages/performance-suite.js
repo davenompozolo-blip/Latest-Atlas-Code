@@ -15,6 +15,7 @@ import { BookBaselineTile } from '../components/BookBaselineTile.js';
 import { OverviewPanel, ReturnsPanel } from './perf-panels-top.js';
 import { RiskPanel, PositionsPanel } from './perf-panels-bottom.js';
 import { RollingAttributionPanel, FactorEnginePanel, RegimeSlicerPanel } from './perf-panels-analytics.js';
+import { ClusterRankingPanel } from './perf-panel-clusters.js';
 import { AdvancedChart } from './advanced-chart.js';
 
 var useState = React.useState, useEffect = React.useEffect, useMemo = React.useMemo;
@@ -30,6 +31,11 @@ var h = React.createElement;
 // the landing tab below. Reverting is this array back the way it was.
 var SUB_TABS = [
     { id: 'positions',    label: 'POSITIONS',     sub: 'Attribution' },
+    // Sits second, right after the position-level cut: it is the same
+    // question ("did this name earn its slot") asked against peers instead of
+    // against the book, and §5.3 puts the ranking here rather than on each
+    // card because only ~19 of 57 positions can carry one.
+    { id: 'clusters',     label: 'CLUSTERS',      sub: 'Peer Ranking · NEW', isNew: true },
     { id: 'rolling',      label: 'CONTRIBUTION',  sub: 'Rolling P&L · NEW', isNew: true },
     { id: 'factors',      label: 'FACTOR ENGINE', sub: 'Return Decomp · NEW', isNew: true },
     { id: 'returns',      label: 'RETURNS',       sub: 'Period Analysis' },
@@ -400,6 +406,13 @@ export function PerformanceSuite() {
             break;
         case 'positions':
             panel = hasPerf ? h(PositionsPanel, { perfData: perfData, cmdData: cmdData, homeData: homeData || [], activeView: posView, onActiveView: setPosView, benchKey: posBench, onBenchKey: setPosBench }) : h(EmptyState, null);
+            break;
+        case 'clusters':
+            // Self-loading: it reads position_verdicts, which no other panel
+            // touches, and pulling one night of 57 rows into the suite-wide
+            // fetch would delay every other tab for a surface most loads
+            // never open.
+            panel = h(ClusterRankingPanel, null);
             break;
         case 'rolling':
             panel = h(RollingAttributionPanel, { positions: homeData || [], histBySymbol: histBySymbol, histReady: histReady, perfData: perfData || [] });
