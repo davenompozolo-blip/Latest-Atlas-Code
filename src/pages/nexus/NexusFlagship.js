@@ -28,6 +28,7 @@ import { SpineTreemap } from './NexusSpineTreemap.js';
 import { COLUMNS, DEFAULT_VISIBLE, loadVisible, saveVisible, columnGroups, premiumBand } from './nexusColumns.js';
 import { BASIS_MWR, PLAIN_LABEL } from '../../lib/returnBasis.js';
 import { ReturnBasisToggle, useReturnBasis } from '../../components/ReturnBasisToggle.js';
+import { NexusFaceToggle } from './NexusFaceToggle.js';
 
 // The return a row shows under the active basis, and why it is absent.
 // Never falls back across bases: a position with no MWR renders a reason, not
@@ -257,6 +258,11 @@ function riskShiftBars(rs) {
 // theme answers "what bets am I actually making". A book can look spread
 // across sectors while being one trade expressed eight ways, and only the
 // theme cut shows that — which is the point of carrying both.
+// Bars ↔ Treemap: the same `spine` rows read two ways, so it is a face flip
+// rather than a filter. No persistKey and no `⇄` affix — this control renders
+// in the v1 layout too, which stays pixel-identical.
+const SPINE_FACES = [{ id: 'bars', label: 'Bars' }, { id: 'map', label: 'Treemap' }];
+
 function PositioningSpine({ spine, themeSpine }) {
     const [dim, setDim] = useState('sector');
     // Bars are the default because they carry risk-shift, which the treemap
@@ -280,12 +286,7 @@ function PositioningSpine({ spine, themeSpine }) {
                         onClick: () => setDim(d),
                     }, d === 'sector' ? 'Sector' : 'Theme'))
                 ) : null,
-                e('div', { className: 'nf-spine-toggle' },
-                    [['bars', 'Bars'], ['map', 'Treemap']].map(([v, label]) => e('button', {
-                        key: v,
-                        className: 'nf-sp-tab' + (view === v ? ' active' : ''),
-                        onClick: () => setView(v),
-                    }, label))),
+                e(NexusFaceToggle, { faces: SPINE_FACES, active: view, onChange: setView }),
                 e('span', { className: 'nf-sub' },
                     view === 'bars' ? 'share · today · risk shift' : 'area = share · colour = today'))),
 
