@@ -1,0 +1,72 @@
+/* =====================================================
+   ATLAS Nexus — Flagship v2 flow (additive layer)
+   -----------------------------------------------------
+   Scoped under .nexus-flagship-v2, which is applied ALONGSIDE
+   .nexus-flagship — never instead of it. Every token, card, chip and
+   tone class the panels already use keeps coming from
+   nexus-flagship.css; this file adds only the arrangement the v2 flow
+   introduces (sections, rail, pinned read, ghost lines).
+
+   nexus-flagship.css is not edited. The v1 layout must stay
+   pixel-identical while this is built, and the cheapest guarantee of
+   that is that its 1,374 lines never change.
+
+   No new colour, font or radius values are defined here. Where a
+   mockup and nexus-flagship.css disagreed, the CSS won.
+   ============================================================ */
+
+/* ── Section: a labelled group of panels ────────────────────── */
+/* The label is a signpost, not a heading — it names the question the
+   panels below it answer, and must never compete with a card title. */
+.nexus-flagship-v2 .nfv2-section { margin: 0 0 26px; }
+
+.nexus-flagship-v2 .nfv2-section-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 10px;
+  font-family: var(--fb);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+
+/* The rule carries the eye across without drawing attention itself. */
+.nexus-flagship-v2 .nfv2-section-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.nexus-flagship-v2 .nfv2-section-body { display: block; }
+
+/* ── Ghost: a panel that cannot answer, saying why ───────────── */
+/* One muted line with a left border — deliberately NOT a card with
+   reserved height. A feed that does not exist should not cost the
+   vertical space of a panel that does. */
+.nexus-flagship-v2 .nfv2-ghost {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-height: 24px;
+  margin: 0 0 10px;
+  padding: 4px 0 4px 11px;
+  border-left: 2px solid var(--border-md);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text3);
+}
+
+.nexus-flagship-v2 .nfv2-ghost-name {
+  font-family: var(--fb);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text2);
+  white-space: nowrap;
+}
+
+.nexus-flagship-v2 .nfv2-ghost-why { color: var(--text3); }

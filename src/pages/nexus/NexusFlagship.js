@@ -29,6 +29,7 @@ import { COLUMNS, DEFAULT_VISIBLE, loadVisible, saveVisible, columnGroups, premi
 import { BASIS_MWR, PLAIN_LABEL } from '../../lib/returnBasis.js';
 import { ReturnBasisToggle, useReturnBasis } from '../../components/ReturnBasisToggle.js';
 import { NexusFaceToggle } from './NexusFaceToggle.js';
+import { loadLayout } from './nexusLayout.js';
 
 // The return a row shows under the active basis, and why it is absent.
 // Never falls back across bases: a position with no MWR renders a reason, not
@@ -41,6 +42,7 @@ function activeRetReason(h) {
     return h.engineReason || h.engineStatus || 'no engine row';
 }
 import '../../styles/nexus-flagship.css';
+import '../../styles/nexus-flagship-v2.css';
 
 const { useState, useEffect } = React;
 const e = React.createElement;
@@ -803,6 +805,26 @@ function FlagshipPanel({ model, holdingsTheme }) {
     );
 }
 
+// ── Flagship panel, v2 flow ───────────────────────────────────
+// Ships rendering the SAME order as v1 so this commit is inert: the
+// flag plumbing and the arrangement land separately, and a bisect can
+// tell "the switch is wired wrong" apart from "the flow is wrong".
+// The section grouping arrives next, in one commit.
+function FlagshipPanelV2({ model, holdingsTheme }) {
+    return e('div', { className: 'nfv2' },
+        e(PortfolioSnapshot, { model }),
+        e(WindshieldBand, { windshield: model.windshield }),
+        e(ContextGauges, { gauges: model.gauges }),
+        e(NexusBoardSection, { board: model.board }),
+        e(PositioningSpine, { spine: model.spine, themeSpine: model.themeSpine }),
+        e(HoldingsTable, { holdings: model.holdings, forceTheme: holdingsTheme }),
+        e(NexusEarningsTable, { earnings: model.earnings }),
+        e(NexusCotTable, { cot: model.cot }),
+        e(NexusOptionsPanel, { holdings: model.holdings }),
+        e(TheRead, { read: model.read })
+    );
+}
+
 // ── Seasonal panels (shell — render whatever the mock supplies) ─
 function SeasonalPanel({ data }) {
     if (!data) return e('div', { className: 'nf-card nf-seasonal' }, e('div', { className: 'nf-note' }, 'No data.'));
@@ -825,6 +847,9 @@ export function NexusFlagshipPage() {
     const [err, setErr] = useState(null);
     const [activeTab, setActiveTab] = useState('flagship');
     const [holdingsTheme, setHoldingsTheme] = useState(null);
+    // Read once on mount, like loadVisible(). Defensive — an unknown value is
+    // already normalised to 'v1' by loadLayout().
+    const [layout] = useState(loadLayout);
 
     useEffect(function () {
         let alive = true;
@@ -854,9 +879,12 @@ export function NexusFlagshipPage() {
     const setTab = id => setActiveTab(id);
     const tabEntry = TABS.find(t => t.id === activeTab) || TABS[0];
 
+    const v2 = layout === 'v2';
+
     let panel;
     if (activeTab === 'flagship') {
-        panel = e(FlagshipPanel, { model, holdingsTheme });
+        panel = v2 ? e(FlagshipPanelV2, { model, holdingsTheme })
+                   : e(FlagshipPanel, { model, holdingsTheme });
     } else if (activeTab === 'theme') {
         panel = e('div', { className: 'nf-seasonal' }, e(NexusThemePanel, { model }));
     } else if (activeTab === 'regime') {
@@ -871,7 +899,7 @@ export function NexusFlagshipPage() {
         panel = e('div', { className: 'nf-seasonal' }, e(SeasonalPanel, { data: model.seasonal && model.seasonal[tabEntry.seasonal] }));
     }
 
-    return e('div', { className: 'nexus-flagship' },
+    return e('div', { className: 'nexus-flagship' + (v2 ? ' nexus-flagship-v2' : '') },
         e('div', { className: 'nf-page' },
             e(NexusHeader, { model }),
             e(TabRail, { activeTab, onTab: setTab, chef: model.chef }),
