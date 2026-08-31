@@ -70,3 +70,79 @@
 }
 
 .nexus-flagship-v2 .nfv2-ghost-why { color: var(--text3); }
+
+/* ── Orientation rail ────────────────────────────────────────── */
+/* Replaces the v1 header: wordmark, the figures worth never losing to
+   a scroll, then the clock and the integrity light. */
+.nexus-flagship-v2 .nfv2-rail {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 9px 0 11px;
+  border-bottom: 1px solid var(--border);
+}
+
+.nexus-flagship-v2 .nfv2-rail-mark {
+  font-family: var(--fd);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.nexus-flagship-v2 .nfv2-rail-mark b { font-weight: 700; color: var(--text); }
+.nexus-flagship-v2 .nfv2-rail-mark span { color: var(--cyan); }
+
+.nexus-flagship-v2 .nfv2-rail-stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 18px;
+  flex: 1;
+  min-width: 0;
+}
+
+.nexus-flagship-v2 .nfv2-rail-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.nexus-flagship-v2 .nfv2-rail-l {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+
+.nexus-flagship-v2 .nfv2-rail-v {
+  font-size: 12px;
+  color: var(--text);
+  font-feature-settings: 'tnum' 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.nexus-flagship-v2 .nfv2-rail-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-left: auto;
+}
+
+/* ── Pinned read ─────────────────────────────────────────────── */
+/* Not a card: a left accent rule, so it reads as the verdict the
+   evidence below it supports rather than as the first panel. */
+.nexus-flagship-v2 .nfv2-read {
+  margin: 0 0 24px;
+  padding: 2px 0 2px 15px;
+  background: none;
+  border: 0;
+  border-left: 2px solid var(--cyan);
+  border-radius: 0;
+}
+
+.nexus-flagship-v2 .nfv2-read .nf-card-h {
+  padding: 0;
+  border-bottom: 0;
+  margin-bottom: 6px;
+}
