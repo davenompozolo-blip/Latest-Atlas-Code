@@ -14,6 +14,7 @@
 // ============================================================
 
 import React from 'react';
+import { Ghost } from './NexusGhost.js';
 
 const { useState } = React;
 const e = React.createElement;
@@ -82,7 +83,7 @@ function EarningsRow(r) {
     );
 }
 
-export function NexusEarningsTable({ earnings }) {
+export function NexusEarningsTable({ earnings, v2 }) {
     // `undefined` = the model has not resolved yet; `null` = it resolved and the
     // endpoint was unavailable, which renders as the ordinary empty table.
     const loading = earnings === undefined;
@@ -94,6 +95,11 @@ export function NexusEarningsTable({ earnings }) {
 
     const allRows = (data && data.rows) || [];
     const horizon = (data && data.horizonDays) || 75;
+    // An empty PAYLOAD is a different fact from an empty filter result, and
+    // only the first is the panel being unable to answer. v2 says which.
+    if (v2 && !allRows.length) {
+        return e(Ghost, { name: 'Earnings on deck', why: 'no dated event inside the ' + horizon + 'd window' });
+    }
     const reporting = (data && data.reportingCount != null)
         ? data.reportingCount
         : allRows.filter(r => r.daysUntil != null && r.daysUntil >= 0 && r.daysUntil <= horizon).length;

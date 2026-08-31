@@ -13,6 +13,7 @@
 import React from 'react';
 import * as LC from 'lightweight-charts';
 import { NexusFaceToggle, useFace } from './NexusFaceToggle.js';
+import { Ghost } from './NexusGhost.js';
 
 const { useState, useEffect, useRef } = React;
 const e = React.createElement;
@@ -211,7 +212,11 @@ export function NexusBoardSection({ board, v2 }) {
     // The face is a hook, so it must run before any early return.
     const [face, setFace] = useFace('atlas.nexus.board.face.v1', BOARD_FACES, 'composite');
     if (board === undefined) return e('div', { className: 'nf-card nb-loading' }, e('span', { className: 'nb-spin' }, '◴'), ' Loading macro & breadth…');
-    if (!board) return e('div', { className: 'nf-card nb-loading' }, '⚠ Macro & breadth board unavailable.');
+    // `undefined` (still loading) and `null` (resolved, endpoint down) stay
+    // distinct — the ghost replaces only the second.
+    if (!board) return v2
+        ? e(Ghost, { name: 'Macro & breadth', why: 'board unavailable — /api/nexus-board did not answer' })
+        : e('div', { className: 'nf-card nb-loading' }, '⚠ Macro & breadth board unavailable.');
 
     // v1 renders every chart at once, exactly as before — the flip is v2
     // layout language and must not alter the shipped layout.

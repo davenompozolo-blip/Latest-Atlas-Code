@@ -902,9 +902,9 @@ function FlagshipPanelV2({ model, holdingsTheme }) {
             e(PositioningSpine, { spine: model.spine, themeSpine: model.themeSpine })),
         e(Section, { label: 'THE NAMES' },
             e(HoldingsTable, { holdings: model.holdings, forceTheme: holdingsTheme }),
-            e(NexusEarningsTable, { earnings: model.earnings }),
+            e(NexusEarningsTable, { earnings: model.earnings, v2: true }),
             e(NexusCotTable, { cot: model.cot }),
-            e(NexusOptionsPanel, { holdings: model.holdings }))
+            e(NexusOptionsPanel, { holdings: model.holdings, v2: true }))
     );
 }
 
