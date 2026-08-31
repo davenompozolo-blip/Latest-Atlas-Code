@@ -66,6 +66,31 @@ check('v2 workings: components + indices', shown(work).sort(), ['Major indices',
 check('v2 workings: indices stay in both faces', shown(work).indexOf('Major indices') !== -1, true);
 check('v2 workings: gauge is NOT drawn', shown(work).indexOf('Fear &amp; Greed'), -1);
 
+// ── Grid geometry: no face may leave a column empty ───────────
+// The workings face drops the Fear & Greed gauge, which on the composite face
+// fills the second grid column beside Major indices. Without span2 the index
+// chart stayed half-width with a dead column beside it — caught by looking at
+// the rendered page, not by any assertion, which is why it is pinned here.
+// Walk the CARD boundaries, not the nearest preceding div: a card's <h3> sits
+// inside .nf-card-h, so scanning back for '<div class=' lands on that header
+// and every card reads as not-spanning. The first version of this helper did
+// exactly that and reported the two charts that DO span as half-width.
+const span2Of = (html, title) => {
+    const starts = [...html.matchAll(/<div class="(nf-card nf-fade nb-card[^"]*)"/g)];
+    for (let i = 0; i < starts.length; i++) {
+        const from = starts[i].index;
+        const to = i + 1 < starts.length ? starts[i + 1].index : html.length;
+        if (html.slice(from, to).includes('<h3>' + title + '</h3>')) {
+            return /nb-span2/.test(starts[i][1]);
+        }
+    }
+    return null;
+};
+check('composite: indices is half-width (pairs with the gauge)', span2Of(comp, 'Major indices'), false);
+check('workings: indices spans the full row',                    span2Of(work, 'Major indices'), true);
+check('workings: the component charts still span',               [span2Of(work, 'Volatility track record'), span2Of(work, 'Market breadth')], [true, true]);
+check('v1: indices unchanged (half-width)', span2Of(render(e(NexusBoardSection, { board: BOARD })), 'Major indices'), false);
+
 // ── Persistence, and its defensive read ───────────────────────
 store.clear();
 check('face: defaults to composite', loadFace('atlas.nexus.board.face.v1', [{ id: 'composite' }, { id: 'workings' }], 'composite'), 'composite');

@@ -148,7 +148,11 @@ function BreadthChart({ breadth }) {
 // and the client slices, so switching is instant with no refetch.
 const IDX_RANGES = [['1M', 21], ['3M', 63], ['6M', 126], ['1Y', 252], ['Max', Infinity]];
 
-function IndexChart({ indices }) {
+// `span2` because the index chart is the only card whose column neighbour
+// depends on the face: it pairs with the Fear & Greed gauge on the composite
+// face, and is on its own on the workings face, where a half-width card would
+// leave the other grid column empty.
+function IndexChart({ indices, span2 }) {
     const list = indices || [];
     const [sel, setSel] = useState(list.length ? list[0].symbol : null);
     const [range, setRange] = useState('6M');
@@ -170,7 +174,7 @@ function IndexChart({ indices }) {
         s.setData(series.map(d => ({ time: d.t, value: d.c })));
     }, [sel, range, JSON.stringify(series.map(d => d.t))]);
 
-    return e(Card, { title: 'Major indices',
+    return e(Card, { title: 'Major indices', span2: !!span2,
         sub: range + ' price · ' + (active ? active.symbol : '—') + (windowPct != null ? ' · ' + pct(windowPct) + ' over window' : ''),
         right: e('div', { className: 'nb-idx-chips' },
             list.map(i => e('button', {
@@ -240,7 +244,7 @@ export function NexusBoardSection({ board, v2 }) {
             face === 'composite'
                 ? e(FearGreed, { fg: board.fearGreed })
                 : null,
-            e(IndexChart, { indices: board.indices }),
+            e(IndexChart, { indices: board.indices, span2: face === 'workings' }),
             face === 'workings' ? e(VixChart, { vix: board.vix }) : null,
             face === 'workings' ? e(BreadthChart, { breadth: board.breadth }) : null
         )
