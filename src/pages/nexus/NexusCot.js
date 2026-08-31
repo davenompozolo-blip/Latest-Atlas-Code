@@ -5,13 +5,13 @@
 // book — large-spec net position, net as % of open interest, the
 // week-over-week shift, and where this week sits in a ~1-year range.
 // Extreme positioning is a reversal/risk flag on the correlated
-// holdings (shown per row). Self-fetching (/api/nexus-cot); pure
-// scoring in nexusCotCompute.js. Degrades to empty, never breaks.
+// holdings (shown per row). Data arrives as a prop from the Nexus
+// provider (/api/nexus-cot is fetched there); pure scoring in
+// nexusCotCompute.js. Degrades to empty, never breaks.
 // ============================================================
 
 import React from 'react';
 
-const { useState, useEffect } = React;
 const e = React.createElement;
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -21,18 +21,6 @@ const kInt = v => (v == null ? '—' : (v >= 0 ? '+' : '−') + Math.abs(Math.ro
 // Contrarian framing: crowded long → caution (bearish chip), crowded short →
 // washed out (bullish chip). Reuses the earnings sentiment-pill styles.
 const READ_TONE = { rich: 'bearish', cheap: 'bullish', neutral: 'neutral' };
-
-function useCot() {
-    const [s, setS] = useState({ data: null, loading: true });
-    useEffect(function () {
-        let alive = true;
-        fetch('/api/nexus-cot').then(r => r.json())
-            .then(j => { if (alive) setS({ data: j && j.ok ? j : { rows: [] }, loading: false }); })
-            .catch(() => { if (alive) setS({ data: { rows: [] }, loading: false }); });
-        return () => { alive = false; };
-    }, []);
-    return s;
-}
 
 const COLS = [
     { k: 'market', label: 'Market', l: true },
@@ -55,8 +43,11 @@ function NetBar({ v, scale }) {
     );
 }
 
-export function NexusCotTable() {
-    const { data, loading } = useCot();
+export function NexusCotTable({ cot }) {
+    // `undefined` = the model has not resolved yet; `null` = it resolved and the
+    // endpoint was unavailable, which renders as the ordinary empty table.
+    const loading = cot === undefined;
+    const data = cot || { rows: [] };
     if (loading) return e('div', { className: 'nf-card nb-loading' }, e('span', { className: 'nb-spin' }, '◴'), ' Loading positioning…');
     const rows = (data && data.rows) || [];
     const scale = Math.max(10, ...rows.map(r => Math.abs(Number(r.netSpecPctOi) || 0)));

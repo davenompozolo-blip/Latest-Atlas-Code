@@ -4,8 +4,9 @@
 // The visual half of the flagship: a Fear & Greed composite, a VIX
 // track-record with FOMC/CPI/jobs markers, equal- vs cap-weight
 // breadth, and major-index charts — each paired with the read, not
-// shown in isolation. Self-fetching (/api/nexus-board) so it loads
-// independently of the positioning model. Charts use the app's
+// shown in isolation. Data arrives as a prop from the Nexus provider
+// (/api/nexus-board is fetched there), so a collapsed tile can read the
+// headline without mounting this panel. Charts use the app's
 // lightweight-charts (v5) the same way the perf panels do.
 // ============================================================
 
@@ -21,20 +22,6 @@ const EVENT_COL = { FOMC: COL.amber, CPI: COL.cyan, NFP: COL.purple };
 
 const pct = (v, d = 1) => (v == null ? '—' : (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(d) + '%');
 const moveTone = v => (v > 0 ? COL.green : v < 0 ? COL.red : COL.dim);
-
-// ── Self-fetching board data ──────────────────────────────────
-function useBoard() {
-    const [state, setState] = useState({ board: null, loading: true, err: null });
-    useEffect(function () {
-        let alive = true;
-        fetch('/api/nexus-board')
-            .then(r => r.json())
-            .then(j => { if (alive) setState({ board: j && j.ok ? j : null, loading: false, err: j && j.ok ? null : (j && j.error) || 'unavailable' }); })
-            .catch(er => { if (alive) setState({ board: null, loading: false, err: er.message || String(er) }); });
-        return () => { alive = false; };
-    }, []);
-    return state;
-}
 
 // ── Shared chart scaffold (mirrors perf-panels options) ───────
 function baseOpts(width, opts) {
@@ -197,10 +184,13 @@ function IndexChart({ indices }) {
 }
 
 // ── Board section (rendered inside the flagship) ──────────────
-export function NexusBoardSection() {
-    const { board, loading, err } = useBoard();
-    if (loading) return e('div', { className: 'nf-card nb-loading' }, e('span', { className: 'nb-spin' }, '◴'), ' Loading macro & breadth…');
-    if (!board) return e('div', { className: 'nf-card nb-loading' }, '⚠ Macro & breadth board unavailable' + (err ? ' (' + err + ')' : '') + '.');
+// `undefined` means the model has not resolved yet (loading); `null` means it
+// resolved and the endpoint failed (unavailable). Today's `err` detail is dropped
+// because the provider swallows it — if it turns out to matter, have loadBoard()
+// return { ok: false, error } rather than reinstating a fetch here.
+export function NexusBoardSection({ board }) {
+    if (board === undefined) return e('div', { className: 'nf-card nb-loading' }, e('span', { className: 'nb-spin' }, '◴'), ' Loading macro & breadth…');
+    if (!board) return e('div', { className: 'nf-card nb-loading' }, '⚠ Macro & breadth board unavailable.');
     return e('div', { className: 'nb-grid' },
         e(FearGreed, { fg: board.fearGreed }),
         e(IndexChart, { indices: board.indices }),

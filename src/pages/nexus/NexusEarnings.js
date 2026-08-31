@@ -8,13 +8,14 @@
 // prior print + beat-rate, the implied move, and a sentiment read
 // from the book's own signals. Names actually reporting float to the
 // top; everything else sits below with the date we know (or —).
-// Self-fetching (/api/nexus-earnings); pure scoring in
-// nexusEarningsCompute.js. Degrades to an empty state, never breaks.
+// Data arrives as a prop from the Nexus provider (/api/nexus-earnings is
+// fetched there); pure scoring in nexusEarningsCompute.js. Degrades to an
+// empty state, never breaks.
 // ============================================================
 
 import React from 'react';
 
-const { useState, useEffect } = React;
+const { useState } = React;
 const e = React.createElement;
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -23,18 +24,6 @@ const inDays = n => (n == null ? '' : n === 0 ? 'today' : n < 0 ? Math.abs(n) + 
 const eps = v => (v == null ? '—' : (v < 0 ? '−$' : '$') + Math.abs(v).toFixed(2));
 const sPct = (v, d = 1) => (v == null ? '—' : (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(d) + '%');
 const HOUR = { bmo: 'BMO', amc: 'AMC', dmh: 'DMH' };
-
-function useEarnings() {
-    const [s, setS] = useState({ data: null, loading: true });
-    useEffect(function () {
-        let alive = true;
-        fetch('/api/nexus-earnings').then(r => r.json())
-            .then(j => { if (alive) setS({ data: j && j.ok ? j : { rows: [] }, loading: false }); })
-            .catch(() => { if (alive) setS({ data: { rows: [] }, loading: false }); });
-        return () => { alive = false; };
-    }, []);
-    return s;
-}
 
 // Implied-move basis — options-implied IV first, then the name's own
 // earnings history, then a realized-vol estimate.
@@ -93,8 +82,11 @@ function EarningsRow(r) {
     );
 }
 
-export function NexusEarningsTable() {
-    const { data, loading } = useEarnings();
+export function NexusEarningsTable({ earnings }) {
+    // `undefined` = the model has not resolved yet; `null` = it resolved and the
+    // endpoint was unavailable, which renders as the ordinary empty table.
+    const loading = earnings === undefined;
+    const data = earnings || { rows: [] };
     const [query, setQuery] = useState('');
     const [theme, setTheme] = useState('ALL');
     const [win, setWin] = useState('all');

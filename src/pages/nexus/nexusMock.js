@@ -107,6 +107,14 @@ export async function getNexusModel() {
 
         dataIntegrity,
 
+        // The mock supplies no board / earnings / COT payloads. Explicit null
+        // (not absent) so the mock provider stays honest about what it does and
+        // does not supply: those panels render their unavailable state rather
+        // than sitting in a loading spinner forever.
+        board: null,
+        earnings: null,
+        cot: null,
+
         windshield: {
             driver: 'Hot jobs report repriced the rate path',
             driverEmphasis: 'rates, not earnings',
