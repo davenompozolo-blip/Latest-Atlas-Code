@@ -23,7 +23,15 @@
  * @property {Read} read
  * @property {Chef} chef
  * @property {Seasonal} seasonal
+ * @property {Object|null=} board     /api/nexus-board payload; null when unavailable
+ * @property {Object|null=} earnings  /api/nexus-earnings payload; null when unavailable
+ * @property {Object|null=} cot       /api/nexus-cot payload; null when unavailable
  */
+
+// board / earnings / cot are OPTIONAL, not required: `null` is a valid value and
+// means "endpoint unavailable", which is the state the three panels already
+// render today. `undefined` means the model has not resolved yet — the panels
+// keep those two apart so a collapsed tile can tell loading from unavailable.
 
 /**
  * @typedef {Object} DataIntegrity

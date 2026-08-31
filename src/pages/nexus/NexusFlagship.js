@@ -792,11 +792,11 @@ function FlagshipPanel({ model, holdingsTheme }) {
         e(PortfolioSnapshot, { model }),
         e(WindshieldBand, { windshield: model.windshield }),
         e(ContextGauges, { gauges: model.gauges }),
-        e(NexusBoardSection, null),
+        e(NexusBoardSection, { board: model.board }),
         e(PositioningSpine, { spine: model.spine, themeSpine: model.themeSpine }),
         e(HoldingsTable, { holdings: model.holdings, forceTheme: holdingsTheme }),
-        e(NexusEarningsTable, null),
-        e(NexusCotTable, null),
+        e(NexusEarningsTable, { earnings: model.earnings }),
+        e(NexusCotTable, { cot: model.cot }),
         e(NexusOptionsPanel, { holdings: model.holdings }),
         e(TheRead, { read: model.read })
     );

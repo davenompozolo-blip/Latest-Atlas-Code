@@ -48,6 +48,44 @@ async function loadMacro() {
     }
 }
 
+// Supabase-independent panel endpoints (board / earnings / COT). These three
+// panels used to fetch for themselves on mount; the provider owns the fetch now
+// so a collapsed tile can read a headline without mounting the panel. Same
+// shape as loadMacro(): same-origin, `ok` check, null on any failure so each
+// panel falls back to its own unavailable state rather than throwing.
+async function loadBoard() {
+    try {
+        const r = await fetch('/api/nexus-board');
+        if (!r.ok) return null;
+        const j = await r.json();
+        return j && j.ok ? j : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+async function loadEarnings() {
+    try {
+        const r = await fetch('/api/nexus-earnings');
+        if (!r.ok) return null;
+        const j = await r.json();
+        return j && j.ok ? j : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+async function loadCot() {
+    try {
+        const r = await fetch('/api/nexus-cot');
+        if (!r.ok) return null;
+        const j = await r.json();
+        return j && j.ok ? j : null;
+    } catch (e) {
+        return null;
+    }
+}
+
 async function loadComposites() {
     try {
         const { data, error } = await sb.from('valuation_health').select('ticker, avg_fair_value');
@@ -131,10 +169,22 @@ export async function getNexusModel() {
     // risk/perf gauges, the Read narrative, chef, seasonal) AND a live
     // dataIntegrity. We override the data-backed sections below.
     const baseline = await getBaselineModel();
-    if (!sb) return baseline;
+
+    // Board, earnings and COT do not touch Supabase, so they are loaded ABOVE
+    // the guards below and merged into the baseline on both fallback paths.
+    // Inside the existing Promise.all they would sit past the early returns and
+    // the three panels would vanish whenever Supabase is unconfigured, erroring
+    // or the book is empty — the exact state where macro context matters most,
+    // and the one their self-fetch used to survive.
+    const [board, earnings, cot] = await Promise.all([
+        loadBoard(), loadEarnings(), loadCot(),
+    ]);
+    const panels = { board, earnings, cot };
+
+    if (!sb) return { ...baseline, ...panels };
 
     const rows = await loadHoldingRows();
-    if (!rows || !rows.length) return baseline; // unconfigured / empty / error → baseline
+    if (!rows || !rows.length) return { ...baseline, ...panels }; // unconfigured / empty / error → baseline
 
     const staleSet = new Set((baseline.dataIntegrity && baseline.dataIntegrity.staleTickers) || []);
     const [compByTk, macro, optByTk, scrapByTk, retByTk] = await Promise.all([
@@ -175,6 +225,7 @@ export async function getNexusModel() {
 
     return {
         ...baseline,
+        ...panels,
         asOf: new Date().toISOString(),
         holdings,
         spine,
