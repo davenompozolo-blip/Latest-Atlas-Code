@@ -805,23 +805,45 @@ function FlagshipPanel({ model, holdingsTheme }) {
     );
 }
 
+// ── Section — a labelled group of panels ──────────────────────
+// The label is a signpost, not a heading: it names the question the
+// panels below it answer, and is styled to sit under the card titles
+// rather than compete with them.
+function Section({ label, children }) {
+    return e('div', { className: 'nfv2-section' },
+        e('div', { className: 'nfv2-section-label' }, label),
+        e('div', { className: 'nfv2-section-body' }, children)
+    );
+}
+
 // ── Flagship panel, v2 flow ───────────────────────────────────
-// Ships rendering the SAME order as v1 so this commit is inert: the
-// flag plumbing and the arrangement land separately, and a bisect can
-// tell "the switch is wired wrong" apart from "the flow is wrong".
-// The section grouping arrives next, in one commit.
+// Ten flat siblings become four labelled sections, each answering one
+// question in the order you actually ask them: where do I stand, what
+// are the conditions, how am I exposed to them, who is carrying it.
+//
+// Every child is unchanged internally — this is grouping and ordering.
+//
+// OrderBlotter is NOT a sibling here. It renders inside HoldingsTable,
+// which owns the staged-ticket state it reads, and already sits exactly
+// where this section would put it. Adding it here would mount a second,
+// stateless one — and `e(OrderBlotter, null)` throws outright, since it
+// reads `tickets.length` off props it would never receive.
 function FlagshipPanelV2({ model, holdingsTheme }) {
     return e('div', { className: 'nfv2' },
-        e(PortfolioSnapshot, { model }),
-        e(WindshieldBand, { windshield: model.windshield }),
-        e(ContextGauges, { gauges: model.gauges }),
-        e(NexusBoardSection, { board: model.board }),
-        e(PositioningSpine, { spine: model.spine, themeSpine: model.themeSpine }),
-        e(HoldingsTable, { holdings: model.holdings, forceTheme: holdingsTheme }),
-        e(NexusEarningsTable, { earnings: model.earnings }),
-        e(NexusCotTable, { cot: model.cot }),
-        e(NexusOptionsPanel, { holdings: model.holdings }),
-        e(TheRead, { read: model.read })
+        e(TheRead, { read: model.read }),
+        e(Section, { label: 'WHERE I STAND' },
+            e(PortfolioSnapshot, { model }),
+            e(ContextGauges, { gauges: model.gauges })),
+        e(Section, { label: 'THE WEATHER' },
+            e(WindshieldBand, { windshield: model.windshield }),
+            e(NexusBoardSection, { board: model.board })),
+        e(Section, { label: 'MY SHAPE' },
+            e(PositioningSpine, { spine: model.spine, themeSpine: model.themeSpine })),
+        e(Section, { label: 'THE NAMES' },
+            e(HoldingsTable, { holdings: model.holdings, forceTheme: holdingsTheme }),
+            e(NexusEarningsTable, { earnings: model.earnings }),
+            e(NexusCotTable, { cot: model.cot }),
+            e(NexusOptionsPanel, { holdings: model.holdings }))
     );
 }
 
