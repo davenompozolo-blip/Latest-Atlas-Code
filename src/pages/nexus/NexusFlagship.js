@@ -897,7 +897,7 @@ function FlagshipPanelV2({ model, holdingsTheme }) {
             e(ContextGauges, { gauges: model.gauges })),
         e(Section, { label: 'THE WEATHER' },
             e(WindshieldBand, { windshield: model.windshield }),
-            e(NexusBoardSection, { board: model.board })),
+            e(NexusBoardSection, { board: model.board, v2: true })),
         e(Section, { label: 'MY SHAPE' },
             e(PositioningSpine, { spine: model.spine, themeSpine: model.themeSpine })),
         e(Section, { label: 'THE NAMES' },

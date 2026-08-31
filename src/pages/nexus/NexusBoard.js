@@ -12,6 +12,7 @@
 
 import React from 'react';
 import * as LC from 'lightweight-charts';
+import { NexusFaceToggle, useFace } from './NexusFaceToggle.js';
 
 const { useState, useEffect, useRef } = React;
 const e = React.createElement;
@@ -183,19 +184,61 @@ function IndexChart({ indices }) {
     );
 }
 
+// ── Board faces ───────────────────────────────────────────────
+// /api/nexus-board serves all four charts, and computeFearGreed
+// composites volatility, momentum, safe-haven, credit and breadth. The
+// VIX chart IS component 1 drawn out; the breadth chart IS component 5.
+// One payload, two readings — so this passes the flip rule rather than
+// being a filter: neither face shows data the other lacks.
+//
+//   composite — the gauge and its five component bars.
+//   workings  — the two component charts, each captioned with which
+//               part of the score it is.
+//
+// Major indices stays in both: it is context for the score, not a
+// component of it.
+const BOARD_FACES = [
+    { id: 'composite', label: 'Composite', title: 'the Fear & Greed score and its five parts' },
+    { id: 'workings',  label: 'Workings',  title: 'the component series the score is built from' },
+];
+
 // ── Board section (rendered inside the flagship) ──────────────
 // `undefined` means the model has not resolved yet (loading); `null` means it
 // resolved and the endpoint failed (unavailable). Today's `err` detail is dropped
 // because the provider swallows it — if it turns out to matter, have loadBoard()
 // return { ok: false, error } rather than reinstating a fetch here.
-export function NexusBoardSection({ board }) {
+export function NexusBoardSection({ board, v2 }) {
+    // The face is a hook, so it must run before any early return.
+    const [face, setFace] = useFace('atlas.nexus.board.face.v1', BOARD_FACES, 'composite');
     if (board === undefined) return e('div', { className: 'nf-card nb-loading' }, e('span', { className: 'nb-spin' }, '◴'), ' Loading macro & breadth…');
     if (!board) return e('div', { className: 'nf-card nb-loading' }, '⚠ Macro & breadth board unavailable.');
-    return e('div', { className: 'nb-grid' },
+
+    // v1 renders every chart at once, exactly as before — the flip is v2
+    // layout language and must not alter the shipped layout.
+    if (!v2) return e('div', { className: 'nb-grid' },
         e(FearGreed, { fg: board.fearGreed }),
         e(IndexChart, { indices: board.indices }),
         e(VixChart, { vix: board.vix }),
         e(BreadthChart, { breadth: board.breadth })
+    );
+
+    return e('div', null,
+        e('div', { className: 'nfv2-face-head' },
+            e('span', { className: 'nf-sub' },
+                face === 'composite' ? 'Fear & Greed, composited' : 'the components, drawn out'),
+            e(NexusFaceToggle, {
+                faces: BOARD_FACES, active: face, onChange: setFace,
+                persistKey: 'atlas.nexus.board.face.v1', affix: true,
+            })
+        ),
+        e('div', { className: 'nb-grid' },
+            face === 'composite'
+                ? e(FearGreed, { fg: board.fearGreed })
+                : null,
+            e(IndexChart, { indices: board.indices }),
+            face === 'workings' ? e(VixChart, { vix: board.vix }) : null,
+            face === 'workings' ? e(BreadthChart, { breadth: board.breadth }) : null
+        )
     );
 }
 

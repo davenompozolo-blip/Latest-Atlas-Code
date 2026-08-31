@@ -181,3 +181,14 @@
   font-feature-settings: 'tnum' 1;
   font-variant-numeric: tabular-nums;
 }
+
+/* ── Face-flip header (board) ────────────────────────────────── */
+/* The control sits right-aligned above the face it switches, so the
+   caption on the left says which reading is showing. */
+.nexus-flagship-v2 .nfv2-face-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 9px;
+}
