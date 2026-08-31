@@ -17,6 +17,7 @@ import { RiskPanel, PositionsPanel } from './perf-panels-bottom.js';
 import { RollingAttributionPanel, FactorEnginePanel, RegimeSlicerPanel } from './perf-panels-analytics.js';
 import { ClusterRankingPanel } from './perf-panel-clusters.js';
 import { VerdictCardsPanel } from './perf-panel-verdicts.js';
+import { TradingEffectPanel } from './perf-panel-trading.js';
 import { AdvancedChart } from './advanced-chart.js';
 
 var useState = React.useState, useEffect = React.useEffect, useMemo = React.useMemo;
@@ -40,6 +41,11 @@ var SUB_TABS = [
     // §5.3 puts the peer ranking here rather than on each card, because only
     // ~19 of 57 positions can carry one and the rest would show a hole.
     { id: 'clusters',     label: 'CLUSTERS',      sub: 'Peer Ranking · NEW', isNew: true },
+    // The drill-down under the do-nothing tile in the KPI bar above. It sits
+    // after the three position cuts because it is the only surface in the
+    // module that grades the TRADING rather than the holdings — the same
+    // argument §5.1 makes for giving the tile billing in the first place.
+    { id: 'trading',      label: 'TRADING',       sub: 'Do-Nothing Drill · NEW', isNew: true },
     { id: 'rolling',      label: 'CONTRIBUTION',  sub: 'Rolling P&L · NEW', isNew: true },
     { id: 'factors',      label: 'FACTOR ENGINE', sub: 'Return Decomp · NEW', isNew: true },
     { id: 'returns',      label: 'RETURNS',       sub: 'Period Analysis' },
@@ -422,6 +428,13 @@ export function PerformanceSuite() {
             // fetch would delay every other tab for a surface most loads
             // never open.
             panel = h(ClusterRankingPanel, null);
+            break;
+        case 'trading':
+            // Self-loading, and it fetches the book baseline for itself rather
+            // than taking the suite's copy: it has to compare its own valuation
+            // date against the tile's night, and a threaded prop would let the
+            // two drift apart silently.
+            panel = h(TradingEffectPanel, null);
             break;
         case 'rolling':
             panel = h(RollingAttributionPanel, { positions: homeData || [], histBySymbol: histBySymbol, histReady: histReady, perfData: perfData || [] });
