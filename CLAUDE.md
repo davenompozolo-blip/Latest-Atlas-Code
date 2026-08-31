@@ -888,6 +888,81 @@ The holdings table uses the first; winners/losers/at-risk
 show green in the table. Not yet fixed — decide which read each surface wants
 before touching it.
 
+### Rates do not add up; dollars do (2026-08-31)
+The trading-effect drill-down under the do-nothing tile. `book_risk_daily`'s
+`trading_effect_pct` is an MWR over **pooled** cash flows — every eligible
+position's traded flows in one schedule, the frozen flows in another — so it is
+not a weighted average of the per-position rates and **no weighting recovers
+it**. Summing the 77 per-position rates gives **−160.76pp** against a book
+effect of **−1.03pp**, a factor of 156.
+
+What decomposes exactly is money: traded gain minus frozen gain per position
+sums to **−$4,033.49** against the book's own −$4,033.51. `trading_effect_usd`
+is therefore the sort key and the rate column is context beside it.
+
+The two disagree per position, and the disagreement is not an error: TSM is
+**+$372 and −6.7pp**, EWY **+$322 and −2.5pp**, 11 rows in all. The traded path
+deployed more capital than the frozen one ($279,639 against $182,087), so
+adding to a name that kept rising makes more money at a lower rate. Both
+readings are true. `effects_disagree` marks them rather than letting a reader
+assume one question. Same rule as `regret_vs_best_pct`: there, ranking on the
+wrong column graded leverage; here it would grade capital deployed.
+
+**The finding: selling is what cost the money.** Exits −$4,020.58 over 21
+positions, resizing −$12.91 over 42, untouched $0.00 over 14.
+
+### A history scoped to the open book cannot explain the whole book (2026-08-31)
+`position_verdicts` writes 57 rows a night — open positions only. The frozen
+baseline compares **77**, and the 21 closed exits absent from that history
+carry **−$4,020.58 of the −$4,033.49**. The 56 open rows that *are* in it net
+−$12.91.
+
+So the obvious substrate for the drill-down — the aligned append-only history,
+which already carries `trading_effect_pct` per row — is blind to essentially
+100% of the number it would claim to explain, and would render a column of
+near-zeros with nothing to say anything was missing. `vw_position_trading_effect`
+reads the live `vw_position_frozen` instead and publishes **its own `as_of`**
+beside the tile's, because a live read under a nightly headline is the
+mixed-basis failure again. `alignment()` in `src/lib/tradingEffect.js` says
+which is which and never reconciles them.
+
+Third instance of one shape, after `price_coverage` counting holdings while the
+universe froze, and `nexus-bench` paging the whole price book. **A measure
+scoped to one set cannot see what happens outside it.**
+
+### An untouched position's effect is zero by construction (2026-08-31)
+14 positions were bought once and never traded, so their frozen path *is* their
+traded path. `atlas_mwr_period` bisects to a tolerance and
+`position_mwr_period_pct` stores 6dp, so the subtraction lands on ~1e-7 with an
+arbitrary sign — fourteen rows of meaningless ±0.00004pp sorted against each
+other.
+
+The snap test is **structural** (one transaction, still open), never a
+magnitude floor, and the data is why: the largest untouched residual is
+**4.66e-7** while the smallest genuinely-traded effect is **3.98e-8**, an order
+of magnitude *below* it. Any threshold catching the noise would erase real
+measurements. `structural_zero_breach` refuses to snap past 100× the observed
+residual — at that size the classification is wrong and hiding it is worse.
+
+### `vw_position_frozen` sat at 2,768 ms under a 3,000 ms cap (2026-08-31)
+Found on putting the first browser surface over it. Its only consumers were the
+nightly job and `vw_book_frozen_baseline`, both `service_role` at 300 s, so
+nothing had ever noticed.
+
+`atlas_counterfactual_frozen(asset_id, p_valuation_date)` opens with
+`COALESCE(p_valuation_date, (SELECT max(flow_date) FROM vw_position_cash_flows
+WHERE flow_kind='mark'))` and the view **omitted the argument** — so all 86
+LATERAL invocations re-derived one date by re-evaluating the most expensive view
+in the return engine. Hoisted into a CTE and passed in: **2,768 → 803 ms**, no
+change to the function, output proven identical by `EXCEPT ALL` both ways in a
+rolled-back transaction.
+
+The 2026-08-23 lesson in a new shape: there a scalar subquery was evaluated once
+per *reference*, here once per *call*. **Compute it once and hand it down.**
+
+**A view read only by `service_role` has never been tested against the caps the
+UI runs under.** Time it before putting a page on it.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel
