@@ -893,7 +893,7 @@ function FlagshipPanelV2({ model, holdingsTheme }) {
     return e('div', { className: 'nfv2' },
         e(TheRead, { read: model.read, pinned: true }),
         e(Section, { label: 'WHERE I STAND' },
-            e(PortfolioSnapshot, { model }),
+            e(PortfolioSnapshot, { model, compact: true }),
             e(ContextGauges, { gauges: model.gauges })),
         e(Section, { label: 'THE WEATHER' },
             e(WindshieldBand, { windshield: model.windshield }),

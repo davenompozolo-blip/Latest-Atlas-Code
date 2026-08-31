@@ -146,3 +146,38 @@
   border-bottom: 0;
   margin-bottom: 6px;
 }
+
+/* ── Portfolio snapshot: the orientation tier ────────────────── */
+/* The four figures that carry a decision keep their tiles; the rest
+   become one line. Same data, same order, a fraction of the height. */
+.nexus-flagship-v2 .nfv2-pf-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 20px;
+  margin-top: 12px;
+  padding-top: 11px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+}
+
+.nexus-flagship-v2 .nfv2-pf-pair {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.nexus-flagship-v2 .nfv2-pf-l {
+  font-family: var(--fb);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+
+.nexus-flagship-v2 .nfv2-pf-v {
+  color: var(--text);
+  font-feature-settings: 'tnum' 1;
+  font-variant-numeric: tabular-nums;
+}
