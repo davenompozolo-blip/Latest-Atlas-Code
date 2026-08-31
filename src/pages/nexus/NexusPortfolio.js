@@ -32,7 +32,14 @@ function useAccount() {
     return a;
 }
 
-export function PortfolioSnapshot({ model }) {
+// The four figures that carry a decision. Everything else in the snapshot is
+// orientation, and orientation does not need a tile each.
+const DECISION_TILES = ['Day P&L', 'Unrealised P&L', 'Long exposure', 'At risk'];
+
+// `compact` is the v2 treatment: those four keep tile treatment, the other
+// seven collapse into one mono line of label/value pairs. Same data, same
+// relative order within each tier, ~85% less vertical. v1 passes nothing.
+export function PortfolioSnapshot({ model, compact }) {
     const p = model && model.portfolio;
     const acct = useAccount();
     if (!p) return null;
@@ -54,15 +61,27 @@ export function PortfolioSnapshot({ model }) {
         { l: 'Wtd quality', v: p.wtdQuality == null ? '—' : String(p.wtdQuality), s: 'of 100 · grade-weighted', t: qualityTone(p.wtdQuality) },
     ];
 
+    const tiles = compact ? defs.filter(d => DECISION_TILES.indexOf(d.l) !== -1) : defs;
+    const rest = compact ? defs.filter(d => DECISION_TILES.indexOf(d.l) === -1) : [];
+
     return e('div', { className: 'nf-card np-card nf-fade' },
         e('div', { className: 'nf-card-h' },
             e('h3', null, 'Portfolio'),
             e('span', { className: 'nf-sub' }, 'the book at a glance' + (acct && acct.mode ? ' · ' + acct.mode : ''))),
         e('div', { className: 'np-grid' },
-            defs.map((d, i) => e('div', { className: 'np-tile', key: d.l, style: { animationDelay: (i * 45) + 'ms' } },
+            tiles.map((d, i) => e('div', { className: 'np-tile', key: d.l, style: { animationDelay: (i * 45) + 'ms' } },
                 e('div', { className: 'np-tile-l' }, d.l),
                 e('div', { className: 'np-tile-v ' + (d.t || '') }, d.node || d.v),
-                d.s != null ? e('div', { className: 'np-tile-s' }, d.s) : null))));
+                d.s != null ? e('div', { className: 'np-tile-s' }, d.s) : null))),
+        // The orientation tier. Sub-labels are dropped rather than wrapped —
+        // they are the part a tile has room for and a line does not — so each
+        // pair carries its own title instead of losing the detail entirely.
+        rest.length
+            ? e('div', { className: 'nfv2-pf-line nf-mono' },
+                rest.map(d => e('span', { className: 'nfv2-pf-pair', key: d.l, title: d.s || null },
+                    e('span', { className: 'nfv2-pf-l' }, d.l),
+                    e('span', { className: 'nfv2-pf-v ' + (d.t || '') }, d.node || d.v))))
+            : null);
 }
 
 export default PortfolioSnapshot;

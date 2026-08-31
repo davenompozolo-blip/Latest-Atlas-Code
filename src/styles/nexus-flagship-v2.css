@@ -1,0 +1,194 @@
+/* =====================================================
+   ATLAS Nexus — Flagship v2 flow (additive layer)
+   -----------------------------------------------------
+   Scoped under .nexus-flagship-v2, which is applied ALONGSIDE
+   .nexus-flagship — never instead of it. Every token, card, chip and
+   tone class the panels already use keeps coming from
+   nexus-flagship.css; this file adds only the arrangement the v2 flow
+   introduces (sections, rail, pinned read, ghost lines).
+
+   nexus-flagship.css is not edited. The v1 layout must stay
+   pixel-identical while this is built, and the cheapest guarantee of
+   that is that its 1,374 lines never change.
+
+   No new colour, font or radius values are defined here. Where a
+   mockup and nexus-flagship.css disagreed, the CSS won.
+   ============================================================ */
+
+/* ── Section: a labelled group of panels ────────────────────── */
+/* The label is a signpost, not a heading — it names the question the
+   panels below it answer, and must never compete with a card title. */
+.nexus-flagship-v2 .nfv2-section { margin: 0 0 26px; }
+
+.nexus-flagship-v2 .nfv2-section-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 10px;
+  font-family: var(--fb);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+
+/* The rule carries the eye across without drawing attention itself. */
+.nexus-flagship-v2 .nfv2-section-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.nexus-flagship-v2 .nfv2-section-body { display: block; }
+
+/* ── Ghost: a panel that cannot answer, saying why ───────────── */
+/* One muted line with a left border — deliberately NOT a card with
+   reserved height. A feed that does not exist should not cost the
+   vertical space of a panel that does. */
+.nexus-flagship-v2 .nfv2-ghost {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-height: 24px;
+  margin: 0 0 10px;
+  padding: 4px 0 4px 11px;
+  border-left: 2px solid var(--border-md);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text3);
+}
+
+.nexus-flagship-v2 .nfv2-ghost-name {
+  font-family: var(--fb);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text2);
+  white-space: nowrap;
+}
+
+.nexus-flagship-v2 .nfv2-ghost-why { color: var(--text3); }
+
+/* ── Orientation rail ────────────────────────────────────────── */
+/* Replaces the v1 header: wordmark, the figures worth never losing to
+   a scroll, then the clock and the integrity light. */
+.nexus-flagship-v2 .nfv2-rail {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 9px 0 11px;
+  border-bottom: 1px solid var(--border);
+}
+
+.nexus-flagship-v2 .nfv2-rail-mark {
+  font-family: var(--fd);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.nexus-flagship-v2 .nfv2-rail-mark b { font-weight: 700; color: var(--text); }
+.nexus-flagship-v2 .nfv2-rail-mark span { color: var(--cyan); }
+
+.nexus-flagship-v2 .nfv2-rail-stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 18px;
+  flex: 1;
+  min-width: 0;
+}
+
+.nexus-flagship-v2 .nfv2-rail-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.nexus-flagship-v2 .nfv2-rail-l {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+
+.nexus-flagship-v2 .nfv2-rail-v {
+  font-size: 12px;
+  color: var(--text);
+  font-feature-settings: 'tnum' 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.nexus-flagship-v2 .nfv2-rail-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-left: auto;
+}
+
+/* ── Pinned read ─────────────────────────────────────────────── */
+/* Not a card: a left accent rule, so it reads as the verdict the
+   evidence below it supports rather than as the first panel. */
+.nexus-flagship-v2 .nfv2-read {
+  margin: 0 0 24px;
+  padding: 2px 0 2px 15px;
+  background: none;
+  border: 0;
+  border-left: 2px solid var(--cyan);
+  border-radius: 0;
+}
+
+.nexus-flagship-v2 .nfv2-read .nf-card-h {
+  padding: 0;
+  border-bottom: 0;
+  margin-bottom: 6px;
+}
+
+/* ── Portfolio snapshot: the orientation tier ────────────────── */
+/* The four figures that carry a decision keep their tiles; the rest
+   become one line. Same data, same order, a fraction of the height. */
+.nexus-flagship-v2 .nfv2-pf-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 20px;
+  margin-top: 12px;
+  padding-top: 11px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+}
+
+.nexus-flagship-v2 .nfv2-pf-pair {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.nexus-flagship-v2 .nfv2-pf-l {
+  font-family: var(--fb);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+
+.nexus-flagship-v2 .nfv2-pf-v {
+  color: var(--text);
+  font-feature-settings: 'tnum' 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Face-flip header (board) ────────────────────────────────── */
+/* The control sits right-aligned above the face it switches, so the
+   caption on the left says which reading is showing. */
+.nexus-flagship-v2 .nfv2-face-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 9px;
+}

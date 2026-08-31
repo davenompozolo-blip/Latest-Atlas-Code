@@ -11,6 +11,7 @@
 // ============================================================
 
 import React from 'react';
+import { Ghost, reasonText, dominantDropReason } from './NexusGhost.js';
 
 const e = React.createElement;
 
@@ -30,7 +31,7 @@ const COLS = [
     { k: 'tone', label: 'Positioning', l: true },
 ];
 
-export function NexusOptionsPanel({ holdings }) {
+export function NexusOptionsPanel({ holdings, v2 }) {
     const rows = (holdings || []).filter(h => h.options && h.options.hasOptions);
     // Coverage line — how many held names have chains, and how many are flagged.
     const total = (holdings || []).length;
@@ -41,6 +42,15 @@ export function NexusOptionsPanel({ holdings }) {
     const sub = rows.length
         ? rows.length + ' of ' + total + ' names · ' + stressed + ' stressed · ' + hedged + ' hedged'
         : 'Options positioning';
+
+    // v2: when nothing has a chain, say WHY using the reason the compute layer
+    // already returned, in one line rather than an empty card. The reason was
+    // being computed and discarded at this boundary.
+    if (v2 && rows.length === 0) {
+        const why = reasonText(dominantDropReason((holdings || []).map(h => h.options)))
+            || 'the daily snapshot has not populated the tracked pool yet';
+        return e(Ghost, { name: 'Options positioning', why: why + ' — nothing to price off' });
+    }
 
     return e('div', { className: 'nf-card nf-holdings nf-fade' },
         e('div', { className: 'nf-card-h' },

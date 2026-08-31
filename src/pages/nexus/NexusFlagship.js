@@ -28,6 +28,8 @@ import { SpineTreemap } from './NexusSpineTreemap.js';
 import { COLUMNS, DEFAULT_VISIBLE, loadVisible, saveVisible, columnGroups, premiumBand } from './nexusColumns.js';
 import { BASIS_MWR, PLAIN_LABEL } from '../../lib/returnBasis.js';
 import { ReturnBasisToggle, useReturnBasis } from '../../components/ReturnBasisToggle.js';
+import { NexusFaceToggle } from './NexusFaceToggle.js';
+import { loadLayout } from './nexusLayout.js';
 
 // The return a row shows under the active basis, and why it is absent.
 // Never falls back across bases: a position with no MWR renders a reason, not
@@ -40,6 +42,7 @@ function activeRetReason(h) {
     return h.engineReason || h.engineStatus || 'no engine row';
 }
 import '../../styles/nexus-flagship.css';
+import '../../styles/nexus-flagship-v2.css';
 
 const { useState, useEffect } = React;
 const e = React.createElement;
@@ -121,6 +124,64 @@ function NexusHeader({ model }) {
             e('small', null, 'Positioning · read through today')
         ),
         e('div', { className: 'nf-header-right' },
+            e(MarketClock, { marketStatus: model.marketStatus }),
+            e(DataIntegrityIndicator, { dataIntegrity: model.dataIntegrity })
+        )
+    );
+}
+
+// ── Orientation rail (v2) ─────────────────────────────────────
+// A persistent strip above the tab rail carrying the state you need to
+// stay oriented, so scrolling never costs it. Replaces NexusHeader in
+// v2: the wordmark collapses into it and MarketClock moves in.
+//
+// Every figure is read straight off the resolved model — no new fetch,
+// no new computation, no derived number invented here.
+//
+// One deliberate gap: the spec asks for account equity and day P&L in
+// dollars. Neither is on the model. Both come from /api/trading, which
+// PortfolioSnapshot fetches for itself; putting them here would mean a
+// second call to that endpoint or hoisting the fetch into the provider
+// — a provider-shaped change, and out of scope for a layout pass. The
+// rail shows what the model actually holds and is labelled for it:
+// book NAV rather than account equity, and the day's up/down split
+// rather than a dollar P&L it cannot source.
+function railStat(w, label) {
+    const s = ((w && w.stats) || []).find(x => x.label === label);
+    return s || null;
+}
+
+function RailItem({ label, value, tone, title }) {
+    if (value == null) return null;
+    return e('div', { className: 'nfv2-rail-item', title: title || null },
+        e('span', { className: 'nfv2-rail-l' }, label),
+        e('span', { className: 'nfv2-rail-v nf-mono ' + (tone || '') }, value)
+    );
+}
+
+function NexusRail({ model }) {
+    const p = model.portfolio;
+    const risk = model.gauges && model.gauges.risk;
+    const vix = railStat(model.windshield, 'VIX');
+    const curve = railStat(model.windshield, '10Y–2Y');
+
+    return e('div', { className: 'nfv2-rail' },
+        e('div', { className: 'nfv2-rail-mark' }, e('b', null, 'ATLAS ', e('span', null, 'Nexus'))),
+        e('div', { className: 'nfv2-rail-stats' },
+            e(RailItem, { label: 'NAV', value: model.nav != null ? fmtUsd(model.nav) : null,
+                title: 'book NAV from the resolved model — not broker account equity' }),
+            e(RailItem, { label: 'Unrealised', value: p ? fmtUsd(p.unrealisedPnl) : null,
+                tone: p ? moveTone(p.unrealisedPnl) : '' }),
+            e(RailItem, { label: 'Today', value: p ? p.todayUp + '↑ ' + p.todayDown + '↓' : null,
+                tone: p ? (p.todayUp > p.todayDown ? 'tone-up' : p.todayUp < p.todayDown ? 'tone-down' : '') : '',
+                title: 'names up / down today' }),
+            e(RailItem, { label: 'Risk', value: risk && risk.budgetUsedPct != null ? risk.budgetUsedPct + '%' : null,
+                tone: risk && risk.limitPct != null && risk.budgetUsedPct > risk.limitPct ? 'tone-down' : '',
+                title: risk && risk.limitPct != null ? 'of a ' + risk.limitPct + '% budget' : null }),
+            vix ? e(RailItem, { label: 'VIX', value: vix.value, tone: toneClass(vix.tone) }) : null,
+            curve ? e(RailItem, { label: '10−2', value: curve.value, tone: toneClass(curve.tone) }) : null
+        ),
+        e('div', { className: 'nfv2-rail-right' },
             e(MarketClock, { marketStatus: model.marketStatus }),
             e(DataIntegrityIndicator, { dataIntegrity: model.dataIntegrity })
         )
@@ -257,6 +318,11 @@ function riskShiftBars(rs) {
 // theme answers "what bets am I actually making". A book can look spread
 // across sectors while being one trade expressed eight ways, and only the
 // theme cut shows that — which is the point of carrying both.
+// Bars ↔ Treemap: the same `spine` rows read two ways, so it is a face flip
+// rather than a filter. No persistKey and no `⇄` affix — this control renders
+// in the v1 layout too, which stays pixel-identical.
+const SPINE_FACES = [{ id: 'bars', label: 'Bars' }, { id: 'map', label: 'Treemap' }];
+
 function PositioningSpine({ spine, themeSpine }) {
     const [dim, setDim] = useState('sector');
     // Bars are the default because they carry risk-shift, which the treemap
@@ -280,12 +346,7 @@ function PositioningSpine({ spine, themeSpine }) {
                         onClick: () => setDim(d),
                     }, d === 'sector' ? 'Sector' : 'Theme'))
                 ) : null,
-                e('div', { className: 'nf-spine-toggle' },
-                    [['bars', 'Bars'], ['map', 'Treemap']].map(([v, label]) => e('button', {
-                        key: v,
-                        className: 'nf-sp-tab' + (view === v ? ' active' : ''),
-                        onClick: () => setView(v),
-                    }, label))),
+                e(NexusFaceToggle, { faces: SPINE_FACES, active: view, onChange: setView }),
                 e('span', { className: 'nf-sub' },
                     view === 'bars' ? 'share · today · risk shift' : 'area = share · colour = today'))),
 
@@ -762,13 +823,16 @@ function HoldingsTable({ holdings, forceTheme }) {
 
 // ── The Read (rate-view toggle) ───────────────────────────────
 const STANCE_LABEL = { market: 'What’s priced', hfl: 'Higher-for-longer' };
-function TheRead({ read }) {
+// `pinned` is the v2 treatment: a left accent rule instead of a card, so it
+// reads as the verdict rather than as one more panel. v1 passes nothing and is
+// untouched.
+function TheRead({ read, pinned }) {
     const keys = read && read.variants ? Object.keys(read.variants) : [];
     const initial = read && read.default && read.variants[read.default] ? read.default : keys[0];
     const [stance, setStance] = useState(initial);
     if (!read || !keys.length) return null;
     const variant = read.variants[stance] || read.variants[keys[0]];
-    return e('div', { className: 'nf-card nf-read nf-fade' },
+    return e('div', { className: (pinned ? 'nf-read nf-fade nfv2-read' : 'nf-card nf-read nf-fade') },
         e('div', { className: 'nf-card-h' },
             e('h3', null, 'The Read'),
             e('div', { className: 'nf-read-toggle' },
@@ -802,6 +866,48 @@ function FlagshipPanel({ model, holdingsTheme }) {
     );
 }
 
+// ── Section — a labelled group of panels ──────────────────────
+// The label is a signpost, not a heading: it names the question the
+// panels below it answer, and is styled to sit under the card titles
+// rather than compete with them.
+function Section({ label, children }) {
+    return e('div', { className: 'nfv2-section' },
+        e('div', { className: 'nfv2-section-label' }, label),
+        e('div', { className: 'nfv2-section-body' }, children)
+    );
+}
+
+// ── Flagship panel, v2 flow ───────────────────────────────────
+// Ten flat siblings become four labelled sections, each answering one
+// question in the order you actually ask them: where do I stand, what
+// are the conditions, how am I exposed to them, who is carrying it.
+//
+// Every child is unchanged internally — this is grouping and ordering.
+//
+// OrderBlotter is NOT a sibling here. It renders inside HoldingsTable,
+// which owns the staged-ticket state it reads, and already sits exactly
+// where this section would put it. Adding it here would mount a second,
+// stateless one — and `e(OrderBlotter, null)` throws outright, since it
+// reads `tickets.length` off props it would never receive.
+function FlagshipPanelV2({ model, holdingsTheme }) {
+    return e('div', { className: 'nfv2' },
+        e(TheRead, { read: model.read, pinned: true }),
+        e(Section, { label: 'WHERE I STAND' },
+            e(PortfolioSnapshot, { model, compact: true }),
+            e(ContextGauges, { gauges: model.gauges })),
+        e(Section, { label: 'THE WEATHER' },
+            e(WindshieldBand, { windshield: model.windshield }),
+            e(NexusBoardSection, { board: model.board, v2: true })),
+        e(Section, { label: 'MY SHAPE' },
+            e(PositioningSpine, { spine: model.spine, themeSpine: model.themeSpine })),
+        e(Section, { label: 'THE NAMES' },
+            e(HoldingsTable, { holdings: model.holdings, forceTheme: holdingsTheme }),
+            e(NexusEarningsTable, { earnings: model.earnings, v2: true }),
+            e(NexusCotTable, { cot: model.cot }),
+            e(NexusOptionsPanel, { holdings: model.holdings, v2: true }))
+    );
+}
+
 // ── Seasonal panels (shell — render whatever the mock supplies) ─
 function SeasonalPanel({ data }) {
     if (!data) return e('div', { className: 'nf-card nf-seasonal' }, e('div', { className: 'nf-note' }, 'No data.'));
@@ -824,6 +930,9 @@ export function NexusFlagshipPage() {
     const [err, setErr] = useState(null);
     const [activeTab, setActiveTab] = useState('flagship');
     const [holdingsTheme, setHoldingsTheme] = useState(null);
+    // Read once on mount, like loadVisible(). Defensive — an unknown value is
+    // already normalised to 'v1' by loadLayout().
+    const [layout] = useState(loadLayout);
 
     useEffect(function () {
         let alive = true;
@@ -853,9 +962,12 @@ export function NexusFlagshipPage() {
     const setTab = id => setActiveTab(id);
     const tabEntry = TABS.find(t => t.id === activeTab) || TABS[0];
 
+    const v2 = layout === 'v2';
+
     let panel;
     if (activeTab === 'flagship') {
-        panel = e(FlagshipPanel, { model, holdingsTheme });
+        panel = v2 ? e(FlagshipPanelV2, { model, holdingsTheme })
+                   : e(FlagshipPanel, { model, holdingsTheme });
     } else if (activeTab === 'theme') {
         panel = e('div', { className: 'nf-seasonal' }, e(NexusThemePanel, { model }));
     } else if (activeTab === 'regime') {
@@ -870,9 +982,9 @@ export function NexusFlagshipPage() {
         panel = e('div', { className: 'nf-seasonal' }, e(SeasonalPanel, { data: model.seasonal && model.seasonal[tabEntry.seasonal] }));
     }
 
-    return e('div', { className: 'nexus-flagship' },
+    return e('div', { className: 'nexus-flagship' + (v2 ? ' nexus-flagship-v2' : '') },
         e('div', { className: 'nf-page' },
-            e(NexusHeader, { model }),
+            v2 ? e(NexusRail, { model }) : e(NexusHeader, { model }),
             e(TabRail, { activeTab, onTab: setTab, chef: model.chef }),
             // chefbar nudges toward the hot tab; same setTab() as the rail
             activeTab === 'flagship' ? e(ChefBar, { chef: model.chef, onTab: setTab }) : null,
