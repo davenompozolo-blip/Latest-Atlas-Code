@@ -168,23 +168,40 @@ export async function getNexusModel() {
     // Structural baseline carries the not-yet-live sections (windshield,
     // risk/perf gauges, the Read narrative, chef, seasonal) AND a live
     // dataIntegrity. We override the data-backed sections below.
+    // Board, earnings and COT do not touch Supabase, so they are STARTED here —
+    // above every guard below — and merged into the baseline on both fallback
+    // paths. Inside the existing Promise.all they would sit past the early
+    // returns and the three panels would vanish whenever Supabase is
+    // unconfigured, erroring or the book is empty — the exact state where macro
+    // context matters most, and the one their self-fetch used to survive.
+    //
+    // Started, not awaited. Nothing below reads these three, so awaiting them
+    // here put three network round-trips on the critical path ahead of the
+    // book: the model could not begin loading holdings until the slowest of
+    // them returned. Cold on production that was 2.6s (board) and 3.0s
+    // (earnings) of dead wait before the first Supabase query was even issued.
+    // Held as promises they overlap the baseline, the holdings query and the
+    // five-way load instead, and are awaited only where the model is assembled.
+    //
+    // Each is still called exactly once per getNexusModel() — the promise is
+    // reused, not re-invoked — which is what nexusLiveProvider.test.mjs pins.
+    const boardP = loadBoard();
+    const earningsP = loadEarnings();
+    const cotP = loadCot();
+    const panelsOf = async () => ({
+        board: await boardP, earnings: await earningsP, cot: await cotP,
+    });
+
+    // Structural baseline carries the not-yet-live sections; now that the three
+    // panel fetches are in flight, this await overlaps them rather than queuing
+    // behind them.
     const baseline = await getBaselineModel();
 
-    // Board, earnings and COT do not touch Supabase, so they are loaded ABOVE
-    // the guards below and merged into the baseline on both fallback paths.
-    // Inside the existing Promise.all they would sit past the early returns and
-    // the three panels would vanish whenever Supabase is unconfigured, erroring
-    // or the book is empty — the exact state where macro context matters most,
-    // and the one their self-fetch used to survive.
-    const [board, earnings, cot] = await Promise.all([
-        loadBoard(), loadEarnings(), loadCot(),
-    ]);
-    const panels = { board, earnings, cot };
-
-    if (!sb) return { ...baseline, ...panels };
+    if (!sb) return { ...baseline, ...(await panelsOf()) };
 
     const rows = await loadHoldingRows();
-    if (!rows || !rows.length) return { ...baseline, ...panels }; // unconfigured / empty / error → baseline
+    // unconfigured / empty / error → baseline
+    if (!rows || !rows.length) return { ...baseline, ...(await panelsOf()) };
 
     const staleSet = new Set((baseline.dataIntegrity && baseline.dataIntegrity.staleTickers) || []);
     const [compByTk, macro, optByTk, scrapByTk, retByTk] = await Promise.all([
@@ -225,7 +242,7 @@ export async function getNexusModel() {
 
     return {
         ...baseline,
-        ...panels,
+        ...(await panelsOf()),
         asOf: new Date().toISOString(),
         holdings,
         spine,
