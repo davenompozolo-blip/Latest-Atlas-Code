@@ -77,17 +77,30 @@ async function readCache(cacheKey) {
         var r = await fetchWithTimeout(url, {
             headers: { apikey: cfg.key, Authorization: 'Bearer ' + cfg.key, accept: 'application/json' },
         }, 4000);
-        if (!r.ok) return null;
+        // A broken cache and an empty cache are different facts. Returning null
+        // for both is how `public.cache` stayed missing without anyone noticing:
+        // PostgREST answered every read PGRST205 and this read it as "no row".
+        if (!r.ok) {
+            console.error('[macro] cache READ failed http=' + r.status + ' body=' +
+                (await r.text().catch(function() { return '?'; })).slice(0, 200));
+            return null;
+        }
         var rows = await r.json();
         if (!Array.isArray(rows) || !rows.length) return null;
         if (new Date(rows[0].expires_at).getTime() < Date.now()) return null;
         return rows[0].payload;
-    } catch (_) { return null; }
+    } catch (e) {
+        console.error('[macro] cache READ threw: ' + ((e && e.message) || e));
+        return null;
+    }
 }
 
+// true = stored · false = the write was attempted and failed · null = there is
+// no durable cache configured at all. The third case is not a failure and must
+// not be reported as one.
 async function writeCache(cacheKey, payload, ttlMs) {
     var cfg = supaCfg();
-    if (!cfg) return;
+    if (!cfg) return null;
     try {
         var body = [{
             cache_key: cacheKey,
@@ -95,7 +108,7 @@ async function writeCache(cacheKey, payload, ttlMs) {
             cached_at: new Date().toISOString(),
             expires_at: new Date(Date.now() + ttlMs).toISOString(),
         }];
-        await fetchWithTimeout(cfg.url + '/rest/v1/cache', {
+        var r = await fetchWithTimeout(cfg.url + '/rest/v1/cache', {
             method: 'POST',
             headers: {
                 apikey: cfg.key,
@@ -105,7 +118,20 @@ async function writeCache(cacheKey, payload, ttlMs) {
             },
             body: JSON.stringify(body),
         }, 4000);
-    } catch (_) { /* non-fatal */ }
+        // The write is non-fatal to THIS request and must stay that way, but a
+        // cache that never persists is not a slow path, it is no cache at all.
+        // The unchecked response here is the whole reason this endpoint rebuilt
+        // from 21 FRED series on every single call for as long as it existed.
+        if (!r.ok) {
+            console.error('[macro] cache WRITE failed http=' + r.status + ' body=' +
+                (await r.text().catch(function() { return '?'; })).slice(0, 200));
+            return false;
+        }
+        return true;
+    } catch (e) {
+        console.error('[macro] cache WRITE threw: ' + ((e && e.message) || e));
+        return false;
+    }
 }
 
 // ---- regime classification ----
@@ -156,10 +182,24 @@ export default async function handler(req, res) {
     try {
         var nocache = req.query && (req.query.nocache === '1' || req.query.nocache === 'true');
 
+        // Two layers, deliberately different lengths. The Supabase row is the
+        // durable one (1h) and survives cold starts; the edge TTL is short so
+        // the two cannot compound into badly stale data — worst case is the
+        // Supabase TTL plus s-maxage, not double the hour.
+        //
+        // `nocache=1` must never be stored by the edge, or the escape hatch
+        // becomes unusable for the next caller.
+        res.setHeader('Cache-Control', nocache
+            ? 'no-store'
+            : 'public, s-maxage=300, stale-while-revalidate=3600');
+
         // Check Supabase cache first
         if (!nocache) {
             var cached = await readCache(CACHE_KEY);
-            if (cached) { return res.status(200).json(cached); }
+            if (cached) {
+                res.setHeader('X-Atlas-Cache', 'hit');
+                return res.status(200).json(Object.assign({}, cached, { _cache: 'hit' }));
+            }
         }
 
         // Fetch FRED series in priority batches to avoid burst rate-limiting.
@@ -278,10 +318,18 @@ export default async function handler(req, res) {
             _v: 1,
         };
 
-        // Write cache (fire-and-forget)
-        writeCache(CACHE_KEY, payload, CACHE_TTL_MS);
+        // Awaited, not fire-and-forget: a serverless invocation can be frozen
+        // the moment the response is flushed, so an un-awaited write is a write
+        // that may never land — and until now nothing would have said so.
+        var stored = await writeCache(CACHE_KEY, payload, CACHE_TTL_MS);
 
-        return res.status(200).json(payload);
+        // Three outcomes, kept apart so "the cache is broken" can never again be
+        // indistinguishable from "there is no cache here".
+        var state = stored === true ? 'miss'
+            : stored === null ? 'miss-unconfigured'
+            : 'miss-nostore';
+        res.setHeader('X-Atlas-Cache', state);
+        return res.status(200).json(Object.assign({}, payload, { _cache: state }));
     } catch (err) {
         return res.status(500).json({ error: (err && err.message) || 'Internal error' });
     }

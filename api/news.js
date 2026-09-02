@@ -131,23 +131,44 @@ async function readCache(cacheKey) {
             cfg.url + '/rest/v1/cache?cache_key=eq.' + encodeURIComponent(cacheKey) + '&select=payload,expires_at',
             { headers: { apikey: cfg.key, Authorization: 'Bearer ' + cfg.key, accept: 'application/json' } }, 4000
         );
-        if (!r.ok) return null;
+        // A broken cache and an empty cache are different facts. Reading both as
+        // null is how `public.cache` stayed missing without anyone noticing.
+        if (!r.ok) {
+            console.error('[news] cache READ failed http=' + r.status);
+            return null;
+        }
         var rows = await r.json();
         if (!Array.isArray(rows) || !rows.length) return null;
         if (new Date(rows[0].expires_at).getTime() < Date.now()) return null;
         return rows[0].payload;
-    } catch (_) { return null; }
+    } catch (e) {
+        console.error('[news] cache READ threw: ' + ((e && e.message) || e));
+        return null;
+    }
 }
 
 async function writeCache(cacheKey, payload, ttlMs) {
-    var cfg = supaCfg(); if (!cfg) return;
+    // null = no durable cache is configured here, which is not a failure.
+    // false below = the write was attempted and refused. Keep them apart.
+    var cfg = supaCfg(); if (!cfg) return null;
     try {
-        await fetchWithTimeout(cfg.url + '/rest/v1/cache', {
+        var r = await fetchWithTimeout(cfg.url + '/rest/v1/cache', {
             method: 'POST',
             headers: { apikey: cfg.key, Authorization: 'Bearer ' + cfg.key, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
             body: JSON.stringify([{ cache_key: cacheKey, payload: payload, cached_at: new Date().toISOString(), expires_at: new Date(Date.now() + ttlMs).toISOString() }]),
         }, 4000);
-    } catch (_) { /* non-fatal */ }
+        // Non-fatal to this request, but a cache that never persists is not a
+        // slow path — it is no cache at all. The unchecked response here is why
+        // these endpoints rebuilt from upstream on every call.
+        if (!r.ok) {
+            console.error('[news] cache WRITE failed http=' + r.status);
+            return false;
+        }
+        return true;
+    } catch (e) {
+        console.error('[news] cache WRITE threw: ' + ((e && e.message) || e));
+        return false;
+    }
 }
 
 // ---- CORS ----
@@ -195,7 +216,9 @@ export default async function handler(req, res) {
         });
 
         var payload = { items: items, sources: sourceStats, _ts: Date.now() };
-        writeCache(CACHE_KEY, payload, CACHE_TTL_MS);
+        // Awaited: a serverless invocation can be frozen the moment the
+        // response is flushed, so an un-awaited write may never land.
+        await writeCache(CACHE_KEY, payload, CACHE_TTL_MS);
         return res.status(200).json(payload);
     } catch (err) {
         return res.status(500).json({ error: (err && err.message) || 'Internal error' });
