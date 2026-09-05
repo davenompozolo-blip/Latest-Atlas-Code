@@ -49,13 +49,30 @@ async function fetchFred(seriesId, limit) {
 
 async function delay(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
 
+// Returns a quote, or a {__fail} marker naming WHY there isn't one.
+//
+// This used to return a bare null for three unrelated conditions — no key
+// configured, a non-ok response (401 on a bad token, 429 on the rate limit),
+// and a throw — and the call site erased all three with .filter(Boolean).
+// The endpoint then published `market: []` with a 200, which is
+// indistinguishable from a market that genuinely returned nothing. Every one
+// of the 27 symbols has been failing that way, so the Market and Sectors
+// panels have been empty with nothing anywhere saying why.
 async function finnhubQuote(symbol) {
     var key = (process.env.FINNHUB_API_KEY || '').trim();
-    if (!key) return null;
-    var r = await fetchWithTimeout(FINNHUB_BASE + '/quote?symbol=' + symbol + '&token=' + key, {}, 6000);
-    if (!r.ok) return null;
-    var d = await r.json();
-    return { symbol: symbol, price: d.c, change: d.d, changePct: d.dp, high: d.h, low: d.l, prevClose: d.pc };
+    if (!key) return { __fail: 'no_key', symbol: symbol };
+    try {
+        var r = await fetchWithTimeout(FINNHUB_BASE + '/quote?symbol=' + symbol + '&token=' + key, {}, 6000);
+        if (!r.ok) return { __fail: 'http_' + r.status, symbol: symbol };
+        var d = await r.json();
+        // Finnhub answers 200 with an all-zero body for a symbol it does not
+        // know. A zero close is not a price, and publishing it would put a
+        // -100% move on the board.
+        if (!d || !d.c) return { __fail: 'empty_body', symbol: symbol };
+        return { symbol: symbol, price: d.c, change: d.d, changePct: d.dp, high: d.h, low: d.l, prevClose: d.pc };
+    } catch (e) {
+        return { __fail: 'threw', symbol: symbol };
+    }
 }
 
 // ---- Supabase cache (mirrors equity.js pattern) ----
@@ -264,9 +281,32 @@ export default async function handler(req, res) {
             'XLK', 'XLF', 'XLV', 'XLY', 'XLC', 'XLI', 'XLP', 'XLE', 'XLU', 'XLRE', 'XLB',
         ];
         var quoteResults = await Promise.allSettled(etfs.map(function(s) { return finnhubQuote(s); }));
-        var allQuotes = quoteResults
-            .map(function(r) { return r.status === 'fulfilled' ? r.value : null; })
-            .filter(Boolean);
+        var settled = quoteResults.map(function(r) {
+            return r.status === 'fulfilled' ? r.value : { __fail: 'rejected' };
+        });
+        var allQuotes = settled.filter(function(q) { return q && !q.__fail; });
+
+        // Tally the reasons rather than discarding them. `market: []` on its own
+        // cannot say whether the feed is misconfigured, throttled or simply
+        // quiet, and that ambiguity is why this went unnoticed.
+        var failReasons = {};
+        settled.forEach(function(q) {
+            if (q && q.__fail) failReasons[q.__fail] = (failReasons[q.__fail] || 0) + 1;
+        });
+        var quotesStatus = {
+            requested: etfs.length,
+            resolved: allQuotes.length,
+            reasons: failReasons,
+        };
+        // Every symbol failing is a broken feed, not a quiet market — say so at
+        // error level so it is visible without reading the payload.
+        if (!allQuotes.length) {
+            console.error('[macro] ALL ' + etfs.length + ' Finnhub quotes failed: ' +
+                JSON.stringify(failReasons) + ' — market/sectors will be empty');
+        } else if (allQuotes.length < etfs.length) {
+            console.error('[macro] ' + (etfs.length - allQuotes.length) + '/' + etfs.length +
+                ' Finnhub quotes failed: ' + JSON.stringify(failReasons));
+        }
 
         var SECTOR_NAMES = {
             XLK:'Technology', XLF:'Financials', XLV:'Health Care', XLY:'Cons. Discretionary',
@@ -312,6 +352,10 @@ export default async function handler(req, res) {
             },
             market: marketQuotes,
             sectors: sectorQuotes,
+            // Shape of market/sectors is unchanged (always arrays) so no consumer
+            // needs to know about this; it rides alongside so a caller CAN tell an
+            // empty board from a dead feed.
+            quotesStatus: quotesStatus,
             volatility: { vix: vix },
             regime: classifyRegime({ growth: { unrate: unrate }, inflation: { cpi: cpi } }),
             _ts: Date.now(),
