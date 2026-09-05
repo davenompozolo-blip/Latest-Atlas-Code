@@ -25,7 +25,11 @@ export const COLUMNS = [
     { k: 'conviction',    label: 'Conv (PCM)',  group: 'Position',  sort: 'conviction' },
 
     { k: 'todayPct',      label: 'Today',       group: 'Performance', sort: 'todayPct' },
-    { k: 'totalReturn',   label: 'Total ret',   group: 'Performance', sort: 'totalReturnPct' },
+    // "Since entry", not "Total ret". This column is return since the first
+    // fill (it keeps gains on shares already sold); the Portfolio panel's
+    // headline is the mark on cost. Both were labelled "total return" and they
+    // disagree in sign on 8 of 61 holdings.
+    { k: 'totalReturn',   label: 'Since entry', group: 'Performance', sort: 'totalReturnPct' },
     { k: 'contribPct',    label: 'Contrib',     group: 'Performance', sort: 'contribPct' },
 
     { k: 'annualVol',     label: 'Vol (ann)',   group: 'Risk',      sort: 'annualVol' },

@@ -181,7 +181,13 @@ export function nameImpact(rows, period, { filter = 'all', flagged = [] } = {}, 
         mv: Math.abs(num(row.market_value) || 0),
         pnl: positionPnl(row, period),
         dayPct: num(row.daily_change_pct),
-        totalPct: num(row.unrealised_return_pct),
+        // ON COST, not total. These rows come from `vw_portfolio_home`, which
+        // carries only `unrealised_return_pct` — there is no since-entry
+        // column here to confuse it with, so this is a naming fix rather than
+        // a measurement one. Kept explicit because `totalPct` beside the
+        // Flagship's since-entry "Total ret" invited exactly that reading.
+        onCostPct: num(row.unrealised_return_pct),
+        totalPct: num(row.unrealised_return_pct),   // deprecated alias
     })).filter(r => r.pnl != null);
     if (filter === 'flagged' && flagged.length) list = list.filter(r => flagged.indexOf(r.sector) >= 0);
     list.sort((a, b) => b.pnl - a.pnl);

@@ -11,6 +11,10 @@
 // ============================================================
 
 import { computeRead, READ_CONFIG, ConcentrationPenalty } from './readEngine.js';
+import {
+    BASIS_SINCE_ENTRY, BASIS_ON_COST, BASIS_LABEL,
+    readReturn, partitionByBasis,
+} from '../../lib/nexusReturnBasis.js';
 
 // A view numeric is null/'' → null, else Number.
 export const num = v => (v == null || v === '' || Number.isNaN(Number(v)) ? null : Number(v));
@@ -76,8 +80,21 @@ export function mapHolding(row, compByTk, staleSet) {
         valuationTrusted: valuationTrusted,
         signal: row.valuation_signal || null,
         signalTone: toSignalTone(row),
-        // Return since entry, from the view's own cost basis.
-        totalReturnPct: num(row.total_return_pct),
+        // Return since the first fill — includes shares already sold. The
+        // "Total ret" column renders this, and is labelled SINCE ENTRY so it
+        // cannot be read as the on-cost figure below, which disagrees in sign
+        // on 8 of 61 holdings.
+        //
+        // The key stays `totalReturnPct` on purpose: NexusFlagship sorts and
+        // re-bases on that name, and renaming it here would be a wide rename
+        // through a file another session is actively rewriting. The basis is
+        // made explicit by `returnBasis` and the column label, not by the key.
+        totalReturnPct: readReturn(row, BASIS_SINCE_ENTRY),
+        returnBasis: BASIS_SINCE_ENTRY,
+        // The other measure, named rather than substituted. Present so a
+        // consumer that wants on-cost asks for on-cost instead of reaching
+        // for `totalReturnPct` and getting a different question's answer.
+        onCostPct: readReturn(row, BASIS_ON_COST),
         // Annualised realised vol, 120d window, from universe_risk_stats. null
         // for the handful of names the nightly risk snapshot does not cover —
         // an unknown vol renders as "—", never as a comfortable zero.
@@ -260,9 +277,21 @@ const GRADE_SCORE = { 'A+': 97, A: 93, 'A-': 90, 'B+': 87, B: 83, 'B-': 80, 'C+'
 export function buildPortfolioSnapshot(rows) {
     const R = rows || [];
     if (!R.length) return null;
-    // Winners/losers/at-risk are "vs cost" reads — use broker unrealised P&L
-    // (matches the Portfolio page), falling back to total return if absent.
-    const ret = r => { const u = num(r.unrealised_return_pct); return u != null ? u : num(r.total_return_pct); };
+    // Winners/losers/at-risk are "vs cost" reads — broker unrealised P&L,
+    // matching the Portfolio page.
+    //
+    // This used to fall back to total return when the on-cost figure was
+    // absent (`unrealised ?? total`). That substitution is gone. The two
+    // measures disagree in sign on 8 of 61 holdings, so a fallback produced a
+    // tally mixing both with nothing on screen to say which rows were which —
+    // the mixed-basis failure `atlas.return.basis.v1` already forbids in
+    // Performance: a row that cannot be measured on the active basis shows a
+    // reason, it does not borrow the other basis's number.
+    //
+    // Nothing on screen moves today: all 61 rows carry both figures, so the
+    // fallback never fired. It is removed because it is a live trapdoor, not
+    // because it is currently open.
+    const ret = r => readReturn(r, BASIS_ON_COST);
     const day = r => num(r.daily_return_pct);
     const wt = r => num(r.weight_pct) || 0;
     const mv = r => Math.abs(num(r.market_value) || 0);
@@ -299,7 +328,22 @@ export function buildPortfolioSnapshot(rows) {
         if (s != null && w > 0) { qw += w; qsum += w * s; }
     }
 
+    // The honest denominator. `winners`/`losers`/`winRate` count rows that
+    // could be measured on cost, which is not always every position — and if
+    // it ever stops being every position, the surface has to be able to say
+    // so rather than quietly reporting a share of a smaller book.
+    const unmeasured = partitionByBasis(R, BASIS_ON_COST).unmeasured;
+
     return {
+        // Every figure below this line is ON COST. Declared once, here, so a
+        // consumer cannot render "total return" over it by accident — which
+        // is precisely what NexusPortfolio did.
+        returnBasis: BASIS_ON_COST,
+        returnBasisLabel: BASIS_LABEL[BASIS_ON_COST],
+        measuredPositions: withRet.length,
+        unmeasuredPositions: unmeasured.length,
+        unmeasuredSymbols: unmeasured.map(function (r) { return r.symbol; }),
+
         positions: R.length, winners, losers, todayUp, todayDown, winRate, atRisk,
         topSymbol: top ? top.symbol : null,
         topWeightPct: top ? +wt(top).toFixed(1) : null,
@@ -309,6 +353,11 @@ export function buildPortfolioSnapshot(rows) {
         marketValue: Math.round(mvSum),
         costBasis: Math.round(cost),
         unrealisedPnl: Math.round(unrealised),
+        // Book-level return ON COST — the aggregate of `ret()` above, not the
+        // since-entry figure the holdings table shows. Named for what it is;
+        // `totalReturnPct` is kept as a deprecated alias so the v2 Flagship
+        // rebuild landing alongside this does not break on the rename.
+        onCostReturnPct: cost > 0 ? +((unrealised / cost) * 100).toFixed(2) : null,
         totalReturnPct: cost > 0 ? +((unrealised / cost) * 100).toFixed(2) : null,
         wtdQuality: qw > 0 ? Math.round(qsum / qw) : null,
     };
