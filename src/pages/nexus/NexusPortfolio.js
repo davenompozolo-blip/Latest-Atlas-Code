@@ -52,7 +52,11 @@ export function PortfolioSnapshot({ model, compact }) {
         { l: 'Long exposure', v: money(acct && acct.long_market_value), s: p.positions + ' positions' + (lev ? ' · ' + lev.toFixed(2) + '× lev' : '') },
         { l: 'Cash / margin', v: acct ? money(acct.cash) : '—', s: acct && acct.cash < 0 ? 'on margin' : 'uninvested', t: acct && acct.cash < 0 ? 'tone-down' : '' },
         { l: 'Day P&L', v: acct ? sgnMoney(acct.dayPnl) : '—', s: acct ? sgnPct(acct.dayPnlPct) + ' today' : null, t: acct ? moveTone(acct.dayPnl) : '' },
-        { l: 'Unrealised P&L', v: sgnMoney(p.unrealisedPnl), s: sgnPct(p.totalReturnPct) + ' total return', t: moveTone(p.unrealisedPnl) },
+        // "on cost", not "total return". This line is the mark against average
+        // cost on what is still held; the holdings table's "Total ret" column
+        // is the return since first fill, and the two disagree in sign on 8 of
+        // 61 holdings. They sat on the same screen under the same word.
+        { l: 'Unrealised P&L', v: sgnMoney(p.unrealisedPnl), s: sgnPct(p.onCostReturnPct ?? p.totalReturnPct) + ' on cost', t: moveTone(p.unrealisedPnl) },
         { l: 'Win rate', v: p.winRate == null ? '—' : p.winRate + '%', s: p.winners + ' winners · ' + p.losers + ' losers', t: winTone(p.winRate) },
         { l: 'Today', v: p.todayUp + ' / ' + p.todayDown, s: 'up / down', t: p.todayUp > p.todayDown ? 'tone-up' : p.todayUp < p.todayDown ? 'tone-down' : '' },
         { l: 'At risk', v: String(p.atRisk), s: 'positions down > 10%', t: p.atRisk > 0 ? 'tone-down' : 'tone-up' },

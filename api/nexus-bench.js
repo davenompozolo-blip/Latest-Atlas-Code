@@ -207,7 +207,19 @@ export default async function handler(req, res) {
                 weightPct: num(h.weight_pct),
                 conviction: num(h.conviction_score) ?? 0,
                 todayPct: num(h.daily_return_pct),
-                totalReturnPct: num(h.unrealised_return_pct) ?? num(h.total_return_pct),
+                // ON COST, with no fallback. This read was
+                // `unrealised ?? total`, silently substituting the
+                // since-entry figure when the on-cost one was absent — two
+                // measures that disagree in sign on 8 of 61 holdings, under
+                // one field name. The docket already publishes
+                // `judged.unrealisedPct` separately, so the substitution also
+                // made two fields on one payload mean the same thing
+                // sometimes and different things otherwise.
+                totalReturnPct: num(h.unrealised_return_pct),
+                returnBasis: 'on_cost',
+                // Published beside it rather than folded into it, so a
+                // consumer that wants the since-entry read asks for it.
+                sinceEntryPct: num(h.total_return_pct),
                 varPct: num(h.var_contribution_pct),
                 fvGapPct: num(h.dcf_upside_pct),
                 signals: { quant: h.quant_signal || null, technical: h.technical_signal || null, valuation: h.valuation_signal || null },

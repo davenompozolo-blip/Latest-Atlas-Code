@@ -885,8 +885,56 @@ Unlabelled, and they disagree in sign:
 The holdings table uses the first; winners/losers/at-risk
 (`nexusLiveCompute.js` ~265) and the Portfolio panel's "total return" line
 (~312) use the second. So a name can be counted a loser in the summary and
-show green in the table. Not yet fixed — decide which read each surface wants
-before touching it.
+show green in the table.
+
+**Fixed 2026-09-05 — see the next entry.** Both are kept; what changed is that
+each surface now declares which one it is on, and no site substitutes one for
+the other.
+
+### Name the basis, and never substitute across it (2026-09-05)
+Six sites read `vw_nexus_holdings`' two return columns and every one called
+its result "total return":
+
+| site | read | called it |
+|---|---|---|
+| `nexusLiveCompute:80` | `total_return_pct` | the "Total ret" column |
+| `nexusLiveCompute:265` | `unrealised ?? total` | winners / losers / at-risk |
+| `nexusLiveCompute:312` | reconstructed from ↑ | the Portfolio panel headline |
+| `nexusRealizedCompute:184` | `unrealised_return_pct` | `totalPct` |
+| `api/nexus-bench:210` | `unrealised ?? total` | `totalReturnPct` |
+| `nexus-page:887, 927` | `total_return_pct` | "Total return" / "Total Rtn" |
+
+`src/lib/nexusReturnBasis.js` names them `since_entry` and `on_cost`. Its
+reader takes no fallback argument — **the substitution is impossible to write,
+not merely discouraged**, which is the only version of that rule that survives
+the next edit. Labels come from the basis, so a figure cannot be rendered
+without saying which question it answers.
+
+**Two of the six silently fell back across bases.** That is what
+`atlas.return.basis.v1` already forbids in Performance, in a module that never
+got the rule. The fallback was latent — all 61 rows carry both figures, so no
+number on screen was wrong because of it — and was removed anyway, on the same
+reasoning as the price-basis gate: a dormant defect costs nothing to fix while
+the context is loaded, and this codebase has three entries about ones deferred
+on *nothing currently needs it* that went on to fail.
+
+**The old test fixture proved the fallback was load-bearing.** `nexusPortfolio.test.mjs`
+supplied only `total_return_pct` and passed because `buildPortfolioSnapshot`
+fell through to it — so the suite could not tell the two measures apart. It now
+carries both columns with values chosen so reading the wrong one changes the
+answer: PROSY is −28% on cost and +12% since entry, so a regression flips
+`losers` and `atRisk` to zero and fails three assertions at once. **A fixture
+that supplies only one basis cannot detect a basis bug.**
+
+Re-measure before quoting figures here. The entry above quotes AMD/MU/SNDK
+numbers the book has since moved past; on 2026-09-05 the sign disagreements are
+PBR, SNDK, MU, HAL, C, AVGO, META and PG — 8 of 61, widest gap 75.6pp, and META
+is the split in reverse (−6.22% since entry, +2.82% on cost).
+
+`totalReturnPct` survives as a key on the row shape and as a deprecated alias on
+the snapshot. That is deliberate: `NexusFlagship` sorts and re-bases on that
+name and is being rewritten in parallel, so the basis is carried by
+`returnBasis` and the label rather than by a wide rename through a moving file.
 
 ### Rates do not add up; dollars do (2026-08-31)
 The trading-effect drill-down under the do-nothing tile. `book_risk_daily`'s

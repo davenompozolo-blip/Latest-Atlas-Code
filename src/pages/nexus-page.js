@@ -884,7 +884,7 @@ function NexusHoldings({ holdings, disabled }) {
                             e('div', { className: 'nx-eq-l' }, 'Recommended Action'),
                             e('div', { className: 'nx-eq-v', style: { color: aS.color } }, h.recommended_action || 'Hold'),
                             e('div', { className: 'nx-eq-d' },
-                                'Total return: ' + pct(h.total_return_pct, 1) +
+                                'Since entry: ' + pct(h.total_return_pct, 1) +
                                 ' · Daily: ' + pct(h.daily_return_pct))
                         )
                     )
@@ -924,7 +924,13 @@ function NexusHoldings({ holdings, disabled }) {
                         e(SH, { col: 'market_value',      label: 'Mkt Value' }),
                         e(SH, { col: 'weight_pct',        label: 'Weight' }),
                         e(SH, { col: 'daily_return_pct',  label: 'Daily Δ' }),
-                        e(SH, { col: 'total_return_pct',  label: 'Total Rtn' }),
+                        // "Since entry", not "Total Rtn". This column is
+                        // total_return_pct — return since the first fill,
+                        // keeping gains on shares already sold — while the
+                        // Portfolio panel's headline is the mark on cost. The
+                        // two disagree in sign on 8 of 61 holdings, and both
+                        // were labelled "total".
+                        e(SH, { col: 'total_return_pct',  label: 'Since entry' }),
                         e('th', { className: 'nx-sh' }, 'DCF Δ'),
                         e('th', { className: 'nx-sh' }, 'Fwd P/E'),
                         e('th', { className: 'nx-sh' }, 'PEG'),
