@@ -21,7 +21,7 @@
 import React from 'react';
 import Plotly from 'plotly.js-dist-min';
 import { sb, loadView } from '../config.js';
-import { computeBrinsonAttribution, BENCHMARKS, verdictForEffect } from '../../lib/attributionEngine.js';
+import { computeBrinsonAttribution, BENCHMARKS, verdictForEffect, RETURN_SINCE_ENTRY } from '../../lib/attributionEngine.js';
 import {
     alignSeries, computeMetrics, rollingBeta, makeRequestGate,
     sma, ema, bollingerBands, rsi as rsiCalc, macd as macdCalc, TIMEFRAMES,
@@ -506,7 +506,7 @@ export function NexusRealizedLayer({ themeRows, factorMoves, betasAsOf, model, m
             });
         });
     }, [perfRows, rows]);
-    const brinson = useMemo(() => (merged.length ? computeBrinsonAttribution(merged, BENCHMARKS[benchKey].weights) : null), [merged, benchKey]);
+    const brinson = useMemo(() => (merged.length ? computeBrinsonAttribution(merged, BENCHMARKS[benchKey].weights, RETURN_SINCE_ENTRY) : null), [merged, benchKey]);
     const trailing = useMemo(() => trailingEffects(attrHist || [], benchKey, 12), [attrHist, benchKey]);
     const verdicts = brinson ? {
         allocation: verdictForEffect(brinson.totals.allocation, trailing.allocation),

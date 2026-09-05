@@ -9,7 +9,96 @@
 // here so the two can never disagree.
 //
 // Pure ES module — no React, no DOM, no IO.
+//
+// ## The return basis is the CALLER's to declare (2026-09-05)
+//
+// This engine used to reach into the row itself:
+//
+//     var ret = Number(p.total_return_pct || p.unrealised_return_pct || 0);
+//
+// Three things wrong with that, in increasing order of severity.
+//
+// **It falls back across bases.** `total_return_pct` is return since the first
+// fill; `unrealised_return_pct` is the mark on average cost. They disagree in
+// sign on 8 of 61 holdings. A shared engine silently choosing between them is
+// the defect `src/lib/nexusReturnBasis.js` exists to prevent, one layer down —
+// and it was missed by that sweep because the sweep grepped `row.`/`h.`/`r.`
+// and this file uses `p.`.
+//
+// **`||` is not `??`.** A genuine 0.00% return is falsy, so a flat position
+// fell through to the other basis. The two are then indistinguishable.
+//
+// **A missing return became a real 0%.** That is the live bug. KMTUY has no
+// `total_return_pct` (feed 176 days dark, `verdict_status = not_measurable`)
+// and is 1 of 3 Industrials names. Nexus beat 07 passes rows unfiltered, so
+// KMTUY entered attribution as a genuine 0.00% return and pulled the sector
+// with it — benchmark sector return 0.13% against a true 0.19%, portfolio
+// sector return 0.17% against a true 0.27%. Performance pre-filtered and got
+// the right answer. Same engine, same benchmark, two answers, neither
+// surface saying so.
+//
+// So `returnOf` is now a REQUIRED argument. The caller names the basis; rows
+// it cannot measure are EXCLUDED rather than counted as zero, and the count of
+// what was withheld comes back on the result so a surface can say what it
+// dropped instead of quietly shrinking its own denominator.
+//
+// ## Why Brinson does not follow the MWR toggle
+//
+// It was tempting to make this basis-aware in the fullest sense — let
+// `atlas.return.basis.v1` swing it to MWR alongside the return columns. That
+// is wrong, and the reason is structural rather than a matter of taste.
+//
+// `benchmarkSectorReturn` is computed from the PORTFOLIO'S OWN positions — a
+// simple average of the position returns inside each sector. That is what
+// makes it a counterfactual: same names, equal weighting instead of yours, so
+// `selection = wb x (rp - rb)` measures your sizing against a neutral sizing
+// of the same book. Feed money-weighted returns in and the "benchmark" becomes
+// an average of YOUR cash-flow-timed returns, so selection would measure your
+// trading against your own trading and the comparison collapses.
+//
+// Two supporting facts, both checked rather than assumed. Holding periods in
+// `vw_performance_suite` run **4 to 250 days**, so a money-weighted rate per
+// position adds a second axis of incomparability on top of the heterogeneous
+// windows the since-entry basis already carries. And `vw_performance_suite`
+// carries no MWR column at all — re-basing is a schema change, not a toggle.
+//
+// SINCE ENTRY is therefore Brinson's basis by construction, not pending work.
+// The badge on the panel says exactly that.
 // ============================================================
+
+/**
+ * The basis every current caller uses: return since the first fill.
+ *
+ * Returns null — never 0 — when the position has no measurable return, so the
+ * engine can exclude it rather than average a fabricated flat return into its
+ * sector.
+ */
+export function RETURN_SINCE_ENTRY(p) {
+    if (!p || p.total_return_pct == null || p.total_return_pct === '') return null;
+    var n = Number(p.total_return_pct);
+    return isFinite(n) ? n : null;
+}
+
+/**
+ * The mark against average cost on what is still held.
+ *
+ * Not used by either surface today. It exists so that a caller who wants this
+ * basis has to ASK for it by name, which is the whole point — the alternative
+ * is an engine that picks for you and tells no one.
+ */
+export function RETURN_ON_COST(p) {
+    if (!p || p.unrealised_return_pct == null || p.unrealised_return_pct === '') return null;
+    var n = Number(p.unrealised_return_pct);
+    return isFinite(n) ? n : null;
+}
+
+function requireAccessor(returnOf, fnName) {
+    if (typeof returnOf !== 'function') {
+        throw new Error(
+            fnName + ' requires an explicit return accessor (RETURN_SINCE_ENTRY / RETURN_ON_COST). ' +
+            'The engine no longer guesses which of the two return columns to use.');
+    }
+}
 
 // GICS sector weights for the benchmark swap. Approximate weights as of
 // Q1 2026; sector names match the assets.sector mapping. Shared so both
@@ -48,19 +137,33 @@ export var BENCHMARKS = {
 //   Selection   = wb × (rp_sector - rb_sector)
 //   Interaction = (wp - wb) × (rp_sector - rb_sector)
 // ----------------------------------------------------------------
-export function computeBrinsonAttribution(positions, benchmarkWeights) {
+export function computeBrinsonAttribution(positions, benchmarkWeights, returnOf) {
+    requireAccessor(returnOf, 'computeBrinsonAttribution');
     if (!positions || !positions.length) return null;
-    var totalMv = positions.reduce(function(s, p) { return s + Math.abs(Number(p.market_value) || 0); }, 0);
+
+    // Excluded, not zeroed. A position whose return cannot be measured has no
+    // place in an average of returns; counting it as 0.00% is a fabricated
+    // observation that drags its sector both ways at once (the benchmark
+    // simple-average AND the value-weighted portfolio return).
+    var withheld = [];
+    var measured = positions.filter(function(p) {
+        if (returnOf(p) != null) return true;
+        withheld.push(p && p.symbol);
+        return false;
+    });
+    if (!measured.length) return null;
+
+    var totalMv = measured.reduce(function(s, p) { return s + Math.abs(Number(p.market_value) || 0); }, 0);
     if (!totalMv) return null;
 
     var useEqualWeight = !benchmarkWeights;
 
     // Group by sector
     var bySector = {};
-    positions.forEach(function(p) {
+    measured.forEach(function(p) {
         var sec = p.sector || 'Other';
         var mv  = Math.abs(Number(p.market_value) || 0);
-        var ret = Number(p.total_return_pct || p.unrealised_return_pct || 0);
+        var ret = returnOf(p);
         if (!bySector[sec]) bySector[sec] = { mv: 0, sumRet: 0, count: 0, positions: [] };
         bySector[sec].mv     += mv;
         bySector[sec].sumRet += ret;
@@ -84,8 +187,7 @@ export function computeBrinsonAttribution(positions, benchmarkWeights) {
         var sumWR = 0;
         s.positions.forEach(function(p) {
             var mv  = Math.abs(Number(p.market_value) || 0);
-            var ret = Number(p.total_return_pct || p.unrealised_return_pct || 0);
-            sumWR += (mv / s.mv) * ret;
+            sumWR += (mv / s.mv) * returnOf(p);
         });
         s.portfolioSectorReturn = sumWR;
         // Benchmark sector return = simple avg return within sector
@@ -144,6 +246,11 @@ export function computeBrinsonAttribution(positions, benchmarkWeights) {
         portfolioReturn: portfolioReturn,
         benchmarkReturn: benchmarkReturn,
         activeReturn:    portfolioReturn - benchmarkReturn,
+        // What this decomposition is actually over. Published so a surface can
+        // state its denominator instead of implying it covered the book.
+        measuredCount:   measured.length,
+        withheldCount:   withheld.length,
+        withheldSymbols: withheld,
     };
 }
 

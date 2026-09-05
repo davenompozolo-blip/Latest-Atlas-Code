@@ -14,7 +14,7 @@ import {
     computePortfolioMetrics, computeRollingMetrics,
     computeDrawdownPeriods, computePositionContributions
 } from './perf-engine.js';
-import { computeBrinsonAttribution, BENCHMARKS } from '../lib/attributionEngine.js';
+import { computeBrinsonAttribution, BENCHMARKS, RETURN_SINCE_ENTRY } from '../lib/attributionEngine.js';
 import { BASIS_MWR, mwrOf, PLAIN_LABEL, STATUS_TEXT } from '../lib/returnBasis.js';
 import { ReturnBasisToggle, useReturnBasis } from '../components/ReturnBasisToggle.js';
 
@@ -238,21 +238,28 @@ export function PositionsPanel(p) {
     // what can be measured; the count of what was withheld is shown on the
     // Best Performer tile rather than dropped silently.
     //
-    // Deliberately NOT basis-aware. `computeBrinsonAttribution` is shared with
-    // Nexus beat 07, so feeding it MWR here would silently re-base a second
-    // module that nobody asked to change — the same shared-engine hazard
-    // flagged when the staleness gate landed. Re-basing Brinson is step 5,
-    // where it is done on purpose and behind a flag. Until then this panel
-    // states the basis it is on, so a screen showing MWR elsewhere cannot be
-    // misread as showing it here.
+    // Brinson is on SINCE ENTRY by construction, not pending a re-base.
+    // `benchmarkSectorReturn` is a simple average of the portfolio's OWN
+    // position returns, which is what makes it a counterfactual — same names,
+    // neutral weighting. Money-weighting those returns would make the
+    // benchmark an average of your own cash-flow timing, so selection would
+    // grade your trading against your trading. See the attributionEngine
+    // header; the badge below says so on screen.
+    //
+    // The engine now excludes unmeasurable rows itself, so this filter is no
+    // longer load-bearing — kept because it also feeds the withheld count on
+    // the Best Performer tile, and because filtering at the caller keeps the
+    // two consumers' denominators visible side by side.
     var measurablePerf = useMemo(function() {
-        return perf.filter(function(p) { return p.total_return_pct != null; });
+        return perf.filter(function(p) { return RETURN_SINCE_ENTRY(p) != null; });
     }, [perf]);
 
     var brinson = useMemo(function() {
-        return computeBrinsonAttribution(measurablePerf, BENCHMARKS[benchKey].weights);
+        return computeBrinsonAttribution(measurablePerf, BENCHMARKS[benchKey].weights, RETURN_SINCE_ENTRY);
     }, [measurablePerf, benchKey]);
-    var contribs = useMemo(function() { return computePositionContributions(measurablePerf); }, [measurablePerf]);
+    var contribs = useMemo(function() {
+        return computePositionContributions(measurablePerf, RETURN_SINCE_ENTRY);
+    }, [measurablePerf]);
 
     if (!perf.length) {
         return h('div', { className: 'card', style: { color: 'rgba(255,255,255,0.4)', textAlign: 'center', padding: 32 } }, 'No position data available.');
@@ -408,11 +415,13 @@ export function PositionsPanel(p) {
                     h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' } },
                         h('div', { className: 'card-title', style: { margin: 0 } }, 'BRINSON-FACHLER ATTRIBUTION BY SECTOR'),
                         // Named because the toggle can say MWR while this panel
-                        // is still on SINCE ENTRY — re-basing the shared engine
-                        // is step 5. An unlabelled mixed basis on one screen is
-                        // the defect; a labelled one is a stated scope.
+                        // is on SINCE ENTRY. That is now a settled property of
+                        // the model rather than pending work, and the tooltip
+                        // says why: the benchmark leg is built from this book's
+                        // own returns, so money-weighting it would grade the
+                        // trading against itself.
                         isMwr ? h('span', {
-                            title: 'Brinson runs on ' + PLAIN_LABEL.performance + ' regardless of the return basis: the attribution engine is shared with Nexus, and re-basing it is a separate change.',
+                            title: 'Brinson runs on ' + PLAIN_LABEL.performance + ' by construction. The benchmark leg is a neutral-weighted average of this book\'s own position returns, so money-weighting it would make the comparator reflect your cash-flow timing and selection would grade your trading against your trading.',
                             style: { fontSize: 9, fontFamily: 'JetBrains Mono', letterSpacing: 0.6, color: '#f5a623', border: '1px solid rgba(245,166,35,0.3)', background: 'rgba(245,166,35,0.1)', borderRadius: 3, padding: '1px 6px', cursor: 'help' },
                         }, 'ON ' + PLAIN_LABEL.performance) : null
                     ),

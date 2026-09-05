@@ -203,13 +203,23 @@ export function computePeriodReturns(navSeries) {
 // Returns each position's contribution to portfolio return,
 // sorted descending by absolute contribution.
 // ----------------------------------------------------------------
-export function computePositionContributions(positions) {
+export function computePositionContributions(positions, returnOf) {
+    // Same rule as computeBrinsonAttribution: the caller names the basis, and
+    // a position whose return cannot be measured is left out rather than
+    // contributing a fabricated 0.00%. See the header of
+    // src/lib/attributionEngine.js for why the engine stopped guessing.
+    if (typeof returnOf !== 'function') {
+        throw new Error('computePositionContributions requires an explicit return accessor ' +
+                        '(RETURN_SINCE_ENTRY / RETURN_ON_COST).');
+    }
     if (!positions || !positions.length) return [];
-    var totalMv = positions.reduce(function(s, p) { return s + Math.abs(Number(p.market_value) || 0); }, 0);
+    var measured = positions.filter(function(p) { return returnOf(p) != null; });
+    if (!measured.length) return [];
+    var totalMv = measured.reduce(function(s, p) { return s + Math.abs(Number(p.market_value) || 0); }, 0);
     if (!totalMv) return [];
-    var out = positions.map(function(p) {
+    var out = measured.map(function(p) {
         var mv  = Math.abs(Number(p.market_value) || 0);
-        var ret = Number(p.total_return_pct || p.unrealised_return_pct || 0);
+        var ret = returnOf(p);
         var wt  = mv / totalMv;
         var contrib = wt * ret;
         return {

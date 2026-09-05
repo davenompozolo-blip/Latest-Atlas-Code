@@ -14,6 +14,7 @@ import {
     computeMonthlyReturns, computeCumulativeReturns, computePeriodReturns,
     computePositionContributions
 } from './perf-engine.js';
+import { RETURN_SINCE_ENTRY } from '../lib/attributionEngine.js';
 
 var useRef = React.useRef, useEffect = React.useEffect, useMemo = React.useMemo, useState = React.useState;
 var h = React.createElement;
@@ -474,7 +475,12 @@ export function OverviewPanel(p) {
 
 export function ReturnsPanel(p) {
     var periods  = useMemo(function() { return computePeriodReturns(p.navSeries); }, [p.navSeries]);
-    var contribs = useMemo(function() { return computePositionContributions(p.perfData || []); }, [p.perfData]);
+    // SINCE ENTRY, declared. This panel previously relied on the engine's
+    // internal `total_return_pct || unrealised_return_pct || 0` chain, which
+    // also meant an unpriced position contributed a fabricated 0.00%.
+    var contribs = useMemo(function() {
+        return computePositionContributions(p.perfData || [], RETURN_SINCE_ENTRY);
+    }, [p.perfData]);
     var cumReturns = useMemo(function() { return computeCumulativeReturns(p.navSeries); }, [p.navSeries]);
     var bins = useMemo(function() { return computeReturnsBins(p.navSeries, 40); }, [p.navSeries]);
     var monthly = useMemo(function() { return computeMonthlyReturns(p.navSeries); }, [p.navSeries]);
