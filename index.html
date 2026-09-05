@@ -6,7 +6,27 @@
   <title>ATLAS Terminal</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500;600&family=Figtree:wght@300;400;500;600&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <!-- Fonts load WITHOUT blocking render.
+       As a plain `rel="stylesheet"` this sat on the critical path: the browser
+       will not run the app's scripts until it resolves, so a viewer who cannot
+       reach fonts.googleapis.com waits out the full connect timeout staring at
+       an empty page. Measured in one such environment: the request hung 12.9s,
+       then failed, and DOMContentLoaded landed at 13.9s — every data fetch
+       queued behind a stylesheet that never arrived. `preconnect` does not help
+       when the host is simply unreachable.
+       `rel="preload" as="style"` fetches it at high priority without blocking,
+       and the onload handler promotes it to a real stylesheet once it lands.
+       The <noscript> copy keeps the original behaviour where JS is off, which
+       is the one case the swap cannot run. `display=swap` already means text
+       paints in the fallback face first, so nothing is hidden while it loads —
+       the fonts still apply, they just no longer gate the app. -->
+  <link rel="preload" as="style"
+        href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500;600&family=Figtree:wght@300;400;500;600&family=DM+Sans:wght@400;500;600;700&display=swap"
+        onload="this.onload=null;this.rel='stylesheet'"/>
+  <noscript>
+    <link rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500;600&family=Figtree:wght@300;400;500;600&family=DM+Sans:wght@400;500;600;700&display=swap"/>
+  </noscript>
 </head>
 <body>
   <div id="root"></div>
