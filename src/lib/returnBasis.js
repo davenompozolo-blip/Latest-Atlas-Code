@@ -21,26 +21,27 @@
 // Both are return *since first buy* — current price against the first fill,
 // ignoring every add and trim. So the plain label is SINCE ENTRY in both.
 //
-// What does NOT agree is inside Nexus. `vw_nexus_holdings` publishes two
-// different returns and Nexus uses both without saying which is which:
+// What did NOT agree was inside Nexus. `vw_nexus_holdings` publishes two
+// different returns — `total_return_pct` (since the first fill) and
+// `unrealised_return_pct` (the mark on average cost) — and six sites used them
+// interchangeably under the words "total return", two of them falling back
+// across the pair. They disagree in SIGN on 8 of 61 holdings, so a name could
+// be a "loser" in the summary and green in the table.
 //
-//                total_return_pct     unrealised_return_pct
-//     AMD          +134.89%                 +15.04%
-//     MU             +8.28%                 -16.43%
-//     SNDK          +12.91%                 -18.11%
-//     TSLA          -23.73%                 -17.23%
+// **Fixed 2026-09-05.** `src/lib/nexusReturnBasis.js` names them `since_entry`
+// and `on_cost`, its reader takes no fallback argument, and every surface now
+// declares which one it is on. Neither measure was wrong; the labelling was.
+// Naming the basis where it is shown is the rule: SINCE ENTRY, ON COST, MWR —
+// and never the word "Simple" over two different numbers.
 //
-// The table column uses the first. Winners/losers/at-risk
-// (`nexusLiveCompute.js` ~265) and the Portfolio panel's "total return" line
-// (~312) use the second. Neither is wrong — unrealised is the mark against
-// average cost on what is still held, which is the right read for "am I under
-// water on this" — but on MU and SNDK they disagree in SIGN, so a name can be
-// a "loser" in the summary and green in the table.
+// ## Brinson does not follow this toggle, by construction
 //
-// That is a labelling defect in Nexus, tracked separately; this module does
-// not paper over it by renaming the column. Naming the basis where it is
-// shown is the rule: SINCE ENTRY, MWR, and never the word "Simple" over two
-// different numbers.
+// The attribution engine's benchmark leg is a neutral-weighted average of this
+// book's OWN position returns. Money-weighting those would make the comparator
+// reflect your cash-flow timing, so selection would grade your trading against
+// your trading. See the header of `src/lib/attributionEngine.js`; the panel
+// badges `ON SINCE ENTRY` when the toggle says MWR, and that badge is a
+// settled property of the model rather than pending work.
 
 export const BASIS_MWR = 'mwr';
 export const BASIS_PLAIN = 'plain';

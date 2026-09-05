@@ -1011,6 +1011,57 @@ per *reference*, here once per *call*. **Compute it once and hand it down.**
 **A view read only by `service_role` has never been tested against the caps the
 UI runs under.** Time it before putting a page on it.
 
+### Brinson does not follow the MWR toggle, and that is the answer (2026-09-05)
+The deferred "Brinson re-basing" item resolves to **no**, on a structural
+argument rather than taste.
+
+`benchmarkSectorReturn` is a **simple average of the portfolio's own position
+returns** inside each sector. That is what makes it a counterfactual: same
+names, neutral weighting instead of yours, so `selection = wb × (rp − rb)`
+measures your sizing against a neutral sizing of the same book. Feed
+money-weighted returns in and the benchmark becomes an average of *your*
+cash-flow-timed returns — selection would grade your trading against your
+trading and the comparison collapses.
+
+Two supporting facts, checked not assumed: holding periods in
+`vw_performance_suite` run **4 to 250 days**, so MWR adds a second axis of
+incomparability on top of the heterogeneous windows since-entry already has;
+and `vw_performance_suite` **carries no MWR column at all**, so re-basing is a
+schema change, not a toggle. The panel's `ON SINCE ENTRY` badge now says this
+is by construction rather than pending.
+
+### The attribution engine was guessing the basis (2026-09-05)
+`computeBrinsonAttribution` and `computePositionContributions` both read
+
+```js
+var ret = Number(p.total_return_pct || p.unrealised_return_pct || 0);
+```
+
+Three defects, increasing in severity. It **falls back across bases** — the
+same defect `nexusReturnBasis.js` exists to prevent, missed by that sweep
+because the sweep grepped `row.`/`h.`/`r.` and this file uses `p.`. **`||` is
+not `??`**, so a genuine 0.00% return was falsy and fell through to the other
+measure. And **a missing return became a real 0%**.
+
+That last one was live. KMTUY has no `total_return_pct` (feed 176 days dark,
+`verdict_status = not_measurable`) and is 1 of 3 Industrials names. Nexus beat
+07 passes rows unfiltered, so it entered attribution as a genuine 0.00% and
+dragged the sector both ways at once — benchmark sector return **0.13% against
+a true 0.19%**, portfolio sector return **0.17% against a true 0.27%**.
+Performance pre-filtered and got the right answer. Same engine, same benchmark,
+two answers, neither surface saying so.
+
+`returnOf` is now a **required** argument (`RETURN_SINCE_ENTRY` /
+`RETURN_ON_COST`); unmeasurable rows are excluded rather than zeroed, and
+`measuredCount` / `withheldCount` / `withheldSymbols` come back on the result
+so a surface can state its denominator.
+
+**Making the argument required is what found the third caller.**
+`perf-panels-top.js:477` called `computePositionContributions` with no
+accessor and would have thrown at runtime — the Vite build cannot see it,
+because it is a call inside a `useMemo`. **Grep for call sites; the build is
+not a caller audit.**
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel
