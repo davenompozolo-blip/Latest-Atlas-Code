@@ -1062,6 +1062,44 @@ accessor and would have thrown at runtime — the Vite build cannot see it,
 because it is a call inside a `useMemo`. **Grep for call sites; the build is
 not a caller audit.**
 
+### `fwd_pe` was a trailing P/E under a forward label (2026-09-06)
+The `fwd_pe` audit. The column was never computed from estimates and never
+came from a forward-earnings engine — it was a **direct pull of the wrong
+field**. `mv_nexus_holdings` had `round(f.pe_ratio, 1) AS fwd_pe` reading
+`equity_cache.payload->'overview'->>'PERatio'`, which is Alpha Vantage
+OVERVIEW's **trailing** twelve-month P/E. AV exposes `ForwardPE` separately,
+but the cached payload is trimmed to 9 keys and never carried it.
+
+`market_fwd_pe` is a genuine forward P/E — the median of
+`equity_screener_universe.forward_pe`, i.e. Finnhub's `metric.forwardPE`. So
+the premium divided **a trailing P/E by a forward median across two vendors**.
+Forward sits structurally below trailing (same universe: 22.07 trailing vs
+15.83 forward), so every premium was inflated by construction — book average
+**+186.5% against a like-for-like +37.9%**.
+
+**Four names inverted**, not merely exaggerated — reported as expensive while
+actually cheap on forward earnings: MU (+704.4% → −62.7%), SNDK (+25.1% →
+−58.9%), HAL (+54.8% → −24.2%), PFE (+32.7% → −45.7%).
+
+**The label was right; the data was not.** Nothing in the UI changed — the
+column has always said "Fwd P/E" and now it is one.
+
+Fixed at `vw_nexus_holdings`, not the matview: it is the **only** object in
+the database referencing `fwd_pe` (checked against `pg_depend` — the five
+other dependants of `mv_nexus_holdings` do not read it), so `CREATE OR REPLACE
+VIEW` reaches every consumer and a `DROP … CASCADE` rebuild of six objects is
+avoided. **`mv_nexus_holdings.fwd_pe` keeps the misnomer and is now read by
+nothing — do not consume it believing it forward.** Renaming needs the
+cascade; deliberately deferred.
+
+`peg_ratio` has the identical vendor split and is not yet reconciled:
+`mv_nexus_holdings` takes Alpha Vantage `overview.PEGRatio` while
+`equity_screener_universe` takes Finnhub `pegTTM`. No premium is computed on
+it today, so nothing on screen is wrong — but the two will disagree.
+
+**When a column's name asserts a measure, check the field it reads, not the
+alias.** This one sat mislabelled since `20260530000000`.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel

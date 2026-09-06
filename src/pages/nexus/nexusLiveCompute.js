@@ -102,6 +102,14 @@ export function mapHolding(row, compByTk, staleSet) {
         // Forward multiple, and where it sits against the market. The market
         // figure is the MEDIAN forward P/E of the screener universe, not a
         // cap-weighted index level — see the view comment for why.
+        //
+        // Both legs are Finnhub `metric.forwardPE` as of 2026-09-06, so the
+        // premium is like-for-like. Until then this column was Alpha Vantage
+        // OVERVIEW.PERatio — a TRAILING P/E — divided by that forward median,
+        // which inflated every premium (book average +186.5% against a true
+        // +37.9%) and inverted four names outright: MU, SNDK, HAL and PFE all
+        // read expensive while being cheap on forward earnings. The label was
+        // always right; the data was not.
         fwdPe: num(row.fwd_pe),
         marketFwdPe: num(row.market_fwd_pe),
         fwdPePremiumPct: num(row.fwd_pe_premium_pct),
