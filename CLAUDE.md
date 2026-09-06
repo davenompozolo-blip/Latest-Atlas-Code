@@ -1100,6 +1100,48 @@ it today, so nothing on screen is wrong — but the two will disagree.
 **When a column's name asserts a measure, check the field it reads, not the
 alias.** This one sat mislabelled since `20260530000000`.
 
+### Two faults, each hiding the other (2026-09-06)
+Found while resolving the segmentation basis for the Performance three-level
+build, which groups on `position_verdicts.cluster_id`.
+
+**`cluster_id` was published from the tier-1 join, not the partition.** The
+column was read from `t1`, a subquery that attaches the partition id *inside*
+the join to `mv_position_tier1`:
+
+```sql
+LEFT JOIN (SELECT t.*, c.cluster_id
+             FROM public.mv_position_tier1 t
+             LEFT JOIN clus c ON c.symbol = t.symbol) t1 ON t1.asset_id = o.asset_id
+```
+
+A position with no tier-1 row loses the whole subquery, `cluster_id` included —
+while the SHARE is looked up on an independent path (`LEFT JOIN clus cl ON
+cl.symbol = o.symbol`) and was always correct. **24 of 59 open positions**
+carried NULL against a real cluster in `universe_clusters`. Fixed by reading
+`cl.cluster_id`; for a position that has a tier-1 row both resolve identically,
+so it is a strict repair.
+
+**The invariant deduplicated by value.** `sum(DISTINCT cluster_risk_share)`
+over `DISTINCT (cluster_id, share)` collapses two distinct buckets that hold an
+equal share. AMZN (id NULL) and cluster 204 (GOOGL) carried the same share to
+sixteen decimal places, so the job reported **1.0000000000 while the true sum
+was 1.0435** — green while 4.4% out, and green *only because* the collapse
+cancelled the first defect. Bucket explicitly instead:
+`coalesce(cluster_id::text, 'pos:' || asset_id::text)`.
+
+**AMZN was the only name that could expose this.** It is the sole affected
+position sharing a cluster with another held name; every other one is the only
+held member of its cluster, so its share looked like a plausible per-position
+value. A defect visible in exactly one row out of twenty-four.
+
+After both: `rows=59  cluster_id NULL=2  bucketed_share_sum=1.0000000000`,
+proven by running the job under a throwaway `logic_version` in a transaction
+that rolled back. The 2 remaining (IXC, KMTUY) are genuinely absent from
+`universe_clusters` and carry a NULL share.
+
+**Do not assert an aggregate with `DISTINCT` over the value being summed.**
+Bucket on the key, then sum.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel
