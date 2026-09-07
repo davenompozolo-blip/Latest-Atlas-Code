@@ -350,3 +350,19 @@ export function stripColor(i, total) {
     // not eight more distinguishable bets.
     return 'rgba(255,255,255,.12)';
 }
+
+/**
+ * The glow that goes under a risk bar of the same rank.
+ *
+ * A companion ramp rather than a colour derived at the call site: the palette
+ * mixes hex and rgba, so there is no one expression that dims both, and a
+ * "clever" string rewrite silently produced an invalid box-shadow.
+ */
+const STRIP_GLOWS = [
+    'rgba(58,214,224,.40)', 'rgba(67,214,138,.40)', 'rgba(139,127,240,.40)',
+    'rgba(245,166,35,.40)', 'rgba(242,100,90,.40)',
+    'rgba(255,255,255,.18)', 'rgba(255,255,255,.14)', 'rgba(255,255,255,.12)',
+];
+export function stripGlow(i) {
+    return i < STRIP_GLOWS.length ? STRIP_GLOWS[i] : 'rgba(255,255,255,.08)';
+}

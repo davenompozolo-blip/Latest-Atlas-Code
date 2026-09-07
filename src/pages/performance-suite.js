@@ -18,6 +18,7 @@ import { RollingAttributionPanel, FactorEnginePanel, RegimeSlicerPanel } from '.
 import { ClusterRankingPanel } from './perf-panel-clusters.js';
 import { VerdictCardsPanel } from './perf-panel-verdicts.js';
 import { TradingEffectPanel } from './perf-panel-trading.js';
+import PerfBetsPanel from './perf-panel-bets.js';
 import { AdvancedChart } from './advanced-chart.js';
 
 var useState = React.useState, useEffect = React.useEffect, useMemo = React.useMemo;
@@ -31,13 +32,32 @@ var h = React.createElement;
 //
 // Pure IA. No panel, prop or route changed — only the order of this array and
 // the landing tab below. Reverting is this array back the way it was.
+/**
+ * The flat 59-card VERDICTS grid, kept behind a flag rather than deleted.
+ *
+ * BETS replaces it: Book → Bets → Counters reaches a card THROUGH a segment
+ * instead of through a wall. The old grid stays reachable because it is the
+ * only surface that shows every position at once, and because a replacement
+ * nobody can back out of is a worse replacement.
+ *
+ * Flip to true (or set `?flatVerdicts=1`) to put the old tab back.
+ */
+var SHOW_FLAT_VERDICT_GRID = (function () {
+    try {
+        return new URLSearchParams(window.location.search).get('flatVerdicts') === '1';
+    } catch (e) { return false; }
+})();
+
 var SUB_TABS = [
     { id: 'positions',    label: 'POSITIONS',     sub: 'Attribution' },
+    // The three-level build (spec §3-§5). BOOK lands first: one number, then
+    // the composition that produced it, then the positions inside a segment.
+    { id: 'bets',         label: 'BETS',          sub: 'Book · Bets · Counters · NEW', isNew: true },
     // The three position-level cuts run from raw to judged to ranked:
     // POSITIONS says what each name returned, VERDICTS says what that was
     // worth against the comparison that applies to it, CLUSTERS ranks the ones
     // that have peers to be ranked against.
-    { id: 'verdicts',     label: 'VERDICTS',      sub: 'Per Position · NEW', isNew: true },
+    { id: 'verdicts',     label: 'VERDICTS',      sub: 'Per Position (flat)', flagged: true },
     // §5.3 puts the peer ranking here rather than on each card, because only
     // ~19 of 57 positions can carry one and the rest would show a hole.
     { id: 'clusters',     label: 'CLUSTERS',      sub: 'Peer Ranking · NEW', isNew: true },
@@ -55,11 +75,17 @@ var SUB_TABS = [
     { id: 'overview',     label: 'OVERVIEW',      sub: 'Metrics & Curve' },
 ];
 
+// A flagged tab is present in the array (so the ordering above stays the
+// single source of truth) but rendered only when its flag is on.
+var VISIBLE_TABS = SUB_TABS.filter(function (t) {
+    return !t.flagged || SHOW_FLAT_VERDICT_GRID;
+});
+
 export function PerformanceSuite() {
     // Land on the first tab rather than a hardcoded id, so the ordering above
     // is the single source of truth. Positions-first is only IA if the module
     // also opens there.
-    var _t = useState(SUB_TABS[0].id);
+    var _t = useState(VISIBLE_TABS[0].id);
     var activeTab = _t[0], setActiveTab = _t[1];
     var _n = useState(null);
     var navSeries = _n[0], setNavSeries = _n[1];
@@ -380,7 +406,7 @@ export function PerformanceSuite() {
 
     // ---- Tab Bar ----------------------------------------------
     var tabBar = h('div', { style: { display: 'flex', gap: 0, marginBottom: 20, borderBottom: '1px solid rgba(255,255,255,0.07)', flexWrap: 'wrap' } },
-        SUB_TABS.map(function(tab) {
+        VISIBLE_TABS.map(function(tab) {
             var isActive = activeTab === tab.id;
             return h('button', {
                 key: tab.id,
@@ -416,6 +442,12 @@ export function PerformanceSuite() {
             break;
         case 'positions':
             panel = hasPerf ? h(PositionsPanel, { perfData: perfData, cmdData: cmdData, homeData: homeData || [], activeView: posView, onActiveView: setPosView, benchKey: posBench, onBenchKey: setPosBench }) : h(EmptyState, null);
+            break;
+        case 'bets':
+            // Self-loading like VERDICTS and CLUSTERS: it reads
+            // segment_verdicts, position_verdicts and vw_position_segments,
+            // none of which the suite-wide fetch touches.
+            panel = h(PerfBetsPanel, null);
             break;
         case 'verdicts':
             // Self-loading for the same reason as CLUSTERS: it reads
