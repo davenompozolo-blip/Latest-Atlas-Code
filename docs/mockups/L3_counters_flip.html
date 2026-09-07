@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ATLAS · Performance · Level 3 — Counters</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@500;600;700&family=DM+Sans:opsz,wght@9..40,400;9..40,500&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0d12; --card:#121821; --card-2:#161d27; --raise:#1b2531;
+  --cyan:#3ad6e0; --amber:#f5a623; --green:#43d68a; --red:#f2645a;
+  --line:rgba(255,255,255,.07); --line-cy:rgba(58,214,224,.22);
+  --t1:#e6edf4; --t2:#8fa1b3; --t3:#5b6b7c;
+  --display:'Syne',sans-serif; --body:'DM Sans',sans-serif; --mono:'JetBrains Mono',monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--t1);font-family:var(--body);
+     padding:38px 34px 80px;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto}
+
+.crumb{font-family:var(--mono);font-size:11px;letter-spacing:.09em;color:var(--t3);
+       text-transform:uppercase;margin:0 0 20px}
+.crumb b{color:var(--cyan);font-weight:500}
+
+.seghead{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;
+         padding-bottom:16px;border-bottom:1px solid var(--line);margin-bottom:14px}
+h1{font-family:var(--display);font-weight:600;font-size:30px;margin:0;letter-spacing:-.015em}
+.trip{display:flex;gap:26px}
+.trip div{text-align:right}
+.trip span{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;
+           color:var(--t3);text-transform:uppercase;margin-bottom:3px}
+.trip b{font-family:var(--mono);font-size:19px;font-weight:500}
+.trip .hot{color:var(--cyan)}
+
+.read{font-size:14.5px;line-height:1.65;color:var(--t2);max-width:66ch;margin:0 0 6px}
+.read em{color:var(--t1);font-style:normal}
+.hint{font-family:var(--mono);font-size:10.5px;letter-spacing:.07em;color:var(--t3);
+      text-transform:uppercase;margin:0 0 22px}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(258px,1fr));gap:16px}
+
+.fc{perspective:1600px;height:316px;cursor:pointer}
+.fi{position:relative;width:100%;height:100%;transform-style:preserve-3d;
+    transition:transform .58s cubic-bezier(.4,0,.2,1)}
+.fc.on .fi{transform:rotateY(180deg)}
+.ff,.fb{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;
+        border-radius:14px;padding:17px 18px;overflow:hidden;
+        background:linear-gradient(168deg,var(--card-2) 0%,var(--card) 62%);
+        border:1px solid var(--line)}
+.ff{border-top:1px solid var(--line-cy)}
+.fb{transform:rotateY(180deg);border-top:1px solid var(--line-cy)}
+.fc:hover .ff,.fc:hover .fb{border-color:var(--line-cy)}
+
+.tick{display:flex;align-items:center;justify-content:space-between;margin-bottom:3px}
+.sym{font-family:var(--mono);font-size:19px;font-weight:600;letter-spacing:.02em}
+.pill{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;
+      padding:3px 8px;border-radius:4px;background:rgba(67,214,138,.13);color:var(--green);
+      border:1px solid rgba(67,214,138,.24)}
+.tier{font-family:var(--mono);font-size:9.5px;letter-spacing:.13em;color:var(--cyan);
+      text-transform:uppercase;margin:0 0 20px;opacity:.82}
+.cap{font-family:var(--mono);font-size:10px;letter-spacing:.09em;color:var(--t3);
+     text-transform:uppercase;margin:0}
+.big{font-family:var(--mono);font-size:33px;font-weight:500;letter-spacing:-.02em;
+     margin:4px 0 14px;color:var(--green)}
+
+.track{height:4px;border-radius:2px;background:rgba(255,255,255,.06);overflow:hidden}
+.fill{height:4px;border-radius:2px;background:var(--green);
+      box-shadow:0 0 11px rgba(67,214,138,.45)}
+.fill.cy{background:var(--cyan);box-shadow:0 0 11px rgba(58,214,224,.4)}
+.fill.dim{background:rgba(255,255,255,.22);box-shadow:none}
+.fill.mid{background:rgba(255,255,255,.36);box-shadow:none}
+
+.pair{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;
+      color:var(--t2);margin-top:12px}
+.rank{font-family:var(--mono);font-size:11.5px;margin:11px 0 0;color:var(--t1)}
+.sub{font-family:var(--mono);font-size:10.5px;color:var(--t3);margin:3px 0 0}
+.foot{position:absolute;left:18px;right:18px;bottom:14px;display:flex;justify-content:space-between;
+      font-family:var(--mono);font-size:10.5px;color:var(--t3);
+      border-top:1px solid var(--line);padding-top:11px}
+
+.blab{font-family:var(--mono);font-size:9.5px;letter-spacing:.09em;color:var(--t3);
+      text-transform:uppercase;margin:0 0 9px}
+.brow{display:flex;align-items:center;gap:9px;margin-bottom:7px}
+.bnm{font-size:11px;width:76px;color:var(--t2)}
+.bnm.you{color:var(--t1);font-weight:500}
+.bvl{font-family:var(--mono);font-size:10.5px;width:54px;text-align:right;color:var(--t2)}
+.bvl.you{color:var(--t1);font-weight:500}
+
+.strip{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin:13px 0;
+       padding:11px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.strip b{display:block;font-family:var(--mono);font-size:14px;font-weight:500;margin-top:3px}
+.ctx{display:flex;justify-content:space-between;margin-bottom:13px}
+.ctx b{display:block;font-size:12px;font-weight:400;color:var(--t2);margin-top:3px}
+.ctx .mono{font-family:var(--mono)}
+.act{width:100%;padding:9px;border-radius:7px;cursor:pointer;
+     background:rgba(58,214,224,.09);border:1px solid var(--line-cy);color:var(--cyan);
+     font-family:var(--mono);font-size:10.5px;letter-spacing:.09em;text-transform:uppercase}
+.act:hover{background:rgba(58,214,224,.16)}
+.note{font-size:13.5px;line-height:1.65;color:var(--t2);margin:0 0 12px}
+.note em{color:var(--t1);font-style:normal}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<p class="crumb">Book &nbsp;›&nbsp; Bets &nbsp;›&nbsp; <b>Semis &amp; accelerators</b></p>
+
+<div class="seghead">
+  <h1>Semis &amp; accelerators</h1>
+  <div class="trip">
+    <div><span>weight</span><b>19.3%</b></div>
+    <div><span>risk</span><b class="hot">44.1%</b></div>
+    <div><span>vs book</span><b style="color:var(--green)">+47.2pp</b></div>
+  </div>
+</div>
+
+<p class="read">All four are leaders and three rank top-three in their cluster. <em>The segment is working — the question it raises is size, not selection.</em></p>
+<p class="hint">Tap a tile to turn it over</p>
+
+<div class="grid">
+
+  <!-- AMD — full front and back -->
+  <div class="fc" onclick="this.classList.toggle('on')">
+    <div class="fi">
+      <div class="ff">
+        <div class="tick"><span class="sym">AMD</span><span class="pill">Leader</span></div>
+        <p class="tier">Tier 1 · Cluster</p>
+        <p class="cap">vs cluster median</p>
+        <p class="big">+160.4<span style="font-size:20px">pp</span></p>
+        <div class="track"><div class="fill" style="width:92%"></div></div>
+        <div class="pair"><span>own +187.99%</span><span>peer +27.59%</span></div>
+        <p class="rank">rank #2 of 12</p>
+        <p class="sub">best peer SOXL · 43.7pp ahead</p>
+        <div class="foot"><span>186d held</span><span>$6,888</span></div>
+      </div>
+      <div class="fb">
+        <div class="tick" style="margin-bottom:16px">
+          <span class="sym" style="font-size:16px">AMD</span>
+          <span class="sub" style="margin:0">ρ≥0.75 · 11 peers</span>
+        </div>
+        <p class="blab">Your $6,888, on the same dates</p>
+        <div class="brow"><span class="bnm">best peer</span><div class="track" style="flex:1"><div class="fill mid" style="width:100%"></div></div><span class="bvl">+231.7%</span></div>
+        <div class="brow"><span class="bnm">peer median</span><div class="track" style="flex:1"><div class="fill dim" style="width:15%"></div></div><span class="bvl">+27.6%</span></div>
+        <div class="brow"><span class="bnm you">what you did</span><div class="track" style="flex:1"><div class="fill" style="width:81%"></div></div><span class="bvl you">+188.0%</span></div>
+        <div class="strip">
+          <div><span class="cap">Selection</span><b style="color:var(--green)">+160.4</b></div>
+          <div><span class="cap">Allocation</span><b>+11.2</b></div>
+          <div><span class="cap">Vol-adj</span><b style="color:var(--t2)">+94.1</b></div>
+        </div>
+        <div class="ctx">
+          <div><span class="cap">Thesis</span><b>Untested</b></div>
+          <div style="text-align:right"><span class="cap">Conviction at entry</span><b class="mono">not captured</b></div>
+        </div>
+        <button class="act" onclick="event.stopPropagation()">Trim on concentration ↗</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SNDK -->
+  <div class="fc" onclick="this.classList.toggle('on')">
+    <div class="fi">
+      <div class="ff">
+        <div class="tick"><span class="sym">SNDK</span><span class="pill">Leader</span></div>
+        <p class="tier">Tier 1 · Cluster</p>
+        <p class="cap">vs cluster median</p>
+        <p class="big">+26.7<span style="font-size:20px">pp</span></p>
+        <div class="track"><div class="fill" style="width:44%"></div></div>
+        <div class="pair"><span>own +18.29%</span><span>peer −8.42%</span></div>
+        <p class="rank">rank #1 of 12</p>
+        <p class="sub">best peer MU · 1.7pp behind</p>
+        <div class="foot"><span>112d held</span><span>$7,627</span></div>
+      </div>
+      <div class="fb">
+        <div class="tick" style="margin-bottom:16px"><span class="sym" style="font-size:16px">SNDK</span><span class="sub" style="margin:0">ρ≥0.75 · 11 peers</span></div>
+        <p class="note">Top of its cluster, and <em>the cluster is negative</em> — the peer median is −8.4%. Selection is doing all the work here; the segment is not.</p>
+        <p class="sub">Build this face from the AMD pattern.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- MU -->
+  <div class="fc" onclick="this.classList.toggle('on')">
+    <div class="fi">
+      <div class="ff">
+        <div class="tick"><span class="sym">MU</span><span class="pill">Leader</span></div>
+        <p class="tier">Tier 1 · Cluster</p>
+        <p class="cap">vs cluster median</p>
+        <p class="big">+20.7<span style="font-size:20px">pp</span></p>
+        <div class="track"><div class="fill" style="width:38%"></div></div>
+        <div class="pair"><span>own +11.29%</span><span>peer −9.38%</span></div>
+        <p class="rank">rank #1 of 16</p>
+        <p class="sub">best peer SNDK · 9.7pp ahead</p>
+        <div class="foot"><span>181d held</span><span>$6,296</span></div>
+      </div>
+      <div class="fb">
+        <div class="tick" style="margin-bottom:16px"><span class="sym" style="font-size:16px">MU</span><span class="sub" style="margin:0">ρ≥0.75 · 15 peers</span></div>
+        <p class="note">Ranks first of 16 while SNDK ranks first of 12, each naming the other as best peer. <em>Two tiles, one bet</em> — which is what level 2 exists to say.</p>
+        <p class="sub">Build this face from the AMD pattern.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ASML -->
+  <div class="fc" onclick="this.classList.toggle('on')">
+    <div class="fi">
+      <div class="ff">
+        <div class="tick"><span class="sym">ASML</span><span class="pill">Leader</span></div>
+        <p class="tier">Tier 1 · Cluster</p>
+        <p class="cap">vs cluster median</p>
+        <p class="big">+19.0<span style="font-size:20px">pp</span></p>
+        <div class="track"><div class="fill" style="width:36%"></div></div>
+        <div class="pair"><span>own +69.02%</span><span>peer +50.07%</span></div>
+        <p class="rank">rank #3 of 13</p>
+        <p class="sub">best peer SOXL · 81.5pp ahead</p>
+        <div class="foot"><span>249d held</span><span>$6,709</span></div>
+      </div>
+      <div class="fb">
+        <div class="tick" style="margin-bottom:16px"><span class="sym" style="font-size:16px">ASML</span><span class="sub" style="margin:0">ρ≥0.75 · 12 peers</span></div>
+        <p class="note">The only one of the four not ranked top-two. Beats its median comfortably, but two held peers beat it — <em>the switch question is live here and nowhere else in the segment.</em></p>
+        <p class="sub">Build this face from the AMD pattern.</p>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+</body>
+</html>

@@ -145,6 +145,34 @@ BEGIN
         END IF;
     END LOOP;
 
+    -- `verdict_counts` must account for every member. It once did not:
+    -- jsonb_object_agg keeps the last value on a duplicate key, and the job
+    -- grouped by (symbol, label) where every count is 1, so an 8-member
+    -- segment published three labels at 1 each. Three plausible numbers
+    -- beside a member_count nobody cross-added. Not a CHECK, because a
+    -- segment whose members have no verdict row yet carries NULL legitimately.
+    FOR r IN
+        SELECT sv.grouping,
+               count(*) FILTER (WHERE sv.verdict_counts IS NOT NULL) AS with_counts,
+               count(*) FILTER (
+                   WHERE sv.verdict_counts IS NOT NULL
+                     AND (SELECT sum(value::int) FROM jsonb_each_text(sv.verdict_counts))
+                         <> sv.member_count) AS mismatched
+          FROM public.segment_verdicts sv
+         WHERE sv.logic_version = 'test:invariants'
+         GROUP BY sv.grouping ORDER BY sv.grouping
+    LOOP
+        IF r.mismatched = 0 THEN
+            n_pass := n_pass + 1;
+            rpt := rpt || format('  ok    %-6s verdict_counts sum to member_count (%s segments)',
+                                 r.grouping, r.with_counts) || E'\n';
+        ELSE
+            n_fail := n_fail + 1;
+            rpt := rpt || format('  FAIL  %-6s %s segments whose verdict_counts do not sum to member_count',
+                                 r.grouping, r.mismatched) || E'\n';
+        END IF;
+    END LOOP;
+
     -- ── C. singletons agree with the per-position engine ──────
     rpt := rpt || E'\nC. a singleton segment reproduces mv_position_tier2\n';
     SELECT count(*) AS n, max(abs(d)) AS worst INTO r
