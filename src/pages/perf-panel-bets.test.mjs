@@ -34,7 +34,9 @@ register(loaderUrl, import.meta.url);
 
 const { BetsLevel, CountersLevel, BookLevel } = await import('./perf-panel-bets.js');
 const { buildBetsView, GROUPING_BET, GROUPING_THEME } = await import('../lib/segmentView.js');
-const { buildCounters, segmentReading } = await import('../lib/counterView.js');
+const { buildCounters, segmentReading, groupByVerdict } = await import('../lib/counterView.js');
+const VERDICT_LABEL = { leader: 'Leader', holding_own: 'Holding own', lagging: 'Lagging',
+                        cut_candidate: 'Cut candidate', unlabelled: 'Unlabelled' };
 const { readBookBaseline } = await import('../lib/bookBaseline.js');
 
 let passed = 0;
@@ -249,6 +251,45 @@ t('a member with no verdict row is named on screen', () => {
     const out = text(CountersLevel(c199, withGhost.tiles, withGhost.missing,
         segmentReading(withGhost.tiles, c199), {}, noop));
     assert.match(out, /no verdict row tonight: GHOST/);
+});
+
+// ── §6 edge cases ─────────────────────────────────────────────
+const unpaired = theme.segments.find(s => s.kind === 'unpaired');
+const unSyms = fx.membership
+    .filter(m => m.grouping === 'theme' && m.segment_id === unpaired.segmentId)
+    .map(m => m.symbol);
+const unBuilt = buildCounters(fx.counters, unSyms, { singleTransaction: {} });
+
+t('Unpaired is sub-grouped by verdict, not rendered as one block', () => {
+    assert.equal(unBuilt.tiles.length, 17);
+    const out = text(CountersLevel(unpaired, unBuilt.tiles, unBuilt.missing,
+        segmentReading(unBuilt.tiles, unpaired), {}, noop));
+    // Band headings, each with its own count.
+    const bands = groupByVerdict(unBuilt.tiles);
+    assert.ok(bands.length >= 3, 'the real Unpaired spans several verdicts');
+    bands.forEach(b => assert.ok(out.includes(VERDICT_LABEL[b.label]),
+        'missing band ' + b.label));
+    // And every tile is still on screen exactly once.
+    assert.equal(bands.reduce((t, b) => t + b.count, 0), 17);
+});
+
+t('a normal segment is NOT banded — that would be noise on two names', () => {
+    const out = html(CountersLevel(c199, built.tiles, built.missing,
+        segmentReading(built.tiles, c199), {}, noop));
+    // One grid, not several.
+    assert.equal((out.match(/repeat\(auto-fit,minmax\(258px,1fr\)\)/g) || []).length, 1);
+});
+
+t('the one-sided card renders its gate reason, never blank or zero', () => {
+    // KMTUY: feed 176 days dark, so no comparison exists at any tier.
+    const k = fx.counters.find(r => r.symbol === 'KMTUY');
+    assert.ok(k, 'KMTUY must be in the fixture');
+    const one = buildCounters(fx.counters, ['KMTUY'], { singleTransaction: {} });
+    const out = text(CountersLevel(theme.segments[0], one.tiles, [],
+        segmentReading(one.tiles, theme.segments[0]), {}, noop));
+    assert.match(out, /why not/i);
+    assert.ok(!/0\.0pp/.test(out), 'an unmeasurable position must not show a zero edge');
+    assert.match(out, /Not measured/);
 });
 
 t('no level renders NaN, undefined or [object Object]', () => {

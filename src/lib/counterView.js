@@ -228,6 +228,34 @@ export function buildCounters(rows, symbols, opts) {
     return { tiles: tiles, missing: missing };
 }
 
+/**
+ * Verdict order for a sub-grouped segment. Fixed, not data-driven: a reader
+ * scanning two segments must find the same band in the same place.
+ */
+export const VERDICT_ORDER = ['leader', 'holding_own', 'lagging', 'cut_candidate', 'unlabelled'];
+
+/**
+ * Split a segment's tiles into verdict bands (§6, edge case 1).
+ *
+ * Unpaired is 17 positions under BY THEME — 27% of the book by weight. As one
+ * block it is a wall, which is the thing this whole build exists to remove;
+ * banding it by verdict turns "capital with no story" into four short answers.
+ *
+ * Empty bands are dropped, and `unlabelled` is a band rather than a silent
+ * omission: a position the engine could not label still holds weight, and
+ * hiding it would shrink the denominator on screen.
+ */
+export function groupByVerdict(tiles) {
+    const bands = {};
+    (tiles || []).forEach(function (t) {
+        const k = t.label || 'unlabelled';
+        (bands[k] = bands[k] || []).push(t);
+    });
+    return VERDICT_ORDER
+        .filter(function (k) { return bands[k] && bands[k].length; })
+        .map(function (k) { return { label: k, tiles: bands[k], count: bands[k].length }; });
+}
+
 function plural(n, one, many) { return n === 1 ? one : (many || one + 's'); }
 function countWord(n) {
     return ['none', 'one', 'two', 'three', 'four', 'five', 'six', 'seven',
