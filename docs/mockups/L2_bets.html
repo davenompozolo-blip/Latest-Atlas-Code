@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ATLAS · Performance · Level 2 — Bets</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@500;600;700&family=DM+Sans:opsz,wght@9..40,400;9..40,500&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0d12; --card:#121821; --card-2:#161d27;
+  --cyan:#3ad6e0; --amber:#f5a623; --green:#43d68a; --red:#f2645a; --violet:#8b7ff0;
+  --line:rgba(255,255,255,.07); --line-cy:rgba(58,214,224,.22);
+  --t1:#e6edf4; --t2:#8fa1b3; --t3:#5b6b7c;
+  --display:'Syne',sans-serif; --body:'DM Sans',sans-serif; --mono:'JetBrains Mono',monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--t1);font-family:var(--body);
+     padding:38px 34px 80px;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1060px;margin:0 auto}
+.crumb{font-family:var(--mono);font-size:11px;letter-spacing:.09em;color:var(--t3);
+       text-transform:uppercase;margin:0 0 20px}
+.crumb b{color:var(--cyan);font-weight:500}
+
+.top{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:6px}
+h1{font-family:var(--display);font-weight:600;font-size:30px;margin:0;letter-spacing:-.015em}
+h1 span{color:var(--t3);font-weight:500}
+.eff{text-align:right}
+.eff span{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;
+          color:var(--t3);text-transform:uppercase;margin-bottom:3px}
+.eff b{font-family:var(--mono);font-size:22px;font-weight:500;color:var(--cyan)}
+
+.lede{font-size:14px;line-height:1.65;color:var(--t2);max-width:64ch;margin:0 0 20px}
+
+.tog{display:inline-flex;padding:3px;border-radius:8px;background:var(--card);
+     border:1px solid var(--line);margin-bottom:20px}
+.tog button{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+            padding:7px 15px;border-radius:6px;border:0;cursor:pointer;background:transparent;color:var(--t3)}
+.tog button.sel{background:rgba(58,214,224,.13);color:var(--cyan);
+                box-shadow:inset 0 0 0 1px var(--line-cy)}
+
+.strip{display:flex;height:9px;border-radius:5px;overflow:hidden;gap:2px;margin-bottom:8px}
+.strip div{height:9px}
+.slab{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;
+      letter-spacing:.07em;color:var(--t3);text-transform:uppercase;margin-bottom:30px}
+
+.seg{padding:18px 0;border-top:1px solid var(--line);cursor:pointer}
+.seg:hover{background:linear-gradient(90deg,rgba(58,214,224,.045),transparent 55%)}
+.sh{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin-bottom:12px}
+.nm{font-size:16.5px;font-weight:500}
+.kind{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;
+      padding:3px 8px;border-radius:4px;margin-left:11px;color:var(--t3);
+      background:rgba(255,255,255,.045);border:1px solid var(--line)}
+.kind.cl{color:var(--cyan);background:rgba(58,214,224,.1);border-color:var(--line-cy)}
+.exc{font-family:var(--mono);font-size:17px;font-weight:500}
+
+.bar{display:flex;align-items:center;gap:11px;margin-bottom:5px}
+.blab{font-family:var(--mono);font-size:9.5px;letter-spacing:.09em;color:var(--t3);
+      text-transform:uppercase;width:48px}
+.track{flex:1;height:5px;border-radius:3px;background:rgba(255,255,255,.055)}
+.fill{height:5px;border-radius:3px;min-width:2px}
+.bval{font-family:var(--mono);font-size:11px;width:44px;text-align:right;color:var(--t2)}
+.bval.hot{color:var(--t1)}
+
+.ins{font-size:13.5px;line-height:1.68;color:var(--t2);margin:11px 0 0;max-width:74ch}
+.ins em{color:var(--t1);font-style:normal}
+.ins b{color:var(--cyan);font-weight:500}
+
+.tail{padding:18px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+      cursor:pointer;opacity:.78}
+.tail:hover{opacity:1}
+.chev{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;color:var(--t3);
+      text-transform:uppercase;margin-left:11px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<p class="crumb">Book &nbsp;›&nbsp; <b>Bets</b></p>
+
+<div class="top">
+  <h1>Eight bets <span>of 44 · 59 positions</span></h1>
+  <div class="eff"><span>effective bets</span><b>5.8</b></div>
+</div>
+<p class="lede">Grouped on the correlation partition, falling back to theme, then unpaired. Bars are shown against the whole book — weight above, risk below.</p>
+
+<div class="tog">
+  <button class="sel">By theme</button>
+  <button>By bet</button>
+</div>
+
+<div class="strip">
+  <div style="width:44.1%;background:var(--cyan)"></div>
+  <div style="width:9.5%;background:var(--green)"></div>
+  <div style="width:7.7%;background:var(--violet)"></div>
+  <div style="width:4.7%;background:var(--amber)"></div>
+  <div style="width:4.7%;background:var(--red)"></div>
+  <div style="width:4.4%;background:rgba(255,255,255,.34)"></div>
+  <div style="width:0.1%;background:rgba(255,255,255,.2)"></div>
+  <div style="width:24.8%;background:rgba(255,255,255,.12)"></div>
+</div>
+<div class="slab"><span>risk share, descending</span><span>44 segments</span></div>
+
+<!-- 1 -->
+<div class="seg">
+  <div class="sh">
+    <div><span class="nm">Semis &amp; accelerators</span><span class="kind cl">Cluster 199 · 8</span></div>
+    <span class="exc" style="color:var(--green)">+47.24pp</span>
+  </div>
+  <div class="bar"><span class="blab">weight</span><div class="track"><div class="fill" style="width:19.3%;background:rgba(255,255,255,.3)"></div></div><span class="bval">19.3%</span></div>
+  <div class="bar"><span class="blab">risk</span><div class="track"><div class="fill" style="width:44.1%;background:var(--cyan);box-shadow:0 0 12px rgba(58,214,224,.4)"></div></div><span class="bval hot">44.1%</span></div>
+  <p class="ins">19% of the book, 44% of the risk. It is paying for itself — but AMD, ASML, MU, SNDK and four others are <b>one bet, not eight.</b></p>
+</div>
+
+<!-- 2 -->
+<div class="seg">
+  <div class="sh">
+    <div><span class="nm">Unpaired</span><span class="kind">No segment · 8</span></div>
+    <span class="exc" style="color:var(--green)">+2.10pp</span>
+  </div>
+  <div class="bar"><span class="blab">weight</span><div class="track"><div class="fill" style="width:14.5%;background:rgba(255,255,255,.3)"></div></div><span class="bval">14.5%</span></div>
+  <div class="bar"><span class="blab">risk</span><div class="track"><div class="fill" style="width:9.5%;background:var(--green)"></div></div><span class="bval hot">9.5%</span></div>
+  <p class="ins">No close comparable at any threshold and no theme on file. <em>14.5% of capital with no story attached to it.</em></p>
+</div>
+
+<!-- 3 -->
+<div class="seg">
+  <div class="sh">
+    <div><span class="nm">Mega-cap platforms</span><span class="kind">Theme · 4</span></div>
+    <span class="exc" style="color:var(--green)">+9.41pp</span>
+  </div>
+  <div class="bar"><span class="blab">weight</span><div class="track"><div class="fill" style="width:7.2%;background:rgba(255,255,255,.3)"></div></div><span class="bval">7.2%</span></div>
+  <div class="bar"><span class="blab">risk</span><div class="track"><div class="fill" style="width:7.7%;background:var(--violet)"></div></div><span class="bval hot">7.7%</span></div>
+  <p class="ins">AAPL, AMZN, META and MSFT. Weight and risk in line — the rare segment that costs what it looks like it costs.</p>
+</div>
+
+<!-- 4 -->
+<div class="seg">
+  <div class="sh">
+    <div><span class="nm">AI / accelerated compute</span><span class="kind">Theme · 1</span></div>
+    <span class="exc" style="color:var(--green)">+18.02pp</span>
+  </div>
+  <div class="bar"><span class="blab">weight</span><div class="track"><div class="fill" style="width:3.1%;background:rgba(255,255,255,.3)"></div></div><span class="bval">3.1%</span></div>
+  <div class="bar"><span class="blab">risk</span><div class="track"><div class="fill" style="width:4.7%;background:var(--amber)"></div></div><span class="bval hot">4.7%</span></div>
+  <p class="ins">NVDA alone. <em>Half again its weight in risk</em> — and it sits outside the semis cluster, so the two are additive rather than one bet.</p>
+</div>
+
+<!-- 5 -->
+<div class="seg">
+  <div class="sh">
+    <div><span class="nm">Healthcare &amp; defensives</span><span class="kind">Theme · 4</span></div>
+    <span class="exc" style="color:var(--green)">+5.30pp</span>
+  </div>
+  <div class="bar"><span class="blab">weight</span><div class="track"><div class="fill" style="width:7.8%;background:rgba(255,255,255,.3)"></div></div><span class="bval">7.8%</span></div>
+  <div class="bar"><span class="blab">risk</span><div class="track"><div class="fill" style="width:4.7%;background:var(--red)"></div></div><span class="bval hot">4.7%</span></div>
+  <p class="ins">Widest dispersion in the book — <em>GILD +72.2pp against JNJ +3.1pp.</em> One name is the segment.</p>
+</div>
+
+<!-- 6 -->
+<div class="seg">
+  <div class="sh">
+    <div><span class="nm">Bond sleeve</span><span class="kind">Theme · 3</span></div>
+    <span class="exc" style="color:var(--red)">−30.07pp</span>
+  </div>
+  <div class="bar"><span class="blab">weight</span><div class="track"><div class="fill" style="width:3.36%;background:rgba(255,255,255,.3)"></div></div><span class="bval">3.4%</span></div>
+  <div class="bar"><span class="blab">risk</span><div class="track"><div class="fill" style="width:0.12%;background:rgba(255,255,255,.34)"></div></div><span class="bval hot">0.1%</span></div>
+  <p class="ins">3.4% of the book for 0.1% of the risk. <em>Doing exactly what it was bought to do, and costing return to do it.</em></p>
+</div>
+
+<!-- tail -->
+<div class="tail">
+  <div class="sh">
+    <div><span class="nm" style="color:var(--t2)">38 small bets</span><span class="chev">Expand ↓</span></div>
+    <span class="exc" style="color:var(--t2)">+1.84pp</span>
+  </div>
+  <p class="ins" style="margin-top:6px">44.3% of weight, 28.9% of risk, spread across 38 segments — <em>36 of them single names</em> with no close comparable at any threshold.</p>
+</div>
+
+</div>
+</body>
+</html>
