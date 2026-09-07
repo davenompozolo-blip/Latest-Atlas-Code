@@ -34,7 +34,7 @@ import {
     GROUPING_BET, GROUPING_THEME, DEFAULT_GROUPING, GROUPING_LABEL, GROUPING_HINT,
     stripColor, stripGlow,
 } from '../lib/segmentView.js';
-import { loadCounters, loadMembership, buildCounters, segmentReading } from '../lib/counterView.js';
+import { loadCounters, loadMembership, buildCounters, segmentReading, groupByVerdict } from '../lib/counterView.js';
 import { loadTradingEffect, buildTradingView } from '../lib/tradingEffect.js';
 import { loadBookBaseline, readBookBaseline } from '../lib/bookBaseline.js';
 
@@ -400,6 +400,45 @@ function Tile(card, flipped, onFlip) {
                     : null)));
 }
 
+function tileGrid(tiles, flipped, setFlipped) {
+    return h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(258px,1fr))', gap: 16 } },
+        tiles.map(function (c) {
+            return Tile(c, !!flipped[c.symbol], function () {
+                setFlipped(function (prev) {
+                    var next = Object.assign({}, prev);
+                    next[c.symbol] = !next[c.symbol];
+                    return next;
+                });
+            });
+        }));
+}
+
+/**
+ * §6, edge case 1: Unpaired is sub-grouped by verdict, not rendered as one
+ * block. It is 17 positions and 27% of the book by weight under BY THEME —
+ * as a single wall of tiles it reproduces exactly the problem the three
+ * levels exist to remove. Every other segment stays a single grid; banding a
+ * two-name cluster would be noise.
+ */
+function renderTiles(segment, tiles, flipped, setFlipped) {
+    if (segment.kind !== 'unpaired') return tileGrid(tiles, flipped, setFlipped);
+    var bands = groupByVerdict(tiles);
+    if (bands.length <= 1) return tileGrid(tiles, flipped, setFlipped);
+    return h('div', null, bands.map(function (b) {
+        return h('div', { key: b.label, style: { marginBottom: 26 } },
+            h('div', { style: {
+                display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 12,
+                paddingBottom: 7, borderBottom: '1px solid ' + T.line,
+            } },
+                h('span', { style: {
+                    fontFamily: T.mono, fontSize: 10, letterSpacing: '.11em', textTransform: 'uppercase',
+                    color: VERDICT_COLOR[b.label] || T.t3,
+                } }, VERDICT_TEXT[b.label] || b.label),
+                h('span', { style: { fontFamily: T.mono, fontSize: 10, color: T.t3 } }, b.count)),
+            tileGrid(b.tiles, flipped, setFlipped));
+    }));
+}
+
 export function CountersLevel(segment, tiles, missing, reading, flipped, setFlipped) {
     return h('div', null,
         h('div', { style: {
@@ -434,16 +473,7 @@ export function CountersLevel(segment, tiles, missing, reading, flipped, setFlip
                 missing.length + ' member' + (missing.length === 1 ? '' : 's') +
                 ' with no verdict row tonight: ' + missing.join(', '))
             : null,
-        h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(258px,1fr))', gap: 16 } },
-            tiles.map(function (c) {
-                return Tile(c, !!flipped[c.symbol], function () {
-                    setFlipped(function (prev) {
-                        var next = Object.assign({}, prev);
-                        next[c.symbol] = !next[c.symbol];
-                        return next;
-                    });
-                });
-            })));
+        renderTiles(segment, tiles, flipped, setFlipped));
 }
 
 // ── Level 1 — Book ────────────────────────────────────────────
