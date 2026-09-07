@@ -1142,6 +1142,107 @@ that rolled back. The 2 remaining (IXC, KMTUY) are genuinely absent from
 **Do not assert an aggregate with `DISTINCT` over the value being summed.**
 Bucket on the key, then sum.
 
+### The segment layer: risk must be measured per position, not per cluster (2026-09-07)
+
+`segment_verdicts` groups the open book into bets for the Performance level-2
+view, under two groupings the user toggles between — `BY BET` (the
+`universe_clusters` partition) and `BY THEME`. On the 2026-09-06 book that is
+**44 segments under BY BET** (42 clusters, KMTUY alone under its theme, IXC
+unpaired) and **13 under BY THEME**. 37 of the 44 are singletons; that is a
+display problem, not a grouping problem — rank by risk share and collapse at
+render. Effective bets ≈ 3.9 is a concentration statistic, not a segment count.
+
+**The obvious risk basis — Σ `cluster_risk_share` — is wrong twice over.** That
+column is per-cluster and repeated on every member row, so summing it across
+cluster 199's eight members returns 3.53. Less obviously, it is defined over
+the partition, and **the partition does not cover the book**: KMTUY and IXC are
+absent from `universe_clusters` (7 and 7 bars in 120 days — dark feeds, not cap
+churn), so a cluster-level share silently renormalises **3.2% of the book's
+marginal risk** away and still sums to a reassuring 1.0.
+
+Position-level `marginal_vol_contribution × weight` has neither problem. Euler
+additivity means any grouping sums to the total with no bucket concept at all,
+which is the only reason a grouping toggle can exist — and the two uncovered
+names are carried rather than dropped. **Verify the column's form before use:**
+it holds the raw partial derivative. Σ raw = 0.386 (meaningless); Σ (raw ×
+weight) = 0.006592 daily → ×√252 = **10.46% annualised book vol**, matching
+`book_risk_daily.total_vol_annual`.
+
+### The exclusion identity generalises to a subset for free (2026-09-07)
+
+`mv_book_ex_index` computes "the book without asset i" for every i in one pass.
+The same algebra answers "the book without segment S" — subtract the segment's
+daily sums instead of one name's row:
+
+```
+r_ex_S(t) = (S(t) − Σ_{i∈S} w_i r_i) / (F(t) − Σ_{i∈S} w_i)
+```
+
+One grouped scan of `mv_book_daily_weights` yields every segment under both
+groupings. That cheapness is what makes the toggle affordable; a per-segment
+lateral would have been ~21k aggregations.
+
+**A singleton segment is the free equivalence test.** Its ex-segment index *is*
+its ex-asset index, so every one-member segment must reproduce
+`mv_position_tier2`'s independently-computed excess. All 36 comparable
+singletons agree to **4.6e-7** — `atlas_mwr_period`'s bisection tolerance, not
+a disagreement. Assert `< 1e-6` there, never equality: a test demanding exact
+agreement fails on arithmetic that is right.
+
+Directional checks, same discipline as the ex-AMD check above: excluding
+cluster 199 (19.3% of weight, the semis bet) takes the rest of the book from
+25.1% to **13.2%**; excluding HAL at 0.01% moves nothing.
+
+### A segment excess is a counterfactual, never an average of member excesses (2026-09-07)
+
+Members sit on different bases — a cluster-eligible name carries a Tier 1
+cluster-median excess, an ineligible one a Tier 2 rest-of-book excess — so
+averaging them mixes bases, the failure this codebase has now caught five
+times. `atlas_counterfactual_segment` pools the members' own cash flows into
+the book *excluding the whole segment* and solves **one** rate.
+
+Both legs come back from one call on purpose: `excess = traded − cf` is only
+defensible if both sides were built from the identical roster, and computing
+the traded leg elsewhere is how the two drift apart without looking wrong.
+Members the return engine gates are dropped from **both** legs and named in
+`withheld_symbols` — under BY BET, KMTUY alone is `no_measured_members`; under
+BY THEME it joins GEV+NVT and the segment measures with KMTUY withheld.
+
+`dispersion` uses Tier 2 for **every** member for the same reason, and
+`dispersion_basis` is a NOT NULL-when-present column so a figure cannot be
+rendered without saying what it is a dispersion of.
+
+Early reads: the semis bet **+47.24pp** over the book without it; the bond
+sleeve (BOND BSV SHY PTRB) **−30.07pp** at 0.12% of risk for 3.36% of weight —
+the §2.5 "doing what it was bought to do, and costing return to do it" case.
+
+### `grouping` belongs in the segment key (2026-09-07)
+
+The spec keys `segment_verdicts` on `(as_of, logic_version, segment_id)` and
+*then* introduces the toggle, which collides with it. A name with no partition
+cluster falls to its theme under BY BET, so `theme:Industrials /
+electrification` is a segment of one (KMTUY); under BY THEME the same id names
+the whole theme. Same id, different membership, different risk share. The key
+is `(as_of, logic_version, grouping, segment_id)`.
+
+`sub_threshold` is deliberately **absent** — §2.4's field list still carries it
+but §2.3 deletes it as "a workaround for a grouping the toggle now supplies
+directly". Do not re-add it.
+
+**The segment job shares `atlas_verdict_preflight()` rather than owning a copy.**
+It writes to an append-only history off the same live `positions`, so a stale
+book freezes a wrong segment row exactly as it would a wrong position row — and
+without the shared gate it would sail through on a night the position job
+correctly refused, leaving level 2 populated and level 3 empty for that date.
+Two gates meant to agree eventually disagree.
+
+`supabase/tests/segment_verdicts_invariants.sql` — 13 violating inserts refused,
+one well-formed row accepted, both shares closing to 1.0000000000 under both
+groupings, every open position segmented exactly once per grouping, and the
+singleton equivalence. **The closure test alone cannot see a dropped position** —
+losing one renormalises the rest back to 1.0 and looks perfectly healthy, which
+is why the membership count is asserted separately.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel
