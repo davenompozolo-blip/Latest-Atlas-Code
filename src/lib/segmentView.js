@@ -268,6 +268,39 @@ export function insightSentences(seg, ctx, members) {
         });
     }
 
+    // 8 — weight and risk in line. NOT in §2.5; added on request after the
+    // build showed six of the eight default rows rendering silent.
+    //
+    // Two properties make this safe to add to a list the spec fixed:
+    //
+    // It fires ONLY when nothing else did (`out.length === 0`), never as a
+    // second sentence. "In line" is the ABSENCE of a finding, so putting it
+    // beside a real one would dilute the real one — and every other rule is a
+    // statement that something is out of proportion, which this contradicts
+    // by construction.
+    //
+    // Its band is the exact complement of rules 1 and 5 — r > 1.3w is
+    // over-weight, r < 0.5w is under-weight, and this is what remains. No gap,
+    // no overlap, so a segment gets at most one proportionality reading.
+    //
+    // The mockup's wording calls it "the rare segment that costs what it looks
+    // like it costs". Dropped: on the real book in-line is the MODAL case, not
+    // the rare one — six of eight rows under BY THEME — and a sentence
+    // asserting rarity on most of the screen is false. The claim is kept, the
+    // boast is not.
+    if (out.length === 0 && w != null && r != null && r >= w * 0.5 && r <= w * 1.3) {
+        // Naming members earns its place on a small segment and becomes noise
+        // on a large one; Unpaired's 17 would be a paragraph.
+        const named = seg.members && seg.members.length && seg.members.length <= 5
+            ? joinNames(seg.members) + '. '
+            : '';
+        out.push({
+            key: 'in_line',
+            text: named + 'Weight and risk in line — it costs what it looks like it costs.',
+            emphasis: 'it costs what it looks like it costs',
+        });
+    }
+
     return out.slice(0, 2);
 }
 

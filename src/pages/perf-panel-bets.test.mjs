@@ -138,17 +138,22 @@ t('effective bets is labelled as a property of the grouping shown', () => {
 t('insight sentences are capped at two, and silent when nothing clears', () => {
     bet.segments.forEach(s => assert.ok(s.insights.length <= 2, s.label));
 
-    // §2.5's thresholds are selective, and on the real book most segments
-    // carry weight ~= risk, which is the "nothing notable" case. Only 2 of the
-    // 8 default rows produce a reading. That is deliberate silence, not a
-    // missing template: the mockup shows a "Weight and risk in line" sentence
-    // for Mega-cap platforms, and NO such rule exists in §2.5. Adding one
-    // would be inventing content the spec does not define, so the row stays
-    // quiet until that is decided.
+    // Every default row now carries a reading. §2.5's own rules cover only two
+    // of the eight — most segments carry weight ~= risk, which none of them
+    // speaks to — so rule 8 (in-line) was added to fill that gap. It fires
+    // only where nothing else did, so the six it covers are exactly the six
+    // that were silent.
     const withIns = theme.full.filter(s => s.insights.length > 0);
-    assert.equal(withIns.length, 2, 'thresholds changed — re-read §2.5 before adjusting this');
-    assert.deepEqual(withIns.map(s => s.label).sort(),
-                     ['AI / accelerated compute', 'Unpaired']);
+    assert.equal(withIns.length, 8, 'thresholds changed — re-read §2.5 before adjusting this');
+
+    const inLine = theme.full.filter(s => s.insights.some(i => i.key === 'in_line'));
+    assert.equal(inLine.length, 6);
+    // And never beside a real finding: the two rows §2.5 already spoke to
+    // must not have picked up an in-line sentence as well.
+    assert.deepEqual(
+        theme.full.filter(s => !s.insights.some(i => i.key === 'in_line'))
+                  .map(s => s.label).sort(),
+        ['AI / accelerated compute', 'Unpaired']);
     assert.deepEqual(
         theme.segments.find(s => s.label === 'AI / accelerated compute').insights.map(i => i.key),
         ['risk_over_weight', 'dispersion']);
