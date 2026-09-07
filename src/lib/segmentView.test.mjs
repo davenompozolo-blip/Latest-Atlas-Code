@@ -212,7 +212,13 @@ t('the slot-holder sentence needs member rows and stays silent without them', ()
         segmentId: 'z', kind: 'cluster', label: 'Z', memberCount: 6, members: [],
         weightShare: 0.10, riskShare: 0.10, returnShare: 0.1, dispersionPp: null,
     };
-    assert.deepEqual(insightSentences(s, { medianDispersionPp: null, widestSegmentId: null }), []);
+    // Without member rows the slot-holder claim cannot be made. The segment
+    // is not silent, though — weight and risk are in line, so rule 8 fires;
+    // asserting total silence here would be asserting the absence of a
+    // different rule.
+    const bare = insightSentences(s, { medianDispersionPp: null, widestSegmentId: null });
+    assert.ok(!bare.some(i => i.key === 'slot_holder'));
+    assert.deepEqual(bare.map(i => i.key), ['in_line']);
     const withMembers = insightSentences(s, { medianDispersionPp: null, widestSegmentId: null },
         [{ symbol: 'UAE', excessPp: 0.4, daysHeld: 220 }]);
     assert.equal(withMembers.length, 1);
@@ -227,6 +233,62 @@ t('sub_threshold produces no sentence — the concept is deleted', () => {
     };
     const out = insightSentences(s, { medianDispersionPp: null, widestSegmentId: null });
     assert.ok(out.every(i => i.key !== 'sub_threshold'));
+});
+
+t('the in-line sentence fires only when nothing else did', () => {
+    // It is the ABSENCE of a finding, so it must never sit beside a real one.
+    const over = insightSentences(
+        { segmentId: 'a', kind: 'theme', label: 'A', memberCount: 2, members: ['X', 'Y'],
+          weightShare: 0.10, riskShare: 0.40, returnShare: 0.2, dispersionPp: null },
+        { medianDispersionPp: null, widestSegmentId: null });
+    assert.equal(over[0].key, 'risk_over_weight');
+    assert.ok(!over.some(i => i.key === 'in_line'), 'must not pair with a finding');
+
+    const unp = insightSentences(
+        { segmentId: 'b', kind: 'unpaired', label: 'B', memberCount: 3, members: [],
+          weightShare: 0.10, riskShare: 0.10, returnShare: 0.1, dispersionPp: null },
+        { medianDispersionPp: null, widestSegmentId: null });
+    assert.equal(unp[0].key, 'unpaired');
+    assert.ok(!unp.some(i => i.key === 'in_line'), 'unpaired is the more useful reading');
+});
+
+t('the in-line band is the exact complement of over- and under-weight', () => {
+    // r > 1.3w is over, r < 0.5w is under, and in-line is what remains. No
+    // gap and no overlap, so a segment gets at most one proportionality read.
+    const at = (w, r) => insightSentences(
+        { segmentId: 'z', kind: 'theme', label: 'Z', memberCount: 2, members: ['X', 'Y'],
+          weightShare: w, riskShare: r, returnShare: 0.1, dispersionPp: null },
+        { medianDispersionPp: null, widestSegmentId: null }).map(i => i.key);
+
+    assert.deepEqual(at(0.10, 0.1301), ['risk_over_weight']);   // just over
+    assert.deepEqual(at(0.10, 0.1300), ['in_line']);            // on the ceiling
+    assert.deepEqual(at(0.10, 0.0500), ['in_line']);            // on the floor
+    assert.deepEqual(at(0.10, 0.0499), ['risk_under_weight']);  // just under
+
+    // Every band produces exactly one sentence — none is silent, none doubles.
+    [0.02, 0.05, 0.08, 0.10, 0.13, 0.20].forEach(r => {
+        assert.equal(at(0.10, r).length, 1, 'r=' + r);
+    });
+});
+
+t('in-line names a small segment and stays quiet about a large one', () => {
+    const seg = (n) => ({
+        segmentId: 'z', kind: 'theme', label: 'Z', memberCount: n,
+        members: Array.from({ length: n }, (_, i) => 'S' + i),
+        weightShare: 0.10, riskShare: 0.10, returnShare: 0.1, dispersionPp: null,
+    });
+    const ctx = { medianDispersionPp: null, widestSegmentId: null };
+    assert.match(insightSentences(seg(3), ctx)[0].text, /^S0, S1 and S2\. Weight and risk in line/);
+    // 17 names would be a paragraph, not a reading.
+    assert.match(insightSentences(seg(17), ctx)[0].text, /^Weight and risk in line/);
+});
+
+t('in-line does not claim to be rare — on the real book it is the common case', () => {
+    // The mockup says "the rare segment that costs what it looks like it
+    // costs". Six of the eight default rows qualify, so the boast is false.
+    const v = buildBetsView(THEME_ROWS, GROUPING_THEME);
+    const all = v.segments.flatMap(s => s.insights.map(i => i.text)).join(' ');
+    assert.ok(!/rare/.test(all));
 });
 
 t('sentences are deterministic — same rows in, same words out', () => {

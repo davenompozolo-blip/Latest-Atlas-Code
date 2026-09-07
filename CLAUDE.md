@@ -1216,6 +1216,34 @@ Early reads: the semis bet **+47.24pp** over the book without it; the bond
 sleeve (BOND BSV SHY PTRB) **−30.07pp** at 0.12% of risk for 3.36% of weight —
 the §2.5 "doing what it was bought to do, and costing return to do it" case.
 
+### The in-line sentence is the residue, not a rule (2026-09-07)
+
+§2.5 fixes seven insight templates and every one of them says something is out
+of proportion. On the real book most segments are not: six of the eight default
+rows carry weight ≈ risk and rendered silent, because no rule speaks to the
+ordinary case. The L2 mockup shows a "Weight and risk in line" sentence for
+Mega-cap platforms that **has no rule in §2.5** — the mockup invented it.
+
+Added as rule 8, with two properties that keep it from corrupting a fixed list:
+
+- It fires **only when nothing else did**, never as a second sentence. "In
+  line" is the *absence* of a finding, so putting it beside a real one dilutes
+  the real one.
+- Its band is the **exact complement** of rules 1 and 5 — `r > 1.3w` is over,
+  `r < 0.5w` is under, this is what remains. No gap, no overlap, so a segment
+  gets at most one proportionality reading. If a row seems wrongly "in line",
+  tighten §2.5's own threshold; do not give rule 8 its own band, which would
+  open a range where nothing fires.
+
+**The mockup's "the rare segment that costs what it looks like it costs" lost
+its boast.** In-line is the modal case here, not the rare one, and a sentence
+asserting rarity on six of eight rows is false. The claim is kept, the flourish
+is not.
+
+Note the band is asymmetric by inheritance: 0.5w to 1.3w. Healthcare (0.59) and
+Consumer/autos (0.59) sit close to the low edge and still read "in line". That
+is §2.5's threshold, not this rule's.
+
 ### `grouping` belongs in the segment key (2026-09-07)
 
 The spec keys `segment_verdicts` on `(as_of, logic_version, segment_id)` and
