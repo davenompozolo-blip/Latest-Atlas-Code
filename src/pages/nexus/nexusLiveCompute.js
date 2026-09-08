@@ -221,6 +221,135 @@ export function buildConcentration(rows) {
     };
 }
 
+// ── Risk gauge — measured VaR against a CONFIGURED cap ─────────
+// There is no risk-limit table anywhere in the database, so "73 / 100%"
+// could only ever have been an invented denominator — and it was: the
+// figure came from the structural baseline and never moved.
+//
+// The measurements are real (`book_var_95_daily`, `total_vol_annual`, one
+// row per session in `book_risk_daily`). The cap is not a measurement and
+// must not pretend to be one: it is CONFIGURATION, a number someone chose.
+// Change RISK_VAR_CAP_PCT_OF_NAV and every reading follows it.
+//
+// Returns null — not a guess — when the history or the NAV is missing, so
+// the caller falls back rather than publishing utilisation against an
+// unknown cap.
+export const RISK_VAR_CAP_PCT_OF_NAV = 5.0;
+
+export function buildRiskGauge(riskRows, nav, capPctOfNav = RISK_VAR_CAP_PCT_OF_NAV) {
+    if (!Array.isArray(riskRows) || !riskRows.length) return null;
+    if (!(nav > 0) || !(capPctOfNav > 0)) return null;
+
+    const var95Of = r => num(r && r.book_var_95_daily);
+    const today = riskRows[0];
+    const var95 = var95Of(today);
+    if (var95 == null) return null;
+
+    const cap = nav * (capPctOfNav / 100);
+    const usedPct = (var95 / cap) * 100;
+
+    // Δ is a change in UTILISATION, so both days are measured against the
+    // SAME cap. Re-deriving yesterday's cap from yesterday's NAV would let a
+    // pure NAV move read as a change in risk, which is the one thing this
+    // number is supposed to isolate.
+    const prevVar95 = riskRows.length > 1 ? var95Of(riskRows[1]) : null;
+    const deltaTodayPts = prevVar95 == null ? 0 : ((var95 - prevVar95) / cap) * 100;
+
+    const vol = num(today.total_vol_annual);
+    const volPct = vol == null ? null : vol * 100;
+    const over = usedPct > 100;
+    const usd = n => '$' + Math.round(n).toLocaleString('en-US');
+
+    return {
+        budgetUsedPct: +usedPct.toFixed(1),
+        limitPct: 100,
+        deltaTodayPts: +deltaTodayPts.toFixed(1),
+        verdictChip: over ? 'Over budget' : usedPct >= 80 ? 'Near cap' : 'Within budget',
+        note: `Daily VaR95 ${usd(var95)} against a ${usd(cap)} cap `
+            + `(${capPctOfNav.toFixed(1)}% of NAV)`
+            + (volPct == null ? '.' : `. Vol ${volPct.toFixed(2)}% annualised.`),
+        // Published so a consumer can state the basis instead of assuming it.
+        varUsd: +var95.toFixed(2),
+        capUsd: +cap.toFixed(2),
+        capPctOfNav: capPctOfNav,
+        volAnnualPct: volPct == null ? null : +volPct.toFixed(2),
+        asOf: (today && today.as_of) || null,
+    };
+}
+
+// ── Performance gauge — today's book move against the tape ─────
+// Σ wᵢ·rᵢ over the names that carry BOTH a weight and a fresh mark.
+//
+// A stale name is excluded and the remainder renormalised, never counted at
+// its last print. This is not hypothetical here: KMTUY sits at 2.13% of the
+// book on a bar 179 days old and `vw_nexus_holdings.daily_return_pct` still
+// publishes +9.25% for it — on its own worth +0.20pp of book move, enough to
+// flip the book's sign. `nexus_holdings` already nulls a stale `today_pct`;
+// this view never did, so the gate has to live here.
+//
+// `measuredWeightPct` is published so the surface can say what it covered.
+export function buildPerformanceGauge(rows, macro, staleSet) {
+    if (!Array.isArray(rows) || !rows.length) return null;
+    const stale = staleSet || new Set();
+
+    const measured = [];
+    let withheldWeight = 0;
+    for (const r of rows) {
+        const w = num(r.weight_pct), ret = num(r.daily_return_pct);
+        if (w == null || w === 0) continue;
+        if (ret == null || stale.has(r.symbol)) { withheldWeight += Math.abs(w); continue; }
+        measured.push({ tk: r.symbol, w, ret, contrib: (w * ret) / 100 });
+    }
+    if (!measured.length) return null;
+
+    const measuredWeight = measured.reduce((a, m) => a + Math.abs(m.w), 0);
+    if (!(measuredWeight > 0)) return null;
+    // Renormalise to the measured weight so a withheld name does not read as
+    // a name that sat flat.
+    const bookPct = (measured.reduce((a, m) => a + m.contrib, 0) / measuredWeight) * 100;
+
+    const spy = ((macro && macro.market) || []).find(q => q && q.symbol === 'SPY');
+    const benchPct = spy && isFinite(spy.changePct) ? Number(spy.changePct) : null;
+
+    // Movers rank on CONTRIBUTION (weight × move) — what actually moved the
+    // book — while the figure shown beside each is the name's own move, which
+    // is what the label claims. Ranking on the printed number instead would
+    // put a 0.3%-weight name above a 4% one.
+    const byImpact = [...measured].sort((a, b) => Math.abs(b.contrib) - Math.abs(a.contrib));
+    const topMovers = byImpact.slice(0, 3).map(m => ({ tk: m.tk, pct: +m.ret.toFixed(1) }));
+
+    const totalAbs = measured.reduce((a, m) => a + Math.abs(m.contrib), 0);
+    const concentratedContribPct = totalAbs > 0
+        ? Math.round((byImpact.slice(0, 3).reduce((a, m) => a + Math.abs(m.contrib), 0) / totalAbs) * 100)
+        : 0;
+
+    const rel = benchPct == null ? null : bookPct - benchPct;
+    const verdictChip = rel == null ? 'No bench'
+        : rel > 0.05 ? 'Beating bench' : rel < -0.05 ? 'Behind bench' : 'In line';
+
+    const lead = byImpact[0];
+    const dir = bookPct >= 0 ? 'Up' : 'Down';
+    const note = (rel == null
+        ? `${dir} ${Math.abs(bookPct).toFixed(2)}% on the day`
+        : `${dir} ${rel >= 0 ? 'more' : 'less'} than the tape`)
+        + (lead ? ` — ${lead.tk} ${lead.contrib >= 0 ? 'led' : 'did the damage'}` : '')
+        + (withheldWeight > 0
+            ? `, ${withheldWeight.toFixed(1)}% of book withheld on stale marks.`
+            : '.');
+
+    return {
+        bookPct: +bookPct.toFixed(2),
+        benchPct: benchPct == null ? null : +benchPct.toFixed(2),
+        concentratedContribPct,
+        topMovers,
+        verdictChip,
+        note,
+        measuredWeightPct: +measuredWeight.toFixed(1),
+        withheldWeightPct: +withheldWeight.toFixed(1),
+        measuredCount: measured.length,
+    };
+}
+
 // ── Conviction-target sizing ──────────────────────────────────
 // "How much to trade" expressed off the page's own signals + our
 // positioning. Each name's target weight ∝ its conviction, normalised

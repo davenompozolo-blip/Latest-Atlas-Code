@@ -1352,6 +1352,83 @@ contribution feed did not answer") is a distinct reason from
 statement about the data.** Same lesson as *"No data available — run Alpaca sync
 first"*, in a fourth layer.
 
+### The 1,000-row cap, third instance — and it emptied a whole panel (2026-09-08)
+
+The Regime Slicer rendered `—` in every cell for every position but one. Not a
+styling bug and not missing data: all 81 held equities carry ~235 bars over the
+last year.
+
+`performance-suite.js` batched 15 asset_ids per request and asked for
+`.limit(batchIds.length * 260)` — 3,900 rows — **ordered `price_date` ASC**.
+PostgREST returned 1,000. The newest bar any batch received was **2025-12-17**
+while the book ran to **2026-09-04**, and every regime window starts
+2026-01-02 or later, so every window resolved to null. HAL alone had values
+because it sat in the final short batch, small enough to fit under the cap.
+
+This is the rule this file already states twice — for `api/nexus-bench.js` and
+`api/nexus-theme.js` — arriving in a third layer, the browser client. **`limit`
+is a request, not a guarantee.** Page with `.range()` until a short page ends
+the batch; 1,000 → 3,592 rows, newest bar 2026-09-04, 870 bars recovered in the
+Deflation window that had none.
+
+**Fetch DESC, hand back ASC.** DESC is about which rows survive a truncation —
+lose the oldest, never the current session. But `histBySymbol` has an
+*ascending* contract that two consumers depend on: the rolling-attribution
+panel walks `hist[t]` positionally, and the regime panel reads
+`arr[arr.length - 1]` as "newest" (its comment says so). So sort ascending at
+assembly rather than making every consumer defensive.
+
+`RollingAttributionPanel` and `FactorEnginePanel` read the same
+`histBySymbol` and were degraded by the same truncation — a panel does not have
+to look empty to be wrong.
+
+### A gauge carried from the mock looks exactly like a working gauge (2026-09-08)
+
+Nexus's Risk and Performance tiles had **never been live**. `nexusLive.js` said
+so in its own header — "Deferred to their own feeds … gauges.risk /
+gauges.performance" — and `gauges: { ...baseline.gauges, concentration }`
+overrode exactly one of the three. The other two rendered `nexusMock.js`
+verbatim: `73 / 100%`, "Marginal VaR rose on the rate move", `−0.9%` against a
+bench of `−1.2%`, movers NVDA/AVGO/MSFT. Every figure fixed, none of it labelled
+as synthetic, sitting beside a Concentration tile that was genuinely live.
+
+**Performance** is `Σ wᵢ·rᵢ` over the names carrying both — and the stale gate
+had to be built here, because `vw_nexus_holdings.daily_return_pct` is not gated
+the way `nexus_holdings.today_pct` is. KMTUY, 2.13% of book on a bar **179 days
+old**, still publishes **+9.25%**: counting it makes the book `+0.19%` when the
+measured book is `−0.005%`. A stale name is withheld and the remainder
+renormalised — never counted at its last print, never treated as a name that
+sat flat. `measuredWeightPct` / `withheldWeightPct` are published so the surface
+can state its denominator.
+
+Movers rank on **contribution** (weight × move) but print the name's **own**
+move — ranking on the printed number would put a 0.3%-weight name above a 4%
+one.
+
+**Risk has no cap in the database.** There is no risk-limit or budget table
+anywhere, so `73 / 100%` was an invented denominator. The measurements are real
+(`book_var_95_daily`, `total_vol_annual`, one row per session in
+`book_risk_daily`); the cap is **configuration** —
+`RISK_VAR_CAP_PCT_OF_NAV = 5.0`, a number someone chose, named as such in the
+tile's own note. Δ is a change in *utilisation*, so both days divide by the
+**same** cap: re-deriving yesterday's from yesterday's NAV would let a pure NAV
+move read as a change in risk. Rendered at **1dp** — utilisation moves ~0.2pt on
+an ordinary session, and at 0dp a live number renders `Δ +0pt` every calm day
+and looks broken.
+
+**A fallback to the baseline must not be silent.** `liveOr()` logs at error
+level when a gauge falls back, because a baseline gauge is a synthetic figure
+standing where a real one belongs and is indistinguishable from a working panel.
+That is how these two survived unnoticed, and it is the contribution-panel
+lesson in a second layer. Each gauge also falls back **independently** — one
+dark feed must not drag a healthy reading back to the mock with it.
+
+**The stub could not have caught this.** `nexusLive.stub.mjs` omitted `.order()`
+/ `.limit()` / `.range()`, so any chained loader fell into its own catch and
+the fallback looked like a clean pass. It omitted `market_value` too, so
+`bookNav()` returned null and the Risk gauge fell back even on the healthy
+case. **A stub missing a builder method tests nothing and reports success.**
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel

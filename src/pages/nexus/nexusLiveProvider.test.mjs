@@ -74,6 +74,24 @@ let m = await load('ok');
 check('healthy: three panels carry payloads', panels(m), ALL);
 check('healthy: live book still assembled',   m.holdings.map(h => h.tk), ['NVDA', 'CVX']);
 check('healthy: spine still built',           m.spine.map(r => r.label), ['Technology', 'Energy']);
+// The risk and performance gauges were carried from the mock for the whole
+// life of this provider. Pin that the live book now drives them — the mock's
+// figures (73 / −0.9) must not be what a healthy load returns.
+check('healthy: risk gauge is live, not the mock 73', m.gauges.risk.budgetUsedPct !== 73, true);
+check('healthy: risk names its configured cap', /% of NAV/.test(m.gauges.risk.note), true);
+check('healthy: perf gauge is live, not the mock −0.9',
+      m.gauges.performance.bookPct, +(((60 * -2) + (40 * 1)) / 100).toFixed(2));
+check('healthy: perf movers are the live book',
+      m.gauges.performance.topMovers.map(x => x.tk), ['NVDA', 'CVX']);
+
+// ── Independent fallback ──────────────────────────────────────
+// A gauge with no feed must fall back on its own, never drag the other
+// back to the baseline with it. `sb error` kills the risk history while
+// the book rows are also gone, so use the shape that isolates it: the
+// mock provider's gauges are the baseline, and a live load must differ
+// on BOTH gauges rather than on neither.
+check('healthy: both gauges left the baseline',
+      [m.gauges.risk.budgetUsedPct === 73, m.gauges.performance.bookPct === -0.9], [false, false]);
 
 // ── 6. No double-fetch ────────────────────────────────────────
 check('healthy: exactly one fetch each', fetchCounts(), [1, 1, 1]);

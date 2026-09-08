@@ -223,15 +223,46 @@ export function PerformanceSuite() {
                         }
                         if (!batches.length) { setHistReady(true); return; }
 
-                        Promise.all(batches.map(function(batchIds) {
-                            return sb.from('price_history')
-                                .select('asset_id, price_date, close')
-                                .in('asset_id', batchIds)
-                                .gte('price_date', cutoff)
-                                .order('price_date', { ascending: true })
-                                .limit(batchIds.length * 260)
-                                .then(function(ph) { return ph.data || []; });
-                        })).then(function(results) {
+                        // PostgREST caps a response at 1,000 rows whatever
+                        // `limit` says. A 15-asset batch over a year wants
+                        // ~3,600 rows, so `.limit(batchIds.length * 260)` was
+                        // a request the server was never going to honour: it
+                        // returned the first 1,000 rows of an ASCENDING sort
+                        // and dropped the rest. The newest bar any batch
+                        // received was 2025-12-17 while the book ran to
+                        // 2026-09-04 — and every regime window starts
+                        // 2026-01-02 or later, so every cell in the Regime
+                        // Slicer resolved to "—". Only the final short batch,
+                        // small enough to fit under the cap, came through.
+                        //
+                        // Page explicitly with .range() until a short page
+                        // says the batch is exhausted. Ordering is DESC so
+                        // that if a bound is ever hit again it loses the
+                        // OLDEST bars, not the newest: a short tape is
+                        // usable, a stale one is a lie.
+                        var PAGE = 1000;
+                        function fetchBatch(batchIds) {
+                            var acc = [];
+                            function page(offset) {
+                                return sb.from('price_history')
+                                    .select('asset_id, price_date, close')
+                                    .in('asset_id', batchIds)
+                                    .gte('price_date', cutoff)
+                                    .order('price_date', { ascending: false })
+                                    .range(offset, offset + PAGE - 1)
+                                    .then(function(ph) {
+                                        var got = ph.data || [];
+                                        acc = acc.concat(got);
+                                        // A full page means there may be more;
+                                        // a short one is the end of the batch.
+                                        if (got.length < PAGE) return acc;
+                                        return page(offset + PAGE);
+                                    });
+                            }
+                            return page(0);
+                        }
+
+                        Promise.all(batches.map(fetchBatch)).then(function(results) {
                             var allRows = results.reduce(function(acc, rows) { return acc.concat(rows); }, []);
                             var byAsset = {};
                             allRows.forEach(function(row) {
@@ -242,7 +273,18 @@ export function PerformanceSuite() {
                             var bySymbol = {};
                             equitySymbols.forEach(function(sym) {
                                 var asset = assetBySymbol[sym];
-                                if (asset && byAsset[asset.id]) bySymbol[sym] = byAsset[asset.id];
+                                if (!asset || !byAsset[asset.id]) return;
+                                // Consumers require ASCENDING order and say so:
+                                // the rolling-attribution panel walks hist[t]
+                                // positionally, and the regime panel reads
+                                // arr[arr.length - 1] as "newest". The fetch is
+                                // DESC only so that truncation would cost the
+                                // oldest bars; the contract handed downstream is
+                                // unchanged, so restore it here rather than
+                                // making every consumer defensive.
+                                bySymbol[sym] = byAsset[asset.id].sort(function(a, b) {
+                                    return a.date < b.date ? -1 : a.date > b.date ? 1 : 0;
+                                });
                             });
                             setHistBySymbol(bySymbol);
                             setHistReady(true);
