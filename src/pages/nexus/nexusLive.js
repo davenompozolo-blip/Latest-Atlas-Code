@@ -13,13 +13,18 @@
 //   • spine      — sector aggregation (share / move / risk shift),
 //                  with themeSpine carrying the same cut by theme.
 //   • gauges.concentration — effective N, top factor, fragility.
+//   • gauges.risk — measured VaR95 from book_risk_daily against a
+//                  CONFIGURED cap (RISK_VAR_CAP_PCT_OF_NAV). The cap is
+//                  the one number here that is a choice, not a
+//                  measurement; there is no risk-limit table.
+//   • gauges.performance — today's book move, stale marks withheld and
+//                  the remainder renormalised.
 //   • dataIntegrity — already live (feed freshness + sync age).
 //
 // Deferred to their own feeds (carried from the structural baseline
 // until they wire in, per the spine philosophy — "as step-2 feeds
 // light up, the model improves section by section"):
-//   • windshield macro stats, gauges.risk / gauges.performance,
-//     the Read narrative, chef, seasonal.
+//   • windshield macro stats, the Read narrative, chef, seasonal.
 //
 // Resilience: if Supabase is unconfigured, errors, or returns an
 // empty book, we return the structural baseline unchanged — the
@@ -31,7 +36,8 @@
 
 import { sb } from '../config.js';
 import { getNexusModel as getBaselineModel } from './nexusMock.js';
-import { num, buildLiveSections, buildWindshield, buildSeasonal, buildChef, buildRead } from './nexusLiveCompute.js';
+import { num, buildLiveSections, buildWindshield, buildSeasonal, buildChef, buildRead,
+         buildRiskGauge, buildPerformanceGauge } from './nexusLiveCompute.js';
 import { toOptionsModel } from './nexusOptionsCompute.js';
 
 // Live macro snapshot (FRED yields + regime + market quotes) from the
@@ -163,6 +169,39 @@ async function loadScrapbookThesis() {
     }
 }
 
+// Book risk history for the Risk gauge. Two rows are enough — today's
+// utilisation and the day-over-day change — but the gauge tolerates one.
+// DESC because the newest row is the one being published; if this ever
+// truncates it should lose the oldest, never the current session.
+async function loadRiskHistory() {
+    try {
+        const { data, error } = await sb
+            .from('book_risk_daily')
+            .select('as_of, book_var_95_daily, total_vol_annual')
+            .order('as_of', { ascending: false })
+            .limit(2);
+        if (error) throw error;
+        return data || [];
+    } catch (e) {
+        console.error('[nexus] book_risk_daily → ' + ((e && e.message) || String(e)));
+        return [];
+    }
+}
+
+// Falling back to the structural baseline is legitimate — the page should
+// render rather than go blank — but it must never be SILENT. A baseline
+// gauge is a synthetic figure standing where a real one belongs, and it
+// looks exactly like a working panel: the risk and performance tiles sat on
+// mock numbers for the life of this provider and nothing anywhere said so.
+// Same lesson as the contribution feed rendering a transport failure as a
+// statement about the data.
+function liveOr(name, live, baselineValue) {
+    if (live) return live;
+    console.error('[nexus] gauges.' + name + ' fell back to the structural '
+        + 'baseline — the figure on screen is NOT live.');
+    return baselineValue;
+}
+
 /** @returns {Promise<import('./nexusModel.js').NexusModel>} */
 export async function getNexusModel() {
     // Structural baseline carries the not-yet-live sections (windshield,
@@ -204,8 +243,9 @@ export async function getNexusModel() {
     if (!rows || !rows.length) return { ...baseline, ...(await panelsOf()) };
 
     const staleSet = new Set((baseline.dataIntegrity && baseline.dataIntegrity.staleTickers) || []);
-    const [compByTk, macro, optByTk, scrapByTk, retByTk] = await Promise.all([
+    const [compByTk, macro, optByTk, scrapByTk, retByTk, riskRows] = await Promise.all([
         loadComposites(), loadMacro(), loadOptions(), loadScrapbookThesis(), loadReturnEngine(),
+        loadRiskHistory(),
     ]);
 
     const sections = buildLiveSections(rows, compByTk, staleSet);
@@ -249,7 +289,18 @@ export async function getNexusModel() {
         themeSpine,
         nav,
         portfolio,
-        gauges: { ...baseline.gauges, concentration },
+        // Each gauge falls back to the structural baseline INDEPENDENTLY. A
+        // missing risk history must not drag a perfectly good performance
+        // reading back to the mock, and vice versa — that is how one dark
+        // feed turned into a whole panel of synthetic figures.
+        gauges: {
+            ...baseline.gauges,
+            concentration,
+            risk: liveOr('risk', buildRiskGauge(riskRows, nav), baseline.gauges.risk),
+            performance: liveOr('performance',
+                                buildPerformanceGauge(rows, macro, staleSet),
+                                baseline.gauges.performance),
+        },
         windshield,
         seasonal,
         chef,

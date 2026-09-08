@@ -258,7 +258,10 @@ function RiskGauge({ g }) {
         e('div', { className: 'nf-card-h' }, e('h3', null, 'Risk'), e('span', { className: 'nf-chip ' + chipClass(g.verdictChip) }, g.verdictChip)),
         e('div', { className: 'nf-gauge-top' },
             e('span', { className: 'nf-gauge-big' }, g.budgetUsedPct, e('span', { className: 'nf-gauge-unit' }, ' / ' + g.limitPct + '%')),
-            e('span', { className: 'nf-mono ' + (g.deltaTodayPts >= 0 ? 'tone-down' : 'tone-up'), style: { fontSize: 11 } }, 'Δ ' + signed(g.deltaTodayPts, 0) + 'pt')
+            // 1dp, not 0. Utilisation moves ~0.2pt on an ordinary session, so
+            // a whole-number delta renders "Δ +0pt" every day the book is
+            // calm — a live number that looks broken.
+            e('span', { className: 'nf-mono ' + (g.deltaTodayPts >= 0 ? 'tone-down' : 'tone-up'), style: { fontSize: 11 } }, 'Δ ' + signed(g.deltaTodayPts, 1) + 'pt')
         ),
         e('div', { className: 'nf-bar' }, e('i', { style: { width: (usedFrac * 100) + '%', background: barColor } })),
         e('div', { className: 'nf-note' }, g.note)

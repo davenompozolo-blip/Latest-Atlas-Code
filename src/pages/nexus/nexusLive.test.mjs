@@ -10,7 +10,7 @@
 
 import {
     toSignalTone, fvGapPct, mapHolding, buildSpine, buildConcentration, buildLiveSections,
-    buildWindshield, buildSeasonal, buildRead,
+    buildWindshield, buildSeasonal, buildRead, buildRiskGauge, buildPerformanceGauge,
 } from './nexusLiveCompute.js';
 
 const M = '−';  // unicode minus, as the formatters emit
@@ -153,6 +153,57 @@ check('read: hfl trims are engine verdicts', trimTks.length ? namesTrim : /no fo
 check('read: hfl stresses the 2Y', /2Y holds near 4\.62%/.test(read.variants.hfl.html), true);
 check('read: no macro → null (baseline fallback)', buildRead({ macro: null, concentration, holdings, spine }), null);
 check('read: empty book → null', buildRead({ macro: MACRO, concentration, holdings: [], spine }), null);
+
+// ── Risk gauge — measured VaR against a configured cap ────────
+// The cap is configuration, so every assertion here is arithmetic against
+// a NAV and a percentage, never against a stored "budget".
+const RISK_ROWS = [
+    { as_of: '2026-09-07', book_var_95_daily: 5650.62, total_vol_annual: 0.1046 },
+    { as_of: '2026-09-04', book_var_95_daily: 5629.10, total_vol_annual: 0.1044 },
+];
+const NAV = 184527;                       // cap at 5% = 9226.35
+const riskG = buildRiskGauge(RISK_ROWS, NAV);
+check('risk: utilisation',        riskG.budgetUsedPct, +((5650.62 / (NAV * 0.05)) * 100).toFixed(1));
+check('risk: delta on same cap',  riskG.deltaTodayPts, +(((5650.62 - 5629.10) / (NAV * 0.05)) * 100).toFixed(1));
+check('risk: chip',               riskG.verdictChip, 'Within budget');
+check('risk: vol published',      riskG.volAnnualPct, 10.46);
+check('risk: names the cap',      /\$9,226 cap \(5\.0% of NAV\)/.test(riskG.note), true);
+// A delta that rounds to 0 at whole-number precision is exactly why the
+// flagship renders this at 1dp — pin that it is non-zero at 1dp.
+check('risk: delta visible at 1dp', riskG.deltaTodayPts !== 0, true);
+// The cap is the only lever; doubling it must halve utilisation.
+check('risk: cap is the denominator',
+      buildRiskGauge(RISK_ROWS, NAV, 10).budgetUsedPct, +(riskG.budgetUsedPct / 2).toFixed(1));
+// One row is enough to publish a level; there is simply no delta to report.
+check('risk: single row → 0 delta', buildRiskGauge([RISK_ROWS[0]], NAV).deltaTodayPts, 0);
+// Never guess a denominator: no history and no NAV both fall back.
+check('risk: no history → null',  buildRiskGauge([], NAV), null);
+check('risk: no NAV → null',      buildRiskGauge(RISK_ROWS, null), null);
+
+// ── Performance gauge — stale marks withheld, not counted ─────
+// TCEHY is the fixture's stale name. Reading it at its last print instead
+// of withholding it changes the answer, so a regression cannot pass by
+// accident: 65% of weight measured vs 60%, and −1.08% vs −1.17%.
+const perfAll   = buildPerformanceGauge(ROWS, MACRO, new Set());
+const perfStale = buildPerformanceGauge(ROWS, MACRO, new Set(['TCEHY']));
+check('perf: book move, none stale', perfAll.bookPct,   +(((-60 - 20 + 10) / 65)).toFixed(2));
+check('perf: renormalised on stale', perfStale.bookPct, +(((-60 - 20 + 10) / 60)).toFixed(2));
+check('perf: stale changes answer',  perfAll.bookPct !== perfStale.bookPct, true);
+check('perf: measured weight',       perfStale.measuredWeightPct, 60);
+check('perf: withheld weight',       perfStale.withheldWeightPct, 5);
+check('perf: withheld named in note', /5\.0% of book withheld on stale marks/.test(perfStale.note), true);
+check('perf: bench from SPY',        perfAll.benchPct, -1.2);
+// Movers rank on contribution (weight × move) but PRINT the name's own move.
+check('perf: movers by contribution', perfAll.topMovers.map(m => m.tk), ['NVDA', 'AVGO', 'CVX']);
+check('perf: mover prints own move',  perfAll.topMovers[0].pct, -2);
+// Book −1.08% against a bench of −1.2% is ahead, narrowly.
+check('perf: chip vs bench',          perfAll.verdictChip, 'Beating bench');
+check('perf: no SPY → no bench',      buildPerformanceGauge(ROWS, { market: [] }, new Set()).benchPct, null);
+check('perf: no SPY → chip states it', buildPerformanceGauge(ROWS, { market: [] }, new Set()).verdictChip, 'No bench');
+// Every name stale is not a 0.00% book — it is no reading at all.
+check('perf: all stale → null',
+      buildPerformanceGauge(ROWS, MACRO, new Set(['NVDA', 'AVGO', 'CVX', 'TCEHY'])), null);
+check('perf: empty book → null',      buildPerformanceGauge([], MACRO, new Set()), null);
 
 if (fails) { console.error(`\nFAILED — ${fails} assertion(s) did not match.`); process.exit(1); }
 console.log('\nPASS — live transforms match the worked fixture.');
