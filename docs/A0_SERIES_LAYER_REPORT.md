@@ -213,6 +213,34 @@ across 102,907 rows some value always straddles a rounding boundary, so the hash
 breaks however small the real difference is. The rounded-hash test was wrong,
 not the data.
 
+### The superseded copy is dropped (2026-09-08)
+
+`market_instruments`, `market_prices`, `ratio_pairs` and
+`vw_market_price_coverage` were dropped from `jikbulixwvvfrirjpgra` once the
+move was confirmed. Checked first, because the whole episode was two projects
+being confused:
+
+- the survivor holds all 16 instruments, 12 pairs and 102,907 rows
+  (1993-01-29 to 2026-09-04), zero coverage problems, cron active;
+- the target is unambiguously the Codex project — 72 `codex_*` tables, **zero**
+  platform tables, no pg_cron;
+- **no other view, matview or table in that project referenced any of them.**
+
+Dropped in dependency order with **no `CASCADE`**, so an unexpected dependency
+would fail the statement rather than be silently taken along. Codex is intact
+afterwards: 72 tables, 568 units, 1,537 blocks.
+
+**The drop is deliberately NOT a repo migration.** Everything in
+`supabase/migrations/` targets the platform project, so a
+`drop table market_prices` file there would destroy the live copy the moment
+migrations were replayed. It was applied directly to `jikbulixwvvfrirjpgra` and
+is recorded here instead.
+
+The edge function `backfill_market_prices` still exists in that project — the
+Supabase MCP exposes deploy, get and list for functions but no delete. It is
+harmless (nothing calls it, and its tables are gone) but it should be removed;
+see follow-up 0.
+
 ### One bug found and fixed in the move
 
 The first load here ran at 10:48 ET **with the market open**, and stored Yahoo's
@@ -230,16 +258,18 @@ is unreadable. The 16 bad rows were deleted; the count is back to 102,907 with
 ## Not done — deliberately
 
 - **No ratio computation, signals, scores, regime logic or UI** — §0 out of scope.
-- **The copy in `jikbulixwvvfrirjpgra` was left in place**, not dropped. It is
-  now a stale duplicate that no job writes to, and it should be dropped once the
-  move is confirmed — but deleting 102,907 rows was not asked for.
+- **No ratio computation, signals, scores, regime logic or UI** remains out of
+  scope; the superseded copy has since been dropped — see below.
 - **CPER is not upgraded to HG/GC futures.** Registered with the truncation and
   roll-drag caveat, flagged as a later upgrade, per §4.
 
 ## Follow-ups
 
-0. **Drop the superseded copy** in `jikbulixwvvfrirjpgra` (3 tables, 1 view,
-   1 edge function, 102,907 rows) once this move is confirmed.
+0. **Delete the orphaned edge function** `backfill_market_prices` in
+   `jikbulixwvvfrirjpgra`. Its tables are gone, so it can only fail; the
+   Supabase MCP has no delete-function call, so it needs the dashboard or
+   `supabase functions delete backfill_market_prices --project-ref
+   jikbulixwvvfrirjpgra`.
 1. Scheduling this job commits the platform to Yahoo as a live feed. Alpaca can
    serve everything from 2016 forward and already has credentials and a house
    pattern; it cannot restate history before 2016, so a hybrid leaves a seam at
