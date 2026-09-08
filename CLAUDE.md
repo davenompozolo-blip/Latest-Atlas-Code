@@ -98,6 +98,7 @@ were retired on 2026-08-09 (see below).
 | `atlas_run_validation` | 22:40 weekdays | `atlas_validation_log`, `atlas_sync_status` |
 | `sync_portfolio_history_nightly` | 01:00 daily | `portfolio_equity_curve` |
 | `refresh-nexus-holdings` | every 10 min | `nexus_holdings`, `mv_cortex_screener` |
+| `sync_market_series_daily` | 22:50 Mon–Sat | `market_prices` |
 
 - Edge functions log to **`sync_log`** (the live table). `atlas_sync_log` is a
   legacy table that has never received a row — do not read it for freshness.
@@ -354,6 +355,7 @@ to cure.
 | 22:25 | `refresh_holding_vol_trailing` | — |
 | 22:30 | `chain_ledger_snapshot` | prices |
 | 22:45 | `chain_trade_sync_all` (signals) | prices |
+| 22:50 | `sync_market_series_daily` (Mon–Sat) | — (Yahoo sourced, ungated) |
 | 23:00 | `chain_options_snapshot` | — (Alpha Vantage sourced) |
 | 23:15 | `chain_theme_leadership` (Fri) | prices |
 | 23:35 | `refresh_position_returns` | — |
@@ -1428,6 +1430,65 @@ dark feed must not drag a healthy reading back to the mock with it.
 the fallback looked like a clean pass. It omitted `market_value` too, so
 `bookNav()` returned null and the Risk gauge fell back even on the healthy
 case. **A stub missing a builder method tests nothing and reports success.**
+
+### The series layer, and the project it nearly went into (2026-09-08)
+
+`market_instruments` / `market_prices` / `ratio_pairs` are the A0 regime & risk
+series layer: 16 ETF legs, 102,907 daily bars to each leg's own inception, and
+12 ratio pair **definitions**. No ratio is stored — pairs are evaluated from the
+legs at query time, so one can be re-specified without a backfill.
+
+The A0 spec named Supabase project `jikbulixwvvfrirjpgra`, and that project is
+**not this platform**. It has no pg_cron, no pg_net, and none of the eleven
+tables this file documents; its `price_history` and `positions` are empty. It is
+the Codex project. The platform is `vdmojjszvvcithuxwexx` — the ref the repo's
+Supabase Preview check points at.
+
+The series layer was built there first and moved here, because a nightly job
+cannot be added to a database with no scheduler, and A1's correlation study has
+to join these legs against `universe_correlations` and `book_risk_daily`, which
+live here. **Check which project a spec names before building in it** — the two
+are one `list_projects` call apart and look identical through the MCP.
+
+Equivalence of the move was measured, not assumed: `close` is bit-identical on
+all 16 legs and dividend event counts match exactly, while `adj_close` differs
+by at most **2.15e-6** relative — and that bound scales with dividend count
+(DIA 339 dividends → 2.2e-6, EEM 47 → 8e-7, GLD and CPER pay none → exactly 0).
+That is accumulated float32 rounding in the provider's cumulative adjustment
+product, recomputed per request, not a restatement.
+
+**Do not test equivalence by hashing rounded values.** `md5(string_agg(round(x,
+n)))` was tried first and reported a mismatch at every decimal place down to 3,
+which reads as a 1e-3 defect. Across 102,907 rows some value always sits on a
+rounding boundary, so the hash breaks however small the difference is. Diff the
+payloads and report a max relative difference.
+
+### A bar for today is not a close until the session ends (2026-09-08)
+
+The first load into this project ran at 10:48 ET with the market open and stored
+Yahoo's in-progress 2026-09-08 bar as a settled close for all 16 legs — SPY went
+in at 767.10, the last trade at that instant. Nothing looked wrong: right shape,
+right date, plausible number, and the loader reported `success, 102,923 rows`.
+
+The guard that was supposed to prevent this only dropped bars dated in the
+**future**, while its comment claimed it guarded against in-progress sessions.
+A comment asserting a check the code does not perform is worse than no comment.
+
+`todaysBarIsPartial()` now asks the provider's own session clock:
+`currentTradingPeriod.regular.end`. Today's bar is refused while that instant is
+in the future **and** falls on today — testing both makes it correct whether
+Yahoo is still showing today's period or has rolled to the next. With no meta to
+read it refuses today's bar: lagging a day beats publishing a half-formed close.
+`sync_log.details.partial_sessions_dropped` records how many were refused, so
+"16 dropped" is legible rather than looking like 16 missing bars.
+
+The nightly job runs at 22:50 UTC, after the close year-round, so in normal
+operation this guard should never fire. It exists for the run that happens at
+the wrong time — which is exactly the run that produced the bug.
+
+`details.mode` and `details.lookback_days` distinguish a window run from a full
+backfill. Without them `success, 80 rows` reads fine until you know it should
+have been 102,907 — the same reason `sync_log.details.scope` exists.
 
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
