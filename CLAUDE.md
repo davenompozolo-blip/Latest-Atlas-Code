@@ -1271,6 +1271,87 @@ singleton equivalence. **The closure test alone cannot see a dropped position** 
 losing one renormalises the rest back to 1.0 and looks perfectly healthy, which
 is why the membership count is asserted separately.
 
+### `ON CONFLICT DO NOTHING` is idempotent only if the key is stable (2026-09-08)
+
+The segment job's **first scheduled run failed**: `segment shares do not close
+to 1.0 -- bet: risk 1.875066`. The pattern was copied verbatim from
+`atlas_write_verdicts`, where it is safe — and it is safe there only because
+`asset_id` is stable.
+
+**A segment id is derived from the clustering.** Between a manual write at
+15:36 and the 23:38 cron — which runs one minute after `atlas_write_verdicts`
+refreshes the matviews at 23:37 — **34 ids appeared and 35 retired**. So
+`DO NOTHING` did not skip anything; it *added* the night's ids alongside the
+morning's stale ones and the day held two segmentations at once. The invariant
+caught it, which is the only reason it is written down here rather than sitting
+in the history.
+
+`DELETE … WHERE as_of = … AND logic_version = …` then INSERT, with
+`rows_replaced` logged beside `rows_written` so a replace is legible as a
+replace. **Before reusing an upsert key, ask whether it survives recomputation.**
+
+### Validate before you write — a RAISE rolls back its own log row (2026-09-08)
+
+The share check ran *after* the INSERT, so the only way to refuse was
+`RAISE EXCEPTION` — which rolled back the `sync_log` row that recorded the
+refusal. The failure existed **solely in `cron.job_run_details`**. Every
+surface the platform actually monitors showed nothing at all: not an error, not
+a `skipped`, not an open `running` row. A job that fails invisibly is worse
+than one that fails, and this is the mechanism by which it happens.
+
+The gate now runs against the **snapshot**, before the DELETE, and on failure
+`UPDATE`s the log row and `RETURN`s. The post-write check stays as belt and
+braces: reaching it means the snapshot closed and the written rows did not,
+which is real corruption and worth losing the log row to refuse.
+
+The precheck is a **membership** check, not a share check. Two false starts
+worth recording: `sum(risk_share) OVER ()` spanned both groupings, so each
+normalised to ~0.5 and the job refused every run; and shares sum to 1 by
+construction inside the INSERT anyway, so the share form was vacuous as well as
+wrong. What a stale clustering actually breaks is **coverage of the open book**,
+so that is what to test. (`round(double precision, integer)` does not exist —
+cast to `::numeric`. That one has now cost time twice.)
+
+### A view read only by `service_role` has never met the anon cap — third time (2026-09-08)
+
+The Nexus Contribution panel had read *"No measurable contribution. 61 holdings
+(99.97% of book) not measurable"* for **over a week**. Nothing was
+unmeasurable: `vw_bench_contribution` returned **61 covered rows** at
+`service_role`, and returned **HTTP 500 / `57014`** on every single anon call.
+A 100% failure rate that presented as a data gap.
+
+`EXPLAIN`: **13,909 ms, with 12.1 s in one nested loop** joining CTE `daily` to
+CTE `nav` — where `nav` did nothing but aggregate `daily` back to a per-day
+total. **A CTE that only aggregates another CTE is a window function.** The
+join is where the planner loses the row estimate (`rows=1`), and the unbounded
+nested loop it picks from that estimate is the entire cost.
+
+Three steps, each earning its place:
+
+1. `sum(…) OVER (PARTITION BY price_date)` instead of the self-join —
+   **13,550 → 622 ms**.
+2. One read of `vw_nexus_holdings`: the coverage percentage was a second
+   `CROSS JOIN`ed pass over rows already in hand, so it becomes `OVER ()`.
+3. `mv_bench_contribution`, refreshed CONCURRENTLY by the existing 10-minute
+   `refresh_nexus_holdings()` — **0.31–1.21 s worst observed**.
+
+The matview is not belt-and-braces. 622 ms clears the 3,000 ms cap *warm*, and
+this file already records twice what that is worth — **a mean under the cap is
+not a fix**. The refresh is free: the holdings matview beside it already runs on
+that job off the same inputs, so contribution is never staler than the feed it
+is derived from. Refresh order matters — `mv_bench_contribution` reads
+`vw_nexus_holdings`, so holdings first.
+
+**The API layer is why it went unnoticed for a week.** `api/nexus-bench.js`
+returned `null` on a non-OK PostgREST response with no log line, and the panel
+mapped a missing row to *"not in the contribution view"* — a sentence about the
+data, printed when the truth was that the query was cancelled. It now logs
+status and body at error level, and `contribution_unavailable` ("the
+contribution feed did not answer") is a distinct reason from
+`not_in_contribution_view`. **Never let a transport failure render as a
+statement about the data.** Same lesson as *"No data available — run Alpaca sync
+first"*, in a fourth layer.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel

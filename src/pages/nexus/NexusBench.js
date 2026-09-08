@@ -121,6 +121,12 @@ const OMIT_REASON = {
     no_priced_position_days: 'held too briefly to measure — no prior close yet',
     no_transaction_history: 'not measurable — no transaction history',
     not_in_contribution_view: 'not measurable — outside the contribution view',
+    // An outage is not a property of the book. `vw_bench_contribution` timed
+    // out on every call for over a week (13.9s against anon's 3s cap) and the
+    // panel reported "61 holdings not measurable — outside the contribution
+    // view", which reads as a settled fact about the holdings rather than as
+    // a feed that could not be read. These two must never share a phrase.
+    contribution_unavailable: 'could not be read — the contribution feed did not answer',
 };
 
 // ── 6.1 Contribution waterfall ────────────────────────────────
