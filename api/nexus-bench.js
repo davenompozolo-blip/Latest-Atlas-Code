@@ -24,13 +24,33 @@ const num = v => (v == null || v === '' || Number.isNaN(Number(v)) ? null : Numb
 const ymd = d => d.toISOString().slice(0, 10);
 
 // null = source unreachable/absent (degrade visibly); [] = genuinely empty.
+//
+// The failure is LOGGED. It used to be swallowed whole — `r.ok ? json : null`
+// with a bare `catch { return null }` — and that is how
+// `vw_bench_contribution` returned 500 `57014` (statement timeout, 13.9s
+// against anon's 3s cap) on every call for more than a week while the panel
+// said "61 holdings not measurable — outside the contribution view". The view
+// was healthy; the request was being cancelled, and nothing anywhere said so.
+//
+// A swallowed read failure is indistinguishable from absent data at every
+// layer above it, and the UI is built to describe absent data calmly. Log it.
 async function sb(path, ms) {
     const ac = new AbortController();
     const t = setTimeout(() => ac.abort(), ms || 9000);
+    const src = path.split('?')[0];
     try {
         const r = await fetch(SB_URL + '/rest/v1/' + path, { signal: ac.signal, headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY } });
-        return r.ok ? await r.json() : null;
-    } catch { return null; }
+        if (r.ok) return await r.json();
+        // Body carries the PostgREST code — 57014 is a statement timeout,
+        // which means the view is too slow for the role, not that it is empty.
+        const body = await r.text().catch(() => '');
+        console.error('[nexus-bench] ' + src + ' → HTTP ' + r.status + ' ' + body.slice(0, 300));
+        return null;
+    } catch (e) {
+        console.error('[nexus-bench] ' + src + ' → ' + (e && e.name === 'AbortError'
+            ? 'aborted after ' + (ms || 9000) + 'ms' : (e && e.message) || String(e)));
+        return null;
+    }
     finally { clearTimeout(t); }
 }
 
@@ -242,7 +262,14 @@ export default async function handler(req, res) {
                     ytd: cv ? num(cv.contrib_ytd) : null,
                     sinceEntry: cv ? num(cv.contrib_since_entry) : null,
                     covered: cv ? !!cv.covered : false,
-                    reason: cv ? (cv.coverage_reason || null) : 'not_in_contribution_view',
+                    // `contribution_unavailable` and `not_in_contribution_view`
+                    // are different facts and must not share a label: the
+                    // first means the source did not answer, the second means
+                    // it answered and this name is not in it. Conflating them
+                    // is what made a week of statement timeouts read as a
+                    // property of the book.
+                    reason: cv ? (cv.coverage_reason || null)
+                               : (contribView ? 'not_in_contribution_view' : 'contribution_unavailable'),
                 },
                 // §3.1 judged columns. Every one of these is nullable on
                 // purpose: a null renders an em dash and its reason, never a
@@ -299,6 +326,9 @@ export default async function handler(req, res) {
             writerExtended: assess.extended,
             claimsAvailable: claims != null,
             contributionBasis: contribView ? 'view' : 'today-only',
+            // Published so the panel can say "could not be read" rather than
+            // describing a live outage as a fact about the holdings.
+            contributionSourceOk: contribView != null,
             // the contribution waterfall spans only the names with position
             // history; the strip states that share rather than letting a
             // partial chart read as the whole book
