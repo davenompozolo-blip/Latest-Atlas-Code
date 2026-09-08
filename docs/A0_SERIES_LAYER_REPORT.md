@@ -1,6 +1,12 @@
 # Phase A0 — Series layer acceptance report
 
-Date: 2026-09-08 · Supabase project `jikbulixwvvfrirjpgra`
+Date: 2026-09-08 · Supabase project **`vdmojjszvvcithuxwexx`** (the platform)
+
+> **Moved 2026-09-08.** Built first in `jikbulixwvvfrirjpgra`, the project the
+> A0 spec names. That project turned out not to be this platform: no pg_cron,
+> no pg_net, and none of the analytics tables — it is the Codex project. A
+> nightly job cannot be added to a database with no scheduler, so the layer was
+> moved here and scheduled alongside the other syncs. See **The move** below.
 
 Schema, registry and backfill are complete. Three findings need a decision
 before A1 runs; they are in **Deviations and findings** below.
@@ -173,18 +179,68 @@ The coverage view is `security_invoker = true` — the linter flags plain views 
 SECURITY DEFINER, and nine older views in this schema carry that ERROR, but
 inheriting a finding is not a reason to add one.
 
+## The move, and the nightly job
+
+`sync_market_series_daily` — **22:50 UTC, Mon–Sat**, `cron.job` id 40.
+
+pg_cron is the only scheduler in this platform, so the job went there and
+nowhere else. 22:50 is after the US close year-round, sits in the free slot
+between `chain_trade_sync_all` (22:45) and `chain_options_snapshot` (23:00), and
+is well clear of `atlas_run_validation` (23:40). Mon–Sat matches
+`sync_alpaca_prices_daily`: a Saturday run recovers Friday's close if Friday's
+failed. It is ungated — it reads no table another stage writes.
+
+The job sends a **10-day window**, not the whole series. The upsert on
+`(symbol, date)` makes the overlap free, so a missed night self-heals on the
+next run rather than leaving a permanent hole. `sync_log.details` records `mode`
+and `lookback_days` so a window run and a full backfill are not confusable.
+
+Verified end to end rather than assumed: the exact cron command was fired once
+through pg_net and closed its own `sync_log` row — `success`, 858 ms, 80 rows,
+`partial_sessions_dropped = 16`, no inception drift.
+
+### Equivalence of the moved data
+
+Measured, not assumed. `close` is bit-identical on all 16 legs and dividend
+event counts match exactly. `adj_close` differs by at most **2.15e-6** relative,
+and the bound scales with dividend count — DIA (339 dividends) 2.2e-6, EEM (47)
+8e-7, GLD and CPER (none) exactly 0. That is accumulated float32 rounding in the
+provider's cumulative adjustment product, recomputed per request.
+
+An earlier attempt to test this by hashing rounded values reported a mismatch at
+every decimal place down to 3, which reads as a 1e-3 defect. It is an artefact:
+across 102,907 rows some value always straddles a rounding boundary, so the hash
+breaks however small the real difference is. The rounded-hash test was wrong,
+not the data.
+
+### One bug found and fixed in the move
+
+The first load here ran at 10:48 ET **with the market open**, and stored Yahoo's
+in-progress 2026-09-08 bar as a settled close for all 16 legs (SPY at 767.10 —
+the last trade at that instant). It looked entirely normal: right shape, right
+date, plausible number, `success, 102,923 rows`.
+
+The guard meant to prevent it dropped only bars dated in the *future*, while its
+comment claimed it guarded against in-progress sessions. The loader now asks the
+provider's own session clock (`currentTradingPeriod.regular.end`) and refuses
+today's bar until that instant has passed, falling back to refusal when the meta
+is unreadable. The 16 bad rows were deleted; the count is back to 102,907 with
+2026-09-04 as the newest bar.
+
 ## Not done — deliberately
 
-- **No scheduled job.** `backfill_market_prices` is not in `cron.job`. A0 is
-  schema, registry and backfill; adding a nightly feed is a scope decision that
-  depends on the source question above.
 - **No ratio computation, signals, scores, regime logic or UI** — §0 out of scope.
+- **The copy in `jikbulixwvvfrirjpgra` was left in place**, not dropped. It is
+  now a stale duplicate that no job writes to, and it should be dropped once the
+  move is confirmed — but deleting 102,907 rows was not asked for.
 - **CPER is not upgraded to HG/GC futures.** Registered with the truncation and
   roll-drag caveat, flagged as a later upgrade, per §4.
 
-## Follow-ups for the source decision
+## Follow-ups
 
-1. If these series are to stay current, decide the ongoing writer. Alpaca can
+0. **Drop the superseded copy** in `jikbulixwvvfrirjpgra` (3 tables, 1 view,
+   1 edge function, 102,907 rows) once this move is confirmed.
+1. Scheduling this job commits the platform to Yahoo as a live feed. Alpaca can
    serve everything from 2016 forward and already has credentials and a house
    pattern; it cannot restate history before 2016, so a hybrid leaves a seam at
    the join that would need testing for level continuity.
