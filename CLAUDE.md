@@ -1490,6 +1490,76 @@ the wrong time — which is exactly the run that produced the bug.
 backfill. Without them `success, 80 rows` reads fine until you know it should
 have been 102,907 — the same reason `sync_log.details.scope` exists.
 
+### `ts::date` on a timestamptz curve shifts a fifth of the sample (2026-09-08)
+
+`portfolio_equity_curve.ts` is `timestamptz` stamped **after** the US close --
+22:00 or 00:00 UTC. So `ts::date` (which casts in UTC) lands a third of the
+series on the *following* calendar day: 34 of 175 rows onto weekends, and **38
+of 175 with no SPY bar at all**. Aligning book returns to factors on that cast
+would have silently misaligned 22% of the sample by one day, and the regression
+would still have produced plausible-looking betas.
+
+`(ts at time zone 'America/New_York')::date` gives 175 distinct trading days,
+zero weekend rows, zero duplicates, and a SPY bar for every one.
+
+**Cast a timestamptz to the exchange's date, never the server's.** Same family
+as `atlas_last_traded_day()` and the `(as_of)::date` unsargable-filter entry:
+a date derived from a timestamp is a claim about a session, and the session has
+a timezone.
+
+### The factor layer, and what the spec could not tell us (2026-09-08)
+
+`factor_axes` / `factor_axis_loadings` / `factor_axis_scores` /
+`factor_pair_zscores` / `book_factor_betas` are the B0 exposure layer over the
+A0 series layer. Three intermarket axes -- `cyclical`, `concentration`,
+`dollar` -- with **frozen** loadings, and the book's beta to them plus market.
+
+**The B0 spec supplied `variance_explained` but not the eigenvectors**, and A1
+ran outside CC. The loadings were re-derived from `market_prices` and land
+exactly on the spec's own checksum: 0.290810 / 0.195059 / 0.103176 against
+0.291 / 0.195 / 0.103, with exactly three eigenvalues above the
+Marchenko-Pastur edge (1.0972 at N=11, T=4882) and the fourth at 1.0144 below
+it. A three-number checksum is enough to prove a reproduction; ask for one when
+a spec hands you results without the intermediate objects.
+
+**What the checksum cannot prove is sign.** An eigenvector is defined only up to
+sign and `variance_explained` is sign-invariant, so A1's orientation is
+unrecoverable. Each axis is oriented toward the thing it is named for (raw PC2
+points at *breadth*, raw PC3 at a *weak* dollar; both flipped) and `label`
+states the direction, so a loading is never read without knowing which way is
+up. Every acceptance diagnostic -- R2, condition number, |t|, Durbin-Watson --
+is sign-invariant, so this blocks nothing; it is a confirmation, not a gate.
+
+**Report the SCALED condition number.** Raw is 365.9 and scaled (unit-length
+columns, the Belsley convention) is 2.385. The raw figure is dominated by the
+intercept and by SPY returns (~1e-2) sitting beside axis scores (~1e0) -- that
+is units, not collinearity, and quoting it would manufacture a multicollinearity
+problem that does not exist.
+
+**"Near-orthogonal by construction" is a full-sample property.** Over the
+19-year estimation window the axis pairwise correlations are -0.046 / -0.021 /
+-0.012. Over the 174-day regression window `concentration`-`dollar` is **-0.312**
+and `concentration`-SPY is **+0.592**. Harmless here, but the design's own
+justification does not transfer to an arbitrary sub-window.
+
+`cyclical` is **not significant** (t = 1.28) and neither is alpha (t = -1.33).
+The largest axis by variance explained carries no measurable book exposure --
+that is a result, not a gap, and it must render as "no measurable exposure"
+rather than as a value.
+
+### A carried-forward equity level reads as a zero return (2026-09-08)
+
+Four rows of `portfolio_equity_curve` are **bit-identical** to the row before
+them, so `ln(equity_t / equity_t-1)` is exactly 0.00000000. One of them,
+2026-07-29, sits against a **-1.55% SPY session**; a deployed book cannot be
+exactly flat through that. They are stale snapshots, not flat days.
+
+They attenuate the market beta: 0.968 on the full 174 observations, **1.015**
+with the four dropped. No significance verdict moves, so B0's conclusions
+stand either way -- but the writer should not emit a repeated level as a
+settled one, and a zero return is worth testing for wherever returns are
+derived from a level series.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel
