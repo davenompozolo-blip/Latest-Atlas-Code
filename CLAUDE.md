@@ -1450,6 +1450,12 @@ to join these legs against `universe_correlations` and `book_risk_daily`, which
 live here. **Check which project a spec names before building in it** — the two
 are one `list_projects` call apart and look identical through the MCP.
 
+**Closed 2026-09-09.** `jikbulixwvvfrirjpgra` holds none of the platform's
+work: the A0 tables and coverage view were dropped and the orphaned
+`backfill_market_prices` edge function deleted. It is the CFA Codex content
+project and nothing else — **no Atlas schema, job, function or migration
+belongs in it.** The platform is `vdmojjszvvcithuxwexx`, always.
+
 Equivalence of the move was measured, not assumed: `close` is bit-identical on
 all 16 legs and dividend event counts match exactly, while `adj_close` differs
 by at most **2.15e-6** relative — and that bound scales with dividend count

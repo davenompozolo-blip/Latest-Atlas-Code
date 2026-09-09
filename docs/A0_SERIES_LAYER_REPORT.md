@@ -199,6 +199,20 @@ Verified end to end rather than assumed: the exact cron command was fired once
 through pg_net and closed its own `sync_log` row — `success`, 858 ms, 80 rows,
 `partial_sessions_dropped = 16`, no inception drift.
 
+**The first unattended run landed 2026-09-08 22:50 UTC.** `cron.job_run_details`
+records jobid 40 `succeeded` in 57 ms; `sync_log` #45806 closed `success` in
+924 ms with **96 rows** (16 legs × the 6 sessions in the window; the upsert makes
+the overlap free), `mode=window`, `lookback_days=10`, and
+**`partial_sessions_dropped = 0`**. The coverage view still returns no
+exceptions, and the book stands at 102,923 rows with 2026-09-08 as the newest
+bar.
+
+That zero is the guard working across a session boundary: the two manual runs at
+14:5x the same day each refused 16 bars, and the scheduled run hours after the
+close refused none. SPY's stored 2026-09-08 close is **765.96** — the settled
+print, not the 767.10 in-progress quote the pre-fix loader had written that
+morning.
+
 ### Equivalence of the moved data
 
 Measured, not assumed. `close` is bit-identical on all 16 legs and dividend
@@ -258,18 +272,18 @@ is unreadable. The 16 bad rows were deleted; the count is back to 102,907 with
 ## Not done — deliberately
 
 - **No ratio computation, signals, scores, regime logic or UI** — §0 out of scope.
-- **No ratio computation, signals, scores, regime logic or UI** remains out of
-  scope; the superseded copy has since been dropped — see below.
 - **CPER is not upgraded to HG/GC futures.** Registered with the truncation and
   roll-drag caveat, flagged as a later upgrade, per §4.
 
 ## Follow-ups
 
-0. **Delete the orphaned edge function** `backfill_market_prices` in
-   `jikbulixwvvfrirjpgra`. Its tables are gone, so it can only fail; the
-   Supabase MCP has no delete-function call, so it needs the dashboard or
-   `supabase functions delete backfill_market_prices --project-ref
-   jikbulixwvvfrirjpgra`.
+**The Codex project is closed out (2026-09-09).** `jikbulixwvvfrirjpgra` now
+holds none of this work — the three tables and the coverage view were dropped,
+and the orphaned `backfill_market_prices` edge function has been deleted
+(`list_edge_functions` returns empty). Nothing in this repository deploys to it,
+reads from it, or schedules against it. It is referenced only in the historical
+narrative above and in the CLAUDE.md lesson entry.
+
 1. Scheduling this job commits the platform to Yahoo as a live feed. Alpaca can
    serve everything from 2016 forward and already has credentials and a house
    pattern; it cannot restate history before 2016, so a hybrid leaves a seam at
