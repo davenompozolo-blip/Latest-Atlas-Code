@@ -103,10 +103,36 @@ authenticated `false`, service_role `true`. No net new advisory.
 
 ## Acceptance
 
-**Not yet met.** The gate is *one proven unattended run*, as A0 required. All
-three paths are proven by hand; the scheduled 23:10 UTC run has not happened.
-First one due **2026-09-09 23:10 UTC**, and it should log `success` (today's
-22:50 upstream will have run, and today's session will be new).
+**Met.** The gate was *one proven unattended run*, and it happened on
+**2026-09-09 at 23:10 UTC** — the first scheduled fire after the job was
+created.
+
+| | |
+|---|---|
+| `cron.job_run_details` jobid 41 | `succeeded`, 23:10:00.245 → 23:10:06.278 UTC, "1 row" |
+| `sync_log` #46140 | `status success`, `duration_ms` **5889** |
+| written | `zscores_written 11`, `scores_written 3` |
+| advanced | `previous_score_date 2026-09-08` → `latest_score_date 2026-09-09` |
+| aligned | `latest_z_date 2026-09-09`, `latest_spy_date 2026-09-09` |
+| gate | `upstream_status success`, `reason null` |
+
+The upstream it gates on, `backfill_market_prices` #46130, ran at 22:50:02 UTC:
+`success`, 112 rows across the 16 legs, every leg's `last_date` **2026-09-09**,
+`partial_sessions_dropped` **0**. So the gate passed on a real upstream success
+rather than on an absent check.
+
+`duration_ms` of 5889 is the second thing this run proves. The 15:54 manual run
+recorded **0 ms** because `now()` is the transaction timestamp and
+`sync_log.started_at` defaults to it — a job that recomputes the whole history
+reporting that it took no time. `clock_timestamp()` fixed it, and this is the
+first unattended run to carry a real duration.
+
+**A0's own guard fired in the wild the same day.** The 19:34 UTC manual
+`backfill_market_prices` ran with the market open and refused all 16 of today's
+in-progress bars: `partial_sessions_dropped` **16**, `last_date` 2026-09-08 on
+every leg. The 22:50 scheduled run then took them at 0. That is the
+"partial session" guard doing exactly what it was written for, on the one kind
+of run that produces the bug.
 
 ## Not done
 
