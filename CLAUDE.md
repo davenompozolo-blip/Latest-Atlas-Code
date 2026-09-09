@@ -1566,6 +1566,105 @@ stand either way -- but the writer should not emit a repeated level as a
 settled one, and a zero return is worth testing for wherever returns are
 derived from a level series.
 
+### An internally consistent row is the hardest kind of wrong (2026-09-09)
+
+Track C1. `portfolio_equity_curve` carries three rows where the provider returned
+the prior session's equity with `profit_loss` reported as 0.00 -- 2026-01-15,
+2026-05-04 and 2026-07-29, the last against a **-1.55% SPY session**.
+
+**`profit_loss` on this table is the DAILY change**, not a cumulative figure
+(2026-07-28: equity 92,517.32 against the prior 94,279.86 gives exactly the
+-1,762.54 recorded). So on a carried-forward level, a zero change is
+*arithmetically correct*. The row is internally coherent and factually false, and
+**no cross-column check inside the row can catch it.** What identifies it is the
+transition: a deployed book that moved the day before reporting a change of
+exactly zero to the cent.
+
+The brief described these as rows bit-identical to their predecessor on all four
+numeric columns. **Exactly one row matches that and it is not a defect** -- the
+2025-12-24/26 pair at 100,000.00 is a funded, undeployed account, genuinely flat.
+Test the transition, not the equality; and the third clause (`prior change <> 0`)
+is what keeps the legitimate flat out.
+
+**The damage reaches one row further than the flag.** The provider computes the
+next day's change against the carried level, so 2026-07-30's +2,488.02 is a
+two-day move reported as one day's. Anything excluding stale levels must exclude
+the return *out* of them too, not just the return *into* them.
+
+`data_quality` (`settled | stale_snapshot | recovered | unknown`) marks them.
+Never delete: deleting changes row counts other modules depend on, and the flag
+is the fix.
+
+### `account_snapshots` and `portfolio_equity_curve` are different bases (2026-09-09)
+
+Do not reconstruct one from the other without checking. They disagree on **healthy**
+days: MAE 385 at a 16:00 ET probe, and no probe time (16:00 / 18:00 / 20:00 / last
+of day) reconciles them.
+
+The cause is **short options**, and it is measurable: over 105 healthy overlap days,
+the gap is **+678.6 +/- 562.3** on the 35 days the book held options and
+**+61.5 +/- 293.6** on the 70 it did not, with `corr(gap, option MV) = -0.33`. The
+two sources mark short contracts differently.
+
+That makes recovery date-dependent and it was **declined** for all three stale rows:
+2026-01-15 predates `account_snapshots` entirely, 2026-05-04 sits inside the options
+period (~+/-0.4% band), and even the clean 2026-07-29 case would inject ~+/-0.3pp
+into a return whose typical size is ~1%. **An honest gap beats a reconstructed
+number nobody can defend** -- but record the near miss, because the next reader
+will otherwise redo the analysis.
+
+### A nightly job with no `sync_log` row is invisible, not healthy (2026-09-09)
+
+`sync_portfolio_history` (cron job 9, 01:00 UTC) had **no `sync_log` integration of
+any kind** -- not one row, ever, since the job was created. It was not failing; it
+simply could not be seen by `atlas_sync_status`, `stuck_syncs`, `feed_coverage` or
+any other surface the platform monitors.
+
+**Before trusting that a scheduled job is healthy, check it has ever written a
+row.** Absence of failures is not evidence when absence of *everything* is the
+actual state. Fixed in v6, which also makes the empty-history path an error rather
+than `200 {inserted: 0}` -- the third instance of that pattern in this file.
+
+`supabase/functions/_shared/alpaca_tasks/portfolio_history.ts` is a second, older
+implementation of the same writer with **no callers**, no stale detection and no
+`sync_log`. Delete it or bring it into line before anything starts calling it.
+
+### Reproduce before you re-estimate (2026-09-09)
+
+C3 re-ran B0 on the cleaned curve. The prior estimate was reproduced from scratch
+first, agreeing to **3.0e-12 on every coefficient** -- which is the only thing that
+makes "the beta moved" a statement about the sample rather than about the method.
+
+That control also recovered an input B0 never wrote down: the market term is SPY
+**`adj_close`** log returns. `close` gives market 0.967107 against the published
+0.968234 -- close enough to look like a successful reproduction, wrong enough to
+invalidate every comparison drawn from it. The two series differ on ~4 dividend
+dates in the window. **When a spec omits which series was used, identify it by
+reproduction, not by assumption.**
+
+Result: n 174 -> 168, market 0.968 -> **1.026** (the attenuation the fabricated
+zeros were causing), R2 0.770 -> 0.778, DW 2.133 -> 2.059, scaled condition number
+2.385 -> 2.376. **No significance verdict changed**: `cyclical` (t 1.279 -> 0.948)
+and `alpha` remain not significant, `concentration` (3.090 -> 2.784) and `dollar`
+remain significant. `book_factor_betas` is append-only, so this is a second
+estimate set, keyed apart by `estimated_at` and `n_obs`.
+
+### Render an axis from `positive_means`, never from its key (2026-09-09)
+
+`factor_axes` now carries `positive_means` (what a positive score indicates, plain
+language, non-blank CHECK) and `pc_sign_flipped` (true where the stored loadings
+negate the raw eigenvector).
+
+A proposal to rename `concentration` -> `breadth` was withdrawn and is worth
+recording as a near miss: the stored orientation was already correct, so renaming
+would have required flipping the loadings back, **invalidating every stored score
+and every beta in an append-only history that cannot be restated.** The ambiguity
+was in the documentation, not the data.
+
+`pc_sign_flipped` is provenance only. An eigenvector's raw sign is solver-dependent,
+so it is meaningful only relative to the A1 derivation recorded in
+`20260908190632`. **Render from `positive_means`; audit with `pc_sign_flipped`.**
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel
