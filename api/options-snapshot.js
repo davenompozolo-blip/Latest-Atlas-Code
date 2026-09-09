@@ -93,7 +93,7 @@ export default async function handler(req, res) {
         try {
             const ins = await fetch(SB_URL + '/rest/v1/sync_log', {
                 method: 'POST', headers: { ...sbHeaders(SB_SERVICE), Prefer: 'return=representation' },
-                body: JSON.stringify([{ status: 'running', source: 'options_snapshot', started_at: startedAt }]),
+                body: JSON.stringify([{ function_name: 'options_snapshot', status: 'running', source: 'options_snapshot', started_at: startedAt }]),
             });
             if (ins.ok) { const j = await ins.json(); logId = j && j[0] && j[0].id; }
         } catch { /* logging is best-effort */ }
