@@ -99,6 +99,7 @@ were retired on 2026-08-09 (see below).
 | `sync_portfolio_history_nightly` | 01:00 daily | `portfolio_equity_curve` |
 | `refresh-nexus-holdings` | every 10 min | `nexus_holdings`, `mv_cortex_screener` |
 | `sync_market_series_daily` | 22:50 Mon–Sat | `market_prices` |
+| `refresh_factor_scores_nightly` | 23:10 Mon–Sat | `factor_axis_scores`, `factor_pair_zscores` |
 
 - Edge functions log to **`sync_log`** (the live table). `atlas_sync_log` is a
   legacy table that has never received a row — do not read it for freshness.
@@ -316,7 +317,10 @@ it — the intent row should say the name came in by ticker, because it did.
 - `sync_log` — live sync history, written by every edge function
 - `atlas_sync_status` — single-row current state (query with `.eq('id', 1)`)
 - `atlas_validation_log` — all validation check results
-- `atlas_sync_log` — **legacy, empty**; superseded by `sync_log`
+- `atlas_sync_log` — **legacy, still 0 rows ever**; superseded by `sync_log`.
+  It was empty for a reason worth knowing: `sync_fundamentals` was *writing to
+  it* on ten cron fires a week and every write was rejected. See the audit entry
+  below. **An empty legacy table is not proof nothing targets it.**
 
 ### Why GitHub Actions was retired (2026-08-09)
 All 30 `atlas-sync.yml` runs on record failed: Actions could not provision a
@@ -357,6 +361,7 @@ to cure.
 | 22:45 | `chain_trade_sync_all` (signals) | prices |
 | 22:50 | `sync_market_series_daily` (Mon–Sat) | — (Yahoo sourced, ungated) |
 | 23:00 | `chain_options_snapshot` | — (Alpha Vantage sourced) |
+| 23:10 | `refresh_factor_scores_nightly` (Mon–Sat) | `backfill_market_prices` success today |
 | 23:15 | `chain_theme_leadership` (Fri) | prices |
 | 23:35 | `refresh_position_returns` | — |
 | 23:37 | `atlas_write_verdicts` (Mon–Fri) | positions snapshot current |
@@ -1664,6 +1669,85 @@ was in the documentation, not the data.
 `pc_sign_flipped` is provenance only. An eigenvector's raw sign is solver-dependent,
 so it is meaningful only relative to the A1 derivation recorded in
 `20260908190632`. **Render from `positive_means`; audit with `pc_sign_flipped`.**
+
+### An empty log table is not proof nothing writes to it (2026-09-09)
+
+Audit of all 30 `cron.job` entries against their `sync_log` writers, prompted by
+C1 finding `sync_portfolio_history` running nightly with no logging at all.
+
+**`sync_fundamentals` had never written a `sync_log` row** -- cron jobs 13 and 28,
+ten fires a week, for the life of the function. It logged to **`atlas_sync_log`**,
+the legacy table this file says never receives a row, with a payload naming
+columns (`metrics`, `notes`) that do not exist on it, inside a bare
+`catch { /* best-effort */ }`. So every write was rejected and every rejection
+swallowed. `atlas_sync_log` being empty was not evidence that nothing targeted
+it; it was the *symptom*.
+
+**The job always worked** -- `equity_cache` was current to within hours. Only the
+log was dead. Same shape as `sync_funddata_prices`, one layer worse: it never
+reached the right table.
+
+**147 rows carried `function_name IS NULL`** -- `api/options-snapshot.js` and
+`api/vol-dispersion-sync.js` set `source` and never `function_name`, so every row
+they wrote was invisible to any query keyed on function_name, which is how you
+enumerate writers in the first place. `api/trade-sync.js` already did it right.
+Backfilled exactly (each row's `source` already *was* the job name) and fixed at
+both sources.
+
+**Note each chain stage writes TWO rows** -- `atlas_chain_dispatch` one
+(`source='pg_cron_chain'`, HTTP status) and the Vercel handler another (the real
+detail). Read `source` to tell the layers apart; do not double-count runs.
+
+**Still unlogged, flagged not fixed:** jobs 11 `refresh-nexus-holdings`, 14
+`refresh_holding_vol_trailing`, 37 `refresh_position_returns` write nothing
+anywhere, and 35 `atlas_run_validation` writes `atlas_validation_log` instead. All
+are pure-SQL, so a failure shows up only in `cron.job_run_details`. Their outputs
+are current, so nothing is broken today. `atlas_run_factor_scores()` is the
+wrapper pattern to copy. Job 25 `atlas_chain_reap` logs nothing **by design** --
+it closes other jobs' rows.
+
+**Nothing was stale relative to its schedule.** Check the low-frequency jobs
+individually rather than eyeballing "last run was days ago": 22
+`chain_theme_leadership` is Friday-only and 24 `chain_sync_valuations` Monday-only,
+so both were correctly on cadence.
+
+### Gate on what the writer logs, not on what the job is called (2026-09-09)
+
+C4's factor-score job gates on the price layer having succeeded that day. Cron job
+40 is `sync_market_series_daily` -- but the row it writes carries
+`function_name = 'backfill_market_prices'`, the EDGE FUNCTION's name. Gating on
+the job name matches nothing and skips every night forever, silently: the "gate
+that can never pass" in a new shape. The upstream's real status is recorded in
+`details.upstream_status`, so a `partial` night is diagnosable rather than
+mysterious.
+
+The refusal path must **not** `RAISE` -- that rolls back its own `sync_log` row and
+leaves the refusal only in `cron.job_run_details`. Validate, `UPDATE` the row,
+`RETURN`.
+
+`atlas_refresh_factor_scores()` keys on `(date, pair_key)` / `(date, axis_key)`,
+derived from data rather than from a clustering, so its `ON CONFLICT DO NOTHING`
+**is** safely idempotent -- the opposite of the segment job. The re-run still logs
+`skipped`, never `success` with zero rows.
+
+### `now()` cannot measure a duration inside its own transaction (2026-09-09)
+
+`sync_log.started_at` defaults to `now()` and C4's wrapper closed with `now()`
+too. `now()` is the TRANSACTION timestamp and is constant for the life of the
+transaction, so `finished_at` always equalled `started_at` and `duration_ms` was
+**0 on every run** -- a job that recomputes the whole history reporting that it
+took no time. `clock_timestamp()` advances inside the transaction: the same run
+then measured 1977 ms.
+
+### `REVOKE ... FROM anon, authenticated` does not remove EXECUTE (2026-09-09)
+
+Postgres grants EXECUTE to **PUBLIC** by default on every new function, and
+`anon` / `authenticated` inherit it from there, so revoking those roles by name
+leaves the grant in place. The security advisor caught it within a minute: the
+anon SECURITY DEFINER list went 21 -> 22 with the new function on it *despite*
+the revoke. `revoke execute on function ... from public, anon, authenticated;`
+is what works. Verify with `has_function_privilege`, not by reading the migration.
+pg_cron executes as the job owner, so the schedule is unaffected.
 
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
