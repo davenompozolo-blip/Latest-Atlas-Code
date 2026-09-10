@@ -1497,6 +1497,11 @@ The nightly job runs at 22:50 UTC, after the close year-round, so in normal
 operation this guard should never fire. It exists for the run that happens at
 the wrong time — which is exactly the run that produced the bug.
 
+**It fired in the wild on 2026-09-09.** A manual run at 19:34 UTC, market
+open, refused all 16 in-progress bars (`partial_sessions_dropped` 16, every
+leg's `last_date` still 2026-09-08); the 22:50 scheduled run then took them at
+0.
+
 `details.mode` and `details.lookback_days` distinguish a window run from a full
 backfill. Without them `success, 80 rows` reads fine until you know it should
 have been 102,907 — the same reason `sync_log.details.scope` exists.
@@ -1633,6 +1638,14 @@ than `200 {inserted: 0}` -- the third instance of that pattern in this file.
 `supabase/functions/_shared/alpaca_tasks/portfolio_history.ts` is a second, older
 implementation of the same writer with **no callers**, no stale detection and no
 `sync_log`. Delete it or bring it into line before anything starts calling it.
+
+**First scheduled run logged 2026-09-10 01:00 UTC** (`sync_log` #46171, `partial`,
+550 ms, 2 stale flagged). Two, not the three known stale rows, because the cron
+sends `period='6M'` and 2026-01-15 is outside it -- **read that count against
+`period`, not against the table.** The 01:00 run also lands before Alpaca publishes
+the session that just closed, so the curve trails by a day; the nightly 6-month
+re-fetch closes it, and the curve carries 176 ET dates against 176 SPY sessions
+with no gap either way.
 
 ### Reproduce before you re-estimate (2026-09-09)
 
