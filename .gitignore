@@ -48,3 +48,6 @@ dist/
 *.pyc
 *.pyd
 *.pyo
+
+# A2.2 render harness (dev only, not shipped)
+.a22harness/
