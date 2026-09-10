@@ -256,6 +256,28 @@ function RiskTable({ rows, positions }) {
     );
 }
 
+// ─── Regime conditioning: retired, and said so on the surface ────────────────
+// This is an ALLOCATION input, not a display. Neutralising it silently would
+// leave a zeroed tilt vector reading like a considered prior -- a plausible
+// value standing in for an absent one. So the surface states that conditioning
+// is off, and why, wherever a regime figure used to be.
+function RegimeRetiredNote({ rec }) {
+    if (!rec || rec.active) return null;
+    return h('div', {
+        style: {
+            border: '1px dashed var(--border-2)', borderRadius: 6, padding: '8px 10px',
+            marginBottom: 10, background: 'transparent',
+        },
+    },
+        h('div', { style: { fontSize: 10, fontFamily: 'var(--font-mono)', letterSpacing: '0.08em',
+                            textTransform: 'uppercase', color: '#f59e0b', marginBottom: 4 } },
+            'Regime conditioning retired ' + rec.retiredOn),
+        h('div', { style: { fontSize: 10.5, lineHeight: 1.45, color: 'var(--text-2)' } }, rec.reason),
+        h('div', { style: { fontSize: 10, lineHeight: 1.45, color: 'var(--text-3)', marginTop: 4 } },
+            'Superseded by ' + rec.supersededBy + '. Tilts below come from the observed '
+            + 'curve and credit overlays only \u2014 they are not a regime call.'));
+}
+
 // ─── Macro Context Card (ATLAS Adaptive only) ────────────────────────────────
 function MacroContextCard({ ctx }) {
     if (!ctx) return null;
@@ -263,11 +285,11 @@ function MacroContextCard({ ctx }) {
     const tiltColor = function(v) {
         return v > 0.3 ? 'var(--green)' : v < -0.3 ? 'var(--red)' : 'var(--text-3)';
     };
-    return h('div', { className: 'atlas-card', style: { marginBottom: 16, borderColor: ctx.regimeColor || 'var(--border-2)' } },
+    return h('div', { className: 'atlas-card', style: { marginBottom: 16, borderColor: 'var(--border-2)' } },
         h('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 } },
-            h('div', { style: { width: 10, height: 10, borderRadius: '50%', background: ctx.regimeColor || 'var(--teal)', flexShrink: 0 } }),
+            h('div', { style: { width: 10, height: 10, borderRadius: '50%', background: 'var(--text-3)', flexShrink: 0 } }),
             h('div', { style: { fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13, color: 'var(--text-1)' } },
-                'Macro Regime: ' + (ctx.regime || 'Unknown')),
+                'Macro overlays — regime conditioning off'),
             ctx.spread2s10s != null && h('span', { className: 'chip ' + (ctx.spread2s10s < 0 ? 'chip-red' : 'chip-teal'),
                 style: { marginLeft: 'auto' } },
                 '2s10s ' + (ctx.spread2s10s >= 0 ? '+' : '') + ctx.spread2s10s.toFixed(2) + '%'
@@ -279,6 +301,9 @@ function MacroContextCard({ ctx }) {
                 h('div', { style: { fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--text-3)',
                                      letterSpacing: '0.10em', textTransform: 'uppercase', marginBottom: 8 } },
                     'Factor Tilts Applied'),
+                ctx.regimeConditioning && !ctx.regimeConditioning.active
+                    ? h(RegimeRetiredNote, { rec: ctx.regimeConditioning })
+                    : null,
                 ctx.tilts ? Object.entries(ctx.tilts).map(function(entry) {
                     var k = entry[0], v = entry[1];
                     return h('div', { key: k, style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 } },
@@ -454,12 +479,12 @@ var REGIME_CLASS_LABELS = { favorable: '▲ Favorable', neutral: '— Neutral', 
 
 function RegimeIntelligencePanel({ macro, scores, scanning, onOverride }) {
     if (scanning) return h('div', { className: 'atlas-card', style: { marginBottom: 16, textAlign: 'center', padding: 24 } },
-        h(Loading, { text: 'Scanning macro regime…' })
+        h(Loading, { text: 'Scanning macro overlays…' })
     );
     if (!macro && !scores) return null;
 
-    var regime    = macro ? macro.regime      : null;
-    var color     = macro ? macro.regimeColor : '#6b7280';
+    // The quadrant label is retired; fetchMacroSignals no longer returns one.
+    var conditioning = (macro && macro.regimeConditioning) || null;
 
     // Summarise counts
     var counts = { favorable: 0, neutral: 0, counter: 0 };
@@ -467,12 +492,20 @@ function RegimeIntelligencePanel({ macro, scores, scanning, onOverride }) {
 
     return h('div', { className: 'atlas-card', style: { marginBottom: 16 } },
         h('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 } },
-            h('div', { className: 'card-title', style: { margin: 0 } }, '⬡ ML Regime Intelligence'),
-            regime && h('span', { className: 'chip', style: { background: color + '22', color: color, border: '1px solid ' + color + '55', fontFamily: 'var(--font-mono)' } }, regime),
+            h('div', { className: 'card-title', style: { margin: 0 } }, '⬡ Factor Alignment'),
+            conditioning && !conditioning.active
+                ? h('span', { className: 'chip', style: {
+                        background: 'transparent', color: 'var(--text-3)',
+                        border: '1px dashed var(--border-2)', fontFamily: 'var(--font-mono)' } },
+                    'unconditioned')
+                : null,
             h('span', { style: { fontSize: 11, color: 'var(--text-3)', fontFamily: 'var(--font-mono)', marginLeft: 'auto' } },
                 counts.favorable + ' Fav · ' + counts.neutral + ' Neu · ' + counts.counter + ' Ctr'
             )
         ),
+        conditioning && !conditioning.active
+            ? h(RegimeRetiredNote, { rec: conditioning })
+            : null,
         // Macro strip
         macro && h('div', { style: { display: 'flex', gap: 16, marginBottom: 14, flexWrap: 'wrap' } },
             [

@@ -25,6 +25,19 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 
 const FH_BASE             = 'https://finnhub.io/api/v1'
 const THROTTLE_MS         = 1100   // ~55 req/min, under Finnhub 60/min free tier
+// Wall-clock budget. The loop below costs ~1.1s of throttle plus two Finnhub
+// round-trips per symbol, so a 300-symbol slice needs ~12 minutes and an edge
+// function invocation does not get one. Without a budget the runtime kills the
+// function mid-loop and the terminal PATCH never runs -- which is precisely how
+// cron job 28 left an open 'running' row on its first scheduled fire after this
+// file gained sync_log at all (2026-09-10 12:30, 30 of 300 symbols, dead at
+// 12:32:29). 110s leaves headroom under the ~150s ceiling for the close.
+//
+// The header comment above has claimed since v2 that pagination keeps each
+// invocation "without exceeding the edge-function wall-clock". It did not: the
+// slice size was never checked against the clock. A comment asserting a check
+// the code does not perform is worse than no comment.
+const WALL_CLOCK_BUDGET_MS = 110_000
 const DEFAULT_LIMIT       = 120
 const MIN_MARKET_CAP_USD  = 2_000_000_000   // $2B → large/mid cap
 const OCC_RE              = /^[A-Z.]{1,6}\d{6}[CP]\d{8}$/
@@ -137,6 +150,10 @@ async function finnhubFetch<T>(path: string, fhKey: string): Promise<T | null> {
 }
 
 Deno.serve(async (req: Request) => {
+  // Budget clock starts at the invocation, not at the enrichment loop: the
+  // universe fetch and the already-cached probe spend wall-clock too, and the
+  // ceiling that kills this function does not care which part spent it.
+  const invokedAt = Date.now()
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' } })
   }
@@ -210,8 +227,16 @@ Deno.serve(async (req: Request) => {
   let enriched = 0, skippedSmall = 0, skippedCached = 0, noData = 0, failed = 0
   const log: string[] = []
 
+  let budgetExhausted = false
+  let attempted = 0
+
   for (let i = 0; i < universe.length; i++) {
+    // Stop while there is still time to close the log row honestly. Breaking
+    // here costs coverage for this run; not breaking costs the row entirely.
+    if (Date.now() - invokedAt > WALL_CLOCK_BUDGET_MS) { budgetExhausted = true; break }
+
     const { symbol } = universe[i]
+    attempted++
     if (onlyMissing && alreadyCached.has(symbol)) { skippedCached++; continue }
 
     try {
@@ -268,11 +293,16 @@ Deno.serve(async (req: Request) => {
   }
 
   const elapsed = Math.round((Date.now() - started) / 1000)
-  const nextOffset = offset + limit
+  // Advance by what was actually attempted, never by the slice size: a caller
+  // that resumes from `next_offset` after a truncated run would otherwise skip
+  // every symbol the budget cut off, silently and permanently.
+  const nextOffset = offset + attempted
   const result = {
-    offset, limit, processed: universe.length,
+    offset, limit, processed: attempted, slice_size: universe.length,
     enriched, skipped_small: skippedSmall, skipped_cached: skippedCached, no_data: noData, failed,
     elapsed_s: elapsed, next_offset: nextOffset,
+    budget_exhausted: budgetExhausted,
+    unprocessed: universe.length - attempted,
     sample: log.slice(0, 25),
   }
 
@@ -291,14 +321,21 @@ Deno.serve(async (req: Request) => {
   // discriminator -- processed > 0 with everything already cached is healthy;
   // processed = 0 on the FIRST page means `assets` returned nothing, which is.
   const emptyFirstPage = universe.length === 0 && offset === 0 && !targetSymbols
+  // A budget-truncated run is `partial` whatever it managed: it did some of
+  // what it was asked and cannot claim the slice. It is never `success`, so a
+  // run that covers 30 of 300 symbols can never read as a completed slice.
   const status =
     emptyFirstPage        ? 'error'
+    : budgetExhausted     ? 'partial'
     : enriched > 0        ? (failed > 0 ? 'partial' : 'success')
     : failed > 0          ? 'error'
     : 'skipped'
 
   const reason =
     emptyFirstPage ? 'assets returned no equity symbols on the first page'
+    : budgetExhausted
+      ? `wall-clock budget reached after ${attempted} of ${universe.length} symbols; ` +
+        `${universe.length - attempted} unprocessed`
     : status === 'skipped'
       ? (universe.length === 0
           ? `pagination past end of universe (offset ${offset})`
@@ -307,7 +344,8 @@ Deno.serve(async (req: Request) => {
 
   await closeSyncLog(sbUrl, sbKey, logId, status,
     { ...result, mode, reason },
-    failed > 0 ? `${failed} symbol(s) failed; see details.sample` : (reason && status === 'error' ? reason : undefined))
+    failed > 0 ? `${failed} symbol(s) failed; see details.sample`
+      : (reason && (status === 'error' || status === 'partial') ? reason : undefined))
 
   return new Response(JSON.stringify(result), {
     headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
