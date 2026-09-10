@@ -1854,6 +1854,56 @@ Timeout`), and `atlas_write_segment_verdicts` ran eight minutes later on the
 precheck, so nothing is wrong today -- but this is the case that precheck exists
 for, and it is no longer hypothetical.
 
+### An absent number beats a flagged one (2026-09-10)
+
+A2's axis panel. The rule is that an axis whose latest beta is not significant
+renders **"no measurable exposure"**, never the value -- printing 0.0005 reads
+as a small exposure, which is a different claim from no measurable exposure and
+is the one the data does not support.
+
+`cyclical` is the current instance: largest axis by variance explained (29.1%),
+t = 0.95. It is **not a carve-out** -- the rule reads the `significant` flag,
+and a re-estimate can flip any axis either way.
+
+**The beta is absent from the row shape when unmeasured, not merely flagged.**
+A renderer cannot print a number it was never handed. Same construction as
+`nexusReturnBasis.js`, and this file already records what a flag beside a number
+nobody checks is worth.
+
+`bfb_significant_ck` binds `significant = (abs(t_stat) > 2)`, so the flag cannot
+be flipped without moving its own evidence -- the panel cannot be shown a flag
+that disagrees with the statistic underneath it. Found by trying: the first
+scratch flip was refused by the CHECK.
+
+**Force the flip in a rolled-back transaction, never by appending.**
+`book_factor_betas` is append-only, so a scratch estimate set appended to prove
+a UI rule stays there permanently.
+
+### `score_20d` is a cumulative sum, not a sigma level (2026-09-10)
+
+`atlas_refresh_factor_scores` writes `score_20d` as a rolling 20-SESSION SUM of
+the daily axis score. Mean |score_20d| runs 3.3 (dollar) to 5.8 (cyclical), so
+A2's 0.5σ "quiet" threshold sits at about a tenth of a typical reading.
+Backtested over the 4,116 sessions carrying both non-marginal axes: aligned
+52.8%, contested 46.6%, **quiet 0.53%** (22 days).
+
+Applied as specified and kept as one named constant (`QUIET_SIGMA`) read in a
+single place. **Check what a column actually holds before comparing it to a
+threshold in sigma** -- the name says score, the value is a sum of scores.
+
+### The browser in this container cannot reach Supabase (2026-09-10)
+
+Node, curl and the MCP all reach it; the headless browser does not. The agent
+relay drops the tunnel mid-exchange (`ws_closed_mid_exchange`, 1006) and a page
+`fetch` fails after ~12s, with or without the proxy configured. The Nexus
+flagship shell also cannot start under plain `vite` -- it needs the `/api/*`
+routes only `vercel dev` serves.
+
+To screenshot a live panel: read the rows server-side and replay them by
+patching `window.fetch` for `/rest/v1/*`. The real client, query builders and
+component still run; only the socket differs. **Say which half is proven** --
+the render is, the network read is not.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel

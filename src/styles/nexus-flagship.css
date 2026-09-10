@@ -1372,3 +1372,79 @@
 }
 .qt-link { color: var(--cyan); text-decoration: none; }
 .qt-link:hover { text-decoration: underline; }
+
+/* ── A2 · Intermarket axes ──────────────────────────────────── */
+.na-card { display: flex; flex-direction: column; gap: 0; }
+.na-empty { color: var(--text2); font-size: 13px; padding: 10px 0; }
+
+.na-stale {
+  margin: 4px 0 12px; padding: 9px 12px; border-radius: 8px;
+  background: var(--amber-b); border: 1px solid rgba(245,166,35,.34);
+  color: var(--text); font-size: 12.5px; line-height: 1.5;
+}
+.na-stale strong { color: var(--amber); }
+
+.na-head, .na-row {
+  display: grid; grid-template-columns: minmax(190px,1.45fr) minmax(150px,1fr) minmax(140px,.85fr) minmax(150px,1.05fr);
+  gap: 14px; align-items: start;
+}
+.na-head {
+  font-family: var(--fm); font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--text3); padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,.07);
+}
+.na-row { padding: 14px 0; border-bottom: 1px solid rgba(255,255,255,.05); }
+
+.na-key { font-family: var(--fd); font-weight: 700; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+.na-marginal {
+  font-family: var(--fm); font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--amber); background: var(--amber-b); border: 1px solid rgba(245,166,35,.3);
+  border-radius: 4px; padding: 1px 5px; cursor: help;
+}
+.na-var { font-family: var(--fm); font-size: 11px; color: var(--text3); margin-top: 3px; }
+.na-means { font-size: 12px; color: var(--text2); line-height: 1.45; margin-top: 6px; max-width: 40ch; }
+
+.na-scores { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.na-s20 { font-family: var(--fm); font-size: 17px; font-weight: 600; }
+.na-s60 { font-family: var(--fm); font-size: 13px; color: var(--text2); }
+.na-slab { font-family: var(--fm); font-size: 9.5px; color: var(--text3); letter-spacing: .05em; }
+.na-spark { display: block; margin-top: 6px; }
+
+.na-exposure { display: flex; flex-direction: column; gap: 3px; }
+.na-beta { font-family: var(--fm); font-size: 15px; color: var(--text); }
+/* Deliberately not styled as a value: it is a statement, not a number. */
+.na-none { font-size: 12.5px; color: var(--text2); font-style: italic; line-height: 1.35; cursor: help; }
+.na-t { font-family: var(--fm); font-size: 10.5px; color: var(--text3); }
+
+.na-pairs { display: flex; flex-wrap: wrap; gap: 4px; }
+.na-pair {
+  font-family: var(--fm); font-size: 10px; padding: 2px 5px; border-radius: 4px;
+  border: 1px solid rgba(255,255,255,.1); color: var(--text2); cursor: help;
+}
+.na-pair.pos { border-color: rgba(58,214,224,.28); color: #9fe8ee; }
+.na-pair.neg { border-color: rgba(240,88,79,.26); color: #f0a8a3; }
+
+.na-disp { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; padding: 14px 0 4px; }
+.na-disp-l { font-family: var(--fm); font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--text3); }
+.na-disp-v {
+  font-family: var(--fd); font-weight: 800; font-size: 16px; letter-spacing: .01em;
+  padding: 1px 9px; border-radius: 6px;
+}
+.na-disp-v.st-contested { color: var(--amber); background: var(--amber-b); }
+.na-disp-v.st-aligned { color: #3ad6e0; background: rgba(58,214,224,.12); }
+.na-disp-v.st-quiet { color: var(--text2); background: rgba(88,100,115,.16); }
+.na-disp-v.st-insufficient_axes { color: var(--text3); background: rgba(88,100,115,.12); font-size: 14px; }
+.na-disp-n { font-size: 12px; color: var(--text2); }
+
+.na-vintage { display: flex; gap: 18px; flex-wrap: wrap; padding: 8px 0 0; font-family: var(--fm); font-size: 10.5px; color: var(--text3); }
+.na-vintage b { color: var(--text2); font-weight: 500; }
+.na-foot { font-size: 11.5px; color: var(--text3); line-height: 1.5; padding-top: 8px; max-width: 78ch; }
+
+.na-read { margin-top: 14px; padding: 12px 14px; border-radius: 8px; background: rgba(58,214,224,.05); border: 1px solid rgba(58,214,224,.16); }
+.na-read-t { font-family: var(--fd); font-weight: 700; font-size: 13px; margin-bottom: 8px; }
+.na-read-l { font-size: 13px; line-height: 1.6; color: var(--text); margin-bottom: 5px; }
+.na-read-d { font-family: var(--fm); font-size: 10px; color: var(--text3); margin-top: 8px; }
+
+@media (max-width: 900px) {
+  .na-head { display: none; }
+  .na-row { grid-template-columns: 1fr; gap: 8px; }
+}
