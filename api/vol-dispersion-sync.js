@@ -105,7 +105,7 @@ export default async function handler(req, res) {
     const startedAt = new Date().toISOString();
     const summary = { run_at: startedAt, date: date || 'latest', scope: underlyings.size, priced: 0, unpriced: 0, errors: 0, written: 0, skipped: [], results: [] };
 
-    // Open one sync_log row (best-effort; needs the service role to write).
+    // Open one sync_log row (needs the service role; failure is logged, never swallowed).
     let logId = null;
     if (SB_SERVICE) {
         try {
@@ -114,7 +114,14 @@ export default async function handler(req, res) {
                 body: JSON.stringify([{ function_name: 'vol_dispersion_sync', status: 'running', source: 'vol_dispersion_sync', started_at: startedAt }]),
             });
             if (ins.ok) { const j = await ins.json(); logId = j && j[0] && j[0].id; }
-        } catch { /* logging is best-effort */ }
+            // A swallowed write failure costs months. This handler shares
+            // its open/close shape with api/options-snapshot.js, which on
+            // 2026-09-09 wrote its data and no sync_log row at all — with no
+            // way to tell a missing service key from a refused insert.
+            else console.error('vol_dispersion_sync: sync_log open refused', ins.status, await ins.text().catch(() => ''));
+        } catch (e) { console.error('vol_dispersion_sync: sync_log open threw', e && e.message); }
+    } else {
+        console.error('vol_dispersion_sync: SUPABASE_SERVICE_ROLE_KEY unset — this run will leave no sync_log row');
     }
 
     // 3. One chain pull per underlying. Isolated per name; a throttle error
@@ -182,7 +189,7 @@ export default async function handler(req, res) {
     if (SB_SERVICE && logId != null) {
         const status = aborted || summary.writeError ? (summary.written ? 'partial' : 'error') : (summary.errors ? 'partial' : 'success');
         try {
-            await fetch(SB_URL + '/rest/v1/sync_log?id=eq.' + logId, {
+            const upd = await fetch(SB_URL + '/rest/v1/sync_log?id=eq.' + logId, {
                 method: 'PATCH', headers: sbHeaders(SB_SERVICE),
                 body: JSON.stringify({
                     finished_at: new Date().toISOString(), status,
@@ -191,7 +198,8 @@ export default async function handler(req, res) {
                     details: { date: anchorDate, priced: summary.priced, unpriced: summary.unpriced, errors: summary.errors, skipped: summary.skipped },
                 }),
             });
-        } catch { /* best-effort */ }
+            if (!upd.ok) console.error('vol_dispersion_sync: sync_log close refused', upd.status, await upd.text().catch(() => ''));
+        } catch (e) { console.error('vol_dispersion_sync: sync_log close threw', e && e.message); }
     }
 
     return res.status(aborted && !summary.written ? 502 : 200).json(aborted ? { ...summary, aborted } : summary);

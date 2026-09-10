@@ -100,6 +100,8 @@ were retired on 2026-08-09 (see below).
 | `refresh-nexus-holdings` | every 10 min | `nexus_holdings`, `mv_cortex_screener` |
 | `sync_market_series_daily` | 22:50 Mon–Sat | `market_prices` |
 | `refresh_factor_scores_nightly` | 23:10 Mon–Sat | `factor_axis_scores`, `factor_pair_zscores` |
+| `sync_alpaca_prices_universe` | 23:20 Mon–Sat | `price_history` (non-held universe) |
+| `atlas_feed_reconciliation_nightly` | 23:25 Mon–Sat | `sync_log`, `atlas_validation_log` |
 
 - Edge functions log to **`sync_log`** (the live table). `atlas_sync_log` is a
   legacy table that has never received a row — do not read it for freshness.
@@ -1635,9 +1637,14 @@ row.** Absence of failures is not evidence when absence of *everything* is the
 actual state. Fixed in v6, which also makes the empty-history path an error rather
 than `200 {inserted: 0}` -- the third instance of that pattern in this file.
 
-`supabase/functions/_shared/alpaca_tasks/portfolio_history.ts` is a second, older
-implementation of the same writer with **no callers**, no stale detection and no
-`sync_log`. Delete it or bring it into line before anything starts calling it.
+`supabase/functions/_shared/alpaca_tasks/portfolio_history.ts` was a second,
+older implementation of the same writer with no callers, no stale detection and
+no `sync_log` -- one import away from reintroducing the defect C1 closed.
+**Deleted 2026-09-10.** The four siblings in `_shared/alpaca_tasks/`
+(`account`, `activities`, `positions`, `prices`) have no importers either;
+`sync_alpaca_positions/index.ts` defines its own `runPositionsAndAccount`
+locally and does not read them. Left in place, flagged: check for a live
+duplicate before assuming any of them is the writer.
 
 **First scheduled run logged 2026-09-10 01:00 UTC** (`sync_log` #46171, `partial`,
 550 ms, 2 stale flagged). Two, not the three known stale rows, because the cron
@@ -1761,6 +1768,91 @@ anon SECURITY DEFINER list went 21 -> 22 with the new function on it *despite*
 the revoke. `revoke execute on function ... from public, anon, authenticated;`
 is what works. Verify with `has_function_privilege`, not by reading the migration.
 pg_cron executes as the job owner, so the schedule is unaffected.
+
+### A cron body can be wrong while the job is green (2026-09-10)
+
+C5's reconciliation compared Yahoo's `market_prices` against Alpaca's
+`price_history` for the 16 A0 legs and found the prices fine -- 0 of 67
+leg-sessions past 25 bp, worst 7.30 bp -- and the *coverage* wrong: 13 of 16
+legs had a Yahoo bar for 2026-09-09 and no Alpaca bar. The three that did are
+exactly the three that are also held.
+
+Held names are priced by cron job 17 at 22:00, everything else by job 34 at
+23:20, and the two commands differed in one place:
+
+```sql
+-- job 17, book:      'end_date', current_date::text
+-- job 34, universe:  'end_date', (current_date - 1)::text
+```
+
+**~1,900 non-held symbols were one session behind the book, every night, by
+construction.** Not a hole -- the five-day window re-fetches, so the bar always
+arrives the following night. Permanently *late*, never *missing*, which is why
+nothing caught it: `universe_price_coverage` passes at a median lag <= 3 days
+(a tolerance that exists for weekends), and the job logs `success` nightly
+because it is succeeding at what it was *told* to fetch.
+
+**Seventeen consecutive clean runs say nothing about whether the request was
+right.** Read `details` -- the `end_date` was in every row all along.
+
+### Reconcile two providers on `close`, and never on one number (2026-09-10)
+
+`atlas_check_feed_reconciliation(sessions, bps)`, cron job 42 at 23:25 Mon-Sat,
+writing both `sync_log` and `atlas_validation_log`.
+
+**Two legs, kept apart on purpose.** `price` is both providers holding a bar
+for the same leg-session and disagreeing -- a data fault. `coverage` is one
+provider holding a bar the other does not -- a feed late or stopped, different
+failure, different fix. Folding coverage into a "prices disagree" count reports
+a stall as a pricing error, the mistake this file already records in four
+layers.
+
+**`close`, never `adjusted_close`.** Each provider runs its own dividend
+adjustment product, so adj-vs-adj diverges on every dividend by construction --
+A0 measured 2.15e-6 between two copies of the *same* provider's. The raw close
+is the one number both actually observed.
+
+**25 bp is calibrated, not guessed**: worst observed like-for-like gap is
+7.30 bp, median under 2. The session spine is SPY's own Yahoo bars, never a
+calendar -- a weekday feed is not late on a holiday.
+
+`feed_reconciliation_exclusions` carries `leg`, and that is what keeps it a note
+rather than a gag: C1's three `stale_snapshot` dates are scoped to
+`equity_curve` and **cannot** silence a price divergence on the same date. The
+test asserts that rather than trusting it.
+`supabase/tests/feed_reconciliation_forced_divergence.sql` -- 5/5, including the
+happy path, because a wall of failure cases that also rejects healthy data is
+worse than none.
+
+### A handler can write its data and no log row (2026-09-10)
+
+`api/options-snapshot.js` ran on 2026-09-09, wrote **93 rows** to
+`options_positioning_snapshots` at 23:01:14, and wrote **no `sync_log` row at
+all** -- having written one on both preceding nights. The chain layer reported
+the stage `success`, HTTP 200, because `atlas_chain_dispatch` grades on status
+and the handler answered 200.
+
+The defect is that it cannot be diagnosed afterwards. Three silent paths, all
+identical from outside: `if (SB_SERVICE)` with no `else`, `if (ins.ok)` with no
+`else`, and `catch { }`. The close path added a fourth -- a `PATCH` whose
+response was never checked, and a non-OK PATCH does not throw. That is exactly
+how 41 `sync_funddata_prices` rows sat open for months.
+
+Both handlers now log status and body at error level on a refused open or
+close, on a throw, and when the service key is absent.
+**A swallowed write failure costs months.**
+
+**Read `source` to tell the layers apart.** The chain row carries
+`source='pg_cron_chain'`, the handler's its own name -- and only the handler's
+absence reveals this class of gap.
+
+### The stale-clustering hazard actually happened (2026-09-10)
+
+`ts_clusters` failed on 2026-09-09 (`GET universe_risk_stats: 504 Gateway
+Timeout`), and `atlas_write_segment_verdicts` ran eight minutes later on the
+**previous night's** partition. It wrote 5 rows and passed its membership
+precheck, so nothing is wrong today -- but this is the case that precheck exists
+for, and it is no longer hypothetical.
 
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
