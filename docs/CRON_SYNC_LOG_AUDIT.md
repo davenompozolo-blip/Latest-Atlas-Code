@@ -152,3 +152,110 @@ logs `success` every night is writing *the wrong thing* — `sync_fundamentals` 
 found because its log was absent, not because its data was checked. The
 `price_coverage`-vs-universe entry in `CLAUDE.md` is the standing example of a
 check that passes correctly while a feed is stopped.
+
+---
+
+# Re-sweep — 2026-09-10
+
+Second pass over all 31 `cron.job` entries (30 plus C4's job 41), run before
+C5. Same method: every job matched to the `sync_log` writer it should produce,
+then every writer's latest row checked against what its schedule implies.
+
+## What changed since 2026-09-09
+
+| | then | now |
+|---|---|---|
+| Jobs | 30 | **32** (41 `refresh_factor_scores_nightly`, 42 `atlas_feed_reconciliation_nightly`) |
+| Rows with `function_name IS NULL` | 147 | **0** |
+| Writers that had never logged | 1 (`sync_fundamentals`) | 0 |
+| Stale relative to schedule | 0 | **0** |
+
+Both jobs whose first *logged* scheduled run was pending have now had one:
+job 41 at 2026-09-09 23:10 (`sync_log` #46140, `success`, 5889 ms) and job 9 at
+2026-09-10 01:00 (#46171, `partial`, 550 ms). Neither had ever produced a row
+before those fires.
+
+## Finding A — `options_snapshot` wrote its data and no log row. FIXED.
+
+On **2026-09-09** the handler ran, computed, and wrote **93 rows** to
+`options_positioning_snapshots` at 23:01:14. It wrote **no `sync_log` row at
+all**. On 09-07 and 09-08 it wrote one both nights.
+
+The chain layer reported the stage healthy — `atlas_chain_dispatch` logged
+`success`, HTTP 200 — so the only trace of the gap is the absence of the
+handler's own row. Read `source` to tell the two layers apart: the chain row
+carries `source='pg_cron_chain'`, the handler's carries
+`source='options_snapshot'`.
+
+**Why it cannot be diagnosed after the fact is the actual defect.** Both silent
+paths look identical from outside:
+
+```js
+if (SB_SERVICE) {                      // no else: missing key writes nothing, says nothing
+    try {
+        const ins = await fetch(...);
+        if (ins.ok) { ... }            // no else: a refused insert is dropped
+    } catch { /* logging is best-effort */ }   // and a throw is swallowed
+}
+```
+
+The close path had the same shape, plus a `PATCH` whose response was never
+checked — a non-OK PATCH does not throw, which is exactly how 41
+`sync_funddata_prices` rows sat open in `running` for months.
+
+`api/vol-dispersion-sync.js` is byte-identical in structure and was fixed with
+it. Both now log status and body at error level on a refused open or close, on
+a throw, and when `SUPABASE_SERVICE_ROLE_KEY` is absent. **A swallowed write
+failure costs months. Log it at error level.**
+
+Not fixed by the same change: *why* the 09-09 insert failed. The handler is on
+the same project and key as `vol_dispersion_sync`, which logged fine at 02:30
+the next morning, so the key was present — pointing at a transient refusal
+rather than configuration. The next occurrence will say so in the logs.
+
+## Finding B — the universe price leg was pinned to yesterday. FIXED.
+
+Surfaced by C5, visible in the audit as `details.end_date` on job 34's rows.
+Job 34 sent `'end_date', (current_date - 1)` while job 17 sends
+`'end_date', current_date`, so every non-held symbol was **permanently one
+session behind the book**. See `docs/C5_FEED_RECONCILIATION_REPORT.md`.
+
+## Finding C — `ts_clusters` failed on 2026-09-09. FLAGGED, not fixed.
+
+Both layers logged it correctly, and the log names the cause:
+
+```
+GET universe_risk_stats: 504 {"message":"Gateway Timeout"}
+```
+
+`trade_sync_clusters` #46145 `error`, 7218 ms; the chain row #46212 `error`,
+HTTP 500. It succeeded on 09-08 (63,709 ms, 417 symbols, 205 clusters) and the
+09-10 run is the next test.
+
+**Worth knowing for the segment layer:** `atlas_write_segment_verdicts` runs at
+23:38, eight minutes after the clustering job that feeds it. On 09-09 the
+clustering failed and the segment job ran anyway — on the **previous night's**
+partition. It wrote 5 rows and passed its membership precheck, so nothing is
+wrong today, but this is the stale-clustering hazard that precheck exists for
+and it has now actually occurred once.
+
+## Finding D — `sync_fundamentals`' scheduled logging is still unproven.
+
+The fix deployed 2026-09-09 15:49 and is proven by a manual run (#46028).
+Jobs 13 and 28 last fired 09-09 at 12:00 and 12:30 — **before** the deploy — so
+no scheduled run has yet exercised it. First one due 2026-09-10 12:00 UTC.
+Absence of a row before then is expected, not a regression.
+
+## Still write nothing to `sync_log` — unchanged, still flagged
+
+Jobs **11** `refresh-nexus-holdings`, **14** `refresh_holding_vol_trailing`,
+**37** `refresh_position_returns`; **35** `atlas_run_validation` writes
+`atlas_validation_log` instead. All pure-SQL, all outputs current. Job **25**
+`atlas_chain_reap` logs nothing by design.
+
+## Nothing is stale relative to its schedule
+
+Checked individually rather than by eyeballing "last run was days ago":
+**22** `chain_theme_leadership` is Friday-only (last 09-04, a Friday) and
+**24** `chain_sync_valuations` Monday-only (last 09-07, a Monday). Both correct.
+`chain_vol_dispersion` errors nightly and is the known-dead premium-key feed.

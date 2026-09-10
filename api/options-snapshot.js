@@ -12,7 +12,8 @@
 // ?token=CRON_SECRET. Snapshot writes use the anon key against the table's RLS
 // write policy (the same headless pattern sync-valuations uses for
 // scrapbook_snapshots) — no service-role secret required. The sync_log run row
-// is opportunistic: written only if SUPABASE_SERVICE_ROLE_KEY happens to be set.
+// still needs SUPABASE_SERVICE_ROLE_KEY, but a run that cannot write one now
+// says so at error level rather than leaving the job invisible.
 
 import { chainMetrics } from '../src/pages/nexus/nexusOptionsCompute.js';
 
@@ -86,7 +87,7 @@ export default async function handler(req, res) {
     }
     if (offset || limit) tickers = tickers.slice(offset, limit ? offset + limit : undefined);
 
-    // Open one sync_log row (best-effort; needs the service role to write).
+    // Open one sync_log row (needs the service role; failure is logged, never swallowed).
     let logId = null;
     const startedAt = new Date().toISOString();
     if (SB_SERVICE) {
@@ -96,7 +97,14 @@ export default async function handler(req, res) {
                 body: JSON.stringify([{ function_name: 'options_snapshot', status: 'running', source: 'options_snapshot', started_at: startedAt }]),
             });
             if (ins.ok) { const j = await ins.json(); logId = j && j[0] && j[0].id; }
-        } catch { /* logging is best-effort */ }
+            // A swallowed write failure costs months. On 2026-09-09 this
+            // handler wrote its 93 snapshot rows and no sync_log row at all,
+            // and the code could not say which of the two silent paths it
+            // took. Both are loud now.
+            else console.error('options_snapshot: sync_log open refused', ins.status, await ins.text().catch(() => ''));
+        } catch (e) { console.error('options_snapshot: sync_log open threw', e && e.message); }
+    } else {
+        console.error('options_snapshot: SUPABASE_SERVICE_ROLE_KEY unset — this run will leave no sync_log row');
     }
 
     const summary = { run_at: startedAt, scope: tickers.length, withChain: 0, noChain: 0, errors: 0, written: 0, results: [] };
@@ -164,11 +172,12 @@ export default async function handler(req, res) {
     if (SB_SERVICE && logId != null) {
         const status = summary.errors ? (summary.written ? 'partial' : 'error') : 'success';
         try {
-            await fetch(SB_URL + '/rest/v1/sync_log?id=eq.' + logId, {
+            const upd = await fetch(SB_URL + '/rest/v1/sync_log?id=eq.' + logId, {
                 method: 'PATCH', headers: sbHeaders(SB_SERVICE),
                 body: JSON.stringify({ finished_at: new Date().toISOString(), status, prices_upserted: summary.written, error_message: summary.writeError || null, details: { withChain: summary.withChain, noChain: summary.noChain, errors: summary.errors, scope: summary.scope } }),
             });
-        } catch { /* best-effort */ }
+            if (!upd.ok) console.error('options_snapshot: sync_log close refused', upd.status, await upd.text().catch(() => ''));
+        } catch (e) { console.error('options_snapshot: sync_log close threw', e && e.message); }
     }
 
     return res.status(200).json(summary);
