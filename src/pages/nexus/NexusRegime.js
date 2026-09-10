@@ -1,16 +1,33 @@
 // ============================================================
-// ATLAS Nexus — Regime tab (alignment)
+// ATLAS Nexus — Regime tab
 // ------------------------------------------------------------
-// Is the book positioned for the macro regime we're actually in? A
-// top-to-bottom funnel: regime verdict (+ the growth × inflation 2×2)
-// → macro dashboard (the indicators that locate us) → book fit (sector
-// tilt vs what the regime rewards) → the regime read. Classification
-// self-fetches /api/macro; book fit reads the model's spine. All
-// scoring is pure (nexusRegimeCompute.js).
+// PHASE D, 2026-09-10. The Growth x Inflation 2x2 is retired, and with
+// it every block on this tab that took `regime.label` as an input:
+//
+//   1. the verdict header   (label + playbook summary + a `confidence`
+//                            that was a hardcoded constant per branch)
+//   2. the 2x2 quadrant SVG
+//   3. Book fit             (bookRegimeFit(spine, label) -- sector tilt
+//                            against what the LABEL was said to reward)
+//   4. the regime read      (regimeRead(label, fit))
+//
+// Removing only the SVG would have left three blocks still asserting a
+// single regime label, which the acceptance criterion forbids. The rule
+// applied is: if a block takes `regime.label` as an input, it goes.
+//
+// The classification came from /api/macro's classifyRegime(): two series
+// (UNRATE, CPI), four hardcoded branches, and a confidence literal per
+// branch. It is superseded by factor_axes / factor_axis_scores /
+// book_factor_betas, which are derived rather than authored and which
+// report significance instead of asserting a label.
+//
+// What remains is what the data supports: the macro indicators that
+// locate the cycle, and the A2 axis panel with the book's MEASURED
+// exposure to each axis. Nothing on this tab names a regime.
 // ============================================================
 
 import React from 'react';
-import { regimePlaybook, macroIndicators, bookRegimeFit, regimeRead, regimeQuadrant } from './nexusRegimeCompute.js';
+import { macroIndicators } from './nexusRegimeCompute.js';
 import NexusAxesPanel from './NexusAxes.js';
 
 const { useState, useEffect } = React;
@@ -30,39 +47,6 @@ function useMacro() {
     return s;
 }
 
-// ── Signature: the growth × inflation 2×2 ─────────────────────
-function RegimeQuad({ regime }) {
-    const X0 = 46, X1 = 420, Y0 = 16, Y1 = 250;
-    const cx = (X0 + X1) / 2, cy = (Y0 + Y1) / 2;
-    const q = regimeQuadrant(regime.label);
-    const dx = q.inflationUp ? (cx + X1) / 2 : (X0 + cx) / 2;
-    const dy = q.growthUp ? (Y0 + cy) / 2 : (cy + Y1) / 2;
-    const colour = regime.color || '#3ad6e0';
-    const QUAD = [
-        ['Goldilocks', (X0 + cx) / 2, (Y0 + cy) / 2, 'rgba(70,196,106,.06)'],
-        ['Reflation', (cx + X1) / 2, (Y0 + cy) / 2, 'rgba(246,176,66,.07)'],
-        ['Deflation', (X0 + cx) / 2, (cy + Y1) / 2, 'rgba(99,102,241,.07)'],
-        ['Stagflation', (cx + X1) / 2, (cy + Y1) / 2, 'rgba(240,88,79,.06)'],
-    ];
-    const kids = [];
-    kids.push(e('rect', { key: 'tl', x: X0, y: Y0, width: cx - X0, height: cy - Y0, fill: QUAD[0][3] }));
-    kids.push(e('rect', { key: 'tr', x: cx, y: Y0, width: X1 - cx, height: cy - Y0, fill: QUAD[1][3] }));
-    kids.push(e('rect', { key: 'bl', x: X0, y: cy, width: cx - X0, height: Y1 - cy, fill: QUAD[2][3] }));
-    kids.push(e('rect', { key: 'br', x: cx, y: cy, width: X1 - cx, height: Y1 - cy, fill: QUAD[3][3] }));
-    kids.push(e('line', { key: 'h', x1: X0, y1: cy, x2: X1, y2: cy, stroke: 'rgba(255,255,255,.13)', strokeWidth: 1 }));
-    kids.push(e('line', { key: 'v', x1: cx, y1: Y0, x2: cx, y2: Y1, stroke: 'rgba(255,255,255,.13)', strokeWidth: 1 }));
-    QUAD.forEach((qd, i) => kids.push(e('text', {
-        key: 'q' + i, x: qd[1], y: qd[2], textAnchor: 'middle', fontSize: 12,
-        fill: qd[0] === regime.label ? colour : 'var(--text3)',
-        style: { fontFamily: 'var(--fb)', fontWeight: qd[0] === regime.label ? 700 : 400 },
-    }, qd[0])));
-    kids.push(e('text', { key: 'ax', x: (X0 + X1) / 2, y: Y1 + 26, textAnchor: 'middle', fontSize: 11, fill: 'var(--text2)' }, 'Inflation   low → high'));
-    kids.push(e('text', { key: 'ay', x: X0 - 24, y: (Y0 + Y1) / 2, textAnchor: 'middle', fontSize: 11, fill: 'var(--text2)', transform: 'rotate(-90 ' + (X0 - 24) + ' ' + ((Y0 + Y1) / 2) + ')' }, 'Growth   ↓ → ↑'));
-    kids.push(e('circle', { key: 'glow', cx: dx, cy: dy, r: 17, fill: colour, fillOpacity: 0.18 }));
-    kids.push(e('circle', { key: 'dot', cx: dx, cy: dy, r: 7, fill: colour, stroke: '#0a0d12', strokeWidth: 1.5 }));
-    return e('svg', { viewBox: '0 0 440 280', width: '100%', role: 'img', 'aria-label': 'Regime quadrant: growth versus inflation, current regime ' + regime.label }, kids);
-}
-
 function Stat(r) {
     return e('div', { className: 'nr-stat', key: r.label },
         e('div', { className: 'nr-stat-l' }, r.label),
@@ -71,82 +55,39 @@ function Stat(r) {
             r.delta ? e('span', { className: 'nr-stat-d tone-' + r.deltaTone }, r.delta) : null));
 }
 
-export function NexusRegimePanel({ model }) {
+// `model` is still accepted because NexusFlagship passes it; the only block
+// that read it was Book fit, which was keyed on the retired label.
+export function NexusRegimePanel() {
     const { macro, loading } = useMacro();
-    if (loading) return e('div', { className: 'nf-card nb-loading' }, e('span', { className: 'nb-spin' }, '◴'), ' Loading regime…');
-    if (!macro || !macro.regime) return e('div', { className: 'nf-card' }, e('div', { className: 'nb-empty' }, 'Macro feed unavailable.'));
 
-    const regime = macro.regime;
-    const pb = regimePlaybook(regime.label);
-    const indicators = macroIndicators(macro);
-    const fit = bookRegimeFit(model.spine, regime.label);
-    const read = regimeRead(regime.label, fit);
-    const colour = regime.color || '#3ad6e0';
-    const conf = regime.confidence != null ? Math.round(regime.confidence * 100) + '%' : '—';
-    const fitPos = Math.max(0, Math.min(100, (fit.score + 1) * 50)); // -1..1 → 0..100
-    const readTone = read.verdict === 'aligned' ? 'up' : read.verdict === 'misaligned' ? 'down' : 'warn';
+    if (loading) return e('div', { className: 'nf-card nb-loading' }, e('span', { className: 'nb-spin' }, '◴'), ' Loading regime…');
+
+    // The axis panel self-fetches from the database and does not depend on
+    // /api/macro, so it renders even when the macro feed is down. A dead
+    // indicator feed must not take the measured exposures down with it.
+    const indicators = macro ? macroIndicators(macro) : null;
 
     return e('div', null,
-        // 1. VERDICT + QUADRANT
+        // 1. MACRO INDICATORS — what locates the cycle. No label asserted.
         e('div', { className: 'nf-card nf-fade' },
             e('div', { className: 'nf-card-h' },
-                e('div', null, e('h3', null, 'Regime'),
-                    e('div', { className: 'nf-sub', style: { marginTop: 4 } }, 'where the cycle sits, and whether the book is positioned for it')),
-                e('span', { className: 'nr-conf' }, 'confidence ' + conf)),
-            e('div', { className: 'nr-verdict' },
-                e('div', { className: 'nr-vleft' },
-                    e('div', { className: 'nr-label', style: { color: colour } }, regime.label),
-                    e('div', { className: 'nr-summary' }, pb.summary),
-                    e('div', { className: 'nr-tags' },
-                        e('span', { className: 'nr-tag' }, 'duration: ' + pb.duration),
-                        e('span', { className: 'nr-tag' }, 'risk-' + pb.risk),
-                        e('span', { className: 'nr-tag' }, 'CPI ' + (regime.cpiYoY != null ? regime.cpiYoY.toFixed(1) + '%' : '—')))),
-                e('div', { className: 'nr-vright' }, e(RegimeQuad, { regime })))),
+                e('div', null, e('h3', null, 'Macro dashboard'),
+                    e('div', { className: 'nf-sub', style: { marginTop: 4 } },
+                        'the indicators themselves — this tab no longer classifies them into a regime'))),
+            indicators
+                ? e('div', { className: 'nr-dash' },
+                    GROUPS.map(g => {
+                        const rows = indicators.filter(r => r.group === g);
+                        if (!rows.length) return null;
+                        return e('div', { className: 'nr-group', key: g },
+                            e('div', { className: 'nr-group-h' }, g),
+                            rows.map(Stat));
+                    }))
+                : e('div', { className: 'nb-empty' },
+                    'Macro feed unavailable. This is a transport failure, not a reading about the market.')),
 
-        // 2. MACRO DASHBOARD
-        e('div', { className: 'nf-card nf-fade' },
-            e('div', { className: 'nf-card-h' }, e('h3', null, 'Macro dashboard'),
-                e('span', { className: 'nf-sub' }, 'the indicators that locate the regime')),
-            e('div', { className: 'nr-dash' },
-                GROUPS.map(g => {
-                    const rows = indicators.filter(r => r.group === g);
-                    if (!rows.length) return null;
-                    return e('div', { className: 'nr-group', key: g },
-                        e('div', { className: 'nr-group-h' }, g),
-                        rows.map(Stat));
-                }))),
-
-        // 3. BOOK FIT
-        e('div', { className: 'nf-card nf-fade' },
-            e('div', { className: 'nf-card-h' }, e('h3', null, 'Book fit'),
-                e('span', { className: 'nf-sub' }, 'your sector tilt vs what ' + regime.label + ' rewards')),
-            e('div', { className: 'nr-fitbar' },
-                e('div', { className: 'nr-fitbar-track' },
-                    e('i', { className: 'nr-fitbar-mid' }),
-                    e('i', { className: 'nr-fitbar-dot', style: { left: fitPos + '%', background: colour } })),
-                e('div', { className: 'nr-fitbar-ends' }, e('span', null, 'offside'), e('span', null, 'aligned'))),
-            e('div', { className: 'nr-fitrow' },
-                e('div', { className: 'nr-fitcol' },
-                    e('div', { className: 'nr-fitcol-h tone-up' }, 'In the tailwind · ' + fit.alignedWeight + '%'),
-                    e('div', { className: 'nr-chips' }, fit.aligned.length
-                        ? fit.aligned.map(a => e('span', { key: a.theme, className: 'nr-chip in' }, a.theme + ' ' + a.sharePct + '%'))
-                        : e('span', { className: 'nr-none' }, 'none'))),
-                e('div', { className: 'nr-fitcol' },
-                    e('div', { className: 'nr-fitcol-h tone-down' }, 'Into the headwind · ' + fit.misalignedWeight + '%'),
-                    e('div', { className: 'nr-chips' }, fit.misaligned.length
-                        ? fit.misaligned.map(a => e('span', { key: a.theme, className: 'nr-chip out' }, a.theme + ' ' + a.sharePct + '%'))
-                        : e('span', { className: 'nr-none' }, 'none'))))),
-
-        // 3b. INTERMARKET AXES (A2) — measured exposure, no regime label.
-        //     Kept separate from the macro classification above on purpose:
-        //     that names a regime, this only reports axis state and the
-        //     book's measured exposure to it.
-        e(NexusAxesPanel, { key: 'axes' }),
-
-        // 4. REGIME READ
-        e('div', { className: 'nr-read' },
-            e('div', { className: 'nr-read-t' }, e('span', { className: 'nr-vd tone-' + readTone }), 'The regime read'),
-            e('div', { className: 'nr-read-b' }, read.text)));
+        // 2. INTERMARKET AXES (A2) — measured exposure, no regime label.
+        e(NexusAxesPanel, { key: 'axes' }));
 }
 
 export default NexusRegimePanel;

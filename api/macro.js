@@ -152,6 +152,25 @@ async function writeCache(cacheKey, payload, ttlMs) {
 }
 
 // ---- regime classification ----
+//
+// RETIRED FROM THE REGIME TAB AND FROM PCM, 2026-09-10 (Phase D).
+//
+// What this computes is a Growth x Inflation quadrant from two series
+// (UNRATE, CPI) through four hardcoded branches, with a `confidence` that is
+// a literal constant per branch rather than a measurement. It is superseded
+// by factor_axes / factor_axis_scores / book_factor_betas, which are derived
+// from the price series and report significance.
+//
+// It is still COMPUTED and still served, because these consumers have not yet
+// been migrated and would break without it. They are Phase D3 items, reported
+// rather than translated:
+//
+//   src/pages/nexus/NexusTheme.js        rotation banner + rotationCall
+//   src/pages/nexus/nexusLiveCompute.js  flagship windshield tile
+//   src/pages/macro-regime.js            a second full quadrant panel,
+//                                        rendered on the Macro and Markets tabs
+//
+// Do not add a new consumer of `regime.label`. New work reads the axes.
 
 function classifyRegime(data) {
     var regime = { label: 'Assessing', quadrant: 'unknown', color: '#6366f1', confidence: 0.5 };

@@ -1,7 +1,7 @@
 // Regime transforms — pure, runs under plain node.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { regimePlaybook, macroIndicators, bookRegimeFit, regimeRead, regimeQuadrant } from './nexusRegimeCompute.js';
+import { regimePlaybook, macroIndicators } from './nexusRegimeCompute.js';
 
 const macro = {
     regime: { label: 'Reflation', cpiYoY: 4.27 },
@@ -50,33 +50,10 @@ const spine = [
     { label: 'Healthcare', sharePct: 10 },    // neutral
 ];
 
-test('bookRegimeFit scores the spine against the playbook', () => {
-    const fit = bookRegimeFit(spine, 'Reflation');
-    // rewards 8+7+8=23, punishes 37 → net (23-37)/70 = -0.2
-    assert.equal(fit.alignedWeight, 23);
-    assert.equal(fit.misalignedWeight, 37);
-    assert.ok(fit.score < 0);
-    assert.equal(fit.misaligned[0].theme, 'Technology');
-});
-
-test('regimeRead calls misalignment and prescribes a tilt', () => {
-    const fit = bookRegimeFit(spine, 'Reflation');
-    const r = regimeRead('Reflation', fit);
-    assert.equal(r.verdict, 'misaligned');
-    assert.match(r.text, /offside the Reflation regime/);
-    assert.match(r.text, /Tilt toward/);
-});
-
-test('regimeRead flags alignment when the book leans into the rewards', () => {
-    const aligned = bookRegimeFit([{ label: 'Energy', sharePct: 30 }, { label: 'Financials', sharePct: 20 }, { label: 'Technology', sharePct: 5 }], 'Reflation');
-    const r = regimeRead('Reflation', aligned);
-    assert.equal(r.verdict, 'aligned');
-    assert.match(r.text, /leans into/);
-});
-
-test('regimeQuadrant places each regime in the right corner', () => {
-    assert.deepEqual(regimeQuadrant('Reflation'), { growthUp: true, inflationUp: true });
-    assert.deepEqual(regimeQuadrant('Goldilocks'), { growthUp: true, inflationUp: false });
-    assert.deepEqual(regimeQuadrant('Stagflation'), { growthUp: false, inflationUp: true });
-    assert.deepEqual(regimeQuadrant('Deflation'), { growthUp: false, inflationUp: false });
-});
+// The bookRegimeFit / regimeRead / regimeQuadrant tests were removed with
+// their subjects in Phase D (2026-09-10). They asserted the behaviour of the
+// retired Growth x Inflation quadrant; keeping them would assert that a
+// deleted classification still works.
+//
+// regimePlaybook is still covered above because NexusTheme reads it -- a
+// Phase D3 consumer that is reported rather than translated.

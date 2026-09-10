@@ -89,52 +89,19 @@ export function macroIndicators(macro) {
 
 // Book fit — spine (sector shares) scored against the regime playbook.
 // score ∈ [-1, 1]: +ve = tilted toward what the regime rewards.
-export function bookRegimeFit(spine, label) {
-    const pb = regimePlaybook(label);
-    const rew = new Set(pb.rewards), pun = new Set(pb.punishes);
-    let wsum = 0, num = 0;
-    const aligned = [], misaligned = [];
-    for (const s of spine || []) {
-        const w = Number(s.sharePct) || 0;
-        if (w <= 0) continue;
-        wsum += w;
-        // The playbooks are written in sector names, so this reads the
-        // sector spine. `label` is the group name; the aligned/misaligned
-        // entries keep the `theme` key their consumers already render.
-        if (rew.has(s.label)) { num += w; aligned.push({ theme: s.label, sharePct: +w.toFixed(1) }); }
-        else if (pun.has(s.label)) { num -= w; misaligned.push({ theme: s.label, sharePct: +w.toFixed(1) }); }
-    }
-    aligned.sort((a, b) => b.sharePct - a.sharePct);
-    misaligned.sort((a, b) => b.sharePct - a.sharePct);
-    return {
-        score: wsum ? +(num / wsum).toFixed(2) : 0,
-        aligned, misaligned,
-        alignedWeight: +aligned.reduce((a, x) => a + x.sharePct, 0).toFixed(1),
-        misalignedWeight: +misaligned.reduce((a, x) => a + x.sharePct, 0).toFixed(1),
-    };
-}
-
-// The regime read — alignment verdict + a concrete tilt.
-export function regimeRead(label, fit) {
-    const pb = regimePlaybook(label);
-    if (!PLAYBOOKS[label]) return { verdict: 'unknown', text: 'Regime is still assessing — hold positioning decisions until growth and inflation resolve.' };
-    const verdict = fit.score > 0.15 ? 'aligned' : fit.score < -0.15 ? 'misaligned' : 'neutral';
-    const names = arr => arr.slice(0, 3).map(x => x.theme).join(', ');
-    let text;
-    if (verdict === 'aligned') {
-        text = 'Your book leans into the ' + label + ' regime — ' + fit.alignedWeight + '% sits in what it rewards (' + names(fit.aligned) + '). Stay the course; press the leaders.';
-    } else if (verdict === 'misaligned') {
-        text = 'Your book is offside the ' + label + ' regime — ' + fit.misalignedWeight + '% sits in what it punishes (' + names(fit.misaligned) + '). Tilt toward ' + pb.rewards.slice(0, 3).join(', ') + '.';
-    } else {
-        text = 'Your book is roughly regime-neutral. ' + label + ' rewards ' + pb.rewards.slice(0, 2).join(', ') + ' and punishes ' + pb.punishes.slice(0, 2).join(', ') + ' — lean toward the formers for the tailwind.';
-    }
-    return { verdict, text };
-}
-
-// Quadrant geometry for the 2×2 map: growth (Y) × inflation (X).
-export function regimeQuadrant(label) {
-    return {
-        growthUp: label === 'Goldilocks' || label === 'Reflation',
-        inflationUp: label === 'Reflation' || label === 'Stagflation',
-    };
-}
+// ── Retired 2026-09-10 (Phase D) ─────────────────────────────
+//
+// `bookRegimeFit`, `regimeRead` and `regimeQuadrant` were removed with the
+// Growth x Inflation quadrant. All three took the regime LABEL as an input,
+// and the label came from /api/macro's classifyRegime(): two series, four
+// hardcoded branches, a per-branch confidence literal.
+//
+// They are not repointed at factor_axes. `bookRegimeFit` scored the book's
+// sector tilt against a table of what each label was said to reward -- an
+// authored claim, not a measurement -- and the axis layer answers a different
+// question: what the book's exposure to each axis MEASURABLY is, with
+// significance reported. Substituting one for the other would keep the shape
+// of the old answer while changing what it means.
+//
+// `regimePlaybook` and `rotationBias` survive ONLY because NexusTheme still
+// reads them. That is a Phase D3 consumer and is reported, not translated.

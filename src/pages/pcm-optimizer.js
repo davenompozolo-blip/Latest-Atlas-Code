@@ -464,42 +464,49 @@ export function perSymbolFactors(hist) {
     return { mom: mom, growth: ret3m, quality: quality, lowvol: -vol, value: -ret12m };
 }
 
-// ── Regime → sector alignment table ──────────────────────────────────────────
-// Scores reflect which sectors are structurally favoured in each macro regime.
-var REGIME_SECTOR_TILTS = {
-    'Goldilocks': {
-        Technology: 0.9, 'Consumer Discretionary': 0.7, Communications: 0.4,
-        Healthcare: 0.3, Financials: 0.2, Industrials: 0.2, International: 0.1,
-        'Real Estate': 0.0, Materials: -0.1, 'Consumer Staples': -0.1,
-        Energy: -0.2, Utilities: -0.3, 'Fixed Income': -0.5,
-    },
-    'Reflation': {
-        Energy: 1.0, Materials: 0.8, Financials: 0.6, Industrials: 0.5,
-        International: 0.3, 'Consumer Discretionary': 0.2, Technology: 0.1,
-        'Real Estate': 0.0, Healthcare: -0.1, 'Consumer Staples': -0.2,
-        Utilities: -0.3, 'Fixed Income': -0.6,
-    },
-    'Stagflation': {
-        Energy: 0.8, 'Consumer Staples': 0.7, Materials: 0.6, Healthcare: 0.5,
-        Utilities: 0.4, 'Real Estate': 0.1, International: 0.0,
-        'Fixed Income': 0.2, Financials: -0.2, Technology: -0.6,
-        'Consumer Discretionary': -0.7, Communications: -0.3,
-    },
-    'Deflation': {
-        'Fixed Income': 1.0, Healthcare: 0.6, 'Consumer Staples': 0.5,
-        Utilities: 0.4, Technology: 0.2, 'Real Estate': 0.0, International: -0.1,
-        Financials: -0.3, 'Consumer Discretionary': -0.4,
-        Materials: -0.5, Energy: -0.6,
-    },
+// ── Macro regime conditioning: RETIRED 2026-09-10 ───────────────────────────
+//
+// PCM used to condition allocations on the Growth x Inflation quadrant label
+// from /api/macro: a switch on 'Goldilocks' / 'Reflation' / 'Stagflation' /
+// 'Deflation' set a five-factor tilt vector, and a per-regime sector table
+// supplied 45% of every position's regime score.
+//
+// That quadrant is retired (Phase D), superseded by factor_axes /
+// factor_axis_scores / book_factor_betas. It is NOT repointed at the axes,
+// and the reason is specific rather than general: `cyclical` is the only
+// plausible bridge from an intermarket axis to a style tilt, and the book
+// carries NO MEASURABLE EXPOSURE to it (t = 0.95, not significant). Any
+// mapping would condition a live allocation on an exposure the data says is
+// not there -- a fabricated input to a real decision, which is worse than a
+// fabricated input to a display.
+//
+// Restoring this needs a style-factor exposure model that does not exist. It
+// is a B-track item, not a Phase D one. Do not attempt a partial restoration
+// off the existing axes.
+//
+// Exported because the PCM surface must SHOW that conditioning is off and
+// why. A neutral tilt vector nobody knows is a default reads like a
+// considered prior -- the same failure class as an insignificant beta
+// rendering as a number.
+export var REGIME_CONDITIONING = {
+    active:       false,
+    retiredOn:    '2026-09-10',
+    supersededBy: 'factor_axes / factor_axis_scores / book_factor_betas',
+    reason:       'The Growth x Inflation quadrant this read was retired in Phase D. '
+                + 'No honest mapping exists from the three intermarket axes to a '
+                + 'Growth/Quality/Momentum/Value/LowVol tilt: the only plausible bridge '
+                + '(cyclical) carries no measurable book exposure (t = 0.95).',
+    unblocksWhen: 'A style-factor exposure model exists -- the book regressed against '
+                + 'Growth/Quality/Momentum/Value/LowVol with per-factor significance '
+                + 'reported on the same terms as book_factor_betas.',
 };
 
-// Classify every portfolio position against the current regime.
-// Returns [{ symbol, sector, regimeScore, factorScore, sectorScore, regimeClass, isOption, factors }]
-// regimeClass: 'favorable' (>0.25) | 'neutral' (-0.25..0.25) | 'counter' (<-0.25)
 export function computeRegimeScores(positions, histBySymbol, macroSignals) {
     var tilts     = macroToFactorTilts(macroSignals);
-    var regime    = macroSignals ? macroSignals.regime : null;
-    var sectorMap = (regime && REGIME_SECTOR_TILTS[regime]) || {};
+    // The per-regime sector thesis was 45% of `combined` and was keyed entirely
+    // on the retired quadrant label. It contributes nothing now, and is zero
+    // rather than renormalised: rescaling the remaining 55% back to full weight
+    // would present a narrower measurement at its old confidence.
 
     return positions.map(function(pos) {
         var f = perSymbolFactors(histBySymbol[pos.symbol]);
@@ -513,8 +520,7 @@ export function computeRegimeScores(positions, histBySymbol, macroSignals) {
             factorScore = Math.max(-1, Math.min(1, raw / 5));
         }
         var sector      = pos.sector || '';
-        var sectorScore = sectorMap[sector] != null ? sectorMap[sector] : 0;
-        // 55% quantitative factor behaviour + 45% qualitative macro sector thesis
+        var sectorScore = 0;   // retired with the quadrant; see REGIME_CONDITIONING
         var combined    = Math.max(-1, Math.min(1, factorScore * 0.55 + sectorScore * 0.45));
         var regimeClass = combined > 0.25 ? 'favorable' : combined < -0.25 ? 'counter' : 'neutral';
         return {
@@ -524,31 +530,25 @@ export function computeRegimeScores(positions, histBySymbol, macroSignals) {
             factorScore: factorScore,
             sectorScore: sectorScore,
             regimeClass: regimeClass,
+            // What the score actually rests on now. Never 'regime'.
+            basis:       tilts ? 'credit_curve_overlay_only' : 'none',
             isOption:    !!(pos.asset_class && pos.asset_class.includes('option')),
             factors:     f,
         };
     });
 }
 
-// Map macro signals → factor tilt vector (values −1 to +1)
+// Map macro signals → factor tilt vector (values −1 to +1).
+//
+// The regime-label switch that used to open this function is retired; see
+// REGIME_CONDITIONING above. What remains are the two OBSERVED overlays --
+// curve inversion and high-yield spreads. Those are market data, not a
+// classification, so they were never part of the quadrant and are kept.
+//
+// With neither overlay firing this correctly returns all zeroes: no view.
 function macroToFactorTilts(signals) {
     if (!signals) return null;
     var t = { mom: 0, quality: 0, lowvol: 0, value: 0, growth: 0 };
-
-    switch (signals.regime) {
-        case 'Goldilocks':   // Growth↑ Inflation↓ — classic risk-on
-            t.mom = 0.8; t.growth = 0.7; t.quality = 0.2; t.lowvol = -0.5; t.value = -0.2;
-            break;
-        case 'Reflation':    // Growth↑ Inflation↑ — pro-cyclical, value
-            t.mom = 0.5; t.value = 0.8; t.growth = 0.3; t.quality = 0.0; t.lowvol = -0.4;
-            break;
-        case 'Stagflation':  // Growth↓ Inflation↑ — defensive, quality
-            t.quality = 0.9; t.lowvol = 0.7; t.value = 0.5; t.mom = -0.5; t.growth = -0.7;
-            break;
-        case 'Deflation':    // Growth↓ Inflation↓ — risk-off, hide in quality
-            t.quality = 0.8; t.lowvol = 0.9; t.value = 0.2; t.mom = -0.6; t.growth = -0.8;
-            break;
-    }
 
     // Yield-curve inversion overlay: +defensive
     if (signals.spread2s10s != null && signals.spread2s10s < 0) {
@@ -575,12 +575,18 @@ export async function fetchMacroSignals() {
         if (data.yields && data.yields.curve) spread2s10s = data.yields.curve.spread2s10s;
         if (data.credit && data.credit.hySpreads && data.credit.hySpreads.length)
             hySpreads = data.credit.hySpreads[data.credit.hySpreads.length - 1].value;
+        // An observed CPI print that merely lives under `regime` in the payload.
+        // Data, not a classification -- kept.
         if (data.regime) cpiYoY = data.regime.cpiYoY;
         if (data.growth && data.growth.unrate && data.growth.unrate.length)
             unrate = data.growth.unrate[data.growth.unrate.length - 1].value;
         return {
-            regime:      data.regime ? data.regime.label : null,
-            regimeColor: data.regime ? data.regime.color : '#6b7280',
+            // The quadrant label and its colour are deliberately NOT read from
+            // the payload. /api/macro still computes them; PCM no longer
+            // consumes them. See REGIME_CONDITIONING.
+            regime:      null,
+            regimeColor: null,
+            regimeConditioning: REGIME_CONDITIONING,
             spread2s10s: spread2s10s,
             hySpreads:   hySpreads,
             cpiYoY:      cpiYoY,
@@ -765,8 +771,11 @@ export function runAtlasAdaptive(inputs, positions, histBySymbol, ips, macroSign
             lookbackDays:      inputs.means._lookbackDays || null,
         },
         macroContext: {
-            regime:      macroSignals ? macroSignals.regime      : null,
-            regimeColor: macroSignals ? macroSignals.regimeColor : '#6b7280',
+            // Retired with the quadrant. Held at null rather than removed so a
+            // consumer reading `regime` gets nothing instead of a stale label.
+            regime:      null,
+            regimeColor: null,
+            regimeConditioning: REGIME_CONDITIONING,
             spread2s10s: macroSignals ? macroSignals.spread2s10s : null,
             hySpreads:   macroSignals ? macroSignals.hySpreads   : null,
             cpiYoY:      macroSignals ? macroSignals.cpiYoY      : null,
