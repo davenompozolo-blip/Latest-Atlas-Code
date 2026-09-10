@@ -175,6 +175,27 @@ details mode=window  period=6M   valid_rows=127
 Alpaca's live response, re-detected exactly the dates the SQL rule found in stored
 data. 2026-01-15 is outside the 6M window, correctly absent.
 
+### The first scheduled run, unattended
+
+Cron job 9 fired on **2026-09-10 at 01:00:00 UTC** and `sync_log` #46171 recorded it
+— the first row that job has ever written in its life. `partial`, 550 ms,
+`mode=window period=6M valid_rows=127`, `stale_snapshots_flagged=2`
+(2026-05-04, 2026-07-29). Identical in shape to the hand-fired run above, which is
+the point: the scheduled path and the manual path agree.
+
+`stale_snapshots_flagged=2` against three known stale rows is the 6M window, not a
+lost flag. All three are still marked in the table (2026-01-15, 2026-05-04,
+2026-07-29); 2026-01-15 simply sits outside what the cron asks for. **Read the
+count against `period`, not against the table.**
+
+The curve has no session gaps: over 2025-12-24 → 2026-09-08 it carries **176
+distinct ET dates against 176 SPY sessions**, with no session missing from the
+curve and no curve day lacking a SPY bar. That matters because the 01:00 UTC run
+lands before Alpaca publishes the session that just closed — the newest point after
+this run is the 2026-09-08 session, not 2026-09-09. The nightly 6-month re-fetch
+is what closes that one-day lag, and the perfect 176/176 correspondence is the
+evidence that it always has.
+
 ## Gate
 
 **Met.** No row in the series is a settled level the provider did not settle: the

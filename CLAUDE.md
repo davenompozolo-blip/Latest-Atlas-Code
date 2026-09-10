@@ -1639,6 +1639,14 @@ than `200 {inserted: 0}` -- the third instance of that pattern in this file.
 implementation of the same writer with **no callers**, no stale detection and no
 `sync_log`. Delete it or bring it into line before anything starts calling it.
 
+**First scheduled run logged 2026-09-10 01:00 UTC** (`sync_log` #46171, `partial`,
+550 ms, 2 stale flagged). Two, not the three known stale rows, because the cron
+sends `period='6M'` and 2026-01-15 is outside it -- **read that count against
+`period`, not against the table.** The 01:00 run also lands before Alpaca publishes
+the session that just closed, so the curve trails by a day; the nightly 6-month
+re-fetch closes it, and the curve carries 176 ET dates against 176 SPY sessions
+with no gap either way.
+
 ### Reproduce before you re-estimate (2026-09-09)
 
 C3 re-ran B0 on the cleaned curve. The prior estimate was reproduced from scratch
