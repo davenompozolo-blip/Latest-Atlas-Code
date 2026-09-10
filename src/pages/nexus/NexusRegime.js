@@ -11,6 +11,7 @@
 
 import React from 'react';
 import { regimePlaybook, macroIndicators, bookRegimeFit, regimeRead, regimeQuadrant } from './nexusRegimeCompute.js';
+import NexusAxesPanel from './NexusAxes.js';
 
 const { useState, useEffect } = React;
 const e = React.createElement;
@@ -135,6 +136,12 @@ export function NexusRegimePanel({ model }) {
                     e('div', { className: 'nr-chips' }, fit.misaligned.length
                         ? fit.misaligned.map(a => e('span', { key: a.theme, className: 'nr-chip out' }, a.theme + ' ' + a.sharePct + '%'))
                         : e('span', { className: 'nr-none' }, 'none'))))),
+
+        // 3b. INTERMARKET AXES (A2) — measured exposure, no regime label.
+        //     Kept separate from the macro classification above on purpose:
+        //     that names a regime, this only reports axis state and the
+        //     book's measured exposure to it.
+        e(NexusAxesPanel, { key: 'axes' }),
 
         // 4. REGIME READ
         e('div', { className: 'nr-read' },
