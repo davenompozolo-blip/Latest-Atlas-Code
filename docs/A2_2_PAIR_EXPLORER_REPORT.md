@@ -37,6 +37,34 @@ showing only the winner would assert more than 1% of margin can carry. **This
 is the one item still open for the owner:** confirm `dollar`, or override to
 `cyclical` in `factor_axis_loadings`. Do not resolve it in the component.
 
+## The chart is lightweight-charts, not hand-rolled SVG (2026-09-11)
+
+The first version drew four `<path>` elements into a bare `<svg>`: no time
+axis, no value axis, and the series plotted as an index rebased to 100 with a
+dashed rule at 100. A reader could see that lines diverged and could not say
+**when** or **by how much**.
+
+It now uses **lightweight-charts v5** — TradingView's library, already a
+dependency and already what `NexusBoard` and the perf panels draw with — so
+the panel carries a real date axis, a real percent axis, the house grid and
+crosshair, and a last-value badge per line.
+
+**The series are percent from the first session, not an index.** `buildSeries`
+rebases to 100, so `rebased − 100` *is* that percent — (v/v₀)·100 − 100 =
+(v/v₀ − 1)·100 — with no second normalisation and no change to the compute
+module or its tests. It also puts the baseline on **0**, which is the only
+value a percent axis can honestly anchor to: a dashed line at 100 reads as a
+level, and a reader cannot tell a level from a move.
+
+The last-value badges are a free cross-check — they reproduce the metric tiles
+exactly (XLI/XLU: ratio +0.1%, XLI −4.9%, XLU −5.0%, SPY +1.3%), because both
+are computed from the same series.
+
+`baseOpts` and the `useChart` hook moved out of `NexusBoard.js` into
+`src/pages/nexus/nexusChart.js` when this panel became their second reader. A
+second copy is how two charts in the same module drift apart on grid colour,
+font and scale margins until nobody can say which one is the house style.
+
 ## Acceptance
 
 | Criterion | Result |
@@ -69,7 +97,8 @@ what reached the screen.
 
 ## Provenance of the screenshots
 
-`docs/a22-explorer-{xli-xlu,rsp-spy,cper-gld}.png`, 2026-09-10.
+`docs/a22-explorer-{xli-xlu,rsp-spy,cper-gld}.png`, re-rendered 2026-09-11
+after the chart change.
 
 The browser in this container cannot reach Supabase (CLAUDE.md). The
 screenshots are produced by replacing **only the transport**: `window.fetch` is

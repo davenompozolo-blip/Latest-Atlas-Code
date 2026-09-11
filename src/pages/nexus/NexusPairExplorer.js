@@ -13,12 +13,14 @@
 // ============================================================
 
 import React from 'react';
+import * as LC from 'lightweight-charts';
 import { supabase } from '../../lib/supabase.js';
+import { CHART_COL, useLwChart } from './nexusChart.js';
 import {
     groupPairsByAxis, alignedWindow, buildSeries, metricTiles, pairRead,
 } from './nexusPairsCompute.js';
 
-const { useState, useEffect, useMemo } = React;
+const { useState, useEffect, useMemo, useRef } = React;
 const e = React.createElement;
 
 const WINDOW_SESSIONS = 60;
@@ -26,12 +28,16 @@ const BENCHMARK = 'SPY';
 // Enough calendar to cover 60 sessions with slack for holidays.
 const LOOKBACK_DAYS = 130;
 
-// SPY is not decoration -- it is what lets the read establish whether either
-// leg is actually beating the market, so it needs to be legible. A CSS
-// variable resolved almost to the background here; this is an explicit
-// neutral, heavy enough to follow and cool enough not to compete with the
-// three data lines.
-const COLOR = { num: '#3ad6e0', den: '#f6b042', ratio: '#46c46a', bench: '#8b93a1' };
+// The three data lines take the house chart palette so this panel and the
+// Board read as one system. SPY is the exception and stays an explicit
+// neutral: it is not decoration -- it is what lets the read establish
+// whether either leg is actually beating the market, so it has to be
+// legible. A CSS variable resolved almost to the background here, and the
+// house `dim` is darker still; this grey is heavy enough to follow and cool
+// enough not to compete with the three data lines.
+const COLOR = { num: CHART_COL.cyan, den: CHART_COL.amber, ratio: CHART_COL.green, bench: '#8b93a1' };
+
+const CHART_H = 250;
 
 // PostgREST caps at 1,000 rows whatever `limit` says. 60 sessions across 17
 // symbols is ~1,020 — over the cap by a hair, which is exactly how this
@@ -97,36 +103,64 @@ function usePairData() {
 }
 
 // ── Chart ────────────────────────────────────────────────────
-function Chart({ series, benchIsLeg }) {
-    if (!series || !series.dates.length) return null;
-    const W = 620, H = 190, PAD = 10;
-    const lines = [
-        // In every `X/SPY` pair the benchmark IS a leg, and drawing it again
-        // as a reference puts two identical lines on the chart -- one of them
-        // hidden under the other, and both in the legend under the same name.
-        ...(benchIsLeg ? [] : [{ pts: series.benchRebased, c: COLOR.bench, w: 1.4 }]),
-        { pts: series.numRebased, c: COLOR.num, w: 1.6 },
-        { pts: series.denRebased, c: COLOR.den, w: 1.6 },
-        // The ratio is the subject; it carries the heaviest stroke.
-        { pts: series.ratioRebased, c: COLOR.ratio, w: 2.4 },
-    ];
-    const all = lines.flatMap(l => l.pts).filter(Number.isFinite).concat([100]);
-    let lo = Math.min(...all), hi = Math.max(...all);
-    const pad = (hi - lo) * 0.08 || 1;
-    lo -= pad; hi += pad;
-    const y = v => PAD + (H - 2 * PAD) * (1 - (v - lo) / (hi - lo));
-    const x = i => PAD + (W - 2 * PAD) * (series.dates.length > 1 ? i / (series.dates.length - 1) : 0);
-    const d = pts => pts.map((v, i) => (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1)).join(' ');
+// lightweight-charts (v5), the same scaffold the Board and the perf panels
+// use, so this panel carries real axes: dates along the bottom, percent up
+// the side. The hand-rolled SVG it replaces had neither, which left the
+// reader with four lines and no way to say when anything happened or how
+// far it moved.
+//
+// THE SERIES ARE PLOTTED AS PERCENT FROM THE FIRST SESSION, not as an
+// index. buildSeries rebases to 100, so `rebased - 100` IS that percent --
+// (v/v0)*100 - 100 = (v/v0 - 1)*100 -- with no second normalisation and no
+// change to the compute module. It also puts the baseline on 0, which is
+// the only value a percent axis can honestly anchor to; a dashed line at
+// 100 reads as a level, and a reader cannot tell a level from a move.
+const fmtPct = v => (v < 0 ? '−' : '+') + Math.abs(v).toFixed(1) + '%';
 
-    return e('svg', {
-        viewBox: '0 0 ' + W + ' ' + H, width: '100%', className: 'np-chart', role: 'img',
-        'aria-label': 'Both legs, their ratio and SPY, each rebased to 100 over ' + series.dates.length + ' sessions',
-    },
-        e('line', { x1: PAD, y1: y(100), x2: W - PAD, y2: y(100), stroke: 'rgba(255,255,255,.18)', strokeWidth: 1, strokeDasharray: '3 3' }),
-        lines.map((l, i) => e('path', {
-            key: i, d: d(l.pts), fill: 'none', stroke: l.c, strokeWidth: l.w,
-            strokeLinejoin: 'round', strokeLinecap: 'round',
-        })));
+function Chart({ series, benchIsLeg }) {
+    const ref = useRef(null);
+
+    useLwChart(ref, function (chart) {
+        // rebased[i] - 100 is the percent move from the window's first bar.
+        const pts = arr => series.dates
+            .map((t, i) => ({ time: t, value: (arr && arr[i] != null) ? arr[i] - 100 : null }))
+            .filter(p => Number.isFinite(p.value));
+
+        const add = (color, lineWidth, data) => {
+            const s = chart.addSeries(LC.LineSeries, {
+                color, lineWidth,
+                // Four series would otherwise draw four dashed last-value
+                // rules across the plot. The axis labels carry the same
+                // information without the clutter.
+                priceLineVisible: false,
+                priceFormat: { type: 'custom', minMove: 0.01, formatter: fmtPct },
+            });
+            s.setData(data);
+            return s;
+        };
+
+        // Benchmark first so the three data lines draw over it. In every
+        // `X/SPY` pair the benchmark IS a leg, and drawing it again as a
+        // reference puts two identical lines on the chart -- one hidden
+        // under the other, and both in the legend under the same name.
+        if (!benchIsLeg) add(COLOR.bench, 1, pts(series.benchRebased));
+        add(COLOR.num, 2, pts(series.numRebased));
+        add(COLOR.den, 2, pts(series.denRebased));
+        // The ratio is the subject; it carries the heaviest stroke.
+        const ratio = add(COLOR.ratio, 3, pts(series.ratioRebased));
+
+        ratio.createPriceLine({
+            price: 0, color: 'rgba(255,255,255,0.18)', lineWidth: 1, lineStyle: 2,
+            axisLabelVisible: false,
+        });
+    }, [series, benchIsLeg], { height: CHART_H });
+
+    if (!series || !series.dates.length) return null;
+    return e('div', {
+        className: 'np-chart', ref, role: 'img',
+        'aria-label': 'Both legs and their ratio' + (benchIsLeg ? '' : ', with SPY')
+            + ', as percent moved over ' + series.dates.length + ' sessions',
+    });
 }
 
 const sgn = (v, dp = 1) => (v == null ? '—' : (v < 0 ? '−' : '+') + Math.abs(v).toFixed(dp));
@@ -223,11 +257,11 @@ function NexusPairExplorer() {
                                 e('i', { style: { background: c } }), lab))),
                 e('div', { className: 'np-note' },
                     (benchIsLeg
-                        ? 'Legs and ratio each rebased to 100 over ' + model.series.dates.length
-                          + ' sessions, from adjusted closes. ' + BENCHMARK
-                          + ' is a leg here, so it is not drawn twice.'
-                        : 'Legs, ratio and ' + BENCHMARK + ' each rebased to 100 over '
-                          + model.series.dates.length + ' sessions, from adjusted closes.')
+                        ? 'Legs and ratio as percent moved from the first of '
+                          + model.series.dates.length + ' sessions, on adjusted closes. '
+                          + BENCHMARK + ' is a leg here, so it is not drawn twice.'
+                        : 'Legs, ratio and ' + BENCHMARK + ' as percent moved from the first of '
+                          + model.series.dates.length + ' sessions, on adjusted closes.')
                     + (model.win.truncated ? ' Window is short: only ' + model.series.dates.length
                         + ' sessions are present in all three series.' : '')),
 
