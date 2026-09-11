@@ -12,44 +12,24 @@
 
 import React from 'react';
 import * as LC from 'lightweight-charts';
+import { CHART_COL, useLwChart } from './nexusChart.js';
 import { NexusFaceToggle, useFace } from './NexusFaceToggle.js';
 import { Ghost } from './NexusGhost.js';
 
-const { useState, useEffect, useRef } = React;
+const { useState, useRef } = React;
 const e = React.createElement;
 
-// Theme hexes (lightweight-charts needs literals, not CSS vars).
-const COL = { cyan: '#22d3ee', purple: '#8b5cf6', amber: '#f5a623', green: '#22c55e', red: '#ef4444', dim: '#51647b' };
+// Theme hexes (lightweight-charts needs literals, not CSS vars). Shared with
+// the pair explorer via nexusChart.js.
+const COL = CHART_COL;
 const EVENT_COL = { FOMC: COL.amber, CPI: COL.cyan, NFP: COL.purple };
 
 const pct = (v, d = 1) => (v == null ? '—' : (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(d) + '%');
 const moveTone = v => (v > 0 ? COL.green : v < 0 ? COL.red : COL.dim);
 
-// ── Shared chart scaffold (mirrors perf-panels options) ───────
-function baseOpts(width, opts) {
-    return Object.assign({
-        width: width || 600, height: 200,
-        layout: { background: { type: 'solid', color: 'transparent' }, textColor: 'rgba(255,255,255,0.3)', fontFamily: 'JetBrains Mono', fontSize: 10 },
-        grid: { vertLines: { visible: false }, horzLines: { color: 'rgba(255,255,255,0.05)' } },
-        rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.12, bottom: 0.12 } },
-        timeScale: { borderVisible: false, fixLeftEdge: true, fixRightEdge: true },
-        crosshair: { vertLine: { color: 'rgba(255,255,255,0.15)', width: 1, style: 3 }, horzLine: { color: 'rgba(255,255,255,0.15)', width: 1, style: 3 } },
-        handleScroll: false, handleScale: false,
-    }, opts || {});
-}
-
-// Build a chart once `build(chart)` is provided; handles resize + teardown.
-function useChart(ref, build, deps) {
-    useEffect(function () {
-        if (!ref.current) return;
-        const chart = LC.createChart(ref.current, baseOpts(ref.current.clientWidth));
-        try { build(chart); } catch (e) { /* leave empty on series error */ }
-        chart.timeScale().fitContent();
-        const onResize = () => { if (ref.current) chart.applyOptions({ width: ref.current.clientWidth }); };
-        window.addEventListener('resize', onResize);
-        return function () { window.removeEventListener('resize', onResize); chart.remove(); };
-    }, deps);
-}
+// The chart scaffold (baseOpts + useChart) moved to nexusChart.js when the
+// pair explorer became its second reader. Same options, same hook.
+const useChart = useLwChart;
 
 function Card({ title, sub, right, children, span2 }) {
     return e('div', { className: 'nf-card nf-fade nb-card' + (span2 ? ' nb-span2' : '') },
