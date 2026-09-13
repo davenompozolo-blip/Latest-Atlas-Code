@@ -1,3 +1,10 @@
+-- NOTE: this file was applied live reading the cursor through a bare integer
+-- cast on the JSON extraction, and CI's unsafe-casts guard rejected it before
+-- merge. It is corrected here so
+-- a fresh apply never creates the unsafe version even briefly;
+-- 20260913150000_job28_next_offset_safe_cast.sql is what repaired the already-
+-- migrated database, and applying both in order is idempotent.
+
 -- Job 28's universe offset was a CALENDAR formula, not a cursor:
 --     'offset', ((extract(doy from current_date)::int * 720) % 7680)
 --
@@ -25,14 +32,22 @@ as $$
   -- Scoped to mode='universe': job 13 sends an explicit holdings list and its
   -- next_offset is meaningless here -- reading it would reset the rotation to
   -- the size of the book every weekday at 12:00.
+  --
+  -- safe_bigint, never a bare ::int. sync_log.details is a JSONB blob and this
+  -- function is called from cron.job.command: a bare cast on a malformed row
+  -- would not degrade the offset, it would stop job 28 firing at all. The rows
+  -- that motivate it are already in the table -- the reaped runs #46383 and
+  -- #46964 carry details with next_offset absent. safe_bigint returns NULL
+  -- instead of raising, so a bad row falls through to the next candidate and,
+  -- failing that, to 0.
   select coalesce(
-    (select (s.details->>'next_offset')::int
-              % greatest((select count(*)::int from public.assets
-                           where asset_class in ('Stock','us_equity','equity','etf')), 1)
+    (select (public.safe_bigint(s.details->>'next_offset')
+              % greatest((select count(*)::bigint from public.assets
+                           where asset_class in ('Stock','us_equity','equity','etf')), 1))::int
        from public.sync_log s
       where s.function_name = 'sync_fundamentals'
         and s.details->>'mode' = 'universe'
-        and s.details->>'next_offset' is not null
+        and public.safe_bigint(s.details->>'next_offset') is not null
       order by s.id desc
       limit 1),
     0);
