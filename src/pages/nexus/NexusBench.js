@@ -25,6 +25,7 @@ import {
     sellsFromVerdicts, buildCirculation, volTriggerRead,
 } from './nexusBenchCompute.js';
 import { trackSleeveComposition, SLEEVE_STALE_SESSIONS } from './nexusOpportunitiesCompute.js';
+import { thesisDrift, fmtScore, fmtVsSd } from './benchRegimeDrift.js';
 
 const { useState, useEffect } = React;
 const e = React.createElement;
@@ -337,6 +338,71 @@ function SimpleLine({ pts, color }) {
         }));
 }
 
+// ── E1.3 · regime drift, per claim ──────────────────────────
+// INSTRUMENT ONLY. Displays the axis state the claim was filed under and what
+// has moved since. There is deliberately no flag, no threshold and no severity
+// colour: `premise_drifted` is E1.4, arrives only once this has been live 30
+// days, and is one of the four decisions the master spec reserves to the
+// product owner.
+export function ClaimDrift({ rows }) {
+    // undefined = the read failed; [] = the view answered and this claim is
+    // settled, so it falls outside the view's open-thesis filter. Different
+    // states, different sentences, never the same one.
+    if (rows === undefined) {
+        return e('div', { className: 'bn-drift bn-drift-out' },
+            'Regime drift unavailable \u2014 the drift feed did not answer. This is a transport failure, not a reading about the thesis.');
+    }
+    const d = thesisDrift(rows);
+    if (!d) return null;
+
+    const disp = d.dispersion || {};
+    return e('div', { className: 'bn-drift' },
+        e('div', { className: 'bn-drift-h' },
+            e('span', { className: 'bn-lab' }, 'REGIME WHEN FILED \u2192 NOW'),
+            e('span', { className: 'bn-drift-span' },
+                (d.snapshotDate || '?') + ' \u2192 ' + (d.currentDate || '?')
+                + (d.sessionsSpanDays != null ? '  \u00b7  ' + d.sessionsSpanDays + ' days' : '')),
+            d.snapshotReason === 'backfill'
+                ? e('span', { className: 'bn-drift-bf', title: 'snapshot reconstructed at the thesis\u2019s own creation date, not taken live at the time' }, 'backfilled')
+                : null),
+
+        e('div', { className: 'bn-drift-axes' }, d.axes.map(a =>
+            e('div', { className: 'bn-drift-axis', key: a.axisKey },
+                e('span', { className: 'bn-drift-k', title: a.positiveMeans || '' }, a.axisKey),
+                // The badge cell is ALWAYS emitted, empty when the axis is not
+                // marginal. Rendering null instead drops the child, and the
+                // grid then shifts that row's numbers one column left so the
+                // three axes stop reading as a table.
+                e('span', { className: 'bn-drift-mg' },
+                    a.marginal ? e('span', { className: 'na-marginal' }, 'marginal') : null),
+                a.measurable
+                    ? e(React.Fragment, null,
+                        e('span', { className: 'bn-drift-v' },
+                            fmtScore(a.snapshot) + ' \u2192 ' + fmtScore(a.current)),
+                        e('span', { className: 'bn-drift-d' + (a.drift >= 0 ? ' up' : ' down') },
+                            'drift ' + fmtScore(a.drift)),
+                        // Scale context, NOT a z-score: score_20d is a rolling
+                        // 20-session SUM, so the raw drift is unreadable without
+                        // the axis's own dispersion beside it.
+                        e('span', { className: 'bn-drift-sd', title: 'drift measured against this axis\u2019s own full-history standard deviation of score_20d \u2014 scale context, not a z-score' },
+                            fmtVsSd(a.driftVsAxisSd) || ''),
+                        e('span', { className: 'bn-drift-flip' },
+                            a.signFlipped
+                                ? e('span', { title: 'the axis was one sign when the thesis was filed and is the other now' }, 'sign flipped')
+                                : null))
+                    : e('span', { className: 'bn-drift-na' }, 'not measurable')))),
+
+        e('div', { className: 'bn-drift-disp' },
+            e('span', { className: 'bn-lab' }, 'DISPERSION '),
+            (disp.snapshot || '?') + ' \u2192 ' + (disp.current || '?'),
+            e('span', { className: 'bn-drift-dispn' }, disp.changed ? 'changed' : 'unchanged')),
+
+        d.measuredAxes < d.totalAxes
+            ? e('div', { className: 'bn-drift-na' },
+                d.measuredAxes + ' of ' + d.totalAxes + ' axes measurable in this window.')
+            : null);
+}
+
 // ── Trial panel (expanded row) ────────────────────────────────
 const CLAIM_ICON = { confirmed: '✓', contradicted: '✗', pending: '·' };
 function TrialPanel({ row, series, docket, seriesByTk, res }) {
@@ -362,7 +428,8 @@ function TrialPanel({ row, series, docket, seriesByTk, res }) {
                         ? row.claims.map((c, i) => e('div', { key: c.id || i, className: 'bn-claim ' + c.status },
                             e('span', { className: 'bn-claim-ic' }, CLAIM_ICON[c.status] || '·'),
                             e('span', { className: 'bn-claim-tx' }, c.claim_text),
-                            c.evidence_text ? e('span', { className: 'bn-claim-ev' }, c.evidence_text) : null))
+                            c.evidence_text ? e('span', { className: 'bn-claim-ev' }, c.evidence_text) : null,
+                            e(ClaimDrift, { rows: c.regimeDrift })))
                         : e('div', { className: 'bn-degraded' }, 'No claims extracted yet — bench_claims pending provisioning. The trial cannot proceed on evidence it does not have.'))),
             (res.synthesis || res.condition) ? e('div', { className: 'bn-trial-synth' },
                 res.synthesis ? e('div', null, e('span', { className: 'bn-lab' }, 'SYNTHESIS '), res.synthesis) : null,

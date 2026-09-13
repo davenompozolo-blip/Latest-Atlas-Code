@@ -124,9 +124,14 @@ export default async function handler(req, res) {
         // braces: if this ever truncates again it loses the oldest bars
         // rather than the newest, so a short tape beats a stale one. The
         // series is re-sorted ascending on the way into `series` below.
-        const [assess, claims, sleeve, contribView, docketView, headroom, volRows, scrapCos, freshness, prices, cortexSignals, fvRows] = await Promise.all([
+        const [assess, claims, regimeDrift, sleeve, contribView, docketView, headroom, volRows, scrapCos, freshness, prices, cortexSignals, fvRows] = await Promise.all([
             fetchAssessments(),
             sb('bench_claims?select=id,symbol,thesis_ref,claim_text,status,evidence_text,evidence_value,evidence_source,status_changed_at,created_at&order=created_at.asc&limit=1000'),
+            // E1.3 — the axis state each open thesis was written under, and
+            // the drift since. Open theses only by construction (the view
+            // filters on status), so a settled claim simply has no rows and
+            // renders nothing. ~3 rows per open thesis; 75 today.
+            sb('vw_thesis_regime_drift?select=thesis_id,symbol,thesis_status,axis_key,axis_label,positive_means,axis_marginal,snapshot_at,snapshot_reason,snapshot_score_date,snapshot_score_20d,current_score_date,current_score_20d,drift_score_20d,score_20d_stdev_full,sign_flipped,snapshot_dispersion_state,current_dispersion_state,dispersion_changed,sessions_span_days,pc_rank&limit=1000'),
             sb('vw_funding_sleeve?select=tk,qualified,sleeve_rank,funding_score,disqualification_reason,fv_trustworthy'),
             sb('vw_bench_contribution?select=symbol,contrib_today,contrib_ytd,contrib_since_entry,covered,coverage_reason,nav_coverage_pct'),
             // the judged columns: conviction-implied target, R/VaR, damage, clock
@@ -176,10 +181,28 @@ export default async function handler(req, res) {
         const assessByTk = new Map();
         for (const a of assess.rows || []) if (!assessByTk.has(a.symbol)) assessByTk.set(a.symbol, a);
 
+        // E1.3 — drift rows keyed by thesis_id, which IS bench_claims.id.
+        // Attached per claim rather than per symbol: the snapshot records the
+        // axis state a particular claim was filed under, and two claims on one
+        // name can have been written weeks apart.
+        const driftByThesis = new Map();
+        for (const d of regimeDrift || []) {
+            const k = String(d.thesis_id);
+            if (!driftByThesis.has(k)) driftByThesis.set(k, []);
+            driftByThesis.get(k).push(d);
+        }
+
         const claimsByTk = new Map();
         for (const c of claims || []) {
             if (!claimsByTk.has(c.symbol)) claimsByTk.set(c.symbol, []);
-            claimsByTk.get(c.symbol).push(c);
+            claimsByTk.get(c.symbol).push({
+                ...c,
+                // [] and undefined are different states and must stay so: []
+                // means the view answered and this claim is settled (it filters
+                // to open theses), undefined means the read failed. The panel
+                // says "could not be read" only for the second.
+                regimeDrift: regimeDrift == null ? undefined : (driftByThesis.get(String(c.id)) || []),
+            });
         }
 
         const sleeveRows = sleeve || [];
@@ -325,6 +348,10 @@ export default async function handler(req, res) {
             writerLastRun,
             writerExtended: assess.extended,
             claimsAvailable: claims != null,
+            // Never let a transport failure render as a statement about the
+            // data. sb() logs the status and body; this says so on the surface.
+            regimeDriftSourceOk: regimeDrift != null,
+            regimeDriftTheses: new Set((regimeDrift || []).map(d => d.thesis_id)).size,
             contributionBasis: contribView ? 'view' : 'today-only',
             // Published so the panel can say "could not be read" rather than
             // describing a live outage as a fact about the holdings.

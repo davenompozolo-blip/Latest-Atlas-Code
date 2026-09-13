@@ -51,3 +51,6 @@ dist/
 
 # A2.2 render harness (dev only, not shipped)
 .a22harness/
+
+# E1.3 render harness (dev only)
+.e13harness/

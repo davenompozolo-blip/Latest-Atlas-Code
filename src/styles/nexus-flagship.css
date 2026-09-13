@@ -1056,6 +1056,43 @@
 .bn-claim-tx { grid-column: 2; color: var(--text2); line-height: 1.45; }
 .bn-claim-ev { grid-column: 2; color: var(--text3); font-size: 11px; line-height: 1.45; }
 .bn-degraded { font-size: 11.5px; color: var(--amber); font-style: italic; margin-top: 5px; }
+
+/* E1.3 - regime drift under a claim. Sits in the claim grid's second column
+   so it aligns with the claim text rather than the status icon. Deliberately
+   quiet: no severity colour, because v1 states what moved and judges nothing.
+   The only colour is the drift's own sign, which is a direction, not a verdict. */
+.bn-drift { grid-column: 2; margin-top: 6px; padding: 7px 9px; border-left: 2px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.02); border-radius: 0 4px 4px 0; font-size: 11px; }
+.bn-drift-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.bn-drift-span { font-family: var(--fm); color: var(--text3); }
+.bn-drift-bf { font-family: var(--fm); font-size: 9.5px; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--text3); border: 1px solid rgba(255,255,255,.14); border-radius: 3px; padding: 0 4px; }
+.bn-drift-axes { margin-top: 5px; display: flex; flex-direction: column; gap: 3px; }
+/* A grid, not a flex row: the MARGINAL badge appears on some axes and not
+   others, and inline it pushed that axis's numbers out of column so the three
+   rows no longer read as a table. Empty cells hold the alignment. */
+.bn-drift-axis { display: grid; align-items: baseline; gap: 4px 10px; font-family: var(--fm);
+  grid-template-columns: 104px 62px minmax(112px, max-content) 96px 92px auto; }
+.bn-drift-k { color: var(--text2); }
+.bn-drift-mg { min-width: 0; }
+.bn-drift-v { color: var(--text3); }
+.bn-drift-d.up { color: var(--success); }
+.bn-drift-d.down { color: var(--danger); }
+.bn-drift-sd { color: var(--text3); }
+.bn-drift-flip { color: var(--amber); }
+.bn-drift-na { color: var(--text3); font-style: italic; }
+.bn-drift-axis > .bn-drift-na { grid-column: 3 / -1; }
+.bn-drift-disp { margin-top: 6px; font-family: var(--fm); color: var(--text2); display: flex;
+  flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.bn-drift-dispn { color: var(--text3); }
+.bn-drift-out { color: var(--amber); font-style: italic; border-left-color: var(--amber); }
+/* Below ~700px the six columns cannot hold; fall back to a wrapping row,
+   where losing the alignment is better than losing the numbers. */
+@media (max-width: 700px) {
+  .bn-drift-axis { display: flex; flex-wrap: wrap; }
+  .bn-drift-k { min-width: 100%; }
+}
+
 .bn-cond { margin-top: 5px; font-size: 12px; color: var(--text2); }
 .bn-jaws-note { font-size: 10.5px; color: var(--text3); font-style: italic; margin-top: 4px; }
 .bn-jaws-leg { display: flex; gap: 14px; font-size: 10px; color: var(--text3); margin-top: 4px; font-family: var(--fm); }
