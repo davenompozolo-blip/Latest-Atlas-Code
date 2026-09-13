@@ -585,7 +585,13 @@ its pipeline is actually capable of succeeding.
   *premium* Alpha Vantage key (~100 `HISTORICAL_OPTIONS` pulls per run); the key
   in use returns `"This is a premium endpoint"`. 10/10 runs failed. Not fixable
   in code — the Nexus Dispersion page has never had data.
-- `theme_leadership_weekly` — 0 rows ever.
+- `theme_leadership_weekly` — **recovered; this entry was wrong and is corrected
+  2026-09-13.** It has written on cadence since the 503-on-no-op fix and carries 56
+  rows to 2026-09-11. The 0-rows-ever claim above described 2026-08-16 and was left
+  standing after the feed came back. **A wrong dead-feed entry is worse than no
+  entry** — it teaches the next session to distrust a feed that works. The two
+  entries above that cite it as an example of a silent no-op are still accurate
+  about what happened then; only its current state changed.
 - `signal_scores` — frozen at 2026-08-11. **This starves the Trade ticket's
   coherence pane**; Pane C renders "NO FAMILY VECTOR ON FILE" once it ages out.
 - `sync_funddata_prices` — the job *works* (`fund_prices_raw` is current), but
@@ -1903,6 +1909,128 @@ To screenshot a live panel: read the rows server-side and replay them by
 patching `window.fetch` for `/rest/v1/*`. The real client, query builders and
 component still run; only the socket differs. **Say which half is proven** --
 the render is, the network read is not.
+
+### Alpha Vantage's BRENT is FRED's DCOILBRENTEU (2026-09-13)
+
+Measured before choosing a provider for A0b's commodity leg, not assumed:
+**9,973 of 9,973 observations identical**, same first date (1987-05-20), same
+last date, and no date present on one side only. AV is redistributing the EIA
+series FRED publishes. So reading it from FRED is not a proxy substitution --
+there is no second measurement to choose between -- and it needs no API key.
+
+`macro_series` / `macro_series_values` hold seven series to inception (69,048
+observations): `T5YIFR`, `T5YIE`, `T10YIE`, `DGS2`, `DGS10`, `T10Y2Y`, `BRENT`.
+Loader `load_macro_series`, cron `load_macro_series_daily` at 23:05 Mon-Sat.
+
+**Units are PERCENTAGE POINTS on the six rate series, not basis points.** Every
+A3 threshold is authored in bp, so the engine divides by 100 before comparing.
+Getting that backwards makes a 40bp test a 4,000bp test and nothing ever fires.
+
+**Publication lag is not uniform and is not a failure.** Observed against a last
+session of Friday 2026-09-11: breakevens and `T10Y2Y` current to 09-11,
+`DGS2`/`DGS10` to 09-10, Brent to 09-09. `atlas_feed_status()`'s
+`macro_series_values` row therefore reports the **MINIMUM** of the per-series
+latest dates, never the maximum -- `T10Y2Y` alone publishing would otherwise keep
+the row green while the other six sat frozen. Same lesson as `price_coverage`
+counting holdings while the universe froze.
+
+**FRED revises published values, so the loader upserts and never insert-onlys.**
+An insert-only loader freezes the first print and the series quietly stops
+matching its source.
+
+The integrity check on the load is not a row count: FRED's published `T10Y2Y`
+reproduces `DGS10 - DGS2` on **12,563 of 12,566** common dates, worst gap 2bp.
+
+The macro job is **ungated** on purpose. It reads nothing this platform writes,
+so gating it on the price sync would mean a night Yahoo is unreachable also
+costs the breakevens -- a gate that does not track a real dependency is the
+"gate you learn to ignore" in a new shape.
+
+### `score_20d` is a sum; `score_20d_z` is the sigma level (2026-09-13)
+
+The A2 quiet band compared `score_20d` against `QUIET_SIGMA = 0.5` as though it
+were a sigma level. It is a rolling 20-session **sum** whose sd runs 4.19
+(dollar) to 8.22 (cyclical), so the band was about a fifteenth of its intended
+width and quiet fired on **0.53%** of sessions.
+
+**The fix was the column, not the constant.** `factor_axis_scores.score_20d_z`
+is `score_20d` over its own trailing 5-year sd (same window and same
+750-observation floor as the pair z-scores), and `atlas_axis_dispersion_state`
+reads it. Quiet is now **18.17%** of the 3,369 sessions carrying a z, against
+aligned 41.73% and contested 40.10%. The constant did not move.
+
+Divided, **not centred**, per spec -- and that was checked rather than assumed:
+the full-history means are +0.285, -0.149, +0.180 against those sds, so omitting
+the centring shifts a reading by at most 0.07 sigma. The z starts **2013-04-22**;
+before that the baseline is too short and the column is NULL.
+
+**Check what a column holds before comparing it to a threshold in sigma.** The
+name said score; the value was a sum of scores.
+
+### The A3 theme engine detected 0 of its 5 expected periods (2026-09-13)
+
+Four themes, `logic_version = 'v0-uncalibrated'`, 18,538 state rows over
+2003-04-01..2026-09-11. Full report in `docs/A3_THEME_ENGINE_BACKFILL_REPORT.md`.
+Master spec §9.1 puts 0-1 detections on the **"Stop. Do not tune."** branch and
+nothing was tuned; a `v1` row set at that count is a §10.3 owner decision.
+
+**The result is not an artefact of the baseline reading**, which was the one
+implementation choice that could have caused it. "25bp above the 60-session
+mean, hold 20" has two readings: against a *rolling* mean (a sustained level
+shift feeds into its own baseline within 60 sessions and the measured move
+decays to zero, so only a transient spike can ever be detected) or against a
+baseline **frozen at the session the episode opens**. Frozen is shipped, on the
+spec's own argument that a retrace needs a fixed origin. Both run on the same
+code via `p_baseline_mode`, and the strictly more permissive frozen reading
+still detects **none of the five** -- rolling detects nothing at all, in the
+entire history, for any theme.
+
+Three distinct failure modes, which want different answers:
+- **The premise did not happen.** `T5YIFR` reached +29.4bp over its 60-session
+  mean across the whole 2018-19 trade war (2 of 503 sessions) and **+14.2bp
+  maximum in 2025, on none**. Forward inflation expectations did not reprice.
+  No threshold that means anything detects a move the data does not contain.
+- **Thresholds cleared, holds not.** 2022 energy: Brent +57.1% against a 25% bar,
+  `T5YIFR` +45.5bp against 20bp -- and the binding row was
+  `cyclical >= 0 sigma`, a **sign test**, whose best run in 2022 was 37 against a
+  40-session hold. A no-magnitude qualifier turned out to be the strictest row in
+  the theme.
+- **Every row cleared its own hold, never together.** 2023 fiscal: 32>=30,
+  33>=30, 55>=30, and the conjunction never held on one session. **Requiring
+  simultaneity of three rolling holds is far stricter than requiring each**, and
+  the difference is invisible in a threshold table.
+- **Structurally unsatisfiable.** `concentration >= 1 sigma` has a longest run of
+  **30 sessions in the whole series** against a **60-session hold**. No data
+  could satisfy `productivity_capex`'s emergence row.
+
+**Attribution works and is proven, not asserted.** 196 sessions where every
+positive `fiscal_dominance` emergence row held its full 30 and the `abs_lte`
+discriminator failed on value; the theme emerged on **0** of them.
+
+Two defects the backfill surfaced, both fixed and both found by reading results
+rather than code: the 60-session decay counter was **global rather than
+per-state**, so a theme that aborted returned to dormant the next session
+(`aborted` averaged 3 sessions against a rule that should give it 60); and the
+temp tables were `ON COMMIT DROP` with no drop at entry, so the function could
+not be called twice in one transaction -- which is exactly the reproducibility
+check §6 asks for.
+
+`aborted` fires from `dormant` because the spec says "any -> aborted". Left as
+specified, and worth knowing: most `aborted` rows in this history describe a move
+that never became a state, and it is the second-largest state in every theme
+(24.9% for `productivity_capex`).
+
+**Evaluation and persistence are separate functions on purpose.**
+`regime_theme_states` is append-only by trigger, so a row written in error cannot
+be deleted; the only safe way to review a first backfill is evaluate, inspect,
+roll back. `atlas_evaluate_themes` leaves results in temp tables and writes
+nothing; `atlas_persist_theme_run` appends them.
+
+Determinism is the contract (§9.3), so the evaluator returns an **md5 over each
+theme's whole `(as_of, state, strength)` series** rather than a transition count
+-- two different series can carry the same number of transitions. Reproduced four
+times, including once after a `safe_bigint` rewrite of two integer extractions,
+which is how that rewrite is known behaviour-neutral rather than assumed to be.
 
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header

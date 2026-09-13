@@ -1,0 +1,21 @@
+-- E1.2 shipped vw_thesis_regime_drift with `grant select ... to anon,
+-- authenticated`, which is necessary and was not sufficient. The view calls
+-- atlas_axis_dispersion_state() and a plain (security-invoker) view executes
+-- that function as the CALLER, so anon needs EXECUTE on it as well.
+--
+-- Anon got HTTP 401 / 42501 "permission denied for function
+-- atlas_axis_dispersion_state" on every read. Nobody saw it because nothing
+-- read the view as anon until E1.3 put a browser surface over it -- the
+-- fourth instance in this codebase of "a view read only by service_role has
+-- never met the conditions the UI runs under", here in the PERMISSION
+-- dimension rather than the statement-timeout one.
+--
+-- Left unfixed, the Bench panel would have rendered "the drift feed did not
+-- answer" against a view that returns 75 healthy rows.
+--
+-- No privilege is widened by this. The function is STABLE and reads
+-- factor_axis_scores, which anon can already select directly; it is SECURITY
+-- DEFINER only so that it can be called from objects that need a stable
+-- search_path. Grant the exact signature rather than the bare name so a future
+-- overload cannot inherit the grant silently.
+grant execute on function public.atlas_axis_dispersion_state(date, numeric) to anon, authenticated;
