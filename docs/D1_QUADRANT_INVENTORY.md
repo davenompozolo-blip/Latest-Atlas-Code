@@ -221,6 +221,22 @@ does not crash; a payload **still carrying `"Reflation"`** proves the code does 
 Production has not been deployed from this branch, so that payload was not constructed — it
 is what the endpoint is serving right now.
 
+**That row is also a live defect, found by using it.** `public.cache` holds the payload for an
+hour, so on the first deploy of this branch the endpoint would have gone on serving the
+**old-shaped** row — `regime.cpiYoY` present, `inflation.cpiYoY` absent — to the new consumers
+for up to an hour, and the CPI YoY row would have vanished from every surface exactly as it
+does in the `pre_d2` column of §8.3. CodeRabbit raised it independently on the same line.
+
+Fixed with a shape gate rather than a read-time normalisation. `_v` has been written on this
+payload since the endpoint was built and **never read**, which is what let a shape change ship
+under a cache of the old shape. It is now `PAYLOAD_VERSION = 2` and a row whose `_v` does not
+match is a **miss**. Normalising the old shape on read was the alternative and is worse: it
+synthesises `inflation.cpiYoY` out of the `regime` object this release exists to delete, in the
+hot path, indefinitely — and covers only this one change. The gate costs one rebuild from FRED,
+once, which the hourly TTL does anyway.
+
+**Bump `_v` when the payload's shape changes.** Not when its values do.
+
 The two `cpiYoY` values are **bit-identical**, which is the separate claim that moving the
 figure did not change it. `cpiYoYFrom(live.inflation.cpi)` reproduces the classifier's own
 `regime.cpiYoY` to the last digit of the double.

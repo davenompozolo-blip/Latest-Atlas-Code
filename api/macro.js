@@ -16,6 +16,26 @@ var FINNHUB_BASE = 'https://finnhub.io/api/v1';
 var CACHE_KEY = 'macro_data';
 var CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
+// The payload's shape version. `_v` has been written since this endpoint was
+// built and never read, which made it decorative -- so a shape change shipped
+// while an hour of old-shape rows sat in `public.cache`, and the endpoint
+// served them as though nothing had changed.
+//
+// Phase D is the first such change: `regime` is gone and `cpiYoY` now lives
+// under `inflation`. A cached row from before it carries the CPI figure in a
+// place no consumer reads any more, so the CPI YoY row would simply vanish for
+// up to an hour after every deploy that moves a field.
+//
+// Bumped to 2 there, and a row whose `_v` is not this is treated as a MISS.
+// Normalising the old shape on read was the alternative and is worse: it means
+// synthesising `inflation.cpiYoY` out of the `regime` object this release
+// exists to delete, carried in the hot path indefinitely. A version gate is
+// the same size, says what it means, and covers the NEXT shape change too.
+// The cost is one rebuild from FRED, once, which the hourly TTL does anyway.
+//
+// BUMP THIS whenever the payload's shape changes -- not when values change.
+var PAYLOAD_VERSION = 2;
+
 // ---- helpers ----
 
 async function fetchWithTimeout(url, opts, ms) {
@@ -212,6 +232,14 @@ export default async function handler(req, res) {
         // Check Supabase cache first
         if (!nocache) {
             var cached = await readCache(CACHE_KEY);
+            // An expired row and a wrong-shaped row are both misses, but only
+            // one of them is worth a log line: the second means a deploy just
+            // changed the payload and this is the rebuild that replaces it.
+            if (cached && cached._v !== PAYLOAD_VERSION) {
+                console.warn('[macro] cache SHAPE stale: _v=' + cached._v +
+                    ' want=' + PAYLOAD_VERSION + ' -- rebuilding');
+                cached = null;
+            }
             if (cached) {
                 res.setHeader('X-Atlas-Cache', 'hit');
                 return res.status(200).json(Object.assign({}, cached, { _cache: 'hit' }));
@@ -361,7 +389,7 @@ export default async function handler(req, res) {
             quotesStatus: quotesStatus,
             volatility: { vix: vix },
             _ts: Date.now(),
-            _v: 1,
+            _v: PAYLOAD_VERSION,
         };
 
         // Awaited, not fire-and-forget: a serverless invocation can be frozen
