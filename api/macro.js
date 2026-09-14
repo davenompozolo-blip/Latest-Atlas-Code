@@ -1,8 +1,8 @@
 // Vercel Serverless Function: macro/economic data for ATLAS Terminal.
 //
 // Fetches yield curve, inflation, growth, credit, and market data from
-// FRED API + Finnhub, computes a regime classification, and caches the
-// assembled payload in Supabase (1h TTL).
+// FRED API + Finnhub and caches the assembled payload in Supabase (1h TTL).
+// It no longer classifies a regime -- see the Phase D note further down.
 //
 // Environment variables:
 //   FRED_API_KEY                       -- required for FRED series
@@ -15,6 +15,26 @@ var FRED_BASE = 'https://api.stlouisfed.org/fred/series/observations';
 var FINNHUB_BASE = 'https://finnhub.io/api/v1';
 var CACHE_KEY = 'macro_data';
 var CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+// The payload's shape version. `_v` has been written since this endpoint was
+// built and never read, which made it decorative -- so a shape change shipped
+// while an hour of old-shape rows sat in `public.cache`, and the endpoint
+// served them as though nothing had changed.
+//
+// Phase D is the first such change: `regime` is gone and `cpiYoY` now lives
+// under `inflation`. A cached row from before it carries the CPI figure in a
+// place no consumer reads any more, so the CPI YoY row would simply vanish for
+// up to an hour after every deploy that moves a field.
+//
+// Bumped to 2 there, and a row whose `_v` is not this is treated as a MISS.
+// Normalising the old shape on read was the alternative and is worse: it means
+// synthesising `inflation.cpiYoY` out of the `regime` object this release
+// exists to delete, carried in the hot path indefinitely. A version gate is
+// the same size, says what it means, and covers the NEXT shape change too.
+// The cost is one rebuild from FRED, once, which the hourly TTL does anyway.
+//
+// BUMP THIS whenever the payload's shape changes -- not when values change.
+var PAYLOAD_VERSION = 2;
 
 // ---- helpers ----
 
@@ -151,52 +171,32 @@ async function writeCache(cacheKey, payload, ttlMs) {
     }
 }
 
-// ---- regime classification ----
+// ---- CPI year-on-year ----
 //
-// RETIRED FROM THE REGIME TAB AND FROM PCM, 2026-09-10 (Phase D).
+// PHASE D, 2026-09-14. `classifyRegime()` HAS BEEN DELETED and the payload no
+// longer carries a `regime` key. What it computed was a Growth x Inflation
+// quadrant from two series (UNRATE, CPI) through four hardcoded branches, with
+// a `confidence` that was a literal constant per branch rather than a
+// measurement. It is superseded by factor_axes / factor_axis_scores /
+// book_factor_betas, which are derived from the price series and report
+// significance. Every consumer listed in docs/D1_QUADRANT_INVENTORY.md has
+// been removed or repointed in the same change.
 //
-// What this computes is a Growth x Inflation quadrant from two series
-// (UNRATE, CPI) through four hardcoded branches, with a `confidence` that is
-// a literal constant per branch rather than a measurement. It is superseded
-// by factor_axes / factor_axis_scores / book_factor_betas, which are derived
-// from the price series and report significance.
-//
-// It is still COMPUTED and still served, because these consumers have not yet
-// been migrated and would break without it. They are Phase D3 items, reported
-// rather than translated:
-//
-//   src/pages/nexus/NexusTheme.js        rotation banner + rotationCall
-//   src/pages/nexus/nexusLiveCompute.js  flagship windshield tile
-//   src/pages/macro-regime.js            a second full quadrant panel,
-//                                        rendered on the Macro and Markets tabs
-//
-// Do not add a new consumer of `regime.label`. New work reads the axes.
+// One thing the classifier produced was NOT a classification: `cpiYoY` was an
+// observed print that merely lived under `regime` in the payload. D2 says
+// remove the surface and KEEP THE DATA, so it survives here, published under
+// `inflation` where the rest of the price data already is. Three consumers
+// read it (pcm-optimizer, nexusRegimeCompute's macro dashboard, and the panel
+// that has now gone) and they read it as a number, never as a label.
 
-function classifyRegime(data) {
-    var regime = { label: 'Assessing', quadrant: 'unknown', color: '#6366f1', confidence: 0.5 };
-
-    var growthUp = false;
-    if (data.growth && data.growth.unrate && data.growth.unrate.length >= 2) {
-        var latest = data.growth.unrate[data.growth.unrate.length - 1].value;
-        var prior = data.growth.unrate[data.growth.unrate.length - 2].value;
-        growthUp = latest <= prior;
-    }
-
-    var inflationUp = false;
-    if (data.inflation && data.inflation.cpi && data.inflation.cpi.length >= 14) {
-        var arr = data.inflation.cpi;
-        var latestYoY = (arr[arr.length - 1].value / arr[arr.length - 13].value - 1) * 100;
-        var priorYoY = (arr[arr.length - 2].value / arr[arr.length - 14].value - 1) * 100;
-        inflationUp = latestYoY > priorYoY;
-        regime.cpiYoY = latestYoY;
-    }
-
-    if (growthUp && !inflationUp) { regime.label = 'Goldilocks'; regime.quadrant = 'growth_up_inflation_down'; regime.color = '#10b981'; regime.confidence = 0.7; }
-    else if (growthUp && inflationUp) { regime.label = 'Reflation'; regime.quadrant = 'growth_up_inflation_up'; regime.color = '#f59e0b'; regime.confidence = 0.65; }
-    else if (!growthUp && inflationUp) { regime.label = 'Stagflation'; regime.quadrant = 'growth_down_inflation_up'; regime.color = '#ef4444'; regime.confidence = 0.65; }
-    else { regime.label = 'Deflation'; regime.quadrant = 'growth_down_inflation_down'; regime.color = '#6366f1'; regime.confidence = 0.6; }
-
-    return regime;
+function cpiYoYFrom(cpi) {
+    // CPI is a monthly index level, so the year-on-year rate needs the print
+    // from thirteen observations back -- twelve months plus the current one.
+    if (!cpi || cpi.length < 13) return null;
+    var latest = cpi[cpi.length - 1].value;
+    var yearAgo = cpi[cpi.length - 13].value;
+    if (!(yearAgo > 0)) return null;
+    return (latest / yearAgo - 1) * 100;
 }
 
 // ---- CORS ----
@@ -232,6 +232,14 @@ export default async function handler(req, res) {
         // Check Supabase cache first
         if (!nocache) {
             var cached = await readCache(CACHE_KEY);
+            // An expired row and a wrong-shaped row are both misses, but only
+            // one of them is worth a log line: the second means a deploy just
+            // changed the payload and this is the rebuild that replaces it.
+            if (cached && cached._v !== PAYLOAD_VERSION) {
+                console.warn('[macro] cache SHAPE stale: _v=' + cached._v +
+                    ' want=' + PAYLOAD_VERSION + ' -- rebuilding');
+                cached = null;
+            }
             if (cached) {
                 res.setHeader('X-Atlas-Cache', 'hit');
                 return res.status(200).json(Object.assign({}, cached, { _cache: 'hit' }));
@@ -351,6 +359,10 @@ export default async function handler(req, res) {
             },
             inflation: {
                 cpi: cpi,
+                // An observed print, not a classification. It used to be
+                // published under `regime`; it lives here now that the
+                // classifier is gone. See the Phase D note above.
+                cpiYoY: cpiYoYFrom(cpi),
                 coreCpi: coreCpi,
                 pce: pce,
                 breakeven5y: t5yie,
@@ -376,9 +388,8 @@ export default async function handler(req, res) {
             // empty board from a dead feed.
             quotesStatus: quotesStatus,
             volatility: { vix: vix },
-            regime: classifyRegime({ growth: { unrate: unrate }, inflation: { cpi: cpi } }),
             _ts: Date.now(),
-            _v: 1,
+            _v: PAYLOAD_VERSION,
         };
 
         // Awaited, not fire-and-forget: a serverless invocation can be frozen

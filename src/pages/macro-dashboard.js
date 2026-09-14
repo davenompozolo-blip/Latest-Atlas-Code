@@ -1,6 +1,5 @@
 import React from 'react';
 import { Loading, EmptyState } from './components.js';
-import { RegimePanel } from './macro-regime.js';
 import { YieldsPanel } from './macro-yields.js';
 import { IndicatorsPanel } from './macro-indicators.js';
 import { MarketsPanel } from './macro-markets.js';
@@ -8,8 +7,18 @@ import { MarketsPanel } from './macro-markets.js';
 var useState = React.useState, useEffect = React.useEffect, useCallback = React.useCallback;
 var h = React.createElement;
 
+// PHASE D, 2026-09-14. The `regime` tab is gone with the Growth x Inflation
+// quadrant. It was the DEFAULT tab, so the quadrant was the first thing this
+// page rendered.
+//
+// Nothing replaces it, and that is a finding rather than a shortcut. Of the
+// panel's five blocks, four took `regime.label` as an input -- the badge, the
+// 2x2 grid, the factor tilts and the asset implications -- and the fifth,
+// SignalTiles, was a strictly worse duplicate: all four of its numbers already
+// render on the sibling tabs WITH history. 2s10s on Rates & Yields, CPI YoY and
+// Unemployment on Inflation & Growth, HY spread on Cross-Asset. So the tab had
+// nothing left of its own once the label went.
 var TABS = [
-    { id: 'regime', label: 'Regime' },
     { id: 'yields', label: 'Rates & Yields' },
     { id: 'indicators', label: 'Inflation & Growth' },
     { id: 'markets', label: 'Cross-Asset' },
@@ -34,7 +43,7 @@ function SubTab(p) {
 }
 
 export function MacroDashboard() {
-    var _t = useState('regime'), tab = _t[0], setTab = _t[1];
+    var _t = useState('yields'), tab = _t[0], setTab = _t[1];
     var _s = useState('idle'), status = _s[0], setStatus = _s[1];
     var _d = useState(null), data = _d[0], setData = _d[1];
     var _e = useState(null), errMsg = _e[0], setErrMsg = _e[1];
@@ -61,7 +70,7 @@ export function MacroDashboard() {
         return h('div', { className: 'main-content' },
             h('div', { style: { marginBottom: 20 } },
                 h('h2', { style: { fontSize: 20, fontWeight: 700, margin: 0 } }, 'Macro Intelligence'),
-                h('p', { style: { fontSize: 12, color: 'var(--text-sec)', margin: '4px 0 0' } }, 'Economic regime, rates, inflation, growth & cross-asset signals')
+                h('p', { style: { fontSize: 12, color: 'var(--text-sec)', margin: '4px 0 0' } }, 'Rates, inflation, growth & cross-asset signals')
             ),
             h(Loading, null)
         );
@@ -84,8 +93,7 @@ export function MacroDashboard() {
     }
 
     var content = null;
-    if (tab === 'regime') content = h(RegimePanel, { data: data });
-    else if (tab === 'yields') content = h(YieldsPanel, { data: data });
+    if (tab === 'yields') content = h(YieldsPanel, { data: data });
     else if (tab === 'indicators') content = h(IndicatorsPanel, { data: data });
     else if (tab === 'markets') content = h(MarketsPanel, { data: data });
 
@@ -93,7 +101,7 @@ export function MacroDashboard() {
         h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 } },
             h('div', null,
                 h('h2', { style: { fontSize: 20, fontWeight: 700, margin: 0 } }, 'Macro Intelligence'),
-                h('p', { style: { fontSize: 12, color: 'var(--text-sec)', margin: '4px 0 0' } }, 'Economic regime, rates, inflation, growth & cross-asset signals')
+                h('p', { style: { fontSize: 12, color: 'var(--text-sec)', margin: '4px 0 0' } }, 'Rates, inflation, growth & cross-asset signals')
             ),
             h('button', {
                 onClick: function() { fetchData(true); },

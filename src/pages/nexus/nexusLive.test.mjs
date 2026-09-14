@@ -108,6 +108,11 @@ const MACRO = {
     yields: { dgs2: [{ value: 4.51 }, { value: 4.62 }], dgs10: [{ value: 4.50 }, { value: 4.55 }] },
     market: [{ symbol: 'SPY', price: 5123, changePct: -1.2 }],
     volatility: { vix: [{ value: 16.3 }, { value: 18.4 }] },
+    // KEPT ON PURPOSE, and it is what gives the Phase D assertions their
+    // teeth: /api/macro no longer emits this key, but a fixture that simply
+    // dropped it would let a regression reading `regime.label` again pass
+    // silently on undefined. Feeding a live-looking label and asserting it
+    // does NOT reach the surface is the test that can actually fail.
     regime: { label: 'Reflation', cpiYoY: 3.1 },
 };
 const ws = buildWindshield(MACRO);
@@ -121,7 +126,13 @@ check('ws: 2Y change (bp)',    ws.stats[2].change, '+11bp');
 check('ws: 2Y tone rising',    ws.stats[2].tone, 'down');
 check('ws: spread value',      ws.stats[4].value, M + '7bp');
 check('ws: spread tone inv',   ws.stats[4].tone, 'down');
-check('ws: driver regime',     /Reflation regime/.test(ws.driver), true);
+// PHASE D, 2026-09-14. These three asserted that the Growth x Inflation
+// quadrant label reached the surface. They now assert the opposite, which is
+// the stronger test: the fixture still feeds a `regime` object (see the
+// comment on it), so an assertion that merely dropped the old check would pass
+// against a regression that started reading it again.
+check('ws: driver no label',   /Reflation/.test(ws.driver), false);
+check('ws: driver leads rates', /^Rates in focus — 2Y at/.test(ws.driver), true);
 check('ws: no macro → null',   buildWindshield(null), null);
 
 // ── Seasonal (live figures, no stale literals) ────────────────
@@ -134,7 +145,7 @@ check('map: NVDA theme',          holdings.find(h => h.tk === 'NVDA').theme, 'AI
 check('map: TCEHY theme null',    holdings.find(h => h.tk === 'TCEHY').theme, null);
 check('map: TCEHY sector kept',   holdings.find(h => h.tk === 'TCEHY').sector, 'Intl ADRs');
 check('seasonal: sector largest', /Technology is your largest sector at 50%/.test(seas.theme.body[0]), true);
-check('seasonal: regime label',   seas.regime.tags.includes('Reflation'), true);
+check('seasonal: no label tag',   seas.regime.tags.includes('Reflation'), false);
 check('seasonal: inverted curve', seas.regime.tags.includes('Inverted curve'), true);
 check('seasonal: opp cheap name', /NVDA/.test(seas.opportunities.body[0]), true);
 check('seasonal: drift cluster',  /NVDA/.test(seas.drift.body[1]), true);
@@ -144,7 +155,8 @@ const read = buildRead({ macro: MACRO, concentration, holdings, spine });
 check('read: shape',            Object.keys(read.variants).sort(), ['hfl', 'market']);
 check('read: default stance',   read.default, 'market');
 check('read: prices the tape',  /2Y at 4\.62%.*10Y at 4\.55%.*curve −7bp.*VIX 18\.4/.test(read.variants.market.html), true);
-check('read: regime named',     /reflation/.test(read.variants.market.html), true);
+check('read: no regime named',  /reflation/i.test(read.variants.market.html), false);
+check('read: leads with priced', /<strong>The market<\/strong> is pricing 2Y at/.test(read.variants.market.html), true);
 check('read: cluster share',    new RegExp(concentration.topFactorPct + '% of factor risk in Technology').test(read.variants.market.html), true);
 // The trims the hfl stance names must be the engine's own trim/exit verdicts.
 const trimTks = holdings.filter(h => h.read === 'trim' || h.read === 'exit').map(h => h.tk);

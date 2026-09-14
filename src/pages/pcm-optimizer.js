@@ -575,15 +575,17 @@ export async function fetchMacroSignals() {
         if (data.yields && data.yields.curve) spread2s10s = data.yields.curve.spread2s10s;
         if (data.credit && data.credit.hySpreads && data.credit.hySpreads.length)
             hySpreads = data.credit.hySpreads[data.credit.hySpreads.length - 1].value;
-        // An observed CPI print that merely lives under `regime` in the payload.
-        // Data, not a classification -- kept.
-        if (data.regime) cpiYoY = data.regime.cpiYoY;
+        // An observed CPI print. Data, not a classification -- kept. It moved
+        // from `regime.cpiYoY` to `inflation.cpiYoY` when Phase D deleted the
+        // classifier that used to carry it; the number is the same one.
+        if (data.inflation) cpiYoY = data.inflation.cpiYoY;
         if (data.growth && data.growth.unrate && data.growth.unrate.length)
             unrate = data.growth.unrate[data.growth.unrate.length - 1].value;
         return {
-            // The quadrant label and its colour are deliberately NOT read from
-            // the payload. /api/macro still computes them; PCM no longer
-            // consumes them. See REGIME_CONDITIONING.
+            // The quadrant label and its colour are gone from the payload
+            // entirely as of Phase D -- /api/macro no longer computes them.
+            // These two keys stay on the shape so the consumers below need no
+            // change; both are permanently null. See REGIME_CONDITIONING.
             regime:      null,
             regimeColor: null,
             regimeConditioning: REGIME_CONDITIONING,
