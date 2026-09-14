@@ -133,7 +133,7 @@ deleted under Phase D — that is a separate decision about the Python stack as 
 | | Criterion | Status |
 |---|---|---|
 | 1 | D1 inventory reported | **done** — this document |
-| 2 | Quadrant absent from the regime tab | **done** — `src/pages/macro-regime.js` deleted; both host tabs removed; the build went 207 → 206 modules |
+| 2 | Quadrant absent from the regime tab; screenshot | **done** — browser DOM scan, §8. Eight surfaces, zero banned tokens, under **both** payload shapes |
 | 3 | No table dropped, no label deleted; retirement recorded | **done** — no stored labels existed to drop (§3 above); retirement recorded in `api/macro.js`, `macro-dashboard.js`, `market-watch.js`, `NexusTheme.js`, `nexusRegimeCompute.js` |
 | 4 | Every D1 consumer migrated or reported as blocked | **done** — 5 of 5, see §7.1 |
 | 5 | Nothing on the regime tab asserts a single regime label | **done** — no surface anywhere asserts one |
@@ -198,3 +198,100 @@ fixture now carries **no `regime` key at all** — so a regression that went bac
 `regime.cpiYoY` would lose the CPI row and fail.
 
 219/219 pass. Build 207 → 206 modules.
+
+---
+
+## 8 · The browser proof (§3 acceptance item 2)
+
+The source no longer contains the quadrant; that is not the same claim as *nothing renders
+it*. This is the rendered-DOM check, run in headless Chromium against the real bundle.
+
+### 8.1 · Two payloads, and why the pre-D2 one is the real test
+
+The harness serves `/api/macro` from the **live cached payload** — `public.cache`,
+`cache_key = 'macro_data'`, cached 2026-09-13 23:34 UTC — in two shapes:
+
+| variant | what it is | `regime` | `inflation.cpiYoY` |
+|---|---|---|---|
+| `pre_d2` | **exactly what production serves today**, byte for byte | `{label: "Reflation", quadrant: "growth_up_inflation_up", confidence: 0.65, color: "#f59e0b", cpiYoY: 3.7129581058388483}` | absent |
+| `post_d2` | what this branch's `api/macro.js` emits from the same inputs | absent | `3.7129581058388483` |
+
+`pre_d2` is the one that matters. A payload with the key removed proves only that the code
+does not crash; a payload **still carrying `"Reflation"`** proves the code does not read it.
+Production has not been deployed from this branch, so that payload was not constructed — it
+is what the endpoint is serving right now.
+
+The two `cpiYoY` values are **bit-identical**, which is the separate claim that moving the
+figure did not change it. `cpiYoYFrom(live.inflation.cpi)` reproduces the classifier's own
+`regime.cpiYoY` to the last digit of the double.
+
+### 8.2 · Banned-token scan of the rendered DOM
+
+`innerText` **and** `innerHTML`, case-insensitive, so a value hidden by style or sitting in an
+attribute still counts. Tokens: the four quadrant labels, the quadrant key, and the exact
+phrases the retired blocks printed.
+
+```
+surface                            pre_d2    post_d2
+01 macro dashboard  (default)      absent    absent
+02 macro  Inflation & Growth       absent    absent
+02 macro  Cross-Asset              absent    absent
+03 market watch     (default)      absent    absent
+04 nexus flagship   (default)      absent    absent
+05 nexus THEME                     absent    absent
+06 nexus REGIME                    absent    absent
+07 nexus REGIME / Macro dashboard  absent    absent
+
+tokens scanned: Goldilocks · Reflation · Stagflation · Deflation ·
+                growth_up_inflation_up · Macro Quadrant · Book fit ·
+                Rotation bias · Regime confidence · The regime read ·
+                Asset implications · Factor tilts
+TOTAL HITS: 0 / 0
+```
+
+What the DOM positively shows, on both variants:
+
+- **Macro Intelligence** — subtitle *"Rates, inflation, growth & cross-asset signals"*, three
+  tabs (`Rates & Yields` · `Inflation & Growth` · `Cross-Asset`), opening on Rates & Yields.
+  No fourth tab.
+- **Market Watch** — five tabs (`OVERVIEW SECTORS NEWS CALENDAR CROSS-ASSET`), **five** KPI
+  cells (S&P 500, 10Y, 2s10s, HY OAS, NFCI) and **three** DAILY READOUT clauses. The sixth
+  cell and the fourth clause were the §7.2 miss; both are gone.
+- **Nexus THEME** — the facts bar renders `10Y ▲ · USD ▲ · Credit tightening` and nothing
+  else. Rotation conviction shows **Macro fit — needs both legs**, which is the null playbook
+  renormalising rather than a fabricated input.
+
+### 8.3 · The differential that proves the CPI read moved
+
+Absence of a label would also follow from the pages simply ignoring `/api/macro`. The CPI row
+is the control, and it flips with the payload:
+
+| surface | `pre_d2` | `post_d2` |
+|---|---|---|
+| REGIME → Macro dashboard, INFLATION group | `5y breakeven 2.40%` **only** | `CPI YoY 3.7%` · `5y breakeven 2.40%` |
+
+The same number is present in both payloads. The row appears only when it is published under
+`inflation`, so `macroIndicators` demonstrably reads `inflation.cpiYoY` and demonstrably does
+not fall back to `regime.cpiYoY`.
+
+### 8.4 · What is proven and what is replayed
+
+`CLAUDE.md` records that the headless browser in this container cannot reach Supabase, so the
+**transport** is replayed and nothing else: every `rest/v1` request the real supabase-js
+client makes is answered from the live database, read server-side. The client, its query
+builders, the loaders, the components and the bundle are all the real ones — the Nexus
+flagship ran on **62 live `vw_nexus_holdings` rows** through 25 replayed view reads.
+
+Every request to any other host is **aborted and named**, so nothing silently escaped: Google
+Fonts and four TradingView iframes (the grey panels in the Market Watch capture).
+
+Two reads failed because the relations do not exist — `sector_pnl_residuals` and
+`attribution_history`. Those panels degrade to their own no-data paths. Unrelated to this
+change, and flagged rather than fixed.
+
+`/api/nexus-theme` is **not** replayed and answers 503, so the theme panel renders its
+feed-down path (*"16 themes have momentum pending sync, so this is unconfirmed"*). That is the
+honest render for a dark feed and it is what the panel is supposed to say.
+
+The harness is not committed, matching the 2026-09-10 precedent.
+
