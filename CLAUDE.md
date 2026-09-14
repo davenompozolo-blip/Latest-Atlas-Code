@@ -2032,6 +2032,75 @@ theme's whole `(as_of, state, strength)` series** rather than a transition count
 times, including once after a `safe_bigint` rewrite of two integer extractions,
 which is how that rewrite is known behaviour-neutral rather than assumed to be.
 
+### The book is 26% riskier when the factors stop diversifying (2026-09-14)
+
+E3/B2. `atlas_regime_factor_cov` / `atlas_regime_cvar` / `book_regime_cvar`, nightly at
+23:45 Mon-Sat. Full report in `docs/E3_REGIME_CONDITIONAL_CVAR_REPORT.md`.
+
+**`book_factor_betas` stores exposures but not the panel they were fitted against.** B0 and
+C3 both computed regressors outside the database and inserted only coefficients, so until
+now nothing in the schema could reconstruct what the betas mean. `vw_factor_return_panel`
+fixes that and is pinned by REPRODUCTION, not assumption: `var(b.x)/var(book)` on the C3
+sample reproduces its stored `r_squared` to **7.1e-11** on n=168 exactly. That identity holds
+only for SPY **`adj_close`** log returns plus the **raw daily** `score` -- `close` gives
+market 0.967 against the published 1.026, and a cumulative score column gives nothing near it.
+The check is the first assertion in the test file, so a drifting panel fails loudly instead
+of silently re-denominating every risk number downstream.
+
+**Ledoit-Wolf must run on the CORRELATION scale here, not the covariance.** LW's usual target
+is a scaled identity, which assumes commensurate variables; SPY returns have sd ~0.011 and
+the axis scores 1.07-1.71, a factor of ~150. On the raw covariance the intensity is dominated
+by the axis-axis pairs purely because they are largest -- and those are near-zero BY
+CONSTRUCTION, because the axes are PCA components. Measured: delta-hat 1123 / 308 / 212 / 110,
+all clipping to 1, which would zero every off-diagonal including market-concentration at
+rho +0.45. Standardising first gives 0.023 / 0.038 / 0.037 / 0.074. **A scalar shrinkage
+cannot serve a factor set that is orthogonal in one block and correlated in another.**
+
+Intensities that small move the reported vol by **-0.06% to +1.34%** -- the expected result at
+N=4, T~842, since the optimal intensity falls as 1/T. `vol_daily_unshrunk` is stored beside
+`vol_daily` so that is checkable. **The honest evidence for shrinkage here is that it barely
+moved, and saying so is the point.**
+
+**The lowest quartile is the worst on all three axes, and it is one finding not three.** Risk
+ratios against unconditional: `cyclical` q1 **1.258**, `concentration` q1 1.165, `dollar` q1
+1.132. The mechanism is that rho(market, axis) is highest in q1 -- 0.664 / 0.446 / 0.413
+against 0.474 / -0.059 / 0.089 in q4 -- so the off-diagonals add instead of offsetting.
+Excluding the Feb-Apr 2020 crash (40 of its ~52 days land in `cyclical` q1) takes that 1.258
+to **1.140**: the magnitude shrinks, the ordering does not.
+
+**`cyclical` gives the widest spread while carrying no measurable exposure (t = 0.948).** Not
+a contradiction: it is the STATE VARIABLE defining the bucket, not a channel the risk flows
+through -- the risk arrives via `market` and `dollar`, whose covariance changes inside those
+buckets. An axis can be a good state variable and a bad explanatory variable at once.
+
+**`b'Sigma b` is a variance; VaR and CVaR need a distribution.** Gaussian is assumed
+(1.6449 / 2.0627 at 95%) and daily factor returns are fatter-tailed, so **every CVaR here
+understates the tail** and is labelled parametric rather than empirical. `atlas_regime_cvar`
+takes 0.90/0.95/0.99 and returns NO ROWS otherwise rather than resolving to a neighbour.
+
+**The master spec's arithmetic for this unit is wrong.** It says "2007 onward, ~4,800
+sessions, four buckets of ~1,200". The axis history starts 2010-04-05 and the z history
+2013-04-22, so four buckets give **842**. Clear of the 250 floor, so nothing is blocked --
+but correct it rather than quote it. Bucketing uses `score_20d_z` and never `score_20d`, for
+the reason recorded twice above: the latter is a rolling sum, not a sigma level.
+
+**Read `book_regime_cvar`, never call `atlas_regime_cvar` from a surface.** The function is
+706-710 ms per axis; three axes in one round trip is 2.1s warm against the 3s anon cap. Both
+functions are revoked from `anon` and `authenticated`. The table is an indexed read.
+
+### The Risk page understates book vol by ~2.4x -- flagged, not fixed (2026-09-14)
+
+Surfaced while sanity-checking E3. `book_risk_daily.total_vol_annual` reads **10.78%**
+(2026-09-11). Realised equity-curve vol over settled returns is **24.84%** (60 sessions),
+**28.93%** (120) and **26.24%** (full 172). E3's factor-model unconditional is 19.08%, which
+should sit below realised since the model explains 77.8% of variance.
+
+A holdings-based forward estimate and a realised backward one do differ. None of that
+accounts for a factor of 2.4 against every window measured. Nothing in E3 reads
+`book_risk_daily`, so no E3 figure is affected -- but a risk page reporting less than half the
+volatility the book actually has needs its own unit, and the two numbers will look
+irreconcilable side by side until one is explained.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel
