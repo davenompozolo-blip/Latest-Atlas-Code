@@ -120,6 +120,48 @@ select 'happy_path_row',
  where risk_rank = 1 and risk_share > 0 and weight > 0 and book_vol_annual > 0
    and thesis_coverage in ('no_thesis','thesis_on_file');
 
+-- 11. THE DIAGONAL LANDS EXACTLY ONCE. Checks 1-3 all still pass if the unit
+--     diagonal of the correlation matrix is doubled or dropped -- the Euler
+--     identity holds against whatever sigma_p was computed, so it cannot see an
+--     error in sigma_p itself. The degenerate portfolio does: put all weight on
+--     one name and sigma_p must equal that name's own vol exactly. A doubled
+--     diagonal returns sqrt(2) times it; a missing one returns zero.
+insert into _r
+select 'unit_diagonal_exact',
+       abs(x.sigma_p - x.own_sd) < 1e-12,
+       'residual=' || abs(x.sigma_p - x.own_sd)::text
+  from (
+    with mat as (select max(as_of_date) d from public.universe_correlations),
+    sess as (
+      select ph.price_date from public.price_history ph, mat
+       where ph.interval = '1d'
+         and ph.asset_id = (select id from public.assets where symbol = 'SPY' limit 1)
+         and ph.price_date <= mat.d
+       group by ph.price_date order by ph.price_date desc limit 120),
+    pick as (select symbol from public.vw_book_mctr order by risk_rank limit 1),
+    r as (
+      select a.symbol,
+             ph.close / lag(ph.close) over (partition by a.symbol order by ph.price_date) - 1 as rr
+        from public.price_history ph join public.assets a on a.id = ph.asset_id
+       where ph.interval = '1d' and ph.price_date in (select price_date from sess)
+         and a.symbol in (select symbol from pick)),
+    v as (select symbol, stddev_samp(rr) sd from r where rr is not null group by symbol),
+    w as (select symbol, sd, 1.0::numeric as wt from v),
+    rs as (
+      select u.symbol_1 a, u.symbol_2 b, u.correlation_simple rho
+        from public.universe_correlations u, mat where u.as_of_date = mat.d
+      union all
+      select u.symbol_2, u.symbol_1, u.correlation_simple
+        from public.universe_correlations u, mat where u.as_of_date = mat.d
+      union all
+      select symbol, symbol, 1.0 from w),
+    sw as (
+      select x.symbol, x.wt, x.sd * sum(rs.rho * y.sd * y.wt) as sigma_w
+        from w x join rs on rs.a = x.symbol join w y on y.symbol = rs.b
+       group by x.symbol, x.wt, x.sd)
+    select sqrt(sum(wt * sigma_w)) as sigma_p, max((select sd from v)) as own_sd from sw
+  ) x;
+
 select ck, case when ok then 'PASS' else 'FAIL' end result, detail from _r order by ck;
 
 rollback;
