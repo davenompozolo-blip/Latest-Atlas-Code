@@ -3,9 +3,8 @@ import React from 'react';
 // ATLAS Terminal — Market Watch
 // ------------------------------------------------------------
 // Full market overview tab replicating Streamlit market_watch:
-//   OVERVIEW  — Regime pulse bar + global asset universe
+//   OVERVIEW  — Macro pulse bar + global asset universe
 //   SECTORS   — GICS sector ETF performance + bar chart
-//   REGIME    — Macro quadrant (reuses macro-regime panel)
 //   CROSS-ASSET — Heatmap + credit + barometer (reuses macro-markets)
 //
 // Data: /api/macro (same endpoint as MacroDashboard)
@@ -13,7 +12,6 @@ import React from 'react';
 
 import { fmt, fmtPct, fmtCurrency, useChart } from './utils.js';
 import { Loading, EmptyState, HeroCard, NarrativeStrip } from './components.js';
-import { RegimePanel } from './macro-regime.js';
 import { MarketsPanel } from './macro-markets.js';
 
 var useState = React.useState, useEffect = React.useEffect, useRef = React.useRef, useMemo = React.useMemo;
@@ -263,7 +261,6 @@ function OverviewPanel(p) {
     var market  = data.market || [];
     var credit  = data.credit || {};
     var yields  = data.yields || {};
-    var regime  = data.regime || {};
     var all     = data._allQuotes || market; // enriched list includes global ETFs
 
     var hyVal      = latestVal(credit.hySpreads);
@@ -276,7 +273,6 @@ function OverviewPanel(p) {
     var hb  = { display: 'flex', flexDirection: 'column', justifyContent: 'center' };
     var sep = { width: 1, background: 'rgba(255,255,255,0.06)', margin: '0 20px', flexShrink: 0 };
 
-    var regColor    = regime.color || '#6366f1';
     var spreadColor = spread2s10s != null ? (spread2s10s < 0 ? '#ef4444' : spread2s10s < 0.5 ? '#f59e0b' : '#10b981') : 'rgba(255,255,255,0.5)';
     var hyColor     = hyVal != null ? (hyVal > 6 ? '#ef4444' : hyVal > 4 ? '#f59e0b' : '#10b981') : 'rgba(255,255,255,0.5)';
     var nfciColor   = nfciVal != null ? (nfciVal > 0 ? '#ef4444' : nfciVal > -0.25 ? '#f59e0b' : '#10b981') : 'rgba(255,255,255,0.5)';
@@ -285,7 +281,16 @@ function OverviewPanel(p) {
     var mono = function(sz, col) { return { fontFamily: 'JetBrains Mono', fontSize: sz || 18, fontWeight: 700, color: col || 'rgba(255,255,255,0.85)' }; };
     var sub  = function(txt, col) { return h('div', { style: { fontSize: 10, color: col || 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'JetBrains Mono' } }, txt); };
 
-    // Regime KPI pulse bar (red-accent for macro risk)
+    // Macro KPI pulse bar.
+    //
+    // PHASE D, 2026-09-14. The leading "Macro Regime" cell is gone -- it
+    // printed `regime.label` at 20px in the quadrant's own colour, subtitled
+    // "Growth / Inflation quadrant", on this page's DEFAULT tab. The narrative
+    // strip below carried the same label again. Neither line contained a
+    // quadrant NAME, which is why the D1 sweep on those names missed both; the
+    // field, not the value, is what identifies a consumer.
+    //
+    // Every remaining cell is a measurement and none of them changed.
     var kpiBar = h('div', {
         style: {
             background: 'linear-gradient(135deg,rgba(99,102,241,0.05),rgba(0,212,255,0.04))',
@@ -294,12 +299,6 @@ function OverviewPanel(p) {
             display: 'flex', alignItems: 'center',
         }
     },
-        h('div', { style: hb },
-            h('div', { style: hl }, 'Macro Regime'),
-            h('div', { style: mono(20, regColor) }, regime.label || 'Assessing'),
-            sub('Growth / Inflation quadrant')
-        ),
-        h('div', { style: sep }),
         h('div', { style: hb },
             h('div', { style: hl }, 'S&P 500 (SPY)'),
             h('div', { style: mono(22, spyColor) }, spy && spy.price != null ? '$' + fN(spy.price) : '—'),
@@ -335,8 +334,7 @@ function OverviewPanel(p) {
     var narr = [];
     if (spy && spy.changePct != null) narr.push({
         icon: '◆',
-        text: '<strong>S&P 500 ' + chStr(spy.changePct) + '</strong> — ' + (spy.changePct > 0 ? 'risk appetite supported' : 'risk-off tone today') +
-            '  ·  Regime: <strong style="color:' + regColor + '">' + (regime.label || 'Assessing') + '</strong>'
+        text: '<strong>S&P 500 ' + chStr(spy.changePct) + '</strong> — ' + (spy.changePct > 0 ? 'risk appetite supported' : 'risk-off tone today')
     });
     if (spread2s10s != null) narr.push({
         icon: '≋',
@@ -706,7 +704,7 @@ export function MarketWatch() {
         });
     }, []);
 
-    // Macro data required for overview/sectors/regime/crossasset tabs
+    // Macro data required for overview/sectors/crossasset tabs
     var macroReady = status === 'ready';
     var macroLoading = status === 'loading';
 
@@ -715,7 +713,6 @@ export function MarketWatch() {
         { id: 'sectors',     label: 'SECTORS',     sub: 'GICS Performance' },
         { id: 'news',        label: 'NEWS',         sub: 'Market Headlines' },
         { id: 'calendar',    label: 'CALENDAR',    sub: 'Economic Events' },
-        { id: 'regime',      label: 'REGIME',      sub: 'Macro Quadrant' },
         { id: 'crossasset',  label: 'CROSS-ASSET', sub: 'Heatmap & Credit' },
     ];
 
@@ -746,7 +743,6 @@ export function MarketWatch() {
     switch (tab) {
         case 'overview':   panel = h(OverviewPanel, { data: data }); break;
         case 'sectors':    panel = h(SectorsPanel,  { data: data }); break;
-        case 'regime':     panel = h(RegimePanel,   { data: data }); break;
         case 'crossasset': panel = h(MarketsPanel,  { data: data }); break;
         default:           panel = h(OverviewPanel, { data: data });
     }

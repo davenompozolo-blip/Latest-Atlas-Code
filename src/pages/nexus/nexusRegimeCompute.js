@@ -1,34 +1,22 @@
 // ============================================================
 // Nexus Regime — macro-regime transforms (pure, IO-free)
 // ------------------------------------------------------------
-// The Regime tab's job is alignment: is the book positioned for the
-// macro regime we're actually in? Classification comes from /api/macro
-// (a growth × inflation 2×2); this module turns it into a playbook, a
-// macro dashboard, the book's fit, and a regime read. All pure so the
-// maths is unit-testable under plain node.
+// What survives here is `macroIndicators` — the macro dashboard rows, each one
+// a measurement off /api/macro. All pure so the maths is unit-testable under
+// plain node.
+//
+// PHASE D COMPLETE, 2026-09-14. `PLAYBOOKS`, `regimePlaybook` and
+// `rotationBias` are GONE along with their last consumer, NexusTheme's
+// rotation banner. The 2026-09-10 pass kept them on exactly that ground and
+// said so; the consumer has now been removed, so they go too rather than
+// linger as an exported table nothing calls.
+//
+// They are not repointed at factor_axes, for the reason already recorded
+// below: a playbook is an AUTHORED claim about what a label rewards, and the
+// axis layer reports MEASURED exposure with significance. The two answer
+// different questions and substituting one for the other would keep the shape
+// of the old answer while changing what it means.
 // ============================================================
-
-// What each regime rewards / punishes (by book sector), plus its duration
-// and risk posture. Domain mapping — the regime "playbook".
-export const PLAYBOOKS = {
-    Goldilocks:  { rewards: ['Technology', 'Consumer Discretionary', 'Communications', 'Industrials'], punishes: ['Energy', 'Materials'], duration: 'neutral', risk: 'on',  summary: 'growth without inflation — risk-on; growth and long-duration lead, real assets lag' },
-    Reflation:   { rewards: ['Energy', 'Materials', 'Financials', 'Industrials'], punishes: ['Technology', 'Real Estate', 'Fixed Income', 'Utilities'], duration: 'short', risk: 'on',  summary: 'growth and inflation rising — cyclicals and real assets lead; long-duration lags' },
-    Stagflation: { rewards: ['Energy', 'Materials', 'Healthcare'], punishes: ['Technology', 'Consumer Discretionary', 'Financials'], duration: 'short', risk: 'off', summary: 'inflation without growth — commodities and defensives hold; risk and duration both hurt' },
-    Deflation:   { rewards: ['Fixed Income', 'Utilities', 'Healthcare', 'Technology'], punishes: ['Energy', 'Materials', 'Financials'], duration: 'long', risk: 'off', summary: 'growth and inflation falling — quality, long-duration and defensives lead' },
-};
-const UNKNOWN = { rewards: [], punishes: [], duration: 'neutral', risk: 'neutral', summary: 'regime still assessing — not enough signal to call growth and inflation' };
-
-export function regimePlaybook(label) {
-    return PLAYBOOKS[label] || UNKNOWN;
-}
-
-// Which way the regime pushes the book — the Theme tab's banner line.
-// Derived from the playbook's risk posture, null while still assessing.
-export function rotationBias(label) {
-    const pb = PLAYBOOKS[label];
-    if (!pb) return null;
-    return pb.risk === 'on' ? 'Defensive → Cyclical' : 'Cyclical → Defensive';
-}
 
 const lastTwo = arr => {
     if (!Array.isArray(arr) || !arr.length) return null;
@@ -61,7 +49,6 @@ export function macroIndicators(macro) {
     const g = (macro && macro.growth) || {};
     const cr = (macro && macro.credit) || {};
     const vol = (macro && macro.volatility) || {};
-    const reg = (macro && macro.regime) || {};
     const out = [];
     const add = r => { if (r) out.push(r); };
 
@@ -76,7 +63,9 @@ export function macroIndicators(macro) {
         out.push({ group: 'Rates', label: '10Y–2Y curve', value: (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(0) + 'bp', delta: dd != null ? (dd >= 0 ? '+' : '−') + Math.abs(dd).toFixed(0) + 'bp' : null, deltaTone: v < 0 ? 'down' : 'up' });
     }
 
-    if (reg.cpiYoY != null) out.push({ group: 'Inflation', label: 'CPI YoY', value: reg.cpiYoY.toFixed(1) + '%', delta: null, deltaTone: reg.cpiYoY >= 3 ? 'down' : 'up' });
+    // Phase D: cpiYoY moved from `regime` to `inflation` on the payload. Same
+    // observed print; it was never part of the classification.
+    if (inf.cpiYoY != null) out.push({ group: 'Inflation', label: 'CPI YoY', value: inf.cpiYoY.toFixed(1) + '%', delta: null, deltaTone: inf.cpiYoY >= 3 ? 'down' : 'up' });
     add(row('Inflation', '5y breakeven', inf.breakeven5y));
 
     add(row('Growth', 'Unemployment', g.unrate, { invert: true, dp: 1 }));
@@ -103,5 +92,6 @@ export function macroIndicators(macro) {
 // significance reported. Substituting one for the other would keep the shape
 // of the old answer while changing what it means.
 //
-// `regimePlaybook` and `rotationBias` survive ONLY because NexusTheme still
-// reads them. That is a Phase D3 consumer and is reported, not translated.
+// `regimePlaybook` and `rotationBias` were kept in that pass ONLY because
+// NexusTheme still read them. That consumer was removed on 2026-09-14 and they
+// went with it — see the note at the top of this file.

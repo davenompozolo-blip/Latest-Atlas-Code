@@ -1,8 +1,8 @@
 // Vercel Serverless Function: macro/economic data for ATLAS Terminal.
 //
 // Fetches yield curve, inflation, growth, credit, and market data from
-// FRED API + Finnhub, computes a regime classification, and caches the
-// assembled payload in Supabase (1h TTL).
+// FRED API + Finnhub and caches the assembled payload in Supabase (1h TTL).
+// It no longer classifies a regime -- see the Phase D note further down.
 //
 // Environment variables:
 //   FRED_API_KEY                       -- required for FRED series
@@ -151,52 +151,32 @@ async function writeCache(cacheKey, payload, ttlMs) {
     }
 }
 
-// ---- regime classification ----
+// ---- CPI year-on-year ----
 //
-// RETIRED FROM THE REGIME TAB AND FROM PCM, 2026-09-10 (Phase D).
+// PHASE D, 2026-09-14. `classifyRegime()` HAS BEEN DELETED and the payload no
+// longer carries a `regime` key. What it computed was a Growth x Inflation
+// quadrant from two series (UNRATE, CPI) through four hardcoded branches, with
+// a `confidence` that was a literal constant per branch rather than a
+// measurement. It is superseded by factor_axes / factor_axis_scores /
+// book_factor_betas, which are derived from the price series and report
+// significance. Every consumer listed in docs/D1_QUADRANT_INVENTORY.md has
+// been removed or repointed in the same change.
 //
-// What this computes is a Growth x Inflation quadrant from two series
-// (UNRATE, CPI) through four hardcoded branches, with a `confidence` that is
-// a literal constant per branch rather than a measurement. It is superseded
-// by factor_axes / factor_axis_scores / book_factor_betas, which are derived
-// from the price series and report significance.
-//
-// It is still COMPUTED and still served, because these consumers have not yet
-// been migrated and would break without it. They are Phase D3 items, reported
-// rather than translated:
-//
-//   src/pages/nexus/NexusTheme.js        rotation banner + rotationCall
-//   src/pages/nexus/nexusLiveCompute.js  flagship windshield tile
-//   src/pages/macro-regime.js            a second full quadrant panel,
-//                                        rendered on the Macro and Markets tabs
-//
-// Do not add a new consumer of `regime.label`. New work reads the axes.
+// One thing the classifier produced was NOT a classification: `cpiYoY` was an
+// observed print that merely lived under `regime` in the payload. D2 says
+// remove the surface and KEEP THE DATA, so it survives here, published under
+// `inflation` where the rest of the price data already is. Three consumers
+// read it (pcm-optimizer, nexusRegimeCompute's macro dashboard, and the panel
+// that has now gone) and they read it as a number, never as a label.
 
-function classifyRegime(data) {
-    var regime = { label: 'Assessing', quadrant: 'unknown', color: '#6366f1', confidence: 0.5 };
-
-    var growthUp = false;
-    if (data.growth && data.growth.unrate && data.growth.unrate.length >= 2) {
-        var latest = data.growth.unrate[data.growth.unrate.length - 1].value;
-        var prior = data.growth.unrate[data.growth.unrate.length - 2].value;
-        growthUp = latest <= prior;
-    }
-
-    var inflationUp = false;
-    if (data.inflation && data.inflation.cpi && data.inflation.cpi.length >= 14) {
-        var arr = data.inflation.cpi;
-        var latestYoY = (arr[arr.length - 1].value / arr[arr.length - 13].value - 1) * 100;
-        var priorYoY = (arr[arr.length - 2].value / arr[arr.length - 14].value - 1) * 100;
-        inflationUp = latestYoY > priorYoY;
-        regime.cpiYoY = latestYoY;
-    }
-
-    if (growthUp && !inflationUp) { regime.label = 'Goldilocks'; regime.quadrant = 'growth_up_inflation_down'; regime.color = '#10b981'; regime.confidence = 0.7; }
-    else if (growthUp && inflationUp) { regime.label = 'Reflation'; regime.quadrant = 'growth_up_inflation_up'; regime.color = '#f59e0b'; regime.confidence = 0.65; }
-    else if (!growthUp && inflationUp) { regime.label = 'Stagflation'; regime.quadrant = 'growth_down_inflation_up'; regime.color = '#ef4444'; regime.confidence = 0.65; }
-    else { regime.label = 'Deflation'; regime.quadrant = 'growth_down_inflation_down'; regime.color = '#6366f1'; regime.confidence = 0.6; }
-
-    return regime;
+function cpiYoYFrom(cpi) {
+    // CPI is a monthly index level, so the year-on-year rate needs the print
+    // from thirteen observations back -- twelve months plus the current one.
+    if (!cpi || cpi.length < 13) return null;
+    var latest = cpi[cpi.length - 1].value;
+    var yearAgo = cpi[cpi.length - 13].value;
+    if (!(yearAgo > 0)) return null;
+    return (latest / yearAgo - 1) * 100;
 }
 
 // ---- CORS ----
@@ -351,6 +331,10 @@ export default async function handler(req, res) {
             },
             inflation: {
                 cpi: cpi,
+                // An observed print, not a classification. It used to be
+                // published under `regime`; it lives here now that the
+                // classifier is gone. See the Phase D note above.
+                cpiYoY: cpiYoYFrom(cpi),
                 coreCpi: coreCpi,
                 pce: pce,
                 breakeven5y: t5yie,
@@ -376,7 +360,6 @@ export default async function handler(req, res) {
             // empty board from a dead feed.
             quotesStatus: quotesStatus,
             volatility: { vix: vix },
-            regime: classifyRegime({ growth: { unrate: unrate }, inflation: { cpi: cpi } }),
             _ts: Date.now(),
             _v: 1,
         };

@@ -3,7 +3,7 @@
 // ------------------------------------------------------------
 // The page answers "what rotation do I make?", top to bottom in order
 // of PM attention (spec: nexus rotation redesign):
-//   1. Regime banner        — why rotation is happening (/api/macro)
+//   1. Macro facts bar      — why rotation is happening (/api/macro)
 //   2. Recommendation card  — SELL x → BUY y + conviction + drivers
 //   3. Rotation map + leadership ledger — positioning vs momentum
 //   4. Per-theme cards      — one line each, detail on hover
@@ -13,7 +13,7 @@
 // rotationRead), so they can never disagree.
 //
 // Series-derived inputs (5d momentum, betas) self-fetch from
-// /api/nexus-theme; regime from /api/macro; share / VaR / valuation /
+// /api/nexus-theme; macro facts from /api/macro; share / VaR / valuation /
 // dispersion from the resolved model. All scoring is pure
 // (nexusThemeCompute.js / nexusRegimeCompute.js).
 // ============================================================
@@ -23,7 +23,6 @@ import {
     buildThemeView, themeDispersion, rotationCall, positionRankPct,
     breadthNote, VERDICT_CHIP, CONVICTION_WEIGHTS,
 } from './nexusThemeCompute.js';
-import { regimePlaybook, rotationBias } from './nexusRegimeCompute.js';
 import { DispersionRegime, SectorDispersionStrip } from './NexusDispersion.js';
 import { NexusRealizedLayer } from './NexusRealized.js';
 
@@ -73,7 +72,7 @@ function useMacro() {
     return s;
 }
 
-// ── 1. Regime banner — why rotation is happening ──────────────
+// ── 1. Macro facts bar — why rotation is happening ────────────
 const lastTwo = arr => (Array.isArray(arr) && arr.length
     ? { latest: arr[arr.length - 1].value, prev: arr.length > 1 ? arr[arr.length - 2].value : null }
     : null);
@@ -83,33 +82,41 @@ function dirArrow(t) {
     return t.latest > t.prev ? e('b', { className: 'tone-up' }, '▲') : e('b', { className: 'tone-down' }, '▼');
 }
 
-function RegimeBanner({ macro, loading }) {
-    if (loading) return e('div', { className: 'ntr-banner' }, e('span', { className: 'nf-sub' }, 'Loading regime…'));
-    const regime = macro && macro.regime;
-    if (!regime) {
-        // Feed down → say so; never fabricate a regime or a confidence number.
+// PHASE D, 2026-09-14. This was the rotation banner and it named a regime.
+// Three of its four parts took `regime.label` as an input and all three are
+// gone: the label itself (printed in the quadrant's own colour), the "Rotation
+// bias Defensive → Cyclical" line from `rotationBias(label)`, and a REGIME
+// CONFIDENCE percentage that was a hardcoded constant per branch, never a
+// measurement.
+//
+// The bias line is the §3 report-don't-translate case, stated plainly: it read
+// a label off a four-branch classifier and looked up an AUTHORED claim about
+// what that label rewards. The axis layer answers a different question -- the
+// book's MEASURED exposure to each axis, with significance -- so repointing
+// this at `cyclical` would keep the sentence's shape while changing what it
+// means. It is removed, not migrated.
+//
+// The facts row is untouched: 10Y direction, USD direction and credit
+// direction are measurements and never went through the classifier.
+function MacroFactsBar({ macro, loading }) {
+    if (loading) return e('div', { className: 'ntr-banner' }, e('span', { className: 'nf-sub' }, 'Loading macro…'));
+    if (!macro) {
+        // Feed down → say so; never fabricate a direction.
         return e('div', { className: 'ntr-banner' },
             e('div', null,
-                e('div', { className: 'ntr-banner-name' }, 'Regime unavailable'),
+                e('div', { className: 'ntr-banner-name' }, 'Macro unavailable'),
                 e('div', { className: 'ntr-manual' }, 'macro feed not responding — rotation context is manual until /api/macro recovers')));
     }
-    const bias = rotationBias(regime.label);
     const usd = ((macro.market || []).find(q => q && q.symbol === 'UUP') || {}).changePct;
     const credit = lastTwo(macro.credit && macro.credit.hySpreads);
     const creditDir = !credit || credit.prev == null ? '·'
         : credit.latest > credit.prev ? 'widening' : credit.latest < credit.prev ? 'tightening' : 'flat';
     return e('div', { className: 'ntr-banner' },
-        e('div', null,
-            e('div', { className: 'ntr-banner-name', style: { color: regime.color || 'var(--cyan)' } }, regime.label),
-            bias ? e('div', { className: 'ntr-banner-bias' }, 'Rotation bias ', e('b', null, bias)) : null),
         e('div', { className: 'ntr-banner-facts' },
             e('span', null, '10Y ', dirArrow(lastTwo(macro.yields && macro.yields.dgs10))),
             e('span', null, 'USD ', usd == null ? e('span', { className: 't3' }, '·')
                 : e('b', { className: usd >= 0 ? 'tone-up' : 'tone-down' }, usd >= 0 ? '▲' : '▼')),
-            e('span', null, 'Credit ', e('b', { className: creditDir === 'widening' ? 'tone-down' : creditDir === 'tightening' ? 'tone-up' : 't3' }, creditDir))),
-        e('div', { className: 'ntr-banner-conf' },
-            e('div', { className: 'num' }, regime.confidence != null ? Math.round(regime.confidence * 100) + '%' : '—'),
-            e('div', { className: 'lbl' }, 'REGIME CONFIDENCE')));
+            e('span', null, 'Credit ', e('b', { className: creditDir === 'widening' ? 'tone-down' : creditDir === 'tightening' ? 'tone-up' : 't3' }, creditDir))));
 }
 
 // ── 2a. Recommendation card — the call itself ─────────────────
@@ -318,8 +325,11 @@ export function NexusThemePanel({ model }) {
         return { ...r, momentum5d: td ? td.momentum5d : null, betas: td ? td.betas : { rate: null, usd: null, oil: null } };
     });
     const disp = themeDispersion(model.holdings);
-    const regime = macro && macro.regime;
-    const call = rotationCall(rows, disp, regime ? regimePlaybook(regime.label) : null);
+    // Phase D: no playbook. rotationConviction already treats a null playbook
+    // as a designed path -- `macroFit` stays null and its weight renormalises
+    // over momentum/positioning/breadth, which is the file's own stated rule
+    // that a factor with no data never fabricates an input.
+    const call = rotationCall(rows, disp, null);
     const ranks = positionRankPct(rows);
     const chipOf = t => VERDICT_CHIP[(call.perTheme.find(p => p.theme === t) || {}).verdict] || 'HOLD';
 
@@ -332,7 +342,7 @@ export function NexusThemePanel({ model }) {
 
     return e('div', null,
         // 1. REGIME BANNER — why rotation is happening
-        e(RegimeBanner, { macro, loading: macroLoading }),
+        e(MacroFactsBar, { macro, loading: macroLoading }),
 
         // 2. THE CALL — recommendation + conviction breakdown
         e('div', { className: 'ntr-top' },

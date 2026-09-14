@@ -594,14 +594,14 @@ export function buildWindshield(macro) {
 
     if (!stats.length) return null;
 
-    // Factual, data-driven headline (the regime label is the only
-    // "narrative" and it comes straight from the macro classifier).
-    const reg = macro.regime || {};
+    // Factual, data-driven headline. PHASE D: it used to open with the
+    // quadrant label ("Reflation regime — ...") and now always opens with
+    // 'Rates in focus', which was already the fallback whenever the classifier
+    // answered 'Assessing'. Nothing else in the sentence was ever narrative.
     let driver = 'Macro snapshot', driverEmphasis = null;
     if (d2 && d10) {
         const v = Math.round((d10.latest - d2.latest) * 100);
-        const label = reg.label && reg.label !== 'Assessing' ? reg.label + ' regime' : 'Rates in focus';
-        driver = label + ' — 2Y at ' + d2.latest.toFixed(2) + '%, the 10Y–2Y curve at ' + sgn(v, 0) + 'bp';
+        driver = 'Rates in focus — 2Y at ' + d2.latest.toFixed(2) + '%, the 10Y–2Y curve at ' + sgn(v, 0) + 'bp';
         driverEmphasis = v < 0 ? 'curve still inverted' : 'curve positive';
     }
     return { driver, driverEmphasis, stats };
@@ -655,7 +655,7 @@ export function buildSeasonal({ spine = [], concentration = null, holdings = [],
 
     const c = concentration || {};
     const y = (macro && macro.yields) || {};
-    const reg = (macro && macro.regime) || {};
+    const inf = (macro && macro.inflation) || {};
     const d2 = lastVal(y.dgs2), d10 = lastVal(y.dgs10);
     const spreadBp = (d2 != null && d10 != null) ? Math.round((d10 - d2) * 100) : null;
     const inverted = spreadBp != null && spreadBp < 0;
@@ -677,7 +677,7 @@ export function buildSeasonal({ spine = [], concentration = null, holdings = [],
             title: 'Regime',
             subtitle: 'Where the cycle and the book’s breadth sit',
             tags: [
-                reg.label && reg.label !== 'Assessing' ? reg.label : null,
+                // Phase D: the quadrant label was the first tag here.
                 inverted ? 'Inverted curve' : (spreadBp != null ? 'Positive curve' : null),
                 c.verdictChip === 'Fragile' ? 'Fragile breadth' : 'Broad breadth',
             ].filter(Boolean),
@@ -685,7 +685,7 @@ export function buildSeasonal({ spine = [], concentration = null, holdings = [],
                 spreadBp != null
                     ? 'The 10Y–2Y curve is ' + (inverted ? 'inverted at ' : 'positive at ') + (spreadBp >= 0 ? '+' : '−') + Math.abs(spreadBp) + 'bp' +
                       (d2 != null ? ', the 2Y at ' + d2.toFixed(2) + '%' : '') +
-                      (reg.cpiYoY != null ? ' · CPI ' + reg.cpiYoY.toFixed(1) + '% YoY' : '') + '.'
+                      (inf.cpiYoY != null ? ' · CPI ' + inf.cpiYoY.toFixed(1) + '% YoY' : '') + '.'
                     : 'Macro curve data unavailable.',
                 c.note || 'Concentration data unavailable.',
             ],
@@ -729,8 +729,6 @@ export function buildRead({ macro = null, concentration = null, holdings = [], s
 
     const curveBp = Math.round((d10.latest - d2.latest) * 100);
     const inverted = curveBp < 0;
-    const regLabel = (macro.regime && macro.regime.label && macro.regime.label !== 'Assessing')
-        ? macro.regime.label : null;
     const vix = lastVal(macro.volatility && macro.volatility.vix);
 
     // Heaviest-VaR theme: the spine flags it; fall back to largest share.
@@ -755,8 +753,10 @@ export function buildRead({ macro = null, concentration = null, holdings = [], s
 
     const market = {
         dotTone: fragile ? 'warn' : 'ok',
-        html: '<strong>The market</strong> is pricing ' + (regLabel ? escHtml(regLabel).toLowerCase() + ' — ' : '') +
-              pricedBits + '. Your book runs <strong>' + concentration.topFactorPct + '% of factor risk in ' +
+        // Phase D: this opened with the quadrant label ("is pricing reflation
+        // — ..."). The label is gone and the sentence now leads with what is
+        // actually priced, which is measured rather than classified.
+        html: '<strong>The market</strong> is pricing ' + pricedBits + '. Your book runs <strong>' + concentration.topFactorPct + '% of factor risk in ' +
               topTheme + '</strong> (' + concentration.effectiveN + ' effective bets across ' +
               concentration.nominalN + ' names). The read: <strong>' +
               (fragile

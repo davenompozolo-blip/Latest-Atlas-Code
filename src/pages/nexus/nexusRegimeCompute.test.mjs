@@ -1,28 +1,19 @@
 // Regime transforms — pure, runs under plain node.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { regimePlaybook, macroIndicators } from './nexusRegimeCompute.js';
+import { macroIndicators } from './nexusRegimeCompute.js';
 
 const macro = {
-    regime: { label: 'Reflation', cpiYoY: 4.27 },
     yields: {
         fedFunds: [{ date: 'a', value: 3.70 }, { date: 'b', value: 3.63 }],
         dgs2: [{ date: 'a', value: 4.13 }, { date: 'b', value: 4.05 }],   // -8bp
         dgs10: [{ date: 'a', value: 4.55 }, { date: 'b', value: 4.45 }],  // -10bp
     },
-    inflation: { breakeven5y: [{ date: 'a', value: 2.35 }, { date: 'b', value: 2.39 }] },
+    inflation: { cpiYoY: 4.27, breakeven5y: [{ date: 'a', value: 2.35 }, { date: 'b', value: 2.39 }] },
     growth: { unrate: [{ date: 'a', value: 4.2 }, { date: 'b', value: 4.3 }], claims: [{ date: 'a', value: 221000 }, { date: 'b', value: 229000 }] },
     credit: { hySpreads: [{ date: 'a', value: 2.9 }, { date: 'b', value: 2.78 }] },
     volatility: { vix: [{ date: 'a', value: 22.2 }, { date: 'b', value: 19.44 }] },
 };
-
-test('regimePlaybook returns the rewards/punishes for a named regime', () => {
-    const pb = regimePlaybook('Reflation');
-    assert.ok(pb.rewards.includes('Energy') && pb.rewards.includes('Financials'));
-    assert.ok(pb.punishes.includes('Technology'));
-    assert.equal(pb.duration, 'short');
-    assert.equal(regimePlaybook('Nonsense').duration, 'neutral'); // unknown fallback
-});
 
 test('macroIndicators builds grouped rows with levels + deltas + tone', () => {
     const ind = macroIndicators(macro);
@@ -55,5 +46,10 @@ const spine = [
 // retired Growth x Inflation quadrant; keeping them would assert that a
 // deleted classification still works.
 //
-// regimePlaybook is still covered above because NexusTheme reads it -- a
-// Phase D3 consumer that is reported rather than translated.
+// The regimePlaybook test went the same way on 2026-09-14, when its last
+// consumer (NexusTheme's rotation banner) was removed and the function with
+// it. What remains under test is macroIndicators, every row of which is a
+// measurement -- including CPI YoY, which now reaches it as `inflation.cpiYoY`
+// rather than `regime.cpiYoY`. THAT MOVE IS WHAT THIS FIXTURE PROVES: the
+// fixture carries no `regime` key at all, so a regression that went back to
+// reading one would drop the CPI row and fail the assertion below.
