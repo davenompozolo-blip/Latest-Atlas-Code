@@ -2168,6 +2168,47 @@ select md5(pg_get_functiondef(oid)) from pg_proc where proname = '<fn>';
 **A file that disagrees with the database is worse than a missing one** -- it reads as the
 authority and reproduces nothing.
 
+### The book had no exit mechanism (2026-09-14)
+
+Reported from the terminal: names stay on the book after being sold. KMTUY was liquidated at
+13:35 and was still showing at 0.1% hours later, with Alpaca reporting the order filled.
+
+**`sync_alpaca_positions` is UPSERT-ONLY.** It writes
+`insert ... on conflict (portfolio_id, asset_id, as_of_date) do update set` and nothing else.
+There is no reconciling delete, so a name that drops out of the Alpaca response is never
+touched again and the row written before the sale survives. **Today's `positions` is the union
+of everything held at any point today, not the current book.**
+
+It self-heals at midnight because `as_of_date` rolls over, which is why this reads as an
+intermittent phantom rather than a permanent one and why nothing checking yesterday can see
+it. Every book surface is affected: `vw_nexus_holdings`, `vw_portfolio_home`,
+`vw_risk_analysis`, `vw_screener` and `nexus_holdings` all showed KMTUY, and
+`vw_command_centre` reported **position_count 66 against a real book of 65**. 21 views read
+`positions`.
+
+**The signal is `updated_at` against the account-snapshot watermark.** One
+`account_snapshots` row is written per sync invocation per portfolio, in the SAME transaction
+as the position upserts, so its `as_of` is an exact watermark. Measured on the live book: 65
+rows at lag **0.000s**, KMTUY at **23,103s**. There is no grey zone -- do not add a tolerance,
+because a tolerance is exactly what lets a genuinely exited name back in.
+
+**The ledger cannot do this job.** `transactions` syncs at 13:10 and 22:10, so the 13:35 sell
+was not in it at 20:00 and would not be for another two hours. The watermark sees an exit
+within one sync cycle.
+
+`vw_positions_current` is the current book and `vw_positions_exited_intraday` publishes what
+it dropped -- an exit that vanishes without trace is how this went unnoticed. **Read
+`vw_positions_current`, never `positions`, for anything that asks what is held.**
+
+**The root fix is the writer**, patched in `supabase/functions/sync_alpaca_positions/index.ts`
+and NOT YET DEPLOYED: a reconciling delete of rows for `current_date` whose `asset_id` is not
+in the set Alpaca returned. Proven against live data in a rolled-back transaction -- removes
+exactly 1 row, exactly KMTUY. It carries a **coherence gate**, because an empty positions
+array is the right answer for a flat account and a catastrophic one after an endpoint hiccup:
+`/v2/account`'s long/short market value is an independent witness from a different endpoint,
+and the job refuses to reconcile (at error level, never silently) when the two disagree.
+Deploying it fixes all 21 views with no view change.
+
 ### `marginal_vol_contribution` was never marginal (2026-09-14)
 
 B4. Full report in `docs/B4_MCTR_BENCH_INTEGRITY_REPORT.md`.

@@ -54,17 +54,21 @@ with mat as (
   -- portfolio holding the same name would otherwise put that symbol into `wts`
   -- twice, which DOUBLES ITS UNIT DIAGONAL and inflates book vol silently. The
   -- degenerate test in the test file is the one that would catch it.
-  select a.symbol, (array_agg(p.asset_id))[1] as asset_id, sum(p.market_value)::numeric(24,8) as market_value
-    from public.positions p
+  --
+  -- READS `vw_positions_current`, NOT `positions`. The writer is upsert-only, so
+  -- a name exited intraday keeps its last row in today's snapshot until midnight
+  -- (KMTUY, 2026-09-14: liquidated 13:35, still carried at 20:00). Ranking the
+  -- book's risk contributors off the raw table prices positions that are gone.
+  select p.symbol, (array_agg(p.asset_id))[1] as asset_id, sum(p.market_value)::numeric(24,8) as market_value
+    from public.vw_positions_current p
     join public.assets a on a.id = p.asset_id
-   where p.as_of_date = (select max(as_of_date) from public.positions)
-     and p.quantity is not null and p.quantity <> 0
+   where p.quantity is not null and p.quantity <> 0
      -- Dust: a position sold down to ~2e-5 shares is not a risk position.
      and (p.market_value is null or abs(p.market_value) > 0.01)
      and not (a.asset_class = any(array['option','us_option'])
               and a.symbol ~ '^[A-Z.]{1,6}[0-9]{6}[CP][0-9]{8}$'
               and to_date(substring(a.symbol,'([0-9]{6})[CP]'),'YYMMDD') < current_date)
-   group by a.symbol
+   group by p.symbol
 ), sess as (
   -- The session spine is SPY's own bars, never a calendar: a weekday feed is
   -- not late on a holiday, and a name with a gap must not shift the window.

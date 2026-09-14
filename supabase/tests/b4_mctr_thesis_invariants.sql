@@ -32,18 +32,21 @@ select 'book_vol_below_undiversified',
        ' undiversified=' || round(max(undiversified_vol_annual)::numeric,4)::text
   from public.vw_book_mctr;
 
--- 4. NO STALE POSITIONS. The defect that motivated this unit:
---    vw_risk_analysis takes the latest row PER ASSET, so a sold name keeps its
---    last row forever. Every row here must be in the current broker snapshot.
+-- 4. NO STALE POSITIONS. Two different staleness defects, and this must catch
+--    BOTH: vw_risk_analysis takes the latest row per ASSET (a sold name persists
+--    forever), and sync_alpaca_positions is upsert-only (a name exited intraday
+--    persists until as_of_date rolls over).
+--
+--    CHECKED AGAINST `vw_positions_current`, NOT `positions`. The raw table
+--    still contains the exited row, so testing against it passes while the book
+--    shows a position that was liquidated hours ago -- which is exactly how
+--    KMTUY survived on screen on 2026-09-14.
 insert into _r
 select 'every_row_is_held', count(*) = 0,
        case when count(*) = 0 then 'none'
             else 'not held: ' || string_agg(symbol, ',') end
   from public.vw_book_mctr m
- where m.symbol not in (
-   select a.symbol from public.positions p join public.assets a on a.id = p.asset_id
-    where p.as_of_date = (select max(as_of_date) from public.positions)
-      and p.quantity <> 0 and (p.market_value is null or abs(p.market_value) > 0.01));
+ where m.symbol not in (select symbol from public.vw_positions_current);
 
 -- 5. WITHHELD IS COUNTED, NOT DROPPED. n_measured + n_withheld must equal the
 --    eligible book. A measure that silently renormalises its own gaps away
@@ -52,9 +55,10 @@ select 'every_row_is_held', count(*) = 0,
 insert into _r
 select 'withheld_accounted',
        max(n_measured) + max(n_withheld) = (
-         select count(*) from public.positions p join public.assets a on a.id = p.asset_id
-          where p.as_of_date = (select max(as_of_date) from public.positions)
-            and p.quantity <> 0 and (p.market_value is null or abs(p.market_value) > 0.01)),
+         -- Same source as the view. Counting from raw `positions` here would
+         -- include a name exited intraday and the two would never reconcile.
+         select count(*) from public.vw_positions_current p
+          where p.quantity <> 0 and (p.market_value is null or abs(p.market_value) > 0.01)),
        'measured=' || max(n_measured)::text || ' withheld=' || max(n_withheld)::text
   from public.vw_book_mctr;
 
