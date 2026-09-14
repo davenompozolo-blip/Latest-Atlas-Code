@@ -2168,6 +2168,95 @@ select md5(pg_get_functiondef(oid)) from pg_proc where proname = '<fn>';
 **A file that disagrees with the database is worse than a missing one** -- it reads as the
 authority and reproduces nothing.
 
+### `marginal_vol_contribution` was never marginal (2026-09-14)
+
+B4. Full report in `docs/B4_MCTR_BENCH_INTEGRITY_REPORT.md`.
+
+`vw_risk_analysis.marginal_vol_contribution` is `weight * annual_vol` -- a share of the
+UNDIVERSIFIED sum with no covariance in it anywhere. It cannot express that adding to a name
+which offsets the rest of the book lowers portfolio risk, because nothing in it knows what
+the rest of the book is, and it has no Euler additivity, which is the property B4 and the
+segment layer both need.
+
+`vw_book_mctr` computes the real derivative -- Sigma = D R D, R from
+`universe_correlations` and D the sample sd **on the same 120 sessions the correlations were
+estimated on**. Euler residual **2.8e-17**, shares close to 1.0000000000.
+
+**Book vol is 19.37%, and it is corroborated rather than merely computed:** E3's factor model
+gave **19.08%** from four betas and a shrunk 4x4 covariance -- a completely different route,
+sharing no intermediate object. Two methods agreeing to 0.3pp is the reason to believe either.
+
+**Take w+1 SESSIONS to get w RETURNS.** `refresh_universe_correlations` builds returns over a
+DOUBLE-width close window and only then takes the last `p_window` RETURN dates, so R rests on
+120 returns whose oldest consumes a close from outside the grid. Taking 120 closes and lagging
+inside them gives 119 returns starting one session later -- a different sample from the one R
+was estimated on. Worth one basis point here (19.377% -> 19.367%) and worth getting right:
+Sigma = D R D is coherent only if D and R span the same observations. Caught in review, after
+the migration comment already claimed the two matched.
+
+**Use `correlation_simple`, never `correlation`.** The latter is EWMA-weighted at lambda 0.97,
+so its effective sample is ~33 sessions and it reaches +/-0.9997 on this book. A pairwise EWMA
+matrix paired with a 120-day sample vol is neither internally consistent nor reliably PSD.
+
+**The ranking changes materially, which is the point:** MRVL 20 -> 8, CRWV 14 -> 7, JPM
+9 -> 24. The old measure over-weights large positions because it never sees their moves
+cancel. AU ranked **5th** and is not held at all -- see below.
+
+### Three defects in the risk layer, found on B4's path, none fixed (2026-09-14)
+
+**1. `vw_risk_analysis` publishes positions the book does not hold.** `latest_pos` is
+`DISTINCT ON (asset_id) ... ORDER BY as_of_date DESC` -- the latest row PER ASSET, not the
+latest snapshot -- so a sold name keeps its final row forever at its last market value.
+83 rows published, **63 actually held, 20 stale**, carrying **15.87% of published weight and
+11.37% of published risk contribution**. The fix is one clause (scope to `max(as_of_date)`)
+and the data supports it: a complete 64-66 row snapshot every day, every row non-zero.
+
+**2. `book_risk_daily.total_vol_annual` squares the weights AND re-annualises.** This is the
+mechanism behind the 2.4x understatement flagged below:
+
+```
+Sum(w_i * sigma_i)                  = 34.83%   undiversified, correct units
+Sum(w_i^2 * sigma_annual) * sqrt(252) =  9.90%   <- what is published (10.78%)
+```
+
+Two independent dimensional errors that partially cancel into a plausible-looking 10.8%.
+Realised is 24.8-28.9%; B4's 19.37% and E3's 19.08% are coherent, 10.78% is not.
+
+**3. The column name asserts a measure the field does not carry** -- the `fwd_pe` lesson
+again. **When a column's name asserts a measure, check the field it reads, not the alias.**
+
+Each of these re-bases a live page, so each is its own decision, not a fold-in.
+
+### Drift is only evidence where the book is exposed (2026-09-14)
+
+Two rules gate what B4 lets E1's drift say, and on this book they disagree with the naive
+reading in opposite directions.
+
+**Drift is in sigma, never in raw score.** `drift_score_20d` is a difference of 20-session
+SUMS whose sd runs 4.19 (`dollar`) to 8.22 (`cyclical`), so raw magnitudes are not comparable
+across axes. It inverts the answer: raw ranks `cyclical` first (6.725), sigma ranks `dollar`
+first (1.277 against cyclical's 0.818). Third place this file has recorded that trap.
+
+**An axis moving is evidence only if the book is exposed to it**, so axes are gated on
+`book_factor_betas.significant`. `cyclical` fails (t = 0.948) -- the same axis raw ranking
+would have put on top. Two independent reasons to exclude it.
+
+**`factor_axes.marginal` is NOT that gate and must not be used as one.** It means the
+component barely cleared the Marchenko-Pastur noise edge -- a property of the PCA, not of the
+book. `dollar` is `marginal = true` AND the book's most significant exposure (t = -10.111).
+Reading `marginal` as "no measurable exposure" withholds the axis that matters most and
+publishes the one that matters least.
+
+**B4 publishes magnitudes and no flag** -- E1.4 is deferred by the ruling's section 8 until
+30 days of E1.3 observation. The test asserts the ABSENCE of any flag-shaped column rather
+than trusting it.
+
+**The finding: 45.86% of book risk sits in positions with no thesis on file** (37 of 61), and
+three of the top five contributors -- EWY, TSM, ASML -- have nothing written down. Every
+thesis that does exist is `untested`: all 27 `bench_claims` rows, none ever confirmed or
+contradicted. So the thesis-state axis of the join is a constant today and all the variation
+comes from drift. `no_thesis` is its own class and is never folded in with a healthy thesis.
+
 ### The Risk page understates book vol by ~2.4x -- flagged, not fixed (2026-09-14)
 
 Surfaced while sanity-checking E3. `book_risk_daily.total_vol_annual` reads **10.78%**
