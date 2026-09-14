@@ -2135,6 +2135,39 @@ the reason recorded twice above: the latter is a rolling sum, not a sigma level.
 706-710 ms per axis; three axes in one round trip is 2.1s warm against the 3s anon cap. Both
 functions are revoked from `anon` and `authenticated`. The table is an indexed read.
 
+### A dumped function definition goes stale the moment you patch the function (2026-09-14)
+
+`20260914150500_a3_v01_engine_conjunction_window_and_abort_scope.sql` was written by
+dumping `pg_get_functiondef` mid-way through the work. Two corrections were then applied
+to the database directly and never re-dumped, so the checked-in migration -- and the
+`supabase_migrations.schema_migrations` row taken from it -- carried a draft **the database
+has never run**: the conjunction window compared `> v_conj` rather than `>=`, and the new
+semantics were unconditional, so `regime_logic_versions` was never read.
+
+**Both faults are invisible from the database**, which was correct throughout; every figure
+in `docs/A3_V01_STRUCTURAL_REPORT.md` was produced by the right body. They are visible only
+to a replay from a clean checkout -- a Supabase Preview branch, a new environment, a
+reviewer reading the migration to see what shipped. CodeRabbit read the file and reported
+both as blocking on PR #776, correctly; the reply that they were already fixed would have
+been wrong.
+
+`20260914193000_a3_v01_engine_definition_matches_applied.sql` carries the live definition
+verbatim. Behaviour-neutral by construction and proven so:
+`md5(pg_get_functiondef(...))` identical before and after (`7c8aed2d...`), and all three v0
+digests still reproduce against the 18,538 stored rows.
+
+**After patching a function with `execute_sql`, re-dump it into a migration.** A DDL path
+that skips `apply_migration` leaves no ledger row, so the divergence cannot be found by
+reading the ledger either -- both copies agreed with each other and neither agreed with the
+database. Check the live object, not the file that claims to define it:
+
+```sql
+select md5(pg_get_functiondef(oid)) from pg_proc where proname = '<fn>';
+```
+
+**A file that disagrees with the database is worse than a missing one** -- it reads as the
+authority and reproduces nothing.
+
 ### The Risk page understates book vol by ~2.4x -- flagged, not fixed (2026-09-14)
 
 Surfaced while sanity-checking E3. `book_risk_daily.total_vol_annual` reads **10.78%**
