@@ -54,16 +54,27 @@ book. A pairwise EWMA matrix paired with a 120-day sample vol is neither
 internally consistent nor reliably positive semi-definite. The plain Pearson
 column is estimated on exactly the window the vols use.
 
+**121 sessions, to get 120 returns — and the first cut of this got it wrong.**
+`refresh_universe_correlations` computes returns over a *double-width* close
+window and only then takes the last `p_window` **return** dates, so R rests on
+120 returns whose oldest consumes a close from outside the grid. Taking 120
+*closes* here and lagging inside them yields 119 returns beginning one session
+later — a different sample from the one R was estimated on, while the comment
+above it claimed they matched. Caught in review on this PR. The correction moves
+book vol by **one basis point** (19.377% → 19.367%), which is the right order for
+one observation in 120 — the point is not the magnitude but that Σ = D R D is
+only coherent if D and R span the same observations.
+
 | | |
 |---|---:|
-| Book vol, annualised | **19.39%** |
-| Undiversified sum Σ wᵢσᵢ | 40.89% |
+| Book vol, annualised | **19.37%** |
+| Undiversified sum Σ wᵢσᵢ | 40.84% |
 | Euler residual | **2.8e-17** |
 | Σ risk_share | 1.0000000000 |
 | Positions measured | 61 |
 | Withheld | 2 (IXC, KMTUY — 1.73% of weight) |
 
-**19.39% is corroborated, not merely computed.** E3's factor model put the
+**19.37% is corroborated, not merely computed.** E3's factor model put the
 unconditional book vol at **19.08%** by an entirely different route — four factor
 betas and a shrunk 4×4 covariance, versus a 61×61 correlation matrix here. Two
 methods sharing no intermediate object agreeing to 0.3pp is the reason to believe
@@ -188,7 +199,7 @@ mechanism behind the 2.4× understatement already flagged in CLAUDE.md.**
 
 It squares the weights **and** re-annualises an already-annual number. Two
 independent errors that partially cancel into a plausible-looking 10.8%. Against
-realised equity-curve vol of 24.8–28.9%, B4's 19.39% and E3's 19.08% are both
+realised equity-curve vol of 24.8–28.9%, B4's 19.37% and E3's 19.08% are both
 coherent; 10.78% is not.
 
 **4.3 — the column name asserts a measure the field does not carry.**

@@ -49,7 +49,12 @@ with mat as (
            where u.as_of_date = m.d limit 1) as w
     from mat m
 ), held as (
-  select a.symbol, p.asset_id, p.market_value
+  -- Aggregated by symbol, not taken row-per-row. `assets.symbol` is unique and
+  -- there is one portfolio today, so this is a no-op now -- but a second
+  -- portfolio holding the same name would otherwise put that symbol into `wts`
+  -- twice, which DOUBLES ITS UNIT DIAGONAL and inflates book vol silently. The
+  -- degenerate test in the test file is the one that would catch it.
+  select a.symbol, (array_agg(p.asset_id))[1] as asset_id, sum(p.market_value)::numeric(24,8) as market_value
     from public.positions p
     join public.assets a on a.id = p.asset_id
    where p.as_of_date = (select max(as_of_date) from public.positions)
@@ -59,9 +64,19 @@ with mat as (
      and not (a.asset_class = any(array['option','us_option'])
               and a.symbol ~ '^[A-Z.]{1,6}[0-9]{6}[CP][0-9]{8}$'
               and to_date(substring(a.symbol,'([0-9]{6})[CP]'),'YYMMDD') < current_date)
+   group by a.symbol
 ), sess as (
   -- The session spine is SPY's own bars, never a calendar: a weekday feed is
   -- not late on a holiday, and a name with a gap must not shift the window.
+  --
+  -- `w + 1` SESSIONS, TO GET `w` RETURNS. This is the whole basis question and
+  -- it is easy to get wrong by one. `refresh_universe_correlations` computes
+  -- returns over a DOUBLE-width close window and only then takes the last
+  -- `p_window` RETURN dates, so its matrix rests on 120 returns whose oldest
+  -- return consumes a close from outside the grid. Taking 120 closes here and
+  -- lagging inside them yields 119 returns starting one session later -- a
+  -- different sample from the one R was estimated on. Sigma = D R D is only
+  -- coherent if D and R span the same observations.
   select ph.price_date
     from public.price_history ph, win
    where ph.interval = '1d'
@@ -69,7 +84,7 @@ with mat as (
      and ph.price_date <= win.d
    group by ph.price_date
    order by ph.price_date desc
-   limit (select w from win)
+   limit (select w from win) + 1
 ), rets as (
   select h.symbol,
          ph.close / lag(ph.close) over (partition by h.symbol order by ph.price_date) - 1 as r

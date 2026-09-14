@@ -2182,9 +2182,17 @@ segment layer both need.
 `universe_correlations` and D the sample sd **on the same 120 sessions the correlations were
 estimated on**. Euler residual **2.8e-17**, shares close to 1.0000000000.
 
-**Book vol is 19.39%, and it is corroborated rather than merely computed:** E3's factor model
+**Book vol is 19.37%, and it is corroborated rather than merely computed:** E3's factor model
 gave **19.08%** from four betas and a shrunk 4x4 covariance -- a completely different route,
 sharing no intermediate object. Two methods agreeing to 0.3pp is the reason to believe either.
+
+**Take w+1 SESSIONS to get w RETURNS.** `refresh_universe_correlations` builds returns over a
+DOUBLE-width close window and only then takes the last `p_window` RETURN dates, so R rests on
+120 returns whose oldest consumes a close from outside the grid. Taking 120 closes and lagging
+inside them gives 119 returns starting one session later -- a different sample from the one R
+was estimated on. Worth one basis point here (19.377% -> 19.367%) and worth getting right:
+Sigma = D R D is coherent only if D and R span the same observations. Caught in review, after
+the migration comment already claimed the two matched.
 
 **Use `correlation_simple`, never `correlation`.** The latter is EWMA-weighted at lambda 0.97,
 so its effective sample is ~33 sessions and it reaches +/-0.9997 on this book. A pairwise EWMA
@@ -2212,7 +2220,7 @@ Sum(w_i^2 * sigma_annual) * sqrt(252) =  9.90%   <- what is published (10.78%)
 ```
 
 Two independent dimensional errors that partially cancel into a plausible-looking 10.8%.
-Realised is 24.8-28.9%; B4's 19.39% and E3's 19.08% are coherent, 10.78% is not.
+Realised is 24.8-28.9%; B4's 19.37% and E3's 19.08% are coherent, 10.78% is not.
 
 **3. The column name asserts a measure the field does not carry** -- the `fwd_pe` lesson
 again. **When a column's name asserts a measure, check the field it reads, not the alias.**
