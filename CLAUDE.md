@@ -2209,6 +2209,28 @@ array is the right answer for a flat account and a catastrophic one after an end
 and the job refuses to reconcile (at error level, never silently) when the two disagree.
 Deploying it fixes all 21 views with no view change.
 
+**An ABSENT witness is not a zero one.** The gate's first draft read
+`Math.abs(acctLongMV ?? 0) + Math.abs(acctShortMV ?? 0)`, so a 200 response that simply
+omitted the two market-value fields summed to 0, cleared the `< 1` flat test, and would have
+deleted the whole book on the strength of a witness that never testified. `toNumericOrNull`
+returns null for an absent field and `?? 0` erases that distinction. Both fields must be
+present for the account to confirm anything; otherwise the gate refuses. Same shape as the
+stale-bar rule -- if the data cannot support the claim, the claim is not made.
+
+**The edge functions ARE typecheckable in this container**, which two sessions assumed they
+were not. There is no `deno`, but `/opt/node22/bin/tsc` exists and `--noResolve` stubs out the
+`jsr:`/`https:` imports, leaving only the four expected `Cannot find name 'Deno'` lines:
+
+```bash
+/opt/node22/bin/tsc --noEmit --noResolve --skipLibCheck --strict \
+  --target es2022 --module esnext --lib es2022,dom \
+  supabase/functions/<fn>/index.ts
+```
+
+That found a real blocker -- an early return that predated two new `PositionsResult` fields
+and did not carry them (`TS2739`) -- in a file whose only other reader was going to be
+production. **Check that a tool is absent before designing around its absence.**
+
 ### `marginal_vol_contribution` was never marginal (2026-09-14)
 
 B4. Full report in `docs/B4_MCTR_BENCH_INTEGRITY_REPORT.md`.

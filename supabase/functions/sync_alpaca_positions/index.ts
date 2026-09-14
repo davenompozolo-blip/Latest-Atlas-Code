@@ -163,7 +163,8 @@ async function runPositionsAndAccount(portfolioId: string | null): Promise<Posit
   `
 
   if (portfolios.length === 0) {
-    return { positions_seen: 0, positions_upserted: 0, portfolios: 0,
+    return { positions_seen: 0, positions_upserted: 0,
+             positions_exited: 0, reconcile_skipped: 0, portfolios: 0,
              symbols: [], options_count: 0, shorts_count: 0,
              account_equity: null, account_cash: null }
   }
@@ -173,6 +174,13 @@ async function runPositionsAndAccount(portfolioId: string | null): Promise<Posit
     alpacaGet<AlpacaPosition[]>('/v2/positions'),
     alpacaGet<AlpacaAccount>('/v2/account'),
   ])
+
+  // `for (const p of raw)` accepts any iterable, so a 200 carrying a string
+  // would parse character by character into a book of the wrong shape instead
+  // of failing. Refuse before the transaction opens; nothing is written yet.
+  if (!Array.isArray(raw)) {
+    throw new Error('sync_alpaca_positions: /v2/positions did not return an array')
+  }
 
   // ── Parse positions ─────────────────────────────────────────────────────
   type ParsedPos = {
@@ -282,13 +290,24 @@ async function runPositionsAndAccount(portfolioId: string | null): Promise<Posit
       // endpoint in the same fetch. Refuse to reconcile when the two disagree,
       // and say so at error level rather than silently skipping -- a swallowed
       // refusal here is indistinguishable from a book that really did go flat.
-      const grossMarketValue = Math.abs(acctLongMV ?? 0) + Math.abs(acctShortMV ?? 0)
-      const reconcilable = seenAssetIds.length > 0 || grossMarketValue < 1
+      //
+      // An ABSENT market value is not a zero one. `toNumericOrNull` yields null
+      // for a field the payload did not carry, so `?? 0` would read a 200 that
+      // omitted both fields as a confirmed-flat account and delete the book on
+      // the strength of a witness that never testified. Both must be present.
+      const grossMarketValue = (acctLongMV !== null && acctShortMV !== null)
+        ? Math.abs(acctLongMV) + Math.abs(acctShortMV)
+        : null
+      const reconcilable = seenAssetIds.length > 0 ||
+        (grossMarketValue !== null && grossMarketValue < 1)
 
       if (!reconcilable) {
         console.error(
           'sync_alpaca_positions: REFUSING to reconcile -- /v2/positions returned ' +
-          'no rows while /v2/account reports gross market value ' + grossMarketValue +
+          'no rows while /v2/account ' +
+          (grossMarketValue === null
+            ? 'did not report long/short market value'
+            : 'reports gross market value ' + grossMarketValue) +
           '. Stale positions left in place for portfolio ' + pr.portfolio_id + '.'
         )
         reconcileSkipped += 1
