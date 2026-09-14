@@ -2032,6 +2032,53 @@ theme's whole `(as_of, state, strength)` series** rather than a transition count
 times, including once after a `safe_bigint` rewrite of two integer extractions,
 which is how that rewrite is known behaviour-neutral rather than assumed to be.
 
+### A3 v0.1-structural: 1 of 4, and a correction to my own report (2026-09-14)
+
+The owner's 2026-09-13 ruling applied. Four structural corrections, NO threshold value
+changed, one re-run. Full report in `docs/A3_V01_STRUCTURAL_REPORT.md`.
+
+**Detected 1 of 4 expected periods** — `fiscal_dominance`, emerging 2023-11-03, aborting
+2023-11-14 on the November yield collapse. That is the ruling's own §5 middle row: report
+and hold. The conjunction-window correction is what produced it: fiscal's three emergence
+rows completed their 30-session holds at 32, 33 and 55 sessions inside 2023, never on a
+shared session, and all three fall inside one 90-session window.
+
+**PEAK IS NOT HOLD, AND I GOT THIS WRONG IN WRITING.** The v0 backfill report's prose said
+2022 energy failed because a sign test held 37 of 40 sessions while "the two rows that carry
+actual magnitudes cleared their bars easily". The +57.1% Brent and +45.5bp T5YIFR figures
+are **peak single-session readings**. Their longest actual runs were **10 sessions against a
+40-session hold each** — so the sign test at 37/40 was the row that came CLOSEST to
+satisfying itself, the least binding of the three. The report's own table had 10/10/37 right
+on the page above the paragraph that misread it. Both places are now corrected in place.
+
+The ruling's §1 was argued from that paragraph and still stands on its own merits (A3.1 §4
+says confirmation never gates; A3.0 seeded the row as emergence) — but it could never have
+unblocked 2022. **No threshold change fixes a row that holds a quarter of its window.**
+`energy_dislocation` has now spent zero sessions in emerging or established across 5,900.
+
+**Version-scope a semantic change, not just a threshold change.** The conjunction window and
+the abort scope were first written unconditionally, which would have restated what
+`v0-uncalibrated` means — 18,538 append-only rows that are the evidence the ruling was
+decided on. `regime_logic_versions` now records which SEMANTICS each version evaluates
+under, separately from its thresholds, and an unknown version defaults to the pre-ruling
+behaviour. A conjunction window of **1 reproduces the old same-session rule exactly**, so v0
+is recovered by a parameter rather than a second code path — and the v0 digest reproducing
+on all three themes is the test that it worked.
+
+**That test caught a real off-by-one:** `sess_ix - oldest <= v_conj` makes a window of 1 mean
+"this session or the previous", silently widening v0 by one session and breaking reproduction
+on two of three themes. The window is the last `v_conj` sessions INCLUSIVE of the current
+one, so the comparison is `<`.
+
+**`aborted` fell from up to 24.9% of sessions to 0.00–3.92%** once the transition stopped
+firing from `dormant`. An abort is the failure of an episode that existed.
+
+**No tariff candidate passes a specificity test.** `eem_spy` and the `dollar` axis are the
+only two with consistent sign across both tariff windows while 2 of 3 controls run the other
+way — and **COVID moves the same way and further** (dollar −3.94 against −2.67 and −2.41),
+so any threshold that fires on tariffs fires on COVID first. Sessions ≥1σ separate nothing:
+75–116 in every window. No trigger rows were written, per the ruling.
+
 ### The book is 26% riskier when the factors stop diversifying (2026-09-14)
 
 E3/B2. `atlas_regime_factor_cov` / `atlas_regime_cvar` / `book_regime_cvar`, nightly at

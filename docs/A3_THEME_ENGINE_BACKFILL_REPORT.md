@@ -164,6 +164,21 @@ all of history is 91. A sign test inside a conjunction that must hold 40 session
 is the strictest row in the theme, which is the opposite of what a
 no-magnitude qualifier reads like.
 
+> **CORRECTION, 2026-09-14.** The paragraph above is wrong and the table at
+> rows 139–141 is right. **+57.1% and +45.5bp are peak single-session readings,
+> not completed holds.** `emg_brent_up` and `emg_t5yifr_up` each managed a
+> longest run of **10 sessions against a 40-session hold** — a quarter of the
+> way. `emg_cyclical_positive` at 37/40 was therefore the row that came
+> *closest* to satisfying itself, i.e. the **least** binding of the three, not
+> the most. "Cleared their bars easily" conflates clearing a threshold at a peak
+> with holding it.
+>
+> The 2026-09-13 ruling's §1 was argued from this paragraph. That correction
+> still stands on its own merits — A3.1 §4 says confirmation never gates, and
+> A3.0 seeded this row as emergence — but it was never capable of unblocking
+> 2022, and the v0.1-structural run confirms it did not.
+> See `docs/A3_V01_STRUCTURAL_REPORT.md` §4.
+
 **C. Every row cleared its own hold, and never together.** 2023 fiscal. 32 ≥ 30,
 33 ≥ 30, 55 ≥ 30 — all three individually satisfied — and the conjunction never
 held on the same session. Peak strength 0.699, the closest any theme came. This
@@ -287,6 +302,10 @@ Requested by the spec, and **nothing here has been applied.**
   the strictest row in the theme because it flips on noise; the two rows that
   carry actual magnitudes cleared their bars easily. If anything moves here it
   should be how the sign test is applied, not the 25% or the 20bp.
+  **CORRECTED 2026-09-14 — this bullet is wrong.** The magnitude rows held 10 of
+  40 sessions each; 37/40 made the sign test the least binding row, not the
+  strictest. No threshold change fixes a row that holds a quarter of its
+  required window. See the correction under failure mode B above.
 - **`fiscal_dominance` is the nearest miss and the problem is phase.** All three
   rows cleared their own 30-session holds inside 2023, never simultaneously.
   Requiring simultaneity of three rolling holds is much stricter than requiring
