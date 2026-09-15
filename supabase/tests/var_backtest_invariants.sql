@@ -8,12 +8,12 @@
 --
 --   psql "$DATABASE_URL" -f supabase/tests/var_backtest_invariants.sql
 --
--- Twelve refusals and four acceptances. The acceptances are the point, and one
+-- Fifteen refusals and four acceptances. The acceptances are the point, and one
 -- of them is the zero-exception row: a wall of CHECKs that also blocks
 -- legitimate writes is worse than no CHECKs, and "no session breached the
 -- bound" is a legitimate result, not a malformed row.
 --
--- Last run 2026-09-15: 16/16.
+-- Last run 2026-09-15: 19/19.
 
 DO $test$
 DECLARE
@@ -201,6 +201,56 @@ BEGIN
     results := results || E'\n  FAIL  unsupported confidence was ACCEPTED'; fails := fails + 1;
   EXCEPTION WHEN check_violation THEN
     results := results || E'\n  pass  unsupported confidence refused';
+  END;
+
+  -- 13. A NaN standard deviation. PostgreSQL sorts `numeric 'NaN'` ABOVE
+  --     every finite value, so `sd_pred_daily > 0` is satisfied by it. Before
+  --     vbr_finite_ck this row was accepted by the whole constraint set.
+  BEGIN
+    INSERT INTO public.var_backtest_runs
+      (as_of, cvar_as_of, logic_version, leg, basis, axis_key, conf, window_start, window_end,
+       n_obs, exceptions, var_pred_daily, cvar_pred_daily, cvar_pred_on_exceptions,
+       cvar_realised_daily, sd_pred_daily, sd_realised_daily, sd_factor_window,
+       sd_residual_window, kupiec_lr, kupiec_reject_05, kupiec_reject_01, betas_estimated_at)
+    VALUES (d, d, lv||':13n', 'model', 'unconditional', NULL, 0.95, d, d2,
+            100, 5, 0.02, 0.025, 0.025, 0.03, 'NaN'::numeric, 0.012, NULL, NULL, 0.0, false, false, t0);
+    results := results || E'\n  FAIL  NaN standard deviation was ACCEPTED'; fails := fails + 1;
+  EXCEPTION WHEN check_violation THEN
+    results := results || E'\n  pass  NaN standard deviation refused';
+  END;
+
+  -- 14. A NaN CVaR. `cvar_pred_daily > var_pred_daily` passes from EITHER
+  --     side, so the ordering rule alone never catches it.
+  BEGIN
+    INSERT INTO public.var_backtest_runs
+      (as_of, cvar_as_of, logic_version, leg, basis, axis_key, conf, window_start, window_end,
+       n_obs, exceptions, var_pred_daily, cvar_pred_daily, cvar_pred_on_exceptions,
+       cvar_realised_daily, sd_pred_daily, sd_realised_daily, sd_factor_window,
+       sd_residual_window, kupiec_lr, kupiec_reject_05, kupiec_reject_01, betas_estimated_at)
+    VALUES (d, d, lv||':14n', 'model', 'unconditional', NULL, 0.95, d, d2,
+            100, 5, 0.02, 'NaN'::numeric, 0.025, 0.03, 0.012, 0.012, NULL, NULL, 0.0, false, false, t0);
+    results := results || E'\n  FAIL  NaN CVaR was ACCEPTED'; fails := fails + 1;
+  EXCEPTION WHEN check_violation THEN
+    results := results || E'\n  pass  NaN CVaR refused';
+  END;
+
+  -- 15. A NaN test statistic with BOTH rejection flags true. `NaN > 3.841459`
+  --     and `NaN > 6.634897` are both true, so the flag bindings that exist to
+  --     stop a verdict disagreeing with its evidence are satisfied by a
+  --     statistic that is not a number. This is the case that makes the hole
+  --     worth a constraint rather than a note.
+  BEGIN
+    INSERT INTO public.var_backtest_runs
+      (as_of, cvar_as_of, logic_version, leg, basis, axis_key, conf, window_start, window_end,
+       n_obs, exceptions, var_pred_daily, cvar_pred_daily, cvar_pred_on_exceptions,
+       cvar_realised_daily, sd_pred_daily, sd_realised_daily, sd_factor_window,
+       sd_residual_window, kupiec_lr, kupiec_reject_05, kupiec_reject_01, betas_estimated_at)
+    VALUES (d, d, lv||':15n', 'model', 'unconditional', NULL, 0.95, d, d2,
+            100, 5, 0.02, 0.025, 0.025, 0.03, 0.012, 0.012, NULL, NULL,
+            'NaN'::numeric, true, true, t0);
+    results := results || E'\n  FAIL  NaN kupiec_lr with both flags true was ACCEPTED'; fails := fails + 1;
+  EXCEPTION WHEN check_violation THEN
+    results := results || E'\n  pass  NaN kupiec_lr with both flags true refused';
   END;
 
   -- ---------- must be ACCEPTED ----------

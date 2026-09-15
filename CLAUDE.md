@@ -2535,6 +2535,63 @@ fragment, not a statement.**
 Note the dumped body uses **CRLF** while the repo uses LF -- the same quirk recorded for the
 ESZIP source-map diff. Normalise before diffing a dump against a file or every line differs.
 
+### NaN walks through every ordering CHECK (2026-09-15)
+
+Raised by CodeRabbit on PR #783 against `var_backtest_runs`, and it is the most
+useful review finding this codebase has had, because it generalises to every
+numeric constraint in the repo.
+
+**PostgreSQL sorts `numeric 'NaN'` ABOVE every finite value.** Verified rather
+than taken on trust:
+
+```
+'NaN'::numeric > 0          ->  true
+'NaN'::numeric >= 0         ->  true
+'NaN'::numeric > 3.841459   ->  true
+'NaN'::numeric <> 'NaN'     ->  false    (numeric NaN equals itself; float does not)
+```
+
+So a NaN row satisfied `sd_pred_daily > 0`, satisfied `cvar_pred_daily >
+var_pred_daily` **from either side**, satisfied `kupiec_lr >= 0`, and satisfied
+**both** `kupiec_reject_*` flag bindings with the flags set true. Fifteen CHECKs
+written specifically so a row could not claim something it had no evidence for,
+and one sentinel passed all of them.
+
+**A one-sided bound is NaN-permeable; a two-sided range is not.** `lw_delta >= 0
+and lw_delta <= 1` on `book_regime_cvar` refuses NaN already, because the UPPER
+bound fails. That asymmetry is exactly why this is invisible on inspection --
+the constraint beside it, written the same afternoon in the same style, is safe.
+
+`x IS DISTINCT FROM 'NaN'::numeric` is the guard: TRUE for NULL so nullable
+measurements are unaffected, FALSE for NaN. `<>` also works, but only if the
+reader knows numeric NaN compares equal to itself, so the longer form says it.
+
+**Guarded at `book_regime_cvar` too, because that is where the value is
+created.** `brc_vol_positive_ck` has the identical hole and the conditional
+bound downstream is `z x vol_daily`, so a NaN admitted there arrives already
+laundered through arithmetic. A gate applied at the consumer is missed by the
+next consumer -- the same argument that put the price-basis gate in the engine
+rather than per consumer.
+
+Added as a new constraint rather than by rewriting `brc_vol_positive_ck`, so the
+positivity rule keeps its name and its history. 0 of 24 and 0 of 15 existing
+rows violate, so both are plain validating `ADD CONSTRAINT`s.
+
+`supabase/tests/var_backtest_invariants.sql` is **19/19 against production**,
+including the three NaN refusals and the row that matters most -- a NaN
+`kupiec_lr` with both rejection flags true, which is a verdict with a
+non-number as its evidence.
+
+**Check every one-sided numeric CHECK in the schema for this.** Find candidates
+with:
+
+```sql
+select conrelid::regclass, conname, pg_get_constraintdef(oid)
+from pg_constraint where contype = 'c'
+  and pg_get_constraintdef(oid) ~ '[><]=?\s*\(?[0-9]'
+  and pg_get_constraintdef(oid) !~* 'NaN';
+```
+
 ### The exit mechanism was fixed at the writer and missed at the reader (2026-09-15)
 
 Reported from the terminal, the day after the writer fix shipped: KMTUY,
