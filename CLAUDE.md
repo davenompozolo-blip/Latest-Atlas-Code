@@ -1649,8 +1649,22 @@ no `sync_log` -- one import away from reintroducing the defect C1 closed.
 **Deleted 2026-09-10.** The four siblings in `_shared/alpaca_tasks/`
 (`account`, `activities`, `positions`, `prices`) have no importers either;
 `sync_alpaca_positions/index.ts` defines its own `runPositionsAndAccount`
-locally and does not read them. Left in place, flagged: check for a live
-duplicate before assuming any of them is the writer.
+locally and does not read them. `activities` and `prices` are left in place,
+flagged: check for a live duplicate before assuming any of them is the writer.
+
+**`account.ts` was deleted 2026-09-15**, on the same reasoning one layer on.
+It was the ONLY file in the repo outside the live function that inserts
+`account_snapshots`, and it does so at `now()` while never touching
+`positions`. `vw_positions_current` reads `updated_at >= max(as_of)` over
+`account_snapshots` as its watermark -- exact **only because** the live
+function writes both tables in one transaction. An account-only writer
+advances the watermark past every position row, so a single import of
+`runAccount` empties the current book and with it `vw_risk_analysis`,
+`vw_command_centre` and the other 19 views. Raised by CodeRabbit on PR #781
+as a contract dependency rather than a live fault, which is what it was: zero
+importers, confirmed repo-wide. **A view whose correctness depends on a
+dangerous function never being called is better served by deleting the
+function.**
 
 **First scheduled run logged 2026-09-10 01:00 UTC** (`sync_log` #46171, `partial`,
 550 ms, 2 stale flagged). Two, not the three known stale rows, because the cron
@@ -2352,6 +2366,40 @@ Realised is 24.8-28.9%; B4's 19.37% and E3's 19.08% are coherent, 10.78% is not.
 again. **When a column's name asserts a measure, check the field it reads, not the alias.**
 
 Each of these re-bases a live page, so each is its own decision, not a fold-in.
+
+### Defect 3 is a re-basing, not a rename (2026-09-15)
+
+The consumer audit, in `docs/DEFECT3_MARGINAL_VOL_CONSUMER_AUDIT.md`. Scoped as
+"rename the misnamed column" and it should not be done that way.
+
+**No live code reads it.** The only consumers are `ui/pages/risk_analysis.py` and
+its tests -- Streamlit, retired. No file in the React terminal touches it.
+
+**Three database consumers, and two persist it.** `atlas_write_verdicts` (8
+references, into `position_verdicts.marginal_vol_contribution`,
+`cluster_risk_share` and `book_risk_daily.total_vol_annual`) and
+`atlas_write_segment_verdicts` (`mvc * weight AS rc`, into
+`segment_verdicts.risk_share`). `vw_position_risk_thesis` is already clean --
+E1.3 reads `vw_book_mctr.risk_share`.
+
+**Ten of forty-three segments have the WRONG SIGN.** Recomputing the latest
+`BY BET` segmentation under B4's Euler measure (shares closing to 1.000000):
+15 segments move more than 1pp, the largest by **+18.69pp** (Cluster 201,
+50.22% -> 68.90%), and ten carry a **negative** Euler contribution -- they
+diversify the book -- while being published as positive risk consumers.
+`weight x vol` is positive by construction and can never report an offset.
+
+**A per-position rank error becomes a sign error once members are summed.**
+B4 measured the ranking damage per name (MRVL 20 -> 8, JPM 9 -> 24); at segment
+level it is worse, because the offsets that cancel inside a cluster are exactly
+what the measure discards. Grouping does not average the error out, it
+concentrates it.
+
+764 `position_verdicts` rows and 288 `segment_verdicts` rows are already written
+on this basis and are append-only, so the fix is version-scoped and declares the
+basis on the row -- the `peer_basis` / `dispersion_basis` / `vol_basis`
+construction. Sequenced after defect 2, which removes the `total_vol_annual`
+dependence.
 
 ### Drift is only evidence where the book is exposed (2026-09-14)
 
