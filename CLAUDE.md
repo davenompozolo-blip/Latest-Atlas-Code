@@ -2231,6 +2231,69 @@ That found a real blocker -- an early return that predated two new `PositionsRes
 and did not carry them (`TS2739`) -- in a file whose only other reader was going to be
 production. **Check that a tool is absent before designing around its absence.**
 
+**DEPLOYED 2026-09-15 as version 10** (v9 had been live since 2026-04-06). `verify_jwt`
+stays false -- pg_cron calls this function, and a deploy that silently re-enabled it would
+break every five-minute run.
+
+**The deploy surfaced a repo/deployment divergence that had nothing to do with this work.**
+Before deploying, the running v9 bundle was diffed against the repo's pre-change file by
+pulling the ESZIP from `/functions/<slug>/body` and extracting the original TypeScript from
+its embedded source map. They differed: **`main` was AHEAD by an undeployed change** --
+
+```ts
+await sql`select update_parser_heartbeat('ok', null)`.catch(() => {/* non-fatal */})
+```
+
+added by PR #707 and never deployed. Two notes on doing that diff: the bundle carries the
+TRANSPILED copy at the obvious offset (types stripped, semicolons added) and the ORIGINAL
+only inside `"sourcesContent"`, so diffing the first one reports hundreds of false changes;
+and the stored original uses CRLF while the repo uses LF, which makes every line differ
+until newlines are normalised. **Normalise, and diff the source map, not the bundle.**
+
+### The heartbeat called a function from a migration that was never applied (2026-09-15)
+
+Chasing that one undeployed line found a live defect nobody was looking for.
+`update_parser_heartbeat` **did not exist in any schema**, `public.system_health` **did not
+exist**, and `20260530000001_system_health.sql` was **absent from
+`supabase_migrations.schema_migrations`** (276 rows) -- while `api/health.js` and
+`src/lib/useFreshnessGate.js` both read that table. A health endpoint and a freshness gate
+were querying a relation that had never been created.
+
+So deploying `main` verbatim would have added a guaranteed-failing round trip to every
+five-minute sync, swallowed by its own `.catch()` -- **the swallowed-write-failure pattern
+this file already records three times, introduced knowingly.** The migration was applied
+first, with three departures from the file, all of which this file already argues for:
+
+- **`SET search_path` on the SECURITY DEFINER function.** Omitted in the original.
+- **`REVOKE EXECUTE ... FROM public, anon, authenticated`.** Without it any anon caller
+  could write arbitrary status and detail into the health table through a definer function.
+  The real caller reaches Postgres directly over `SUPABASE_DB_URL`, not through PostgREST,
+  so it is unaffected. Verified with `has_function_privilege`, not by reading the migration:
+  `anon` false, `authenticated` false, `service_role` true.
+- **`DROP POLICY IF EXISTS` before each `CREATE POLICY`.** `CREATE POLICY` is not
+  idempotent, so the original file would fail any clean replay that ran it twice.
+
+**An unapplied migration is invisible from both sides.** The ledger does not list it, the
+database does not contain its objects, and the repo file looks authoritative -- the same
+shape as the 2026-09-14 engine-definition divergence, one layer out. When a code path calls
+a function, check the function exists before assuming the call is dead weight.
+
+**`system_health.detail` IS PUBLIC. Never write an error payload into it.** The `anon_read`
+policy is `USING (true)` -- deliberately, it is a health table -- and that covers every
+column, `detail` included. `update_parser_heartbeat(p_status, p_detail)` accepts free text,
+so a future caller passing an exception message, a URL carrying a token, or internal
+operational detail publishes it to anon. Status and timestamp are the contract; anything
+diagnostic belongs in `sync_log`, which anon cannot read. Raised by CodeRabbit on PR #780 as
+non-blocking and recorded here because it is a loaded gun rather than a defect: nothing
+writes `detail` today.
+
+Two further points from that review, both confirming rather than correcting, and worth
+keeping so the next session does not re-derive them: a `FOR ALL` policy with `USING` and no
+`WITH CHECK` reuses the `USING` expression as the check for INSERT and for the resulting row
+of an UPDATE, so `service_write` is sound as written; and leaving the never-applied
+`20260530000001` in place is safe precisely because it sorts first and everything in the
+later migration is idempotent over it.
+
 ### `marginal_vol_contribution` was never marginal (2026-09-14)
 
 B4. Full report in `docs/B4_MCTR_BENCH_INTEGRITY_REPORT.md`.
