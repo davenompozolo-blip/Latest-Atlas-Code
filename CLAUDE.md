@@ -2535,6 +2535,78 @@ fragment, not a statement.**
 Note the dumped body uses **CRLF** while the repo uses LF -- the same quirk recorded for the
 ESZIP source-map diff. Normalise before diffing a dump against a file or every line differs.
 
+### The exit mechanism was fixed at the writer and missed at the reader (2026-09-15)
+
+Reported from the terminal, the day after the writer fix shipped: KMTUY,
+liquidated 2026-09-14, still on the holdings table at 0.1% of book, publishing a
+weight, a conviction score and a **+6.3% move**.
+
+`sync_alpaca_positions` v10 was deployed that morning and is doing its job --
+`positions` has no KMTUY row for 2026-09-15 and `vw_positions_current` is
+correct at 65. The phantom was one layer out. **`vw_portfolio_home` built its
+book itself**, and built it the way `vw_risk_analysis` used to:
+
+```sql
+SELECT DISTINCT ON (asset_id) ...  FROM positions
+ WHERE as_of_date >= (SELECT max(as_of_date) - 2 FROM positions)
+ ORDER BY asset_id, as_of_date DESC
+```
+
+The latest row **per asset** over a **three-day** window -- so a name sold on
+any of the last three sessions keeps its final row at its last market value and
+leaves by **ageing out rather than by being sold**. KMTUY would have vanished by
+itself on 09-17 and nothing would have been learned, which is exactly why this
+reads as an intermittent phantom.
+
+**Deploying the writer does not close a defect a reader reproduces.** The 09-14
+entry says "deploying it fixes all 21 views with no view change" -- true of the
+21 views that read `positions` directly, and this one does not read it directly;
+it re-derives the book. Enumerate the re-derivers too:
+
+```sql
+select c.relname from pg_class c join pg_namespace n on n.oid=c.relnamespace
+where n.nspname='public' and c.relkind in ('v','m')
+  and pg_get_viewdef(c.oid, true) ~* 'DISTINCT ON \(.*asset_id';
+```
+
+**The blast radius was the flagship.** `mv_nexus_holdings` reads
+`vw_portfolio_home`, `vw_nexus_holdings` reads that matview, and
+`mv_bench_contribution` reads that -- so holdings, the Theme cut and the bench
+docket all served the same phantom row. 63 -> 62 everywhere after one view
+change plus a matview refresh.
+
+Sourced from `vw_positions_current`, not from a `max(as_of_date)` filter, for
+the reason that view exists: it reconciles `updated_at` against the
+account-snapshot watermark and so is correct **intraday**, which a snapshot-date
+filter is not.
+
+**Proven by shadow view, not by inspection.** The patched definition was created
+under a throwaway name and `EXCEPT ALL`'d both ways against the live view across
+all 26 columns: **one row differs, it is KMTUY, nothing is added**. `n_positions`
+63 -> 62 and `hhi_score` 0.057573 -> 0.057571, which is the whole expected
+footprint of removing a 0.07% name. 185.7 ms after, against a documented 149-166
+ms warm -- no regression. The three held names still absent (FIDU, TGT, HMY) are
+sub-cent dust excluded by the view's own one-cent floor, the same three defect 1
+found.
+
+**HAL is not a phantom and was not touched.** It is genuinely held: 0.498 shares,
+$17.53, `updated_at` exactly on the watermark. It renders at 0.0% because it IS
+0.01% of book. A surface that cannot distinguish a real dust position from a
+stale one is a display question, not a data one.
+
+**Still open, and now the only remaining half of that report.**
+`vw_nexus_holdings.daily_return_pct` is computed against the last stored bar
+with no staleness gate, which is how KMTUY published +6.3% off a print 179 days
+old -- the rule `nexus_holdings.today_pct` already enforces at 7 days, and which
+this file already records as missing here. With KMTUY out of the book **no held
+name is stale** (worst is 1 day), so the gate is dormant rather than wrong. It
+needs `price_days_old` plumbed through `vw_portfolio_home` -> `mv_nexus_holdings`
+-> `vw_nexus_holdings`, which is a matview rebuild and its own change.
+
+Noted in passing from the EXPLAIN: `account_snapshots` shows **Heap Fetches:
+9108** on an Index Only Scan. Stale visibility map -- the 2026-08-23 lesson says
+check that before rewriting anything here.
+
 ### The 95% VaR passes because it is the crossing point (2026-09-15)
 
 B5. Full report in `docs/B5_VAR_BACKTEST_REPORT.md`. `var_backtest_runs`,
