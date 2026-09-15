@@ -2278,6 +2278,22 @@ database does not contain its objects, and the repo file looks authoritative -- 
 shape as the 2026-09-14 engine-definition divergence, one layer out. When a code path calls
 a function, check the function exists before assuming the call is dead weight.
 
+**`system_health.detail` IS PUBLIC. Never write an error payload into it.** The `anon_read`
+policy is `USING (true)` -- deliberately, it is a health table -- and that covers every
+column, `detail` included. `update_parser_heartbeat(p_status, p_detail)` accepts free text,
+so a future caller passing an exception message, a URL carrying a token, or internal
+operational detail publishes it to anon. Status and timestamp are the contract; anything
+diagnostic belongs in `sync_log`, which anon cannot read. Raised by CodeRabbit on PR #780 as
+non-blocking and recorded here because it is a loaded gun rather than a defect: nothing
+writes `detail` today.
+
+Two further points from that review, both confirming rather than correcting, and worth
+keeping so the next session does not re-derive them: a `FOR ALL` policy with `USING` and no
+`WITH CHECK` reuses the `USING` expression as the check for INSERT and for the resulting row
+of an UPDATE, so `service_write` is sound as written; and leaving the never-applied
+`20260530000001` in place is safe precisely because it sorts first and everything in the
+later migration is idempotent over it.
+
 ### `marginal_vol_contribution` was never marginal (2026-09-14)
 
 B4. Full report in `docs/B4_MCTR_BENCH_INTEGRITY_REPORT.md`.
