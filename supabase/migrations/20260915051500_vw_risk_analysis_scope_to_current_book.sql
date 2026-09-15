@@ -18,9 +18,16 @@
 -- their rows are dropped by the inner join to vol_per_position, so the published
 -- weights never summed to the book.
 --
--- 62 rows against vw_positions_current's 65 is NOT a regression: three held names
--- have no usable price history and are dropped by the inner join to
--- vol_per_position, exactly as the old definition did.
+-- 62 rows against vw_positions_current's 65 is NOT a regression, but not for
+-- the reason first assumed. The three are FIDU, HMY and TGT, and they are
+-- FRACTIONAL DUST -- 0.00002251, 0.00002992 and 0.00002483 shares, worth
+-- 0.2c, 0.06c and 0.4c. They carry 173 price bars each, current to the last
+-- session, so price history is not the issue. They are dropped by this view's
+-- own one-cent floor, `abs(market_value) > 0.01`, which is identical in the
+-- old definition and the new one.
+--
+-- Recorded because the first reading of this gap was "no usable price history"
+-- and that was wrong. The bars were there; the position was dust.
 --
 -- Sourced from vw_positions_current, which CLAUDE.md designates for "what is
 -- held" and which is correct intraday -- it reconciles against the
