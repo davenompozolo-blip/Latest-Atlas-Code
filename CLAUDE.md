@@ -2342,7 +2342,9 @@ matrix paired with a 120-day sample vol is neither internally consistent nor rel
 9 -> 24. The old measure over-weights large positions because it never sees their moves
 cancel. AU ranked **5th** and is not held at all -- see below.
 
-### Three defects in the risk layer, found on B4's path, none fixed (2026-09-14)
+### Three defects in the risk layer, found on B4's path (2026-09-14)
+
+**Defects 1 and 2 were fixed 2026-09-15; defect 3 is audited and is the owner's call. The per-defect notes below are left as first written, with the outcome recorded against each.**
 
 **1. `vw_risk_analysis` publishes positions the book does not hold.** `latest_pos` is
 `DISTINCT ON (asset_id) ... ORDER BY as_of_date DESC` -- the latest row PER ASSET, not the
@@ -2350,6 +2352,27 @@ latest snapshot -- so a sold name keeps its final row forever at its last market
 83 rows published, **63 actually held, 20 stale**, carrying **15.87% of published weight and
 11.37% of published risk contribution**. The fix is one clause (scope to `max(as_of_date)`)
 and the data supports it: a complete 64-66 row snapshot every day, every row non-zero.
+
+**FIXED 2026-09-15** (`20260915051500`, PR #781), by sourcing `latest_pos` from
+`vw_positions_current` rather than by a `max(as_of_date)` clause -- that view already
+reconciles against the account-snapshot watermark and so is correct intraday, which a
+snapshot-date filter is not. 83 -> 62 rows, 0 introduced, 21 stale dropped, `sum(weight)`
+1.0168 -> **1.0000**, 58.1 -> 33.6 ms.
+
+Two things that review corrected, both worth keeping. The old sum exceeding 1 was **not**
+"shorts as a class" -- exactly ONE row was dropped, `GDX280121P00070000`, a short put
+expiring 2028 (so the expiry filter misses it) with no contract tape (so the inner join drops
+it). It is dropped for having **no returns**; being short only makes it negative, which is
+what pushes the sum above 1 rather than below. And the three held names absent from the view
+(FIDU, HMY, TGT) are **fractional dust** excluded by the view's own one-cent floor, not names
+missing price history -- each carries 173 current bars.
+
+**A denominator path remains, deliberately unfixed:** `nav` sums all of `latest_pos` while
+the output is inner-joined to `vol_per_position`, so a held, non-dust name with no usable
+252-day return sits in the denominator and not the numerator. Zero such names today, but by
+luck -- a name bought today has a positions row within five minutes and no bar until 22:00.
+Do not "fix" it by renormalising: that re-bases what `weight` MEANS on a live page. Publish
+the withheld share instead, the `measuredWeightPct` / `withheldWeightPct` construction.
 
 **2. `book_risk_daily.total_vol_annual` squares the weights AND re-annualises.** This is the
 mechanism behind the 2.4x understatement flagged below:
@@ -2362,8 +2385,14 @@ Sum(w_i^2 * sigma_annual) * sqrt(252) =  9.90%   <- what is published (10.78%)
 Two independent dimensional errors that partially cancel into a plausible-looking 10.8%.
 Realised is 24.8-28.9%; B4's 19.37% and E3's 19.08% are coherent, 10.78% is not.
 
+**FIXED 2026-09-15** (`20260915053000`) -- see the CLOSED entry below for the basis-column
+design and why `logic_version` was not bumped.
+
 **3. The column name asserts a measure the field does not carry** -- the `fwd_pe` lesson
 again. **When a column's name asserts a measure, check the field it reads, not the alias.**
+
+**AUDITED 2026-09-15, not implemented** -- `docs/DEFECT3_MARGINAL_VOL_CONSUMER_AUDIT.md` and
+the entry below. It is a re-basing, not a rename, and it is the owner's call.
 
 Each of these re-bases a live page, so each is its own decision, not a fold-in.
 
@@ -2431,18 +2460,59 @@ thesis that does exist is `untested`: all 27 `bench_claims` rows, none ever conf
 contradicted. So the thesis-state axis of the join is a constant today and all the variation
 comes from drift. `no_thesis` is its own class and is never folded in with a healthy thesis.
 
-### The Risk page understates book vol by ~2.4x -- flagged, not fixed (2026-09-14)
+### The Risk page understated book vol by ~2.4x -- CLOSED 2026-09-15 (2026-09-14)
 
-Surfaced while sanity-checking E3. `book_risk_daily.total_vol_annual` reads **10.78%**
+Surfaced while sanity-checking E3. `book_risk_daily.total_vol_annual` read **10.78%**
 (2026-09-11). Realised equity-curve vol over settled returns is **24.84%** (60 sessions),
 **28.93%** (120) and **26.24%** (full 172). E3's factor-model unconditional is 19.08%, which
 should sit below realised since the model explains 77.8% of variance.
 
 A holdings-based forward estimate and a realised backward one do differ. None of that
-accounts for a factor of 2.4 against every window measured. Nothing in E3 reads
-`book_risk_daily`, so no E3 figure is affected -- but a risk page reporting less than half the
-volatility the book actually has needs its own unit, and the two numbers will look
-irreconcilable side by side until one is explained.
+accounted for a factor of 2.4 against every window measured.
+
+**The cause was dimensional, not statistical.** `sum(mvc * weight) * sqrt(252)`, where `mvc`
+is ALREADY `weight * annual_vol` -- so it squared the weight AND re-annualised an
+already-annual figure. Two independent errors that partly cancel, which is exactly why the
+result looked plausible instead of absurd. `total_vol_annual` now reads
+`vw_book_mctr.book_vol_annual` (Sigma = D R D, B4): **19.52%**, corroborated by E3's 19.08%
+from a completely independent route.
+
+**The series carries a basis column rather than a version bump.** `atlas_write_verdicts`
+writes `position_verdicts` AND `book_risk_daily` under one `logic_version`, and
+`position_verdicts` semantics did not change -- bumping would falsely restate a verdict
+history to mark a change in one column of a companion table. A parallel column was rejected
+for the `total_return_pct` / `unrealised_return_pct` reason this file already has an entry
+about. So `vol_basis` declares the method per row (`weight_sq_undiversified` on the 13
+backfilled rows, `mctr_covariance` after), and `vol_matrix_as_of` records WHICH correlation
+snapshot the figure rests on -- `ts_clusters` is on record failing with a 504 and leaving a
+downstream job on a stale partition, and a silently stale matrix would move this number with
+nothing on the row to say so.
+
+**The discontinuity is legible at the exact row where it happens**, which a silent
+recomputation would not be. `vol_basis` is NULL exactly when `total_vol_annual` is, enforced
+by `brd_vol_basis_ck`, so a row can never claim a method for a number it does not have.
+
+### A dumped function definition needs a terminator (2026-09-15)
+
+The defect 2 script failed on first run with `42601: syntax error at or near "insert"`.
+`pg_get_functiondef` returns the body ending in a bare `$function$` with **no trailing
+semicolon**, so concatenating it with any following statement glues the two together and the
+parser fails at the next statement, not at the real fault.
+
+**Parse-check any assembled script before handing it over.** There is no `psql` connection in
+this container but `pglast` (a wrapper over libpg_query, the actual Postgres grammar) installs
+and works:
+
+```python
+import pglast; pglast.parse_sql(open(path).read())
+```
+
+The broken copy reproduces the exact error and the fixed one returns 11 statements, so the
+terminator is proven to be the cause rather than assumed. **`pg_get_functiondef` output is a
+fragment, not a statement.**
+
+Note the dumped body uses **CRLF** while the repo uses LF -- the same quirk recorded for the
+ESZIP source-map diff. Normalise before diffing a dump against a file or every line differs.
 
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
