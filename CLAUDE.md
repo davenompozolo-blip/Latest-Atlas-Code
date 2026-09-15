@@ -2489,8 +2489,29 @@ downstream job on a stale partition, and a silently stale matrix would move this
 nothing on the row to say so.
 
 **The discontinuity is legible at the exact row where it happens**, which a silent
-recomputation would not be. `vol_basis` is NULL exactly when `total_vol_annual` is, enforced
-by `brd_vol_basis_ck`, so a row can never claim a method for a number it does not have.
+recomputation would not be.
+
+**The first constraint did not enforce what this entry originally claimed it did.** As
+shipped it read `total_vol_annual IS NULL OR (vol_basis IS NOT NULL AND btrim(vol_basis)
+<> '')` -- a figure implies a basis, and nothing else. It permitted a basis with no figure,
+`mctr_covariance` with no `vol_matrix_as_of` (the provenance column defeated),
+`weight_sq_undiversified` WITH a matrix date it never used, and any non-blank string as a
+basis, so a typo became a stored measure. Raised by CodeRabbit on PR #782; **the prose here
+asserted a biconditional the code never checked**, which is this file's own recorded failure
+mode one layer up from a comment.
+
+`20260915074500` replaces it with the three permitted states and nothing else -- all-null,
+`weight_sq_undiversified` with no matrix date, `mctr_covariance` with one -- so the
+biconditional is now true rather than merely written down. Verified before applying: 13 rows,
+0 would violate, and `vw_book_mctr` returns both columns non-null on all 61 rows so the
+nightly write satisfies it. `supabase/tests/book_risk_daily_vol_basis_contract.sql` proves
+six refusals and three acceptances.
+
+**`NOT VALID` was rejected rather than skipped.** Squawk flags a plain `ADD CONSTRAINT` for
+taking ACCESS EXCLUSIVE and scanning the table -- sound on a large table, irrelevant at 13
+rows, and here it inverts the intent: `NOT VALID` means existing rows are NOT checked, and
+checking them is precisely what proves the backfill was coherent. **A linter rule aimed at a
+million rows is not advice about thirteen.**
 
 ### A dumped function definition needs a terminator (2026-09-15)
 
