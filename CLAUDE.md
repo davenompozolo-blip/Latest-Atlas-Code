@@ -2535,6 +2535,109 @@ fragment, not a statement.**
 Note the dumped body uses **CRLF** while the repo uses LF -- the same quirk recorded for the
 ESZIP source-map diff. Normalise before diffing a dump against a file or every line differs.
 
+### The 95% VaR passes because it is the crossing point (2026-09-15)
+
+B5. Full report in `docs/B5_VAR_BACKTEST_REPORT.md`. `var_backtest_runs`,
+`atlas_var_backtest`, nightly at 23:50 Mon-Sat.
+
+E3 says in its own table comment that its parametric CVaR "understates a fat
+tail by construction". It does, and by less than the two things nobody was
+measuring.
+
+**Read all three confidences or none.** The model leg -- b'x over 3,370
+sessions, which isolates the distributional assumption -- gives 265 exceptions
+against 337 expected at 90% (LR 18.31), **169 against 168.5 at 95%** (LR 0.002),
+and 56 against 33.7 at 99% (LR 12.43). Thin shoulders, fat tails, and 95% is
+simply where the leptokurtic distribution crosses the normal. The one level that
+passes is the one with no power to reject, and reading it alone would certify
+the exact assumption the other two refute.
+
+**Regime conditioning cannot repair a shape.** Conditioning on each axis's own
+published bucket vol moves the model leg's 99% count from 56 to 55/58/55. The
+miscalibration is in the shape of the distribution, not the level of the
+variance.
+
+**On the book it is worse than useless: it LOWERS the bound.** Buckets are
+quartiles of a 13-year z distribution, and 76 of the book's 172 sessions land in
+`cyclical` q4 -- whose bucket vol, 0.010428, is the lowest of the four. So the
+conditional row carries the table's smallest `sd_pred_daily` (0.011365) and its
+largest exception count (11 at 99% against 1.72 expected, LR 22.78). **A bound
+calibrated on a long history is conditional on where today sits in a
+distribution the book never lived through, not on today.**
+
+**The book leg's failure is not the tail at all, and it decomposes exactly.**
+Realised daily sd 0.016530 against a published 0.012022 -- **1.3749x** -- which
+is 1.2100x (the factor return ran 21% hotter over these 172 sessions than over
+the 13 years Sigma was estimated on) times 1.1332x (**b'Sigma b carries no
+idiosyncratic variance at all**; 22.0% of book variance has no representation in
+it). Product 1.3712; the 0.27% gap is the residual's small non-orthogonality
+over 172 sessions when the betas were fitted on 168. Both causes are
+structural and neither is visible from the model leg -- which is the whole
+argument for running two legs rather than one.
+
+**Do not fix this with a multiplier on `vol_daily`.** One number over three
+causes would be recalibrated by any change in any of them. The fixes are
+separable: a residual variance term, and a shorter or weighted covariance
+window. B3 rests on Sigma and inherits all of it.
+
+Realised CVaR exceeds predicted on **every row of the table**, 1.13-1.27x. That
+is the quantification E3's comment was asking for.
+
+**No p-value is stored.** Postgres has no error function and an approximation is
+a number nobody can audit. `kupiec_lr` is stored with `kupiec_reject_05` and
+`kupiec_reject_01` bound to it by CHECK -- the `bfb_significant_ck`
+construction, so a surface cannot be handed a verdict that disagrees with its
+own statistic.
+
+**Gate on the dependency, not on the upstream's status.** The first draft gated
+on `atlas_write_regime_cvar` logging `success` today. That job logs `skipped` on
+a legitimate idempotent re-run, on which the rows ARE present and this job
+should proceed -- so the status gate would have refused forever the first time
+E3 re-ran. It gates on `book_regime_cvar` holding a snapshot for the session
+being graded. The C4 lesson is about naming; the rule underneath it is that a
+gate must track the thing it depends on.
+
+`vw_book_realised_returns` publishes the settled book return series once, so
+C1's two rules stop being re-derived per consumer: the New York session date
+rather than the UTC cast, and **both** endpoints settled, because the return out
+of a carried level is as fabricated as the return into it. `usable` is published
+rather than applied, so a consumer states its denominator.
+
+### A comment-stripped paste is a file/database divergence too (2026-09-15)
+
+The function was applied by pasting its body with the inline comments removed
+for brevity. Behaviour was identical and every figure above was produced by the
+right arithmetic -- and `md5(prosrc)` was **1574611e** in the file against
+**5ca079f3** in the database, a 1,195-byte divergence of exactly the kind the
+2026-09-14 entry is about, created the same day that entry was written.
+
+It was caught by checking rather than by assuming: compute the file's body hash
+locally and compare it to `md5(prosrc)`, which stores the body verbatim.
+
+```bash
+python3 -c "import hashlib,sys; s=open(sys.argv[1]).read();   b=s[s.index('as \$fn\$')+8:s.rindex('\$fn\$;')];   print(hashlib.md5(b.encode()).hexdigest())" <migration>
+```
+
+**Comments are part of the object.** Re-applied verbatim; both functions now
+hash identical to their files.
+
+### `book_regime_cvar` shipped with RLS off (2026-09-15)
+
+Found while giving `var_backtest_runs` its policies. It was alone among the
+factor-layer tables: `book_factor_betas`, `factor_axis_scores` and
+`market_prices` all carry the `_read` / `_service` policy pair, and it carried
+none. Supabase's default grants give `anon` and `authenticated` INSERT on every
+table in `public`, and **RLS is the only thing that takes it back** -- so an
+append-only risk history was open to anonymous writes. The append-only trigger
+does not help: it refuses UPDATE and DELETE, which is the pair an attacker does
+not need.
+
+The nightly writer is unaffected -- pg_cron runs as the job owner, `postgres`
+owns the table, and `relforcerowsecurity` is false, as on every sibling.
+
+**A trigger named `append_only` reads like the table is protected.** Check the
+grants separately from the trigger.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel
