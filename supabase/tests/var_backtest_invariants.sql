@@ -8,12 +8,12 @@
 --
 --   psql "$DATABASE_URL" -f supabase/tests/var_backtest_invariants.sql
 --
--- Fifteen refusals and four acceptances. The acceptances are the point, and one
+-- Eighteen refusals and four acceptances. The acceptances are the point, and one
 -- of them is the zero-exception row: a wall of CHECKs that also blocks
 -- legitimate writes is worse than no CHECKs, and "no session breached the
 -- bound" is a legitimate result, not a malformed row.
 --
--- Last run 2026-09-15: 19/19.
+-- Last run 2026-09-15: 22/22.
 
 DO $test$
 DECLARE
@@ -251,6 +251,59 @@ BEGIN
     results := results || E'\n  FAIL  NaN kupiec_lr with both flags true was ACCEPTED'; fails := fails + 1;
   EXCEPTION WHEN check_violation THEN
     results := results || E'\n  pass  NaN kupiec_lr with both flags true refused';
+  END;
+
+  -- 16. A +Infinity standard deviation. `numeric` carries infinities as well as
+  --     NaN, and the FIRST version of this guard used
+  --     `IS DISTINCT FROM 'NaN'::numeric`, which is TRUE for 'Infinity' -- so
+  --     it closed one of three doors. Only a two-sided range refuses all three.
+  BEGIN
+    INSERT INTO public.var_backtest_runs
+      (as_of, cvar_as_of, logic_version, leg, basis, axis_key, conf, window_start, window_end,
+       n_obs, exceptions, var_pred_daily, cvar_pred_daily, cvar_pred_on_exceptions,
+       cvar_realised_daily, sd_pred_daily, sd_realised_daily, sd_factor_window,
+       sd_residual_window, kupiec_lr, kupiec_reject_05, kupiec_reject_01, betas_estimated_at)
+    VALUES (d, d, lv||':16i', 'model', 'unconditional', NULL, 0.95, d, d2,
+            100, 5, 0.02, 0.025, 0.025, 0.03, 'Infinity'::numeric, 0.012, NULL, NULL, 0.0, false, false, t0);
+    results := results || E'\n  FAIL  +Infinity standard deviation was ACCEPTED'; fails := fails + 1;
+  EXCEPTION WHEN check_violation THEN
+    results := results || E'\n  pass  +Infinity standard deviation refused';
+  END;
+
+  -- 17. A +Infinity test statistic with BOTH rejection flags true. Infinity
+  --     exceeds both chi-square criticals, so the flag bindings are satisfied
+  --     by a statistic that is not a number -- the same failure as the NaN
+  --     case, through the door the NaN guard left open.
+  BEGIN
+    INSERT INTO public.var_backtest_runs
+      (as_of, cvar_as_of, logic_version, leg, basis, axis_key, conf, window_start, window_end,
+       n_obs, exceptions, var_pred_daily, cvar_pred_daily, cvar_pred_on_exceptions,
+       cvar_realised_daily, sd_pred_daily, sd_realised_daily, sd_factor_window,
+       sd_residual_window, kupiec_lr, kupiec_reject_05, kupiec_reject_01, betas_estimated_at)
+    VALUES (d, d, lv||':17i', 'model', 'unconditional', NULL, 0.95, d, d2,
+            100, 5, 0.02, 0.025, 0.025, 0.03, 0.012, 0.012, NULL, NULL,
+            'Infinity'::numeric, true, true, t0);
+    results := results || E'\n  FAIL  +Infinity kupiec_lr with both flags true was ACCEPTED'; fails := fails + 1;
+  EXCEPTION WHEN check_violation THEN
+    results := results || E'\n  pass  +Infinity kupiec_lr with both flags true refused';
+  END;
+
+  -- 18. A -Infinity realised tail loss. This one the one-sided checks DID
+  --     catch on kupiec_lr (-Infinity >= 0 is false), which is exactly why the
+  --     asymmetry is easy to miss: the sentinel that fails one column passes
+  --     the next.
+  BEGIN
+    INSERT INTO public.var_backtest_runs
+      (as_of, cvar_as_of, logic_version, leg, basis, axis_key, conf, window_start, window_end,
+       n_obs, exceptions, var_pred_daily, cvar_pred_daily, cvar_pred_on_exceptions,
+       cvar_realised_daily, sd_pred_daily, sd_realised_daily, sd_factor_window,
+       sd_residual_window, kupiec_lr, kupiec_reject_05, kupiec_reject_01, betas_estimated_at)
+    VALUES (d, d, lv||':18i', 'model', 'unconditional', NULL, 0.95, d, d2,
+            100, 5, 0.02, 0.025, 0.025, '-Infinity'::numeric, 0.012, 0.012,
+            NULL, NULL, 0.0, false, false, t0);
+    results := results || E'\n  FAIL  -Infinity realised CVaR was ACCEPTED'; fails := fails + 1;
+  EXCEPTION WHEN check_violation THEN
+    results := results || E'\n  pass  -Infinity realised CVaR refused';
   END;
 
   -- ---------- must be ACCEPTED ----------

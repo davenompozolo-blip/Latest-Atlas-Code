@@ -2562,9 +2562,28 @@ and lw_delta <= 1` on `book_regime_cvar` refuses NaN already, because the UPPER
 bound fails. That asymmetry is exactly why this is invisible on inspection --
 the constraint beside it, written the same afternoon in the same style, is safe.
 
-`x IS DISTINCT FROM 'NaN'::numeric` is the guard: TRUE for NULL so nullable
-measurements are unaffected, FALSE for NaN. `<>` also works, but only if the
-reader knows numeric NaN compares equal to itself, so the longer form says it.
+**The first guard was `x IS DISTINCT FROM 'NaN'::numeric` and that was WRONG,
+corrected four hours later on the same PR.** `numeric` carries `'Infinity'` and
+`'-Infinity'` as well, and `'Infinity' IS DISTINCT FROM 'NaN'` is **TRUE** -- so
+a +Infinity `kupiec_lr` still satisfied `>= 0` and both flag bindings with the
+flags true, which is the exact row the guard was written to refuse. It closed
+one of three doors.
+
+**The two-sided range is the whole guard**, and it is the same insight as the
+paragraph above applied to the fix itself:
+
+```
+                       x > '-Infinity' and x < 'Infinity'   x IS DISTINCT FROM 'NaN'
+  NaN                  false                                false
+  +Infinity            false                                TRUE     <- leaked
+  -Infinity            false                                TRUE     <- leaked
+  0.012                true                                 true
+  null                 null  (CHECK passes)                 true
+```
+
+NaN and +Infinity both fail the UPPER bound, -Infinity the lower, and NULL
+yields NULL so nullable measurements are untouched. **Write the range; do not
+enumerate the sentinels.**
 
 **Guarded at `book_regime_cvar` too, because that is where the value is
 created.** `brc_vol_positive_ck` has the identical hole and the conditional
@@ -2574,13 +2593,20 @@ next consumer -- the same argument that put the price-basis gate in the engine
 rather than per consumer.
 
 Added as a new constraint rather than by rewriting `brc_vol_positive_ck`, so the
-positivity rule keeps its name and its history. 0 of 24 and 0 of 15 existing
-rows violate, so both are plain validating `ADD CONSTRAINT`s.
+positivity rule keeps its name and its history.
 
-`supabase/tests/var_backtest_invariants.sql` is **19/19 against production**,
-including the three NaN refusals and the row that matters most -- a NaN
-`kupiec_lr` with both rejection flags true, which is a verdict with a
-non-number as its evidence.
+**The equity series had no guard at either end**, found in the same review.
+`vw_book_realised_returns` filtered `pec.equity > 0` (the lower half of a range,
+so NaN and +Infinity both passed) and `portfolio_equity_curve` carried **no
+numeric constraint at all**, only `data_quality`. A non-finite level
+contaminates TWO realised returns -- into it and out of it -- and would then be
+counted as a usable settled observation. `pec_finite_ck` guards the table and
+the view's filter is now two-sided.
+
+`supabase/tests/var_backtest_invariants.sql` is **22/22 against production**,
+including the three NaN refusals, the three infinity refusals, and the row that
+matters most -- a non-numeric `kupiec_lr` with both rejection flags true, which
+is a verdict with a non-number as its evidence.
 
 **Check every one-sided numeric CHECK in the schema for this.** Find candidates
 with:
@@ -2591,6 +2617,32 @@ from pg_constraint where contype = 'c'
   and pg_get_constraintdef(oid) ~ '[><]=?\s*\(?[0-9]'
   and pg_get_constraintdef(oid) !~* 'NaN';
 ```
+
+### One existing row skipped every confidence level (2026-09-15)
+
+Third finding from the same review. `atlas_write_var_backtest`'s presence check
+counted rows for `(as_of, logic_version)` and **not per confidence**, so a call
+with `p_confs = ARRAY[0.95]` wrote its 8 rows and then permanently blocked the
+nightly default call from ever writing 90% and 99% for that `as_of` -- logging
+`skipped, already written` on a night two thirds of the readings are missing.
+The "no-op dressed as success" pattern, in a job written the same day to avoid
+exactly that.
+
+It now attempts every requested confidence on every run, with `ON CONFLICT DO
+NOTHING` per row.
+
+**That is safe here and the distinction is the point.** The segment job's
+`DO NOTHING` failed because a segment id is derived from a CLUSTERING recomputed
+nightly, so two segmentations coexisted. This key --
+`(as_of, logic_version, leg, basis, axis_key, conf)` -- comes from the panel
+date, a fixed two-element leg set, a fixed two-element basis set and the
+`factor_axes` rows. Nothing in it moves under recomputation. **Before reusing an
+upsert key, ask whether it survives recomputation** -- asked, and here it does.
+
+**Proven in a rolled-back transaction rather than asserted**: under a throwaway
+`logic_version`, a 0.95-only call then a default call gives **8 rows -> 24 rows,
+3 distinct confidences**. The old code gives 8 -> 8 -> 1. `rows_present_before`
+is logged beside `rows_written` so a partial fill is legible as one.
 
 ### The exit mechanism was fixed at the writer and missed at the reader (2026-09-15)
 
