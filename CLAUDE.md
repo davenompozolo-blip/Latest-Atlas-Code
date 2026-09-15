@@ -2535,6 +2535,290 @@ fragment, not a statement.**
 Note the dumped body uses **CRLF** while the repo uses LF -- the same quirk recorded for the
 ESZIP source-map diff. Normalise before diffing a dump against a file or every line differs.
 
+### NaN walks through every ordering CHECK (2026-09-15)
+
+Raised by CodeRabbit on PR #783 against `var_backtest_runs`, and it is the most
+useful review finding this codebase has had, because it generalises to every
+numeric constraint in the repo.
+
+**PostgreSQL sorts `numeric 'NaN'` ABOVE every finite value.** Verified rather
+than taken on trust:
+
+```
+'NaN'::numeric > 0          ->  true
+'NaN'::numeric >= 0         ->  true
+'NaN'::numeric > 3.841459   ->  true
+'NaN'::numeric <> 'NaN'     ->  false    (numeric NaN equals itself; float does not)
+```
+
+So a NaN row satisfied `sd_pred_daily > 0`, satisfied `cvar_pred_daily >
+var_pred_daily` **from either side**, satisfied `kupiec_lr >= 0`, and satisfied
+**both** `kupiec_reject_*` flag bindings with the flags set true. Fifteen CHECKs
+written specifically so a row could not claim something it had no evidence for,
+and one sentinel passed all of them.
+
+**A one-sided bound is NaN-permeable; a two-sided range is not.** `lw_delta >= 0
+and lw_delta <= 1` on `book_regime_cvar` refuses NaN already, because the UPPER
+bound fails. That asymmetry is exactly why this is invisible on inspection --
+the constraint beside it, written the same afternoon in the same style, is safe.
+
+**The first guard was `x IS DISTINCT FROM 'NaN'::numeric` and that was WRONG,
+corrected four hours later on the same PR.** `numeric` carries `'Infinity'` and
+`'-Infinity'` as well, and `'Infinity' IS DISTINCT FROM 'NaN'` is **TRUE** -- so
+a +Infinity `kupiec_lr` still satisfied `>= 0` and both flag bindings with the
+flags true, which is the exact row the guard was written to refuse. It closed
+one of three doors.
+
+**The two-sided range is the whole guard**, and it is the same insight as the
+paragraph above applied to the fix itself:
+
+```
+                       x > '-Infinity' and x < 'Infinity'   x IS DISTINCT FROM 'NaN'
+  NaN                  false                                false
+  +Infinity            false                                TRUE     <- leaked
+  -Infinity            false                                TRUE     <- leaked
+  0.012                true                                 true
+  null                 null  (CHECK passes)                 true
+```
+
+NaN and +Infinity both fail the UPPER bound, -Infinity the lower, and NULL
+yields NULL so nullable measurements are untouched. **Write the range; do not
+enumerate the sentinels.**
+
+**Guarded at `book_regime_cvar` too, because that is where the value is
+created.** `brc_vol_positive_ck` has the identical hole and the conditional
+bound downstream is `z x vol_daily`, so a NaN admitted there arrives already
+laundered through arithmetic. A gate applied at the consumer is missed by the
+next consumer -- the same argument that put the price-basis gate in the engine
+rather than per consumer.
+
+Added as a new constraint rather than by rewriting `brc_vol_positive_ck`, so the
+positivity rule keeps its name and its history.
+
+**The equity series had no guard at either end**, found in the same review.
+`vw_book_realised_returns` filtered `pec.equity > 0` (the lower half of a range,
+so NaN and +Infinity both passed) and `portfolio_equity_curve` carried **no
+numeric constraint at all**, only `data_quality`. A non-finite level
+contaminates TWO realised returns -- into it and out of it -- and would then be
+counted as a usable settled observation. `pec_finite_ck` guards the table and
+the view's filter is now two-sided.
+
+`supabase/tests/var_backtest_invariants.sql` is **22/22 against production**,
+including the three NaN refusals, the three infinity refusals, and the row that
+matters most -- a non-numeric `kupiec_lr` with both rejection flags true, which
+is a verdict with a non-number as its evidence.
+
+**Check every one-sided numeric CHECK in the schema for this.** Find candidates
+with:
+
+```sql
+select conrelid::regclass, conname, pg_get_constraintdef(oid)
+from pg_constraint where contype = 'c'
+  and pg_get_constraintdef(oid) ~ '[><]=?\s*\(?[0-9]'
+  and pg_get_constraintdef(oid) !~* 'NaN';
+```
+
+### One existing row skipped every confidence level (2026-09-15)
+
+Third finding from the same review. `atlas_write_var_backtest`'s presence check
+counted rows for `(as_of, logic_version)` and **not per confidence**, so a call
+with `p_confs = ARRAY[0.95]` wrote its 8 rows and then permanently blocked the
+nightly default call from ever writing 90% and 99% for that `as_of` -- logging
+`skipped, already written` on a night two thirds of the readings are missing.
+The "no-op dressed as success" pattern, in a job written the same day to avoid
+exactly that.
+
+It now attempts every requested confidence on every run, with `ON CONFLICT DO
+NOTHING` per row.
+
+**That is safe here and the distinction is the point.** The segment job's
+`DO NOTHING` failed because a segment id is derived from a CLUSTERING recomputed
+nightly, so two segmentations coexisted. This key --
+`(as_of, logic_version, leg, basis, axis_key, conf)` -- comes from the panel
+date, a fixed two-element leg set, a fixed two-element basis set and the
+`factor_axes` rows. Nothing in it moves under recomputation. **Before reusing an
+upsert key, ask whether it survives recomputation** -- asked, and here it does.
+
+**Proven in a rolled-back transaction rather than asserted**: under a throwaway
+`logic_version`, a 0.95-only call then a default call gives **8 rows -> 24 rows,
+3 distinct confidences**. The old code gives 8 -> 8 -> 1. `rows_present_before`
+is logged beside `rows_written` so a partial fill is legible as one.
+
+### The exit mechanism was fixed at the writer and missed at the reader (2026-09-15)
+
+Reported from the terminal, the day after the writer fix shipped: KMTUY,
+liquidated 2026-09-14, still on the holdings table at 0.1% of book, publishing a
+weight, a conviction score and a **+6.3% move**.
+
+`sync_alpaca_positions` v10 was deployed that morning and is doing its job --
+`positions` has no KMTUY row for 2026-09-15 and `vw_positions_current` is
+correct at 65. The phantom was one layer out. **`vw_portfolio_home` built its
+book itself**, and built it the way `vw_risk_analysis` used to:
+
+```sql
+SELECT DISTINCT ON (asset_id) ...  FROM positions
+ WHERE as_of_date >= (SELECT max(as_of_date) - 2 FROM positions)
+ ORDER BY asset_id, as_of_date DESC
+```
+
+The latest row **per asset** over a **three-day** window -- so a name sold on
+any of the last three sessions keeps its final row at its last market value and
+leaves by **ageing out rather than by being sold**. KMTUY would have vanished by
+itself on 09-17 and nothing would have been learned, which is exactly why this
+reads as an intermittent phantom.
+
+**Deploying the writer does not close a defect a reader reproduces.** The 09-14
+entry says "deploying it fixes all 21 views with no view change" -- true of the
+21 views that read `positions` directly, and this one does not read it directly;
+it re-derives the book. Enumerate the re-derivers too:
+
+```sql
+select c.relname from pg_class c join pg_namespace n on n.oid=c.relnamespace
+where n.nspname='public' and c.relkind in ('v','m')
+  and pg_get_viewdef(c.oid, true) ~* 'DISTINCT ON \(.*asset_id';
+```
+
+**The blast radius was the flagship.** `mv_nexus_holdings` reads
+`vw_portfolio_home`, `vw_nexus_holdings` reads that matview, and
+`mv_bench_contribution` reads that -- so holdings, the Theme cut and the bench
+docket all served the same phantom row. 63 -> 62 everywhere after one view
+change plus a matview refresh.
+
+Sourced from `vw_positions_current`, not from a `max(as_of_date)` filter, for
+the reason that view exists: it reconciles `updated_at` against the
+account-snapshot watermark and so is correct **intraday**, which a snapshot-date
+filter is not.
+
+**Proven by shadow view, not by inspection.** The patched definition was created
+under a throwaway name and `EXCEPT ALL`'d both ways against the live view across
+all 26 columns: **one row differs, it is KMTUY, nothing is added**. `n_positions`
+63 -> 62 and `hhi_score` 0.057573 -> 0.057571, which is the whole expected
+footprint of removing a 0.07% name. 185.7 ms after, against a documented 149-166
+ms warm -- no regression. The three held names still absent (FIDU, TGT, HMY) are
+sub-cent dust excluded by the view's own one-cent floor, the same three defect 1
+found.
+
+**HAL is not a phantom and was not touched.** It is genuinely held: 0.498 shares,
+$17.53, `updated_at` exactly on the watermark. It renders at 0.0% because it IS
+0.01% of book. A surface that cannot distinguish a real dust position from a
+stale one is a display question, not a data one.
+
+**Still open, and now the only remaining half of that report.**
+`vw_nexus_holdings.daily_return_pct` is computed against the last stored bar
+with no staleness gate, which is how KMTUY published +6.3% off a print 179 days
+old -- the rule `nexus_holdings.today_pct` already enforces at 7 days, and which
+this file already records as missing here. With KMTUY out of the book **no held
+name is stale** (worst is 1 day), so the gate is dormant rather than wrong. It
+needs `price_days_old` plumbed through `vw_portfolio_home` -> `mv_nexus_holdings`
+-> `vw_nexus_holdings`, which is a matview rebuild and its own change.
+
+Noted in passing from the EXPLAIN: `account_snapshots` shows **Heap Fetches:
+9108** on an Index Only Scan. Stale visibility map -- the 2026-08-23 lesson says
+check that before rewriting anything here.
+
+### The 95% VaR passes because it is the crossing point (2026-09-15)
+
+B5. Full report in `docs/B5_VAR_BACKTEST_REPORT.md`. `var_backtest_runs`,
+`atlas_var_backtest`, nightly at 23:50 Mon-Sat.
+
+E3 says in its own table comment that its parametric CVaR "understates a fat
+tail by construction". It does, and by less than the two things nobody was
+measuring.
+
+**Read all three confidences or none.** The model leg -- b'x over 3,370
+sessions, which isolates the distributional assumption -- gives 265 exceptions
+against 337 expected at 90% (LR 18.31), **169 against 168.5 at 95%** (LR 0.002),
+and 56 against 33.7 at 99% (LR 12.43). Thin shoulders, fat tails, and 95% is
+simply where the leptokurtic distribution crosses the normal. The one level that
+passes is the one with no power to reject, and reading it alone would certify
+the exact assumption the other two refute.
+
+**Regime conditioning cannot repair a shape.** Conditioning on each axis's own
+published bucket vol moves the model leg's 99% count from 56 to 55/58/55. The
+miscalibration is in the shape of the distribution, not the level of the
+variance.
+
+**On the book it is worse than useless: it LOWERS the bound.** Buckets are
+quartiles of a 13-year z distribution, and 76 of the book's 172 sessions land in
+`cyclical` q4 -- whose bucket vol, 0.010428, is the lowest of the four. So the
+conditional row carries the table's smallest `sd_pred_daily` (0.011365) and its
+largest exception count (11 at 99% against 1.72 expected, LR 22.78). **A bound
+calibrated on a long history is conditional on where today sits in a
+distribution the book never lived through, not on today.**
+
+**The book leg's failure is not the tail at all, and it decomposes exactly.**
+Realised daily sd 0.016530 against a published 0.012022 -- **1.3749x** -- which
+is 1.2100x (the factor return ran 21% hotter over these 172 sessions than over
+the 13 years Sigma was estimated on) times 1.1332x (**b'Sigma b carries no
+idiosyncratic variance at all**; 22.0% of book variance has no representation in
+it). Product 1.3712; the 0.27% gap is the residual's small non-orthogonality
+over 172 sessions when the betas were fitted on 168. Both causes are
+structural and neither is visible from the model leg -- which is the whole
+argument for running two legs rather than one.
+
+**Do not fix this with a multiplier on `vol_daily`.** One number over three
+causes would be recalibrated by any change in any of them. The fixes are
+separable: a residual variance term, and a shorter or weighted covariance
+window. B3 rests on Sigma and inherits all of it.
+
+Realised CVaR exceeds predicted on **every row of the table**, 1.13-1.27x. That
+is the quantification E3's comment was asking for.
+
+**No p-value is stored.** Postgres has no error function and an approximation is
+a number nobody can audit. `kupiec_lr` is stored with `kupiec_reject_05` and
+`kupiec_reject_01` bound to it by CHECK -- the `bfb_significant_ck`
+construction, so a surface cannot be handed a verdict that disagrees with its
+own statistic.
+
+**Gate on the dependency, not on the upstream's status.** The first draft gated
+on `atlas_write_regime_cvar` logging `success` today. That job logs `skipped` on
+a legitimate idempotent re-run, on which the rows ARE present and this job
+should proceed -- so the status gate would have refused forever the first time
+E3 re-ran. It gates on `book_regime_cvar` holding a snapshot for the session
+being graded. The C4 lesson is about naming; the rule underneath it is that a
+gate must track the thing it depends on.
+
+`vw_book_realised_returns` publishes the settled book return series once, so
+C1's two rules stop being re-derived per consumer: the New York session date
+rather than the UTC cast, and **both** endpoints settled, because the return out
+of a carried level is as fabricated as the return into it. `usable` is published
+rather than applied, so a consumer states its denominator.
+
+### A comment-stripped paste is a file/database divergence too (2026-09-15)
+
+The function was applied by pasting its body with the inline comments removed
+for brevity. Behaviour was identical and every figure above was produced by the
+right arithmetic -- and `md5(prosrc)` was **1574611e** in the file against
+**5ca079f3** in the database, a 1,195-byte divergence of exactly the kind the
+2026-09-14 entry is about, created the same day that entry was written.
+
+It was caught by checking rather than by assuming: compute the file's body hash
+locally and compare it to `md5(prosrc)`, which stores the body verbatim.
+
+```bash
+python3 -c "import hashlib,sys; s=open(sys.argv[1]).read();   b=s[s.index('as \$fn\$')+8:s.rindex('\$fn\$;')];   print(hashlib.md5(b.encode()).hexdigest())" <migration>
+```
+
+**Comments are part of the object.** Re-applied verbatim; both functions now
+hash identical to their files.
+
+### `book_regime_cvar` shipped with RLS off (2026-09-15)
+
+Found while giving `var_backtest_runs` its policies. It was alone among the
+factor-layer tables: `book_factor_betas`, `factor_axis_scores` and
+`market_prices` all carry the `_read` / `_service` policy pair, and it carried
+none. Supabase's default grants give `anon` and `authenticated` INSERT on every
+table in `public`, and **RLS is the only thing that takes it back** -- so an
+append-only risk history was open to anonymous writes. The append-only trigger
+does not help: it refuses UPDATE and DELETE, which is the pair an attacker does
+not need.
+
+The nightly writer is unaffected -- pg_cron runs as the job owner, `postgres`
+owns the table, and `relforcerowsecurity` is false, as on every sibling.
+
+**A trigger named `append_only` reads like the table is protected.** Check the
+grants separately from the trigger.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel
