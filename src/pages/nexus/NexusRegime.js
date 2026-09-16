@@ -1,50 +1,52 @@
 // ============================================================
 // ATLAS Nexus — Regime tab
 // ------------------------------------------------------------
-// A2.2, 2026-09-10. Layout is now: pair explorer on top, then ONE toggle
-// over two lower sections -- the intermarket axes (default) and the macro
-// dashboard.
+// F-1, 2026-09-16. The tab is a PANE SWITCHER: one pane visible at a
+// time, pair explorer on load, selection persisting across navigation
+// within the session.
 //
-// Both lower sections are MOUNTED AND HIDDEN, never conditionally
-// rendered. A section that has never mounted has no measured layout, so
-// the first toggle would jump; and the axis panel self-fetches, so
-// unmounting it would re-run its reads on every switch.
+// This replaces the A2.2 layout (pair explorer pinned on top with a
+// two-state toggle beneath), and with it the concern that layout recorded:
+// the explorer no longer sits permanently above the axis panel, so detail
+// no longer outranks summary by position. The explorer's own CONTENT is
+// unchanged — A2.2 still governs it.
 //
-// Noted for review after it ships: this puts detail above summary. The
-// axis panel is what teaches that eleven pairs are three things, and the
-// explorer may start reading as the primary object. Shipped as specified.
+// PANES ARE DATA. Nothing below counts them or names them. F-2 adds the
+// structural-regimes pane by adding one entry to PANES; no logic here
+// changes. The switcher's pure parts live in nexusRegimePanes.js.
 //
-// PHASE D, 2026-09-10. The Growth x Inflation 2x2 is retired, and with
-// it every block on this tab that took `regime.label` as an input:
+// MOUNT ON FIRST REVEAL, THEN STAY MOUNTED. F2 section 1 asks both that
+// every pane be mounted rather than conditionally rendered (so a switch
+// cannot jump) and that each pane fetch on first reveal rather than page
+// load (so the tab does not fire every pane's queries at once against a
+// 3 s anon cap). Those cannot both hold literally here, because every
+// pane self-fetches in a mount effect — mounting them all IS fetching
+// them all. The reasons the spec gives decide it: a cancelled query
+// renders as "no data", a false statement about the market, which
+// outranks a cosmetic jump on one first switch. So a pane mounts when
+// first revealed and is thereafter hidden by style, never unmounted —
+// which still delivers no refetch on toggle and no jump on any later
+// switch. Reasoning recorded in nexusRegimePanes.js.
 //
-//   1. the verdict header   (label + playbook summary + a `confidence`
-//                            that was a hardcoded constant per branch)
-//   2. the 2x2 quadrant SVG
-//   3. Book fit             (bookRegimeFit(spine, label) -- sector tilt
-//                            against what the LABEL was said to reward)
-//   4. the regime read      (regimeRead(label, fit))
-//
-// Removing only the SVG would have left three blocks still asserting a
-// single regime label, which the acceptance criterion forbids. The rule
-// applied is: if a block takes `regime.label` as an input, it goes.
-//
-// The classification came from /api/macro's classifyRegime(): two series
-// (UNRATE, CPI), four hardcoded branches, and a confidence literal per
-// branch. It is superseded by factor_axes / factor_axis_scores /
-// book_factor_betas, which are derived rather than authored and which
-// report significance instead of asserting a label.
-//
-// What remains is what the data supports: the macro indicators that
+// PHASE D, 2026-09-10 (retained). The Growth x Inflation 2x2 is retired,
+// and with it every block that took `regime.label` as an input: the
+// verdict header, the quadrant SVG, Book fit, and the regime read. The
+// rule applied was: if a block takes `regime.label` as an input, it goes.
+// What remains is what the data supports — the macro indicators that
 // locate the cycle, and the A2 axis panel with the book's MEASURED
-// exposure to each axis. Nothing on this tab names a regime.
+// exposure. Nothing on this tab names a regime.
 // ============================================================
 
 import React from 'react';
 import { macroIndicators } from './nexusRegimeCompute.js';
 import NexusAxesPanel from './NexusAxes.js';
 import NexusPairExplorer from './NexusPairExplorer.js';
+import {
+    resolveInitialPane, revealedPanes, readStoredPane, writeStoredPane,
+    nextPaneByKeyboard,
+} from './nexusRegimePanes.js';
 
-const { useState, useEffect } = React;
+const { useState, useEffect, useRef, useCallback } = React;
 const e = React.createElement;
 
 const GROUPS = ['Rates', 'Inflation', 'Growth', 'Stress'];
@@ -69,54 +71,100 @@ function Stat(r) {
             r.delta ? e('span', { className: 'nr-stat-d tone-' + r.deltaTone }, r.delta) : null));
 }
 
-// `model` is still accepted because NexusFlagship passes it; the only block
-// that read it was Book fit, which was keyed on the retired label.
-export function NexusRegimePanel() {
+// Extracted from the tab body so every pane is one component and the
+// registry is uniform. Its fetch now runs on first reveal with the rest.
+function MacroDashboardPane() {
     const { macro, loading } = useMacro();
-    const [lower, setLower] = useState('axes');
-
-    if (loading) return e('div', { className: 'nf-card nb-loading' }, e('span', { className: 'nb-spin' }, '\u25f4'), ' Loading regime\u2026');
-
-    // The axis panel and the explorer both self-fetch from the database and
-    // do not depend on /api/macro, so a dead indicator feed cannot take the
-    // measured exposures down with it.
+    if (loading) {
+        return e('div', { className: 'nf-card nb-loading' },
+            e('span', { className: 'nb-spin' }, '◴'), ' Loading macro indicators…');
+    }
     const indicators = macro ? macroIndicators(macro) : null;
-    const show = k => ({ display: lower === k ? 'block' : 'none' });
+    return e('div', { className: 'nf-card nf-fade' },
+        e('div', { className: 'nf-card-h' },
+            e('div', null, e('h3', null, 'Macro dashboard'),
+                e('div', { className: 'nf-sub', style: { marginTop: 4 } },
+                    'the indicators themselves — this tab no longer classifies them into a regime'))),
+        indicators
+            ? e('div', { className: 'nr-dash' },
+                GROUPS.map(g => {
+                    const rows = indicators.filter(r => r.group === g);
+                    if (!rows.length) return null;
+                    return e('div', { className: 'nr-group', key: g },
+                        e('div', { className: 'nr-group-h' }, g),
+                        rows.map(Stat));
+                }))
+            : e('div', { className: 'nb-empty' },
+                'Macro feed unavailable. This is a transport failure, not a reading about the market.'));
+}
+
+// The registry. `render` is a thunk so an unrevealed pane's element is
+// never even constructed.
+//
+// The structural-regimes pane (F1 section 3) is F-2's to add and is
+// deliberately absent rather than present-and-empty: a tab that selects
+// nothing is a dead control in a live terminal, and F-2 is a separate
+// register ID precisely because the pane does not exist yet.
+const PANES = [
+    { key: 'pairs', label: 'Pair explorer',    render: () => e(NexusPairExplorer) },
+    { key: 'axes',  label: 'Intermarket axes', render: () => e(NexusAxesPanel) },
+    { key: 'macro', label: 'Macro dashboard',  render: () => e(MacroDashboardPane) },
+];
+const DEFAULT_PANE = 'pairs';
+const PANE_KEYS = PANES.map(p => p.key);
+
+export function NexusRegimePanel() {
+    // Lazy initialiser: storage is read once, on mount, not on every render.
+    const [active, setActive] = useState(() => resolveInitialPane(
+        readStoredPane(typeof window !== 'undefined' ? window.sessionStorage : null),
+        PANE_KEYS, DEFAULT_PANE));
+
+    const [revealed, setRevealed] = useState(() => revealedPanes(active, new Set()));
+    const tabRefs = useRef({});
+
+    const select = useCallback(function (key) {
+        if (!key) return;
+        setActive(key);
+        setRevealed(prev => revealedPanes(key, prev));
+        writeStoredPane(typeof window !== 'undefined' ? window.sessionStorage : null, key);
+    }, []);
+
+    const onKeyDown = useCallback(function (ev) {
+        const next = nextPaneByKeyboard(ev.key, active, PANE_KEYS);
+        if (!next) return;
+        ev.preventDefault();
+        select(next);
+        const el = tabRefs.current[next];
+        if (el && el.focus) el.focus();
+    }, [active, select]);
 
     return e('div', null,
-        // 1. PAIR EXPLORER
-        e(NexusPairExplorer, { key: 'pairs' }),
+        e('div', { className: 'nr-toggle', role: 'tablist', 'aria-label': 'Regime views', onKeyDown },
+            PANES.map(p => e('button', {
+                key: p.key,
+                id: 'nr-tab-' + p.key,
+                ref: el => { tabRefs.current[p.key] = el; },
+                role: 'tab',
+                type: 'button',
+                'aria-selected': active === p.key,
+                'aria-controls': 'nr-pane-' + p.key,
+                // Roving tabindex: one stop for the whole tablist, then
+                // arrow keys within it, per the WAI tablist pattern.
+                tabIndex: active === p.key ? 0 : -1,
+                className: 'nr-tab' + (active === p.key ? ' on' : ''),
+                onClick: () => select(p.key),
+            }, p.label))),
 
-        // 2. ONE TOGGLE, TWO STATES, axes on load.
-        e('div', { className: 'nr-toggle', role: 'tablist' },
-            [['axes', 'Intermarket axes'], ['macro', 'Macro dashboard']].map(([k, label]) =>
-                e('button', {
-                    key: k, role: 'tab', type: 'button',
-                    'aria-selected': lower === k,
-                    className: 'nr-tab' + (lower === k ? ' on' : ''),
-                    onClick: () => setLower(k),
-                }, label))),
-
-        // Both mounted. Hidden by style, not by absence.
-        e('div', { style: show('axes') }, e(NexusAxesPanel, { key: 'axes' })),
-
-        e('div', { style: show('macro') },
-            e('div', { className: 'nf-card nf-fade' },
-                e('div', { className: 'nf-card-h' },
-                    e('div', null, e('h3', null, 'Macro dashboard'),
-                        e('div', { className: 'nf-sub', style: { marginTop: 4 } },
-                            'the indicators themselves \u2014 this tab no longer classifies them into a regime'))),
-                indicators
-                    ? e('div', { className: 'nr-dash' },
-                        GROUPS.map(g => {
-                            const rows = indicators.filter(r => r.group === g);
-                            if (!rows.length) return null;
-                            return e('div', { className: 'nr-group', key: g },
-                                e('div', { className: 'nr-group-h' }, g),
-                                rows.map(Stat));
-                        }))
-                    : e('div', { className: 'nb-empty' },
-                        'Macro feed unavailable. This is a transport failure, not a reading about the market.'))));
+        PANES.map(p => revealed.has(p.key)
+            ? e('div', {
+                key: p.key,
+                id: 'nr-pane-' + p.key,
+                role: 'tabpanel',
+                'aria-labelledby': 'nr-tab-' + p.key,
+                // Hidden by style, never unmounted, from first reveal on.
+                style: { display: active === p.key ? 'block' : 'none' },
+            }, p.render())
+            : null));
 }
 
 export default NexusRegimePanel;
