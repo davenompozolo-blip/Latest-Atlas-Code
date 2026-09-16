@@ -192,3 +192,181 @@
   gap: 12px;
   margin: 0 0 9px;
 }
+
+/* ── The tape (F-5; F2 §3) ───────────────────────────────────── */
+/* An exchange-style ticker where the portfolio strip sits. CSS transform
+   only — no layout property is animated and there is no per-frame JS, so
+   the scroll stays on the compositor. The duration is set inline from the
+   measured track width, which is what keeps the velocity constant across
+   sprints of different lengths. */
+.nexus-flagship-v2 .nft {
+  margin: 12px 0 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
+  font-family: var(--fm);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.nexus-flagship-v2 .nft-quiet {
+  padding: 10px 12px;
+  color: var(--text3);
+}
+
+.nexus-flagship-v2 .nft-viewport {
+  overflow: hidden;
+  /* The fade is on the viewport, not the track: masking the track would
+     move with the content and the fade would scroll off. */
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 40px, #000 calc(100% - 40px), transparent);
+          mask-image: linear-gradient(to right, transparent, #000 40px, #000 calc(100% - 40px), transparent);
+}
+
+.nexus-flagship-v2 .nft-track {
+  display: flex;
+  width: max-content;
+  animation-name: nft-scroll;
+  animation-timing-function: linear;   /* constant velocity — no easing per item */
+  animation-iteration-count: infinite;
+  animation-duration: 60s;             /* replaced inline once measured */
+}
+
+/* Two copies of the sequence; -50% lands the seam on an exact repeat. */
+@keyframes nft-scroll {
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(-50%, 0, 0); }
+}
+
+.nexus-flagship-v2 .nft-seq { display: flex; flex: 0 0 auto; }
+
+.nexus-flagship-v2 .nft-sprint {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 9px 22px 9px 0;
+  flex: 0 0 auto;
+  outline: none;
+}
+
+/* The sprint label IS the separator, and it travels with its sprint so the
+   frame of reference is legible from anywhere in the stream. */
+.nexus-flagship-v2 .nft-label {
+  font-family: var(--fb);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--text3);
+  padding: 3px 9px;
+  margin-right: 4px;
+  border: 1px solid var(--border-md);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.nexus-flagship-v2 .nft-sprint:focus-visible .nft-label {
+  border-color: var(--cyan);
+  color: var(--cyan);
+}
+
+.nexus-flagship-v2 .nft-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.nexus-flagship-v2 .nft-tk {
+  color: var(--text);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.nexus-flagship-v2 .nft-v {
+  font-feature-settings: 'tnum' 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--text2);
+}
+
+/* An absent measurement reads AS an absence — dimmed and dashed, never a
+   zero and never a blank slot. */
+.nexus-flagship-v2 .nft-absent { color: var(--text3); opacity: 0.75; }
+
+.nexus-flagship-v2 .nft-side { font-size: 9px; }
+
+.nexus-flagship-v2 .nft-age,
+.nexus-flagship-v2 .nft-note {
+  font-size: 9px;
+  color: var(--text3);
+  letter-spacing: 0.04em;
+}
+
+.nexus-flagship-v2 .nft-note { font-style: italic; white-space: nowrap; }
+
+.nexus-flagship-v2 .nft-behind .nft-tk { color: var(--text2); }
+
+.nexus-flagship-v2 .nft-win { display: inline-flex; align-items: baseline; gap: 3px; }
+.nexus-flagship-v2 .nft-wl { font-size: 9px; color: var(--text3); }
+
+.nexus-flagship-v2 .nft-axis {
+  font-size: 9px;
+  color: var(--text3);
+  text-transform: lowercase;
+  padding-left: 2px;
+  border-left: 1px solid var(--border-md);
+  margin-left: 2px;
+}
+
+/* ── prefers-reduced-motion: a paged static list ─────────────── */
+/* Belt and braces. The component already branches on the media query and
+   renders the pager instead of the track, so this rule only matters if a
+   preference flips between render and repaint. */
+@media (prefers-reduced-motion: reduce) {
+  .nexus-flagship-v2 .nft-track { animation: none; transform: none; }
+}
+
+.nexus-flagship-v2 .nft-static { display: flex; align-items: center; }
+.nexus-flagship-v2 .nft-static .nft-viewport { flex: 1 1 auto; mask-image: none; -webkit-mask-image: none; }
+.nexus-flagship-v2 .nft-static .nft-sprint { flex-wrap: wrap; gap: 14px 18px; padding-left: 12px; }
+
+.nexus-flagship-v2 .nft-pager {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  flex: 0 0 auto;
+}
+
+.nexus-flagship-v2 .nft-pg {
+  background: var(--card2);
+  border: 1px solid var(--border-md);
+  color: var(--text2);
+  border-radius: var(--r-md);
+  padding: 3px 8px;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.nexus-flagship-v2 .nft-pg:hover { border-color: var(--border-hi); color: var(--text); }
+.nexus-flagship-v2 .nft-pg-n { font-size: 10px; color: var(--text3); }
+
+/* The loading's sign sits with the axis tag: a pair loading negative moves
+   its axis the other way, and the tag alone would assert the reverse. */
+.nexus-flagship-v2 .nft-sign { padding-left: 3px; color: var(--text2); font-weight: 600; }
+
+/* Frame marker inside a sprint. Sprint 2 runs more than one frame and the
+   boundary has to be visible, or a sector and an index read as one list —
+   and the decision to show EEM under INDEX rather than under a one-ticker
+   "REGIONAL" heading becomes invisible with it. */
+.nexus-flagship-v2 .nft-frame {
+  font-family: var(--fb);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: var(--text3);
+  padding-left: 10px;
+  border-left: 2px solid var(--border-hi);
+  white-space: nowrap;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+}

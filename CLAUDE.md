@@ -2819,6 +2819,81 @@ owns the table, and `relforcerowsecurity` is false, as on every sibling.
 **A trigger named `append_only` reads like the table is protected.** Check the
 grants separately from the trigger.
 
+### One instrument is a data point, not a category (2026-09-16)
+
+F-5, the flagship tape. `market_instruments` carries 19 active legs and **no column
+able to express sector vs index**: `asset_class` is `equity_etf` for XLE, SPY AND EEM
+alike, and `proxies_for` is free text that parsing would misfile silently. So Sprint 2's
+framing is a column, `market_instruments.tape_group`, for the reason
+`nexusPairsCompute.js` refuses to carry a pair-to-axis map -- **a surface must not hold a
+hardcoded copy of a classification the database owns.** NULL means off the tape, which is
+the right state for the seven bond and commodity legs.
+
+**Regional holds exactly one leg (EEM) and there is no regional frame.** A frame labelled
+"REGIONAL" over one ticker overstates what is measured in the same way a sector aggregate
+computed from the book's own holdings would -- the substitution F3 §2.1 prohibits, one
+layer out. The owner's call was to run **sector + index** and show EEM inside the index
+frame labelled as itself.
+
+**The rule is structural, not a carve-out for EEM.** A `tape_group` with fewer than
+`MIN_FRAME_LEGS` (2) does not get a frame; its legs fold into the broad-market frame and
+the fold is recorded on the item and stated on the sprint. So **registering a second
+regional leg gives regional its own frame with no code change** -- asserted in the test by
+adding an R2 row to the fixture, not by inspection. `index` is also literally true of EEM,
+which tracks the MSCI Emerging Markets Index, so the frame is not a small lie either.
+
+**The ticker is the label, for every leg.** "EEM", never "Emerging markets" -- the ETF is
+the measurement and the asset class is an interpretation of it. That reasoning is not
+specific to EEM: XLE's own `caveats` say it is a large-cap-only slice "close to a
+two-stock series", so "Energy +2.17%" is the same overstatement one step smaller.
+`proxies_for` goes on the title rather than being discarded.
+
+**Recording the gap is part of the fix.** Sprint 2 runs two frames because no regional
+coverage exists, and that sentence is in `docs/F5_TAPE_BUILD_REPORT.md` §8 so the next
+session does not rediscover it and reach for the book-derived version. Same function
+`market_instruments.caveats` serves for CPER.
+
+### An axis tag without the loading's sign asserts the opposite (2026-09-16)
+
+Caught by rendering F-5's tape, not by the build, which was clean throughout.
+
+`factor_axes.label` is a full sentence -- *"Cyclical risk-on (up = cyclicals & credit over
+defensives & gold)"* -- a description, not a name. At ticker size it swamped every item and
+took the scrolling sequence to 9,526 px. The tape token is the **axis key**; the sentence
+and `positive_means` moved to the title, so orientation is preserved rather than dropped.
+9,526 -> 6,156 px. (The "render from `positive_means`, never from its key" rule is about a
+score's SIGN, not about naming the axis a pair is grouped under.)
+
+**The worse half: the tag alone says which axis a pair belongs to and not which way it
+pushes it.** RSP/SPY loads **-0.47** on concentration, so a reader shown a rising RSP/SPY
+beside a bare `concentration` tag concludes the reverse of what the loading says.
+`nexusPairsCompute.js` makes exactly this argument in its own header and the tape is the
+surface that would have broken it. Every assigned item now carries `+` or `-`; an
+unassigned pair (CPER/GLD) carries **no sign** rather than a defaulted one.
+
+**A frame boundary nobody can see is not a frame.** Sprint 2's sector and index legs first
+rendered as one undifferentiated run of tickers, which makes the whole EEM decision
+unreadable. A marker at each boundary is what makes `INDEX EEM -0.35%` legible as the
+decision it is.
+
+**Three display defects, all invisible to `vite build` and all found by looking at the
+rendered page.** Same lesson as F-3's unregistered Chart.js scale.
+
+### There is now one paged read of `market_prices` (2026-09-16)
+
+`fetchPricesPaged` was local to `NexusPairExplorer.js`. F-5 needed the same read, and a
+second copy of a PostgREST pager is precisely how the 1,000-row cap has come back four
+times in four layers. Extracted to `src/pages/nexus/nexusMarketPrices.js`
+(`fetchMarketPricesPaged` + `indexBySymbol`); the explorer calls it and its own suite
+passes unchanged, which is what makes it a refactor rather than a rewrite.
+
+**F2 §3's "one source" rule is a CODE constraint, not a data one.** The tape and the pair
+explorer both read `market_prices` -- and that is not enough, because two implementations
+of the same arithmetic diverge. `nexusTapeCompute.js` imports `alignedWindow` and
+`buildSeries` and contains **no ratio arithmetic of its own**; the only division of a
+numerator by a denominator in the repository is `const raw = num.map(...)` in
+`nexusPairsCompute.js`. Prove that by grep, not by comparing two outputs on one day's data.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel

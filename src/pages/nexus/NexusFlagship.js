@@ -20,6 +20,7 @@ import { NexusOptionsPanel } from './NexusOptions.js';
 import { NexusDriftPanel } from './NexusDrift.js';
 import { NexusThemePanel } from './NexusTheme.js';
 import { PortfolioSnapshot } from './NexusPortfolio.js';
+import { NexusTape } from './NexusTape.js';
 import { NexusRegimePanel } from './NexusRegime.js';
 import { NexusOpportunitiesPanel } from './NexusOpportunities.js';
 import { NexusBenchPanel } from './NexusBench.js';
@@ -857,6 +858,7 @@ function TheRead({ read, pinned }) {
 function FlagshipPanel({ model, holdingsTheme }) {
     return e('div', null,
         e(PortfolioSnapshot, { model }),
+        e(NexusTape, null),
         e(WindshieldBand, { windshield: model.windshield }),
         e(ContextGauges, { gauges: model.gauges }),
         e(NexusBoardSection, { board: model.board }),
@@ -897,6 +899,11 @@ function FlagshipPanelV2({ model, holdingsTheme }) {
         e(TheRead, { read: model.read, pinned: true }),
         e(Section, { label: 'WHERE I STAND' },
             e(PortfolioSnapshot, { model, compact: true }),
+            // F2 §3 puts the tape "where the strip used to be". F-4 has not
+            // run yet, so the strip is still above it -- the tape sits in
+            // its final position now and F-4 vacates the line above rather
+            // than moving this.
+            e(NexusTape, null),
             e(ContextGauges, { gauges: model.gauges })),
         e(Section, { label: 'THE WEATHER' },
             e(WindshieldBand, { windshield: model.windshield }),

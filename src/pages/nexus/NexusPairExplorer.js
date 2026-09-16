@@ -16,6 +16,10 @@ import React from 'react';
 import * as LC from 'lightweight-charts';
 import { supabase } from '../../lib/supabase.js';
 import { CHART_COL, useLwChart } from './nexusChart.js';
+// One paged read of market_prices, shared with the tape (F-5). The
+// local copy this replaces was identical; two implementations of a
+// PostgREST pager is how the 1,000-row cap keeps coming back.
+import { fetchMarketPricesPaged, indexBySymbol } from './nexusMarketPrices.js';
 import {
     groupPairsByAxis, alignedWindow, buildSeries, metricTiles, pairRead,
 } from './nexusPairsCompute.js';
@@ -39,28 +43,6 @@ const COLOR = { num: CHART_COL.cyan, den: CHART_COL.amber, ratio: CHART_COL.gree
 
 const CHART_H = 250;
 
-// PostgREST caps at 1,000 rows whatever `limit` says. 60 sessions across 17
-// symbols is ~1,020 — over the cap by a hair, which is exactly how this
-// codebase has been bitten four times. Page with .range(), and order DESC so
-// a truncation would lose the OLDEST rows rather than the current session.
-async function fetchPricesPaged(symbols, sinceIso) {
-    const out = [];
-    const PAGE = 1000;
-    for (let from = 0; ; from += PAGE) {
-        const { data, error } = await supabase
-            .from('market_prices')
-            .select('symbol,date,adj_close')
-            .in('symbol', symbols)
-            .gte('date', sinceIso)
-            .order('date', { ascending: false })
-            .range(from, from + PAGE - 1);
-        if (error) throw error;
-        out.push(...(data || []));
-        if (!data || data.length < PAGE) break;
-    }
-    return out;
-}
-
 function usePairData() {
     const [s, setS] = useState({ loaded: false });
 
@@ -80,13 +62,8 @@ function usePairData() {
 
             const syms = new Set([BENCHMARK]);
             for (const p of pairs.data || []) { syms.add(p.numerator_symbol); syms.add(p.denominator_symbol); }
-            const prices = await fetchPricesPaged([...syms], since);
-
-            const bySymbol = {};
-            for (const r of prices) {
-                if (r.adj_close == null) continue;
-                (bySymbol[r.symbol] = bySymbol[r.symbol] || {})[r.date] = Number(r.adj_close);
-            }
+            const prices = await fetchMarketPricesPaged([...syms], since);
+            const bySymbol = indexBySymbol(prices);
             if (!alive) return;
             setS({ loaded: true, failed: false, pairs: pairs.data || [], loadings: loadings.data || [], axes: axes.data || [], bySymbol });
         })().catch(err => {
