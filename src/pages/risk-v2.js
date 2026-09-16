@@ -11,34 +11,9 @@ var useRef    = React.useRef;
 var useMemo   = React.useMemo;
 var h         = React.createElement;
 
-// ── Design tokens ──────────────────────────────────────────────────────────────
-var T = {
-    bg:      'rgba(255,255,255,0.025)',
-    border:  'rgba(255,255,255,0.07)',
-    teal:    '#00d4b8',
-    gold:    '#f4b942',
-    green:   '#22c55e',
-    red:     '#ef4444',
-    blue:    '#3b82f6',
-    purple:  '#a855f7',
-    amber:   '#f59e0b',
-    slate:   '#64748b',
-    t1:      'rgba(255,255,255,0.88)',
-    t2:      'rgba(255,255,255,0.45)',
-    t3:      'rgba(255,255,255,0.22)',
-    mono:    "'JetBrains Mono', ui-monospace, monospace",
-    sectors: {
-        'Technology':             '#3b82f6',
-        'Materials':              '#f59e0b',
-        'Consumer Discretionary': '#a855f7',
-        'International':          '#00d4b8',
-        'Energy':                 '#22c55e',
-        'Financials':             '#64748b',
-        'Healthcare':             '#ec4899',
-        'Industrials':            '#6366f1',
-        'Other':                  '#475569',
-    },
-};
+import { T, card, cardTitle, th, td } from './risk-tokens.js';
+import { ModelValidationTab } from './risk-model-validation.js';
+
 
 var REGIME_WINDOWS = [
     { name: 'Goldilocks',   start: '2026-01-02', end: '2026-02-04', color: '#10b981' },
@@ -46,11 +21,6 @@ var REGIME_WINDOWS = [
     { name: 'Reflation',    start: '2026-03-09', end: '2026-05-21', color: '#f59e0b' },
 ];
 
-// ── Shared styles ──────────────────────────────────────────────────────────────
-var card = { background: T.bg, border: '1px solid ' + T.border, borderRadius: 10, padding: '18px 20px', marginBottom: 16 };
-var cardTitle = { fontSize: 10, fontWeight: 700, letterSpacing: 1.6, textTransform: 'uppercase', color: T.t2, fontFamily: T.mono, marginBottom: 14 };
-var th = { padding: '6px 10px', fontSize: 9, fontWeight: 700, letterSpacing: 1.2, textTransform: 'uppercase', color: T.t3, fontFamily: T.mono, borderBottom: '1px solid ' + T.border, textAlign: 'left', whiteSpace: 'nowrap' };
-var td = { padding: '7px 10px', fontSize: 11, fontFamily: T.mono, borderBottom: '1px solid rgba(255,255,255,0.04)', color: T.t1 };
 
 function sectorColor(sec) { return T.sectors[sec] || T.slate; }
 
@@ -889,7 +859,20 @@ export function CommandCenterTab(props) {
             ),
             h(ChartCanvas, { canvasRef: histCanvasRef, height: 180 }),
             histData.ek > 1.5 && h('div', { style: { marginTop: 8, padding: '6px 10px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 5, fontSize: 9, color: T.amber, fontFamily: T.mono } },
-                '⚠ Fat tails detected (excess kurtosis ' + histData.ek.toFixed(2) + ') — historical VaR may understate tail risk'
+                '⚠ Fat tails detected (excess kurtosis ' + histData.ek.toFixed(2) + ') — historical VaR may understate tail risk',
+                // This card describes the book's own realised returns and
+                // says the tail "may" be understated. Model validation
+                // measures that on the parametric estimator instead of
+                // asserting it, so the claim is made in one place and
+                // pointed at from here.
+                props.onNavigate && h('button', {
+                    onClick: function() { props.onNavigate('model'); },
+                    style: {
+                        marginLeft: 8, padding: '1px 7px', borderRadius: 8, cursor: 'pointer',
+                        background: 'transparent', border: '1px solid rgba(245,158,11,0.45)',
+                        color: T.amber, fontFamily: T.mono, fontSize: 8.5, letterSpacing: 0.4,
+                    },
+                }, 'MEASURED IN MODEL VALIDATION →')
             ),
             h('div', { style: { display: 'flex', gap: 0, marginTop: 10 } },
                 [
@@ -2126,6 +2109,7 @@ export function RiskAnalysisV2() {
         { id: 'decomp',  label: 'DECOMPOSITION',  sub: 'Marginal VaR · Attribution', badge: 'NEW', badgeColor: T.teal },
         { id: 'stress',  label: 'STRESS ENGINE',  sub: 'Regime Replay · Shocks',     badge: 'SIG', badgeColor: T.amber },
         { id: 'greeks',  label: 'GREEKS',         sub: 'Δ Γ Θ ν · Options',          badge: 'SIG', badgeColor: T.purple },
+        { id: 'model',   label: 'MODEL VALIDATION', sub: 'Tail shape · Scale',       badge: 'B5',  badgeColor: T.teal },
     ];
 
     var tabBar = h('div', {
@@ -2170,17 +2154,18 @@ export function RiskAnalysisV2() {
     );
 
     var content;
-    if (tab === 'command') content = h(CommandCenterTab,  { data: data });
+    if (tab === 'command') content = h(CommandCenterTab,  { data: data, onNavigate: setTab });
     if (tab === 'corr')    content = h(CorrelationTab,    { data: data });
     if (tab === 'decomp')  content = h(DecompositionTab,  { data: data });
     if (tab === 'stress')  content = h(StressEngineTab,   { data: data });
     if (tab === 'greeks')  content = h(GreeksTab,         { data: data });
+    if (tab === 'model')   content = h(ModelValidationTab, null);
 
     return h('div', null,
         // Title row
         h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 10, padding: '16px 20px 0' } },
             h('div', { style: { fontSize: 15, fontWeight: 700, color: T.t1, fontFamily: T.mono } }, 'Risk Analysis'),
-            h('div', { style: { fontSize: 9, letterSpacing: 1, textTransform: 'uppercase', color: T.t3, fontFamily: T.mono } }, 'v2.0 · Five-Module Architecture')
+            h('div', { style: { fontSize: 9, letterSpacing: 1, textTransform: 'uppercase', color: T.t3, fontFamily: T.mono } }, 'v2.0 · Six-Module Architecture')
         ),
         // Always-visible KPI strip
         h(HeaderKpiStrip, { kpis: headerKpis }),
