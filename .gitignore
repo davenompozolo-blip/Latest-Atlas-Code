@@ -54,3 +54,6 @@ dist/
 
 # E1.3 render harness (dev only)
 .e13harness/
+
+# F-5 tape render harness (dev only)
+.f5harness/
