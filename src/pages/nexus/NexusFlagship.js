@@ -23,6 +23,7 @@ import { PortfolioSnapshot } from './NexusPortfolio.js';
 import { NexusTape } from './NexusTape.js';
 import { NexusMarketTape } from './NexusMarketTape.js';
 import { NexusIndexWall } from './NexusIndexWall.js';
+import { NexusCrossAsset } from './NexusCrossAsset.js';
 import { NexusRegimePanel } from './NexusRegime.js';
 import { NexusOpportunitiesPanel } from './NexusOpportunities.js';
 import { NexusBenchPanel } from './NexusBench.js';
@@ -931,7 +932,8 @@ function FlagshipPanelV2({ model, holdingsTheme }) {
         // before it. `board.indices` is already loaded for THE WEATHER, so
         // this section adds no request.
         e(Section, { label: 'THE MARKET' },
-            e(NexusIndexWall, { indices: model.board ? model.board.indices : null }))
+            e(NexusIndexWall, { indices: model.board ? model.board.indices : null }),
+            e(NexusCrossAsset, null))
     );
 }
 

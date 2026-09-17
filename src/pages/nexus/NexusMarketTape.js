@@ -26,45 +26,23 @@ import {
     buildMarketTape, marketBandOf,
 } from './nexusMarketTapeCompute.js';
 import { TapeShell, Caret, Value } from './NexusTapeShell.js';
+import { useMacroFeed } from './useMacroFeed.js';
 
-const { useState, useEffect, useMemo } = React;
+const { useMemo } = React;
 const e = React.createElement;
 
 // ── Data ─────────────────────────────────────────────────────
-async function getJSON(path) {
-    const r = await fetch(path);
-    if (!r.ok) {
-        // Never let a transport failure render as a statement about the
-        // market. Status and body at error level; the panel says the feed
-        // did not answer, which is the only claim the evidence supports.
-        const body = await r.text().catch(() => '');
-        console.error('[ATLAS] market tape ' + path + ' -> ' + r.status + ' ' + body.slice(0, 300));
-        throw new Error(path + ' ' + r.status);
-    }
-    return r.json();
-}
-
-function useMarketTapeData() {
-    const [s, setS] = useState({ loaded: false, macro: null, movers: null });
-
-    useEffect(function () {
-        let alive = true;
-        // allSettled, not all: one dead endpoint must cost its own sprints
-        // and nothing else.
-        Promise.allSettled([getJSON('/api/macro'), getJSON('/api/movers')])
-            .then(([macro, movers]) => {
-                if (!alive) return;
-                setS({
-                    loaded: true,
-                    macro: macro.status === 'fulfilled' ? macro.value : null,
-                    movers: movers.status === 'fulfilled' ? movers.value : null,
-                });
-            });
-        return () => { alive = false; };
-    }, []);
-
-    return s;
-}
+// Both endpoints come from the shared feed, so the tape, the cross-asset
+// panels and the chrome's risk pill make ONE request each and — more to
+// the point — cannot be handed two different payloads either side of a
+// server-side cache expiry.
+//
+// The two still fail INDEPENDENTLY. A dead /api/movers must not take the
+// sector sprint down with it: that is the "each gauge falls back
+// independently" rule from the context gauges, which exists because one
+// dark feed dragging a healthy panel to a fallback is indistinguishable
+// from the whole surface being broken.
+const PATHS = ['/api/macro', '/api/movers'];
 
 // ── Item ─────────────────────────────────────────────────────
 // One renderer for every market item: ticker, caret, move. The proxy
@@ -106,7 +84,12 @@ function renderNotes(sprint) {
 
 // ── The market tape ──────────────────────────────────────────
 export function NexusMarketTape() {
-    const data = useMarketTapeData();
+    const feed = useMacroFeed(PATHS);
+    const data = {
+        loaded: feed.loaded,
+        macro: feed.data['/api/macro'],
+        movers: feed.data['/api/movers'],
+    };
 
     const tape = useMemo(function () {
         if (!data.loaded) return null;
@@ -118,7 +101,7 @@ export function NexusMarketTape() {
             sprintCapSpectrum(movers.capSpectrum),
             sprintCrossAsset(macro.market),
         ], { asOfTs: movers._ts });
-    }, [data]);
+    }, [data.loaded, data.macro, data.movers]);
 
     // Both endpoints dead is a dead feed. One of them dead still leaves a
     // tape, with the surviving sprints on it and the empty ones simply

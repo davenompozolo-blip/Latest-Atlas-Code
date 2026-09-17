@@ -9,6 +9,7 @@ import { sb } from './config.js';
 import '../styles/nexus-theme.css';
 import { useFreshnessGate } from '../lib/useFreshnessGate.js';
 import { useOrderMachine, useCircuitBreaker } from '../lib/useOrderMachine.js';
+import { NexusRiskPill } from './nexus/NexusRiskPill.js';
 
 const { useState, useEffect, useMemo, useRef, useCallback } = React;
 const e = React.createElement;
@@ -1143,7 +1144,11 @@ export function NexusShell({ children, onNavigate, activeTab }) {
                     }, nav.label);
                 })
             ),
-            e('div', { style: { padding: '3px 8px', borderRadius: 4, background: 'var(--nx-teal-b)', color: 'var(--nx-teal)', fontSize: 9, fontWeight: 600, letterSpacing: 1, marginRight: 12 } }, 'RISK-ON'),
+            // Was the literal string 'RISK-ON' -- computed from nothing and
+            // green in every market since it was written, while the Markets
+            // page computed a real barometer from the same session's data.
+            // Now one computation, shared with the cross-asset panel.
+            e(NexusRiskPill, null),
             e(Clock, null)
         ),
         // body: icon sidebar + main

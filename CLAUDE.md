@@ -3129,6 +3129,55 @@ responsive grid whose cells change width with no window event behind them --
 exactly the `useLwChart` defect closed that morning. It would otherwise have
 shipped four stale canvases at the first breakpoint.
 
+### The terminal's risk light was a string literal (2026-09-17)
+
+G-4. Full report in `docs/G4_CROSS_ASSET_REPORT.md`.
+
+`nexus-page.js:1146` rendered `'RISK-ON'` in the chrome's top bar -- a LITERAL,
+computed from nothing, green in every market since it was written. Nothing in
+the file referenced a barometer, a signal or a feed. Meanwhile
+`macro-markets.js` computed a real one from SPY, TLT and HY spreads, so the app
+could show **RISK-ON in the chrome and NEUTRAL on the Markets page in the same
+session** -- and did, visibly, in the screenshots that prompted this work.
+
+The *"a gauge carried from the mock looks exactly like a working gauge"* entry,
+in a second place and worse: a mock gauge at least had a mock behind it.
+
+**One computation, shared.** `riskBarometer` is read by the pill and the panel
+through the same feed module, so they cannot disagree.
+
+**The cheap signal has to say it is cheap.** `basis: 'heuristic'` travels on the
+reading and renders on its face. Three signs averaged against a +/-0.3 band is
+not a measured regime; B0's betas and E3's covariance are, and they are a
+scroll away. The point of putting the cheap read beside the expensive ones is
+seeing when they disagree -- which requires knowing which is which.
+
+**Publish the components, not just the label.** A label with nothing under it is
+precisely what sat in the chrome. **No inputs reads `UNKNOWN`** and the pill
+renders NOTHING -- a chrome badge is read at a glance and never re-read, so a
+grey dash there reads as a state the market is in.
+
+**The needle is the SCORE, not the label.** Three fixed positions discard the
+distance from the band, which is the only thing that says whether a reading is
+marginal. Measured: the base fixture sits at 34% against a band of 35.6-64.4 --
+just outside, and it looks just outside.
+
+**A port must not move the number.** `changePct > 0 ? 1 : -1` puts a FLAT SPY on
+the negative side; that is what shipped and it is preserved, with a test saying
+so. Changing it during a refactor would move a published reading under cover of
+tidying.
+
+**`useMacroFeed.js`: one module-level promise per endpoint.** Three components
+read `/api/macro`; three fetches is three payloads that CAN DISAGREE, because
+the endpoint caches with a TTL and two calls either side of an expiry hand two
+panels on one screen different data. A rejected promise is cached as rejected --
+a later mount must see the failure the first one saw, not retry quietly and
+render a healthy panel beside a dead one.
+
+**Recycle the data, not the markup.** Lifting the Markets panels with their old
+design system attached is what makes a page feel like panels held together with
+tape.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel

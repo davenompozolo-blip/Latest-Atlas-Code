@@ -69,3 +69,6 @@ dist/
 
 # G-5 index wall harness (dev only)
 .g5harness/
+
+# G-4 cross-asset harness (dev only)
+.g4harness/
