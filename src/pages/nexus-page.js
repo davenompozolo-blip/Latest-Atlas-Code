@@ -1111,7 +1111,7 @@ export function NexusShell({ children, onNavigate, activeTab }) {
         }
     },
         // gradient accent line
-        e('div', { style: { height: 2, flexShrink: 0, background: 'linear-gradient(90deg,transparent,var(--nx-blue),var(--nx-purple),transparent)' } }),
+        e('div', { style: { height: 2, flexShrink: 0, background: 'linear-gradient(90deg,transparent,var(--nx-accent),var(--nx-purple),transparent)' } }),
         // topbar
         e('div', {
             style: {
@@ -1121,7 +1121,7 @@ export function NexusShell({ children, onNavigate, activeTab }) {
             }
         },
             e('div', { style: { display: 'flex', flexDirection: 'column', lineHeight: 1.1, marginRight: 24 } },
-                e('span', { style: { fontSize: 15, fontWeight: 800, letterSpacing: 2, color: 'var(--nx-blue)', fontFamily: 'var(--nx-fd)' } }, 'ATLAS⬡'),
+                e('span', { style: { fontSize: 15, fontWeight: 800, letterSpacing: 2, color: 'var(--nx-accent)', fontFamily: 'var(--nx-fd)' } }, 'ATLAS⬡'),
                 e('span', { style: { fontSize: 7, letterSpacing: 2.5, color: 'var(--nx-text3)', textTransform: 'uppercase' } }, 'NEXUS')
             ),
             e('div', { style: { display: 'flex', gap: 2, flex: 1 } },
@@ -1136,14 +1136,14 @@ export function NexusShell({ children, onNavigate, activeTab }) {
                             padding: '4px 10px', borderRadius: 4, border: 'none', cursor: 'pointer',
                             fontSize: 9, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase',
                             fontFamily: 'var(--nx-fb)',
-                            background: isActive ? 'rgba(0,212,255,.15)' : 'transparent',
-                            color: isActive ? 'var(--nx-blue)' : 'var(--nx-text3)',
+                            background: isActive ? 'var(--nx-accent-b)' : 'transparent',
+                            color: isActive ? 'var(--nx-accent)' : 'var(--nx-text2)',
                             transition: 'all .15s'
                         }
                     }, nav.label);
                 })
             ),
-            e('div', { style: { padding: '3px 8px', borderRadius: 4, background: 'rgba(20,184,166,.12)', color: 'var(--nx-teal)', fontSize: 9, fontWeight: 600, letterSpacing: 1, marginRight: 12 } }, 'RISK-ON'),
+            e('div', { style: { padding: '3px 8px', borderRadius: 4, background: 'var(--nx-teal-b)', color: 'var(--nx-teal)', fontSize: 9, fontWeight: 600, letterSpacing: 1, marginRight: 12 } }, 'RISK-ON'),
             e(Clock, null)
         ),
         // body: icon sidebar + main
@@ -1166,9 +1166,9 @@ export function NexusShell({ children, onNavigate, activeTab }) {
                             display: 'flex', alignItems: 'center', gap: 10,
                             paddingLeft: 14, paddingRight: 10,
                             fontSize: 11, transition: 'all .15s',
-                            background: isActive ? 'rgba(0,212,255,.12)' : 'transparent',
-                            color: isActive ? 'var(--nx-blue)' : 'var(--nx-text3)',
-                            borderLeft: isActive ? '2px solid var(--nx-blue)' : '2px solid transparent',
+                            background: isActive ? 'var(--nx-accent-w)' : 'transparent',
+                            color: isActive ? 'var(--nx-accent)' : 'var(--nx-text2)',
+                            borderLeft: isActive ? '2px solid var(--nx-accent)' : '2px solid transparent',
                             textAlign: 'left',
                         }
                     },

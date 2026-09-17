@@ -1,23 +1,62 @@
 /* ============================================================
    ATLAS Nexus — Design System  (Phase 0)
-   Scoped under .nexus-root so existing pages are unaffected.
    ============================================================ */
 
-.nexus-root {
-  /* ── Backgrounds ── */
+/* THE TOKENS LIVE AT :root, AND THEY HAVE TO.
+   They were declared only on `.nexus-root`, and NOTHING IN THE APP EVER
+   CARRIES THAT CLASS -- verified in the browser, not inferred: on the live
+   shell `getPropertyValue('--nx-bg2')` came back empty and the sidebar's
+   computed background was rgba(0,0,0,0).
+
+   So every `background: var(--nx-bg2)` and `1px solid var(--nx-border)` in
+   the app shell resolved to nothing. The sidebar and the top bar were not
+   mismatched with the panels -- they were UNSTYLED, showing the raw body
+   colour through, which is precisely why the chrome read as one flat slab
+   bolted onto the content instead of as part of it.
+
+   Declaring them here costs nothing: a custom property that no rule
+   references changes no pixel. `.nexus-root` below keeps applying the
+   background, colour and font exactly as before and now simply inherits
+   the values. */
+:root {
+
+  /* ── Backgrounds ──
+     ONE surface ramp, shared with `.nexus-flagship`. The chrome and the
+     panels used to run parallel ramps that agreed on the first two steps
+     and drifted on the rest: bg2 #131920 against the panels' #121821, bg3
+     #1b2330 against #171f2a, bg4 #222d3a against #1d2734. Each step of the
+     chrome's carried more blue, so the sidebar and top bar read as a navy
+     slab bolted onto a neutral charcoal page -- near enough to look like a
+     mistake rather than like contrast. The values below ARE the flagship's
+     --bg / --bg1 / --card / --card2 / --card-hi. Change them together or
+     the seam comes back. */
   --nx-bg:   #080b0e;
   --nx-bg1:  #0d1117;
-  --nx-bg2:  #131920;
-  --nx-bg3:  #1b2330;
-  --nx-bg4:  #222d3a;
-  /* ── Borders ── */
-  --nx-border:    rgba(255,255,255,0.06);
-  --nx-border-md: rgba(255,255,255,0.10);
+  --nx-bg2:  #121821;
+  --nx-bg3:  #171f2a;
+  --nx-bg4:  #1d2734;
+  /* ── Borders ── (flagship --border / --border-md / --border-hi) */
+  --nx-border:    rgba(255,255,255,0.07);
+  --nx-border-md: rgba(255,255,255,0.11);
   --nx-border-hi: rgba(255,255,255,0.16);
-  /* ── Text ── */
-  --nx-text:  #dde4ed;
-  --nx-text2: #7e95b0;
-  --nx-text3: #46586a;
+  /* ── Text ── (flagship --text / --text2 / --text3)
+     The chrome's scale sat a step darker at every level, so sidebar labels
+     read muddier than the panel labels beside them. */
+  --nx-text:  #e3e9f2;
+  --nx-text2: #8aa0bb;
+  --nx-text3: #51647b;
+  /* ── Chrome accent ──
+     Its own semantic role, NOT a module colour. The chrome was using two
+     different accents at once: --nx-blue #3b82f6 for the wordmark and the
+     active nav's left border, over a hardcoded rgba(0,212,255,…) #00d4ff
+     wash -- a blue rule on a cyan background, in the same control. This is
+     one colour and it is the panels' --cyan, so the shell and the cards
+     agree on what "active" looks like. --nx-blue stays exactly as it was:
+     it means "the blue module", and repurposing it would recolour every
+     surface that uses it for that. */
+  --nx-accent:   #22d3ee;
+  --nx-accent-b: rgba(34,211,238,0.13);
+  --nx-accent-w: rgba(34,211,238,0.09);
   /* ── Module colors ── */
   --nx-blue:    #3b82f6;  --nx-blue-b:   rgba(59,130,246,0.14);
   --nx-teal:    #14b8a6;  --nx-teal-b:   rgba(20,184,166,0.13);
@@ -36,6 +75,10 @@
   --nx-r-md: 8px;
   --nx-r-lg: 12px;
 
+}
+
+/* Applies the tokens as a surface. Unchanged; it reads them from :root. */
+.nexus-root {
   background: var(--nx-bg);
   color: var(--nx-text);
   font-family: var(--nx-fb);

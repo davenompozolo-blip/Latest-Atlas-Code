@@ -2961,6 +2961,47 @@ the explorer's 15px/radius-6 styling. Measured, not inferred. **Not fixed**:
 correcting it changes how the four original cards look, which clause 4 forbids
 in this unit. Two modules share the prefix, so it needs its own decision.
 
+### The app shell was never styled at all (2026-09-17)
+
+Reported as a cosmetic ask -- the sidebar and top bar do not match the panels.
+They did not match because **they had no surface**. `NexusShell` in
+`src/pages/nexus-page.js` styles itself with `--nx-*`, and those tokens were
+declared only on `.nexus-root`, **a class nothing in the app carries**. Verified
+in the browser rather than inferred: on the live shell
+`getComputedStyle(el).getPropertyValue('--nx-bg2')` returned **empty** and the
+sidebar's computed `background-color` was **rgba(0,0,0,0)**.
+
+So every `background: var(--nx-bg2)`, every `1px solid var(--nx-border)` and the
+wordmark's own colour resolved to nothing, and the chrome was showing the raw
+`body` background through. The "blue slab" was `--navy #060f1e` seen directly.
+**A var() that does not resolve fails silently and leaves the property at its
+initial value** -- transparent, in this case -- so the chrome looked deliberate
+and was simply absent. Tokens now live at `:root`; `.nexus-root` keeps applying
+them as a surface and inherits the values.
+
+**Three ramps, and the two that were live disagreed.** `globals.css` ran a navy
+scale (`#060f1e` …) with teal-tinted borders and `--teal #00c8e0`;
+`.nexus-flagship` runs a neutral charcoal one (`#080b0e` / `#0d1117` / `#121821`
+…) with white-alpha borders and `--cyan #22d3ee`; `.nexus-root` ran a third that
+agreed with the flagship on its first two steps and drifted on the rest
+(`#131920` vs `#121821`, `#1b2330` vs `#171f2a`, `#222d3a` vs `#1d2734`), each
+step carrying more blue. All three now use the flagship ramp. **Move them
+together or the seam returns.**
+
+**The chrome carried two accents at once.** `--nx-blue #3b82f6` on the wordmark,
+the active nav's text and its left rule, over a hardcoded `rgba(0,212,255,…)`
+`#00d4ff` wash -- a blue rule on a cyan background inside one control.
+`--nx-accent` is now a named role (the panels' `#22d3ee`) and `--nx-blue` keeps
+meaning "the blue module", which is what the rest of `nexus-theme.css` uses it
+for.
+
+**Fixing the scope exposed a contrast failure that had been masked.** With the
+tokens dead, nav labels inherited a bright body colour; once `--nx-text3`
+resolved they rendered at **2.94:1 on the sidebar surface -- below WCAG AA and
+below even large-text 3:1**. Moved to `--nx-text2` (6.64:1). **Making dead
+styling live can make a page worse before it makes it better; re-measure
+contrast after any token-scope fix.**
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel
