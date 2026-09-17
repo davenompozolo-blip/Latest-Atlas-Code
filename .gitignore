@@ -75,3 +75,6 @@ dist/
 
 # G-2 holdings harness (dev only)
 .g2harness/
+
+# G-6 book-vs-market harness (dev only)
+.g6harness/

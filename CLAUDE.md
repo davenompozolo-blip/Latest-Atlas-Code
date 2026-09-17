@@ -3222,6 +3222,49 @@ payload and were NOT faked -- they need fields plumbed through
 `vw_portfolio_home` -> `mv_nexus_holdings` -> `vw_nexus_holdings`, a matview
 rebuild and its own unit.
 
+### Logging a fallback tells the console and tells no consumer (2026-09-17)
+
+G-6, and the defect it found. Full report in `docs/G6_BOOK_VS_MARKET_REPORT.md`.
+
+`nexusLive.js`'s `liveOr()` falls `gauges.risk` and `gauges.performance` back to
+`nexusMock`'s figures and LOGGED it at error level. The returned object was
+indistinguishable from a live one, so a consumer could not refuse it -- and G-6
+reads `gauges.performance` to form a residual against a fitted beta, which on a
+mock book move publishes a finding about a book that did not move that way.
+Third instance of *"a gauge carried from the mock looks exactly like a working
+gauge"*, counting the chrome's hardcoded RISK-ON pill G-4 removed. `liveOr` now
+MARKS the gauge (`live: true/false`) and G-6 refuses a marked-baseline one.
+**A gauge with NO marker is still read** -- absence of a mark is not a claim of
+mockness, and asserting otherwise breaks every caller predating it.
+
+**The cheap-to-expensive link is one number.** Today's benchmark move times the
+book's fitted market beta is what the book should have done; the residual is
+what the market factor does not explain. A cheap read agreeing with the
+expensive one is reassurance; the residual is where the day's story is.
+
+**No expectation without a SIGNIFICANT beta.** An insignificant beta times
+today's move still produces a number and that number has no evidence behind it
+-- A2's "an absent number beats a flagged one", applied to a PRODUCT rather
+than a coefficient. The excess still stands, because an excess needs no model.
+
+**Live intraday against a historical beta is TWO BASES and the panel says so.**
+`estimated_at` and `n_obs` are printed beside "today, intraday", reconciled
+nowhere -- the rule `vw_position_trading_effect` publishes its own `as_of` for.
+
+**Read the latest estimate set, never a mix.** `book_factor_betas` is
+append-only and holds B0's and C3's; mixing them quotes one estimate's market
+beta beside another's axes.
+
+**Book sector strings come from a different vendor than the ETF labels.**
+`Cons. Discretionary` / `Consumer Discretionary` / `Information Technology` all
+resolve through `normaliseSector`, AND the misses are reported by weight. A
+partial match reads as a data gap rather than as a join that did not land.
+
+**An em dash in a slot that looks like every other slot is indistinguishable
+from a measurement** -- caught in my own first render, where a refused gauge
+still drew `Book, today —` in a normal tile. Every refused reading takes the
+absent treatment.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel

@@ -24,6 +24,7 @@ import { NexusTape } from './NexusTape.js';
 import { NexusMarketTape } from './NexusMarketTape.js';
 import { NexusIndexWall } from './NexusIndexWall.js';
 import { NexusCrossAsset } from './NexusCrossAsset.js';
+import { NexusBookVsMarket } from './NexusBookVsMarket.js';
 import {
     readFacets, signalFacets, sectorOptions, themeOptions,
     applyFilters, isFiltered, UNCLASSIFIED,
@@ -973,6 +974,13 @@ function FlagshipPanelV2({ model, holdingsTheme }) {
         // before it. `board.indices` is already loaded for THE WEATHER, so
         // this section adds no request.
         e(Section, { label: 'THE MARKET' },
+            // G-6 leads the section: the other two panels are the market,
+            // and this is the book read against it. Context after the
+            // conclusion it supports.
+            e(NexusBookVsMarket, {
+                gauge: model.gauges ? model.gauges.performance : null,
+                holdings: model.holdings,
+            }),
             e(NexusIndexWall, { indices: model.board ? model.board.indices : null }),
             e(NexusCrossAsset, null))
     );
