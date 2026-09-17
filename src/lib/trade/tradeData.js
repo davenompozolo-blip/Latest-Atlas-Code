@@ -244,9 +244,23 @@ export const PAGE = 1000;
  * This exists because the unpaged, unfiltered read it replaces was returning
  * an arbitrary 1.1% of the table. See loadRiskLayer.
  */
+// An upper bound on the paging loop. 66 held names is three pages and the
+// correlation snapshot caps at ~420 symbols, so 64 pages is far past any real
+// request -- it exists because an unbounded `for(;;)` driven by a server's
+// response is a browser hang if the server ever stops honouring Range, and a
+// hang is the one failure mode that reports nothing at all. Found by a harness
+// that did not implement Range and spun this loop forever.
+export const MAX_PAGES = 64;
+
 async function fetchPairsPaged(date, window, syms) {
     const out = [];
-    for (let from = 0; ; from += PAGE) {
+    for (let page = 0, from = 0; ; page++, from += PAGE) {
+        if (page >= MAX_PAGES) {
+            console.error('[trade] correlation paging hit its page cap at '
+                + out.length + ' rows; the matrix is incomplete and the risk '
+                + 'figures derived from it will be withheld.');
+            return { rows: out, truncated: true };
+        }
         const { data, error } = await sb
             .from('universe_correlations')
             .select('symbol_1, symbol_2, correlation, correlation_simple, common_days')
