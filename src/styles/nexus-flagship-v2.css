@@ -147,40 +147,10 @@
   margin-bottom: 6px;
 }
 
-/* ── Portfolio snapshot: the orientation tier ────────────────── */
-/* The four figures that carry a decision keep their tiles; the rest
-   become one line. Same data, same order, a fraction of the height. */
-.nexus-flagship-v2 .nfv2-pf-line {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px 20px;
-  margin-top: 12px;
-  padding-top: 11px;
-  border-top: 1px solid var(--border);
-  font-size: 11px;
-}
-
-.nexus-flagship-v2 .nfv2-pf-pair {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  white-space: nowrap;
-}
-
-.nexus-flagship-v2 .nfv2-pf-l {
-  font-family: var(--fb);
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.11em;
-  text-transform: uppercase;
-  color: var(--text3);
-}
-
-.nexus-flagship-v2 .nfv2-pf-v {
-  color: var(--text);
-  font-feature-settings: 'tnum' 1;
-  font-variant-numeric: tabular-nums;
-}
+/* ── Portfolio snapshot ──────────────────────────────────────── */
+/* The orientation tier used to collapse seven metrics into one mono text
+   line here (`.nfv2-pf-line`). F-4 promoted them into cards in `.np-grid`,
+   so that rule set is retired rather than left behind styling nothing. */
 
 /* ── Face-flip header (board) ────────────────────────────────── */
 /* The control sits right-aligned above the face it switches, so the
@@ -287,11 +257,43 @@
   color: var(--text2);
 }
 
+/* THE TONE CLASSES MUST WIN HERE, AND THEY DID NOT.
+   `.nexus-flagship-v2 .nft-v` is specificity (0,2,0) and `.tone-up` is
+   (0,1,0), so the scoped rule above silently overrode every tone the
+   component set and the whole tape rendered --text2 grey -- measured
+   rgb(138,160,187) where tone-up resolves to rgb(34,197,94). The markup
+   was right the entire time; only the cascade was wrong, which is why it
+   survived a build, a test suite and a screenshot review.
+   Re-state the tones at matching specificity rather than loosening the
+   rule above, so the scoping still holds against other pages. */
+.nexus-flagship-v2 .nft-v.tone-up   { color: var(--success); }
+.nexus-flagship-v2 .nft-v.tone-down { color: var(--danger); }
+.nexus-flagship-v2 .nft-v.tone-warn { color: var(--warn); }
+
+/* A flat session is a real measurement and reads as neither. It keeps the
+   neutral colour and is NOT dimmed -- dimming would put it beside the
+   absent state, which means something else entirely. */
+.nexus-flagship-v2 .nft-item.is-flat .nft-v { color: var(--text2); }
+
 /* An absent measurement reads AS an absence — dimmed and dashed, never a
    zero and never a blank slot. */
 .nexus-flagship-v2 .nft-absent { color: var(--text3); opacity: 0.75; }
 
 .nexus-flagship-v2 .nft-side { font-size: 9px; }
+
+/* Group items carry a caret for the same reason the name items do: on a
+   moving tape the sign is easier to catch as a shape than as a glyph in
+   front of a number. It encodes the sign of the move and nothing else --
+   no magnitude threshold, so it cannot assert significance the data does
+   not support. */
+.nexus-flagship-v2 .nft-dir {
+  font-size: 8px;
+  line-height: 1;
+  opacity: 0.9;
+}
+.nexus-flagship-v2 .nft-dir.tone-up   { color: var(--success); }
+.nexus-flagship-v2 .nft-dir.tone-down { color: var(--danger); }
+.nexus-flagship-v2 .nft-dir.is-flat   { color: var(--text3); }
 
 .nexus-flagship-v2 .nft-age,
 .nexus-flagship-v2 .nft-note {
@@ -369,4 +371,48 @@
   align-self: stretch;
   display: flex;
   align-items: center;
+}
+
+/* ── Tape: arrival, and the pause made visible ───────────────── */
+/* The tape reuses the house `nf-fade` curve rather than inventing one, so
+   it settles in with the cards around it instead of appearing a beat
+   apart. Applied to the strip, never to the items: staggering 34 items
+   inside a scrolling track fights the transform that does the scrolling. */
+.nexus-flagship-v2 .nft { animation: nf-fade .4s ease both; }
+
+/* Pause on hover/focus already worked and was invisible, so nothing told
+   a reader the tape had stopped FOR them rather than broken. The chip is
+   the affordance; it never appears while the tape is running. */
+.nexus-flagship-v2 .nft { position: relative; }
+
+.nexus-flagship-v2 .nft-paused {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border: 1px solid var(--border-hi);
+  border-radius: 999px;
+  background: var(--card2);
+  font-family: var(--fb);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--text2);
+  pointer-events: none;
+  animation: nft-cue .18s ease both;
+}
+
+@keyframes nft-cue { from { opacity: 0; } to { opacity: 1; } }
+
+.nexus-flagship-v2 .nft-paused-bars { color: var(--cyan); letter-spacing: 0; }
+
+/* Reduced motion gets the chip's information without the fade, and the
+   strip does not animate in at all. */
+@media (prefers-reduced-motion: reduce) {
+  .nexus-flagship-v2 .nft,
+  .nexus-flagship-v2 .nft-paused { animation: none; }
 }

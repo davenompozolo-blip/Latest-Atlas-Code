@@ -273,6 +273,20 @@ export function sprintSignals({ pairs, loadings, axes, bySymbol, benchmark = 'SP
     return { key: 'signals', label: 'SIGNALS', caption: 'ratio pairs · 1D 1W 1M', items };
 }
 
+// ── Bands within a sprint ────────────────────────────────────
+// A sprint can carry more than one frame of reference, and a boundary
+// nobody can see is not a boundary. GROUPS needs it to tell a sector from
+// an index; NAMES needs it because the caret is toned by the MOVE, and on
+// a red day every one of the five best names is also down — so the shape
+// alone no longer says where the leaders end and the laggards begin.
+// Ordering carries that split and ordering is invisible on a moving tape.
+export function bandOf(it) {
+    if (!it) return null;
+    if (it.kind === 'group') return { key: it.group, label: GROUP_LABEL[it.group] };
+    if (it.kind === 'name') return { key: it.side, label: it.side === 'best' ? 'BEST' : 'WORST' };
+    return null;   // signals are one frame; a marker over all of it says nothing
+}
+
 // ── Assembly ─────────────────────────────────────────────────
 // "A sprint with no data is skipped, not padded." An empty sprint is
 // dropped from the cycle entirely rather than rendered as a heading over

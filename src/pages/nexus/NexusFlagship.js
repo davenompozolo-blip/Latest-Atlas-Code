@@ -898,7 +898,7 @@ function FlagshipPanelV2({ model, holdingsTheme }) {
     return e('div', { className: 'nfv2' },
         e(TheRead, { read: model.read, pinned: true }),
         e(Section, { label: 'WHERE I STAND' },
-            e(PortfolioSnapshot, { model, compact: true }),
+            e(PortfolioSnapshot, { model }),
             // F2 §3 puts the tape "where the strip used to be". F-4 has not
             // run yet, so the strip is still above it -- the tape sits in
             // its final position now and F-4 vacates the line above rather

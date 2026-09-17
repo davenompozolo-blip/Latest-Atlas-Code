@@ -2894,6 +2894,73 @@ of the same arithmetic diverge. `nexusTapeCompute.js` imports `alignedWindow` an
 numerator by a denominator in the repository is `const raw = num.map(...)` in
 `nexusPairsCompute.js`. Prove that by grep, not by comparing two outputs on one day's data.
 
+### A scoped rule silently outranked every tone class (2026-09-17)
+
+Reported from the terminal: the tape had no colour. It had none since it
+shipped. `.nexus-flagship-v2 .nft-v` is specificity **(0,2,0)** and `.tone-up`
+is **(0,1,0)**, so the scoped rule setting `color: var(--text2)` beat every tone
+the component applied. Measured in the browser rather than reasoned about:
+values rendered `rgb(138,160,187)` where `.tone-up` resolves to
+`rgb(34,197,94)`.
+
+**The markup was right the whole time.** The tone classes were in the DOM, the
+unit tests asserted the right classes, the build was clean, and the screenshot
+review passed — because every one of those checks looks at the class, not at the
+cascade. **A test that asserts a class name cannot see a specificity bug.** The
+fix re-states the tones at matching specificity rather than loosening the scoped
+rule, so the scoping still holds against other pages.
+
+**A caret toned by the move broke a boundary that ordering carried.** Sprint 1
+is five best then five worst; tone the arrow by the MOVE (correct -- a green ▲ on
+a falling name is a lie) and on a red day all ten point down, so the split
+becomes invisible on a moving tape where ordering is not readable. `bandOf()`
+puts a `BEST` / `WORST` marker at the boundary, the same mechanism Sprint 2 uses
+for `SECTOR` / `INDEX`. The test that matters is the all-red fixture.
+
+**Pause on hover/focus worked and was invisible**, so a tape that had stopped
+FOR the reader looked like one that had stopped working. The `PAUSED` chip is
+the affordance and exists only while paused.
+
+### An absent card must not be handed a value (2026-09-17)
+
+F-4. Full report in `docs/F4_FLAGSHIP_CARDS_REPORT.md`. The seven metrics that
+collapsed into a text line under the four decision tiles are now cards in the
+same grid -- eleven plates settled on the table with the tape running beneath.
+
+**The absent state is a NAMED variant, and `value` is absent from the object.**
+Not null, not an em dash -- the key is not there, so a renderer cannot print one
+it was never handed. Same construction as `nexusReturnBasis.js`: the wrong thing
+is impossible to write rather than discouraged. Asserted in the DOM too (an
+absent card carries no `.np-tile-v` node at all), because the rule is about what
+can be rendered, not what is intended.
+
+**The reason had to be made honest before the variant was worth having.**
+`useAccount()` ended in `.catch(() => {})`, so a feed that did not answer and a
+feed that had not answered yet both arrived as `null` and both rendered a dash.
+The swallowed-failure pattern, in the component F2 §2 names as the live instance
+of its own absence rule. Now `loading` / `ok` / `failed`, logged at error level,
+and the two read differently. A 200 carrying no `equity` counts as a failure --
+the old code treated it as success.
+
+**Prove "unchanged" by rendering, not by diffing**, when the file was rewritten.
+Clause 4 asks that the four original cards not change; there are no surviving
+lines to diff, so both components were rendered side by side and compared on
+text, computed colour, size, background, radius, padding and shadow. All four
+identical.
+
+**A genuine zero is a measurement, and it has to mean that in every card.** A
+test asserted an account equity of exactly `$0` should be absent; the code said
+measured, and the code was right -- an unfunded account genuinely is zero, and
+absenting it contradicts the zero-is-a-measurement rule asserted two tests
+above. Corrected the test.
+
+**`.np-tile` is defined twice in `nexus-flagship.css`, unscoped, and the pair
+explorer's wins.** `np-` means *nexus portfolio* at line 631 and *nexus pair* at
+line 1522; same specificity, later rule wins, so the portfolio tiles compute to
+the explorer's 15px/radius-6 styling. Measured, not inferred. **Not fixed**:
+correcting it changes how the four original cards look, which clause 4 forbids
+in this unit. Two modules share the prefix, so it needs its own decision.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel
