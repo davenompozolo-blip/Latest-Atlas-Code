@@ -1,91 +1,122 @@
 // ============================================================
 // ATLAS Nexus — Portfolio snapshot (Flagship header)
 // ------------------------------------------------------------
-// The book at a glance, in the Flagship aesthetic: account economics
-// (equity, exposure, cash, P&L) self-fetched live from /api/trading,
-// and the position-level stats (positions, win rate, today, at-risk,
-// concentration, best/worst, quality) from the resolved model. Pure
-// aggregation lives in nexusLiveCompute.buildPortfolioSnapshot.
+// The book at a glance: account economics (equity, exposure, cash, P&L)
+// self-fetched live from /api/trading, and the position-level stats from
+// the resolved model. Pure aggregation lives in
+// nexusLiveCompute.buildPortfolioSnapshot; card shape, formatting and
+// absence live in nexusPortfolioCards.js.
+//
+// F-4 (F2 §2) promoted the seven metrics that used to collapse into a
+// dense text line beneath the four decision tiles into cards in the same
+// grid. The grid was already `repeat(auto-fill, minmax(168px, 1fr))`, so
+// they wrap naturally and no card is privileged by size — the existing
+// tile styling is untouched, which F2 §5 clause 4 requires.
 // ============================================================
 
 import React from 'react';
+import {
+    portfolioCards, cardCoverage,
+    ACCOUNT_OK, ACCOUNT_FAILED, ACCOUNT_LOADING,
+} from './nexusPortfolioCards.js';
 
 const { useState, useEffect } = React;
 const e = React.createElement;
 
-const money = v => (v == null ? '—' : '$' + Math.round(v).toLocaleString('en-US'));
-const sgnMoney = v => (v == null ? '—' : (v >= 0 ? '+$' : '−$') + Math.round(Math.abs(v)).toLocaleString('en-US'));
-const sgnPct = (v, d = 1) => (v == null ? '—' : (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(d) + '%');
-const moveTone = v => (v == null ? '' : v > 0 ? 'tone-up' : v < 0 ? 'tone-down' : '');
-const winTone = w => (w == null ? '' : w >= 55 ? 'tone-up' : w >= 45 ? 'tone-warn' : 'tone-down');
-const qualityTone = q => (q == null ? '' : q >= 80 ? 'tone-up' : q >= 65 ? 'tone-warn' : 'tone-down');
-
+// The account fetch used to `.catch(() => {})`, so a feed that did not
+// answer and a feed that had not answered yet both arrived as `null` and
+// both rendered an em dash. That is the swallowed-failure pattern this
+// codebase has recorded in four layers, and it is what made the absent
+// state undecidable. The status is now explicit and a failure is logged
+// at error level.
 function useAccount() {
-    const [a, setA] = useState(null);
+    const [s, setS] = useState({ status: ACCOUNT_LOADING, data: null });
     useEffect(function () {
         let alive = true;
-        fetch('/api/trading?action=account').then(r => (r.ok ? r.json() : null))
-            .then(j => { if (alive && j && j.equity != null) setA(j); })
-            .catch(() => {});
+        fetch('/api/trading?action=account')
+            .then(r => {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
+            .then(j => {
+                if (!alive) return;
+                if (j && j.equity != null) setS({ status: ACCOUNT_OK, data: j });
+                else throw new Error('account payload carried no equity');
+            })
+            .catch(err => {
+                console.error('[ATLAS] portfolio account read failed:', err && err.message);
+                if (alive) setS({ status: ACCOUNT_FAILED, data: null });
+            });
         return () => { alive = false; };
     }, []);
-    return a;
+    return s;
 }
 
-// The four figures that carry a decision. Everything else in the snapshot is
-// orientation, and orientation does not need a tile each.
-const DECISION_TILES = ['Day P&L', 'Unrealised P&L', 'Long exposure', 'At risk'];
+// The absent variant (F3 §2.3): a named card state with its own styling,
+// not an ad-hoc branch inside each card. Dashed border, NO numeric slot,
+// label plus the reason. There is nothing here that can render a value,
+// which is the point — an absent card is handed none.
+function AbsentCard({ c, i }) {
+    return e('div', {
+        className: 'np-tile np-tile-absent',
+        key: c.key,
+        style: { animationDelay: (i * 45) + 'ms' },
+        title: c.reason,
+    },
+        e('div', { className: 'np-tile-l' }, c.label),
+        e('div', { className: 'np-tile-absent-r' }, c.reason)
+    );
+}
 
-// `compact` is the v2 treatment: those four keep tile treatment, the other
-// seven collapse into one mono line of label/value pairs. Same data, same
-// relative order within each tier, ~85% less vertical. v1 passes nothing.
-export function PortfolioSnapshot({ model, compact }) {
+function MeasuredCard({ c, i }) {
+    // Best/worst is a pair and its halves are toned opposite ways, so it
+    // arrives as a structure rather than a string.
+    const value = c.pair
+        ? e('span', null,
+            e('span', { className: 'tone-up' }, c.pair.best.tk + (c.pair.best.pct ? ' ' + c.pair.best.pct : '')),
+            ' / ',
+            e('span', { className: 'tone-down' }, c.pair.worst.tk))
+        : c.value;
+
+    return e('div', {
+        className: 'np-tile',
+        key: c.key,
+        style: { animationDelay: (i * 45) + 'ms' },
+    },
+        e('div', { className: 'np-tile-l' }, c.label),
+        e('div', { className: 'np-tile-v ' + (c.tone || '') }, value),
+        c.sub != null ? e('div', { className: 'np-tile-s' }, c.sub) : null
+    );
+}
+
+// The `compact` prop is GONE. It used to mean "four tiles plus seven in a
+// text line", and F2 §2 removes that split by promoting all eleven into
+// the grid — so v1 and v2 now render the same cards and the prop had no
+// remaining meaning. Both call sites were updated rather than leaving it
+// accepted and ignored, which is how a dead prop survives a rewrite.
+export function PortfolioSnapshot({ model }) {
     const p = model && model.portfolio;
     const acct = useAccount();
     if (!p) return null;
 
-    const lev = acct && acct.equity ? (acct.long_market_value / acct.equity) : null;
-    // Each tile colour-codes its value by meaning (P&L green/red, risk red,
-    // quality/win-rate graded), so the snapshot reads at a glance.
-    const defs = [
-        { l: 'Account equity', v: money(acct && acct.equity), s: 'cash + longs − margin', t: 'accent' },
-        { l: 'Long exposure', v: money(acct && acct.long_market_value), s: p.positions + ' positions' + (lev ? ' · ' + lev.toFixed(2) + '× lev' : '') },
-        { l: 'Cash / margin', v: acct ? money(acct.cash) : '—', s: acct && acct.cash < 0 ? 'on margin' : 'uninvested', t: acct && acct.cash < 0 ? 'tone-down' : '' },
-        { l: 'Day P&L', v: acct ? sgnMoney(acct.dayPnl) : '—', s: acct ? sgnPct(acct.dayPnlPct) + ' today' : null, t: acct ? moveTone(acct.dayPnl) : '' },
-        // "on cost", not "total return". This line is the mark against average
-        // cost on what is still held; the holdings table's "Total ret" column
-        // is the return since first fill, and the two disagree in sign on 8 of
-        // 61 holdings. They sat on the same screen under the same word.
-        { l: 'Unrealised P&L', v: sgnMoney(p.unrealisedPnl), s: sgnPct(p.onCostReturnPct ?? p.totalReturnPct) + ' on cost', t: moveTone(p.unrealisedPnl) },
-        { l: 'Win rate', v: p.winRate == null ? '—' : p.winRate + '%', s: p.winners + ' winners · ' + p.losers + ' losers', t: winTone(p.winRate) },
-        { l: 'Today', v: p.todayUp + ' / ' + p.todayDown, s: 'up / down', t: p.todayUp > p.todayDown ? 'tone-up' : p.todayUp < p.todayDown ? 'tone-down' : '' },
-        { l: 'At risk', v: String(p.atRisk), s: 'positions down > 10%', t: p.atRisk > 0 ? 'tone-down' : 'tone-up' },
-        { l: 'Top concentration', v: p.topSymbol ? p.topSymbol + ' ' + p.topWeightPct + '%' : '—', s: 'top 5 = ' + p.top5WeightPct + '% of book', t: p.top5WeightPct >= 35 ? 'tone-warn' : '' },
-        { l: 'Best / worst', node: p.best ? e('span', null, e('span', { className: 'tone-up' }, p.best.tk + ' ' + sgnPct(p.best.pct)), ' / ', e('span', { className: 'tone-down' }, p.worst.tk)) : '—', s: p.worst ? 'worst ' + sgnPct(p.worst.pct) : null },
-        { l: 'Wtd quality', v: p.wtdQuality == null ? '—' : String(p.wtdQuality), s: 'of 100 · grade-weighted', t: qualityTone(p.wtdQuality) },
-    ];
-
-    const tiles = compact ? defs.filter(d => DECISION_TILES.indexOf(d.l) !== -1) : defs;
-    const rest = compact ? defs.filter(d => DECISION_TILES.indexOf(d.l) === -1) : [];
+    const cards = portfolioCards({
+        portfolio: p, account: acct.data, accountStatus: acct.status,
+    });
+    const cov = cardCoverage(cards);
 
     return e('div', { className: 'nf-card np-card nf-fade' },
         e('div', { className: 'nf-card-h' },
             e('h3', null, 'Portfolio'),
-            e('span', { className: 'nf-sub' }, 'the book at a glance' + (acct && acct.mode ? ' · ' + acct.mode : ''))),
+            e('span', { className: 'nf-sub' },
+                'the book at a glance'
+                + (acct.data && acct.data.mode ? ' · ' + acct.data.mode : '')
+                // State the denominator rather than showing a grid with
+                // holes in it and nothing to say why.
+                + (cov.absentCount ? ' · ' + cov.absentCount + ' of ' + cov.total + ' not measured' : ''))),
         e('div', { className: 'np-grid' },
-            tiles.map((d, i) => e('div', { className: 'np-tile', key: d.l, style: { animationDelay: (i * 45) + 'ms' } },
-                e('div', { className: 'np-tile-l' }, d.l),
-                e('div', { className: 'np-tile-v ' + (d.t || '') }, d.node || d.v),
-                d.s != null ? e('div', { className: 'np-tile-s' }, d.s) : null))),
-        // The orientation tier. Sub-labels are dropped rather than wrapped —
-        // they are the part a tile has room for and a line does not — so each
-        // pair carries its own title instead of losing the detail entirely.
-        rest.length
-            ? e('div', { className: 'nfv2-pf-line nf-mono' },
-                rest.map(d => e('span', { className: 'nfv2-pf-pair', key: d.l, title: d.s || null },
-                    e('span', { className: 'nfv2-pf-l' }, d.l),
-                    e('span', { className: 'nfv2-pf-v ' + (d.t || '') }, d.node || d.v))))
-            : null);
+            cards.map((c, i) => (c.absent
+                ? e(AbsentCard, { c, i, key: c.key })
+                : e(MeasuredCard, { c, i, key: c.key })))));
 }
 
 export default PortfolioSnapshot;

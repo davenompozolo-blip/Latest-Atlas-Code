@@ -57,3 +57,6 @@ dist/
 
 # F-5 tape render harness (dev only)
 .f5harness/
+
+# F-4 card harness (dev only)
+.f4harness/

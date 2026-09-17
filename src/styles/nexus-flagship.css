@@ -1537,3 +1537,27 @@
   border:1px solid var(--border-2, rgba(255,255,255,.12)); border-radius:5px;
   background:transparent; color:var(--text2); }
 .nr-tab.on { background:rgba(58,214,224,.12); border-color:rgba(58,214,224,.55); color:#3ad6e0; }
+
+/* ── Absent card variant (F-4; F3 §2.3) ──────────────────────── */
+/* A NAMED state, not an ad-hoc branch inside each card. The rule it
+   serves is F2 §2's: "a metric that cannot be computed renders as absent,
+   not as zero or a dash-with-value". So this variant has no numeric slot
+   at all — it carries the label and the reason, and the component hands
+   an absent card no value to print.
+   The dashed edge is what distinguishes it at a glance from a card whose
+   value happens to be small: a solid tile always holds a measurement. */
+.np-tile-absent {
+  background: transparent;
+  box-shadow: none;
+  border: 1px dashed var(--border-hi);
+}
+
+/* Deliberately NOT styled like a value: same size as the sub-line, italic,
+   dim. A reason set at value size reads as a reading. */
+.np-tile-absent-r {
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--text3);
+  font-style: italic;
+  margin-top: 6px;
+}

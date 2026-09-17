@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
     MIN_FRAME_LEGS, FALLBACK_GROUP, SIGNAL_WINDOWS,
-    sprintNames, sprintGroups, sprintSignals, buildTape, fmtPct, moveTone,
+    sprintNames, sprintGroups, sprintSignals, buildTape, fmtPct, moveTone, bandOf,
 } from './nexusTapeCompute.js';
 
 // ── Sprint 1 ─────────────────────────────────────────────────
@@ -54,6 +54,26 @@ test('names: ordering is best descending, worst ascending from the bottom', () =
     const worst = s.items.filter(i => i.side === 'worst').map(i => i.symbol);
     assert.deepEqual(best, ['AAA', 'DDD']);
     assert.deepEqual(worst, ['BBB', 'CCC']);
+});
+
+test('bands: names split BEST from WORST, which ordering alone cannot show on a moving tape', () => {
+    const s = sprintNames(HOLDINGS, 2);
+    const bands = s.items.map(i => bandOf(i).label);
+    assert.deepEqual(bands, ['BEST', 'BEST', 'WORST', 'WORST']);
+});
+
+test('bands: on an all-red day the split survives even though every caret points down', () => {
+    // This is the case the band marker exists for. Toning the caret by the
+    // MOVE is correct -- a green arrow on a falling name would be a lie --
+    // but it means the shape no longer separates the two halves.
+    const allRed = [
+        { tk: 'AAA', today_pct: -0.4 }, { tk: 'BBB', today_pct: -0.9 },
+        { tk: 'CCC', today_pct: -2.2 }, { tk: 'DDD', today_pct: -5.1 },
+    ];
+    const s = sprintNames(allRed, 2);
+    assert.ok(s.items.every(i => i.move < 0), 'every name is down');
+    assert.deepEqual(s.items.map(i => bandOf(i).label), ['BEST', 'BEST', 'WORST', 'WORST']);
+    assert.deepEqual(s.items.map(i => i.symbol), ['AAA', 'BBB', 'DDD', 'CCC']);
 });
 
 // ── Sprint 2 ─────────────────────────────────────────────────
@@ -132,7 +152,20 @@ test('groups: with no fallback frame a thin group is dropped and named, never fo
     assert.ok(!s.items.some(i => i.symbol === 'R1'));
 });
 
-// ── Sprint 3 ─────────────────────────────────────────────────
+test('bands: groups band on the frame they render in, not the one they are registered as', () => {
+    const s = sprintGroups(INSTRUMENTS, PX);
+    const r1 = s.items.find(i => i.symbol === 'R1');
+    assert.equal(r1.nativeGroup, 'regional');
+    assert.equal(bandOf(r1).label, 'INDEX', 'a folded leg sits under the frame it is shown in');
+});
+
+test('bands: a signal has no band — one marker over the whole sprint says nothing', () => {
+    const s = sprintSignals({ pairs: PAIRS, loadings: LOADINGS, axes: AXES, bySymbol: PAIR_PX });
+    assert.equal(bandOf(s.items[0]), null);
+    assert.equal(bandOf(null), null);
+});
+
+
 function ramp(start, n, step) {
     const out = {};
     for (let i = 0; i < n; i++) {

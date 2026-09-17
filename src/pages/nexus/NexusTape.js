@@ -35,7 +35,7 @@ import { supabase } from '../../lib/supabase.js';
 import { fetchMarketPricesPaged, indexBySymbol } from './nexusMarketPrices.js';
 import {
     sprintNames, sprintGroups, sprintSignals, buildTape,
-    fmtPct, moveTone, GROUP_LABEL, SIGNAL_WINDOWS,
+    fmtPct, moveTone, bandOf, GROUP_LABEL, SIGNAL_WINDOWS,
 } from './nexusTapeCompute.js';
 
 const { useState, useEffect, useMemo, useRef } = React;
@@ -126,13 +126,26 @@ function Value({ value, dp }) {
 }
 
 function NameItem({ it }) {
-    return e('span', { className: 'nft-item' },
-        e('span', { className: 'nft-side ' + (it.side === 'best' ? 'tone-up' : 'tone-down') },
-            it.side === 'best' ? '▲' : '▼'),
+    return e('span', { className: 'nft-item' + (it.move === 0 ? ' is-flat' : '') },
+        // Toned by the MOVE, not by which half of the ranking the name
+        // sits in -- on a red day the five "best" names can all be down, and
+        // a green ▲ on a falling name would be a lie about the tape. The
+        // best/worst split is carried by the band marker instead.
+        e(Caret, { value: it.move }),
         e('span', { className: 'nft-tk' }, it.symbol),
         e(Value, { value: it.move }),
         it.daysOld > 1 ? e('span', { className: 'nft-age', title: 'last price ' + it.daysOld + ' days old' }, it.daysOld + 'd') : null
     );
+}
+
+// The caret encodes the SIGN of the move and nothing else. A magnitude
+// threshold here would be a significance claim the tape has no basis for,
+// so a flat session gets its own mark rather than being rounded into one
+// of the two directions.
+function Caret({ value }) {
+    if (value == null) return null;
+    const tone = value > 0 ? 'tone-up' : value < 0 ? 'tone-down' : 'is-flat';
+    return e('span', { className: 'nft-dir ' + tone }, value > 0 ? '▲' : value < 0 ? '▼' : '·');
 }
 
 function GroupItem({ it }) {
@@ -143,7 +156,11 @@ function GroupItem({ it }) {
         it.folded ? 'registered ' + it.nativeGroup + ' — shown in ' + GROUP_LABEL[it.group].toLowerCase()
             + ' because one instrument is not a category' : null]
         .filter(Boolean).join(' · ');
-    return e('span', { className: 'nft-item' + (it.behind ? ' nft-behind' : ''), title },
+    return e('span', {
+        className: 'nft-item' + (it.behind ? ' nft-behind' : '') + (it.move === 0 ? ' is-flat' : ''),
+        title,
+    },
+        e(Caret, { value: it.move }),
         e('span', { className: 'nft-tk' }, it.symbol),
         e(Value, { value: it.move }),
         it.behind ? e('span', { className: 'nft-age', title: 'behind the tape at ' + it.asOf }, '·stale') : null
@@ -194,11 +211,12 @@ function Sprint({ sprint, copy }) {
     // also what makes the EEM decision legible — it is shown under INDEX
     // rather than under a "REGIONAL" heading over a single instrument.
     const kids = [];
-    let frame = null;
+    let band = null;
     sprint.items.forEach((it, i) => {
-        if (it.kind === 'group' && it.group !== frame) {
-            frame = it.group;
-            kids.push(e('span', { className: 'nft-frame', key: 'f' + frame }, GROUP_LABEL[frame]));
+        const b = bandOf(it);
+        if (b && b.key !== band) {
+            band = b.key;
+            kids.push(e('span', { className: 'nft-frame', key: 'b' + band }, b.label));
         }
         const C = ITEM[it.kind];
         if (C) kids.push(e(C, { it, key: i }));
@@ -310,6 +328,12 @@ export function NexusTape() {
         onFocus: () => setPaused(true),
         onBlur: ev => { if (!ev.currentTarget.contains(ev.relatedTarget)) setPaused(false); },
     },
+        // Pause on hover/focus already worked and said nothing, so a tape
+        // that had stopped FOR the reader was indistinguishable from one
+        // that had stopped working. The chip is the affordance and only
+        // exists while paused.
+        paused ? e('div', { className: 'nft-paused' },
+            e('span', { className: 'nft-paused-bars' }, '❙❙'), 'PAUSED') : null,
         e('div', { className: 'nft-viewport' },
             e('div', {
                 className: 'nft-track',
