@@ -3002,6 +3002,47 @@ below even large-text 3:1**. Moved to `--nx-text2` (6.64:1). **Making dead
 styling live can make a page worse before it makes it better; re-measure
 contrast after any token-scope fix.**
 
+### A window listener cannot see a container change (2026-09-17)
+
+`useLwChart` resized its chart on `window.resize`. The Board's
+COMPOSITE/WORKINGS toggle never resizes the window -- it resizes the
+**container**, via `.nb-span2 { grid-column: 1 / -1 }` and a 220px -> 240px
+chart rule. So the listener never fired and the canvas kept the size it was
+built at: container **930x240 -> 441x220 while the chart stayed 930x200**,
+overflowing the card by 489px and carrying the right price scale (the rightmost
+36px) off screen. Reported from the terminal as a clunky transition; it is a
+stale canvas.
+
+**Observe the element, not the window.** A `ResizeObserver` covers the window
+case too, because a viewport change is also a container change -- one path
+instead of two, and the one that was missing is the one that fires far more
+often.
+
+Two more faults in the same four lines, both permanent rather than
+flip-dependent: **height was never read from the container at all** (a 200px
+default inside a 220px box, and a `CHART_H = 250` constant in
+`NexusPairExplorer.js` restating `.np-chart { height:250px }` with a comment
+asking the next editor to keep the two in step); and `fitContent()` ran only at
+build, so with `fixLeftEdge`/`fixRightEdge` pinning the window a resized chart
+kept its old bar spacing. **The container is now the only source of a chart's
+size** -- a number in JS restating a CSS length is a second source that goes out
+of step silently, because a canvas is painted and nothing reflows or warns.
+
+**An animation replays on a change of animation-NAME, not of class.** Grid
+placement is not transitionable, so the card surviving the flip snapped to its
+new width while its neighbours ran a 400ms `nf-fade` -- two motions, not one
+gesture. The first fix gave two classes the same `animation: nf-fade` and
+alternated between them, which restarts nothing: `getAnimations()` showed one
+`nf-fade` sitting finished at `currentTime: 400` right across the flip, and the
+page looked identical to the unfixed snap. Two distinct `@keyframes` names with
+identical content is the mechanism. **No `key`** -- a remount would replay the
+entrance for free and reset the index chart's symbol and range selection with
+it.
+
+Both directions must be measured: growing leaves dead space, shrinking carries
+the axis off screen, and only the second is visible in a screenshot. Full
+report in `docs/CHART_CONTAINER_RESIZE_FIX.md`.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel

@@ -60,3 +60,6 @@ dist/
 
 # F-4 card harness (dev only)
 .f4harness/
+
+# Chart resize harness (dev only)
+.chartharness/

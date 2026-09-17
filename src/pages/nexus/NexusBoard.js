@@ -31,8 +31,22 @@ const moveTone = v => (v > 0 ? COL.green : v < 0 ? COL.red : COL.dim);
 // pair explorer became its second reader. Same options, same hook.
 const useChart = useLwChart;
 
+// The face flip changes this card's COLUMN SPAN, and grid placement is not a
+// transitionable property -- so the card that survives the flip jumps to its
+// new width in the frame its neighbours start a 400ms fade. Two motions, and
+// they do not read as one gesture.
+//
+// Alternating .nb-refade-a / .nb-refade-b replays the house entrance on
+// exactly the card whose role changed. The two classes carry two DIFFERENT
+// keyframe names with identical content, because an animation restarts on a
+// change of animation-name and not of class -- naming both `nf-fade` restarts
+// nothing, which is how the first attempt at this failed silently.
+//
+// Same curve and same duration as the cards mounting beside it, and no
+// remount: the index chart keeps its symbol and range selection across the
+// flip, which a `key` would have reset.
 function Card({ title, sub, right, children, span2 }) {
-    return e('div', { className: 'nf-card nf-fade nb-card' + (span2 ? ' nb-span2' : '') },
+    return e('div', { className: 'nf-card nf-fade nb-card ' + (span2 ? 'nb-span2 nb-refade-b' : 'nb-refade-a') },
         e('div', { className: 'nf-card-h' },
             e('div', null, e('h3', null, title), sub ? e('div', { className: 'nf-sub', style: { marginTop: 3 } }, sub) : null),
             right || null

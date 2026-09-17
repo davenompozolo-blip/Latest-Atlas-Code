@@ -41,7 +41,9 @@ const LOOKBACK_DAYS = 130;
 // enough not to compete with the three data lines.
 const COLOR = { num: CHART_COL.cyan, den: CHART_COL.amber, ratio: CHART_COL.green, bench: '#8b93a1' };
 
-const CHART_H = 250;
+// The chart's height was a constant here restating `.np-chart { height:250px }`,
+// with a comment asking the next editor to keep the two in step. useLwChart now
+// measures the container, so there is one source and nothing to keep in step.
 
 function usePairData() {
     const [s, setS] = useState({ loaded: false });
@@ -130,7 +132,7 @@ function Chart({ series, benchIsLeg }) {
             price: 0, color: 'rgba(255,255,255,0.18)', lineWidth: 1, lineStyle: 2,
             axisLabelVisible: false,
         });
-    }, [series, benchIsLeg], { height: CHART_H });
+    }, [series, benchIsLeg]);
 
     if (!series || !series.dates.length) return null;
     return e('div', {
