@@ -78,3 +78,4 @@ dist/
 
 # G-6 book-vs-market harness (dev only)
 .g6harness/
+.g3verify/

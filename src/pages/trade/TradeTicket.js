@@ -45,20 +45,35 @@ export function TradeTicket({ symbol, universeContext, onNavigate }) {
     useEffect(() => {
         let live = true;
         setLoading(true);
-        Promise.all([
-            data.loadBook(),
-            data.loadRiskLayer(),
-            data.loadSignalScores(symbol),
-            data.loadClaims(symbol),
-            data.loadTriggers({ symbol, status: null }),
-            data.loadVolDrift(),
-            data.loadInstrumentSnapshot(symbol),
-        ]).then(([b, r, s, c, t, d, inst]) => {
+        // The book is loaded FIRST and on its own, because loadRiskLayer needs
+        // the symbol set it is to cover. It used to run in this same
+        // Promise.all with no arguments, which read an arbitrary 1,000 rows of
+        // an 88,000-pair table and left every held-to-held correlation missing
+        // — so Pane B's covariance matrix was built entirely from the ρ=0
+        // fallback. One extra round trip buys a covariance matrix that is
+        // actually the book's.
+        (async () => {
+            const b = await data.loadBook();
             if (!live) return;
-            setBook(b); setRisk(r); setScores(s); setClaims(c); setTriggers(t); setDrift(d);
+            setBook(b);
+
+            const cover = (b && b.positions ? b.positions.map((p) => p.symbol) : []).concat([symbol]);
+            const [r, s, c, t, d, inst] = await Promise.all([
+                data.loadRiskLayer({ symbols: cover }),
+                data.loadSignalScores(symbol),
+                data.loadClaims(symbol),
+                data.loadTriggers({ symbol, status: null }),
+                data.loadVolDrift(),
+                data.loadInstrumentSnapshot(symbol),
+            ]);
+            if (!live) return;
+            setRisk(r); setScores(s); setClaims(c); setTriggers(t); setDrift(d);
             setInstrument(inst);
             setLoading(false);
-        }).catch(() => { if (live) setLoading(false); });
+        })().catch((err) => {
+            console.error('[trade] ticket load failed:', err && err.message, err);
+            if (live) setLoading(false);
+        });
         return () => { live = false; };
     }, [symbol]);
 
