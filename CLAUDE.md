@@ -3043,6 +3043,59 @@ Both directions must be measured: growing leaves dead space, shrinking carries
 the axis off screen, and only the second is visible in a screenshot. Full
 report in `docs/CHART_CONTAINER_RESIZE_FIX.md`.
 
+### Two tapes, and the marquee they share (2026-09-17)
+
+G-1. The flagship now runs a MARKET tape above The Book at a Glance beside the
+F-5 BOOK tape below it. Full report in `docs/G1_MARKET_TAPE_REPORT.md`.
+
+**They are two tapes and not one merged stream on purpose.** The whole value of
+having both is telling *"my book is down"* apart from *"the market is down"*,
+and one stream makes that a matter of remembering which sprint scrolled past.
+
+**`NexusTapeShell.js` is the only marquee implementation.** Velocity, the
+two-copy loop whose seam lands on an exact repeat, pause on hover and focus,
+the reduced-motion pager and the frame markers all live there. **Two tapes
+moving at different speeds would read as one of them being broken**, and a
+second copy of a marquee is exactly how that happens -- the same argument that
+produced one paged read of `market_prices`. Each tape keeps its data, its item
+vocabulary and its own loading/failed/empty sentences: those are claims about a
+particular feed, and a shared default puts a sentence on screen nobody
+verified. Extraction proven behaviour-neutral -- 278 tests green either side,
+`nexusTapeCompute.js` untouched.
+
+**Split on SIGN, never on position.** `LEADING` is the sectors that are
+actually up, so an all-red tape shows no LEADING band at all; a fixed share of
+the list labelled leading every day is a ranking dressed as a market read --
+the quantile-verdict objection, one layer out. Same trap in the ranked slice:
+the bottom five of thirty are NOT losers on a day the whole list is up, so the
+bands are `BEST`/`WORST` and the sign is carried by the caret and the tone.
+Both are asserted with the fixture that breaks the naive version (all-red
+sectors, all-green bottom slice), never by inspection.
+
+**A sprint that ranks a curated list says so on the tape.** `api/movers.js`
+ranks thirty hand-picked large caps, so "top movers" means "the best of thirty
+names someone chose" -- printed as a scope note, the same rule that makes XLE
+render as `XLE` rather than as "Energy".
+
+**The two endpoints fail independently** (`allSettled`, not `all`). A dead
+`/api/movers` costs its own two sprints and nothing else; only both down reads
+*"neither market feed answered"*. An empty sprint is DROPPED rather than
+rendered as a bare label -- a label with nothing under it reads as a feed with
+nothing to say, when it returned nothing at all.
+
+**`src/lib/marketAssetGroups.js` is a UI registry and that is a GAP, not a
+design.** `market_instruments.tape_group` owns this classification for the A0
+legs and is the right home for these sixteen too; they are not registered there
+yet, and inventing rows is an A0-shaped data unit rather than part of a UI
+build. Recorded so the next session does not mistake the gap for a decision.
+Extracted from `market-watch.js`, which held it privately, because a second
+copy is how two surfaces start disagreeing about whether EEM is global or
+emerging.
+
+**Nothing new is added to the v1 layout.** `nexusLayout.js` says v1 restores
+the previous layout wholesale, so a new element there stops the escape hatch
+being one.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel

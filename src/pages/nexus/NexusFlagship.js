@@ -21,6 +21,7 @@ import { NexusDriftPanel } from './NexusDrift.js';
 import { NexusThemePanel } from './NexusTheme.js';
 import { PortfolioSnapshot } from './NexusPortfolio.js';
 import { NexusTape } from './NexusTape.js';
+import { NexusMarketTape } from './NexusMarketTape.js';
 import { NexusRegimePanel } from './NexusRegime.js';
 import { NexusOpportunitiesPanel } from './NexusOpportunities.js';
 import { NexusBenchPanel } from './NexusBench.js';
@@ -856,6 +857,10 @@ function TheRead({ read, pinned }) {
 
 // ── Flagship panel ────────────────────────────────────────────
 function FlagshipPanel({ model, holdingsTheme }) {
+    // No market tape here. v1 exists to restore the previous layout
+    // wholesale, so a G-1 element added to it would make the escape hatch
+    // stop being an escape hatch -- and the tape's styling is v2-scoped
+    // anyway, so it would render unstyled.
     return e('div', null,
         e(PortfolioSnapshot, { model }),
         e(NexusTape, null),
@@ -898,6 +903,11 @@ function FlagshipPanelV2({ model, holdingsTheme }) {
     return e('div', { className: 'nfv2' },
         e(TheRead, { read: model.read, pinned: true }),
         e(Section, { label: 'WHERE I STAND' },
+            // Two tapes, market above book, in that order on purpose: you
+            // read what the market did, then what your names did in it.
+            // Merging them into one stream is what would make "the market
+            // is down" and "my book is down" the same sentence.
+            e(NexusMarketTape, null),
             e(PortfolioSnapshot, { model }),
             // F2 §3 puts the tape "where the strip used to be". F-4 has not
             // run yet, so the strip is still above it -- the tape sits in

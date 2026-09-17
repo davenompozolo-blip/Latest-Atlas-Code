@@ -25,9 +25,10 @@
 //   Component boundary — compute is pure and IO-free and is tested under
 //   plain node; this file holds the only fetch and the only DOM.
 //
-// The loop is two copies of the sprint sequence translated by -50%, so
-// the seam lands on an exact repeat. CSS transform only: no layout
-// property is animated and there is no per-frame JS.
+// The marquee mechanics — velocity, the two-copy loop, pause, the
+// reduced-motion pager, the frame markers — moved to NexusTapeShell.js
+// when G-1's market tape became their second reader. What stays here is
+// this tape's data, its item vocabulary and its own sentences.
 // ============================================================
 
 import React from 'react';
@@ -35,13 +36,12 @@ import { supabase } from '../../lib/supabase.js';
 import { fetchMarketPricesPaged, indexBySymbol } from './nexusMarketPrices.js';
 import {
     sprintNames, sprintGroups, sprintSignals, buildTape,
-    fmtPct, moveTone, bandOf, GROUP_LABEL, SIGNAL_WINDOWS,
+    bandOf, GROUP_LABEL, SIGNAL_WINDOWS,
 } from './nexusTapeCompute.js';
+import { TapeShell, Caret, Value } from './NexusTapeShell.js';
 
-const { useState, useEffect, useMemo, useRef } = React;
+const { useState, useEffect, useMemo } = React;
 const e = React.createElement;
-
-const VELOCITY_PX_S = 55;
 // The monthly window needs 22 aligned sessions; 70 calendar days covers
 // that with room for holidays without dragging a quarter of history
 // across the wire for a ticker.
@@ -97,33 +97,9 @@ function useTapeData() {
     return s;
 }
 
-// ── Reduced motion ───────────────────────────────────────────
-function usePrefersReducedMotion() {
-    const [reduced, setReduced] = useState(function () {
-        try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
-        catch { return false; }
-    });
-    useEffect(function () {
-        let mq;
-        try { mq = window.matchMedia('(prefers-reduced-motion: reduce)'); } catch { return; }
-        const on = ev => setReduced(ev.matches);
-        // addListener is the pre-2021 Safari spelling and is still the only
-        // one some embedded WebKits expose.
-        if (mq.addEventListener) mq.addEventListener('change', on); else mq.addListener(on);
-        return () => { if (mq.removeEventListener) mq.removeEventListener('change', on); else mq.removeListener(on); };
-    }, []);
-    return reduced;
-}
-
 // ── Items ────────────────────────────────────────────────────
-// An absent move renders as an em dash with its reason on the title. It is
-// never 0.00% and never a blank slot: a tape makes everything on it look
-// like a measurement, so the absence has to be visible AS an absence.
-function Value({ value, dp }) {
-    const txt = fmtPct(value, dp);
-    if (txt == null) return e('span', { className: 'nft-v nft-absent', title: 'no current measurement' }, '—');
-    return e('span', { className: 'nft-v ' + moveTone(value) }, txt);
-}
+// Value and Caret are the shell's, shared with the market tape: an absent
+// move is an em dash with its reason, never 0.00% and never a blank slot.
 
 function NameItem({ it }) {
     return e('span', { className: 'nft-item' + (it.move === 0 ? ' is-flat' : '') },
@@ -136,16 +112,6 @@ function NameItem({ it }) {
         e(Value, { value: it.move }),
         it.daysOld > 1 ? e('span', { className: 'nft-age', title: 'last price ' + it.daysOld + ' days old' }, it.daysOld + 'd') : null
     );
-}
-
-// The caret encodes the SIGN of the move and nothing else. A magnitude
-// threshold here would be a significance claim the tape has no basis for,
-// so a flat session gets its own mark rather than being rounded into one
-// of the two directions.
-function Caret({ value }) {
-    if (value == null) return null;
-    const tone = value > 0 ? 'tone-up' : value < 0 ? 'tone-down' : 'is-flat';
-    return e('span', { className: 'nft-dir ' + tone }, value > 0 ? '▲' : value < 0 ? '▼' : '·');
 }
 
 function GroupItem({ it }) {
@@ -199,29 +165,12 @@ function SignalItem({ it }) {
 
 const ITEM = { name: NameItem, group: GroupItem, signal: SignalItem };
 
-// ── A sprint ─────────────────────────────────────────────────
-// Each sprint is a focus stop (F2 §3) and carries its own label, which is
-// the separator. `copy` suppresses the duplicate from the a11y tree and
-// from the tab order — the second copy exists only so the loop seam lands
-// on an exact repeat.
-function Sprint({ sprint, copy }) {
-    // Sprint 2 carries more than one frame, and without a marker at each
-    // boundary the frames are invisible: a reader sees one undifferentiated
-    // run of tickers and cannot tell a sector from an index. The marker is
-    // also what makes the EEM decision legible — it is shown under INDEX
-    // rather than under a "REGIONAL" heading over a single instrument.
-    const kids = [];
-    let band = null;
-    sprint.items.forEach((it, i) => {
-        const b = bandOf(it);
-        if (b && b.key !== band) {
-            band = b.key;
-            kids.push(e('span', { className: 'nft-frame', key: 'b' + band }, b.label));
-        }
-        const C = ITEM[it.kind];
-        if (C) kids.push(e(C, { it, key: i }));
-    });
-
+// ── Notes ────────────────────────────────────────────────────
+// Every note here is this tape refusing to print something and saying so:
+// a name it withheld, a group too small to be a frame, a leg with no frame
+// at all. They are statements about the BOOK's feed, which is why the
+// shell takes them as a hook rather than owning them.
+function renderNotes(sprint) {
     const notes = [];
     if (sprint.withheldCount) {
         notes.push(e('span', { className: 'nft-note', key: 'w' },
@@ -235,27 +184,12 @@ function Sprint({ sprint, copy }) {
         notes.push(e('span', { className: 'nft-note', key: 'd' },
             sprint.droppedSymbols.join(', ') + ' · no frame'));
     }
-
-    return e('div', {
-        className: 'nft-sprint',
-        tabIndex: copy ? -1 : 0,
-        'aria-hidden': copy ? 'true' : null,
-        'aria-label': copy ? null : sprint.label + ' — ' + sprint.caption,
-        role: copy ? null : 'group',
-    },
-        e('span', { className: 'nft-label' }, sprint.label),
-        kids, notes
-    );
+    return notes;
 }
 
 // ── The tape ─────────────────────────────────────────────────
 export function NexusTape() {
     const data = useTapeData();
-    const reduced = usePrefersReducedMotion();
-    const [paused, setPaused] = useState(false);
-    const [page, setPage] = useState(0);
-    const seqRef = useRef(null);
-    const [durationS, setDurationS] = useState(null);
 
     const tape = useMemo(function () {
         if (!data.loaded || data.failed) return null;
@@ -269,84 +203,17 @@ export function NexusTape() {
         ]);
     }, [data]);
 
-    // Constant velocity: measure one copy of the sequence and derive the
-    // duration from it. Re-measured on resize, because the same content
-    // is a different width at a different breakpoint.
-    useEffect(function () {
-        if (!tape || tape.empty || reduced) return;
-        const el = seqRef.current;
-        if (!el) return;
-        const measure = () => {
-            const w = el.scrollWidth;
-            if (w > 0) setDurationS(Math.max(8, w / VELOCITY_PX_S));
-        };
-        measure();
-        let ro;
-        try { ro = new ResizeObserver(measure); ro.observe(el); } catch { /* no RO: the first measure stands */ }
-        window.addEventListener('resize', measure);
-        return () => { if (ro) ro.disconnect(); window.removeEventListener('resize', measure); };
-    }, [tape, reduced]);
-
-    if (!data.loaded) return e('div', { className: 'nft nft-quiet' }, 'Tape loading…');
-    // Not "no market data" — the feed did not answer, which is a different
-    // statement and the only one the evidence supports.
-    if (data.failed) return e('div', { className: 'nft nft-quiet' }, 'Tape unavailable — the market feed did not answer.');
-    if (!tape || tape.empty) return e('div', { className: 'nft nft-quiet' }, 'Nothing on the tape.');
-
-    const sprints = tape.sprints;
-
-    // ── prefers-reduced-motion: a paged static list, same sprints ──
-    if (reduced) {
-        const i = Math.min(page, sprints.length - 1);
-        return e('div', { className: 'nft nft-static' },
-            e('div', { className: 'nft-viewport' }, e(Sprint, { sprint: sprints[i] })),
-            e('div', { className: 'nft-pager' },
-                e('button', {
-                    className: 'nft-pg', type: 'button', 'aria-label': 'previous sprint',
-                    onClick: () => setPage((i - 1 + sprints.length) % sprints.length),
-                }, '◀'),
-                e('span', { className: 'nft-pg-n' }, (i + 1) + ' / ' + sprints.length),
-                e('button', {
-                    className: 'nft-pg', type: 'button', 'aria-label': 'next sprint',
-                    onClick: () => setPage((i + 1) % sprints.length),
-                }, '▶')
-            )
-        );
-    }
-
-    // Two copies: the animation translates by exactly -50%, so the seam is
-    // an exact repeat and the loop has no visible join.
-    const seq = sprints.map((s, i) => e(Sprint, { sprint: s, key: s.key + i }));
-    const seqCopy = sprints.map((s, i) => e(Sprint, { sprint: s, key: 'c' + s.key + i, copy: true }));
-
-    return e('div', {
-        className: 'nft',
-        onMouseEnter: () => setPaused(true),
-        onMouseLeave: () => setPaused(false),
-        // Focus pauses too: a tape that cannot be stopped cannot be read,
-        // and a keyboard user has no hover to stop it with.
-        onFocus: () => setPaused(true),
-        onBlur: ev => { if (!ev.currentTarget.contains(ev.relatedTarget)) setPaused(false); },
-    },
-        // Pause on hover/focus already worked and said nothing, so a tape
-        // that had stopped FOR the reader was indistinguishable from one
-        // that had stopped working. The chip is the affordance and only
-        // exists while paused.
-        paused ? e('div', { className: 'nft-paused' },
-            e('span', { className: 'nft-paused-bars' }, '❙❙'), 'PAUSED') : null,
-        e('div', { className: 'nft-viewport' },
-            e('div', {
-                className: 'nft-track',
-                style: {
-                    animationDuration: durationS ? durationS + 's' : undefined,
-                    animationPlayState: paused ? 'paused' : 'running',
-                },
-            },
-                e('div', { className: 'nft-seq', ref: seqRef }, seq),
-                e('div', { className: 'nft-seq' }, seqCopy)
-            )
-        )
-    );
+    return e(TapeShell, {
+        tape,
+        state: { loading: !data.loaded, failed: data.failed },
+        itemRenderers: ITEM,
+        bandOf, renderNotes,
+        loadingText: 'Tape loading…',
+        // Not "no market data" — the feed did not answer, which is a
+        // different statement and the only one the evidence supports.
+        failedText: 'Tape unavailable — the market feed did not answer.',
+        emptyText: 'Nothing on the tape.',
+    });
 }
 
 export default NexusTape;

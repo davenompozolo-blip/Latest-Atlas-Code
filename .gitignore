@@ -63,3 +63,6 @@ dist/
 
 # Chart resize harness (dev only)
 .chartharness/
+
+# G-1 market tape harness (dev only)
+.g1harness/

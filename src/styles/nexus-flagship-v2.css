@@ -416,3 +416,38 @@
   .nexus-flagship-v2 .nft,
   .nexus-flagship-v2 .nft-paused { animation: none; }
 }
+
+/* ── The market tape (G-1) ───────────────────────────────────────────
+   Two tapes now run on the flagship and the whole point of having both is
+   telling them apart, so the market tape is given a visual identity rather
+   than being a second identical strip: it sits above the book's glance,
+   carries a left accent rule in the house cyan, and runs on the panel
+   ground rather than the card ground so the book's tape reads as the one
+   attached to the cards beneath it.
+
+   Everything else -- velocity, the loop, pause, the reduced-motion pager --
+   is the shared shell's and is deliberately IDENTICAL. Two tapes moving at
+   different speeds would read as one of them being broken. */
+.nexus-flagship-v2 .nft-market {
+  margin: 0 0 12px;
+  background: var(--bg2);
+  border-top: none;
+  border-bottom: 1px solid var(--border);
+  border-left: 2px solid var(--cyan);
+}
+
+/* The market tape's sprint labels carry the accent, so "SECTORS" reads as
+   a market frame and "BEST / WORST" on the book tape stays the book's. */
+.nexus-flagship-v2 .nft-market .nft-label {
+  color: var(--cyan);
+  border-color: var(--cyan-b, var(--border-md));
+}
+
+/* A scope note is a limit on the claim, not decoration -- "ranked within 30
+   tracked large caps" is the difference between a true sentence and a false
+   one, so it is legible rather than whispered. */
+.nexus-flagship-v2 .nft-market .nft-note {
+  color: var(--text3);
+  border-left: 1px solid var(--border);
+  padding-left: 10px;
+}
