@@ -3043,6 +3043,228 @@ Both directions must be measured: growing leaves dead space, shrinking carries
 the axis off screen, and only the second is visible in a screenshot. Full
 report in `docs/CHART_CONTAINER_RESIZE_FIX.md`.
 
+### Two tapes, and the marquee they share (2026-09-17)
+
+G-1. The flagship now runs a MARKET tape above The Book at a Glance beside the
+F-5 BOOK tape below it. Full report in `docs/G1_MARKET_TAPE_REPORT.md`.
+
+**They are two tapes and not one merged stream on purpose.** The whole value of
+having both is telling *"my book is down"* apart from *"the market is down"*,
+and one stream makes that a matter of remembering which sprint scrolled past.
+
+**`NexusTapeShell.js` is the only marquee implementation.** Velocity, the
+two-copy loop whose seam lands on an exact repeat, pause on hover and focus,
+the reduced-motion pager and the frame markers all live there. **Two tapes
+moving at different speeds would read as one of them being broken**, and a
+second copy of a marquee is exactly how that happens -- the same argument that
+produced one paged read of `market_prices`. Each tape keeps its data, its item
+vocabulary and its own loading/failed/empty sentences: those are claims about a
+particular feed, and a shared default puts a sentence on screen nobody
+verified. Extraction proven behaviour-neutral -- 278 tests green either side,
+`nexusTapeCompute.js` untouched.
+
+**Split on SIGN, never on position.** `LEADING` is the sectors that are
+actually up, so an all-red tape shows no LEADING band at all; a fixed share of
+the list labelled leading every day is a ranking dressed as a market read --
+the quantile-verdict objection, one layer out. Same trap in the ranked slice:
+the bottom five of thirty are NOT losers on a day the whole list is up, so the
+bands are `BEST`/`WORST` and the sign is carried by the caret and the tone.
+Both are asserted with the fixture that breaks the naive version (all-red
+sectors, all-green bottom slice), never by inspection.
+
+**A sprint that ranks a curated list says so on the tape.** `api/movers.js`
+ranks thirty hand-picked large caps, so "top movers" means "the best of thirty
+names someone chose" -- printed as a scope note, the same rule that makes XLE
+render as `XLE` rather than as "Energy".
+
+**The two endpoints fail independently** (`allSettled`, not `all`). A dead
+`/api/movers` costs its own two sprints and nothing else; only both down reads
+*"neither market feed answered"*. An empty sprint is DROPPED rather than
+rendered as a bare label -- a label with nothing under it reads as a feed with
+nothing to say, when it returned nothing at all.
+
+**`src/lib/marketAssetGroups.js` is a UI registry and that is a GAP, not a
+design.** `market_instruments.tape_group` owns this classification for the A0
+legs and is the right home for these sixteen too; they are not registered there
+yet, and inventing rows is an A0-shaped data unit rather than part of a UI
+build. Recorded so the next session does not mistake the gap for a decision.
+Extracted from `market-watch.js`, which held it privately, because a second
+copy is how two surfaces start disagreeing about whether EEM is global or
+emerging.
+
+**Nothing new is added to the v1 layout.** `nexusLayout.js` says v1 restores
+the previous layout wholesale, so a new element there stops the escape hatch
+being one.
+
+### Rebasing on each leg's own first bar is four experiments on one chart (2026-09-17)
+
+G-5, the index wall. Full report in `docs/G5_INDEX_WALL_REPORT.md`.
+
+`board.indices` was already loaded and shown ONE symbol at a time behind chips;
+the Markets module drew the same four as four TradingView iframes. The wall
+shows them together, in two faces -- `SEPARATE` (small multiples at native
+price) and `COMPARED` (all rebased to 100 on one origin). No new endpoint.
+
+**The compared face rebases on the INTERSECTION of the date sets, not on each
+leg's own first bar.** Rebasing each from its own start makes the lines answer
+different questions, and whichever began on a down day looks better for free.
+Measured on a fixture where DIA starts 40 sessions late: SPY reads **+25.9%
+compared and +32.09% separate, and both are right** -- the compared figure
+starts where DIA's history does. Reading the separate figures against each
+other is the mistake the face exists to prevent. **The alignment cost is
+printed under the chart** ("40 sessions dropped so every leg shares one
+origin"), not absorbed.
+
+**One leg drawn alone under a "compared" heading is the worst outcome
+available** -- it looks like a comparison and is not one. No overlap reports
+itself instead.
+
+A window the data cannot fill is MARKED (`214 sess` under a 1Y request), never
+passed off as full; `Max` is unbounded and never marked. Line colours go by
+RANK, not by symbol, so the eye follows the ordering rather than relearning a
+palette daily.
+
+**This unit is why the container-resize fix had to land first.** The wall is a
+responsive grid whose cells change width with no window event behind them --
+exactly the `useLwChart` defect closed that morning. It would otherwise have
+shipped four stale canvases at the first breakpoint.
+
+### The terminal's risk light was a string literal (2026-09-17)
+
+G-4. Full report in `docs/G4_CROSS_ASSET_REPORT.md`.
+
+`nexus-page.js:1146` rendered `'RISK-ON'` in the chrome's top bar -- a LITERAL,
+computed from nothing, green in every market since it was written. Nothing in
+the file referenced a barometer, a signal or a feed. Meanwhile
+`macro-markets.js` computed a real one from SPY, TLT and HY spreads, so the app
+could show **RISK-ON in the chrome and NEUTRAL on the Markets page in the same
+session** -- and did, visibly, in the screenshots that prompted this work.
+
+The *"a gauge carried from the mock looks exactly like a working gauge"* entry,
+in a second place and worse: a mock gauge at least had a mock behind it.
+
+**One computation, shared.** `riskBarometer` is read by the pill and the panel
+through the same feed module, so they cannot disagree.
+
+**The cheap signal has to say it is cheap.** `basis: 'heuristic'` travels on the
+reading and renders on its face. Three signs averaged against a +/-0.3 band is
+not a measured regime; B0's betas and E3's covariance are, and they are a
+scroll away. The point of putting the cheap read beside the expensive ones is
+seeing when they disagree -- which requires knowing which is which.
+
+**Publish the components, not just the label.** A label with nothing under it is
+precisely what sat in the chrome. **No inputs reads `UNKNOWN`** and the pill
+renders NOTHING -- a chrome badge is read at a glance and never re-read, so a
+grey dash there reads as a state the market is in.
+
+**The needle is the SCORE, not the label.** Three fixed positions discard the
+distance from the band, which is the only thing that says whether a reading is
+marginal. Measured: the base fixture sits at 34% against a band of 35.6-64.4 --
+just outside, and it looks just outside.
+
+**A port must not move the number.** `changePct > 0 ? 1 : -1` puts a FLAT SPY on
+the negative side; that is what shipped and it is preserved, with a test saying
+so. Changing it during a refactor would move a published reading under cover of
+tidying.
+
+**`useMacroFeed.js`: one module-level promise per endpoint.** Three components
+read `/api/macro`; three fetches is three payloads that CAN DISAGREE, because
+the endpoint caches with a TTL and two calls either side of an expiry hand two
+panels on one screen different data. A rejected promise is cached as rejected --
+a later mount must see the failure the first one saw, not retry quietly and
+render a healthy panel beside a dead one.
+
+**Recycle the data, not the markup.** Lifting the Markets panels with their old
+design system attached is what makes a page feel like panels held together with
+tape.
+
+### Share the screener's grammar, never its buckets (2026-09-17)
+
+G-2. Full report in `docs/G2_HOLDINGS_SCREENER_REPORT.md`.
+
+The holdings table now opens with the Valuation House screener's counted-tile
+row, because two tables in one product that filter differently make the reader
+learn the app twice -- and a tile is a summary and a filter at once.
+
+**What is NOT borrowed is the screener's buckets.** Value / Growth / Momentum /
+Quality / Dividend / Contrarian come from screener fields (multiples, RSI,
+revenue growth, drawdown) that the BOOK does not carry. Six labels over
+holdings rows would be a classification with nothing behind it -- the objection
+this file already raises to a sector aggregate standing in for a theme, and to
+thirty curated names being called "the market". The tiles are the book's own
+reads and valuation signals, which is why they can be counted honestly.
+
+**Reads keep the add->exit spectrum; signals are alphabetical.** Sorting reads
+by count puts EXIT first on a bad day and destroys the only thing the row's
+order carries; ranking signals by count lets a price move reorder the filter
+bar under the reader's cursor. Opposite rules, each for its own reason.
+
+**A facet with no members gets no tile** -- an empty tile invites a click that
+finds nothing, and on a summary row a zero is a claim about the book rather
+than about a null column.
+
+**Sector became a filter and is a SEPARATE control from theme.** Two
+taxonomies, two controls; folding them is the mistake corrected once already
+when the flagship showed sector values under a "Theme" heading. `Unclassified`
+is a real bucket in each, offered only when something is actually unclassified.
+
+**One filter function.** The header count and the body rows come from the same
+`applyFilters` call, so they cannot drift. **An empty Set is not "match
+nothing"** -- asserted, because the naive `reads.has(h.read)` without a size
+guard silently empties the table.
+
+**Verified through the REAL component**, which is why `HoldingsTable` is now
+exported: a harness reproducing its markup verifies the CSS and not the wiring,
+and the wiring is what changed.
+
+The screener's RSI meters and regime pills have no counterpart in the holdings
+payload and were NOT faked -- they need fields plumbed through
+`vw_portfolio_home` -> `mv_nexus_holdings` -> `vw_nexus_holdings`, a matview
+rebuild and its own unit.
+
+### Logging a fallback tells the console and tells no consumer (2026-09-17)
+
+G-6, and the defect it found. Full report in `docs/G6_BOOK_VS_MARKET_REPORT.md`.
+
+`nexusLive.js`'s `liveOr()` falls `gauges.risk` and `gauges.performance` back to
+`nexusMock`'s figures and LOGGED it at error level. The returned object was
+indistinguishable from a live one, so a consumer could not refuse it -- and G-6
+reads `gauges.performance` to form a residual against a fitted beta, which on a
+mock book move publishes a finding about a book that did not move that way.
+Third instance of *"a gauge carried from the mock looks exactly like a working
+gauge"*, counting the chrome's hardcoded RISK-ON pill G-4 removed. `liveOr` now
+MARKS the gauge (`live: true/false`) and G-6 refuses a marked-baseline one.
+**A gauge with NO marker is still read** -- absence of a mark is not a claim of
+mockness, and asserting otherwise breaks every caller predating it.
+
+**The cheap-to-expensive link is one number.** Today's benchmark move times the
+book's fitted market beta is what the book should have done; the residual is
+what the market factor does not explain. A cheap read agreeing with the
+expensive one is reassurance; the residual is where the day's story is.
+
+**No expectation without a SIGNIFICANT beta.** An insignificant beta times
+today's move still produces a number and that number has no evidence behind it
+-- A2's "an absent number beats a flagged one", applied to a PRODUCT rather
+than a coefficient. The excess still stands, because an excess needs no model.
+
+**Live intraday against a historical beta is TWO BASES and the panel says so.**
+`estimated_at` and `n_obs` are printed beside "today, intraday", reconciled
+nowhere -- the rule `vw_position_trading_effect` publishes its own `as_of` for.
+
+**Read the latest estimate set, never a mix.** `book_factor_betas` is
+append-only and holds B0's and C3's; mixing them quotes one estimate's market
+beta beside another's axes.
+
+**Book sector strings come from a different vendor than the ETF labels.**
+`Cons. Discretionary` / `Consumer Discretionary` / `Information Technology` all
+resolve through `normaliseSector`, AND the misses are reported by weight. A
+partial match reads as a data gap rather than as a join that did not land.
+
+**An em dash in a slot that looks like every other slot is indistinguishable
+from a measurement** -- caught in my own first render, where a refused gauge
+still drew `Book, today —` in a normal tile. Every refused reading takes the
+absent treatment.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel

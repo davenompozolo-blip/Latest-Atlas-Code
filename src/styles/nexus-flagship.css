@@ -1574,3 +1574,66 @@
   font-style: italic;
   margin-top: 6px;
 }
+
+/* ── Holdings facet tiles (G-2) ──────────────────────────────────────
+   The Valuation House screener opens with a row of counted tiles that
+   double as filters, and it is a good grammar: two tables in one product
+   that filter differently make the reader learn the app twice.
+
+   What is NOT borrowed is the screener's buckets. Value / Growth /
+   Quality come from screener fields the book does not carry; these tiles
+   are the book's own reads, which is why they can be counted honestly. */
+.nf-facets {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(146px, 1fr));
+  gap: 10px;
+  margin: 2px 0 12px;
+}
+.nf-facet {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 11px 13px 10px;
+  text-align: left;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  font-family: var(--fm);
+  transition: border-color .15s, background .15s;
+}
+.nf-facet:hover { border-color: var(--border-hi); }
+.nf-facet-n {
+  font-family: var(--fb); font-size: 21px; font-weight: 700; line-height: 1.05;
+  color: var(--text1);
+}
+.nf-facet-l {
+  font-family: var(--fb); font-size: 9.5px; font-weight: 700;
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--text2);
+}
+/* The blurb is most of why the screener's row reads at a glance:
+   "trim · reduce the position" says something a bare count does not. */
+.nf-facet-b { font-size: 10.5px; color: var(--text3); line-height: 1.35; }
+
+/* Active carries the read's own tone, matching the chips the rail used,
+   so a filtered tile and a filtered row agree on what colour a read is. */
+.nf-facet.active { border-color: var(--border-hi); background: var(--card-hi); }
+.nf-facet.add.active   { border-color: var(--success); }
+.nf-facet.add.active   .nf-facet-n, .nf-facet.add.active   .nf-facet-l { color: var(--success); }
+.nf-facet.trim.active  { border-color: var(--warn); }
+.nf-facet.trim.active  .nf-facet-n, .nf-facet.trim.active  .nf-facet-l { color: var(--warn); }
+.nf-facet.exit.active  { border-color: var(--danger); }
+.nf-facet.exit.active  .nf-facet-n, .nf-facet.exit.active  .nf-facet-l { color: var(--danger); }
+.nf-facet.watch.active { border-color: var(--cyan); }
+.nf-facet.watch.active .nf-facet-n, .nf-facet.watch.active .nf-facet-l { color: var(--cyan); }
+.nf-facet.hold.active  .nf-facet-n, .nf-facet.hold.active  .nf-facet-l { color: var(--text1); }
+
+/* Valuation-signal chips, the screener's second filter bank. Same shape
+   as the read chips they sit beside, deliberately: one chip grammar. */
+.nf-sigchip {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--fm); font-size: 10.5px; letter-spacing: .04em;
+  padding: 4px 9px; border-radius: 999px; cursor: pointer;
+  background: var(--bg2); color: var(--text2);
+  border: 1px solid var(--border);
+}
+.nf-sigchip:hover { border-color: var(--border-hi); }
+.nf-sigchip.active { background: var(--card-hi); color: var(--text1); border-color: var(--border-hi); }

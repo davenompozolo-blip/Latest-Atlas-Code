@@ -416,3 +416,283 @@
   .nexus-flagship-v2 .nft,
   .nexus-flagship-v2 .nft-paused { animation: none; }
 }
+
+/* ── The market tape (G-1) ───────────────────────────────────────────
+   Two tapes now run on the flagship and the whole point of having both is
+   telling them apart, so the market tape is given a visual identity rather
+   than being a second identical strip: it sits above the book's glance,
+   carries a left accent rule in the house cyan, and runs on the panel
+   ground rather than the card ground so the book's tape reads as the one
+   attached to the cards beneath it.
+
+   Everything else -- velocity, the loop, pause, the reduced-motion pager --
+   is the shared shell's and is deliberately IDENTICAL. Two tapes moving at
+   different speeds would read as one of them being broken. */
+.nexus-flagship-v2 .nft-market {
+  margin: 0 0 12px;
+  background: var(--bg2);
+  border-top: none;
+  border-bottom: 1px solid var(--border);
+  border-left: 2px solid var(--cyan);
+}
+
+/* The market tape's sprint labels carry the accent, so "SECTORS" reads as
+   a market frame and "BEST / WORST" on the book tape stays the book's. */
+.nexus-flagship-v2 .nft-market .nft-label {
+  color: var(--cyan);
+  border-color: var(--cyan-b, var(--border-md));
+}
+
+/* A scope note is a limit on the claim, not decoration -- "ranked within 30
+   tracked large caps" is the difference between a true sentence and a false
+   one, so it is legible rather than whispered. */
+.nexus-flagship-v2 .nft-market .nft-note {
+  color: var(--text3);
+  border-left: 1px solid var(--border);
+  padding-left: 10px;
+}
+
+/* ── The index wall (G-5) ────────────────────────────────────────────
+   Small multiples, or one rebased chart. The grid is the reason the
+   container-resize fix had to land first: these cells change width when
+   the wall reflows, with no window event behind it. */
+.nexus-flagship-v2 .niw-controls {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+.nexus-flagship-v2 .niw-ranges { display: flex; gap: 4px; }
+
+.nexus-flagship-v2 .niw-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 12px;
+}
+@media (max-width: 980px) {
+  .nexus-flagship-v2 .niw-grid { grid-template-columns: 1fr; }
+}
+
+.nexus-flagship-v2 .niw-cell {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px 6px;
+}
+
+.nexus-flagship-v2 .niw-cell-h {
+  display: flex; align-items: baseline; gap: 9px;
+  font-family: var(--fm); font-size: 12px;
+}
+.nexus-flagship-v2 .niw-tk {
+  font-family: var(--fb); font-weight: 700; letter-spacing: 0.06em;
+  color: var(--text1); font-size: 12px;
+}
+.nexus-flagship-v2 .niw-move { font-family: var(--fm); font-size: 12px; }
+/* Tones re-stated at this specificity on purpose: a scoped rule setting a
+   colour on the wrapper outranks a bare .tone-up and silences the whole
+   palette. That has already happened once here, on the tape. */
+.nexus-flagship-v2 .niw-move.tone-up   { color: var(--success); }
+.nexus-flagship-v2 .niw-move.tone-down { color: var(--danger); }
+
+.nexus-flagship-v2 .niw-trunc {
+  margin-left: auto; font-family: var(--fm); font-size: 10px; color: var(--text3);
+}
+
+.nexus-flagship-v2 .niw-chart { height: 150px; width: 100%; }
+.nexus-flagship-v2 .niw-chart-tall { height: 300px; margin-top: 12px; }
+
+.nexus-flagship-v2 .niw-legend {
+  display: flex; flex-wrap: wrap; gap: 16px; margin-top: 10px;
+  font-family: var(--fm); font-size: 11.5px;
+}
+.nexus-flagship-v2 .niw-leg { display: inline-flex; align-items: center; gap: 6px; }
+.nexus-flagship-v2 .niw-leg i { width: 11px; height: 2.5px; border-radius: 2px; display: inline-block; }
+
+/* The alignment cost is a limit on the claim, so it sits under the chart
+   in the reader's path rather than in a tooltip. */
+.nexus-flagship-v2 .niw-foot {
+  margin-top: 8px; font-size: 11px; color: var(--text3); line-height: 1.5;
+}
+.nexus-flagship-v2 .niw-empty {
+  color: var(--text3); font-size: 12px; padding: 28px; text-align: center;
+}
+
+/* ── Cross-asset (G-4) ───────────────────────────────────────────────
+   Heatmap, credit levels and the cheap risk read, in the house casing
+   rather than lifted with the Markets module's design system attached.
+   Recycling markup is what makes a page feel like panels held together
+   with tape; recycling data and re-rendering it in one idiom is what
+   makes it feel like one machine. */
+.nexus-flagship-v2 .nxa-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 7px 0; border-bottom: 1px solid var(--border);
+}
+.nexus-flagship-v2 .nxa-row:last-of-type { border-bottom: none; }
+.nexus-flagship-v2 .nxa-row-l {
+  flex: 0 0 132px;
+  font-family: var(--fb); font-size: 9px; font-weight: 700;
+  letter-spacing: 0.14em; color: var(--text3);
+}
+.nexus-flagship-v2 .nxa-cells { display: flex; flex-wrap: wrap; gap: 6px; }
+.nexus-flagship-v2 .nxa-cell {
+  display: flex; flex-direction: column; gap: 2px;
+  min-width: 74px; padding: 6px 9px;
+  border: 1px solid var(--border); border-radius: 7px;
+}
+.nexus-flagship-v2 .nxa-cell-tk {
+  font-family: var(--fb); font-size: 10.5px; font-weight: 700;
+  letter-spacing: 0.05em; color: var(--text1);
+}
+.nexus-flagship-v2 .nxa-cell-v { font-family: var(--fm); font-size: 11px; color: var(--text2); }
+/* Re-stated at this specificity: a scoped rule on the wrapper outranks a
+   bare .tone-up and silences the palette. Already happened once, on the tape. */
+.nexus-flagship-v2 .nxa-cell-v.tone-up   { color: var(--success); }
+.nexus-flagship-v2 .nxa-cell-v.tone-down { color: var(--danger); }
+
+.nexus-flagship-v2 .nxa-split {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px; margin-top: 14px;
+}
+@media (max-width: 980px) { .nexus-flagship-v2 .nxa-split { grid-template-columns: 1fr; } }
+
+.nexus-flagship-v2 .nxa-sub {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 12px 14px;
+}
+.nexus-flagship-v2 .nxa-sub-h {
+  font-family: var(--fb); font-size: 9px; font-weight: 700;
+  letter-spacing: 0.14em; color: var(--text3); margin-bottom: 10px;
+}
+
+/* Credit */
+.nexus-flagship-v2 .nxa-cr {
+  display: flex; align-items: baseline; gap: 10px; padding: 5px 0;
+  font-family: var(--fm); font-size: 12px;
+}
+.nexus-flagship-v2 .nxa-cr-n { flex: 0 0 62px; color: var(--text3); font-size: 10.5px; letter-spacing: 0.06em; }
+.nexus-flagship-v2 .nxa-cr-v { color: var(--text1); font-size: 15px; }
+.nexus-flagship-v2 .nxa-cr-s { color: var(--text3); font-size: 11px; }
+
+/* Barometer. The needle is the SCORE, so the band has to be drawn --
+   otherwise "just inside neutral" and "deep in neutral" look the same. */
+.nexus-flagship-v2 .nxa-baro-h { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; }
+.nexus-flagship-v2 .nxa-baro-label {
+  font-family: var(--fb); font-size: 17px; font-weight: 700; letter-spacing: 0.06em;
+}
+.nexus-flagship-v2 .nxa-baro-label.tone-up   { color: var(--success); }
+.nexus-flagship-v2 .nxa-baro-label.tone-down { color: var(--danger); }
+.nexus-flagship-v2 .nxa-baro-label.tone-flat { color: var(--warn); }
+/* Never rendered without this. */
+.nexus-flagship-v2 .nxa-baro-basis {
+  font-family: var(--fm); font-size: 9.5px; letter-spacing: 0.08em;
+  color: var(--text3); border: 1px solid var(--border); border-radius: 999px; padding: 2px 7px;
+}
+.nexus-flagship-v2 .nxa-baro-track {
+  position: relative; height: 5px; border-radius: 3px; margin: 12px 0 5px;
+  background: linear-gradient(90deg, var(--danger), var(--warn) 50%, var(--success));
+}
+.nexus-flagship-v2 .nxa-baro-band {
+  position: absolute; top: -3px; bottom: -3px;
+  background: rgba(255,255,255,0.10); border-left: 1px solid var(--border-hi); border-right: 1px solid var(--border-hi);
+}
+.nexus-flagship-v2 .nxa-baro-needle {
+  position: absolute; top: -4px; width: 12px; height: 12px; margin-left: -6px;
+  border-radius: 50%; background: var(--text1); box-shadow: 0 0 0 3px var(--bg2);
+}
+.nexus-flagship-v2 .nxa-baro-ends {
+  display: flex; justify-content: space-between;
+  font-family: var(--fm); font-size: 9.5px; color: var(--text3);
+}
+.nexus-flagship-v2 .nxa-parts { margin-top: 11px; display: grid; gap: 5px; }
+.nexus-flagship-v2 .nxa-part {
+  display: flex; align-items: baseline; gap: 9px; font-family: var(--fm); font-size: 11.5px;
+}
+.nexus-flagship-v2 .nxa-part-n { flex: 0 0 52px; color: var(--text2); }
+.nexus-flagship-v2 .nxa-part-v { flex: 0 0 62px; color: var(--text1); }
+.nexus-flagship-v2 .nxa-part-v.tone-up   { color: var(--success); }
+.nexus-flagship-v2 .nxa-part-v.tone-down { color: var(--danger); }
+.nexus-flagship-v2 .nxa-part-s { color: var(--text3); font-size: 11px; }
+
+.nexus-flagship-v2 .nxa-foot { margin-top: 9px; font-size: 11px; color: var(--text3); }
+.nexus-flagship-v2 .nxa-empty { color: var(--text3); font-size: 12px; padding: 24px; text-align: center; }
+
+/* ── The book against the market (G-6) ───────────────────────────────
+   Three readings in the order the question is asked, then the sector cut.
+   The absent variants are styled as absences — dashed, quiet, carrying a
+   reason — because a dash in a slot that looks like every other slot is
+   indistinguishable from a measurement. */
+.nexus-flagship-v2 .nbm-reads {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  margin-top: 4px;
+}
+.nexus-flagship-v2 .nbm-read {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 11px 13px;
+}
+.nexus-flagship-v2 .nbm-absent {
+  background: transparent;
+  border-style: dashed;
+}
+.nexus-flagship-v2 .nbm-read-l {
+  font-family: var(--fb); font-size: 9px; font-weight: 700;
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--text3);
+}
+.nexus-flagship-v2 .nbm-read-v {
+  font-family: var(--fm); font-size: 21px; color: var(--text1);
+  margin-top: 4px; line-height: 1.1;
+}
+/* Re-stated at this specificity: a scoped wrapper rule outranks a bare
+   .tone-up and silences the palette. Third time in this stylesheet. */
+.nexus-flagship-v2 .nbm-read-v.tone-up   { color: var(--success); }
+.nexus-flagship-v2 .nbm-read-v.tone-down { color: var(--danger); }
+.nexus-flagship-v2 .nbm-read-s {
+  font-size: 10.5px; color: var(--text3); margin-top: 5px; line-height: 1.4;
+}
+
+.nexus-flagship-v2 .nbm-verdict {
+  margin-top: 12px; padding: 9px 13px; border-radius: 9px;
+  border-left: 3px solid var(--border-hi); background: var(--bg2);
+  font-size: 12.5px; color: var(--text1);
+}
+.nexus-flagship-v2 .nbm-verdict.ahead     { border-left-color: var(--success); }
+.nexus-flagship-v2 .nbm-verdict.behind    { border-left-color: var(--danger); }
+.nexus-flagship-v2 .nbm-verdict.explained { border-left-color: var(--cyan); }
+
+/* The two bases, named and reconciled nowhere. Deliberately not a
+   tooltip: a mixed-basis read has to be legible without hovering. */
+.nexus-flagship-v2 .nbm-basis {
+  margin-top: 9px; font-size: 10.5px; color: var(--text3); line-height: 1.5;
+}
+.nexus-flagship-v2 .nbm-basis-k {
+  font-family: var(--fb); font-weight: 700; letter-spacing: 0.14em;
+  margin-right: 8px; color: var(--text2);
+}
+
+.nexus-flagship-v2 .nbm-sec { margin-top: 15px; }
+.nexus-flagship-v2 .nbm-sec-h {
+  font-family: var(--fb); font-size: 9px; font-weight: 700;
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--text3);
+  margin-bottom: 8px;
+}
+.nexus-flagship-v2 .nbm-sec-row {
+  display: grid; grid-template-columns: 1fr 64px 116px 78px;
+  gap: 10px; align-items: baseline;
+  padding: 6px 0; border-bottom: 1px solid var(--border);
+  font-family: var(--fm); font-size: 11.5px;
+}
+.nexus-flagship-v2 .nbm-sec-row:last-child { border-bottom: none; }
+.nexus-flagship-v2 .nbm-sec-n { color: var(--text1); }
+.nexus-flagship-v2 .nbm-sec-w { color: var(--text2); text-align: right; }
+.nexus-flagship-v2 .nbm-sec-m { color: var(--text2); }
+.nexus-flagship-v2 .nbm-sec-m.tone-up   { color: var(--success); }
+.nexus-flagship-v2 .nbm-sec-m.tone-down { color: var(--danger); }
+.nexus-flagship-v2 .nbm-sec-c { text-align: right; color: var(--text1); }
+.nexus-flagship-v2 .nbm-sec-c.tone-up   { color: var(--success); }
+.nexus-flagship-v2 .nbm-sec-c.tone-down { color: var(--danger); }
+.nexus-flagship-v2 .nbm-sec-f {
+  margin-top: 9px; font-size: 10.5px; color: var(--text3); line-height: 1.5;
+}
+.nexus-flagship-v2 .nbm-empty { color: var(--text3); font-size: 12px; padding: 24px; text-align: center; }

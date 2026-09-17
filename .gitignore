@@ -63,3 +63,18 @@ dist/
 
 # Chart resize harness (dev only)
 .chartharness/
+
+# G-1 market tape harness (dev only)
+.g1harness/
+
+# G-5 index wall harness (dev only)
+.g5harness/
+
+# G-4 cross-asset harness (dev only)
+.g4harness/
+
+# G-2 holdings harness (dev only)
+.g2harness/
+
+# G-6 book-vs-market harness (dev only)
+.g6harness/

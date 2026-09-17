@@ -21,6 +21,14 @@ import { NexusDriftPanel } from './NexusDrift.js';
 import { NexusThemePanel } from './NexusTheme.js';
 import { PortfolioSnapshot } from './NexusPortfolio.js';
 import { NexusTape } from './NexusTape.js';
+import { NexusMarketTape } from './NexusMarketTape.js';
+import { NexusIndexWall } from './NexusIndexWall.js';
+import { NexusCrossAsset } from './NexusCrossAsset.js';
+import { NexusBookVsMarket } from './NexusBookVsMarket.js';
+import {
+    readFacets, signalFacets, sectorOptions, themeOptions,
+    applyFilters, isFiltered, UNCLASSIFIED,
+} from './nexusHoldingsFacets.js';
 import { NexusRegimePanel } from './NexusRegime.js';
 import { NexusOpportunitiesPanel } from './NexusOpportunities.js';
 import { NexusBenchPanel } from './NexusBench.js';
@@ -511,6 +519,8 @@ function ColumnChooser({ visible, setVisible }) {
 }
 
 // Read taxonomy order — used for the filter rail and read-sort rank.
+// READ_ORDER moved to nexusHoldingsFacets.js with the rest of the facet
+// logic; it is imported where the rank map below still needs it.
 const READ_ORDER = ['add', 'hold', 'trim', 'watch', 'exit'];
 const READ_RANK = { add: 0, hold: 1, trim: 2, watch: 3, exit: 4 };
 
@@ -665,14 +675,19 @@ function OrderBlotter({ tickets, onRemove, onClear }) {
     );
 }
 
-function HoldingsTable({ holdings, forceTheme }) {
+// Exported for the G-2 render harness. The alternative was a harness that
+// reproduces the markup, which would verify the CSS and not the wiring --
+// and the wiring is what G-2 changed.
+export function HoldingsTable({ holdings, forceTheme }) {
     // Expanded `because` rows. The read chip is the why-affordance:
     // clicking it toggles the explanation (and stops the row's
     // open-object click so the two interactions don't collide).
     const [expanded, setExpanded] = useState({});
     const [query, setQuery] = useState('');
     const [theme, setTheme] = useState('ALL');
+    const [sector, setSector] = useState('ALL');
     const [reads, setReads] = useState(() => new Set());
+    const [signals, setSignals] = useState(() => new Set());
     const [sortK, setSortK] = useState('');     // '' = provider order (weight desc)
     const [sortDir, setSortDir] = useState('desc');
     const [blotter, setBlotter] = useState({}); // tk → staged ticket
@@ -695,11 +710,14 @@ function HoldingsTable({ holdings, forceTheme }) {
     const removeTicket = tk => setBlotter(prev => { const n = { ...prev }; delete n[tk]; return n; });
     const clearBlotter = () => setBlotter({});
     const tickets = Object.values(blotter);
-    const toggleRead = r => setReads(prev => {
+    const toggleIn = setter => v => setter(prev => {
         const next = new Set(prev);
-        if (next.has(r)) next.delete(r); else next.add(r);
+        if (next.has(v)) next.delete(v); else next.add(v);
         return next;
     });
+    const toggleRead = toggleIn(setReads);
+    const toggleSignal = toggleIn(setSignals);
+    const clearFilters = () => { setReads(new Set()); setSignals(new Set()); setTheme('ALL'); setSector('ALL'); setQuery(''); };
     const setSort = k => {
         if (!k) return;
         if (sortK === k) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
@@ -711,18 +729,19 @@ function HoldingsTable({ holdings, forceTheme }) {
     // position, so the table never reshuffles under the reader.
     const cols = COLUMNS.filter(c => visible.has(c.k));
 
-    // Live facets: themes for the dropdown, read counts for the rail.
-    const themes = Array.from(new Set(holdings.map(h => h.theme).filter(Boolean))).sort();
-    const anyUnmapped = holdings.some(h => !h.theme);
-    const counts = holdings.reduce((m, h) => { m[h.read] = (m[h.read] || 0) + 1; return m; }, {});
+    // Live facets. G-2: the screener's counted-tile grammar, built from
+    // the facets the BOOK has -- never from the screener's own Value /
+    // Growth / Quality buckets, which are derived from fields the book
+    // does not carry and would be a classification with nothing behind it.
+    const readTiles = readFacets(holdings);
+    const signalTiles = signalFacets(holdings);
+    const sectors = sectorOptions(holdings);
+    const { themes, anyUnmapped } = themeOptions(holdings);
 
-    // Filter → sort.
-    const q = query.trim().toLowerCase();
-    let rows = holdings.filter(h =>
-        (!q || h.tk.toLowerCase().includes(q)) &&
-        (theme === 'ALL' || (theme === 'UNMAPPED' ? !h.theme : h.theme === theme)) &&
-        (!reads.size || reads.has(h.read))
-    );
+    // ONE filter function, so the count in the header and the rows in the
+    // body cannot come from two different predicates.
+    const filters = { query, reads, signals, theme, sector };
+    let rows = applyFilters(holdings, filters);
     if (sortK) {
         const dir = sortDir === 'asc' ? 1 : -1;
         rows = rows.slice().sort((a, b) => {
@@ -740,7 +759,7 @@ function HoldingsTable({ holdings, forceTheme }) {
     const fvScale = Math.max(10, ...rows.map(h => Math.abs(Number(h.fvGapPct) || 0)));
     // Weight bar scale = heaviest position in view (floored so a light book still reads).
     const wtScale = Math.max(2, ...rows.map(h => Number(h.currentWeightPct) || 0));
-    const dirty = reads.size || theme !== 'ALL' || query;
+    const dirty = isFiltered(filters);
 
     return e(React.Fragment, null,
       e('div', { className: 'nf-card nf-holdings nf-fade' },
@@ -749,26 +768,52 @@ function HoldingsTable({ holdings, forceTheme }) {
             e('span', { className: 'nf-sub' }, rows.length + ' / ' + holdings.length + ' live objects · derived reads')
         ),
 
-        // Filter bar — search + theme + read-distribution rail (doubles as a visual)
+        // G-2. The screener's counted-tile row, over the book's own facets.
+        // A tile is a filter AND a summary, which is why it carries the
+        // blurb: "trim · reduce the position" is readable at a glance in a
+        // way a bare count is not.
+        e('div', { className: 'nf-facets' },
+            readTiles.map(t => e('button', {
+                key: t.key, type: 'button',
+                className: 'nf-facet ' + t.key + (reads.has(t.key) ? ' active' : ''),
+                onClick: () => toggleRead(t.key),
+                'aria-pressed': reads.has(t.key) ? 'true' : 'false',
+            },
+                e('span', { className: 'nf-facet-n' }, t.count),
+                e('span', { className: 'nf-facet-l' }, t.key),
+                t.blurb ? e('span', { className: 'nf-facet-b' }, t.blurb) : null))
+        ),
+
+        // Filter bar — search, the two taxonomies, the valuation signal.
         e('div', { className: 'nf-filters' },
             e('input', {
                 className: 'nf-search', type: 'text', placeholder: 'Search ticker…',
                 value: query, onChange: ev => setQuery(ev.target.value),
             }),
+            e('select', { className: 'nf-theme-select', value: sector, onChange: ev => setSector(ev.target.value) },
+                e('option', { value: 'ALL' }, 'All sectors'),
+                sectors.map(x => e('option', { key: x, value: x }, x))
+            ),
+            // Sector and theme are DIFFERENT taxonomies and both are
+            // offered. Folding them into one control is the mistake this
+            // codebase already corrected once, when the flagship showed
+            // sector values under a "Theme" heading.
             e('select', { className: 'nf-theme-select', value: theme, onChange: ev => setTheme(ev.target.value) },
                 e('option', { value: 'ALL' }, 'All themes'),
                 themes.map(t => e('option', { key: t, value: t }, t)),
                 anyUnmapped ? e('option', { value: 'UNMAPPED' }, 'Unclassified') : null
             ),
-            e('div', { className: 'nf-rfilter' },
-                READ_ORDER.filter(r => counts[r]).map(r => e('button', {
-                    key: r,
-                    className: 'nf-rchip ' + r + (reads.has(r) ? ' active' : ''),
-                    onClick: () => toggleRead(r),
-                    title: 'Filter ' + r,
-                }, r, e('span', { className: 'nf-rchip-n' }, counts[r]))),
-                dirty ? e('button', { className: 'nf-rclear', onClick: () => { setReads(new Set()); setTheme('ALL'); setQuery(''); } }, 'clear') : null
-            ),
+            signalTiles.length
+                ? e('div', { className: 'nf-rfilter' },
+                    signalTiles.map(t => e('button', {
+                        key: t.key, type: 'button',
+                        className: 'nf-sigchip' + (signals.has(t.key) ? ' active' : ''),
+                        onClick: () => toggleSignal(t.key),
+                        'aria-pressed': signals.has(t.key) ? 'true' : 'false',
+                        title: 'Filter ' + t.key,
+                    }, t.key, e('span', { className: 'nf-rchip-n' }, t.count))))
+                : null,
+            dirty ? e('button', { className: 'nf-rclear', onClick: clearFilters }, 'clear') : null,
             e(ReturnBasisToggle, { surface: 'nexus', basis, onBasis: setBasis }),
             e(ColumnChooser, { visible, setVisible })
         ),
@@ -856,6 +901,10 @@ function TheRead({ read, pinned }) {
 
 // ── Flagship panel ────────────────────────────────────────────
 function FlagshipPanel({ model, holdingsTheme }) {
+    // No market tape here. v1 exists to restore the previous layout
+    // wholesale, so a G-1 element added to it would make the escape hatch
+    // stop being an escape hatch -- and the tape's styling is v2-scoped
+    // anyway, so it would render unstyled.
     return e('div', null,
         e(PortfolioSnapshot, { model }),
         e(NexusTape, null),
@@ -898,6 +947,11 @@ function FlagshipPanelV2({ model, holdingsTheme }) {
     return e('div', { className: 'nfv2' },
         e(TheRead, { read: model.read, pinned: true }),
         e(Section, { label: 'WHERE I STAND' },
+            // Two tapes, market above book, in that order on purpose: you
+            // read what the market did, then what your names did in it.
+            // Merging them into one stream is what would make "the market
+            // is down" and "my book is down" the same sentence.
+            e(NexusMarketTape, null),
             e(PortfolioSnapshot, { model }),
             // F2 §3 puts the tape "where the strip used to be". F-4 has not
             // run yet, so the strip is still above it -- the tape sits in
@@ -914,7 +968,21 @@ function FlagshipPanelV2({ model, holdingsTheme }) {
             e(HoldingsTable, { holdings: model.holdings, forceTheme: holdingsTheme }),
             e(NexusEarningsTable, { earnings: model.earnings, v2: true }),
             e(NexusCotTable, { cot: model.cot }),
-            e(NexusOptionsPanel, { holdings: model.holdings, v2: true }))
+            e(NexusOptionsPanel, { holdings: model.holdings, v2: true })),
+        // G-5. Below the names on purpose: the market is the context you
+        // check your book against, so it reads after the book rather than
+        // before it. `board.indices` is already loaded for THE WEATHER, so
+        // this section adds no request.
+        e(Section, { label: 'THE MARKET' },
+            // G-6 leads the section: the other two panels are the market,
+            // and this is the book read against it. Context after the
+            // conclusion it supports.
+            e(NexusBookVsMarket, {
+                gauge: model.gauges ? model.gauges.performance : null,
+                holdings: model.holdings,
+            }),
+            e(NexusIndexWall, { indices: model.board ? model.board.indices : null }),
+            e(NexusCrossAsset, null))
     );
 }
 

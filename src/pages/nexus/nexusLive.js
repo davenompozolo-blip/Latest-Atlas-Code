@@ -195,11 +195,20 @@ async function loadRiskHistory() {
 // mock numbers for the life of this provider and nothing anywhere said so.
 // Same lesson as the contribution feed rendering a transport failure as a
 // statement about the data.
+// The fallback is MARKED, not just logged (G-6). Logging tells whoever is
+// watching the console; it tells no consumer anything. A baseline gauge is
+// a synthetic figure standing where a real one belongs, and handing it
+// downstream unmarked is how the risk tile sat on mock numbers unnoticed
+// -- twice, counting the chrome's hardcoded RISK-ON pill.
+//
+// `live` lets a consumer REFUSE it. G-6 reads gauges.performance to form a
+// residual against a fitted beta; doing that arithmetic on a mock book move
+// would publish a finding about a book that did not move that way.
 function liveOr(name, live, baselineValue) {
-    if (live) return live;
+    if (live) return Object.assign({}, live, { live: true });
     console.error('[nexus] gauges.' + name + ' fell back to the structural '
         + 'baseline — the figure on screen is NOT live.');
-    return baselineValue;
+    return Object.assign({}, baselineValue, { live: false });
 }
 
 /** @returns {Promise<import('./nexusModel.js').NexusModel>} */
