@@ -451,3 +451,67 @@
   border-left: 1px solid var(--border);
   padding-left: 10px;
 }
+
+/* ── The index wall (G-5) ────────────────────────────────────────────
+   Small multiples, or one rebased chart. The grid is the reason the
+   container-resize fix had to land first: these cells change width when
+   the wall reflows, with no window event behind it. */
+.nexus-flagship-v2 .niw-controls {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+.nexus-flagship-v2 .niw-ranges { display: flex; gap: 4px; }
+
+.nexus-flagship-v2 .niw-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 12px;
+}
+@media (max-width: 980px) {
+  .nexus-flagship-v2 .niw-grid { grid-template-columns: 1fr; }
+}
+
+.nexus-flagship-v2 .niw-cell {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px 6px;
+}
+
+.nexus-flagship-v2 .niw-cell-h {
+  display: flex; align-items: baseline; gap: 9px;
+  font-family: var(--fm); font-size: 12px;
+}
+.nexus-flagship-v2 .niw-tk {
+  font-family: var(--fb); font-weight: 700; letter-spacing: 0.06em;
+  color: var(--text1); font-size: 12px;
+}
+.nexus-flagship-v2 .niw-move { font-family: var(--fm); font-size: 12px; }
+/* Tones re-stated at this specificity on purpose: a scoped rule setting a
+   colour on the wrapper outranks a bare .tone-up and silences the whole
+   palette. That has already happened once here, on the tape. */
+.nexus-flagship-v2 .niw-move.tone-up   { color: var(--success); }
+.nexus-flagship-v2 .niw-move.tone-down { color: var(--danger); }
+
+.nexus-flagship-v2 .niw-trunc {
+  margin-left: auto; font-family: var(--fm); font-size: 10px; color: var(--text3);
+}
+
+.nexus-flagship-v2 .niw-chart { height: 150px; width: 100%; }
+.nexus-flagship-v2 .niw-chart-tall { height: 300px; margin-top: 12px; }
+
+.nexus-flagship-v2 .niw-legend {
+  display: flex; flex-wrap: wrap; gap: 16px; margin-top: 10px;
+  font-family: var(--fm); font-size: 11.5px;
+}
+.nexus-flagship-v2 .niw-leg { display: inline-flex; align-items: center; gap: 6px; }
+.nexus-flagship-v2 .niw-leg i { width: 11px; height: 2.5px; border-radius: 2px; display: inline-block; }
+
+/* The alignment cost is a limit on the claim, so it sits under the chart
+   in the reader's path rather than in a tooltip. */
+.nexus-flagship-v2 .niw-foot {
+  margin-top: 8px; font-size: 11px; color: var(--text3); line-height: 1.5;
+}
+.nexus-flagship-v2 .niw-empty {
+  color: var(--text3); font-size: 12px; padding: 28px; text-align: center;
+}

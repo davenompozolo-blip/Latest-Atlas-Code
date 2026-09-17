@@ -3096,6 +3096,39 @@ emerging.
 the previous layout wholesale, so a new element there stops the escape hatch
 being one.
 
+### Rebasing on each leg's own first bar is four experiments on one chart (2026-09-17)
+
+G-5, the index wall. Full report in `docs/G5_INDEX_WALL_REPORT.md`.
+
+`board.indices` was already loaded and shown ONE symbol at a time behind chips;
+the Markets module drew the same four as four TradingView iframes. The wall
+shows them together, in two faces -- `SEPARATE` (small multiples at native
+price) and `COMPARED` (all rebased to 100 on one origin). No new endpoint.
+
+**The compared face rebases on the INTERSECTION of the date sets, not on each
+leg's own first bar.** Rebasing each from its own start makes the lines answer
+different questions, and whichever began on a down day looks better for free.
+Measured on a fixture where DIA starts 40 sessions late: SPY reads **+25.9%
+compared and +32.09% separate, and both are right** -- the compared figure
+starts where DIA's history does. Reading the separate figures against each
+other is the mistake the face exists to prevent. **The alignment cost is
+printed under the chart** ("40 sessions dropped so every leg shares one
+origin"), not absorbed.
+
+**One leg drawn alone under a "compared" heading is the worst outcome
+available** -- it looks like a comparison and is not one. No overlap reports
+itself instead.
+
+A window the data cannot fill is MARKED (`214 sess` under a 1Y request), never
+passed off as full; `Max` is unbounded and never marked. Line colours go by
+RANK, not by symbol, so the eye follows the ordering rather than relearning a
+palette daily.
+
+**This unit is why the container-resize fix had to land first.** The wall is a
+responsive grid whose cells change width with no window event behind them --
+exactly the `useLwChart` defect closed that morning. It would otherwise have
+shipped four stale canvases at the first breakpoint.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel

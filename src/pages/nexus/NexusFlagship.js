@@ -22,6 +22,7 @@ import { NexusThemePanel } from './NexusTheme.js';
 import { PortfolioSnapshot } from './NexusPortfolio.js';
 import { NexusTape } from './NexusTape.js';
 import { NexusMarketTape } from './NexusMarketTape.js';
+import { NexusIndexWall } from './NexusIndexWall.js';
 import { NexusRegimePanel } from './NexusRegime.js';
 import { NexusOpportunitiesPanel } from './NexusOpportunities.js';
 import { NexusBenchPanel } from './NexusBench.js';
@@ -924,7 +925,13 @@ function FlagshipPanelV2({ model, holdingsTheme }) {
             e(HoldingsTable, { holdings: model.holdings, forceTheme: holdingsTheme }),
             e(NexusEarningsTable, { earnings: model.earnings, v2: true }),
             e(NexusCotTable, { cot: model.cot }),
-            e(NexusOptionsPanel, { holdings: model.holdings, v2: true }))
+            e(NexusOptionsPanel, { holdings: model.holdings, v2: true })),
+        // G-5. Below the names on purpose: the market is the context you
+        // check your book against, so it reads after the book rather than
+        // before it. `board.indices` is already loaded for THE WEATHER, so
+        // this section adds no request.
+        e(Section, { label: 'THE MARKET' },
+            e(NexusIndexWall, { indices: model.board ? model.board.indices : null }))
     );
 }
 
