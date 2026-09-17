@@ -234,12 +234,82 @@ export async function loadBook() {
     };
 }
 
+/** PostgREST caps any single read at 1,000 rows whatever `limit` asks for. */
+export const PAGE = 1000;
+
+/**
+ * Every correlation pair with BOTH sides inside `syms` — which is exactly the
+ * matrix over that set — read in pages until a short page ends it.
+ *
+ * This exists because the unpaged, unfiltered read it replaces was returning
+ * an arbitrary 1.1% of the table. See loadRiskLayer.
+ */
+// An upper bound on the paging loop. 66 held names is three pages and the
+// correlation snapshot caps at ~420 symbols, so 64 pages is far past any real
+// request -- it exists because an unbounded `for(;;)` driven by a server's
+// response is a browser hang if the server ever stops honouring Range, and a
+// hang is the one failure mode that reports nothing at all. Found by a harness
+// that did not implement Range and spun this loop forever.
+export const MAX_PAGES = 64;
+
+async function fetchPairsPaged(date, window, syms) {
+    const out = [];
+    for (let page = 0, from = 0; ; page++, from += PAGE) {
+        if (page >= MAX_PAGES) {
+            console.error('[trade] correlation paging hit its page cap at '
+                + out.length + ' rows; the matrix is incomplete and the risk '
+                + 'figures derived from it will be withheld.');
+            return { rows: out, truncated: true };
+        }
+        const { data, error } = await sb
+            .from('universe_correlations')
+            .select('symbol_1, symbol_2, correlation, correlation_simple, common_days')
+            .eq('as_of_date', date).eq('window_days', window)
+            .in('symbol_1', syms).in('symbol_2', syms)
+            // A time series would be ordered DESC so a truncation loses the
+            // oldest rows; a correlation matrix has no time axis, so the
+            // ordering is here only to make the paging deterministic.
+            .order('symbol_1', { ascending: true }).order('symbol_2', { ascending: true })
+            .range(from, from + PAGE - 1);
+        if (error) { fail('correlations', error); return { rows: out, truncated: true }; }
+        const batch = data || [];
+        out.push(...batch);
+        if (batch.length < PAGE) return { rows: out, truncated: false };
+    }
+}
+
 /**
  * The cached risk layer: correlations, vols, betas and clusters. §4.1 requires
  * this be read, never recomputed per keystroke.
+ *
+ * `symbols` IS REQUIRED and is not a convenience. It used to be accepted and
+ * silently ignored while the correlation read ran unfiltered and unpaged over
+ * a table holding ~88,000 pairs for a single date. PostgREST answered 206 with
+ * `content-range: 0-999/88408` and the client never looked, so the browser
+ * held 1.1% of the matrix — and measured against the live book on 2026-09-16,
+ * NOT ONE of the book's 2,145 held-to-held pairs was among them. Every pair
+ * fell through covarianceMatrix's `fallbackRho: 0`, and the ticket published a
+ * portfolio vol of 6.54% where Σ = D R D gives 17.62%. A 2.69× understatement,
+ * carried by every number derived from it: incremental vol, VaR before and
+ * after, MCTR, risk per $1,000.
+ *
+ * Asking for the pairs you need is also far cheaper than asking for all of
+ * them: 66 names is 2,145 rows, three requests.
  */
 export async function loadRiskLayer({ symbols = null, window = 120 } = {}) {
     if (!sb) return { rho: () => null, vols: {}, betas: {}, clusters: [], available: false };
+
+    const want = Array.from(new Set((symbols || []).filter(Boolean)));
+    if (!want.length) {
+        // Returning a rho of () => null here would be worse than returning
+        // nothing: covarianceMatrix reads a null as "uncorrelated" and would
+        // reproduce the exact defect this argument list exists to close.
+        return {
+            rho: () => null, vols: {}, betas: {}, clusters: [], available: false, asOfDate: null,
+            reason: 'loadRiskLayer needs the symbol set it is to cover. '
+                + 'The full matrix is ~88,000 pairs and cannot be read in one request.',
+        };
+    }
 
     const latest = await sb.from('universe_risk_stats').select('as_of_date')
         .order('as_of_date', { ascending: false }).limit(1);
@@ -251,13 +321,14 @@ export async function loadRiskLayer({ symbols = null, window = 120 } = {}) {
         };
     }
 
-    const [statsRes, corrRes, clusterRes] = await Promise.all([
-        sb.from('universe_risk_stats').select('*').eq('as_of_date', date).eq('window_days', window),
-        sb.from('universe_correlations').select('symbol_1, symbol_2, correlation, correlation_simple, common_days')
-            .eq('as_of_date', date).eq('window_days', window),
+    const [statsRes, pairsRes, clusterRes] = await Promise.all([
+        sb.from('universe_risk_stats').select('*').eq('as_of_date', date).eq('window_days', window)
+            .in('symbol', want),
+        fetchPairsPaged(date, window, want),
         sb.from('universe_clusters').select('*').eq('as_of_date', date),
     ]);
-    fail('risk_stats', statsRes.error); fail('correlations', corrRes.error); fail('clusters', clusterRes.error);
+    fail('risk_stats', statsRes.error); fail('clusters', clusterRes.error);
+    const corrRes = { data: pairsRes.rows, error: null };
 
     const vols = {}, betas = {}, advs = {}, lastClose = {};
     for (const r of statsRes.data || []) {
@@ -267,18 +338,29 @@ export async function loadRiskLayer({ symbols = null, window = 120 } = {}) {
         lastClose[r.symbol] = numOrNull(r.last_close);
     }
 
-    const map = new Map();
+    // `correlation_simple`, never `correlation`. The latter is EWMA-weighted at
+    // λ=0.97, so its effective sample is ~33 sessions and it reaches ±0.9997 on
+    // this book — a pairwise EWMA matrix beside a 120-day sample vol is neither
+    // internally consistent nor reliably PSD (B4). Nothing on screen is
+    // re-based by this: until the paging fix above, none of the book's pairs
+    // were present under EITHER column.
+    const simple = new Map();
+    const ewma = new Map();
     const raw = new Map();
     for (const c of corrRes.data || []) {
         const key = `${c.symbol_1}|${c.symbol_2}`;
-        map.set(key, Number(c.correlation));
-        raw.set(key, { ewma: Number(c.correlation), simple: numOrNull(c.correlation_simple), days: c.common_days });
+        const sv = numOrNull(c.correlation_simple);
+        if (sv != null) simple.set(key, sv);
+        ewma.set(key, Number(c.correlation));
+        raw.set(key, { ewma: Number(c.correlation), simple: sv, days: c.common_days });
     }
-    const rho = (a, b) => {
+    const lookup = (m) => (a, b) => {
         if (a === b) return 1;
-        const v = map.get(`${a}|${b}`);
-        return v !== undefined ? v : (map.get(`${b}|${a}`) ?? null);
+        const v = m.get(`${a}|${b}`);
+        return v !== undefined ? v : (m.get(`${b}|${a}`) ?? null);
     };
+    const rho = lookup(simple);
+    const rhoEwma = lookup(ewma);
     const rhoDetail = (a, b) => raw.get(`${a}|${b}`) || raw.get(`${b}|${a}`) || null;
 
     const byCluster = new Map();
@@ -293,9 +375,14 @@ export async function loadRiskLayer({ symbols = null, window = 120 } = {}) {
         available: true,
         asOfDate: date,
         window,
-        rho, rhoDetail, vols, betas, advs, lastClose,
+        rho, rhoEwma, rhoDetail, vols, betas, advs, lastClose,
         clusters: Array.from(byCluster.values()),
-        pairCount: (corrRes.data || []).length,
+        pairCount: simple.size,
+        requestedSymbols: want.length,
+        // Every unordered pair over the requested set, so a consumer can say
+        // how much of the matrix it actually got rather than assume.
+        expectedPairs: (want.length * (want.length - 1)) / 2,
+        truncated: pairsRes.truncated,
         coveredSymbols: Object.keys(vols),
     };
 }

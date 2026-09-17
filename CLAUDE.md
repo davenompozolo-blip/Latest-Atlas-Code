@@ -3265,6 +3265,124 @@ from a measurement** -- caught in my own first render, where a refused gauge
 still drew `Book, today —` in a normal tile. Every refused reading takes the
 absent treatment.
 
+### The Trade ticket's covariance matrix was empty, and it said so in a note (2026-09-17)
+
+G-3a. Full report in `docs/G3A_CORRELATION_TRUNCATION_FIX.md`.
+
+`loadRiskLayer` read `universe_correlations` with **no filter and no paging**.
+That table holds **88,408 rows for one date**; PostgREST answered `206` with
+`content-range: 0-999/88408` and the client never looked. There is no
+`.order()`, so which 1.13% arrived was physical order -- and measured against
+the live book, **NOT ONE of those rows was a held-to-held pair.** All 2,016 of
+the book's measurable pairs took `covarianceMatrix`'s `fallbackRho: 0`, making
+the matrix **entirely diagonal**.
+
+Through the repo's own `covarianceMatrix`/`portfolioVol`: published **6.53%**,
+true **17.61%** on `correlation_simple`, undiversified 37.47%. **2.70x**, worse
+than the 2.4x `total_vol_annual` defect. 17.61% is corroborated by
+`vw_book_mctr` (19.37%) and E3 (19.08%). Incremental vol, VaR before and after,
+MCTR and risk per $1,000 all inherited it; **portfolio beta did not** -- it is
+Sum(w*beta) with no correlations in it -- and is still published when the rest
+is withheld.
+
+**`symbols` was accepted and silently ignored** since the function was written:
+the parameter that fixes this was already in the signature. It is now REQUIRED,
+and with none given the function returns `available: false` rather than a `rho`
+of `() => null` -- `covarianceMatrix` reads a null as *uncorrelated* and would
+reproduce the exact defect. Both sides filtered and paged: 66 names is 2,016
+pairs in three requests, against 89 for the whole table.
+
+**Pane B already printed the warning and published anyway.** *"X% of the
+covariance matrix had no correlation on file ... a floor, not an estimate"* --
+which would have read **100%**. The risk block is now WITHHELD below 90%
+coverage, with the **observed** coverage printed rather than the threshold (the
+honest denominator is weight, not pair count), and worded as *the
+diversified-away floor* rather than *an understatement*: 6.53% is not a low
+estimate of 17.61%, it answers a different question.
+
+Fifth layer for the 1,000-row cap, after `nexus-bench`, `nexus-theme`,
+`performance-suite` and the pair explorer. **`limit` is a request; so is no
+limit.** Proven against live PostgREST in `.g3verify/prove.mjs`.
+
+### Never rank on a measure something is negative in by construction (2026-09-17)
+
+G-3, the book universe map. Full report in
+`docs/G3_BOOK_UNIVERSE_MAP_REPORT.md`. `mv_book_candidate_map` places the book
+and its ~420-name candidate universe on **one** pair of axes -- weight-weighted
+`correlation_simple` to the book against annualised vol -- and a drawer runs
+the real `computeBookImpact` on any point.
+
+**Both axes must be computable whether or not a name is held**, or the chart is
+two experiments sharing a frame. A name's **own weight is excluded** from its
+rho to the book: correlation with itself is 1 and says nothing about how
+differentiated it is from the rest of what you own, so including it would drag
+every held name right by its own weight. Vol comes from the SAME snapshot and
+window the correlations were estimated on (B4).
+
+**The first build's "least correlated" list was SPDN, SH, RWM, PSQ, QID -- five
+inverse ETFs.** Arithmetically correct and a trap: an inverse fund is negatively
+correlated **by construction**, not by being a differentiated bet, and a levered
+one takes a levered share of any move. `beta_spy` runs **-8.81 to +8.65** and
+**198 of 423 rows are inverse or levered**, so ranking on rho alone was a
+leverage screen -- the `regret_vs_best_pct` lesson in a new place. The
+"most correlated" end (ACWI, VXUS, VTI, SPY) was right, which is why only
+reading BOTH ends caught it.
+
+**Gated on measured beta, never on a name.** A deny-list of "3X"/"Ultra"/"Bear"
+would miss the next one and flag an innocent fund. `SH` at -0.988 is inverse and
+**NOT** levered, a defensible hedge; `QID` at -3.02 is both -- two columns,
+because they are two facts. Both are plotted and badged; only the RANKING
+excludes them, with the count and reason printed. Held out, the ranking becomes
+ADSK, CRM, FIG, MA -- real suggestions.
+
+**Two absences, named apart.** An option contract can never be correlated (it
+expires -- a category); a dark feed is a gap that could close. A held name
+absent from the matrix still gets a row, and the map states the 2.69% of book it
+is not showing.
+
+**The drawer's 30.51% book vol and `vw_book_mctr`'s 19.37% are the SAME book.**
+`computeBookImpact` weights by **equity** (its §4.1 rule), `vw_book_mctr` by
+portfolio value, and the book runs at **1.73x gross**: 17.61 x 1.712 = 30.15.
+The panel states its basis and the leverage and says the other figure is the
+same measurement divided by it. Reconciling silently would be the mixed-basis
+failure; leaving it unlabelled would be worse.
+
+**`VACUUM (ANALYZE) account_snapshots` took the map query 2,928 -> 586 ms with
+no query change** -- Heap Fetches **9,680 -> 0**. That stale visibility map was
+flagged on 2026-08-23 and again on 2026-09-15 and never acted on; it helps every
+reader of `vw_positions_current`. Two growth-linked nodes remain inside that
+view and are flagged, not fixed: a `Seq Scan on positions` for `max(as_of_date)`
+and the `account_snapshots` aggregate. **A seq scan over an append-only table is
+a clock, not a constant.**
+
+**The replay harness found a real defect by being wrong.** It did not implement
+paging (supabase-js sends `offset`/`limit` as URL params, not a `Range` header),
+so `fetchPairsPaged` never saw a short page and spun forever. The harness was at
+fault -- and the production loop was an unbounded `for (;;)` driven by the
+server's response, so a server that stopped honouring the parameters would hang
+the browser. **A hang is the one failure that reports nothing at all.**
+`MAX_PAGES` caps it and logs at error level.
+
+**Three display defects, all invisible to `vite build`.** Adding the TABLE/MAP
+toggle as a third child broke `.nf-card-h`'s `space-between` (fixed with a
+MINIMUM `gap`, a no-op for every two-child card); the ranked list **sorts on rho
+and displayed 2dp**, so five rows read `-0.02` and the ordering looked arbitrary
+-- *a sort key must be rendered at a precision that can express the sort*; and
+30 labels overlapped in the dense centre at a 1.5% threshold. Plus `money()`
+taking `Math.abs`, which printed an incremental VaR of **-$4 as $4** -- the
+opposite claim, on the one number whose sign is the point.
+
+**The fixture mirrors the matview's row shape, flags included**, because
+`is_inverse`/`is_levered` are the DATABASE's classification and the surface must
+not hold a second copy. A test asserts they are read and never re-derived in JS,
+using a row whose flag contradicts its own beta. The naive ranking is asserted
+explicitly, so a regression fails on behaviour rather than on a flag.
+
+**All three migrations were hashed against
+`supabase_migrations.schema_migrations` before committing** and match the
+statements the database actually ran. The two prior file/database divergences in
+this file were found afterwards.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel

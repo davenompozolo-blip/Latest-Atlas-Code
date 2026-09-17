@@ -5,6 +5,7 @@
 
 import React from 'react';
 import { e, Card, Row, DeltaRow, Missing, fNum, fPct, fMoney, fBps, DASH, toneOf } from './shared.js';
+import { covarianceIsMeasurable, coverageSentence } from '../../lib/trade/covarianceCoverage.js';
 
 export function PaneBook({ impact, symbol, riskLayer, volDrift, corrThreshold }) {
     if (!impact) {
@@ -22,6 +23,7 @@ export function PaneBook({ impact, symbol, riskLayer, volDrift, corrThreshold })
 
     const pctFmt = (x) => fPct(x, 2);
     const sectorRows = topSectors(conc, 3);
+    const covered = covarianceIsMeasurable(r);
 
     return e(Card, { title: 'B · BOOK IMPACT · BEFORE → AFTER' },
         e('div', { className: 'tr-lbl', style: { marginTop: 0 } }, 'POSITION'),
@@ -95,9 +97,12 @@ export function PaneBook({ impact, symbol, riskLayer, volDrift, corrThreshold })
 
         // ── Risk, as three separate quantities ────────────────────────────────
         e('div', { className: 'tr-lbl' }, 'RISK · THREE SEPARATE QUANTITIES'),
-        e(Row, { label: 'Current portfolio vol', value: fPct(r.currentVol, 2) }),
-        e(Row, { label: 'Incremental vol', value: fPct(r.incrementalVol, 2, { signed: true }), tone: 'tr-am' }),
-        e(Row, { label: 'Resulting portfolio vol', value: fPct(r.resultingVol, 2) }),
+        covered
+            ? e('div', null,
+                e(Row, { label: 'Current portfolio vol', value: fPct(r.currentVol, 2) }),
+                e(Row, { label: 'Incremental vol', value: fPct(r.incrementalVol, 2, { signed: true }), tone: 'tr-am' }),
+                e(Row, { label: 'Resulting portfolio vol', value: fPct(r.resultingVol, 2) }))
+            : e(Missing, { title: 'NOT MEASURABLE · COVARIANCE MATRIX INCOMPLETE' }, coverageSentence(r)),
         e(Row, {
             label: 'Strategic band', value: 'NOT SET', tone: 'tr-dim3',
             title: 'Deliberately absent at V1. Sizing anchors to the existing regime and reports the delta; an explicit portfolio target is a separate decision.',
@@ -118,12 +123,18 @@ export function PaneBook({ impact, symbol, riskLayer, volDrift, corrThreshold })
             : null,
 
         // ── Marginal risk ─────────────────────────────────────────────────────
+        // Every row here is derived from the same matrix, so they share its
+        // gate. Portfolio beta does NOT — it is Σ wᵢβᵢ, which needs no
+        // correlations at all — so it is published either way.
         e('div', { className: 'tr-lbl' }, 'MARGINAL RISK'),
-        e(Row, { label: 'MCTR of position', value: fPct(r.mctrPositionPct, 1) + ' of portfolio vol' }),
-        e(Row, { label: 'Risk per $1,000 deployed', value: fBps(r.riskPerThousandBps, 1), tone: 'tr-cy' }),
-        e(Row, { label: 'Incremental 95% 1d VaR', value: fMoney(r.incrementalVaR, 0, { signed: true }) }),
+        covered
+            ? e('div', null,
+                e(Row, { label: 'MCTR of position', value: fPct(r.mctrPositionPct, 1) + ' of portfolio vol' }),
+                e(Row, { label: 'Risk per $1,000 deployed', value: fBps(r.riskPerThousandBps, 1), tone: 'tr-cy' }),
+                e(Row, { label: 'Incremental 95% 1d VaR', value: fMoney(r.incrementalVaR, 0, { signed: true }) }))
+            : e(Missing, { title: 'NOT MEASURABLE · COVARIANCE MATRIX INCOMPLETE' }, coverageSentence(r)),
         e(DeltaRow, { label: 'Portfolio beta', before: r.betaBefore, after: r.betaAfter, format: (x) => fNum(x, 2) }),
-        r.covarianceCoverage != null && r.covarianceCoverage < 0.999
+        covered && r.covarianceCoverage != null && r.covarianceCoverage < 0.999
             ? e('div', { className: 'tr-note', style: { marginTop: 4 } },
                 `${fPct(1 - r.covarianceCoverage, 0)} of the covariance matrix had no correlation on file and was `
                 + 'treated as uncorrelated. The risk numbers above are therefore a floor, not an estimate.')

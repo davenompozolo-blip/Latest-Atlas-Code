@@ -32,6 +32,7 @@ import {
 import { NexusRegimePanel } from './NexusRegime.js';
 import { NexusOpportunitiesPanel } from './NexusOpportunities.js';
 import { NexusBenchPanel } from './NexusBench.js';
+import { NexusBookMap } from './NexusBookMap.js';
 import { NexusQuickTicket } from './NexusQuickTicket.js';
 import { SpineTreemap } from './NexusSpineTreemap.js';
 import { COLUMNS, DEFAULT_VISIBLE, loadVisible, saveVisible, columnGroups, premiumBand } from './nexusColumns.js';
@@ -694,6 +695,10 @@ export function HoldingsTable({ holdings, forceTheme }) {
     const [visible, setVisible] = useState(loadVisible);
     const [basis, setBasis] = useReturnBasis();
     const [ticket, setTicket] = useState(null);  // holding whose quick ticket is open
+    // G-3. TABLE is what you own; MAP is what you own sitting inside the set of
+    // things you could own instead. One control, because they answer the same
+    // question at two altitudes -- not two panels competing for the same slot.
+    const [view, setView] = useState('table');
     // Drill-down from the Theme tab routes here with a theme to filter to.
     useEffect(() => { if (forceTheme) setTheme(forceTheme); }, [forceTheme]);
     if (!holdings || !holdings.length) return null;
@@ -765,8 +770,17 @@ export function HoldingsTable({ holdings, forceTheme }) {
       e('div', { className: 'nf-card nf-holdings nf-fade' },
         e('div', { className: 'nf-card-h' },
             e('h3', null, 'Holdings'),
-            e('span', { className: 'nf-sub' }, rows.length + ' / ' + holdings.length + ' live objects · derived reads')
+            e('span', { className: 'nf-sub' }, view === 'map'
+                ? 'the book inside its candidate universe'
+                : rows.length + ' / ' + holdings.length + ' live objects · derived reads'),
+            e('span', { className: 'nf-viewsel' },
+                ['table', 'map'].map(v => e('button', {
+                    key: v, type: 'button',
+                    className: 'nf-viewbtn' + (view === v ? ' is-on' : ''),
+                    onClick: () => setView(v), 'aria-pressed': view === v ? 'true' : 'false',
+                }, v.toUpperCase())))
         ),
+        view === 'map' ? e(NexusBookMap, null) : e(React.Fragment, null,
 
         // G-2. The screener's counted-tile row, over the book's own facets.
         // A tile is a filter AND a summary, which is why it carries the
@@ -863,7 +877,7 @@ export function HoldingsTable({ holdings, forceTheme }) {
                     }) : e('tr', null, e('td', { colSpan: cols.length, className: 'nf-empty' }, 'No holdings match these filters.'))
                 )
             )
-        )
+        ))
       ),
       e(OrderBlotter, { tickets, onRemove: removeTicket, onClear: clearBlotter }),
       ticket ? e(NexusQuickTicket, { holding: ticket, onClose: () => setTicket(null) }) : null

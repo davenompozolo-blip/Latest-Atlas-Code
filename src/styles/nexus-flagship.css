@@ -166,6 +166,11 @@
 }
 .nf-card-h {
   display: flex; align-items: center; justify-content: space-between;
+  /* A MINIMUM gap, not a layout change: with two children space-between
+     already pushes them to the edges, so this only matters once a third
+     child (G-3's TABLE/MAP toggle) takes the free space with margin-left:auto
+     and leaves the title and its subtitle touching. */
+  gap: 10px;
   margin-bottom: 12px;
 }
 .nf-card-h h3 {
@@ -1637,3 +1642,131 @@
 }
 .nf-sigchip:hover { border-color: var(--border-hi); }
 .nf-sigchip.active { background: var(--card-hi); color: var(--text1); border-color: var(--border-hi); }
+
+/* ── G-3 · the book universe map ─────────────────────────────── */
+/* Scoped under .nf-holdings so the tokens the flagship already defines apply
+   and nothing here leaks to the pair explorer, which shares the np- prefix. */
+.nf-viewsel { display: inline-flex; gap: 4px; margin-left: auto; }
+.nf-viewbtn {
+    font: 600 10px/1 'JetBrains Mono', monospace; letter-spacing: .08em;
+    padding: 5px 9px; border-radius: 4px; cursor: pointer;
+    background: transparent; color: var(--text3, #8aa0bb);
+    border: 1px solid rgba(255,255,255,.10);
+}
+.nf-viewbtn:hover { color: var(--text2, #b9c7d9); border-color: rgba(255,255,255,.20); }
+.nf-viewbtn.is-on { color: #061016; background: #22d3ee; border-color: #22d3ee; }
+
+.nbmap { padding: 4px 0 2px; }
+.nbmap-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
+.nbmap-facet {
+    display: inline-flex; align-items: baseline; gap: 6px; cursor: pointer;
+    font: 500 11px/1 'JetBrains Mono', monospace; padding: 6px 10px; border-radius: 5px;
+    background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08);
+    color: var(--text3, #8aa0bb);
+}
+.nbmap-facet b { font-size: 13px; color: var(--text1, #e6edf5); font-weight: 700; }
+.nbmap-facet:hover { border-color: rgba(34,211,238,.35); }
+.nbmap-facet.is-on { border-color: #22d3ee; background: rgba(34,211,238,.10); color: var(--text1, #e6edf5); }
+.nbmap-search, .nbmap-sel {
+    font: 400 11px/1 'JetBrains Mono', monospace; padding: 7px 9px; border-radius: 5px;
+    background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08);
+    color: var(--text1, #e6edf5);
+}
+.nbmap-search { min-width: 150px; }
+.nbmap-search::placeholder { color: var(--text3, #8aa0bb); }
+
+.nbmap-body { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 14px; align-items: start; }
+@media (max-width: 900px) { .nbmap-body { grid-template-columns: minmax(0, 1fr); } }
+.nbmap-plot { min-width: 0; }
+.nbmap-svg { width: 100%; height: auto; display: block; }
+.nbmap-node { cursor: pointer; }
+.nbmap-node:hover circle { fill-opacity: .85; }
+.nbmap-node:focus { outline: none; }
+.nbmap-node:focus-visible circle { stroke: #fff; stroke-width: 2; }
+.nbmap-node.is-on circle { fill-opacity: .9; }
+.nbmap-lbl { font: 600 9px/1 'JetBrains Mono', monospace; fill: var(--text2, #b9c7d9); }
+.nbmap-ax  { font: 400 9px/1 'JetBrains Mono', monospace; fill: #5a6675; }
+.nbmap-axt { font: 600 9px/1 'JetBrains Mono', monospace; fill: #4a5666; letter-spacing: .06em; }
+.nbmap-cn  { font: 600 8px/1 'JetBrains Mono', monospace; fill: rgba(34,211,238,.75); letter-spacing: .08em; }
+
+.nbmap-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 4px; }
+.nbmap-k { display: inline-flex; align-items: center; gap: 5px; font: 400 10px/1.4 'JetBrains Mono', monospace; color: var(--text3, #8aa0bb); }
+.nbmap-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.nbmap-scope, .nbmap-note { font: 400 10px/1.6 'JetBrains Mono', monospace; color: var(--text3, #8aa0bb); margin: 8px 0 0; }
+.nbmap-empty { font: 400 11px/1.6 'JetBrains Mono', monospace; color: var(--text3, #8aa0bb); padding: 30px 0; }
+
+.nbmap-side, .nbmap-drawer {
+    background: rgba(255,255,255,.02); border: 1px solid rgba(255,255,255,.07);
+    border-radius: 8px; padding: 12px 13px; min-width: 0;
+}
+.nbmap-sec, .nbmap-sec2 {
+    font: 700 9px/1 'JetBrains Mono', monospace; letter-spacing: .10em;
+    color: var(--text3, #8aa0bb); margin: 14px 0 8px;
+}
+.nbmap-sec2 { margin-top: 12px; }
+.nbmap-rank {
+    display: flex; align-items: baseline; gap: 8px; width: 100%; cursor: pointer;
+    background: transparent; border: 0; border-bottom: 1px solid rgba(255,255,255,.05);
+    padding: 6px 2px; text-align: left; color: var(--text2, #b9c7d9);
+    font: 400 11px/1 'JetBrains Mono', monospace;
+}
+.nbmap-rank:hover { background: rgba(34,211,238,.06); }
+.nbmap-rtk { font-weight: 700; color: var(--text1, #e6edf5); flex: 1; }
+.nbmap-rr { color: #22c55e; }
+.nbmap-rv { color: var(--text3, #8aa0bb); min-width: 38px; text-align: right; }
+
+.nbmap-dh { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.nbmap-dtk { font: 700 15px/1 'JetBrains Mono', monospace; color: var(--text1, #e6edf5); margin-right: 8px; }
+.nbmap-dn { font: 400 11px/1.5 'JetBrains Mono', monospace; color: var(--text3, #8aa0bb); margin-top: 3px; }
+.nbmap-badge {
+    display: inline-block; font: 700 8px/1 'JetBrains Mono', monospace; letter-spacing: .08em;
+    padding: 3px 6px; border-radius: 3px; margin-right: 4px; vertical-align: middle;
+}
+.nbmap-badge.is-held { background: rgba(34,211,238,.15); color: #22d3ee; }
+.nbmap-badge.is-lev  { background: rgba(245,158,11,.15); color: #f59e0b; }
+.nbmap-badge.is-inv  { background: rgba(167,139,250,.15); color: #a78bfa; }
+.nbmap-x {
+    background: transparent; border: 0; cursor: pointer; font-size: 20px; line-height: 1;
+    color: var(--text3, #8aa0bb); padding: 0 4px;
+}
+.nbmap-x:hover { color: var(--text1, #e6edf5); }
+.nbmap-line { font: 400 11px/1.65 'JetBrains Mono', monospace; color: var(--text2, #b9c7d9); margin: 10px 0 0; }
+
+.nbmap-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; }
+.nbmap-f { display: flex; flex-direction: column; gap: 2px; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,.04); }
+.nbmap-fk { font: 400 9px/1.2 'JetBrains Mono', monospace; color: var(--text3, #8aa0bb); letter-spacing: .04em; }
+.nbmap-fv { font: 600 12px/1.2 'JetBrains Mono', monospace; color: var(--text1, #e6edf5); }
+/* An absent reading is a NAMED state, never a dash sitting where a
+   measurement would sit. */
+.nbmap-fv.is-absent { font-weight: 400; font-size: 10px; font-style: italic; color: #64748b; }
+.nbmap-fs { font: 400 8px/1.2 'JetBrains Mono', monospace; color: #5a6675; }
+.nbmap-arrow { font-style: normal; color: var(--text3, #8aa0bb); margin: 0 5px; font-size: 10px; }
+.nbmap-fv b { font-weight: 700; }
+.nbmap-fv b.is-moved { color: #22d3ee; }
+
+.nbmap-sizes { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin-bottom: 8px; }
+.nbmap-pk { font: 400 9px/1 'JetBrains Mono', monospace; color: var(--text3, #8aa0bb); letter-spacing: .06em; }
+.nbmap-size {
+    font: 600 10px/1 'JetBrains Mono', monospace; padding: 5px 8px; border-radius: 4px; cursor: pointer;
+    background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08); color: var(--text3, #8aa0bb);
+}
+.nbmap-size.is-on { background: #22d3ee; border-color: #22d3ee; color: #061016; }
+.nbmap-nom { font: 400 10px/1 'JetBrains Mono', monospace; color: var(--text3, #8aa0bb); margin-left: auto; }
+
+.nbmap-peers { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-top: 8px; }
+.nbmap-peer {
+    font: 500 10px/1 'JetBrains Mono', monospace; padding: 4px 7px; border-radius: 4px;
+    background: rgba(34,211,238,.09); color: #22d3ee;
+}
+.nbmap-peer i { font-style: normal; opacity: .65; margin-left: 4px; }
+
+.nbmap-absent {
+    border: 1px dashed rgba(245,158,11,.35); border-radius: 6px; padding: 9px 10px;
+    font: 400 10px/1.6 'JetBrains Mono', monospace; color: var(--text3, #8aa0bb);
+}
+.nbmap-absent b {
+    display: block; font: 700 9px/1 'JetBrains Mono', monospace; letter-spacing: .08em;
+    color: #f59e0b; margin-bottom: 5px;
+}
+.nbmap-verdict { font: 500 11px/1.6 'JetBrains Mono', monospace; color: var(--text1, #e6edf5); margin: 9px 0 0; }
+.nbmap-foot { font: 400 9px/1.6 'JetBrains Mono', monospace; color: #5a6675; margin-top: 12px; border-top: 1px solid rgba(255,255,255,.05); padding-top: 8px; }
