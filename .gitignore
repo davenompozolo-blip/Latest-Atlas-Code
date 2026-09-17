@@ -72,3 +72,6 @@ dist/
 
 # G-4 cross-asset harness (dev only)
 .g4harness/
+
+# G-2 holdings harness (dev only)
+.g2harness/

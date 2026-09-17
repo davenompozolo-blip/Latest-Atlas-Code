@@ -3178,6 +3178,50 @@ render a healthy panel beside a dead one.
 design system attached is what makes a page feel like panels held together with
 tape.
 
+### Share the screener's grammar, never its buckets (2026-09-17)
+
+G-2. Full report in `docs/G2_HOLDINGS_SCREENER_REPORT.md`.
+
+The holdings table now opens with the Valuation House screener's counted-tile
+row, because two tables in one product that filter differently make the reader
+learn the app twice -- and a tile is a summary and a filter at once.
+
+**What is NOT borrowed is the screener's buckets.** Value / Growth / Momentum /
+Quality / Dividend / Contrarian come from screener fields (multiples, RSI,
+revenue growth, drawdown) that the BOOK does not carry. Six labels over
+holdings rows would be a classification with nothing behind it -- the objection
+this file already raises to a sector aggregate standing in for a theme, and to
+thirty curated names being called "the market". The tiles are the book's own
+reads and valuation signals, which is why they can be counted honestly.
+
+**Reads keep the add->exit spectrum; signals are alphabetical.** Sorting reads
+by count puts EXIT first on a bad day and destroys the only thing the row's
+order carries; ranking signals by count lets a price move reorder the filter
+bar under the reader's cursor. Opposite rules, each for its own reason.
+
+**A facet with no members gets no tile** -- an empty tile invites a click that
+finds nothing, and on a summary row a zero is a claim about the book rather
+than about a null column.
+
+**Sector became a filter and is a SEPARATE control from theme.** Two
+taxonomies, two controls; folding them is the mistake corrected once already
+when the flagship showed sector values under a "Theme" heading. `Unclassified`
+is a real bucket in each, offered only when something is actually unclassified.
+
+**One filter function.** The header count and the body rows come from the same
+`applyFilters` call, so they cannot drift. **An empty Set is not "match
+nothing"** -- asserted, because the naive `reads.has(h.read)` without a size
+guard silently empties the table.
+
+**Verified through the REAL component**, which is why `HoldingsTable` is now
+exported: a harness reproducing its markup verifies the CSS and not the wiring,
+and the wiring is what changed.
+
+The screener's RSI meters and regime pills have no counterpart in the holdings
+payload and were NOT faked -- they need fields plumbed through
+`vw_portfolio_home` -> `mv_nexus_holdings` -> `vw_nexus_holdings`, a matview
+rebuild and its own unit.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel
