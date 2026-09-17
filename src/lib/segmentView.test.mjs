@@ -308,4 +308,77 @@ t('latestAsOf picks the newest date', () => {
     assert.equal(latestAsOf([]), null);
 });
 
+
+// ── One night, never a pile of them (H-1) ────────────────────
+// segment_verdicts is append-only. buildBetsView used to filter on `grouping`
+// and nothing else, so every figure it sums counted each segment once per
+// night: the live panel rendered "AI / accelerated compute" five times with
+// drifting numbers, reported 353 positions against a real 60, and put 0.6 in
+// the effective-bets tile.
+
+function segRow(o) {
+    return Object.assign({
+        as_of: '2026-09-16', logic_version: 'v1:rho0.75:n5:mwr', grouping: 'theme',
+        segment_id: 'theme:AI / accelerated compute', segment_kind: 'theme',
+        segment_label: 'AI / accelerated compute', member_count: 10,
+        weight_share: 0.235, risk_share: 0.498, cf_status: 'measured',
+    }, o);
+}
+
+t('two nights of the same segment count once, not twice', function () {
+    const rows = [
+        segRow({ as_of: '2026-09-16', member_count: 10, risk_share: 0.498 }),
+        segRow({ as_of: '2026-09-15', member_count: 10, risk_share: 0.460 }),
+        segRow({ as_of: '2026-09-11', member_count: 8, risk_share: 0.459 }),
+    ];
+    const v = buildBetsView(rows, 'theme');
+    assert.equal(v.segments.length, 1, 'one segment, not three');
+    assert.equal(v.positionCount, 10, 'not 28');
+    assert.equal(v.asOf, '2026-09-16');
+    assert.equal(v.droppedNights, 2, 'the older rows are counted and reported');
+});
+
+t('the date on the view belongs to the rows the view summed', function () {
+    // The shipped bug labelled a fifteen-night aggregate with the newest
+    // night's date, which is worse than either -- it reads as one night.
+    const v = buildBetsView([
+        segRow({ as_of: '2026-09-16', member_count: 10 }),
+        segRow({ as_of: '2026-09-15', member_count: 99 }),
+    ], 'theme');
+    assert.equal(v.asOf, '2026-09-16');
+    assert.equal(v.positionCount, 10, 'the 99 belongs to a night this view is not about');
+});
+
+t('a clean single night reports nothing dropped', function () {
+    // The happy path, because a guard that also flags healthy input is worse
+    // than none.
+    const v = buildBetsView([
+        segRow({ segment_id: 'a', segment_label: 'A', member_count: 4, risk_share: 0.6 }),
+        segRow({ segment_id: 'b', segment_label: 'B', member_count: 3, risk_share: 0.4 }),
+    ], 'theme');
+    assert.equal(v.droppedNights, 0);
+    assert.equal(v.segments.length, 2);
+    assert.equal(v.positionCount, 7);
+});
+
+t('distinct segments on one night are all kept', function () {
+    // The scoping must cut on DATE, never on label -- two real themes on the
+    // same night are two bets, and collapsing them would be the opposite bug.
+    const v = buildBetsView([
+        segRow({ segment_id: 'ai', segment_label: 'AI / accelerated compute', risk_share: 0.5 }),
+        segRow({ segment_id: 'bonds', segment_label: 'Bond sleeve', risk_share: 0.1 }),
+    ], 'theme');
+    assert.deepEqual(v.segments.map(s => s.label), ['AI / accelerated compute', 'Bond sleeve']);
+});
+
+t('rows carrying no as_of are kept rather than silently dropped', function () {
+    // A fixture or a caller that omits the column must not lose its rows to a
+    // date filter it never opted into.
+    const v = buildBetsView([
+        { grouping: 'theme', segment_id: 'x', segment_label: 'X', member_count: 5, risk_share: 0.9 },
+    ], 'theme');
+    assert.equal(v.segments.length, 1);
+    assert.equal(v.positionCount, 5);
+});
+
 console.log('\n' + passed + '/' + passed + ' passed');
