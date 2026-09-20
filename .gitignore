@@ -80,3 +80,6 @@ dist/
 .g6harness/
 .g3verify/
 .h1verify/
+.h2proto/
+.h2verify/
+.h2render/

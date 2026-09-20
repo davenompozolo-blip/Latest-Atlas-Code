@@ -3383,6 +3383,127 @@ explicitly, so a regression fails on behaviour rather than on a flag.
 statements the database actually ran. The two prior file/database divergences in
 this file were found afterwards.
 
+### The bets panel was summing fifteen nights and calling it one (2026-09-20)
+
+Reported from the terminal: the Performance bets panel showed **the same bet
+over and over** while the book is spread across a dozen themes. It was not a
+grouping bug. `segment_verdicts` is an APPEND-ONLY history and
+`loadSegments` read it **unscoped** — every night since the job started, all
+in one list — so `buildBetsView` grouped fifteen nights of the same segments
+together and ranked the result.
+
+| grouping | segments | positions | effective bets | duplicate labels |
+|---|---|---|---|---|
+| THEME | 70 -> **17** | 353 -> **60** | 0.57 -> **3.49** | 58 -> **0** |
+| BET | 130 -> **43** | 218 -> **60** | 0.61 -> **3.84** | 58 -> **0** |
+
+The 353 matched the screenshot exactly. Top five before: `AI / accelerated
+compute` five times. After: five different bets.
+
+**Scope to one night in the LOADER and again in the builder.** The loader
+reads `max(as_of)` first and filters to it; `buildBetsView` re-derives the
+latest `as_of` from the rows it was handed and drops the rest, reporting
+`droppedNights`. Two gates because a caller can pass rows from anywhere, and
+this file already records what happens when a gate lives only at the consumer.
+
+**The cut is on the DATE, never on the label.** Deduplicating by label would
+have produced the same headline number and silently discarded genuinely
+distinct segments that share a name — which, as H-2 then showed, is 10 of the
+book's labels.
+
+### One partition, two bets, one name (2026-09-20)
+
+H-2. `cluster_identity` / `atlas_refresh_cluster_identity()` /
+`vw_cluster_identity`, nightly at 23:39 Mon–Fri. Full report in
+`docs/H2_CLUSTER_IDENTITY_REPORT.md`.
+
+The Performance tab rendered `RISK CLUSTER 196` — an integer out of an
+average-linkage partition, with nothing saying what was in the bucket or what
+moves it. Nothing in the schema answered either question:
+`universe_clusters.cluster_label` is a **ticker fingerprint**, and the semis
+bucket's modal `assets.sector` is literally **`Other` (16 of 32)**, so naming
+from the vendor field would have produced a label that is false rather than
+vague.
+
+**The theme label and the risk bucket are different objects, and the book's
+largest theme is two opposite bets wearing one name.** `AI / accelerated
+compute` is 12 held names across **5** clusters: AMD/ASML/DFEV/EWY/MRVL/MU/
+SNDK/TSM load `dollar` **−** at t −8.99, while NVDA, AVGO, TSLA and CRWV each
+load `concentration` **+** at t 3.9–6.6. The US mega-cap AI names rise as
+index leadership narrows; the Asian and European semis complex falls as the
+dollar strengthens. Under one heading they read as one position.
+
+`Financials` is worse — 6 held names, 4 clusters, **four different axis/sign
+combinations** (C/GS/MS `cyclical +`, JPM `concentration −`, MA `dollar +`,
+FIDU `dollar −`). A single Financials line nets that to nothing. 10 of the
+book's labels span more than one cluster.
+
+**Market is a CONTROL in this regression, not a finding.** Without it every
+cluster loads on everything, because the market factor dominates a daily
+equity return. And the fit must be **multivariate**: `concentration` and
+`dollar` correlate **−0.471** over the window, so a univariate axis
+correlation double-counts and misassigns clusters.
+
+**A floor written to protect the average made a third of the book
+unmeasurable.** Requiring half the cluster to have priced, floored at two
+names, so a thin tape could not let one name stand for a bucket — and a
+one-name cluster can never have two names priced. **143 of 206 clusters are
+singletons carrying 23 held names**, all returning `insufficient_history`.
+Fourth instance of a gate that can never pass. `least(size, greatest(2,
+ceil(size/2)))` — 63 → 206 measured.
+
+**Bound an append-only history's sample at its own `as_of`, at BOTH ends.**
+The price filter had no upper bound, so a row stamped D was fitted on bars
+after D. Dormant today — every feed sits on the clustering date — but on a
+night `ts_clusters` fails (a 504 on 2026-09-09) the job re-states the same
+date against a longer window. The reproduction held identically either side of
+the fix, which is what a correct no-op looks like.
+
+**`vw_cluster_identity` sat at 1,208 ms against anon's 3,000 ms cap** because
+`held_symbols` was a correlated subquery — 45 clusters × one full evaluation
+of `vw_positions_current` each, 15,887 buffers. Hoisted into a CTE:
+**1,208 → 49 ms**, and it returns all 206 rows rather than 45. The
+`atlas_counterfactual_frozen` lesson again; a browser-facing view is the only
+kind where that gap is the exposure.
+
+**The verifier was the thing that was wrong.** The independent node
+reproduction first reported `max |beta| 2.392e-3` and one primary-axis
+disagreement — because it paged PostgREST **without an ORDER BY**, which makes
+pagination unstable. This file's own rule, broken in the checker rather than
+in the thing checked. **A disagreement two hundred thousand times larger than
+the rounding is a setup difference, not a precision one** — do not chase it as
+arithmetic. Ordered: 206/206 statuses and n_obs exact, max |beta| **4.994e-9**
+against an 8dp store, max |t| **4.993e-5** against 4dp, max |R²| **4.969e-7**
+against 6dp. Every residual under half a unit in the last stored place.
+Deterministic across three DELETE+INSERT re-runs (`68627cea…`).
+
+**An axis key without the sign asserts the opposite**, so the surface renders
+`factor_axes.positive_means` AND the sign — "Falls with dollar strengthening;
+…" — never a bare tag. Same rule F-5 established one layer up.
+
+**`marginal` is still not a gate**, and this is where it would have bitten:
+`dollar` is `marginal = true` and is the axis 8 of the book's held clusters
+load on. There is a test asserting it is read as provenance and never
+consulted when deciding whether to publish.
+
+**174 of 206 clusters carry a named axis; 32 carry none** and render *"No
+measurable axis exposure"*. `axisBeta` / `axisT` / `axisSign` are **absent
+from the row shape** when nothing cleared |t| > 2 — not null — so a renderer
+cannot print a number it was never handed.
+
+**The seven cluster cards cover only the cluster-eligible 18 of 61
+positions**, so the NO CLOSE COMPARABLE table gained a `Risk cluster` column
+carrying the same name and tag. Without it most of the book still read as
+unclassified, which was the complaint. "Not in the partition" (IXC, a dark
+feed) and "no identity on file" (a night the job did not write) are separate
+sentences: pooling them would hide a stopped feed.
+
+**`composition_coverage` runs as low as 0.12** — cluster 199 is labelled from
+2 of its 17 members. The coverage is published beside the label rather than
+the label being suppressed, because the label is honest about the names the
+book holds and thin as a description of the bucket. Raising it means extending
+`position_themes` past its 79 symbols, which is a data unit.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel

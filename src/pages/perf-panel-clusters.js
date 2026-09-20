@@ -19,6 +19,10 @@ import React from 'react';
 // ============================================================
 
 import { loadClusterVerdicts, buildClusterView } from '../lib/clusterView.js';
+import {
+    loadClusterIdentity, byClusterId, identityTitle, compositionNote,
+    axisSentence, axisTag, marketSentence, fitNote, NO_AXIS_TEXT,
+} from '../lib/clusterIdentity.js';
 import { sb } from './config.js';
 import { Loading } from './components.js';
 
@@ -95,6 +99,7 @@ function TD(props) {
 
 // ── one cluster ──────────────────────────────────────────────
 function ClusterCard(props) {
+    var id = props.identity || null;
     var c = props.cluster;
     var ranksRecorded = props.ranksRecorded;
 
@@ -104,13 +109,48 @@ function ClusterCard(props) {
             borderRadius: 10, padding: '12px 4px 4px', marginBottom: 14,
         }
     },
-        h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 12, padding: '0 12px 8px' } },
-            h('div', { style: { fontFamily: T.mono, fontSize: 12.5, fontWeight: 700, color: T.teal, letterSpacing: 0.5 } },
-                'RISK CLUSTER ' + (c.clusterId == null ? '—' : c.clusterId)),
-            h('div', { style: { fontSize: 10.5, color: T.text2 } },
-                c.heldCount + (c.heldCount === 1 ? ' held name' : ' held names')),
-            c.heldCount === 1 && h('div', { style: { fontSize: 10, color: T.text3, fontStyle: 'italic' } },
-                'the only name the book holds from this bucket')
+        h('div', { style: { padding: '0 12px 8px' } },
+            h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' } },
+                // The NAME leads. The partition id is provenance, kept beside
+                // it because it is the key every other layer joins on -- but a
+                // bare integer was the whole complaint this unit answers.
+                h('div', { style: { fontFamily: T.mono, fontSize: 12.5, fontWeight: 700, color: T.teal, letterSpacing: 0.5, textTransform: 'uppercase' } },
+                    (id && identityTitle(id)) || ('RISK CLUSTER ' + (c.clusterId == null ? '—' : c.clusterId))),
+                c.clusterId != null && h('div', { style: { fontFamily: T.mono, fontSize: 9.5, color: T.text3, letterSpacing: 1 } },
+                    '#' + c.clusterId),
+                id && axisTag(id) && h('div', {
+                    title: axisSentence(id) || '',
+                    style: {
+                        fontFamily: T.mono, fontSize: 9.5, fontWeight: 700, letterSpacing: 1,
+                        color: T.blue, border: '1px solid rgba(59,130,246,0.35)',
+                        background: 'rgba(59,130,246,0.09)', borderRadius: 4, padding: '2px 6px',
+                    }
+                }, axisTag(id)),
+                h('div', { style: { fontSize: 10.5, color: T.text2 } },
+                    c.heldCount + (c.heldCount === 1 ? ' held name' : ' held names')
+                    + (id && id.clusterSize ? ' of ' + id.clusterSize + ' in the bucket' : '')),
+                c.heldCount === 1 && h('div', { style: { fontSize: 10, color: T.text3, fontStyle: 'italic' } },
+                    'the only name the book holds from this bucket')
+            ),
+            id && h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginTop: 5 } },
+                // The sentence is built from `positive_means` AND the sign.
+                // An axis key on its own says which axis the cluster belongs
+                // to and not which way it pushes it.
+                h('div', {
+                    style: {
+                        fontSize: 10.5, lineHeight: 1.45, maxWidth: 620,
+                        color: id.axis ? T.text2 : T.text3,
+                        fontStyle: id.axis ? 'normal' : 'italic',
+                    }
+                }, axisSentence(id) || NO_AXIS_TEXT),
+                marketSentence(id) && h('div', { style: { fontFamily: T.mono, fontSize: 10, color: T.text3 } },
+                    marketSentence(id)),
+                id.rSquared != null && h('div', { style: { fontFamily: T.mono, fontSize: 10, color: T.text3 } },
+                    'R² ' + id.rSquared.toFixed(2) + (id.nObs ? ' / n ' + id.nObs : '')),
+                compositionNote(id) && h('div', { style: { fontSize: 10, color: T.text3 } },
+                    compositionNote(id)),
+                fitNote(id) && h('div', { style: { fontSize: 10, color: T.amber } }, fitNote(id))
+            )
         ),
         h('div', { style: { overflowX: 'auto' } },
             h('table', { style: { width: '100%', maxWidth: 1180, borderCollapse: 'collapse', minWidth: 720 } },
@@ -156,14 +196,23 @@ export function ClusterRankingPanel() {
     var _l = useState(true);
     var loading = _l[0], setLoading = _l[1];
 
+    var _i = useState([]);
+    var ident = _i[0], setIdent = _i[1];
+
     useEffect(function () {
         var alive = true;
         function load() {
-            loadClusterVerdicts(sb).then(function (data) {
-                if (!alive) return;
-                setRows(data);
-                setLoading(false);
-            });
+            // allSettled, not all: the identity layer is a SEPARATE nightly
+            // job from the verdict layer. A night cluster_identity did not
+            // write must cost the names and nothing else -- the rankings
+            // below it are unaffected and still worth showing.
+            Promise.allSettled([loadClusterVerdicts(sb), loadClusterIdentity(sb)])
+                .then(function (res) {
+                    if (!alive) return;
+                    setRows(res[0].status === 'fulfilled' ? res[0].value : []);
+                    setIdent(res[1].status === 'fulfilled' ? res[1].value : []);
+                    setLoading(false);
+                });
         }
         load();
         window.addEventListener('atlas:refresh', load);
@@ -171,9 +220,10 @@ export function ClusterRankingPanel() {
     }, []);
 
     var view = useMemo(function () { return buildClusterView(rows || []); }, [rows]);
+    var identity = useMemo(function () { return byClusterId(ident || []); }, [ident]);
 
     if (loading) return h(Loading, null);
-    return h(ClusterRankingView, { view: view });
+    return h(ClusterRankingView, { view: view, identity: identity });
 }
 
 /**
@@ -183,6 +233,7 @@ export function ClusterRankingPanel() {
  */
 export function ClusterRankingView(props) {
     var view = props.view;
+    var identity = props.identity || null;
 
     if (!view || !view.totalCount) {
         return h('div', { style: { padding: 28, color: T.text2, fontSize: 12.5, lineHeight: 1.6 } },
@@ -243,7 +294,11 @@ export function ClusterRankingView(props) {
         ),
 
         view.clusters.map(function (c) {
-            return h(ClusterCard, { key: String(c.clusterId), cluster: c, ranksRecorded: view.ranksRecorded });
+            return h(ClusterCard, {
+                key: String(c.clusterId), cluster: c,
+                identity: identity ? identity.get(c.clusterId) : null,
+                ranksRecorded: view.ranksRecorded,
+            });
         }),
 
         // ── the complement ───────────────────────────────────
@@ -266,6 +321,14 @@ export function ClusterRankingView(props) {
                 h('table', { style: { width: '100%', maxWidth: 900, borderCollapse: 'collapse', minWidth: 560 } },
                     h('thead', null, h('tr', null,
                         h(TH, null, 'Symbol'),
+                        // These 31 names have no peer group to rank inside,
+                        // but they ARE in the measured partition and that
+                        // bucket has a name and an axis. Without this column
+                        // most of the book still reads as unclassified --
+                        // which is the whole complaint H-2 answers, and the
+                        // seven cards above cover only the cluster-eligible
+                        // minority.
+                        h(TH, null, 'Risk cluster'),
                         h(TH, null, 'Basis'),
                         h(TH, null, 'Closest name held'),
                         h(TH, { right: true, raw: true }, 'best ρ in book'),
@@ -276,8 +339,23 @@ export function ClusterRankingView(props) {
                         if (b.bestRho == null) return -1;
                         return b.bestRho - a.bestRho;
                     }).map(function (m) {
+                        var mid = identity && m.clusterId != null ? identity.get(m.clusterId) : null;
                         return h('tr', { key: m.symbol, style: { borderBottom: '1px solid rgba(255,255,255,0.03)' } },
                             h(TD, { style: { fontWeight: 700 } }, m.symbol),
+                            h(TD, { mono: false, color: mid ? T.text2 : T.text3, style: { fontSize: 11 } },
+                                mid
+                                    ? h('span', null,
+                                        identityTitle(mid),
+                                        axisTag(mid) && h('span', {
+                                            title: axisSentence(mid) || '',
+                                            style: { fontFamily: T.mono, fontSize: 8.5, fontWeight: 700,
+                                                     letterSpacing: 0.8, color: T.blue, marginLeft: 6 },
+                                        }, axisTag(mid)))
+                                    // Two different absences. A name with no
+                                    // partition bucket is not the same as a
+                                    // night the identity job did not write,
+                                    // and neither is "no axis".
+                                    : (m.clusterId == null ? 'not in the partition' : 'no identity on file')),
                             h(TD, { mono: false, color: T.text2, style: { fontSize: 11 } },
                                 m.status && m.status !== 'measured'
                                     ? m.status.replace(/_/g, ' ')
