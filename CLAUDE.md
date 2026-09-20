@@ -3504,6 +3504,50 @@ the label being suppressed, because the label is honest about the names the
 book holds and thin as a description of the bucket. Raising it means extending
 `position_themes` past its 79 symbols, which is a data unit.
 
+### NaN clears a significance gate, and I left the X side open (2026-09-20)
+
+Found by auditing H-2's own new schema against this file's PR #783 entry
+rather than waiting for a reviewer, on a PR whose CI was already green.
+
+`_ci_panel` filters the cluster return two-sided
+(`lr > '-Infinity' and lr < 'Infinity'`). **`_ci_reg` filtered the regressors
+not at all** -- only `is null`. So one NaN in a SPY `adj_close` or an axis
+score propagates through `ln()` into X'X and makes **every coefficient of
+every cluster** NaN at once. I guarded y and left X open, in the same
+function, the same afternoon -- the same asymmetry PR #783 records between
+two constraints written minutes apart.
+
+**The consequence is not a missing number, it is a published one.**
+`abs('NaN'::numeric) > 2` is **TRUE**, so a NaN t-stat CLEARS the
+significance gate, wins `v_best`, and is named the cluster's `primary_axis` --
+the one thing the layer exists to say. Verified rather than reasoned:
+`ln('NaN') = NaN`, `sign('NaN') = NaN`, and neither `price_history`,
+`market_prices` nor `factor_axis_scores` carries **any** finite constraint
+(0 of them mention NaN or Infinity).
+
+Latent, not live: 0 non-finite values anywhere today, and 0 stored. Fixed
+anyway -- this file has three entries about defects deferred on *nothing
+currently needs it* that went on to fail.
+
+**Guarded in BOTH places, because they refuse different things.** The engine's
+`delete from _ci_reg` keeps a bad session out of the fit; `ci_finite_coeff_ck`
+keeps a bad number out of the table every surface reads. A gate applied at one
+consumer is missed by the next.
+
+**Proof that a guard is right is that it changes nothing on clean data.** The
+digest over all 206 rows is still `68627cea…` after the fix, and the file body
+still hashes identical to `prosrc` (`10f7264c…`).
+
+**Running a rolled-back test through the Supabase MCP commits it.** The MCP
+commits each call, so `begin; … rollback;` in the file never reached the two
+ACCEPTED cases and they landed in `cluster_identity` for real. Two rows at
+`as_of 1900-01-01` under `logic_version = 'test:finite-contract'`, deleted by
+hand. **Choose a far-past `as_of` and a sentinel `logic_version` for any
+scratch write** -- that is the only reason they were findable, and
+`vw_cluster_identity` reads `max(as_of_date)` so they never reached a surface.
+`supabase/tests/cluster_identity_finite_contract.sql` says to run it under
+psql; 7/7, including both acceptances.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel

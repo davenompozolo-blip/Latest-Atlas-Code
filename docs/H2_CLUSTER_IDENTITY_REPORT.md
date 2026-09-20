@@ -164,6 +164,39 @@ it most of the book still read as unclassified, which was the complaint.
   from a nightly clustering and does not survive recomputation — the defect
   that broke the segment job on its first scheduled run.
 
+## 7a. NaN clears the significance gate, and the X side was open
+
+Found by auditing this unit's own new schema against the PR #783 entry, after
+CI was already green.
+
+`_ci_panel` filters the cluster return two-sided. **`_ci_reg` filtered the
+regressors not at all** — only `is null`. One NaN in a SPY `adj_close` or an
+axis score propagates through `ln()` into X'X and makes every coefficient of
+every cluster NaN at once. y guarded, X open, in the same function.
+
+The consequence is a *published* number, not a missing one:
+`abs('NaN'::numeric) > 2` is **TRUE**, so a NaN t-stat clears the gate and is
+named the cluster's `primary_axis`. Checked rather than assumed —
+`ln('NaN') = NaN`, `sign('NaN') = NaN`, and none of `price_history`,
+`market_prices` or `factor_axis_scores` carries a finite constraint.
+
+Latent (0 non-finite values anywhere today) and fixed anyway, in **both**
+places: the engine keeps a bad session out of the fit, `ci_finite_coeff_ck`
+keeps a bad number out of the table every surface reads. Two-sided ranges, not
+a sentinel list — `IS DISTINCT FROM 'NaN'` admits both infinities.
+
+The digest over all 206 rows is unchanged at `68627cea…`, which is what a
+correct guard looks like on clean data.
+`supabase/tests/cluster_identity_finite_contract.sql` is 7/7, including both
+acceptances.
+
+**Running it through the Supabase MCP committed it.** The MCP commits each
+call, so the file's `rollback` never reached the two ACCEPTED cases and they
+landed in the table — two rows at `as_of 1900-01-01`, deleted by hand. The
+far-past date and sentinel `logic_version` are the only reason they were
+findable, and `vw_cluster_identity` reads `max(as_of_date)` so they never
+reached a surface.
+
 ## 8. Not done, and why
 
 **`composition_coverage` runs as low as 0.12.** Cluster 199 is labelled

@@ -87,7 +87,22 @@ begin
     where m.ret is not null and m.d <= v_as_of
     group by m.d, m.ret;
 
-    delete from _ci_reg where x_cyc is null or x_con is null or x_dol is null;
+    -- Two-sided, because a one-sided bound is NaN-permeable: numeric NaN
+    -- sorts ABOVE every finite value, so `x < 'Infinity'` is what refuses it
+    -- and `x > '-Infinity'` refuses -Infinity. The y side already does this in
+    -- _ci_panel; leaving the REGRESSORS unguarded was the asymmetry -- one NaN
+    -- in a SPY bar or an axis score propagates through ln() into X'X and makes
+    -- every coefficient of every cluster NaN at once.
+    --
+    -- That is not a cosmetic loss. `abs('NaN'::numeric) > 2` is TRUE, so a NaN
+    -- t-stat CLEARS the significance gate and gets named the primary axis --
+    -- the exact shape of the PR #783 finding, in a new place.
+    delete from _ci_reg
+     where x_market is null or x_cyc is null or x_con is null or x_dol is null
+        or not (x_market > '-Infinity'::numeric and x_market < 'Infinity'::numeric)
+        or not (x_cyc    > '-Infinity'::numeric and x_cyc    < 'Infinity'::numeric)
+        or not (x_con    > '-Infinity'::numeric and x_con    < 'Infinity'::numeric)
+        or not (x_dol    > '-Infinity'::numeric and x_dol    < 'Infinity'::numeric);
 
     -- Equal-weighted cluster return per session. A session is used only when
     -- at least half the cluster priced that day, so a thin tape cannot make
