@@ -4060,6 +4060,114 @@ scratch write** -- that is the only reason they were findable, and
 `supabase/tests/cluster_identity_finite_contract.sql` says to run it under
 psql; 7/7, including both acceptances.
 
+### The dispatch row is not a completion signal (2026-09-21)
+
+I-1. The nightly chain now fires each stage on its predecessor's COMPLETION
+rather than at a clock time chosen as a guess at the predecessor's duration.
+`atlas_chain_stages` / `atlas_chain_advance()` / `atlas_chain_stage_status()` /
+`vw_chain_status`. Full report in
+`docs/I1_COMPLETION_CHAINED_PIPELINE_REPORT.md`.
+
+**The ask was one orchestrator edge function calling everything at once. It
+cannot run on this project.** The org is on the **free** plan: wall clock
+**150 s**, request idle timeout 150 s, CPU 2 s/request. The trade-sync chain
+alone measures **1,014.6 s** of serial work, and `trade_sync_triggers` on its
+own peaks at **255.9 s -- 1.7x the whole budget**. `Promise.all` does not help:
+a parallel orchestrator still has to stay alive until the slowest child returns.
+`sync_fundamentals` is the live proof -- it self-limits at ~110 s and logs
+*"wall-clock budget reached after 140 of 300 symbols"* on EVERY run, and three
+times blew past and was killed with the row left open 2+ hours.
+
+**`atlas_chain_reap()` grades the pg_net response, and several handlers answer
+before they have done the work:**
+
+| stage | dispatch row closed | handler ran | overshoot |
+|---|---:|---:|---:|
+| `ts_signals` | 3.1 s | 242.4 s | **243 s** |
+| `ts_universe` | 0.13 s | 241.5 s | **243 s** |
+| `ts_triggers` | 0.25 s | 231.0 s | **233 s** |
+| `options_snapshot` | 0.09 s | 68.8 s | **74 s** |
+
+So chaining a successor off that row fires it **up to four minutes before its
+input exists** -- worse than the ten-minute clock gaps the unit set out to
+remove. **A green dispatch row means the request was accepted, not that the job
+is done.** The overshoot is NOT universal -- `ledger_snapshot` (528 ms) and
+`theme_leadership` (38 s) return on completion, as does every edge function --
+so it is a per-stage `completion_log_name` probe, never a blanket delay.
+`unobserved` is its own state, neither success nor error: **a stage whose
+completion cannot be seen has not been seen to complete.**
+
+**Chain order and dependency are different relations.** `depends_on` plus a
+`hard` flag: true blocks on an upstream error, false is ordering only and any
+terminal state releases. Conflating them turns one failed leg into a dead night;
+keeping them apart is why `atlas_run_validation` still grades a night that
+failed.
+
+**A block must propagate, and the first version did not.** Forced failure:
+`ts_correlations` -> error blocked `ts_signals` and then **ran the other nine
+stages anyway**. A blocked stage recorded itself `skipped`, and `skipped` is a
+pass -- so its successor read its own blocked predecessor as a stage that had
+merely declined. `skipped` was doing two jobs: *"I declined"* (no CRON_SECRET,
+gate not met, already written for this as_of) and *"I was not allowed to run"*.
+`details.reason like 'upstream_%'` separates them. After: **7 blocked, 0 wrongly
+fired**, and the 3 that still ran are exactly the `hard=false` edges.
+
+**`not_before` is not padding.** Alpaca has no settled bar before the session
+closes and `todaysBarIsPartial()` refuses Yahoo's in-progress bar, so 7 of 28
+stages carry a real external-availability floor. Removing those to "run it all
+at once" is how you fetch a half-formed close.
+
+**A stage's `dow` must be a subset of its dependency's** -- a Mon-Sat stage
+behind a Mon-Fri one can never fire on Saturday. Fifth instance of the gate that
+can never pass, asserted on seed rather than discovered later.
+
+Armed in **SHADOW** (cron 51, every minute 20:00-01:59): it records the plan
+under `source='pg_cron_chain_shadow'` and dispatches nothing. Go-live is
+`supabase/migrations/PENDING_i1_chain_go_live.sql.txt`, written and NOT applied.
+**Read it before applying** -- job 15 `sync_alpaca_transactions` is scheduled
+`10 13,22 * * 1-5`, two times in one entry, and the chain covers only the 22:10
+leg, so unscheduling it outright silently kills the 13:10 intraday run.
+
+**Shadow proves reachability, not timing.** Shadow rows complete instantly, so
+the walk is self-referential and finishes in one tick (27 of 28 stages, 539 ms,
+0 blocked; the absentee is Friday-only `theme_leadership` on a Monday). It
+proves the graph is traversable, acyclic, day-scoped and correctly blocked. It
+does not predict when stages fire on a real night.
+
+**The comment-stripped paste happened again, on the same day it was re-read.**
+`atlas_chain_advance` was applied with its inline comments removed for brevity:
+file `5eb6bfca`/6733 bytes against database `776983ff`/5737. Caught by hashing
+`md5(prosrc)` rather than by assuming. All three functions now hash identical to
+their files. The MCP also assigns its own migration versions, so the checked-in
+filenames were renamed to the ledger's and the one ledger row with no file was
+reconstructed -- **a ledger row naming a file that does not exist is the same
+divergence from the other side.**
+
+### The terminal's inconsistency is a READ-path skew, not the sync schedule (2026-09-21)
+
+Measured while scoping I-1, and **not fixed -- it is its own unit**:
+
+```
+live_rows 64   mv_rows 64   price_differs 58   max_pct_gap 2.3810%
+positions watermark 19:35:04Z   (7 seconds old)
+```
+
+`vw_portfolio_home` is live off `vw_positions_current`; `mv_nexus_holdings` is a
+matview on a 10-minute refresh. **58 of 64 held names carry a different price
+between them at the same instant, worst 2.38%.** Panels descending from the
+matview (holdings table, Theme cut, bench docket, contribution) disagree with
+panels on the live view *within one page load*.
+
+The nightly chain runs 21:00-23:50 UTC, so its internal ordering is invisible to
+a daytime reader -- **collapsing or re-timing the writers cannot move this
+number.** The only intraday writers are `sync-alpaca-positions` (*/5) and
+`refresh-nexus-holdings` (*/10), and the skew is the gap between them.
+
+This file already recorded the same skew once, as "mark drift since the last
+matview refresh, at most 0.110pp", and waved it through. At 2.38% it is not
+benign. **Re-measure a drift you decided was small; it is bounded by a refresh
+interval, not by anything about the data.**
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel
