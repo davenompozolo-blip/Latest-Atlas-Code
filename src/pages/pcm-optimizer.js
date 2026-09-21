@@ -270,9 +270,32 @@ export function computeFactorScores(positions, histBySymbol) {
 // Compute: portfolio vol, HHI, diversification ratio
 // positions: [{ symbol, market_value }]
 // histBySymbol: { SYMBOL: [{ close }] }
-// equitySnapshots: [{ as_of, equity }] — for portfolio-level vol
+// bookLogReturns: number[] — settled DAILY log returns, for portfolio-level vol
 
-export function computePortfolioMetrics(positions, histBySymbol, equitySnapshots) {
+/**
+ * @param bookLogReturns  SETTLED DAILY log returns, one per session, newest-last.
+ *
+ * This used to take raw `account_snapshots` rows and difference the equity
+ * column itself. Two things were wrong with that and only one of them was the
+ * caller's.
+ *
+ * `account_snapshots` is written every FIVE MINUTES (48,440 rows over 169
+ * days), so differencing it yields five-minute returns -- which the `* 252`
+ * below then annualises as though each were a session. That under-scales by
+ * sqrt(78) and published **1.25% against a realised 26.17%**, a factor of 21,
+ * and inflated `diversificationRatio` by the same factor because portfolio vol
+ * is its denominator.
+ *
+ * And differencing a FILTERED equity series is the C1 trap: dropping a stale
+ * snapshot and then differencing what remains computes a return across the gap,
+ * which is exactly as fabricated as the row that was dropped.
+ *
+ * So the caller passes returns rather than levels, `vw_book_realised_returns`
+ * having already applied both of C1's rules (the New York session date, and
+ * both endpoints settled). Taking returns is what makes re-differencing
+ * impossible to write here.
+ */
+export function computePortfolioMetrics(positions, histBySymbol, bookLogReturns) {
     var totalMv = positions.reduce(function(s, p) { return s + (p.market_value || 0); }, 0);
     if (!totalMv) return null;
 
@@ -298,20 +321,17 @@ export function computePortfolioMetrics(positions, histBySymbol, equitySnapshots
         if (cnt > 10) { weightedVol += w * Math.sqrt(sumSq / cnt * 252); totalW += w; }
     });
 
-    // Portfolio vol from equity snapshots
+    // Portfolio vol from the settled daily book return series.
     var portVol_ = null;
-    if (equitySnapshots && equitySnapshots.length > 20) {
-        var snaps = equitySnapshots.slice().sort(function(a, b) { return new Date(a.as_of) - new Date(b.as_of); });
-        var sumSq2 = 0, cnt2 = 0;
-        for (var i = 1; i < snaps.length; i++) {
-            var prev = snaps[i - 1].equity, curr = snaps[i].equity;
-            if (prev > 0 && curr > 0) {
-                var r = Math.log(curr / prev);
-                if (isFinite(r)) { sumSq2 += r * r; cnt2++; }
-            }
-        }
-        if (cnt2 > 10) portVol_ = Math.sqrt(sumSq2 / cnt2 * 252) * 100;
+    var sumSq2 = 0, cnt2 = 0;
+    for (var bi = 0; bi < (bookLogReturns || []).length; bi++) {
+        var r = Number(bookLogReturns[bi]);
+        if (isFinite(r)) { sumSq2 += r * r; cnt2++; }
     }
+    // Same floor the old code carried: fewer than ~10 observations is not a
+    // volatility, and an under-powered figure here silently re-bases
+    // diversificationRatio, which divides by it.
+    if (cnt2 > 10) portVol_ = Math.sqrt(sumSq2 / cnt2 * 252) * 100;
 
     var wAvgVol = totalW > 0.5 ? (weightedVol / totalW) * 100 : null;
     var divRatio = portVol_ && wAvgVol && portVol_ > 0 ? wAvgVol / portVol_ : null;

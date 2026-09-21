@@ -5,6 +5,7 @@ import React from 'react';
 // ============================================================
 
 import { sb, loadView } from './config.js';
+import { fetchPaged } from '../lib/pagedRead.js';
 import {
     MOCK_PCM_IPS, MOCK_PCM_ALLOCATION, MOCK_PCM_FACTORS,
     MOCK_PCM_RISK, MOCK_PCM_DRIFT,
@@ -1217,8 +1218,28 @@ export function PortfolioConstruction() {
                 return !ac.includes('option');
             });
 
-            // Batch price history in groups of 15 to stay well under PostgREST's 1 000-row cap.
-            // Each batch: 15 symbols × ~260 trading days = ~3 900 rows — safely within limits.
+            // Batch price history in groups of 15.
+            //
+            // The comment that stood here said "~3 900 rows -- safely within
+            // limits", which is the arithmetic of the defect rather than a
+            // bound: PostgREST caps a response at 1,000 rows whatever `limit`
+            // says, so a 3,900-row request was never going to be honoured. It
+            // was ordered ASCENDING, so each batch received the OLDEST 1,000 and
+            // dropped the rest -- 10,897 of 15,897 rows, with four of five
+            // batches ending between 2025-12-24 and 2026-01-09 against a book
+            // running to 2026-09-18.
+            //
+            // The damage is not a short series, it is a STALE one. Both
+            // consumers read the LAST 90 entries of each array, so `vol_90d`
+            // became a 90-day window ending months ago, published as current --
+            // all 63 symbols, ending between 2025-12-23 and 2026-05-20. And the
+            // rows carried `{ close }` with the date discarded, so nothing
+            // downstream could notice.
+            //
+            // Paged DESC on a TOTAL ordering, with the interval pinned:
+            // `price_history` is unique on (asset_id, price_date, interval), and
+            // a legacy '1Day' yahoo import collides with '1d' on 124 SPY dates
+            // with a different close on every one.
             const equityIds = equityPositions
                 .map(function(p) { return p.asset_id; })
                 .filter(function(id) { return id != null; });
@@ -1235,23 +1256,35 @@ export function PortfolioConstruction() {
 
             const histPromise = idBatches.length
                 ? Promise.all(idBatches.map(function(batchIds) {
-                    return sb.from('price_history')
-                        .select('asset_id, price_date, close')
-                        .in('asset_id', batchIds)
-                        .gte('price_date', cutoff)
-                        .order('price_date', { ascending: true })
-                        .limit(batchIds.length * 260)
-                        .then(function(ph) { return ph.data || []; });
+                    return fetchPaged(function(from, to) {
+                        return sb.from('price_history')
+                            .select('asset_id, price_date, close')
+                            .in('asset_id', batchIds)
+                            .eq('interval', '1d')
+                            .gte('price_date', cutoff)
+                            .order('price_date', { ascending: false })
+                            .order('asset_id', { ascending: true })
+                            .range(from, to);
+                    }, 'price_history');
                 })).then(function(batches) {
                     var allRows = batches.reduce(function(acc, rows) { return acc.concat(rows); }, []);
                     const byAsset = {};
                     allRows.forEach(function(row) {
+                        var c = parseFloat(row.close);
+                        if (!isFinite(c)) return;
                         if (!byAsset[row.asset_id]) byAsset[row.asset_id] = [];
-                        byAsset[row.asset_id].push({ close: parseFloat(row.close) });
+                        byAsset[row.asset_id].push({ close: c, date: row.price_date });
                     });
                     const bySymbol = {};
                     posWithSymbol.forEach(function(p) {
-                        if (p.asset_id && byAsset[p.asset_id]) bySymbol[p.symbol] = byAsset[p.asset_id];
+                        if (!p.asset_id || !byAsset[p.asset_id]) return;
+                        // Fetched DESC so a truncation would cost the OLDEST
+                        // bars; handed back ASCENDING because both consumers
+                        // walk the tail positionally (`prices[n - i]`) and read
+                        // it as the most recent 90 sessions.
+                        bySymbol[p.symbol] = byAsset[p.asset_id].slice().sort(function(a, b) {
+                            return a.date < b.date ? -1 : a.date > b.date ? 1 : 0;
+                        });
                     });
                     return bySymbol;
                 })
@@ -1267,12 +1300,39 @@ export function PortfolioConstruction() {
                 if (fs) setFactors(fs);
                 setFactorLoading(false);
 
-                return sb.from('account_snapshots')
-                    .select('as_of, equity')
-                    .order('as_of', { ascending: true })
+                // The settled DAILY book return series, newest first.
+                //
+                // This read was `account_snapshots` ordered ASCENDING with
+                // `.limit(252)`. That table is written every FIVE MINUTES --
+                // 48,440 rows across 169 days -- so the oldest 252 spanned
+                // **2026-04-06 10:47 to 2026-04-07 07:35**: a 25-hour window
+                // handed to a function that annualises by sqrt(252) as though
+                // each observation were a session. Published **1.25% against a
+                // realised 26.17%**, and `diversificationRatio` divides by it.
+                //
+                // `vw_book_realised_returns` is one row per session with C1's
+                // two rules already applied -- the New York session date, and
+                // both endpoints settled -- so `usable` rows carry a return
+                // that is not fabricated at either end. `session_date` is
+                // unique on it (183 rows, 183 distinct), so ordering on it is
+                // total; DESC with a 252 bound takes the most recent sessions
+                // rather than the first ones the account ever had.
+                return sb.from('vw_book_realised_returns')
+                    .select('session_date, log_return, usable')
+                    .eq('usable', true)
+                    .order('session_date', { ascending: false })
                     .limit(252)
-                    .then(function(snaps) {
-                        const metrics = computePortfolioMetrics(posWithSymbol, bySymbol, snaps.data || []);
+                    .then(function(res) {
+                        if (res.error) {
+                            // Never let a transport failure render as a
+                            // statement about the book: without this series
+                            // portfolio vol is absent, not zero.
+                            console.error('[PCM] vw_book_realised_returns read failed:', res.error);
+                        }
+                        var bookLogReturns = (res.data || [])
+                            .map(function(r) { return Number(r.log_return); })
+                            .filter(function(r) { return isFinite(r); });
+                        const metrics = computePortfolioMetrics(posWithSymbol, bySymbol, bookLogReturns);
                         if (metrics) setPortfolioMetrics(metrics);
                     });
             });

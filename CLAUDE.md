@@ -2762,6 +2762,71 @@ a different query, not a reordered limit.
 oldest bars rather than the session — the benign direction — but they believe
 they hold 1,600 bars.
 
+### PCM measured a 25-hour window as a year (2026-09-21)
+
+Both defects the pager sweep flagged, fixed. Full report in
+`docs/PCM_TRUNCATION_AND_WINDOW_REPORT.md`.
+
+**The truncation's damage is a STALE window, not a short one.** `pcm.js`
+dropped 10,897 of 15,897 price rows (69%), and because both consumers read the
+**last 90 entries** of each array (`prices[n - i]`), `vol_90d` became a 90-day
+window ending between **2025-12-23 and 2026-05-20** — all 63 symbols —
+published as current. The comment above the read said "~3 900 rows — safely
+within limits", which is the arithmetic of the defect rather than a bound.
+
+**`account_snapshots` is written every five minutes**, so ASC + `limit(252)`
+took the oldest 252 rows: **2026-04-06 10:47 to 2026-04-07 07:35**, annualised
+by `* 252` as though each were a session. Published **1.25% against a realised
+26.17%**, and `diversificationRatio` divides by it.
+
+**The mechanism under-states, which is why nobody queried it.** A five-minute
+return is the daily one over sqrt(78), so annualising by sqrt(252) instead of
+sqrt(252 x 78) under-scales by **8.83**; the rest of the 21x is the 25-hour
+window being quiet. A vol that reads too LOW beside a healthy-looking
+diversification ratio is a comfortable number, not an alarming one.
+
+Now reads `vw_book_realised_returns` — one row per session, C1's two rules
+already applied, `session_date` unique (183/183) so the ordering is total.
+**`computePortfolioMetrics` takes RETURNS, not levels**, because differencing a
+*filtered* equity series is the C1 trap again: drop a stale snapshot,
+difference what remains, and the return spans the gap. Taking returns makes it
+impossible to write rather than discouraged.
+
+**The fixture was wrong and the code was right.** Its first draft shrank each
+return by 78 and asserted a ratio of 8.83, then measured 79.5 — variance adds,
+volatility does not. Corrected rather than loosened. 4 of its 7 tests fail
+against the old contract, checked by restoring it.
+
+### An unused `export const` is tree-shaken, so it cannot prove a file ships (2026-09-21)
+
+Verifying that fix turned up an anomaly that is **not resolved**, and the way
+it was chased is the part worth keeping.
+
+With the fix in place the emitted bundle is **byte-identical** to the pre-fix
+one, and `vw_book_realised_returns` does not appear in it — nor does
+`vw_risk_analysis`, which occurs 6 times in `src/`.
+
+| probe | result |
+|---|---|
+| `export const MARKER` appended to the file | absent — **the probe was invalid**: rollup shakes an unused export |
+| `console.log(MARKER)` at module level | **present**, hash changed |
+| `console.log(MARKER)` inside the loader body | **absent**, hash unchanged |
+| sourcemap `sources` | the file **is** listed, among 150 `src/` modules |
+
+The last two contradict each other, and `app.js` holds a live
+`TABS.find(...).component` reference that should be unshakeable. Either a large
+part of the page layer is missing from the production bundle — much bigger than
+the two defects above — or a probe is still misleading me.
+
+**Grep counts LINES, not occurrences**, and a minified bundle is few very long
+lines, so `grep -c` reads as a present/absent flag and silently agreed with a
+wrong hypothesis for several rounds. Use `grep -o | wc -l`.
+
+**What is proven and what is not, stated apart:** the source is correct, the
+arithmetic is tested, and every figure above is measured against the live
+database. That this code path executes in the deployed app is **not** proven.
+Its own unit; it must not ride on a fix.
+
 ### `filter` removes elements, so its indices are not slots (2026-09-21)
 
 `risk-v2.js` built `portfolioReturns` with `.filter()` and then indexed it
