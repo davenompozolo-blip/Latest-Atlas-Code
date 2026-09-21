@@ -7,6 +7,7 @@ import React from 'react';
 // ============================================================
 
 import { sb, loadView, MOCK_COMMAND } from './config.js';
+import { fetchPaged } from '../lib/pagedRead.js';
 import { fmtPct, fmt, fmtCurrency } from './utils.js';
 import { Loading, EmptyState } from './components.js';
 import { computePortfolioMetrics, computePeriodReturns } from './perf-engine.js';
@@ -240,26 +241,47 @@ export function PerformanceSuite() {
                         // that if a bound is ever hit again it loses the
                         // OLDEST bars, not the newest: a short tape is
                         // usable, a stale one is a lie.
-                        var PAGE = 1000;
+                        //
+                        // TWO further corrections, 2026-09-21.
+                        //
+                        // ORDER ON A TOTAL KEY. `price_date` alone is not one
+                        // -- thousands of rows share a date -- and
+                        // LIMIT/OFFSET over a non-total ordering has no
+                        // consistency guarantee between requests, so rows can
+                        // repeat or be skipped across a page boundary.
+                        // `price_history` is unique on
+                        // (asset_id, price_date, interval), so with the
+                        // interval pinned below, (price_date, asset_id) is
+                        // total.
+                        //
+                        // PIN THE INTERVAL. This read filtered neither
+                        // `interval` nor `source`, and the table carries two
+                        // spellings -- '1d' (381,722 rows in the last year)
+                        // and a legacy '1Day' yahoo import (124). Those 124
+                        // are all SPY, all on dates that ALSO carry a '1d'
+                        // bar, and every one of them has a DIFFERENT close
+                        // (0.315% apart on average, 0.786% at worst).
+                        // Unfiltered, SPY returns two closes for one session
+                        // and the ascending series handed downstream carries a
+                        // duplicate date with two prices -- which the
+                        // positional walk in RollingAttributionPanel reads as
+                        // two sessions. Latent here today only because
+                        // `equityIds` comes from the book and SPY is not held.
+                        //
+                        // All 1,914 assets in the table have '1d' rows and
+                        // exactly one (SPY) has any non-'1d', so this filter
+                        // drops no asset's series.
                         function fetchBatch(batchIds) {
-                            var acc = [];
-                            function page(offset) {
+                            return fetchPaged(function(from, to) {
                                 return sb.from('price_history')
                                     .select('asset_id, price_date, close')
                                     .in('asset_id', batchIds)
+                                    .eq('interval', '1d')
                                     .gte('price_date', cutoff)
                                     .order('price_date', { ascending: false })
-                                    .range(offset, offset + PAGE - 1)
-                                    .then(function(ph) {
-                                        var got = ph.data || [];
-                                        acc = acc.concat(got);
-                                        // A full page means there may be more;
-                                        // a short one is the end of the batch.
-                                        if (got.length < PAGE) return acc;
-                                        return page(offset + PAGE);
-                                    });
-                            }
-                            return page(0);
+                                    .order('asset_id', { ascending: true })
+                                    .range(from, to);
+                            }, 'price_history');
                         }
 
                         Promise.all(batches.map(fetchBatch)).then(function(results) {

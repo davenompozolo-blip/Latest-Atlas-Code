@@ -13,27 +13,31 @@
 // ============================================================
 
 import { supabase } from '../../lib/supabase.js';
+import { fetchPaged } from '../../lib/pagedRead.js';
 
-const PAGE = 1000;
-
+// ORDER ON A TOTAL KEY (2026-09-21). DESC alone was only half the rule.
+// `date` is not a total ordering -- ~1,500 symbols share every date -- and
+// LIMIT/OFFSET over a non-total ordering has no consistency guarantee
+// between requests, so rows can repeat or be skipped across a page
+// boundary. `market_prices` is keyed on (symbol, date), so adding `symbol`
+// makes the sort total and the paging deterministic.
+//
+// The loop also went through `src/lib/pagedRead.js` rather than keeping its
+// own copy, which is what caps it: it was driven entirely by the server's
+// own response, so a server that stopped honouring `range` would spin
+// forever, and a hang is the one failure that reports nothing at all.
 export async function fetchMarketPricesPaged(symbols, sinceIso, client = supabase) {
-    const out = [];
-    if (!symbols || !symbols.length) return out;
-    for (let from = 0; ; from += PAGE) {
-        const { data, error } = await client
+    if (!symbols || !symbols.length) return [];
+    return fetchPaged(function (from, to) {
+        return client
             .from('market_prices')
             .select('symbol,date,adj_close')
             .in('symbol', symbols)
             .gte('date', sinceIso)
             .order('date', { ascending: false })
-            .range(from, from + PAGE - 1);
-        if (error) throw error;
-        out.push(...(data || []));
-        // A short page ends the read. Without this the loop cannot
-        // terminate on an exact multiple of PAGE.
-        if (!data || data.length < PAGE) break;
-    }
-    return out;
+            .order('symbol', { ascending: true })
+            .range(from, to);
+    }, 'market_prices');
 }
 
 // Fetch DESC, hand back a date-keyed map. Consumers sort keys themselves;
