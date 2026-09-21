@@ -11,6 +11,7 @@
 // ============================================================
 
 import { computeRead, READ_CONFIG, ConcentrationPenalty } from './readEngine.js';
+import { weightedMove } from '../../lib/weightedMove.js';
 import {
     BASIS_SINCE_ENTRY, BASIS_ON_COST, BASIS_LABEL,
     readReturn, partitionByBasis,
@@ -67,12 +68,21 @@ export function mapHolding(row, compByTk, staleSet) {
         sector: row.sector || 'Unclassified',
         theme: row.theme || null,
         conviction: num(row.conviction_score) ?? 0,
-        todayPct: num(row.daily_return_pct) ?? 0,
+        // NULL, never 0. `vw_nexus_holdings.daily_return_pct` is now withheld
+        // by the database when the name's last bar is older than 7 days or it
+        // has no bar at all, and `?? 0` turned that absence into a claim that
+        // the name sat flat — which is a measurement, and a different one from
+        // "we cannot say". `pct1` already renders null as an em dash.
+        todayPct: num(row.daily_return_pct),
         // Contribution to book daily return (pts). The view's pnl_contribution
         // is a raw $ amount and not reliably signed, so derive it from the
         // position's weight share × today's move — sign-correct and on the
-        // same scale as Today.
-        contribPct: ((num(row.weight_pct) ?? 0) * (num(row.daily_return_pct) ?? 0)) / 100,
+        // same scale as Today. Absent whenever the move is, so the two cannot
+        // disagree about whether this name moved the book.
+        contribPct: (function () {
+            const w = num(row.weight_pct), r = num(row.daily_return_pct);
+            return (w == null || r == null) ? null : (w * r) / 100;
+        })(),
         componentVar: num(row.var_contribution_pct) ?? 0,
         // null (not 0) when there's no composite and no DCF — an unknown gap
         // renders as "—", never a misleading "fairly valued" 0.0%.
@@ -143,11 +153,18 @@ export function buildSpine(rows, staleSet, dimension = 'sector') {
         const label = raw || 'Unclassified';
         const w = num(r.weight_pct) || 0;
         if (!raw) unmappedWeight += w;
-        const ret = num(r.daily_return_pct) || 0;
+        // A withheld move is NOT a zero move. The database nulls
+        // daily_return_pct on a bar older than 7 days, and `|| 0` used to
+        // fold that into the weighted average as a name that sat flat --
+        // which drags a sector towards zero by exactly the withheld weight.
+        // The name is excluded from the numerator AND the denominator, and
+        // the share it took with it is reported.
+        const ret = num(r.daily_return_pct);
         const v = num(r.var_contribution_pct) || 0;
-        const g = m.get(label) || { label, share: 0, moveW: 0, varSum: 0, anyFresh: false, count: 0 };
+        const g = m.get(label) || { label, share: 0, moveW: 0, moveShare: 0, withheldShare: 0, varSum: 0, anyFresh: false, count: 0 };
         g.share += w;
-        g.moveW += w * ret;
+        if (ret == null) { g.withheldShare += w; }
+        else { g.moveW += w * ret; g.moveShare += w; }
         g.varSum += v;
         g.count += 1;
         if (!staleSet.has(r.symbol)) g.anyFresh = true;
@@ -159,11 +176,18 @@ export function buildSpine(rows, staleSet, dimension = 'sector') {
         .sort((a, b) => b.share - a.share)
         .map(g => {
             const share = +g.share.toFixed(1);
-            const movePct = +(g.share ? g.moveW / g.share : 0).toFixed(1);
+            // Renormalised over the MEASURED share, so a withheld name does
+            // not read as a name that sat flat. A bucket with nothing
+            // measurable carries no movePct at all -- absent from the row,
+            // not a zero, so a renderer cannot print a number it was never
+            // handed.
+            const measurable = g.moveShare > 0;
             const varShare = (g.varSum / totalVar) * 100;
             const density = share > 0 ? varShare / share : 0;
             const riskShift = density >= 1.5 ? 2 : density >= 1.1 ? 1 : density <= 0.6 ? -1 : 0;
-            const row = { label: g.label, dimension, names: g.count, sharePct: share, movePct, riskShift };
+            const row = { label: g.label, dimension, names: g.count, sharePct: share, riskShift };
+            if (measurable) row.movePct = +(g.moveW / g.moveShare).toFixed(1);
+            if (g.withheldShare > 0) row.withheldSharePct = +g.withheldShare.toFixed(1);
             if (!g.anyFresh) row.stale = true;
             // 'Unclassified' is an absence of data, not a cluster that moves
             // together, so it never earns the fragility flag.
@@ -281,28 +305,37 @@ export function buildRiskGauge(riskRows, nav, capPctOfNav = RISK_VAR_CAP_PCT_OF_
 // Σ wᵢ·rᵢ over the names that carry BOTH a weight and a fresh mark.
 //
 // A stale name is excluded and the remainder renormalised, never counted at
-// its last print. This is not hypothetical here: KMTUY sits at 2.13% of the
-// book on a bar 179 days old and `vw_nexus_holdings.daily_return_pct` still
-// publishes +9.25% for it — on its own worth +0.20pp of book move, enough to
-// flip the book's sign. `nexus_holdings` already nulls a stale `today_pct`;
-// this view never did, so the gate has to live here.
+// its last print. This was the FIRST place that rule was written down, when
+// `vw_nexus_holdings.daily_return_pct` carried no gate at all and KMTUY sat
+// at 2.13% of the book publishing +9.25% off a bar 179 days old -- on its own
+// worth +0.20pp, enough to flip the book's sign.
+//
+// The database now withholds that number at source (20260921080000), so `ret`
+// arrives null rather than stale. `staleSet` is KEPT rather than removed: it
+// carries reasons the move column itself cannot express, and a gate that
+// duplicates a stricter one is harmless while a removed gate is not.
+//
+// The arithmetic is `weightedMove`, shared with the header aggregates in
+// nexus-page.js. Two copies of a withhold-and-renormalise rule is how two
+// surfaces start disagreeing about whether the book moved.
 //
 // `measuredWeightPct` is published so the surface can say what it covered.
 export function buildPerformanceGauge(rows, macro, staleSet) {
     if (!Array.isArray(rows) || !rows.length) return null;
     const stale = staleSet || new Set();
 
-    const measured = [];
-    let withheldWeight = 0;
-    for (const r of rows) {
-        const w = num(r.weight_pct), ret = num(r.daily_return_pct);
-        if (w == null || w === 0) continue;
-        if (ret == null || stale.has(r.symbol)) { withheldWeight += Math.abs(w); continue; }
-        measured.push({ tk: r.symbol, w, ret, contrib: (w * ret) / 100 });
-    }
+    const wm = weightedMove(rows, {
+        value:   r => r.weight_pct,
+        move:    r => r.daily_return_pct,
+        exclude: r => stale.has(r.symbol),
+    });
+    const measured = wm.measured.map(m => ({
+        tk: m.row.symbol, w: m.value, ret: m.move, contrib: (m.value * m.move) / 100,
+    }));
     if (!measured.length) return null;
 
     const measuredWeight = measured.reduce((a, m) => a + Math.abs(m.w), 0);
+    const withheldWeight = wm.withheldValue;
     if (!(measuredWeight > 0)) return null;
     // Renormalise to the measured weight so a withheld name does not read as
     // a name that sat flat.

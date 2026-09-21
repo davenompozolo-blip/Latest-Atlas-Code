@@ -8,6 +8,7 @@ import React from 'react';
 import { sb } from './config.js';
 import '../styles/nexus-theme.css';
 import { useFreshnessGate } from '../lib/useFreshnessGate.js';
+import { weightedMove, withheldSharePct } from '../lib/weightedMove.js';
 import { useOrderMachine, useCircuitBreaker } from '../lib/useOrderMachine.js';
 import { NexusRiskPill } from './nexus/NexusRiskPill.js';
 
@@ -64,14 +65,31 @@ const actStyle = a => ({
 }[a] || { bg: 'var(--nx-bg3)', color: 'var(--nx-text2)', bc: 'var(--nx-border)' });
 
 // ── Portfolio aggregates ──────────────────────────────────────
+// Weighted on MARKET VALUE, via the one shared implementation -- see
+// src/lib/weightedMove.js for why a withheld move must not be read as a zero
+// one, and why there is exactly one copy of this arithmetic.
+const weightedDaily = holdings => weightedMove(holdings, {
+    value: h => h.market_value,
+    move:  h => h.daily_return_pct,
+});
+
 function calcStats(holdings) {
-    if (!holdings.length) return { total: 0, wtConv: 50, wtDaily: 0, alerts: 0, longPct: 0 };
+    if (!holdings.length) return { total: 0, wtConv: 50, wtDaily: null, wtDailyWithheldPct: 0, alerts: 0, longPct: 0 };
     const total   = holdings.reduce((s, h) => s + (+h.market_value || 0), 0);
     const wtConv  = total ? holdings.reduce((s, h) => s + (+h.conviction_score || 50) * (+h.market_value || 0), 0) / total : 50;
-    const wtDaily = total ? holdings.reduce((s, h) => s + (+h.daily_return_pct || 0) * (+h.market_value || 0), 0) / total : 0;
+    const day     = weightedDaily(holdings);
     const alerts  = holdings.filter(h => h.alert_flag).length;
     const longPct = holdings.filter(h => h.quant_signal === 'Long').reduce((s, h) => s + (+h.weight_pct || 0), 0);
-    return { total, wtConv, wtDaily, alerts, longPct };
+    return {
+        total, wtConv,
+        // Absent from the result when nothing is measurable, so `?? null`
+        // rather than a defaulted 0.
+        wtDaily: day.pct ?? null,
+        // Share of book value whose move the feed could not support, so the
+        // surface can state its denominator instead of implying full cover.
+        wtDailyWithheldPct: withheldSharePct(day, total),
+        alerts, longPct,
+    };
 }
 
 // ── Clock ────────────────────────────────────────────────────
@@ -260,10 +278,15 @@ function NexusHeader({ holdings, onSync, syncState, freshness, circuitTripped })
             .catch(function() {});
     }, []);
     const displayEquity  = acct ? acct.equity   : total;
-    const equityDelta    = acct ? acct.dayPnl    : total * wtDaily / 100;
+    // The broker's own day P&L is preferred. The holdings-derived fallback is
+    // null whenever no held name carries a publishable move -- `total * null`
+    // is 0 in JS, which would print a confident "0.00" for a book nobody
+    // could price.
+    const bookDelta      = wtDaily == null ? null : total * wtDaily / 100;
+    const equityDelta    = acct ? acct.dayPnl    : bookDelta;
     const equityDeltaPct = acct ? acct.dayPnlPct : wtDaily;
 
-    const dailyDelta = total * wtDaily / 100;
+    const dailyDelta = bookDelta;
     const addCount   = holdings.filter(h => h.recommended_action === 'Add').length;
     const trimCount  = holdings.filter(h => h.recommended_action === 'Trim' || h.recommended_action === 'Exit').length;
     const bullCount  = holdings.filter(h => h.technical_signal === 'Bull').length;
@@ -302,8 +325,11 @@ function NexusHeader({ holdings, onSync, syncState, freshness, circuitTripped })
             e('div', { className: 'nx-kc nx-bl' },
                 e('div', { className: 'nx-kc-l' }, 'Equity Value'),
                 e('div', { className: 'nx-kc-v', style: { color: 'var(--nx-blue)' } }, usd(displayEquity)),
-                e('div', { className: 'nx-kc-d ' + (equityDelta >= 0 ? 'nx-up' : 'nx-dn') },
-                    (equityDelta >= 0 ? '↑ +' : '↓ ') + usd(Math.abs(equityDelta)) + ' (' + pct(equityDeltaPct) + ')'),
+                equityDelta == null
+                    ? e('div', { className: 'nx-kc-d', style: { color: 'var(--nx-text3)' } },
+                        '— no priced move today')
+                    : e('div', { className: 'nx-kc-d ' + (equityDelta >= 0 ? 'nx-up' : 'nx-dn') },
+                        (equityDelta >= 0 ? '↑ +' : '↓ ') + usd(Math.abs(equityDelta)) + ' (' + pct(equityDeltaPct) + ')'),
                 e('div', { className: 'nx-kc-s' }, acct ? 'Alpaca account equity' : 'Portfolio module')
             ),
             e('div', { className: 'nx-kc nx-al' },
@@ -399,8 +425,14 @@ function ConvictionPanel({ holdings }) {
                         e('div', { className: 'nx-cc-nm' }, (h.asset_name || h.symbol).slice(0, 28))
                     ),
                     e('div', { style: { textAlign: 'right' } },
-                        e('div', { className: 'nx-kc-d ' + (+h.daily_return_pct >= 0 ? 'nx-up' : 'nx-dn') },
-                            pct(h.daily_return_pct)),
+                        e('div', {
+                            className: 'nx-kc-d' + (h.daily_return_pct == null ? ''
+                                : (+h.daily_return_pct >= 0 ? ' nx-up' : ' nx-dn')),
+                            // A withheld move takes no tone. An em dash
+                            // rendered green reads as a small gain, which is a
+                            // claim the feed could not support.
+                            style: h.daily_return_pct == null ? { color: 'var(--nx-text3)' } : null,
+                        }, pct(h.daily_return_pct)),
                         e('div', { style: { fontSize: 8, color: 'var(--nx-text3)' } }, usd(h.market_value))
                     )
                 ),
@@ -818,7 +850,10 @@ function NexusHoldings({ holdings, disabled }) {
         return {
             market_value:      holdings.reduce((s, h) => s + (+h.market_value || 0), 0),
             weight_pct:        holdings.reduce((s, h) => s + (+h.weight_pct || 0), 0),
-            daily_return_pct:  holdings.reduce((s, h) => s + (+h.daily_return_pct || 0) * (+h.market_value || 0), 0) / total,
+            // Same withhold-and-renormalise rule as calcStats; null when the
+            // book carries no measurable move at all, so the footer row shows
+            // an em dash rather than a fabricated 0.0%.
+            daily_return_pct:  weightedDaily(holdings).pct ?? null,
             total_return_pct:  holdings.reduce((s, h) => s + (+h.total_return_pct || 0) * (+h.market_value || 0), 0) / total,
             conviction_score:  Math.round(holdings.reduce((s, h) => s + (+h.conviction_score || 50) * (+h.market_value || 0), 0) / total),
             var_total:         holdings.reduce((s, h) => s + (+h.var_contribution_pct || 0), 0),

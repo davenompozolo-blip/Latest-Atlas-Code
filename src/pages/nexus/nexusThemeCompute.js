@@ -19,10 +19,15 @@ export function buildThemeView(holdings, spine) {
     const m = new Map();
     for (const h of holdings || []) {
         const t = h.theme || 'Unclassified';
-        const g = m.get(t) || { theme: t, count: 0, convSum: 0, contribSum: 0, varSum: 0, fvSum: 0, fvN: 0, trustedN: 0, reads: {}, names: [] };
+        const g = m.get(t) || { theme: t, count: 0, convSum: 0, contribSum: 0, contribWithheld: 0, varSum: 0, fvSum: 0, fvN: 0, trustedN: 0, reads: {}, names: [] };
         g.count += 1;
         g.convSum += Number(h.conviction) || 0;
-        g.contribSum += Number(h.contribPct) || 0;
+        // `contribPct` is null when the database withheld the name's move.
+        // `|| 0` folded that in as a name that contributed nothing, which is
+        // a measurement rather than an absence -- and it is the one the data
+        // does not support. Counted apart so the theme can state its cover.
+        if (h.contribPct == null) g.contribWithheld += 1;
+        else g.contribSum += Number(h.contribPct);
         g.varSum += Number(h.componentVar) || 0;
         if (h.fvGapPct != null && isFinite(Number(h.fvGapPct))) { g.fvSum += Number(h.fvGapPct); g.fvN += 1; }
         if (h.valuationTrusted) g.trustedN += 1;
@@ -46,7 +51,11 @@ export function buildThemeView(holdings, spine) {
             theme: g.theme,
             sharePct: sp.sharePct != null ? sp.sharePct : null,
             movePct: sp.movePct != null ? sp.movePct : null,
-            contribPct: +g.contribSum.toFixed(2),
+            // Absent, not zero, when NO member could be measured -- a theme
+            // whose every name has a dark feed did not contribute 0.00pp to
+            // the book, it contributed an unknown amount.
+            contribPct: g.contribWithheld === g.count ? null : +g.contribSum.toFixed(2),
+            contribWithheldCount: g.contribWithheld,
             varSharePct: +g.varSum.toFixed(1),
             count: g.count,
             avgConviction: avgConv,
@@ -162,7 +171,11 @@ export function themeDispersion(holdings, perSide = 2) {
     for (const h of holdings || []) {
         const t = h.theme || 'Unclassified';
         if (!m.has(t)) m.set(t, []);
-        m.get(t).push({ tk: h.tk, pct: +(Number(h.todayPct) || 0).toFixed(1) });
+        // A name whose move was withheld has nothing to rank on. Entering it
+        // at 0.0 put it in the middle of the spread and let it define the
+        // boundary between winners and losers on a quiet day.
+        if (h.todayPct == null) continue;
+        m.get(t).push({ tk: h.tk, pct: +Number(h.todayPct).toFixed(1) });
     }
     const out = {};
     for (const [t, names] of m) {
