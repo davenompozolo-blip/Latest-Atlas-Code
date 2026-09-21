@@ -12,6 +12,11 @@ var useMemo   = React.useMemo;
 var h         = React.createElement;
 
 import { T, card, cardTitle, th, td } from './risk-tokens.js';
+import { fetchPaged } from '../lib/pagedRead.js';
+import {
+    buildReturnSeries, measuredCount, measuredValues,
+    corrPairwise, partitionBySufficiency, MIN_OBS,
+} from '../lib/riskReturnSeries.js';
 import { ModelValidationTab } from './risk-model-validation.js';
 
 
@@ -151,45 +156,65 @@ function drawdownEvents(navData) {
 }
 
 function worstDayIndices(portfolioReturns, pct) {
-    var n = Math.max(1, Math.floor(portfolioReturns.length * pct));
-    var indexed = portfolioReturns.map(function(r, i) { return { r: r, i: i }; });
+    // Indices are GRID SLOTS, so an unmeasured slot is skipped rather than
+    // sorted in — a null would sort to the front and be named a worst day.
+    var indexed = [];
+    portfolioReturns.forEach(function(r, i) {
+        if (r != null && isFinite(r)) indexed.push({ r: r, i: i });
+    });
+    var n = Math.max(1, Math.floor(indexed.length * pct));
     indexed.sort(function(a, b) { return a.r - b.r; });
     var worst = {};
     for (var k = 0; k < n; k++) worst[indexed[k].i] = true;
     return worst;
 }
 
-function pearsonCorrSubset(a, b, indices) {
-    var sub_a = [], sub_b = [];
-    var keys = Object.keys(indices);
-    for (var k = 0; k < keys.length; k++) {
-        var i = parseInt(keys[k]);
-        if (i < a.length && i < b.length) { sub_a.push(a[i]); sub_b.push(b[i]); }
-    }
-    return pearsonCorr(sub_a, sub_b);
-}
-
 function computeConditionalCorr(returnsBySymbol, equitySyms, portfolioReturns) {
     var worstIdx = worstDayIndices(portfolioReturns, 0.10);
     var fullCorrs = [], stressCorrs = [];
+    var pairs = 0, unmeasurable = 0;
     for (var i = 0; i < equitySyms.length; i++) {
         for (var j = i + 1; j < equitySyms.length; j++) {
             var a = returnsBySymbol[equitySyms[i]] || [];
             var b = returnsBySymbol[equitySyms[j]] || [];
-            if (a.length > 5 && b.length > 5) {
-                fullCorrs.push(pearsonCorr(a, b));
-                stressCorrs.push(pearsonCorrSubset(a, b, worstIdx));
-            }
+            pairs++;
+            // The old guard was `a.length > 5 && b.length > 5`, which the
+            // zero-fill satisfied for every pair in the book. Count shared
+            // OBSERVATIONS instead, and let the pair drop out when there
+            // are too few rather than contributing a fabricated number.
+            var full = corrPairwise(a, b, MIN_OBS);
+            if (full == null) { unmeasurable++; continue; }
+            var stress = corrPairwise(a, b, MIN_OBS, worstIdx);
+            fullCorrs.push(full);
+            // A pair measurable over the whole window may still have too
+            // few of the worst days in common. It keeps its full-period
+            // reading and is absent from the stress average, rather than
+            // entering it at zero.
+            if (stress != null) stressCorrs.push(stress);
         }
     }
-    if (!fullCorrs.length) return null;
+    if (!fullCorrs.length || !stressCorrs.length) return null;
     var fp = mean(fullCorrs), sp = mean(stressCorrs);
-    return { fullPeriod: fp, stressDays: sp, surge: fp !== 0 ? (sp - fp) / Math.abs(fp) * 100 : 0, n: Math.max(1, Math.floor(portfolioReturns.length * 0.10)) };
+    return {
+        fullPeriod: fp,
+        stressDays: sp,
+        surge: fp !== 0 ? (sp - fp) / Math.abs(fp) * 100 : 0,
+        n: Math.max(1, Math.floor(measuredCount(portfolioReturns) * 0.10)),
+        pairsMeasured: fullCorrs.length,
+        pairsStress: stressCorrs.length,
+        pairsUnmeasurable: unmeasurable,
+        pairsTotal: pairs,
+    };
 }
 
 function rollingAvgCorr(returnsBySymbol, equitySyms, windowSize) {
-    var firstSym = equitySyms[0];
-    var n = firstSym ? (returnsBySymbol[firstSym] || []).length : 0;
+    // Every vector spans the same grid, so the series length is the grid's,
+    // not the first symbol's — which under the zero-fill happened to agree
+    // and under a gapped series would not.
+    var n = 0;
+    for (var s0 = 0; s0 < equitySyms.length; s0++) {
+        n = Math.max(n, (returnsBySymbol[equitySyms[s0]] || []).length);
+    }
     var result = new Array(n).fill(null);
     for (var d = windowSize - 1; d < n; d++) {
         var corrs = [];
@@ -197,34 +222,66 @@ function rollingAvgCorr(returnsBySymbol, equitySyms, windowSize) {
             for (var j = i + 1; j < equitySyms.length; j++) {
                 var a = (returnsBySymbol[equitySyms[i]] || []).slice(d - windowSize + 1, d + 1);
                 var b = (returnsBySymbol[equitySyms[j]] || []).slice(d - windowSize + 1, d + 1);
-                if (a.length >= 5) corrs.push(pearsonCorr(a, b));
+                var c = corrPairwise(a, b, MIN_OBS);
+                if (c != null) corrs.push(c);
             }
         }
+        // A window in which too few pairs can be measured has no average.
+        // Null renders as a gap in the line; zero would render as a claim
+        // that the book briefly decorrelated.
         result[d] = corrs.length ? mean(corrs) : null;
     }
     return result;
 }
 
-function computeComponentVaR(equitySyms, returnsBySymbol, portfolioReturns, riskView, nav) {
+function computeComponentVaR(equitySyms, returnsBySymbol, portfolioReturns, riskView, nav, portfolioReturnsAligned) {
     var mvMap = {};
     riskView.forEach(function(r) { mvMap[r.symbol] = parseFloat(r.market_value) || 0; });
+
+    // State the denominator. A name without enough observed returns is
+    // WITHHELD and its weight published — never ranked off a series that
+    // is mostly fabricated, and never silently dropped either, which would
+    // renormalise the book back to a reassuring 100%.
+    var part = partitionBySufficiency(equitySyms, returnsBySymbol, function(sym) {
+        return mvMap[sym] || 0;
+    }, MIN_OBS);
+
     var results = [];
-    equitySyms.forEach(function(sym) {
-        var posRets = returnsBySymbol[sym] || [];
+    part.measured.forEach(function(sym) {
         var mv = mvMap[sym] || 0;
-        if (posRets.length < 5 || mv === 0) return;
-        var len = Math.min(posRets.length, portfolioReturns.length);
-        var posAligned  = posRets.slice(posRets.length - len);
-        var portAligned = portfolioReturns.slice(portfolioReturns.length - len);
-        var standaloneVaR    = histVaR(posAligned, mv, 0.95);
-        var corrWithPortfolio = pearsonCorr(posAligned, portAligned);
-        var componentVaR     = corrWithPortfolio * standaloneVaR;
-        results.push({ symbol: sym, mv: mv, standaloneVaR: standaloneVaR, corrWithPortfolio: corrWithPortfolio, componentVaR: componentVaR });
+        if (mv === 0) return;
+        var posRets = returnsBySymbol[sym] || [];
+        // Standalone VaR is a quantile of the name's OWN observed returns,
+        // so gaps are dropped rather than sorted in as zeros: a zero sits
+        // near the middle of a return distribution and pulls the 5th
+        // percentile in, understating the loss.
+        var posObs = measuredValues(posRets);
+        var standaloneVaR = histVaR(posObs, mv, 0.95);
+        // Both series are indexed by grid slot, so they correlate directly.
+        // The old tail-slice was only correct because the two happened to
+        // be the same length.
+        var corrWithPortfolio = corrPairwise(posRets, portfolioReturnsAligned, MIN_OBS);
+        if (corrWithPortfolio == null) {
+            part.withheld.push({ symbol: sym, measured: measuredCount(posRets) });
+            return;
+        }
+        var componentVaR = corrWithPortfolio * standaloneVaR;
+        results.push({
+            symbol: sym, mv: mv, standaloneVaR: standaloneVaR,
+            corrWithPortfolio: corrWithPortfolio, componentVaR: componentVaR,
+            obs: measuredCount(posRets),
+        });
     });
     var portVaR = histVaR(portfolioReturns, nav, 0.95);
     results.forEach(function(r) { r.riskContributionPct = portVaR > 0 ? (r.componentVaR / portVaR) * 100 : 0; });
     results.sort(function(a, b) { return b.componentVaR - a.componentVaR; });
-    return { positions: results, portVaR: portVaR };
+    return {
+        positions: results,
+        portVaR: portVaR,
+        withheld: part.withheld,
+        measuredWeightPct: part.measuredWeightPct,
+        withheldWeightPct: part.withheldWeightPct,
+    };
 }
 
 function effectiveN(componentVarPositions, portVaR) {
@@ -239,11 +296,23 @@ function loadRiskData(onDone, onErr) {
     if (!sb) { onErr('No Supabase connection'); return; }
 
     Promise.all([
-        sb.from('vw_portfolio_nav_daily').select('price_date,nav,daily_return').order('price_date'),
+        // 185 rows today, so under the 1,000-row cap — but it gains one a
+        // session and was ordered ASCENDING, so the day it crosses it would
+        // start silently serving the OLDEST 1,000 and drop the current
+        // session. Paged DESC now, and sorted back to ascending below
+        // because every consumer of navData walks it positionally.
+        fetchPaged(function(from, to) {
+            return sb.from('vw_portfolio_nav_daily')
+                .select('price_date,nav,daily_return')
+                .order('price_date', { ascending: false })
+                .range(from, to);
+        }, 'vw_portfolio_nav_daily'),
         sb.from('vw_risk_analysis').select('*'),
         sb.from('vw_performance_suite').select('symbol,sector,total_return_pct,annualised_return'),
     ]).then(function(results) {
-        var navData  = (results[0].data || []);
+        var navData  = (results[0] || []).slice().sort(function(a, b) {
+            return a.price_date < b.price_date ? -1 : a.price_date > b.price_date ? 1 : 0;
+        });
         var riskView = (results[1].data || []);
         var perfView = (results[2].data || []);
 
@@ -260,43 +329,84 @@ function loadRiskData(onDone, onErr) {
             chunks.push(equitySyms.slice(i, i + CHUNK));
         }
 
+        // PostgREST caps a response at 1,000 rows whatever `limit` says.
+        // A 20-symbol chunk holds ~2,700 rows, so `.limit(chunk.length * 120)`
+        // was a request the server was never going to honour: it returned
+        // the oldest 1,000 of an ASCENDING sort and dropped the rest. Three
+        // of the four chunks stopped in May/June against a book running to
+        // September, and the seven or eight symbols beyond each cut received
+        // NOTHING — 22 of 62 names with no series at all, which the zero-fill
+        // below then turned into 184 flat sessions apiece.
+        //
+        // Page DESC on a TOTAL ordering. DESC decides what a truncation
+        // costs; the `symbol` tiebreaker makes the sort total, without which
+        // LIMIT/OFFSET over a column hundreds of rows share can repeat or
+        // skip rows across page boundaries.
         Promise.all(chunks.map(function(chunk) {
-            return sb.from('vw_position_nav_daily')
-                .select('symbol,price_date,close_price')
-                .in('symbol', chunk)
-                .order('price_date')
-                .limit(chunk.length * 120);
+            return fetchPaged(function(from, to) {
+                return sb.from('vw_position_nav_daily')
+                    .select('symbol,price_date,close_price')
+                    .in('symbol', chunk)
+                    .order('price_date', { ascending: false })
+                    .order('symbol', { ascending: true })
+                    .range(from, to);
+            }, 'vw_position_nav_daily');
         })).then(function(chunkResults) {
-            var bySymbol = {};
-            chunkResults.forEach(function(res) {
-                (res.data || []).forEach(function(row) {
-                    if (!bySymbol[row.symbol]) bySymbol[row.symbol] = [];
-                    bySymbol[row.symbol].push({ date: row.price_date, close: parseFloat(row.close_price) });
+            var closeBySymbol = {};
+            chunkResults.forEach(function(rows) {
+                rows.forEach(function(row) {
+                    var c = parseFloat(row.close_price);
+                    if (!isFinite(c)) return;
+                    if (!closeBySymbol[row.symbol]) closeBySymbol[row.symbol] = {};
+                    closeBySymbol[row.symbol][row.price_date] = c;
                 });
             });
 
-            // Build per-symbol daily return series (aligned to shared dates)
+            // Build per-symbol daily return series aligned to a shared grid.
+            //
+            // A date with no bar yields NULL, never a 0.00% return.
+            // `vw_position_nav_daily` carries a row only for a date the
+            // position was held, so a name bought mid-window used to be
+            // zero-filled back to the start of the grid: 5,889 fabricated
+            // returns across 63 names on the 2026-09-18 book, MA carrying
+            // 183 of them against 2 real bars. A vector of zeros has zero
+            // variance, so the name read as riskless, and zero covariance,
+            // so it read as a perfect diversifier — the two most flattering
+            // answers available, neither of them measured.
             var allDates = {};
             navData.forEach(function(r) { allDates[r.price_date] = true; });
             var dates = Object.keys(allDates).sort();
 
-            var returnsBySymbol = {};
-            equitySyms.forEach(function(sym) {
-                var hist = bySymbol[sym] || [];
-                var priceMap = {};
-                hist.forEach(function(d) { priceMap[d.date] = d.close; });
-                var rets = [];
-                for (var i = 1; i < dates.length; i++) {
-                    var p0 = priceMap[dates[i - 1]], p1 = priceMap[dates[i]];
-                    rets.push(p0 && p1 && p0 > 0 ? (p1 - p0) / p0 : 0);
-                }
-                returnsBySymbol[sym] = rets;
-            });
+            var built = buildReturnSeries(dates, closeBySymbol, equitySyms);
+            var returnsBySymbol = built.series;
+            var coverage = built.coverage;
 
-            // Portfolio daily returns from vw_portfolio_nav_daily
+            // Portfolio daily returns from vw_portfolio_nav_daily.
+            //
+            // Dense, for the drawdown / rolling-vol panels that walk it as a
+            // contiguous series.
             var portfolioReturns = navData
                 .map(function(r) { return r.daily_return != null ? Number(r.daily_return) : 0; })
                 .filter(function(r) { return isFinite(r) && Math.abs(r) < 0.5; });
+
+            // Slot-aligned, for anything indexed against the per-symbol
+            // series. `filter` REMOVES elements, so the dense array's
+            // indices are not grid slots — the two happen to line up today
+            // only because exactly one row is dropped (the first, whose
+            // daily_return is null) and dropping the head shifts nothing.
+            // Any future gap mid-series would silently offset every
+            // correlation by a day. Build the grid-aligned copy explicitly:
+            // slot i is the return INTO dates[i + 1], or null.
+            var navByDate = {};
+            navData.forEach(function(r) { navByDate[r.price_date] = r; });
+            var portfolioReturnsAligned = [];
+            for (var di = 1; di < dates.length; di++) {
+                var nr = navByDate[dates[di]];
+                var rv = nr && nr.daily_return != null ? Number(nr.daily_return) : null;
+                portfolioReturnsAligned.push(
+                    rv != null && isFinite(rv) && Math.abs(rv) < 0.5 ? rv : null
+                );
+            }
 
             var portfolioDates = navData.map(function(r) { return r.price_date; });
             var nav = navData.length ? Number(navData[navData.length - 1].nav) : 101152;
@@ -305,10 +415,12 @@ function loadRiskData(onDone, onErr) {
                 navData:          navData,
                 nav:              nav,
                 portfolioReturns: portfolioReturns,
+                portfolioReturnsAligned: portfolioReturnsAligned,
                 portfolioDates:   portfolioDates,
                 riskView:         riskView,
                 perfView:         perfView,
                 returnsBySymbol:  returnsBySymbol,
+                coverage:         coverage,
                 equitySyms:       equitySyms,
                 dates:            dates,
             });
@@ -898,6 +1010,7 @@ export function CorrelationTab(props) {
     var d = props.data;
     if (!d) return h(Loading, { text: 'Computing correlation matrix…' });
 
+    var portfolioReturnsAligned = d.portfolioReturnsAligned || [];
     var equitySyms      = d.equitySyms || [];
     var returnsBySymbol = d.returnsBySymbol || {};
     var riskView        = d.riskView || [];
@@ -922,7 +1035,13 @@ export function CorrelationTab(props) {
             var row = [];
             for (var j = 0; j < n; j++) {
                 if (i === j) { row.push(1); continue; }
-                row.push(pearsonCorr(returnsBySymbol[matrixSyms[i]] || [], returnsBySymbol[matrixSyms[j]] || []));
+                // null, not 0 — an unmeasurable pair must not be painted
+                // the colour of "uncorrelated" on a diversification heatmap.
+                row.push(corrPairwise(
+                    returnsBySymbol[matrixSyms[i]] || [],
+                    returnsBySymbol[matrixSyms[j]] || [],
+                    MIN_OBS
+                ));
             }
             matrix.push(row);
         }
@@ -934,11 +1053,18 @@ export function CorrelationTab(props) {
         var n = matrixSyms.length;
         if (n < 2) return null;
         var offDiag = [];
+        var unmeasurablePairs = 0;
         for (var i = 0; i < n; i++) {
             for (var j = i + 1; j < n; j++) {
-                offDiag.push({ i: i, j: j, v: corrMatrix[i][j] });
+                var v0 = corrMatrix[i][j];
+                // An unmeasurable pair is excluded from the average rather
+                // than entering it as a zero, which would drag the book's
+                // reported diversification upward for free.
+                if (v0 == null) { unmeasurablePairs++; continue; }
+                offDiag.push({ i: i, j: j, v: v0 });
             }
         }
+        if (!offDiag.length) return null;
         var vals = offDiag.map(function(x) { return x.v; });
         var avgCorr = mean(vals);
         var divScore = 1 - avgCorr;
@@ -961,7 +1087,9 @@ export function CorrelationTab(props) {
                 // check corr with all current group members
                 var ok = true;
                 for (var kk = 0; kk < group.length; kk++) {
-                    if (corrMatrix[group[kk]][jj] < 0.75) { ok = false; break; }
+                    var cv = corrMatrix[group[kk]][jj];
+                    // An unmeasured pair cannot vouch for cluster membership.
+                    if (cv == null || cv < 0.75) { ok = false; break; }
                 }
                 if (ok) group.push(jj);
             }
@@ -970,7 +1098,8 @@ export function CorrelationTab(props) {
                 var pairVals = [];
                 for (var gi = 0; gi < group.length; gi++) {
                     for (var gj = gi + 1; gj < group.length; gj++) {
-                        pairVals.push(corrMatrix[group[gi]][group[gj]]);
+                        var pv = corrMatrix[group[gi]][group[gj]];
+                        if (pv != null) pairVals.push(pv);
                     }
                 }
                 clusters.push({
@@ -986,9 +1115,9 @@ export function CorrelationTab(props) {
 
     // ── Conditional correlation ────────────────────────────────────────────────
     var condCorr = useMemo(function() {
-        if (!equitySyms.length || !portfolioReturns.length) return null;
-        return computeConditionalCorr(returnsBySymbol, equitySyms, portfolioReturns);
-    }, [returnsBySymbol, equitySyms, portfolioReturns]);
+        if (!equitySyms.length || !portfolioReturnsAligned.length) return null;
+        return computeConditionalCorr(returnsBySymbol, equitySyms, portfolioReturnsAligned);
+    }, [returnsBySymbol, equitySyms, portfolioReturnsAligned]);
 
     // ── Rolling 20D avg correlation ───────────────────────────────────────────
     var rollingAvgCorrData = useMemo(function() {
@@ -1094,8 +1223,12 @@ export function CorrelationTab(props) {
                     h('div', { style: { fontSize: 8, color: T.t2, fontFamily: T.mono, marginTop: 4 } }, 'all trading days')
                 ),
                 h('div', { style: { padding: '0 16px', textAlign: 'center' } },
-                    h('div', { style: { fontSize: 18, color: T.red } }, '→'),
-                    h('div', { style: { fontSize: 9, fontWeight: 700, fontFamily: T.mono, color: T.red, marginTop: 2 } }, '+' + condCorr.surge.toFixed(0) + '%')
+                    // The sign is read off the number, not assumed. A book
+                    // whose correlations FALL under stress is the good case
+                    // and must not be printed as '+-12%' in alarm red.
+                    h('div', { style: { fontSize: 18, color: condCorr.surge >= 0 ? T.red : T.green } }, '→'),
+                    h('div', { style: { fontSize: 9, fontWeight: 700, fontFamily: T.mono, color: condCorr.surge >= 0 ? T.red : T.green, marginTop: 2 } },
+                        (condCorr.surge >= 0 ? '+' : '−') + Math.abs(condCorr.surge).toFixed(0) + '%')
                 ),
                 h('div', { style: { flex: 1, textAlign: 'center', padding: '14px 10px', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: 8 } },
                     h('div', { style: { fontSize: 8.5, letterSpacing: 1.2, textTransform: 'uppercase', color: T.t3, fontFamily: T.mono, marginBottom: 6 } }, 'Stress Days Avg Correlation'),
@@ -1104,7 +1237,18 @@ export function CorrelationTab(props) {
                 )
             ),
             h('div', { style: { padding: '10px 14px', background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 6, fontSize: 10, color: T.t2, fontFamily: T.mono, lineHeight: 1.6 } },
-                'Correlation rises from ' + condCorr.fullPeriod.toFixed(2) + ' to ' + condCorr.stressDays.toFixed(2) + ' on the portfolio\'s worst ' + condCorr.n + ' days — a ' + condCorr.surge.toFixed(0) + '% surge. The diversification benefit shown in the Decomposition tab assumes the full-period figure. On stress days it is materially smaller.'
+                (condCorr.surge >= 0
+                    ? 'Correlation rises from ' + condCorr.fullPeriod.toFixed(2) + ' to ' + condCorr.stressDays.toFixed(2)
+                      + ' on the portfolio\'s worst ' + condCorr.n + ' days — a ' + condCorr.surge.toFixed(0)
+                      + '% surge. The diversification benefit shown in the Decomposition tab assumes the '
+                      + 'full-period figure. On stress days it is materially smaller.'
+                    : 'Correlation falls from ' + condCorr.fullPeriod.toFixed(2) + ' to ' + condCorr.stressDays.toFixed(2)
+                      + ' on the portfolio\'s worst ' + condCorr.n + ' days — ' + Math.abs(condCorr.surge).toFixed(0)
+                      + '% lower. The book held together on its worst days rather than converging.')
+                + ' Measured on ' + condCorr.pairsMeasured + ' of ' + condCorr.pairsTotal + ' pairs'
+                + (condCorr.pairsUnmeasurable > 0
+                    ? ' (' + condCorr.pairsUnmeasurable + ' had too few shared sessions to measure)' : '')
+                + '; the stress reading on ' + condCorr.pairsStress + '.'
             )
         ),
 
@@ -1239,24 +1383,26 @@ export function CorrelationTab(props) {
                                 symLabel(symA)
                             ),
                             matrixSyms.map(function(symB, j) {
-                                var v = corrMatrix[i] ? corrMatrix[i][j] : 0;
+                                var v = corrMatrix[i] ? corrMatrix[i][j] : null;
                                 var isDiag = i === j;
+                                // Absent, not zero: no fill, no number.
+                                var unmeasured = !isDiag && v == null;
                                 return h('td', {
                                     key: symB,
                                     style: {
-                                        background:   cellBg(v, isDiag),
+                                        background:   unmeasured ? 'transparent' : cellBg(v, isDiag),
                                         textAlign:    'center',
                                         padding:      '3px 1px',
                                         fontSize:     7.5,
                                         fontFamily:   T.mono,
-                                        color:        isDiag ? T.teal : v > 0.55 ? T.t1 : T.t2,
-                                        fontWeight:   v > 0.70 || isDiag ? 700 : 400,
+                                        color:        isDiag ? T.teal : unmeasured ? T.t3 : v > 0.55 ? T.t1 : T.t2,
+                                        fontWeight:   (!unmeasured && v > 0.70) || isDiag ? 700 : 400,
                                         borderBottom: '1px solid rgba(255,255,255,0.03)',
                                         minWidth:     30,
                                         border:       '1px solid rgba(255,255,255,0.03)',
                                         borderRadius: 2,
                                     }
-                                }, isDiag ? '—' : v.toFixed(2));
+                                }, isDiag ? '—' : unmeasured ? '·' : v.toFixed(2));
                             })
                         );
                     })
@@ -1275,6 +1421,7 @@ export function DecompositionTab(props) {
     var d = props.data;
     if (!d) return h(Loading, { text: 'Computing risk decomposition…' });
 
+    var portfolioReturnsAligned = d.portfolioReturnsAligned || [];
     var riskView         = d.riskView || [];
     var portfolioReturns = d.portfolioReturns || [];
     var nav              = d.nav;
@@ -1284,8 +1431,8 @@ export function DecompositionTab(props) {
     // ── Component VaR ─────────────────────────────────────────────────────────
     var componentVarResult = useMemo(function() {
         if (!equitySyms.length || !portfolioReturns.length) return null;
-        return computeComponentVaR(equitySyms, returnsBySymbol, portfolioReturns, riskView, nav);
-    }, [equitySyms, returnsBySymbol, portfolioReturns, riskView, nav]);
+        return computeComponentVaR(equitySyms, returnsBySymbol, portfolioReturns, riskView, nav, portfolioReturnsAligned);
+    }, [equitySyms, returnsBySymbol, portfolioReturns, portfolioReturnsAligned, riskView, nav]);
 
     var effN = useMemo(function() {
         if (!componentVarResult) return 0;
@@ -1509,6 +1656,28 @@ export function DecompositionTab(props) {
                     h('div', { style: { fontSize: 11, fontWeight: 600, color: T.t1, marginBottom: 3 } }, 'Component VaR — Signed Risk Contributions'),
                     h('div', { style: { fontSize: 8.5, color: T.t2, fontFamily: T.mono, marginBottom: 8 } },
                         'Green bars = risk reducers (negative component VaR). Sum ≈ Portfolio VaR.'
+                    ),
+                    // State the denominator. A name without enough observed
+                    // returns is withheld rather than ranked off a series
+                    // that is mostly gaps — and saying so is the difference
+                    // between a measured book and a quietly smaller one.
+                    componentVarResult.withheld && componentVarResult.withheld.length > 0 && h('div', {
+                        style: {
+                            fontSize: 8.5, color: T.amber, fontFamily: T.mono, marginBottom: 8,
+                            borderLeft: '2px solid ' + T.amber, paddingLeft: 6,
+                        }
+                    },
+                        'Measured on ' + componentVarResult.measuredWeightPct.toFixed(1) + '% of book. '
+                        + componentVarResult.withheld.length + ' '
+                        + (componentVarResult.withheld.length === 1 ? 'name' : 'names')
+                        + ' withheld (' + componentVarResult.withheldWeightPct.toFixed(1)
+                        + '% of book) for fewer than ' + MIN_OBS + ' observed daily returns: '
+                        + componentVarResult.withheld.slice(0, 6).map(function(w) {
+                            return w.symbol + ' (' + w.measured + ')';
+                        }).join(', ')
+                        + (componentVarResult.withheld.length > 6
+                            ? ' +' + (componentVarResult.withheld.length - 6) + ' more' : '')
+                        + '.'
                     ),
                     h(ChartCanvas, { canvasRef: compVarCanvasRef, height: 240 }),
                     // Validation line

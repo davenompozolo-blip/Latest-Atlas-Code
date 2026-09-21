@@ -2564,6 +2564,125 @@ impossible by construction. `segmentRiskBasis.test.mjs` carries a negative and
 an unmeasured segment in every fixture; 7 of its 10 fail on the pre-fix code,
 checked by reverting.
 
+### The Risk page fabricated 60% of its correlation matrix (2026-09-21)
+
+Two defects in `risk-v2.js`, and the second is why the first survived. Full
+report in `docs/RISK_V2_TRUNCATION_AND_ZEROFILL_REPORT.md`.
+
+**The 1,000-row cap, sixth layer.** `loadRiskData` batched
+`vw_position_nav_daily` 20 symbols at a time, `.order('price_date')`
+ASCENDING, `.limit(chunk.length * 120)` = 2,400. A 20-symbol chunk holds
+~2,700 rows, so three of the four chunks received the oldest 1,000 and
+stopped at **2026-05-08 / 06-03 / 05-29** against a book running to 09-18 —
+and the seven or eight symbols past each cut got **nothing at all**, 22 of 62
+names, because an ascending sort spends the budget on old dates before it
+reaches them. After `nexus-bench`, `nexus-theme`, `performance-suite`, the
+pair explorer and the Trade risk layer. **`limit` is a request; so is no
+limit.**
+
+**The zero-fill is the reason nobody noticed.**
+`rets.push(p0 && p1 && p0 > 0 ? (p1 - p0) / p0 : 0)` — a date with no bar
+became a REAL 0.00% return, so a name that received zero rows produced 184
+flat sessions rather than an error, a gap or an empty panel.
+
+And it was never only a truncation artefact. `vw_position_nav_daily` carries
+a row only for a date the position was HELD, so every name bought mid-window
+is zero-filled back to the start: **0 of 63 equities had full coverage and
+5,889 returns were fabricated** — TTWO 185 of 185, MA 183 against 2 real
+bars, APH 181, INTU 178. **A vector of zeros has zero variance, so the name
+reads as riskless, and zero covariance, so it reads as a perfect
+diversifier** — the two most flattering answers available, neither of them
+measured.
+
+**Every guard tested ARRAY LENGTH** (`a.length > 5`, `posRets.length < 5`),
+which the zero-fill satisfies by construction. The fabrication made itself
+invisible to the checks written to catch it. **Count measured observations,
+never slots.**
+
+Replayed in SQL over all 1,953 equity pairs, with the exact truncation and
+the zero-fill, against the same computation on complete data:
+
+| | on screen | corrected |
+|---|---:|---:|
+| average pairwise correlation | 0.0728 | **0.1913** |
+| Diversification Score | **93 / 100** | **81 / 100** |
+| cells published as a fabricated `0.00` | **1,173 of 1,953** | — |
+| pairs with the **wrong sign** | **132** | — |
+| pairs off by more than 0.25 | 94 | — |
+
+**The two defects partially cancel in the average and not in the cells.**
+Zero-fill alone takes 0.1913 to 0.1219; adding the truncation takes it back
+to 0.1823 on the pairs still computable, while sign inversions go 35 → 132.
+An aggregate that looks nearly right over constituents that are individually
+wrong is this file's recurring shape — `nav_reconciliation` passing while
+four positions were broken, and a rank error becoming a sign error once
+members were summed.
+
+`src/lib/riskReturnSeries.js` yields **null, never 0**, for an absent bar;
+`corrPairwise` returns **null, never 0**, when a pair cannot be measured
+(the old helper's `denom > 0 ? … : 0` published "uncorrelated" for a
+constant series); and `partitionBySufficiency` withholds a name below the
+floor and names its weight. An unmeasurable heatmap cell renders `·` with no
+fill and is excluded from the average rather than dragging the book's
+reported diversification upward for free.
+
+**A fixture that supplies a move for every slot cannot detect this.** The
+20 tests carry the live shapes — a name bought two days ago, a name with no
+bars — and a pair measuring **-0.9999** whose zero-filled estimate is
+**+0.1827**: same data, opposite signs. Reverting the module to the shipped
+behaviour fails **11 of the 20**, checked by reverting rather than assumed.
+
+### Order DESC is half the rule; the other half is order on a TOTAL key (2026-09-21)
+
+`src/lib/pagedRead.js` is the one paged PostgREST read. DESC decides what a
+truncation costs — lose the oldest bars, never the current session — and
+this file already said so. What it did not say is that **`LIMIT`/`OFFSET`
+over a non-total ordering has no consistency guarantee between requests**,
+so a time series ordered by date alone, where hundreds of rows share a date,
+can repeat or skip rows across a page boundary. H-2 recorded this as "paging
+without an ORDER BY is unstable"; an ordering that is not total is the same
+defect wearing a clause.
+
+Three existing pagers order on a non-total key and are latently unstable:
+`performance-suite.js` (`price_date`), `nexusMarketPrices.js` (`date`) and
+`risk-model-validation.js` (`as_of`, ~24 rows apiece). `tradeData.js` and
+`clusterIdentity.js` are total and fine. **Flagged, not migrated** — that is
+a refactor of five working readers, not part of a fix.
+
+`label` is a REQUIRED argument so the `MAX_PAGES` cap can name the relation
+it truncated, and the cap exists because the loop is driven by the server's
+own response: **a hang is the one failure that reports nothing at all.**
+
+### `filter` removes elements, so its indices are not slots (2026-09-21)
+
+`risk-v2.js` built `portfolioReturns` with `.filter()` and then indexed it
+against the per-symbol series, which is keyed by date-grid slot. It is exact
+today **only by accident**: exactly one row is dropped — the first, whose
+`daily_return` is null — and dropping the head shifts nothing. Any future
+gap mid-series would have offset every correlation by one day, silently.
+`portfolioReturnsAligned` is built explicitly on the grid; the dense array
+stays for the drawdown and rolling-vol panels that walk it contiguously.
+**A dormant defect costs nothing to fix while the context is loaded.**
+
+**`vite build` is not a caller audit, and it is not a scope audit either.**
+The patch that added that variable first inserted it ABOVE
+`var d = props.data` in two components. `var` hoists, so `d` would have been
+`undefined` and both tabs would have thrown on mount — and the build
+reported success. Caught by reading the patched region. Same lesson as
+`perf-panels-top.js:477`, where a call inside a `useMemo` was invisible to
+the bundler, one step earlier in the edit.
+
+### A panel that hardcodes a sign asserts something the data may not support (2026-09-21)
+
+The conditional-correlation panel printed `'+' + surge.toFixed(0) + '%'` and
+the sentence *"Correlation rises from A to B — a X% surge."* A book whose
+correlations FALL under stress is the good case, and it would have rendered
+`+-12%` in alarm red beside a claim that did not happen. Latent before —
+and changing the inputs, as this fix does, is exactly what can move a number
+across zero. Both now read the sign off the number, and the panel states how
+many of its pairs were measurable. Same family as the stacked band that
+could not carry a negative once risk shares went signed.
+
 ### Drift is only evidence where the book is exposed (2026-09-14)
 
 Two rules gate what B4 lets E1's drift say, and on this book they disagree with the naive
