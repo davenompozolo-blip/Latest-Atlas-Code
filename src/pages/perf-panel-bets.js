@@ -105,12 +105,12 @@ function TwoBar(weight, risk, riskColor, riskGlow) {
             h('span', { style: {
                 fontFamily: T.mono, fontSize: 9.5, letterSpacing: '.09em', color: T.t3,
                 textTransform: 'uppercase', width: 48,
-            } }, label),
+            } }, (value != null && value < 0) ? 'offsets' : label),
             h('div', { style: { flex: 1, height: 5, borderRadius: 3, background: 'rgba(255,255,255,.055)' } },
-                h('div', { style: {
+                value == null ? null : h('div', { style: {
                     height: 5, borderRadius: 3, minWidth: 2,
-                    width: Math.max(0, Math.min(1, value || 0)) * 100 + '%',
-                    background: color,
+                    width: Math.max(0, Math.min(1, Math.abs(value))) * 100 + '%',
+                    background: (value < 0) ? OFFSET_TEXTURE + ', ' + color : color,
                     boxShadow: glow ? '0 0 12px ' + glow : 'none',
                 } })),
             h('span', { style: {
@@ -143,20 +143,46 @@ function Insights(list) {
 //
 // ── Level 2 — Bets ────────────────────────────────────────────
 
+// Diagonal texture, used to carry POLARITY. Colour in this strip is already
+// doing identity -- each segment's hue is its rank, and the row below reuses it
+// so a reader can carry a segment from the band to its row. Loading sign onto
+// the same channel would collide with that, so sign gets a second, non-colour
+// encoding, and the caption and tooltip name it in words as well. Never colour
+// alone; never texture alone.
+const OFFSET_TEXTURE =
+    'repeating-linear-gradient(135deg, rgba(0,0,0,.42) 0 2px, rgba(0,0,0,0) 2px 5px)';
+
 function RiskStrip(view) {
+    var offsets = view.offsetCount || 0;
+    var unmeasured = view.unmeasuredCount || 0;
     return h('div', null,
         h('div', { style: { display: 'flex', height: 9, borderRadius: 5, overflow: 'hidden', gap: 2, marginBottom: 8 } },
             view.strip.map(function (s, i) {
-                return h('div', { key: s.id, title: s.label + ' · ' + pct1(s.share), style: {
-                    height: 9, width: Math.max(0.15, (s.share || 0) * 100) + '%',
-                    background: stripColor(i, view.strip.length),
-                } });
+                // A segment with no measurable risk gets NO width. It is named
+                // in the caption instead -- drawing it at zero would make it
+                // indistinguishable from one that genuinely carries none.
+                if (!s.measured) return null;
+                var base = stripColor(i, view.strip.length);
+                return h('div', {
+                    key: s.id,
+                    title: s.label + ' · ' + pct1(s.share)
+                         + (s.offsets ? ' · offsets book risk' : ' of book risk'),
+                    style: {
+                        height: 9,
+                        width: Math.max(0.15, (s.width || 0) * 100) + '%',
+                        background: s.offsets ? OFFSET_TEXTURE + ', ' + base : base,
+                    },
+                });
             })),
         h('div', { style: {
             display: 'flex', justifyContent: 'space-between', fontFamily: T.mono, fontSize: 10,
             letterSpacing: '.07em', color: T.t3, textTransform: 'uppercase', marginBottom: 30,
         } },
-            h('span', null, 'risk share, descending'),
+            // The width basis is stated because it is NOT the signed share: the
+            // signed shares stop tiling a whole once some are negative.
+            h('span', null, 'share of gross risk, descending'
+                + (offsets ? ' · ' + offsets + ' hatched offset the book' : '')
+                + (unmeasured ? ' · ' + unmeasured + ' unmeasured' : '')),
             h('span', null, view.segmentCount + ' segments')));
 }
 

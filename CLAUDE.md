@@ -2391,8 +2391,8 @@ design and why `logic_version` was not bumped.
 **3. The column name asserts a measure the field does not carry** -- the `fwd_pe` lesson
 again. **When a column's name asserts a measure, check the field it reads, not the alias.**
 
-**AUDITED 2026-09-15, not implemented** -- `docs/DEFECT3_MARGINAL_VOL_CONSUMER_AUDIT.md` and
-the entry below. It is a re-basing, not a rename, and it is the owner's call.
+**DONE 2026-09-21** -- `docs/DEFECT3_MCTR_REBASING_REPORT.md` and the entry
+"Five of seventeen themes were the wrong sign" below.
 
 Each of these re-bases a live page, so each is its own decision, not a fold-in.
 
@@ -2429,6 +2429,140 @@ on this basis and are append-only, so the fix is version-scoped and declares the
 basis on the row -- the `peer_basis` / `dispersion_basis` / `vol_basis`
 construction. Sequenced after defect 2, which removes the `total_vol_annual`
 dependence.
+
+### Five of seventeen themes were the wrong sign (2026-09-21)
+
+Defect 3, applied. Full report in `docs/DEFECT3_MCTR_REBASING_REPORT.md`. Both
+nightly jobs now read `vw_book_mctr`'s Euler measure instead of
+`vw_risk_analysis.marginal_vol_contribution`.
+
+**Both consumers multiplied the column by weight AGAIN**, because each believed
+it held a partial derivative -- `mvc * w_norm` in `atlas_write_verdicts`,
+`mvc * weight` in the segment job. The 2026-09-07 entry above records that form
+being *checked before use*; the check reached the wrong conclusion, and the
+product was `weight^2 * vol` -- defect 2's dimensional error, arriving here
+through a comment asserting a form the column never had. **A comment that
+states a column's form is not evidence of it.**
+
+**A per-position rank error becomes a SIGN error once members are summed**,
+because the offsets that cancel inside a cluster are exactly what `weight x vol`
+discards. Grouping concentrates the error rather than averaging it out. On the
+2026-09-18 book: 16 of 62 positions negative (0 were, by construction), 14 of 44
+bets, and **5 of 17 themes**:
+
+| theme | weight | written | Euler |
+|---|---:|---:|---:|
+| AI / accelerated compute | 24.0% | 54.95% | **64.71%** |
+| Healthcare / defensives | 10.3% | 5.28% | **-0.98%** |
+| International / EM ETFs | 10.3% | 9.16% | **15.27%** |
+| Software / SaaS | 2.5% | 1.88% | **-1.82%** |
+| Energy | 4.4% | 1.43% | **-0.22%** |
+
+**The defensive sleeves were published as risk CONSUMERS.** Healthcare at a
+tenth of the book offsets risk -- the one thing a defensive sleeve is bought to
+do -- and a measure that is positive by construction cannot report it.
+`effective_bets` 3.263 -> **2.322**: the book is more concentrated than
+published, not less.
+
+**Euler additivity is why the invariants survive.** Sum of contributions =
+book vol = 0.19996028, residual **0.000000000000** at twelve decimals, so
+cluster shares still close to 1.0000000000 with sixteen buckets negative. It is
+also why `book_risk_daily`'s `(sum_contributions, residual)` became an IDENTITY
+-- 0.199960 = 0.193185 + 0.006775, the residual being exactly the two matrix
+names the verdict layer does not rank. It had been `sum(mvc * cluster_risk_share)`:
+a per-position figure times a per-cluster share, dimensionless, reconciling to
+nothing.
+
+**The basis is on the row; `logic_version` is NOT bumped.** That string is a
+parameter fingerprint (`rho0.75:n5:mwr`) and none of those parameters changed,
+so a bump would assert a change that did not happen -- the mirror of the error
+defect 2 avoided. 1,006 + 531 rows backfilled to `weight_x_vol_undiversified`.
+Checked first: no consumer pins a version value.
+
+**`effective_bets` changed basis and IS consumed** (`bookBaseline.js`). `1/sum(s^2)`
+over SIGNED shares is not the textbook HHI, which assumes non-negative weights.
+Sum(s^2) is 0.43 here so it behaves; a heavily hedged book could push it above 1
+and drive the figure below 1. That is a real reading, not a bug -- write it down
+before it happens.
+
+### A CHECK passes on NULL, so enumerating the states is not enough (2026-09-21)
+
+Found by TESTING the constraints added for defect 3 rather than reading them,
+then asking whether the shape existed elsewhere. It did, on the constraint this
+file already records being rewritten once for a related fault.
+
+```
+vol_basis = NULL, total_vol_annual = 0.195, vol_matrix_as_of = NULL
+  branch 1: (total_vol_annual IS NULL)                           -> FALSE
+  branch 2: TRUE AND (NULL = 'weight_sq_undiversified') AND TRUE  -> NULL
+  branch 3: TRUE AND NULL AND FALSE                               -> FALSE
+  FALSE OR NULL OR FALSE  ->  NULL  ->  the CHECK PASSES
+```
+
+So **`book_risk_daily` was accepting a vol figure with no basis at all** --
+exactly the state `20260915074500` was written to forbid, and which the entry
+above calls "now true rather than merely written down". It was not true. The
+enumerated rewrite inherited the hole from the implication it replaced.
+
+**Enumerating the permitted states is necessary and NOT sufficient: the
+enumeration has to be TOTAL.** A `CASE` over `IS NULL` / `IS NOT NULL` tests
+with `ELSE false` cannot yield NULL on any input; an OR chain of `=` comparisons
+against a nullable column always can. All three constraints are now CASE forms.
+14 violating states refused, 0 wrongly accepted, nothing written.
+
+Same family as PR #783's NaN finding, and the same lesson: there a one-sided
+bound admitted a sentinel that sorts above every finite value, here three-valued
+logic admits a NULL that short-circuits an OR chain. **Both look correct on
+inspection and both are found only by trying the value.** Verified by UPDATE
+inside a rolled-back subtransaction, never by reading the definition.
+
+### `CREATE OR REPLACE` on a guessed signature makes a second function (2026-09-21)
+
+`atlas_write_verdicts` takes THREE arguments (`p_as_of`, `p_logic_version`,
+`p_refresh`). A first attempt assumed two, so `CREATE OR REPLACE` created a
+**second overload** rather than replacing -- leaving the real job untouched and
+the new one live for any two-argument call, which is what a caller relying on
+`p_refresh`'s default would have made. Caught by the result returning two rows
+where one was expected, dropped within one call, redone.
+
+**Read `pg_get_function_identity_arguments` before `CREATE OR REPLACE`.** A
+function is identified by its argument types, not its name, and the failure is
+silent: the old body keeps running while the new one sits beside it.
+
+### A stacked proportional band cannot carry a negative (2026-09-21)
+
+The bets strip laid its segments out on the signed risk share. Once some shares
+are negative the positives alone exceed 100% of the width, and
+`Math.max(0.15, share * 100)` collapsed every negative to a hairline while its
+tooltip printed the negative number -- a bar saying one thing and a number
+saying another. `TwoBar` had the same shape: `Math.max(0, ...)` clamped a
+negative to zero width beside a label showing it.
+
+Width now comes from share of **gross** risk (`|contribution|` over the sum of
+`|contribution|`), which IS a genuine part-to-whole of a real quantity, and the
+caption states that basis rather than leaving "risk share" to be read off a bar
+that no longer means it.
+
+**Polarity is carried by TEXTURE, not colour.** Colour in that strip is already
+doing identity -- hue is rank, and the segment rows below reuse it so a reader
+can carry a segment from the band to its row -- so putting sign on the same
+channel would collide with it. Hatch, plus the count in the caption, plus the
+words in the tooltip: never colour alone, never texture alone.
+
+**An unmeasured segment must not sort as zero.** `(b.riskShare || 0)` put a null
+above every genuine offset -- claiming the segment nobody could measure carries
+more risk than the ones that demonstrably reduce it. Nulls sort last, get NO
+width (absent, not 0), and are counted.
+
+**And the reading understated the best outcome available.** Any negative share
+is below `weightShare * 0.5`, so a sleeve that LOWERS book volatility fell
+through to "on a fraction of its risk". It says "lowering its risk" now.
+
+The 56-file suite passed **unchanged** across the whole re-basing, because every
+fixture carried a positive share -- under the old measure a negative one was
+impossible by construction. `segmentRiskBasis.test.mjs` carries a negative and
+an unmeasured segment in every fixture; 7 of its 10 fail on the pre-fix code,
+checked by reverting.
 
 ### Drift is only evidence where the book is exposed (2026-09-14)
 

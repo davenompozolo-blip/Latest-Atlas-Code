@@ -306,7 +306,19 @@ export function segmentReading(tiles, segment) {
     let second = null, emphasis = null;
     const ex = segment && segment.excessPp;
     if (ex != null && segment.riskShare != null && segment.weightShare != null) {
-        if (ex > 0 && segment.riskShare > segment.weightShare * 1.3) {
+        // A NEGATIVE risk share is tested first, and separately. Under the
+        // Euler basis it means the segment LOWERS book volatility -- adding to
+        // it reduces risk. That is a different and stronger statement than
+        // "a fraction of its risk", which is where a negative used to fall
+        // through to: anything negative is below `weightShare * 0.5` for a
+        // positive weight, so the old wording quietly understated the best
+        // thing a defensive sleeve can do. On the 2026-09-18 book this is
+        // Healthcare / defensives at 10.3% of weight and -0.98% of risk.
+        if (segment.riskShare < 0) {
+            second = ex > 0
+                ? 'The segment is ahead of the book without it AND lowering its risk.'
+                : 'Behind the book without it, and lowering its risk — which is what it was bought for.';
+        } else if (ex > 0 && segment.riskShare > segment.weightShare * 1.3) {
             second = 'The segment is working — the question it raises is size, not selection.';
         } else if (ex > 0) {
             second = 'The segment is ahead of the book without it.';

@@ -112,7 +112,9 @@ export async function loadSegments(sb, asOf) {
                     'traded_mwr_pct, cf_mwr_pct, excess_vs_book_pct, cf_status, cf_reason, ' +
                     'dispersion, best_member, best_member_excess_pct, ' +
                     'worst_member, worst_member_excess_pct, dispersion_basis, ' +
-                    'thesis_coverage, verdict_counts')
+                    'thesis_coverage, verdict_counts, ' +
+                    'risk_basis, risk_matrix_as_of, risk_members_withheld, ' +
+                    'risk_withheld_weight_pct')
             .eq('as_of', night)
             .order('risk_share', { ascending: false, nullsFirst: false })
             // One night is 60 rows across both groupings. The cap is a guard
@@ -176,11 +178,32 @@ function shape(row) {
         // Published so a surface can say why a count is missing rather than
         // rendering a smaller book. The job asserts these sum to memberCount.
         labelledCount: labelled,
+        // Which measure `riskShare` is on. `mctr_euler` is the Euler-additive
+        // partial derivative and CAN BE NEGATIVE -- a segment that offsets the
+        // rest of the book. `weight_x_vol_undiversified` is the pre-2026-09-21
+        // measure, positive by construction, which could not express that.
+        // A figure is never rendered without saying which question it answers.
+        riskBasis:     row.risk_basis || null,
+        riskMatrixAsOf: row.risk_matrix_as_of || null,
+        // Members the correlation matrix could not price, and their share of
+        // the segment's weight. A segment states its denominator rather than
+        // renormalising the gap away.
+        riskWithheld:  row.risk_members_withheld == null ? null : Number(row.risk_members_withheld),
+        riskWithheldWeightPct: num(row.risk_withheld_weight_pct),
         asOf:          row.as_of,
     };
 }
 
-/** 1/Σs² over the risk shares actually present. A property of the grouping. */
+// 1/Σs² over the risk shares actually present. A property of the grouping.
+//
+// The shares are SIGNED under `mctr_euler`: a segment that diversifies the book
+// carries a negative one. Squaring keeps every term positive, so the statistic
+// is well defined -- but it is no longer the textbook HHI, which assumes
+// non-negative weights summing to 1. On the 2026-09-18 book Σs² is 0.43 and the
+// figure behaves (3.26 on the old basis, 2.32 on this one). A heavily hedged
+// book could in principle drive Σs² above 1 and the result below 1, which would
+// be a real reading rather than a bug: offsetting positions are fewer effective
+// bets, not more. Written down because the number is consumed.
 export function effectiveBets(segments) {
     let sum = 0;
     (segments || []).forEach(function (s) {
@@ -358,7 +381,16 @@ export function buildBetsView(rows, grouping, membersBySegment) {
     const all = scoped
         .map(shape)
         .filter(function (s) { return s.grouping === grouping; })
-        .sort(function (a, b) { return (b.riskShare || 0) - (a.riskShare || 0); });
+        // Descending by risk share, with UNMEASURED segments last. `|| 0`
+        // placed a null share at zero -- above every segment that diversifies
+        // the book, which under the Euler basis is a real and negative value.
+        // "We could not measure this" is not "this carries no risk".
+        .sort(function (a, b) {
+            if (a.riskShare == null && b.riskShare == null) return 0;
+            if (a.riskShare == null) return 1;
+            if (b.riskShare == null) return -1;
+            return b.riskShare - a.riskShare;
+        });
 
     if (!all.length) return null;
 
@@ -398,9 +430,38 @@ export function buildBetsView(rows, grouping, membersBySegment) {
         full:          full,
         tail:          tail,
         // The strip is every segment, always.
-        strip:         all.map(function (s) {
-                           return { id: s.segmentId, label: s.label, share: s.riskShare || 0 };
-                       }),
+        //
+        // `width` is the segment's share of GROSS risk -- |contribution| over
+        // the sum of |contribution|. Under the Euler basis the signed shares no
+        // longer tile a whole (they sum to 1 only because the negatives pull
+        // the positives back), so a band laid out on the signed value would be
+        // a geometry that lies: the positive segments alone exceed 100% of the
+        // width. Share of gross risk IS a part-to-whole of a real quantity, and
+        // `share` travels beside it so the sign is never inferred from the bar.
+        strip:         (function () {
+                           const gross = all.reduce(function (t, s) {
+                               return t + (s.riskShare == null ? 0 : Math.abs(s.riskShare));
+                           }, 0);
+                           return all.map(function (s) {
+                               return {
+                                   id: s.segmentId,
+                                   label: s.label,
+                                   share: s.riskShare,
+                                   // Absent, not 0, when the segment could not
+                                   // be measured -- the renderer must not draw
+                                   // a width it was never handed.
+                                   width: (s.riskShare == null || !gross)
+                                       ? null : Math.abs(s.riskShare) / gross,
+                                   offsets: s.riskShare != null && s.riskShare < 0,
+                                   measured: s.riskShare != null,
+                               };
+                           });
+                       })(),
+        // So a caption can say how many segments reduce book risk rather than
+        // leaving the reader to decode a texture.
+        offsetCount:   all.filter(function (s) { return s.riskShare != null && s.riskShare < 0; }).length,
+        unmeasuredCount: all.filter(function (s) { return s.riskShare == null; }).length,
+        riskBasis:     (all.find(function (s) { return s.riskBasis; }) || {}).riskBasis || null,
         segmentCount:  all.length,
         positionCount: all.reduce(function (t, s) { return t + s.memberCount; }, 0),
         singletonCount: all.filter(function (s) { return s.memberCount === 1; }).length,
