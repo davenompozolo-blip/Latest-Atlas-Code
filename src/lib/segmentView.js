@@ -73,9 +73,37 @@ export function pp(v) {
     return n == null ? null : n * 100;
 }
 
+/**
+ * Segment rows for ONE night.
+ *
+ * `segment_verdicts` is an append-only history -- 43 bet rows and 17 theme
+ * rows per night, 884 rows over 15 nights and growing. This used to fetch it
+ * unscoped with `.limit(200)` ordered by `risk_share`, which is not a night
+ * and not a history but an arbitrary risk-ranked slice ACROSS nights: the
+ * heaviest segment came back once per night, so the BETS panel rendered
+ * "AI / accelerated compute" five times over with drifting numbers, summed
+ * member counts to 353 against a real book of 60, and reported 0.6 effective
+ * bets. The `as_of` it displayed was the newest of the pile, so a
+ * fifteen-night aggregate carried a single night's date.
+ *
+ * The cap has to be applied AFTER the date filter or it truncates the night
+ * rather than the history -- so with no `asOf` the newest is resolved first,
+ * the same construction `verdictCard.js` and `clusterView.js` already use.
+ */
 export async function loadSegments(sb, asOf) {
     if (!sb) return null;
     try {
+        let night = asOf;
+        if (!night) {
+            const latest = await sb
+                .from('segment_verdicts')
+                .select('as_of')
+                .order('as_of', { ascending: false })
+                .limit(1);
+            if (latest.error) throw latest.error;
+            if (!latest.data || !latest.data.length) return [];
+            night = latest.data[0].as_of;
+        }
         let q = sb
             .from('segment_verdicts')
             .select('as_of, logic_version, grouping, segment_id, segment_kind, segment_label, ' +
@@ -85,9 +113,12 @@ export async function loadSegments(sb, asOf) {
                     'dispersion, best_member, best_member_excess_pct, ' +
                     'worst_member, worst_member_excess_pct, dispersion_basis, ' +
                     'thesis_coverage, verdict_counts')
+            .eq('as_of', night)
             .order('risk_share', { ascending: false, nullsFirst: false })
-            .limit(200);
-        if (asOf) q = q.eq('as_of', asOf);
+            // One night is 60 rows across both groupings. The cap is a guard
+            // against a runaway, not a page boundary -- and it now sits inside
+            // the date filter, so it can never truncate the night itself.
+            .limit(500);
         const { data, error } = await q;
         if (error) throw error;
         return data || [];
@@ -313,7 +344,18 @@ export function insightSentences(seg, ctx, members) {
  * book look more concentrated than it is.
  */
 export function buildBetsView(rows, grouping, membersBySegment) {
-    const all = (rows || [])
+    // SCOPE TO ONE NIGHT FIRST. Every figure below -- positionCount,
+    // effectiveBets, the risk strip, the verdict counts -- is a sum over
+    // `all`, so a caller that hands in two nights gets each segment counted
+    // twice with nothing on screen to say so. That is exactly what shipped.
+    // Filtering here as well as in the loader is deliberate: this is the
+    // function that does the summing, so this is where the wrong input has to
+    // become impossible rather than merely unlikely.
+    const night = latestAsOf(rows);
+    const scoped = (rows || []).filter(function (r) { return !r.as_of || r.as_of === night; });
+    const droppedNights = (rows || []).length - scoped.length;
+
+    const all = scoped
         .map(shape)
         .filter(function (s) { return s.grouping === grouping; })
         .sort(function (a, b) { return (b.riskShare || 0) - (a.riskShare || 0); });
@@ -347,7 +389,11 @@ export function buildBetsView(rows, grouping, membersBySegment) {
         grouping:      grouping,
         groupingLabel: GROUPING_LABEL[grouping],
         groupingHint:  GROUPING_HINT[grouping],
-        asOf:          latestAsOf(rows),
+        asOf:          night,
+        // Rows from older nights that were scoped out. Published rather than
+        // silently discarded: a non-zero value means a caller handed this a
+        // history, which is the defect, not a property of the book.
+        droppedNights: droppedNights,
         segments:      all,
         full:          full,
         tail:          tail,
