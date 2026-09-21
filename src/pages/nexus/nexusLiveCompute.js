@@ -310,7 +310,7 @@ export function buildRiskGauge(riskRows, nav, capPctOfNav = RISK_VAR_CAP_PCT_OF_
 // at 2.13% of the book publishing +9.25% off a bar 179 days old -- on its own
 // worth +0.20pp, enough to flip the book's sign.
 //
-// The database now withholds that number at source (20260921080000), so `ret`
+// The database now withholds that number at source (20260921072516), so `ret`
 // arrives null rather than stale. `staleSet` is KEPT rather than removed: it
 // carries reasons the move column itself cannot express, and a gate that
 // duplicates a stricter one is harmless while a removed gate is not.

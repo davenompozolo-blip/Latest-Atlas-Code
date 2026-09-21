@@ -1,7 +1,7 @@
 // The stale-move gate, browser side. Runs under plain node.
 //
 // The database now withholds `daily_return_pct` when a name's last bar is
-// older than 7 days or it has no bar at all (20260921080000 / 20260921081500).
+// older than 7 days or it has no bar at all (20260921072516 / 20260921072728).
 // This file exists because the 55-file suite passed UNCHANGED across that
 // change: every fixture in it supplies a move for every row, so none of them
 // can tell a withheld move apart from a zero one. A fixture that never

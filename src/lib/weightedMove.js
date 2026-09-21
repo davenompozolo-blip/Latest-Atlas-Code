@@ -8,7 +8,7 @@
 //
 // `vw_portfolio_home` and `vw_nexus_holdings` now NULL `daily_change_pct` /
 // `daily_return_pct` when the name's last stored bar is older than 7 days or
-// it has no bar at all (20260921080000, 20260921081500). Every caller that
+// it has no bar at all (20260921072516, 20260921072728). Every caller that
 // read those columns as `|| 0` or `?? 0` therefore turned "we cannot say what
 // this name did" into "this name sat flat" -- which is a measurement, and a
 // different one. On a weighted average it drags the result towards zero by

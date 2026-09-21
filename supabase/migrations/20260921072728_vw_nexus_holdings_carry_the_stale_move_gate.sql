@@ -1,7 +1,7 @@
 -- ============================================================
 -- Carry the gate to the reader, and stop laundering a NULL into a 0.00%
 -- ------------------------------------------------------------
--- Companion to 20260921080000, which gated `vw_portfolio_home`. That gate
+-- Companion to 20260921072516, which gated `vw_portfolio_home`. That gate
 -- reaches `vw_nexus_holdings` through `mv_nexus_holdings` for the daily
 -- figure, because `round(NULL, 3)` is NULL -- but NOT for the five-day one:
 --
