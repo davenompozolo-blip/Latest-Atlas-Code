@@ -29,6 +29,7 @@ import { Chart, registerables } from 'chart.js';
 // `"category" is not a registered scale`. Chart.register is idempotent.
 Chart.register(...registerables);
 import { sb } from './config.js';
+import { fetchPaged } from '../lib/pagedRead.js';
 import { T, card, cardTitle } from './risk-tokens.js';
 import {
     VAR_Z, confKey, latestRunSet, tailShapeRows, patternSentence,
@@ -43,25 +44,32 @@ const h = React.createElement;
 // a night, so it will cross that cap. Page with .range() until a short
 // page ends it, and order DESC so a truncation would lose the OLDEST
 // vintages rather than the current one.
-const PAGE = 500;
-
+// ORDER ON A TOTAL KEY (2026-09-21). `as_of` is not one: the job writes
+// ~24 rows per night, all sharing it, and LIMIT/OFFSET over a non-total
+// ordering has no consistency guarantee between requests -- so rows can
+// repeat or be skipped across a page boundary, which on this table means a
+// vintage silently gaining or losing confidence levels. The business key is
+// (as_of, logic_version, leg, basis, coalesce(axis_key,''), conf) and
+// `axis_key` is nullable, so `id` -- the bigint primary key -- is the
+// cleaner tiebreaker and is total by definition.
+//
+// Paged through `src/lib/pagedRead.js` rather than a local loop, which caps
+// it: the loop was driven by the server's own response, so a server that
+// stopped honouring `range` would spin forever. The page size moves 500 ->
+// 1000 (pagedRead's PAGE_SIZE) -- PostgREST caps a response at 1,000 either
+// way, so this is strictly fewer round trips for the same rows.
 async function fetchAllRuns() {
-    const out = [];
-    for (let from = 0; ; from += PAGE) {
-        const res = await sb.from('var_backtest_runs')
+    return fetchPaged(function (from, to) {
+        return sb.from('var_backtest_runs')
             .select('as_of,logic_version,leg,basis,axis_key,conf,n_obs,exceptions,'
                   + 'expected_exceptions,kupiec_lr,kupiec_reject_05,kupiec_reject_01,'
                   + 'sd_pred_daily,sd_realised_daily,sd_factor_window,sd_residual_window,'
                   + 'var_pred_daily,cvar_pred_daily,cvar_realised_daily,'
                   + 'window_start,window_end,betas_estimated_at')
             .order('as_of', { ascending: false })
-            .range(from, from + PAGE - 1);
-        if (res.error) throw res.error;
-        const rows = res.data || [];
-        out.push(...rows);
-        if (rows.length < PAGE) break;
-    }
-    return out;
+            .order('id', { ascending: true })
+            .range(from, to);
+    }, 'var_backtest_runs');
 }
 
 async function fetchDistribution() {

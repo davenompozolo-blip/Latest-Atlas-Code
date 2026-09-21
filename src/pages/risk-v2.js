@@ -302,6 +302,11 @@ function loadRiskData(onDone, onErr) {
         // session. Paged DESC now, and sorted back to ascending below
         // because every consumer of navData walks it positionally.
         fetchPaged(function(from, to) {
+            // TOTAL ORDER: this view is one row per session, so
+            // `price_date` is unique on it and the sort is already total —
+            // measured 185 rows, 185 distinct, 0 ties. Contrast
+            // `vw_position_nav_daily` below, where thousands of rows share a
+            // date and the `symbol` tiebreaker is load-bearing.
             return sb.from('vw_portfolio_nav_daily')
                 .select('price_date,nav,daily_return')
                 .order('price_date', { ascending: false })

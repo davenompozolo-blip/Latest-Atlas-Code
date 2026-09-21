@@ -2653,6 +2653,115 @@ a refactor of five working readers, not part of a fix.
 it truncated, and the cap exists because the loop is driven by the server's
 own response: **a hang is the one failure that reports nothing at all.**
 
+### A tiebreaker must be checked against the unique index, not chosen by eye (2026-09-21)
+
+The three pagers the risk-v2 fix flagged, closed. Full report in
+`docs/PAGER_TOTAL_ORDERING_REPORT.md`.
+
+**The exposure was total, not marginal.** A row is ambiguously ordered when
+another row shares its whole sort key, and OFFSET paging can then place it
+either side of a page boundary:
+
+| relation | rows | ambiguous under the OLD key | widest tie |
+|---|---:|---:|---:|
+| `price_history` (1y, `1d`) | 384,164 | **384,164** (100%) | **1,900** |
+| `market_prices` | 120,152 | **118,896** (99.0%) | 19 |
+| `var_backtest_runs` | 120 | **120** (100%) | 24 |
+
+One `price_history` date is shared by **1,900 rows** — nearly two full pages
+under a single sort key. Zero ambiguous rows under the new keys.
+
+**Each tiebreaker came from the relation's unique index**, and two of the
+three would have been wrong by eye. `price_history` is unique on
+`(asset_id, price_date, "interval")`, so `(price_date, asset_id)` is total
+**only once the interval is pinned**. `var_backtest_runs`' business key
+carries a **nullable** `axis_key` inside a `coalesce`, so the `id` PK is the
+cleaner tiebreaker than any column of the key itself. Only `market_prices`,
+keyed `(symbol, date)`, was the obvious one.
+
+**`.range()` is `offset`/`limit` on the wire** — confirmed by printing the
+built URL, not assumed. That is the whole reason a total order is required.
+
+All three now page through `pagedRead.js` instead of a local loop, which is
+not tidying: each loop was driven by the server's own response with **no
+cap**, so a server that stopped honouring `range` would spin forever.
+
+### `price_history` carries two interval spellings and one of them is SPY (2026-09-21)
+
+Found while choosing `performance-suite.js`'s tiebreaker, because the
+interval is part of the unique key and the read filtered neither `interval`
+nor `source`:
+
+| interval | source | rows (1y) |
+|---|---|---:|
+| `1d` | alpaca | 381,722 |
+| `1d` | yfinance | 2,442 |
+| `1Day` | yahoo | **124** |
+
+The 124 are **all SPY**, all on dates that ALSO carry a `1d` bar, and **every
+one has a different close** — 0.315% apart on average, 0.786% at worst. So an
+unfiltered read returns two closes for one session and the series handed
+downstream carries a duplicate date with two prices, which a positional walk
+reads as two sessions. **SPY is the benchmark**, so anything reaching for it
+gets the collision.
+
+Latent in that file only because `equityIds` comes from the book and SPY is
+not held. All 1,914 assets have `1d` rows and exactly one has any non-`1d`,
+so `interval = '1d'` drops no series. **No other `price_history` reader
+filters it either** — `tradeData.js:441`, `pcm.js:1238`,
+`advanced-chart.js:542`, `NexusRealized.js:475` and `:583`. Flagged.
+
+### A scanner that reads its own documentation as code (2026-09-21)
+
+`src/lib/pagerOrdering.test.mjs` scans `src/` and fails any paged read whose
+chain declares fewer than two `.order()` calls — the rule being repo-wide
+rather than "these three files", so the next one fails in CI instead of in
+production. Its first run was wrong in two ways, both now tested for:
+
+- **It counted `.order(` inside comments.** The prose around these reads is
+  *about* ordering. Comment lines are stripped before counting.
+- **A long comment between `.from(` and `.range(` hid the chain**, so the
+  two files this very fix had just annotated reported **zero** order keys.
+
+**A detector that reports the wrong thing is worse than none**, so it carries
+a test feeding it the exact pre-fix shape and requiring a hit, a test that it
+finds several reads at all (a vacuous scan passes trivially), and tests for
+both failure modes above.
+
+**A single key that is already unique IS total; demanding a second is cargo
+cult.** `vw_cluster_identity.cluster_id` (206 rows, 206 distinct, 0 ties) and
+`vw_portfolio_nav_daily.price_date` (185/185/0) carry a `TOTAL ORDER:`
+comment naming the key and its measurement. The justification sits beside the
+code rather than in an allowlist inside the test, where it would rot away
+from what it describes.
+
+### `pcm.js` drops 69% of its price history and reads 25 hours as a year (2026-09-21)
+
+Found on the same sweep, **live and not fixed** — it is a different page and
+a different defect class, so it is its own unit.
+
+**The seventh instance of the 1,000-row cap.** `pcm.js:1238` is byte-for-byte
+the pre-fix `performance-suite` read: 15 ids per batch, `price_date`
+**ASCENDING**, `.limit(batchIds.length * 260)` = 3,900, no paging. Four of
+five batches stop between **2025-12-24 and 2026-01-09** against a book
+running to 2026-09-18; **10,897 of 15,897 rows dropped**. It pushes
+`{ close }` with the date discarded, so nothing downstream can detect it.
+`PortfolioConstruction` is routed from `app.js`.
+
+**And a 252-row window that spans 25 hours.** The same loader reads
+`account_snapshots` with `.order('as_of', { ascending: true }).limit(252)`.
+That table holds **48,440 rows** across 169 days at one row per five minutes,
+so ascending-plus-252 takes the **oldest** 252 — **2026-04-06 10:47 to
+2026-04-07 07:35**. `computePortfolioMetrics` is handed one day of intraday
+snapshots as if it were a year of daily equity. Not a paging bug, and the fix
+is a decision rather than a correction: 252 *sessions* of daily closes means
+a different query, not a reordered limit.
+
+**`.limit(1600)` on `price_history` in `advanced-chart.js:542` and
+`NexusRealized.js:583`** returns 1,000. Both order DESC so they lose the
+oldest bars rather than the session — the benign direction — but they believe
+they hold 1,600 bars.
+
 ### `filter` removes elements, so its indices are not slots (2026-09-21)
 
 `risk-v2.js` built `portfolioReturns` with `.filter()` and then indexed it

@@ -212,6 +212,11 @@ export async function loadClusterIdentity(sb) {
                     + 't_market, market_significant, primary_axis, primary_axis_sign, '
                     + 'primary_axis_t, primary_axis_beta, primary_axis_label, '
                     + 'primary_axis_positive_means, primary_axis_marginal, held_symbols')
+                // TOTAL ORDER: `vw_cluster_identity` reads max(as_of_date)
+                // and returns one row per cluster, so `cluster_id` is unique
+                // on it and the sort is already total — measured 206 rows,
+                // 206 distinct, 0 ties. No tiebreaker needed; adding one
+                // would assert a collision that cannot happen.
                 .order('cluster_id', { ascending: true })
                 .range(from, from + PAGE - 1);
             if (error) throw error;
