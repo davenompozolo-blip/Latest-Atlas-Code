@@ -2703,18 +2703,103 @@ $17.53, `updated_at` exactly on the watermark. It renders at 0.0% because it IS
 0.01% of book. A surface that cannot distinguish a real dust position from a
 stale one is a display question, not a data one.
 
-**Still open, and now the only remaining half of that report.**
-`vw_nexus_holdings.daily_return_pct` is computed against the last stored bar
-with no staleness gate, which is how KMTUY published +6.3% off a print 179 days
-old -- the rule `nexus_holdings.today_pct` already enforces at 7 days, and which
-this file already records as missing here. With KMTUY out of the book **no held
-name is stale** (worst is 1 day), so the gate is dormant rather than wrong. It
-needs `price_days_old` plumbed through `vw_portfolio_home` -> `mv_nexus_holdings`
--> `vw_nexus_holdings`, which is a matview rebuild and its own change.
+**Closed 2026-09-21 -- see "The mark is live; the bar is what goes stale"
+below.** `vw_nexus_holdings.daily_return_pct` had no staleness gate, which is
+how KMTUY published +6.3% off a print 179 days old. The gate now lives in
+`vw_portfolio_home`, and the matview rebuild this paragraph predicted was
+avoided.
 
 Noted in passing from the EXPLAIN: `account_snapshots` shows **Heap Fetches:
 9108** on an Index Only Scan. Stale visibility map -- the 2026-08-23 lesson says
 check that before rewriting anything here.
+
+### The mark is live; the bar is what goes stale (2026-09-21)
+
+H-3. `vw_portfolio_home.daily_change_pct` is
+
+    (live broker mark - latest stored 1d bar close) / that close
+
+The mark is refreshed every five minutes by `sync_alpaca_positions`. **The BAR
+is the half that goes stale**, so a name whose feed has stopped keeps
+publishing a "daily" move that is really the entire drift since its last print
+-- and it GROWS the longer the feed stays dark, so it reads more like news the
+longer it has been wrong. That is how KMTUY, 2.13% of book on a bar 179 days
+old, published +6.3% as today's move on the flagship holdings table, the Theme
+cut and the bench docket at once: all three descend from this view.
+
+**The near miss is the reusable part.** `latest_prices.price_date` is
+`COALESCE(lp.as_of_date, rp.price_date)` -- the POSITION snapshot date, which
+is `current_date` for every held row (measured: all 64 at `days_old = 0`).
+Gating on the column already named `price_date` would have shipped **a gate
+that can never fire**, the fourth instance of that shape here. The anchor is
+the `ranked_prices` rn = 1 row -- the same bar that produces `prev_close`.
+**When a date column is named for what you want, check what it is derived
+from.**
+
+Reasoning reused verbatim from `nexus_holdings` (2026-08-18) rather than
+re-derived: **7 days, not the 4-day badge** (a Thursday close before a Friday
+holiday is 5 days old by Tuesday); **one CTE decides**, so the daily and
+five-day figures cannot disagree about a name; `price_days_old` is published so
+a consumer can say why.
+
+**Gated at the engine, and the reader still needed a change.** The daily figure
+reaches `vw_nexus_holdings` through `mv_nexus_holdings` for free, because
+`round(NULL, 3)` is NULL. The five-day one did **not**:
+`round(COALESCE(p.return_5d_pct, 0) * 100, 3)` turns "no usable five-day move"
+into "moved exactly 0.00%". That was **live, independent of staleness** --
+`SOXX261016P00500000` is a put with **zero price bars** and the flagship was
+publishing `0.000` for its five-day return. Both columns now read from the live
+`vw_portfolio_home`, which `unrealised_return_pct` already did, so the figure
+and its `move_publishable` flag come from one row and cannot disagree.
+`mv_nexus_holdings.five_day_return_pct` keeps its COALESCE and is read by
+nothing -- do not consume it believing a 0.000 is a measurement.
+
+**A dormant gate has to be forced, and it can be forced without writing.**
+Every held bar was exactly 3 days old, so live data could not fire it.
+Rebuilding the patched definition under throwaway names at thresholds of 2 and
+3: **0 of 64 published at 2, 63 of 64 at 3**, both columns moving together.
+That pins the comparison as `<=` rather than `<` and proves the wiring, with no
+fixture and no rolled-back write.
+
+**The client fix is the harder half, because the failure inverts.** Every
+reader took `|| 0` or `?? 0`, so withholding the number turns a loud
+overstatement into a **silent dilution** -- a weighted average drags towards
+zero by exactly the withheld weight with nothing on screen to say so. KMTUY at
++9.25% was visible; KMTUY at 0.00% is not. `src/lib/weightedMove.js` is the one
+implementation (both accessors **required**, the `returnOf` precedent), and
+`pct` is **absent from the result**, not null, when nothing is measurable.
+
+**The 55-file suite passed unchanged across the whole change** -- every fixture
+in it supplies a move for every row, so none of them can tell a withheld move
+from a zero one. `nexusStaleMoveGate.test.mjs` carries a withheld row in every
+fixture with values chosen so reading it as 0.00% changes the answer by a
+multiple: 5 of its 17 fail on the pre-fix code, checked by reverting rather
+than assumed. Two first drafts did NOT discriminate and were tightened --
+**write the fixture, then break the code and watch it fail.**
+
+Equivalence proven before applying, both views: column names, order and types
+identical on the shared prefix (28 -> 31 and 36 -> 39 columns, 0 mismatches,
+since `CREATE OR REPLACE VIEW` can append but never reorder or retype), and
+`EXCEPT ALL` both ways returning 0. `vw_portfolio_home` 167 ms against a
+documented 149-186; `vw_nexus_holdings` 226 -> 188 ms.
+
+**Seventeen `vw_nexus_holdings` rows differed and sixteen were not the fix.**
+They are mark drift since the last matview refresh, at most 0.110pp. Proven
+rather than waved through: all 63 publishable rows reproduce the matview's OWN
+stored figures **exactly, both columns**, from the matview's own stored
+`current_price` against the same bar closes -- and exactly those 16 rows have a
+`current_price` that has since moved. **A first attempt asserted the daily and
+five-day shifts would be equal; they are not, and the CHECKER was wrong** -- a
+mark move dP shifts them by dP/prev_close and dP/close_5d, which differ
+whenever the five-day move is not zero. Second time a verifier has been the
+thing that was wrong here.
+
+Both migrations are textual patches against `pg_get_viewdef` with every anchor
+asserted to match exactly once, the idiom this view family already uses
+(`20260811150000`, `20260906083659`). That beats shipping a re-dumped body:
+this file records two file/database divergences from doing the latter, and a
+replay against a different base fails loudly instead of quietly producing
+something else.
 
 ### The 95% VaR passes because it is the crossing point (2026-09-15)
 
