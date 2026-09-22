@@ -4168,6 +4168,65 @@ matview refresh, at most 0.110pp", and waved it through. At 2.38% it is not
 benign. **Re-measure a drift you decided was small; it is bounded by a refresh
 interval, not by anything about the data.**
 
+### The chain's day is a session, not a calendar date (2026-09-22)
+
+Found by the I-1 shadow tick at **00:20 UTC** -- which is exactly what shadow
+mode was for. The single-tick traversal test ran entirely before midnight and
+could not see this.
+
+`atlas_chain_advance()` scoped everything to `current_date`, and the tick window
+is **20:00-01:59**. At 00:00 the date rolls over INSIDE the chain's own night,
+so the chain stops being able to see the night it is running:
+
+```
+atlas_chain_stage_status('ts_correlations', ..., '2026-09-22') -> not_started
+atlas_chain_stage_status('ts_correlations', ..., '2026-09-21') -> skipped
+```
+
+Same stage, same row, two answers. **Nothing re-fires** -- all six heads carry a
+`not_before` between 20:45 and 23:05 and that was compared as a TIME OF DAY, so
+at 00:20 every head reads `00:20 < 20:45` and is refused. That is why the row
+count stayed clean and the rollover looked harmless.
+
+**It is not harmless: nothing can RESUME either.** Any stage still in flight at
+23:59:59 sees its dependency become `not_started` at 00:00 and waits forever,
+and the 00:00-01:59 half of the window can never do anything at all. The tail of
+a night that slips past midnight is stranded -- `write_regime_cvar`,
+`write_var_backtest`, `run_validation` -- and the existing clock-driven night
+already runs to 23:50, so the margin is minutes.
+
+Fifth instance of the gate that can never pass, in a new shape: **after midnight
+every gate is permanently unsatisfiable for that night's work.**
+
+`atlas_chain_day(at)` puts anything before **02:00 UTC** on the previous
+calendar day, and it is the ONE definition -- `atlas_chain_advance()` and
+`vw_chain_status` both read it, so the observability surface cannot hold a
+different opinion about which night it is. Explicit `at time zone 'UTC'`, never
+the session's zone: the cron schedules and every `not_before` are authored in
+UTC, so the chain day is a claim about that clock and no other.
+
+**The second edit is not optional.** `not_before` is now compared as a TIMESTAMP
+anchored on the chain day rather than as a bare time of day. Without it a head
+that had not fired by midnight could never fire -- the same unsatisfiable gate
+one layer down -- when in fact at 00:20 the 22:00 price window has genuinely
+passed and the stage should be able to resume. Measured: old test **false**,
+new test **true**.
+
+It also fixes two things that were latent. The `dow` test would evaluate a
+Friday-only stage as Saturday at 00:10; and the `{{today}}` / `{{today_minus_5}}`
+placeholders would have asked Alpaca for a calendar day that has no session yet,
+rather than the session that just closed.
+
+Proven at the boundary rather than reasoned: 20:44 / 23:50 / 00:00 / 00:20 /
+01:59 all resolve to 2026-09-21, and 02:00 / 09:00 to 2026-09-22. A live tick at
+00:22 then reported **dow 1** (Monday, the chain night) against dow 2 before,
+`ts_correlations` graded **skipped** against `not_started` before, and 27 rows
+visible against 0. `vw_chain_status` reads 9 live / 27 shadow where it would
+have read 0 / 0.
+
+**A window that crosses midnight cannot be scoped by `current_date`.** Check any
+job whose schedule spans the rollover for the same shape.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel

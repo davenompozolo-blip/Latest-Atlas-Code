@@ -70,3 +70,41 @@ from (values
 order by c.stage;
 
 rollback;
+
+-- ---------------------------------------------------------------------------
+-- atlas_chain_day(): the chain night spans midnight.
+--
+-- The tick window is 20:00-01:59 UTC. Scoping the chain to current_date meant
+-- that at 00:00 it stopped being able to see the night it was running: every
+-- stage still in flight read its dependency as 'not_started' and waited
+-- forever, and the 00:00-01:59 half of the window could never do anything.
+--
+-- Found by the shadow tick at 00:20, not by the traversal test -- that ran
+-- entirely before midnight, which is precisely why it could not see this.
+--
+-- The last case is the one that matters: as a bare time-of-day comparison a
+-- 22:00 head reads 00:20 < 22:00 and can NEVER fire after midnight, so a night
+-- that slipped could not resume. Anchored on the chain day it can.
+
+select 'chain_day' as suite, c.at, public.atlas_chain_day(c.at) as got, c.want,
+       case when public.atlas_chain_day(c.at) = c.want then 'PASS' else 'FAIL' end as result
+from (values
+  ('2026-09-21 20:44:00+00'::timestamptz, '2026-09-21'::date),  -- before window
+  ('2026-09-21 23:50:00+00'::timestamptz, '2026-09-21'::date),  -- late evening
+  ('2026-09-22 00:00:00+00'::timestamptz, '2026-09-21'::date),  -- exactly midnight
+  ('2026-09-22 00:20:00+00'::timestamptz, '2026-09-21'::date),  -- where it was found
+  ('2026-09-22 01:59:00+00'::timestamptz, '2026-09-21'::date),  -- window end
+  ('2026-09-22 02:00:00+00'::timestamptz, '2026-09-22'::date),  -- rollover
+  ('2026-09-22 09:00:00+00'::timestamptz, '2026-09-22'::date)   -- next morning
+) as c(at, want);
+
+select 'not_before_form' as suite,
+       ('00:20'::time >= '22:00'::time) as old_time_of_day_test,
+       ('2026-09-22 00:20:00+00'::timestamptz
+          >= public.atlas_chain_day('2026-09-22 00:20:00+00'::timestamptz)::timestamptz
+             + '22:00'::time) as new_timestamp_test,
+       case when ('00:20'::time >= '22:00'::time) = false
+             and ('2026-09-22 00:20:00+00'::timestamptz
+                   >= public.atlas_chain_day('2026-09-22 00:20:00+00'::timestamptz)::timestamptz
+                      + '22:00'::time) = true
+            then 'PASS' else 'FAIL' end as result;
