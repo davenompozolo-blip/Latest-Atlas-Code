@@ -263,11 +263,18 @@ async function resolveSymbols(explicit, limit, refreshDays) {
     // Skip anything already loaded inside the refresh window, so successive
     // runs advance the frontier instead of re-fetching the same head of the
     // list until the daily cap is spent.
+    //
+    // COMPLETE loads only. This read used to hit company_income_statement
+    // alone, so a symbol cut off by the throttle between its income statement
+    // and its balance sheet counted as loaded and was skipped for the entire
+    // refresh window -- permanently half-loaded, and invisible downstream
+    // because the derived view inner-joins the three statements. is_complete
+    // is the single definition of loaded and it lives in the database.
     let fresh = new Set();
     if (refreshDays > 0) {
         const cutoff = new Date(Date.now() - refreshDays * 86400000).toISOString();
         const recent = await sbSelect(
-            'company_income_statement?select=symbol&period=eq.annual&source=eq.' + SOURCE
+            'vw_company_statement_coverage?select=symbol&is_complete=is.true&source=eq.' + SOURCE
             + '&loaded_at=gte.' + cutoff + '&limit=20000'
         ).catch(() => []);
         fresh = new Set(recent.map(r => r.symbol));
@@ -346,6 +353,15 @@ export default async function handler(req, res) {
         summary.attempted++;
         let wroteAny = false;
         try {
+            // FETCH ALL THREE, THEN WRITE. Writing each statement as it arrived
+            // made a symbol non-atomic with respect to the throttle: the run
+            // broke out between calls and left the symbol with an income
+            // statement and no balance sheet or cash flow. SNDK was exactly
+            // that, and because the derived view inner-joins the three, the
+            // symbol vanished from it silently rather than reporting itself
+            // incomplete. A partial symbol is worse than an absent one.
+            const pending = [];
+            let annualCount = null;
             for (const st of STATEMENTS) {
                 const url = AV_BASE + '?function=' + st.fn + '&symbol=' + encodeURIComponent(symbol)
                     + '&apikey=' + encodeURIComponent(AV_KEY);
@@ -356,16 +372,24 @@ export default async function handler(req, res) {
                 assertNotThrottled(json);          // throws RateLimited — terminal for the run
                 const rows = rowsFor(json, st, symbol);
                 if (rows.length) {
-                    summary.rows_written += await sbUpsert(st.table, rows);
-                    wroteAny = true;
+                    pending.push({ table: st.table, rows });
                     if (st.fn === 'INCOME_STATEMENT') {
-                        summary.years[symbol] = rows.filter(x => x.period === 'annual').length;
+                        annualCount = rows.filter(x => x.period === 'annual').length;
                     }
                 }
                 if (paceMs) await sleep(paceMs);
             }
-            if (wroteAny) summary.symbols_written++;
-            else summary.failures.push({ symbol, error: 'no reports returned' });
+            // Every fetch cleared, so the symbol is complete or genuinely empty.
+            for (const w of pending) {
+                summary.rows_written += await sbUpsert(w.table, w.rows);
+                wroteAny = true;
+            }
+            if (wroteAny) {
+                summary.symbols_written++;
+                if (annualCount !== null) summary.years[symbol] = annualCount;
+            } else {
+                summary.failures.push({ symbol, error: 'no reports returned' });
+            }
         } catch (e) {
             if (e instanceof RateLimited) {
                 summary.rate_limited = true;

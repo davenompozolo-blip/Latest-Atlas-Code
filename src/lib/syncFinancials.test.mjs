@@ -98,3 +98,65 @@ test('every mapped column is a distinct destination', () => {
         assert.equal(new Set(cols).size, cols.length, st.fn + ' has a duplicate destination column');
     }
 });
+
+// ============================================================
+// EQ-2 — the half-loaded symbol.
+//
+// Found by the derived view losing SNDK entirely. Its income statement had
+// landed and its balance sheet and cash flow had not: the loader wrote each
+// statement as it fetched, and Alpha Vantage's throttle broke the run between
+// calls. vw_company_fundamentals inner-joins the three, so the symbol did not
+// report itself incomplete -- it was simply absent.
+//
+// These are source scanners rather than behavioural tests because both defects
+// live in the handler's control flow, which has no seam a unit test can reach
+// without standing up a fake Supabase and a fake vendor. A scanner that fails
+// on the exact pre-fix shape is worth more here than a mock that proves the
+// mock works. Both were checked by reverting the fix and watching them fail.
+// ============================================================
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+const LOADER = readFileSync(
+    fileURLToPath(new URL('../../api/sync-financials.js', import.meta.url)), 'utf8');
+
+function stripComments(src) {
+    return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
+}
+
+test('a symbol is written only after all three statements have been fetched', () => {
+    // The pre-fix shape called sbUpsert INSIDE `for (const st of STATEMENTS)`,
+    // so a throttle between calls left the symbol half-written and, because
+    // the loader's freshness check then counted it as loaded, permanently so.
+    const src = stripComments(LOADER);
+    const start = src.indexOf('for (const st of STATEMENTS)');
+    assert.ok(start > -1, 'the per-statement fetch loop should still exist');
+
+    // Walk braces from the loop header to find its body extent.
+    const open = src.indexOf('{', start);
+    let depth = 0, end = -1;
+    for (let i = open; i < src.length; i++) {
+        if (src[i] === '{') depth++;
+        else if (src[i] === '}') { depth--; if (depth === 0) { end = i; break; } }
+    }
+    assert.ok(end > open, 'should be able to bound the fetch loop');
+
+    const body = src.slice(open, end);
+    assert.ok(!/sbUpsert\s*\(/.test(body),
+        'sbUpsert must NOT be called inside the per-statement fetch loop: that is '
+      + 'what made a symbol non-atomic against the throttle');
+    assert.ok(/sbUpsert\s*\(/.test(src.slice(end)),
+        'the write should happen after the fetch loop closes');
+});
+
+test('freshness is judged on COMPLETE coverage, not on the income statement alone', () => {
+    const src = stripComments(LOADER);
+    assert.ok(src.includes('vw_company_statement_coverage'),
+        'the skip list must come from the coverage view, which is the one '
+      + 'definition of "loaded"');
+    assert.ok(/is_complete=is\.true/.test(src),
+        'and it must require all three statements, or a half-loaded symbol is '
+      + 'skipped for the whole refresh window');
+    assert.ok(!/company_income_statement\?select=symbol/.test(src),
+        'the old income-statement-only freshness read must be gone');
+});
