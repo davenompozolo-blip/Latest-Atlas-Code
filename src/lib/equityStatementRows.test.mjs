@@ -188,3 +188,23 @@ test('the bands are absolute, so a phase does not move when peers change', () =>
     assert.equal(companyPhase(rows).phase, companyPhase(rows).phase);
     assert.equal(companyPhase(rows).bands.highGrowth, PHASE_BANDS.highGrowth);
 });
+
+// ── the Max column cap (CodeRabbit, PR #806) ────────────────────────────────
+
+test('buildColumns with a null limit returns EVERY loaded period', () => {
+    // `Max` used to map to 20, so a quarterly load carrying 81 periods could
+    // never show more than a quarter of them — and the cap read as the data's
+    // own depth rather than as a control. A null limit is unbounded.
+    const many = [];
+    for (let i = 0; i < 81; i++) {
+        many.push({ fiscal_date_ending: '20' + String(10 + Math.floor(i / 4)).padStart(2, '0')
+                        + '-' + String(1 + (i % 4) * 3).padStart(2, '0') + '-01',
+                    fiscal_year: 2010 + Math.floor(i / 4), total_revenue: 100 + i });
+    }
+    assert.equal(buildColumns(many, null).length, 81);
+    assert.equal(buildColumns(many).length, 81);
+    assert.equal(buildColumns(many, 20).length, 20);
+    assert.equal(buildColumns(many, 4).length, 4);
+    // A limit past the row count is not padded.
+    assert.equal(buildColumns(many, 500).length, 81);
+});

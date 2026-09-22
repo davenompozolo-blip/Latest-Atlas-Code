@@ -3,9 +3,10 @@ import { fmt, fmtCurrency, cls, useChart } from './utils.js';
 import { Loading, EmptyState } from './components.js';
 import { sb } from './config.js';
 import {
-    VerdictStrip, ThesisTab, ValuationTab, QualityTab,
+    VerdictStrip, ThesisTab, QualityTab,
     CapitalTab, FactorTab, TechnicalsAndPeersTab, parseInputs,
 } from './equity-research-panels.js';
+import { ValuationTab } from './equity-valuation-tab.js';
 import { FinancialsTab } from './equity-financials-tab.js';
 import { BackgroundTab } from './equity-background-tab.js';
 import { EquityScreener } from './equity-screener.js';
@@ -408,7 +409,7 @@ function MainPanel({ symbol, financials, rawOverview, overview, series, engine, 
     if (tab === 'thesis')  tabContent = React.createElement(ThesisTab,  { inputs: inp, price, engine, onBlendedFV: setBlendedFV, onEVPW: setEVPW, symbol, thesis, onThesis });
     if (tab === 'bg')      tabContent = React.createElement(BackgroundTab, { symbol, rawOverview });
     if (tab === 'fin')     tabContent = React.createElement(FinancialsTab, { symbol });
-    if (tab === 'val')     tabContent = React.createElement(ValuationTab, { inputs: inp, price });
+    if (tab === 'val')     tabContent = React.createElement(ValuationTab, { inputs: inp, price, engine, symbol });
     if (tab === 'qual')    tabContent = React.createElement(QualityTab,  { inputs: inp, derived, snap, symbol });
     if (tab === 'cap')     tabContent = React.createElement(CapitalTab,  { inputs: inp, derived, symbol });
     if (tab === 'factor')  tabContent = React.createElement(FactorTab,   { inputs: inp, derived });

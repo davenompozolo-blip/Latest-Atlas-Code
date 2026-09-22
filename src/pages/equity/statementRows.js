@@ -136,8 +136,13 @@ export function periodChange(current, prior) {
  * previous period of the same periodicity.
  */
 export function buildColumns(rows, limit) {
-    const n = limit == null ? 10 : limit;
-    return (rows || []).slice(0, n).map(function (r, i, arr) {
+    // A null limit means EVERY loaded period. The `Max` control used to map to
+    // 20, so a quarterly load carrying 81 periods could never show more than a
+    // quarter of them — a cap that read as the data's own depth. Raised by
+    // CodeRabbit on PR #806.
+    const all = (rows || []);
+    const n = limit == null ? all.length : limit;
+    return all.slice(0, n).map(function (r, i, arr) {
         return {
             key: r.fiscal_date_ending,
             fiscalYear: r.fiscal_year,
