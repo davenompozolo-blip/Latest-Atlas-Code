@@ -2975,7 +2975,7 @@ than taken on trust:
 'NaN'::numeric > 0          ->  true
 'NaN'::numeric >= 0         ->  true
 'NaN'::numeric > 3.841459   ->  true
-'NaN'::numeric <> 'NaN'     ->  false    (numeric NaN equals itself; float does not)
+'NaN'::numeric <> 'NaN'     ->  false    (PostgreSQL treats NaN as equal to itself)
 ```
 
 So a NaN row satisfied `sd_pred_daily > 0`, satisfied `cvar_pred_daily >
@@ -2983,6 +2983,19 @@ var_pred_daily` **from either side**, satisfied `kupiec_lr >= 0`, and satisfied
 **both** `kupiec_reject_*` flag bindings with the flags set true. Fifteen CHECKs
 written specifically so a row could not claim something it had no evidence for,
 and one sentinel passed all of them.
+
+**CORRECTION (2026-09-22): this entry originally said "numeric NaN equals
+itself; float does not". That is FALSE in PostgreSQL and was repeated into the
+EQ-2 peer view's comment before CodeRabbit caught it on PR #804.** Measured on
+PG 17.6: `'NaN'::float8 = 'NaN'::float8` is **true**, and `'NaN'::float8 > 1e308`
+is **true**, exactly as for `numeric`. Postgres deliberately departs from IEEE
+754 for BOTH types so that NaN sorts and can sit in a btree. The IEEE rule
+(NaN != NaN) is what most languages do and is what I was remembering; it is not
+what this database does.
+
+Nothing else in this entry moves -- the finding is that a one-sided bound admits
+NaN, and it admits it under either type. **A fact about a database is measured
+in that database, not recalled from the standard it implements.**
 
 **A one-sided bound is NaN-permeable; a two-sided range is not.** `lw_delta >= 0
 and lw_delta <= 1` on `book_regime_cvar` refuses NaN already, because the UPPER
@@ -4456,10 +4469,10 @@ EQ-2. `vw_company_fundamentals` (CFA ratios, FCFF/FCFE, growth, SGR),
 `atlas_fiscal_aligned_year`. Full report in
 `docs/EQ2_DERIVED_FUNDAMENTALS_REPORT.md`. 8.4 ms symbol-filtered.
 
-**EQ-1's hand-computed TGT figures are a real regression test and four of seven
+**EQ-1's hand-computed TGT figures are a real regression test and three of seven
 reproduce exactly** -- tax 22.28%, dividend coverage 72.4%, FCF $2,835.0m. The
-three that differ are INPUT CHOICES and were run to ground rather than waved
-through. FCFF: the view takes the CFO-based definition on the reported $445m
+four that differ (FCFF, DIO, DSO, DPO) are INPUT CHOICES and were run to ground
+rather than waved through. FCFF: the view takes the CFO-based definition on the reported $445m
 interest expense; EQ-1 reconstructed from net income, and the $16m gap is the
 non-cash items that formulation has to enumerate and misses. Days ratios:
 EQ-1's 59.5/6.3/61.0 reproduce EXACTLY from ending balances, the view uses
@@ -4475,6 +4488,31 @@ than a leverage signal, and CFO is not a free-cash-flow base. **165 of the
 exactly the figures a reader would quote. `statement_profile` nulls those and
 keeps what does hold (JPM still publishes ROE 16.13%, D/E 1.38).
 
+**The first gate was incomplete, also caught on #804.** `cash_conversion` and
+`sloan_accrual_ratio` are CFO-derived too and were still published -- JPM
+reported a cash conversion of **-2.59** as an earnings-quality reading.
+`gross_margin` and `ebitda_margin` went with them: "gross profit" is not a line
+a bank reports, and the view ALREADY nulled `debt_to_ebitda` on the grounds that
+EBITDA is meaningless where interest is operating, so publishing the margin
+built on that same aggregate was the identical inconsistency wearing different
+clothes. **When you gate a family of ratios, enumerate every member of the
+family** -- I gated by listing what I happened to think of.
+
+`asset_turnover`, `operating_margin` and `net_margin` are KEPT: a bank's asset
+turnover is genuinely low (JPM 0.066 vs TGT 1.787), not undefined.
+
+**Nulling is the honest interim, NOT the end state.** CFA L2 V3 Learning Module
+4 sets out THREE frameworks -- CAMELS for banks, and separate ones for P&C and
+life/health insurers -- and **none of their inputs exist in the persisted
+statements**: no Tier 1 capital, no risk-weighted assets, no NPLs, no allowance
+for loan losses, no net premiums earned or written, no loss reserves.
+Normalisation is what makes a retailer and a bank comparable in one schema and
+is also what discards every line item those frameworks need. Finnhub's
+`/stock/financials-reported` is AS-REPORTED XBRL where those concepts survive --
+so the throughput fallback and the financial-institution framework are the SAME
+piece of work. Its year-depth and cross-filer concept consistency are unmeasured
+and load-bearing.
+
 The discriminator is **`assets.sector`, 100% populated across those 913** -- a
 classification the database already owns. An interest-to-revenue threshold was
 rejected even though it separates cleanly here (JPM 35.0% against <=4.3% for
@@ -4486,12 +4524,29 @@ and the field answers the second reliably.
 
 **A non-payer had no sustainable growth rate at all.** AMD pays no dividend, AV
 omits the line, so `dividends_paid` was NULL -> retention NULL -> SGR NULL --
-precisely the names where SGR is wanted, and precisely the input the
-valuation module's SGR-above-WACC problem needs. **A parsed cash-flow row
-carrying no dividend line is a measurement of ZERO, not an absence.** AMD now
-reads retention 1.000 and SGR 7.19% = its ROE. Gated on `operating_cashflow` so
-an UNPARSED statement still yields NULL, and `dividend_line_reported` publishes
-the inference so it stays auditable.
+precisely the names where SGR is wanted, and precisely the input the valuation
+module's SGR-above-WACC problem needs.
+
+**I "fixed" that by inferring zero from absence. It was wrong, CodeRabbit
+caught it on PR #804, and it is reverted.** The objection: `operating_cashflow
+is not null` proves ONE field parsed, not that the dividend fields were
+complete. The data proves it twice:
+
+| | |
+|---|---|
+| GOOGL, paid nothing 2013-2023 | explicit `0` for 2014-2017 and 2022-2023, **NULL for 2018-2021** |
+| AMD, never paid a common dividend | **6m / 85m / 104m** for 2019-2021, NULL for 2022-2025 |
+
+**The vendor field is unreliable in BOTH directions** -- NULL where zero is
+true, and non-zero where no common dividend was paid -- so absence cannot carry
+a claim about what the company paid. My justification ("AMD pays no dividend")
+was contradicted by AMD's own rows, which I had not looked at before asserting
+it. **Check the column's history before letting absence mean anything.**
+
+The cost is accepted and stated: a genuine non-payer has no retention ratio and
+no SGR. An absent number beats a fabricated one, and SGR feeds valuation.
+`dividend_line_reported` stays and now reports what the VENDOR did, never what
+the company did.
 
 **The join is what made EQ-1's loader defects visible.** SNDK had an income
 statement and no balance sheet and no cash flow: the loader wrote each
@@ -4530,10 +4585,20 @@ margin 24.93% vs 12.84% off their own filings.
 
 **`percentile_cont` HAS NO NUMERIC OVERLOAD.** It coerces to double precision
 and returns it, so the medians published as float8 beside exact-numeric values.
-Not cosmetic: float8 carries NaN and Infinity, and **float NaN does not equal
-itself while numeric NaN does** -- the asymmetry that let a sentinel through
-fifteen CHECKs on PR #783. Cast the result back. A view column's type cannot be
-changed by `CREATE OR REPLACE`, so this needs a DROP.
+Cast the result back, and a view column's type cannot be changed by
+`CREATE OR REPLACE`, so this needs a DROP.
+
+**The reason first given for that cast was WRONG and CodeRabbit corrected it on
+PR #804.** I wrote that float NaN does not equal itself while numeric NaN does.
+Measured on PG 17.6: both are **true**, for `=` and for `> 1e308` alike --
+Postgres departs from IEEE 754 for both types so NaN can sort. There is no
+asymmetry and the cast does not close a NaN door.
+
+The cast is still right, for a narrower and duller reason: **float8 is inexact**
+and these are financial values, so `vs_peer_median` should be an exact
+difference of two exact numbers rather than a numeric minus a float8. Keeping a
+correct change for a wrong reason is how a wrong reason spreads -- it had
+already reached this file's PR #783 entry.
 
 **A percentile over one peer is degenerate** -- it can only be 0 or 1. No floor
 is baked in, because the right one is a display decision that depends on the

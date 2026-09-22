@@ -1086,7 +1086,34 @@ async function getOverview(symbol, skipCache) {
             // financials data — old payloads have snapshot but no _reportedFY.
             var snap = db.financials && db.financials.snapshot;
             var isStale = snap && snap._reportedFY == null && snap.totalRevenue != null;
-            if (!isStale) { memSet(key, db); return { data: db, cache: 'db' }; }
+
+            // TWO WRITERS SHARE THIS ROW AND THEY DO NOT AGREE ON ITS SHAPE.
+            //
+            // This endpoint writes { overview, financials, peers, _source }.
+            // The sync_fundamentals edge function writes
+            // { overview, profile, metric, market_cap_usd, source, fetched_at }
+            // to the same (symbol, 'overview') cache row -- no `financials` key
+            // at all. Reading `ovData.financials || null` against that shape
+            // yields null, so the endpoint answered 200 with `financials: {}`
+            // and `source: 'unknown'`, and every absolute the valuation module
+            // needs -- revenue, EBITDA, share count -- was simply absent.
+            //
+            // Measured on 2026-09-22: 895 of 913 'overview' rows carried the
+            // sync_fundamentals shape. 98% of symbols. sync_fundamentals runs
+            // twice a day and overwrites the row each time it enriches a
+            // symbol, so coverage degraded steadily rather than breaking once.
+            //
+            // A foreign shape is a MISS, not a hit: falling through re-fetches
+            // from Finnhub and rewrites the row in this endpoint's own shape,
+            // which also restores the `reported` XBRL absolutes that cannot be
+            // recovered from the cached metric block. Costs one Finnhub call
+            // per symbol per TTL, and Finnhub has no daily cap.
+            var isForeignShape = !Object.prototype.hasOwnProperty.call(db, 'financials');
+            if (isForeignShape) {
+                console.warn('equity: ignoring foreign cache shape for ' + symbol
+                    + ' (written by sync_fundamentals, no financials key) — refetching');
+            }
+            if (!isStale && !isForeignShape) { memSet(key, db); return { data: db, cache: 'db' }; }
         }
     }
 
