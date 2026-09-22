@@ -4318,6 +4318,115 @@ CTE** (the planner used to prune it; 57,443 rows, external sort 2384kB,
 `vw_nexus_price_freshness` still takes its symbol set from the matview and
 joins `price_history` **without filtering `interval`**.
 
+### Equity Research held no financial statements at all (2026-09-22)
+
+EQ-1. Full report in `docs/EQ1_STATEMENT_LAYER_REPORT.md`.
+
+The module's forensics, capital-allocation and ratio panels were not broken in
+five places. They were broken in one: **there were no multi-year financial
+statements anywhere in the platform.** `equity_cache` carried 913 symbols, 19
+with any `financials` key, and `yearly` was EMPTY on every one of those 19
+(`max_years = 0`). What the key held was `quarterly` EPS-SURPRISE rows
+(`{actual, estimate, quarter}`) -- an earnings-beat series wearing a
+statements name.
+
+Piotroski scored **0/9 with eight rows blank because eight of its nine tests
+are year-over-year comparisons and there was no prior year.** Altman read
+"partial estimate X3+X4 only". Beneish read N/A. CCC, reinvestment rate and
+dividend coverage rendered em dashes. None of it was a display bug.
+
+**`equity_fundamentals_derived` has no writer.** 38 rows, last written
+2026-08-11, and grep across `api/`, `src/`, `scripts/`, `supabase/` finds
+readers and the original migration only. Inside it: beneish 0/38, ccc 0/38,
+reinvest 0/38, div_coverage 0/38, altman full 0/38. **A table with rows in it
+is not a table something maintains** -- the shape of the
+`sync_portfolio_history` finding, one layer out.
+
+**No new vendor was needed.** `api/equity.js:584` already calls Finnhub
+`/stock/financials-reported?freq=annual` -- the full XBRL 10-K -- and then does
+`annuals.sort(); var latest = annuals[0]`. It fetches the history and keeps one
+year.
+
+**Alpha Vantage returns 20 annual periods and 81 quarters** (TGT,
+FY2007-FY2026) on all three statements, GAAP/IFRS-normalised, which is what
+makes a CFA ratio framework computable without per-filer concept matching.
+Field reliability was MEASURED across all 20 periods, not assumed: 16 of 26
+income-statement fields and 13 of 30 cash-flow fields are complete on all 20.
+
+**Two vendor traps, both of which would publish a false claim:**
+`researchAndDevelopment` is 0/20 for TGT and that is CORRECT -- a retailer has
+no R&D line, so NULL means not reported, never zero. And
+`paymentsForRepurchaseOfCommonStock` is 0/20 while
+`proceedsFromRepurchaseOfEquity` is 20/20: **the buybacks are under the field
+whose name reads like the opposite**, so reading the obvious column reports no
+buyback programme for a company that has run one for twenty years.
+
+The dead cash-flow working-capital fields (`changeInOperatingAssets` /
+`changeInOperatingLiabilities`, 0/20) are why FCFF takes delta-WC from BALANCE
+SHEET deltas. Better derivation anyway; here also the only one.
+
+**Proved by computing every dead panel** from the loaded data (TGT FY2026):
+Piotroski **6/9** with all nine tests resolving, Altman **3.24 on the full five
+components**, CCC **4.8 days** (DIO 59.5 / DSO 6.3 / DPO 61.0), FCFF
+**$3.197bn** at a 22.28% effective rate, dividend coverage **72.4% of FCF**.
+The CCC is the tell that it is real arithmetic: a big-box retailer turning
+inventory in 59.5 days and paying suppliers in 61.0 has working capital that is
+almost exactly self-funding.
+
+**Alpha Vantage signals a throttle with HTTP 200** and a `Note` /
+`Information` key. A loader that only looks for `annualReports` parses nothing,
+writes nothing and closes `success` -- the no-op-answers-200 defect for the
+fourth time, and indistinguishable from a company with no filings. Detected
+explicitly, terminal for the run, recorded as `details.rate_limited`. An
+`Error Message` (bad symbol) is deliberately NOT a throttle, so one bad ticker
+cannot abandon the run.
+
+**`sync_log` has no generic row counter.** It carries
+`positions_/transactions_/prices_upserted` and nothing else; inventing
+`rows_upserted` makes PostgREST reject the ENTIRE patch exactly as `duration_ms`
+does, which is how 41 rows sat open for three months. Checked against
+`information_schema` before the first run. The count lives in `details`.
+
+**POSTGRES TRUNCATES AN OVER-LENGTH IDENTIFIER SILENTLY AND CREATE TABLE STILL
+SUCCEEDS.** `proceeds_from_issuance_of_long_term_debt_and_capital_securities_net`
+is 67 characters against a 63 limit; the server cut it, emitted a NOTICE, and
+created the table. The file said one thing and the database held another, and
+**both were internally consistent** -- invisible from either artefact. It
+surfaced only when the first INSERT named the column the file declares and got
+`42703`. **Check identifier length before applying; over-length names do not
+error.** Fifth file/database divergence in this file, first one caused by a
+length limit rather than a paste.
+
+**Throughput is unresolved and it bounds coverage.** AV free tier is 25
+requests/day against 3 per symbol -- ~8 symbols/day, ~114 days for the
+913-symbol universe. The production key's tier is unverified. Finnhub is
+60/min with no daily cap and already wired, but **its year-depth is the one
+load-bearing assumption still unmeasured.** No `cron.job` entry was added
+deliberately: scheduling a loader before its throughput is known burns the
+daily cap on the same head of the list every night.
+
+### The dashboard's Test panel cannot wait for a 110-second function (2026-09-22)
+
+Reported as "`sync_fundamentals` doesn't work or is broken", with a 500 reading
+`Cannot read properties of undefined (reading 'error')`.
+
+**The function is healthy.** A direct call returns HTTP 200 in 3.5s
+(`sync_log` #50208, success, 1 enriched). The dashboard's Test panel sends its
+template body `{"name": "Functions"}`, which carries no `symbols` key -- so the
+function takes the UNIVERSE branch, a 120-symbol slice, and runs its full
+`WALL_CLOCK_BUDGET_MS` of 110 seconds. `sync_log` #50182 records exactly that:
+110,194 ms, mode universe, 30 enriched, `budget_exhausted: true`, closed
+cleanly as `partial`.
+
+The panel timed out and **its own error handler crashed reading `.error` off an
+undefined response**. Nothing in the function body dereferences `.error`; the
+deployed bundle (v8) matches the repo. **A 500 rendered by a test client is not
+necessarily a 500 returned by the function** -- call the URL directly before
+believing the panel. Test it with `{"symbols":["TGT"]}`, which returns in ~1.3s.
+
+"Total invocations 0" on that page is the dashboard's 24h-lagged analytics, not
+a claim about whether the function has run.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel
