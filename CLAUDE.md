@@ -4462,6 +4462,67 @@ same head of the list every night, so the prioritised order has to be settled
 first. Reading a page can trigger its own symbol on demand, which is the
 coverage that actually matters before then.
 
+### The Quality & Forensics data load has never shipped (2026-09-22)
+
+EQ-5b. The panel showed **0/9 Piotroski with eight blank rows**, Altman as a
+"partial estimate, X3+X4 only" and Beneish N/A. EQ-1 read that as a data
+problem -- no multi-year statements existed -- and that was true but was NOT
+the whole cause.
+
+**Measured against the production bundle, on the BASELINE commit, before any of
+this session's changes:**
+
+| string | in `src/` | in bundle |
+|---|---:|---:|
+| `equity_fundamentals_derived` | 6 | **0** |
+| `compute_ticker_derived` | 4 | **0** |
+| `Composite Fair-Value` (equity-research-panels.js) | 1 | 1 |
+
+So `derived` has always been **null in the deployed app**, whatever the table
+held. Every fallback in `QualityTab` and `CapitalTab` was the only path ever
+taken. Re-pointing the table at a better source would have changed nothing.
+
+**This is the 2026-09-21 "unused export is tree-shaken" anomaly, resolved.**
+That entry ended *"either a large part of the page layer is missing from the
+production bundle, or a probe is still misleading me"*. It is the first: code
+inside `equity-research.js`'s third `useEffect` does not reach the bundle,
+while the same file's module scope does -- a `console.log` at the top of that
+very effect ships, and `equity_fundamentals_derived` eight lines below it does
+not. `equity-research.js` IS in the sourcemap's `sources`, and
+`equity-research-panels.js` ships in full.
+
+**The cause inside rollup is still unexplained. The consequence is not, and is
+now measured rather than suspected.**
+
+**Grep the BUILT BUNDLE for a string only your code path can produce.** Not the
+sourcemap `sources` list -- that listed `equity-research.js` throughout. Not
+the module graph. A string literal from the statement you care about, in
+`dist/`, with `grep -o | wc -l`. Three earlier probes agreed with each other
+and with the wrong conclusion.
+
+**Two grep traps cost real time here.** `COMPOSITE FAIR-VALUE` reads as absent
+because the source says `Composite Fair-Value` and CSS uppercases it -- a
+string you can SEE on screen can be absent from a case-sensitive grep. And a
+count like `vw_performance_suite` = 3 in the bundle proves nothing when eleven
+occurrences span six files; only a string unique to ONE file is evidence.
+
+The fix is not to argue with the bundler: `useStatementDerived` lives in
+`equity-research-panels.js`, which provably ships, and loads from the
+statements directly. That also upgrades the source -- 20 annual periods rather
+than the two `compute_ticker_derived` fetches -- so all nine Piotroski tests
+resolve and Altman Z'' computes on all four components.
+
+**Z'' rather than the classic Z**, deliberately: the classic X4 is MARKET
+equity over total liabilities, which would drag a market-data dependency into a
+score derived from statements. Z'' uses book equity and needs no market cap.
+A Z'' missing any component is published as NULL, not as a lower Z'': a
+partial score under a band chart reads as a measurement.
+
+**Beneish is ABSENT, not null.** Its eight factors need receivables, PPE and
+SG&A, which `vw_company_fundamentals` does not publish (they exist in its base
+CTE). Emitting the key would let the panel render an M-score built from missing
+terms.
+
 ### A ratio layer is where the statement layer's holes become visible (2026-09-22)
 
 EQ-2. `vw_company_fundamentals` (CFA ratios, FCFF/FCFE, growth, SGR),

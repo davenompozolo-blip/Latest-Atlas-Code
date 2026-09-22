@@ -406,8 +406,8 @@ function MainPanel({ symbol, financials, rawOverview, overview, series, engine, 
     if (tab === 'thesis')  tabContent = React.createElement(ThesisTab,  { inputs: inp, price, engine, onBlendedFV: setBlendedFV, onEVPW: setEVPW, symbol, thesis, onThesis });
     if (tab === 'fin')     tabContent = React.createElement(FinancialsTab, { symbol });
     if (tab === 'val')     tabContent = React.createElement(ValuationTab, { inputs: inp, price });
-    if (tab === 'qual')    tabContent = React.createElement(QualityTab,  { inputs: inp, derived, snap });
-    if (tab === 'cap')     tabContent = React.createElement(CapitalTab,  { inputs: inp, derived });
+    if (tab === 'qual')    tabContent = React.createElement(QualityTab,  { inputs: inp, derived, snap, symbol });
+    if (tab === 'cap')     tabContent = React.createElement(CapitalTab,  { inputs: inp, derived, symbol });
     if (tab === 'factor')  tabContent = React.createElement(FactorTab,   { inputs: inp, derived });
     if (tab === 'tech')    tabContent = React.createElement(TechnicalsAndPeersTab, { inputs: inp, price, series, rawOverview, peers, symbol });
 

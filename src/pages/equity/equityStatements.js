@@ -82,3 +82,9 @@ export async function loadStatementLayer(symbol, period) {
         return { state: STATE_FAILED, symbol, rows: [], peers: [], coverage: null, error: (e && e.message) || String(e) };
     }
 }
+
+// Re-exported here so a consumer of the statement layer gets the rows and the
+// derived view of them through ONE module boundary. Quality & Forensics and
+// Capital Allocation read the derived shape; Financials reads the rows; both
+// are the same load.
+export { derivedFromStatements, mergeDerived } from './statementRows.js';

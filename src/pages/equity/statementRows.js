@@ -207,3 +207,173 @@ export function peerComparison(peerIndex, alignedYear, metric) {
         peers: row.peer_symbols || [],
     };
 }
+
+// ============================================================
+// Quality & Forensics / Capital Allocation — the derived shape, computed from
+// these same statements.
+//
+// equity_fundamentals_derived is written by compute_ticker_derived, which
+// fetches TWO annual periods from Finnhub. Eight of Piotroski's nine tests are
+// year-over-year, so they could never resolve, and Altman could only ever be a
+// partial X3+X4 estimate. That is why the panel showed 0/9 with eight blank
+// rows -- not a display bug.
+//
+// Lives here rather than in its own module because this file is the pure
+// statement logic and rollup drops a pure module whose only importer's call
+// site it cannot see; consolidating removes the boundary rather than arguing
+// with the bundler. See the build note in the EQ-5b report.
+// ============================================================
+
+/** Strictly greater, and null when either side is absent — never a silent false. */
+function rising(cur, prev) {
+    const a = numOrNull(cur), b = numOrNull(prev);
+    if (a == null || b == null) return null;
+    return a > b;
+}
+function falling(cur, prev) {
+    const r = rising(cur, prev);
+    return r == null ? null : !r;
+}
+
+/**
+ * Piotroski F-score. Each test is TRUE, FALSE or NULL — never false-for-absent.
+ * A null is "not determinable", which the panel already renders apart from a
+ * failed test; counting nulls as fails is what produced a misleading weak grade.
+ */
+export function piotroski(cur, prev) {
+    if (!cur) return { score: null, detail: null, determinable: 0 };
+    const d = {
+        niPos:   finite(cur.net_income)        ? Number(cur.net_income) > 0 : null,
+        cfoPos:  finite(cur.operating_cashflow)? Number(cur.operating_cashflow) > 0 : null,
+        roaRising:  prev ? rising(cur.roa, prev.roa) : null,
+        cfoGtNi: (finite(cur.operating_cashflow) && finite(cur.net_income))
+                    ? Number(cur.operating_cashflow) > Number(cur.net_income) : null,
+        // Leverage FALLING is the healthy direction.
+        levFalling: prev ? falling(cur.debt_to_assets, prev.debt_to_assets) : null,
+        crRising:   prev ? rising(cur.current_ratio, prev.current_ratio) : null,
+        // No new shares: the count did not rise. Equal counts pass.
+        noNewShares: (prev && finite(cur.common_stock_shares_outstanding) && finite(prev.common_stock_shares_outstanding))
+                    ? Number(cur.common_stock_shares_outstanding) <= Number(prev.common_stock_shares_outstanding) : null,
+        gmRising:   prev ? rising(cur.gross_margin, prev.gross_margin) : null,
+        atRising:   prev ? rising(cur.asset_turnover, prev.asset_turnover) : null,
+    };
+    const vals = Object.keys(d).map(k => d[k]);
+    const determinable = vals.filter(v => v !== null).length;
+    const score = vals.reduce((n, v) => n + (v === true ? 1 : 0), 0);
+    return { score: determinable ? score : null, detail: d, determinable };
+}
+
+/**
+ * Altman Z'' — the variant for non-manufacturers and mixed universes. It needs
+ * NO market capitalisation, which is why it is the one computable purely from
+ * the statements; the classic Z's X4 is market equity over total liabilities
+ * and would drag a market-data dependency into a statement-derived score.
+ *
+ *   Z'' = 6.56·X1 + 3.26·X2 + 6.72·X3 + 1.05·X4
+ *   X1 working capital / total assets
+ *   X2 retained earnings / total assets
+ *   X3 EBIT / total assets
+ *   X4 BOOK equity / total liabilities
+ */
+export function altmanZDoublePrime(r) {
+    if (!r) return { z: null, components: null, model: 'z_double_prime' };
+    const ta = numOrNull(r.total_assets);
+    if (!ta) return { z: null, components: null, model: 'z_double_prime' };
+    const ebit = numOrNull(r.ebit) != null ? numOrNull(r.ebit) : numOrNull(r.operating_income);
+    const tl = numOrNull(r.total_liabilities);
+    const x1 = numOrNull(r.working_capital)    != null ? numOrNull(r.working_capital) / ta : null;
+    const x2 = numOrNull(r.retained_earnings)  != null ? numOrNull(r.retained_earnings) / ta : null;
+    const x3 = ebit != null ? ebit / ta : null;
+    const x4 = (numOrNull(r.total_shareholder_equity) != null && tl) ? numOrNull(r.total_shareholder_equity) / tl : null;
+    const comps = { x1, x2, x3, x4 };
+    // Every component must be present: a Z'' missing a term is not a lower Z'',
+    // it is a different statistic, and the panel has a band chart behind it.
+    if ([x1, x2, x3, x4].some(v => v == null)) {
+        return { z: null, components: comps, model: 'z_double_prime', partial: true };
+    }
+    return { z: 6.56 * x1 + 3.26 * x2 + 6.72 * x3 + 1.05 * x4, components: comps, model: 'z_double_prime' };
+}
+
+/** Reinvestment as a share of NOPAT: (capex − D&A) / NOPAT. */
+export function reinvestmentRate(r) {
+    if (!r) return null;
+    const ebit = numOrNull(r.ebit) != null ? numOrNull(r.ebit) : numOrNull(r.operating_income);
+    const t = numOrNull(r.effective_tax_rate);
+    if (ebit == null || t == null) return null;
+    const nopat = ebit * (1 - Math.min(Math.max(t, 0), 1));
+    if (!nopat) return null;
+    const capex = numOrNull(r.capital_expenditures);
+    const da = numOrNull(r.d_and_a);
+    if (capex == null || da == null) return null;
+    return (Math.abs(capex) - da) / nopat;
+}
+
+/**
+ * Build the object the existing panels consume. Anything not derivable from
+ * the statements alone is left ABSENT so the panel's own fallback decides,
+ * rather than being handed a zero that reads as a measurement.
+ */
+export function derivedFromStatements(rows) {
+    if (!rows || !rows.length) return null;
+    const cur = rows[0];
+    const prev = rows[1] || null;
+
+    const p = piotroski(cur, prev);
+    const a = altmanZDoublePrime(cur);
+
+    // Newest-first in, oldest-first out: a history is read left to right.
+    const cccHistory = rows
+        .filter(r => finite(r.cash_conversion_cycle))
+        .slice(0, 5)
+        .map(r => ({ year: r.fiscal_year, ccc: Number(r.cash_conversion_cycle) }))
+        .reverse();
+
+    const divCovOfFcf = numOrNull(cur.dividend_coverage_of_fcf);
+
+    const out = {
+        _source: 'statements',
+        _fiscalYear: cur.fiscal_year,
+        _periods: rows.length,
+
+        piotroski_f: p.score,
+        piotroski_detail: p.detail,
+        piotroski_determinable: p.determinable,
+
+        altman_z: a.z,
+        altman_components: a.components,
+        altman_model: a.model,
+
+        sloan_accrual: numOrNull(cur.sloan_accrual_ratio),
+        accrual_quality: numOrNull(cur.cash_conversion),
+        ccc_history: cccHistory.length ? cccHistory : null,
+
+        roic: numOrNull(cur.roic),
+        reinvest_rate: reinvestmentRate(cur),
+        // The panel reads coverage as FCF per unit of dividend; the view
+        // publishes the reciprocal (dividends as a share of FCF).
+        div_coverage: divCovOfFcf ? 1 / divCovOfFcf : null,
+    };
+
+    // BENEISH IS NOT COMPUTED and is deliberately absent rather than null-filled.
+    // Its eight factors need receivables, PPE and SG&A, which the fundamentals
+    // view does not publish yet (they exist in its base CTE). Emitting a key
+    // here would let the panel render an M-score built from missing terms.
+    return out;
+}
+
+/**
+ * The statements are the better source wherever they carry a value, but they
+ * do not cover everything the stale table held. Merge with the statements
+ * winning per KEY, never wholesale: a null from the statements must not erase
+ * a real figure, and a real figure from the statements must not be shadowed.
+ */
+export function mergeDerived(fromTable, fromStatements) {
+    if (!fromStatements) return fromTable || null;
+    if (!fromTable) return fromStatements;
+    const out = Object.assign({}, fromTable);
+    Object.keys(fromStatements).forEach(function (k) {
+        const v = fromStatements[k];
+        if (v !== null && v !== undefined) out[k] = v;
+    });
+    return out;
+}
