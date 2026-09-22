@@ -9,6 +9,8 @@ import { sb } from './config.js';
 import '../styles/nexus-theme.css';
 import { useFreshnessGate } from '../lib/useFreshnessGate.js';
 import { weightedMove, withheldSharePct } from '../lib/weightedMove.js';
+import { analyticsPending, convictionOf, actionOf, partitionByAnalytics,
+         sortByConviction, ANALYTICS_PENDING_LABEL } from '../lib/holdingsAnalytics.js';
 import { useOrderMachine, useCircuitBreaker } from '../lib/useOrderMachine.js';
 import { NexusRiskPill } from './nexus/NexusRiskPill.js';
 
@@ -74,9 +76,14 @@ const weightedDaily = holdings => weightedMove(holdings, {
 });
 
 function calcStats(holdings) {
-    if (!holdings.length) return { total: 0, wtConv: 50, wtDaily: null, wtDailyWithheldPct: 0, alerts: 0, longPct: 0 };
+    if (!holdings.length) return { total: 0, wtConv: null, wtConvPendingPct: 0, wtDaily: null, wtDailyWithheldPct: 0, alerts: 0, longPct: 0 };
     const total   = holdings.reduce((s, h) => s + (+h.market_value || 0), 0);
-    const wtConv  = total ? holdings.reduce((s, h) => s + (+h.conviction_score || 50) * (+h.market_value || 0), 0) / total : 50;
+    // Same withhold-and-renormalise rule as the daily move, and for the same
+    // reason: a name whose analytics have not been computed yet has no score,
+    // and 50 is a real reading on a 0-100 scale rather than a neutral filler.
+    // See src/lib/holdingsAnalytics.js.
+    const conv    = weightedMove(holdings, { value: h => h.market_value, move: convictionOf });
+    const wtConv  = conv.pct ?? null;
     const day     = weightedDaily(holdings);
     const alerts  = holdings.filter(h => h.alert_flag).length;
     const longPct = holdings.filter(h => h.quant_signal === 'Long').reduce((s, h) => s + (+h.weight_pct || 0), 0);
@@ -88,6 +95,9 @@ function calcStats(holdings) {
         // Share of book value whose move the feed could not support, so the
         // surface can state its denominator instead of implying full cover.
         wtDailyWithheldPct: withheldSharePct(day, total),
+        // Share of book value with no analytics on file yet, so the surface
+        // states its denominator instead of implying full cover.
+        wtConvPendingPct: withheldSharePct(conv, total),
         alerts, longPct,
     };
 }
@@ -263,11 +273,14 @@ function SystemHealthBar({ tier, ageMin, circuitTripped }) {
 
 // ── NexusHeader ───────────────────────────────────────────────
 function NexusHeader({ holdings, onSync, syncState, freshness, circuitTripped }) {
-    const { total, wtConv, wtDaily, alerts, longPct } = calcStats(holdings);
-    const score      = Math.round(wtConv);
-    const offset     = Math.round(163 * (1 - Math.min(100, score) / 100));
-    const healthLbl  = score >= 70 ? 'Strong' : score >= 55 ? 'Neutral' : 'Weak';
-    const healthCol  = score >= 70 ? 'var(--nx-green)' : score >= 55 ? 'var(--nx-amber)' : 'var(--nx-red)';
+    const { total, wtConv, wtConvPendingPct, wtDaily, alerts, longPct } = calcStats(holdings);
+    // null when no holding carries analytics yet -- the gauge reads as absent
+    // rather than swinging to an arithmetic artefact of Math.round(null) = 0,
+    // which would render "Weak" on a book nobody has scored.
+    const score      = wtConv == null ? null : Math.round(wtConv);
+    const offset     = score == null ? 163 : Math.round(163 * (1 - Math.min(100, score) / 100));
+    const healthLbl  = score == null ? '—' : score >= 70 ? 'Strong' : score >= 55 ? 'Neutral' : 'Weak';
+    const healthCol  = score == null ? 'var(--nx-text3)' : score >= 70 ? 'var(--nx-green)' : score >= 55 ? 'var(--nx-amber)' : 'var(--nx-red)';
 
     // Fetch Alpaca account equity for the Portfolio Value KPI
     const [acct, setAcct] = useState(null);
@@ -287,8 +300,8 @@ function NexusHeader({ holdings, onSync, syncState, freshness, circuitTripped })
     const equityDeltaPct = acct ? acct.dayPnlPct : wtDaily;
 
     const dailyDelta = bookDelta;
-    const addCount   = holdings.filter(h => h.recommended_action === 'Add').length;
-    const trimCount  = holdings.filter(h => h.recommended_action === 'Trim' || h.recommended_action === 'Exit').length;
+    const addCount   = holdings.filter(h => actionOf(h) === 'Add').length;
+    const trimCount  = holdings.filter(h => actionOf(h) === 'Trim' || actionOf(h) === 'Exit').length;
     const bullCount  = holdings.filter(h => h.technical_signal === 'Bull').length;
     const longCount  = holdings.filter(h => h.quant_signal === 'Long').length;
     const syncBusy   = syncState && syncState.phase === 'running';
@@ -347,7 +360,7 @@ function NexusHeader({ holdings, onSync, syncState, freshness, circuitTripped })
             e('div', { className: 'nx-kc nx-al' },
                 e('div', { className: 'nx-kc-l' }, 'Add / Trim Flags'),
                 e('div', { className: 'nx-kc-v', style: { color: 'var(--nx-amber)' } }, addCount + ' / ' + trimCount),
-                e('div', { className: 'nx-kc-d nx-nt' }, holdings.filter(h => h.recommended_action === 'Exit').length + ' exit signals'),
+                e('div', { className: 'nx-kc-d nx-nt' }, holdings.filter(h => actionOf(h) === 'Exit').length + ' exit signals'),
                 e('div', { className: 'nx-kc-s' }, 'Signal synthesis')
             ),
             e('div', { className: 'nx-kc nx-rl' },
@@ -391,8 +404,11 @@ function ConvictionPanel({ holdings }) {
     const [active, setActive] = useState(null);
 
     const cards = useMemo(function() {
-        let list = [...holdings].sort((a, b) => b.conviction_score - a.conviction_score);
-        if (tab === 'High Conv.') list = list.filter(h => h.conviction_score >= 60);
+        // sortByConviction, not a bare subtraction: `b.x - a.x` against a null
+        // yields NaN, and a NaN comparator is unstable rather than merely
+        // wrong. Pending rows sort last in both directions.
+        let list = sortByConviction(holdings, -1);
+        if (tab === 'High Conv.') list = list.filter(h => (convictionOf(h) ?? -1) >= 60);
         if (tab === 'Alerts')     list = list.filter(h => h.alert_flag);
         return list.slice(0, 12);
     }, [holdings, tab]);
@@ -408,7 +424,7 @@ function ConvictionPanel({ holdings }) {
             )
         ),
         cards.map(function(h) {
-            const s     = h.conviction_score || 50;
+            const s     = convictionOf(h);
             const isOn  = active === h.symbol;
             const [vBg, vCol] = sigStyle(h.valuation_signal || 'Fair');
             const [mBg, mCol] = sigStyle(h.macro_signal    || 'Neutral');
@@ -446,12 +462,18 @@ function ConvictionPanel({ holdings }) {
                     e('div', { className: 'nx-sg', style: { background: qBg, color: qCol } },
                         e('span', { className: 'nx-sg-lbl' }, 'Quality'), h.quality_grade || '—')
                 ),
-                e('div', { className: 'nx-meter' },
-                    e('div', { className: 'nx-mt' },
-                        e('div', { className: 'nx-mf', style: { width: s + '%', background: SC(s) } })
+                s == null
+                    // No bar and no number: a meter drawn at any width is a
+                    // reading, and there is none. ANALYTICS_PENDING_LABEL says
+                    // which half of the row is missing.
+                    ? e('div', { className: 'nx-meter' },
+                        e('div', { className: 'nx-ms', style: { color: 'var(--nx-text3)' } }, ANALYTICS_PENDING_LABEL))
+                    : e('div', { className: 'nx-meter' },
+                        e('div', { className: 'nx-mt' },
+                            e('div', { className: 'nx-mf', style: { width: s + '%', background: SC(s) } })
+                        ),
+                        e('div', { className: 'nx-ms', style: { color: SC(s) } }, s)
                     ),
-                    e('div', { className: 'nx-ms', style: { color: SC(s) } }, s)
-                ),
                 h.dcf_upside_pct == null
                     ? e('div', { style: { fontSize: 8, color: 'var(--nx-amber)', marginTop: 2, fontFamily: 'var(--nx-fm)' } }, '◑ Partial — valuation input missing')
                     : e('div', { style: { display:'flex', alignItems:'center', gap:6, fontSize: 8, marginTop: 2, fontFamily: 'var(--nx-fm)', color:'var(--nx-text3)' } },
@@ -462,7 +484,12 @@ function ConvictionPanel({ holdings }) {
                             : e('span', { style: { fontSize:7, fontWeight:700, padding:'1px 4px', borderRadius:3, background:'var(--nx-bg3)', color:'var(--nx-text3)', textTransform:'uppercase' } }, 'Analyst')),
                 e('div', { className: 'nx-insight' },
                     e('strong', null, 'Nexus: '),
-                    h.nexus_insight || ('Weight ' + h.weight_pct + '% · ' + h.technical_signal + ' tech · ' + h.quality_grade + ' quality')
+                    // The old fallback rebuilt the sentence from technical_signal
+                    // and quality_grade, both of which are undefined on a row
+                    // whose analytics are pending -- it rendered "undefined tech".
+                    h.nexus_insight || (analyticsPending(h)
+                        ? ANALYTICS_PENDING_LABEL + ' — weight ' + h.weight_pct + '%'
+                        : 'Weight ' + h.weight_pct + '% · ' + h.technical_signal + ' tech · ' + h.quality_grade + ' quality')
                 )
             );
         })
@@ -665,7 +692,7 @@ function ActionCentre({ holdings, disabled }) {
 
     const trades = useMemo(function() {
         return [...holdings]
-            .filter(h => h.recommended_action && h.recommended_action !== 'Hold')
+            .filter(h => actionOf(h) && actionOf(h) !== 'Hold')
             .sort(function(a, b) {
                 const r = { Add: 0, Trim: 1, Exit: 2 };
                 return (r[a.recommended_action] || 3) - (r[b.recommended_action] || 3);
@@ -708,7 +735,7 @@ function ActionCentre({ holdings, disabled }) {
                             'Multi-Signal Opportunity'
                         )),
                         e('div', { className: 'nx-al-m' },
-                            'Conv. ' + h.conviction_score + ' · Weight ' + h.weight_pct + '%' +
+                            'Conv. ' + (convictionOf(h) ?? '—') + ' · Weight ' + h.weight_pct + '%' +
                             (h.var_contribution_pct ? ' · VaR ' + h.var_contribution_pct + '%' : ''))
                     ),
                     e('button', { className: 'nx-al-act',
@@ -721,7 +748,7 @@ function ActionCentre({ holdings, disabled }) {
                                 suggestedNotional: Math.abs(+h.market_value) * 0.02,
                                 currentPrice: h.current_price,
                                 ownedShares: (h.current_price ? Math.abs(+h.market_value) / +h.current_price : null),
-                                conviction: h.conviction_score,
+                                conviction: convictionOf(h),
                                 intent: 'add',
                                 snapshot: h,
                             });
@@ -742,7 +769,7 @@ function ActionCentre({ holdings, disabled }) {
             trades.length === 0
                 ? e('div', { style: { padding: '10px 12px', fontSize: 9, color: 'var(--nx-text3)' } }, 'No trades suggested.')
                 : trades.map(function(h) {
-                    const isAdd = h.recommended_action === 'Add';
+                    const isAdd = actionOf(h) === 'Add';
                     const sz    = Math.abs(+h.market_value) * 0.02;
                     return e('div', {
                         key: h.symbol,
@@ -757,13 +784,13 @@ function ActionCentre({ holdings, disabled }) {
                                 suggestedNotional: sz,
                                 currentPrice: h.current_price,
                                 ownedShares: (h.current_price ? Math.abs(+h.market_value) / +h.current_price : null),
-                                conviction: h.conviction_score,
-                                intent: h.recommended_action === 'Exit' ? 'exit' : (isAdd ? 'add' : 'trim'),
+                                conviction: convictionOf(h),
+                                intent: actionOf(h) === 'Exit' ? 'exit' : (isAdd ? 'add' : 'trim'),
                                 snapshot: h,
                             });
                         }
                     },
-                        e('span', { className: 'nx-td ' + tradeChipClass(h.recommended_action) }, h.recommended_action),
+                        e('span', { className: 'nx-td ' + tradeChipClass(actionOf(h)) }, actionOf(h)),
                         e('div', null,
                             e('div', { className: 'nx-ttk' }, h.symbol),
                             e('div', { className: 'nx-tre' }, (h.technical_signal || '?') + ' tech · ' + (h.quality_grade || '?') + ' qual')
@@ -771,7 +798,7 @@ function ActionCentre({ holdings, disabled }) {
                         e('div', { className: 'nx-tsz ' + (isAdd ? 'nx-up' : 'nx-dn') },
                             (isAdd ? '+' : '−') + usd(sz)
                         ),
-                        e('div', { className: 'nx-tcf', style: { color: SC(h.conviction_score) } }, h.conviction_score)
+                        e('div', { className: 'nx-tcf', style: { color: SC(convictionOf(h)) } }, convictionOf(h))
                     );
                 })
         ),
@@ -831,10 +858,10 @@ function NexusHoldings({ holdings, disabled }) {
 
     const filtered = useMemo(function() {
         let list = [...holdings];
-        if (filter === 'High Conv.')  list = list.filter(h => h.conviction_score >= 60);
+        if (filter === 'High Conv.')  list = list.filter(h => (convictionOf(h) ?? -1) >= 60);
         if (filter === 'Long')        list = list.filter(h => h.quant_signal === 'Long');
         if (filter === 'Alerts')      list = list.filter(h => h.alert_flag);
-        if (filter === 'Trim/Exit')   list = list.filter(h => h.recommended_action === 'Trim' || h.recommended_action === 'Exit');
+        if (filter === 'Trim/Exit')   list = list.filter(h => actionOf(h) === 'Trim' || actionOf(h) === 'Exit');
         list.sort(function(a, b) {
             const va = a[sortKey], vb = b[sortKey];
             if (va == null && vb == null) return 0;
@@ -855,7 +882,12 @@ function NexusHoldings({ holdings, disabled }) {
             // an em dash rather than a fabricated 0.0%.
             daily_return_pct:  weightedDaily(holdings).pct ?? null,
             total_return_pct:  holdings.reduce((s, h) => s + (+h.total_return_pct || 0) * (+h.market_value || 0), 0) / total,
-            conviction_score:  Math.round(holdings.reduce((s, h) => s + (+h.conviction_score || 50) * (+h.market_value || 0), 0) / total),
+            // null when no holding carries analytics, so the footer shows an
+            // em dash rather than a book-weighted average of fabricated 50s.
+            conviction_score:  (function() {
+                const c = weightedMove(holdings, { value: h => h.market_value, move: convictionOf });
+                return c.pct == null ? null : Math.round(c.pct);
+            })(),
             var_total:         holdings.reduce((s, h) => s + (+h.var_contribution_pct || 0), 0),
             earnings_count:    holdings.filter(h => h.next_earnings_date).length,
         };
@@ -884,16 +916,16 @@ function NexusHoldings({ holdings, disabled }) {
     }
 
     function ExpandDetail({ h }) {
-        const s   = h.conviction_score || 50;
-        const aS  = actStyle(h.recommended_action);
+        const s   = convictionOf(h);
+        const aS  = actStyle(actionOf(h));
         return e('tr', { className: 'nx-expand-row open' },
             e('td', { colSpan: 18 },
                 e('div', { className: 'nx-expand-inner' },
                     e('div', { className: 'nx-expand-grid' },
                         e('div', { className: 'nx-eq' },
                             e('div', { className: 'nx-eq-l' }, 'Nexus Intelligence'),
-                            e('div', { className: 'nx-eq-v', style: { color: SC(s) } },
-                                (h.recommended_action || 'Hold') + ' — ' + s + '/100'),
+                            e('div', { className: 'nx-eq-v', style: { color: s == null ? 'var(--nx-text3)' : SC(s) } },
+                                s == null ? ANALYTICS_PENDING_LABEL : (actionOf(h) || '—') + ' — ' + s + '/100'),
                             e('div', { className: 'nx-eq-d' },
                                 'Technical: ' + (h.technical_signal || '?') +
                                 ' · Quality: ' + (h.quality_grade || '?') +
@@ -918,7 +950,7 @@ function NexusHoldings({ holdings, disabled }) {
                         ),
                         e('div', { className: 'nx-eq' },
                             e('div', { className: 'nx-eq-l' }, 'Recommended Action'),
-                            e('div', { className: 'nx-eq-v', style: { color: aS.color } }, h.recommended_action || 'Hold'),
+                            e('div', { className: 'nx-eq-v', style: { color: aS.color } }, actionOf(h) || '—'),
                             e('div', { className: 'nx-eq-d' },
                                 'Since entry: ' + pct(h.total_return_pct, 1) +
                                 ' · Daily: ' + pct(h.daily_return_pct))
@@ -984,9 +1016,9 @@ function NexusHoldings({ holdings, disabled }) {
                 ),
                 e('tbody', null,
                     filtered.reduce(function(rows, h) {
-                        const s    = h.conviction_score || 50;
+                        const s    = convictionOf(h);
                         const isEx = expanded === h.symbol;
-                        const aS   = actStyle(h.recommended_action);
+                        const aS   = actStyle(actionOf(h));
                         const [, qCol] = sigStyle(h.quant_signal);
                         const tkColor  = h.alert_flag === 'conflict' || h.alert_flag === 'risk' ? 'var(--nx-red)'
                                        : h.alert_flag === 'opportunity' ? 'var(--nx-green)' : undefined;
@@ -1029,10 +1061,21 @@ function NexusHoldings({ holdings, disabled }) {
                             e('td', { className: 'nx-c-rsk nx-mono', style: { color: +h.var_contribution_pct > 2.5 ? 'var(--nx-red)' : undefined } },
                                 h.var_contribution_pct != null ? pct(h.var_contribution_pct) : '—'),
                             e('td', { className: 'nx-c-sig' },
-                                e('span', { className: 'nx-sscore', style: { background: SBG(s), color: SC(s) } }, s)
+                                e('span', {
+                                    className: 'nx-sscore',
+                                    title: s == null ? ANALYTICS_PENDING_LABEL : undefined,
+                                    style: s == null
+                                        ? { background: 'transparent', color: 'var(--nx-text3)' }
+                                        : { background: SBG(s), color: SC(s) },
+                                }, s == null ? '—' : s)
                             ),
                             e('td', { className: 'nx-c-sig' },
-                                e('span', { className: 'nx-rchip', style: { background: SBG(s), color: qCol || SC(s) } }, h.quant_signal || '—')
+                                e('span', {
+                                    className: 'nx-rchip',
+                                    style: s == null
+                                        ? { background: 'transparent', color: 'var(--nx-text3)' }
+                                        : { background: SBG(s), color: qCol || SC(s) },
+                                }, h.quant_signal || '—')
                             ),
                             e('td', { className: 'nx-c-sig nx-mono', style: { color: 'var(--nx-text3)' } }, h.next_earnings_date || '—'),
                             e('td', { className: 'nx-c-act' },
@@ -1045,7 +1088,8 @@ function NexusHoldings({ holdings, disabled }) {
                                         onClick: function(ev) {
                                             ev.stopPropagation();
                                             if (disabled) return;
-                                            const act = h.recommended_action || 'Hold';
+                                            const act = actionOf(h);
+                                            if (!act) return;   // no verdict, no ticket
                                             const isBuy = act === 'Add';
                                             openTradeTicket({
                                                 symbol: h.symbol,
@@ -1053,19 +1097,19 @@ function NexusHoldings({ holdings, disabled }) {
                                                 suggestedNotional: Math.abs(+h.market_value) * 0.02,
                                                 currentPrice: h.current_price,
                                                 ownedShares: (h.current_price ? Math.abs(+h.market_value) / +h.current_price : null),
-                                                conviction: h.conviction_score,
+                                                conviction: convictionOf(h),
                                                 intent: act === 'Exit' ? 'exit' : (isBuy ? 'add' : 'trim'),
                                                 snapshot: h,
                                             });
                                         }
-                                    }, h.recommended_action || 'Hold'),
+                                    }, actionOf(h) || '—'),
                                     e('button', {
                                         title: 'Log a pass on ' + h.symbol,
                                         style: { background:'transparent', color:'var(--nx-text3)', border:'1px solid var(--nx-border)',
                                             borderRadius:4, fontSize:8, fontWeight:700, padding:'3px 6px', cursor:'pointer', textTransform:'uppercase' },
                                         onClick: function(ev) {
                                             ev.stopPropagation();
-                                            openPassTicket({ symbol: h.symbol, conviction: h.conviction_score, snapshot: h });
+                                            openPassTicket({ symbol: h.symbol, conviction: convictionOf(h), snapshot: h });
                                         }
                                     }, 'Pass')
                                 )
@@ -1093,7 +1137,8 @@ function NexusHoldings({ holdings, disabled }) {
                         e('td', { className: 'nx-c-rsk' }),
                         e('td', { className: 'nx-c-rsk' }),
                         e('td', { className: 'nx-c-rsk nx-mono', style: { color: 'var(--nx-red)' } }, pct(totals.var_total, 1)),
-                        e('td', { className: 'nx-c-sig nx-mono', style: { color: 'var(--nx-amber)' } }, totals.conviction_score + ' avg'),
+                        e('td', { className: 'nx-c-sig nx-mono', style: { color: 'var(--nx-amber)' } },
+                            totals.conviction_score == null ? '—' : totals.conviction_score + ' avg'),
                         e('td', { className: 'nx-c-sig' }),
                         e('td', { className: 'nx-c-sig nx-mono', style: { color: totals.earnings_count > 0 ? 'var(--nx-amber)' : 'var(--nx-text3)' } },
                             totals.earnings_count > 0 ? totals.earnings_count + ' upcoming' : '—'),

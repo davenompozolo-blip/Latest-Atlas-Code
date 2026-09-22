@@ -4227,6 +4227,97 @@ have read 0 / 0.
 **A window that crosses midnight cannot be scoped by `current_date`.** Check any
 job whose schedule spans the rollover for the same shape.
 
+### The read path served the mark from two places (2026-09-22)
+
+H-4, and it closes the skew the I-1 scoping note flagged. Full report in
+`docs/H4_READ_PATH_SKEW_REPORT.md`.
+
+`vw_nexus_holdings` drove its rows from `mv_nexus_holdings` -- a 10-minute
+matview -- while joining the live `vw_portfolio_home` for a handful of columns.
+Positions sync every 5 minutes, so the two carried **different prices for the
+same name at the same instant**: mid-session, **58 of 64 held names**, worst
+gap **2.38%**. The holdings table, the Theme cut, the bench docket and the
+contribution panel all descend from the matview, so they disagreed with the
+flagship's live panels **within one page load**.
+
+**This file waved the same skew through once**, as "mark drift since the last
+matview refresh, at most 0.110pp". **Re-measure a drift you decided was
+small** -- it is bounded by a refresh interval, not by anything about the data.
+
+**The BOOK is live; the ANALYTICS are cached.** The view is now driven by
+`vw_portfolio_home` with the matview LEFT JOINed, and every column that is a
+function of the mark is computed from that one row. H-3's construction
+generalised -- it moved `daily_return_pct` and `five_day_return_pct` onto the
+live view "so the figure and its flag come from one row and cannot disagree"
+and did not extend it to the mark, which was the larger half.
+
+**It costs nothing, because `vw_portfolio_home` was ALREADY in the FROM
+clause.** No join is added; what changed is which side of an existing join each
+column comes from. `EXPLAIN` put the matview at **7 buffers / 0.058 ms of a
+547 ms read** -- it buys nothing at read time here and everything at build
+time, which is exactly where the split was drawn. 547 -> 453 ms first read,
+**71-72 ms warm**. The row set is live too, so an exit leaves within one
+positions sync rather than one refresh.
+
+**Prove a live/cached split by FREEZING, not by diffing.** The two definitions
+disagree by construction at an arbitrary instant, so an `EXCEPT ALL` proves
+nothing until the matview is `REFRESH`ed current -- at which point it must
+return **0 over all 39 columns x 64 rows**, and does. Any difference at any
+other instant is then precisely the drift being removed. 15 s after a positions
+sync: old view disagrees with the book on **15 of 64** rows, new view on **0**.
+
+**AN ABSENT ANALYTICS ROW MUST NOT PRODUCE A VERDICT.** A name bought between
+refreshes now arrives priced and sized with no conviction score, and
+`recommended_action`'s CASE ends in `ELSE 'Exit'` -- so a null score would have
+labelled a position bought four minutes ago **"Exit"**. The four analytic
+fields are withheld together as NULL.
+
+**That moved the exposure to the browser, where it was worse**, because every
+call site defaulted: `conviction_score || 50` (a real reading on a 0-100
+scale), `recommended_action || 'Hold'` (a real verdict),
+`num(...) ?? 0` (the WORST score), and
+`b.conviction_score - a.conviction_score` (NaN against a null, so the sort is
+**unstable**, not merely wrong). Same shape as H-3's `|| 0`: withholding turns
+a loud wrong number into a silent one.
+
+**The sizing layer was the worst of them.** `targetWeights` counted a pending
+name's weight in `invested` and its conviction as 0 in `convSum`, so its target
+came out **0%** and `sizeTrade` read that as the book's own instruction to
+exit -- **a sell ticket for a position bought minutes earlier**. It also
+diluted every other name: A's target 45% -> 75% from a name the model never
+scored. A pending name now gets **no entry** in the map rather than a zero one,
+so the caller must tell "target 0%" from "no target".
+
+`src/lib/holdingsAnalytics.js` is the one place that decides. `convictionOf`
+and `actionOf` cannot be handed a fallback. **There is no second weighting
+implementation** -- a book-weighted conviction is `weightedMove(rows, { value,
+move: convictionOf })`, same arithmetic, same withhold-and-renormalise rule.
+
+**The 461-test suite passed UNCHANGED across the whole change**, because no
+fixture has ever carried a pending row -- before H-4 such a name was *absent*
+rather than present-with-nulls, so the shape could not occur. The new fixtures
+carry one everywhere, with values chosen so the old defaults move the answer by
+a margin no rounding could produce: **7 of 22 fail** with the defaulting
+accessors restored, **2 of 11** with the old `targetWeights`, checked by
+reverting. 461 -> 477.
+
+**A repo-wide scanner refuses `||` / `??` applied to the withheld fields**, so
+the next call site fails in CI rather than in the terminal -- and **its first
+version was wrong, found by its own detector test**: the regex was anchored
+tight to the field and missed the live instance
+`num(row.conviction_score) ?? 0`, which has a closing paren in between.
+
+**Flagged, not fixed:** `mv_nexus_holdings.total_return_pct` is
+`COALESCE(vw_performance_suite.total_return_pct, p.unrealised_return_pct, 0)`
+-- 63 of 64 rows take the first branch, **1 takes the mark fallback** and is
+still snapshot-served; that COALESCE is the cross-basis substitution
+`nexusReturnBasis.js` exists to forbid and re-basing it touches six consumers.
+`quality_grade` now pulls in `vw_portfolio_home`'s **unbounded `returns`/`stats`
+CTE** (the planner used to prune it; 57,443 rows, external sort 2384kB,
+~170 ms) -- net read time still fell, but that node grows with `price_history`.
+`vw_nexus_price_freshness` still takes its symbol set from the matview and
+joins `price_history` **without filtering `interval`**.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel

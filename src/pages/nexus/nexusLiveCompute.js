@@ -12,6 +12,7 @@
 
 import { computeRead, READ_CONFIG, ConcentrationPenalty } from './readEngine.js';
 import { weightedMove } from '../../lib/weightedMove.js';
+import { analyticsPending, convictionOf } from '../../lib/holdingsAnalytics.js';
 import {
     BASIS_SINCE_ENTRY, BASIS_ON_COST, BASIS_LABEL,
     readReturn, partitionByBasis,
@@ -67,7 +68,13 @@ export function mapHolding(row, compByTk, staleSet) {
         // spine reports the unmapped weight rather than hiding it.
         sector: row.sector || 'Unclassified',
         theme: row.theme || null,
-        conviction: num(row.conviction_score) ?? 0,
+        // NULL, never 0. H-4 made this view live off vw_portfolio_home and
+        // LEFT JOIN the analytics matview, so a name bought between refreshes
+        // arrives priced and sized with no conviction on file. `?? 0` turned
+        // that into the WORST score on a 0-100 scale -- and, through
+        // targetWeights below, into a target weight of 0% and a sell ticket
+        // for a position bought four minutes ago.
+        conviction: convictionOf(row),
         // NULL, never 0. `vw_nexus_holdings.daily_return_pct` is now withheld
         // by the database when the name's last bar is older than 7 days or it
         // has no bar at all, and `?? 0` turned that absence into a claim that
@@ -407,11 +414,18 @@ export function bookNav(rows) {
 
 // symbol → conviction-implied target weight (% of NAV).
 export function targetWeights(rows) {
-    const invested = rows.reduce((a, r) => a + (num(r.weight_pct) || 0), 0);
-    const convSum = rows.reduce((a, r) => a + Math.max(0, num(r.conviction_score) || 0), 0) || 1;
+    // A name with no conviction on file is absent from BOTH the denominator
+    // and the map -- never a zero. Counting it at zero would shrink every
+    // other name's target (it inflates nothing but sits in `invested`), and
+    // handing it a target of 0% makes `sizeTrade` read a full exit as the
+    // book's own instruction. The caller must distinguish "target 0%" from
+    // "no target", so this returns no entry rather than a zero one.
+    const scored = (rows || []).filter(r => !analyticsPending(r));
+    const invested = scored.reduce((a, r) => a + (num(r.weight_pct) || 0), 0);
+    const convSum = scored.reduce((a, r) => a + Math.max(0, convictionOf(r) || 0), 0) || 1;
     const m = new Map();
-    for (const r of rows) {
-        const conv = Math.max(0, num(r.conviction_score) || 0);
+    for (const r of scored) {
+        const conv = Math.max(0, convictionOf(r) || 0);
         m.set(r.symbol, (conv / convSum) * invested);
     }
     return m;
@@ -553,15 +567,22 @@ export function buildLiveSections(rows, compByTk, staleSet) {
         const r = byTk.get(withRead.tk) || {};
         const price = num(r.current_price);
         const currentWeightPct = num(r.weight_pct) || 0;
-        const targetWeightPct = targets.get(withRead.tk) || 0;
+        // `has` rather than `|| 0`: an absent target is not a target of zero.
+        const hasTarget = targets.has(withRead.tk);
+        const targetWeightPct = hasTarget ? targets.get(withRead.tk) : null;
         const currentShares = (price && price > 0 && num(r.market_value) != null) ? Math.abs(num(r.market_value)) / price : null;
-        const trade = sizeTrade(withRead.read, { nav, price, currentWeightPct, targetWeightPct, currentShares });
+        // No target, no trade. sizeTrade would otherwise difference a null and
+        // produce NaN, which compares false against every bound and so falls
+        // through to whichever branch happens to be last.
+        const trade = hasTarget
+            ? sizeTrade(withRead.read, { nav, price, currentWeightPct, targetWeightPct, currentShares })
+            : { tradeSide: null, tradeShares: null, tradeUsd: null, atTarget: false };
         return {
             ...withRead,
             price,
             currentWeightPct: +currentWeightPct.toFixed(2),
-            targetWeightPct: +targetWeightPct.toFixed(2),
-            driftPct: +(targetWeightPct - currentWeightPct).toFixed(2),
+            targetWeightPct: hasTarget ? +targetWeightPct.toFixed(2) : null,
+            driftPct: hasTarget ? +(targetWeightPct - currentWeightPct).toFixed(2) : null,
             ...trade,
         };
     });
