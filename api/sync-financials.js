@@ -49,7 +49,11 @@ const SB_SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const AV_KEY = process.env.ALPHA_VANTAGE_API_KEY || process.env.ALPHA_VANTAGE_KEY || '';
 const AV_BASE = 'https://www.alphavantage.co/query';
 
+const FINNHUB_KEY = (process.env.FINNHUB_API_KEY || '').trim();
+const FINNHUB_BASE = 'https://finnhub.io/api/v1';
+
 const SOURCE = 'alphavantage';
+export const SOURCE_FINNHUB = 'finnhub';
 const FN_NAME = 'sync_financials';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -306,9 +310,16 @@ export default async function handler(req, res) {
         const token = (req.query && req.query.token) || '';
         if (auth !== 'Bearer ' + secret && token !== secret) return res.status(401).json({ error: 'Unauthorized' });
     }
-    if (!AV_KEY) {
+    const wantProbe = String((req.query && req.query.probe) || '') === '1';
+    // The probe reads FINNHUB, not Alpha Vantage, so it must not be refused
+    // for a key it never touches.
+    if (!wantProbe && !AV_KEY) {
         console.error('sync_financials: ALPHA_VANTAGE_API_KEY unset — refusing to run');
         return res.status(500).json({ error: 'ALPHA_VANTAGE_API_KEY unset' });
+    }
+    if (wantProbe && !FINNHUB_KEY) {
+        console.error('sync_financials: FINNHUB_API_KEY unset — refusing to probe');
+        return res.status(500).json({ error: 'FINNHUB_API_KEY unset' });
     }
     if (!SB_SERVICE) {
         console.error('sync_financials: SUPABASE_SERVICE_ROLE_KEY unset — refusing to run');
@@ -347,6 +358,55 @@ export default async function handler(req, res) {
         if (ins.ok) { const j = await ins.json().catch(() => null); logId = j && j[0] && j[0].id; }
         else console.error('sync_financials: sync_log open refused', ins.status, await ins.text().catch(() => ''));
     } catch (e) { console.error('sync_financials: sync_log open threw', e && e.message); }
+
+    // ── PROBE MODE — measures, writes nothing ───────────────────────────
+    // Answers the two questions CLAUDE.md records as load-bearing and
+    // unmeasured: Finnhub's year-depth, and whether one concept mapping
+    // serves every filer. It writes no statement rows at all, so it cannot
+    // put a half-mapped period into the layer the whole module reads.
+    if (wantProbe) {
+        summary.mode = 'probe';
+        summary.source = SOURCE_FINNHUB;
+        const probeSyms = explicit.length ? explicit : ['TGT', 'GOOGL', 'JPM'];
+        summary.requested = probeSyms.length;
+        summary.probes = [];
+        for (const sym of probeSyms) {
+            if (Date.now() - started > budgetMs) { summary.budget_exhausted = true; break; }
+            summary.attempted++;
+            try {
+                summary.probes.push(await probeSymbol(sym, Number(q.count) || 0));
+            } catch (e) {
+                if (e instanceof RateLimited) {
+                    summary.rate_limited = true;
+                    summary.rate_limit_message = e.message;
+                    console.error('sync_financials probe: rate limited —', e.message);
+                    break;
+                }
+                summary.failures.push({ symbol: sym, error: String(e.message).slice(0, 200) });
+                console.error('sync_financials probe:', sym, e && e.message);
+            }
+        }
+        // `skipped`, never `success`: a probe writes nothing, and a run that
+        // wrote nothing must not report a successful write. That distinction
+        // is the one this codebase has had to re-learn four times.
+        const pStatus = summary.probes.length ? 'skipped' : 'error';
+        if (logId != null) {
+            try {
+                const upd = await fetch(SB_URL + '/rest/v1/sync_log?id=eq.' + logId, {
+                    method: 'PATCH', headers: sbHeaders(SB_SERVICE),
+                    body: JSON.stringify({
+                        finished_at: new Date().toISOString(),
+                        status: pStatus,
+                        error_message: summary.rate_limit_message
+                            || (summary.failures.length ? summary.failures[0].error : null),
+                        details: summary,
+                    }),
+                });
+                if (!upd.ok) console.error('sync_financials: probe sync_log close refused', upd.status, await upd.text().catch(() => ''));
+            } catch (e) { console.error('sync_financials: probe sync_log close threw', e && e.message); }
+        }
+        return res.status(pStatus === 'error' ? 503 : 200).json(summary);
+    }
 
     let symbols = [];
     try {
@@ -456,4 +516,225 @@ export default async function handler(req, res) {
     }
 
     return res.status(status === 'error' ? 503 : 200).json(summary);
+}
+
+// ============================================================
+// FINNHUB — as-reported XBRL, and the probe that measures it
+// ------------------------------------------------------------
+// Two questions block EQ-3 and EQ-4, and CLAUDE.md records both as
+// LOAD-BEARING AND UNMEASURED. They are measured here rather than
+// designed around, because this codebase has a standing rule about
+// checking that a tool is absent before designing around its absence.
+//
+//   1. THROUGHPUT. The Alpha Vantage production key is free tier —
+//      measured, not assumed: 25 requests/day against 3 per symbol, so
+//      ~8 symbols/day and ~114 days for the 913-symbol universe. That
+//      is why TGT's peer group is EMPTY today (peer_count = 0 on every
+//      metric) while GOOGL's has two: only nine symbols are loaded and
+//      TGT is alone in its sector among them. The brief asks for "a
+//      real peer average, not some hallucinated one" — and a real one
+//      needs coverage, which needs a source without a daily cap.
+//      Finnhub is 60/min with no daily cap and is ALREADY WIRED. Its
+//      year-depth is the unknown.
+//
+//   2. CONCEPT CONSISTENCY. Alpha Vantage NORMALISES, which is what
+//      makes a retailer and a bank comparable in one schema — and is
+//      also what DISCARDS every line item CAMELS needs. Finnhub's
+//      /stock/financials-reported is as-reported XBRL, so a bank's
+//      Tier 1 capital, risk-weighted assets and loan-loss allowance
+//      survive. The cost is that the tag is the FILER'S choice:
+//      one company reports revenue as `Revenues`, another as
+//      `RevenueFromContractWithCustomerExcludingAssessedTax`. A
+//      mapping that misses returns NULL — honest and useless.
+//
+// The probe answers both in one run and WRITES NOTHING. A loader built
+// on an assumed mapping would fail silently, field by field.
+// ============================================================
+
+/**
+ * Candidate US-GAAP tags per target field, in preference order.
+ *
+ * The lists are candidates, NOT a claim about what any filer uses — that
+ * is precisely what the probe measures. A field with no match is absent
+ * from the probe's report rather than reported as zero coverage, so
+ * "no filer in the sample tags this" is legible as its own finding.
+ */
+export const GAAP_CONCEPTS = {
+    // ── income statement ──
+    total_revenue: ['Revenues', 'RevenueFromContractWithCustomerExcludingAssessedTax',
+        'RevenueFromContractWithCustomerIncludingAssessedTax', 'SalesRevenueNet', 'SalesRevenueGoodsNet'],
+    cost_of_revenue: ['CostOfRevenue', 'CostOfGoodsAndServicesSold', 'CostOfGoodsSold'],
+    gross_profit: ['GrossProfit'],
+    operating_income: ['OperatingIncomeLoss'],
+    net_income: ['NetIncomeLoss', 'ProfitLoss'],
+    income_before_tax: [
+        'IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest',
+        'IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments'],
+    income_tax_expense: ['IncomeTaxExpenseBenefit'],
+    interest_expense: ['InterestExpense', 'InterestExpenseDebt', 'InterestExpenseBorrowings'],
+    research_and_development: ['ResearchAndDevelopmentExpense'],
+    selling_general_and_administrative: ['SellingGeneralAndAdministrativeExpense', 'GeneralAndAdministrativeExpense'],
+
+    // ── balance sheet ──
+    total_assets: ['Assets'],
+    total_current_assets: ['AssetsCurrent'],
+    total_liabilities: ['Liabilities'],
+    total_current_liabilities: ['LiabilitiesCurrent'],
+    total_shareholder_equity: ['StockholdersEquity',
+        'StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest'],
+    retained_earnings: ['RetainedEarningsAccumulatedDeficit'],
+    inventory: ['InventoryNet'],
+    cash_and_cash_equivalents: ['CashAndCashEquivalentsAtCarryingValue',
+        'CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents'],
+    current_net_receivables: ['AccountsReceivableNetCurrent', 'ReceivablesNetCurrent'],
+    current_accounts_payable: ['AccountsPayableCurrent', 'AccountsPayableAndAccruedLiabilitiesCurrent'],
+    property_plant_equipment: ['PropertyPlantAndEquipmentNet'],
+    goodwill: ['Goodwill'],
+    long_term_debt: ['LongTermDebtNoncurrent', 'LongTermDebt'],
+    common_stock_shares_outstanding: ['CommonStockSharesOutstanding', 'EntityCommonStockSharesOutstanding'],
+
+    // ── cash flow ──
+    operating_cashflow: ['NetCashProvidedByUsedInOperatingActivities',
+        'NetCashProvidedByUsedInOperatingActivitiesContinuingOperations'],
+    capital_expenditures: ['PaymentsToAcquirePropertyPlantAndEquipment', 'PaymentsToAcquireProductiveAssets'],
+    dividend_payout_common_stock: ['PaymentsOfDividendsCommonStock', 'PaymentsOfDividends'],
+    stock_based_compensation: ['ShareBasedCompensation'],
+    cashflow_from_investment: ['NetCashProvidedByUsedInInvestingActivities'],
+    cashflow_from_financing: ['NetCashProvidedByUsedInFinancingActivities'],
+};
+
+/**
+ * The line items normalisation DISCARDS. These are the whole reason EQ-4
+ * (CAMELS for banks, and the separate P&C and life/health frameworks)
+ * cannot be built on Alpha Vantage: no Tier 1 capital, no risk-weighted
+ * assets, no non-performing loans, no allowance for loan losses, no net
+ * premiums earned or written, no loss reserves.
+ *
+ * CFA L2 V3 LM4 grouping, so a reader can see which framework each
+ * concept serves rather than a flat list.
+ */
+export const INSTITUTION_CONCEPTS = {
+    // CAMELS · C — capital adequacy
+    tier_one_capital: ['TierOneRiskBasedCapital', 'TierOneRiskBasedCapitalToRiskWeightedAssets'],
+    total_risk_based_capital: ['CapitalToRiskWeightedAssets', 'TotalRiskBasedCapital'],
+    risk_weighted_assets: ['RiskWeightedAssets'],
+    common_equity_tier_one: ['TierOneLeverageCapitalToAverageAssets'],
+
+    // CAMELS · A — asset quality
+    allowance_for_credit_losses: ['FinancingReceivableAllowanceForCreditLosses',
+        'FinancingReceivableAllowanceForCreditLossExcludingAccruedInterest',
+        'LoansAndLeasesReceivableAllowance'],
+    nonaccrual_loans: ['FinancingReceivableRecordedInvestmentNonaccrualStatus',
+        'FinancingReceivableNonaccrualNoAllowance'],
+    provision_for_credit_losses: ['ProvisionForLoanLeaseAndOtherLosses',
+        'ProvisionForLoanAndLeaseLosses', 'ProvisionForDoubtfulAccounts'],
+    net_charge_offs: ['FinancingReceivableAllowanceForCreditLossWriteoff'],
+    loans_and_leases: ['NotesReceivableNet', 'LoansAndLeasesReceivableNetReportedAmount'],
+
+    // CAMELS · E — earnings
+    net_interest_income: ['InterestIncomeExpenseNet', 'InterestIncomeExpenseAfterProvisionForLoanLoss'],
+    noninterest_income: ['NoninterestIncome'],
+    noninterest_expense: ['NoninterestExpense'],
+
+    // CAMELS · L — liquidity
+    deposits: ['Deposits', 'InterestBearingDepositLiabilities'],
+
+    // P&C insurers
+    premiums_earned_net: ['PremiumsEarnedNet', 'PremiumsEarnedNetPropertyAndCasualty'],
+    premiums_written_net: ['PremiumsWrittenNet', 'PremiumsWrittenGross'],
+    losses_and_lae_incurred: ['PolicyholderBenefitsAndClaimsIncurredNet',
+        'LiabilityForClaimsAndClaimsAdjustmentExpenseIncurredClaims'],
+    loss_reserves: ['LiabilityForClaimsAndClaimsAdjustmentExpense'],
+    underwriting_expense: ['DeferredPolicyAcquisitionCostAmortizationExpense'],
+
+    // Life / health insurers
+    policyholder_benefits: ['PolicyholderBenefitsAndClaimsIncurredLifeAndAnnuity'],
+    future_policy_benefits: ['LiabilityForFuturePolicyBenefits'],
+    separate_account_assets: ['SeparateAccountAssets'],
+};
+
+async function finnhubGetJson(path) {
+    if (!FINNHUB_KEY) throw new Error('FINNHUB_API_KEY unset');
+    const sep = path.includes('?') ? '&' : '?';
+    const r = await fetchT(FINNHUB_BASE + path + sep + 'token=' + encodeURIComponent(FINNHUB_KEY), 25000);
+    // Finnhub signals a throttle with a real 429 rather than a 200 carrying a
+    // note, so it is detectable without the shape-sniffing Alpha Vantage needs.
+    if (r.status === 429) throw new RateLimited('finnhub 429 rate limit');
+    if (!r.ok) throw new Error('finnhub ' + path.split('?')[0] + ' http ' + r.status);
+    return r.json();
+}
+
+/**
+ * Flatten one Finnhub annual report into { concept -> value } plus the
+ * label, so the probe can report BOTH — a concept nobody recognises is
+ * still identifiable from the label a human wrote in the filing.
+ */
+export function indexReport(report) {
+    const out = {};
+    for (const section of ['ic', 'bs', 'cf']) {
+        const arr = Array.isArray(report && report[section]) ? report[section] : [];
+        for (const item of arr) {
+            const concept = item && item.concept;
+            if (!concept || out[concept] !== undefined) continue;
+            out[concept] = { value: num(item.value), label: item.label || null, section };
+        }
+    }
+    return out;
+}
+
+/**
+ * Measure, for one symbol's reports, which candidate concept each target
+ * field resolved to and on how many of the periods.
+ *
+ * A field that matched NOTHING is reported with `matched: null` rather
+ * than omitted: "no filer in this sample tags operating income" is a
+ * finding about the mapping, and a field silently missing from the
+ * report reads as one nobody asked about.
+ */
+export function probeConcepts(reports, groups) {
+    const out = {};
+    for (const [field, candidates] of Object.entries(groups)) {
+        let matched = null, hits = 0;
+        const seen = new Set();
+        for (const idx of reports) {
+            let found = null;
+            for (const c of candidates) {
+                if (idx[c] !== undefined) { found = c; break; }
+            }
+            if (found) { hits++; seen.add(found); if (!matched) matched = found; }
+        }
+        out[field] = {
+            matched: matched,
+            periods_covered: hits,
+            // More than one tag across the sample is the cross-filer
+            // inconsistency this probe exists to detect.
+            tags_seen: seen.size > 1 ? Array.from(seen) : undefined,
+        };
+    }
+    return out;
+}
+
+/**
+ * One symbol's shape. Writes nothing.
+ */
+export async function probeSymbol(symbol, count) {
+    const j = await finnhubGetJson('/stock/financials-reported?symbol='
+        + encodeURIComponent(symbol) + '&freq=annual'
+        + (count ? '&count=' + count : ''));
+    const data = Array.isArray(j && j.data) ? j.data : [];
+    const annuals = data.filter(d => d && d.form && String(d.form).startsWith('10-K'));
+    const use = annuals.length ? annuals : data;
+    const reports = use.map(d => indexReport(d && d.report));
+    const years = use.map(d => d && d.year).filter(y => Number.isFinite(y));
+
+    return {
+        symbol,
+        periods: use.length,
+        forms: Array.from(new Set(use.map(d => d && d.form).filter(Boolean))),
+        year_min: years.length ? Math.min(...years) : null,
+        year_max: years.length ? Math.max(...years) : null,
+        distinct_concepts: new Set(reports.flatMap(r => Object.keys(r))).size,
+        gaap: probeConcepts(reports, GAAP_CONCEPTS),
+        institution: probeConcepts(reports, INSTITUTION_CONCEPTS),
+    };
 }

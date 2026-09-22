@@ -136,8 +136,13 @@ export function periodChange(current, prior) {
  * previous period of the same periodicity.
  */
 export function buildColumns(rows, limit) {
-    const n = limit == null ? 10 : limit;
-    return (rows || []).slice(0, n).map(function (r, i, arr) {
+    // A null limit means EVERY loaded period. The `Max` control used to map to
+    // 20, so a quarterly load carrying 81 periods could never show more than a
+    // quarter of them — a cap that read as the data's own depth. Raised by
+    // CodeRabbit on PR #806.
+    const all = (rows || []);
+    const n = limit == null ? all.length : limit;
+    return all.slice(0, n).map(function (r, i, arr) {
         return {
             key: r.fiscal_date_ending,
             fiscalYear: r.fiscal_year,
@@ -330,8 +335,28 @@ export function derivedFromStatements(rows) {
 
     const divCovOfFcf = numOrNull(cur.dividend_coverage_of_fcf);
 
+    // Why a figure is missing matters as much as that it is. A bank's
+    // operating cycle is NOT DEFINED (EQ-2's statement_profile gate nulls the
+    // working capital, CCC, ROIC and cash-conversion columns), so a panel that
+    // renders N/A there is reporting a gate as a data failure — the same shape
+    // as a transport error rendering as a statement about the data.
+    const profile = cur.statement_profile || null;
+    const withheld = {};
+    if (profile === 'financial') {
+        withheld.reason = 'financial_profile';
+        withheld.note = 'A financial institution has no operating cycle and no working-capital '
+                      + 'cycle, and its interest expense is a cost of revenue rather than a '
+                      + 'leverage signal. These are WITHHELD by construction, not missing. The '
+                      + 'CFA framework for one is CAMELS, and it needs as-reported line items '
+                      + '(Tier 1 capital, risk-weighted assets, NPLs) the normalised statements '
+                      + 'do not carry.';
+        withheld.fields = ['altman_z', 'ccc_history', 'roic', 'accrual_quality', 'sloan_accrual'];
+    }
+
     const out = {
         _source: 'statements',
+        _statementProfile: profile,
+        _withheld: withheld.reason ? withheld : null,
         _fiscalYear: cur.fiscal_year,
         _periods: rows.length,
 
@@ -342,6 +367,12 @@ export function derivedFromStatements(rows) {
         altman_z: a.z,
         altman_components: a.components,
         altman_model: a.model,
+        // A REFUSAL, not an absence. `mergeDerived` must not let a partial
+        // X3+X4 score from equity_fundamentals_derived stand in for a Z'' the
+        // statements deliberately declined to form — CodeRabbit, PR #806, and
+        // JPM is the live case: its X1 is null because a bank has no working
+        // capital, so the statements refuse and the table's partial survives.
+        altman_refused: a.partial === true,
 
         sloan_accrual: numOrNull(cur.sloan_accrual_ratio),
         accrual_quality: numOrNull(cur.cash_conversion),
@@ -375,6 +406,16 @@ export function mergeDerived(fromTable, fromStatements) {
         const v = fromStatements[k];
         if (v !== null && v !== undefined) out[k] = v;
     });
+    // ONE EXCEPTION to "a null from the statements must not erase a real
+    // figure": a REFUSED Altman. `compute_ticker_derived` publishes
+    // `6.72*x3 + 1.05*x4` when it cannot form x1 and x2 — a partial score that
+    // the panel then reads under full Z'' bands. That is not a real figure to
+    // preserve, so the refusal wins and the key is DELETED rather than nulled:
+    // a renderer cannot print a number it was never handed.
+    if (fromStatements.altman_refused === true) {
+        delete out.altman_z;
+        delete out.altman_components;
+    }
     return out;
 }
 

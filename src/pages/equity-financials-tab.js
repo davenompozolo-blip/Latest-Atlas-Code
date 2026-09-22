@@ -327,8 +327,12 @@ export function FinancialsTab({ symbol }) {
                     options: [{ v: 'annual', l: 'Annual' }, { v: 'quarterly', l: 'Quarterly' }],
                 }),
                 h(Toggle, {
-                    label: 'Columns', value: String(maxCols), onChange: function (v) { setMaxCols(Number(v)); },
-                    options: [{ v: '4', l: '4' }, { v: '6', l: '6' }, { v: '10', l: '10' }, { v: '20', l: 'Max' }],
+                    // `Max` is UNBOUNDED, not 20. buildColumns treats a null
+                    // limit as every loaded period, so a quarterly load showing
+                    // 81 periods can actually show 81.
+                    label: 'Columns', value: maxCols == null ? 'all' : String(maxCols),
+                    onChange: function (v) { setMaxCols(v === 'all' ? null : Number(v)); },
+                    options: [{ v: '4', l: '4' }, { v: '6', l: '6' }, { v: '10', l: '10' }, { v: 'all', l: 'Max' }],
                 }),
                 h('label', { style: { display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer' } },
                     h('input', {

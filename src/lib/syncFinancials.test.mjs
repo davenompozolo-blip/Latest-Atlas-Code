@@ -176,3 +176,84 @@ test('freshness is judged on COMPLETE coverage, not on the income statement alon
     assert.ok(!/company_income_statement\?select=symbol/.test(src),
         'the old income-statement-only freshness read must be gone');
 });
+
+// ── EQ-3 probe: the concept measurement ────────────────────────────────────
+
+import { indexReport, probeConcepts, GAAP_CONCEPTS, INSTITUTION_CONCEPTS }
+    from '../../api/sync-financials.js';
+
+test('indexReport flattens all three sections and keeps the first tag', () => {
+    const idx = indexReport({
+        ic: [{ concept: 'Revenues', label: 'Net sales', value: '100' },
+             { concept: 'Revenues', label: 'DUPLICATE', value: '999' }],
+        bs: [{ concept: 'Assets', label: 'Total assets', value: '500' }],
+        cf: [{ concept: 'NetCashProvidedByUsedInOperatingActivities', label: 'CFO', value: '40' }],
+    });
+    assert.equal(idx.Revenues.value, 100);
+    assert.equal(idx.Revenues.label, 'Net sales');     // first wins, not the duplicate
+    assert.equal(idx.Revenues.section, 'ic');
+    assert.equal(idx.Assets.section, 'bs');
+    assert.equal(idx.NetCashProvidedByUsedInOperatingActivities.section, 'cf');
+});
+
+test('indexReport carries the LABEL, so an unrecognised tag is still identifiable', () => {
+    // A concept nobody in the candidate list recognises is exactly the case
+    // the probe exists to surface, and the human-written label in the filing
+    // is how a reader identifies it.
+    const idx = indexReport({ bs: [{ concept: 'SomeFilerSpecificTag', label: 'Loans, net', value: '7' }] });
+    assert.equal(idx.SomeFilerSpecificTag.label, 'Loans, net');
+});
+
+test('a non-numeric value becomes NULL, never 0', () => {
+    const idx = indexReport({ ic: [{ concept: 'GrossProfit', label: 'GP', value: 'None' },
+                                   { concept: 'Revenues', label: 'R', value: 'NaN' }] });
+    assert.equal(idx.GrossProfit.value, null);
+    assert.equal(idx.Revenues.value, null);
+});
+
+test('probeConcepts reports a field that matched NOTHING rather than omitting it', () => {
+    // A field silently missing from the report reads as one nobody asked
+    // about. "No filer in this sample tags operating income" is a finding.
+    const idx = indexReport({ ic: [{ concept: 'Revenues', value: '1' }] });
+    const out = probeConcepts([idx], { total_revenue: GAAP_CONCEPTS.total_revenue, gross_profit: ['GrossProfit'] });
+    assert.equal(out.total_revenue.matched, 'Revenues');
+    assert.equal(out.total_revenue.periods_covered, 1);
+    assert.ok('gross_profit' in out);
+    assert.equal(out.gross_profit.matched, null);
+    assert.equal(out.gross_profit.periods_covered, 0);
+});
+
+test('two different tags across the sample are flagged as cross-filer drift', () => {
+    // This is the whole load-bearing unknown: Finnhub is AS-REPORTED, so the
+    // tag is the filer's choice. One company's `Revenues` is another's
+    // `RevenueFromContractWithCustomerExcludingAssessedTax`, and a mapping
+    // that assumes one returns NULL for the other — honest and useless.
+    const a = indexReport({ ic: [{ concept: 'Revenues', value: '1' }] });
+    const b = indexReport({ ic: [{ concept: 'RevenueFromContractWithCustomerExcludingAssessedTax', value: '2' }] });
+    const out = probeConcepts([a, b], { total_revenue: GAAP_CONCEPTS.total_revenue });
+    assert.equal(out.total_revenue.periods_covered, 2);
+    assert.equal(out.total_revenue.tags_seen.length, 2);
+
+    // One consistent tag carries NO drift marker — absent, not an empty array,
+    // so the common case does not read as a finding.
+    const single = probeConcepts([a, a], { total_revenue: GAAP_CONCEPTS.total_revenue });
+    assert.equal(single.total_revenue.tags_seen, undefined);
+});
+
+test('the institution concepts cover all three CFA L2 V3 LM4 frameworks', () => {
+    // These are the line items normalisation DISCARDS, which is why EQ-4
+    // cannot be built on Alpha Vantage at all.
+    const k = Object.keys(INSTITUTION_CONCEPTS);
+    // CAMELS: capital, asset quality, earnings, liquidity.
+    ['tier_one_capital', 'risk_weighted_assets', 'allowance_for_credit_losses',
+     'nonaccrual_loans', 'net_interest_income', 'deposits'].forEach(f => assert.ok(k.includes(f), f));
+    // P&C: the combined ratio needs earned AND written premiums — their
+    // denominators genuinely differ, so both must be present.
+    ['premiums_earned_net', 'premiums_written_net', 'losses_and_lae_incurred'].forEach(f => assert.ok(k.includes(f), f));
+    // Life / health.
+    ['policyholder_benefits', 'future_policy_benefits'].forEach(f => assert.ok(k.includes(f), f));
+    // Every entry is a non-empty candidate list.
+    Object.entries(INSTITUTION_CONCEPTS).forEach(([f, c]) => {
+        assert.ok(Array.isArray(c) && c.length > 0, f);
+    });
+});
